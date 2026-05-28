@@ -28,6 +28,7 @@ The tradeoff is that you handle more of the setup yourself compared to a managed
 
 - A Google Cloud project with Batch API and Compute Engine API enabled
 - GPU quota in your target region (check and request at IAM > Quotas)
+- An Artifact Registry Docker repository for your training image
 - A containerized training script (recommended) or training code in Cloud Storage
 
 ## Step 1: Check GPU Quota
@@ -61,15 +62,13 @@ gcloud batch jobs submit gpu-training-job \
         "runnables": [
           {
             "container": {
-              "imageUri": "gcr.io/MY_PROJECT/ml-training:latest",
-              "entrypoint": "python",
+              "imageUri": "us-central1-docker.pkg.dev/MY_PROJECT/ml-training/ml-training:latest",
+              "entrypoint": "/bin/sh",
               "commands": [
-                "train.py",
-                "--epochs=50",
-                "--batch-size=64",
-                "--learning-rate=0.001",
-                "--model-output=gs://my-models-bucket/model_${BATCH_TASK_INDEX}"
+                "-c",
+                "python3 train.py --epochs=50 --batch-size=64 --learning-rate=0.001 --model-output=gs://my-models-bucket/model_${BATCH_TASK_INDEX}"
               ],
+              "options": "--gpus all",
               "volumes": ["/mnt/disks/data:/data"]
             }
           }
@@ -114,14 +113,15 @@ EOF
 Key settings for GPU jobs:
 
 - `installGpuDrivers: true` - Cloud Batch automatically installs the appropriate NVIDIA drivers
-- `accelerators` - specifies the GPU type and count
+- `container.options: "--gpus all"` - passes GPU devices through to the container runtime
+- `accelerators` - specifies the GPU type and count for N1 VM GPU attachments
 - `machineType` - must be compatible with the chosen GPU (e.g., n1-standard for T4, a2-highgpu for A100)
 
 ## Step 3: Create a GPU Job with the Python Client
 
 For programmatic control, especially when running hyperparameter sweeps, use the Python client.
 
-This script creates a GPU batch job for distributed hyperparameter tuning:
+This script creates a GPU batch job for parallel hyperparameter tuning:
 
 ```python
 from google.cloud import batch_v1
@@ -133,12 +133,11 @@ def create_gpu_training_job(project_id, region, job_name, gpu_type, gpu_count, t
     # Define the containerized training workload
     runnable = batch_v1.Runnable()
     runnable.container = batch_v1.Runnable.Container()
-    runnable.container.image_uri = f"gcr.io/{project_id}/ml-training:latest"
+    runnable.container.image_uri = f"{region}-docker.pkg.dev/{project_id}/ml-training/ml-training:latest"
+    runnable.container.entrypoint = "/bin/sh"
     runnable.container.commands = [
-        "python", "train.py",
-        "--task-index=${BATCH_TASK_INDEX}",
-        "--task-count=${BATCH_TASK_COUNT}",
-        "--model-output=gs://my-models-bucket/experiments/${BATCH_TASK_INDEX}",
+        "-c",
+        "python3 train.py --model-output=gs://my-models-bucket/experiments/${BATCH_TASK_INDEX}",
     ]
     # Enable GPU access inside the container
     runnable.container.options = "--gpus all"
@@ -246,8 +245,7 @@ COPY model/ /app/model/
 
 WORKDIR /app
 
-# Verify GPU is accessible at build time (optional)
-# RUN python3 -c "import torch; print(torch.cuda.is_available())"
+# Verify GPU access at runtime, after the job starts on a GPU VM.
 
 ENTRYPOINT ["python3"]
 CMD ["train.py"]
@@ -258,7 +256,7 @@ The training script should use the BATCH_TASK_INDEX environment variable to sele
 ```python
 import os
 import torch
-import json
+import argparse
 
 # Hyperparameter grid - each task gets a different combination
 HPARAM_GRID = [
@@ -270,6 +268,10 @@ HPARAM_GRID = [
 ]
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-output")
+    args, _ = parser.parse_known_args()
+
     # Get task index from Cloud Batch environment variable
     task_index = int(os.environ.get("BATCH_TASK_INDEX", "0"))
 
@@ -294,7 +296,7 @@ def main():
         print(f"Epoch {epoch}: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}")
 
     # Save results
-    output_path = os.environ.get("MODEL_OUTPUT", f"/tmp/model_{task_index}")
+    output_path = args.model_output or os.environ.get("MODEL_OUTPUT", f"/tmp/model_{task_index}")
     save_results(model, hparams, output_path)
 
 if __name__ == "__main__":
