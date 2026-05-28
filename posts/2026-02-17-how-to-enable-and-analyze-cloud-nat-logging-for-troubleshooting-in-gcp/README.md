@@ -8,7 +8,7 @@ Description: Enable Cloud NAT logging, understand the log structure, and use log
 
 ---
 
-Cloud NAT logging is your primary troubleshooting tool when things go wrong with outbound connectivity from private VMs. Without logging, you are flying blind - you know something is broken but have no visibility into what is actually happening at the NAT layer. With logging enabled, you can see every translation, every dropped packet, and every port allocation failure.
+Cloud NAT logging is your primary troubleshooting tool when things go wrong with outbound connectivity from private VMs. Without logging, you are flying blind - you know something is broken but have no visibility into what is actually happening at the NAT layer. With logging enabled, you can see translation events and outbound TCP/UDP packets dropped because no NAT port was available.
 
 This guide covers enabling logging, understanding the log format, and writing queries that answer the questions you actually need answered when troubleshooting.
 
@@ -47,8 +47,8 @@ Cloud NAT logs are written to Cloud Logging under the `compute.googleapis.com/na
 | `connection.dest_port` | External destination port |
 | `connection.protocol` | Protocol number (6=TCP, 17=UDP) |
 | `allocation_status` | OK or DROPPED |
-| `nat_ip` | The NAT external IP used |
-| `nat_port` | The NAT port assigned |
+| `connection.nat_ip` | The NAT external IP used |
+| `connection.nat_port` | The NAT port assigned |
 | `gateway_identifiers.gateway_name` | NAT gateway name |
 | `gateway_identifiers.router_name` | Cloud Router name |
 
@@ -73,7 +73,7 @@ gcloud logging read \
   'resource.type="nat_gateway" AND resource.labels.gateway_name="your-nat-gateway"' \
   --project=your-project-id \
   --limit=20 \
-  --format="table(timestamp, jsonPayload.connection.src_ip, jsonPayload.connection.dest_ip, jsonPayload.connection.dest_port, jsonPayload.allocation_status, jsonPayload.nat_ip)"
+  --format="table(timestamp, jsonPayload.connection.src_ip, jsonPayload.connection.dest_ip, jsonPayload.connection.dest_port, jsonPayload.allocation_status, jsonPayload.connection.nat_ip)"
 ```
 
 ## Troubleshooting Scenario 1: Port Exhaustion
@@ -110,10 +110,10 @@ gcloud logging read \
   'resource.type="nat_gateway" AND jsonPayload.connection.dest_ip="203.0.113.10"' \
   --project=your-project-id \
   --freshness=1h \
-  --format="table(timestamp, jsonPayload.connection.src_ip, jsonPayload.allocation_status, jsonPayload.nat_ip)"
+  --format="table(timestamp, jsonPayload.connection.src_ip, jsonPayload.allocation_status, jsonPayload.connection.nat_ip)"
 ```
 
-If you see `OK` status but the connection still fails, the issue is not with NAT - it is either a firewall rule, the destination rejecting your NAT IP, or a network-level problem.
+If you see `OK` status but the connection still fails, the issue is not with NAT allocation - it is either a firewall outside the NAT path, the destination rejecting your NAT IP, or a network-level problem.
 
 If you see `DROPPED` status, the VM is hitting port exhaustion for that destination.
 
@@ -127,7 +127,7 @@ gcloud logging read \
   'resource.type="nat_gateway" AND jsonPayload.connection.src_ip="10.0.1.5" AND jsonPayload.allocation_status="OK"' \
   --project=your-project-id \
   --freshness=1h \
-  --format="table(timestamp, jsonPayload.nat_ip, jsonPayload.connection.dest_ip)"
+  --format="table(timestamp, jsonPayload.connection.nat_ip, jsonPayload.connection.dest_ip)"
 ```
 
 With dynamic port allocation, a VM might use different NAT IPs for different destinations.
@@ -147,9 +147,9 @@ gcloud logging read \
 
 This helps you find compromised VMs or misbehaving applications that might be causing port exhaustion for other VMs.
 
-## Troubleshooting Scenario 5: Slow NAT Translations
+## Troubleshooting Scenario 5: Repeated Connection Attempts
 
-If connections are established but seem slow, look at the timing between log entries:
+Cloud NAT logs do not measure translation latency. If connections are failing intermittently or retrying, look at the timing between log entries:
 
 ```bash
 # View timestamps for connections from a specific VM to a specific destination
@@ -157,7 +157,7 @@ gcloud logging read \
   'resource.type="nat_gateway" AND jsonPayload.connection.src_ip="10.0.1.5" AND jsonPayload.connection.dest_ip="198.51.100.1"' \
   --project=your-project-id \
   --freshness=30m \
-  --format="table(timestamp, jsonPayload.nat_port, jsonPayload.allocation_status)"
+  --format="table(timestamp, jsonPayload.connection.nat_port, jsonPayload.allocation_status)"
 ```
 
 Large gaps between connection attempts followed by DROPPED events suggest the VM is retrying after port exhaustion failures.
@@ -188,8 +188,8 @@ gcloud alpha monitoring policies create \
   --display-name="Cloud NAT Port Exhaustion Alert" \
   --condition-display-name="NAT port exhaustion detected" \
   --condition-filter='metric.type="logging.googleapis.com/user/nat-port-exhaustion"' \
-  --condition-threshold-value=10 \
-  --condition-threshold-duration=300s \
+  --if="> 10" \
+  --duration=300s \
   --notification-channels=your-channel-id
 ```
 
@@ -220,9 +220,8 @@ You can also set up log exclusion filters to drop logs you do not need:
 
 ```bash
 # Create a log exclusion for high-volume successful translations
-gcloud logging sinks create nat-exclusion \
-  --log-filter='resource.type="nat_gateway" AND jsonPayload.allocation_status="OK" AND jsonPayload.connection.dest_port="443"' \
-  --exclusion \
+gcloud logging sinks update _Default \
+  --add-exclusion=name=nat-https-translations,filter='resource.type="nat_gateway" AND jsonPayload.allocation_status="OK" AND jsonPayload.connection.dest_port=443' \
   --project=your-project-id
 ```
 
