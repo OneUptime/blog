@@ -33,7 +33,7 @@ graph LR
 
 ## Setting Up Cloud Trace
 
-First, enable the Trace API and instrument your application. Here is a Python example using the OpenTelemetry SDK, which is the recommended approach:
+First, enable the Trace API and instrument your application. Here is a Python example using the OpenTelemetry SDK with the Cloud Trace exporter, which is a supported OpenTelemetry approach:
 
 ```bash
 # Enable the Cloud Trace API
@@ -102,6 +102,9 @@ def process_order(order_id):
 Cloud Profiler requires minimal setup. Add the profiling agent to your application:
 
 ```bash
+# Enable the Cloud Profiler API
+gcloud services enable cloudprofiler.googleapis.com --project=my-project
+
 # Install the Cloud Profiler agent
 pip install google-cloud-profiler
 ```
@@ -118,7 +121,7 @@ def setup_profiler():
             service="order-service",
             service_version="1.0.0",
             project_id="my-project",
-            # Enable different profile types
+            # verbose is the logging level: 0=error, 1=warning, 2=info, 3=debug
             verbose=0,
         )
         print("Cloud Profiler initialized")
@@ -166,11 +169,9 @@ Here is the workflow:
 Go to the Cloud Console, navigate to Trace, and look at the latency distribution. Click on a slow trace to see its spans. Identify the span that is taking the most time.
 
 ```bash
-# You can also query traces programmatically
-gcloud trace traces list \
-  --project=my-project \
-  --filter='span:"process_payment" AND latency>"500ms"' \
-  --limit=10
+# You can also query traces through the Cloud Trace API
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://cloudtrace.googleapis.com/v1/projects/my-project/traces?view=COMPLETE&filter=%2Bspan:process_payment%20latency:500ms"
 ```
 
 **Step 2: Note the service name and time window.**
@@ -187,7 +188,7 @@ If the slow span was "process_payment" and the flame graph shows that 40% of CPU
 
 ## Adding Custom Span Attributes for Better Correlation
 
-To make the connection between traces and profiles easier, add attributes to your spans that match profiler labels:
+To make the connection between traces and profiles easier, record the same service and version values in your tracing resource and add span attributes that help with manual correlation:
 
 ```python
 import os
@@ -215,15 +216,16 @@ def process_order(order_id):
 You can build a script that automatically links slow traces to profiler data:
 
 ```python
-from google.cloud import trace_v2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+from google.cloud import trace_v1
 
 def find_slow_traces_and_profile(project_id, service_name, min_latency_ms=500):
     """Find slow traces and link them to profiler data."""
-    trace_client = trace_v2.TraceServiceClient()
+    trace_client = trace_v1.TraceServiceClient()
 
     # Query for slow traces in the last hour
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     start_time = now - timedelta(hours=1)
 
     # List traces that exceed the latency threshold
@@ -232,7 +234,8 @@ def find_slow_traces_and_profile(project_id, service_name, min_latency_ms=500):
             "project_id": project_id,
             "start_time": start_time,
             "end_time": now,
-            "filter": f'span_name:"{service_name}" AND latency>"{min_latency_ms}ms"',
+            "view": trace_v1.ListTracesRequest.ViewType.COMPLETE,
+            "filter": f"latency:{min_latency_ms}ms",
         }
     )
 
@@ -252,9 +255,10 @@ def find_slow_traces_and_profile(project_id, service_name, min_latency_ms=500):
             print(f"  Slowest span: {slowest_span.display_name.value}")
             print(f"  Duration: {max_duration:.0f}ms")
             print(f"  Time: {slowest_span.start_time}")
-            print(f"  Profiler link: https://console.cloud.google.com/profiler/"
-                  f"{service_name};timespan={slowest_span.start_time.isoformat()}"
+            print(f"  Profiler page: https://console.cloud.google.com/profiler"
                   f"?project={project_id}")
+            print(f"  Select service {service_name} and a time range around "
+                  f"{slowest_span.start_time.isoformat()}")
 
 find_slow_traces_and_profile("my-project", "order-service", min_latency_ms=500)
 ```
@@ -273,4 +277,4 @@ find_slow_traces_and_profile("my-project", "order-service", min_latency_ms=500)
 
 ## Summary
 
-Cloud Trace and Cloud Profiler are more powerful together than either one alone. Trace tells you where time is being spent at the request level, and Profiler tells you where time is being spent at the code level. By using the same service name and time window, you can move seamlessly from a slow trace to the exact line of code that is causing the problem. Set up both tools on your critical services and practice the correlation workflow - it turns performance debugging from guesswork into a systematic process.
+Cloud Trace and Cloud Profiler are more powerful together than either one alone. Trace tells you where time is being spent at the request level, and Profiler tells you where time is being spent at the code level. By using the same service name and time window, you can move from a slow trace to the code path that is causing the problem. Set up both tools on your critical services and practice the correlation workflow - it turns performance debugging from guesswork into a systematic process.
