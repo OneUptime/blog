@@ -10,7 +10,7 @@ Description: Learn how to implement fan-out messaging patterns in Google Cloud P
 
 Fan-out is one of the most common messaging patterns, and Pub/Sub makes it almost trivially easy to implement. The idea is simple: a publisher sends a message once, and multiple independent consumers each receive their own copy. The publisher does not need to know about the consumers, and the consumers do not need to coordinate with each other.
 
-In Pub/Sub, fan-out works through multiple subscriptions on a single topic. Each subscription gets every message published to the topic (unless filtered), and each subscription is processed independently. If one consumer falls behind, it does not affect the others.
+In Pub/Sub, fan-out works through multiple subscriptions on a single topic. Each subscription gets every message published to the topic after it is created (unless filtered), and each subscription is processed independently. If one consumer falls behind, it does not affect the others.
 
 ## The Fan-Out Pattern
 
@@ -67,6 +67,16 @@ resource "google_pubsub_topic" "order_events" {
   message_retention_duration = "604800s"
 }
 
+resource "google_pubsub_topic" "billing_dlq" {
+  name = "billing-dlq"
+}
+
+resource "google_pubsub_topic" "shipping_dlq" {
+  name = "shipping-dlq"
+}
+
+data "google_project" "project" {}
+
 # Billing service subscription
 resource "google_pubsub_subscription" "billing" {
   name                 = "billing-sub"
@@ -84,6 +94,18 @@ resource "google_pubsub_subscription" "billing" {
   }
 
   expiration_policy { ttl = "" }
+}
+
+resource "google_pubsub_topic_iam_member" "billing_dlq_publisher" {
+  topic  = google_pubsub_topic.billing_dlq.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "billing_dlq_acknowledger" {
+  subscription = google_pubsub_subscription.billing.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
 # Shipping service subscription
@@ -105,6 +127,18 @@ resource "google_pubsub_subscription" "shipping" {
   expiration_policy { ttl = "" }
 }
 
+resource "google_pubsub_topic_iam_member" "shipping_dlq_publisher" {
+  topic  = google_pubsub_topic.shipping_dlq.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "shipping_dlq_acknowledger" {
+  subscription = google_pubsub_subscription.shipping.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
 # Analytics pipeline subscription
 resource "google_pubsub_subscription" "analytics" {
   name                 = "analytics-sub"
@@ -118,6 +152,11 @@ resource "google_pubsub_subscription" "analytics" {
   }
 
   expiration_policy { ttl = "" }
+}
+
+resource "google_service_account" "pubsub_invoker" {
+  account_id   = "pubsub-invoker"
+  display_name = "Pub/Sub push invoker"
 }
 
 # Notification service subscription (push to Cloud Run)
@@ -201,7 +240,7 @@ resource "google_pubsub_subscription" "analytics_all" {
   name                 = "analytics-all-sub"
   topic                = google_pubsub_topic.order_events.id
   ack_deadline_seconds = 300
-  expiration_policy    { ttl = "" }
+  expiration_policy { ttl = "" }
 }
 ```
 
@@ -217,7 +256,7 @@ resource "google_pubsub_subscription" "gke_service" {
   name                 = "gke-processor-sub"
   topic                = google_pubsub_topic.order_events.id
   ack_deadline_seconds = 60
-  expiration_policy    { ttl = "" }
+  expiration_policy { ttl = "" }
 }
 
 # Push subscription for a Cloud Run service
@@ -255,7 +294,7 @@ One topic, three completely different delivery mechanisms. The publisher does no
 
 A key advantage of the fan-out pattern is fault isolation. If the shipping service goes down, the billing service, analytics pipeline, and notification service continue operating normally. The shipping subscription accumulates a backlog until the service recovers.
 
-Each subscription should have its own dead letter topic to prevent failed messages from blocking other messages:
+Each subscription should have its own dead letter topic to keep repeatedly failing messages from consuming retry capacity indefinitely:
 
 ```python
 # Each consumer handles failures independently
