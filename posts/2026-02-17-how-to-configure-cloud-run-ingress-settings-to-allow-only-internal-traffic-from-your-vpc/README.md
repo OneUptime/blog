@@ -18,9 +18,9 @@ Cloud Run offers three ingress settings:
 
 **All traffic (default)**: Anyone on the internet can reach the service. Requests still need to pass IAM authentication if you have not enabled `--allow-unauthenticated`.
 
-**Internal traffic only**: Only traffic from within your GCP project's VPC network, other GCP services in the same project, and Cloud Load Balancing can reach the service. Public internet traffic is blocked at the network level.
+**Internal traffic only**: Only traffic from within your GCP project's VPC network, supported Google Cloud services in the same project or VPC Service Controls perimeter, and Internal Application Load Balancers can reach the service. Public internet traffic is blocked at the network level.
 
-**Internal and Cloud Load Balancing**: Same as internal, plus traffic from Google Cloud Load Balancing. This is useful when you want public-facing traffic to go through a load balancer but block direct access to the Cloud Run URL.
+**Internal and Cloud Load Balancing**: Same as internal, plus traffic from External Application Load Balancers. This is useful when you want public-facing traffic to go through a load balancer but block direct access to the Cloud Run URL.
 
 Here is how traffic flows under each setting:
 
@@ -28,25 +28,29 @@ Here is how traffic flows under each setting:
 flowchart TD
     Internet[Public Internet]
     VPC[Your VPC]
-    GLB[Google Load Balancer]
+    GLB[External Application Load Balancer]
+    ILB[Internal Application Load Balancer]
     CR[Cloud Run Service]
 
     subgraph "ingress: all"
         Internet -->|Allowed| CR
         VPC -->|Allowed| CR
         GLB -->|Allowed| CR
+        ILB -->|Allowed| CR
     end
 
     subgraph "ingress: internal"
         Internet -.->|Blocked| CR
         VPC -->|Allowed| CR
         GLB -.->|Blocked| CR
+        ILB -->|Allowed| CR
     end
 
     subgraph "ingress: internal-and-cloud-load-balancing"
         Internet -.->|Blocked| CR
         VPC -->|Allowed| CR
         GLB -->|Allowed| CR
+        ILB -->|Allowed| CR
     end
 ```
 
@@ -120,11 +124,11 @@ The Terraform ingress values are:
 
 Understanding what Cloud Run considers internal is important. Internal traffic includes:
 
-1. **VPC traffic via Serverless VPC Access or Direct VPC Egress**: If another Cloud Run service, GKE pod, or Compute Engine VM sends a request through a VPC connector or Direct VPC Egress, it is internal.
+1. **VPC traffic through an internal path**: Requests from resources in VPC networks in the same project are internal. For Cloud Run-to-Cloud Run calls, the caller must use Direct VPC egress or a Serverless VPC Access connector and route the request through the VPC network.
 
-2. **Same-project GCP services**: Requests from Pub/Sub push subscriptions, Cloud Tasks, Cloud Scheduler, and Eventarc within the same project are internal.
+2. **Supported same-project GCP services**: Requests from supported Google Cloud services such as Pub/Sub push subscriptions, Cloud Tasks, Cloud Scheduler, Eventarc, Workflows, and BigQuery are internal when they are in the same project or VPC Service Controls perimeter and use the default `run.app` URL.
 
-3. **Shared VPC traffic**: If you are using a Shared VPC, traffic from other projects in the same Shared VPC network counts as internal.
+3. **Shared VPC traffic**: If you are using a Shared VPC, traffic can count as internal when the Cloud Run service is attached to that Shared VPC network, runs in the Shared VPC host project, is reached through an internal Application Load Balancer, or is covered by the same VPC Service Controls perimeter.
 
 What is NOT internal:
 - Direct requests from the internet, even with authentication
@@ -136,13 +140,14 @@ What is NOT internal:
 If you have two Cloud Run services and one needs to call the other, the calling service needs VPC egress configured:
 
 ```bash
-# Service A (caller) - needs VPC egress to reach internal Service B
+# Service A (caller) - route all egress through the VPC and enable
+# Private Google Access on the subnet to reach Service B's run.app URL
 gcloud run deploy service-a \
   --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/service-a:latest \
   --region=us-central1 \
   --network=default \
   --subnet=cloud-run-subnet \
-  --vpc-egress=private-ranges-only
+  --vpc-egress=all-traffic
 
 # Service B (internal) - only accepts internal traffic
 gcloud run deploy service-b \
@@ -222,7 +227,7 @@ This is useful for adding Cloud CDN, Cloud Armor WAF, or custom domains through 
 
 ## Calling Internal Services from Cloud Scheduler
 
-Cloud Scheduler can invoke internal Cloud Run services directly because it is treated as internal traffic within the same project:
+Cloud Scheduler can invoke internal Cloud Run services directly because it is treated as internal traffic within the same project or VPC Service Controls perimeter when it uses the service's default `run.app` URL:
 
 ```bash
 # Create a scheduled job targeting an internal Cloud Run service
@@ -259,7 +264,7 @@ curl -I https://my-internal-service-xxxxx-uc.a.run.app/
 
 ## Troubleshooting
 
-**"Permission denied" even from internal traffic**: Make sure the calling service has VPC egress configured. Without it, the traffic goes over the public internet and gets blocked by ingress rules.
+**"Permission denied" even from internal traffic**: Make sure the calling service has VPC egress configured and that traffic to Cloud Run is routed through the VPC network. For the default `run.app` URL, use `--vpc-egress=all-traffic` with Private Google Access on the subnet, or configure Private Service Connect, private DNS, or an internal Application Load Balancer.
 
 **Cloud Scheduler or Pub/Sub cannot reach the service**: These services need to be in the same GCP project. Cross-project invocations require VPC connectivity.
 
