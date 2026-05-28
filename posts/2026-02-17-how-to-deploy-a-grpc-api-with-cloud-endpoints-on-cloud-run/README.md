@@ -17,7 +17,7 @@ This guide covers deploying a gRPC API with Cloud Endpoints on Cloud Run, from d
 For gRPC APIs, Cloud Endpoints uses a gRPC service configuration file instead of an OpenAPI specification. The flow is:
 
 1. You define your service in a `.proto` file
-2. You create a gRPC service configuration (`.yaml`) that references the proto descriptor
+2. You create a gRPC service configuration (`.yaml`) with your Cloud Run hostname and backend routing
 3. You deploy the service configuration to Service Management
 4. ESPv2 proxies gRPC requests to your backend, handling authentication and monitoring
 
@@ -27,6 +27,7 @@ For gRPC APIs, Cloud Endpoints uses a gRPC service configuration file instead of
 - Protocol Buffers compiler (`protoc`) installed
 - gRPC tools installed for your language
 - Docker for building container images
+- A reserved Cloud Run URL for the ESPv2 gateway service
 
 ```bash
 # Enable required APIs
@@ -34,8 +35,8 @@ For gRPC APIs, Cloud Endpoints uses a gRPC service configuration file instead of
 gcloud services enable \
   servicemanagement.googleapis.com \
   servicecontrol.googleapis.com \
-  endpoints.googleapis.com \
   run.googleapis.com \
+  artifactregistry.googleapis.com \
   --project=my-project-id
 
 # Install protoc if not already installed (macOS)
@@ -162,6 +163,8 @@ service BookstoreService {
 }
 ```
 
+The request and response message definitions remain the same as in `bookstore.proto`.
+
 For the HTTP annotations to work, you need the google API proto files.
 
 ```bash
@@ -188,8 +191,8 @@ Create a service configuration file that tells Cloud Endpoints about your gRPC s
 type: google.api.Service
 config_version: 3
 
-# Service name - must match what you use in gcloud commands
-name: bookstore-api.endpoints.my-project-id.cloud.goog
+# Service name - use the hostname of the ESPv2 Cloud Run service, without https://
+name: bookstore-api-abc123-uc.a.run.app
 
 title: Bookstore gRPC API
 
@@ -199,14 +202,14 @@ apis:
 # Authentication configuration
 authentication:
   providers:
-    - id: google_service_account
+    - id: google_id_token
       issuer: https://accounts.google.com
-      jwks_uri: https://www.googleapis.com/oauth2/v3/certs
+      audiences: bookstore-api-abc123-uc.a.run.app
   rules:
     # Require authentication for all methods
     - selector: "*"
       requirements:
-        - provider_id: google_service_account
+        - provider_id: google_id_token
     # Allow unauthenticated health checks
     - selector: "bookstore.BookstoreService.ListBooks"
       allow_without_credential: true
@@ -220,6 +223,13 @@ usage:
     # Allow health checks without API key
     - selector: "bookstore.BookstoreService.ListBooks"
       allow_unregistered_calls: true
+
+# Route all methods to the private gRPC backend Cloud Run service.
+# Replace this hostname with the backend service's Cloud Run URL host, without https://.
+backend:
+  rules:
+    - selector: "*"
+      address: grpcs://bookstore-backend-abc123-uc.a.run.app
 ```
 
 ## Step 4: Deploy the Service Configuration
@@ -235,9 +245,13 @@ gcloud endpoints services deploy bookstore.pb api_config.yaml \
 Note the service configuration ID from the output. You will need it for the ESPv2 configuration.
 
 ```bash
+# Enable the Endpoints service so API key checks can succeed
+gcloud services enable bookstore-api-abc123-uc.a.run.app \
+  --project=my-project-id
+
 # Get the latest service config ID
 gcloud endpoints configs list \
-  --service=bookstore-api.endpoints.my-project-id.cloud.goog \
+  --service=bookstore-api-abc123-uc.a.run.app \
   --project=my-project-id
 ```
 
@@ -254,6 +268,7 @@ import (
     "context"
     "log"
     "net"
+    "os"
 
     pb "github.com/example/bookstore"
     "google.golang.org/grpc"
@@ -283,7 +298,12 @@ func (s *server) GetBook(ctx context.Context, req *pb.GetBookRequest) (*pb.Book,
 }
 
 func main() {
-    lis, err := net.Listen("tcp", ":8080")
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "8080"
+    }
+
+    lis, err := net.Listen("tcp", ":"+port)
     if err != nil {
         log.Fatalf("Failed to listen: %v", err)
     }
@@ -292,7 +312,7 @@ func main() {
     pb.RegisterBookstoreServiceServer(grpcServer, &server{})
     reflection.Register(grpcServer)
 
-    log.Println("gRPC server listening on :8080")
+    log.Printf("gRPC server listening on :%s", port)
     if err := grpcServer.Serve(lis); err != nil {
         log.Fatalf("Failed to serve: %v", err)
     }
@@ -317,6 +337,15 @@ CMD ["/server"]
 ```
 
 ```bash
+# Create the Artifact Registry repository if it does not already exist
+gcloud artifacts repositories create docker-images \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=my-project-id
+
+# Configure Docker authentication for Artifact Registry
+gcloud auth configure-docker us-central1-docker.pkg.dev
+
 # Build and push the backend image
 docker build -t us-central1-docker.pkg.dev/my-project-id/docker-images/bookstore-backend:v1 .
 docker push us-central1-docker.pkg.dev/my-project-id/docker-images/bookstore-backend:v1
@@ -341,17 +370,18 @@ Now build and deploy ESPv2 as the API gateway.
 
 ```bash
 # Build the ESPv2 image with the service configuration
-# First, get the backend URL
-BACKEND_URL=$(gcloud run services describe bookstore-backend \
-  --platform=managed \
-  --region=us-central1 \
-  --format="value(status.url)" \
-  --project=my-project-id)
+curl -L https://raw.githubusercontent.com/GoogleCloudPlatform/esp-v2/master/docker/serverless/gcloud_build_image \
+  -o gcloud_build_image
+chmod +x gcloud_build_image
+
+./gcloud_build_image \
+  -s bookstore-api-abc123-uc.a.run.app \
+  -c CONFIG_ID \
+  -p my-project-id
 
 # Deploy ESPv2 for gRPC
 gcloud run deploy bookstore-api \
-  --image="gcr.io/endpoints-release/endpoints-runtime-serverless:2" \
-  --set-env-vars="ESPv2_ARGS=--service=bookstore-api.endpoints.my-project-id.cloud.goog --rollout_strategy=managed --backend=grpc://${BACKEND_URL}" \
+  --image="gcr.io/my-project-id/endpoints-runtime-serverless:ESPv2_VERSION-bookstore-api-abc123-uc.a.run.app-CONFIG_ID" \
   --allow-unauthenticated \
   --platform=managed \
   --region=us-central1 \
@@ -367,15 +397,20 @@ Test using grpcurl.
 # Install grpcurl if needed
 brew install grpcurl
 
-# List available services (if reflection is enabled)
-grpcurl bookstore-api-abc123-uc.a.run.app:443 list
+# Generate a JWT for methods that require authentication
+JWT_TOKEN=$(gcloud auth print-identity-token \
+  --audiences=bookstore-api-abc123-uc.a.run.app)
 
-# Call the ListBooks method
-grpcurl bookstore-api-abc123-uc.a.run.app:443 \
+# Call the ListBooks method (allowed without an API key or JWT in the config above)
+grpcurl -proto bookstore.proto \
+  bookstore-api-abc123-uc.a.run.app:443 \
   bookstore.BookstoreService/ListBooks
 
 # Call GetBook with a parameter
-grpcurl -d '{"id": "1"}' \
+grpcurl -proto bookstore.proto \
+  -H "x-api-key: YOUR_API_KEY" \
+  -H "authorization: Bearer ${JWT_TOKEN}" \
+  -d '{"id": "1"}' \
   bookstore-api-abc123-uc.a.run.app:443 \
   bookstore.BookstoreService/GetBook
 ```
@@ -387,7 +422,10 @@ If you configured HTTP transcoding, test with REST.
 curl "https://bookstore-api-abc123-uc.a.run.app/v1/books"
 
 # Get a specific book via REST
-curl "https://bookstore-api-abc123-uc.a.run.app/v1/books/1"
+curl \
+  -H "x-api-key: YOUR_API_KEY" \
+  -H "authorization: Bearer ${JWT_TOKEN}" \
+  "https://bookstore-api-abc123-uc.a.run.app/v1/books/1"
 ```
 
 ## Monitoring
@@ -400,7 +438,7 @@ Cloud Endpoints provides the same monitoring for gRPC as it does for REST APIs.
 
 # Check service health
 gcloud endpoints services describe \
-  bookstore-api.endpoints.my-project-id.cloud.goog \
+  bookstore-api-abc123-uc.a.run.app \
   --project=my-project-id
 ```
 
