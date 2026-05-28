@@ -21,7 +21,7 @@ Header-based routing shines in several scenarios. A/B testing where you want spe
 You need at least two versions of a service to route between. Let us set up a primary backend and an alternative backend.
 
 ```yaml
-# primary-deployment.yaml
+# backend-services.yaml
 
 # The default version of the service
 apiVersion: apps/v1
@@ -78,38 +78,57 @@ kind: Service
 metadata:
   name: api-service-v1
   namespace: production
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports": {"8080":{"name": "api-service-v1-neg"}}}'
 spec:
   selector:
     app: api-service
     version: v1
   ports:
     - port: 8080
+      targetPort: 8080
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: api-service-v2
   namespace: production
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports": {"8080":{"name": "api-service-v2-neg"}}}'
 spec:
   selector:
     app: api-service
     version: v2
   ports:
     - port: 8080
+      targetPort: 8080
+---
+# Frontend service name that clients call when using Gateway API for Mesh
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: production
+spec:
+  selector:
+    app: api-service
+    version: v1
+  ports:
+    - port: 8080
+      targetPort: 8080
 ```
 
 Apply these resources.
 
 ```bash
-kubectl apply -f primary-deployment.yaml
-kubectl apply -f alternative-deployment.yaml
+kubectl apply -f backend-services.yaml
 ```
 
 ## Configuring Header-Based Routing with Traffic Director
 
 ### Using the URL Map Approach
 
-Create backend services in Traffic Director and a URL map with header-based routing rules.
+Create backend services in Traffic Director and a URL map with header-based routing rules. These commands assume your Traffic Director mesh setup, target proxy, forwarding rule, and Envoy bootstrap are already in place, and focus on the service routing objects.
 
 ```bash
 # Create health check
@@ -130,6 +149,24 @@ gcloud compute backend-services create api-service-v2-backend \
   --load-balancing-scheme=INTERNAL_SELF_MANAGED \
   --protocol=HTTP \
   --health-checks=api-service-hc \
+  --project=my-project \
+  --global
+
+# Attach the standalone NEGs that GKE created for each Kubernetes Service.
+# Repeat for every zone where the cluster has endpoints.
+gcloud compute backend-services add-backend api-service-v1-backend \
+  --network-endpoint-group=api-service-v1-neg \
+  --network-endpoint-group-zone=us-central1-a \
+  --balancing-mode=RATE \
+  --max-rate-per-endpoint=100 \
+  --project=my-project \
+  --global
+
+gcloud compute backend-services add-backend api-service-v2-backend \
+  --network-endpoint-group=api-service-v2-neg \
+  --network-endpoint-group-zone=us-central1-a \
+  --balancing-mode=RATE \
+  --max-rate-per-endpoint=100 \
   --project=my-project \
   --global
 ```
@@ -154,7 +191,8 @@ pathMatchers:
       # Rule 1: Route to v2 when X-Service-Version header equals "v2"
       - priority: 1
         matchRules:
-          - headerMatches:
+          - prefixMatch: /
+            headerMatches:
               - headerName: X-Service-Version
                 exactMatch: "v2"
         routeAction:
@@ -165,7 +203,8 @@ pathMatchers:
       # Rule 2: Route to v2 when X-Beta-User header is present
       - priority: 2
         matchRules:
-          - headerMatches:
+          - prefixMatch: /
+            headerMatches:
               - headerName: X-Beta-User
                 presentMatch: true
         routeAction:
@@ -176,13 +215,15 @@ pathMatchers:
       # Rule 3: Route to debug backend when X-Debug header matches a regex
       - priority: 3
         matchRules:
-          - headerMatches:
+          - prefixMatch: /
+            headerMatches:
               - headerName: X-Debug
                 regexMatch: "^(true|1|yes)$"
         routeAction:
           weightedBackendServices:
             - backendService: projects/my-project/global/backendServices/api-service-v2-backend
               weight: 100
+        headerAction:
           # Add a response header to confirm debug routing
           responseHeadersToAdd:
             - headerName: X-Routed-To
@@ -212,10 +253,11 @@ metadata:
   namespace: production
 spec:
   parentRefs:
-    - name: internal-gateway
-      namespace: production
+    - name: api-service
+      kind: Service
   hostnames:
     - "api-service.production.svc.cluster.local"
+    - "api-service"
   rules:
     # Rule 1: Route to v2 when X-Service-Version is "v2"
     - matches:
@@ -226,12 +268,11 @@ spec:
         - name: api-service-v2
           port: 8080
 
-    # Rule 2: Route to v2 when X-Beta-User header is present
+    # Rule 2: Route to v2 when X-Beta-User is "true"
     - matches:
         - headers:
             - name: X-Beta-User
-              type: RegularExpression
-              value: ".+"
+              value: "true"
       backendRefs:
         - name: api-service-v2
           port: 8080
@@ -250,19 +291,15 @@ kubectl apply -f httproute-header-routing.yaml
 
 For header-based routing to work across a service chain, headers need to propagate through each hop. If Service A calls Service B which calls Service C, and you want all three to route to their v2 versions, the routing header must be forwarded at each step.
 
-Envoy can be configured to automatically propagate specific headers.
+Envoy can add or transform headers on requests that pass through a route, but it cannot automatically copy an inbound header from one application request into a separate outbound call that the application creates. For service-to-service propagation, forward the routing headers in your application code, or use a dedicated filter that copies them for that request flow.
 
 ```yaml
-# Envoy configuration for header propagation
-# Add this to your Envoy sidecar config to forward routing headers
+# Envoy route configuration for adding headers on proxied requests
 route_config:
   request_headers_to_add:
     - header:
         key: X-Request-Id
         value: "%REQ(X-Request-Id)%"
-  # Headers to propagate to upstream services
-  internal_redirect_policy:
-    max_internal_redirects: 1
   request_headers_to_remove: []
 ```
 
@@ -316,7 +353,8 @@ metadata:
   namespace: production
 spec:
   parentRefs:
-    - name: internal-gateway
+    - name: api-service
+      kind: Service
   rules:
     # Beta users always go to v2
     - matches:
