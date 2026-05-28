@@ -64,7 +64,7 @@ gcloud eventarc triggers create upload-trigger \
 
 ## Path Pattern Filtering
 
-Eventarc supports path pattern matching on the `resourceName` filter. This lets you match events based on resource hierarchy.
+Eventarc supports path pattern matching on the `resourceName` filter for Cloud Audit Logs events. This lets you match events based on resource hierarchy. Path pattern filtering is currently a Preview feature.
 
 ### Matching Specific Resources
 
@@ -77,7 +77,7 @@ gcloud eventarc triggers create bq-dataset-trigger \
   --event-filters="type=google.cloud.audit.log.v1.written" \
   --event-filters="serviceName=bigquery.googleapis.com" \
   --event-filters="methodName=google.iam.v1.IAMPolicy.SetIamPolicy" \
-  --event-filters-path-pattern="resourceName=/projects/my-project/datasets/sensitive-data/*" \
+  --event-filters-path-pattern="resourceName=/projects/my-project/datasets/sensitive-data" \
   --service-account=trigger-sa@PROJECT.iam.gserviceaccount.com
 ```
 
@@ -101,15 +101,15 @@ gcloud eventarc triggers create zone-specific-trigger \
 ```
 
 ```bash
-# Match any resource under a specific project with double wildcard
+# Match any object under buckets with a prod- prefix
 gcloud eventarc triggers create project-wide-trigger \
   --location=us-central1 \
   --destination-run-service=my-handler \
   --destination-run-region=us-central1 \
   --event-filters="type=google.cloud.audit.log.v1.written" \
   --event-filters="serviceName=storage.googleapis.com" \
-  --event-filters="methodName=storage.setIamPermissions" \
-  --event-filters-path-pattern="resourceName=/projects/_/buckets/prod-**" \
+  --event-filters="methodName=storage.objects.create" \
+  --event-filters-path-pattern="resourceName=/projects/_/buckets/prod-*/objects/**" \
   --service-account=trigger-sa@PROJECT.iam.gserviceaccount.com
 ```
 
@@ -251,18 +251,12 @@ gcloud eventarc triggers describe my-trigger \
   --location=us-central1 \
   --format="yaml(eventFilters)"
 
-# You cannot update filters on an existing trigger
-# Instead, delete and recreate with new filters
-gcloud eventarc triggers delete my-trigger --location=us-central1
-
-gcloud eventarc triggers create my-trigger \
+# You can update some filters on an existing trigger, but not the event type
+gcloud eventarc triggers update my-trigger \
   --location=us-central1 \
-  --destination-run-service=my-handler \
-  --destination-run-region=us-central1 \
   --event-filters="type=google.cloud.audit.log.v1.written" \
   --event-filters="serviceName=compute.googleapis.com" \
-  --event-filters="methodName=v1.compute.instances.stop" \
-  --service-account=trigger-sa@PROJECT.iam.gserviceaccount.com
+  --event-filters="methodName=v1.compute.instances.stop"
 ```
 
 ## Filter Design Patterns
