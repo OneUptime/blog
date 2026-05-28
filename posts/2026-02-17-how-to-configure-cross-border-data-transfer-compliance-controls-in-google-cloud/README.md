@@ -14,7 +14,7 @@ Google Cloud gives you the tools to manage this, but you need to configure them 
 
 ## The Regulatory Landscape
 
-Different regulations treat cross-border transfers differently. GDPR requires a legal basis for transferring personal data outside the EU/EEA, such as Standard Contractual Clauses (SCCs) or an adequacy decision. Many countries including Russia, China, and India have data localization laws that require certain data to stay within national borders. Industry regulations like PCI DSS and HIPAA have their own requirements about where data can be processed.
+Different regulations treat cross-border transfers differently. GDPR requires an appropriate Chapter V transfer mechanism for transferring personal data outside the EU/EEA, such as Standard Contractual Clauses (SCCs) or an adequacy decision. Some jurisdictions, such as Russia and China, and sector-specific rules in countries such as India, include data localization or transfer restrictions that require certain data to stay within national borders. Industry regulations like PCI DSS and HIPAA have their own requirements about where data can be processed.
 
 The technical controls you implement on Google Cloud need to support whatever legal framework your organization uses.
 
@@ -136,7 +136,7 @@ gcloud access-context-manager perimeters create us_perimeter \
   --restricted-services="bigquery.googleapis.com,storage.googleapis.com,sqladmin.googleapis.com"
 ```
 
-When you need controlled data transfer between regions (for example, sharing anonymized analytics), configure explicit bridges:
+When you need controlled data transfer between regions (for example, sharing anonymized analytics), configure explicit egress rules. If the destination project is also in a different perimeter, the destination perimeter also needs a matching ingress rule for the same access pattern.
 
 ```yaml
 # egress-eu-to-us.yaml
@@ -148,7 +148,7 @@ When you need controlled data transfer between regions (for example, sharing ano
     operations:
       - serviceName: "bigquery.googleapis.com"
         methodSelectors:
-          - method: "google.cloud.bigquery.v2.JobService.InsertJob"
+          - method: "JobService.InsertJob"
     resources:
       - "projects/US_ANALYTICS_PROJECT_NUMBER"
 ```
@@ -165,81 +165,57 @@ gcloud access-context-manager perimeters update eu_perimeter \
 When data legitimately needs to cross borders, ensure it goes through a processing pipeline that applies the right transformations first. For GDPR compliance, this might mean anonymizing or pseudonymizing personal data before transfer.
 
 ```python
-from google.cloud import dlp_v2
 from google.cloud import bigquery
+from google.cloud import bigquery_datatransfer
 
 def transfer_data_with_anonymization(
     source_project, source_dataset, source_table,
-    dest_project, dest_dataset, dest_table
+    sanitized_dataset, sanitized_table,
+    dest_project, dest_dataset,
+    source_location="europe-west1"
 ):
-    """Transfer data between regions with DLP anonymization applied."""
-    dlp_client = dlp_v2.DlpServiceClient()
+    """Create a sanitized table, then copy that dataset to another region."""
     bq_client = bigquery.Client(project=source_project)
+    transfer_client = bigquery_datatransfer.DataTransferServiceClient()
 
-    # Define the deidentification config
-    deidentify_config = {
-        "record_transformations": {
-            "field_transformations": [
-                {
-                    # Pseudonymize email addresses
-                    "fields": [{"name": "email"}],
-                    "primitive_transformation": {
-                        "crypto_hash_config": {
-                            "crypto_key": {
-                                "kms_wrapped": {
-                                    "wrapped_key": "BASE64_WRAPPED_KEY",
-                                    "crypto_key_name": "projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY",
-                                }
-                            }
-                        }
-                    },
-                },
-                {
-                    # Generalize location to country level only
-                    "fields": [{"name": "city"}, {"name": "postal_code"}],
-                    "primitive_transformation": {
-                        "replace_config": {
-                            "new_value": {"string_value": "[REDACTED]"}
-                        }
-                    },
-                },
-            ]
-        }
-    }
+    source = f"`{source_project}.{source_dataset}.{source_table}`"
+    destination = f"{source_project}.{sanitized_dataset}.{sanitized_table}"
 
-    # Create a DLP job that deidentifies and writes to the destination
-    job = {
-        "inspect_template_name": f"projects/{source_project}/inspectTemplates/pii-template",
-        "deidentify_template_name": f"projects/{source_project}/deidentifyTemplates/cross-border-template",
-        "storage_config": {
-            "big_query_options": {
-                "table_reference": {
-                    "project_id": source_project,
-                    "dataset_id": source_dataset,
-                    "table_id": source_table,
-                }
-            }
-        },
-        "actions": [
-            {
-                "save_findings": {
-                    "output_config": {
-                        "table": {
-                            "project_id": dest_project,
-                            "dataset_id": dest_dataset,
-                            "table_id": dest_table,
-                        }
-                    }
-                }
-            }
-        ],
-    }
+    # Run this job in the same location as the source dataset. The result is a
+    # sanitized table that is safe to copy to the destination region.
+    query = f"""
+    CREATE OR REPLACE TABLE `{destination}` AS
+    SELECT
+      * EXCEPT(email, city, postal_code),
+      TO_HEX(SHA256(LOWER(TRIM(email)))) AS email_hash,
+      "[REDACTED]" AS city,
+      "[REDACTED]" AS postal_code
+    FROM {source}
+    """
 
-    response = dlp_client.create_dlp_job(
-        parent=f"projects/{source_project}/locations/europe-west1",
-        inspect_job=job,
+    query_job = bq_client.query(
+        query,
+        job_config=bigquery.QueryJobConfig(use_legacy_sql=False),
+        location=source_location,
     )
-    print(f"Transfer job started: {response.name}")
+    query_job.result()
+
+    transfer_config = bigquery_datatransfer.TransferConfig(
+        destination_dataset_id=dest_dataset,
+        display_name=f"Copy sanitized {sanitized_dataset}",
+        data_source_id="cross_region_copy",
+        params={
+            "source_project_id": source_project,
+            "source_dataset_id": sanitized_dataset,
+            "overwrite_destination_table": "true",
+        },
+    )
+
+    response = transfer_client.create_transfer_config(
+        parent=transfer_client.common_project_path(dest_project),
+        transfer_config=transfer_config,
+    )
+    print(f"Transfer config created: {response.name}")
 ```
 
 ## Step 6: Audit and Monitor Transfers
@@ -249,13 +225,14 @@ Create a comprehensive audit trail of all cross-border data movements.
 ```bash
 # Create a log sink that captures all data access across regions
 gcloud logging sinks create cross-border-audit \
+  "bigquery.googleapis.com/projects/audit-project/datasets/transfer_audit" \
   --organization=ORG_ID \
+  --include-children \
   --log-filter='
     protoPayload.methodName=("google.cloud.bigquery.v2.JobService.InsertJob" OR
     "storage.objects.create" OR "storage.objects.copy") AND
     severity="NOTICE"
-  ' \
-  --destination="bigquery.googleapis.com/projects/audit-project/datasets/transfer_audit"
+  '
 
 # Query the audit log for cross-region data movements
 bq query --use_legacy_sql=false '
@@ -265,7 +242,7 @@ SELECT
   protopayload_auditlog.methodName AS operation,
   resource.labels.project_id AS source_project,
   resource.labels.location AS source_location,
-  JSON_EXTRACT_SCALAR(protopayload_auditlog.request, "$.destinationTable.projectId") AS dest_project
+  JSON_VALUE(protopayload_auditlog.requestJson, "$.destinationTable.projectId") AS dest_project
 FROM `audit-project.transfer_audit.cloudaudit_googleapis_com_data_access`
 WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 ORDER BY timestamp DESC
