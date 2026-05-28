@@ -8,7 +8,7 @@ Description: A practical guide to setting up data feeds in Google Chronicle SIEM
 
 ---
 
-Google Chronicle SIEM is built on Google's infrastructure and can ingest massive volumes of security telemetry without you worrying about storage limits or query performance. The primary way to get data into Chronicle is through data feeds - configured pipelines that pull or receive log data from various sources. In this guide, I will walk through how to set up data feeds to get your logs flowing into Chronicle.
+Google Chronicle SIEM is built on Google's infrastructure and can ingest massive volumes of security telemetry without you worrying about storage limits or query performance. A common way to get data into Chronicle is through data feeds - configured pipelines that pull or receive log data from various sources. In this guide, I will walk through how to set up data feeds to get your logs flowing into Chronicle.
 
 ## How Data Feeds Work in Chronicle
 
@@ -61,35 +61,30 @@ gsutil iam ch $SINK_SA:roles/storage.objectCreator \
     gs://chronicle-log-ingestion-YOUR_PROJECT_ID
 ```
 
-### Step 2: Create a Service Account for Chronicle
+### Step 2: Grant Access to the Chronicle Service Account
 
-Chronicle needs a service account with read access to pull logs from your bucket.
+For Cloud Storage feeds, Chronicle provides a Google SecOps service account. Get that service account from the feed setup flow or the Feed Management API, then grant it read access to your bucket.
 
 ```bash
-# Create a service account for Chronicle
-gcloud iam service-accounts create chronicle-feed-reader \
-    --display-name="Chronicle Feed Reader" \
-    --project=YOUR_PROJECT_ID
+# Get the Google SecOps feed service account
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    https://backstory.googleapis.com/v1/fetchFeedServiceAccount
 
 # Grant read access to the bucket
-gsutil iam ch \
-    serviceAccount:chronicle-feed-reader@YOUR_PROJECT_ID.iam.gserviceaccount.com:roles/storage.objectViewer \
-    gs://chronicle-log-ingestion-YOUR_PROJECT_ID
-
-# Generate a key for the service account
-gcloud iam service-accounts keys create chronicle-feed-key.json \
-    --iam-account=chronicle-feed-reader@YOUR_PROJECT_ID.iam.gserviceaccount.com
+gcloud storage buckets add-iam-policy-binding gs://chronicle-log-ingestion-YOUR_PROJECT_ID \
+    --member=serviceAccount:GOOGLE_SECOPS_SERVICE_ACCOUNT \
+    --role=roles/storage.objectViewer
 ```
 
 ### Step 3: Configure the Feed in Chronicle
 
 In the Chronicle console, navigate to Settings, then SIEM Settings, then Feeds. Click "Add New" and configure the following:
 
-- **Source Type**: Google Cloud Storage
+- **Source Type**: Cloud Storage v2
 - **Log Type**: GCP Cloud Audit (or the appropriate type for your data)
 - **GCS URI**: `gs://chronicle-log-ingestion-YOUR_PROJECT_ID`
 - **Source Delete Option**: Choose whether Chronicle deletes files after ingestion
-- **Service Account Credentials**: Upload the JSON key you generated
+- **Service Account**: Use the Google SecOps service account from the feed setup flow
 
 You can also configure feeds programmatically using the Chronicle Feed Management API.
 
@@ -97,10 +92,8 @@ You can also configure feeds programmatically using the Chronicle Feed Managemen
 # create_feed.py
 # Creates a Chronicle data feed using the API
 import requests
-import json
 
 CHRONICLE_API_URL = "https://backstory.googleapis.com"
-CUSTOMER_ID = "your-chronicle-customer-id"
 
 def create_gcs_feed(access_token, bucket_uri, log_type):
     """Create a GCS-based data feed in Chronicle."""
@@ -114,23 +107,19 @@ def create_gcs_feed(access_token, bucket_uri, log_type):
     # Feed configuration payload
     feed_config = {
         "details": {
-            "feedSourceType": "GOOGLE_CLOUD_STORAGE",
+            "feedSourceType": "GOOGLE_CLOUD_STORAGE_V2",
             "logType": log_type,
-            "gcsSettings": {
+            "gcsV2Settings": {
                 "bucketUri": bucket_uri,
-                "sourceType": "FOLDERS_RECURSIVE",
-                "sourceDeletionOption": "SOURCE_DELETION_NEVER"
+                "sourceDeletionOption": "NEVER",
+                "maxLookbackDays": 30
             }
         }
     }
 
     response = requests.post(url, headers=headers, json=feed_config)
-
-    if response.status_code == 200:
-        print(f"Feed created successfully: {response.json()}")
-    else:
-        print(f"Error creating feed: {response.status_code} - {response.text}")
-
+    response.raise_for_status()
+    print(f"Feed created successfully: {response.json()}")
     return response.json()
 
 # Usage
@@ -153,7 +142,7 @@ Chronicle handles the pagination, rate limiting, and incremental fetching automa
 
 ## Setting Up a Syslog Feed
 
-For on-premises devices like firewalls and network equipment, syslog is often the only option. You will need the Chronicle Forwarder for this, which acts as a local collector.
+For on-premises devices like firewalls and network equipment, syslog is often the only option. For new Google SecOps deployments, Google recommends the Bindplane agent instead of the Chronicle Forwarder. Existing forwarder deployments can still use the forwarder until the documented end-of-life dates.
 
 ### Install the Chronicle Forwarder
 
@@ -215,24 +204,17 @@ In the Chronicle console, create an HTTPS feed:
 1. Go to Settings then Feeds then Add New
 2. Select **Source Type**: Webhook
 3. Select the appropriate **Log Type**
-4. Chronicle generates a unique ingestion URL and API key
+4. Chronicle generates a unique ingestion URL. Generate a secret for the feed and create a restricted API key.
 
 You can then configure your source to POST log data to that URL.
 
 ```bash
 # Test the webhook endpoint with a sample log entry
-curl -X POST "https://malachiteingestion-pa.googleapis.com/v2/unstructuredlogentries:batchCreate" \
+curl -X POST "https://REGIONAL_ENDPOINT/v1alpha/projects/PROJECT_NUMBER/locations/REGION_ID/instances/CUSTOMER_ID/feeds/FEED_ID:importPushLogs" \
     -H "Content-Type: application/json" \
-    -H "X-Chronicle-API-Key: YOUR_API_KEY" \
-    -d '{
-        "customer_id": "YOUR_CUSTOMER_ID",
-        "log_type": "GITHUB",
-        "entries": [
-            {
-                "log_text": "{\"action\":\"repo.create\",\"actor\":\"user@example.com\"}"
-            }
-        ]
-    }'
+    -H "X-goog-api-key: YOUR_API_KEY" \
+    -H "X-Webhook-Access-Key: YOUR_SECRET_KEY" \
+    -d '{"action":"repo.create","actor":"user@example.com"}'
 ```
 
 ## Verifying Data Ingestion
@@ -248,7 +230,7 @@ In the Chronicle console, go to the Data Ingestion dashboard. You should see:
 You can also run a quick UDM search to verify.
 
 ```text
-metadata.log_type = "GCP_CLOUDAUDIT" AND metadata.event_timestamp.seconds > timestamp("2026-02-17T00:00:00Z")
+metadata.log_type = "GCP_CLOUDAUDIT" AND metadata.event_timestamp.seconds > 1771286400
 ```
 
 ## Troubleshooting Common Issues
@@ -257,7 +239,7 @@ metadata.log_type = "GCP_CLOUDAUDIT" AND metadata.event_timestamp.seconds > time
 
 **Parsing errors in the dashboard**: This usually means the log format does not match what Chronicle expects for that log type. Check that you selected the correct log type for your data source. If you are sending custom formats, you may need a custom parser.
 
-**High latency in data appearing**: Pull-based feeds have a polling interval, so there is inherent delay. For near-real-time ingestion, use push-based methods like the forwarder or HTTPS webhooks.
+**High latency in data appearing**: Pull-based feeds have a polling interval, so there is inherent delay. For near-real-time ingestion, use push-based methods like HTTPS webhooks, Pub/Sub, or the Bindplane agent.
 
 **Forwarder not sending data**: Check the forwarder container logs with `docker logs chronicle-forwarder`. Common issues include incorrect credentials, network connectivity to the ingestion endpoint, and misconfigured collector sections.
 
