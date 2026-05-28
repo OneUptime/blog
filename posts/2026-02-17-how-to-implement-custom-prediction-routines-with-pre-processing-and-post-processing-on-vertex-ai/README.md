@@ -35,7 +35,6 @@ This is the predictor class with full pre and post processing:
 ```python
 # predictor.py - Custom Prediction Routine for image classification
 
-import os
 import json
 import base64
 import numpy as np
@@ -59,17 +58,15 @@ class ImageClassificationPredictor(Predictor):
         This method is called once when the server starts.
         It downloads and loads the model and any supporting files.
         """
-        # Download artifacts from GCS to a local directory
+        # Download or copy artifacts into the container's working directory
         prediction_utils.download_model_artifacts(artifacts_uri)
 
         # Load the TensorFlow model
         import tensorflow as tf
-        self._model = tf.keras.models.load_model(
-            os.path.join(artifacts_uri, "saved_model")
-        )
+        self._model = tf.keras.models.load_model("saved_model")
 
         # Load the label mapping file
-        labels_path = os.path.join(artifacts_uri, "labels.json")
+        labels_path = "labels.json"
         with open(labels_path, "r") as f:
             self._labels = json.load(f)
 
@@ -153,12 +150,12 @@ This predictor computes derived features before sending data to the model:
 ```python
 # tabular_predictor.py - CPR for tabular data with feature engineering
 
-import os
 import pickle
 import numpy as np
 import pandas as pd
 from datetime import datetime
 from google.cloud.aiplatform.prediction import Predictor
+from google.cloud.aiplatform.utils import prediction_utils
 
 class TabularPredictor(Predictor):
     """Predictor that performs real-time feature engineering on tabular data."""
@@ -170,16 +167,19 @@ class TabularPredictor(Predictor):
 
     def load(self, artifacts_uri: str):
         """Load model, scaler, and feature configuration."""
+        # Download or copy artifacts into the container's working directory
+        prediction_utils.download_model_artifacts(artifacts_uri)
+
         # Load the trained model
-        with open(os.path.join(artifacts_uri, "model.pkl"), "rb") as f:
+        with open("model.pkl", "rb") as f:
             self._model = pickle.load(f)
 
         # Load the feature scaler used during training
-        with open(os.path.join(artifacts_uri, "scaler.pkl"), "rb") as f:
+        with open("scaler.pkl", "rb") as f:
             self._scaler = pickle.load(f)
 
         # Load the expected feature column order
-        with open(os.path.join(artifacts_uri, "feature_columns.json"), "r") as f:
+        with open("feature_columns.json", "r") as f:
             import json
             self._feature_columns = json.load(f)
 
@@ -242,19 +242,23 @@ class TabularPredictor(Predictor):
 
 ## Packaging and Deploying the CPR
 
-To deploy a Custom Prediction Routine, you need to package it as a source distribution and upload it to Vertex AI.
+To deploy a Custom Prediction Routine, you need to build a custom container image from your source directory and upload the model to Vertex AI.
 
 This code packages and deploys the predictor:
 
 ```python
 from google.cloud import aiplatform
 from google.cloud.aiplatform.prediction import LocalModel
+from predictor import ImageClassificationPredictor
+
+aiplatform.init(project="your-project-id", location="us-central1")
 
 # Define the local model with the custom predictor
 
 local_model = LocalModel.build_cpr_model(
-    "predictor.py",  # Path to your predictor file
-    "ImageClassificationPredictor",  # Class name
+    ".",  # Directory containing predictor.py and requirements.txt
+    "us-central1-docker.pkg.dev/your-project-id/your-repo/image-classifier-cpr:latest",
+    predictor=ImageClassificationPredictor,  # Predictor class
     requirements_path="requirements.txt",  # Additional dependencies
     base_image="python:3.10-slim"  # Base Docker image
 )
@@ -264,12 +268,14 @@ local_model = LocalModel.build_cpr_model(
 #     artifact_uri="./model_artifacts/"
 # )
 
+# Push the built container image to Artifact Registry
+local_model.push_image()
+
 # Upload to Vertex AI Model Registry
-model = local_model.upload(
+model = aiplatform.Model.upload(
+    local_model=local_model,
     display_name="image-classifier-cpr",
-    artifact_uri="gs://your-bucket/models/image-classifier/",
-    project="your-project-id",
-    location="us-central1"
+    artifact_uri="gs://your-bucket/models/image-classifier/"
 )
 
 # Create endpoint and deploy
@@ -344,12 +350,19 @@ def preprocess(self, prediction_input: dict) -> np.ndarray:
 
         # Validate base64 encoding
         try:
-            decoded = base64.b64decode(instance["data"])
+            base64.b64decode(instance["data"], validate=True)
         except Exception:
             raise ValueError(f"Instance {i} has invalid base64 encoding")
 
-    # Continue with normal preprocessing
-    return self._process_images(instances)
+    processed_images = []
+    for instance in instances:
+        image_bytes = base64.b64decode(instance["data"], validate=True)
+        image = Image.open(BytesIO(image_bytes)).convert("RGB")
+        image = image.resize(self._input_size)
+        image_array = np.array(image, dtype=np.float32) / 255.0
+        processed_images.append(image_array)
+
+    return np.stack(processed_images, axis=0)
 ```
 
 Custom Prediction Routines strike a good balance between the simplicity of pre-built containers and the flexibility of fully custom containers. You get to write Python code for your pre and post processing logic without worrying about HTTP servers, health checks, or Docker configuration. For most use cases where you need custom logic at serving time, CPR is the way to go.
