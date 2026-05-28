@@ -64,9 +64,9 @@ The exit code tells you a lot about why the task failed.
 |-----------|---------|
 | 0 | Success |
 | 1 | General application error |
-| 137 | SIGKILL (out of memory) |
-| 143 | SIGTERM (timeout or shutdown) |
-| 139 | Segmentation fault |
+| 9 or 137 | SIGKILL (out of memory or forced termination) |
+| 15 or 143 | SIGTERM (timeout or shutdown) |
+| 11 or 139 | Segmentation fault |
 
 ```bash
 # Look for exit codes in the logs
@@ -76,9 +76,11 @@ gcloud logging read \
     --limit=20
 ```
 
-### Exit Code 137 - Out of Memory
+Cloud Run reports signal-based job exit codes such as 9, 15, and 11. Some local Docker tools report the same signal exits as 128 plus the signal number, such as 137 for SIGKILL.
 
-If you see exit code 137, your task is exceeding its memory limit. Increase the memory allocation.
+### Exit Code 9 or 137 - Out of Memory
+
+If you see exit code 9 in Cloud Run, or 137 in local Docker output, your task may be exceeding its memory limit. Increase the memory allocation.
 
 ```bash
 # Update the job with more memory
@@ -87,9 +89,9 @@ gcloud run jobs update my-job \
     --region=us-central1
 ```
 
-### Exit Code 143 - Timeout
+### Exit Code 15 or 143 - Timeout
 
-Exit code 143 means the task exceeded its timeout and was sent SIGTERM. Increase the timeout.
+Exit code 15 in Cloud Run, or 143 in local Docker output, means the task exceeded its timeout or was otherwise sent SIGTERM. Increase the timeout if the task needs more time.
 
 ```bash
 # Increase the task timeout to 30 minutes
@@ -105,6 +107,7 @@ One of the biggest issues with debugging Cloud Run Jobs is insufficient logging.
 ```python
 import json
 import logging
+import os
 import sys
 import traceback
 
@@ -252,10 +255,10 @@ Here is a decision tree for the most common patterns.
 ```mermaid
 flowchart TD
     A[Task Execution Error] --> B{Check exit code}
-    B -->|137| C[Out of Memory]
-    B -->|143| D[Timeout]
+    B -->|9 or 137| C[Out of Memory]
+    B -->|15 or 143| D[Timeout]
     B -->|1| E[Application Error]
-    B -->|139| F[Segfault - check native dependencies]
+    B -->|11 or 139| F[Segfault - check native dependencies]
 
     C --> C1[Increase memory allocation]
     C --> C2[Process data in smaller chunks]
@@ -273,7 +276,7 @@ flowchart TD
 Set up monitoring to track job execution patterns over time.
 
 ```bash
-# Query Cloud Monitoring for job execution metrics
+# Query Cloud Logging for job warnings and errors
 gcloud logging read \
     'resource.type="cloud_run_job" AND resource.labels.job_name="my-job" AND severity>=WARNING' \
     --project=my-project \
@@ -285,10 +288,12 @@ You can also set up alerting for failed executions.
 
 ```bash
 # Create an alert for job failures
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
     --display-name="Cloud Run Job Failures" \
     --condition-display-name="Job task failures" \
     --condition-filter='resource.type="cloud_run_job" AND metric.type="run.googleapis.com/job/completed_task_attempt_count" AND metric.labels.result="failed"' \
+    --if='> 0' \
+    --duration=0s \
     --notification-channels=<channel-id>
 ```
 
