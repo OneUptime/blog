@@ -24,15 +24,20 @@ graph LR
 
 ## Prerequisites
 
-You need a trained model deployed to a Vertex AI endpoint. If you do not have one yet, here is a quick way to deploy a pre-built model.
+You need a trained model deployed to a Vertex AI endpoint. Before you start, install the Python packages and enable the Google Cloud APIs used in this guide.
 
 ```bash
 # Install required packages
 
 pip install google-cloud-aiplatform fastapi uvicorn
 
-# Make sure you have a GCP project with Vertex AI API enabled
-gcloud services enable aiplatform.googleapis.com
+# Make sure you have a GCP project with the required APIs enabled
+gcloud services enable \
+    aiplatform.googleapis.com \
+    artifactregistry.googleapis.com \
+    cloudbuild.googleapis.com \
+    iam.googleapis.com \
+    run.googleapis.com
 ```
 
 ## Setting Up the FastAPI Application
@@ -42,9 +47,8 @@ Let me build the API step by step. First, the main application file.
 ```python
 # main.py - FastAPI application for ML predictions
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
 from google.cloud import aiplatform
-from typing import List, Optional
+from typing import List
 import os
 import logging
 
@@ -74,29 +78,25 @@ Pydantic models give you automatic validation and documentation. Define what you
 
 ```python
 # models.py - Request and response schemas
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 
 class PredictionRequest(BaseModel):
     """Input features for the prediction model."""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "features": [1.5, 2.3, 0.8, 4.1, 3.7],
+            }
+        }
+    )
+
     features: List[float] = Field(
         ...,
         description="List of numerical features for the model",
         min_length=1,
         max_length=100,
     )
-    model_version: Optional[str] = Field(
-        default=None,
-        description="Specific model version to use (optional)",
-    )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "features": [1.5, 2.3, 0.8, 4.1, 3.7],
-                "model_version": None,
-            }
-        }
 
 class PredictionResponse(BaseModel):
     """Prediction results from the model."""
@@ -120,7 +120,7 @@ This is the core of the API. It receives a request, sends it to Vertex AI, and r
 from models import PredictionRequest, PredictionResponse, HealthResponse
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(request: PredictionRequest):
+def predict(request: PredictionRequest):
     """Send features to Vertex AI and return the prediction."""
     if not ENDPOINT_ID:
         raise HTTPException(
@@ -184,8 +184,14 @@ Sometimes clients need predictions for multiple inputs at once. Adding a batch e
 ```python
 # Batch prediction endpoint for multiple inputs at once
 @app.post("/predict/batch")
-async def predict_batch(requests: List[PredictionRequest]):
+def predict_batch(requests: List[PredictionRequest]):
     """Process multiple prediction requests in a single call."""
+    if not ENDPOINT_ID:
+        raise HTTPException(
+            status_code=500,
+            detail="VERTEX_ENDPOINT_ID environment variable not set"
+        )
+
     if len(requests) > 100:
         raise HTTPException(
             status_code=400,
@@ -230,11 +236,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY . .
 
-# Cloud Run sets PORT environment variable
+# Cloud Run sets the PORT environment variable
 ENV PORT=8080
 
 # Run with uvicorn - workers=1 because Cloud Run handles scaling at the container level
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1
 ```
 
 And the requirements file.
@@ -252,14 +258,29 @@ pydantic==2.5.3
 Build and deploy the container with a few gcloud commands.
 
 ```bash
+# Create an Artifact Registry repository for the container image
+gcloud artifacts repositories create ml-containers \
+    --repository-format=docker \
+    --location us-central1
+
+# Create a runtime service account for Cloud Run
+gcloud iam service-accounts create ml-prediction-api
+
+# Grant the service account permission to call Vertex AI endpoints
+gcloud projects add-iam-policy-binding my-gcp-project \
+    --member="serviceAccount:ml-prediction-api@my-gcp-project.iam.gserviceaccount.com" \
+    --role="roles/aiplatform.user"
+
 # Build the container image using Cloud Build
-gcloud builds submit --tag gcr.io/my-gcp-project/ml-prediction-api
+gcloud builds submit \
+    --tag us-central1-docker.pkg.dev/my-gcp-project/ml-containers/ml-prediction-api
 
 # Deploy to Cloud Run with the Vertex AI endpoint configured
 gcloud run deploy ml-prediction-api \
-    --image gcr.io/my-gcp-project/ml-prediction-api \
+    --image us-central1-docker.pkg.dev/my-gcp-project/ml-containers/ml-prediction-api \
     --region us-central1 \
     --platform managed \
+    --service-account ml-prediction-api@my-gcp-project.iam.gserviceaccount.com \
     --set-env-vars "GCP_PROJECT=my-gcp-project,VERTEX_ENDPOINT_ID=1234567890" \
     --memory 512Mi \
     --cpu 1 \
