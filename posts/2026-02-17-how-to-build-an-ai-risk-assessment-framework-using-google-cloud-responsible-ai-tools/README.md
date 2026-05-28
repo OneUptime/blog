@@ -8,7 +8,7 @@ Description: Build a structured AI risk assessment framework using Google Cloud'
 
 ---
 
-Deploying an ML model without a risk assessment is like shipping software without testing. It might work fine, or it might cause real harm to real people. The EU AI Act, NIST AI Risk Management Framework, and various industry regulations all require documented risk assessments for AI systems. Google Cloud provides a set of responsible AI tools that make this process systematic rather than ad-hoc. Here is how to build a risk assessment framework using these tools.
+Deploying an ML model without a risk assessment is like shipping software without testing. It might work fine, or it might cause real harm to real people. The EU AI Act requires risk management for high-risk AI systems, while the NIST AI Risk Management Framework and various industry standards provide structured ways to document and manage AI risks. Google Cloud provides a set of responsible AI tools that make this process systematic rather than ad-hoc. Here is how to build a risk assessment framework using these tools.
 
 ## The Risk Assessment Framework
 
@@ -41,10 +41,9 @@ Build a structured assessment that gets filled in for every model before deploym
 # risk_assessment.py - AI Risk Assessment Framework
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 from enum import Enum
-from datetime import datetime
-import json
+from datetime import datetime, timezone
 
 class RiskLevel(Enum):
     LOW = "low"
@@ -105,7 +104,7 @@ class AIRiskAssessment:
     """Complete risk assessment for an AI model or system."""
     model_name: str
     model_version: str
-    assessment_date: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    assessment_date: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     assessor: str = ""
     model_description: str = ""
     use_case: str = ""
@@ -174,12 +173,12 @@ class AIRiskAssessment:
 
 ## Step 2: Automate Data Risk Detection
 
-Use Vertex AI and BigQuery to automatically detect data-related risks:
+Use BigQuery to automatically detect data-related risks:
 
 ```python
 # data_risk_detector.py - Automatically detect data risks
 from google.cloud import bigquery
-import pandas as pd
+from risk_assessment import Risk, RiskCategory, RiskLevel
 
 bq_client = bigquery.Client()
 
@@ -195,8 +194,8 @@ def detect_data_risks(dataset_uri):
 
     # Check for class imbalance
     for col in df.select_dtypes(include=['object', 'bool']).columns:
-        value_counts = df[col].value_counts(normalize=True)
-        if value_counts.iloc[0] > 0.9:
+        value_counts = df[col].value_counts(normalize=True, dropna=False)
+        if not value_counts.empty and value_counts.iloc[0] > 0.9:
             risks.append(Risk(
                 category=RiskCategory.DATA_QUALITY,
                 description=f"Severe class imbalance in column '{col}': {value_counts.iloc[0]:.1%} is one class",
@@ -251,6 +250,7 @@ Use Vertex AI evaluation tools to detect model-level risks:
 ```python
 # model_risk_detector.py - Detect model-level risks using Vertex AI
 from google.cloud import aiplatform
+from risk_assessment import Risk, RiskCategory, RiskLevel
 
 def detect_model_risks(model_id):
     """Evaluate a trained model for common risks before deployment.
@@ -271,7 +271,7 @@ def detect_model_risks(model_id):
         ))
         return risks
 
-    metrics = evaluations[0].metrics
+    metrics = dict(evaluations[0].metrics)
 
     # Check overall performance
     auc = metrics.get("auRoc", metrics.get("auPrc", 0))
@@ -298,7 +298,7 @@ def detect_model_risks(model_id):
             ))
 
     # Check for calibration (if available)
-    if metrics.get("logLoss", 0) > 0.7:
+    if metrics.get("logLoss") is not None and metrics["logLoss"] > 0.7:
         risks.append(Risk(
             category=RiskCategory.RELIABILITY,
             description="High log loss suggests poor probability calibration",
@@ -397,8 +397,10 @@ def store_assessment(assessment):
         "full_assessment": json.dumps(assessment.to_dict()),
     }
 
-    table_ref = bq_client.dataset("ai_governance").table("risk_assessments")
-    bq_client.insert_rows_json(table_ref, [record])
+    table_id = f"{bq_client.project}.ai_governance.risk_assessments"
+    errors = bq_client.insert_rows_json(table_id, [record])
+    if errors:
+        raise RuntimeError(f"Failed to insert risk assessment: {errors}")
 ```
 
 Query for governance dashboards:
@@ -416,7 +418,7 @@ SELECT
 FROM `your-project.ai_governance.risk_assessments`
 ORDER BY assessment_date DESC;
 
--- Models with the most unresolved high-risk findings
+-- Models with the most severe findings
 SELECT
     model_name,
     SUM(high_risks + critical_risks) AS severe_risks,
