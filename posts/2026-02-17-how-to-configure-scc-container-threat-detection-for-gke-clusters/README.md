@@ -14,23 +14,23 @@ This guide walks through enabling CTD, understanding its detectors, fine-tuning 
 
 ## What Container Threat Detection Monitors
 
-CTD uses a lightweight agent (DaemonSet) deployed to your GKE nodes that monitors system calls and process activity. It detects several categories of threats:
+CTD uses a lightweight agent (DaemonSet) deployed to your GKE nodes that sends low-level kernel and process activity to the detection service. It detects several categories of threats:
 
-- **Malicious scripts** - execution of known malicious scripts or interpreters
+- **Malicious scripts** - execution of suspicious Bash or Python code
 - **Reverse shells** - processes that redirect stdin/stdout to network sockets
-- **Cryptocurrency miners** - processes matching known mining software signatures
-- **Malicious binaries** - execution of binaries flagged by threat intelligence
-- **Unexpected child processes** - anomalous process trees within containers
-- **Added binary execution** - binaries dropped into a running container and executed
+- **Cryptocurrency mining** - suspicious mining activity, including Stratum protocol use
+- **Malicious binaries and libraries** - execution or loading of files flagged by threat intelligence
+- **Unexpected child shells** - shells spawned by processes that normally should not launch shells
+- **Added binary execution** - binaries that were not part of the original image and are executed
 
 ## Prerequisites
 
 Before enabling CTD, verify your environment meets these requirements:
 
-1. Security Command Center Premium or Enterprise tier is active at the organization level
-2. GKE clusters are running version 1.24 or later
-3. You have the `securitycenter.containerthreatdetectionsettings.update` permission
-4. Container-Optimized OS (COS) is used on nodes (CTD does not support all node images)
+1. Security Command Center Premium or Enterprise tier is active
+2. GKE clusters run a supported version for their node image and architecture. For example, CTD supports COS-based x86 clusters on GKE Standard 1.15.9-gke.12 or later and Autopilot 1.21.11-gke.900 or later; Ubuntu-based x86 support starts at later GKE patch versions such as 1.28.15-gke.1480000
+3. You have a role such as Security Center Settings Admin or Security Center Settings Editor, which includes the permissions needed to update SCC service settings
+4. GKE Sandbox is disabled on clusters where you want CTD deployed
 
 ## Enabling Container Threat Detection
 
@@ -40,19 +40,18 @@ This command enables CTD for your entire organization.
 
 ```bash
 # Enable Container Threat Detection at the organization level
-
-gcloud scc settings services enable \
-  --organization=123456789 \
-  --service=CONTAINER_THREAT_DETECTION
+gcloud scc manage services update container-threat-detection \
+  --organization=organizations/123456789 \
+  --enablement-state=ENABLED
 ```
 
 To enable it for a specific project instead, use the project flag.
 
 ```bash
 # Enable CTD for a specific project containing GKE clusters
-gcloud scc settings services enable \
+gcloud scc manage services update container-threat-detection \
   --project=my-gke-project \
-  --service=CONTAINER_THREAT_DETECTION
+  --enablement-state=ENABLED
 ```
 
 ## Verifying CTD Deployment on Clusters
@@ -64,10 +63,10 @@ After enabling CTD, verify that the detection agent is running on your GKE nodes
 kubectl get daemonset container-watcher -n kube-system
 
 # Verify pods are running on each node
-kubectl get pods -n kube-system -l app=container-watcher -o wide
+kubectl get pods -n kube-system -l k8s-app=container-watcher -o wide
 ```
 
-If the DaemonSet is not present, check that your cluster meets the requirements. The most common issue is using Ubuntu nodes instead of COS.
+If the DaemonSet is not present, check that your cluster meets the supported GKE version and node image requirements.
 
 ## Enabling Individual Detectors
 
@@ -77,41 +76,34 @@ This command lists the current state of all CTD detectors.
 
 ```bash
 # List all CTD detector states for your organization
-gcloud scc settings services modules list \
-  --organization=123456789 \
-  --service=CONTAINER_THREAT_DETECTION \
-  --format="table(name, moduleEnablementState)"
+gcloud scc manage services describe container-threat-detection \
+  --organization=organizations/123456789 \
+  --format="yaml(modules)"
 ```
 
-To disable a specific detector, use the update command.
+To disable a specific detector, use the module command. The module commands are currently documented under the alpha SCC settings command group.
 
 ```bash
 # Disable the Added Binary Executed detector if it generates false positives
-gcloud scc settings services modules enable-state-update \
+gcloud alpha scc settings services modules disable \
   --organization=123456789 \
   --service=CONTAINER_THREAT_DETECTION \
-  --module=ADDED_BINARY_EXECUTED \
-  --enablement-state=DISABLED
+  --module=ADDED_BINARY_EXECUTED
 ```
 
 ## Configuring CTD with Terraform
 
-For infrastructure-as-code management, Terraform can configure CTD settings alongside your cluster definitions.
+For infrastructure-as-code management, Terraform can configure the cluster settings that complement CTD. Enable CTD itself with the SCC service command shown earlier, and manage the GKE cluster alongside it.
 
 ```hcl
-# Enable Container Threat Detection for a specific project
-resource "google_scc_project_service" "ctd" {
-  project = "my-gke-project"
-  service = "CONTAINER_THREAT_DETECTION"
-}
-
 # GKE cluster with security features that complement CTD
 resource "google_container_cluster" "secured_cluster" {
-  name     = "secured-cluster"
-  location = "us-central1"
-  project  = "my-gke-project"
+  name               = "secured-cluster"
+  location           = "us-central1"
+  project            = "my-gke-project"
+  initial_node_count = 3
 
-  # Use COS nodes which are required for CTD
+  # Use a CTD-supported node image
   node_config {
     image_type = "COS_CONTAINERD"
 
@@ -132,7 +124,7 @@ resource "google_container_cluster" "secured_cluster" {
     evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE"
   }
 
-  # Enable Security Posture for additional runtime security
+  # Enable Security Posture for additional security assessment
   security_posture_config {
     mode               = "BASIC"
     vulnerability_mode = "VULNERABILITY_ENTERPRISE"
@@ -144,20 +136,25 @@ resource "google_container_cluster" "secured_cluster" {
 
 When CTD detects a threat, it generates a finding in SCC with detailed context. Here is what a typical finding includes:
 
-- **Category** - the type of threat (e.g., `REVERSE_SHELL`, `ADDED_BINARY_EXECUTED`)
+- **Category** - the type of threat (e.g., `Reverse Shell`, `Added Binary Executed`)
 - **Pod name and namespace** - which workload triggered the detection
 - **Container name and image** - the specific container involved
 - **Process details** - the command line, binary path, and parent process
 - **Node information** - which GKE node the container runs on
 
-This command retrieves recent CTD findings with their details.
+This command retrieves recent CTD findings with their details. First look up the source ID for the Container Threat Detection source, then use that ID when listing findings.
 
 ```bash
+# Get the source name for Container Threat Detection, then copy the SOURCE_ID
+# from the organizations/123456789/sources/SOURCE_ID value
+gcloud scc sources describe 123456789 \
+  --source-display-name="Container Threat Detection"
+
 # List active CTD findings with container context
 gcloud scc findings list 123456789 \
-  --source=CONTAINER_THREAT_DETECTION \
+  --source=SOURCE_ID \
   --filter='state="ACTIVE"' \
-  --format="table(resourceName, category, severity, sourceProperties.Pod_Name, sourceProperties.Container_Name, sourceProperties.Process_Binary)" \
+  --format="table(resourceName, category, severity, sourceProperties.Pod_Name, sourceProperties.Container_Name, sourceProperties.Process_Binary_Fullpath)" \
   --limit=20
 ```
 
@@ -170,7 +167,7 @@ For critical CTD findings, you want immediate notification rather than periodic 
 gcloud scc notifications create ctd-critical-alerts \
   --organization=123456789 \
   --pubsub-topic=projects/security-project/topics/ctd-alerts \
-  --filter='source="CONTAINER_THREAT_DETECTION" AND (severity="CRITICAL" OR severity="HIGH") AND state="ACTIVE"'
+  --filter='parent="organizations/123456789/sources/SOURCE_ID" AND (severity="CRITICAL" OR severity="HIGH") AND state="ACTIVE"'
 ```
 
 Then wire up a Cloud Function to process these notifications and alert your team.
@@ -188,7 +185,8 @@ def process_ctd_alert(event, context):
     """Process CTD finding from Pub/Sub and send Slack alert."""
     # Decode the Pub/Sub message
     pubsub_message = base64.b64decode(event['data']).decode('utf-8')
-    finding = json.loads(pubsub_message)
+    notification = json.loads(pubsub_message)
+    finding = notification.get('finding', {})
 
     # Extract relevant fields from the finding
     category = finding.get('category', 'Unknown')
@@ -196,7 +194,7 @@ def process_ctd_alert(event, context):
     pod_name = finding.get('sourceProperties', {}).get('Pod_Name', 'Unknown')
     namespace = finding.get('sourceProperties', {}).get('Pod_Namespace', 'Unknown')
     container = finding.get('sourceProperties', {}).get('Container_Name', 'Unknown')
-    process_binary = finding.get('sourceProperties', {}).get('Process_Binary', 'Unknown')
+    process_binary = finding.get('sourceProperties', {}).get('Process_Binary_Fullpath', 'Unknown')
 
     # Build the Slack message
     slack_message = {
