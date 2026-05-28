@@ -80,25 +80,41 @@ def find_imports(file_path, base_package):
 
     imports = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            if node.module.startswith(base_package):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith(f'{base_package}.'):
+                    imports.append(alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == base_package:
+                for alias in node.names:
+                    imports.append(f'{base_package}.{alias.name}')
+            elif node.module.startswith(f'{base_package}.'):
                 imports.append(node.module)
     return imports
+
+def context_name(module_name, base_package):
+    """Return the top-level context name for an internal module."""
+    parts = module_name.split('.')
+    if len(parts) > 1 and parts[0] == base_package:
+        return parts[1]
+    return None
 
 def build_dependency_graph(source_dir, base_package):
     """Build a graph of module dependencies."""
     graph = defaultdict(set)
+    base_dir = os.path.dirname(os.path.normpath(source_dir)) or '.'
 
     for root, dirs, files in os.walk(source_dir):
         for f in files:
             if f.endswith('.py'):
                 path = os.path.join(root, f)
-                module = path.replace('/', '.').replace('.py', '')
+                rel_path = os.path.relpath(path, base_dir)
+                module = os.path.splitext(rel_path)[0].replace(os.sep, '.')
                 for imp in find_imports(path, base_package):
                     # Map to top-level modules (bounded contexts)
-                    source_context = module.split('.')[1]
-                    target_context = imp.split('.')[1]
-                    if source_context != target_context:
+                    source_context = context_name(module, base_package)
+                    target_context = context_name(imp, base_package)
+                    if source_context and target_context and source_context != target_context:
                         graph[source_context].add(target_context)
 
     return graph
@@ -125,6 +141,8 @@ For your GCP microservices, aim for Customer-Supplier relationships with publish
 ```python
 # In the Order Service, create an anti-corruption layer for the Catalog Service
 # This keeps the Order Service's domain model clean and independent
+
+import requests
 
 class ProductReference:
     """Order Service's view of a product - only what it needs."""
@@ -238,14 +256,33 @@ gcloud pubsub topics create order-events
 gcloud pubsub topics create payment-events
 gcloud pubsub topics create inventory-events
 
+# Create an identity that Pub/Sub can use to invoke private Cloud Run services
+PROJECT_ID=$(gcloud config get-value project)
+PUBSUB_PUSH_SERVICE_ACCOUNT=pubsub-push@$PROJECT_ID.iam.gserviceaccount.com
+
+gcloud iam service-accounts create pubsub-push \
+  --display-name="Pub/Sub push invoker"
+
+gcloud run services add-iam-policy-binding fulfillment-service \
+  --region=us-central1 \
+  --member=serviceAccount:$PUBSUB_PUSH_SERVICE_ACCOUNT \
+  --role=roles/run.invoker
+
+gcloud run services add-iam-policy-binding notification-service \
+  --region=us-central1 \
+  --member=serviceAccount:$PUBSUB_PUSH_SERVICE_ACCOUNT \
+  --role=roles/run.invoker
+
 # Create subscriptions for services that need to react
 gcloud pubsub subscriptions create fulfillment-on-order-created \
   --topic=order-events \
-  --push-endpoint=https://fulfillment-service-xxxxx.run.app/events/order-created
+  --push-endpoint=https://fulfillment-service-xxxxx.run.app/events/order-created \
+  --push-auth-service-account=$PUBSUB_PUSH_SERVICE_ACCOUNT
 
 gcloud pubsub subscriptions create notification-on-order-created \
   --topic=order-events \
-  --push-endpoint=https://notification-service-xxxxx.run.app/events/order-created
+  --push-endpoint=https://notification-service-xxxxx.run.app/events/order-created \
+  --push-auth-service-account=$PUBSUB_PUSH_SERVICE_ACCOUNT
 ```
 
 ## Avoiding Common Mistakes
