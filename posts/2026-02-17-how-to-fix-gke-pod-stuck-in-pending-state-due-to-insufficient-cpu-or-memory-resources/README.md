@@ -77,7 +77,7 @@ gke-cluster-pool-def    1920m        96%    6100Mi          95%
 gke-cluster-pool-ghi    1780m        89%    5500Mi          85%
 ```
 
-If all your nodes are above 85-90% allocation, there simply is not room for a new pod with meaningful resource requests.
+If all your nodes are above 85-90% actual usage, the cluster is under heavy pressure. For scheduling decisions, still compare your pod's requests against the requested resources already allocated on each node.
 
 ## Step 2 - Right-Size Your Resource Requests
 
@@ -137,7 +137,7 @@ gcloud container clusters update your-cluster \
 
 ## Step 4 - Use Larger Machine Types
 
-Sometimes the issue is not the total cluster capacity but individual node size. If you have a pod requesting 8Gi of memory and your nodes are e2-standard-2 machines with only 8Gi total (of which 5-6Gi is allocatable after system reservations), no single node can fit your pod.
+Sometimes the issue is not the total cluster capacity but individual node size. If you have a pod requesting 8Gi of memory and your nodes are e2-standard-2 machines with only 8 GB total (of which less is allocatable after system reservations), no single node can fit your pod.
 
 Create a new node pool with larger machines:
 
@@ -174,11 +174,8 @@ Sometimes the cluster has enough total resources but they are fragmented across 
 You can spot this by checking each node individually:
 
 ```bash
-# List allocatable vs requested resources per node
-kubectl get nodes -o custom-columns=\
-NAME:.metadata.name,\
-CPU_ALLOC:.status.allocatable.cpu,\
-MEM_ALLOC:.status.allocatable.memory
+# Check allocatable and requested resources on a specific node
+kubectl describe node your-node-name
 ```
 
 If you see fragmentation, consider using pod priority and preemption to let important workloads displace less critical ones:
@@ -225,7 +222,16 @@ If third-party DaemonSets like monitoring agents or log collectors are consuming
 
 ## Prevention with Vertical Pod Autoscaler
 
-To avoid this problem long-term, set up the Vertical Pod Autoscaler (VPA) to automatically recommend or adjust resource requests:
+To avoid this problem long-term, set up the Vertical Pod Autoscaler (VPA) to automatically recommend or adjust resource requests. On GKE Standard clusters, make sure vertical Pod autoscaling is enabled first:
+
+```bash
+# Enable vertical Pod autoscaling on a Standard cluster
+gcloud container clusters update your-cluster \
+  --enable-vertical-pod-autoscaling \
+  --zone us-central1-a
+```
+
+Then create a VPA object for your workload:
 
 ```yaml
 # VPA will monitor actual resource usage and recommend better request values
@@ -250,7 +256,7 @@ When a pod is stuck in Pending, run through this list:
 
 1. `kubectl describe pod` - read the scheduling failure message
 2. `kubectl top nodes` - check actual node utilization
-3. `kubectl top pods` - compare requested vs actual usage
+3. `kubectl top pods` - compare actual usage with configured requests
 4. Check if cluster autoscaler is enabled and working
 5. Verify your machine type is large enough for the pod's requests
 6. Look for resource fragmentation across nodes
