@@ -10,7 +10,7 @@ Description: Learn how to implement step-up authentication for sensitive Google 
 
 Not all actions in your Google Cloud environment carry the same risk. Listing VMs is low-risk. Deleting a production database is high-risk. Step-up authentication ensures that when someone tries to perform a sensitive operation, they must provide additional verification beyond their standard login. This is the same concept as when your bank asks you to re-enter your password before transferring money, even though you are already logged in.
 
-Google Cloud does not have a built-in "step-up authentication" button, but you can build this pattern using a combination of IAM Conditions, Access Context Manager, and custom authorization workflows. This post walks through practical approaches.
+Google Cloud includes built-in reauthentication for some sensitive Google Cloud Console actions, such as IAM allow policy changes and billing assignment changes. For broader or more customized workflows, you can build this pattern using a combination of IAM Conditions, Access Context Manager, Identity-Aware Proxy (IAP), and custom authorization workflows. This post walks through practical approaches.
 
 ## The Step-Up Authentication Pattern
 
@@ -27,9 +27,9 @@ flowchart TD
     G --> D
 ```
 
-## Approach 1: Access Levels with Re-Authentication
+## Approach 1: Access Levels with Strong Authentication
 
-Access Context Manager lets you define access levels that require recent authentication. When combined with IAM Conditions, you can enforce re-authentication for specific operations.
+Access Context Manager lets you define access levels that require contextual signals such as network, device posture, and credential strength. When combined with IAM Conditions for IAP-protected apps, you can require stronger authentication before users access sensitive internal tools.
 
 ### Setting Up an Access Level with Authentication Requirements
 
@@ -40,23 +40,16 @@ gcloud access-context-manager policies create \
     --organization=123456789 \
     --title="Corp Access Policy"
 
-# Create a custom access level that requires recent authentication
-# This access level file uses CEL to check authentication recency
+# Create a custom access level that requires hardware-key authentication
+# This access level file uses CEL to check credential strength
 ```
 
 Create a YAML file defining the access level:
 
 ```yaml
 # step-up-access-level.yaml
-# Requires that the user authenticated within the last 30 minutes
-# and used a hardware security key
-custom:
-  expr:
-    expression: >
-      request.auth.claims.auth_time > timestamp(now - duration('30m')) &&
-      request.auth.claims.amr.exists(a, a == 'hwk')
-    title: "Recent auth with hardware key"
-    description: "User must have authenticated within 30 minutes using a hardware security key"
+# Requires that the user authenticated with a hardware security key
+expression: "request.auth.claims.crd_str.hwk == true"
 ```
 
 ```bash
@@ -64,42 +57,44 @@ custom:
 gcloud access-context-manager levels create step-up-level \
     --policy=POLICY_ID \
     --custom-level-spec=step-up-access-level.yaml \
-    --title="Step-Up Authentication Required" \
-    --description="Requires recent auth with hardware key"
+    --title="Hardware Key Required" \
+    --description="Requires hardware-key authentication"
 ```
 
-### Binding the Access Level to Sensitive Operations
+### Binding the Access Level to Sensitive Internal Tools
 
 ```bash
-# Require step-up authentication for project-level admin operations
-gcloud projects add-iam-policy-binding my-production-project \
-    --role=roles/owner \
+# Require the access level before users can access an IAP-protected admin app
+gcloud iap web add-iam-policy-binding \
+    --resource-type=backend-services \
+    --service=ADMIN_BACKEND_SERVICE_ID \
+    --project=my-production-project \
+    --role=roles/iap.httpsResourceAccessor \
     --member="group:platform-admins@mycompany.com" \
-    --condition='expression=request.time < timestamp("2030-01-01T00:00:00Z") && "accessPolicies/POLICY_ID/accessLevels/step-up-level" in request.auth.access_levels,title=Requires step-up auth'
+    --condition='expression="accessPolicies/POLICY_ID/accessLevels/step-up-level" in request.auth.access_levels,title=Requires step-up auth'
 ```
 
 ## Approach 2: Session Duration Controls
 
-Google Workspace and Cloud Identity allow you to set session duration policies that force re-authentication:
+Google Workspace and Cloud Identity allow administrators to set session duration policies for Google Cloud services in the Admin console. These policies can force users to reauthenticate when their session expires.
 
-```bash
-# Set a short session length for the admin group
-# This forces re-authentication every 4 hours for administrative sessions
-gcloud identity groups memberships modify-membership-roles \
-    --group-email=gcp-admins@mycompany.com \
-    --member-email=admin@mycompany.com \
-    --update-roles-params='name=MEMBER,expiry_detail.expire_time=2026-12-31T00:00:00Z'
+For IAP-protected applications, configure IAP reauthentication settings directly:
+
+```yaml
+# iap-settings.yaml
+# Require enrolled second-factor reauthentication every 30 minutes
+accessSettings:
+  reauthSettings:
+    method: "ENROLLED_SECOND_FACTORS"
+    maxAge: "1800s"
+    policyType: "MINIMUM"
 ```
 
-For a more targeted approach, configure session controls at the IAM level:
-
 ```bash
-# Create an IAM policy binding with a session restriction
-# This requires re-authentication for accessing the billing account
-gcloud billing accounts add-iam-policy-binding BILLING_ACCOUNT_ID \
-    --role=roles/billing.admin \
-    --member="user:finance-admin@mycompany.com" \
-    --condition='expression="accessPolicies/POLICY_ID/accessLevels/step-up-level" in request.auth.access_levels,title=Billing requires step-up auth'
+# Apply the IAP reauthentication policy to all IAP web resources in a project
+gcloud iap settings set iap-settings.yaml \
+    --project=my-production-project \
+    --resource-type=iap_web
 ```
 
 ## Approach 3: Custom Step-Up with Cloud Functions
@@ -113,8 +108,7 @@ For maximum control, build a custom step-up authentication service. This approac
 
 import functions_framework
 from google.cloud import firestore
-from google.auth import default
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 
@@ -145,7 +139,7 @@ def verify_step_up(request):
         expires_at = session_data.get('expires_at')
 
         # Check if the step-up session is still valid
-        if expires_at and expires_at > datetime.utcnow():
+        if expires_at and expires_at > datetime.now(timezone.utc):
             return json.dumps({
                 'verified': True,
                 'user': user_email,
@@ -165,8 +159,9 @@ def complete_step_up(request):
     """Record that a user has completed step-up authentication."""
 
     # This endpoint is called after the user completes the MFA challenge
-    user_email = request.json.get('email')
-    mfa_token = request.json.get('mfa_token')
+    request_json = request.get_json(silent=True) or {}
+    user_email = request_json.get('email')
+    mfa_token = request_json.get('mfa_token')
 
     # Validate the MFA token with your IdP
     if not validate_mfa_with_idp(user_email, mfa_token):
@@ -178,8 +173,8 @@ def complete_step_up(request):
     )
     step_up_ref.set({
         'user_email': user_email,
-        'created_at': datetime.utcnow(),
-        'expires_at': datetime.utcnow() + timedelta(minutes=STEP_UP_VALIDITY_MINUTES),
+        'created_at': datetime.now(timezone.utc),
+        'expires_at': datetime.now(timezone.utc) + timedelta(minutes=STEP_UP_VALIDITY_MINUTES),
         'auth_method': 'mfa'
     })
 
@@ -191,10 +186,10 @@ def complete_step_up(request):
 
 ## Approach 4: Organization Policy Constraints
 
-Use organization policies to enforce additional restrictions on sensitive operations:
+Use organization policies as a complementary control to restrict which identities can be granted access. This does not perform MFA step-up, but it helps prevent sensitive resources from being shared with external principals:
 
 ```bash
-# Require MFA for accessing resources in the production folder
+# Restrict IAM policy members for resources in the production folder
 gcloud resource-manager org-policies set-policy policy.yaml \
     --folder=PRODUCTION_FOLDER_ID
 ```
@@ -202,10 +197,10 @@ gcloud resource-manager org-policies set-policy policy.yaml \
 ```yaml
 # policy.yaml
 # Restricts which identity types can access resources in this folder
-constraint: iam.allowedPolicyMemberDomains
+constraint: constraints/iam.allowedPolicyMemberDomains
 listPolicy:
   allowedValues:
-    - "C0123456789"  # Only your verified organization domain
+    - "is:C0123456789"  # Only your verified Google Workspace customer ID
 ```
 
 ## Setting Up Notification Alerts for Sensitive Operations
@@ -216,7 +211,7 @@ Even with step-up auth, monitor who performs sensitive operations:
 # Create a log sink for sensitive admin actions
 gcloud logging sinks create sensitive-ops-sink \
     pubsub.googleapis.com/projects/my-project/topics/sensitive-ops \
-    --log-filter='protoPayload.methodName=("SetIamPolicy" OR "DeleteDatabase" OR "DeleteInstance" OR "UpdateBillingAccount")'
+    --log-filter='protoPayload.methodName:("SetIamPolicy" OR "Delete" OR "UpdateBilling")'
 ```
 
 Then set up a Cloud Function to alert on these operations:
@@ -227,7 +222,6 @@ Then set up a Cloud Function to alert on these operations:
 import base64
 import json
 import functions_framework
-from google.cloud import pubsub_v1
 
 @functions_framework.cloud_event
 def alert_sensitive_op(cloud_event):
@@ -258,7 +252,7 @@ def alert_sensitive_op(cloud_event):
 For Google Cloud Console access, combine Chrome Enterprise with BeyondCorp:
 
 ```bash
-# Create a BeyondCorp access level that requires device trust and recent auth
+# Create a BeyondCorp access level that requires device trust
 gcloud access-context-manager levels create console-step-up \
     --policy=POLICY_ID \
     --basic-level-spec=console-access-level.yaml \
@@ -268,20 +262,19 @@ gcloud access-context-manager levels create console-step-up \
 ```yaml
 # console-access-level.yaml
 # Requires a managed device with screen lock and recent OS updates
-conditions:
-  - devicePolicy:
-      requireScreenlock: true
-      osConstraints:
-        - osType: DESKTOP_CHROME_OS
-          minimumVersion: "110.0"
-        - osType: DESKTOP_MAC
-          minimumVersion: "13.0"
-        - osType: DESKTOP_WINDOWS
-          minimumVersion: "10.0.19045"
-      allowedEncryptionStatuses:
-        - ENCRYPTED
-    requiredAccessLevels:
-      - accessPolicies/POLICY_ID/accessLevels/corp-network
+- devicePolicy:
+    requireScreenlock: true
+    osConstraints:
+      - osType: DESKTOP_CHROME_OS
+        minimumVersion: "110.0.0"
+      - osType: DESKTOP_MAC
+        minimumVersion: "13.0.0"
+      - osType: DESKTOP_WINDOWS
+        minimumVersion: "10.0.19045"
+    allowedEncryptionStatuses:
+      - ENCRYPTED
+  requiredAccessLevels:
+    - accessPolicies/POLICY_ID/accessLevels/corp-network
 ```
 
 ## Best Practices
