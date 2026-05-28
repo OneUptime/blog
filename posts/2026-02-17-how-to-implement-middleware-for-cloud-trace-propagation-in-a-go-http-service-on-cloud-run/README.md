@@ -14,7 +14,7 @@ In this post, I will show you how to build HTTP middleware that extracts incomin
 
 ## How Cloud Trace Propagation Works
 
-Cloud Run automatically injects a trace header (`X-Cloud-Trace-Context`) into incoming requests. Your service needs to:
+Cloud Run automatically populates the W3C trace context header (`traceparent`) for incoming requests. Google Cloud services can also use the legacy `X-Cloud-Trace-Context` header, so your service should support both formats. Your service needs to:
 
 1. Extract the trace ID and span ID from the incoming header
 2. Create a child span for the work your service does
@@ -22,8 +22,8 @@ Cloud Run automatically injects a trace header (`X-Cloud-Trace-Context`) into in
 
 ```mermaid
 flowchart LR
-    A[Service A] -->|X-Cloud-Trace-Context| B[Service B]
-    B -->|X-Cloud-Trace-Context| C[Service C]
+    A[Service A] -->|traceparent / X-Cloud-Trace-Context| B[Service B]
+    B -->|traceparent / X-Cloud-Trace-Context| C[Service C]
     B -->|Span data| CT[Cloud Trace]
     C -->|Span data| CT
     A -->|Span data| CT
@@ -36,9 +36,9 @@ flowchart LR
 ```bash
 go get go.opentelemetry.io/otel
 go get go.opentelemetry.io/otel/sdk/trace
-go get go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 go get go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
 go get github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace
+go get github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator
 ```
 
 ## Configuring the Trace Exporter
@@ -55,6 +55,7 @@ import (
     "os"
 
     texporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
+    gcppropagator "github.com/GoogleCloudPlatform/opentelemetry-operations-go/propagator"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/propagation"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -96,6 +97,7 @@ func initTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 
     // Use both W3C Trace Context and Google Cloud Trace propagation
     otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+        gcppropagator.CloudTraceFormatPropagator{},
         propagation.TraceContext{},
         propagation.Baggage{},
     ))
@@ -114,10 +116,10 @@ package main
 import (
     "fmt"
     "net/http"
-    "strings"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -129,9 +131,6 @@ func traceMiddleware(serviceName string) func(http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
             // Extract the trace context from incoming headers
             ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
-
-            // Also handle the GCP-specific X-Cloud-Trace-Context header
-            ctx = extractGCPTraceContext(ctx, r)
 
             // Start a new span for this request
             spanName := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
@@ -176,12 +175,14 @@ func (r *statusRecorder) WriteHeader(status int) {
 
 ## Parsing the GCP Trace Header
 
-Cloud Run uses the `X-Cloud-Trace-Context` header format, which is different from W3C Trace Context. Here is how to parse it.
+Cloud Run uses the `X-Cloud-Trace-Context` header format, which is different from W3C Trace Context. The Google Cloud propagator above handles this for you, but if you ever need to parse the header yourself, here is how to do it.
 
 ```go
 import (
     "context"
-    "encoding/hex"
+    "fmt"
+    "net/http"
+    "strconv"
     "strings"
 
     "go.opentelemetry.io/otel/trace"
@@ -214,18 +215,26 @@ func extractGCPTraceContext(ctx context.Context, r *http.Request) context.Contex
     }
 
     // Convert span ID - GCP uses decimal, OTel uses 16 hex chars
-    // Pad the span ID to 16 hex characters
-    spanIDHex := fmt.Sprintf("%016s", spanIDStr)
+    spanIDDecimal, err := strconv.ParseUint(spanIDStr, 10, 64)
+    if err != nil {
+        return ctx
+    }
+    spanIDHex := fmt.Sprintf("%016x", spanIDDecimal)
     spanID, err := trace.SpanIDFromHex(spanIDHex)
     if err != nil {
         return ctx
+    }
+
+    traceFlags := trace.TraceFlags(0)
+    if len(spanParts) == 2 && strings.Contains(spanParts[1], "o=1") {
+        traceFlags = trace.FlagsSampled
     }
 
     // Create a remote span context from the parsed values
     spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
         TraceID:    traceID,
         SpanID:     spanID,
-        TraceFlags: trace.FlagsSampled,
+        TraceFlags: traceFlags,
         Remote:     true,
     })
 
@@ -245,6 +254,8 @@ import (
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/propagation"
+    "go.opentelemetry.io/otel/trace"
 )
 
 // tracedHTTPClient creates an HTTP client that propagates trace context
