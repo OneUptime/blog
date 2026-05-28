@@ -30,7 +30,7 @@ graph TD
     F -->|"Scale Down"| H[Remove Replicas]
 ```
 
-The autoscaler makes decisions based on the average metric value across all replicas. If the average CPU utilization is 80% and your target is 60%, it calculates that it needs more replicas to bring the average down.
+The autoscaler calculates a target replica count from the current utilization and target utilization, then adjusts toward the highest target value observed in the previous 5-minute window. If CPU utilization is 80% and your target is 60%, it calculates that it needs more replicas to bring utilization down.
 
 ## Basic Autoscaling Configuration
 
@@ -130,7 +130,7 @@ def deploy_with_advanced_autoscaling(
             max_replica_count=max_replicas,
             autoscaling_metric_specs=[
                 aiplatform_v1.DedicatedResources.AutoscalingMetricSpec(
-                    metric_name="aiplatform.googleapis.com/prediction/online/cpu_utilization",
+                    metric_name="aiplatform.googleapis.com/prediction/online/cpu/utilization",
                     target=target_cpu
                 )
             ]
@@ -163,44 +163,55 @@ There are two strategies to mitigate cold starts.
 
 First, set a higher minimum replica count. If your baseline traffic needs at least 3 replicas, set the minimum to 3 so you never scale below that.
 
-Second, use scale-up predictions by pre-scaling before expected traffic increases.
+Second, pre-scale before expected traffic increases by updating the deployed model's minimum replica count.
 
 This code pre-scales before a known traffic spike:
 
 ```python
-import time
-from google.cloud import aiplatform
+from google.cloud import aiplatform_v1
+from google.protobuf import field_mask_pb2
 
-def pre_scale_endpoint(endpoint_id, target_replicas):
+def pre_scale_endpoint(project_id, location, endpoint_id, deployed_model_id, target_replicas):
     """Temporarily increase minimum replicas before an expected traffic spike.
 
     Call this 10-15 minutes before the spike to allow replicas to warm up.
     """
-    aiplatform.init(project="your-project-id", location="us-central1")
-    endpoint = aiplatform.Endpoint(endpoint_id)
+    client = aiplatform_v1.EndpointServiceClient(
+        client_options={"api_endpoint": f"{location}-aiplatform.googleapis.com"}
+    )
 
-    deployed_models = endpoint.list_models()
+    endpoint_name = (
+        f"projects/{project_id}/locations/{location}/endpoints/{endpoint_id}"
+    )
 
-    for dm in deployed_models:
-        # Update the minimum replica count
-        # This forces the autoscaler to scale up immediately
-        endpoint.undeploy(deployed_model_id=dm.id)
-
-        model = aiplatform.Model(dm.model)
-        model.deploy(
-            endpoint=endpoint,
-            deployed_model_display_name=dm.display_name,
-            machine_type="n1-standard-4",
-            min_replica_count=target_replicas,  # Higher minimum
+    deployed_model = aiplatform_v1.DeployedModel(
+        id=deployed_model_id,
+        dedicated_resources=aiplatform_v1.DedicatedResources(
+            min_replica_count=target_replicas,
             max_replica_count=max(target_replicas, 20),
-            traffic_percentage=100
-        )
+        ),
+    )
+
+    update_mask = field_mask_pb2.FieldMask(paths=[
+        "dedicated_resources.min_replica_count",
+        "dedicated_resources.max_replica_count",
+    ])
+
+    operation = client.mutate_deployed_model(
+        endpoint=endpoint_name,
+        deployed_model=deployed_model,
+        update_mask=update_mask,
+    )
+    operation.result()
 
     print(f"Pre-scaled to {target_replicas} minimum replicas")
 
 # Pre-scale before a flash sale
 pre_scale_endpoint(
-    "projects/your-project-id/locations/us-central1/endpoints/EP_ID",
+    project_id="your-project-id",
+    location="us-central1",
+    endpoint_id="ENDPOINT_ID",
+    deployed_model_id="DEPLOYED_MODEL_ID",
     target_replicas=8
 )
 ```
@@ -227,7 +238,7 @@ def get_autoscaling_metrics(project_id, endpoint_id, hours=24):
 
     metrics_to_fetch = [
         "aiplatform.googleapis.com/prediction/online/replicas",
-        "aiplatform.googleapis.com/prediction/online/cpu_utilization",
+        "aiplatform.googleapis.com/prediction/online/cpu/utilization",
         "aiplatform.googleapis.com/prediction/online/prediction_latencies"
     ]
 
@@ -259,21 +270,43 @@ get_autoscaling_metrics("your-project-id", "ENDPOINT_ID")
 
 ## Scale-to-Zero Configuration
 
-For development or low-priority endpoints, you can configure the minimum replicas to zero. This means you pay nothing when there is no traffic, but the first request after idle will experience cold start latency.
+For development or low-priority endpoints, you can use the Scale To Zero preview feature to configure the minimum replicas to zero. This means you pay nothing when there is no traffic, but the first request after idle receives a 429 response while Vertex AI starts the model server.
 
 ```python
-# Scale-to-zero deployment - good for dev/staging
-model.deploy(
-    endpoint=endpoint,
-    deployed_model_display_name="dev-model",
-    machine_type="n1-standard-2",
-    min_replica_count=0,  # Scale to zero when idle
-    max_replica_count=5,
-    traffic_percentage=100
+from google.cloud.aiplatform_v1beta1.services import endpoint_service
+from google.cloud.aiplatform_v1beta1 import types as aiplatform_v1beta1
+from google.protobuf import duration_pb2
+
+client = endpoint_service.EndpointServiceClient(
+    client_options={"api_endpoint": "us-central1-aiplatform.googleapis.com"}
 )
+
+deployed_model = aiplatform_v1beta1.DeployedModel(
+    model="projects/your-project-id/locations/us-central1/models/MODEL_ID",
+    display_name="dev-model",
+    dedicated_resources=aiplatform_v1beta1.DedicatedResources(
+        machine_spec=aiplatform_v1beta1.MachineSpec(
+            machine_type="n1-standard-2"
+        ),
+        initial_replica_count=1,
+        min_replica_count=0,  # Scale to zero when idle
+        max_replica_count=5,
+        scale_to_zero_spec=aiplatform_v1beta1.DedicatedResources.ScaleToZeroSpec(
+            min_scaleup_period=duration_pb2.Duration(seconds=300),
+            idle_scaledown_period=duration_pb2.Duration(seconds=300),
+        ),
+    ),
+)
+
+operation = client.deploy_model(
+    endpoint="projects/your-project-id/locations/us-central1/endpoints/ENDPOINT_ID",
+    deployed_model=deployed_model,
+    traffic_split={"0": 100},
+)
+operation.result()
 ```
 
-Scale-to-zero is not recommended for production endpoints that need consistent latency, but it is excellent for cost savings in non-production environments.
+Scale-to-zero is not recommended for production endpoints that need consistent latency, and it is only compatible with single model deployments with one model per endpoint. For compatible non-production environments, it can provide meaningful cost savings.
 
 ## Choosing the Right Autoscaling Target
 
