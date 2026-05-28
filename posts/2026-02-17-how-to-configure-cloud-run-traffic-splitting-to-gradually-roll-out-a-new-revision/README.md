@@ -110,10 +110,10 @@ gcloud run services update-traffic my-service \
   --to-tags=canary=100
 ```
 
-Or, if you want to set it as the default serving revision:
+Or, if you want to send all traffic to the latest revision and restore the default behavior for future deployments:
 
 ```bash
-# Make the canary the default revision and remove the tag
+# Send all traffic to the latest revision
 gcloud run services update-traffic my-service \
   --region=us-central1 \
   --to-latest
@@ -130,7 +130,7 @@ gcloud run services update-traffic my-service \
   --to-tags=canary=0
 ```
 
-This is instant. Traffic stops going to the canary revision immediately. This is one of the biggest advantages of traffic splitting over traditional deployments - rollbacks take seconds, not minutes.
+This takes effect quickly, but traffic routing adjustments are not instantaneous. Requests already in flight continue to completion and might still be directed to either revision during the transition. This is one of the biggest advantages of traffic splitting over traditional deployments - rollbacks are fast and do not require a redeploy.
 
 ## Splitting Traffic Between Specific Revisions
 
@@ -203,6 +203,9 @@ gcloud run deploy "${SERVICE_NAME}" \
 CANARY_URL=$(gcloud run services describe "${SERVICE_NAME}" \
   --region="${REGION}" \
   --format="value(status.traffic[tag=canary].url)")
+CANARY_REVISION=$(gcloud run services describe "${SERVICE_NAME}" \
+  --region="${REGION}" \
+  --format="value(status.traffic[tag=canary].revisionName)")
 
 echo "Running smoke tests against ${CANARY_URL}..."
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${CANARY_URL}${HEALTH_ENDPOINT}")
@@ -223,11 +226,11 @@ for PERCENT in 5 25 50 75 100; do
     echo "Waiting 5 minutes to monitor for errors..."
     sleep 300
 
-    # Check error rate using Cloud Monitoring
+    # Check recent error logs for the canary revision
     # (simplified - in practice you'd query the monitoring API)
     ERROR_COUNT=$(gcloud logging read \
-      "resource.type=cloud_run_revision AND severity>=ERROR AND timestamp>=\"$(date -u -d '-5 min' +%Y-%m-%dT%H:%M:%SZ)\"" \
-      --limit=1 --format="value(severity)" | wc -l)
+      "resource.type=cloud_run_revision AND resource.labels.service_name=\"${SERVICE_NAME}\" AND resource.labels.revision_name=\"${CANARY_REVISION}\" AND severity>=ERROR AND timestamp>=\"$(date -u -d '-5 min' +%Y-%m-%dT%H:%M:%SZ)\"" \
+      --limit=100 --format="value(severity)" | wc -l)
 
     if [ "${ERROR_COUNT}" -gt 10 ]; then
       echo "Error rate too high (${ERROR_COUNT} errors). Rolling back..."
@@ -256,9 +259,14 @@ gcloud monitoring time-series list \
 Check error rates by revision:
 
 ```bash
+# Get the canary revision name from the tag
+CANARY_REVISION=$(gcloud run services describe my-service \
+  --region=us-central1 \
+  --format="value(status.traffic[tag=canary].revisionName)")
+
 # Check error logs for the canary revision specifically
 gcloud logging read \
-  'resource.type="cloud_run_revision" AND resource.labels.service_name="my-service" AND resource.labels.revision_name~"canary" AND severity>=ERROR' \
+  "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"my-service\" AND resource.labels.revision_name=\"${CANARY_REVISION}\" AND severity>=ERROR" \
   --limit=20
 ```
 
@@ -277,7 +285,7 @@ This shows you exactly which revisions are receiving traffic and at what percent
 
 ## Key Things to Remember
 
-Traffic splitting is session-based, not request-based. Once a user is routed to a revision, subsequent requests from the same user tend to go to the same revision (though this is not guaranteed). This is good for user experience but means your canary might not catch issues that only affect specific user segments.
+By default, Cloud Run traffic splitting uses a random split for requests. If you enable session affinity on a revision, requests with a session affinity cookie can keep going to the same revision instance on a best-effort basis, and that affinity can take precedence over the configured traffic split.
 
 Also, both revisions run simultaneously, so you are paying for the compute resources of both. For cost-sensitive environments, try to complete canary rollouts within a reasonable timeframe rather than leaving traffic split for days.
 
