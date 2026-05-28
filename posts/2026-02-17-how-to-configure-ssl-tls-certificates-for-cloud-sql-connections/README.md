@@ -15,7 +15,7 @@ Every production database should encrypt connections in transit. Cloud SQL suppo
 Cloud SQL uses a standard SSL/TLS architecture:
 
 - **Server CA certificate**: Issued by Google, authenticates the Cloud SQL instance to your client
-- **Client certificate**: Issued per-client, authenticates your client to Cloud SQL (optional but recommended)
+- **Client certificate**: Issued per-client for PostgreSQL and MySQL, authenticates your client to Cloud SQL (optional but recommended)
 - **SSL enforcement**: Requires all connections to use SSL
 
 ```mermaid
@@ -24,7 +24,6 @@ graph LR
     B -->|Server Certificate| A
     A -->|Client Certificate| B
     C[Server CA] -->|Validates| B
-    D[Client CA] -->|Validates| A
 ```
 
 When you use the Cloud SQL Auth Proxy, it handles SSL automatically and you do not need to manage certificates yourself. Manual certificate configuration is needed when you connect directly without the proxy.
@@ -35,12 +34,12 @@ When you use the Cloud SQL Auth Proxy, it handles SSL automatically and you do n
 # Check the SSL configuration of your instance
 
 gcloud sql instances describe my-instance \
-    --format="json(settings.ipConfiguration.requireSsl, serverCaCert)"
+    --format="json(settings.ipConfiguration.sslMode, serverCaCert)"
 ```
 
 ## Step 1: Download the Server CA Certificate
 
-Every Cloud SQL instance has a server CA certificate. Download it:
+Every Cloud SQL instance has server CA information. For the default per-instance CA mode, download it:
 
 ```bash
 # Download the server CA certificate
@@ -49,11 +48,11 @@ gcloud sql ssl server-ca-certs list \
     --format="value(cert)" > server-ca.pem
 ```
 
-You can also get it from the Cloud Console under your instance's Connections tab.
+You can also get it from the Cloud Console under your instance's Connections tab. For instances that use shared CAs or customer-managed CAs, use the `gcloud sql ssl server-certs list --format="value(ca_cert.cert)"` command instead.
 
 ## Step 2: Create a Client Certificate
 
-Client certificates provide mutual TLS (mTLS), where both the server and client authenticate each other:
+For PostgreSQL and MySQL, client certificates provide mutual TLS (mTLS), where both the server and client authenticate each other:
 
 ```bash
 # Create a client certificate
@@ -89,10 +88,12 @@ chmod 600 client-key.pem
 By default, Cloud SQL accepts both SSL and non-SSL connections. Enforce SSL to reject unencrypted connections:
 
 ```bash
-# Require SSL for all connections
+# Require encrypted connections
 gcloud sql instances patch my-instance \
-    --require-ssl
+    --ssl-mode=ENCRYPTED_ONLY
 ```
+
+For PostgreSQL and MySQL, use `--ssl-mode=TRUSTED_CLIENT_CERTIFICATE_REQUIRED` if you want to require valid client certificates for every direct connection. Google recommends using `--ssl-mode` instead of the legacy `--require-ssl` flag.
 
 With Terraform:
 
@@ -107,7 +108,7 @@ resource "google_sql_database_instance" "main" {
     tier = "db-custom-4-16384"
 
     ip_configuration {
-      require_ssl = true
+      ssl_mode = "ENCRYPTED_ONLY"
 
       # Authorized networks for public IP
       authorized_networks {
@@ -154,6 +155,7 @@ mysql --host=INSTANCE_IP \
       --port=3306 \
       --user=myuser \
       --password \
+      --ssl-mode=VERIFY_CA \
       --ssl-ca=server-ca.pem \
       --ssl-cert=client-cert.pem \
       --ssl-key=client-key.pem \
@@ -265,7 +267,7 @@ openssl pkcs8 -topk8 -inform PEM -outform DER \
 
 ## Certificate Rotation
 
-Cloud SQL server CA certificates expire after 10 years, but client certificates expire after 10 years from creation. Google may rotate the server CA certificate before expiration.
+Cloud SQL server certificates expire after 10 years for per-instance CAs and after 1 year for shared CAs or customer-managed CAs. Client certificates expire after 10 years from creation by default. Google may rotate the server certificate before expiration.
 
 ### Rotating the Server CA Certificate
 
@@ -275,17 +277,19 @@ When Google issues a new server CA:
 # Check available server CA certificates
 gcloud sql ssl server-ca-certs list --instance=my-instance
 
-# Download the new CA certificate
+# Create a new server CA if one has not already been created
+gcloud sql ssl server-ca-certs create --instance=my-instance
+
+# Download the updated CA certificate information
 gcloud sql ssl server-ca-certs list --instance=my-instance \
-    --format="value(cert)" > new-server-ca.pem
+    --format="value(cert)" > server-ca.pem
 
-# Create a combined CA bundle for seamless rotation
-cat server-ca.pem new-server-ca.pem > ca-bundle.pem
-
-# Update your applications to use the bundle
+# Update your applications to use the updated server CA file
 # Then rotate the active CA
 gcloud sql ssl server-ca-certs rotate --instance=my-instance
 ```
+
+For instances that use shared CAs or customer-managed CAs, use the `gcloud sql ssl server-certs` commands instead of `server-ca-certs`.
 
 ### Rotating Client Certificates
 
@@ -357,4 +361,4 @@ For most use cases, the Auth Proxy is simpler and more secure. Use manual SSL ce
 
 ## Summary
 
-SSL/TLS for Cloud SQL involves downloading server CA certificates, optionally creating client certificates for mutual authentication, and configuring your application to use them. Enforce SSL on the instance to prevent unencrypted connections. Plan for certificate rotation by using the combined CA bundle approach. And if the Auth Proxy is an option for your setup, prefer it over manual certificate management - it does all of this automatically.
+SSL/TLS for Cloud SQL involves downloading server CA certificates, optionally creating client certificates for mutual authentication, and configuring your application to use them. Enforce SSL on the instance to prevent unencrypted connections. Plan for certificate rotation by updating clients with the latest server CA information before rotating the active certificate. And if the Auth Proxy is an option for your setup, prefer it over manual certificate management - it does all of this automatically.
