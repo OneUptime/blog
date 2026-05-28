@@ -44,8 +44,8 @@ az apim api export \
     --resource-group my-rg \
     --service-name my-apim \
     --api-id my-api \
-    --export-format OpenApiJson \
-    > my-api-spec.json
+    --export-format OpenApiJsonFile \
+    --file-path ./my-api-spec.json
 
 # List all products
 az apim product list \
@@ -70,15 +70,15 @@ Provision an Apigee organization in your GCP project:
 # Enable the Apigee API
 gcloud services enable apigee.googleapis.com
 
-# Create an Apigee organization (for Apigee X)
-gcloud apigee organizations provision \
+# Create an Apigee evaluation organization
+gcloud alpha apigee organizations provision \
     --project=my-project \
     --authorized-network=default \
-    --runtime-location=us-central1 \
+    --runtime-location=us-central1-a \
     --analytics-region=us-central1
 ```
 
-For production use, Apigee X requires setting up networking with a VPC, external load balancer, and managed instance groups. The provisioning process takes about 45 minutes to complete.
+For production use, Apigee X requires setting up networking and runtime routing, including a VPC and an HTTPS load balancer or another supported ingress pattern. The provisioning process can take anywhere from 10 minutes to 1 hour to complete.
 
 ## Step 3: Create API Proxies
 
@@ -98,10 +98,10 @@ apiproxy/
     verify-api-key.xml
 ```
 
-Use the Apigee CLI or API to create a proxy from your OpenAPI spec:
+Use the Apigee API to import an API proxy bundle generated from your OpenAPI spec:
 
 ```bash
-# Create an API proxy from an OpenAPI spec using the Apigee API
+# Create an API proxy from a proxy bundle using the Apigee API
 curl -X POST \
     "https://apigee.googleapis.com/v1/organizations/my-org/apis?name=my-api&action=import" \
     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
@@ -127,8 +127,8 @@ Azure APIM rate limiting policy:
 Equivalent Apigee Spike Arrest and Quota policies:
 
 ```xml
-<!-- Apigee SpikeArrest policy - protects against traffic bursts -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Apigee SpikeArrest policy - protects against traffic bursts -->
 <SpikeArrest name="SA-RateLimit">
     <Rate>100pm</Rate>
     <!-- 100 per minute, similar to Azure APIM rate-limit -->
@@ -136,8 +136,8 @@ Equivalent Apigee Spike Arrest and Quota policies:
 ```
 
 ```xml
-<!-- Apigee Quota policy - for longer-term rate limiting -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Apigee Quota policy - for longer-term rate limiting -->
 <Quota name="Q-DailyQuota">
     <Interval>1</Interval>
     <TimeUnit>day</TimeUnit>
@@ -165,14 +165,12 @@ Azure APIM JWT validation:
 Equivalent Apigee JWT verification:
 
 ```xml
-<!-- Apigee VerifyJWT policy - validates incoming JWT tokens -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Apigee VerifyJWT policy - validates incoming JWT tokens -->
 <VerifyJWT name="VJ-VerifyAccessToken">
     <Algorithm>RS256</Algorithm>
-    <Source>request.header.Authorization</Source>
-    <!-- JWKS URI for token verification -->
     <PublicKey>
-        <JWKS uri="https://accounts.google.com/.well-known/openid-configuration"/>
+        <JWKS uri="https://login.microsoftonline.com/tenant-id/discovery/v2.0/keys"/>
     </PublicKey>
     <Audience>api://my-api</Audience>
     <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
@@ -193,8 +191,8 @@ Azure APIM set-header policy:
 Apigee AssignMessage policy:
 
 ```xml
-<!-- Apigee AssignMessage policy - modifies request/response headers -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Apigee AssignMessage policy - modifies request/response headers -->
 <AssignMessage name="AM-SetHeaders">
     <Set>
         <Headers>
@@ -265,7 +263,7 @@ curl -X POST \
 
 # Test the deployed proxy
 curl -X GET \
-    "https://my-org-prod.apigee.net/my-api/resource" \
+    "https://api.example.com/my-api/resource" \
     -H "x-api-key: YOUR_API_KEY"
 ```
 
@@ -276,12 +274,20 @@ Once testing passes, update your custom domain to point to Apigee instead of Azu
 ```bash
 # Set up a custom domain in Apigee using environment groups
 curl -X POST \
-    "https://apigee.googleapis.com/v1/organizations/my-org/envgroups" \
+    "https://apigee.googleapis.com/v1/organizations/my-org/envgroups?name=prod-group" \
     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
     -H "Content-Type: application/json" \
     -d '{
-        "name": "prod-group",
         "hostnames": ["api.example.com"]
+    }'
+
+# Attach the prod environment to the environment group
+curl -X POST \
+    "https://apigee.googleapis.com/v1/organizations/my-org/envgroups/prod-group/attachments" \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "environment": "prod"
     }'
 ```
 
