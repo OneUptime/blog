@@ -42,38 +42,62 @@ import json
 # Training examples - each has an input and expected output
 training_examples = [
     {
-        "messages": [
+        "contents": [
             {
                 "role": "user",
-                "content": "Summarize this alert: Cloud SQL instance 'prod-db-01' CPU utilization exceeded 90% for 15 minutes in us-central1."
+                "parts": [
+                    {
+                        "text": "Summarize this alert: Cloud SQL instance 'prod-db-01' CPU utilization exceeded 90% for 15 minutes in us-central1."
+                    }
+                ]
             },
             {
                 "role": "model",
-                "content": "ALERT SUMMARY\nService: Cloud SQL\nInstance: prod-db-01\nRegion: us-central1\nIssue: CPU > 90% for 15 min\nSeverity: High\nAction: Investigate query load; consider scaling up machine type or optimizing slow queries."
+                "parts": [
+                    {
+                        "text": "ALERT SUMMARY\nService: Cloud SQL\nInstance: prod-db-01\nRegion: us-central1\nIssue: CPU > 90% for 15 min\nSeverity: High\nAction: Investigate query load; consider scaling up machine type or optimizing slow queries."
+                    }
+                ]
             }
         ]
     },
     {
-        "messages": [
+        "contents": [
             {
                 "role": "user",
-                "content": "Summarize this alert: GKE cluster 'production' node pool 'default-pool' has 3 nodes in NotReady state in us-east1-b."
+                "parts": [
+                    {
+                        "text": "Summarize this alert: GKE cluster 'production' node pool 'default-pool' has 3 nodes in NotReady state in us-east1-b."
+                    }
+                ]
             },
             {
                 "role": "model",
-                "content": "ALERT SUMMARY\nService: GKE\nCluster: production\nRegion: us-east1-b\nIssue: 3 nodes in NotReady state\nSeverity: Critical\nAction: Check node health; verify kubelet status; review recent node events and system logs."
+                "parts": [
+                    {
+                        "text": "ALERT SUMMARY\nService: GKE\nCluster: production\nRegion: us-east1-b\nIssue: 3 nodes in NotReady state\nSeverity: Critical\nAction: Check node health; verify kubelet status; review recent node events and system logs."
+                    }
+                ]
             }
         ]
     },
     {
-        "messages": [
+        "contents": [
             {
                 "role": "user",
-                "content": "Summarize this alert: Cloud Storage bucket 'user-uploads' egress exceeded 500 GB in the last hour from us-west1."
+                "parts": [
+                    {
+                        "text": "Summarize this alert: Cloud Storage bucket 'user-uploads' egress exceeded 500 GB in the last hour from us-west1."
+                    }
+                ]
             },
             {
                 "role": "model",
-                "content": "ALERT SUMMARY\nService: Cloud Storage\nBucket: user-uploads\nRegion: us-west1\nIssue: Egress > 500 GB/hour\nSeverity: Medium\nAction: Review access logs for unusual download patterns; check if data exfiltration or legitimate traffic spike."
+                "parts": [
+                    {
+                        "text": "ALERT SUMMARY\nService: Cloud Storage\nBucket: user-uploads\nRegion: us-west1\nIssue: Egress > 500 GB/hour\nSeverity: Medium\nAction: Review access logs for unusual download patterns; check if data exfiltration or legitimate traffic spike."
+                    }
+                ]
             }
         ]
     },
@@ -97,18 +121,30 @@ You can include system instructions in your training examples:
 # Training data with system instructions
 
 training_with_system = {
-    "messages": [
-        {
-            "role": "system",
-            "content": "You are an infrastructure alert summarizer. Always respond in the exact format: ALERT SUMMARY followed by structured fields."
-        },
+    "systemInstruction": {
+        "role": "system",
+        "parts": [
+            {
+                "text": "You are an infrastructure alert summarizer. Always respond in the exact format: ALERT SUMMARY followed by structured fields."
+            }
+        ]
+    },
+    "contents": [
         {
             "role": "user",
-            "content": "Summarize this alert: Load balancer 'frontend-lb' backend service health check failures for 5 minutes."
+            "parts": [
+                {
+                    "text": "Summarize this alert: Load balancer 'frontend-lb' backend service health check failures for 5 minutes."
+                }
+            ]
         },
         {
             "role": "model",
-            "content": "ALERT SUMMARY\nService: Load Balancer\nResource: frontend-lb\nIssue: Backend health check failures for 5 min\nSeverity: High\nAction: Check backend instance health; verify health check endpoint; review recent deployments."
+            "parts": [
+                {
+                    "text": "ALERT SUMMARY\nService: Load Balancer\nResource: frontend-lb\nIssue: Backend health check failures for 5 min\nSeverity: High\nAction: Check backend instance health; verify health check endpoint; review recent deployments."
+                }
+            ]
         }
     ]
 }
@@ -120,10 +156,10 @@ Upload your training data to Cloud Storage:
 
 ```bash
 # Upload training data to GCS
-gsutil cp training_data.jsonl gs://your-bucket/fine-tuning/training_data.jsonl
+gcloud storage cp training_data.jsonl gs://your-bucket/fine-tuning/training_data.jsonl
 
 # Optionally upload validation data too
-gsutil cp validation_data.jsonl gs://your-bucket/fine-tuning/validation_data.jsonl
+gcloud storage cp validation_data.jsonl gs://your-bucket/fine-tuning/validation_data.jsonl
 ```
 
 ## Creating the Tuning Job
@@ -135,7 +171,7 @@ Here is how to create a supervised tuning job:
 # Create a supervised tuning job for Gemini
 
 import vertexai
-from vertexai.generative_models import GenerativeModel
+from vertexai.tuning import sft
 
 vertexai.init(
     project='your-project-id',
@@ -143,11 +179,11 @@ vertexai.init(
 )
 
 # Create the tuning job
-tuning_job = GenerativeModel.tune_model(
-    source_model='gemini-1.5-flash-002',
-    training_data='gs://your-bucket/fine-tuning/training_data.jsonl',
+tuning_job = sft.train(
+    source_model='gemini-2.0-flash-001',
+    train_dataset='gs://your-bucket/fine-tuning/training_data.jsonl',
     # Optional: validation data for monitoring overfitting
-    validation_data='gs://your-bucket/fine-tuning/validation_data.jsonl',
+    validation_dataset='gs://your-bucket/fine-tuning/validation_data.jsonl',
     # Number of training epochs
     epochs=3,
     # Learning rate multiplier (adjusts the base learning rate)
@@ -156,7 +192,7 @@ tuning_job = GenerativeModel.tune_model(
     tuned_model_display_name='alert-summarizer-v1',
 )
 
-print(f"Tuning job created: {tuning_job}")
+print(f"Tuning job created: {tuning_job.resource_name}")
 ```
 
 ## Monitoring the Tuning Job
@@ -167,35 +203,40 @@ Track the progress of your tuning job:
 # monitor_tuning.py
 # Check the status of a tuning job
 
-import vertexai
-from vertexai.generative_models import GenerativeModel
 import time
+
+import vertexai
+from vertexai.tuning import sft
 
 vertexai.init(
     project='your-project-id',
     location='us-central1',
 )
 
-# Check job status
-# The tune_model call returns a job object you can poll
-tuning_job = GenerativeModel.get_tuning_job('TUNING_JOB_ID')
+# Use the full resource name, such as:
+# projects/your-project-id/locations/us-central1/tuningJobs/TUNING_JOB_ID
+tuning_job = sft.SupervisedTuningJob('TUNING_JOB_RESOURCE_NAME')
 
-print(f"State: {tuning_job.state}")
-print(f"Create time: {tuning_job.create_time}")
+while not tuning_job.has_ended:
+    time.sleep(60)
+    tuning_job.refresh()
 
-if tuning_job.state == 'SUCCEEDED':
-    print(f"Tuned model: {tuning_job.tuned_model_endpoint_name}")
+print(f"Tuned model: {tuning_job.tuned_model_name}")
+print(f"Tuned endpoint: {tuning_job.tuned_model_endpoint_name}")
 ```
 
-Using gcloud:
+Using the REST API:
 
 ```bash
 # Check tuning job status
-gcloud ai tuning-jobs describe TUNING_JOB_ID \
-  --region=us-central1
+curl -X GET \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://us-central1-aiplatform.googleapis.com/v1/projects/your-project-id/locations/us-central1/tuningJobs/TUNING_JOB_ID"
 
 # List all tuning jobs
-gcloud ai tuning-jobs list --region=us-central1
+curl -X GET \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://us-central1-aiplatform.googleapis.com/v1/projects/your-project-id/locations/us-central1/tuningJobs"
 ```
 
 ## Using Your Fine-Tuned Model
@@ -208,16 +249,18 @@ Once tuning is complete, use the model just like the base model:
 
 import vertexai
 from vertexai.generative_models import GenerativeModel
+from vertexai.tuning import sft
 
 vertexai.init(
     project='your-project-id',
     location='us-central1',
 )
 
-# Load the tuned model using its endpoint name
-tuned_model = GenerativeModel(
-    'projects/your-project-id/locations/us-central1/endpoints/ENDPOINT_ID'
+# Load the tuning job and use its tuned endpoint name
+sft_tuning_job = sft.SupervisedTuningJob(
+    'projects/your-project-id/locations/us-central1/tuningJobs/TUNING_JOB_ID'
 )
+tuned_model = GenerativeModel(sft_tuning_job.tuned_model_endpoint_name)
 
 # Test with a new alert
 response = tuned_model.generate_content(
@@ -237,16 +280,18 @@ Compare the tuned model against the base model to make sure tuning improved thin
 
 import vertexai
 from vertexai.generative_models import GenerativeModel
+from vertexai.tuning import sft
 
 vertexai.init(
     project='your-project-id',
     location='us-central1',
 )
 
-base_model = GenerativeModel('gemini-1.5-flash-002')
-tuned_model = GenerativeModel(
-    'projects/your-project-id/locations/us-central1/endpoints/ENDPOINT_ID'
+base_model = GenerativeModel('gemini-2.0-flash-001')
+sft_tuning_job = sft.SupervisedTuningJob(
+    'projects/your-project-id/locations/us-central1/tuningJobs/TUNING_JOB_ID'
 )
+tuned_model = GenerativeModel(sft_tuning_job.tuned_model_endpoint_name)
 
 # Test cases
 test_cases = [
@@ -285,22 +330,22 @@ Balance your examples. If you are fine-tuning for classification, make sure each
 The main hyperparameters for Gemini fine-tuning are:
 
 - **epochs** - Number of passes through the training data. Start with 3-5. More epochs risk overfitting, fewer may undertrain.
-- **learning_rate_multiplier** - Adjusts the learning rate. Start with 1.0. If the model overfits, reduce to 0.5. If it undertains, increase to 2.0.
+- **learning_rate_multiplier** - Adjusts the learning rate. Start with 1.0. If the model overfits, reduce to 0.5. If it undertrains, increase to 2.0.
 
 ```python
 # Conservative tuning (less risk of overfitting)
-tuning_job = GenerativeModel.tune_model(
-    source_model='gemini-1.5-flash-002',
-    training_data='gs://your-bucket/fine-tuning/training_data.jsonl',
+tuning_job = sft.train(
+    source_model='gemini-2.0-flash-001',
+    train_dataset='gs://your-bucket/fine-tuning/training_data.jsonl',
     epochs=2,
     learning_rate_multiplier=0.5,
     tuned_model_display_name='alert-summarizer-conservative',
 )
 
 # Aggressive tuning (more specialization, higher overfitting risk)
-tuning_job = GenerativeModel.tune_model(
-    source_model='gemini-1.5-flash-002',
-    training_data='gs://your-bucket/fine-tuning/training_data.jsonl',
+tuning_job = sft.train(
+    source_model='gemini-2.0-flash-001',
+    train_dataset='gs://your-bucket/fine-tuning/training_data.jsonl',
     epochs=5,
     learning_rate_multiplier=2.0,
     tuned_model_display_name='alert-summarizer-aggressive',
@@ -311,7 +356,7 @@ tuning_job = GenerativeModel.tune_model(
 
 Fine-tuning costs are based on the number of training tokens and the number of epochs. More examples and more epochs mean higher costs. Start with a small dataset, verify the approach works, and then scale up.
 
-The tuned model itself has the same per-token cost as the base model for inference. There is no ongoing cost for maintaining the tuned model beyond the inference usage.
+After tuning, inference requests to the tuned model are still charged. Inference pricing is the same for each stable version of Gemini.
 
 ## Wrapping Up
 
