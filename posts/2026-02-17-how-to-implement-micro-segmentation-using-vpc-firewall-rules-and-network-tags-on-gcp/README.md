@@ -32,7 +32,7 @@ Dashed lines represent denied traffic. The web tier cannot directly access the d
 
 ## Step 1 - Define Network Tags
 
-Network tags are labels you attach to VMs. Firewall rules reference these tags to target specific groups of VMs.
+Network tags are text attributes you attach to VMs. Firewall rules reference these tags to target specific groups of VMs.
 
 ```bash
 # Create VMs with appropriate network tags
@@ -99,10 +99,10 @@ gcloud compute instance-templates create web-template \
 
 ## Step 2 - Create a Default-Deny Rule
 
-The foundation of micro-segmentation is denying all traffic by default. GCP VPCs have two implied rules: allow all egress and deny all ingress. You need to override the default allow rules.
+The foundation of micro-segmentation is denying traffic by default. GCP VPCs have two implied rules: allow all egress and deny all ingress. You need to override the implied allow egress rule and any broad ingress allow rules.
 
 ```bash
-# Deny all internal ingress traffic at high priority
+# Deny all internal ingress traffic
 gcloud compute firewall-rules create deny-all-internal-ingress \
     --network=my-vpc \
     --direction=INGRESS \
@@ -111,17 +111,17 @@ gcloud compute firewall-rules create deny-all-internal-ingress \
     --source-ranges=10.0.0.0/8 \
     --priority=65534
 
-# Deny all internal egress traffic
+# Deny all egress traffic
 gcloud compute firewall-rules create deny-all-internal-egress \
     --network=my-vpc \
     --direction=EGRESS \
     --action=DENY \
     --rules=all \
-    --destination-ranges=10.0.0.0/8 \
+    --destination-ranges=0.0.0.0/0 \
     --priority=65534
 ```
 
-Now nothing can communicate internally. We will add specific allow rules for each legitimate traffic flow.
+Now nothing can initiate new outbound connections, and broad internal ingress rules are overridden. We will add specific allow rules for each legitimate traffic flow.
 
 ## Step 3 - Allow Health Check Traffic
 
@@ -217,7 +217,7 @@ gcloud compute firewall-rules create allow-app-to-db-egress \
     --destination-ranges=10.0.0.0/8 \
     --priority=1000
 
-# Allow all tiers to reach Google APIs (for logging, monitoring, etc.)
+# Allow all tiers to reach private.googleapis.com for Google APIs
 gcloud compute firewall-rules create allow-google-apis-egress \
     --network=my-vpc \
     --direction=EGRESS \
@@ -226,6 +226,8 @@ gcloud compute firewall-rules create allow-google-apis-egress \
     --destination-ranges=199.36.153.8/30 \
     --priority=1000
 ```
+
+This Google APIs egress rule assumes you have configured Private Google Access and DNS so Google API hostnames resolve to `private.googleapis.com`.
 
 ## Step 5 - Allow SSH for Management
 
@@ -257,7 +259,7 @@ gcloud compute ssh web-server-1 --zone=us-central1-a \
 # Try to reach the database directly from the web tier (should fail)
 gcloud compute ssh web-server-1 --zone=us-central1-a \
     --command="nc -zv db-primary 5432 -w 3"
-# Expected: Connection refused or timeout
+# Expected: Timeout
 
 # From the app tier, reach the database (should work)
 gcloud compute ssh app-server-1 --zone=us-central1-a \
@@ -292,7 +294,7 @@ gcloud logging read 'resource.type="gce_subnetwork" AND jsonPayload.disposition=
 
 ## Using Service Accounts Instead of Tags
 
-For GKE workloads or for stronger identity, you can use service accounts instead of network tags in firewall rules.
+For Compute Engine workloads, including GKE nodes, or for stronger VM identity, you can use service accounts instead of network tags in firewall rules.
 
 ```bash
 # Create service accounts for each tier
@@ -313,7 +315,7 @@ gcloud compute firewall-rules create allow-web-to-app-sa \
     --priority=1000
 ```
 
-Service accounts provide a stronger identity than tags because tags can be modified by anyone with compute instance admin permissions, while service account assignment is controlled by IAM.
+Service accounts provide a stronger VM identity than tags because tags can be modified by anyone with compute instance admin permissions, while service account assignment is controlled by IAM. In GKE, VPC firewall rules that use service accounts apply to nodes, not individual Pods.
 
 ## Wrapping Up
 
