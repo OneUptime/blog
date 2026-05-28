@@ -16,7 +16,7 @@ Active Directory is deeply embedded in most enterprise environments. It handles 
 
 Cloud Identity is Google's identity platform. It manages user accounts, groups, and authentication for Google Cloud services. When a user logs into the GCP Console, uses gcloud CLI, or accesses any Google Workspace service, Cloud Identity handles the authentication.
 
-Cloud Identity is not a replacement for Active Directory in the traditional sense. It does not provide domain join, Group Policy Objects (GPOs), LDAP, or Kerberos authentication. It is the identity layer for GCP and Google services.
+Cloud Identity is not a replacement for Active Directory in the traditional sense. It does not provide domain join, Group Policy Objects (GPOs), or Kerberos authentication. Cloud Identity Premium can expose Google identities to LDAP-based applications through Secure LDAP, but it is not a drop-in replacement for AD Domain Services. It is the identity layer for GCP and Google services.
 
 ### Managed Microsoft AD
 
@@ -58,29 +58,19 @@ First, set up Google Cloud Directory Sync (GCDS):
 
 Configure the LDAP search rules for user sync:
 
-```xml
-<!-- GCDS user sync configuration example -->
-<!-- Search base for users -->
-<searchBase>OU=Users,DC=mycompany,DC=com</searchBase>
+```text
+# GCDS user sync settings in Configuration Manager
 
-<!-- LDAP filter to select which users to sync -->
-<userSearchFilter>
-  (&amp;(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
-</userSearchFilter>
+# Search base for users
+OU=Users,DC=mycompany,DC=com
 
-<!-- Attribute mapping -->
-<attributeMap>
-  <googleAttribute>primaryEmail</googleAttribute>
-  <adAttribute>mail</adAttribute>
-</attributeMap>
-<attributeMap>
-  <googleAttribute>name.givenName</googleAttribute>
-  <adAttribute>givenName</adAttribute>
-</attributeMap>
-<attributeMap>
-  <googleAttribute>name.familyName</googleAttribute>
-  <adAttribute>sn</adAttribute>
-</attributeMap>
+# LDAP filter to select which users to sync
+(&(objectCategory=person)(objectClass=user)(mail=*)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
+
+# Attribute mappings
+Primary email address: mail
+Given name: givenName
+Family name: sn
 ```
 
 For single sign-on, configure SAML federation so users authenticate with their existing AD credentials:
@@ -112,7 +102,8 @@ gcloud active-directory domains create mycompany.cloud \
 # Check the domain status
 gcloud active-directory domains describe mycompany.cloud
 
-# The admin password is shown during creation - save it securely
+# Set or reset the delegated administrator password and save it securely
+gcloud active-directory domains reset-admin-password mycompany.cloud
 ```
 
 Once the domain is created, you can join Windows VMs to it:
@@ -131,36 +122,29 @@ Get-WmiObject -Class Win32_ComputerSystem | Select-Object Domain
 
 ## Step 3 - Establish AD Trust
 
-If you need your on-premises AD and Managed Microsoft AD to work together (users from on-premises can access GCP resources and vice versa), create a trust relationship:
+If you need your on-premises AD and Managed Microsoft AD to work together (users from one AD domain can access domain-joined workloads or resources in the other), create a trust relationship:
 
 ```bash
 # Create a one-way or two-way trust between on-premises AD and Managed AD
 gcloud active-directory domains trusts create mycompany.cloud \
   --target-domain-name corp.mycompany.com \
   --target-dns-ip-addresses 10.1.0.5,10.1.0.6 \
-  --trust-direction BIDIRECTIONAL \
-  --trust-type FOREST \
-  --trust-handshake-secret "shared-secret"
+  --direction BIDIRECTIONAL \
+  --type FOREST \
+  --handshake-secret "shared-secret"
 ```
 
-On the on-premises side, create the corresponding trust:
+On the on-premises side, create the corresponding forest trust with Active Directory Domains and Trusts. First, configure conditional DNS forwarding for the Managed AD domain:
 
 ```powershell
 # On the on-premises AD domain controller
-# Create the forest trust to the Managed AD domain
-$trustPassword = ConvertTo-SecureString "shared-secret" -AsPlainText -Force
-
-New-ADTrust -Name "mycompany.cloud" `
-  -TrustType Forest `
-  -TrustDirection Bidirectional `
-  -RemoteDnsAddress "10.0.0.2","10.0.0.3" `
-  -TrustPassword $trustPassword
-
 # Configure conditional DNS forwarding for the Managed AD domain
 Add-DnsServerConditionalForwarderZone `
   -Name "mycompany.cloud" `
   -MasterServers 10.0.0.2,10.0.0.3
 ```
+
+Then, in Active Directory Domains and Trusts, create a new forest trust to `mycompany.cloud` using the same trust direction and handshake secret.
 
 ## Step 4 - Migrate Group Policies
 
@@ -229,6 +213,6 @@ Do not try to migrate everything at once. A phased approach reduces risk:
 - **DNS configuration** is the number one source of issues. Managed AD requires specific DNS forwarding rules, and incorrect DNS can break domain join and authentication.
 - **OU structure differences** between on-premises and Managed AD can complicate GPO migration. Plan your OU structure in Managed AD before migrating.
 - **Managed AD limitations.** You do not get Domain Admin access to Managed AD. Google manages the domain controllers. If you need full control, you might need to run self-managed AD on GCE VMs instead.
-- **Schema extensions** from on-premises AD may not be supported in Managed AD. If your applications depend on custom AD schema attributes, verify support before migrating.
+- **Schema extensions** in Managed AD are supported through LDIF files, but not every schema change is supported. If your applications depend on custom AD schema attributes, verify support before migrating.
 
 The migration from on-premises AD to Google Cloud is not a single step but a journey. Start with identity sync, add Managed AD for Windows workloads, and migrate applications incrementally. The trust relationship between on-premises and Managed AD lets both environments coexist during the transition.
