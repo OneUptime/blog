@@ -24,16 +24,16 @@ sequenceDiagram
     participant SA as GCP Service Account
     participant GCP as GCP Resources
 
-    AWS->>STS: GetCallerIdentity (signed request)
-    STS->>AWS: Signed AWS token
-    AWS->>WIF: Exchange AWS token
-    WIF->>WIF: Validate AWS token
+    AWS->>AWS: Create signed GetCallerIdentity request
+    AWS->>WIF: Exchange signed AWS request
+    WIF->>STS: Validate signed request
+    STS->>WIF: Caller identity
     WIF->>SA: Impersonate service account
     SA->>AWS: Short-lived GCP access token
     AWS->>GCP: Access resources
 ```
 
-The key insight is that GCP uses the AWS `GetCallerIdentity` API response as proof of identity. The AWS workload creates a signed request to STS, and GCP validates it against AWS's public endpoints.
+The key insight is that GCP uses a signed AWS `GetCallerIdentity` request as proof of identity. The AWS workload creates a signed request to STS, and GCP validates it against AWS's public endpoints.
 
 ## Step 1: Create the Workload Identity Pool
 
@@ -126,6 +126,7 @@ gcloud iam workload-identity-pools create-cred-config \
     "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/aws-pool/providers/aws-provider" \
     --service-account="aws-workload-sa@my-gcp-project.iam.gserviceaccount.com" \
     --aws \
+    --enable-imdsv2 \
     --output-file="/path/to/gcp-credentials.json"
 ```
 
@@ -144,6 +145,7 @@ The generated file looks something like this:
     "environment_id": "aws1",
     "region_url": "http://169.254.169.254/latest/meta-data/placement/availability-zone",
     "url": "http://169.254.169.254/latest/meta-data/iam/security-credentials",
+    "imdsv2_session_token_url": "http://169.254.169.254/latest/api/token",
     "regional_cred_verification_url": "https://sts.{region}.amazonaws.com?Action=GetCallerIdentity&Version=2011-06-15"
   }
 }
@@ -209,22 +211,7 @@ gcloud storage ls --project=my-gcp-project
 
 ## Step 6: Configure AWS IAM
 
-On the AWS side, the EC2 instance or Lambda function needs an IAM role with permission to call `sts:GetCallerIdentity`. This is included in most AWS policies by default, but verify:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "sts:GetCallerIdentity",
-      "Resource": "*"
-    }
-  ]
-}
-```
-
-For EC2 instances, attach this policy to the instance profile's role. For Lambda, attach it to the function's execution role.
+On the AWS side, the EC2 instance or Lambda function needs an IAM role so the Google client libraries can find AWS credentials. You don't need to add an IAM policy for `sts:GetCallerIdentity`; AWS allows this operation even without an explicit permission policy.
 
 ## Security Considerations
 
@@ -234,7 +221,7 @@ The attribute condition should restrict which AWS roles can authenticate:
 
 ```bash
 # Only allow specific AWS roles
---attribute-condition="assertion.arn == 'arn:aws:sts::123456789012:assumed-role/my-specific-role/'"
+--attribute-condition="attribute.aws_role == 'my-specific-role'"
 ```
 
 ### Use Separate Pools per Environment
