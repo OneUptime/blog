@@ -8,7 +8,7 @@ Description: Step-by-step instructions for setting up custom domains and SSL cer
 
 ---
 
-When you deploy an application to App Engine, it gets a default URL like `your-project.appspot.com`. That works fine for development and testing, but for production you want your own domain - something like `app.yourdomain.com`. Google App Engine makes this relatively painless, and it even provides free managed SSL certificates so your custom domain serves traffic over HTTPS automatically.
+When you deploy an application to App Engine, it gets a default URL like `your-project.REGION_ID.r.appspot.com` (or `your-project.appspot.com` for older apps created before February 2020). That works fine for development and testing, but for production you want your own domain - something like `app.yourdomain.com`. Google App Engine makes this relatively painless, and it even provides free managed SSL certificates so your custom domain serves traffic over HTTPS automatically.
 
 In this guide, I will walk through the entire process of mapping a custom domain to your App Engine application and getting SSL certificates set up properly.
 
@@ -19,7 +19,7 @@ Before starting, you need:
 - An App Engine application already deployed
 - A domain name you own (purchased through any registrar)
 - Access to your domain's DNS settings
-- Owner or Editor role on the Google Cloud project
+- App Engine Admin role, or another role with the required App Engine domain mapping permissions, on the Google Cloud project
 
 ## Step 1: Verify Domain Ownership
 
@@ -48,7 +48,7 @@ You have several options:
 
 - Map the bare domain (e.g., `yourdomain.com`)
 - Map a subdomain (e.g., `app.yourdomain.com`)
-- Map a wildcard (e.g., `*.yourdomain.com`)
+- Map a wildcard with a manual certificate (e.g., `*.yourdomain.com`)
 
 You can also do this from the command line using gcloud:
 
@@ -116,11 +116,11 @@ Name: @
 Value: 2001:4860:4802:38::15
 ```
 
-Add all of these records through your DNS provider. The more records you add, the better the redundancy and availability.
+Add all of the records that Google provides through your DNS provider.
 
 ## Step 4: SSL Certificate Provisioning
 
-Here is the good news: Google App Engine provides free managed SSL certificates through Let's Encrypt. Once your DNS records are properly configured and propagated, App Engine automatically provisions an SSL certificate for your custom domain.
+Here is the good news: Google App Engine provides free managed SSL certificates signed by either Google Trust Services or Let's Encrypt. Once your DNS records are properly configured and propagated, App Engine automatically provisions an SSL certificate for your custom domain.
 
 You can check the status of your SSL certificate:
 
@@ -131,11 +131,12 @@ gcloud app domain-mappings list --project=your-project-id
 
 The output shows each mapping along with its SSL certificate status. You will see one of these states:
 
-- `PENDING` - DNS is not yet propagated or certificate is being provisioned
-- `ACTIVE` - Certificate is issued and working
-- `FAILED_PERMANENTLY` - Something went wrong (usually a DNS misconfiguration)
+- `PENDING` - Certificate is being provisioned or renewed
+- `OK` - Certificate is issued and working
+- `FAILED_RETRYING_NOT_VISIBLE` - DNS records are not visible or are misconfigured, and App Engine will retry
+- `FAILED_PERMANENT` - Renewal attempts have failed permanently, usually because of a DNS misconfiguration
 
-If the certificate is stuck in `PENDING`, double-check your DNS records. The most common issue is a typo in the CNAME value or missing A records for bare domains.
+If the certificate is stuck in `PENDING` or `FAILED_RETRYING_NOT_VISIBLE`, double-check your DNS records. The most common issue is a typo in the CNAME value or missing A records for bare domains.
 
 ## Step 5: Enforcing HTTPS
 
@@ -210,6 +211,7 @@ Then update your domain mapping to use the custom certificate:
 ```bash
 # Update domain mapping to use the custom certificate
 gcloud app domain-mappings update yourdomain.com \
+  --certificate-management=manual \
   --certificate-id=YOUR_CERT_ID
 ```
 
@@ -227,21 +229,21 @@ dig app.yourdomain.com CNAME +short
 dig yourdomain.com A +short
 ```
 
-If you see the correct values in the dig output but the certificate is still pending, wait a few more hours. Google's certificate authority sometimes takes time to verify records.
+If you see the correct values in the dig output but the certificate is still pending, wait a few more hours. The certificate authority sometimes takes time to verify records.
 
 Another common issue is conflicting DNS records. If you have both an A record and a CNAME record for the same subdomain, the CNAME will not work. Remove any conflicting records.
 
-If your certificate enters `FAILED_PERMANENTLY` status, delete the domain mapping and recreate it:
+If your certificate enters `FAILED_PERMANENT` status, check your DNS settings and update the domain mapping to use managed SSL again:
 
 ```bash
-# Remove and recreate the domain mapping
-gcloud app domain-mappings delete app.yourdomain.com
-gcloud app domain-mappings create app.yourdomain.com
+# Re-enable managed SSL after fixing DNS
+gcloud app domain-mappings update app.yourdomain.com \
+  --certificate-management=automatic
 ```
 
 ## Certificate Renewal
 
-Managed SSL certificates renew automatically about 30 days before expiration. You do not need to do anything. However, renewal requires that your DNS records still point to App Engine. If you change your DNS records (for example, to point to a different service temporarily), the renewal will fail and your certificate will eventually expire.
+Managed SSL certificates renew automatically before expiration. You do not need to do anything. However, renewal requires that your DNS records still point to App Engine. If you change your DNS records (for example, to point to a different service temporarily), the renewal will fail and your certificate will eventually expire.
 
 ## Summary
 
