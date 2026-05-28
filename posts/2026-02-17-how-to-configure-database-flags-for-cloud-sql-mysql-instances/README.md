@@ -67,6 +67,11 @@ resource "google_sql_database_instance" "mysql" {
     }
 
     database_flags {
+      name  = "log_output"
+      value = "FILE"
+    }
+
+    database_flags {
       name  = "long_query_time"
       value = "2"
     }
@@ -137,8 +142,9 @@ Enable slow query logging to identify poorly performing queries:
 
 ```bash
 # Enable slow query logging for queries taking longer than 1 second
+# Use log_output=FILE to make the logs available in Cloud Logging
 gcloud sql instances patch my-mysql-instance \
-    --database-flags=slow_query_log=on,long_query_time=1
+    --database-flags=slow_query_log=on,log_output=FILE,long_query_time=1
 ```
 
 View slow queries in Cloud Logging:
@@ -146,7 +152,7 @@ View slow queries in Cloud Logging:
 ```bash
 # View slow queries from Cloud Logging
 gcloud logging read \
-    'resource.type="cloudsql_database" AND resource.labels.database_id="my-project:my-mysql-instance" AND textPayload:"slow query"' \
+    'resource.type="cloudsql_database" AND resource.labels.database_id="my-project:my-mysql-instance" AND logName="projects/my-project/logs/cloudsql.googleapis.com%2Fmysql-slow.log"' \
     --limit=20 \
     --format="table(timestamp, textPayload)"
 ```
@@ -170,11 +176,13 @@ SELECT
     query_time,
     lock_time,
     rows_examined,
-    CONVERT(sql_text USING utf8) AS sql_text
+    CONVERT(sql_text USING utf8mb4) AS sql_text
 FROM mysql.slow_log
 ORDER BY query_time DESC
 LIMIT 20;
 ```
+
+Use `TABLE` only temporarily for debugging. In Cloud SQL, table logs are not available in Logs Explorer, are not rotated automatically, and can consume significant disk space.
 
 ### general_log
 
@@ -209,20 +217,19 @@ gcloud sql instances patch my-mysql-instance \
 
 ### innodb_flush_log_at_trx_commit
 
-Controls how strictly InnoDB flushes the redo log:
+Controls how strictly InnoDB flushes the redo log. MySQL supports these values:
 
 - `1` (default): Flush and sync on every commit. Safest, slowest.
 - `2`: Flush on every commit but sync every second. Good trade-off.
 - `0`: Flush and sync every second. Fastest but risk of losing 1 second of data.
 
+Cloud SQL supports only `1` and `2` for this flag. Use the default `1` on primary, standalone, and HA instances for full durability and SLA coverage. Google recommends considering `2` only for read replicas when you need higher performance and accept reduced durability.
+
 ```bash
-# Set to 2 for better performance with slightly less durability
-# Only consider this if you have HA enabled for redundancy
+# Set to 2 on a read replica for better performance with reduced durability
 gcloud sql instances patch my-mysql-instance \
     --database-flags=innodb_flush_log_at_trx_commit=2
 ```
-
-For Cloud SQL with HA enabled, using `2` is a reasonable choice since the synchronous replication to the standby provides an additional safety net.
 
 ### innodb_io_capacity and innodb_io_capacity_max
 
@@ -274,12 +281,11 @@ Always use `utf8mb4` instead of `utf8` in MySQL. The `utf8` character set in MyS
 
 Some flags require an instance restart to take effect. Cloud SQL tells you after setting the flag. Common restart-required flags include:
 
-- `innodb_buffer_pool_size`
 - `innodb_log_file_size`
 - `lower_case_table_names`
 - `performance_schema`
 
-The restart happens automatically when you set the flag if it requires one.
+Changing `innodb_buffer_pool_size` requires a restart on Cloud SQL for MySQL 5.6, but not on newer MySQL versions. Cloud SQL might restart the instance when you set, remove, or modify a flag that requires it.
 
 ## Verifying Flags Are Applied
 
@@ -307,7 +313,7 @@ max_connections=300,\
 innodb_buffer_pool_size=10737418240,\
 slow_query_log=on,\
 long_query_time=1,\
-log_output=TABLE,\
+log_output=FILE,\
 wait_timeout=600,\
 interactive_timeout=600,\
 innodb_flush_log_at_trx_commit=1,\
