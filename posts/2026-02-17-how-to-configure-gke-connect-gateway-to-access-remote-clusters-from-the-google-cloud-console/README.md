@@ -10,7 +10,7 @@ Description: Learn how to set up GKE Connect Gateway to securely access register
 
 Managing Kubernetes clusters that sit behind firewalls, in private networks, or even in other clouds is a common challenge. Normally, you need a VPN, a bastion host, or direct network connectivity to run kubectl commands. GKE Connect Gateway eliminates that requirement by providing a secure, authenticated proxy through Google Cloud's infrastructure.
 
-With Connect Gateway, you can access any registered cluster from the Google Cloud Console, gcloud CLI, or kubectl - without needing direct network access to the cluster's API server. The connection goes through Google's network, authenticated with your Google Cloud identity.
+With Connect Gateway, you can access supported registered clusters from the Google Cloud Console, gcloud CLI, or kubectl - without needing direct network access to the cluster's API server. The connection goes through Google's network, authenticated with your Google Cloud identity.
 
 ## How Connect Gateway Works
 
@@ -24,7 +24,7 @@ graph LR
     D --> E[Kubernetes API Server]
 ```
 
-The Connect Agent runs inside your cluster and maintains an outbound connection to Google Cloud. When you send a kubectl command through Connect Gateway, it travels through Google's infrastructure to the Connect Agent, which forwards it to the cluster's API server. Since the agent initiates the outbound connection, you do not need to open any inbound firewall rules.
+For clusters outside Google Cloud, the Connect Agent runs inside your cluster and maintains an outbound connection to Google Cloud. When you send a kubectl command through Connect Gateway, it travels through Google's infrastructure to the Connect Agent, which forwards it to the cluster's API server. For GKE clusters on Google Cloud, Connect Gateway connects to the GKE cluster directly and the Connect Agent is not required. Since external clusters initiate the outbound connection, you do not need to open inbound firewall rules to their API servers.
 
 ## Prerequisites
 
@@ -37,12 +37,12 @@ You need:
 Enable the required APIs:
 
 ```bash
-# Enable the Connect Gateway API
-
-gcloud services enable connectgateway.googleapis.com
-
-# Enable the GKE Hub API if not already enabled
-gcloud services enable gkehub.googleapis.com
+# Enable the Connect Gateway API and required dependencies
+gcloud services enable \
+  connectgateway.googleapis.com \
+  gkeconnect.googleapis.com \
+  gkehub.googleapis.com \
+  cloudresourcemanager.googleapis.com
 ```
 
 ## Registering a Cluster
@@ -56,7 +56,7 @@ gcloud container clusters update my-cluster \
   --fleet-project=my-project
 ```
 
-For non-GKE clusters (EKS, AKS, on-premises), you need to install the Connect Agent:
+For third-party Kubernetes clusters, you need to install the Connect Agent. For EKS and AKS clusters that you manage as GKE attached clusters, use the attached cluster registration commands instead.
 
 ```bash
 # Register an external cluster with the fleet
@@ -76,7 +76,7 @@ gcloud container fleet memberships list --project=my-project
 
 ## Granting Connect Gateway Access
 
-Users need IAM roles to access clusters through Connect Gateway. The key role is `roles/gkehub.gatewayEditor` for read-write access or `roles/gkehub.gatewayReader` for read-only access.
+Users need IAM roles to access clusters through Connect Gateway. For `kubectl` access, users need a Connect Gateway role such as `roles/gkehub.gatewayAdmin`, `roles/gkehub.gatewayEditor`, or `roles/gkehub.gatewayReader`, and they also need `roles/gkehub.viewer` to retrieve the gateway kubeconfig. The `roles/gkehub.gatewayAdmin` role is required for streaming commands such as `kubectl exec`, `kubectl cp`, `kubectl attach`, and `kubectl port-forward`.
 
 Grant access to a user:
 
@@ -85,6 +85,10 @@ Grant access to a user:
 gcloud projects add-iam-policy-binding my-project \
   --member="user:developer@example.com" \
   --role="roles/gkehub.gatewayEditor"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="user:developer@example.com" \
+  --role="roles/gkehub.viewer"
 ```
 
 Grant access to a group:
@@ -94,16 +98,43 @@ Grant access to a group:
 gcloud projects add-iam-policy-binding my-project \
   --member="group:k8s-admins@example.com" \
   --role="roles/gkehub.gatewayEditor"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="group:k8s-admins@example.com" \
+  --role="roles/gkehub.viewer"
 ```
 
 ## Setting Up RBAC on the Cluster
 
-IAM controls who can access the gateway, but Kubernetes RBAC controls what they can do once connected. You need to create RBAC bindings on the cluster that map Google identities to Kubernetes permissions.
+IAM controls who can access the gateway, but Kubernetes RBAC controls what they can do once connected. You need to create RBAC bindings on the cluster that map Google identities to Kubernetes permissions. For requests that go through the Connect Agent, you also need an impersonation policy that lets the Connect Agent send requests to the Kubernetes API server on behalf of the user.
 
 Grant cluster-admin to a specific user:
 
 ```yaml
 # rbac.yaml - Map a Google identity to cluster-admin role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gateway-impersonate
+rules:
+  - apiGroups: [""]
+    resources: ["users"]
+    resourceNames: ["developer@example.com"]
+    verbs: ["impersonate"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gateway-impersonate
+subjects:
+  - kind: ServiceAccount
+    name: connect-agent-sa
+    namespace: gke-connect
+roleRef:
+  kind: ClusterRole
+  name: gateway-impersonate
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -119,7 +150,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-For more restrictive access, create a custom role:
+For more restrictive access, keep the impersonation policy from the previous example and bind the user to a custom role:
 
 ```yaml
 # custom-rbac.yaml - Limited access through Connect Gateway
@@ -140,8 +171,8 @@ kind: ClusterRoleBinding
 metadata:
   name: gateway-viewers
 subjects:
-  - kind: Group
-    name: developers@example.com
+  - kind: User
+    name: developer@example.com
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -149,7 +180,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-Apply the RBAC configuration:
+Apply the RBAC configuration. If you want to authorize by Google Group membership instead of individual users, configure Connect Gateway Google Groups support first, then bind the group identity in Kubernetes RBAC.
 
 ```bash
 kubectl apply -f rbac.yaml
@@ -190,7 +221,7 @@ The Console provides a visual interface for viewing pods, services, logs, and ev
 
 Connect Gateway is particularly useful for private GKE clusters where the API server has no public endpoint. Without Connect Gateway, you would need a bastion host or VPN to access the cluster.
 
-For private clusters, Connect Gateway works out of the box because the Connect Agent inside the cluster makes outbound connections to Google. It does not need an inbound path to the API server.
+For private GKE clusters on Google Cloud, Connect Gateway can connect without requiring your client machine to have direct network access to the private control plane endpoint. For clusters outside Google Cloud, the Connect Agent's outbound connection provides the path back to the cluster API server.
 
 ```bash
 # Even for a private cluster, this works through Connect Gateway
@@ -231,7 +262,7 @@ Check the audit logs for Connect Gateway activity:
 ```bash
 # View Connect Gateway audit logs
 gcloud logging read \
-  'resource.type="k8s_cluster" AND protoPayload.authenticationInfo.principalEmail!=""' \
+  'protoPayload.serviceName="connectgateway.googleapis.com" AND protoPayload.authenticationInfo.principalEmail!=""' \
   --limit=20 \
   --project=my-project
 ```
@@ -245,6 +276,12 @@ Set up Connect Gateway access with Terraform:
 resource "google_project_iam_member" "gateway_access" {
   project = "my-project"
   role    = "roles/gkehub.gatewayEditor"
+  member  = "group:k8s-admins@example.com"
+}
+
+resource "google_project_iam_member" "fleet_viewer" {
+  project = "my-project"
+  role    = "roles/gkehub.viewer"
   member  = "group:k8s-admins@example.com"
 }
 
@@ -265,10 +302,10 @@ resource "google_gke_hub_membership" "cluster" {
 
 If Connect Gateway is not working:
 
-First, check that the Connect Agent is healthy:
+First, check that the Connect Agent is healthy if the cluster uses one:
 
 ```bash
-# Check the Connect Agent pods (if using a GKE cluster)
+# Check the Connect Agent pods (for clusters with the Connect Agent installed)
 kubectl get pods -n gke-connect
 ```
 
@@ -281,6 +318,6 @@ gcloud container fleet memberships describe my-cluster \
   --format="yaml(state)"
 ```
 
-Third, make sure the cluster can reach Google Cloud APIs. The Connect Agent needs outbound HTTPS access to `connectgateway.googleapis.com` and `gkeconnect.googleapis.com`.
+Third, make sure the cluster can reach Google Cloud APIs. Clusters with the Connect Agent need outbound HTTPS access to `gkeconnect.googleapis.com`, and Connect Gateway clients need the `connectgateway.googleapis.com` API enabled in the fleet host project.
 
 Connect Gateway turns cluster access from a networking problem into an identity problem. Instead of managing VPNs, firewall rules, and bastion hosts, you manage IAM roles and RBAC bindings. That is a much simpler model, especially when you have clusters in multiple environments.
