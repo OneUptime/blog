@@ -50,7 +50,8 @@ Using the Firebase CLI with `firestore.indexes.json`:
     {
       "collectionGroup": "sessions",
       "fieldPath": "expireAt",
-      "ttl": true
+      "ttl": true,
+      "indexes": []
     }
   ]
 }
@@ -63,11 +64,11 @@ Then deploy the configuration:
 firebase deploy --only firestore
 ```
 
-You can also set it up in the Google Cloud Console by navigating to Firestore, clicking on the "TTL" tab, and adding a new policy.
+You can also set it up in the Google Cloud Console by going to the Firestore Databases page, selecting your database, clicking "Time-to-live", and adding a new policy.
 
 ## Writing Documents with Expiration
 
-Once the TTL policy is in place, you just need to make sure your documents have the right timestamp field. The field must be a Firestore Timestamp type (not a string, not a number).
+Once the TTL policy is in place, you just need to make sure your documents have the right timestamp field. For Firestore Standard edition databases, the field must be a Firestore Timestamp type (not a string, not a number).
 
 ```javascript
 // Create a session document that expires in 24 hours
@@ -225,7 +226,7 @@ TTL deletions count toward your Firestore delete costs. If you have millions of 
 
 Only one TTL policy can be active per collection group. You cannot have two different TTL fields on the same collection.
 
-The TTL field must contain a Timestamp value. Documents where the TTL field is missing, null, or a non-timestamp type are simply ignored by the TTL policy - they will not be deleted.
+For Firestore Standard edition databases, the TTL field must contain a Timestamp value. Documents where the TTL field is missing, null, or a non-timestamp type are simply ignored by the TTL policy - they will not be deleted. Firestore Enterprise edition databases can also use an array containing a Date and time value as the TTL field value.
 
 ## Wrapping Up
 
