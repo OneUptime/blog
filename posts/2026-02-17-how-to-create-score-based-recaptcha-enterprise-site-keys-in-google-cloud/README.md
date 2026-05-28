@@ -27,7 +27,8 @@ Score-based keys are what most teams want. They do not interrupt the user experi
 - A GCP project with billing enabled
 - reCAPTCHA Enterprise API enabled
 - A web application where you want to add bot protection
-- The reCAPTCHA Enterprise Admin role
+- The reCAPTCHA Enterprise Admin role for managing keys
+- The reCAPTCHA Enterprise Agent role for creating and annotating assessments
 
 ## Step 1: Enable the reCAPTCHA Enterprise API
 
@@ -46,14 +47,14 @@ You can create the key via `gcloud`, the API, or the console. Here is the `gclou
 gcloud recaptcha keys create \
   --display-name="My Website Score Key" \
   --web \
-  --integration-type=SCORE \
+  --integration-type=score \
   --domains="example.com,www.example.com,staging.example.com" \
   --project=PROJECT_ID
 ```
 
 The `--domains` flag restricts where this key can be used. Only requests from those domains will be accepted. For development, you might want to add `localhost` as well.
 
-The command outputs a key ID that looks something like `6Ld_example_key_here`. Save this - you will need it for both frontend and backend integration.
+The command outputs a key ID that looks something like `6Lcm3XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5mfX`. Save this - you will need it for both frontend and backend integration.
 
 ## Step 3: Add reCAPTCHA Enterprise to Your Frontend
 
@@ -136,10 +137,12 @@ def verify_recaptcha(project_id, site_key, token, action, user_ip=None):
 
     print(f"Score: {score}")
     print(f"Reasons: {reasons}")
+    print(f"Assessment name: {response.name}")
 
     return {
         "score": score,
         "reasons": reasons,
+        "assessment_name": response.name,
         "valid": True,
     }
 
