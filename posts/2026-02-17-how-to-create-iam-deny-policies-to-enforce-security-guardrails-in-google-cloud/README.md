@@ -43,12 +43,10 @@ A deny policy has three main components:
 
 ## Step 2: Create a Deny Policy to Prevent Public Bucket Creation
 
-One of the most common security guardrails is preventing Cloud Storage buckets from being made publicly accessible:
+One of the most common security guardrails is controlling who can change Cloud Storage bucket IAM policies. If you need to block public access completely, use Cloud Storage Public Access Prevention; IAM deny policies can restrict who is allowed to change bucket IAM policies:
 
 ```bash
-# Create a deny policy that prevents making GCS buckets public
-
-# This blocks setting allUsers or allAuthenticatedUsers on any bucket
+# Create a deny policy that restricts who can change GCS bucket IAM policies
 gcloud iam policies create prevent-public-buckets \
     --attachment-point="cloudresourcemanager.googleapis.com/organizations/ORG_ID" \
     --kind=denypolicies \
@@ -59,32 +57,7 @@ The policy file:
 
 ```json
 {
-  "displayName": "Prevent Public GCS Buckets",
-  "rules": [
-    {
-      "denyRule": {
-        "deniedPrincipals": [
-          "principalSet://goog/public:all"
-        ],
-        "deniedPermissions": [
-          "storage.objects.get",
-          "storage.objects.list"
-        ],
-        "denialCondition": {
-          "title": "Block public access to storage",
-          "expression": "true"
-        }
-      }
-    }
-  ]
-}
-```
-
-Actually, let me show the correct approach - you want to deny the ability to grant public access, not deny public access itself. Here is the right way:
-
-```json
-{
-  "displayName": "Prevent Granting Public Access to GCS",
+  "displayName": "Restrict GCS Bucket IAM Changes",
   "rules": [
     {
       "denyRule": {
@@ -120,7 +93,7 @@ Service account keys are a major security risk. Deny their creation organization
           "iam.googleapis.com/serviceAccountKeys.create"
         ],
         "exceptionPrincipals": [
-          "principal://goog/sa/breakglass-sa@my-project.iam.gserviceaccount.com"
+          "principal://iam.googleapis.com/projects/-/serviceAccounts/breakglass-sa@my-project.iam.gserviceaccount.com"
         ]
       }
     }
@@ -154,7 +127,7 @@ Protect production resources from accidental or malicious deletion:
         "deniedPermissions": [
           "compute.googleapis.com/instances.delete",
           "compute.googleapis.com/disks.delete",
-          "sqladmin.googleapis.com/instances.delete",
+          "cloudsql.googleapis.com/instances.delete",
           "container.googleapis.com/clusters.delete"
         ],
         "exceptionPrincipals": [
@@ -162,7 +135,7 @@ Protect production resources from accidental or malicious deletion:
         ],
         "denialCondition": {
           "title": "Only deny in production projects",
-          "expression": "resource.matchTag('env', 'production')"
+          "expression": "resource.matchTag('123456789012/env', 'production')"
         }
       }
     }
@@ -170,7 +143,7 @@ Protect production resources from accidental or malicious deletion:
 }
 ```
 
-This deny policy uses a condition to only apply in projects tagged as production. Developers can still delete resources in development and staging projects.
+This deny policy uses a condition to only apply in projects tagged as production. Replace `123456789012/env` with the namespaced name of your tag key. Developers can still delete resources in development and staging projects.
 
 ```bash
 # Apply the deny policy
@@ -194,11 +167,11 @@ Lock down who can modify IAM policies on your most sensitive projects:
           "principalSet://goog/public:all"
         ],
         "deniedPermissions": [
-          "resourcemanager.googleapis.com/projects.setIamPolicy"
+          "cloudresourcemanager.googleapis.com/projects.setIamPolicy"
         ],
         "exceptionPrincipals": [
           "principalSet://goog/group/security-admins@example.com",
-          "principal://goog/sa/terraform-security@security-project.iam.gserviceaccount.com"
+          "principal://iam.googleapis.com/projects/-/serviceAccounts/terraform-security@security-project.iam.gserviceaccount.com"
         ]
       }
     }
@@ -214,13 +187,13 @@ gcloud iam policies create lock-security-iam \
     --policy-file=deny-iam-changes.json
 ```
 
-## Step 6: Block External Sharing
+## Step 6: Restrict Sharing Policy Changes
 
-Prevent resources from being shared with external identities:
+Deny policies cannot inspect the members being added to an allow policy, so they cannot directly block only external identities. Use domain restricted sharing with Organization Policy for that. With IAM deny policies, you can restrict who is allowed to change sharing policies at all:
 
 ```json
 {
-  "displayName": "Block External Identity Access",
+  "displayName": "Restrict Sharing Policy Changes",
   "rules": [
     {
       "denyRule": {
@@ -228,14 +201,13 @@ Prevent resources from being shared with external identities:
           "principalSet://goog/public:all"
         ],
         "deniedPermissions": [
-          "resourcemanager.googleapis.com/projects.setIamPolicy",
+          "cloudresourcemanager.googleapis.com/projects.setIamPolicy",
           "storage.googleapis.com/buckets.setIamPolicy",
-          "bigquery.googleapis.com/datasets.update"
+          "bigquery.googleapis.com/datasets.setIamPolicy"
         ],
-        "denialCondition": {
-          "title": "Block granting access to external domains",
-          "expression": "api.getAttribute('iam.googleapis.com/modifiedGrantsByRole', []).exists(role, role.contains('user:') && !role.endsWith('@example.com'))"
-        }
+        "exceptionPrincipals": [
+          "principalSet://goog/group/security-admins@example.com"
+        ]
       }
     }
   ]
