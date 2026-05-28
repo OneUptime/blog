@@ -36,13 +36,13 @@ The stitcher modifies the HLS/DASH manifest to replace content segments with ad 
 
 ## Prerequisites
 
-- GCP project with Video Stitcher API enabled
+- GCP project with access to the Video Stitcher API
 - A live stream source (from Live Stream API or external)
 - An ad decision server (Google Ad Manager, SpotX, FreeWheel, or a custom VAST endpoint)
-- Cloud Storage bucket for slate content
+- Public HTTP(S) URI for slate content
 
 ```bash
-# Enable the API
+# Enable the API after access has been granted
 
 gcloud services enable videostitcher.googleapis.com
 
@@ -67,7 +67,7 @@ def create_slate(project_id, location, slate_id, slate_uri):
         project_id: GCP project ID
         location: API location
         slate_id: Unique ID for this slate
-        slate_uri: GCS path to the slate video
+        slate_uri: URI of an MP4 slate video with at least one audio track
     """
 
     client = stitcher_v1.VideoStitcherServiceClient()
@@ -91,7 +91,7 @@ create_slate(
     project_id="your-project",
     location="us-central1",
     slate_id="default-slate",
-    slate_uri="gs://your-bucket/slates/break-slate.mp4",
+    slate_uri="https://storage.googleapis.com/your-bucket/slates/break-slate.mp4",
 )
 ```
 
@@ -101,7 +101,7 @@ If your content is served through a CDN with signed URLs, register the CDN key s
 
 ```python
 def create_cdn_key(project_id, location, cdn_key_id, hostname, key_name, private_key):
-    """Registers a CDN key for Media CDN or Akamai.
+    """Registers a CDN key for Media CDN.
     This allows the stitcher to sign URLs for ad and content segments."""
 
     client = stitcher_v1.VideoStitcherServiceClient()
@@ -176,7 +176,7 @@ create_live_config(
     location="us-central1",
     config_id="my-live-config",
     stream_uri="https://storage.googleapis.com/your-bucket/live-output/main.m3u8",
-    ad_tag_uri="https://your-ad-server.com/vast?duration=[dur]&pod=[podnum]",
+    ad_tag_uri="https://your-ad-server.com/vast?segment=[user_segment]&geo=[geo]",
     slate_name="projects/your-project/locations/us-central1/slates/default-slate",
 )
 ```
@@ -269,8 +269,7 @@ The stitcher provides ad tracking data through sessions:
 
 ```python
 def get_ad_tracking_data(project_id, location, session_name):
-    """Retrieves ad tracking data for a live session.
-    Shows which ads were played and their completion rates."""
+    """Retrieves ad tag request metadata for a live session."""
 
     client = stitcher_v1.VideoStitcherServiceClient()
 
@@ -284,7 +283,8 @@ def get_ad_tracking_data(project_id, location, session_name):
         for ad_request in detail.ad_requests:
             print(f"  URI: {ad_request.uri}")
             if ad_request.response_metadata:
-                print(f"  Ad count: {ad_request.response_metadata.ad_count}")
+                print(f"  Status: {ad_request.response_metadata.status_code}")
+                print(f"  Response size: {ad_request.response_metadata.size_bytes} bytes")
 ```
 
 ## Integration with Your Player
