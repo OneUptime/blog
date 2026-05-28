@@ -8,7 +8,7 @@ Description: Learn how to create context-aware access policies using Access Cont
 
 ---
 
-Context-aware access is the core mechanism that makes BeyondCorp Enterprise more than just identity verification. Instead of a simple "is this user allowed?" check, context-aware policies evaluate multiple signals: who the user is, what device they are using, where they are connecting from, and what time it is. Only when all conditions are satisfied does access get granted.
+Context-aware access is the core mechanism that makes BeyondCorp Enterprise more than just identity verification. Instead of a simple "is this user allowed?" check, context-aware policies evaluate multiple signals: who the user is, what device they are using, where they are connecting from, and what time it is. Access is granted only when the configured policy logic is satisfied.
 
 This guide covers creating, combining, and applying context-aware access policies using Access Context Manager.
 
@@ -62,7 +62,7 @@ The simplest access level is network-based. Allow access only from specific IP r
 
 ```bash
 # Create the access level
-gcloud access-context-manager levels create corp-network \
+gcloud access-context-manager levels create corp_network \
   --title="Corporate Network" \
   --basic-level-spec=corp-network-spec.yaml \
   --policy=POLICY_NUMBER
@@ -89,7 +89,7 @@ Device policies check the security posture of the connecting device.
 
 ```bash
 # Create the device-based access level
-gcloud access-context-manager levels create managed-device \
+gcloud access-context-manager levels create managed_device \
   --title="Managed Encrypted Device" \
   --basic-level-spec=managed-device-spec.yaml \
   --policy=POLICY_NUMBER
@@ -106,7 +106,7 @@ You can also require company-owned devices specifically.
     allowedEncryptionStatuses:
       - ENCRYPTED
     allowedDeviceManagementLevels:
-      - ADVANCED
+      - COMPLETE
 ```
 
 ## Creating Geographic Access Levels
@@ -123,7 +123,7 @@ Restrict access to specific geographic regions.
 
 ```bash
 # Create the geographic access level
-gcloud access-context-manager levels create allowed-regions \
+gcloud access-context-manager levels create allowed_regions \
   --title="US and Canada Only" \
   --basic-level-spec=allowed-regions-spec.yaml \
   --policy=POLICY_NUMBER
@@ -146,6 +146,14 @@ A single access level with multiple conditions uses AND logic by default. All co
     - "US"
 ```
 
+```bash
+# Create the strict access level
+gcloud access-context-manager levels create strict_access \
+  --title="Strict Access" \
+  --basic-level-spec=strict-access-spec.yaml \
+  --policy=POLICY_NUMBER
+```
+
 ## Combining Conditions with OR Logic
 
 For OR logic between different condition sets, use multiple entries in the spec.
@@ -166,7 +174,7 @@ When creating the access level with OR logic, set the combining function.
 
 ```bash
 # Create an access level with OR combining logic
-gcloud access-context-manager levels create flexible-access \
+gcloud access-context-manager levels create flexible_access \
   --title="Corp Network OR Managed Device" \
   --basic-level-spec=flexible-access-spec.yaml \
   --combine-function=OR \
@@ -179,7 +187,7 @@ For complex logic that basic access levels cannot express, use Custom Access Lev
 
 ```bash
 # Create a custom access level using CEL
-gcloud access-context-manager levels create custom-time-based \
+gcloud access-context-manager levels create custom_time_based \
   --title="Business Hours from Corporate Network" \
   --custom-level-spec=custom-spec.yaml \
   --policy=POLICY_NUMBER
@@ -212,10 +220,10 @@ You can reference other access levels within a custom CEL expression, building h
 
 ```yaml
 # premium-access-spec.yaml
-# Requires both the managed-device level AND the corp-network level
+# Requires both the managed_device level AND the corp_network level
 expression: |
-  "accessPolicies/POLICY_NUMBER/accessLevels/managed-device" in request.auth.access_levels &&
-  "accessPolicies/POLICY_NUMBER/accessLevels/corp-network" in request.auth.access_levels
+  levels.managed_device &&
+  levels.corp_network
 ```
 
 ## Applying Access Levels to IAP Resources
@@ -229,7 +237,7 @@ gcloud iap web add-iam-policy-binding \
   --service=my-web-app \
   --member="group:developers@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/managed-device\" in request.auth.access_levels,title=Require Managed Device" \
+  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/managed_device\" in request.auth.access_levels,title=Require Managed Device" \
   --project=my-project-id
 ```
 
@@ -242,7 +250,7 @@ gcloud iap web add-iam-policy-binding \
   --service=my-admin-panel \
   --member="group:admins@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/strict-access\" in request.auth.access_levels,title=Strict Access for Admins" \
+  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/strict_access\" in request.auth.access_levels,title=Strict Access for Admins" \
   --project=my-project-id
 
 # Regular users just need a managed device
@@ -251,7 +259,7 @@ gcloud iap web add-iam-policy-binding \
   --service=my-web-app \
   --member="group:all-staff@example.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/managed-device\" in request.auth.access_levels,title=Require Managed Device" \
+  --condition="expression=\"accessPolicies/POLICY_NUMBER/accessLevels/managed_device\" in request.auth.access_levels,title=Require Managed Device" \
   --project=my-project-id
 ```
 
@@ -264,12 +272,13 @@ Before applying access levels to production resources, test them.
 gcloud access-context-manager levels list --policy=POLICY_NUMBER
 
 # Describe a specific access level to verify its configuration
-gcloud access-context-manager levels describe managed-device \
+gcloud access-context-manager levels describe managed_device \
   --policy=POLICY_NUMBER
 
-# Test an access level evaluation (dry run)
-gcloud access-context-manager levels test-iam-permissions \
-  --policy=POLICY_NUMBER
+# Lint an IAM condition expression before adding it to a binding
+gcloud alpha iam policies lint-condition \
+  --expression="\"accessPolicies/POLICY_NUMBER/accessLevels/managed_device\" in request.auth.access_levels" \
+  --title="Require Managed Device"
 ```
 
 ## Tiered Access Strategy
@@ -305,7 +314,7 @@ Track how access levels are being evaluated in production.
 gcloud logging read \
   'resource.type="audited_resource" AND
    protoPayload.serviceName="iap.googleapis.com" AND
-   protoPayload.methodName="AuthorizeUser"' \
+   protoPayload.authorizationInfo.permission="iap.webServiceVersions.accessViaIAP"' \
   --project=my-project-id \
   --limit=20 \
   --format="table(timestamp,protoPayload.authenticationInfo.principalEmail,protoPayload.authorizationInfo[0].granted)"
