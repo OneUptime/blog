@@ -27,10 +27,13 @@ Not every load balancer in GCP requires one. Here is the breakdown:
 - **Regional internal application load balancer** - Yes, requires a proxy-only subnet
 - **Regional external application load balancer** - Yes, requires a proxy-only subnet
 - **Cross-region internal application load balancer** - Yes, requires a proxy-only subnet
+- **Regional internal proxy Network Load Balancer** - Yes, requires a proxy-only subnet
+- **Regional external proxy Network Load Balancer** - Yes, requires a proxy-only subnet
+- **Cross-region internal proxy Network Load Balancer** - Yes, requires a proxy-only subnet
 - **Global external application load balancer** - No, does not need one
 - **External passthrough network load balancer** - No, does not need one
 - **Internal passthrough network load balancer** - No, does not need one
-- **TCP/SSL proxy load balancer** - No, does not need one
+- **Global external proxy Network Load Balancer and classic proxy Network Load Balancer** - No, do not need one
 
 The general rule: if it is Envoy-based and regional (or cross-region internal), it needs a proxy-only subnet.
 
@@ -40,10 +43,10 @@ The proxy-only subnet needs enough IP addresses for the Envoy proxy fleet. Googl
 
 Key planning considerations:
 
-- One proxy-only subnet per region per VPC network
-- All Envoy-based load balancers in the same region share the subnet
+- One active proxy-only subnet per purpose, region, and VPC network
+- Envoy-based load balancers in the same region and VPC share the subnet for the matching purpose
 - The CIDR range must not overlap with other subnets in your VPC
-- You cannot resize a proxy-only subnet after creation (you would need to delete and recreate it)
+- You cannot expand a proxy-only subnet in place like a regular subnet; you need to replace it with a new proxy-only subnet
 
 ## Step 2: Create the Proxy-Only Subnet
 
@@ -116,7 +119,7 @@ gcloud compute firewall-rules create allow-proxy-to-backends \
     --rules=tcp:80,tcp:443,tcp:8080
 ```
 
-This is a step that people frequently forget. Without this firewall rule, the load balancer will report all backends as unhealthy because the health check probes (which also come from the proxy subnet in some configurations) cannot reach them.
+This is a step that people frequently forget. Without this firewall rule, the load balancer cannot send proxied traffic to your backends.
 
 Also, do not forget to allow Google's health check IP ranges:
 
@@ -181,7 +184,7 @@ resource "google_compute_subnetwork" "proxy_only" {
 
 ## Switching Between Active and Backup Roles
 
-Proxy-only subnets support ACTIVE and BACKUP roles. The BACKUP role is useful during migrations. If you need to change the CIDR range of a proxy-only subnet, you can create a new one with the BACKUP role, then swap:
+Proxy-only subnets support ACTIVE and BACKUP roles. The BACKUP role is useful during migrations. If you need to change the CIDR range of a proxy-only subnet, you can create a new one with the BACKUP role, update your backend firewall rule to allow both ranges during the migration, then promote the new subnet:
 
 ```bash
 # Create a new proxy-only subnet with BACKUP role
@@ -192,20 +195,20 @@ gcloud compute networks subnets create proxy-only-subnet-new \
     --region=us-central1 \
     --range=10.135.0.0/23
 
-# Swap the old one to BACKUP
-gcloud compute networks subnets update proxy-only-subnet \
-    --region=us-central1 \
-    --role=BACKUP
+# Allow both the old and new proxy-only subnet ranges during migration
+gcloud compute firewall-rules update allow-proxy-to-backends \
+    --source-ranges=10.129.0.0/23,10.135.0.0/23
 
-# Promote the new one to ACTIVE
+# Promote the new one to ACTIVE; Google Cloud automatically changes the old one to BACKUP
 gcloud compute networks subnets update proxy-only-subnet-new \
     --region=us-central1 \
-    --role=ACTIVE
+    --role=ACTIVE \
+    --drain-timeout=300s
 ```
 
 ## Common Mistakes
 
-**Forgetting the firewall rule for proxy traffic**: This is the number one issue. Without a firewall rule allowing traffic from the proxy-only subnet CIDR to your backends, everything looks correctly configured but all backends show as unhealthy.
+**Forgetting the firewall rule for proxy traffic**: This is the number one issue. Without a firewall rule allowing traffic from the proxy-only subnet CIDR to your backends, everything looks correctly configured but proxied traffic cannot reach your backends.
 
 **Using the wrong purpose**: `REGIONAL_MANAGED_PROXY` is for regional load balancers, `GLOBAL_MANAGED_PROXY` is for cross-region internal load balancers. Using the wrong one will cause load balancer creation to fail.
 
@@ -215,4 +218,4 @@ gcloud compute networks subnets update proxy-only-subnet-new \
 
 ## Wrapping Up
 
-Proxy-only subnets are a prerequisite for Envoy-based load balancers in GCP. While the concept might seem unusual if you are coming from other cloud providers, the setup is straightforward: create the subnet with the right purpose and role, set up your firewall rules to allow traffic from the subnet to your backends, and you are good to go. Remember that you only need one per region per VPC, and it is shared across all Envoy-based load balancers in that region.
+Proxy-only subnets are a prerequisite for Envoy-based load balancers in GCP. While the concept might seem unusual if you are coming from other cloud providers, the setup is straightforward: create the subnet with the right purpose and role, set up your firewall rules to allow traffic from the subnet to your backends, and you are good to go. Remember that you only need one active subnet per purpose, region, and VPC, and it is shared across the matching Envoy-based load balancers in that region.
