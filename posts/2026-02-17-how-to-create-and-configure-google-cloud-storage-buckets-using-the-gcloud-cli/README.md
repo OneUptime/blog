@@ -108,10 +108,12 @@ gcloud storage buckets update gs://my-existing-bucket \
 Labels help you organize buckets and track costs across teams or environments.
 
 ```bash
-# Create a bucket with labels for cost tracking and organization
+# Create a bucket, then add labels for cost tracking and organization
 gcloud storage buckets create gs://my-labeled-bucket \
-  --location=us-central1 \
-  --labels=environment=production,team=backend,cost-center=eng
+  --location=us-central1
+
+gcloud storage buckets update gs://my-labeled-bucket \
+  --update-labels=environment=production,team=backend,cost-center=eng
 ```
 
 You can update labels later:
@@ -213,8 +215,11 @@ Here is a complete example that creates a production-ready bucket with several b
 gcloud storage buckets create gs://myapp-prod-assets-2026 \
   --location=us-central1 \
   --default-storage-class=STANDARD \
-  --uniform-bucket-level-access \
-  --labels=environment=production,team=platform,managed-by=gcloud \
+  --uniform-bucket-level-access
+
+# Set labels and enable versioning
+gcloud storage buckets update gs://myapp-prod-assets-2026 \
+  --update-labels=environment=production,team=platform,managed-by=gcloud \
   --versioning
 
 # Apply lifecycle rules to manage costs automatically
@@ -242,17 +247,21 @@ for ENV in "${ENVIRONMENTS[@]}"; do
 
   echo "Creating bucket: ${BUCKET_NAME}"
 
-  # Create bucket with environment-specific labels
+  # Create bucket
   gcloud storage buckets create "${BUCKET_NAME}" \
     --location="${REGION}" \
     --default-storage-class=STANDARD \
     --uniform-bucket-level-access \
-    --labels=environment="${ENV}",managed-by=automation \
+    --project="${PROJECT}"
+
+  # Add environment-specific labels
+  gcloud storage buckets update "${BUCKET_NAME}" \
+    --update-labels="environment=${ENV},managed-by=automation" \
     --project="${PROJECT}"
 
   # Enable versioning for production only
   if [ "${ENV}" = "production" ]; then
-    gcloud storage buckets update "${BUCKET_NAME}" --versioning
+    gcloud storage buckets update "${BUCKET_NAME}" --versioning --project="${PROJECT}"
   fi
 done
 ```
@@ -262,8 +271,8 @@ done
 When you need to clean up, remember that a bucket must be empty before deletion:
 
 ```bash
-# Remove all objects from a bucket (careful with this)
-gcloud storage rm gs://my-test-bucket/**
+# Remove all objects and object versions from a bucket (careful with this)
+gcloud storage rm --recursive gs://my-test-bucket/**
 
 # Delete the empty bucket
 gcloud storage buckets delete gs://my-test-bucket
@@ -274,7 +283,7 @@ gcloud storage buckets delete gs://my-test-bucket
 A few things that trip people up:
 
 1. **Bucket names are global** - if someone else has the name, you cannot use it. Prefix with your project ID or organization name.
-2. **Location cannot be changed** after creation. If you picked the wrong region, you need to create a new bucket and move data.
+2. **Location usually cannot be changed** after creation. Unless you are using bucket relocation with Storage Intelligence, if you picked the wrong region, you need to create a new bucket and move data.
 3. **Uniform bucket-level access is one-way** - once you enable it and the 90-day lock-in period passes, you cannot go back to fine-grained ACLs.
 4. **Lifecycle rules are evaluated daily**, not in real-time. Do not expect immediate transitions.
 
