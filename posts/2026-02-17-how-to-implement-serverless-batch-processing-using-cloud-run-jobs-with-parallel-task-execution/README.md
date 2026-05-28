@@ -8,7 +8,7 @@ Description: Learn how to implement serverless batch processing on Google Cloud 
 
 ---
 
-Batch processing is the backbone of many data pipelines. You have a large dataset, you need to process every item, and you want it done fast. Traditionally this means spinning up worker VMs, distributing work, monitoring progress, and tearing everything down when the job finishes. Cloud Run Jobs simplifies all of this by letting you run containerized batch workloads that scale to hundreds of parallel tasks with zero infrastructure management.
+Batch processing is the backbone of many data pipelines. You have a large dataset, you need to process every item, and you want it done fast. Traditionally this means spinning up worker VMs, distributing work, monitoring progress, and tearing everything down when the job finishes. Cloud Run Jobs simplifies all of this by letting you run containerized batch workloads that scale across many parallel tasks, subject to your regional quota, with zero infrastructure management.
 
 Cloud Run Jobs differ from Cloud Run services in an important way. Services handle HTTP requests and stay running. Jobs run to completion and exit. This makes them perfect for batch workloads like data migrations, image processing, report generation, or any task that has a clear start and end.
 
@@ -212,19 +212,25 @@ gcloud run jobs execute data-processing-job \
 Cloud Run Jobs automatically retries failed tasks up to the configured `max-retries`. Each retry gets the same task index, so your code processes the same data chunk. To make this work reliably, your processing logic needs to be idempotent.
 
 ```python
-# Idempotent output writing - check if output already exists
+# Idempotent output writing - create the object only if it does not already exist
+from google.api_core.exceptions import PreconditionFailed
+
 def write_output_idempotent(bucket_name, blob_path, data):
     """Write output only if it does not already exist."""
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_path)
 
-    # Check if this task's output already exists from a previous attempt
-    if blob.exists():
+    try:
+        blob.upload_from_string(
+            data,
+            content_type="application/json",
+            if_generation_match=0,
+        )
+    except PreconditionFailed:
         logger.info(f"Output {blob_path} already exists, skipping write")
         return
 
-    blob.upload_from_string(data, content_type="application/json")
     logger.info(f"Wrote output to {blob_path}")
 ```
 
@@ -264,11 +270,11 @@ def merge_task_outputs(bucket_name, execution_id, output_path):
 
 ## Scaling Considerations
 
-Cloud Run Jobs can run up to 10,000 tasks per job with configurable parallelism. A few things to keep in mind when setting these values:
+Cloud Run Jobs can run up to 10,000 tasks per job, with maximum parallelism controlled by regional quota. A few things to keep in mind when setting these values:
 
-- Set parallelism equal to task count for maximum throughput, or lower it if your downstream services have rate limits
+- Set parallelism equal to task count for maximum throughput if your quota allows it, or lower it if your downstream services have rate limits
 - Each task gets its own container instance with the CPU and memory you configure
-- Task timeout applies per task, not per job - a job with 1000 tasks each timing out at 1 hour could theoretically run for 1000 hours if there is no parallelism
+- Task timeout applies per task, not per job - a job with 1000 tasks each timing out at 1 hour could theoretically run for 1000 hours if parallelism is set to 1
 - The `CLOUD_RUN_TASK_INDEX` variable is zero-indexed and unique per task within an execution
 
 ## Scheduling Batch Jobs
@@ -280,11 +286,11 @@ You can schedule Cloud Run Jobs to run on a regular basis using Cloud Scheduler.
 gcloud scheduler jobs create http nightly-data-processing \
   --location=us-central1 \
   --schedule="0 0 * * *" \
-  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/YOUR_PROJECT/jobs/data-processing-job:run" \
+  --uri="https://run.googleapis.com/v2/projects/YOUR_PROJECT/locations/us-central1/jobs/data-processing-job:run" \
   --http-method=POST \
   --oauth-service-account-email=scheduler-sa@YOUR_PROJECT.iam.gserviceaccount.com
 ```
 
 ## Wrapping Up
 
-Cloud Run Jobs with parallel task execution gives you a serverless batch processing framework that scales to thousands of parallel workers. The key pattern is using the task index environment variable to partition work across containers. Combined with idempotent processing and automatic retries, you get a reliable batch system without managing any compute infrastructure. For data processing, ETL pipelines, and large-scale transformations on GCP, this is one of the simplest and most cost-effective approaches available.
+Cloud Run Jobs with parallel task execution gives you a serverless batch processing framework that can scale to thousands of parallel workers when your regional quota allows it. The key pattern is using the task index environment variable to partition work across containers. Combined with idempotent processing and automatic retries, you get a reliable batch system without managing any compute infrastructure. For data processing, ETL pipelines, and large-scale transformations on GCP, this is one of the simplest and most cost-effective approaches available.
