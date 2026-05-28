@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Data Mesh, BigQuery, Data Products, Data Catalog, Data Engineering
+Tags: GCP, Data Mesh, BigQuery, Data Products, Knowledge Catalog, Data Engineering
 
 Description: A practical guide to implementing data mesh principles on Google Cloud using BigQuery datasets as autonomous data products with domain ownership and self-serve infrastructure.
 
@@ -61,7 +61,7 @@ gcloud projects create customers-domain-prod --name="Customer Domain"
 # Enable BigQuery in each project
 for project in orders-domain-prod payments-domain-prod customers-domain-prod; do
   gcloud services enable bigquery.googleapis.com --project=$project
-  gcloud services enable datacatalog.googleapis.com --project=$project
+  gcloud services enable dataplex.googleapis.com --project=$project
 done
 ```
 
@@ -135,85 +135,165 @@ GROUP BY order_date;
 
 ## Step 4: Implement Cross-Domain Access with Authorized Datasets
 
-Instead of granting access table by table, use authorized datasets to give consuming domains access to entire product datasets:
+Instead of authorizing views table by table, use authorized datasets to let views in a consuming domain query a product dataset without giving consumers direct access to the source tables:
 
 ```bash
-# Grant the payments domain read access to the orders product dataset
-bq update --dataset \
-  --authorized_dataset="payments-domain-prod:payments_internal" \
-  orders-domain-prod:orders_product
+# Export the current access list for the shared product dataset
+bq show --format=prettyjson orders-domain-prod:orders_product > orders_product.json
+```
 
-# Grant the analytics team access to all product datasets
-bq update --dataset \
-  --authorized_dataset="analytics-prod:cross_domain_analytics" \
-  orders-domain-prod:orders_product
+Add the consuming dataset to the `access` array in `orders_product.json`:
 
-bq update --dataset \
-  --authorized_dataset="analytics-prod:cross_domain_analytics" \
-  payments-domain-prod:payments_product
+```json
+{
+  "dataset": {
+    "dataset": {
+      "project_id": "payments-domain-prod",
+      "dataset_id": "payments_internal"
+    },
+    "target_types": "VIEWS"
+  }
+}
+```
+
+Then update the shared dataset:
+
+```bash
+bq update --source orders_product.json orders-domain-prod:orders_product
+
+# Repeat the same pattern to authorize analytics views
+bq show --format=prettyjson payments-domain-prod:payments_product > payments_product.json
+# Add analytics-prod.cross_domain_analytics to the access array, then:
+bq update --source payments_product.json payments-domain-prod:payments_product
 ```
 
 Alternatively, use IAM for more granular control:
 
-```bash
-# Grant a specific group read access to the orders product dataset
-bq add-iam-policy-binding \
-  --member="group:payments-team@company.com" \
-  --role="roles/bigquery.dataViewer" \
-  orders-domain-prod:orders_product
+```sql
+-- Grant a specific group read access to the orders product dataset
+GRANT `roles/bigquery.dataViewer`
+ON SCHEMA `orders-domain-prod`.orders_product
+TO "group:payments-team@company.com";
 ```
 
-## Step 5: Register Data Products in Data Catalog
+## Step 5: Register Data Products in Knowledge Catalog
 
-Make your data products discoverable through Data Catalog:
-
-```bash
-# Create a tag template for data product metadata
-gcloud data-catalog tag-templates create data_product_info \
-  --project=company-governance \
-  --location=us-central1 \
-  --display-name="Data Product Information" \
-  --field=id=domain,display-name="Domain",type=string,required=true \
-  --field=id=owner_team,display-name="Owner Team",type=string,required=true \
-  --field=id=freshness_sla,display-name="Freshness SLA",type=string,required=true \
-  --field=id=quality_score,display-name="Quality Score",type=double \
-  --field=id=documentation_url,display-name="Documentation URL",type=string
-```
-
-Tag your datasets with this metadata:
+Make your data products discoverable through Knowledge Catalog. The CLI and client libraries still use Dataplex names, so the Python package is `google-cloud-dataplex`:
 
 ```python
-# tag_data_product.py - Register a data product in Data Catalog
-from google.cloud import datacatalog_v1
+# create_data_product_aspect_type.py
+from google.cloud import dataplex_v1
 
-client = datacatalog_v1.DataCatalogClient()
 
-# Look up the BigQuery dataset entry
-resource_name = (
-    "//bigquery.googleapis.com/projects/orders-domain-prod/"
-    "datasets/orders_product"
-)
-entry = client.lookup_entry(
-    request={"linked_resource": resource_name}
+def create_data_product_aspect_type(project_id, location="global"):
+    client = dataplex_v1.CatalogServiceClient()
+    parent = f"projects/{project_id}/locations/{location}"
+
+    metadata_template = dataplex_v1.AspectType.MetadataTemplate(
+        name="data_product_info",
+        type="record",
+        record_fields=[
+            dataplex_v1.AspectType.MetadataTemplate(
+                name="domain",
+                type="string",
+                index=1,
+                constraints=dataplex_v1.AspectType.MetadataTemplate.Constraints(
+                    required=True
+                ),
+            ),
+            dataplex_v1.AspectType.MetadataTemplate(
+                name="owner_team",
+                type="string",
+                index=2,
+                constraints=dataplex_v1.AspectType.MetadataTemplate.Constraints(
+                    required=True
+                ),
+            ),
+            dataplex_v1.AspectType.MetadataTemplate(
+                name="freshness_sla",
+                type="string",
+                index=3,
+                constraints=dataplex_v1.AspectType.MetadataTemplate.Constraints(
+                    required=True
+                ),
+            ),
+            dataplex_v1.AspectType.MetadataTemplate(
+                name="quality_score",
+                type="double",
+                index=4,
+            ),
+            dataplex_v1.AspectType.MetadataTemplate(
+                name="documentation_url",
+                type="string",
+                index=5,
+            ),
+        ],
+    )
+
+    aspect_type = dataplex_v1.AspectType(
+        description="Data product ownership and SLA metadata",
+        metadata_template=metadata_template,
+    )
+
+    operation = client.create_aspect_type(
+        parent=parent,
+        aspect_type_id="data_product_info",
+        aspect_type=aspect_type,
+    )
+    response = operation.result(60)
+    print(f"Created aspect type: {response.name}")
+```
+
+Enrich your datasets with this metadata:
+
+```python
+# tag_data_product.py - Register a data product in Knowledge Catalog
+from google.cloud import dataplex_v1
+from google.protobuf import struct_pb2
+
+client = dataplex_v1.CatalogServiceClient()
+
+project_id = "orders-domain-prod"
+dataset_id = "orders_product"
+linked_resource = (
+    f"//bigquery.googleapis.com/projects/{project_id}/datasets/{dataset_id}"
 )
 
-# Create a tag with data product metadata
-tag = datacatalog_v1.Tag()
-tag.template = (
-    "projects/company-governance/locations/us-central1/"
-    "tagTemplates/data_product_info"
-)
-tag.fields["domain"] = datacatalog_v1.TagField(string_value="orders")
-tag.fields["owner_team"] = datacatalog_v1.TagField(string_value="orders-team")
-tag.fields["freshness_sla"] = datacatalog_v1.TagField(string_value="hourly")
-tag.fields["quality_score"] = datacatalog_v1.TagField(double_value=0.98)
-tag.fields["documentation_url"] = datacatalog_v1.TagField(
-    string_value="https://wiki.company.com/data-products/orders"
+search_request = dataplex_v1.SearchEntriesRequest(
+    name=f"projects/{project_id}/locations/global",
+    scope=f"projects/{project_id}",
+    query=f"{dataset_id} system=bigquery type=dataset",
+    page_size=25,
 )
 
-# Apply the tag to the dataset
-created_tag = client.create_tag(parent=entry.name, tag=tag)
-print(f"Tagged data product: {created_tag.name}")
+entry = None
+for result in client.search_entries(search_request):
+    if result.linked_resource == linked_resource:
+        entry = result.dataplex_entry
+        break
+
+if entry is None:
+    raise ValueError(f"No Knowledge Catalog entry found for {linked_resource}")
+
+aspect_type = "projects/company-governance/locations/global/aspectTypes/data_product_info"
+aspect_key = "company-governance.global.data_product_info"
+entry.aspects[aspect_key] = dataplex_v1.Aspect(
+    aspect_type=aspect_type,
+    data=struct_pb2.Struct(
+        fields={
+            "domain": struct_pb2.Value(string_value="orders"),
+            "owner_team": struct_pb2.Value(string_value="orders-team"),
+            "freshness_sla": struct_pb2.Value(string_value="hourly"),
+            "quality_score": struct_pb2.Value(number_value=0.98),
+            "documentation_url": struct_pb2.Value(
+                string_value="https://wiki.company.com/data-products/orders"
+            ),
+        }
+    ),
+)
+
+updated_entry = client.update_entry(entry=entry, update_mask={"paths": ["aspects"]})
+print(f"Tagged data product: {updated_entry.name}")
 ```
 
 ## Step 6: Implement Data Quality Contracts
@@ -352,7 +432,7 @@ The key to making data mesh work is balancing autonomy with consistency. Use org
 2. Every table must have column descriptions
 3. PII columns must be tagged and protected with column-level security
 4. Data quality checks must run on a schedule
-5. All product datasets must be registered in Data Catalog
+5. All product datasets must be registered in Knowledge Catalog
 
 These rules can be enforced through CI/CD checks that run when domain teams make changes to their Terraform configurations.
 
