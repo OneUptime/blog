@@ -20,7 +20,8 @@ The Coral product line includes the USB Accelerator, Dev Board, and a PCIe modul
 
 - A Coral device (USB Accelerator or Dev Board)
 - A Linux host (Ubuntu 20.04+ or Raspberry Pi OS)
-- Python 3.8+
+- Python 3.6-3.9 for the PyCoral prebuilt packages
+- An x86-64 Debian-based machine for the Edge TPU compiler
 - A TensorFlow model you want to deploy
 - A GCP project for cloud integration
 
@@ -31,18 +32,18 @@ Install the Edge TPU runtime and PyCoral library on your host machine:
 ```bash
 # Add the Coral package repository
 
-echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | \
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+  gpg --dearmor | sudo tee /usr/share/keyrings/coral-edgetpu.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/coral-edgetpu.gpg] https://packages.cloud.google.com/apt coral-edgetpu-stable main" | \
   sudo tee /etc/apt/sources.list.d/coral-edgetpu.list
-curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
 
 # Install the Edge TPU runtime (standard clock speed)
 # Use libedgetpu1-max for maximum performance at the cost of more heat
 sudo apt-get update
-sudo apt-get install -y libedgetpu1-std
+sudo apt-get install -y libedgetpu1-std python3-pycoral
 
-# Install the PyCoral library for Python inference
-pip install pycoral
-pip install tflite-runtime
+# PyCoral is installed by the python3-pycoral package above
+# On Debian-based Linux, python3-pycoral includes the required runtime bindings.
 ```
 
 If you are using the USB Accelerator, plug it in and verify it is detected:
@@ -93,20 +94,21 @@ with open("model_quant.tflite", "wb") as f:
 Then compile for the Edge TPU:
 
 ```bash
-# Install the Edge TPU compiler
-curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | \
+# Install the Edge TPU compiler on an x86-64 Debian-based machine
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+  gpg --dearmor | sudo tee /usr/share/keyrings/coral-edgetpu.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/coral-edgetpu.gpg] https://packages.cloud.google.com/apt coral-edgetpu-stable main" | \
   sudo tee /etc/apt/sources.list.d/coral-edgetpu.list
 sudo apt-get update
 sudo apt-get install -y edgetpu-compiler
 
 # Compile the quantized model for Edge TPU
 # The compiler maps compatible operations to the Edge TPU
-# and leaves unsupported ops on the CPU
+# and leaves the unsupported remaining segment on the CPU
 edgetpu_compiler model_quant.tflite
 ```
 
-The compiler outputs `model_quant_edgetpu.tflite`. If some operations are not supported by the Edge TPU, they will fall back to CPU execution, which slows things down. The compiler report tells you exactly what percentage of the model runs on the TPU.
+The compiler outputs `model_quant_edgetpu.tflite`. If the compiler reaches an operation that is not supported by the Edge TPU, that operation and the remaining operations in the graph run on the CPU, which slows things down. The compiler report tells you how many operations run on the TPU and how many run on the CPU.
 
 ## Step 3: Run Inference on the Edge TPU
 
@@ -171,7 +173,7 @@ Now connect the edge device to Google Cloud for model management, result reporti
 from google.cloud import pubsub_v1
 from google.cloud import storage
 import json
-import os
+import time
 
 # Configuration for cloud integration
 PROJECT_ID = "your-project-id"
@@ -211,7 +213,7 @@ def check_for_model_updates(current_version):
 
     # Check metadata for version info
     blob.reload()
-    remote_version = blob.metadata.get("version", "unknown")
+    remote_version = (blob.metadata or {}).get("version", "unknown")
 
     if remote_version != current_version:
         print(f"New model version available: {remote_version}")
@@ -240,7 +242,7 @@ while True:
             current_model_version
         )
         if new_model_path:
-            # Hot-swap the model without stopping the inference loop
+            # Swap the model without restarting the process
             interpreter = make_interpreter(new_model_path)
             interpreter.allocate_tensors()
             print(f"Switched to model {current_model_version}")
@@ -270,10 +272,10 @@ gsutil -h "x-goog-meta-version:v1.3" \
 
 ## Monitoring Edge Devices
 
-With inference results flowing to Pub/Sub, you can build dashboards in Cloud Monitoring to track:
+With inference results flowing to Pub/Sub, you can process those messages into custom metrics or logs and build dashboards in Cloud Monitoring to track:
 
 - Inference latency per device
-- Classification accuracy trends
+- Classification score trends, or accuracy trends if you join results with ground truth labels
 - Model version distribution across your fleet
 - Device health (battery, CPU temperature, uptime)
 
