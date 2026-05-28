@@ -19,11 +19,11 @@ When Service A calls Service B, OpenTelemetry injects trace context (trace ID, s
 The standard format for these headers is W3C Trace Context, which uses two headers:
 
 - `traceparent`: Contains the trace ID, parent span ID, and trace flags
-- `tracestate`: Contains vendor-specific data (like the GCP project for Cloud Trace)
+- `tracestate`: Optionally contains vendor-specific trace data
 
 ```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
-tracestate: gcp=project-id
+tracestate: congo=t61rcWkgMzE
 ```
 
 ## Setting Up Context Propagation in Python
@@ -112,19 +112,17 @@ const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-expre
 const { GrpcInstrumentation } = require('@opentelemetry/instrumentation-grpc');
 const opentelemetry = require('@opentelemetry/api');
 
-// Set up W3C Trace Context propagation
-opentelemetry.propagation.setGlobalPropagator(
-  new W3CTraceContextPropagator()
-);
-
-// Create and configure the tracer provider
-const provider = new NodeTracerProvider();
-
 // Export to Cloud Trace
 const exporter = new TraceExporter({ projectId: 'my-project' });
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
 
-provider.register();
+// Create and configure the tracer provider
+const provider = new NodeTracerProvider({
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
+
+provider.register({
+  propagator: new W3CTraceContextPropagator(),
+});
 
 // Register auto-instrumentation for HTTP, Express, and gRPC
 registerInstrumentations({
@@ -154,28 +152,29 @@ app.get('/api/orders/:orderId', async (req, res) => {
   const { orderId } = req.params;
 
   // Create a child span - automatically linked to the incoming trace
-  const span = tracer.startSpan('process-order');
-  span.setAttribute('order.id', orderId);
+  return tracer.startActiveSpan('process-order', async (span) => {
+    span.setAttribute('order.id', orderId);
 
-  try {
-    // Context is automatically injected into outgoing requests by HttpInstrumentation
-    const [inventory, payment] = await Promise.all([
-      axios.get(`http://inventory-service/api/stock/${orderId}`),
-      axios.get(`http://payment-service/api/status/${orderId}`),
-    ]);
+    try {
+      // Context is automatically injected into outgoing requests by HttpInstrumentation
+      const [inventory, payment] = await Promise.all([
+        axios.get(`http://inventory-service/api/stock/${orderId}`),
+        axios.get(`http://payment-service/api/status/${orderId}`),
+      ]);
 
-    span.setStatus({ code: opentelemetry.SpanStatusCode.OK });
-    res.json({
-      orderId,
-      inventory: inventory.data,
-      payment: payment.data,
-    });
-  } catch (error) {
-    span.setStatus({ code: opentelemetry.SpanStatusCode.ERROR, message: error.message });
-    res.status(500).json({ error: error.message });
-  } finally {
-    span.end();
-  }
+      span.setStatus({ code: opentelemetry.SpanStatusCode.OK });
+      res.json({
+        orderId,
+        inventory: inventory.data,
+        payment: payment.data,
+      });
+    } catch (error) {
+      span.setStatus({ code: opentelemetry.SpanStatusCode.ERROR, message: error.message });
+      res.status(500).json({ error: error.message });
+    } finally {
+      span.end();
+    }
+  });
 });
 
 app.listen(8080);
@@ -266,7 +265,7 @@ def process_message(message):
 
 ## Propagation Through Cloud Tasks and Cloud Scheduler
 
-When using Cloud Tasks or Cloud Scheduler, you need to manually include trace context in the task/job headers:
+When creating Cloud Tasks directly, you can manually include trace context in the task headers:
 
 ```python
 # Propagate context through Cloud Tasks
