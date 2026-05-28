@@ -14,7 +14,7 @@ Workload identity federation solves this by letting GCP workloads authenticate t
 
 ## How Workload Identity Federation Works
 
-The core idea is simple: instead of using static credentials, your GCP workload presents its GCP identity token to AWS, and AWS validates it against Google's OIDC endpoint. If the token is valid and the identity matches the trust policy, AWS issues temporary credentials.
+The core idea is simple: instead of using static credentials, your GCP workload presents its GCP identity token to AWS, and AWS validates it using Google's OIDC metadata and signing keys. If the token is valid and the identity matches the trust policy, AWS issues temporary credentials.
 
 ```mermaid
 sequenceDiagram
@@ -26,8 +26,8 @@ sequenceDiagram
     GCP->>Google: Request identity token
     Google-->>GCP: OIDC token (JWT)
     GCP->>AWS: AssumeRoleWithWebIdentity(token)
-    AWS->>Google: Validate token signature
-    Google-->>AWS: Token valid
+    AWS->>Google: Fetch signing keys as needed
+    Google-->>AWS: OIDC metadata and JWKS
     AWS-->>GCP: Temporary AWS credentials
     GCP->>S3: Access S3 with temp credentials
 ```
@@ -36,21 +36,14 @@ No static keys. Tokens expire automatically. And the trust relationship is expli
 
 ## GCP to AWS: Accessing AWS Resources from GCP Workloads
 
-### Step 1: Create an OIDC Provider in AWS
+### Step 1: Use Google's Built-In OIDC Provider in AWS
 
-First, register Google as an identity provider in your AWS account:
+Google is a built-in OIDC provider in AWS IAM, so you do not need to create a separate IAM OIDC provider for `accounts.google.com`. Use the built-in provider directly in the role trust policy.
 
 ```bash
-# Get Google's OIDC thumbprint (you need this for the provider)
-
-# The thumbprint for accounts.google.com
-THUMBPRINT="08745487e891c19e3078c1f2a07e452950ef36f6"
-
-# Create the OIDC provider
-aws iam create-open-id-connect-provider \
-  --url https://accounts.google.com \
-  --client-id-list "sts.amazonaws.com" \
-  --thumbprint-list "$THUMBPRINT"
+# No aws iam create-open-id-connect-provider command is needed for Google.
+# In the trust policy, use:
+# "Principal": { "Federated": "accounts.google.com" }
 ```
 
 ### Step 2: Create an AWS IAM Role with a Trust Policy
@@ -67,11 +60,12 @@ cat > trust-policy.json << 'POLICY'
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::123456789012:oidc-provider/accounts.google.com"
+        "Federated": "accounts.google.com"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
+          "accounts.google.com:aud": "SERVICE_ACCOUNT_UNIQUE_ID",
           "accounts.google.com:oaud": "sts.amazonaws.com",
           "accounts.google.com:sub": "SERVICE_ACCOUNT_UNIQUE_ID"
         }
@@ -107,8 +101,8 @@ Here is how a Cloud Function or GKE workload authenticates to AWS:
 
 ```python
 # gcp_to_aws.py - Access AWS resources from a GCP workload
-import google.auth
 import google.auth.transport.requests
+import google.oauth2.id_token
 import boto3
 
 def get_aws_session():
@@ -117,22 +111,15 @@ def get_aws_session():
     No static AWS credentials needed.
     """
     # Get a Google ID token targeting AWS STS
-    credentials, project = google.auth.default()
     auth_request = google.auth.transport.requests.Request()
-    credentials.refresh(auth_request)
-
-    # Get an ID token for the AWS STS audience
-    id_token_credentials = google.oauth2.id_token.fetch_id_token(
-        auth_request,
-        target_audience='sts.amazonaws.com'
-    )
+    id_token = google.oauth2.id_token.fetch_id_token(auth_request, 'sts.amazonaws.com')
 
     # Use the ID token to assume the AWS role
     sts_client = boto3.client('sts', region_name='us-east-1')
     response = sts_client.assume_role_with_web_identity(
         RoleArn='arn:aws:iam::123456789012:role/gcp-cross-cloud-access',
         RoleSessionName='gcp-workload-session',
-        WebIdentityToken=id_token_credentials,
+        WebIdentityToken=id_token,
         DurationSeconds=3600
     )
 
