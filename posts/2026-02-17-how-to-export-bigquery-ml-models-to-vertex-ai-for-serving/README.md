@@ -14,11 +14,11 @@ In this post, I will walk through the full process of exporting a BigQuery ML mo
 
 ## Which Models Can Be Exported
 
-Not all BigQuery ML model types support export. The ones that do include logistic regression, linear regression, boosted tree classifier and regressor, DNN classifier and regressor, wide-and-deep models, automl tables, and kmeans. ARIMA_PLUS and matrix factorization models currently cannot be exported. You can check whether your specific model type supports export in the BigQuery ML documentation.
+Not all BigQuery ML model types support export. The ones that do include logistic regression, linear regression, boosted tree classifier and regressor, random forest classifier and regressor, DNN classifier and regressor, wide-and-deep models, AutoML Tables models, autoencoder, kmeans, PCA, matrix factorization, TensorFlow, and transform-only models. ARIMA_PLUS models currently cannot be exported. Also note that exported AutoML Tables models do not support Vertex AI deployment for online prediction, and boosted tree and random forest models export as XGBoost Booster artifacts that require a custom prediction routine instead of a pre-built TensorFlow serving container. You can check whether your specific model type supports export in the BigQuery ML documentation.
 
 ## Exporting the Model from BigQuery ML
 
-The first step is exporting the trained model to a Google Cloud Storage bucket. BigQuery ML exports models in TensorFlow SavedModel format, which Vertex AI can serve directly.
+The first step is exporting the trained model to a Google Cloud Storage bucket. For TensorFlow SavedModel-compatible BigQuery ML models, such as logistic regression, linear regression, DNN, wide-and-deep, kmeans, PCA, and matrix factorization models, Vertex AI can serve the exported model with a TensorFlow serving container.
 
 This command exports a trained BigQuery ML model to a GCS location.
 
@@ -30,7 +30,7 @@ OPTIONS(
 );
 ```
 
-The exported files will include a SavedModel directory structure with the model graph and weights. You can verify the export worked by listing the GCS bucket.
+For the logistic regression model in this example, the exported files will include a SavedModel directory structure with the model graph and weights. You can verify the export worked by listing the GCS bucket.
 
 ```bash
 # Verify the model files were exported successfully
@@ -57,7 +57,7 @@ gcloud ai models upload \
   --project=my-project
 ```
 
-The container image URI specifies which serving container to use. For TensorFlow SavedModel format, use one of the pre-built TensorFlow serving containers. Choose the TF version that matches your model - BigQuery ML typically exports models compatible with TF 2.x.
+The container image URI specifies which serving container to use. For TensorFlow SavedModel format, use one of the pre-built TensorFlow serving containers. Choose a TensorFlow Serving version that can load the SavedModel produced by your BigQuery ML model.
 
 If you prefer Python, you can use the Vertex AI SDK.
 
@@ -110,7 +110,7 @@ gcloud ai endpoints deploy-model ENDPOINT_ID \
   --project=my-project
 ```
 
-The traffic-split parameter controls how much traffic goes to this deployment. Setting 0=100 means 100% of traffic goes to deployment index 0 (this deployment). When you deploy a new model version later, you can gradually shift traffic between versions.
+The traffic-split parameter controls how much traffic goes to this deployment. Setting 0=100 means 100% of traffic goes to the new DeployedModel, which is represented by the temporary ID 0 during deployment. When you deploy a new model version later, you can gradually shift traffic between versions.
 
 Using the Python SDK, the deployment looks like this.
 
@@ -190,26 +190,48 @@ curl -X POST \
 
 ## Setting Up Model Monitoring
 
-Vertex AI includes model monitoring that can detect data drift and prediction drift over time. This is important for production models because the distribution of incoming data can change, degrading model accuracy.
+Vertex AI includes model monitoring that can detect data drift and prediction drift over time. This is important for production models because the distribution of incoming data can change, degrading model accuracy. For endpoint traffic, enable request-response logging on the endpoint and configure monitoring jobs to use the logged requests and responses as the target data.
 
 ```python
-# Set up model monitoring on the endpoint
-from google.cloud.aiplatform_v1.types import ModelMonitoringObjectiveConfig
+# Set up a model monitor for the registered model
+from vertexai.resources.preview import ml_monitoring
 
-# Configure monitoring for the deployed model
-model_monitoring_job = aiplatform.ModelDeploymentMonitoringJob.create(
+monitoring_schema = ml_monitoring.spec.ModelMonitoringSchema(
+    feature_fields=[
+        ml_monitoring.spec.FieldSchema(name="account_age_days", data_type="float"),
+        ml_monitoring.spec.FieldSchema(name="total_logins_90d", data_type="float"),
+        ml_monitoring.spec.FieldSchema(name="total_feature_uses_90d", data_type="float"),
+        ml_monitoring.spec.FieldSchema(name="avg_session_duration_90d", data_type="float"),
+        ml_monitoring.spec.FieldSchema(name="support_tickets_90d", data_type="float"),
+    ],
+    prediction_fields=[
+        ml_monitoring.spec.FieldSchema(name="predicted_churn", data_type="categorical")
+    ],
+)
+
+feature_drift_spec = ml_monitoring.spec.DataDriftSpec(
+    categorical_metric_type="l_infinity",
+    numeric_metric_type="jensen_shannon_divergence",
+    default_categorical_alert_threshold=0.3,
+    default_numeric_alert_threshold=0.3,
+)
+
+prediction_drift_spec = ml_monitoring.spec.DataDriftSpec(
+    categorical_metric_type="l_infinity",
+    numeric_metric_type="jensen_shannon_divergence",
+    default_categorical_alert_threshold=0.3,
+    default_numeric_alert_threshold=0.3,
+)
+
+model_monitor = ml_monitoring.ModelMonitor.create(
     display_name="churn-model-monitoring",
-    endpoint=endpoint,
-    logging_sampling_strategy_random_sample_rate=0.8,
-    schedule_interval_hours=24,
-    # Alert when feature distributions drift
-    feature_drift_detection_config={
-        "default_drift_threshold": {"value": 0.3}
-    },
-    # Alert when prediction distributions change
-    prediction_drift_detection_config={
-        "default_drift_threshold": {"value": 0.3}
-    }
+    model_name=model.resource_name,
+    model_version_id="1",
+    model_monitoring_schema=monitoring_schema,
+    tabular_objective_spec=ml_monitoring.spec.TabularObjective(
+        feature_drift_spec=feature_drift_spec,
+        prediction_output_drift_spec=prediction_drift_spec,
+    ),
 )
 ```
 
@@ -220,6 +242,7 @@ As you retrain your model in BigQuery ML and export new versions, you can deploy
 ```bash
 # Deploy a new model version with canary traffic split
 # 90% to existing deployment, 10% to new version
+# Replace OLD_DEPLOYED_MODEL_ID with the ID of the existing DeployedModel.
 gcloud ai endpoints deploy-model ENDPOINT_ID \
   --region=us-central1 \
   --model=NEW_MODEL_ID \
@@ -227,7 +250,7 @@ gcloud ai endpoints deploy-model ENDPOINT_ID \
   --machine-type=n1-standard-4 \
   --min-replica-count=1 \
   --max-replica-count=5 \
-  --traffic-split=0=90,1=10 \
+  --traffic-split=OLD_DEPLOYED_MODEL_ID=90,0=10 \
   --project=my-project
 ```
 
