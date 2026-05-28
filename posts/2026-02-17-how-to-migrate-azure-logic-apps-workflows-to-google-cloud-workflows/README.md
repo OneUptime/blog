@@ -8,13 +8,13 @@ Description: Learn how to migrate your Azure Logic Apps workflows to Google Clou
 
 ---
 
-Azure Logic Apps and Google Cloud Workflows both let you build serverless workflow orchestrations, but they take very different approaches. Logic Apps gives you a visual designer with hundreds of built-in connectors. Cloud Workflows gives you a YAML or JSON-based DSL that you define as code. If you are moving from Azure to GCP, this guide covers how to translate your Logic Apps patterns into Cloud Workflows.
+Azure Logic Apps and Google Cloud Workflows both let you build serverless workflow orchestrations, but they take very different approaches. Logic Apps gives you a visual designer with hundreds of prebuilt connectors. Cloud Workflows gives you a YAML or JSON-based DSL that you define as code. If you are moving from Azure to GCP, this guide covers how to translate your Logic Apps patterns into Cloud Workflows.
 
 ## How the Services Compare
 
 Logic Apps is a low-code platform. You drag and drop connectors, define triggers, and build branching logic visually. Under the hood, it generates a JSON workflow definition.
 
-Cloud Workflows is code-first. You write workflow definitions in YAML (or JSON), define steps that call HTTP endpoints, Cloud Functions, or other GCP services, and deploy them with `gcloud` or Terraform. There is no visual designer - it is all declarative configuration.
+Cloud Workflows is code-first. You write workflow definitions in YAML (or JSON), define steps that call HTTP endpoints, Cloud Functions, or other GCP services, and deploy them with `gcloud` or Terraform. There is no visual workflow designer - it is declarative configuration.
 
 Here is a quick feature comparison:
 
@@ -22,7 +22,7 @@ Here is a quick feature comparison:
 |---------|-----------------|----------------------|
 | Definition format | JSON (visual designer) | YAML or JSON |
 | Triggers | Built-in (HTTP, timer, event) | HTTP, Pub/Sub, Eventarc, Cloud Scheduler |
-| Connectors | 400+ built-in connectors | HTTP calls to any API |
+| Connectors | Prebuilt built-in and managed connectors | HTTP calls to any API, plus Google Cloud connectors |
 | State management | Automatic | Workflow variables |
 | Error handling | Try/catch scopes | Try/except blocks |
 | Pricing | Per action execution | Per step execution |
@@ -77,13 +77,14 @@ This Cloud Workflows step makes an HTTP GET request, similar to an HTTP action i
 ```yaml
 # Simple HTTP call - equivalent to Logic Apps HTTP action
 main:
+  params: [input]
   steps:
     - callApi:
         call: http.get
         args:
           url: https://api.example.com/data
           headers:
-            Authorization: ${"Bearer " + apiKey}
+            Authorization: ${"Bearer " + input.apiKey}
           timeout: 30
         result: apiResponse
     - processResponse:
@@ -201,6 +202,7 @@ Here is an example of replacing a Logic Apps Blob Storage connector with a Cloud
 ```yaml
 # Replace Azure Blob Storage connector with Cloud Storage API call
 main:
+  params: [objectName]
   steps:
     - readFromStorage:
         call: http.get
@@ -253,7 +255,7 @@ main:
           body:
             fields:
               lastRun:
-                stringValue: ${sys.now()}
+                doubleValue: ${sys.now()}
               lastResult:
                 stringValue: ${json.encode_to_string(workResult.body)}
 ```
