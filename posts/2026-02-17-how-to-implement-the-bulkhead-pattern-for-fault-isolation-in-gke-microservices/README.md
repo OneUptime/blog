@@ -306,7 +306,7 @@ class BulkheadedService:
 
 ## Level 5: Network Policies
 
-Use Kubernetes Network Policies to create network-level bulkheads. This prevents compromised or misconfigured services from communicating with services they should not access.
+Use Kubernetes Network Policies to create network-level bulkheads. This prevents compromised or misconfigured services from communicating with services they should not access. In GKE Standard clusters, make sure network policy enforcement is enabled; clusters that use GKE Dataplane V2 already support Kubernetes NetworkPolicy enforcement.
 
 ```yaml
 # network-policy-payments.yaml
@@ -328,9 +328,15 @@ spec:
         - namespaceSelector:
             matchLabels:
               team: orders
+          podSelector:
+            matchLabels:
+              app: order-service
         - namespaceSelector:
             matchLabels:
               team: gateway
+          podSelector:
+            matchLabels:
+              app: api-gateway
   egress:
     # Only allow outbound traffic to specific destinations
     - to:
@@ -353,11 +359,15 @@ spec:
 Set up monitoring to track resource usage within each bulkhead so you know when a compartment is approaching its limits.
 
 ```bash
-# Create a Cloud Monitoring alert when a namespace uses more than 80% of its CPU quota
-gcloud alpha monitoring policies create \
-  --display-name="Payments CPU quota near limit" \
-  --condition-display-name="CPU usage > 80%" \
-  --condition-filter='resource.type="k8s_container" AND resource.labels.namespace_name="payments" AND metric.type="kubernetes.io/container/cpu/core_usage_time"'
+# Create a Cloud Monitoring alert when the namespace uses more than 3.2 CPU cores
+# for 5 minutes, which is 80% of the 4-core CPU request quota above
+gcloud monitoring policies create \
+  --display-name="Payments CPU usage near quota" \
+  --condition-display-name="CPU usage > 3.2 cores" \
+  --condition-filter='resource.type="k8s_container" AND resource.labels.namespace_name="payments" AND metric.type="kubernetes.io/container/cpu/core_usage_time"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_RATE","crossSeriesReducer":"REDUCE_SUM","groupByFields":["resource.label.namespace_name"]}' \
+  --duration=300s \
+  --if='> 3.2'
 ```
 
 ## Summary
