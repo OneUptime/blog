@@ -17,8 +17,8 @@ This turns a rigid dashboard into an interactive tool that adapts to what you ne
 A dashboard variable is a named parameter that appears as a dropdown at the top of your dashboard. When you select a value, all charts that reference that variable update to show data matching the selection. Variables can be:
 
 - **Label-based:** Populated from metric labels or resource labels
-- **Custom:** A predefined list of values you specify
-- **Query-based:** Populated dynamically from a metric query
+- **Custom:** A predefined value-only list of values you specify
+- **Query-based:** Value-only variables populated dynamically from a Cloud Monitoring SQL query
 
 ## Creating Variables via the API
 
@@ -28,7 +28,6 @@ Here is how to create a dashboard with variables using the Cloud Monitoring API:
 # create_dashboard_with_variables.py
 
 from google.cloud import monitoring_dashboard_v1
-from google.protobuf import struct_pb2
 
 def create_dashboard_with_variables(project_id):
     """Create a dashboard with interactive filter variables."""
@@ -38,21 +37,21 @@ def create_dashboard_with_variables(project_id):
         "displayName": "Service Dashboard",
         "dashboardFilters": [
             {
-                "labelKey": "resource.label.service_name",
+                "labelKey": "service_name",
                 "templateVariable": "service_name",
-                "stringValue": "",
+                "valueType": "STRING",
                 "filterType": "RESOURCE_LABEL",
             },
             {
-                "labelKey": "resource.label.location",
+                "labelKey": "location",
                 "templateVariable": "region",
-                "stringValue": "",
+                "valueType": "STRING",
                 "filterType": "RESOURCE_LABEL",
             },
             {
-                "labelKey": "metric.label.response_code_class",
+                "labelKey": "response_code_class",
                 "templateVariable": "status_class",
-                "stringValue": "",
+                "valueType": "STRING",
                 "filterType": "METRIC_LABEL",
             },
         ],
@@ -71,10 +70,11 @@ def create_dashboard_with_variables(project_id):
                                 {
                                     "timeSeriesQuery": {
                                         "timeSeriesQueryLanguage": (
-                                            "fetch cloud_run_revision"
-                                            "| metric 'run.googleapis.com/request_count'"
-                                            "| align rate(1m)"
-                                            "| group_by [resource.service_name],"
+                                            "fetch cloud_run_revision\n"
+                                            "| metric 'run.googleapis.com/request_count'\n"
+                                            "| filter ${service_name}\n"
+                                            "| align rate(1m)\n"
+                                            "| group_by [resource.service_name],\n"
                                             "    [rps: aggregate(val())]"
                                         ),
                                     },
@@ -106,13 +106,13 @@ The most common variable filters by service name:
 
 ```json
 {
-  "labelKey": "resource.label.service_name",
+  "labelKey": "service_name",
   "templateVariable": "service_name",
   "filterType": "RESOURCE_LABEL"
 }
 ```
 
-When this variable is configured, a dropdown appears at the top of the dashboard populated with all service names found in the metric data. Selecting a value filters every chart that uses the matching resource label.
+When this variable is configured, a dropdown appears at the top of the dashboard populated with service names found in the charted metric data. Selecting a value filters charts whose queries reference the variable, or charts that you apply the variable to in the console.
 
 ### Environment Variable
 
@@ -120,7 +120,7 @@ If you tag your resources with an environment label:
 
 ```json
 {
-  "labelKey": "metric.label.environment",
+  "labelKey": "environment",
   "templateVariable": "env",
   "filterType": "METRIC_LABEL"
 }
@@ -132,7 +132,7 @@ Filter by GCP region:
 
 ```json
 {
-  "labelKey": "resource.label.location",
+  "labelKey": "location",
   "templateVariable": "region",
   "filterType": "RESOURCE_LABEL"
 }
@@ -144,7 +144,7 @@ For Kubernetes workloads, filter by namespace:
 
 ```json
 {
-  "labelKey": "resource.label.namespace_name",
+  "labelKey": "namespace_name",
   "templateVariable": "namespace",
   "filterType": "RESOURCE_LABEL"
 }
@@ -152,13 +152,13 @@ For Kubernetes workloads, filter by namespace:
 
 ## Using Variables in MQL Queries
 
-Dashboard variables automatically filter charts that use matching labels. But you can also reference variables explicitly in MQL queries for more control:
+Label-based dashboard variables filter charts after you apply them to the chart or reference them explicitly in the query. In MQL, reference the variable as a filter expression:
 
 ```text
 # Request rate filtered by the service_name variable
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'
-| filter resource.service_name == '${service_name}'
+| filter ${service_name}
 | align rate(1m)
 | group_by [resource.service_name], [rps: aggregate(val())]
 ```
@@ -167,11 +167,13 @@ fetch cloud_run_revision
 # Latency filtered by multiple variables
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_latencies'
-| filter resource.service_name == '${service_name}'
-   && resource.location == '${region}'
+| filter ${service_name}
+| filter ${region}
 | align delta(5m)
 | group_by [], [p50: percentile(val(), 50), p99: percentile(val(), 99)]
 ```
+
+As of July 22, 2025, Google Cloud no longer supports creating new MQL charts, dashboards, or alerting policies in the Google Cloud console. Existing MQL charts continue to work, and you can still create MQL dashboards by using the Cloud Monitoring API.
 
 ## Building a Complete Variable-Driven Dashboard
 
@@ -185,13 +187,15 @@ resource "google_monitoring_dashboard" "service_dashboard" {
 
     dashboardFilters = [
       {
-        labelKey         = "resource.label.service_name"
+        labelKey         = "service_name"
         templateVariable = "service"
+        valueType        = "STRING"
         filterType       = "RESOURCE_LABEL"
       },
       {
-        labelKey         = "resource.label.location"
+        labelKey         = "location"
         templateVariable = "region"
+        valueType        = "STRING"
         filterType       = "RESOURCE_LABEL"
       },
     ]
@@ -213,6 +217,7 @@ resource "google_monitoring_dashboard" "service_dashboard" {
                   timeSeriesQueryLanguage = <<-MQL
                     fetch cloud_run_revision
                     | metric 'run.googleapis.com/request_count'
+                    | filter $${service}
                     | align rate(1m)
                     | group_by [resource.service_name],
                         [rps: aggregate(val())]
@@ -223,25 +228,26 @@ resource "google_monitoring_dashboard" "service_dashboard" {
             }
           }
         },
-        # Error Rate Chart
+        # 5xx Request Rate Chart
         {
           xPos   = 24
           yPos   = 0
           width  = 24
           height = 16
           widget = {
-            title = "Error Rate (%)"
+            title = "5xx Request Rate"
             xyChart = {
               dataSets = [{
                 timeSeriesQuery = {
                   timeSeriesQueryLanguage = <<-MQL
                     fetch cloud_run_revision
                     | metric 'run.googleapis.com/request_count'
+                    | filter $${service}
                     | align rate(5m)
                     | group_by [resource.service_name, metric.response_code_class],
                         [val: aggregate(val())]
                     | filter metric.response_code_class = '5xx'
-                    | group_by [resource.service_name], [errors: aggregate(val)]
+                    | group_by [resource.service_name], [errors: aggregate(val())]
                   MQL
                 }
                 plotType = "LINE"
@@ -263,6 +269,7 @@ resource "google_monitoring_dashboard" "service_dashboard" {
                   timeSeriesQueryLanguage = <<-MQL
                     fetch cloud_run_revision
                     | metric 'run.googleapis.com/request_latencies'
+                    | filter $${service}
                     | align delta(5m)
                     | group_by [resource.service_name],
                         [p99: percentile(val(), 99)]
@@ -287,6 +294,7 @@ resource "google_monitoring_dashboard" "service_dashboard" {
                   timeSeriesQueryLanguage = <<-MQL
                     fetch cloud_run_revision
                     | metric 'run.googleapis.com/container/instance_count'
+                    | filter $${service}
                     | align mean(1m)
                     | group_by [resource.service_name],
                         [instances: mean(val())]
@@ -311,6 +319,7 @@ resource "google_monitoring_dashboard" "service_dashboard" {
                   timeSeriesQueryLanguage = <<-MQL
                     fetch cloud_run_revision
                     | metric 'run.googleapis.com/container/memory/utilizations'
+                    | filter $${service}
                     | align mean(1m)
                     | group_by [resource.service_name],
                         [mem_util: mean(val())]
@@ -333,8 +342,9 @@ You can set default values for variables so the dashboard shows meaningful data 
 
 ```json
 {
-  "labelKey": "resource.label.service_name",
+  "labelKey": "service_name",
   "templateVariable": "service",
+  "valueType": "STRING",
   "stringValue": "api-gateway",
   "filterType": "RESOURCE_LABEL"
 }
@@ -348,27 +358,30 @@ Variables support selecting multiple values at once. This is useful when you wan
 
 ```json
 {
-  "labelKey": "resource.label.service_name",
+  "labelKey": "service_name",
   "templateVariable": "service",
+  "valueType": "STRING_ARRAY",
   "filterType": "RESOURCE_LABEL",
-  "stringValue": "api-gateway,payment-service,order-service"
+  "stringArrayValue": {
+    "values": ["api-gateway", "payment-service", "order-service"]
+  }
 }
 ```
 
 ## Variable Chaining
 
-You can create variables that depend on each other. For example, first select a project, then the region dropdown only shows regions where that project has resources:
+Cloud Monitoring doesn't automatically chain label-based variables. If you need project and region filters, define both variables and reference both in the queries that should use them:
 
 ```json
 {
   "dashboardFilters": [
     {
-      "labelKey": "resource.label.project_id",
+      "labelKey": "project_id",
       "templateVariable": "project",
       "filterType": "RESOURCE_LABEL"
     },
     {
-      "labelKey": "resource.label.location",
+      "labelKey": "location",
       "templateVariable": "region",
       "filterType": "RESOURCE_LABEL"
     }
@@ -376,7 +389,7 @@ You can create variables that depend on each other. For example, first select a 
 }
 ```
 
-When you select a project, Cloud Monitoring automatically narrows the region dropdown to only show regions relevant to that project's data.
+When you select a project or region, charts that reference the corresponding variables update to match those selected values.
 
 ## Practical Tips
 
@@ -392,4 +405,4 @@ After building several dashboards with variables, here are some things I have le
 
 5. **Document the dashboard.** Add a text widget at the top explaining what each variable filters and which services are included.
 
-Dashboard variables transform a static monitoring dashboard into an interactive exploration tool. Combined with MQL queries and alerting from tools like OneUptime, you get a monitoring setup that scales with your infrastructure without requiring a new dashboard for every new service.
+Dashboard variables transform a static monitoring dashboard into an interactive exploration tool. Combined with Cloud Monitoring queries and alerting from tools like OneUptime, you get a monitoring setup that scales with your infrastructure without requiring a new dashboard for every new service.
