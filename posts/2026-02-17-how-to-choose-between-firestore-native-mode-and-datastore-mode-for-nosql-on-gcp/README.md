@@ -8,7 +8,7 @@ Description: Learn the differences between Firestore in Native mode and Datastor
 
 ---
 
-Google Cloud offers Firestore in two distinct modes: Native mode and Datastore mode. They share the same underlying storage engine, but they expose different APIs, support different features, and suit different use cases. Picking the wrong mode at project creation is painful because you cannot switch modes on an existing database - you would need to migrate your data to a new project. Let me break down what matters.
+Google Cloud offers Firestore in two distinct modes: Native mode and Datastore mode. They share the same underlying storage engine, but they expose different APIs, support different features, and suit different use cases. Picking the wrong mode when you create a database is painful because you can only switch modes while the database is empty - otherwise, you would need to migrate your data to a new database. Let me break down what matters.
 
 ## Firestore Native Mode
 
@@ -20,6 +20,7 @@ Here is a basic example of working with Firestore Native mode:
 # Working with Firestore in Native mode
 
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 # Initialize the Firestore client
 db = firestore.Client(project="my-project")
@@ -38,7 +39,7 @@ doc_ref.set({
 
 # Query documents with filters
 users = db.collection("users") \
-    .where("preferences.theme", "==", "dark") \
+    .where(filter=FieldFilter("preferences.theme", "==", "dark")) \
     .order_by("created_at") \
     .limit(10) \
     .stream()
@@ -56,7 +57,7 @@ def on_snapshot(doc_snapshot, changes, read_time):
         print(f"Document changed: {doc.id} => {doc.to_dict()}")
 
 # Watch for changes to a collection in real time
-query = db.collection("orders").where("status", "==", "pending")
+query = db.collection("orders").where(filter=FieldFilter("status", "==", "pending"))
 query_watch = query.on_snapshot(on_snapshot)
 ```
 
@@ -66,25 +67,29 @@ Datastore mode is the evolution of the original Google Cloud Datastore. If you h
 
 ```python
 # Working with Firestore in Datastore mode
+from datetime import datetime, timezone
+
 from google.cloud import datastore
+from google.cloud.datastore.query import PropertyFilter
 
 # Initialize the Datastore client
 client = datastore.Client(project="my-project")
 
-# Create an entity (equivalent to a document)
+# Create an entity (roughly equivalent to a document)
 key = client.key("User", "user123")
 entity = datastore.Entity(key=key)
 entity.update({
     "name": "Alice",
     "email": "alice@example.com",
     "theme": "dark",
-    "notifications": True
+    "notifications": True,
+    "created_at": datetime.now(timezone.utc)
 })
 client.put(entity)
 
 # Query entities with filters
 query = client.query(kind="User")
-query.add_filter("theme", "=", "dark")
+query.add_filter(filter=PropertyFilter("theme", "=", "dark"))
 query.order = ["created_at"]
 
 # Fetch results
@@ -114,24 +119,23 @@ Both modes charge for reads, writes, and deletes, plus storage. But the pricing 
 - Native mode charges per document read, write, or delete
 - Datastore mode charges per entity read, write, or delete
 - Native mode has a generous free tier (50,000 reads, 20,000 writes, 20,000 deletes per day)
-- Datastore mode has a similar free tier structure
+- Datastore mode uses the same pricing structure and also does not charge for small operations
 
-The per-operation costs are the same, but the way operations are counted can differ depending on your access patterns.
+The pricing structure is the same, but the way operations are counted can differ depending on your access patterns.
 
 ### Consistency Model
 
 Native mode provides strong consistency for all queries by default. Every read returns the latest committed data, regardless of the query type.
 
-Datastore mode also provides strong consistency for all queries (this changed in 2021 - previously it had eventual consistency for some query types). So from a consistency standpoint, they are now equivalent.
+Datastore mode also provides strong consistency for all queries unless you explicitly request eventual consistency. So from a consistency standpoint, they are now equivalent.
 
 ### Indexing
 
 Both modes support automatic single-field indexes and composite indexes for complex queries. However, the way you define and manage composite indexes differs slightly.
 
-In Native mode:
+In Native mode, you can define composite indexes in `firestore.indexes.json`:
 
 ```json
-// firestore.indexes.json - define composite indexes
 {
   "indexes": [
     {
@@ -163,9 +167,9 @@ indexes:
 
 Both modes support transactions, but with different scope limitations.
 
-Native mode transactions can read and write up to 500 documents in a single transaction. Writes in a transaction can span multiple collections.
+Native mode transactions can read and write documents across multiple collections. They are subject to limits such as a 10 MiB API request size and a 270-second transaction time limit.
 
-Datastore mode transactions can include up to 500 entities. Cross-group transactions (spanning entity groups) are supported but have been a source of complexity historically.
+Datastore mode transactions can span entity groups and are subject to limits such as a 10 MiB transaction size. Some migrated databases that use the Optimistic With Entity Groups concurrency mode still have legacy entity-group limits, so check your database's concurrency mode if you depend on those semantics.
 
 ## When to Choose Native Mode
 
@@ -201,4 +205,4 @@ For new projects, start with Native mode unless you have a compelling reason to 
 
 If you have an existing Datastore application, there is no urgent need to migrate to Native mode. Datastore mode runs on the same infrastructure and will continue to be supported. Migrate only if you need features that Datastore mode does not offer.
 
-The mode is set per project and cannot be changed, so make this decision carefully before writing your first document.
+The mode is set per database, and it can only be changed while the database is empty, so make this decision carefully before writing your first document.
