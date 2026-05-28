@@ -10,16 +10,16 @@ Description: A practical guide to configuring private prediction endpoints on Ve
 
 By default, Vertex AI prediction endpoints are accessible over the public internet. For many production workloads - especially in healthcare, finance, and government - this is not acceptable. Prediction requests might contain sensitive data like patient records, financial transactions, or classified information that should never traverse the public internet.
 
-Private endpoints solve this by routing prediction traffic through VPC peering, keeping all communication within Google's private network. Your client applications connect to the endpoint through an internal IP address, and the data never leaves the VPC.
+Private endpoints solve this by routing prediction traffic through VPC peering, keeping all communication within Google's private network. Your client applications connect to the endpoint through a private inference URI that is reachable only from the peered VPC or connected networks, and the data does not traverse the public internet.
 
 ## How Private Endpoints Work
 
-When you create a private endpoint, Vertex AI establishes a VPC peering connection between your VPC network and Google's service producer network. Prediction requests flow through this peered connection using private IP addresses.
+When you create a private endpoint, Vertex AI uses the private services access peering connection between your VPC network and Google's service producer network. Prediction requests flow through this peered connection using private IP addresses.
 
 ```mermaid
 graph LR
     subgraph "Your VPC"
-        A[Client Application] --> B[Internal IP]
+        A[Client Application] --> B[Private inference URI]
     end
 
     subgraph "VPC Peering"
@@ -60,9 +60,8 @@ gcloud services vpc-peerings connect \
     --project=your-project-id
 
 # Verify the peering is established
-gcloud services vpc-peerings list \
-    --network=your-vpc-network \
-    --project=your-project-id
+gcloud compute networks peerings list \
+    --network=your-vpc-network
 ```
 
 The IP range you reserve determines which private addresses Vertex AI can use. A /16 range provides 65,536 addresses, which is plenty for most deployments.
@@ -79,10 +78,10 @@ from google.cloud import aiplatform
 aiplatform.init(project="your-project-id", location="us-central1")
 
 # Get the full network resource name
-network = "projects/your-project-id/global/networks/your-vpc-network"
+network = "projects/your-project-number/global/networks/your-vpc-network"
 
 # Create a private endpoint
-endpoint = aiplatform.Endpoint.create(
+endpoint = aiplatform.PrivateEndpoint.create(
     display_name="fraud-detection-private",
     network=network,  # This makes the endpoint private
     description="Private endpoint for fraud detection - no public access"
@@ -94,7 +93,7 @@ print(f"Network: {network}")
 
 ## Deploying a Model to the Private Endpoint
 
-Model deployment to a private endpoint works the same as public endpoints. The only difference is that the endpoint itself restricts access.
+Model deployment to a private endpoint is similar to public endpoints. The main differences are that private services access endpoints support one deployed model per endpoint and do not support traffic splitting.
 
 This code deploys a model to the private endpoint:
 
@@ -107,11 +106,11 @@ aiplatform.init(project="your-project-id", location="us-central1")
 model = aiplatform.Model.upload(
     display_name="fraud-detector-v3",
     artifact_uri="gs://your-bucket/models/fraud-v3/",
-    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest"
+    serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-5:latest"
 )
 
 # Get the private endpoint
-endpoint = aiplatform.Endpoint(
+endpoint = aiplatform.PrivateEndpoint(
     "projects/your-project-id/locations/us-central1/endpoints/PRIVATE_ENDPOINT_ID"
 )
 
@@ -121,8 +120,7 @@ model.deploy(
     deployed_model_display_name="fraud-v3-private",
     machine_type="n1-standard-4",
     min_replica_count=2,  # Higher minimum for production
-    max_replica_count=10,
-    traffic_percentage=100
+    max_replica_count=10
 )
 
 print("Model deployed to private endpoint")
@@ -145,11 +143,11 @@ aiplatform.init(
 )
 
 # Get the private endpoint
-endpoint = aiplatform.Endpoint(
+endpoint = aiplatform.PrivateEndpoint(
     "projects/your-project-id/locations/us-central1/endpoints/PRIVATE_ENDPOINT_ID"
 )
 
-# Send prediction request - traffic stays within VPC
+# Send prediction request - traffic uses the private path
 instances = [
     {
         "transaction_amount": 5432.10,
@@ -205,10 +203,13 @@ spec:
               memory: 512Mi
 ```
 
-The GKE service account needs the `roles/aiplatform.user` IAM role to call the endpoint:
+The Google service account used by the pod needs the `roles/aiplatform.user` IAM role to call the endpoint:
 
 ```bash
 # Create a Kubernetes service account bound to a GCP service account
+kubectl create serviceaccount vertex-ai-caller \
+    --namespace=default
+
 gcloud iam service-accounts create vertex-caller \
     --display-name="Vertex AI Endpoint Caller"
 
@@ -222,20 +223,36 @@ gcloud iam service-accounts add-iam-policy-binding \
     vertex-caller@your-project-id.iam.gserviceaccount.com \
     --role="roles/iam.workloadIdentityUser" \
     --member="serviceAccount:your-project-id.svc.id.goog[default/vertex-ai-caller]"
+
+kubectl annotate serviceaccount vertex-ai-caller \
+    --namespace=default \
+    iam.gke.io/gcp-service-account=vertex-caller@your-project-id.iam.gserviceaccount.com
 ```
 
 ## Using Private Service Connect (Alternative to VPC Peering)
 
-For more granular control, you can use Private Service Connect instead of VPC peering. PSC creates a dedicated endpoint in your VPC that forwards to the Vertex AI service.
+For more granular control, you can use Private Service Connect instead of VPC peering. PSC creates a dedicated endpoint in your VPC that forwards to the Vertex AI online inference service. Create the Vertex AI endpoint with Private Service Connect enabled, deploy the model, then use the generated service attachment to create the forwarding rule.
 
 ```bash
-# Create a Private Service Connect endpoint
+# Get the service attachment after deploying the model
+gcloud ai endpoints describe ENDPOINT_ID \
+    --project=your-project-id \
+    --region=us-central1 \
+    --format="value(deployedModels.privateEndpoints.serviceAttachment)"
+
+# Reserve an internal IP address for the PSC forwarding rule
+gcloud compute addresses create vertex-ai-psc-ip \
+    --project=your-project-id \
+    --region=us-central1 \
+    --subnet=your-subnet
+
+# Create a Private Service Connect forwarding rule
 gcloud compute forwarding-rules create vertex-ai-psc \
+    --project=your-project-id \
     --region=us-central1 \
     --network=your-vpc-network \
-    --subnet=your-subnet \
-    --target-service-attachment=projects/your-project-id/regions/us-central1/serviceAttachments/ATTACHMENT_ID \
-    --address=vertex-ai-psc-ip
+    --address=vertex-ai-psc-ip \
+    --target-service-attachment=SERVICE_ATTACHMENT_URI
 ```
 
 The advantage of PSC over VPC peering is that you get a single, predictable IP address for the endpoint, which simplifies firewall rules and network policies.
@@ -252,7 +269,7 @@ gcloud compute firewall-rules create allow-vertex-ai-prediction \
     --network=your-vpc-network \
     --direction=EGRESS \
     --action=ALLOW \
-    --rules=tcp:443,tcp:8080 \
+    --rules=tcp:80 \
     --destination-ranges=10.0.0.0/16 \
     --target-tags=vertex-ai-caller \
     --priority=1000
@@ -262,7 +279,7 @@ gcloud compute firewall-rules create deny-vertex-ai-default \
     --network=your-vpc-network \
     --direction=EGRESS \
     --action=DENY \
-    --rules=tcp:443,tcp:8080 \
+    --rules=tcp:80 \
     --destination-ranges=10.0.0.0/16 \
     --priority=2000
 ```
@@ -285,14 +302,14 @@ def check_private_endpoint_metrics(project_id, endpoint_id):
         "end_time": {"seconds": int(now.timestamp())}
     })
 
-    # Check prediction count
+    # Check private response count
     results = client.list_time_series(
         request={
             "name": f"projects/{project_id}",
             "filter": (
                 f'resource.type="aiplatform.googleapis.com/Endpoint" '
                 f'AND resource.labels.endpoint_id="{endpoint_id}" '
-                f'AND metric.type="aiplatform.googleapis.com/prediction/online/prediction_count"'
+                f'AND metric.type="aiplatform.googleapis.com/prediction/online/private/response_count"'
             ),
             "interval": interval,
             "aggregation": monitoring_v3.Aggregation(
@@ -304,7 +321,7 @@ def check_private_endpoint_metrics(project_id, endpoint_id):
 
     for series in results:
         for point in series.points:
-            print(f"Predictions in last hour: {point.value.int64_value}")
+            print(f"Responses in last hour: {point.value.int64_value}")
 
 check_private_endpoint_metrics("your-project-id", "ENDPOINT_ID")
 ```
@@ -313,12 +330,12 @@ check_private_endpoint_metrics("your-project-id", "ENDPOINT_ID")
 
 The most common issue is connectivity failures. If your client cannot reach the private endpoint, check these things in order.
 
-First, verify the VPC peering is active. Run `gcloud services vpc-peerings list --network=your-vpc-network` and confirm the status is ACTIVE.
+First, verify the VPC peering is active. Run `gcloud compute networks peerings list --network=your-vpc-network` and confirm the state is ACTIVE.
 
 Second, check that your client VM or GKE cluster is in the same VPC network (or a connected network) as the one you peered.
 
-Third, verify DNS resolution. The private endpoint uses an internal DNS name that should resolve to a private IP. Run `nslookup` or `dig` from within the VPC to confirm.
+Third, verify that you are using the private inference URI from the deployed model and calling it from within the VPC or connected network.
 
 Fourth, check firewall rules. Ensure egress traffic to the reserved IP range is allowed from your client's subnet.
 
-Private endpoints add a layer of security that many regulated industries require. The setup is more involved than public endpoints, but once configured, the prediction workflow is identical - your application code does not need to change at all.
+Private endpoints add a layer of security that many regulated industries require. The setup is more involved than public endpoints, but once configured, the prediction payload workflow is similar - your application uses the private endpoint path instead of the public endpoint path.
