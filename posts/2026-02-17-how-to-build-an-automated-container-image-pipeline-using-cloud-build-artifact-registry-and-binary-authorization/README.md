@@ -37,8 +37,10 @@ Create a Docker repository in Artifact Registry:
 gcloud services enable \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
+  ondemandscanning.googleapis.com \
   containeranalysis.googleapis.com \
-  binaryauthorization.googleapis.com
+  binaryauthorization.googleapis.com \
+  cloudkms.googleapis.com
 
 # Create the Docker repository
 gcloud artifacts repositories create app-images \
@@ -49,7 +51,7 @@ gcloud artifacts repositories create app-images \
 
 ## Step 2: Configure Cloud Build Pipeline
 
-Create a Cloud Build configuration that builds, scans, and pushes images:
+Create a Cloud Build configuration that builds, pushes, scans, and signs images:
 
 ```yaml
 # cloudbuild.yaml
@@ -75,35 +77,20 @@ steps:
     id: 'push'
     waitFor: ['build']
 
-  # Step 3: Wait for vulnerability scanning to complete
+  # Step 3: Run an on-demand vulnerability scan
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        # Wait for the vulnerability scan to finish
-        echo "Waiting for vulnerability scan..."
-        for i in $(seq 1 30); do
-          SCAN_STATUS=$(gcloud artifacts docker images describe \
-            us-central1-docker.pkg.dev/$PROJECT_ID/app-images/my-app:$SHORT_SHA \
-            --format='value(image_summary.slsa_build_level)' 2>/dev/null || echo "pending")
+        IMAGE_URI="us-central1-docker.pkg.dev/$PROJECT_ID/app-images/my-app:$SHORT_SHA"
 
-          # Check if scan results are available
-          VULN_COUNT=$(gcloud artifacts docker images list \
-            us-central1-docker.pkg.dev/$PROJECT_ID/app-images/my-app \
-            --include-tags \
-            --filter="tags:$SHORT_SHA" \
-            --format='value(VULNERABILITIES)' 2>/dev/null || echo "pending")
-
-          if [ "$VULN_COUNT" != "pending" ]; then
-            echo "Scan complete. Vulnerabilities: $VULN_COUNT"
-            break
-          fi
-
-          echo "Scan in progress... (attempt $i/30)"
-          sleep 10
-        done
-    id: 'wait-for-scan'
+        echo "Scanning image: $IMAGE_URI"
+        gcloud artifacts docker images scan "$IMAGE_URI" \
+          --remote \
+          --location=us \
+          --format='value(response.scan)' > /workspace/scan_id.txt
+    id: 'scan'
     waitFor: ['push']
 
   # Step 4: Check vulnerability scan results
@@ -112,23 +99,12 @@ steps:
     args:
       - '-c'
       - |
-        # Get the image digest
-        DIGEST=$(gcloud artifacts docker images describe \
-          us-central1-docker.pkg.dev/$PROJECT_ID/app-images/my-app:$SHORT_SHA \
-          --format='value(image_summary.digest)')
-
-        echo "Image digest: $DIGEST"
-
         # Check for critical and high vulnerabilities
-        CRITICAL=$(gcloud artifacts docker images describe \
-          us-central1-docker.pkg.dev/$PROJECT_ID/app-images/my-app:$SHORT_SHA \
-          --show-package-vulnerability \
-          --format=json | jq '[.package_vulnerability[].vulnerability.effectiveSeverity | select(. == "CRITICAL")] | length')
+        SEVERITIES=$(gcloud artifacts docker images list-vulnerabilities "$(cat /workspace/scan_id.txt)" \
+          --format='value(vulnerability.effectiveSeverity)')
 
-        HIGH=$(gcloud artifacts docker images describe \
-          us-central1-docker.pkg.dev/$PROJECT_ID/app-images/my-app:$SHORT_SHA \
-          --show-package-vulnerability \
-          --format=json | jq '[.package_vulnerability[].vulnerability.effectiveSeverity | select(. == "HIGH")] | length')
+        CRITICAL=$(printf '%s\n' "$SEVERITIES" | grep -c '^CRITICAL$' || true)
+        HIGH=$(printf '%s\n' "$SEVERITIES" | grep -c '^HIGH$' || true)
 
         echo "Critical vulnerabilities: $CRITICAL"
         echo "High vulnerabilities: $HIGH"
@@ -145,7 +121,7 @@ steps:
 
         echo "Vulnerability check passed"
     id: 'vuln-check'
-    waitFor: ['wait-for-scan']
+    waitFor: ['scan']
 
   # Step 5: Create attestation
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -164,6 +140,7 @@ steps:
 
         # Create the attestation using the Cloud KMS key
         gcloud beta container binauthz attestations sign-and-create \
+          --project=$PROJECT_ID \
           --artifact-url="$IMAGE" \
           --attestor=build-attestor \
           --attestor-project=$PROJECT_ID \
@@ -196,9 +173,37 @@ gcloud kms keys create attestor-key \
   --purpose=asymmetric-signing \
   --default-algorithm=ec-sign-p256-sha256
 
+# Grant Cloud Build permission to scan, sign, and create attestations
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role=roles/ondemandscanning.admin
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role=roles/artifactregistry.writer
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role=roles/binaryauthorization.attestorsViewer
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role=roles/cloudkms.signerVerifier
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role=roles/containeranalysis.notes.attacher
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
+  --role=roles/containeranalysis.occurrences.editor
+
 # Create a Container Analysis note (required for attestors)
 curl -X POST \
-  "https://containeranalysis.googleapis.com/v1/projects/my-project/notes/?noteId=build-verified" \
+  "https://containeranalysis.googleapis.com/v1/projects/$PROJECT_ID/notes/?noteId=build-verified" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
@@ -210,14 +215,14 @@ curl -X POST \
   }'
 
 # Create the attestor
-gcloud beta container binauthz attestors create build-attestor \
+gcloud container binauthz attestors create build-attestor \
   --attestation-authority-note=build-verified \
-  --attestation-authority-note-project=my-project
+  --attestation-authority-note-project=$PROJECT_ID
 
 # Add the KMS key to the attestor
-gcloud beta container binauthz attestors public-keys add \
+gcloud container binauthz attestors public-keys add \
   --attestor=build-attestor \
-  --keyversion-project=my-project \
+  --keyversion-project=$PROJECT_ID \
   --keyversion-location=global \
   --keyversion-keyring=binauthz-keys \
   --keyversion-key=attestor-key \
@@ -230,20 +235,16 @@ Create a policy that requires attestation for all deployments:
 
 ```bash
 # Export the current policy
-gcloud beta container binauthz policy export > policy.yaml
+gcloud container binauthz policy export > policy.yaml
 ```
 
 Edit the policy:
 
 ```yaml
 # policy.yaml - Binary Authorization policy
+name: projects/my-project/policy
 admissionWhitelistPatterns:
-  # Allow system images
-  - namePattern: "gcr.io/google_containers/*"
-  - namePattern: "gcr.io/google-containers/*"
-  - namePattern: "k8s.gcr.io/*"
-  - namePattern: "gke.gcr.io/*"
-  # Allow Artifact Registry system images
+  # Allow your own system images. Google-managed system images are handled by globalPolicyEvaluationMode.
   - namePattern: "us-central1-docker.pkg.dev/my-project/system-images/*"
 
 defaultAdmissionRule:
@@ -260,7 +261,7 @@ Apply the policy:
 
 ```bash
 # Import the updated policy
-gcloud beta container binauthz policy import policy.yaml
+gcloud container binauthz policy import policy.yaml
 ```
 
 ## Step 5: Enable Binary Authorization on GKE
@@ -311,11 +312,31 @@ gcloud logging read \
   --limit=20
 
 # Create an alert for policy violations
-gcloud alpha monitoring policies create \
-  --display-name="Binary Authorization Violation" \
-  --condition-display-name="Deployment blocked by Binary Authorization" \
-  --condition-filter='resource.type="k8s_cluster" AND log_id("cloudaudit.googleapis.com/activity") AND protoPayload.response.status.message:"denied by Binary Authorization"' \
-  --notification-channels=projects/my-project/notificationChannels/security-team
+cat > binauthz-alert.json <<'EOF'
+{
+  "displayName": "Binary Authorization Violation",
+  "conditions": [
+    {
+      "displayName": "Deployment blocked by Binary Authorization",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"k8s_cluster\" AND log_id(\"cloudaudit.googleapis.com/activity\") AND protoPayload.response.status.message:\"denied by Binary Authorization\""
+      }
+    }
+  ],
+  "combiner": "OR",
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    },
+    "autoClose": "604800s"
+  },
+  "notificationChannels": [
+    "projects/my-project/notificationChannels/security-team"
+  ]
+}
+EOF
+
+gcloud monitoring policies create --policy-from-file=binauthz-alert.json
 ```
 
 ## Wrapping Up
