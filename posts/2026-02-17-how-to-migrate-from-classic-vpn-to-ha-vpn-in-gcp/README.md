@@ -8,7 +8,7 @@ Description: Plan and execute a migration from Classic VPN to HA VPN in GCP with
 
 ---
 
-Classic VPN in GCP is functional but lacks the redundancy and SLA guarantees of HA VPN. Classic VPN uses a single interface with one external IP, offers no built-in redundancy, and Google has been encouraging migration to HA VPN for years. If you are still running Classic VPN tunnels, migrating to HA VPN gives you a 99.99% SLA, dual interfaces for redundancy, and BGP support for dynamic routing.
+Classic VPN in GCP is functional but lacks the redundancy and higher SLA of HA VPN. Classic VPN uses a single interface with one external IP, offers no built-in redundancy, and Google has been encouraging migration to HA VPN for years. If you are still running Classic VPN tunnels, migrating to HA VPN gives you a 99.99% SLA, dual interfaces for redundancy, and BGP-based dynamic routing.
 
 The tricky part is doing the migration without significant downtime. This guide provides a practical migration strategy.
 
@@ -18,10 +18,10 @@ Here is what you gain by moving from Classic to HA VPN:
 
 | Feature | Classic VPN | HA VPN |
 |---------|------------|--------|
-| SLA | No SLA | 99.99% (with 2 tunnels) |
+| SLA | 99.9% | 99.99% (with at least one tunnel on each interface) |
 | Interfaces | 1 | 2 |
 | Redundancy | None built-in | Active/active by default |
-| Routing | Static or BGP | BGP (recommended) |
+| Routing | Static, or BGP for existing dynamic-routing tunnels | BGP required |
 | IPv6 support | No | Yes |
 | External IPs | You provide | Auto-assigned |
 
@@ -198,15 +198,11 @@ At this point, both Classic VPN and HA VPN are active. Traffic might flow throug
 
 ## Phase 7: Test Traffic Through HA VPN
 
-To verify traffic flows through the HA VPN, you can check the tunnel metrics:
+To verify traffic flows through the HA VPN, check the tunnel metrics in Cloud Monitoring. For example, use a PromQL query for the HA VPN tunnel's sent and received bytes:
 
-```bash
-# Check bytes sent through HA VPN tunnels
-gcloud logging read \
-  'resource.type="vpn_gateway" AND resource.labels.gateway_name="ha-vpn-gateway"' \
-  --project=your-project-id \
-  --freshness=30m \
-  --limit=10
+```promql
+rate({"vpn.googleapis.com/network/sent_bytes_count", monitored_resource="vpn_gateway", tunnel_name="ha-tunnel-0"}[1m]) +
+rate({"vpn.googleapis.com/network/received_bytes_count", monitored_resource="vpn_gateway", tunnel_name="ha-tunnel-0"}[1m])
 ```
 
 Run connectivity tests from GCP to on-premises:
@@ -221,21 +217,29 @@ gcloud compute ssh your-vm \
 
 ## Phase 8: Shift Traffic to HA VPN
 
-If your Classic VPN uses static routes, you need to manage route priorities. BGP routes from HA VPN should take priority over static routes:
+If your Classic VPN uses static routes, you need to manage route priorities. Static routes cannot be updated in place, so recreate the Classic VPN static routes with a lower priority if you need to keep them temporarily as fallback routes:
 
 ```bash
-# Lower the priority of Classic VPN static routes (higher number = lower priority)
-gcloud compute routes update classic-vpn-route-1 \
+# Delete the existing Classic VPN static route
+gcloud compute routes delete classic-vpn-route-1 \
+  --project=your-project-id
+
+# Recreate it with a lower priority (higher number = lower priority)
+gcloud compute routes create classic-vpn-route-1 \
+  --network=your-vpc \
+  --destination-range=192.168.1.0/24 \
+  --next-hop-vpn-tunnel=classic-tunnel \
+  --next-hop-vpn-tunnel-region=us-central1 \
   --priority=2000 \
   --project=your-project-id
 ```
 
-BGP routes from the HA VPN Cloud Router typically have a default priority of 100, which is higher priority than static routes with priority 1000+. This means traffic should automatically prefer the HA VPN path.
+BGP-learned routes from the HA VPN Cloud Router use the MED values advertised by your peer router for path selection. If the HA VPN dynamic route and Classic VPN static route have the same destination prefix, make sure the Classic VPN static route has a numerically higher priority value than the HA VPN learned route so traffic prefers the HA VPN path.
 
 Monitor to confirm traffic has shifted:
 
 ```bash
-# Check Classic VPN tunnel is now idle
+# Check Classic VPN tunnel is still up while Cloud Monitoring metrics show little or no traffic
 gcloud compute vpn-tunnels describe classic-tunnel \
   --region=us-central1 \
   --format="yaml(status)" \
@@ -256,8 +260,16 @@ gcloud compute vpn-tunnels delete classic-tunnel \
 gcloud compute routes delete classic-vpn-route-1 \
   --project=your-project-id
 
-# Delete the Classic VPN gateway forwarding rules
-gcloud compute forwarding-rules delete classic-vpn-fr \
+# Delete the Classic VPN gateway forwarding rules for ESP, UDP 500, and UDP 4500
+gcloud compute forwarding-rules delete classic-vpn-fr-esp \
+  --region=us-central1 \
+  --project=your-project-id
+
+gcloud compute forwarding-rules delete classic-vpn-fr-udp500 \
+  --region=us-central1 \
+  --project=your-project-id
+
+gcloud compute forwarding-rules delete classic-vpn-fr-udp4500 \
   --region=us-central1 \
   --project=your-project-id
 
