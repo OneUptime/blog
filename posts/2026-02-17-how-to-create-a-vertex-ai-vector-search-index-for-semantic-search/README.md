@@ -25,16 +25,16 @@ First, you need embeddings for your content. Let us use the Vertex AI embedding 
 
 # Generate embeddings for your documents
 
-import vertexai
-from vertexai.language_models import TextEmbeddingModel, TextEmbeddingInput
-import json
+from google import genai
+from google.genai.types import EmbedContentConfig
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
-model = TextEmbeddingModel.from_pretrained('text-embedding-005')
+model_name = 'text-embedding-005'
 
 # Your documents to index
 documents = [
@@ -52,17 +52,15 @@ for i in range(0, len(documents), batch_size):
     batch = documents[i:i + batch_size]
 
     # Create embedding inputs with the retrieval document task type
-    inputs = [
-        TextEmbeddingInput(
-            text=f"{doc['title']}. {doc['content']}",
-            task_type='RETRIEVAL_DOCUMENT',
-        )
-        for doc in batch
-    ]
+    inputs = [f"{doc['title']}. {doc['content']}" for doc in batch]
 
-    embeddings = model.get_embeddings(inputs)
+    response = client.models.embed_content(
+        model=model_name,
+        contents=inputs,
+        config=EmbedContentConfig(task_type='RETRIEVAL_DOCUMENT'),
+    )
 
-    for doc, embedding in zip(batch, embeddings):
+    for doc, embedding in zip(batch, response.embeddings):
         vectors.append({
             'id': doc['id'],
             'embedding': embedding.values,
@@ -175,7 +173,7 @@ For private endpoints within a VPC:
 # Create a VPC-private endpoint
 index_endpoint = aiplatform.MatchingEngineIndexEndpoint.create(
     display_name='doc-search-private-endpoint',
-    network='projects/your-project-id/global/networks/your-vpc',
+    network='projects/123456789012/global/networks/your-vpc',
 )
 ```
 
@@ -222,17 +220,18 @@ Now you can search:
 # search.py
 # Perform semantic search queries
 
-import vertexai
-from vertexai.language_models import TextEmbeddingModel, TextEmbeddingInput
+from google import genai
+from google.genai.types import EmbedContentConfig
 from google.cloud import aiplatform
 
-vertexai.init(
+client = genai.Client(
+    vertexai=True,
     project='your-project-id',
     location='us-central1',
 )
 
 # Initialize the embedding model for query encoding
-embedding_model = TextEmbeddingModel.from_pretrained('text-embedding-005')
+embedding_model_name = 'text-embedding-005'
 
 # Get the deployed index endpoint
 index_endpoint = aiplatform.MatchingEngineIndexEndpoint('ENDPOINT_RESOURCE_NAME')
@@ -240,12 +239,12 @@ index_endpoint = aiplatform.MatchingEngineIndexEndpoint('ENDPOINT_RESOURCE_NAME'
 def semantic_search(query, num_results=10):
     """Perform a semantic search against the index."""
     # Step 1: Embed the query
-    query_input = TextEmbeddingInput(
-        text=query,
-        task_type='RETRIEVAL_QUERY',
+    response = client.models.embed_content(
+        model=embedding_model_name,
+        contents=[query],
+        config=EmbedContentConfig(task_type='RETRIEVAL_QUERY'),
     )
-    query_embedding = embedding_model.get_embeddings([query_input])
-    query_vector = query_embedding[0].values
+    query_vector = response.embeddings[0].values
 
     # Step 2: Find nearest neighbors
     results = index_endpoint.find_neighbors(
@@ -311,7 +310,7 @@ You can also remove vectors:
 ```python
 # Remove vectors by creating a file with IDs to remove
 # Format: one ID per line in a text file
-# Upload to GCS and reference in the update
+# Upload it under a delete/ subdirectory and reference the update root
 
 index = index.update_embeddings(
     contents_delta_uri='gs://your-bucket/vector-search/updates/',
@@ -334,11 +333,11 @@ vector_with_restricts = {
     'restricts': [
         {
             'namespace': 'category',
-            'allow_list': ['networking'],
+            'allow': ['networking'],
         },
         {
             'namespace': 'language',
-            'allow_list': ['python'],
+            'allow': ['python'],
         },
     ],
 }
@@ -364,15 +363,19 @@ Here is a Flask service that wraps everything together:
 # Complete semantic search API service
 
 from flask import Flask, request, jsonify
-import vertexai
-from vertexai.language_models import TextEmbeddingModel, TextEmbeddingInput
+from google import genai
+from google.genai.types import EmbedContentConfig
 from google.cloud import aiplatform
 
 app = Flask(__name__)
 
 # Initialize once at startup
-vertexai.init(project='your-project-id', location='us-central1')
-embedding_model = TextEmbeddingModel.from_pretrained('text-embedding-005')
+client = genai.Client(
+    vertexai=True,
+    project='your-project-id',
+    location='us-central1',
+)
+embedding_model_name = 'text-embedding-005'
 index_endpoint = aiplatform.MatchingEngineIndexEndpoint('ENDPOINT_RESOURCE_NAME')
 
 # In production, load document metadata from a database
@@ -393,9 +396,12 @@ def search():
         return jsonify({'error': 'query is required'}), 400
 
     # Embed the query
-    query_input = TextEmbeddingInput(text=query, task_type='RETRIEVAL_QUERY')
-    query_embedding = embedding_model.get_embeddings([query_input])
-    query_vector = query_embedding[0].values
+    response = client.models.embed_content(
+        model=embedding_model_name,
+        contents=[query],
+        config=EmbedContentConfig(task_type='RETRIEVAL_QUERY'),
+    )
+    query_vector = response.embeddings[0].values
 
     # Search the index
     results = index_endpoint.find_neighbors(
