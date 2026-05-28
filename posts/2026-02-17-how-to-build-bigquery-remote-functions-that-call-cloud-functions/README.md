@@ -87,6 +87,12 @@ def calculate_sentiment(text):
     return round((pos_count - neg_count) / total, 2)
 ```
 
+Create a `requirements.txt` file for the function dependency.
+
+```text
+functions-framework==3.*
+```
+
 Deploy the Cloud Function.
 
 ```bash
@@ -119,27 +125,20 @@ Get the service account associated with the connection.
 
 ```bash
 # Get the connection's service account
-bq show --connection --format=json my_project.US.my-cloud-function-connection | jq '.cloudResource.serviceAccountId'
+bq show --connection --format=json my_project.US.my-cloud-function-connection | jq -r '.cloudResource.serviceAccountId'
 ```
 
-This returns something like `bqcx-123456789-abc@gcp-sa-bigquery-condel.iam.gserviceaccount.com`.
+This returns something like `connection-123456789-abc@gcp-sa-bigquery-condel.iam.gserviceaccount.com`.
 
 ## Step 3: Grant Permissions
 
-The connection's service account needs permission to invoke the Cloud Function.
+The connection's service account needs permission to invoke the Cloud Function. For Gen2 functions, grant Cloud Run invoker on the underlying Cloud Run service.
 
 ```bash
-# Grant the BigQuery connection service account permission to invoke the function
-gcloud functions add-iam-policy-binding analyze-sentiment \
-  --gen2 \
-  --region=us-central1 \
-  --member="serviceAccount:bqcx-123456789-abc@gcp-sa-bigquery-condel.iam.gserviceaccount.com" \
-  --role="roles/cloudfunctions.invoker"
-
-# For Gen2 functions, also grant Cloud Run invoker
+# Grant the BigQuery connection service account permission to invoke the Gen2 function
 gcloud run services add-iam-policy-binding analyze-sentiment \
   --region=us-central1 \
-  --member="serviceAccount:bqcx-123456789-abc@gcp-sa-bigquery-condel.iam.gserviceaccount.com" \
+  --member="serviceAccount:connection-123456789-abc@gcp-sa-bigquery-condel.iam.gserviceaccount.com" \
   --role="roles/run.invoker"
 ```
 
@@ -184,7 +183,6 @@ Remote functions can accept multiple parameters. Each parameter is passed as an 
 # main.py - Cloud Function with multiple parameters
 import functions_framework
 import json
-import requests
 
 @functions_framework.http
 def geocode_address(request):
@@ -199,12 +197,12 @@ def geocode_address(request):
         country = call[1]
 
         if not address:
-            results.append(json.dumps({'lat': None, 'lng': None}))
+            results.append({'lat': None, 'lng': None})
             continue
 
         # Call geocoding service (simplified example)
         coords = lookup_coordinates(address, country)
-        results.append(json.dumps(coords))
+        results.append(coords)
 
     return json.dumps({'replies': results})
 
@@ -252,7 +250,7 @@ def enrich_company(request):
         domain = call[0]
 
         if not domain:
-            results.append(json.dumps(None))
+            results.append(None)
             continue
 
         # Look up company info (simplified)
@@ -262,7 +260,7 @@ def enrich_company(request):
             'founded_year': 2010,
             'headquarters': 'San Francisco, CA'
         }
-        results.append(json.dumps(info))
+        results.append(info)
 
     return json.dumps({'replies': results})
 ```
@@ -306,15 +304,16 @@ WHERE review_date = CURRENT_DATE()  -- Filter to reduce rows
 **Cache results**: If the same inputs produce the same outputs, consider materializing results to avoid redundant function calls.
 
 ```sql
--- Materialize sentiment scores to avoid recomputing
-CREATE OR REPLACE TABLE `my_project.my_dataset.review_sentiments` AS
-SELECT
-  review_id,
-  `my_project.my_dataset.sentiment_score`(review_text) AS sentiment
-FROM `my_project.my_dataset.customer_reviews`
-WHERE review_id NOT IN (
-  SELECT review_id FROM `my_project.my_dataset.review_sentiments`
-);
+-- Materialize new sentiment scores to avoid recomputing
+MERGE `my_project.my_dataset.review_sentiments` AS target
+USING `my_project.my_dataset.customer_reviews` AS source
+ON target.review_id = source.review_id
+WHEN NOT MATCHED THEN
+  INSERT (review_id, sentiment)
+  VALUES (
+    source.review_id,
+    `my_project.my_dataset.sentiment_score`(source.review_text)
+  );
 ```
 
 ## Error Handling
