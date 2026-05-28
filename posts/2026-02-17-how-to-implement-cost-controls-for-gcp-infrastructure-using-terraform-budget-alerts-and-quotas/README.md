@@ -16,7 +16,7 @@ Budget alerts and quotas are your defense against these scenarios. Budget alerts
 
 GCP billing budgets monitor actual or forecasted spending and send notifications when thresholds are reached. Here is how to create them with Terraform.
 
-First, you need to enable the billing API and know your billing account ID:
+First, you need to enable the Cloud Billing Budget API and know your billing account ID:
 
 ```hcl
 # variables.tf - Budget-related variables
@@ -62,7 +62,7 @@ resource "google_billing_budget" "project_budget" {
     projects = ["projects/${data.google_project.current.number}"]
 
     # Optionally filter by specific services
-    # services = ["services/24E6-581D-38E5"]  # Compute Engine service ID
+    # services = ["services/6F81-5844-456A"]  # Compute Engine service ID
   }
 
   # Set the budget amount
@@ -109,7 +109,7 @@ resource "google_billing_budget" "project_budget" {
     # Also publish to Pub/Sub for automated responses
     pubsub_topic = google_pubsub_topic.budget_alerts.id
 
-    # Include credits in cost calculation
+    # Keep the default budget email recipients, such as Billing Account Administrators and Billing Account Users
     disable_default_iam_recipients = false
   }
 }
@@ -153,7 +153,7 @@ variable "service_budgets" {
       service_id     = "services/9662-B51E-5089"
       monthly_amount = 300
     }
-    gke = {
+    gke_nodes = {
       service_id     = "services/6F81-5844-456A"
       monthly_amount = 400
     }
@@ -214,6 +214,11 @@ resource "google_cloudfunctions2_function" "budget_enforcer" {
   name     = "budget-enforcer"
   location = var.region
 
+  depends_on = [
+    google_project_iam_member.enforcer_eventarc,
+    google_project_iam_member.enforcer_run_invoker,
+  ]
+
   build_config {
     runtime     = "python312"
     entry_point = "enforce_budget"
@@ -239,8 +244,10 @@ resource "google_cloudfunctions2_function" "budget_enforcer" {
   }
 
   event_trigger {
-    event_type = "google.cloud.pubsub.topic.v1.messagePublished"
-    pubsub_topic = google_pubsub_topic.budget_alerts.id
+    trigger_region        = var.region
+    event_type            = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic          = google_pubsub_topic.budget_alerts.id
+    service_account_email = google_service_account.budget_enforcer.email
   }
 }
 
@@ -257,6 +264,19 @@ resource "google_project_iam_member" "enforcer_compute" {
   role    = "roles/compute.instanceAdmin.v1"
   member  = "serviceAccount:${google_service_account.budget_enforcer.email}"
 }
+
+# Grant permission for the Eventarc trigger to receive events and invoke the Cloud Run service behind the function
+resource "google_project_iam_member" "enforcer_eventarc" {
+  project = var.project_id
+  role    = "roles/eventarc.eventReceiver"
+  member  = "serviceAccount:${google_service_account.budget_enforcer.email}"
+}
+
+resource "google_project_iam_member" "enforcer_run_invoker" {
+  project = var.project_id
+  role    = "roles/run.invoker"
+  member  = "serviceAccount:${google_service_account.budget_enforcer.email}"
+}
 ```
 
 Here is the enforcement function:
@@ -268,6 +288,7 @@ Here is the enforcement function:
 import base64
 import json
 import os
+import urllib.request
 import functions_framework
 from google.cloud import compute_v1
 
@@ -317,9 +338,25 @@ def stop_non_essential_instances(project_id):
                         instance=instance.name
                     )
                     print(f"Stopped instance: {instance.name} in {zone_name}")
+
+def notify_slack(message):
+    """Send a notification to Slack if a webhook is configured."""
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        print(message)
+        return
+
+    request = urllib.request.Request(
+        webhook_url,
+        data=json.dumps({"text": message}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        response.read()
 ```
 
-Resource Quotas
+## Resource Quotas
 
 Quotas limit how many resources can be created. While GCP has default quotas, you can request lower quotas for cost control:
 
@@ -328,11 +365,12 @@ Quotas limit how many resources can be created. While GCP has default quotas, yo
 
 # Limit the number of CPUs in Compute Engine
 resource "google_service_usage_consumer_quota_override" "compute_cpus" {
+  provider       = google-beta
   project        = var.project_id
   service        = "compute.googleapis.com"
-  metric         = "compute.googleapis.com/cpus"
-  limit          = "/project/region"
-  override_value = var.max_cpus_per_region
+  metric         = urlencode("compute.googleapis.com/cpus")
+  limit          = urlencode("/project/region")
+  override_value = tostring(var.max_cpus_per_region)
   force          = true
 
   dimensions = {
@@ -342,11 +380,12 @@ resource "google_service_usage_consumer_quota_override" "compute_cpus" {
 
 # Limit the number of GPUs (expensive resources)
 resource "google_service_usage_consumer_quota_override" "compute_gpus" {
+  provider       = google-beta
   project        = var.project_id
   service        = "compute.googleapis.com"
-  metric         = "compute.googleapis.com/nvidia_t4_gpus"
-  limit          = "/project/region"
-  override_value = var.max_gpus_per_region
+  metric         = urlencode("compute.googleapis.com/nvidia_t4_gpus")
+  limit          = urlencode("/project/region")
+  override_value = tostring(var.max_gpus_per_region)
   force          = true
 
   dimensions = {
@@ -405,42 +444,55 @@ resource "google_project_iam_custom_role" "bq_cost_controlled" {
 }
 ```
 
-For per-project byte limits, use the BigQuery reservation API:
+For per-project and per-user byte limits on on-demand queries, use BigQuery custom query quotas:
 
 ```hcl
-# Set maximum bytes billed per query at the project level
-resource "google_bigquery_reservation_assignment" "default" {
-  count    = var.enable_bq_reservation ? 1 : 0
-  project  = var.project_id
-  location = var.bq_location
+# Set maximum bytes processed per day at the project level.
+# override_value is in MiB.
+resource "google_service_usage_consumer_quota_override" "bq_query_usage_per_day" {
+  provider       = google-beta
+  project        = var.project_id
+  service        = "bigquery.googleapis.com"
+  metric         = urlencode("bigquery.googleapis.com/quota/query/usage")
+  limit          = urlencode("/d/project")
+  override_value = tostring(var.bq_query_mib_per_day)
+  force          = true
+}
 
-  assignee = "projects/${var.project_id}"
-  reservation = google_bigquery_reservation.default[0].id
-  job_type = "QUERY"
+# Set maximum bytes processed per day per user.
+# override_value is in MiB.
+resource "google_service_usage_consumer_quota_override" "bq_query_usage_per_user_per_day" {
+  provider       = google-beta
+  project        = var.project_id
+  service        = "bigquery.googleapis.com"
+  metric         = urlencode("bigquery.googleapis.com/quota/query/usage")
+  limit          = urlencode("/d/project/user")
+  override_value = tostring(var.bq_query_mib_per_user_per_day)
+  force          = true
 }
 ```
 
 ## Monitoring Dashboard
 
-Create a cost monitoring dashboard:
+Create a budget alert activity dashboard:
 
 ```hcl
-# dashboard.tf - Cost monitoring dashboard
+# dashboard.tf - Budget alert monitoring dashboard
 
 resource "google_monitoring_dashboard" "cost" {
   project        = var.project_id
   dashboard_json = jsonencode({
-    displayName = "Cost Monitoring"
+    displayName = "Budget Alert Monitoring"
     gridLayout = {
       columns = 2
       widgets = [
         {
-          title = "Daily Spend by Service"
+          title = "Budget Alert Pub/Sub Publish Requests"
           xyChart = {
             dataSets = [{
               timeSeriesQuery = {
                 timeSeriesFilter = {
-                  filter = "resource.type = \"global\" AND metric.type = \"billing.googleapis.com/billing/gcp/cost\""
+                  filter = "resource.type = \"pubsub_topic\" AND metric.type = \"pubsub.googleapis.com/topic/send_request_count\" AND resource.label.\"topic_id\" = \"budget-alerts\""
                 }
               }
             }]
