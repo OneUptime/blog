@@ -39,19 +39,23 @@ Check the worker logs for these patterns.
 
 gcloud logging read 'resource.type="dataflow_step" AND
   resource.labels.job_id="JOB_ID" AND
-  (jsonPayload.message:"OutOfMemoryError" OR
+  log_id("dataflow.googleapis.com/worker") AND
+  (textPayload:"OutOfMemoryError" OR
+   textPayload:"worker lost contact" OR
+   textPayload:"GC overhead" OR
+   jsonPayload.message:"OutOfMemoryError" OR
    jsonPayload.message:"worker lost contact" OR
    jsonPayload.message:"GC overhead")' \
   --project=my-project \
   --limit=20 \
-  --format="json(timestamp, jsonPayload.message)"
+  --format="json(timestamp, textPayload, jsonPayload.message)"
 ```
 
 ## Common Causes of OOM
 
 ### 1. Large GroupByKey Results
 
-GroupByKey collects all values for a key into a single iterable. If one key has millions of values, they all need to fit in memory on a single worker.
+GroupByKey groups values for each key and window into a single iterable. Dataflow streams those values from the backend to the worker, so they do not all have to fit in worker memory by default. The OOM risk comes when your DoFn materializes a large iterable into an in-memory object.
 
 ```java
 // Dangerous: if one key has millions of values, this blows up memory
@@ -101,10 +105,10 @@ grouped.apply("StreamProcess", ParDo.of(
 
 ### 2. Large Side Inputs
 
-Side inputs are loaded entirely into memory on each worker. A side input with millions of entries can consume gigabytes of RAM.
+Side inputs created with `View.asMap()` or `View.asList()` should be small enough to fit in memory. In Dataflow streaming jobs that do not use Streaming Engine, side inputs are stored in worker memory. A side input with millions of entries can consume gigabytes of RAM.
 
 ```java
-// This loads the entire user table into memory on every worker
+// This can load the entire user table into memory on workers
 PCollectionView<Map<String, UserProfile>> userProfiles = pipeline
     .apply("LoadUsers", BigQueryIO.readTableRows()
         .from("project:dataset.users"))  // 10 million rows!
@@ -118,7 +122,8 @@ Solutions include reducing the side input size, using a distributed cache, or sw
 // Option 1: Filter the side input to only needed data
 PCollectionView<Map<String, UserProfile>> filteredView = pipeline
     .apply("LoadActiveUsers", BigQueryIO.readTableRows()
-        .fromQuery("SELECT * FROM users WHERE last_active > '2026-01-01'"))
+        .fromQuery("SELECT * FROM `project.dataset.users` WHERE last_active > '2026-01-01'")
+        .usingStandardSql())
     .apply("ToKV", MapElements.via(new ToKVFn()))
     .apply("AsMap", View.asMap());
 
@@ -146,11 +151,11 @@ public class BigtableLookupFn extends DoFn<Event, EnrichedEvent> {
 In streaming pipelines, windows and triggers can cause unbounded buffering if configured incorrectly.
 
 ```java
-// Dangerous: global window with no trigger in a streaming pipeline
-// Elements accumulate forever until memory runs out
+// Invalid for an unbounded streaming input without a non-default trigger
+// or a non-global windowing strategy
 PCollection<KV<String, Long>> dangerous = events
     .apply("GlobalWindow", Window.into(new GlobalWindows()))
-    .apply("GroupAll", GroupByKey.create());  // Never fires = infinite buffering
+    .apply("GroupAll", GroupByKey.create());  // Fails pipeline construction
 ```
 
 Always use appropriate windows and triggers for streaming pipelines.
@@ -179,15 +184,17 @@ public class MyEvent implements Serializable {
 Before fixing the problem, confirm what is using memory. Check the worker metrics.
 
 ```bash
-# Check memory utilization of workers
-gcloud logging read 'resource.type="gce_instance" AND
-  resource.labels.instance_id:"dataflow" AND
-  jsonPayload.message:"memory"' \
+# Check system logs for OOM-related worker events
+gcloud logging read 'resource.type="dataflow_step" AND
+  resource.labels.job_id="JOB_ID" AND
+  labels."dataflow.googleapis.com/log_type"="system" AND
+  (textPayload:"Out of memory" OR textPayload:"Killed process" OR
+   jsonPayload.message:"Out of memory" OR jsonPayload.message:"Killed process")' \
   --project=my-project \
   --limit=20
 ```
 
-You can also check the Dataflow monitoring tab in the console. Look at the per-step timing and data size. Steps that process large amounts of data per element are memory-hungry.
+You can also check the Dataflow monitoring tab in the console. Use the Memory utilization chart to see worker memory capacity and usage, and look at per-step timing and data size. Steps that process large amounts of data per element are memory-hungry.
 
 ## Fix 1: Increase Worker Memory
 
@@ -261,16 +268,19 @@ gcloud dataflow jobs run my-pipeline \
 
 With Streaming Engine, you can often use smaller machine types because the workers no longer need to hold state in local memory.
 
-## Fix 4: Tune JVM Settings
+## Fix 4: Profile JVM Heap Usage
 
-For advanced cases, you can adjust the JVM heap size allocated to your pipeline code.
+For advanced cases, enable heap profiling so you can confirm which code paths are allocating memory before changing your pipeline.
 
 ```bash
-# Set JVM options for Dataflow workers
---experiments=worker_jvm_options="-Xmx4g -XX:+UseG1GC"
+# Enable Dataflow heap sampling
+gcloud dataflow jobs run my-pipeline \
+  --gcs-location=gs://bucket/templates/my-template \
+  --region=us-central1 \
+  --additional-experiments=enable_google_cloud_heap_sampling
 ```
 
-Be careful with this. The default JVM settings are tuned for most workloads. Only change them if you have profiled the memory usage and know what you are doing.
+Be careful with low-level runtime tuning. The default worker settings are tuned for most workloads. Only change memory-related runtime options if you have profiled the memory usage and know what you are doing.
 
 ## Prevention Strategies
 
