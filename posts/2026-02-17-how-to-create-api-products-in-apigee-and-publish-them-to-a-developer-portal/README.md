@@ -156,10 +156,13 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "name": "my-weather-app",
-    "displayName": "My Weather App",
     "apiProducts": ["weather-api-free"],
     "callbackUrl": "https://example.com/callback",
     "attributes": [
+      {
+        "name": "DisplayName",
+        "value": "My Weather App"
+      },
       {
         "name": "app-type",
         "value": "web"
@@ -190,17 +193,12 @@ Apigee provides an integrated developer portal that you can customize with your 
 
 ### Creating the Portal
 
-```bash
-# Create an Apigee developer portal
-curl -X POST \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites" \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "weather-api-portal",
-    "description": "Developer portal for the Weather API"
-  }'
-```
+Create the portal from the Apigee in Cloud console:
+
+1. Go to **Distribution > Portals**.
+2. Click **Create**.
+3. Enter `Weather API Portal` as the portal name and `Developer portal for the Weather API` as the description.
+4. Click **Create**.
 
 ### Adding API Documentation
 
@@ -266,12 +264,12 @@ paths:
           description: Rate limit exceeded
 ```
 
-Upload the spec to the portal:
+Create a catalog item in the portal:
 
 ```bash
-# Upload the OpenAPI spec
+# Create an API doc catalog item
 curl -X POST \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/weather-api-portal/apidocs" \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/YOUR_SITE_ID/apidocs" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
@@ -281,6 +279,26 @@ curl -X POST \
     "published": true,
     "apiProductName": "weather-api-free"
   }'
+```
+
+Then upload the OpenAPI spec to the catalog item. Replace `API_DOC_ID` with the generated `id` returned by the create call:
+
+```bash
+# Upload the OpenAPI spec contents
+CONTENTS="$(base64 -w 0 weather-api-spec.yaml)"
+
+curl -X PATCH \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/sites/YOUR_SITE_ID/apidocs/API_DOC_ID/documentation" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"oasDocumentation\": {
+      \"spec\": {
+        \"displayName\": \"weather-api-spec.yaml\",
+        \"contents\": \"${CONTENTS}\"
+      }
+    }
+  }"
 ```
 
 ## Connecting Products to Proxy Policies
@@ -304,16 +322,10 @@ The proxy configuration that uses product-based quotas:
 <Quota name="EnforceProductQuota">
     <DisplayName>Enforce Product Quota</DisplayName>
     <!-- These flow variables are set automatically after API key verification -->
-    <Allow countRef="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.limit">
-        <Allow count="100"/>
-    </Allow>
-    <Interval ref="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.interval">
-        <Interval>1</Interval>
-    </Interval>
-    <TimeUnit ref="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.timeunit">
-        <TimeUnit>day</TimeUnit>
-    </TimeUnit>
-    <Identifier ref="client_id"/>
+    <Allow count="100" countRef="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.limit"/>
+    <Interval ref="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.interval">1</Interval>
+    <TimeUnit ref="verifyapikey.VerifyAPIKey.apiproduct.developer.quota.timeunit">day</TimeUnit>
+    <Identifier ref="verifyapikey.VerifyAPIKey.client_id"/>
     <Distributed>true</Distributed>
     <Synchronous>true</Synchronous>
 </Quota>
