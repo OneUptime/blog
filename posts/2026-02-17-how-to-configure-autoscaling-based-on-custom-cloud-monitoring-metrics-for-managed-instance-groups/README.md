@@ -27,17 +27,30 @@ Custom metric autoscaling lets you match your scaling behavior to your actual wo
 
 First, define a custom metric in Cloud Monitoring. You can do this through the API or by simply publishing data to a metric descriptor that does not exist yet (Cloud Monitoring auto-creates it).
 
-Here is how to create a metric descriptor explicitly:
+Here is how to create a metric descriptor explicitly with the Cloud Monitoring API:
 
 ```bash
 # Create a custom metric descriptor for queue depth
+ACCESS_TOKEN=$(gcloud auth print-access-token)
 
-gcloud monitoring metrics-descriptors create \
-    custom.googleapis.com/app/queue_depth \
-    --type=GAUGE \
-    --description="Number of items waiting in the task queue" \
-    --display-name="Task Queue Depth" \
-    --value-type=INT64
+curl -X POST \
+    "https://monitoring.googleapis.com/v3/projects/my-project/metricDescriptors" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "type": "custom.googleapis.com/app/queue_depth",
+      "metricKind": "GAUGE",
+      "valueType": "INT64",
+      "description": "Number of items waiting in the task queue",
+      "displayName": "Task Queue Depth",
+      "labels": [
+        {
+          "key": "queue_name",
+          "valueType": "STRING",
+          "description": "Name of the queue being monitored"
+        }
+      ]
+    }'
 ```
 
 ## Step 2: Publish Custom Metrics from Your Application
@@ -49,7 +62,7 @@ Your application needs to report the metric value to Cloud Monitoring. Here is a
 from google.cloud import monitoring_v3
 import time
 
-def publish_queue_depth(project_id, instance_id, zone, queue_depth):
+def publish_queue_depth(project_id, queue_name, queue_depth):
     """Publish the current queue depth to Cloud Monitoring."""
     client = monitoring_v3.MetricServiceClient()
     project_name = f"projects/{project_id}"
@@ -57,11 +70,10 @@ def publish_queue_depth(project_id, instance_id, zone, queue_depth):
     # Create the time series data point
     series = monitoring_v3.TimeSeries()
     series.metric.type = "custom.googleapis.com/app/queue_depth"
+    series.metric.labels["queue_name"] = queue_name
 
-    # Associate the metric with this specific instance
-    series.resource.type = "gce_instance"
-    series.resource.labels["instance_id"] = instance_id
-    series.resource.labels["zone"] = zone
+    # Associate the metric with the whole queue, not a single VM.
+    series.resource.type = "global"
     series.resource.labels["project_id"] = project_id
 
     # Set the metric value
@@ -91,14 +103,15 @@ while True:
     queue_depth = r.llen("task_queue")
     publish_queue_depth(
         project_id="my-project",
-        instance_id=get_instance_id(),
-        zone="us-central1-a",
+        queue_name="task_queue",
         queue_depth=queue_depth
     )
     time.sleep(60)
 ```
 
-You can also publish custom metrics using the monitoring agent or a sidecar container.
+Run this publisher once per queue, not independently on every worker instance, so that the global queue-depth time series has one current value.
+
+You can also publish custom metrics using the monitoring agent or a dedicated exporter process.
 
 ## Step 3: Create the Autoscaler with Custom Metric
 
@@ -119,21 +132,21 @@ gcloud compute instance-groups managed set-autoscaling worker-mig \
     --min-num-replicas=1 \
     --max-num-replicas=20 \
     --update-stackdriver-metric=custom.googleapis.com/app/queue_depth \
-    --stackdriver-metric-utilization-target=100 \
-    --stackdriver-metric-utilization-target-type=GAUGE
+    --stackdriver-metric-filter="resource.type = \"global\" AND metric.labels.queue_name = \"task_queue\"" \
+    --stackdriver-metric-single-instance-assignment=100
 ```
 
-This configuration tells the autoscaler: "Keep adding instances until the queue depth per instance is at or below 100." So if the total queue depth is 500 and you want each instance to handle 100 items, the autoscaler will scale to 5 instances.
+This configuration tells the autoscaler: "Assign about 100 queued items to each instance." So if the total queue depth is 500 and you want each instance to handle 100 items, the autoscaler will scale to 5 instances.
 
 ## Understanding Utilization Target Types
 
-The `--stackdriver-metric-utilization-target-type` flag controls how the metric is interpreted:
+When you use `--stackdriver-metric-utilization-target`, the `--stackdriver-metric-utilization-target-type` flag controls how the metric is interpreted:
 
-- **GAUGE**: The metric represents a value per instance. The autoscaler divides the total by the current number of instances and compares to the target.
-- **DELTA_PER_MINUTE**: The metric represents a rate of change per minute.
-- **DELTA_PER_SECOND**: The metric represents a rate of change per second.
+- **gauge**: The autoscaler calculates the average value of the data collected in the last couple of minutes and compares that to the utilization target.
+- **delta-per-minute**: The autoscaler calculates the average rate of growth per minute and compares that to the utilization target.
+- **delta-per-second**: The autoscaler calculates the average rate of growth per second and compares that to the utilization target.
 
-For a queue depth metric, GAUGE is usually the right choice. For a request rate metric, you would use DELTA_PER_SECOND.
+For a utilization metric that reports current memory usage or active connections, `gauge` is usually the right choice. For a request rate metric, you would use `delta-per-second`.
 
 ## Using a Single Instance Assignment Filter
 
@@ -146,6 +159,7 @@ gcloud compute instance-groups managed set-autoscaling worker-mig \
     --min-num-replicas=1 \
     --max-num-replicas=20 \
     --update-stackdriver-metric=custom.googleapis.com/queue/total_depth \
+    --stackdriver-metric-filter="resource.type = \"global\" AND metric.labels.queue_name = \"task_queue\"" \
     --stackdriver-metric-single-instance-assignment=100
 ```
 
@@ -205,9 +219,9 @@ resource "google_compute_autoscaler" "workers" {
 
     # Custom metric scaling policy
     metric {
-      name   = "custom.googleapis.com/app/queue_depth"
-      type   = "GAUGE"
-      target = 100
+      name                       = "custom.googleapis.com/app/queue_depth"
+      filter                     = "resource.type = \"global\" AND metric.labels.queue_name = \"task_queue\""
+      single_instance_assignment = 100
     }
   }
 }
@@ -225,8 +239,8 @@ gcloud compute instance-groups managed set-autoscaling worker-mig \
     --max-num-replicas=20 \
     --target-cpu-utilization=0.7 \
     --update-stackdriver-metric=custom.googleapis.com/app/queue_depth \
-    --stackdriver-metric-utilization-target=100 \
-    --stackdriver-metric-utilization-target-type=GAUGE
+    --stackdriver-metric-filter="resource.type = \"global\" AND metric.labels.queue_name = \"task_queue\"" \
+    --stackdriver-metric-single-instance-assignment=100
 ```
 
 In Terraform:
@@ -249,9 +263,9 @@ resource "google_compute_autoscaler" "workers" {
 
     # Also scale based on custom metric
     metric {
-      name   = "custom.googleapis.com/app/queue_depth"
-      type   = "GAUGE"
-      target = 100
+      name                       = "custom.googleapis.com/app/queue_depth"
+      filter                     = "resource.type = \"global\" AND metric.labels.queue_name = \"task_queue\""
+      single_instance_assignment = 100
     }
   }
 }
@@ -273,14 +287,14 @@ resource "google_compute_autoscaler" "workers" {
     cooldown_period = 120
 
     metric {
-      name   = "custom.googleapis.com/app/queue_depth"
-      type   = "GAUGE"
-      target = 100
+      name                       = "custom.googleapis.com/app/queue_depth"
+      filter                     = "resource.type = \"global\" AND metric.labels.queue_name = \"task_queue\""
+      single_instance_assignment = 100
     }
 
     # Limit scale-down to 10% of current size over 10 minutes
-    scale_down_control {
-      max_scaled_down_replicas {
+    scale_in_control {
+      max_scaled_in_replicas {
         percent = 10
       }
       time_window_sec = 600
@@ -309,9 +323,9 @@ gcloud logging read 'resource.type="autoscaler" AND resource.labels.autoscaler_n
 
 1. **Metric reporting lag**: Custom metrics take 1-2 minutes to appear in Cloud Monitoring. The autoscaler adds its own evaluation interval (60 seconds by default). Combined with the cooldown period, it can take several minutes for scaling decisions to take effect.
 
-2. **Missing metric data**: If your instances stop reporting the metric (application crash, agent issue), the autoscaler may behave unpredictably. Always ensure metric reporting is reliable.
+2. **Missing metric data**: If your publisher stops reporting the metric (application crash, agent issue), the autoscaler may behave unpredictably. Always ensure metric reporting is reliable.
 
-3. **Incorrect metric type**: Using GAUGE when you should use DELTA (or vice versa) leads to wrong scaling decisions.
+3. **Incorrect metric type**: Using `gauge` when you should use `delta-per-second` or `delta-per-minute` (or vice versa) leads to wrong scaling decisions.
 
 4. **Too aggressive cooldown**: A short cooldown period causes the autoscaler to oscillate between scaling up and scaling down.
 
