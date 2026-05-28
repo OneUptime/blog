@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Full-Text Search, Search Index, Data Analytics
 
-Description: Learn how to create search indexes in BigQuery for fast full-text search across large datasets, including tokenization, filtering, and relevance scoring.
+Description: Learn how to create search indexes in BigQuery for fast full-text search across large datasets, including tokenization and filtering.
 
 ---
 
@@ -26,7 +26,7 @@ This approach has problems. It performs a full table scan every time, it cannot 
 
 ## Creating a Search Index
 
-A search index tokenizes text columns and builds an inverted index that maps terms to the rows containing them. Creating one is straightforward:
+A search index tokenizes text columns and builds an inverted index that maps terms to where they occur in the indexed data. Creating one is straightforward:
 
 ```sql
 -- Create a search index on the description column
@@ -35,7 +35,7 @@ CREATE SEARCH INDEX product_search_index
 ON `my_project.catalog.products`(description);
 ```
 
-You can also index multiple columns:
+You can also index multiple columns. BigQuery supports one search index per base table, so choose the single-column, multi-column, or `ALL COLUMNS` form that matches how you plan to search:
 
 ```sql
 -- Create a search index across multiple text columns
@@ -47,7 +47,7 @@ ON `my_project.catalog.products`(product_name, description, brand);
 Or index all STRING and JSON columns in the table:
 
 ```sql
--- Index all string columns in the table
+-- Index all eligible STRING and JSON data in the table
 CREATE SEARCH INDEX product_all_text
 ON `my_project.catalog.products`(ALL COLUMNS);
 ```
@@ -69,7 +69,7 @@ WHERE SEARCH(description, 'wireless bluetooth headphones')
 ORDER BY price;
 ```
 
-The SEARCH function leverages the index to quickly find rows containing the search terms, without scanning the entire table.
+The SEARCH function can use the index to reduce the amount of data scanned, as long as the query uses the same analyzer and analyzer options as the index.
 
 ## Search Across Multiple Columns
 
@@ -99,15 +99,15 @@ The SEARCH function supports several query patterns:
 SELECT * FROM products
 WHERE SEARCH(description, 'wireless headphones');
 
--- Use backticks for exact phrase matching
+-- Use double quotes for phrase matching
 -- Finds rows containing the exact phrase "wireless headphones"
 SELECT * FROM products
-WHERE SEARCH(description, '`wireless headphones`');
+WHERE SEARCH(description, '"wireless headphones"');
 
 -- Combine terms and phrases
 -- Match "Sony" AND exact phrase "noise cancelling"
 SELECT * FROM products
-WHERE SEARCH(description, 'Sony `noise cancelling`');
+WHERE SEARCH(description, 'Sony "noise cancelling"');
 ```
 
 ## Combining Search with Structured Filters
@@ -132,15 +132,15 @@ ORDER BY rating DESC
 LIMIT 20;
 ```
 
-BigQuery optimizes this by using the search index for the text filter and regular column pruning/partition pruning for the structured filters.
+BigQuery can use the search index for the text filter when the query is eligible, while regular SQL filters still apply to the result set.
 
 ## Tokenization Options
 
-By default, BigQuery uses a standard tokenizer that splits text on whitespace and punctuation, lowercases everything, and handles basic text normalization. You can customize the analyzer:
+By default, BigQuery uses the `LOG_ANALYZER`, which lowercases text and splits it into tokens on a set of delimiters such as whitespace and punctuation. You can customize the analyzer:
 
 ```sql
 -- Create a search index with a specific analyzer
--- LOG_ANALYZER is designed for log-style data with special characters
+-- LOG_ANALYZER is designed for log-style data, including IP addresses and emails
 CREATE SEARCH INDEX log_search_index
 ON `my_project.logs.application_logs`(message)
 OPTIONS (
@@ -150,8 +150,8 @@ OPTIONS (
 
 The available analyzers are:
 
-- **NO_OP_ANALYZER**: No tokenization - exact substring matching only
-- **LOG_ANALYZER**: Designed for semi-structured log data, preserves special characters
+- **NO_OP_ANALYZER**: No tokenization or normalization - useful for pre-processed data that you want to match exactly
+- **LOG_ANALYZER**: The default analyzer, designed for log-style and machine-generated data
 - **PATTERN_ANALYZER**: Custom regex-based tokenization (for advanced use cases)
 
 ```sql
@@ -214,15 +214,15 @@ FROM `my_project.catalog.INFORMATION_SCHEMA.SEARCH_INDEXES`
 WHERE index_status = 'ACTIVE';
 ```
 
-The `coverage_percentage` tells you how much of the table data is indexed. When data is first loaded or the index is first created, coverage starts low and increases as the indexing process completes.
+The `coverage_percentage` tells you how much of the table data is indexed. When data is first loaded or the index is first created, coverage starts low and increases as the indexing process completes. Search indexes are designed for large tables; if the indexed base table is smaller than 10GB, BigQuery does not populate the index and `coverage_percentage` remains 0.
 
 ## Cost Considerations
 
-Search indexes have two cost components: storage (the index itself takes space) and maintenance (keeping the index up to date as data changes). For append-only tables like logs, the maintenance cost is minimal. For frequently updated tables, index maintenance adds overhead.
+Search indexes have two cost considerations: storage for the populated index and index-management work to create and refresh it as table data changes. For production workloads, Google recommends using your own `BACKGROUND` reservation for predictable index management.
 
-The search index storage is typically 50-100 percent of the size of the indexed text columns. So if your text columns total 100GB, expect the search index to use 50-100GB of additional storage.
+The storage size of the index depends on the indexed data and analyzer. You can inspect it with the `total_storage_bytes` column in `INFORMATION_SCHEMA.SEARCH_INDEXES`.
 
-However, the query cost savings are significant. Without an index, a text search scans the entire table. With an index, it reads only the relevant rows. On a 1TB table, a search query that would scan the full terabyte might only read a few megabytes with an index.
+However, the query cost savings can be significant. Without an index, a text search can scan the entire table. With an index, BigQuery can scan less data, especially when the search results are a small fraction of the table. On a 1TB table, a selective search query can process far less data with an index than with a brute-force scan.
 
 ## When to Use Search Indexes vs Other Approaches
 
