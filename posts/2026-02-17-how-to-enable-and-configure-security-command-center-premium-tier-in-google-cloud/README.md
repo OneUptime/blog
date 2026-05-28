@@ -45,32 +45,40 @@ You need:
 5. Review and accept the pricing
 6. Click "Activate"
 
-### Via gcloud CLI
+### Configuring Services via gcloud CLI
 
 ```bash
 # Enable the Security Command Center API
 
 gcloud services enable securitycenter.googleapis.com
 
-# Enable SCC Premium at the organization level
-gcloud scc settings update \
+# Enable key SCC Premium services after activating Premium in the console
+gcloud scc manage services update security-health-analytics \
   --organization=YOUR_ORG_ID \
-  --enable-asset-discovery
+  --enablement-state=ENABLED
+
+gcloud scc manage services update event-threat-detection \
+  --organization=YOUR_ORG_ID \
+  --enablement-state=ENABLED
+
+gcloud scc manage services update container-threat-detection \
+  --organization=YOUR_ORG_ID \
+  --enablement-state=ENABLED
 ```
 
-For programmatic setup, you can also use the API.
+For programmatic setup, you can also use the Security Command Center Management API to configure built-in services after activation.
 
 ```bash
 # Get your organization ID
 gcloud organizations list
 
-# Enable SCC using the API
+# Enable Event Threat Detection using the API
 curl -X PATCH \
-  "https://securitycenter.googleapis.com/v1/organizations/YOUR_ORG_ID/organizationSettings" \
+  "https://securitycentermanagement.googleapis.com/v1/organizations/YOUR_ORG_ID/locations/global/securityCenterServices/event-threat-detection?updateMask=intendedEnablementState" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "enableAssetDiscovery": true
+    "intendedEnablementState": "ENABLED"
   }'
 ```
 
@@ -82,9 +90,10 @@ Security Health Analytics (SHA) continuously scans your Google Cloud resources f
 
 ```bash
 # List all Security Health Analytics findings
-gcloud scc findings list YOUR_ORG_ID \
-  --source=organizations/YOUR_ORG_ID/sources/SHA_SOURCE_ID \
-  --filter="state=\"ACTIVE\"" \
+gcloud scc findings list organizations/YOUR_ORG_ID \
+  --location=global \
+  --source=SHA_SOURCE_ID \
+  --filter='state="ACTIVE"' \
   --format="table(finding.category, finding.severity, finding.resourceName)" \
   --limit=20
 ```
@@ -110,14 +119,20 @@ Here are the most important SHA findings to pay attention to:
 Event Threat Detection (ETD) analyzes Cloud Audit Logs in real time to detect threats like credential theft, cryptocurrency mining, and data exfiltration.
 
 ```bash
+# Enable ETD
+gcloud scc manage services update event-threat-detection \
+  --organization=YOUR_ORG_ID \
+  --enablement-state=ENABLED
+
 # Check ETD status
-gcloud scc settings describe \
+gcloud scc manage services describe event-threat-detection \
   --organization=YOUR_ORG_ID
 
 # View ETD findings
-gcloud scc findings list YOUR_ORG_ID \
-  --source=organizations/YOUR_ORG_ID/sources/ETD_SOURCE_ID \
-  --filter="state=\"ACTIVE\"" \
+gcloud scc findings list organizations/YOUR_ORG_ID \
+  --location=global \
+  --source=ETD_SOURCE_ID \
+  --filter='state="ACTIVE"' \
   --format="table(finding.category, finding.severity, finding.eventTime)"
 ```
 
@@ -134,11 +149,14 @@ ETD detectors include:
 If you run GKE clusters, Container Threat Detection monitors your containers for runtime threats.
 
 ```bash
-# Enable Container Threat Detection on a GKE cluster
-gcloud container clusters update my-cluster \
-  --region=us-central1 \
-  --security-posture=standard \
-  --workload-vulnerability-scanning=standard
+# Enable Container Threat Detection in SCC
+gcloud scc manage services update container-threat-detection \
+  --organization=YOUR_ORG_ID \
+  --enablement-state=ENABLED
+
+# Check the service status
+gcloud scc manage services describe container-threat-detection \
+  --organization=YOUR_ORG_ID
 ```
 
 Container Threat Detection monitors for:
@@ -159,6 +177,7 @@ gcloud pubsub topics create scc-findings-notifications
 # Create a notification config that sends all critical and high findings
 gcloud scc notifications create critical-findings \
   --organization=YOUR_ORG_ID \
+  --location=global \
   --pubsub-topic=projects/YOUR_PROJECT/topics/scc-findings-notifications \
   --filter='severity="CRITICAL" OR severity="HIGH"' \
   --description="Notifications for critical and high severity findings"
@@ -237,6 +256,7 @@ bq mk --dataset YOUR_PROJECT:scc_findings
 # Create a continuous export to BigQuery
 gcloud scc bqexports create scc-to-bigquery \
   --organization=YOUR_ORG_ID \
+  --location=global \
   --dataset=projects/YOUR_PROJECT/datasets/scc_findings \
   --filter='severity="CRITICAL" OR severity="HIGH" OR severity="MEDIUM"' \
   --description="Export all significant findings to BigQuery"
@@ -264,9 +284,10 @@ Premium tier includes compliance reporting against major frameworks.
 
 ```bash
 # View compliance findings for CIS benchmarks
-gcloud scc findings list YOUR_ORG_ID \
-  --filter='finding.compliance.standard="cis" AND state="ACTIVE"' \
-  --format="table(finding.category, finding.compliance.version, finding.resourceName)" \
+gcloud scc findings list organizations/YOUR_ORG_ID \
+  --location=global \
+  --filter='contains(compliances, standard="cis") AND state="ACTIVE"' \
+  --format="table(finding.category, finding.compliances, finding.resourceName)" \
   --limit=30
 ```
 
