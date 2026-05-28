@@ -75,18 +75,20 @@ The most common cause of stuck reconciliation is missing IAM permissions. The Co
 Check which service account Config Connector uses:
 
 ```bash
-# For namespace-scoped Config Connector, check the namespace annotation
+# For namespace-scoped Config Connector, check the target project annotation
 kubectl get namespace your-namespace -o jsonpath='{.metadata.annotations.cnrm\.cloud\.google\.com/project-id}'
 
-# Check the Config Connector controller's service account
-kubectl get configconnectorcontext -n your-namespace -o yaml
+# Check the IAM service account used by this namespace
+kubectl get configconnectorcontext configconnectorcontext.core.cnrm.cloud.google.com \
+  -n your-namespace -o jsonpath='{.spec.googleServiceAccount}'
 ```
 
 For cluster-mode Config Connector:
 
 ```bash
 # Check the controller's identity
-kubectl get configconnector -o yaml
+kubectl get configconnector configconnector.core.cnrm.cloud.google.com \
+  -o jsonpath='{.spec.googleServiceAccount}'
 ```
 
 Grant the missing permissions:
@@ -154,7 +156,7 @@ Or the resource's actual state does not match what Config Connector expects. You
 
 **Option A - Adopt the existing resource:**
 
-Add the `cnrm.cloud.google.com/management-conflict-prevention-policy: none` annotation and the `cnrm.cloud.google.com/state-into-spec: merge` annotation:
+Make sure the Config Connector resource name (or `spec.resourceID`, for resources that use it) matches the existing GCP resource. If conflict prevention is enabled and another Config Connector resource already holds the lease, resolve that owner first or set `cnrm.cloud.google.com/management-conflict-prevention-policy: none`:
 
 ```yaml
 # Adopt an existing GCP resource into Config Connector management
@@ -164,7 +166,7 @@ metadata:
   name: existing-vm
   namespace: your-namespace
   annotations:
-    cnrm.cloud.google.com/state-into-spec: merge
+    cnrm.cloud.google.com/management-conflict-prevention-policy: "none"
 spec:
   # ... your desired spec
 ```
@@ -213,10 +215,12 @@ If multiple resources are stuck, the controller itself might be unhealthy:
 kubectl get pods -n cnrm-system
 
 # Check controller logs
-kubectl logs -n cnrm-system -l cnrm.cloud.google.com/component=cnrm-controller-manager --tail=100
+kubectl logs -n cnrm-system -l cnrm.cloud.google.com/component=cnrm-controller-manager \
+  -c manager --tail=100
 
 # Check webhook logs
-kubectl logs -n cnrm-system -l cnrm.cloud.google.com/component=cnrm-webhook-manager --tail=100
+kubectl logs -n cnrm-system -l cnrm.cloud.google.com/component=cnrm-webhook-manager \
+  -c webhook --tail=100
 ```
 
 Common controller issues:
@@ -228,7 +232,8 @@ If the controller is unhealthy, restart it:
 
 ```bash
 # Restart the Config Connector controller
-kubectl rollout restart statefulset cnrm-controller-manager -n cnrm-system
+kubectl rollout restart statefulset -n cnrm-system \
+  -l cnrm.cloud.google.com/component=cnrm-controller-manager
 ```
 
 ## Step 7 - Fix Rate Limiting Issues
@@ -303,16 +308,19 @@ If dependencies are not ready, fix those first and the dependent resources will 
 Set up monitoring for Config Connector reconciliation health:
 
 ```bash
+# Port-forward the Config Connector metrics service
+kubectl port-forward -n cnrm-system svc/cnrm-controller-manager-service 8888:8888
+```
+
+In another terminal:
+
+```bash
 # Check the reconciliation metrics
-kubectl get --raw /metrics | grep cnrm
+curl -s http://localhost:8888/metrics | grep configconnector_reconcile
 
 # Look for resources that have been in non-ready state for a long time
-kubectl get gcp --all-namespaces -o custom-columns=\
-KIND:.kind,\
-NAME:.metadata.name,\
-NAMESPACE:.metadata.namespace,\
-READY:.status.conditions[?@.type=='Ready'].status,\
-MESSAGE:.status.conditions[?@.type=='Ready'].message
+kubectl get gcp --all-namespaces \
+  -o custom-columns='KIND:.kind,NAME:.metadata.name,NAMESPACE:.metadata.namespace,READY:.status.conditions[?(@.type=="Ready")].status,MESSAGE:.status.conditions[?(@.type=="Ready")].message'
 ```
 
 ## Diagnostic Checklist
