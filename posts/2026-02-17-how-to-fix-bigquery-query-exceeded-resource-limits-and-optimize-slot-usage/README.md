@@ -8,7 +8,7 @@ Description: Learn how to fix BigQuery resource limit errors by understanding sl
 
 ---
 
-You ran a BigQuery query and got hit with "Query exceeded resource limits" or "Resources exceeded during query execution." Your query might have been running for a while before failing, which makes it even more frustrating. This error means your query demanded more compute resources (slots) than were available or allowed.
+You ran a BigQuery query and got hit with "Query exceeded resource limits" or "Resources exceeded during query execution." Your query might have been running for a while before failing, which makes it even more frustrating. This error means your query demanded more CPU, memory, shuffle, planning, or slot resources than BigQuery could provide for that job.
 
 Understanding how BigQuery allocates resources and how to write queries that use them efficiently is key to avoiding this problem. Let me break it down.
 
@@ -21,16 +21,17 @@ If you are on on-demand pricing, you share a pool of slots (typically up to 2000
 ```bash
 # Check your current slot usage with INFORMATION_SCHEMA
 
-bq query --use_legacy_sql=false '
+bq query --use_legacy_sql=false "
 SELECT
   period_start,
-  SUM(total_slot_ms) / 1000 / 60 as total_slot_minutes,
-  COUNT(*) as query_count
-FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
-WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
+  SUM(period_slot_ms) / 1000 as total_slot_seconds,
+  COUNT(DISTINCT job_id) as query_count
+FROM \`region-us\`.INFORMATION_SCHEMA.JOBS_TIMELINE_BY_PROJECT
+WHERE period_start > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
+  AND job_type = 'QUERY'
 GROUP BY period_start
 ORDER BY period_start DESC
-LIMIT 10'
+LIMIT 10"
 ```
 
 ## Why Resource Limits Are Exceeded
@@ -46,7 +47,8 @@ WHERE EXTRACT(YEAR FROM created_at) = 2024;
 
 -- Better: use a partitioned column in the WHERE clause
 SELECT * FROM `my-project.my_dataset.huge_table`
-WHERE created_at BETWEEN '2024-01-01' AND '2024-12-31';
+WHERE created_at >= '2024-01-01'
+  AND created_at < '2025-01-01';
 ```
 
 If your table is partitioned by `created_at`, the second query skips partitions outside the date range, dramatically reducing the data scanned.
@@ -177,8 +179,9 @@ If you consistently hit resource limits, on-demand pricing might not provide eno
 bq mk --reservation \
     --project_id=my-project \
     --location=US \
-    --reservation_id=my-reservation \
-    --slots=500
+    --slots=500 \
+    --edition=ENTERPRISE \
+    my-reservation
 
 # Create a reservation assignment for your project
 bq mk --reservation_assignment \
@@ -220,7 +223,7 @@ Set up monitoring to track your slot usage over time and catch issues before the
 SELECT
   TIMESTAMP_TRUNC(period_start, HOUR) as hour,
   SUM(period_slot_ms) / 1000 / 3600 as slot_hours,
-  MAX(period_slot_ms) / 1000 as peak_slot_seconds
+  MAX(period_slot_ms) / 1000 as peak_slots
 FROM `region-us`.INFORMATION_SCHEMA.JOBS_TIMELINE_BY_PROJECT
 WHERE period_start > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 GROUP BY hour
