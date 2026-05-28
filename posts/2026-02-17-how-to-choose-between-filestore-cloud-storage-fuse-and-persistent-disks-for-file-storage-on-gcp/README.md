@@ -21,13 +21,13 @@ Google Cloud offers multiple ways to store files: Persistent Disks (block storag
 | Feature | Persistent Disk | Filestore | Cloud Storage FUSE |
 |---------|----------------|-----------|-------------------|
 | Type | Block storage | NFS (shared file) | Object storage adapter |
-| Multi-VM access | Read-only (multi-attach) | Yes (read/write) | Yes (read/write) |
-| Max size | 64 TB | 100 TB (Enterprise) | Unlimited |
+| Multi-VM access | Read-only multi-attach; limited multi-writer for specialized block workloads | Yes (read/write) | Yes (read/write) |
+| Max size | 64 TiB | 100 TiB (Zonal/Regional) | Unlimited |
 | Performance | Very high | High | Variable |
 | Latency | Sub-millisecond | Low milliseconds | Higher (API calls) |
 | Pricing model | Per GB provisioned | Per GB provisioned | Per GB stored + operations |
 | POSIX compliant | Yes (with filesystem) | Yes | Partial |
-| Snapshots | Yes | Yes | N/A (versioning) |
+| Snapshots | Yes | Yes for Zonal, Regional, and Enterprise; backups for Basic | N/A (versioning) |
 | Best for | Single-VM storage, databases | Shared file access, NFS workloads | Large data access, ML training |
 
 ## Persistent Disks - The Default Block Storage
@@ -98,9 +98,9 @@ gcloud compute disks create extreme-storage \
 
 ### Limitations
 
-- Single-VM read-write attach (multi-attach is read-only)
+- Single-VM read-write attach by default; multi-writer mode is limited to specialized shared block workloads
 - Zonal resource - tied to a specific zone
-- Maximum 64 TB per disk
+- Maximum 64 TiB per disk
 - Resizing requires no downtime but cannot shrink
 
 ## Filestore - Shared NFS
@@ -180,27 +180,32 @@ spec:
 # Minimum 1 TB, ~$0.20/GB/month
 gcloud filestore instances create basic-share \
     --tier=BASIC_HDD \
-    --file-share=name=vol1,capacity=1TB
+    --file-share=name=vol1,capacity=1TB \
+    --zone=us-central1-a \
+    --network=name=default
 
 # Basic SSD - better performance
 # Minimum 2.5 TB, ~$0.30/GB/month
 gcloud filestore instances create ssd-share \
     --tier=BASIC_SSD \
-    --file-share=name=vol1,capacity=2560GB
+    --file-share=name=vol1,capacity=2560GB \
+    --zone=us-central1-a \
+    --network=name=default
 
 # Enterprise - regional availability, snapshots, backup
 # Minimum 1 TB, ~$0.35/GB/month
 gcloud filestore instances create enterprise-share \
     --tier=ENTERPRISE \
     --file-share=name=vol1,capacity=1TB \
-    --region=us-central1
+    --region=us-central1 \
+    --network=name=default
 ```
 
 ### Limitations
 
 - Minimum capacity requirements (1 TB for Basic HDD, 2.5 TB for Basic SSD)
 - Zonal (Basic) or Regional (Enterprise) - not multi-region
-- Cannot shrink capacity once provisioned
+- Basic tiers can only scale up; Zonal, Regional, and Enterprise tiers can scale up or down within their tier limits
 - Higher cost per GB than Cloud Storage
 
 ## Cloud Storage FUSE - Object Storage as a Filesystem
@@ -217,9 +222,13 @@ Cloud Storage FUSE (gcsfuse) mounts a Cloud Storage bucket as a local directory.
 
 ```bash
 # Install gcsfuse
+sudo apt-get update
+sudo apt-get install -y curl lsb-release
 export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s)
-echo "deb https://packages.cloud.google.com/apt $GCSFUSE_REPO main" | \
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt $GCSFUSE_REPO main" | \
     sudo tee /etc/apt/sources.list.d/gcsfuse.list
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+    sudo tee /usr/share/keyrings/cloud.google.asc
 sudo apt-get update && sudo apt-get install -y gcsfuse
 
 # Mount a Cloud Storage bucket
@@ -262,16 +271,17 @@ Cloud Storage FUSE performance depends heavily on the access pattern:
 
 - **Sequential reads of large files**: Good performance, especially with read-ahead caching
 - **Random reads of small files**: Poor performance due to API call overhead
-- **Writes**: Entire file must be uploaded on close - not suitable for frequent writes to the same file
+- **Writes**: Whole-object rewrites are required for file patching or overwrite-in-place workloads; streaming writes are better for sequential writes
 - **Directory listings**: Can be slow for buckets with millions of objects
 
 ```bash
 # Tune gcsfuse for better read performance
+mkdir -p /mnt/gcs-cache
 gcsfuse \
-    --stat-cache-capacity=20000 \
-    --stat-cache-ttl=60s \
-    --type-cache-ttl=60s \
+    --stat-cache-max-size-mb=34 \
+    --metadata-cache-ttl-secs=60 \
     --kernel-list-cache-ttl-secs=60 \
+    --cache-dir=/mnt/gcs-cache \
     --file-cache-max-size-mb=10240 \
     --implicit-dirs \
     my-bucket /mnt/data
@@ -280,7 +290,7 @@ gcsfuse \
 ### Limitations
 
 - Not fully POSIX compliant (no hard links, limited lock support)
-- Write operations are not atomic (file is buffered locally, uploaded on close)
+- Write semantics differ from POSIX; avoid multiple mounts modifying the same object and avoid overwrite-in-place workloads
 - Higher latency than Persistent Disks or Filestore
 - Not suitable for databases or applications that need strong consistency
 - Small random reads are slow
