@@ -44,7 +44,7 @@ SELECT
     COUNT(*) AS order_count,
     SUM(order_amount) AS total_revenue,
     AVG(order_amount) AS avg_order_value,
-    COUNT(DISTINCT customer_id) AS unique_customers
+    APPROX_COUNT_DISTINCT(customer_id) AS approximate_unique_customers
 FROM
     `my-project-id.raw_data.orders`
 GROUP BY
@@ -70,11 +70,10 @@ GROUP BY order_date
 ORDER BY order_date;
 ```
 
-With the materialized view in place, BigQuery automatically rewrites this query to use the cached results:
+With the materialized view in place, you can query the cached results directly:
 
 ```sql
--- BigQuery may automatically rewrite this to read from the materialized view
--- Even though you are querying the base table
+-- Query the materialized view instead of the base table
 SELECT
     order_date,
     SUM(total_revenue) AS total_revenue
@@ -88,7 +87,7 @@ ORDER BY order_date;
 
 ## Materialized Views over Partitioned Tables
 
-Materialized views work particularly well with partitioned tables. They respect partition boundaries, which means incremental updates only process new partitions.
+Materialized views work particularly well with partitioned tables. You can align a materialized view with the base table's partitions, which helps BigQuery reduce refresh and query work to the affected partitions where possible.
 
 ```sql
 -- Source table is partitioned by date
@@ -111,29 +110,29 @@ SELECT
     DATE(event_timestamp) AS event_date,
     event_type,
     COUNT(*) AS event_count,
-    COUNT(DISTINCT user_id) AS unique_users
+    APPROX_COUNT_DISTINCT(user_id) AS approximate_unique_users
 FROM
     `my-project-id.raw_data.events`
 GROUP BY
     event_date, event_type;
 ```
 
-The materialized view inherits partitioning, so queries that filter by date are even more efficient.
+The materialized view is explicitly partitioned on `event_date`, so queries that filter by date are even more efficient.
 
 ## Supported Operations
 
 Materialized views have some restrictions on what SQL they can contain.
 
 **Supported:**
-- Aggregations: COUNT, SUM, AVG, MIN, MAX, COUNT DISTINCT, ANY_VALUE
+- Aggregations: COUNT, COUNTIF, SUM, AVG, MIN, MAX, APPROX_COUNT_DISTINCT, ANY_VALUE, and other supported aggregate functions
 - GROUP BY clauses
 - Filters in WHERE clause (limited)
 - INNER JOIN between a fact table and dimension tables
 - Partitioning and clustering
 
 **Not supported:**
-- OUTER JOINs
-- Subqueries
+- RIGHT and FULL OUTER JOINs
+- ARRAY subqueries
 - Window functions (OVER clause)
 - UNION, INTERSECT, EXCEPT
 - Non-deterministic functions (CURRENT_TIMESTAMP, RAND)
@@ -163,7 +162,7 @@ GROUP BY
     order_date, p.product_name, p.category;
 ```
 
-Note: Only INNER JOINs are supported in materialized views.
+Note: For broadly available incremental materialized views, use INNER JOINs. LEFT OUTER JOIN support is available in preview, and broader join patterns require non-incremental materialized views.
 
 ## Configuring Refresh Settings
 
@@ -193,7 +192,7 @@ You can also manually trigger a refresh:
 # Manually refresh a materialized view
 
 bq query --nouse_legacy_sql \
-    "CALL BQ.REFRESH_MATERIALIZED_VIEW('my-project-id.analytics.hourly_metrics')"
+    "CALL BQ.REFRESH_MATERIALIZED_VIEW('\`my-project-id.analytics.hourly_metrics\`')"
 ```
 
 ## Disabling Automatic Refresh
@@ -211,7 +210,7 @@ SELECT
     DATE_TRUNC(order_date, MONTH) AS month,
     region,
     SUM(revenue) AS total_revenue,
-    COUNT(DISTINCT customer_id) AS customer_count
+    APPROX_COUNT_DISTINCT(customer_id) AS approximate_customer_count
 FROM
     `my-project-id.raw_data.order_summary`
 GROUP BY
@@ -223,7 +222,7 @@ Then refresh it on your schedule:
 ```bash
 # Refresh monthly at the start of each month via a scheduled script
 bq query --nouse_legacy_sql \
-    "CALL BQ.REFRESH_MATERIALIZED_VIEW('my-project-id.analytics.monthly_report')"
+    "CALL BQ.REFRESH_MATERIALIZED_VIEW('\`my-project-id.analytics.monthly_report\`')"
 ```
 
 ## Smart Tuning (Automatic Query Rewrite)
@@ -276,9 +275,9 @@ Here is a rough comparison for a typical dashboard scenario:
 
 | Approach | Data Scanned per Query | Monthly Cost (100 queries/day) |
 |----------|----------------------|-------------------------------|
-| Direct query on 10TB table | 10 TB | ~$15,000 |
-| Materialized view (100 GB cached) | 100 GB | ~$1,500 |
-| Materialized view with partition pruning | 10 GB | ~$150 |
+| Direct query on 10 TiB table | 10 TiB | ~$187,500 |
+| Materialized view (100 GiB cached) | 100 GiB | ~$1,800 |
+| Materialized view with partition pruning | 10 GiB | ~$180 |
 
 The savings scale with query frequency and source table size.
 
@@ -301,7 +300,7 @@ ORDER BY last_refresh_time DESC;
 
 ## Common Issues
 
-**Materialized view not being used by optimizer**: Check that smart tuning is not disabled. Also, the query must be compatible with the materialized view - if it uses columns or filters not covered by the view, BigQuery falls back to the base table.
+**Materialized view not being used by optimizer**: Check that the materialized view is eligible for smart tuning. Also, the query must be compatible with the materialized view - if it uses columns or filters not covered by the view, BigQuery falls back to the base table.
 
 **Refresh failures**: If the source table schema changes in an incompatible way, the materialized view refresh can fail. Monitor for refresh errors.
 
