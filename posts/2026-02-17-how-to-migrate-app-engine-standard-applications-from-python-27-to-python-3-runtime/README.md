@@ -8,7 +8,7 @@ Description: A comprehensive migration guide for moving App Engine Standard appl
 
 ---
 
-Google officially ended support for the Python 2.7 runtime on App Engine Standard. If you are still running a Python 2.7 application, it is past time to migrate. The migration involves more than just updating Python syntax - the Python 3 runtime on App Engine works fundamentally differently from the Python 2.7 runtime. The bundled services you relied on are gone, the WSGI framework integration changed, and the project structure is different.
+The Python 2.7 runtime on App Engine Standard reached end of support on January 31, 2024. Existing applications can still serve traffic, but App Engine might block re-deployment of applications that use runtimes after their end of support date. If you are still running a Python 2.7 application, it is past time to migrate. The migration involves more than just updating Python syntax - the Python 3 runtime on App Engine works fundamentally differently from the Python 2.7 runtime. The bundled services you relied on should either be migrated to standalone Google Cloud products or accessed explicitly through the App Engine services SDK as a migration fallback. The WSGI framework integration changed, and the project structure is different.
 
 In this guide, I will cover the major changes and show you how to handle each one.
 
@@ -16,11 +16,11 @@ In this guide, I will cover the major changes and show you how to handle each on
 
 The Python 2.7 runtime used a special App Engine SDK with bundled services. The Python 3 runtime is just standard Python running behind a WSGI server. Here are the key differences:
 
-- No more bundled services (Memcache, Task Queue, Blobstore, Users API, etc.)
+- Bundled services (Memcache, Task Queue, Blobstore, Users API, etc.) should be migrated to standalone products, or accessed through the App Engine services SDK as a fallback
 - No more `appengine_config.py` for library vendoring
 - No more `lib/` directory for third-party libraries
 - Standard `requirements.txt` replaces `lib/` vendoring
-- `webapp2` framework replaced by Flask, Django, or any WSGI framework
+- `webapp2` is not bundled or supported in Python 3; use Flask, Django, or another WSGI framework
 - No more `threadsafe: true` in `app.yaml`
 - Different handler configuration in `app.yaml`
 
@@ -70,7 +70,7 @@ entrypoint: gunicorn -b :$PORT main:app
 # No more api_version, threadsafe, libraries, or builtins sections
 ```
 
-The `script: auto` directive tells App Engine to use the entrypoint to determine how to start your application. The `entrypoint` line specifies the command to start your server.
+The only accepted `script` value for Python 3 handlers is `auto` because all dynamic traffic is served by the entrypoint command. The `entrypoint` line specifies the command to start your server.
 
 ## Step 2: Replace webapp2 with Flask
 
@@ -81,6 +81,7 @@ Old webapp2 code:
 ```python
 # OLD - main.py using webapp2
 import webapp2
+import json
 from google.appengine.api import users
 
 class MainHandler(webapp2.RequestHandler):
@@ -154,6 +155,8 @@ Common mapping from webapp2 to Flask:
 
 ## Step 3: Replace Bundled Services
 
+Google recommends migrating off bundled services to standalone Google Cloud products where possible. If you need a staged migration, many legacy bundled services can still be accessed in Python 3 through the App Engine services SDK.
+
 ### Replace Memcache with Memorystore
 
 ```python
@@ -163,6 +166,7 @@ value = memcache.get("my-key")
 memcache.set("my-key", value, time=300)
 
 # NEW - Memorystore Redis
+import os
 import redis
 r = redis.Redis(host=os.environ.get("REDIS_HOST"))
 value = r.get("my-key")
@@ -177,17 +181,24 @@ from google.appengine.api import taskqueue
 taskqueue.add(url="/tasks/process", params={"id": "123"})
 
 # NEW - Cloud Tasks
+import json
 from google.cloud import tasks_v2
+
+PROJECT = "your-project-id"
+LOCATION = "us-central1"
+QUEUE = "default"
+
 client = tasks_v2.CloudTasksClient()
-parent = client.queue_path(PROJECT, LOCATION, "default")
+parent = client.queue_path(PROJECT, LOCATION, QUEUE)
 task = {
     "app_engine_http_request": {
         "http_method": tasks_v2.HttpMethod.POST,
         "relative_uri": "/tasks/process",
+        "headers": {"Content-Type": "application/json"},
         "body": json.dumps({"id": "123"}).encode()
     }
 }
-client.create_task(request={"parent": parent, "task": task})
+client.create_task(parent=parent, task=task)
 ```
 
 ### Replace Users API with Identity-Aware Proxy
@@ -200,8 +211,11 @@ if user:
     email = user.email()
 
 # NEW - Identity-Aware Proxy (IAP) headers
+from flask import request
+
 def get_current_user():
     # IAP adds these headers when a user is authenticated
+    # Validate X-Goog-IAP-JWT-Assertion before trusting these values in production
     email = request.headers.get("X-Goog-Authenticated-User-Email", "")
     user_id = request.headers.get("X-Goog-Authenticated-User-ID", "")
     # Remove the accounts.google.com: prefix
@@ -210,7 +224,7 @@ def get_current_user():
     return email, user_id
 ```
 
-### Replace NDB/DB with Cloud NDB or Cloud Firestore
+### Replace NDB/DB with Cloud NDB or Datastore Mode
 
 ```python
 # OLD - App Engine NDB
@@ -223,7 +237,7 @@ class MyModel(ndb.Model):
 entity = MyModel(name="test")
 entity.put()
 
-# NEW Option 1 - Cloud NDB (drop-in replacement)
+# NEW Option 1 - Cloud NDB (migration replacement)
 from google.cloud import ndb
 
 client = ndb.Client()
@@ -236,12 +250,15 @@ with client.context():
     entity = MyModel(name="test")
     entity.put()
 
-# NEW Option 2 - Cloud Firestore (recommended for new development)
-from google.cloud import firestore
+# NEW Option 2 - Datastore mode client library (recommended for new Python 3 apps)
+from datetime import datetime, timezone
+from google.cloud import datastore
 
-db = firestore.Client()
-doc_ref = db.collection("my_collection").document()
-doc_ref.set({"name": "test", "created": firestore.SERVER_TIMESTAMP})
+client = datastore.Client()
+key = client.key("MyModel")
+entity = datastore.Entity(key=key)
+entity.update({"name": "test", "created": datetime.now(timezone.utc)})
+client.put(entity)
 ```
 
 ### Replace Blobstore with Cloud Storage
@@ -251,15 +268,20 @@ doc_ref.set({"name": "test", "created": firestore.SERVER_TIMESTAMP})
 from google.appengine.ext import blobstore
 upload_url = blobstore.create_upload_url("/upload-handler")
 
-# NEW - Cloud Storage
+# NEW - Cloud Storage signed upload URL
+from datetime import timedelta
 from google.cloud import storage
 
-def upload_file(file_data, filename):
+def create_upload_url(filename):
     client = storage.Client()
     bucket = client.bucket("your-bucket-name")
     blob = bucket.blob(filename)
-    blob.upload_from_string(file_data)
-    return blob.public_url
+    return blob.generate_signed_url(
+        version="v4",
+        expiration=timedelta(minutes=15),
+        method="PUT",
+        content_type="application/octet-stream",
+    )
 ```
 
 ## Step 4: Update Dependencies
@@ -271,7 +293,7 @@ Remove the old `lib/` directory and `appengine_config.py`. Create a `requirement
 Flask==3.0.0
 gunicorn==21.2.0
 google-cloud-ndb==2.3.0        # If using Cloud NDB
-google-cloud-firestore==2.14.0  # If using Firestore
+google-cloud-datastore==2.19.0  # If using Datastore mode
 google-cloud-storage==2.14.0    # If using Cloud Storage
 google-cloud-tasks==2.15.0      # If using Cloud Tasks
 redis==5.0.1                    # If using Memorystore
