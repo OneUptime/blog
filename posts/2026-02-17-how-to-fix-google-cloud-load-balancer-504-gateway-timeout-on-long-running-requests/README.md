@@ -12,7 +12,7 @@ Your API endpoint works fine for quick requests, but anything that takes more th
 
 ## Understanding the Timeout Chain
 
-A request passes through multiple timeout checkpoints between the client and the backend. Any one of them can trigger a 504.
+A request passes through multiple timeout checkpoints between the client and the backend. Any one of them can fail the request; a backend service or route timeout commonly surfaces as a 504.
 
 ```mermaid
 sequenceDiagram
@@ -21,7 +21,7 @@ sequenceDiagram
     participant Backend
 
     Client->>LB: HTTP Request
-    Note over LB: Backend service timeout (default 30s)
+    Note over LB: Backend service timeout (default 30s for most backend types)
     LB->>Backend: Forward request
     Note over Backend: Processing (takes 120 seconds)
     LB-->>Client: 504 Gateway Timeout (after 30s)
@@ -30,7 +30,7 @@ sequenceDiagram
 ```
 
 The timeouts involved:
-- **Backend service timeout** (default 30s) - how long the LB waits for the backend to respond
+- **Backend service timeout** (default 30s for most backend types) - how long the LB waits for the backend to respond
 - **Client idle timeout** (varies) - how long the LB keeps the client connection open
 - **Backend keep-alive timeout** - how long the backend keeps idle connections open
 - **URL map route timeout** - per-route timeout overrides
@@ -46,7 +46,7 @@ gcloud compute backend-services describe my-backend-service \
     --project=my-project
 ```
 
-If this returns 30 (the default) and your requests take longer than 30 seconds, you have found the problem.
+If this returns 30 (the default for most backend types) and your requests take longer than 30 seconds, you have found the problem.
 
 ## Step 2: Increase the Backend Service Timeout
 
@@ -58,10 +58,7 @@ gcloud compute backend-services update my-backend-service \
     --project=my-project
 ```
 
-The maximum value depends on the load balancer type:
-- Global external Application Load Balancer: up to 86400 seconds (24 hours)
-- Regional external Application Load Balancer: up to 86400 seconds
-- Internal Application Load Balancer: up to 86400 seconds
+The backend service timeout accepts values from 1 to 2,147,483,647 seconds, but very large values are not practical. For global external and classic Application Load Balancers, Google Cloud enforces an effective maximum of 86400 seconds (24 hours). Regional external and internal Application Load Balancers also do not guarantee that an underlying TCP connection will stay open for the entire configured timeout.
 
 For most long-running APIs, 300 seconds (5 minutes) is a reasonable starting point.
 
@@ -120,19 +117,19 @@ gcloud compute url-maps import my-url-map \
     --project=my-project
 ```
 
-## Step 4: Configure Streaming Timeout for WebSocket or SSE
+## Step 4: Configure Timeout for WebSocket or SSE
 
-If your application uses WebSockets, Server-Sent Events (SSE), or gRPC streaming, you need to configure the streaming timeout separately.
+If your application uses WebSockets, Server-Sent Events (SSE), or gRPC streaming, make sure the relevant request or idle timeout is long enough for the stream.
 
 ```bash
-# For WebSocket support, increase the idle timeout on the backend service
+# For WebSocket idle connections or long-running streams, increase the backend service timeout
 gcloud compute backend-services update my-backend-service \
     --global \
     --timeout=3600 \
     --project=my-project
 ```
 
-For the Global External Application Load Balancer, WebSocket connections are supported automatically. The timeout applies to the idle time on the WebSocket connection, not the total connection duration.
+For the Global External Application Load Balancer, WebSocket connections are supported automatically. Active WebSocket connections do not use the configured backend service timeout, but they are closed after a fixed 24-hour limit. Idle WebSocket connections are closed after the backend service timeout.
 
 ## Step 5: Check for Backend-Level Timeouts
 
@@ -160,7 +157,7 @@ gunicorn --timeout 300 --workers 4 myapp:app
 ```javascript
 const server = http.createServer(app);
 
-// Increase the socket timeout (default is 2 minutes)
+// Increase the socket timeout if your Node.js version or server configuration uses one
 server.timeout = 300000; // 5 minutes in milliseconds
 
 // Also increase keep-alive timeout to prevent premature connection closure
@@ -174,7 +171,7 @@ For truly long-running operations (minutes to hours), increasing timeouts is not
 ### Option A: Job Queue Pattern
 
 ```python
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import uuid
 
 app = Flask(__name__)
@@ -209,6 +206,7 @@ def check_status(job_id):
 
 ```python
 from flask import Response, stream_with_context
+import json
 
 @app.route('/api/exports/stream')
 def stream_export():
