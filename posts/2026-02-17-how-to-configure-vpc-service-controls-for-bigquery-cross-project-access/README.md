@@ -73,10 +73,10 @@ The query runner project needs an egress rule to read from the data source proje
     operations:
       - serviceName: bigquery.googleapis.com
         methodSelectors:
-          - method: google.cloud.bigquery.v2.TableService.GetTable
-          - method: google.cloud.bigquery.v2.TableDataService.List
-          - method: google.cloud.bigquery.v2.JobService.InsertJob
-          - method: google.cloud.bigquery.v2.JobService.GetQueryResults
+          - method: TableService.GetTable
+          - method: TableDataService.List
+          - method: JobService.InsertJob
+          - method: JobService.GetQueryResults
     resources:
       - projects/PROJECT_B_NUMBER
 ```
@@ -95,15 +95,33 @@ The data source project needs an ingress rule to accept the read:
     operations:
       - serviceName: bigquery.googleapis.com
         methodSelectors:
-          - method: google.cloud.bigquery.v2.TableService.GetTable
-          - method: google.cloud.bigquery.v2.TableDataService.List
-          - method: google.cloud.bigquery.v2.JobService.InsertJob
-          - method: google.cloud.bigquery.v2.JobService.GetQueryResults
+          - method: TableService.GetTable
+          - method: TableDataService.List
+          - method: JobService.InsertJob
+          - method: JobService.GetQueryResults
     resources:
       - projects/PROJECT_B_NUMBER
 ```
 
-Apply both rules:
+Because the BigQuery job runs in Project A, the data source perimeter may also need an egress rule that allows Project B to use the BigQuery job in Project A:
+
+```yaml
+# egress-to-query-job.yaml - Allow the protected BigQuery data to be queried by a job in Project A
+- egressFrom:
+    identities:
+      - serviceAccount:bq-analyst@project-a.iam.gserviceaccount.com
+      - user:analyst@example.com
+  egressTo:
+    operations:
+      - serviceName: bigquery.googleapis.com
+        methodSelectors:
+          - method: JobService.InsertJob
+          - method: JobService.GetQueryResults
+    resources:
+      - projects/PROJECT_A_NUMBER
+```
+
+Apply the rules:
 
 ```bash
 # Apply egress rule to Perimeter A
@@ -114,6 +132,11 @@ gcloud access-context-manager perimeters update perimeter-a \
 # Apply ingress rule to Perimeter B
 gcloud access-context-manager perimeters update perimeter-b \
   --set-ingress-policies=ingress-for-bq.yaml \
+  --policy=$ACCESS_POLICY_ID
+
+# Apply the job-project egress rule to Perimeter B if required
+gcloud access-context-manager perimeters update perimeter-b \
+  --set-egress-policies=egress-to-query-job.yaml \
   --policy=$ACCESS_POLICY_ID
 ```
 
@@ -129,14 +152,14 @@ BigQuery public datasets live in Google-managed projects. To query them from ins
     operations:
       - serviceName: bigquery.googleapis.com
         methodSelectors:
-          - method: google.cloud.bigquery.v2.TableService.GetTable
-          - method: google.cloud.bigquery.v2.TableDataService.List
-          - method: google.cloud.bigquery.v2.JobService.InsertJob
+          - method: TableService.GetTable
+          - method: TableDataService.List
+          - method: JobService.InsertJob
     resources:
-      - projects/bigquery-public-data
+      - projects/PUBLIC_DATASET_PROJECT_NUMBER
 ```
 
-Note: You need the project number for `bigquery-public-data`. You can find it with:
+Note: You need the project number for `bigquery-public-data` and must use that project number in the `resources` field. You can find it with:
 
 ```bash
 # Get the project number for the public datasets project
@@ -145,7 +168,7 @@ gcloud projects describe bigquery-public-data --format="value(projectNumber)"
 
 ## Scenario 4: Authorized Datasets and Views
 
-BigQuery authorized views and authorized datasets let you share data without granting direct table access. However, VPC SC still applies. The BigQuery service account needs the appropriate permissions.
+BigQuery authorized views and authorized datasets let you share data without granting direct table access. However, VPC SC still applies to both the view project and the source data project. If they are not in the same perimeter, the appropriate egress rule is required.
 
 ```yaml
 # authorized-view-egress.yaml
@@ -171,6 +194,9 @@ If you use the BigQuery Data Transfer Service to move data between projects:
       - serviceAccount:service-PROJECT_NUMBER@gcp-sa-bigquerydatatransfer.iam.gserviceaccount.com
   egressTo:
     operations:
+      - serviceName: bigquerydatatransfer.googleapis.com
+        methodSelectors:
+          - method: "*"
       - serviceName: bigquery.googleapis.com
         methodSelectors:
           - method: "*"
@@ -183,13 +209,13 @@ If you use the BigQuery Data Transfer Service to move data between projects:
 
 ## Scenario 6: Scheduled Queries Across Projects
 
-Scheduled queries that reference tables in other projects also need ingress/egress rules. The tricky part is that scheduled queries run under the BigQuery service account.
+Scheduled queries that reference tables in other projects also need ingress/egress rules. The tricky part is that scheduled queries use BigQuery Data Transfer Service and run with the credentials you configured for the transfer, such as a user account or a service account.
 
 ```yaml
 # scheduled-query-egress.yaml
 - egressFrom:
     identities:
-      - serviceAccount:service-PROJECT_A_NUMBER@gcp-sa-bigquerydts.iam.gserviceaccount.com
+      - serviceAccount:scheduled-query-runner@project-a.iam.gserviceaccount.com
   egressTo:
     operations:
       - serviceName: bigquery.googleapis.com
@@ -226,12 +252,12 @@ Here is a reference of the methods you might need in your ingress/egress rules:
 
 | Method | Description |
 |---|---|
-| `google.cloud.bigquery.v2.JobService.InsertJob` | Run queries, load data, export data |
-| `google.cloud.bigquery.v2.JobService.GetQueryResults` | Get results of a query |
-| `google.cloud.bigquery.v2.TableService.GetTable` | Read table metadata |
-| `google.cloud.bigquery.v2.TableDataService.List` | Read table data |
-| `google.cloud.bigquery.v2.DatasetService.GetDataset` | Read dataset metadata |
-| `google.cloud.bigquery.v2.TableService.InsertTable` | Create a table |
+| `JobService.InsertJob` | Run queries, load data, export data |
+| `JobService.GetQueryResults` | Get results of a query |
+| `TableService.GetTable` | Read table metadata |
+| `TableDataService.List` | Read table data |
+| `DatasetService.GetDataset` | Read dataset metadata |
+| `TableService.InsertTable` | Create a table |
 
 When in doubt, use `method: "*"` for BigQuery and tighten it later based on audit logs.
 
