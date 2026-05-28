@@ -18,27 +18,27 @@ Here is a quick comparison:
 
 | Component | v2/v3 | Enterprise |
 |-----------|-------|------------|
-| Frontend JS | `recaptcha/api.js` | `recaptcha/enterprise.js` |
-| Frontend API | `grecaptcha.execute()` | `grecaptcha.enterprise.execute()` |
-| Backend verification | `siteverify` REST API | `createAssessment` gRPC/REST API |
+| Frontend JS | `recaptcha/api.js` | `recaptcha/enterprise.js` for new Enterprise integrations |
+| Frontend API | `grecaptcha.execute()` | `grecaptcha.enterprise.execute()` for new Enterprise integrations |
+| Backend verification | `siteverify` REST API | `createAssessment` gRPC/REST API for Enterprise features |
 | Site key | Obtained from reCAPTCHA admin console | Created in GCP console or via gcloud |
 | Scoring | 0.0 to 1.0 (v3 only) | 0.0 to 1.0 (all types) |
 | Reason codes | No | Yes |
 | Assessment annotation | No | Yes |
 
-The key takeaway: your frontend changes are minimal (swap a script URL and add `.enterprise` to API calls), but the backend verification needs to be rewritten to use the GCP assessment API.
+The key takeaway: if you create new Enterprise keys or want to use Enterprise-only features, your frontend changes are minimal (swap a script URL and add `.enterprise` to API calls), but the backend verification needs to be rewritten to use the GCP assessment API. If you migrate an existing Classic key, Google states that your existing frontend and `siteverify` backend calls can continue to work, but you need the Assessment API to use features such as reason codes and annotations.
 
 ## Step 1: Create Enterprise Site Keys
 
 First, create new site keys in reCAPTCHA Enterprise. You can migrate your existing keys, but I recommend creating new ones so you can run both systems in parallel during testing.
 
 ```bash
-# Create a score-based key (replaces v3 or invisible v2)
+# Create a score-based key (replaces v3)
 
 gcloud recaptcha keys create \
   --display-name="Production Score Key (migrated from v3)" \
   --web \
-  --integration-type=SCORE \
+  --integration-type=score \
   --domains="example.com,www.example.com,staging.example.com" \
   --project=PROJECT_ID
 
@@ -46,10 +46,12 @@ gcloud recaptcha keys create \
 gcloud recaptcha keys create \
   --display-name="Production Checkbox Key (migrated from v2)" \
   --web \
-  --integration-type=CHECKBOX \
+  --integration-type=checkbox \
   --domains="example.com,www.example.com" \
   --project=PROJECT_ID
 ```
+
+If you are replacing an invisible v2 key and want to preserve invisible challenge behavior, create a web key with `--integration-type=invisible` instead of `score`.
 
 Alternatively, you can migrate existing v2/v3 keys to Enterprise. This means you do not need to change the site key on your frontend:
 
@@ -59,7 +61,7 @@ gcloud recaptcha keys migrate LEGACY_SITE_KEY \
   --project=PROJECT_ID
 ```
 
-Key migration preserves the same site key ID so your frontend code does not need any key changes.
+Key migration preserves the same site key ID, and existing frontend code and `siteverify` calls can continue to work. You still need to update the frontend and backend if you want to use Enterprise-specific features such as reason codes, annotations, Account defender, or Password defense.
 
 ## Step 2: Update the Frontend - Score-Based (v3 Migration)
 
@@ -135,7 +137,7 @@ grecaptcha.enterprise.render('recaptcha-container', {
 
 ## Step 4: Rewrite Backend Verification
 
-This is the biggest change. The old `siteverify` endpoint is replaced by the GCP Assessment API.
+This is the biggest change when you adopt Enterprise features. The old `siteverify` endpoint is replaced by the GCP Assessment API for new Enterprise-style verification. Migrated Classic keys can still be assessed with `siteverify`, but that path does not expose the richer Assessment response.
 
 **Before (v2/v3 verification):**
 
@@ -260,7 +262,7 @@ def evaluate_recaptcha_result(result, action):
 
 ## Step 6: Implement a Gradual Rollout
 
-Do not switch everything at once. Here is a safe migration strategy:
+Do not switch everything at once. If you created new Enterprise keys, route users to the matching frontend key and backend verifier together. Here is a safe migration strategy:
 
 ```python
 import random
@@ -268,10 +270,13 @@ import random
 # Feature flag for gradual rollout
 ENTERPRISE_ROLLOUT_PERCENTAGE = 10  # Start at 10%
 
-def verify_recaptcha(token, action):
-    """Route to either legacy or enterprise verification based on rollout percentage."""
+def use_enterprise_for_request():
+    """Decide which frontend and backend path this request should use."""
 
-    use_enterprise = random.randint(1, 100) <= ENTERPRISE_ROLLOUT_PERCENTAGE
+    return random.randint(1, 100) <= ENTERPRISE_ROLLOUT_PERCENTAGE
+
+def verify_recaptcha(token, action, use_enterprise):
+    """Verify with the backend that matches the site key used on the frontend."""
 
     if use_enterprise:
         result = verify_recaptcha_enterprise(
@@ -293,20 +298,20 @@ Increase the rollout percentage gradually as you verify that Enterprise is worki
 
 ## Step 7: Run Both in Parallel for Comparison
 
-During migration, run both verification systems and compare results:
+During migration, you can run both verification systems and compare results. If you migrated an existing key and kept `siteverify`, you can compare both backends with the same token. If you created new keys, generate one legacy token and one Enterprise token on the frontend and compare the two results server-side:
 
 ```python
-def verify_both_and_compare(token, action, secret_key):
+def verify_both_and_compare(legacy_token, enterprise_token, action, secret_key):
     """Run both legacy and enterprise verification to compare results."""
 
     # Legacy verification
-    legacy_result = verify_recaptcha_legacy(token, secret_key)
+    legacy_result = verify_recaptcha_legacy(legacy_token, secret_key)
 
     # Enterprise verification
     enterprise_result = verify_recaptcha_enterprise(
         project_id="my-project",
         site_key="ENTERPRISE_KEY",
-        token=token,
+        token=enterprise_token,
         expected_action=action,
     )
 
@@ -322,7 +327,7 @@ def verify_both_and_compare(token, action, secret_key):
 
 ## Common Migration Issues
 
-**Token format differences.** Enterprise tokens are slightly different from v3 tokens. If you migrated your site key, both old and new tokens work. If you created a new key, make sure the frontend is using the new key.
+**Token and key pairing.** A token must be verified with the backend path that matches the site key and integration that generated it. If you migrated your site key, the same site key can continue to work with existing instrumentation and `siteverify`, and it can also be used with the Assessment API after you update your integration. If you created a new key, make sure the frontend is using the new key and the backend is using `createAssessment`.
 
 **Authentication changes.** Legacy verification used a secret key in the request. Enterprise uses GCP service account authentication. Make sure your backend has proper GCP credentials configured.
 
