@@ -99,7 +99,7 @@ def export_collection(collection_name, timestamp):
         documents.append(doc_data)
         doc_count += 1
 
-        # For very large collections, write in chunks to avoid memory issues
+        # Log progress for large collections. Use the JSONL example below to avoid memory issues.
         if doc_count % 10000 == 0:
             logger.info(f"  Read {doc_count} documents from {collection_name}...")
 
@@ -117,7 +117,6 @@ Firestore has types that do not serialize to JSON directly. Handle the conversio
 
 ```python
 from google.cloud.firestore_v1._helpers import GeoPoint
-from google.protobuf.timestamp_pb2 import Timestamp
 
 def convert_firestore_types(data):
     """Convert Firestore-specific types to JSON-serializable formats."""
@@ -152,40 +151,31 @@ def convert_firestore_types(data):
 For collections with millions of documents, you cannot hold everything in memory. Stream directly to Cloud Storage.
 
 ```python
-import io
-
 def export_large_collection(collection_name, timestamp):
     """Export a large collection using streaming writes to Cloud Storage."""
     bucket = storage_client.bucket(BUCKET_NAME)
     blob_path = f"exports/{timestamp}/{collection_name}.jsonl"
     blob = bucket.blob(blob_path)
 
-    # Use a resumable upload for large files
-    buffer = io.BytesIO()
     doc_count = 0
     buffer_size = 0
-    max_buffer_size = 50 * 1024 * 1024  # 50MB buffer
 
-    # Start streaming documents
-    for doc in db.collection(collection_name).stream():
-        doc_data = doc.to_dict()
-        doc_data["_document_id"] = doc.id
-        doc_data = convert_firestore_types(doc_data)
+    # Write documents directly to Cloud Storage as JSONL.
+    with blob.open("w", content_type="application/x-ndjson") as export_file:
+        for doc in db.collection(collection_name).stream():
+            doc_data = doc.to_dict()
+            doc_data["_document_id"] = doc.id
+            doc_data = convert_firestore_types(doc_data)
 
-        # Write each document as a single JSON line (JSONL format)
-        line = json.dumps(doc_data, default=str) + "\n"
-        line_bytes = line.encode("utf-8")
+            # Write each document as a single JSON line (JSONL format)
+            line = json.dumps(doc_data, default=str) + "\n"
+            export_file.write(line)
 
-        buffer.write(line_bytes)
-        buffer_size += len(line_bytes)
-        doc_count += 1
+            buffer_size += len(line.encode("utf-8"))
+            doc_count += 1
 
-        if doc_count % 10000 == 0:
-            logger.info(f"  Processed {doc_count} documents from {collection_name}")
-
-    # Upload the buffer
-    buffer.seek(0)
-    blob.upload_from_file(buffer, content_type="application/x-ndjson")
+            if doc_count % 10000 == 0:
+                logger.info(f"  Processed {doc_count} documents from {collection_name}")
 
     logger.info(f"Wrote {doc_count} documents ({buffer_size / 1e6:.1f} MB) to {blob_path}")
     return doc_count
@@ -199,7 +189,10 @@ Firestore subcollections are not included when you iterate a parent collection. 
 def export_collection_with_subcollections(parent_collection, timestamp, subcollections=None):
     """Export a collection and its subcollections."""
     bucket = storage_client.bucket(BUCKET_NAME)
+    blob_path = f"exports/{timestamp}/{parent_collection}_with_subcollections.json"
+    blob = bucket.blob(blob_path)
     total_docs = 0
+    documents = []
 
     # Export the parent collection
     for doc in db.collection(parent_collection).stream():
@@ -222,8 +215,14 @@ def export_collection_with_subcollections(parent_collection, timestamp, subcolle
                     total_docs += len(sub_docs)
 
         total_docs += 1
+        documents.append(doc_data)
 
-    logger.info(f"Exported {total_docs} total documents including subcollections")
+    blob.upload_from_string(
+        json.dumps(documents, indent=2, default=str),
+        content_type="application/json",
+    )
+
+    logger.info(f"Exported {total_docs} total documents to gs://{BUCKET_NAME}/{blob_path}")
     return total_docs
 
 # Usage: export orders with their line_items subcollection
@@ -312,7 +311,7 @@ gsutil lifecycle set lifecycle.json gs://my-firestore-exports
 
 ## Loading Exports into BigQuery
 
-The exported JSON files can be loaded directly into BigQuery for analysis.
+The exported JSONL files can be loaded directly into BigQuery for analysis.
 
 ```python
 from google.cloud import bigquery
@@ -320,8 +319,8 @@ from google.cloud import bigquery
 client = bigquery.Client()
 
 def load_export_to_bigquery(export_timestamp, collection_name, dataset, table_name):
-    """Load a Firestore export from Cloud Storage into BigQuery."""
-    source_uri = f"gs://my-firestore-exports/exports/{export_timestamp}/{collection_name}.json"
+    """Load a Firestore JSONL export from Cloud Storage into BigQuery."""
+    source_uri = f"gs://my-firestore-exports/exports/{export_timestamp}/{collection_name}.jsonl"
 
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
