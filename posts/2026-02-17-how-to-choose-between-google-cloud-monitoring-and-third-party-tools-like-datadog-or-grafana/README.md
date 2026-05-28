@@ -20,7 +20,7 @@ Google Cloud Monitoring (formerly Stackdriver) is the native observability suite
 - Deep integration with GCP services. You get metrics that third-party tools simply cannot access without custom instrumentation.
 - Uptime checks, alerting policies, and dashboards are all built in.
 - Log-based metrics let you create custom metrics from log patterns.
-- Free tier is generous: 150 MB/user/month for Cloud Logging, first 150 million API calls for monitoring, and all GCP system metrics are free.
+- Free tier is generous: the first 50 GiB/project/month for Cloud Logging, free Google Cloud system metrics, and a free monthly allotment for Cloud Monitoring read results.
 
 **Where it falls short**:
 
@@ -28,7 +28,7 @@ Google Cloud Monitoring (formerly Stackdriver) is the native observability suite
 - Querying logs can be slow for large volumes.
 - Limited support for non-GCP resources (other clouds, on-premises).
 - Alerting lacks some advanced features (complex anomaly detection, composite conditions).
-- The learning curve for MQL (Monitoring Query Language) is steep.
+- The learning curve for MQL (Monitoring Query Language) is steep, and Google now recommends PromQL for new Cloud Monitoring queries.
 
 Here is a typical Cloud Monitoring setup:
 
@@ -42,10 +42,9 @@ gcloud monitoring policies create \
     --display-name="Cloud Run High Latency" \
     --condition-display-name="P99 latency above 2s" \
     --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_latencies"' \
-    --condition-threshold-value=2000 \
-    --condition-threshold-comparison=COMPARISON_GT \
-    --condition-threshold-duration=300s \
-    --condition-threshold-aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_99"}' \
+    --if='> 2000' \
+    --duration=300s \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_PERCENTILE_99"}' \
     --notification-channels="projects/my-project/notificationChannels/CHANNEL_ID"
 ```
 
@@ -73,8 +72,8 @@ Datadog is a comprehensive monitoring platform that covers metrics, logs, traces
 
 - Expensive. Costs can escalate quickly, especially with high log volumes and many hosts.
 - Pricing is complex (per host, per million log events, per million traces, etc.).
-- Requires installing the Datadog agent on your infrastructure.
-- Some GCP-specific metrics require the GCP integration to be configured.
+- Requires installing the Datadog agent on your infrastructure for host, container, log, and APM telemetry.
+- GCP service metrics require the GCP integration to be configured in Datadog.
 
 Typical Datadog setup for GCP:
 
@@ -97,7 +96,7 @@ spec:
     spec:
       containers:
         - name: datadog-agent
-          image: gcr.io/datadoghq/agent:latest
+          image: gcr.io/datadoghq/agent:7
           env:
             # API key for Datadog authentication
             - name: DD_API_KEY
@@ -105,14 +104,17 @@ spec:
                 secretKeyRef:
                   name: datadog-secret
                   key: api-key
+            # Set to datadoghq.eu, us3.datadoghq.com, etc. if your account is not on the US1 site
+            - name: DD_SITE
+              value: "datadoghq.com"
             # Enable APM tracing
             - name: DD_APM_ENABLED
               value: "true"
             # Enable log collection
             - name: DD_LOGS_ENABLED
               value: "true"
-            # Enable GCP integration metrics
-            - name: DD_GCP_ENABLED
+            # Collect all container logs
+            - name: DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL
               value: "true"
           resources:
             requests:
@@ -177,18 +179,18 @@ scrape_configs:
 
 ## Cost Comparison
 
-Cost is often the deciding factor. Here is a rough comparison for a mid-size setup (50 hosts, 100 GB logs/month, 10 million metric data points):
+Cost is often the deciding factor. Here is a rough comparison for a mid-size setup (50 hosts, 100 GB logs/month, and moderate custom metric volume):
 
 | Component | Cloud Monitoring | Datadog | Grafana Cloud |
 |-----------|-----------------|---------|---------------|
-| Infrastructure metrics | Free (GCP metrics) | ~$750/mo (50 hosts x $15) | ~$250/mo |
-| Custom metrics | $0.26/1000 time series | Included in host pricing | $8/1000 active series |
-| Logs (100 GB/mo) | ~$50 | ~$150-300 | ~$50 |
+| Infrastructure metrics | Free (GCP metrics) | ~$750/mo (50 hosts x $15) | Usage-based; depends on active series and Kubernetes host/container hours |
+| Custom metrics | Priced by bytes or samples ingested, after free allotments | $5/100 custom metrics beyond included allotments | $6.50/1000 billable active series, after included free usage |
+| Logs (100 GB/mo) | ~$25 for non-vended logs after the 50 GiB free allotment | ~$10 ingestion, plus indexing/retention costs | ~$25 after included free usage |
 | Traces | Free (first 2.5M spans) | ~$200 | ~$50 |
-| APM | Not included natively | Included in host pricing | Included |
+| APM | Not included natively | Separate APM host pricing unless purchased standalone or bundled | Application Observability host-hour pricing |
 | Dashboards | Free | Included | Included |
-| Alerting | Free | Included | Included |
-| **Estimated total** | **~$50-100/mo** | **~$1,100-1,250/mo** | **~$350-400/mo** |
+| Alerting | Currently free; alerting charges are planned no sooner than September 2026 | Included | Included |
+| **Estimated total** | **~$25-100/mo plus chargeable custom metrics/traces** | **~$750+/mo before APM, log indexing, and add-ons** | **Depends heavily on active series, host hours, logs, traces, and Application Observability usage** |
 
 These numbers are approximate and depend heavily on your specific usage. But the pattern is clear: Cloud Monitoring is cheapest for pure GCP workloads, Grafana Cloud is in the middle, and Datadog is the most expensive.
 
@@ -233,7 +235,7 @@ Many teams use a combination. A common pattern:
 # Keep all logs in Cloud Logging for compliance
 gcloud logging sinks create important-logs-sink \
     pubsub.googleapis.com/projects/my-project/topics/important-logs \
-    --log-filter='severity >= "WARNING" OR resource.type="cloud_run_revision"'
+    --log-filter='severity>=WARNING AND resource.type="cloud_run_revision"'
 ```
 
 This way you get the best of both worlds: free GCP metrics, cheap log storage in Cloud Logging, and the richer UI and features of your third-party tool for the metrics and traces that matter most.
