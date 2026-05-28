@@ -12,7 +12,7 @@ Migrating PostgreSQL from on-premises to Cloud SQL does not have to mean a lengt
 
 ## How DMS Works for PostgreSQL
 
-DMS uses PostgreSQL's logical replication mechanism (pglogical extension or native logical replication) to stream changes from your source to Cloud SQL. The process:
+DMS uses PostgreSQL's logical replication mechanism to stream changes from your source to Cloud SQL. The default setup uses the `pglogical` extension; PostgreSQL native logical replication is available for PostgreSQL 10+ when you create the migration job with the native replication option. The process:
 
 1. Creates a snapshot of your source database
 2. Restores it to the Cloud SQL destination
@@ -37,7 +37,7 @@ sequenceDiagram
 
 ### Source Database Requirements
 
-Your source PostgreSQL needs to be version 9.6 or later. DMS uses the `pglogical` extension for older versions and native logical replication for PostgreSQL 10+.
+For self-managed PostgreSQL sources, DMS supports PostgreSQL 9.4 or later. Google documents `pglogical` package and extension setup for PostgreSQL sources; PostgreSQL 10+ sources can use native logical replication if you enable that option on the migration job.
 
 Check your PostgreSQL version:
 
@@ -55,20 +55,22 @@ wal_level = logical
 max_replication_slots = 10
 max_wal_senders = 10
 max_worker_processes = 10
+wal_sender_timeout = 0
+shared_preload_libraries = 'pglogical'
 ```
 
 Restart PostgreSQL after making these changes.
 
-### Install pglogical (for PostgreSQL 9.6)
+### Install pglogical
 
-If running PostgreSQL 9.6, install the pglogical extension:
+DMS requires the `pglogical` package and extension unless you create the job with PostgreSQL native logical replication. Install the package for your PostgreSQL major version:
 
 ```bash
 # Install pglogical on Debian/Ubuntu
-sudo apt-get install postgresql-9.6-pglogical
+sudo apt-get install postgresql-13-pglogical
 
 # Or on RHEL/CentOS
-sudo yum install pglogical_96
+sudo yum install pglogical_13
 ```
 
 Then enable it in your database:
@@ -76,10 +78,14 @@ Then enable it in your database:
 ```sql
 -- Add pglogical to shared_preload_libraries in postgresql.conf
 -- After restart, create the extension in each database being migrated
-CREATE EXTENSION pglogical;
+CREATE EXTENSION IF NOT EXISTS pglogical;
 ```
 
-For PostgreSQL 10+, native logical replication is used and no extension installation is needed.
+For PostgreSQL 9.4 sources, also create `pglogical_origin` in each database being migrated:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pglogical_origin;
+```
 
 ### Create a Migration User
 
@@ -90,8 +96,11 @@ CREATE USER dms_user WITH REPLICATION LOGIN PASSWORD 'strong-password';
 -- Grant required permissions
 GRANT USAGE ON SCHEMA public TO dms_user;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO dms_user;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO dms_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO dms_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO dms_user;
 
+-- Repeat these grants for every non-system schema you are migrating.
 -- For pglogical-based migration, also need:
 GRANT USAGE ON SCHEMA pglogical TO dms_user;
 GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO dms_user;
@@ -131,10 +140,10 @@ gcloud services enable sqladmin.googleapis.com
 
 ```bash
 # Create a source connection profile for on-premises PostgreSQL
-gcloud database-migration connection-profiles create pg-source \
+gcloud database-migration connection-profiles create postgresql pg-source \
     --region=us-central1 \
     --display-name="On-Premises PostgreSQL" \
-    --provider=POSTGRESQL \
+    --role=SOURCE \
     --host=your-pg-server-ip \
     --port=5432 \
     --username=dms_user \
@@ -145,25 +154,26 @@ With SSL:
 
 ```bash
 # Source connection profile with SSL certificates
-gcloud database-migration connection-profiles create pg-source \
+gcloud database-migration connection-profiles create postgresql pg-source \
     --region=us-central1 \
     --display-name="On-Premises PostgreSQL (SSL)" \
-    --provider=POSTGRESQL \
+    --role=SOURCE \
     --host=your-pg-server-ip \
     --port=5432 \
     --username=dms_user \
     --password=strong-password \
-    --ssl-ca-certificate=server-ca.pem
+    --ssl-type=SERVER_ONLY \
+    --ca-certificate="$(<server-ca.pem)"
 ```
 
 ## Step 3: Create Destination Profile
 
 ```bash
 # Create or reference a Cloud SQL destination
-gcloud database-migration connection-profiles create cloudsql-pg-dest \
+gcloud database-migration connection-profiles create postgresql cloudsql-pg-dest \
     --region=us-central1 \
     --display-name="Cloud SQL PostgreSQL Destination" \
-    --provider=CLOUDSQL \
+    --role=DESTINATION \
     --cloudsql-instance=my-pg-cloudsql
 ```
 
@@ -177,6 +187,7 @@ gcloud database-migration migration-jobs create pg-migration \
     --type=CONTINUOUS \
     --source=pg-source \
     --destination=cloudsql-pg-dest \
+    --all-databases \
     --peer-vpc=projects/my-project/global/networks/my-vpc
 ```
 
@@ -235,7 +246,7 @@ Compare against Cloud SQL's supported extensions. If you use an unsupported exte
 
 ### Sequences
 
-Logical replication does not replicate sequence values. After the initial dump, sequences are set, but DMS handles this during the snapshot phase. However, verify sequence values after cutover:
+Logical replication does not reliably keep sequence state in sync. The sequence states on the Cloud SQL destination might differ from the source, so verify and adjust sequence values after cutover:
 
 ```sql
 -- Check sequence values on the destination
@@ -348,7 +359,7 @@ gcloud dns record-sets update db.internal. \
 
 If issues arise after cutover:
 
-- **Within minutes**: Redirect traffic back to the source database. No data loss since the source was the primary until cutover.
+- **Within minutes**: Redirect traffic back to the source database only if no writes have reached the Cloud SQL destination after cutover. Otherwise, reconcile those writes or set up reverse replication before failing back.
 - **Within hours**: Set up reverse replication from Cloud SQL to on-premises, then fail back.
 - **After days**: You will need to do a fresh migration in the reverse direction.
 
