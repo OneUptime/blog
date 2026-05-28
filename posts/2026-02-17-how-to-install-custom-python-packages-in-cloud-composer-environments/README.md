@@ -134,37 +134,34 @@ python -m twine upload \
 
 Configure Composer to install from Artifact Registry by specifying an extra index URL:
 
+```ini
+# pip.conf
+[global]
+index-url = https://us-central1-python.pkg.dev/my-project/python-packages/simple/
+```
+
+Upload `pip.conf` to the `/config/pip/` folder in your environment's bucket, then install the package:
+
 ```bash
+# Upload pip.conf to the environment bucket
+gsutil cp pip.conf gs://my-composer-bucket/config/pip/pip.conf
+
 # Update the environment with a private package from Artifact Registry
 gcloud composer environments update my-composer-env \
   --location=us-central1 \
-  --update-pypi-package="my-internal-package>=1.0.0" \
-  --update-airflow-configs="\
-core-index_url=https://us-central1-python.pkg.dev/my-project/python-packages/simple/"
-```
-
-### Using a pip.conf with Extra Index URLs
-
-For more complex setups, create a pip configuration:
-
-```bash
-# Set a custom PyPI repository URL in the environment
-gcloud composer environments update my-composer-env \
-  --location=us-central1 \
-  --update-env-variables="\
-PIP_EXTRA_INDEX_URL=https://us-central1-python.pkg.dev/my-project/python-packages/simple/"
+  --update-pypi-package="my-internal-package>=1.0.0"
 ```
 
 ## Method 4: Use the Plugins Directory
 
-For small, self-contained Python modules that do not need a full package installation, use the Composer plugins directory. Files placed here are automatically available to all DAGs.
+For custom Airflow plugins, such as in-house operators, hooks, sensors, or interfaces, use the Composer plugins directory. General-purpose helper modules should go in the DAGs folder instead.
 
 ```bash
-# Upload a Python module to the plugins directory
+# Upload an Airflow plugin to the plugins directory
 gcloud composer environments storage plugins import \
   --environment=my-composer-env \
   --location=us-central1 \
-  --source=my_utils.py
+  --source=my_plugin.py
 
 # Upload an entire directory of plugins
 gcloud composer environments storage plugins import \
@@ -173,15 +170,17 @@ gcloud composer environments storage plugins import \
   --source=plugins/
 ```
 
-Your plugin module is then importable in any DAG:
+Your plugin should follow Airflow's plugin template:
 
 ```python
-# In your DAG file, import from the plugins directory
-from my_utils import format_date, send_notification
+from airflow.plugins_manager import AirflowPlugin
 
-def process_data(**context):
-    formatted = format_date(context["ds"])
-    send_notification(f"Processing data for {formatted}")
+def company_macro():
+    return "available in templates"
+
+class MyCompanyPlugin(AirflowPlugin):
+    name = "my_company_plugin"
+    macros = [company_macro]
 ```
 
 ## Method 5: Include Dependencies in DAG Files
@@ -204,7 +203,7 @@ gcloud composer environments storage dags import \
 #     notification.py
 ```
 
-Import them in your DAGs using relative or absolute imports:
+Import them in your DAGs using absolute imports:
 
 ```python
 # Import from helper modules in the DAGs directory
@@ -216,13 +215,13 @@ from helpers.notification import alert_on_failure
 
 One of the trickiest parts of package management in Composer is dealing with dependency conflicts. Airflow and its providers have their own dependency trees, and adding packages can create conflicts.
 
-Check for conflicts before installing:
+Inspect the dependency tree after installing:
 
 ```bash
-# Run a dry-run to check for dependency conflicts
-gcloud composer environments run my-composer-env \
+# List packages and their dependency tree
+gcloud composer environments list-packages my-composer-env \
   --location=us-central1 \
-  pip check
+  --tree
 ```
 
 If you hit conflicts, you have a few options:
@@ -257,14 +256,13 @@ Verify what is installed in your environment:
 
 ```bash
 # List all installed Python packages
-gcloud composer environments run my-composer-env \
-  --location=us-central1 \
-  pip list
+gcloud composer environments list-packages my-composer-env \
+  --location=us-central1
 
-# Check the version of a specific package
-gcloud composer environments run my-composer-env \
+# List custom PyPI packages configured on the environment
+gcloud composer environments describe my-composer-env \
   --location=us-central1 \
-  pip show -- pandas
+  --format="value(config.softwareConfig.pypiPackages)"
 ```
 
 ## Best Practices
@@ -272,9 +270,9 @@ gcloud composer environments run my-composer-env \
 1. **Always pin versions** - Unpinned dependencies can change between environment updates, breaking your DAGs
 2. **Test locally first** - Use the Composer local development CLI tool to test package compatibility before deploying
 3. **Keep the package list minimal** - Only install what you actually need
-4. **Use the plugins directory for small modules** - Do not install a PyPI package for code you control
+4. **Use the DAGs folder for small modules** - Do not install a PyPI package for code you control
 5. **Monitor environment updates** - Package installations trigger an environment update that takes several minutes
 
 ## Wrapping Up
 
-Cloud Composer gives you multiple ways to install Python packages, from simple PyPI installs to private Artifact Registry packages. Start with the gcloud CLI for standard PyPI packages, use the plugins directory for internal modules, and fall back to `PythonVirtualenvOperator` or `KubernetesPodOperator` when you hit dependency conflicts. Keep your requirements pinned and version-controlled, and test changes in a development environment before applying them to production.
+Cloud Composer gives you multiple ways to install Python packages, from simple PyPI installs to private Artifact Registry packages. Start with the gcloud CLI for standard PyPI packages, use the DAGs folder for internal modules, and fall back to `PythonVirtualenvOperator` or `KubernetesPodOperator` when you hit dependency conflicts. Keep your requirements pinned and version-controlled, and test changes in a development environment before applying them to production.
