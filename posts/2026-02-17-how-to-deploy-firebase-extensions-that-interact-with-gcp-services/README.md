@@ -45,7 +45,7 @@ Key parameters to set:
 ```text
 Collection path: users
 Dataset ID: firestore_export
-Table ID: users_raw
+Table ID: users
 BigQuery project ID: YOUR_PROJECT_ID
 ```
 
@@ -58,7 +58,7 @@ After installation, check that the BigQuery dataset and table were created:
 bq ls --project_id YOUR_PROJECT_ID
 
 # Check the table schema
-bq show YOUR_PROJECT_ID:firestore_export.users_raw
+bq show YOUR_PROJECT_ID:firestore_export.users_raw_changelog
 ```
 
 ### Querying Your Firestore Data in BigQuery
@@ -73,7 +73,7 @@ SELECT
   JSON_VALUE(data, '$.displayName') AS name,
   timestamp
 FROM
-  `YOUR_PROJECT_ID.firestore_export.users_raw`
+  `YOUR_PROJECT_ID.firestore_export.users_raw_changelog`
 WHERE
   operation = 'CREATE'
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
@@ -93,7 +93,7 @@ npx @firebaseextensions/fs-bq-import-collection \
   --project YOUR_PROJECT_ID \
   --source-collection-path users \
   --dataset firestore_export \
-  --table-name-prefix users_raw \
+  --table-name-prefix users \
   --query-collection-group false
 ```
 
@@ -138,6 +138,9 @@ Resized:  images/photo_200x200.webp
 Update your application to use the resized versions:
 
 ```javascript
+import { useEffect, useState } from "react";
+import { getDownloadURL, getStorage, ref } from "firebase/storage";
+
 // Helper to get the resized image URL
 function getResizedImageUrl(originalPath, size) {
   // Remove the file extension
@@ -151,18 +154,18 @@ function getResizedImageUrl(originalPath, size) {
 // Usage in a React component
 function UserAvatar({ imagePath }) {
   const thumbnailPath = getResizedImageUrl(imagePath, "200x200");
-
-  const storage = getStorage();
   const [url, setUrl] = useState(null);
 
   useEffect(() => {
+    const storage = getStorage();
+
     getDownloadURL(ref(storage, thumbnailPath))
       .then(setUrl)
       .catch(() => {
         // Fall back to original if resized version is not ready yet
         getDownloadURL(ref(storage, imagePath)).then(setUrl);
       });
-  }, [thumbnailPath]);
+  }, [imagePath, thumbnailPath]);
 
   return url ? <img src={url} alt="avatar" /> : <div>Loading...</div>;
 }
@@ -185,6 +188,7 @@ Configuration parameters:
 SMTP connection URI: smtps://username:password@smtp.sendgrid.net:465
 Email documents collection: mail
 Default FROM address: noreply@yourdomain.com
+Templates collection: mail_templates
 ```
 
 ### Sending an Email
@@ -216,7 +220,7 @@ async function sendWelcomeEmail(userEmail, userName) {
 For more complex emails, use Handlebars templates stored in Firestore:
 
 ```javascript
-// First, create a template document in the templates subcollection
+// First, create a template document in the configured templates collection
 await setDoc(doc(db, "mail_templates", "welcome"), {
   subject: "Welcome to {{appName}}, {{userName}}!",
   html: `
@@ -242,18 +246,45 @@ await addDoc(collection(db, "mail"), {
 
 ## Extension 4: Stream Collections to Pub/Sub
 
-This lesser-known extension publishes Firestore document changes to a Cloud Pub/Sub topic. This is incredibly useful for event-driven architectures where multiple downstream services need to react to data changes.
+There is not currently an official Firebase Extension named `firebase/firestore-pubsub`. To publish Firestore document changes to a Cloud Pub/Sub topic, use a Firestore-triggered Cloud Function. This is incredibly useful for event-driven architectures where multiple downstream services need to react to data changes.
 
-### Installation
+### Publishing Firestore Changes
+
+Install the Pub/Sub client in your functions package:
 
 ```bash
-firebase ext:install firebase/firestore-pubsub \
+npm install @google-cloud/pubsub
+```
+
+Create the Pub/Sub topic:
+
+```bash
+gcloud pubsub topics create firestore-changes \
   --project YOUR_PROJECT_ID
+```
+
+```javascript
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { PubSub } from "@google-cloud/pubsub";
+
+const pubsub = new PubSub();
+const topicName = "firestore-changes";
+
+export const publishUserChanges = onDocumentWritten("users/{userId}", async (event) => {
+  await pubsub.topic(topicName).publishMessage({
+    json: {
+      documentPath: event.document,
+      params: event.params,
+      before: event.data?.before.exists ? event.data.before.data() : null,
+      after: event.data?.after.exists ? event.data.after.data() : null,
+    },
+  });
+});
 ```
 
 ### Setting Up Downstream Subscribers
 
-After installation, create Pub/Sub subscribers to consume the events:
+After deploying the function, create Pub/Sub subscribers to consume the events:
 
 ```bash
 # Create a subscription for order processing
@@ -282,8 +313,8 @@ firebase ext:list --project YOUR_PROJECT_ID
 # Update an extension to the latest version
 firebase ext:update INSTANCE_ID --project YOUR_PROJECT_ID
 
-# View the configuration of an installed extension
-firebase ext:info INSTANCE_ID --project YOUR_PROJECT_ID
+# Reconfigure an installed extension
+firebase ext:configure INSTANCE_ID --project YOUR_PROJECT_ID
 
 # Uninstall an extension
 firebase ext:uninstall INSTANCE_ID --project YOUR_PROJECT_ID
@@ -295,9 +326,8 @@ Extensions are Cloud Functions under the hood, so you can monitor them through C
 
 ```bash
 # View logs for a specific extension
-gcloud functions logs read \
-  --filter="labels.firebase-extensions-instance=firestore-bigquery-export" \
-  --limit=50 \
+firebase functions:log \
+  --only ext-firestore-bigquery-export-syncBigQuery \
   --project YOUR_PROJECT_ID
 ```
 
@@ -305,4 +335,4 @@ Set up alerts in Cloud Monitoring for extension function errors to catch problem
 
 ## Summary
 
-Firebase Extensions that interact with GCP services bridge the gap between Firebase's developer-friendly APIs and GCP's enterprise capabilities. The Firestore-to-BigQuery extension opens up SQL analytics on your document data. The Resize Images extension offloads image processing to Cloud Functions automatically. The email extension integrates with any SMTP provider through Firestore triggers. And the Pub/Sub extension connects Firestore changes to event-driven architectures. Install them through the CLI, verify the service account permissions, and monitor through Cloud Logging - the extensions handle the rest.
+Firebase Extensions that interact with GCP services bridge the gap between Firebase's developer-friendly APIs and GCP's enterprise capabilities. The Firestore-to-BigQuery extension opens up SQL analytics on your document data. The Resize Images extension offloads image processing to Cloud Functions automatically. The email extension integrates with any SMTP provider through Firestore triggers. And a small Firestore-triggered Cloud Function can connect Firestore changes to Pub/Sub-based event-driven architectures. Install extensions through the CLI, verify the service account permissions, and monitor through Cloud Logging - the extensions handle the rest.
