@@ -136,7 +136,7 @@ The intersection approach is more conservative. It keeps data unless it is both 
 
 ## How Many Column Families Should You Use?
 
-The general guidance is to use a small number of column families - typically between 1 and 10. Here is a decision framework:
+The general guidance is to use a small number of column families. Bigtable supports up to about 100 column families per table, but most schemas work best with far fewer. Here is a decision framework:
 
 ```mermaid
 graph TD
@@ -145,7 +145,7 @@ graph TD
     B -->|No| D[Use a single column family]
     C -->|Yes| E[Separate into different column families]
     C -->|No| F[Keep in the same column family]
-    E --> G{More than 10 families?}
+    E --> G{Approaching 100 families?}
     G -->|Yes| H[Consolidate - too many families hurts performance]
     G -->|No| I[Good - configure GC policies for each]
 ```
@@ -154,14 +154,14 @@ graph TD
 
 **Keep frequently co-read data together.** If you always read columns A, B, and C together, put them in the same family. Cross-family reads are more expensive than reads within a single family.
 
-**Avoid too many families.** Each column family adds metadata overhead. More than about 10 families per table starts to degrade performance.
+**Avoid too many families.** Each column family adds metadata overhead. Creating more than about 100 families per table can degrade performance.
 
 ## Column Family Naming Conventions
 
-Column family names are stored in every row, so shorter names save storage at scale.
+Column family names are included in the data transferred for each request, so shorter names reduce overhead at scale.
 
 ```bash
-# Short, descriptive column family names save storage at scale
+# Short, descriptive column family names reduce transfer overhead
 # Good: "cf1", "d", "m", "events"
 # Avoid: "sensor_reading_data_points", "user_activity_metadata_information"
 
@@ -169,7 +169,7 @@ cbt -instance=my-instance createfamily sensor-data d    # for data
 cbt -instance=my-instance createfamily sensor-data m    # for metadata
 ```
 
-At billions of rows, the storage savings from short column family names can be significant.
+At high request volumes, the transfer overhead savings from short column family names can be significant.
 
 ## Modifying Column Family Settings on Live Tables
 
@@ -193,22 +193,31 @@ cf.update()
 print("GC policy updated - Bigtable will apply it during next compaction")
 ```
 
-Note that garbage collection does not happen immediately. Bigtable applies GC policies during periodic compactions. Data marked for deletion may still appear in reads briefly after you change the policy.
+Note that garbage collection does not happen immediately. Bigtable applies GC policies during periodic compactions. Data marked for deletion can remain readable until the next compaction, and cleanup can take up to a week, so use read filters if your application must exclude data that matches the GC policy.
 
 ## Monitoring Column Family Storage
 
-Keep an eye on how much storage each column family consumes:
+Keep an eye on your column families and their garbage collection policies:
 
 ```bash
-# Check table and column family sizes
+# List column families and garbage collection policies
 cbt -instance=my-instance ls sensor-data
 ```
 
-In Cloud Monitoring, you can track the `bigtable.googleapis.com/disk/bytes_used` metric broken down by table. Large column families with no GC policy are a red flag.
+To check storage by column family, use table stats:
+
+```bash
+# Show table and column family stats, including logicalDataBytes
+gcloud bigtable instances tables describe sensor-data \
+    --instance=my-instance \
+    --view=stats
+```
+
+In Cloud Monitoring, you can track the `bigtable.googleapis.com/table/bytes_used` metric for compressed data stored in a table. Large column families with no GC policy are a red flag.
 
 ## Common Mistakes
 
-**No GC policy at all.** If you never set a GC policy, Bigtable keeps every version of every cell forever. Storage costs creep up silently.
+**No GC policy at all.** For column families created with the Google Cloud console, `cbt`, `gcloud`, or most client libraries, Bigtable keeps every version of every cell until you set a GC policy. Storage costs creep up silently.
 
 **Using maxversions=1 when you need versioning.** If your application does read-modify-write operations or you use timestamps for time-series data, keeping only one version means you cannot recover from accidental overwrites.
 
