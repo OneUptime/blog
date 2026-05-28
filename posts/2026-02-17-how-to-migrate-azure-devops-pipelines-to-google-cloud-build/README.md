@@ -188,7 +188,7 @@ options:
 Azure DevOps variable groups become Cloud Build substitutions and Secret Manager references.
 
 ```yaml
-# Substitutions for non-sensitive values
+# Option 1: substitutions for non-sensitive values
 substitutions:
   _DEPLOY_ENV: 'production'
   _REGION: 'us-central1'
@@ -204,10 +204,11 @@ steps:
         echo "Deploying to ${_DEPLOY_ENV} in ${_REGION}"
 
         # Access secrets from Secret Manager
-        export DB_PASSWORD=$(gcloud secrets versions access latest --secret=db-password)
-        npm run migrate
+        gcloud secrets versions access latest --secret=db-password >/dev/null
+```
 
-# Or use the availableSecrets syntax
+```yaml
+# Option 2: use the availableSecrets syntax for sensitive values
 availableSecrets:
   secretManager:
     - versionName: projects/$PROJECT_ID/secrets/db-password/versions/latest
@@ -255,13 +256,16 @@ Common Azure DevOps tasks and their Cloud Build equivalents:
 
 # Cloud Build - save test results to GCS for review
 - name: 'node:20'
+  id: 'test'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
       npm test -- --reporter=junit --output=test-results.xml
-      # Upload results to GCS
-      gsutil cp test-results.xml gs://$PROJECT_ID-build-artifacts/$BUILD_ID/test-results.xml
+
+- name: 'gcr.io/cloud-builders/gsutil'
+  args: ['cp', 'test-results.xml', 'gs://$PROJECT_ID-build-artifacts/$BUILD_ID/test-results.xml']
+  waitFor: ['test']
 ```
 
 ### AzureWebApp Task
@@ -328,12 +332,6 @@ gcloud builds triggers create github \
 
 Azure DevOps environments with approvals map to Cloud Deploy for managed deployment pipelines.
 
-```bash
-# Create a Cloud Deploy delivery pipeline
-gcloud deploy delivery-pipelines create my-pipeline \
-  --region=us-central1
-```
-
 Create a Cloud Deploy configuration:
 
 ```yaml
@@ -353,6 +351,7 @@ serialPipeline:
             kubernetes:
               serviceNetworking:
                 service: my-app
+                deployment: my-app
           canaryDeployment:
             percentages: [25, 50, 75]
 ---
@@ -372,27 +371,35 @@ gke:
   cluster: projects/my-project/locations/us-central1/clusters/production-cluster
 ```
 
+Register the Cloud Deploy delivery pipeline and targets:
+
+```bash
+gcloud deploy apply \
+  --file=clouddeploy.yaml \
+  --region=us-central1
+```
+
 ## Step 7: Migrate Service Connections
 
 Azure DevOps service connections become Cloud Build service accounts and IAM bindings.
 
 ```bash
-# Grant the Cloud Build service account necessary permissions
-PROJECT_NUM=$(gcloud projects describe my-project --format='value(projectNumber)')
+# Grant the service account used by Cloud Build the necessary permissions
+CLOUD_BUILD_SA=$(gcloud builds get-default-service-account | sed 's#^projects/.*/serviceAccounts/##')
 
 # Permission to deploy to GKE
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:${PROJECT_NUM}@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
   --role="roles/container.developer"
 
 # Permission to deploy to Cloud Run
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:${PROJECT_NUM}@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
   --role="roles/run.admin"
 
 # Permission to push to Artifact Registry
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:${PROJECT_NUM}@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:${CLOUD_BUILD_SA}" \
   --role="roles/artifactregistry.writer"
 ```
 
