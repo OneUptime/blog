@@ -12,42 +12,42 @@ Filestore instances come with default performance settings that work well for ge
 
 ## Understanding Filestore Performance Model
 
-Filestore performance is primarily determined by two factors: the tier you select and the provisioned capacity. For Basic tiers, performance is fixed regardless of capacity. For Zonal, Regional, and Enterprise tiers, performance scales linearly with capacity up to certain limits.
+Filestore performance is primarily determined by two factors: the tier you select and the provisioned capacity. Basic tiers have capacity-based limits, but they do not support custom performance. For Zonal, Regional, and Enterprise tiers, performance scales linearly with capacity up to certain limits.
 
 Here is a rough breakdown:
 
-**Basic HDD:** Fixed 100 MB/s read, 100 MB/s write. No amount of configuration changes this.
+**Basic HDD:** For 1 TB to 10 TB instances, the estimated maximum throughput is 100 MiB/s read and 100 MiB/s write. From 10 TB to 63.9 TB, it increases to about 180 MiB/s read and 120 MiB/s write.
 
-**Basic SSD:** Throughput scales with capacity. At 2.5 TB, you get about 180 MB/s read. At 63.9 TB, you get the maximum of 1.2 GB/s read.
+**Basic SSD:** Basic SSD instances have estimated limits of 1,200 MiB/s read throughput, 350 MiB/s write throughput, 60,000 read IOPS, and 25,000 write IOPS across the supported capacity range.
 
-**Zonal and Regional:** Performance scales more aggressively with capacity. You can also configure custom IOPS and throughput settings independently of capacity.
+**Zonal and Regional:** Performance scales more aggressively with capacity. You can also configure custom IOPS independently of capacity, with write IOPS and read/write throughput derived from the purchased read IOPS.
 
-**Enterprise:** Similar to Zonal/Regional with additional configurability.
+**Enterprise:** Enterprise performance also scales with capacity, but custom performance is supported for Zonal and Regional instances, not Basic or Enterprise instances.
 
 ## Configuring Custom Performance for Zonal and Regional Tiers
 
-For Zonal and Regional tier instances, you can specify custom performance limits at creation time. This lets you pay for exactly the performance you need rather than being locked to the default scaling curve.
+For Zonal and Regional tier instances, you can specify custom performance at creation time. This lets you pay for the IOPS rate you need rather than being locked to the default scaling curve. You can set either a fixed IOPS rate or an IOPS-per-TiB rate.
 
 ```bash
-# Create a Zonal instance with custom IOPS and throughput settings
+# Create a Zonal instance with custom IOPS
 
 gcloud filestore instances create perf-tuned-share \
   --zone=us-central1-a \
   --tier=ZONAL \
   --file-share=name=data,capacity=2TB \
   --network=name=default \
-  --performance-limits=max-read-iops=30000,max-read-throughput-mibps=1200
+  --performance=max-iops=30000
 ```
 
-This creates a 2 TB instance but with higher read performance than the default scaling would provide.
+This creates a 2 TB instance but with higher purchased IOPS than the default scaling would provide.
 
 You can also update performance settings on an existing instance:
 
 ```bash
-# Update performance limits on an existing instance
+# Update custom performance on an existing instance
 gcloud filestore instances update perf-tuned-share \
   --zone=us-central1-a \
-  --performance-limits=max-read-iops=50000,max-read-throughput-mibps=2400
+  --performance=max-iops-per-tb=17000
 ```
 
 ## Client-Side NFS Mount Options
@@ -56,11 +56,11 @@ The Filestore server handles one side of the performance equation. The NFS clien
 
 ### Read and Write Buffer Sizes
 
-The default NFS read/write buffer sizes are usually 32 KB or 64 KB. For large file operations, increasing these to 1 MB can dramatically improve throughput:
+The effective NFS read/write buffer sizes are negotiated by the client and server. For Filestore, Google recommends 512 KiB read and write buffers for most tiers. For basic-tier instances, set `rsize` to 1 MiB:
 
 ```bash
-# Mount with 1MB read/write buffers for maximum throughput
-sudo mount -t nfs -o rsize=1048576,wsize=1048576 10.0.0.2:/vol1 /mnt/filestore
+# Mount with recommended read/write buffers for most Filestore tiers
+sudo mount -t nfs -o rsize=524288,wsize=524288 10.0.0.2:/vol1 /mnt/filestore
 ```
 
 The `rsize` parameter controls how much data is requested in a single NFS read operation, and `wsize` controls the write equivalent. Larger values mean fewer round trips for large file transfers.
@@ -101,7 +101,7 @@ sudo mount -t nfs -o acregmin=30,acregmax=60,acdirmin=30,acdirmax=60 \
 
 ### NFS Version
 
-Filestore supports NFS v3. Make sure your clients are using v3 for the best compatibility:
+Filestore supports NFSv3 on all service tiers, and NFSv4.1 on Zonal, Regional, and Enterprise tiers. The `gcloud` examples above use the default NFSv3 protocol, so mount those shares with NFSv3:
 
 ```bash
 # Explicitly specify NFS version 3
@@ -116,12 +116,13 @@ Here is a mount command with all the performance-oriented options combined:
 # Fully optimized NFS mount for high-throughput workloads
 sudo mount -t nfs -o \
   vers=3,\
-  rsize=1048576,\
-  wsize=1048576,\
+  rsize=524288,\
+  wsize=524288,\
   hard,\
-  nointr,\
   timeo=600,\
-  retrans=2,\
+  retrans=3,\
+  resvport,\
+  nconnect=2,\
   async,\
   actimeo=30 \
   10.0.0.2:/vol1 /mnt/filestore
@@ -130,7 +131,7 @@ sudo mount -t nfs -o \
 And the corresponding fstab entry:
 
 ```text
-10.0.0.2:/vol1 /mnt/filestore nfs vers=3,rsize=1048576,wsize=1048576,hard,nointr,timeo=600,retrans=2,async,actimeo=30,_netdev 0 0
+10.0.0.2:/vol1 /mnt/filestore nfs vers=3,rsize=524288,wsize=524288,hard,timeo=600,retrans=3,resvport,nconnect=2,async,actimeo=30,_netdev 0 0
 ```
 
 ## Benchmarking Your Configuration
@@ -171,6 +172,6 @@ Compare the results to the performance limits of your instance. If you are not h
 
 **Match capacity to performance needs.** For Zonal and Regional tiers, provisioning more capacity gives you higher default performance limits, even if you do not need the extra space.
 
-**Avoid small random I/O on Basic HDD.** The IOPS limits on Basic HDD (600 reads, 1000 writes) are extremely low by modern standards. If your workload involves lots of small random operations, you need SSD.
+**Avoid small random I/O on Basic HDD.** The lower-capacity IOPS limits on Basic HDD (600 reads, 1000 writes) are extremely low by modern standards. If your workload involves lots of small random operations, you need SSD.
 
 Tuning Filestore performance is about understanding where the bottleneck is and adjusting the right knob. Server-side configuration sets the ceiling, client-side mount options determine how efficiently you use that ceiling, and VM sizing determines whether the network pipe is wide enough.
