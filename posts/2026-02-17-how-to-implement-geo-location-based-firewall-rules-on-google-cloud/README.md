@@ -10,7 +10,7 @@ Description: Learn how to implement geo-location-based firewall rules on Google 
 
 Sometimes you need to restrict access to your application based on where traffic originates. Maybe you are required to comply with sanctions regulations, or your service only operates in certain countries, or you have seen a surge of malicious traffic from a specific region. Geo-location-based firewall rules let you allow or deny traffic based on the country of origin.
 
-On Google Cloud, there are two main ways to implement geo-blocking: Cloud Armor for HTTP(S) traffic behind a load balancer, and VPC firewall rules with geo-location source ranges for non-HTTP workloads. This guide covers both approaches.
+On Google Cloud, there are two main ways to implement geo-blocking: Cloud Armor for HTTP(S) traffic behind a load balancer, and network firewall policies with geo-location objects for non-HTTP workloads. This guide covers both approaches.
 
 ## Approach 1: Cloud Armor Geo-Blocking (Recommended for Web Traffic)
 
@@ -27,7 +27,7 @@ gcloud compute security-policies create geo-policy \
 
 ### Allowing Traffic from Specific Countries
 
-If your application only serves customers in the US, Canada, and the EU:
+If your application only serves customers in the US, Canada, and Europe:
 
 ```bash
 # Allow traffic from US and Canada
@@ -37,12 +37,18 @@ gcloud compute security-policies rules create 1000 \
     --action=allow \
     --description="Allow US and Canadian traffic"
 
-# Allow traffic from EU countries
+# Allow traffic from European countries
 gcloud compute security-policies rules create 1100 \
     --security-policy=geo-policy \
-    --expression="origin.region_code == 'DE' || origin.region_code == 'FR' || origin.region_code == 'GB' || origin.region_code == 'NL' || origin.region_code == 'IE' || origin.region_code == 'ES' || origin.region_code == 'IT'" \
+    --expression="origin.region_code == 'DE' || origin.region_code == 'FR' || origin.region_code == 'GB' || origin.region_code == 'NL' || origin.region_code == 'IE'" \
     --action=allow \
-    --description="Allow EU traffic"
+    --description="Allow European traffic"
+
+gcloud compute security-policies rules create 1200 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'ES' || origin.region_code == 'IT'" \
+    --action=allow \
+    --description="Allow additional European traffic"
 
 # Deny all other traffic by default
 gcloud compute security-policies rules update 2147483647 \
@@ -68,18 +74,41 @@ gcloud compute security-policies rules update 2147483647 \
     --action=allow
 ```
 
-### Using Region Code Groups
+### Using Multiple Region Codes
 
-For broader regional blocking, you can combine multiple expressions. Here is a more comprehensive approach using a CEL expression:
+For broader regional blocking, create multiple rules and keep each expression small:
 
 ```bash
-# Allow only North American and European traffic using a single rule
-# This is more maintainable than listing every country individually
+# Allow only North American and European traffic
 gcloud compute security-policies rules create 1000 \
     --security-policy=geo-policy \
-    --expression="origin.region_code in ['US', 'CA', 'MX', 'GB', 'DE', 'FR', 'NL', 'IE', 'ES', 'IT', 'SE', 'NO', 'DK', 'FI', 'BE', 'AT', 'CH', 'PT', 'PL', 'CZ']" \
+    --expression="origin.region_code == 'US' || origin.region_code == 'CA' || origin.region_code == 'MX'" \
     --action=allow \
-    --description="Allow North American and European traffic"
+    --description="Allow North American traffic"
+
+gcloud compute security-policies rules create 1010 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'GB' || origin.region_code == 'DE' || origin.region_code == 'FR' || origin.region_code == 'NL' || origin.region_code == 'IE'" \
+    --action=allow \
+    --description="Allow European traffic"
+
+gcloud compute security-policies rules create 1020 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'ES' || origin.region_code == 'IT' || origin.region_code == 'SE' || origin.region_code == 'NO' || origin.region_code == 'DK'" \
+    --action=allow \
+    --description="Allow additional European traffic"
+
+gcloud compute security-policies rules create 1030 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'FI' || origin.region_code == 'BE' || origin.region_code == 'AT' || origin.region_code == 'CH' || origin.region_code == 'PT'" \
+    --action=allow \
+    --description="Allow additional European traffic"
+
+gcloud compute security-policies rules create 1040 \
+    --security-policy=geo-policy \
+    --expression="origin.region_code == 'PL' || origin.region_code == 'CZ'" \
+    --action=allow \
+    --description="Allow additional European traffic"
 ```
 
 ### Applying the Policy to Your Load Balancer
@@ -109,7 +138,7 @@ gcloud compute network-firewall-policies rules create 1000 \
     --action=allow \
     --layer4-configs=tcp:22 \
     --src-region-codes=US,CA \
-    --target-secure-tags=organizations/123456789/access/ssh-enabled \
+    --target-secure-tags=123456789/access/ssh-enabled \
     --description="Allow SSH from US and Canada only"
 
 # Allow HTTPS from approved regions
@@ -155,7 +184,7 @@ gcloud compute security-policies rules create 800 \
     --rate-limit-threshold-interval-sec=60 \
     --conform-action=allow \
     --exceed-action=deny-429 \
-    --enforce-on-key=IP \
+    --enforce-on-key=ip \
     --description="Rate limit traffic from specific region"
 
 # Block specific country AND specific path combinations
@@ -182,7 +211,7 @@ resource "google_compute_security_policy" "geo_policy" {
     priority = 1000
     match {
       expr {
-        expression = "origin.region_code in ['US', 'CA', 'GB', 'DE', 'FR']"
+        expression = "origin.region_code == 'US' || origin.region_code == 'CA' || origin.region_code == 'GB' || origin.region_code == 'DE' || origin.region_code == 'FR'"
       }
     }
     description = "Allow traffic from approved countries"
@@ -277,7 +306,7 @@ pie title Traffic Distribution by Region
 # Create a rule in preview mode to see what would be blocked
 gcloud compute security-policies rules create 1000 \
     --security-policy=geo-policy \
-    --expression="origin.region_code not in ['US', 'CA']" \
+    --expression="origin.region_code != 'US' && origin.region_code != 'CA'" \
     --action=deny-403 \
     --preview \
     --description="Preview: Block non-US/CA traffic"
