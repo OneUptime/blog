@@ -10,16 +10,16 @@ Description: Learn how to build incremental dbt models for BigQuery that process
 
 When your dbt models grow beyond a few million rows, rebuilding the entire table on every run becomes expensive and slow. BigQuery charges by the data processed, and a full rebuild scans the entire source table every time. If your source table has 500 million rows and only 100,000 changed since the last run, you are doing 5,000 times more work than necessary.
 
-Incremental models in dbt solve this by only processing new or modified data and appending (or merging) it into the existing table. This post covers the different incremental strategies available in dbt for BigQuery and when to use each one.
+Incremental models in dbt solve this by only processing new or modified data and incorporating it into the existing table. This post covers the different incremental strategies available in dbt for BigQuery and when to use each one.
 
 ## How Incremental Models Work
 
 An incremental model runs differently depending on whether the target table already exists:
 
 - First run: dbt creates the table and processes all data (same as a regular table materialization)
-- Subsequent runs: dbt processes only the new/changed data and merges it into the existing table
+- Subsequent runs: dbt processes only the new/changed data and applies it to the existing table using the configured incremental strategy
 
-The key mechanism is the `is_incremental()` macro. When this evaluates to true (target table exists and it is not a full-refresh run), your SQL should include a filter that limits the source data to only what is new.
+The key mechanism is the `is_incremental()` macro. When this evaluates to true (the target table exists, the model is configured as incremental, and it is not a full-refresh run), your SQL should include a filter that limits the source data to only what is new.
 
 ## Basic Incremental Model
 
@@ -107,7 +107,7 @@ Insert overwrite replaces entire partitions rather than merging individual rows.
 
 ```sql
 -- Insert overwrite: replaces entire partitions with fresh data
--- Best for append-only data that does not get updated after initial load
+-- Best when you can reprocess and replace whole partitions
 {{
   config(
     materialized='incremental',
@@ -133,11 +133,11 @@ FROM {{ ref('stg_raw_events') }}
 {% if is_incremental() %}
 -- Process events from the last 3 days to handle late-arriving data
 -- insert_overwrite will replace those day partitions entirely
-WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+WHERE CAST(event_timestamp AS DATE) >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
 {% endif %}
 ```
 
-Insert overwrite is ideal when your data is partitioned by date and you can reprocess entire partitions. It avoids the expensive MERGE operation and is generally the recommended strategy for BigQuery.
+Insert overwrite is ideal when your data is partitioned by date and you can reprocess entire partitions. It avoids row-by-row matching on a `unique_key` and is generally a strong fit for partitioned BigQuery tables.
 
 ### Append Strategy
 
@@ -204,7 +204,7 @@ FROM {{ ref('stg_events') }}
 {% if is_incremental() %}
 -- Reprocess the last 3 days to catch late-arriving events
 -- With insert_overwrite, this replaces those partitions cleanly
-WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+WHERE CAST(event_timestamp AS DATE) >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
 {% endif %}
 ```
 
@@ -289,7 +289,7 @@ SELECT
 FROM {{ ref('stg_events') }}
 
 {% if is_incremental() %}
-WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+WHERE CAST(event_timestamp AS DATE) >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
 {% endif %}
 ```
 
@@ -313,13 +313,14 @@ models:
         tests:
           - not_null
     tests:
-      # Custom test: check for gaps in the date range
+      # Custom test: check that recent data is present
       - dbt_utils.recency:
-          datepart: day
-          field: event_date
-          interval: 1
+          arguments:
+            datepart: day
+            field: event_date
+            interval: 1
 ```
 
 ## Wrapping Up
 
-Incremental models are essential for running dbt efficiently against BigQuery at scale. The insert_overwrite strategy is generally the best fit for BigQuery because it avoids expensive MERGE operations and works naturally with partitioned tables. Use merge when you need to handle updates to existing rows. Use append for immutable event streams. Always include a lookback window to handle late-arriving data, and run periodic full refreshes to keep things consistent. The initial setup takes a bit more thought than a simple table materialization, but the cost savings on large datasets make it well worth the effort.
+Incremental models are essential for running dbt efficiently against BigQuery at scale. The insert_overwrite strategy is often a strong fit for BigQuery because it avoids row-by-row key matching and works naturally with partitioned tables. Use merge when you need to handle updates to existing rows. Use append for immutable event streams. Include a lookback window when you need to handle late-arriving data, and run periodic full refreshes to keep things consistent. The initial setup takes a bit more thought than a simple table materialization, but the cost savings on large datasets make it well worth the effort.
