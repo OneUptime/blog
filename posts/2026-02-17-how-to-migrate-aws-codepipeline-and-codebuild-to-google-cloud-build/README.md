@@ -132,9 +132,9 @@ CodeBuild provides built-in environment variables. Cloud Build has its own set:
 |-------------------|---------------------|
 | CODEBUILD_RESOLVED_SOURCE_VERSION | $COMMIT_SHA |
 | CODEBUILD_BUILD_ID | $BUILD_ID |
-| CODEBUILD_SOURCE_REPO_URL | $REPO_NAME |
-| CODEBUILD_WEBHOOK_TRIGGER | $TRIGGER_NAME |
-| CODEBUILD_SOURCE_VERSION | $BRANCH_NAME or $TAG_NAME |
+| CODEBUILD_SOURCE_REPO_URL | No exact default; use $REPO_FULL_NAME / $REPO_NAME or a custom substitution |
+| CODEBUILD_WEBHOOK_TRIGGER | $BRANCH_NAME, $TAG_NAME, or $_PR_NUMBER depending on the trigger |
+| CODEBUILD_SOURCE_VERSION | $COMMIT_SHA, $BRANCH_NAME, $TAG_NAME, or $_PR_NUMBER depending on the source event |
 
 For custom environment variables defined in your CodeBuild project, use substitutions in Cloud Build:
 
@@ -157,7 +157,7 @@ steps:
 
 ## Step 4: Convert Pipeline Stages
 
-CodePipeline stages with multiple actions can be represented using Cloud Build steps with wait_for for parallelism.
+CodePipeline stages with multiple actions can be represented using Cloud Build steps with `waitFor` for parallelism.
 
 ```yaml
 # Parallel steps in Cloud Build
@@ -196,8 +196,8 @@ steps:
     args:
       - '-c'
       - |
-        # The secret is mounted as a file, read it into an env var
-        export DATABASE_URL=$$(cat /secrets/db-url)
+        # The secret is available as an environment variable
+        export DATABASE_URL=$$DATABASE_URL
         npm run migrate
     secretEnv: ['DATABASE_URL']
 
@@ -253,7 +253,8 @@ steps:
     args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$COMMIT_SHA']
 
   # Deploy to Cloud Run
-  - name: 'gcr.io/cloud-builders/gcloud'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
     args:
       - 'run'
       - 'deploy'
@@ -279,15 +280,20 @@ steps:
 
 ## Step 8: Handle Approval Gates
 
-CodePipeline has manual approval actions. Cloud Build does not have a built-in approval step, but you can use Cloud Deploy for this:
+CodePipeline has manual approval actions. Cloud Build can require approvals on triggers, or you can use Cloud Deploy for deployment approvals:
 
 ```bash
-# Set up Cloud Deploy for deployment pipelines with approvals
-gcloud deploy delivery-pipelines create my-pipeline \
-  --region=us-central1
+# Create a manually approved production trigger
+gcloud builds triggers create github \
+  --name=my-app-prod \
+  --repo-owner=my-org \
+  --repo-name=my-app \
+  --branch-pattern="^main$" \
+  --build-config=cloudbuild-prod.yaml \
+  --require-approval
 
-# Cloud Deploy pipeline config supports approval requirements
-# Define this in a delivery pipeline YAML
+# Cloud Deploy target configs also support approval requirements
+# Define requireApproval: true in a Cloud Deploy target YAML
 ```
 
 Alternatively, use a Pub/Sub-based approval workflow or integrate with your team's existing approval process through Cloud Build triggers that require manual invocation for production deployments.
@@ -303,8 +309,8 @@ options:
   diskSizeGb: 200
 ```
 
-Cloud Build gives you 120 free build-minutes per day on the default machine type. After that, pricing is per build-minute based on the machine type you select.
+Cloud Build currently gives each billing account 2,500 free build-minutes per month for the `e2-standard-2` default-pool machine type. After that, pricing is per build-minute based on the machine type you select.
 
 ## Summary
 
-Migrating from CodePipeline and CodeBuild to Cloud Build generally simplifies your CI/CD setup. You go from managing two services to one. The configuration format is different but the concepts translate directly - phases become steps, stages become parallel step groups, and source stages become triggers. The main gap is manual approval gates, which require Cloud Deploy or a custom solution. Start with your simplest pipeline, get it working in Cloud Build, then tackle the more involved ones.
+Migrating from CodePipeline and CodeBuild to Cloud Build generally simplifies your CI/CD setup. You go from managing two services to one. The configuration format is different but the concepts translate directly - phases become steps, stages become parallel step groups, and source stages become triggers. Manual approval gates can be handled with Cloud Build trigger approvals, Cloud Deploy, or a custom solution. Start with your simplest pipeline, get it working in Cloud Build, then tackle the more involved ones.
