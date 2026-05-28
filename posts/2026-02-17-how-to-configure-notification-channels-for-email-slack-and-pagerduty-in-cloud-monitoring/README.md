@@ -25,7 +25,7 @@ Email is the simplest notification channel to set up. No integrations or tokens 
 ```bash
 # Create an email notification channel
 
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="On-Call Team Email" \
   --type=email \
   --channel-labels=email_address=oncall-team@company.com
@@ -53,11 +53,11 @@ curl -X POST \
   -d @email-channel.json
 ```
 
-For team notifications, use a group email address rather than individual addresses. This way you do not need to update the channel when team members change.
+For team notifications, use a group email address rather than individual addresses. Configure the group to accept mail from `alerting-noreply@google.com`; this way you do not need to update the channel when team members change.
 
 ## Setting Up Slack Notifications
 
-Slack integration requires setting up an incoming webhook or using the Cloud Monitoring Slack app.
+Slack integration requires setting up the Cloud Monitoring Slack app. If you need to call a Slack incoming webhook directly, use an intermediary service to transform the Cloud Monitoring webhook payload into Slack's expected format.
 
 The recommended approach is the Cloud Monitoring Slack app.
 
@@ -88,20 +88,20 @@ Through the API, after the Slack integration is authorized:
 }
 ```
 
-You can also use a Slack incoming webhook as an alternative.
+For custom Slack workflows, send Cloud Monitoring webhooks to an intermediary service that transforms the Monitoring payload and then calls a Slack incoming webhook.
 
 ```json
 {
   "type": "webhook_tokenauth",
-  "displayName": "Slack Webhook",
+  "displayName": "Slack Forwarder Webhook",
   "labels": {
-    "url": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+    "url": "https://my-service.run.app/alerts/slack?auth_token=your-shared-token"
   },
   "enabled": true
 }
 ```
 
-The webhook approach is simpler to set up but provides less rich notification formatting compared to the native Slack integration.
+The webhook forwarding approach is useful for custom formatting, but the native Slack integration is simpler when you only need alerts delivered to a Slack channel.
 
 ## Setting Up PagerDuty Notifications
 
@@ -113,7 +113,7 @@ Step 2: Create the notification channel in Cloud Monitoring.
 
 ```bash
 # Create a PagerDuty notification channel
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="Production PagerDuty" \
   --type=pagerduty \
   --channel-labels=service_key=YOUR_PAGERDUTY_INTEGRATION_KEY
@@ -141,7 +141,7 @@ curl -X POST \
   -d @pagerduty-channel.json
 ```
 
-PagerDuty notifications include incident creation, acknowledgment, and resolution. When the alert condition clears, Cloud Monitoring sends a resolution event that auto-resolves the PagerDuty incident (if configured).
+PagerDuty handles incident acknowledgment and escalation. When the alert condition clears, Cloud Monitoring sends a resolution event that auto-resolves the PagerDuty incident if the integration is configured to resolve incidents.
 
 ## Setting Up Webhook Notifications
 
@@ -149,10 +149,11 @@ For custom integrations - Microsoft Teams, Discord, or your own services - use w
 
 ```json
 {
-  "type": "webhook_tokenauth",
+  "type": "webhook_basicauth",
   "displayName": "Custom Alert Webhook",
   "labels": {
     "url": "https://my-service.run.app/alerts/webhook",
+    "username": "monitoring",
     "password": "your-webhook-secret"
   },
   "enabled": true
@@ -167,7 +168,7 @@ For critical alerts, SMS ensures people are reachable even when they are away fr
 
 ```bash
 # Create an SMS notification channel
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="On-Call Phone" \
   --type=sms \
   --channel-labels=number="+15551234567"
@@ -216,29 +217,40 @@ List and manage your notification channels from the CLI.
 
 ```bash
 # List all notification channels
-gcloud alpha monitoring channels list \
+gcloud beta monitoring channels list \
   --format="table(displayName, type, enabled, name)"
 
 # Describe a specific channel
-gcloud alpha monitoring channels describe CHANNEL_ID
+gcloud beta monitoring channels describe CHANNEL_ID
 
 # Disable a channel temporarily
-gcloud alpha monitoring channels update CHANNEL_ID --no-enabled
+gcloud beta monitoring channels update CHANNEL_ID --no-enabled
 
 # Re-enable a channel
-gcloud alpha monitoring channels update CHANNEL_ID --enabled
+gcloud beta monitoring channels update CHANNEL_ID --enabled
 
-# Delete a channel (only if not referenced by any alerting policy)
-gcloud alpha monitoring channels delete CHANNEL_ID
+# Delete a channel. By default, this fails if the channel is referenced by an alerting policy.
+gcloud beta monitoring channels delete CHANNEL_ID
 ```
 
 ## Verifying Notification Channels
 
-Before relying on a channel, verify it works. Cloud Monitoring supports sending test notifications.
+Before relying on a channel, verify it works. Cloud Monitoring supports verification for channels that require it, and the Console can send test notifications for channel types like Slack and webhooks.
 
 ```bash
-# Send a verification to an email channel (triggers a verification email)
-gcloud alpha monitoring channels verify CHANNEL_ID
+# Send a verification code to a channel
+curl -X POST \
+  "https://monitoring.googleapis.com/v3/projects/my-project/notificationChannels/CHANNEL_ID:sendVerificationCode" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Verify the channel with the code you received
+curl -X POST \
+  "https://monitoring.googleapis.com/v3/projects/my-project/notificationChannels/CHANNEL_ID:verify" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"G-123456"}'
 ```
 
 For Slack and PagerDuty channels, you can create a test alerting policy with a condition that immediately fires (like CPU > 0%) and verify the notification arrives.
@@ -249,23 +261,23 @@ For organizations with multiple teams, create separate notification channels per
 
 ```bash
 # Backend team channels
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="Backend - Slack" \
   --type=slack \
-  --channel-labels=channel_name="#backend-alerts"
+  --channel-labels=auth_token=BACKEND_SLACK_AUTH_TOKEN,channel_name="#backend-alerts"
 
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="Backend - PagerDuty" \
   --type=pagerduty \
   --channel-labels=service_key=BACKEND_PD_KEY
 
 # Frontend team channels
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="Frontend - Slack" \
   --type=slack \
-  --channel-labels=channel_name="#frontend-alerts"
+  --channel-labels=auth_token=FRONTEND_SLACK_AUTH_TOKEN,channel_name="#frontend-alerts"
 
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="Frontend - PagerDuty" \
   --type=pagerduty \
   --channel-labels=service_key=FRONTEND_PD_KEY
@@ -273,16 +285,22 @@ gcloud alpha monitoring channels create \
 
 ## Notification Rate Limiting
 
-Cloud Monitoring applies rate limiting to prevent notification floods. By default, for a given alerting policy and notification channel, Cloud Monitoring sends at most one notification every 5 minutes while the condition is active. The auto-close period (default 7 days) determines when an incident automatically resolves if the condition clears.
+Cloud Monitoring lets you configure repeated notifications to help prevent notification floods. By default, alerting policies created in the Google Cloud console send a notification when an incident is opened; you can also configure notifications when incidents close. The auto-close period (default 7 days) determines when an incident automatically resolves if Monitoring stops receiving observations that keep the incident open.
 
-You can customize the notification rate in the alerting policy.
+For metric-based policies, use `notificationChannelStrategy` to configure repeated notifications for open incidents. The `notificationRateLimit` field applies to log-based alerting policies and isn't implemented for policies that don't have a `LogMatch` condition.
 
 ```json
 {
   "alertStrategy": {
-    "notificationRateLimit": {
-      "period": "300s"
-    },
+    "notificationChannelStrategy": [
+      {
+        "notificationChannelNames": [
+          "projects/my-project/notificationChannels/PAGERDUTY_CHANNEL_ID"
+        ],
+        "renotifyInterval": "1800s"
+      }
+    ],
+    "notificationPrompts": ["OPENED", "CLOSED"],
     "autoClose": "604800s"
   }
 }
