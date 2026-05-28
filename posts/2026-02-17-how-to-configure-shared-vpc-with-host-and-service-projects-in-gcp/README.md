@@ -118,10 +118,11 @@ Service project users need permission to use specific subnets. You grant this th
 
 ```bash
 # Grant the web team permission to use the us-central1 subnet
-gcloud projects add-iam-policy-binding host-project \
+gcloud compute networks subnets add-iam-policy-binding shared-us-central1 \
+  --project=host-project \
+  --region=us-central1 \
   --member="group:web-team@mycompany.com" \
-  --role="roles/compute.networkUser" \
-  --condition='expression=resource.name.endsWith("shared-us-central1"),title=us-central1-subnet-only'
+  --role="roles/compute.networkUser"
 ```
 
 For simpler setups, you can grant access to all subnets in the host project:
@@ -133,13 +134,20 @@ gcloud projects add-iam-policy-binding host-project \
   --role="roles/compute.networkUser"
 ```
 
-For GKE clusters, the service project's GKE service account also needs the Host Service Agent User role:
+For GKE clusters, the service project's GKE service account also needs the Compute Network User role on the host project or subnet and the Host Service Agent User role on the host project:
 
 ```bash
 # Get the GKE service account for service-project-a
 # Format: service-PROJECT_NUMBER@container-engine-robot.iam.gserviceaccount.com
 
-# Grant it the required role on the host project
+# Grant it access to the shared subnet
+gcloud compute networks subnets add-iam-policy-binding shared-us-central1 \
+  --project=host-project \
+  --region=us-central1 \
+  --member="serviceAccount:service-123456789@container-engine-robot.iam.gserviceaccount.com" \
+  --role="roles/compute.networkUser"
+
+# Grant it the required host service agent role on the host project
 gcloud projects add-iam-policy-binding host-project \
   --member="serviceAccount:service-123456789@container-engine-robot.iam.gserviceaccount.com" \
   --role="roles/container.hostServiceAgentUser"
@@ -232,16 +240,17 @@ resource "google_compute_shared_vpc_service_project" "service_a" {
 Track IP utilization across shared subnets to prevent exhaustion:
 
 ```bash
-# Check how many IPs are in use in each shared subnet
+# Show the primary and secondary ranges configured on a shared subnet
 gcloud compute networks subnets describe shared-us-central1 \
   --project=host-project \
   --region=us-central1 \
   --format="yaml(ipCidrRange, secondaryIpRanges)"
 
-# List all instances using this subnet across all projects
+# List instances in a service project that use this subnet
 gcloud compute instances list \
+  --project=service-project-a \
   --filter="networkInterfaces[].subnetwork:shared-us-central1" \
-  --format="table(name, zone, networkInterfaces[0].networkIP, project)"
+  --format="table(name, zone, networkInterfaces[0].networkIP)"
 ```
 
 ## Detaching a Service Project
