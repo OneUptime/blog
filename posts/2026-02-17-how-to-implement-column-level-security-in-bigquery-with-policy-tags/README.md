@@ -14,27 +14,13 @@ In this post, I will walk through setting up column-level security from scratch,
 
 ## How Column-Level Security Works
 
-BigQuery column-level security uses a hierarchy of three components. A taxonomy is a container that groups related policy tags. A policy tag is a label that represents a data classification, such as "PII" or "Financial." When a policy tag is applied to a column, BigQuery enforces access control on that column - only users with the appropriate IAM role can read or write data in tagged columns.
+BigQuery column-level security uses a hierarchy of three components. A taxonomy is a container that groups related policy tags. A policy tag is a label that represents a data classification, such as "PII" or "Financial." When a policy tag is applied to a column and access control is enforced, BigQuery checks access on that column at query time - only users with the appropriate IAM role can read data in tagged columns.
 
 When a user without access queries a tagged column, they get an access denied error. If they query other columns in the same table, the query works fine. This means you do not need to create separate views or tables for different access levels.
 
 ## Step 1 - Create a Taxonomy
 
-A taxonomy is the top-level container for your policy tags. You might have one taxonomy for data sensitivity levels and another for regulatory compliance categories.
-
-```bash
-# Create a taxonomy for data classification
-
-gcloud data-catalog taxonomies create \
-  --display-name="Data Sensitivity" \
-  --description="Classification levels for sensitive data" \
-  --location=us-central1 \
-  --project=my-project
-```
-
-Note the taxonomy ID from the output - you will need it for creating policy tags.
-
-You can also create taxonomies using the Python client.
+A taxonomy is the top-level container for your policy tags. You might have one taxonomy for data sensitivity levels and another for regulatory compliance categories. You can create taxonomies using the Python client.
 
 ```python
 from google.cloud import datacatalog_v1
@@ -59,6 +45,8 @@ created_taxonomy = client.create_taxonomy(
 
 print(f"Created taxonomy: {created_taxonomy.name}")
 ```
+
+Note the taxonomy ID from the output - you will need it for creating policy tags.
 
 The key part is `FINE_GRAINED_ACCESS_CONTROL` in the activated policy types. This enables BigQuery to enforce column-level access control based on these policy tags.
 
@@ -165,30 +153,50 @@ client.update_table(table, ["schema"])
 print("Schema updated with policy tags")
 ```
 
-You can also apply policy tags when creating a table.
+You can also apply policy tags when creating a table by passing a schema file to `bq mk` or `bq load`. BigQuery does not support specifying policy tags directly in a `CREATE TABLE` DDL statement.
 
-```sql
--- Create a table with policy tags on sensitive columns
-CREATE TABLE `my_project.analytics.customers`
-(
-  customer_id STRING,
-  name STRING,
-  -- Apply PII policy tag to email
-  email STRING OPTIONS(
-    policy_tags='["projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/PII_TAG_ID"]'
-  ),
-  -- Apply Financial policy tag to account number
-  account_number STRING OPTIONS(
-    policy_tags='["projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/FINANCIAL_TAG_ID"]'
-  ),
-  signup_date DATE,
-  subscription_tier STRING
-);
+```json
+[
+  {
+    "name": "customer_id",
+    "type": "STRING"
+  },
+  {
+    "name": "name",
+    "type": "STRING"
+  },
+  {
+    "name": "email",
+    "type": "STRING",
+    "policyTags": {
+      "names": ["projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/PII_TAG_ID"]
+    }
+  },
+  {
+    "name": "account_number",
+    "type": "STRING",
+    "policyTags": {
+      "names": ["projects/my-project/locations/us-central1/taxonomies/TAXONOMY_ID/policyTags/FINANCIAL_TAG_ID"]
+    }
+  },
+  {
+    "name": "signup_date",
+    "type": "DATE"
+  },
+  {
+    "name": "subscription_tier",
+    "type": "STRING"
+  }
+]
+```
+
+```bash
+bq mk --table my_project:analytics.customers schema.json
 ```
 
 ## Step 4 - Configure Access Control
 
-With policy tags applied to columns, you need to grant specific users or groups the ability to read tagged columns. By default, tagged columns are not accessible to anyone, even BigQuery admins.
+With policy tags applied to columns, you need to grant specific users or groups the ability to read tagged columns. Once access control is enforced, users need the Data Catalog Fine-Grained Reader role on the relevant policy tag to read raw data from protected columns.
 
 ```bash
 # Grant a group access to read PII-tagged columns
@@ -246,6 +254,8 @@ client.set_iam_policy(
 print("IAM policy updated for PII tag")
 ```
 
+Finally, enforce access control on the taxonomy. In the Google Cloud console, open the policy tag taxonomy and turn on **Enforce access control**. If you enforce access control with the BigQuery Data Policy API instead, create a data policy with `dataPolicyType` set to `COLUMN_LEVEL_SECURITY_POLICY`.
+
 ## Testing the Access Control
 
 After configuration, test that column-level security works correctly.
@@ -262,10 +272,11 @@ SELECT customer_id, name, signup_date FROM `my_project.analytics.customers`;
 
 ## Data Masking as an Alternative
 
-If you want to allow users to see that a column exists but show masked values instead of denying access entirely, you can combine policy tags with authorized views that mask the data.
+If you want to allow users to see that a column exists but show masked values instead of denying access entirely, use BigQuery dynamic data masking with policy tags and grant the BigQuery Masked Reader role on the data policy. Authorized views do not bypass column-level security on the underlying table, so users querying a view that references protected columns still need access to the underlying policy tags.
 
 ```sql
--- Create a view that masks PII columns
+-- Create a view that masks PII columns for users who already have access
+-- to the underlying protected columns
 CREATE VIEW `my_project.analytics.customers_masked` AS
 SELECT
   customer_id,
