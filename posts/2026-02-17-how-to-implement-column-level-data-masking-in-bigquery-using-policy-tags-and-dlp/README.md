@@ -18,9 +18,9 @@ BigQuery column-level masking sits on top of the policy tag infrastructure used 
 
 - If they have the Fine Grained Reader role, they see the actual data
 - If they have the Masked Reader role, they see the masked version
-- If they have neither role, they see NULL
+- If they have neither role, the query fails with a permission error for the secured column
 
-This is all transparent to the query itself. Users write standard SQL and the masking happens automatically.
+For users with either masked or unmasked access, this is transparent to the query itself. Users write standard SQL and the masking happens automatically.
 
 ## Setting Up the Policy Tag Taxonomy
 
@@ -34,39 +34,59 @@ gcloud services enable bigquerydatapolicy.googleapis.com
 gcloud services enable dlp.googleapis.com
 
 # Create a taxonomy for data classification
-gcloud data-catalog taxonomies create \
-  --display-name="Data Sensitivity Classification" \
-  --description="Classification for column-level data masking" \
-  --location=us \
-  --activated-policy-types=FINE_GRAINED_ACCESS_CONTROL
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies" \
+  -d '{
+    "displayName": "Data Sensitivity Classification",
+    "description": "Classification for column-level data masking",
+    "activatedPolicyTypes": ["FINE_GRAINED_ACCESS_CONTROL"]
+  }'
 ```
 
 Note the taxonomy ID from the output. Then create policy tags:
 
 ```bash
 # Create a policy tag for email addresses
-gcloud data-catalog taxonomies policy-tags create \
-  --taxonomy="projects/my-project/locations/us/taxonomies/TAXONOMY_ID" \
-  --display-name="Email PII" \
-  --description="Email addresses requiring masking"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags" \
+  -d '{
+    "displayName": "Email PII",
+    "description": "Email addresses requiring masking"
+  }'
 
 # Create a policy tag for phone numbers
-gcloud data-catalog taxonomies policy-tags create \
-  --taxonomy="projects/my-project/locations/us/taxonomies/TAXONOMY_ID" \
-  --display-name="Phone PII" \
-  --description="Phone numbers requiring masking"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags" \
+  -d '{
+    "displayName": "Phone PII",
+    "description": "Phone numbers requiring masking"
+  }'
 
 # Create a policy tag for financial data
-gcloud data-catalog taxonomies policy-tags create \
-  --taxonomy="projects/my-project/locations/us/taxonomies/TAXONOMY_ID" \
-  --display-name="Financial Data" \
-  --description="Financial amounts and account numbers"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags" \
+  -d '{
+    "displayName": "Financial Data",
+    "description": "Financial amounts and account numbers"
+  }'
 
 # Create a policy tag for government IDs (SSN, etc.)
-gcloud data-catalog taxonomies policy-tags create \
-  --taxonomy="projects/my-project/locations/us/taxonomies/TAXONOMY_ID" \
-  --display-name="Government ID" \
-  --description="Social security numbers and government identifiers"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags" \
+  -d '{
+    "displayName": "Government ID",
+    "description": "Social security numbers and government identifiers"
+  }'
 ```
 
 ## Creating Data Masking Rules
@@ -75,50 +95,75 @@ Attach masking rules to your policy tags. BigQuery supports several built-in mas
 
 ```bash
 # Create a masking rule for email addresses
-# SHA256 hashing preserves the ability to join and group
-# while hiding the actual email
-gcloud bigquery datapolicies create email-mask-policy \
-  --location=us \
-  --policy-tag="projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/EMAIL_TAG_ID" \
-  --data-masking-policy-predefined-expression="SHA256" \
-  --data-policy-type="DATA_MASKING_POLICY"
+# EMAIL_MASK replaces the username with XXXXX for valid email addresses
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://bigquerydatapolicy.googleapis.com/v1/projects/my-project/locations/us/dataPolicies" \
+  -d '{
+    "dataPolicyId": "email-mask-policy",
+    "dataPolicy": {
+      "policyTag": "projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/EMAIL_TAG_ID",
+      "dataPolicyType": "DATA_MASKING_POLICY",
+      "dataMaskingPolicy": {
+        "predefinedExpression": "EMAIL_MASK"
+      }
+    }
+  }'
 
 # Create a masking rule that always returns NULL
 # for highly sensitive fields
-gcloud bigquery datapolicies create ssn-mask-policy \
-  --location=us \
-  --policy-tag="projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/GOV_ID_TAG_ID" \
-  --data-masking-policy-predefined-expression="ALWAYS_NULL" \
-  --data-policy-type="DATA_MASKING_POLICY"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://bigquerydatapolicy.googleapis.com/v1/projects/my-project/locations/us/dataPolicies" \
+  -d '{
+    "dataPolicyId": "ssn-mask-policy",
+    "dataPolicy": {
+      "policyTag": "projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/GOV_ID_TAG_ID",
+      "dataPolicyType": "DATA_MASKING_POLICY",
+      "dataMaskingPolicy": {
+        "predefinedExpression": "ALWAYS_NULL"
+      }
+    }
+  }'
 
 # Create a masking rule that shows the default masking
 # (replaces with a fixed value based on data type)
-gcloud bigquery datapolicies create phone-mask-policy \
-  --location=us \
-  --policy-tag="projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/PHONE_TAG_ID" \
-  --data-masking-policy-predefined-expression="DEFAULT_MASKING_VALUE" \
-  --data-policy-type="DATA_MASKING_POLICY"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://bigquerydatapolicy.googleapis.com/v1/projects/my-project/locations/us/dataPolicies" \
+  -d '{
+    "dataPolicyId": "phone-mask-policy",
+    "dataPolicy": {
+      "policyTag": "projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/PHONE_TAG_ID",
+      "dataPolicyType": "DATA_MASKING_POLICY",
+      "dataMaskingPolicy": {
+        "predefinedExpression": "DEFAULT_MASKING_VALUE"
+      }
+    }
+  }'
 ```
 
-For custom masking using Cloud DLP (for example, partial masking that shows the last 4 digits):
+For partial masking that shows the last 4 characters:
 
 ```python
 # create_custom_masking.py
-# Create a custom masking rule using Cloud DLP for partial masking
+# Create a data masking policy that shows the last 4 characters
 from google.cloud import bigquery_datapolicies_v1
 
-def create_custom_masking_policy(project_id, location, policy_tag_id):
-    """Create a data masking policy with custom DLP transformation."""
+def create_last_four_masking_policy(project_id, location, policy_tag_id):
+    """Create a data masking policy with a predefined last-four mask."""
     client = bigquery_datapolicies_v1.DataPolicyServiceClient()
 
-    # Define the masking policy with a DLP transformation
+    # Define the masking policy with a predefined expression
     data_policy = bigquery_datapolicies_v1.DataPolicy()
     data_policy.policy_tag = policy_tag_id
     data_policy.data_policy_type = (
         bigquery_datapolicies_v1.DataPolicy.DataPolicyType.DATA_MASKING_POLICY
     )
 
-    # Use a DLP deidentify template for custom masking
     data_policy.data_masking_policy = (
         bigquery_datapolicies_v1.DataMaskingPolicy()
     )
@@ -131,6 +176,7 @@ def create_custom_masking_policy(project_id, location, policy_tag_id):
     policy = client.create_data_policy(
         request=bigquery_datapolicies_v1.CreateDataPolicyRequest(
             parent=parent,
+            data_policy_id="financial-last-four-policy",
             data_policy=data_policy,
         )
     )
@@ -138,7 +184,7 @@ def create_custom_masking_policy(project_id, location, policy_tag_id):
     print(f"Created masking policy: {policy.name}")
     return policy
 
-create_custom_masking_policy(
+create_last_four_masking_policy(
     "my-project",
     "us",
     "projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/FINANCIAL_TAG_ID",
@@ -154,28 +200,28 @@ Apply the policy tags to sensitive columns in your BigQuery tables:
 ALTER TABLE `my-project.analytics.customers`
 ALTER COLUMN email
 SET OPTIONS (
-  policy_tags = 'projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/EMAIL_TAG_ID'
+  policy_tags = ['projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/EMAIL_TAG_ID']
 );
 
 -- Apply the phone PII tag
 ALTER TABLE `my-project.analytics.customers`
 ALTER COLUMN phone_number
 SET OPTIONS (
-  policy_tags = 'projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/PHONE_TAG_ID'
+  policy_tags = ['projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/PHONE_TAG_ID']
 );
 
 -- Apply the government ID tag to SSN
 ALTER TABLE `my-project.analytics.customers`
 ALTER COLUMN ssn
 SET OPTIONS (
-  policy_tags = 'projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/GOV_ID_TAG_ID'
+  policy_tags = ['projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/GOV_ID_TAG_ID']
 );
 
 -- Apply the financial data tag
 ALTER TABLE `my-project.analytics.transactions`
 ALTER COLUMN account_number
 SET OPTIONS (
-  policy_tags = 'projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/FINANCIAL_TAG_ID'
+  policy_tags = ['projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/FINANCIAL_TAG_ID']
 );
 ```
 
@@ -185,19 +231,19 @@ You can also apply tags during table creation:
 -- Create a table with policy tags on sensitive columns
 CREATE TABLE `my-project.analytics.patient_records` (
   patient_id STRING NOT NULL,
-  -- Full name gets the PII tag
-  full_name STRING OPTIONS (
-    policy_tags = 'projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/EMAIL_TAG_ID'
+  -- Email gets the PII tag
+  email STRING OPTIONS (
+    policy_tags = ['projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/EMAIL_TAG_ID']
   ),
   -- Medical record number gets the government ID tag
   mrn STRING OPTIONS (
-    policy_tags = 'projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/GOV_ID_TAG_ID'
+    policy_tags = ['projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/GOV_ID_TAG_ID']
   ),
   diagnosis_code STRING,
   admission_date DATE,
   discharge_date DATE,
   total_charges FLOAT64 OPTIONS (
-    policy_tags = 'projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/FINANCIAL_TAG_ID'
+    policy_tags = ['projects/my-project/locations/us/taxonomies/TAXONOMY_ID/policyTags/FINANCIAL_TAG_ID']
   )
 );
 ```
@@ -209,10 +255,20 @@ Configure who sees what:
 ```bash
 # Grant the Masked Reader role to analysts
 # They will see masked versions of sensitive columns
-gcloud bigquery datapolicies add-iam-policy-binding email-mask-policy \
-  --location=us \
-  --member="group:analysts@example.com" \
-  --role="roles/bigquerydatapolicy.maskedReader"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://bigquerydatapolicy.googleapis.com/v1/projects/my-project/locations/us/dataPolicies/email-mask-policy:setIamPolicy" \
+  -d '{
+    "policy": {
+      "bindings": [
+        {
+          "role": "roles/bigquerydatapolicy.maskedReader",
+          "members": ["group:analysts@example.com"]
+        }
+      ]
+    }
+  }'
 
 # Grant the Fine Grained Reader role to compliance team
 # They will see the actual unmasked values
@@ -230,7 +286,7 @@ Here is what different users experience when querying the same table:
 -- All users run the exact same query
 SELECT
   patient_id,
-  full_name,
+  email,
   mrn,
   diagnosis_code,
   admission_date,
@@ -239,23 +295,21 @@ FROM `my-project.analytics.patient_records`
 LIMIT 5;
 
 -- Compliance team (Fine Grained Reader) sees:
--- patient_id | full_name     | mrn        | diagnosis_code | total_charges
--- P001       | John Smith    | MRN-12345  | J18.9          | 15420.50
+-- patient_id | email                  | mrn        | diagnosis_code | total_charges
+-- P001       | john.smith@example.com | MRN-12345  | J18.9          | 15420.50
 
 -- Analyst team (Masked Reader) sees:
--- patient_id | full_name                          | mrn  | diagnosis_code | total_charges
--- P001       | a7f3b2c1d4e5f6a7b8c9d0e1f2a3b4c5 | NULL | J18.9          | 5420
+-- patient_id | email             | mrn  | diagnosis_code | total_charges
+-- P001       | XXXXX@example.com | NULL | J18.9          | 0.0
 
--- No access role sees:
--- patient_id | full_name | mrn  | diagnosis_code | total_charges
--- P001       | NULL      | NULL | J18.9          | NULL
+-- Users with no role on the policy tags get a permission error
 ```
 
 The key point is that the query is identical for all users. The masking is applied transparently by BigQuery based on the user's roles.
 
 ## Using Cloud DLP for Automated Discovery
 
-Use Cloud DLP to automatically find sensitive data and suggest policy tags:
+Use Cloud DLP to automatically find sensitive data and identify columns that need policy tags:
 
 ```python
 # discover_sensitive_data.py
@@ -340,23 +394,30 @@ ORDER BY finding_count DESC;
 
 ## Monitoring Masking Activity
 
-Track who is accessing masked versus unmasked data:
+Track who is querying tables that contain masked columns:
 
 ```sql
--- Query audit logs to see data access patterns
--- This shows which users accessed tables with policy tags
+-- Query recent BigQuery jobs to see data access patterns
+-- This shows which users queried the protected table
 SELECT
-  protopayload_auditlog.authenticationInfo.principalEmail AS user_email,
-  resource.labels.dataset_id,
-  resource.labels.project_id,
-  timestamp,
-  protopayload_auditlog.methodName
-FROM `my-project.region-us.INFORMATION_SCHEMA.JOBS`
+  user_email,
+  project_id,
+  job_id,
+  creation_time,
+  statement_type,
+  query
+FROM `my-project.region-us.INFORMATION_SCHEMA.JOBS_BY_PROJECT`
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-ORDER BY timestamp DESC
+  AND EXISTS (
+    SELECT 1
+    FROM UNNEST(referenced_tables) AS referenced_table
+    WHERE referenced_table.dataset_id = "analytics"
+      AND referenced_table.table_id = "patient_records"
+  )
+ORDER BY creation_time DESC
 LIMIT 100;
 ```
 
 ## Summary
 
-Column-level data masking in BigQuery through policy tags and DLP provides transparent data protection without duplicating tables or changing queries. Create a taxonomy with policy tags for each sensitivity category, attach masking rules (SHA256, NULL, default masking, or custom DLP transformations), and apply the tags to sensitive columns. Grant the Masked Reader role to users who should see obfuscated data and the Fine Grained Reader role to users who need the actual values. Use Cloud DLP to automatically discover which columns contain sensitive data before applying tags. The result is a single source of truth where different users see different levels of detail based on their role, all without any changes to the SQL they write.
+Column-level data masking in BigQuery through policy tags and DLP provides transparent data protection without duplicating tables or changing queries. Create a taxonomy with policy tags for each sensitivity category, attach masking rules (email mask, SHA256, NULL, default masking, or last four characters), and apply the tags to sensitive columns. Grant the Masked Reader role to users who should see obfuscated data and the Fine Grained Reader role to users who need the actual values. Use Cloud DLP to automatically discover which columns contain sensitive data before applying tags. The result is a single source of truth where different users see different levels of detail based on their role, all without any changes to the SQL they write.
