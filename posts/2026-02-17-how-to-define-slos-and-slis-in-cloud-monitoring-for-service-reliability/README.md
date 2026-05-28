@@ -26,17 +26,23 @@ The error budget is the gap between perfect (100%) and your SLO. A 99.9% availab
 
 ## Defining a Service in Cloud Monitoring
 
-Before creating SLOs, you need a service defined in Cloud Monitoring. Cloud Monitoring can automatically detect services from GKE, Cloud Run, App Engine, and others. You can also create custom services.
+Before creating SLOs, you need a service defined in Cloud Monitoring. Cloud Monitoring supports services such as App Engine, Cloud Run, GKE, Istio, and custom services. You can list and create services with the Cloud Monitoring API.
 
 ```bash
-# List auto-detected services
+# List services
 
-gcloud monitoring services list --project=my-project
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/my-project/services"
 
 # Create a custom service if yours is not auto-detected
-gcloud monitoring services create my-api-service \
-  --display-name="My API Service" \
-  --project=my-project
+curl -X POST \
+  "https://monitoring.googleapis.com/v3/projects/my-project/services?serviceId=my-api-service" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "My API Service",
+    "custom": {}
+  }'
 ```
 
 ## Creating an Availability SLO
@@ -44,14 +50,12 @@ gcloud monitoring services create my-api-service \
 The most common SLO is availability - the percentage of successful requests. Here is how to create one.
 
 ```bash
-# Create a request-based availability SLO: 99.9% of requests should succeed
-gcloud monitoring slos create \
-  --service=my-api-service \
-  --display-name="API Availability SLO" \
-  --goal=0.999 \
-  --rolling-period=30d \
-  --request-based-sli \
-  --project=my-project
+# Create an SLO from a JSON file
+curl -X POST \
+  "https://monitoring.googleapis.com/v3/projects/my-project/services/my-api-service/serviceLevelObjectives" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d @slo-definition.json
 ```
 
 For more control, define the SLO as JSON.
@@ -62,14 +66,17 @@ For more control, define the SLO as JSON.
   "goal": 0.999,
   "rollingPeriod": "2592000s",
   "serviceLevelIndicator": {
-    "basicSli": {
-      "availability": {}
+    "requestBased": {
+      "goodTotalRatio": {
+        "goodServiceFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.label.\"response_code_class\" = \"2xx\" AND resource.labels.service_name = \"my-api\"",
+        "totalServiceFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND resource.labels.service_name = \"my-api\""
+      }
     }
   }
 }
 ```
 
-The `basicSli` with `availability` automatically uses the default good/total request metrics for the service type. For Cloud Run, this means successful HTTP responses divided by total HTTP responses.
+The request-based SLI uses Cloud Run request-count metrics to divide successful HTTP responses by total HTTP responses. For service types with predefined SLIs, such as App Engine and Istio services, you can use `basicSli` with `availability` instead.
 
 ## Creating a Latency SLO
 
@@ -81,9 +88,13 @@ A latency SLO targets the proportion of requests that complete within a time thr
   "goal": 0.95,
   "rollingPeriod": "2592000s",
   "serviceLevelIndicator": {
-    "basicSli": {
-      "latency": {
-        "threshold": "0.2s"
+    "requestBased": {
+      "distributionCut": {
+        "distributionFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_latencies\" AND resource.labels.service_name = \"my-api\"",
+        "range": {
+          "min": 0,
+          "max": 200
+        }
       }
     }
   }
@@ -104,7 +115,7 @@ If the basic SLI does not fit your needs, you can define a request-based SLI usi
   "serviceLevelIndicator": {
     "requestBased": {
       "goodTotalRatio": {
-        "goodServiceFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"2xx\" AND resource.labels.service_name = \"payment-api\"",
+        "goodServiceFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.label.\"response_code_class\" = \"2xx\" AND resource.labels.service_name = \"payment-api\"",
         "totalServiceFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND resource.labels.service_name = \"payment-api\""
       }
     }
@@ -151,11 +162,13 @@ Instead of looking at individual requests, window-based SLIs evaluate whether ea
   "serviceLevelIndicator": {
     "windowsBased": {
       "windowPeriod": "60s",
-      "goodBadMetricFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class != \"5xx\" AND resource.labels.service_name = \"my-api\"",
-      "metricMeanInRange": {
-        "timeSeries": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_latencies\" AND resource.labels.service_name = \"my-api\"",
-        "range": {
-          "max": 500
+      "goodTotalRatioThreshold": {
+        "threshold": 0.99,
+        "performance": {
+          "goodTotalRatio": {
+            "goodServiceFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.label.\"response_code_class\" != \"5xx\" AND resource.labels.service_name = \"my-api\"",
+            "totalServiceFilter": "resource.type = \"cloud_run_revision\" AND metric.type = \"run.googleapis.com/request_count\" AND resource.labels.service_name = \"my-api\""
+          }
         }
       }
     }
@@ -182,14 +195,12 @@ Once your SLO is defined, Cloud Monitoring tracks the current SLI value and erro
 
 ```bash
 # List SLOs for a service
-gcloud monitoring slos list \
-  --service=my-api-service \
-  --project=my-project
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/my-project/services/my-api-service/serviceLevelObjectives"
 
-# Describe a specific SLO to see current status
-gcloud monitoring slos describe SLO_ID \
-  --service=my-api-service \
-  --project=my-project
+# Get the error budget time series for a specific SLO
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/my-project/timeSeries?filter=select_slo_budget(%22projects/my-project/services/my-api-service/serviceLevelObjectives/SLO_ID%22)&interval.endTime=END_TIME&interval.startTime=START_TIME"
 ```
 
 The Google Cloud Console provides a dedicated SLO dashboard that shows:
@@ -205,8 +216,8 @@ The most useful alert for SLOs is a burn rate alert. Instead of alerting on raw 
 
 ```json
 {
-  "displayName": "Fast Error Budget Burn - API Availability",
-  "combiner": "AND",
+  "displayName": "Error Budget Burn - API Availability",
+  "combiner": "OR",
   "conditions": [
     {
       "displayName": "Burn rate exceeds 10x in 1h window",
@@ -218,11 +229,11 @@ The most useful alert for SLOs is a burn rate alert. Instead of alerting on raw 
       }
     },
     {
-      "displayName": "Burn rate exceeds 1x in 6h window",
+      "displayName": "Burn rate exceeds 2x in 24h window",
       "conditionThreshold": {
-        "filter": "select_slo_burn_rate(\"projects/my-project/services/my-api-service/serviceLevelObjectives/SLO_ID\", \"21600s\")",
+        "filter": "select_slo_burn_rate(\"projects/my-project/services/my-api-service/serviceLevelObjectives/SLO_ID\", \"86400s\")",
         "comparison": "COMPARISON_GT",
-        "thresholdValue": 1,
+        "thresholdValue": 2,
         "duration": "0s"
       }
     }
@@ -235,7 +246,7 @@ The most useful alert for SLOs is a burn rate alert. Instead of alerting on raw 
 }
 ```
 
-This uses the multi-window, multi-burn-rate approach recommended by the Google SRE handbook. The 1-hour window with 10x burn rate catches fast-burning incidents. The 6-hour window with 1x burn rate catches slow burns that would eventually exhaust the budget.
+This uses two burn-rate conditions. The 1-hour window with 10x burn rate catches fast-burning incidents. The 24-hour window with 2x burn rate catches slower burns that would eventually exhaust the budget.
 
 ## Choosing SLO Targets
 
