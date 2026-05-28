@@ -37,7 +37,7 @@ graph LR
     AVGW --- AVNET
 ```
 
-We use two tunnels for redundancy. If one tunnel goes down, traffic automatically fails over to the other.
+We use two tunnels for redundancy. If one tunnel goes down, traffic can continue over the remaining tunnel.
 
 ## Step 1: Set Up the GCP Side
 
@@ -122,10 +122,12 @@ az network vnet-gateway create \
   --gateway-type Vpn \
   --vpn-type RouteBased \
   --sku VpnGw2 \
-  --generation Generation2 \
-  --public-ip-address azure-vpn-ip-1 azure-vpn-ip-2 \
+  --vpn-gateway-generation Generation2 \
+  --public-ip-addresses azure-vpn-ip-1 azure-vpn-ip-2 \
   --asn 65002
 ```
+
+Because the GCP Cloud Router uses link-local APIPA addresses for BGP, configure custom Azure APIPA BGP addresses on the active-active VPN Gateway before creating the GCP BGP peers. In the Azure portal, set the Custom Azure APIPA BGP IP address to `169.254.21.1` and the Second Custom Azure APIPA BGP IP address to `169.254.22.1`. These addresses must be in Azure's supported APIPA range (`169.254.21.0` through `169.254.22.255`) and must not overlap with the GCP BGP addresses.
 
 Get the Azure VPN Gateway's public IPs:
 
@@ -150,9 +152,7 @@ With both gateways ready, create the VPN tunnels on the GCP side. You need to cr
 # Create an external VPN gateway representing Azure
 # Replace with actual Azure VPN Gateway IPs
 gcloud compute external-vpn-gateways create azure-vpn-gw \
-  --interfaces \
-    0=AZURE_VPN_IP_1,\
-    1=AZURE_VPN_IP_2
+  --interfaces=0=AZURE_VPN_IP_1,1=AZURE_VPN_IP_2
 
 # Create VPN tunnel 1
 gcloud compute vpn-tunnels create gcp-to-azure-tunnel-1 \
@@ -188,7 +188,7 @@ Add BGP interfaces and peers for each tunnel:
 gcloud compute routers add-interface gcp-azure-router \
   --interface-name=azure-bgp-if-1 \
   --vpn-tunnel=gcp-to-azure-tunnel-1 \
-  --ip-address=169.254.21.1 \
+  --ip-address=169.254.21.2 \
   --mask-length=30 \
   --region=us-central1
 
@@ -197,14 +197,14 @@ gcloud compute routers add-bgp-peer gcp-azure-router \
   --peer-name=azure-peer-1 \
   --peer-asn=65002 \
   --interface=azure-bgp-if-1 \
-  --peer-ip-address=169.254.21.2 \
+  --peer-ip-address=169.254.21.1 \
   --region=us-central1
 
 # Add router interface for tunnel 2
 gcloud compute routers add-interface gcp-azure-router \
   --interface-name=azure-bgp-if-2 \
   --vpn-tunnel=gcp-to-azure-tunnel-2 \
-  --ip-address=169.254.22.1 \
+  --ip-address=169.254.22.2 \
   --mask-length=30 \
   --region=us-central1
 
@@ -213,7 +213,7 @@ gcloud compute routers add-bgp-peer gcp-azure-router \
   --peer-name=azure-peer-2 \
   --peer-asn=65002 \
   --interface=azure-bgp-if-2 \
-  --peer-ip-address=169.254.22.2 \
+  --peer-ip-address=169.254.22.1 \
   --region=us-central1
 ```
 
@@ -228,14 +228,14 @@ az network local-gateway create \
   --name gcp-local-gw-1 \
   --gateway-ip-address GCP_VPN_IP_1 \
   --asn 65001 \
-  --bgp-peering-address 169.254.21.1
+  --bgp-peering-address 169.254.21.2
 
 az network local-gateway create \
   --resource-group multi-cloud-rg \
   --name gcp-local-gw-2 \
   --gateway-ip-address GCP_VPN_IP_2 \
   --asn 65001 \
-  --bgp-peering-address 169.254.22.1
+  --bgp-peering-address 169.254.22.2
 
 # Create VPN connections
 az network vpn-connection create \
