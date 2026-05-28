@@ -33,39 +33,44 @@ First, set up an SLO that serves as the basis for error budget tracking.
 ```bash
 # Create an availability SLO with 30-day rolling window
 
-gcloud monitoring slos create \
-    --service=my-api-service \
-    --slo-id=main-availability-slo \
-    --display-name="API Availability - 99.9%" \
-    --request-based-sli \
-    --good-total-ratio-threshold \
-    --good-service-filter='metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.response_code_class="200"' \
-    --total-service-filter='metric.type="loadbalancing.googleapis.com/https/request_count"' \
-    --goal=0.999 \
-    --rolling-period=30d \
-    --project=my-gcp-project
+cat > availability-slo.json << 'EOF'
+{
+  "displayName": "API Availability - 99.9%",
+  "goal": 0.999,
+  "rollingPeriod": "2592000s",
+  "serviceLevelIndicator": {
+    "requestBased": {
+      "goodTotalRatio": {
+        "goodServiceFilter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\" metric.label.\"response_code_class\"=\"200\"",
+        "totalServiceFilter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\""
+      }
+    }
+  }
+}
+EOF
+
+curl --http1.1 \
+  --header "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --header "Content-Type: application/json" \
+  --request POST \
+  --data @availability-slo.json \
+  "https://monitoring.googleapis.com/v3/projects/my-gcp-project/services/my-api-service/serviceLevelObjectives?serviceLevelObjectiveId=main-availability-slo"
 ```
 
 ## Step 2: Track Error Budget Remaining
 
-Google Cloud Monitoring provides a built-in function to query the remaining error budget.
+Google Cloud Monitoring provides time-series selectors to query SLO data, including remaining error budget.
 
 ```text
-# MQL query to show error budget remaining as a percentage
-fetch cloud_monitoring_slo::monitoring.googleapis.com/service/slo/error_budget_remaining
-| filter resource.service = "my-api-service"
-| filter resource.slo = "main-availability-slo"
-| every 5m
+# Time-series filter to show error budget remaining as a fraction
+select_slo_budget_fraction("projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo")
 ```
 
 You can also query the budget consumption rate.
 
 ```text
-# MQL query to show how fast the error budget is being consumed
-fetch cloud_monitoring_slo::monitoring.googleapis.com/service/slo/burn_rate
-| filter resource.service = "my-api-service"
-| filter resource.slo = "main-availability-slo"
-| every 5m
+# Time-series filter to show how fast the error budget is being consumed over the last hour
+select_slo_burn_rate("projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo", "60m")
 ```
 
 ## Step 3: Define Error Budget Policy Tiers
@@ -98,21 +103,21 @@ graph TD
     H --> H3[Postmortem any budget spend]
 ```
 
-## Step 4: Create Alerts for Budget Thresholds
+## Step 4: Create Burn-Rate Alerts
 
-Set up alerts at each budget threshold so the right response is triggered automatically.
+Google Cloud Monitoring does not support using the budget-fraction selector directly in alerting policies. Use burn-rate alerts to trigger the right response automatically when the budget is being consumed too quickly.
 
 ```bash
-# Alert when error budget drops below 50%
-cat > budget-50-alert.json << 'EOF'
+# Fast-burn alert when error budget is being consumed very quickly
+cat > fast-burn-alert.json << 'EOF'
 {
-  "displayName": "Error Budget Below 50% - Caution",
+  "displayName": "Error Budget Fast Burn - Slow Down",
   "conditions": [{
-    "displayName": "Error budget remaining < 50%",
+    "displayName": "SLO burn rate > 10x over 1 hour",
     "conditionThreshold": {
-      "filter": "select_slo_budget_fraction(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo\")",
-      "comparison": "COMPARISON_LT",
-      "thresholdValue": 0.5,
+      "filter": "select_slo_burn_rate(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo\", \"60m\")",
+      "comparison": "COMPARISON_GT",
+      "thresholdValue": 10,
       "duration": "0s",
       "trigger": { "count": 1 }
     }
@@ -122,23 +127,24 @@ cat > budget-50-alert.json << 'EOF'
     "projects/my-gcp-project/notificationChannels/TEAM_CHANNEL"
   ],
   "documentation": {
-    "content": "## Error Budget at 50%\n\nThe error budget has been half consumed. Per our error budget policy:\n- Continue shipping features with extra caution\n- Add additional review for risky deployments\n- Investigate the top sources of budget consumption"
+    "content": "## Fast Error Budget Burn\n\nThe service is consuming error budget much faster than the sustainable rate. Per our error budget policy:\n- Pause risky deployments\n- Investigate the top sources of budget consumption\n- Focus engineering effort on reliability improvements",
+    "mimeType": "text/markdown"
   }
 }
 EOF
 
-gcloud monitoring policies create --policy-from-file=budget-50-alert.json
+gcloud monitoring policies create --policy-from-file=fast-burn-alert.json
 
-# Alert when error budget drops below 25% - more serious
-cat > budget-25-alert.json << 'EOF'
+# Slow-burn alert when error budget is being consumed above the sustainable rate
+cat > slow-burn-alert.json << 'EOF'
 {
-  "displayName": "Error Budget Below 25% - Slow Down",
+  "displayName": "Error Budget Slow Burn - Caution",
   "conditions": [{
-    "displayName": "Error budget remaining < 25%",
+    "displayName": "SLO burn rate > 2x over 24 hours",
     "conditionThreshold": {
-      "filter": "select_slo_budget_fraction(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo\")",
-      "comparison": "COMPARISON_LT",
-      "thresholdValue": 0.25,
+      "filter": "select_slo_burn_rate(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo\", \"24h\")",
+      "comparison": "COMPARISON_GT",
+      "thresholdValue": 2,
       "duration": "0s",
       "trigger": { "count": 1 }
     }
@@ -148,39 +154,13 @@ cat > budget-25-alert.json << 'EOF'
     "projects/my-gcp-project/notificationChannels/ENGINEERING_LEADS"
   ],
   "documentation": {
-    "content": "## Error Budget at 25%\n\nThe error budget is critically low. Per our error budget policy:\n- Pause non-critical feature development\n- Focus engineering effort on reliability improvements\n- Reduce deployment frequency\n- Conduct review of recent budget consumption"
+    "content": "## Slow Error Budget Burn\n\nThe service is consuming error budget faster than the sustainable rate. Per our error budget policy:\n- Continue shipping features with extra caution\n- Add additional review for risky deployments\n- Review budget consumption trends",
+    "mimeType": "text/markdown"
   }
 }
 EOF
 
-gcloud monitoring policies create --policy-from-file=budget-25-alert.json
-
-# Alert when error budget is exhausted
-cat > budget-exhausted-alert.json << 'EOF'
-{
-  "displayName": "Error Budget Exhausted - Feature Freeze",
-  "conditions": [{
-    "displayName": "Error budget remaining <= 0%",
-    "conditionThreshold": {
-      "filter": "select_slo_budget_fraction(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo\")",
-      "comparison": "COMPARISON_LT",
-      "thresholdValue": 0,
-      "duration": "0s",
-      "trigger": { "count": 1 }
-    }
-  }],
-  "combiner": "OR",
-  "notificationChannels": [
-    "projects/my-gcp-project/notificationChannels/ENGINEERING_LEADS",
-    "projects/my-gcp-project/notificationChannels/MANAGEMENT"
-  ],
-  "documentation": {
-    "content": "## Error Budget Exhausted\n\nThe error budget has been fully consumed. Per our error budget policy:\n- Immediate feature freeze\n- All engineering effort on reliability\n- Mandatory postmortem for each budget-consuming event\n- Leadership review before resuming feature work"
-  }
-}
-EOF
-
-gcloud monitoring policies create --policy-from-file=budget-exhausted-alert.json
+gcloud monitoring policies create --policy-from-file=slow-burn-alert.json
 ```
 
 ## Step 5: Build an Error Budget Dashboard
@@ -199,16 +179,16 @@ cat > budget-dashboard.json << 'EOF'
         "width": 4,
         "height": 4,
         "widget": {
-          "title": "Error Budget Remaining (%)",
+          "title": "Error Budget Remaining (fraction)",
           "scorecard": {
             "timeSeriesQuery": {
-              "timeSeriesQueryLanguage": "fetch cloud_monitoring_slo::monitoring.googleapis.com/service/slo/error_budget_remaining | filter resource.service='my-api-service' AND resource.slo='main-availability-slo'"
+              "timeSeriesFilter": {
+                "filter": "select_slo_budget_fraction(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo\")"
+              }
             },
             "thresholds": [
-              { "value": 0.75, "color": "GREEN", "direction": "ABOVE" },
-              { "value": 0.50, "color": "YELLOW", "direction": "ABOVE" },
-              { "value": 0.25, "color": "YELLOW", "direction": "ABOVE" },
-              { "value": 0, "color": "RED", "direction": "ABOVE" }
+              { "value": 0.50, "color": "YELLOW", "direction": "BELOW" },
+              { "value": 0.25, "color": "RED", "direction": "BELOW" }
             ]
           }
         }
@@ -222,7 +202,9 @@ cat > budget-dashboard.json << 'EOF'
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "fetch cloud_monitoring_slo::monitoring.googleapis.com/service/slo/error_budget_remaining | filter resource.service='my-api-service' AND resource.slo='main-availability-slo' | every 1h"
+                "timeSeriesFilter": {
+                  "filter": "select_slo_budget_fraction(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo\")"
+                }
               },
               "plotType": "LINE"
             }]
@@ -234,11 +216,13 @@ cat > budget-dashboard.json << 'EOF'
         "width": 12,
         "height": 4,
         "widget": {
-          "title": "SLI Performance vs SLO Target",
+          "title": "Burn Rate Over Time",
           "xyChart": {
             "dataSets": [{
               "timeSeriesQuery": {
-                "timeSeriesQueryLanguage": "{ fetch cloud_monitoring_slo::monitoring.googleapis.com/service/slo/sli_value | filter resource.service='my-api-service' AND resource.slo='main-availability-slo' | every 5m ; fetch cloud_monitoring_slo::monitoring.googleapis.com/service/slo/sli_value | filter resource.service='my-api-service' AND resource.slo='main-availability-slo' | every 5m | value [target: cast_double(0.999)] } | union"
+                "timeSeriesFilter": {
+                  "filter": "select_slo_burn_rate(\"projects/my-gcp-project/services/my-api-service/serviceLevelObjectives/main-availability-slo\", \"60m\")"
+                }
               },
               "plotType": "LINE"
             }]
@@ -262,26 +246,27 @@ Beyond manual responses, you can automate parts of the error budget policy using
 # Automatically restrict deployments when error budget is low
 
 import functions_framework
-from google.cloud import deploy_v1
+import base64
 import json
 
 @functions_framework.cloud_event
 def handle_budget_alert(cloud_event):
     """Triggered by an error budget alert notification."""
-    payload = json.loads(cloud_event.data["message"]["data"])
+    message_data = cloud_event.data["message"]["data"]
+    payload = json.loads(base64.b64decode(message_data).decode("utf-8"))
 
     policy_name = payload.get("incident", {}).get("policy_name", "")
     state = payload.get("incident", {}).get("state", "")
 
-    if "Below 25%" in policy_name and state == "open":
-        # When budget drops below 25%, add a deployment gate
-        print("Error budget below 25% - adding deployment restrictions")
+    if "Fast Burn" in policy_name and state == "open":
+        # When the budget is burning too quickly, add a deployment gate
+        print("Error budget fast burn - adding deployment restrictions")
         # Notify the CI/CD system to require manual approval
         add_deployment_gate()
 
-    elif "Below 25%" in policy_name and state == "closed":
-        # When budget recovers, remove the gate
-        print("Error budget recovered - removing deployment restrictions")
+    elif "Fast Burn" in policy_name and state == "closed":
+        # When the burn-rate incident closes, remove the gate
+        print("Error budget burn rate recovered - removing deployment restrictions")
         remove_deployment_gate()
 
 def add_deployment_gate():
