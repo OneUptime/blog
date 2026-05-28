@@ -44,7 +44,7 @@ graph TB
 Create a Filestore instance in the same region as your cloud workloads:
 
 ```bash
-# Create a high-performance Filestore instance
+# Create a cost-effective Filestore instance
 
 gcloud filestore instances create hybrid-nfs \
   --zone=us-central1-a \
@@ -164,25 +164,26 @@ gcloud filestore instances describe hybrid-nfs \
   --zone=us-central1-a \
   --format="yaml(networks)"
 
-# Create firewall rules to allow NFS traffic from on-premises
-gcloud compute firewall-rules create allow-nfs-from-onprem \
+# If your VPC has restrictive egress rules, allow NFS traffic to the Filestore IP range
+gcloud compute firewall-rules create allow-nfs-to-filestore \
   --network=hybrid-vpc \
-  --allow=tcp:2049,tcp:111,udp:2049,udp:111 \
-  --source-ranges=192.168.0.0/16 \
-  --description="Allow NFS traffic from on-premises"
+  --direction=EGRESS \
+  --destination-ranges=FILESTORE_RESERVED_IP_RANGE \
+  --allow=tcp:111,tcp:2046,tcp:2049,tcp:2050,tcp:4045 \
+  --description="Allow NFS traffic to Filestore"
 ```
 
 ## Step 4: Set Up Bidirectional Data Synchronization
 
-For real-time or near-real-time sync between on-premises NFS and Filestore, set up a synchronization service. Here is an approach using rsync with inotify for event-driven sync:
+For event-driven sync, run the watcher on the NFS server or on the host where writes happen, then copy changes to Filestore with `rsync`:
 
 ```bash
 #!/bin/bash
-# sync-agent.sh - Runs on a VM with access to both NFS systems
-# Uses inotifywait to detect changes and rsync to sync them
+# sync-agent.sh - Runs on the NFS server or on a host where writes happen
+# Uses inotifywait to detect local filesystem changes and rsync to sync them
 
 # Configuration
-ONPREM_PATH="/mnt/onprem_nfs/shared_data"
+ONPREM_PATH="/exports/shared_data"
 CLOUD_PATH="/mnt/filestore/shared_data"
 LOG_FILE="/var/log/nfs-sync.log"
 LOCK_FILE="/tmp/nfs-sync.lock"
@@ -211,78 +212,22 @@ while read -r directory event filename; do
 done
 ```
 
-For a more robust solution, use a scheduled sync with conflict detection:
+For a scheduled bidirectional sync, use `rsync --update` so the newer file wins when the same path exists on both sides:
 
 ```python
-# sync_service.py - Robust bidirectional NFS sync service
-import os
+# sync_service.py - Scheduled bidirectional NFS sync service
 import time
-import hashlib
 import subprocess
 import logging
-from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('nfs-sync')
 
 ONPREM_PATH = '/mnt/onprem_nfs/shared_data'
 CLOUD_PATH = '/mnt/filestore/shared_data'
-CONFLICT_DIR = '/mnt/filestore/conflicts'
-
-def get_file_hash(filepath):
-    """Calculate MD5 hash of a file for change detection."""
-    hasher = hashlib.md5()
-    with open(filepath, 'rb') as f:
-        for chunk in iter(lambda: f.read(8192), b''):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-def detect_conflicts(onprem_files, cloud_files):
-    """
-    Detect files modified in both locations since last sync.
-    Returns a list of conflicting file paths.
-    """
-    conflicts = []
-    for filepath in onprem_files:
-        if filepath in cloud_files:
-            # Both modified - this is a conflict
-            onprem_full = os.path.join(ONPREM_PATH, filepath)
-            cloud_full = os.path.join(CLOUD_PATH, filepath)
-
-            if (os.path.getmtime(onprem_full) != os.path.getmtime(cloud_full)
-                and get_file_hash(onprem_full) != get_file_hash(cloud_full)):
-                conflicts.append(filepath)
-
-    return conflicts
-
-def resolve_conflict(filepath):
-    """
-    Resolve a conflict by keeping the newer version
-    and saving the older version to the conflicts directory.
-    """
-    onprem_full = os.path.join(ONPREM_PATH, filepath)
-    cloud_full = os.path.join(CLOUD_PATH, filepath)
-
-    onprem_mtime = os.path.getmtime(onprem_full)
-    cloud_mtime = os.path.getmtime(cloud_full)
-
-    # Keep the newer file, archive the older one
-    conflict_path = os.path.join(CONFLICT_DIR, filepath)
-    os.makedirs(os.path.dirname(conflict_path), exist_ok=True)
-
-    if onprem_mtime > cloud_mtime:
-        # On-premises is newer, archive cloud version
-        os.rename(cloud_full, conflict_path + '.cloud-conflict')
-        subprocess.run(['cp', '-p', onprem_full, cloud_full])
-        logger.info(f"Conflict resolved for {filepath}: kept on-premises version")
-    else:
-        # Cloud is newer, archive on-premises version
-        subprocess.run(['cp', '-p', onprem_full, conflict_path + '.onprem-conflict'])
-        subprocess.run(['cp', '-p', cloud_full, onprem_full])
-        logger.info(f"Conflict resolved for {filepath}: kept cloud version")
 
 def sync():
-    """Run bidirectional sync with conflict detection."""
+    """Run bidirectional sync, keeping the newest copy of each file."""
     logger.info("Starting sync cycle")
 
     # Use rsync for efficient sync
@@ -291,14 +236,14 @@ def sync():
         'rsync', '-avz', '--update',
         f'{ONPREM_PATH}/',
         f'{CLOUD_PATH}/'
-    ])
+    ], check=True)
 
     # Cloud to on-premises
     subprocess.run([
         'rsync', '-avz', '--update',
         f'{CLOUD_PATH}/',
         f'{ONPREM_PATH}/'
-    ])
+    ], check=True)
 
     logger.info("Sync cycle complete")
 
@@ -337,13 +282,22 @@ gcloud monitoring dashboards create --config-from-file=- << 'EOF'
         "widget": {
           "title": "Filestore Read/Write IOPS",
           "xyChart": {
-            "dataSets": [{
-              "timeSeriesQuery": {
-                "timeSeriesFilter": {
-                  "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/read_ops_count\""
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/read_ops_count\""
+                  }
+                }
+              },
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"filestore_instance\" AND metric.type=\"file.googleapis.com/nfs/server/write_ops_count\""
+                  }
                 }
               }
-            }]
+            ]
           }
         }
       }
@@ -353,12 +307,12 @@ gcloud monitoring dashboards create --config-from-file=- << 'EOF'
 EOF
 
 # Alert when Filestore capacity is getting full
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Filestore Capacity Alert" \
   --condition-display-name="Filestore over 80% full" \
   --condition-filter='resource.type="filestore_instance" AND metric.type="file.googleapis.com/nfs/server/used_bytes_percent"' \
-  --condition-threshold-value=80 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --duration=300s \
+  --if='> 80' \
   --notification-channels=projects/my-project/notificationChannels/oncall
 ```
 
@@ -375,4 +329,4 @@ Once you have the hybrid setup running, plan the full migration:
 
 A hybrid NFS architecture using Filestore and on-premises NFS gives you a smooth migration path without disrupting existing workloads. The key components are network connectivity via VPN or Interconnect, the Filestore instance as your cloud NFS server, and a reliable synchronization mechanism between the two systems.
 
-Start with unidirectional sync from on-premises to cloud, test thoroughly, then enable bidirectional sync when you are confident in the conflict resolution strategy. This approach lets you migrate at your own pace without a risky big-bang cutover.
+Start with unidirectional sync from on-premises to cloud, test thoroughly, then enable bidirectional sync when you are confident in your conflict handling strategy. This approach lets you migrate at your own pace without a risky big-bang cutover.
