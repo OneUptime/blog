@@ -23,12 +23,12 @@ When a developer has root access on a workstation, they can:
 
 In a cloud workstation that has access to your VPC, databases, and APIs, root access multiplies the blast radius of any compromise. The goal is to give developers what they need to do their jobs without handing them the keys to everything.
 
-## Step 1: Create a Non-Root Container Image
+## Step 1: Create a Custom Container Image
 
-The default Cloud Workstations base image runs as the `user` account, but it grants sudo access. To disable root, build a custom image that removes sudo entirely.
+The default Cloud Workstations base image creates the `user` account at startup and grants it sudo access. Install required tools in a custom image, then disable sudo in the workstation configuration.
 
 ```dockerfile
-# Custom workstation image without root access
+# Custom workstation image with required tools
 
 FROM us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base:latest
 
@@ -42,16 +42,6 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     docker.io \
     && rm -rf /var/lib/apt/lists/*
-
-# Remove sudo access completely
-RUN apt-get purge -y sudo && apt-get autoremove -y
-
-# Ensure the user account cannot escalate
-RUN passwd -l root
-
-# Set the default user for the workstation
-USER user
-WORKDIR /home/user
 ```
 
 Build and push this to Artifact Registry:
@@ -75,12 +65,14 @@ gcloud workstations configs create secure-dev-config \
   --pd-disk-size=100 \
   --pd-disk-type=pd-ssd \
   --container-custom-image=us-central1-docker.pkg.dev/MY_PROJECT/workstations/secure-dev:latest \
+  --container-env=CLOUD_WORKSTATIONS_CONFIG_DISABLE_SUDO=true \
   --disable-public-ip-addresses \
+  --network-tags=workstation \
   --idle-timeout=1800s \
   --running-timeout=28800s
 ```
 
-The `--disable-public-ip-addresses` flag is important - it ensures workstations are only reachable through the Cloud Workstations proxy, not directly from the internet.
+The `--container-env=CLOUD_WORKSTATIONS_CONFIG_DISABLE_SUDO=true` setting disables sudo access for the default workstation user. The `--disable-public-ip-addresses` flag is important - it ensures workstations are not assigned external IP addresses.
 
 ## Step 3: Restrict IAM Permissions
 
@@ -103,10 +95,10 @@ The key roles are:
 | Role | What It Allows |
 |---|---|
 | `roles/workstations.user` | Start, stop, and use workstations |
-| `roles/workstations.creator` | Create and manage their own workstations |
+| `roles/workstations.workstationCreator` | Create and manage their own workstations |
 | `roles/workstations.admin` | Full control including configs and clusters |
 
-Most developers should only have `roles/workstations.user` or `roles/workstations.creator`. Admin access should be limited to platform team members.
+Most developers should only have `roles/workstations.user` on their workstation, or `roles/workstations.workstationCreator` if they need to create workstations from approved configurations. Admin access should be limited to platform team members.
 
 ## Step 4: Configure the Workstation Service Account
 
@@ -175,12 +167,25 @@ Also use VPC Service Controls to create a security perimeter if your workstation
 Turn on audit logging so you have visibility into what happens on and around workstations.
 
 ```bash
-# Enable Data Access audit logs for Cloud Workstations
-gcloud projects add-iam-audit-config MY_PROJECT \
-  --service=workstations.googleapis.com \
-  --log-type=ADMIN_READ \
-  --log-type=DATA_READ \
-  --log-type=DATA_WRITE
+# Export the current project IAM policy
+gcloud projects get-iam-policy MY_PROJECT > /tmp/policy.yaml
+```
+
+Edit `/tmp/policy.yaml` and add this `auditConfigs` block without changing existing bindings or the etag:
+
+```yaml
+auditConfigs:
+- auditLogConfigs:
+  - logType: ADMIN_READ
+  - logType: DATA_READ
+  - logType: DATA_WRITE
+  service: workstations.googleapis.com
+```
+
+Apply the updated IAM policy:
+
+```bash
+gcloud projects set-iam-policy MY_PROJECT /tmp/policy.yaml
 ```
 
 You can also forward these logs to a SIEM or monitoring system for alerting:
@@ -189,7 +194,7 @@ You can also forward these logs to a SIEM or monitoring system for alerting:
 # Create a log sink for workstation events
 gcloud logging sinks create workstation-audit-sink \
   pubsub.googleapis.com/projects/MY_PROJECT/topics/audit-events \
-  --log-filter='resource.type="workstations.googleapis.com/Workstation"'
+  --log-filter='protoPayload.serviceName="workstations.googleapis.com"'
 ```
 
 ## Step 7: Use Organization Policies
@@ -197,22 +202,40 @@ gcloud logging sinks create workstation-audit-sink \
 If you manage multiple projects, use Organization Policies to enforce workstation security at the org level.
 
 ```yaml
-# org-policy-workstations.yaml
-# Restrict which container images can be used for workstations
-constraint: constraints/workstations.allowedContainerImages
-listPolicy:
-  allowedValues:
-    - us-central1-docker.pkg.dev/MY_PROJECT/workstations/*
-  deniedValues:
-    - "*"
+# constraint-workstation-images.yaml
+# Restrict which container images can be used for workstation configs
+name: organizations/ORGANIZATION_ID/customConstraints/custom.workstationConfigAllowedImages
+resourceTypes:
+- workstations.googleapis.com/WorkstationConfig
+methodTypes:
+- CREATE
+- UPDATE
+condition: "resource.container.image.startsWith('us-central1-docker.pkg.dev/MY_PROJECT/workstations/')"
+actionType: ALLOW
+displayName: Require approved Cloud Workstations images
+description: Workstation configs must use approved container images.
 ```
 
-Apply the policy:
+Create the custom constraint:
+
+```bash
+# Create the custom constraint
+gcloud org-policies set-custom-constraint constraint-workstation-images.yaml
+```
+
+Then enforce it on the project:
+
+```yaml
+# policy-workstation-images.yaml
+name: projects/MY_PROJECT/policies/custom.workstationConfigAllowedImages
+spec:
+  rules:
+  - enforce: true
+```
 
 ```bash
 # Apply the organization policy
-gcloud org-policies set-policy org-policy-workstations.yaml \
-  --project=MY_PROJECT
+gcloud org-policies set-policy policy-workstation-images.yaml
 ```
 
 This prevents developers from creating workstation configurations with unauthorized container images.
@@ -229,7 +252,7 @@ gcloud secrets versions access latest --secret="db-password"
 gcloud workstations configs update secure-dev-config \
   --cluster=dev-cluster \
   --region=us-central1 \
-  --container-env-vars="DB_HOST=10.0.0.5,APP_ENV=development"
+  --container-env="DB_HOST=10.0.0.5,APP_ENV=development"
 ```
 
 Never bake secrets into the container image. They will be visible in the image layers.
@@ -238,7 +261,7 @@ Never bake secrets into the container image. They will be visible in the image l
 
 Before rolling out workstations to your team, verify each of these:
 
-- Root access is disabled (sudo removed from image)
+- Root access is disabled (`CLOUD_WORKSTATIONS_CONFIG_DISABLE_SUDO=true`)
 - Public IP addresses are disabled on the configuration
 - A dedicated service account with minimal permissions is assigned
 - Egress firewall rules restrict outbound network access
