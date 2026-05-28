@@ -31,7 +31,7 @@ The load balancer has an internal IP address only. Users access it from within t
 
 ## Prerequisites
 
-- A VPC network with Private Google Access enabled on the subnet
+- A VPC network that your users can reach, plus user browser access to Google Sign-In
 - An internal application load balancer (proxy-based, not passthrough)
 - Backend service with health checks
 - An SSL certificate for the internal load balancer
@@ -57,6 +57,7 @@ Set up the backend service that your internal load balancer will route to.
 gcloud compute health-checks create http internal-app-health \
     --port=8080 \
     --request-path=/health \
+    --region=us-central1 \
     --project=my-project-id
 
 # Create the backend service
@@ -64,6 +65,7 @@ gcloud compute backend-services create internal-app-backend \
     --protocol=HTTP \
     --port-name=http \
     --health-checks=internal-app-health \
+    --health-checks-region=us-central1 \
     --load-balancing-scheme=INTERNAL_MANAGED \
     --region=us-central1 \
     --project=my-project-id
@@ -179,19 +181,21 @@ gcloud dns record-sets create internal-app.internal.company.com. \
     --project=my-project-id
 ```
 
-## Step 7: Enable Private Google Access
+## Step 7: Check Google Sign-In Access
 
-For the IAP authentication redirect to work, the subnet needs Private Google Access enabled so that instances can reach Google's authentication endpoints.
+For the IAP authentication redirect to work, the user's browser needs network access to Google Sign-In. Private Google Access is for Google Cloud VM instances without external IP addresses that need to reach Google APIs and services; it does not make a user's browser redirect to Google Sign-In work.
+
+If your backend VM instances have only internal IP addresses and also need to call Google APIs, enable Private Google Access on the subnet that contains those VMs.
 
 ```bash
-# Enable Private Google Access on the subnet
+# Optional: enable Private Google Access for internal-only backend VMs
 gcloud compute networks subnets update my-subnet \
     --region=us-central1 \
     --enable-private-google-access \
     --project=my-project-id
 ```
 
-Without this, the authentication redirect to Google Sign-In will fail for users on internal networks that do not have internet access.
+For users on internal networks without internet access, allow access to Google Sign-In endpoints such as `accounts.google.com`; otherwise, the browser-based authentication flow will fail.
 
 ## Terraform Configuration
 
@@ -209,8 +213,10 @@ resource "google_compute_subnetwork" "proxy_only" {
 }
 
 # Health check
-resource "google_compute_health_check" "internal_app" {
-  name = "internal-app-health"
+resource "google_compute_region_health_check" "internal_app" {
+  name   = "internal-app-health"
+  region = "us-central1"
+
   http_health_check {
     port         = 8080
     request_path = "/health"
@@ -229,11 +235,10 @@ resource "google_compute_region_backend_service" "internal_app" {
     group = google_compute_instance_group_manager.app.instance_group
   }
 
-  health_checks = [google_compute_health_check.internal_app.id]
+  health_checks = [google_compute_region_health_check.internal_app.id]
 
   iap {
-    oauth2_client_id     = google_iap_client.internal_app.client_id
-    oauth2_client_secret = google_iap_client.internal_app.secret
+    enabled = true
   }
 }
 
@@ -244,7 +249,7 @@ resource "google_compute_region_url_map" "internal_app" {
   default_service = google_compute_region_backend_service.internal_app.id
 }
 
-# SSL certificate (use google_compute_region_ssl_certificate for managed certs)
+# SSL certificate
 resource "google_compute_region_ssl_certificate" "internal_app" {
   name        = "internal-app-cert"
   region      = "us-central1"
@@ -319,4 +324,4 @@ gcloud compute firewall-rules create allow-internal-lb \
 
 ## Summary
 
-IAP for internal application load balancers gives you Google-backed authentication for internal applications without exposing them to the internet. The setup is similar to external IAP, but you use regional backend services and internal load balancing. The key networking requirements are a proxy-only subnet, Private Google Access for the authentication flow, and appropriate firewall rules. Once configured, internal users get the same secure authentication experience as external users, but the application remains completely internal.
+IAP for internal application load balancers gives you Google-backed authentication for internal applications without exposing them to the internet. The setup is similar to external IAP, but you use regional backend services and internal load balancing. The key networking requirements are a proxy-only subnet, browser access to Google Sign-In for the authentication flow, and appropriate firewall rules. Once configured, internal users get the same secure authentication experience as external users, but the application remains completely internal.
