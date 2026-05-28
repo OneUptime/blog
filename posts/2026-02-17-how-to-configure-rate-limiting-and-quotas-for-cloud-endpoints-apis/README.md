@@ -17,12 +17,12 @@ This guide covers setting up quotas in your OpenAPI specification, configuring p
 Cloud Endpoints quotas work through the Service Control API. When a request comes in:
 
 1. ESPv2 checks the API key to identify the consumer
-2. ESPv2 sends a check request to Service Control
-3. Service Control evaluates the request against the consumer's quota allocation
+2. ESPv2 allocates quota through Service Control
+3. Service Control evaluates the allocation against the consumer's quota
 4. If under quota, the request proceeds
 5. If over quota, ESPv2 returns a 429 response
 
-Quotas are tracked per consumer (identified by API key or project) and can be defined at different granularities - per minute, per day, or per request.
+Quotas are tracked per consumer project, identified from the API key, and Cloud Endpoints OpenAPI quotas currently support per-minute, per-project limits.
 
 ## Prerequisites
 
@@ -96,19 +96,6 @@ x-google-management:
         unit: "1/min/{project}"
         values:
           STANDARD: 100
-      # 50000 read requests per day per consumer
-      - name: "read-requests-per-day"
-        metric: "read-requests"
-        unit: "1/d/{project}"
-        values:
-          STANDARD: 50000
-      # 5000 write requests per day per consumer
-      - name: "write-requests-per-day"
-        metric: "write-requests"
-        unit: "1/d/{project}"
-        values:
-          STANDARD: 5000
-
 paths:
   /current:
     get:
@@ -191,20 +178,20 @@ The STANDARD values in the spec are defaults for all consumers. You can override
 
 ```bash
 # Give a premium consumer higher limits
-gcloud endpoints quota override create \
+gcloud alpha endpoints quota create \
   --service=weather-api.endpoints.my-project-id.cloud.goog \
   --consumer=projects/premium-customer-project \
   --metric=read-requests \
-  --limit=read-requests-per-minute \
+  --unit="1/min/{project}" \
   --value=5000 \
   --project=my-project-id
 
 # Give another consumer lower limits (restrict a misbehaving client)
-gcloud endpoints quota override create \
+gcloud alpha endpoints quota create \
   --service=weather-api.endpoints.my-project-id.cloud.goog \
   --consumer=projects/restricted-customer-project \
   --metric=read-requests \
-  --limit=read-requests-per-minute \
+  --unit="1/min/{project}" \
   --value=100 \
   --project=my-project-id
 ```
@@ -227,6 +214,8 @@ done
 ```
 
 When the quota is exceeded, the response will look like this.
+
+Because Endpoints batches quota allocation calls to reduce request latency, the exact request that receives the 429 response can vary.
 
 ```json
 {
@@ -257,69 +246,44 @@ x-google-management:
         unit: "1/min/{project}"
         values:
           STANDARD: 100
-      # Daily limit for free tier
-      - name: "api-requests-per-day"
-        metric: "api-requests"
-        unit: "1/d/{project}"
-        values:
-          STANDARD: 1000
 ```
 
 Then use overrides to implement tiers.
 
 ```bash
-# Basic tier: 500/min, 50000/day
-gcloud endpoints quota override create \
+# Basic tier: 500/min
+gcloud alpha endpoints quota create \
   --service=weather-api.endpoints.my-project-id.cloud.goog \
   --consumer=projects/basic-tier-project \
   --metric=api-requests \
-  --limit=api-requests-per-minute \
+  --unit="1/min/{project}" \
   --value=500
 
-gcloud endpoints quota override create \
-  --service=weather-api.endpoints.my-project-id.cloud.goog \
-  --consumer=projects/basic-tier-project \
-  --metric=api-requests \
-  --limit=api-requests-per-day \
-  --value=50000
-
-# Premium tier: 5000/min, 500000/day
-gcloud endpoints quota override create \
+# Premium tier: 5000/min
+gcloud alpha endpoints quota create \
   --service=weather-api.endpoints.my-project-id.cloud.goog \
   --consumer=projects/premium-tier-project \
   --metric=api-requests \
-  --limit=api-requests-per-minute \
+  --unit="1/min/{project}" \
   --value=5000
-
-gcloud endpoints quota override create \
-  --service=weather-api.endpoints.my-project-id.cloud.goog \
-  --consumer=projects/premium-tier-project \
-  --metric=api-requests \
-  --limit=api-requests-per-day \
-  --value=500000
 ```
 
 ## Step 6: Monitor Quota Usage
 
 Track how consumers are using their quotas.
 
-```bash
-# View quota usage in Cloud Monitoring
-gcloud monitoring metrics list \
-  --filter='metric.type="serviceruntime.googleapis.com/quota/allocation/usage"' \
-  --project=my-project-id
-```
+In Cloud Monitoring Metrics Explorer, select the Consumer Quota resource and the Allocation quota usage metric. The equivalent Monitoring filter is `metric.type="serviceruntime.googleapis.com/quota/allocation/usage" AND resource.type="consumer_quota"`.
 
 Set up alerts when consumers approach their limits.
 
 ```bash
-# Alert when a consumer reaches 80% of their quota
-gcloud monitoring alerting policies create \
+# Alert when absolute quota usage exceeds 800 units
+gcloud monitoring policies create \
   --display-name="Quota Usage Warning" \
   --condition-display-name="Consumer approaching quota limit" \
   --condition-filter='metric.type="serviceruntime.googleapis.com/quota/allocation/usage" AND resource.type="consumer_quota"' \
-  --condition-threshold-value=0.8 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --if="> 800" \
+  --duration=60s \
   --notification-channels=CHANNEL_ID \
   --project=my-project-id
 ```
@@ -356,15 +320,17 @@ def call_api_with_retry(url, api_key, max_retries=5):
 
 ## Including Quota Information in Response Headers
 
-Your backend can include remaining quota information in response headers to help clients manage their usage.
+If you need rate limit headers, your backend can calculate them from its own tracking and include them in responses to help clients manage their usage.
 
 ```python
 # Flask backend example: adding rate limit headers
-from flask import Flask, request, jsonify
+from flask import Flask
+
+app = Flask(__name__)
 
 @app.after_request
 def add_rate_limit_headers(response):
-    # These values would come from Service Control or your own tracking
+    # These values would come from your own tracking
     response.headers['X-RateLimit-Limit'] = '1000'
     response.headers['X-RateLimit-Remaining'] = '950'
     response.headers['X-RateLimit-Reset'] = '1609459200'
@@ -373,4 +339,4 @@ def add_rate_limit_headers(response):
 
 ## Summary
 
-Quota management in Cloud Endpoints protects your backend from overuse and lets you offer different service tiers to different consumers. Define metrics for what you want to count, set limits for the time periods that make sense, and assign costs to each API method based on its expense. Use quota overrides to customize limits per consumer, and monitor usage to catch consumers approaching their limits. Client applications should implement exponential backoff to handle 429 responses gracefully.
+Quota management in Cloud Endpoints protects your backend from overuse and lets you offer different service tiers to different consumers. Define metrics for what you want to count, set per-minute limits, and assign costs to each API method based on its expense. Use quota overrides to customize limits per consumer, and monitor usage to catch consumers approaching their limits. Client applications should implement exponential backoff to handle 429 responses gracefully.
