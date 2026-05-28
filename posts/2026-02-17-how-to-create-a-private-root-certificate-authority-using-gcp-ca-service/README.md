@@ -27,7 +27,7 @@ A typical PKI setup has two tiers:
 
 ```mermaid
 flowchart TD
-    A[Root CA - Offline] --> B[Subordinate CA 1 - Online]
+    A[Root CA - Disabled except when needed] --> B[Subordinate CA 1 - Online]
     A --> C[Subordinate CA 2 - Online]
     B --> D[Service Certificates]
     B --> E[Client Certificates]
@@ -35,7 +35,7 @@ flowchart TD
     C --> G[Infrastructure Certs]
 ```
 
-The root CA signs subordinate CAs, and subordinate CAs issue end-entity certificates. The root CA can be kept offline (DevOps tier in CA Service) for maximum security, while subordinate CAs stay online for automatic certificate issuance.
+The root CA signs subordinate CAs, and subordinate CAs issue end-entity certificates. In CA Service, you can keep the root CA disabled except when you need it to sign or rotate subordinate CAs, while subordinate CAs stay enabled for automatic certificate issuance.
 
 ## Prerequisites
 
@@ -56,7 +56,7 @@ gcloud privateca pools create root-ca-pool \
   --project=PROJECT_ID
 ```
 
-The `enterprise` tier provides HSM-backed key storage and supports root CAs. The `devops` tier is cheaper but only supports subordinate CAs.
+Both tiers use HSM-backed CA keys. The `enterprise` tier supports certificate lifecycle operations such as listing, describing, and revoking certificates, while the `devops` tier is optimized for higher-volume short-lived certificate issuance and does not track certificates for revocation.
 
 ## Step 2: Create the Root CA
 
@@ -71,6 +71,7 @@ gcloud privateca roots create my-root-ca \
   --key-algorithm=rsa-pkcs1-4096-sha256 \
   --max-chain-length=1 \
   --validity="P10Y" \
+  --auto-enable \
   --project=PROJECT_ID
 ```
 
@@ -89,7 +90,7 @@ Create a separate pool for subordinate CAs with issuance policies:
 # Create a CA pool for subordinate CAs with issuance constraints
 gcloud privateca pools create subordinate-ca-pool \
   --location=us-central1 \
-  --tier=devops \
+  --tier=enterprise \
   --project=PROJECT_ID
 ```
 
@@ -142,6 +143,7 @@ gcloud privateca subordinates create my-subordinate-ca \
   --subject="CN=My Organization Subordinate CA,O=My Organization,C=US" \
   --key-algorithm=rsa-pkcs1-2048-sha256 \
   --validity="P3Y" \
+  --auto-enable \
   --project=PROJECT_ID
 ```
 
@@ -162,10 +164,10 @@ gcloud privateca certificates create my-service-cert \
   --dns-san="api.internal.example.com,api.staging.internal.example.com" \
   --ip-san="10.0.1.50" \
   --validity="P90D" \
+  --use-preset-profile=leaf_server_tls \
   --generate-key \
   --key-output-file=private-key.pem \
-  --cert-output-file=certificate.pem \
-  --cert-chain-output-file=chain.pem \
+  --cert-output-file=certificate-chain.pem \
   --project=PROJECT_ID
 ```
 
@@ -277,7 +279,7 @@ gcloud privateca certificates revoke my-service-cert \
   --project=PROJECT_ID
 ```
 
-CA Service automatically publishes Certificate Revocation Lists (CRLs) and supports OCSP for real-time revocation checking.
+CA Service publishes Certificate Revocation Lists (CRLs) for Enterprise-tier CA pools when CRL publication is enabled. Certificates issued while CRL publication is enabled include a CRL Distribution Point (CDP) extension that clients can use for revocation checking.
 
 ## Step 8: Terraform Configuration
 
@@ -290,6 +292,11 @@ resource "google_privateca_ca_pool" "root_pool" {
   location = "us-central1"
   tier     = "ENTERPRISE"
   project  = var.project_id
+
+  publishing_options {
+    publish_ca_cert = true
+    publish_crl     = true
+  }
 }
 
 # Root CA
@@ -331,8 +338,48 @@ resource "google_privateca_certificate_authority" "root_ca" {
 resource "google_privateca_ca_pool" "sub_pool" {
   name     = "subordinate-ca-pool"
   location = "us-central1"
-  tier     = "DEVOPS"
+  tier     = "ENTERPRISE"
   project  = var.project_id
+
+  publishing_options {
+    publish_ca_cert = true
+    publish_crl     = true
+  }
+
+  issuance_policy {
+    maximum_lifetime = "8640000s"
+
+    allowed_key_types {
+      rsa {
+        min_modulus_size = 2048
+        max_modulus_size = 4096
+      }
+    }
+
+    allowed_key_types {
+      elliptic_curve {
+        signature_algorithm = "ECDSA_P256"
+      }
+    }
+
+    allowed_issuance_modes {
+      allow_csr_based_issuance    = true
+      allow_config_based_issuance = true
+    }
+
+    baseline_values {
+      key_usage {
+        base_key_usage {
+          digital_signature = true
+          key_encipherment  = true
+        }
+        extended_key_usage {
+          server_auth = true
+          client_auth = true
+        }
+      }
+    }
+  }
 }
 
 # Subordinate CA
@@ -396,4 +443,4 @@ Distribute this certificate to all systems that need to trust your internal cert
 
 ## Summary
 
-GCP CA Service takes the operational burden out of running a private PKI. Create a root CA with HSM-backed key storage, set up subordinate CAs for different use cases, define issuance policies to control what certificates can be issued, and use the API for automated certificate lifecycle management. The two-tier architecture (offline root, online subordinates) follows PKI best practices without requiring you to manage the underlying infrastructure.
+GCP CA Service takes the operational burden out of running a private PKI. Create a root CA with HSM-backed key storage, set up subordinate CAs for different use cases, define issuance policies to control what certificates can be issued, and use the API for automated certificate lifecycle management. The two-tier architecture (disabled root except when needed, online subordinates) follows PKI best practices without requiring you to manage the underlying infrastructure.
