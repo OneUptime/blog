@@ -8,7 +8,7 @@ Description: Learn how to write basic Google Cloud Deployment Manager configurat
 
 ---
 
-Google Cloud Deployment Manager is GCP's native infrastructure-as-code tool. You define your cloud resources in YAML configuration files, and Deployment Manager creates, updates, or deletes them based on that configuration. If you are already working in the Google Cloud ecosystem and want to manage resources declaratively without adding a third-party tool, Deployment Manager is the straightforward option.
+Google Cloud Deployment Manager was GCP's native infrastructure-as-code tool. You define your cloud resources in YAML configuration files, and Deployment Manager creates, updates, or deletes them based on that configuration. Google discontinued support for Deployment Manager on March 31, 2026, so these examples are useful for understanding existing configurations or migration work. For new Google Cloud deployments, use Infrastructure Manager or another supported infrastructure-as-code tool.
 
 This guide covers the fundamentals of writing Deployment Manager configurations, from simple single-resource files to multi-resource deployments.
 
@@ -168,7 +168,7 @@ resources:
   properties:
     network: $(ref.my-vpc.selfLink)
     allowed:
-    - IPProtocol: TCP
+    - IPProtocol: tcp
       ports:
       - "80"
       - "443"
@@ -183,7 +183,7 @@ resources:
   properties:
     network: $(ref.my-vpc.selfLink)
     allowed:
-    - IPProtocol: TCP
+    - IPProtocol: tcp
       ports:
       - "22"
     sourceRanges:
@@ -321,7 +321,7 @@ Deployment Manager calculates the diff between the current state and desired sta
 gcloud deployment-manager deployments delete my-deployment
 
 # Delete the deployment but keep the resources
-gcloud deployment-manager deployments delete my-deployment --delete-policy=ABANDON
+gcloud deployment-manager deployments delete my-deployment --delete-policy=abandon
 ```
 
 ## Configuration Tips
@@ -336,4 +336,4 @@ gcloud deployment-manager deployments delete my-deployment --delete-policy=ABAND
 
 **Check the API documentation.** The properties for each resource type map directly to the API's request body. The Compute Engine API documentation shows you exactly what fields are available for each resource.
 
-Deployment Manager gives you a native GCP way to manage infrastructure as code. For simple deployments and GCP-only environments, it is a solid choice. As your configurations grow more complex, you will want to look into Jinja or Python templates, which I cover in separate guides.
+Deployment Manager gave you a native GCP way to manage infrastructure as code. For existing Deployment Manager configurations, Jinja or Python templates can help explain how more complex deployments were structured, but new deployments should use a supported infrastructure-as-code tool.
