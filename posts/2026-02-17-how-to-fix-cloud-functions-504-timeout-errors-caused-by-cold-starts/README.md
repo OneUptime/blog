@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix 504 timeout errors in Google Cloud Fu
 
 ---
 
-Your Cloud Function works most of the time, but occasionally users get 504 Gateway Timeout errors. When you check the logs, the function took 30+ seconds to respond - far longer than usual. The culprit is almost always a cold start.
+Your Cloud Function works most of the time, but occasionally users get 504 Gateway Timeout errors. When you check the logs, the function took 30+ seconds to respond - far longer than usual. A common culprit is a cold start.
 
 Cold starts happen when Cloud Functions has to spin up a new instance of your function from scratch. This includes downloading your code, initializing the runtime, and running your global/module-level initialization code. For some functions, this can add 5-30 seconds of latency on top of the actual execution time.
 
@@ -47,7 +47,7 @@ First, quantify how bad the problem is:
 gcloud functions logs read my-function \
     --region=us-central1 \
     --limit=100 \
-    --format="table(executionId, duration, status)"
+    --format="table(timestamp, severity, textPayload)"
 
 # Check for timeout errors specifically
 gcloud logging read \
@@ -78,7 +78,7 @@ gcloud functions deploy my-function \
     --source=.
 ```
 
-This does not fix the cold start latency, but it prevents 504 errors. Maximum timeout is 540 seconds for HTTP functions and 540 seconds for event-driven functions.
+This does not fix the cold start latency, but it prevents timeout errors. For 1st gen functions, the maximum timeout is 540 seconds. For 2nd gen functions, the maximum timeout depends on the trigger type: up to 60 minutes for HTTP functions, 30 minutes for scheduled or Task queue functions, and 540 seconds for event-driven functions.
 
 ## Strategy 2: Set Minimum Instances
 
@@ -123,10 +123,12 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // This query runs during cold start, adding seconds of latency
-const config = await db.collection('config').doc('main').get();
-const cache = await buildExpensiveCache();
+const configPromise = db.collection('config').doc('main').get();
+const cachePromise = buildExpensiveCache();
 
 exports.handler = async (req, res) => {
+    const config = await configPromise;
+    const cache = await cachePromise;
     // Function logic using config and cache
     res.json({ data: cache.get(req.query.key) });
 };
@@ -192,7 +194,6 @@ Create a `.gcloudignore` file:
 
 ```text
 # .gcloudignore - files to exclude from deployment
-node_modules/
 tests/
 *.test.js
 *.spec.js
@@ -234,8 +235,8 @@ gcloud functions deploy my-function \
     --runtime=nodejs20 \
     --trigger-http \
     --min-instances=1 \
-    --cpu=1 \
     --memory=512MB \
+    --cpu=1 \
     --concurrency=80 \
     --region=us-central1 \
     --source=.
@@ -244,7 +245,7 @@ gcloud functions deploy my-function \
 Key advantages of 2nd gen:
 - Concurrency support (one instance handles multiple requests)
 - Startup CPU boost
-- Longer maximum timeout (up to 60 minutes for event-driven)
+- Longer maximum timeout (up to 60 minutes for HTTP functions)
 - Better cold start performance overall
 
 ## Strategy 7: Implement a Warmup Mechanism
@@ -258,7 +259,8 @@ gcloud scheduler jobs create http warmup-my-function \
     --uri="https://us-central1-my-project.cloudfunctions.net/my-function" \
     --http-method=GET \
     --headers="X-Warmup=true" \
-    --oidc-service-account-email=scheduler-sa@my-project.iam.gserviceaccount.com
+    --oidc-service-account-email=scheduler-sa@my-project.iam.gserviceaccount.com \
+    --location=us-central1
 ```
 
 Handle the warmup request in your function:
@@ -290,8 +292,8 @@ gcloud alpha monitoring policies create \
     --display-name="Function Cold Start Alert" \
     --condition-display-name="Function latency above 10s" \
     --condition-filter='resource.type="cloud_function" AND metric.type="cloudfunctions.googleapis.com/function/execution_times"' \
-    --condition-threshold-value=10000 \
-    --condition-threshold-comparison=COMPARISON_GT
+    --duration=60s \
+    --if="> 10000000000"
 ```
 
 Cold starts are a fundamental trade-off of serverless computing. You trade always-on infrastructure costs for occasional startup latency. The strategies above let you find the right balance between cost and performance for your use case.
