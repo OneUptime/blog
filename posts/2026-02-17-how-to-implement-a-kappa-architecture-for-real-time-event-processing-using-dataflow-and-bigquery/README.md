@@ -34,7 +34,7 @@ graph TB
 
 The key components are:
 
-- **Immutable event log**: Pub/Sub retains all events. For longer retention, events are also archived to Cloud Storage.
+- **Immutable event log**: Pub/Sub retains events for a configured retention window. For longer retention, events are also archived to Cloud Storage.
 - **Stream processing**: A single Dataflow pipeline processes all events, whether they are arriving in real time or being replayed.
 - **Serving layer**: BigQuery stores the processed results and serves queries.
 
@@ -52,9 +52,12 @@ Several GCP features make the Kappa architecture practical:
 The event log is the source of truth in a Kappa architecture. Every event that enters the system gets written here and never modified.
 
 ```bash
-# Create the event log topic with a long retention period
+# Create the event log topic with a 7-day retention period
+gcloud pubsub topics create event-log \
+  --message-retention-duration=7d
 
-gcloud pubsub topics create event-log
+# Create a GCS bucket for event archival
+gsutil mb -l us-central1 gs://MY_PROJECT-event-archive/
 
 # Create the processing subscription
 gcloud pubsub subscriptions create event-processing-sub \
@@ -66,16 +69,13 @@ gcloud pubsub subscriptions create event-processing-sub \
 # Archive events to Cloud Storage for long-term retention
 gcloud pubsub subscriptions create event-archive-sub \
   --topic=event-log \
-  --push-endpoint=https://storage.googleapis.com/... \
-  --ack-deadline=60
+  --cloud-storage-bucket=MY_PROJECT-event-archive \
+  --cloud-storage-file-prefix=events/ \
+  --cloud-storage-file-suffix=.jsonl \
+  --cloud-storage-output-format=text
 ```
 
-For longer retention, set up a simple pipeline that writes raw events to Cloud Storage as newline-delimited JSON files, partitioned by date:
-
-```bash
-# Create a GCS bucket for event archival
-gsutil mb -l us-central1 gs://MY_PROJECT-event-archive/
-```
+For longer retention, use the Cloud Storage subscription or set up a simple pipeline that writes raw events to Cloud Storage as newline-delimited JSON files, partitioned by date.
 
 ## Step 2: Design the Event Schema
 
@@ -114,7 +114,7 @@ import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 from apache_beam.transforms.window import FixedWindows
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ParseEvent(beam.DoFn):
     """Parse and validate incoming events."""
@@ -164,7 +164,7 @@ class ProcessOrderEvent(beam.DoFn):
             'currency': data.get('currency', 'USD'),
             'source': event.get('metadata', {}).get('source', ''),
             'event_timestamp': event['timestamp'],
-            'processed_at': datetime.utcnow().isoformat() + 'Z',
+            'processed_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         }
         yield row
 
@@ -249,7 +249,7 @@ python kappa_pipeline.py \
   --num_workers=3 \
   --max_num_workers=15 \
   --autoscaling_algorithm=THROUGHPUT_BASED \
-  --experiments=enable_streaming_engine
+  --enable_streaming_engine
 ```
 
 ## Step 5: Handle Reprocessing
@@ -271,7 +271,7 @@ For reprocessing that goes beyond Pub/Sub's retention window, read from the Clou
 archived_events = (
     p
     | "ReadArchive" >> beam.io.ReadFromText(
-        'gs://MY_PROJECT-event-archive/events-2026-01-*.jsonl'
+        'gs://MY_PROJECT-event-archive/events/*.jsonl'
     )
     | "ParseArchived" >> beam.Map(lambda line: json.loads(line))
 )
@@ -302,7 +302,7 @@ WHEN NOT MATCHED THEN
 Kappa is not always the right choice. Consider Lambda if:
 
 - Your batch and streaming logic are fundamentally different
-- You need exact-once guarantees that streaming cannot provide
+- You need stronger reconciliation or sink-level consistency guarantees than your streaming pipeline can provide
 - Your event log is too large to replay in a reasonable time
 
 Kappa works best when:
