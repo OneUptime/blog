@@ -8,7 +8,7 @@ Description: Learn how to use Google Cloud Private Service Connect to securely e
 
 ---
 
-When two separate GCP organizations need to share services - a SaaS provider exposing an API to customers, a partner integration, or a shared services team serving multiple business units - the networking gets complicated fast. VPC peering is limited to the same organization in most setups and introduces security concerns by linking entire networks. VPN tunnels add latency and operational overhead.
+When two separate GCP organizations need to share services - a SaaS provider exposing an API to customers, a partner integration, or a shared services team serving multiple business units - the networking gets complicated fast. VPC peering can connect networks across organizations, but it introduces security concerns by linking entire networks. VPN tunnels add latency and operational overhead.
 
 Private Service Connect (PSC) solves this cleanly. It lets a service producer expose a specific service through a service attachment, and a consumer in a completely different organization can access it through a private endpoint in their own VPC. No peering, no VPN, no public internet exposure.
 
@@ -16,7 +16,7 @@ Private Service Connect (PSC) solves this cleanly. It lets a service producer ex
 
 The architecture has two sides. The producer side creates an internal load balancer in front of their service and attaches it to a PSC service attachment. The consumer side creates a PSC endpoint in their VPC that gets a private IP address. Traffic from the consumer flows through Google's network backbone directly to the producer's service, never touching the public internet.
 
-The producer controls who can connect through an acceptance list that specifies which consumer projects or organizations are allowed. The consumer sees only the private IP endpoint - they have no visibility into the producer's VPC topology.
+The producer controls who can connect through an acceptance list that specifies which consumer projects, VPC networks, or individual PSC endpoints are allowed. The consumer sees only the private IP endpoint - they have no visibility into the producer's VPC topology.
 
 ## Producer Side: Exposing a Service
 
@@ -97,7 +97,7 @@ gcloud compute service-attachments create producer-api-attachment \
   --project=producer-project
 ```
 
-The `--consumer-accept-list` parameter specifies which projects can connect and the maximum number of connections from each. Using `ACCEPT_MANUAL` gives you explicit control over who connects. You can also use `ACCEPT_AUTOMATIC` if you want any allowed consumer to connect without manual approval.
+The `--consumer-accept-list` parameter specifies which projects can connect and the maximum number of connections from each. Using `ACCEPT_MANUAL` gives you explicit control over who connects. You can also use `ACCEPT_AUTOMATIC` if you want consumer connections to be accepted automatically.
 
 ### For Cross-Organization Access
 
@@ -244,5 +244,7 @@ gcloud compute firewall-rules create allow-psc-to-api \
   --allow=tcp:443 \
   --project=producer-project
 ```
+
+If your load balancer uses health checks, also allow the required Google Cloud health check probe ranges to reach the backend health check port.
 
 Private Service Connect is the right tool for cross-organization service access on GCP. It is more secure than peering, simpler than VPNs, and scales without the limitations of traditional network interconnects. The producer maintains control, the consumer gets a simple endpoint, and both sides keep their network isolation intact.
