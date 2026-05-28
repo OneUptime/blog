@@ -58,7 +58,7 @@ sampler = TraceIdRatioBased(0.1)
 provider = TracerProvider(sampler=sampler)
 ```
 
-The deterministic nature is important for distributed systems. If Service A decides to sample a request, Service B will make the same decision when it receives the propagated trace context. This prevents partial traces where half the spans are missing.
+The deterministic nature is important for distributed systems. When services use the same ratio-based sampler configuration, the same trace ID gets the same ratio-based sampling decision. In practice, you normally combine this with `ParentBased` so downstream services honor the propagated sampled flag instead of making an unrelated decision.
 
 ### ParentBased Sampler
 
@@ -110,24 +110,22 @@ sdk.start();
 
 ## Building a Custom Sampler
 
-Sometimes the built-in samplers are not enough. You might want to always sample error responses, sample more aggressively for slow requests, or sample specific endpoints at a higher rate.
+Sometimes the built-in samplers are not enough. You might want to sample specific endpoints at a higher rate or apply different rules based on attributes that are known when the span starts. Error status and duration are only known after the span finishes, so those rules are better handled with tail-based sampling.
 
-Here is a custom Python sampler that always traces errors and slow requests, while sampling normal requests at 5%.
+Here is a custom Python sampler that always traces important endpoints, while sampling normal requests at 5%.
 
 ```python
-# custom_sampler.py - Sample errors and slow requests at 100%, everything else at 5%
+# custom_sampler.py - Sample important endpoints at 100%, everything else at 5%
 from opentelemetry.sdk.trace.sampling import (
     Sampler,
     SamplingResult,
     Decision,
     TraceIdRatioBased,
 )
-from opentelemetry.trace import SpanKind
-from opentelemetry.context import Context
 
 
 class SmartSampler(Sampler):
-    """Custom sampler that prioritizes errors and important endpoints."""
+    """Custom sampler that prioritizes important endpoints."""
 
     def __init__(self, default_rate=0.05, important_paths=None):
         # Fallback sampler for normal requests
@@ -135,19 +133,29 @@ class SmartSampler(Sampler):
         # Paths that should always be sampled
         self._important_paths = important_paths or ["/api/checkout", "/api/payment"]
 
-    def should_sample(self, parent_context, trace_id, name, kind, attributes, links):
-        # Always sample if the span name matches an important path
+    def should_sample(
+        self,
+        parent_context,
+        trace_id,
+        name,
+        kind=None,
+        attributes=None,
+        links=None,
+        trace_state=None,
+    ):
+        # Always sample if the request path matches an important path
         if attributes:
-            path = attributes.get("http.target", "")
+            path = attributes.get("url.path") or attributes.get("http.target", "")
             if any(important in path for important in self._important_paths):
                 return SamplingResult(
                     Decision.RECORD_AND_SAMPLE,
                     attributes,
+                    trace_state,
                 )
 
         # Delegate to the ratio-based sampler for everything else
         return self._default_sampler.should_sample(
-            parent_context, trace_id, name, kind, attributes, links
+            parent_context, trace_id, name, kind, attributes, links, trace_state
         )
 
     def get_description(self):
@@ -228,8 +236,8 @@ There is no universal answer, but here are some guidelines based on traffic volu
 
 - **Under 100 requests/second**: Sample at 100%. The cost is minimal and you get full visibility.
 - **100-1,000 requests/second**: Sample at 10-25%. This gives you plenty of data for analysis.
-- **1,000-10,000 requests/second**: Sample at 1-5%. Combined with always-sample-errors, this is usually sufficient.
-- **Over 10,000 requests/second**: Sample at 0.1-1% with smart sampling for errors and slow requests.
+- **1,000-10,000 requests/second**: Sample at 1-5%. Combined with tail-based policies for errors, this is usually sufficient.
+- **Over 10,000 requests/second**: Sample at 0.1-1% with smart sampling for critical paths and tail-based policies for errors and slow requests.
 
 ## Environment-Based Configuration
 
@@ -262,4 +270,4 @@ TRACE_SAMPLE_RATE=0.05
 
 ## Wrapping Up
 
-Sampling is a balancing act between visibility and cost. Start with a ParentBased sampler using TraceIdRatioBased at 10%, add always-on sampling for errors and critical paths, and adjust the rate based on your traffic volume and budget. If you need more sophistication, deploy the OpenTelemetry Collector with tail-based sampling to make decisions based on complete trace data rather than guessing at the start of each request.
+Sampling is a balancing act between visibility and cost. Start with a ParentBased sampler using TraceIdRatioBased at 10%, add targeted head sampling for critical paths, and adjust the rate based on your traffic volume and budget. If you need to keep errors or slow requests reliably, deploy the OpenTelemetry Collector with tail-based sampling to make decisions based on complete trace data rather than guessing at the start of each request.
