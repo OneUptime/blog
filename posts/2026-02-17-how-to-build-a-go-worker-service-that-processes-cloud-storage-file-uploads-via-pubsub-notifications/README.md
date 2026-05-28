@@ -34,25 +34,19 @@ First, create the buckets, topic, and notification.
 ```bash
 # Create the input and output buckets
 
-gsutil mb -l us-central1 gs://my-uploads-bucket
-gsutil mb -l us-central1 gs://my-processed-bucket
+gcloud storage buckets create gs://my-uploads-bucket --location=us-central1
+gcloud storage buckets create gs://my-processed-bucket --location=us-central1
 
 # Create the Pub/Sub topic for notifications
 gcloud pubsub topics create storage-notifications
 
 # Set up the Cloud Storage notification
 # This tells GCS to publish to the topic when objects are created
-gsutil notification create \
-  -t storage-notifications \
-  -f json \
-  -e OBJECT_FINALIZE \
-  gs://my-uploads-bucket
-
-# Create a push subscription pointing to your Cloud Run service
-gcloud pubsub subscriptions create storage-worker-sub \
+gcloud storage buckets notifications create \
   --topic=storage-notifications \
-  --push-endpoint=https://storage-worker-xxxxx.run.app/process \
-  --push-auth-service-account=worker-sa@YOUR_PROJECT.iam.gserviceaccount.com
+  --payload-format=json \
+  --event-types=OBJECT_FINALIZE \
+  gs://my-uploads-bucket
 ```
 
 ## Understanding the Notification Format
@@ -63,8 +57,10 @@ When a file is uploaded to the bucket, Cloud Storage sends a notification to Pub
 package main
 
 import (
+    "bytes"
     "context"
     "encoding/base64"
+    "encoding/csv"
     "encoding/json"
     "fmt"
     "io"
@@ -93,6 +89,7 @@ type StorageNotification struct {
     ID                      string `json:"id"`
     Name                    string `json:"name"`
     Bucket                  string `json:"bucket"`
+    Generation              string `json:"generation"`
     ContentType             string `json:"contentType"`
     Size                    string `json:"size"`
     TimeCreated             string `json:"timeCreated"`
@@ -174,7 +171,7 @@ func (w *Worker) HandleNotification(rw http.ResponseWriter, r *http.Request) {
 
 // shouldProcess checks if the file type is one we want to handle
 func (w *Worker) shouldProcess(n StorageNotification) bool {
-    // Only process CSV and JSON files
+    // Only process CSV, JSON, and text files
     ext := strings.ToLower(filepath.Ext(n.Name))
     switch ext {
     case ".csv", ".json", ".txt":
@@ -252,11 +249,6 @@ func (w *Worker) uploadFile(ctx context.Context, bucket, name string, data []byt
 Here are example processors for different file types.
 
 ```go
-import (
-    "bytes"
-    "encoding/csv"
-)
-
 // ProcessingResult holds the output of file processing
 type ProcessingResult struct {
     SourceFile string `json:"source_file"`
@@ -274,11 +266,16 @@ func processCSV(data []byte) ([]byte, error) {
     if err != nil {
         return nil, fmt.Errorf("CSV parse error: %w", err)
     }
+    if len(records) == 0 {
+        return nil, fmt.Errorf("CSV file is empty")
+    }
+
+    rowCount := len(records) - 1
 
     result := ProcessingResult{
-        RowCount: len(records) - 1, // Subtract header row
+        RowCount: rowCount, // Subtract header row
         Status:   "processed",
-        Summary:  fmt.Sprintf("CSV with %d columns and %d data rows", len(records[0]), len(records)-1),
+        Summary:  fmt.Sprintf("CSV with %d columns and %d data rows", len(records[0]), rowCount),
     }
 
     return json.Marshal(result)
@@ -353,6 +350,18 @@ gcloud run deploy storage-worker \
   --memory 512Mi \
   --timeout 300 \
   --no-allow-unauthenticated
+
+# Grant Pub/Sub permission to invoke the private Cloud Run service
+gcloud run services add-iam-policy-binding storage-worker \
+  --region=us-central1 \
+  --member=serviceAccount:worker-sa@YOUR_PROJECT.iam.gserviceaccount.com \
+  --role=roles/run.invoker
+
+# Create a push subscription pointing to your Cloud Run service URL
+gcloud pubsub subscriptions create storage-worker-sub \
+  --topic=storage-notifications \
+  --push-endpoint=https://storage-worker-xxxxx.run.app/process \
+  --push-auth-service-account=worker-sa@YOUR_PROJECT.iam.gserviceaccount.com
 ```
 
 ## Handling Edge Cases
@@ -363,9 +372,9 @@ A few things to watch out for in production:
 
 2. **Large files** - If files are too large to fit in memory, stream them instead of reading everything at once.
 
-3. **Temporary files** - Cloud Storage sends notifications for temporary objects created during resumable uploads. Filter these out by checking the `metageneration` field.
+3. **Temporary files** - If your upload workflow or tools create temporary objects, Cloud Storage sends notifications for those objects too. Filter these out with your naming convention, such as a `.tmp` suffix.
 
-4. **Folder markers** - GCS creates zero-byte objects as folder markers. Skip objects with size "0" unless you specifically need them.
+4. **Folder markers** - Some tools create zero-byte objects as folder markers. Skip objects with size "0" unless you specifically need them.
 
 ```go
 // shouldSkip checks for common cases where we do not want to process the file
