@@ -26,14 +26,14 @@ These services are often used together rather than as alternatives to each other
 |---------|---------------|----------------|----------------|
 | Purpose | Run containers to completion | Run code on events | Trigger services on schedule |
 | Runtime | Any Docker container | Supported runtimes (Python, Node, Go, Java, etc.) | N/A (triggers other services) |
-| Max execution time | 24 hours | 60 minutes (2nd gen) | N/A |
+| Max execution time | 168 hours (7 days) per task | Up to 60 minutes for 2nd gen HTTP functions; lower for some trigger types | N/A |
 | Parallelism | Up to 10,000 tasks | Per-instance concurrency | N/A |
-| Trigger types | Manual, scheduled, Workflows | HTTP, Pub/Sub, Cloud Storage, Firestore, etc. | Cron schedule |
+| Trigger types | Manual, scheduled through Cloud Scheduler, Workflows | HTTP, Pub/Sub, Cloud Storage, Firestore, etc. | Cron schedule |
 | Scaling | Configured task count | Automatic | N/A |
-| Container support | Yes (any image) | Yes (2nd gen) or source code | N/A |
+| Container support | Yes (any image) | Source code is built into a container (2nd gen) | N/A |
 | Memory | Up to 32 GiB | Up to 32 GiB (2nd gen) | N/A |
 | CPU | Up to 8 vCPU | Up to 8 vCPU (2nd gen) | N/A |
-| Cost | Per vCPU-second + memory | Per invocation + compute | $0.10/job/month |
+| Cost | Per vCPU-second + memory | Request/invocation + compute, depending on generation | $0.10/job/month after the 3-job free tier |
 | Retry on failure | Configurable | Configurable | Configurable |
 
 ## Cloud Run Jobs - Batch Workloads
@@ -215,6 +215,7 @@ gcloud functions deploy process-image \
     --gen2 \
     --runtime=python311 \
     --region=us-central1 \
+    --entry-point=process_uploaded_image \
     --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
     --trigger-event-filters="bucket=my-uploads-bucket" \
     --memory=512MB \
@@ -251,7 +252,7 @@ def daily_report(request):
 
 ## Cloud Scheduler - The Trigger
 
-Cloud Scheduler does not run code. It sends HTTP requests, publishes Pub/Sub messages, or triggers Cloud Run jobs on a cron schedule.
+Cloud Scheduler does not run code. It sends HTTP requests, publishes Pub/Sub messages, or targets App Engine HTTP endpoints on a cron schedule. You can use its HTTP target to call the Cloud Run Admin API and run a Cloud Run job.
 
 ### Common Cloud Scheduler Patterns
 
@@ -259,7 +260,7 @@ Cloud Scheduler does not run code. It sends HTTP requests, publishes Pub/Sub mes
 # Trigger a Cloud Run Job every night at 2 AM
 gcloud scheduler jobs create http nightly-cleanup-trigger \
     --schedule="0 2 * * *" \
-    --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/my-project/jobs/nightly-cleanup:run" \
+    --uri="https://run.googleapis.com/v2/projects/my-project/locations/us-central1/jobs/nightly-cleanup:run" \
     --http-method=POST \
     --oauth-service-account-email=scheduler-sa@my-project.iam.gserviceaccount.com \
     --location=us-central1
@@ -285,9 +286,9 @@ gcloud scheduler jobs create pubsub five-min-check \
 ```mermaid
 graph TD
     A[Need background task on GCP] --> B{Triggered by event or schedule?}
-    B -->|Event| C{Simple processing under 60 min?}
+    B -->|Event| C{Simple processing under event-trigger limits?}
     C -->|Yes| D[Cloud Functions]
-    C -->|No| E[Cloud Run Jobs + Eventarc]
+    C -->|No| E[Cloud Run Jobs + Workflows/Eventarc]
     B -->|Schedule| F{Task duration?}
     F -->|Under 10 min| G[Cloud Scheduler + Cloud Functions]
     F -->|10-60 min| H{Need custom container?}
@@ -307,18 +308,18 @@ For a task that runs daily and takes 5 minutes:
 
 | Approach | Monthly Cost |
 |----------|-------------|
-| Cloud Scheduler + Cloud Function (256 MB) | ~$0.10 (scheduler) + ~$0.50 (function) = ~$0.60 |
-| Cloud Scheduler + Cloud Run Job (1 vCPU, 512 MB) | ~$0.10 (scheduler) + ~$1.50 (job) = ~$1.60 |
-| Cloud Run Job (manual trigger) | ~$1.50 |
+| Cloud Scheduler + Cloud Function (256 MB) | ~$0.10 (scheduler) + ~$0.04 (function before free tier) = ~$0.14 |
+| Cloud Scheduler + Cloud Run Job (1 vCPU, 512 MB) | ~$0.10 (scheduler) + ~$0.17 (job before free tier) = ~$0.27 |
+| Cloud Run Job (manual trigger) | ~$0.17 before free tier |
 
 For a task that runs hourly and takes 30 seconds:
 
 | Approach | Monthly Cost |
 |----------|-------------|
-| Cloud Scheduler + Cloud Function (256 MB) | ~$0.10 + ~$1.00 = ~$1.10 |
-| Cloud Scheduler + Cloud Run Job (1 vCPU, 512 MB) | ~$0.10 + ~$3.00 = ~$3.10 |
+| Cloud Scheduler + Cloud Function (256 MB) | ~$0.10 + ~$0.10 before free tier = ~$0.20 |
+| Cloud Scheduler + Cloud Run Job (1 vCPU, 512 MB) | ~$0.10 + ~$0.41 before free tier = ~$0.51 |
 
-Cloud Functions are cheaper for short, frequent tasks. Cloud Run Jobs are better for longer tasks or when you need specific container tooling.
+These examples use us-central1-style pricing and exclude free tier credits, networking, storage, build, and downstream service costs. Cloud Functions are usually cheaper for short, frequent tasks. Cloud Run Jobs are better for longer tasks or when you need specific container tooling.
 
 ## Practical Recommendation
 
