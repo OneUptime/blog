@@ -69,7 +69,7 @@ ns-cloud-a4.googledomains.com.
 
 ## Step 3: Update Your Domain Registrar
 
-Go to your domain registrar (GoDaddy, Namecheap, Google Domains, Route 53, etc.) and update the name servers for your domain to the four servers from the previous step.
+Go to your domain registrar (GoDaddy, Namecheap, Squarespace Domains, Route 53, etc.) and update the name servers for your domain to the four servers from the previous step.
 
 The process varies by registrar, but generally:
 1. Log in to your registrar's control panel
@@ -141,7 +141,7 @@ gcloud dns record-sets create example.com. \
     --zone=my-zone \
     --type=MX \
     --ttl=3600 \
-    --rrdatas="1 smtp.google.com.,5 smtp2.google.com."
+    --rrdatas="1 smtp.google.com."
 ```
 
 ### TXT Record (Verification, SPF, etc.)
@@ -224,8 +224,10 @@ After enabling DNSSEC, you need to add the DS (Delegation Signer) records at you
 
 ```bash
 # Get the DS records to add at your registrar
-gcloud dns managed-zones describe my-zone \
-    --format="value(dnsSecConfig.defaultKeySpecs)"
+gcloud dns dns-keys list \
+    --filter='type=keySigning' \
+    --format='value(ds_record())' \
+    --zone=my-zone
 ```
 
 ## Terraform Configuration
