@@ -14,13 +14,13 @@ This is a key component of Google's BeyondCorp zero-trust model. Instead of trus
 
 ## How Certificate-Based Access Works
 
-When CBA is enabled, every API request to Google Cloud must include a client certificate during the TLS handshake. Google's API endpoint performs mutual TLS (mTLS) authentication - it verifies the client's certificate against your trusted CA, and the client verifies Google's server certificate. Only if both sides trust each other does the request proceed.
+When CBA is enabled, requests to protected Google Cloud resources must use an mTLS-specific Google API endpoint and include a client certificate during the TLS handshake. Google's API endpoint verifies that the client possesses the private key for the certificate, and the CBA access level checks that the presented certificate matches the enrolled device certificate.
 
 This means even if an attacker steals a user's OAuth token, they cannot use it from an unauthorized device because they do not have the device certificate.
 
 ## Prerequisites
 
-You need an enterprise certificate authority (CA) that issues device certificates, Google Workspace or Cloud Identity Premium, BeyondCorp Enterprise license, and the Endpoint Verification Chrome extension deployed to managed devices.
+You need an enterprise certificate authority (CA) that issues device certificates, Chrome Enterprise Premium with Context-Aware Access, and the Endpoint Verification Chrome extension and helper app deployed to managed devices. CBA for workload or web applications can use other certificate deployment methods and does not require Endpoint Verification.
 
 ## Step 1: Set Up Your Certificate Authority
 
@@ -58,8 +58,10 @@ Set up a certificate template and issuance policy for device certificates.
 # Create a certificate template for device certs
 gcloud privateca templates create device-cert-template \
   --location=us-central1 \
-  --predefined-values-from-file=device-cert-config.yaml \
-  --identity-cel-expression="subject.common_name == request.cert_name"
+  --predefined-values-file=device-cert-config.yaml \
+  --copy-subject \
+  --copy-sans \
+  --identity-cel-expression="subject.common_name.startsWith('device-')"
 ```
 
 ```yaml
@@ -114,9 +116,9 @@ def issue_device_certificate(project_id, location, pool_id, device_id, csr_pem):
     return response.pem_certificate, response.pem_certificate_chain
 ```
 
-## Step 3: Upload Your CA Certificate to Access Context Manager
+## Step 3: Upload Your CA Certificate to the Admin Console
 
-Google needs to know which CAs to trust for mTLS authentication.
+Endpoint Verification needs the trust anchors for the enterprise certificate chain so it can collect and validate the device certificate.
 
 ```bash
 # Export the root CA certificate
@@ -124,81 +126,41 @@ gcloud privateca roots describe device-root-ca \
   --pool=device-cert-pool \
   --location=us-central1 \
   --format="value(pemCaCertificates[0])" > root-ca.pem
-
-# Upload the trusted CA certificate to Access Context Manager
-gcloud access-context-manager trust-configs create device-trust \
-  --location=global \
-  --trust-store="trust-anchors=root-ca.pem"
 ```
+
+In the Google Admin console, go to Devices > Networks > Certificates, add the root CA certificate, enable the Endpoint Verification checkbox, and make sure the certificate is applied to the organizational unit that contains your users.
 
 ## Step 4: Create an Access Level Requiring Certificates
 
-Create an access level in Access Context Manager that requires a valid device certificate.
+Create a custom access level in Access Context Manager that requires the certificate presented at request time to match a certificate registered for the enrolled device.
 
 ```yaml
 # cert-access-level.yaml
-# Require both a valid certificate and a managed device
-- devicePolicy:
-    requireScreenlock: true
-    requireCorpOwned: true
-    osConstraints:
-      - osType: DESKTOP_CHROME_OS
-      - osType: DESKTOP_MAC
-      - osType: DESKTOP_WINDOWS
-  regions:
-    - "US"
-    - "EU"
+expression: "certificateBindingState(origin, device) == CertificateBindingState.CERT_MATCHES_EXISTING_DEVICE"
 ```
 
 ```bash
 # Create the access level
-gcloud access-context-manager levels create cert-required-access \
+gcloud access-context-manager levels create cert_required_access \
   --policy=$POLICY_ID \
   --title="Certificate-Based Access Required" \
-  --basic-level-spec=cert-access-level.yaml
+  --custom-level-spec=cert-access-level.yaml
 
 # Update your VPC Service Controls perimeter to use this access level
 gcloud access-context-manager perimeters update my-perimeter \
   --policy=$POLICY_ID \
-  --add-access-levels="accessPolicies/$POLICY_ID/accessLevels/cert-required-access"
+  --add-access-levels="accessPolicies/$POLICY_ID/accessLevels/cert_required_access"
 ```
 
-## Step 5: Enable CBA for Google Cloud APIs
+## Step 5: Enforce CBA for a User Group
 
-Configure BeyondCorp Enterprise to enforce certificate-based access for API calls.
+To restrict all Google Cloud services for a set of users, bind the CBA access level to a Google group.
 
 ```bash
-# Enable CBA enforcement for the organization
-gcloud beyondcorp client-connector services create cba-service \
-  --project=PROJECT_ID \
-  --location=us-central1 \
-  --display-name="Certificate-Based API Access"
-```
-
-You can also configure CBA enforcement through organization policies:
-
-```python
-from google.cloud import orgpolicy_v2
-
-def enforce_cba_policy(org_id):
-    """Enforce certificate-based access at the organization level."""
-    client = orgpolicy_v2.OrgPolicyClient()
-
-    policy = orgpolicy_v2.Policy()
-    policy.name = f"organizations/{org_id}/policies/iam.allowedPolicyMemberDomains"
-
-    # Create a rule that enforces CBA
-    rule = orgpolicy_v2.PolicyRule()
-    rule.enforce = True
-
-    policy.spec = orgpolicy_v2.PolicySpec()
-    policy.spec.rules = [rule]
-
-    client.create_policy(
-        parent=f"organizations/{org_id}",
-        policy=policy,
-    )
-    print("CBA policy enforced")
+gcloud access-context-manager cloud-bindings create \
+  --group-key=GROUP_KEY \
+  --organization=ORG_ID \
+  --level=accessPolicies/POLICY_ID/accessLevels/cert_required_access
 ```
 
 ## Step 6: Configure Client-Side Certificate Usage
@@ -211,11 +173,6 @@ Users' devices need to present their certificates when connecting to Google Clou
 # Configure gcloud to use the device certificate for mTLS
 gcloud config set context_aware/use_client_certificate true
 
-# The certificate location depends on your deployment method
-# For enterprise-managed certificates on macOS:
-gcloud config set context_aware/auto_discovery_client_certificate_url \
-  "https://certificatemanager.internal/cert"
-
 # Test the connection with mTLS
 gcloud compute instances list --project=PROJECT_ID
 ```
@@ -223,12 +180,15 @@ gcloud compute instances list --project=PROJECT_ID
 ### For Application Default Credentials
 
 ```python
-# Python applications can use certificate-based credentials
+# Python applications can opt in to client certificates
 import google.auth
 import google.auth.transport.mtls
+import os
 
 def get_mtls_credentials():
-    """Get credentials with mTLS certificate attached."""
+    """Get ADC credentials after enabling client certificate use."""
+    os.environ["GOOGLE_API_USE_CLIENT_CERTIFICATE"] = "1"
+
     # Check if mTLS is available on this device
     has_cert = google.auth.transport.mtls.has_default_client_cert_source()
 
@@ -238,7 +198,7 @@ def get_mtls_credentials():
 
         # Use it for API requests
         credentials, project = google.auth.default()
-        return credentials, cert_source
+        return credentials, project, cert_source
     else:
         raise RuntimeError(
             "No device certificate found. "
