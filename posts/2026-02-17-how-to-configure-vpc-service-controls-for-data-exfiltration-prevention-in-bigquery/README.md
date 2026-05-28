@@ -14,7 +14,7 @@ This guide covers the practical steps to set up VPC Service Controls specificall
 
 ## Understanding the Security Perimeter Concept
 
-VPC Service Controls work by creating an invisible boundary - called a service perimeter - around your GCP projects. Once a project is inside the perimeter, its resources can only communicate with other resources inside the same perimeter. Any attempt to access resources from outside the perimeter, or to move data out of the perimeter, gets blocked.
+VPC Service Controls work by creating an invisible boundary - called a service perimeter - around your GCP projects. Once a project is inside the perimeter, protected services can freely exchange data with resources inside the same perimeter, but not externally by default. Attempts to access protected resources from outside the perimeter, or to move data out of the perimeter, get blocked unless you explicitly allow them.
 
 For BigQuery, this means a user inside the perimeter cannot export query results to a Cloud Storage bucket in a project outside the perimeter, share datasets with projects outside the perimeter, or run queries that join data from inside and outside the perimeter.
 
@@ -60,7 +60,7 @@ Access levels define the conditions under which requests are allowed to cross th
     - "198.51.100.0/24"   # VPN exit point
   regions:
     - "US"
-    - "EU"
+    - "GB"
 ```
 
 ```bash
@@ -85,7 +85,7 @@ Always start with a dry-run perimeter. A dry-run perimeter logs violations witho
 # Create a service perimeter in dry-run mode
 gcloud access-context-manager perimeters dry-run create bigquery_perimeter \
   --policy=$POLICY_ID \
-  --title="BigQuery Data Protection Perimeter" \
+  --perimeter-title="BigQuery Data Protection Perimeter" \
   --resources="projects/PROJECT_NUMBER_1,projects/PROJECT_NUMBER_2" \
   --restricted-services="bigquery.googleapis.com,storage.googleapis.com" \
   --access-levels="accessPolicies/$POLICY_ID/accessLevels/corporate_network"
@@ -101,7 +101,7 @@ Let the dry-run perimeter run for at least a week in a production environment. C
 # Query audit logs for dry-run violations
 gcloud logging read '
   resource.type="audited_resource"
-  AND protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata"
+  AND protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata"
   AND protoPayload.metadata.dryRun=true
 ' --limit=50 --format=json
 ```
@@ -123,8 +123,8 @@ After reviewing dry-run logs, you will likely need ingress and egress rules for 
     operations:
       - serviceName: "bigquery.googleapis.com"
         methodSelectors:
-          - method: "google.cloud.bigquery.v2.TableDataService.InsertAll"
-          - method: "google.cloud.bigquery.v2.JobService.InsertJob"
+          - method: "TableDataService.InsertAll"
+          - method: "JobService.InsertJob"
     resources:
       - "projects/PROJECT_NUMBER_1"
 ```
@@ -138,14 +138,14 @@ After reviewing dry-run logs, you will likely need ingress and egress rules for 
     operations:
       - serviceName: "bigquery.googleapis.com"
         methodSelectors:
-          - method: "google.cloud.bigquery.v2.JobService.InsertJob"
+          - method: "JobService.InsertJob"
     resources:
       - "projects/PUBLIC_DATASET_PROJECT_NUMBER"
 ```
 
 ```bash
-# Update the perimeter with ingress and egress rules
-gcloud access-context-manager perimeters update bigquery_perimeter \
+# Update the dry-run perimeter with ingress and egress rules
+gcloud access-context-manager perimeters dry-run update bigquery_perimeter \
   --policy=$POLICY_ID \
   --set-ingress-policies=ingress-rules.yaml \
   --set-egress-policies=egress-rules.yaml
@@ -173,15 +173,15 @@ Create alerts for perimeter violations so your security team can respond to pote
 # Create a log-based metric for VPC-SC violations
 gcloud logging metrics create vpc_sc_violations \
   --description="Count of VPC Service Control violations" \
-  --filter='resource.type="audited_resource" AND protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason!=""'
+  --log-filter='resource.type="audited_resource" AND protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.metadata.violationReason!=""'
 
 # Create an alert policy that triggers on violations
 gcloud alpha monitoring policies create \
   --display-name="VPC-SC Violation Alert" \
   --condition-display-name="VPC Service Controls violation detected" \
   --condition-filter='metric.type="logging.googleapis.com/user/vpc_sc_violations"' \
-  --condition-threshold-value=0 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --if="> 0" \
+  --duration="60s" \
   --notification-channels="projects/PROJECT_ID/notificationChannels/CHANNEL_ID"
 ```
 
