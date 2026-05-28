@@ -17,10 +17,10 @@ In this post, I will walk through the migration process from a legacy network to
 Legacy networks have these characteristics:
 
 - **No subnets**: VMs get IPs from a single flat address space. There are no regional subnets.
-- **IP ranges assigned per VM**: Each VM specifies its own IP range at creation time.
+- **IPs allocated from one global range**: Instance IP addresses come from the legacy network's single global range and are not grouped by region or zone.
 - **No secondary IP ranges**: Cannot be used with GKE VPC-native clusters.
 - **Missing features**: No VPC peering, no Private Google Access, no Shared VPC, no VPC Flow Logs, no alias IPs.
-- **Cannot be converted in place**: Unlike auto mode VPCs that can be converted to custom mode, legacy networks cannot be converted. You must create a new VPC and migrate resources.
+- **Limited conversion support**: Single-region legacy networks can be converted to a custom mode VPC with Google's conversion tool. Multi-region legacy networks must be consolidated into one region before using that tool, or migrated manually by creating a new VPC and moving resources.
 
 Check if you have a legacy network:
 
@@ -35,7 +35,7 @@ Legacy networks show `LEGACY` as the subnet mode and have an `IPv4Range` field (
 
 ## Planning the Migration
 
-Since you cannot convert a legacy network in place, the migration involves creating a new VPC, moving resources over, and decommissioning the old network. Here is the high-level plan:
+If your legacy network has resources in more than one region, you cannot convert it directly in place. The manual migration involves creating a new VPC, moving resources over, and decommissioning the old network. Here is the high-level plan:
 
 ```mermaid
 graph TD
@@ -84,39 +84,15 @@ gcloud compute networks subnets create modern-us-east1 \
 
 ### Phase 2: Set Up Temporary Connectivity
 
-During migration, you need VMs on both networks to communicate. Since legacy networks do not support VPC peering, you have limited options:
+During migration, you might need VMs on both networks to communicate. Since legacy networks do not support VPC peering or multiple network interfaces, you have limited options:
 
-**Option A: Dual-NIC VM as a bridge**
-
-```bash
-# Create a VM with interfaces in both networks
-gcloud compute instances create bridge-vm \
-  --zone=us-central1-a \
-  --machine-type=e2-medium \
-  --network-interface=network=legacy-network \
-  --network-interface=network=modern-vpc,subnet=modern-us-central1 \
-  --can-ip-forward \
-  --image-family=debian-12 \
-  --image-project=debian-cloud
-```
-
-Configure the bridge VM to forward traffic:
-
-```bash
-# On the bridge VM, enable IP forwarding
-sudo sysctl -w net.ipv4.ip_forward=1
-echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
-
-# Set up routing between the two interfaces
-sudo iptables -A FORWARD -i eth0 -o eth1 -j ACCEPT
-sudo iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
-sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-sudo iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
-```
-
-**Option B: External IPs (temporary)**
+**Option A: External IPs (temporary)**
 
 For short migrations, give VMs external IPs and communicate over the internet. This is simpler but less secure and slower.
+
+**Option B: Application-level cutover**
+
+For production services, run replacement instances in the new VPC, test them, and cut traffic over through DNS or load balancer backend updates.
 
 ### Phase 3: Migrate Resources
 
@@ -124,61 +100,52 @@ This is the main phase. For each resource type, the approach differs.
 
 #### Migrating VM Instances
 
-VMs cannot be moved between networks while running. You need to stop them, snapshot the disks, create new VMs on the new network, and attach the disks:
+VMs cannot be moved between networks while running. For a standalone VM, stop the VM, update its network interface to the new VPC and subnet, and then start it again:
 
 ```bash
-# Step 1: Create a snapshot of the VM's boot disk
-gcloud compute disks snapshot legacy-vm-disk \
-  --zone=us-central1-a \
-  --snapshot-names=legacy-vm-snapshot
+# Step 1: Stop the VM
+gcloud compute instances stop legacy-vm \
+  --zone=us-central1-a
 
-# Step 2: Create a new disk from the snapshot
-gcloud compute disks create modern-vm-disk \
+# Step 2: Move nic0 to the new VPC and regional subnet
+gcloud compute instances network-interfaces update legacy-vm \
   --zone=us-central1-a \
-  --source-snapshot=legacy-vm-snapshot
+  --network-interface=nic0 \
+  --network=modern-vpc \
+  --subnetwork=modern-us-central1
 
-# Step 3: Create the new VM on the modern VPC using the disk
-gcloud compute instances create modern-vm \
-  --zone=us-central1-a \
-  --machine-type=e2-medium \
-  --subnet=modern-us-central1 \
-  --disk=name=modern-vm-disk,boot=yes \
-  --no-address
+# Step 3: Start the VM
+gcloud compute instances start legacy-vm \
+  --zone=us-central1-a
 ```
 
-For VMs with additional data disks:
+If the target subnet uses a different IP range, the VM's internal IP address changes. If the target subnet uses the same range and the old address is free, you can preserve it by specifying the internal IP during the migration:
 
 ```bash
-# Snapshot all disks
-gcloud compute disks snapshot data-disk-1 \
+gcloud compute instances network-interfaces update legacy-vm \
   --zone=us-central1-a \
-  --snapshot-names=data-disk-1-snapshot
-
-# Create new disks from snapshots
-gcloud compute disks create modern-data-disk-1 \
-  --zone=us-central1-a \
-  --source-snapshot=data-disk-1-snapshot
-
-# Attach data disks to the new VM
-gcloud compute instances attach-disk modern-vm \
-  --zone=us-central1-a \
-  --disk=modern-data-disk-1
+  --network-interface=nic0 \
+  --network=modern-vpc \
+  --subnetwork=modern-us-central1 \
+  --private-network-ip=10.10.0.5
 ```
+
+VMs in managed instance groups cannot be migrated this way. Create a new instance template that uses the new VPC and roll out a replacement managed instance group instead.
 
 #### Migrating Static External IPs
 
-If your VMs have static external IPs, you can reassign them to the new VMs:
+If your VMs have static external IPs, the migration can keep the existing external IP when the target network permits external IPs. If you recreate VMs instead of updating the existing VM's interface, you can reassign a reserved static address to the new VM:
 
 ```bash
 # First, remove the IP from the old VM
 gcloud compute instances delete-access-config legacy-vm \
   --zone=us-central1-a \
-  --access-config-name="External NAT"
+  --access-config-name=external-nat
 
 # Then assign it to the new VM
 gcloud compute instances add-access-config modern-vm \
   --zone=us-central1-a \
-  --address=203.0.113.10
+  --address=RESERVED_EXTERNAL_IP
 ```
 
 #### Migrating Firewall Rules
@@ -277,4 +244,4 @@ gcloud compute networks subnets update modern-us-central1 \
 
 ## Wrapping Up
 
-Migrating from a legacy network to a custom mode VPC is a significant effort, but it unlocks the full set of GCP networking features. The key is thorough planning - inventory all resources on the legacy network, plan your new IP allocation, and test connectivity at each phase. Use snapshots for VM migration, preserve static IPs where needed, and take advantage of the bridge VM pattern for temporary cross-network connectivity. Once the migration is complete, you will have a modern VPC with proper subnets, flow logs, private access, and peering capabilities that make your infrastructure significantly more capable and secure.
+Migrating from a legacy network to a custom mode VPC is a significant effort, but it unlocks the full set of GCP networking features. The key is thorough planning - inventory all resources on the legacy network, plan your new IP allocation, and test connectivity at each phase. Use the stopped-VM network interface migration flow for standalone VMs, preserve static IPs where needed, and use DNS or load balancer cutovers for temporary coexistence between old and new environments. Once the migration is complete, you will have a modern VPC with proper subnets, flow logs, private access, and peering capabilities that make your infrastructure significantly more capable and secure.
