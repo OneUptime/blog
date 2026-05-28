@@ -10,7 +10,7 @@ Description: Learn how to use Dataflow session windowing functions to group clic
 
 When you are analyzing user behavior on a website or app, raw click events are not very useful on their own. What you really want to know is: what did the user do during their visit? How long was their session? What pages did they view? Where did they drop off? Answering these questions requires grouping individual events into sessions.
 
-Dataflow's session windowing does exactly this. It groups events by user into sessions based on a configurable gap duration. If a user clicks around your site and then goes quiet for 30 minutes, the session closes. If they come back, a new session starts.
+Dataflow's session windowing does exactly this. When you key events by user, it groups them into sessions based on a configurable gap duration. If a user clicks around your site and then goes quiet for 30 minutes, the session closes. If they come back, a new session starts.
 
 ## What Is Session Windowing?
 
@@ -18,7 +18,7 @@ Apache Beam (which powers Dataflow) supports several windowing strategies: fixed
 
 ```mermaid
 graph LR
-    subgraph "Session 1 (gap > 30min)"
+    subgraph "Session 1 (gap <= 30min)"
         E1[Click 1<br>10:00] --> E2[Click 2<br>10:02] --> E3[Click 3<br>10:08]
     end
     subgraph "Session 2"
@@ -46,14 +46,15 @@ Create the Pub/Sub topic, BigQuery dataset, and table.
 # Create the clickstream topic
 
 gcloud pubsub topics create clickstream-events
+gcloud pubsub topics create clickstream-errors
 gcloud pubsub subscriptions create clickstream-sub \
   --topic=clickstream-events \
   --ack-deadline=120
 
 # Create the BigQuery dataset and sessions table
-bq mk --dataset MY_PROJECT:clickstream
+bq mk --dataset PROJECT_ID:clickstream
 
-bq mk --table MY_PROJECT:clickstream.sessions \
+bq mk --table PROJECT_ID:clickstream.sessions \
   session_id:STRING,user_id:STRING,session_start:TIMESTAMP,session_end:TIMESTAMP,duration_seconds:INTEGER,page_count:INTEGER,pages:STRING,entry_page:STRING,exit_page:STRING,device_type:STRING,country:STRING
 ```
 
@@ -89,7 +90,6 @@ from apache_beam.transforms.trigger import (
     AfterWatermark,
     AfterProcessingTime,
     AccumulationMode,
-    Repeatedly,
     AfterCount,
 )
 import json
@@ -165,7 +165,7 @@ def run():
         raw_events = (
             p
             | "ReadClickEvents" >> beam.io.ReadFromPubSub(
-                subscription="projects/MY_PROJECT/subscriptions/clickstream-sub"
+                subscription="projects/PROJECT_ID/subscriptions/clickstream-sub"
             )
         )
 
@@ -186,9 +186,11 @@ def run():
                 Sessions(SESSION_GAP),
                 trigger=AfterWatermark(
                     # Emit early results every 2 minutes for long sessions
-                    early=AfterProcessingTime(120)
+                    early=AfterProcessingTime(120),
+                    # Emit an updated session summary when late events arrive
+                    late=AfterCount(1),
                 ),
-                accumulation_mode=AccumulationMode.DISCARDING,
+                accumulation_mode=AccumulationMode.ACCUMULATING,
                 # Allow late events up to 1 hour after session closes
                 allowed_lateness=3600,
             )
@@ -202,7 +204,7 @@ def run():
         (
             sessions
             | "WriteToBigQuery" >> beam.io.WriteToBigQuery(
-                table='MY_PROJECT:clickstream.sessions',
+                table='PROJECT_ID:clickstream.sessions',
                 schema=(
                     'session_id:STRING,user_id:STRING,'
                     'session_start:TIMESTAMP,session_end:TIMESTAMP,'
@@ -220,7 +222,7 @@ def run():
             parsed.errors
             | "SerializeErrors" >> beam.Map(lambda e: json.dumps(e).encode('utf-8'))
             | "WriteErrors" >> beam.io.WriteToPubSub(
-                topic="projects/MY_PROJECT/topics/clickstream-errors"
+                topic="projects/PROJECT_ID/topics/clickstream-errors"
             )
         )
 
@@ -234,10 +236,10 @@ if __name__ == '__main__':
 # Deploy the sessionization pipeline
 python clickstream_sessions.py \
   --runner=DataflowRunner \
-  --project=MY_PROJECT \
+  --project=PROJECT_ID \
   --region=us-central1 \
-  --temp_location=gs://MY_BUCKET/temp/ \
-  --staging_location=gs://MY_BUCKET/staging/ \
+  --temp_location=gs://BUCKET_NAME/temp/ \
+  --staging_location=gs://BUCKET_NAME/staging/ \
   --job_name=clickstream-sessions \
   --streaming \
   --num_workers=2 \
@@ -322,7 +324,7 @@ Look for a natural break in the distribution - that is your ideal session gap.
 
 ## Handling Late Data
 
-Clickstream data frequently arrives late, especially from mobile devices that may have been offline. The pipeline handles this with the `allowed_lateness` parameter. Events arriving up to 1 hour after the session window closes will still be included.
+Clickstream data frequently arrives late, especially from mobile devices that may have been offline. The pipeline handles this with the `allowed_lateness` parameter and a late trigger. Events arriving up to 1 hour after the session window closes will emit an updated session summary with the same `session_id`. Because this example writes with `WRITE_APPEND`, downstream queries should deduplicate by `session_id` or use an upsert pattern if you need one final row per session.
 
 For events arriving even later, consider running a periodic batch reconciliation job that replays raw events and corrects session boundaries.
 
