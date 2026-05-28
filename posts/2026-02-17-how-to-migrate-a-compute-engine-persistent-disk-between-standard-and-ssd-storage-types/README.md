@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Compute Engine, Persistent Disk, Storage Migration, Cloud Infrastructure
 
-Description: Step-by-step guide to migrating a Compute Engine persistent disk from standard HDD to SSD or vice versa, covering snapshot-based migration, live migration, and performance considerations.
+Description: Step-by-step guide to migrating a Compute Engine persistent disk from standard HDD to SSD or vice versa, covering snapshot-based migration, downtime planning, and performance considerations.
 
 ---
 
@@ -23,7 +23,7 @@ Compute Engine offers several persistent disk types:
 | pd-ssd | 30 read IOPS/GB, 30 write IOPS/GB | Higher | Databases, high-performance apps |
 | pd-extreme | Up to 120,000 IOPS | Highest | Most demanding workloads |
 
-The performance numbers scale with disk size. A 100 GB pd-ssd gives you 3,000 IOPS, while a 1,000 GB pd-ssd gives you 30,000 IOPS.
+The performance numbers scale with disk size until you hit the per-instance limits for the VM's machine type and vCPU count. A 100 GB pd-ssd can provide up to 3,000 IOPS from the disk, while a 1,000 GB pd-ssd can provide up to 30,000 IOPS before VM-level limits are applied.
 
 ## Method 1: Snapshot-Based Migration (Recommended)
 
@@ -94,7 +94,7 @@ gcloud compute instances attach-disk my-vm \
   --device-name=my-data-disk
 ```
 
-Using the same `--device-name` as the original disk means the mount point inside the VM stays the same. The OS will see the new disk at the same device path.
+Using the same `--device-name` as the original disk keeps the Google-provided symlink stable, such as `/dev/disk/by-id/google-my-data-disk`. The mount point inside the VM stays the same if your `/etc/fstab` entry uses that symlink or the filesystem UUID. Raw device names such as `/dev/sdb` or NVMe names are not guaranteed to stay the same.
 
 ### Step 4: Start the VM and Verify
 
@@ -130,7 +130,7 @@ gcloud compute snapshots delete my-disk-snapshot --quiet
 
 ## Migrating a Boot Disk
 
-Migrating a boot disk is slightly different because you cannot detach a boot disk from a running instance. You need to create a new VM.
+Migrating a boot disk is slightly different because you can attach or detach a boot disk only while the instance is stopped. You can detach the old boot disk and attach the new one to the same stopped VM, or create a new VM from the new boot disk. The following example uses a new VM and assumes the boot disk has the same name as the instance.
 
 ```bash
 # Stop the VM
@@ -181,16 +181,26 @@ set -e
 
 DISK_NAME="$1"
 ZONE="$2"
-NEW_TYPE="$3"  # pd-standard, pd-balanced, pd-ssd, pd-extreme
+NEW_TYPE="$3"  # pd-standard, pd-balanced, pd-ssd
 SNAPSHOT_NAME="${DISK_NAME}-migration-snapshot"
 NEW_DISK_NAME="${DISK_NAME}-migrated"
 
 # Validate inputs
 if [ -z "$DISK_NAME" ] || [ -z "$ZONE" ] || [ -z "$NEW_TYPE" ]; then
   echo "Usage: $0 <disk-name> <zone> <new-type>"
-  echo "Types: pd-standard, pd-balanced, pd-ssd, pd-extreme"
+  echo "Types: pd-standard, pd-balanced, pd-ssd"
   exit 1
 fi
+
+case "${NEW_TYPE}" in
+  pd-standard|pd-balanced|pd-ssd)
+    ;;
+  *)
+    echo "Unsupported disk type for this script: ${NEW_TYPE}"
+    echo "Use pd-standard, pd-balanced, or pd-ssd. pd-extreme requires provisioned IOPS and supported machine types."
+    exit 1
+    ;;
+esac
 
 # Get current disk info
 echo "Getting disk information..."
@@ -255,19 +265,10 @@ The snapshot-based migration requires downtime because you need to stop writing 
 - How much data has changed since the last snapshot (if using incremental snapshots)
 - The time to detach and attach disks (usually seconds)
 
-For a typical 200 GB disk, expect 10-30 minutes of total downtime including the snapshot creation.
+For a 200 GB disk, the downtime can range from minutes to longer depending on the amount of used and changed data, snapshot history, and how quickly you can validate the replacement disk. Test the process with a recent snapshot before scheduling a production migration.
 
 ## Performance After Migration
 
-After migrating from pd-standard to pd-ssd, you should see an immediate improvement in IOPS and latency. However, there is a warm-up period for disks created from snapshots. The first read of any block needs to fetch it from the snapshot, which is slower than subsequent reads.
-
-To warm up the disk and get full performance:
-
-```bash
-# Warm up the disk by reading all blocks (run in background)
-sudo dd if=/dev/sdb of=/dev/null bs=1M status=progress &
-```
-
-This reads the entire disk sequentially, pulling all data from the snapshot into the disk. After this completes, the disk will perform at full speed.
+After migrating from pd-standard to pd-ssd, you should see an improvement in IOPS and latency if the previous disk type was the bottleneck. Persistent Disk performance is also limited by the VM's machine type, vCPU count, I/O size, queue depth, and total attached disk capacity. Google Cloud does not require pre-warming Persistent Disk volumes to get the best performance.
 
 Migrating disk types is one of those tasks that sounds intimidating but is really just a snapshot and restore operation. The key is to plan the downtime window, verify the data after migration, and only delete the old resources once you are confident everything is working.
