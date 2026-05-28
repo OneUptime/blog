@@ -10,7 +10,7 @@ Description: Learn how to configure and handle warmup requests in App Engine to 
 
 Cold starts are one of the biggest pain points with serverless platforms, and App Engine is no exception. When App Engine spins up a new instance, the first request that hits it takes extra time because the application needs to load code, initialize connections, and warm up caches. Warmup requests solve this by giving your application a heads-up before real user traffic arrives.
 
-When you enable warmup requests, App Engine sends a special `GET /_ah/warmup` request to new instances before routing any user traffic to them. Your application can use this request to do expensive initialization work so that the first real user request is fast.
+When you enable warmup requests for App Engine Standard services that use automatic scaling, App Engine makes a best-effort attempt to send a special `GET /_ah/warmup` request to new instances before routing user traffic to them. Your application can use this request to do expensive initialization work so that the first real user request is fast when warmup runs successfully.
 
 ## How Warmup Requests Work
 
@@ -20,13 +20,13 @@ The flow looks like this:
 2. The new instance starts and your application code loads
 3. App Engine sends a `GET /_ah/warmup` request to the new instance
 4. Your application handles the warmup - loading caches, opening database connections, etc.
-5. Only after the warmup completes does App Engine start sending user traffic to that instance
+5. When warmup runs successfully, App Engine can send user traffic to an already-initialized instance
 
 Without warmup requests, step 3 and 4 do not happen. The first user request is also the initialization request, and that user experiences all the startup latency.
 
 ## Enabling Warmup Requests
 
-For App Engine Standard Environment, add `warmup` to the `inbound_services` in your `app.yaml`:
+For App Engine Standard Environment services that use automatic scaling, add `warmup` to the `inbound_services` in your `app.yaml`:
 
 ```yaml
 # app.yaml - Enable warmup requests
@@ -41,7 +41,7 @@ automatic_scaling:
   max_idle_instances: 5
 ```
 
-That is all you need in the configuration. App Engine will now send warmup requests to every new instance.
+That is all you need in the configuration. App Engine will now make a best-effort attempt to send warmup requests to new automatically scaled instances.
 
 ## Implementing the Warmup Handler - Python
 
@@ -93,7 +93,7 @@ def preload_reference_data():
 @app.route("/_ah/warmup")
 def warmup():
     """Handle warmup requests from App Engine.
-    This runs before any user traffic reaches this instance.
+    App Engine calls this on a best-effort basis before user traffic reaches this instance.
     """
     try:
         initialize_database()
@@ -110,9 +110,11 @@ def warmup():
 @app.route("/")
 def home():
     # These resources are already initialized from warmup
-    if db_client is None:
+    if db_client is None or cache_client is None or model_data is None:
         # Fallback initialization if warmup did not run
         initialize_database()
+        initialize_cache()
+        preload_reference_data()
     return {"status": "ready", "config": model_data}
 ```
 
@@ -149,7 +151,7 @@ async function loadConfiguration() {
   console.log("Configuration loaded");
 }
 
-// Warmup endpoint - called by App Engine before user traffic arrives
+// Warmup endpoint - called by App Engine on a best-effort basis before user traffic arrives
 app.get("/_ah/warmup", async (req, res) => {
   try {
     console.log("Starting warmup...");
@@ -197,30 +199,27 @@ Good candidates for warmup:
 Things to avoid during warmup:
 
 - Writes to databases (warmup might run multiple times)
-- Long-running operations that take more than 60 seconds
+- Long-running operations that approach the request timeout
 - Operations with side effects that should only happen once
 - Fetching large datasets that consume too much memory
 
 ## Warmup Timeout
 
-Warmup requests have a timeout just like regular requests. In Standard Environment, the timeout depends on your scaling configuration:
+Warmup requests have a timeout just like regular requests. In App Engine Standard Environment, current automatic scaling HTTP requests have a 10 minute timeout. Manual and basic scaling instances do not receive `/_ah/warmup` requests; they use `/_ah/start` for startup initialization instead.
 
-- Automatic scaling: 60 seconds
-- Basic scaling: The instance will wait for the warmup to complete with no specific timeout beyond the request timeout
-- Manual scaling: Same as basic scaling
-
-If your warmup takes longer than 60 seconds on automatic scaling, App Engine will kill the warmup request and start serving user traffic anyway. Keep your warmup fast by parallelizing initialization tasks:
+Even with that request timeout, keep warmup fast. If your warmup is slow or times out, App Engine can still serve loading requests and users can see startup latency. Parallelize independent initialization tasks:
 
 ```python
-# Parallel warmup for faster initialization
-import asyncio
+# Parallel warmup for faster independent initialization
 import concurrent.futures
 
 def warmup():
-    # Run initialization tasks in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    # Initialize the database first because preload_reference_data uses db_client
+    initialize_database()
+
+    # Run independent initialization tasks in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
-            executor.submit(initialize_database),
             executor.submit(initialize_cache),
             executor.submit(preload_reference_data),
         ]
@@ -236,7 +235,7 @@ def warmup():
 
 ## Warmup Requests and Min Idle Instances
 
-Warmup requests work together with the `min_idle_instances` setting. When you have `min_idle_instances: 2`, those two instances go through the warmup process and are then kept warm. Any scaling event that creates additional instances also triggers warmup requests.
+Warmup requests work together with the `min_idle_instances` setting. When you have `min_idle_instances: 2`, App Engine keeps two additional idle instances ready for this version, and those instances can go through the warmup process when they start. Scaling events that create additional automatic scaling instances can also trigger warmup requests.
 
 ```yaml
 # Optimal configuration combining warmup with idle instances
@@ -244,12 +243,12 @@ inbound_services:
   - warmup
 
 automatic_scaling:
-  min_idle_instances: 2      # Always have 2 warmed-up instances ready
+  min_idle_instances: 2      # Keep 2 additional idle instances ready
   max_idle_instances: 5
   min_pending_latency: 30ms
 ```
 
-This gives you the best of both worlds - minimum instances are pre-warmed and ready, and any new instances that spin up during traffic spikes also get warmed up before receiving traffic.
+This gives you the best of both worlds - idle instances can be pre-warmed and ready, and new instances that spin up during traffic spikes can also be warmed up before receiving traffic when the scheduler has enough lead time.
 
 ## Monitoring Warmup Performance
 
@@ -283,6 +282,7 @@ You can then search for these log entries in Cloud Logging to track warmup perfo
 It is important to understand that warmup requests are not guaranteed to run before user traffic in all cases. There are situations where App Engine might skip the warmup:
 
 - During rapid scaling events when many instances need to start quickly
+- When the first instance starts after the app has been serving no traffic
 - When the instance starts but the warmup request times out
 - In some edge cases during deployments
 
@@ -290,4 +290,4 @@ This is why your regular request handlers should have fallback initialization. D
 
 ## Summary
 
-Warmup requests are a simple but effective way to reduce the impact of cold starts on App Engine. Enable them with a single line in `app.yaml`, implement a `/_ah/warmup` handler that initializes expensive resources, and combine them with `min_idle_instances` for the best latency profile. Always include fallback initialization in your regular handlers because warmup is not guaranteed. Keep the warmup under 60 seconds by parallelizing tasks, and monitor warmup duration to catch performance regressions early.
+Warmup requests are a simple but effective way to reduce the impact of cold starts on App Engine Standard services that use automatic scaling. Enable them with a single line in `app.yaml`, implement a `/_ah/warmup` handler that initializes expensive resources, and combine them with `min_idle_instances` for the best latency profile. Always include fallback initialization in your regular handlers because warmup is not guaranteed. Keep the warmup fast by parallelizing independent tasks, and monitor warmup duration to catch performance regressions early.
