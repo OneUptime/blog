@@ -8,7 +8,7 @@ Description: Configure probabilistic inference for AutoML Tabular Forecasting on
 
 ---
 
-Point forecasts tell you what is most likely to happen. Probabilistic forecasts tell you the range of what could happen and how likely each outcome is. When you are making supply chain decisions, capacity planning, or financial projections, that range matters more than the single best guess. Vertex AI AutoML Forecasting supports probabilistic inference out of the box, giving you prediction intervals and quantile estimates alongside the standard point predictions. Here is how to configure it.
+Point forecasts tell you what is most likely to happen. Probabilistic forecasts tell you the range of what could happen and how likely each outcome is. When you are making supply chain decisions, capacity planning, or financial projections, that range matters more than the single best guess. Vertex AI AutoML Forecasting supports probabilistic inference, giving you prediction intervals and quantile estimates alongside the standard point predictions. Here is how to configure it.
 
 ## Why Probabilistic Forecasting Matters
 
@@ -21,10 +21,10 @@ Consider a demand forecast that predicts 1,000 units. Is that plus or minus 50 u
 ```mermaid
 graph TD
     A[Historical Data] --> B[AutoML Forecasting]
-    B --> C[Point Forecast - P50]
+    B --> C[Median Forecast - P50]
     B --> D[Lower Bound - P10]
     B --> E[Upper Bound - P90]
-    C --> F[Expected Demand]
+    C --> F[Median Demand]
     D --> G[Conservative Plan]
     E --> H[Aggressive Plan]
 ```
@@ -42,21 +42,30 @@ bq_client = bigquery.Client(project="your-project-id")
 # Query data with enough history to capture variability patterns
 
 query = """
+WITH daily_sales AS (
+    SELECT
+        sku_id,
+        DATE(sale_date) AS date,
+        SUM(units_sold) AS demand,
+        AVG(unit_price) AS price,
+        MAX(IF(promo_type IS NOT NULL, 1, 0)) AS is_promotion
+    FROM `your-project.sales.transactions`
+    WHERE sale_date >= '2023-01-01'
+    GROUP BY sku_id, DATE(sale_date)
+)
 SELECT
     sku_id,
-    DATE(sale_date) AS date,
-    SUM(units_sold) AS demand,
-    AVG(unit_price) AS price,
-    MAX(IF(promo_type IS NOT NULL, 1, 0)) AS is_promotion,
+    date,
+    demand,
+    price,
+    is_promotion,
     -- Include variance indicators when available
-    STDDEV(units_sold) OVER (
+    STDDEV(demand) OVER (
         PARTITION BY sku_id
-        ORDER BY DATE(sale_date)
+        ORDER BY date
         ROWS BETWEEN 7 PRECEDING AND CURRENT ROW
     ) AS rolling_demand_stddev
-FROM `your-project.sales.transactions`
-WHERE sale_date >= '2023-01-01'
-GROUP BY sku_id, DATE(sale_date)
+FROM daily_sales
 ORDER BY sku_id, date
 """
 
@@ -72,9 +81,9 @@ df.to_gbq(
 print(f"Prepared {len(df)} rows covering {df['sku_id'].nunique()} SKUs")
 ```
 
-## Step 2: Train with Quantile Loss Optimization
+## Step 2: Train with Probabilistic Inference
 
-Configure AutoML Forecasting to optimize for quantile predictions:
+Configure AutoML Forecasting to return a predictive distribution and the quantiles you need:
 
 ```python
 from google.cloud import aiplatform
@@ -87,15 +96,14 @@ dataset = aiplatform.TimeSeriesDataset.create(
     bq_source="bq://your-project.forecasting.probabilistic_training_data",
 )
 
-# Configure the training job with quantile optimization
-# Using minimize-quantile-loss enables probabilistic output
+# Configure the training job.
+# Probabilistic inference cannot be combined with minimize-quantile-loss.
 job = aiplatform.AutoMLForecastingTrainingJob(
     display_name="probabilistic-forecast-model",
-    optimization_objective="minimize-quantile-loss",  # Key setting for probabilistic output
+    optimization_objective="minimize-rmse",
     column_specs={
         "date": "timestamp",
         "sku_id": "categorical",
-        "demand": "numeric",
         "price": "numeric",
         "is_promotion": "categorical",
         "rolling_demand_stddev": "numeric",
@@ -110,9 +118,12 @@ model = job.run(
     time_column="date",
     time_series_identifier_column="sku_id",
     forecast_horizon=28,          # 4-week forecast
+    data_granularity_unit="day",
+    data_granularity_count=1,
     context_window=90,            # 3 months of lookback
     available_at_forecast_columns=["is_promotion"],
     unavailable_at_forecast_columns=["price", "rolling_demand_stddev"],
+    enable_probabilistic_inference=True,
     quantiles=[0.1, 0.25, 0.5, 0.75, 0.9],  # Predict these quantiles
     budget_milli_node_hours=2000,
     model_display_name="probabilistic-forecast-v1",
@@ -121,10 +132,10 @@ model = job.run(
 print(f"Model trained: {model.resource_name}")
 ```
 
-The `quantiles` parameter is the critical setting. Each quantile represents a percentile:
+The `enable_probabilistic_inference` parameter tells Vertex AI to model the predictive distribution, and the `quantiles` parameter tells it which percentile estimates to return. Each quantile represents a percentile:
 
 - **0.1 (P10)**: 10% chance actual demand is below this value
-- **0.5 (P50)**: The median prediction, equivalent to a point forecast
+- **0.5 (P50)**: The median prediction, which is a useful central forecast
 - **0.9 (P90)**: 90% chance actual demand is below this value
 
 ## Step 3: Generate Probabilistic Predictions
@@ -145,50 +156,81 @@ batch_job.wait()
 print("Probabilistic predictions complete")
 ```
 
-The output table will contain columns for each requested quantile:
+The output table contains a `predicted_demand` record with `value`, `quantile_values`, and `quantile_predictions`. The quantile predictions array maps by position to the quantile values array:
 
 ```sql
 -- Query the probabilistic forecast results
+CREATE TEMP FUNCTION quantile_prediction(
+    quantile_values ARRAY<FLOAT64>,
+    quantile_predictions ARRAY<FLOAT64>,
+    target_quantile FLOAT64
+) AS (
+    (
+        SELECT quantile_predictions[OFFSET(offset)]
+        FROM UNNEST(quantile_values) AS quantile WITH OFFSET offset
+        WHERE quantile = target_quantile
+        LIMIT 1
+    )
+);
+
 SELECT
     sku_id,
-    predicted_date,
-    -- Each quantile gets its own column
-    predicted_demand_quantile_0_1 AS p10_demand,
-    predicted_demand_quantile_0_25 AS p25_demand,
-    predicted_demand_quantile_0_5 AS p50_demand,   -- This is the median (point forecast)
-    predicted_demand_quantile_0_75 AS p75_demand,
-    predicted_demand_quantile_0_9 AS p90_demand,
+    date AS predicted_date,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.1) AS p10_demand,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.25) AS p25_demand,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.5) AS p50_demand,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.75) AS p75_demand,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.9) AS p90_demand,
     -- Calculate the prediction interval width
-    predicted_demand_quantile_0_9 - predicted_demand_quantile_0_1 AS prediction_interval_80pct
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.9)
+        - quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.1)
+        AS prediction_interval_80pct
 FROM `your-project.forecasting.predictions`
 ORDER BY sku_id, predicted_date;
 ```
 
 ## Step 4: Use Quantiles for Decision-Making
 
-Different business decisions should use different quantiles:
+Different business decisions should use different quantiles. The examples below use the same `quantile_prediction` temporary function from the previous query:
 
 ```sql
 -- Inventory ordering: use P90 to avoid stockouts
 -- The higher quantile accounts for upside demand risk
+WITH extracted_predictions AS (
+    SELECT
+        sku_id,
+        date AS predicted_date,
+        quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.5) AS p50_demand,
+        quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.9) AS p90_demand
+    FROM `your-project.forecasting.predictions`
+)
 SELECT
     sku_id,
-    SUM(predicted_demand_quantile_0_9) AS order_quantity_conservative,
-    SUM(predicted_demand_quantile_0_5) AS order_quantity_expected,
+    SUM(p90_demand) AS order_quantity_conservative,
+    SUM(p50_demand) AS order_quantity_median,
     -- Safety stock based on the interval width
-    SUM(predicted_demand_quantile_0_9 - predicted_demand_quantile_0_5) AS safety_stock_needed
-FROM `your-project.forecasting.predictions`
+    SUM(p90_demand - p50_demand) AS safety_stock_needed
+FROM extracted_predictions
 WHERE predicted_date BETWEEN '2026-03-01' AND '2026-03-31'
 GROUP BY sku_id
 ORDER BY safety_stock_needed DESC;
 
--- Revenue projections: use P50 for expected, P10 for worst case
+-- Revenue projections: use P50 for median case, P10 for worst case
+WITH extracted_predictions AS (
+    SELECT
+        sku_id,
+        date AS predicted_date,
+        quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.1) AS p10_demand,
+        quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.5) AS p50_demand,
+        quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.9) AS p90_demand
+    FROM `your-project.forecasting.predictions`
+)
 SELECT
     DATE_TRUNC(predicted_date, MONTH) AS month,
-    SUM(predicted_demand_quantile_0_5 * price) AS expected_revenue,
-    SUM(predicted_demand_quantile_0_1 * price) AS worst_case_revenue,
-    SUM(predicted_demand_quantile_0_9 * price) AS best_case_revenue
-FROM `your-project.forecasting.predictions` p
+    SUM(p50_demand * price) AS median_case_revenue,
+    SUM(p10_demand * price) AS worst_case_revenue,
+    SUM(p90_demand * price) AS best_case_revenue
+FROM extracted_predictions p
 JOIN `your-project.sales.products` prod USING (sku_id)
 GROUP BY 1;
 ```
@@ -202,14 +244,14 @@ A well-calibrated probabilistic forecast should have the actual values fall with
 WITH forecast_vs_actual AS (
     SELECT
         f.sku_id,
-        f.predicted_date,
-        f.predicted_demand_quantile_0_1 AS p10,
-        f.predicted_demand_quantile_0_5 AS p50,
-        f.predicted_demand_quantile_0_9 AS p90,
+        f.date AS predicted_date,
+        quantile_prediction(f.predicted_demand.quantile_values, f.predicted_demand.quantile_predictions, 0.1) AS p10,
+        quantile_prediction(f.predicted_demand.quantile_values, f.predicted_demand.quantile_predictions, 0.5) AS p50,
+        quantile_prediction(f.predicted_demand.quantile_values, f.predicted_demand.quantile_predictions, 0.9) AS p90,
         a.actual_demand
     FROM `your-project.forecasting.predictions` f
     JOIN `your-project.sales.daily_demand` a
-        ON f.sku_id = a.sku_id AND f.predicted_date = a.date
+        ON f.sku_id = a.sku_id AND f.date = a.date
 )
 SELECT
     -- Ideal: 80% of actuals between P10 and P90
@@ -232,12 +274,12 @@ Create a query that formats data for fan chart visualization:
 -- Format data for a fan chart showing prediction intervals
 SELECT
     sku_id,
-    predicted_date,
-    predicted_demand_quantile_0_1 AS lower_90,
-    predicted_demand_quantile_0_25 AS lower_50,
-    predicted_demand_quantile_0_5 AS median,
-    predicted_demand_quantile_0_75 AS upper_50,
-    predicted_demand_quantile_0_9 AS upper_90
+    date AS predicted_date,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.1) AS lower_90,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.25) AS lower_50,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.5) AS median,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.75) AS upper_50,
+    quantile_prediction(predicted_demand.quantile_values, predicted_demand.quantile_predictions, 0.9) AS upper_90
 FROM `your-project.forecasting.predictions`
 WHERE sku_id = 'SKU-001'
 ORDER BY predicted_date;
@@ -251,7 +293,7 @@ Here is a practical reference:
 
 - **P10**: Worst-case planning (budget scenarios, capacity lower bounds)
 - **P25**: Conservative planning (staffing, minimum inventory levels)
-- **P50**: Expected value (standard reporting, performance targets)
+- **P50**: Median case (standard reporting, performance targets)
 - **P75**: Optimistic planning (sales targets, capacity upper estimates)
 - **P90**: Safety planning (peak capacity, maximum inventory, SLA commitments)
 
@@ -263,4 +305,4 @@ Monitor your forecast accuracy and calibration over time. Use OneUptime to track
 
 ## Summary
 
-Probabilistic inference on Vertex AI AutoML Forecasting gives you the uncertainty estimates that point forecasts miss. The setup is straightforward - use `minimize-quantile-loss` as the optimization objective and specify your desired quantiles. The harder part is using those quantiles effectively in your business decisions, which requires understanding the cost asymmetry of over-predicting versus under-predicting for each specific use case.
+Probabilistic inference on Vertex AI AutoML Forecasting gives you the uncertainty estimates that point forecasts miss. The setup is straightforward - enable `enable_probabilistic_inference` and specify your desired quantiles. The harder part is using those quantiles effectively in your business decisions, which requires understanding the cost asymmetry of over-predicting versus under-predicting for each specific use case.
