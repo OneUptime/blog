@@ -113,12 +113,14 @@ func NewConnectionPool(ctx context.Context, cfg DBConfig) (*pgxpool.Pool, func()
     // Create the pool
     pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
     if err != nil {
+        dialer.Close()
         return nil, nil, fmt.Errorf("failed to create pool: %w", err)
     }
 
     // Verify the connection
     if err := pool.Ping(ctx); err != nil {
         pool.Close()
+        dialer.Close()
         return nil, nil, fmt.Errorf("failed to ping database: %w", err)
     }
 
@@ -147,8 +149,8 @@ func DefaultConfig() DBConfig {
         Database:               os.Getenv("DB_NAME"),
 
         // Pool size should not exceed Cloud SQL's max connections
-        // A db-f1-micro instance allows ~25 connections
-        // A db-n1-standard-1 allows ~100 connections
+        // Check your PostgreSQL instance with:
+        // SELECT * FROM pg_settings WHERE name = 'max_connections';
         MaxConns: 10,
         MinConns: 2,
 
@@ -319,8 +321,8 @@ func isRetryableError(err error) bool {
         }
     }
 
-    // Connection-level errors are retryable since the pool
-    // will create a new connection
+    // Be conservative with connection-level errors. A failed connection
+    // does not always tell you whether the database received the statement.
     if errors.Is(err, context.DeadlineExceeded) {
         return false
     }
