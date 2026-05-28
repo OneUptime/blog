@@ -53,7 +53,7 @@ gcloud storage buckets update gs://my-bucket \
 Let me break down each field:
 
 - **origin** - which domains can make cross-origin requests to this bucket
-- **method** - which HTTP methods are allowed (GET, POST, PUT, DELETE, HEAD, OPTIONS)
+- **method** - which HTTP methods are allowed (GET, POST, PUT, DELETE, HEAD). Browsers use OPTIONS for preflight requests, but you normally configure the method used by the actual request.
 - **responseHeader** - which response headers the browser can access
 - **maxAgeSeconds** - how long the browser caches the preflight response
 
@@ -71,18 +71,18 @@ When you let users upload files directly to GCS from the browser (usually with s
       "Content-Length",
       "Content-Range",
       "x-goog-resumable",
-      "x-goog-meta-*"
+      "x-goog-meta-user-id"
     ],
     "maxAgeSeconds": 3600
   }
 ]
 ```
 
-The `x-goog-resumable` header is needed for resumable uploads. The `x-goog-meta-*` wildcard allows reading custom metadata headers.
+The `x-goog-resumable` header is needed for resumable uploads. If you need to read custom metadata headers in browser code, list the specific `x-goog-meta-...` response headers that your application uses.
 
 ## Multiple CORS Rules
 
-You can define different rules for different origins. GCS evaluates them in order and uses the first match:
+You can define different rules for different origins and methods:
 
 ```json
 [
@@ -118,7 +118,7 @@ During development, you might need to allow localhost:
       "Content-Type",
       "Content-Length",
       "x-goog-resumable",
-      "x-goog-meta-*"
+      "x-goog-meta-user-id"
     ],
     "maxAgeSeconds": 60
   }
@@ -236,10 +236,10 @@ If you can make requests but cannot read certain response headers in JavaScript,
 CORS applies differently depending on which API endpoint you use:
 
 - `https://storage.googleapis.com/BUCKET/OBJECT` - XML API, CORS applies
-- `https://www.googleapis.com/storage/v1/b/BUCKET/o/OBJECT` - JSON API, CORS applies
-- `https://BUCKET.storage.googleapis.com/OBJECT` - path-style, CORS applies
+- `https://BUCKET.storage.googleapis.com/OBJECT` - XML API virtual-hosted style, CORS applies
+- `https://www.googleapis.com/storage/v1/b/BUCKET/o/OBJECT` - JSON API, returns default CORS headers without evaluating the bucket CORS configuration
 
-All three respect the bucket CORS configuration, but make sure you are testing against the same URL pattern your application uses.
+Bucket CORS rules control the XML API endpoints. The JSON API handles CORS differently, and the authenticated browser download endpoint at `https://storage.cloud.google.com/BUCKET/OBJECT` does not allow CORS requests. Make sure you are testing against the same URL pattern your application uses.
 
 ### Fonts Not Loading
 
