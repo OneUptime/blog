@@ -17,7 +17,7 @@ Semantic caching solves this by comparing query embeddings instead of raw string
 The process is straightforward:
 
 1. When a query arrives, compute its embedding
-2. Search the cache for any stored embeddings within a similarity threshold
+2. Search the cache for any stored embeddings within a distance threshold
 3. If a match is found, return the cached response instantly
 4. If no match, call the LLM, cache the query embedding and response, then return
 
@@ -34,14 +34,14 @@ graph TD
 ## Prerequisites
 
 - Google Cloud project with Memorystore for Redis API enabled
-- A Memorystore for Redis instance
-- Python 3.9+
+- A Memorystore for Redis 7.2 instance so vector search is available
+- Python 3.10+
 - Network connectivity to the Redis instance (VPC or Serverless VPC connector)
 
 ```bash
 # Install required packages
 
-pip install langchain langchain-google-vertexai langchain-community redis google-cloud-aiplatform
+pip install -U langchain langchain-google-vertexai langchain-redis redis google-cloud-aiplatform
 ```
 
 ## Setting Up Memorystore for Redis
@@ -53,7 +53,7 @@ If you do not have a Redis instance, create one through gcloud:
 gcloud redis instances create semantic-cache \
     --size=1 \
     --region=us-central1 \
-    --redis-version=redis_7_0 \
+    --redis-version=redis_7_2 \
     --project=your-project-id
 
 # Get the instance details including the IP address
@@ -70,7 +70,7 @@ Note the `host` and `port` from the output - you will need them to connect.
 
 ```python
 from langchain_google_vertexai import ChatVertexAI, VertexAIEmbeddings
-from langchain.cache import RedisSemanticCache
+from langchain_redis import RedisSemanticCache
 from langchain.globals import set_llm_cache
 
 # Initialize the embedding model for cache similarity matching
@@ -84,14 +84,14 @@ embeddings = VertexAIEmbeddings(
 set_llm_cache(
     RedisSemanticCache(
         redis_url="redis://10.0.0.3:6379",  # Your Memorystore IP and port
-        embedding=embeddings,
-        score_threshold=0.85,  # Similarity threshold - higher means stricter matching
+        embeddings=embeddings,
+        distance_threshold=0.2,  # Distance threshold - lower means stricter matching
     )
 )
 
 # Initialize the LLM - all calls through this model will use the cache
 llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-2.5-flash",
     project="your-project-id",
     location="us-central1",
     temperature=0.2,
@@ -124,56 +124,54 @@ print(f"Similar query ({elapsed3:.2f}s): {response3.content[:100]}...")
 print(f"\nSpeedup: {elapsed1/elapsed3:.1f}x faster with semantic cache")
 ```
 
-## Tuning the Similarity Threshold
+## Tuning the Distance Threshold
 
-The `score_threshold` parameter controls how similar two queries need to be for a cache hit. This is the most important parameter to tune.
+The `distance_threshold` parameter controls how close two query embeddings need to be for a cache hit. This is the most important parameter to tune.
 
 ```python
 # Conservative threshold - only very similar queries match
 conservative_cache = RedisSemanticCache(
     redis_url="redis://10.0.0.3:6379",
-    embedding=embeddings,
-    score_threshold=0.95,  # Very strict - nearly identical queries only
+    embeddings=embeddings,
+    distance_threshold=0.1,  # Very strict - nearly identical queries only
 )
 
 # Balanced threshold - good default for most use cases
 balanced_cache = RedisSemanticCache(
     redis_url="redis://10.0.0.3:6379",
-    embedding=embeddings,
-    score_threshold=0.85,  # Catches paraphrases while avoiding false matches
+    embeddings=embeddings,
+    distance_threshold=0.2,  # Catches paraphrases while avoiding false matches
 )
 
 # Aggressive threshold - caches more broadly, risk of wrong matches
 aggressive_cache = RedisSemanticCache(
     redis_url="redis://10.0.0.3:6379",
-    embedding=embeddings,
-    score_threshold=0.75,  # Broader matching - watch for false positives
+    embeddings=embeddings,
+    distance_threshold=0.35,  # Broader matching - watch for false positives
 )
 ```
 
-Here is a rough guide for choosing thresholds:
+Here is a rough guide for choosing distance thresholds:
 
-- **0.90-0.95**: Safe for production with sensitive data. Only near-identical queries match.
-- **0.85-0.90**: Good balance for most applications. Catches common rephrasings.
-- **0.75-0.85**: Aggressive caching. Good for reducing costs, but test thoroughly for false matches.
+- **0.05-0.15**: Safe for production with sensitive data. Only near-identical queries match.
+- **0.15-0.25**: Good balance for most applications. Catches common rephrasings.
+- **0.25-0.40**: Aggressive caching. Good for reducing costs, but test thoroughly for false matches.
 
 ## Cache Management
 
 ### Clearing the Cache
 
 ```python
-import redis
+from langchain_redis import RedisSemanticCache
 
 def clear_semantic_cache(redis_url: str):
     """Clear all entries from the semantic cache."""
-    r = redis.from_url(redis_url)
-    # Delete all keys matching the cache pattern
-    keys = r.keys("cache:*")
-    if keys:
-        r.delete(*keys)
-        print(f"Cleared {len(keys)} cache entries")
-    else:
-        print("Cache is already empty")
+    cache = RedisSemanticCache(
+        redis_url=redis_url,
+        embeddings=embeddings,
+    )
+    cache.clear()
+    print("Semantic cache cleared")
 
 clear_semantic_cache("redis://10.0.0.3:6379")
 ```
@@ -183,13 +181,13 @@ clear_semantic_cache("redis://10.0.0.3:6379")
 Add time-to-live so stale entries automatically expire.
 
 ```python
-from langchain.cache import RedisSemanticCache
+from langchain_redis import RedisSemanticCache
 
 # Create a cache with TTL - entries expire after 1 hour
 cache_with_ttl = RedisSemanticCache(
     redis_url="redis://10.0.0.3:6379",
-    embedding=embeddings,
-    score_threshold=0.85,
+    embeddings=embeddings,
+    distance_threshold=0.2,
     ttl=3600,  # Cache entries expire after 3600 seconds (1 hour)
 )
 
@@ -205,7 +203,7 @@ from langchain_google_vertexai import ChatVertexAI
 
 # Create two model instances - one with cache, one without
 cached_llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-2.5-flash",
     project="your-project-id",
     location="us-central1",
     temperature=0.2,
@@ -213,7 +211,7 @@ cached_llm = ChatVertexAI(
 )
 
 uncached_llm = ChatVertexAI(
-    model_name="gemini-1.5-pro",
+    model_name="gemini-2.5-flash",
     project="your-project-id",
     location="us-central1",
     temperature=0.7,
@@ -298,8 +296,8 @@ gcloud run deploy my-ai-service \
 
 The cost savings from semantic caching can be significant. Gemini API charges are based on input and output tokens. If your application handles 10,000 queries per day and achieves a 40% cache hit rate, you avoid 4,000 LLM calls daily. At typical token costs, that adds up quickly.
 
-Memorystore for Redis costs are relatively low - a 1GB instance in us-central1 runs about $35/month, which is likely less than the LLM costs you save in a single day with a decent hit rate.
+Memorystore for Redis costs are relatively low - a 1GB instance in us-central1 runs about $36/month at the default hourly rate, which is likely less than the LLM costs you save in a single day with a decent hit rate.
 
 ## Summary
 
-Semantic caching with LangChain and Memorystore for Redis is one of the simplest optimizations you can add to an LLM-powered application. It reduces latency from seconds to milliseconds for cache hits, cuts API costs proportionally to your hit rate, and requires minimal code changes. Start with a similarity threshold of 0.85, add a TTL that matches how frequently your data changes, and monitor your hit rate to tune the threshold over time. The investment in a small Redis instance pays for itself quickly.
+Semantic caching with LangChain and Memorystore for Redis is one of the simplest optimizations you can add to an LLM-powered application. It reduces latency from seconds to milliseconds for cache hits, cuts API costs proportionally to your hit rate, and requires minimal code changes. Start with a distance threshold of 0.2, add a TTL that matches how frequently your data changes, and monitor your hit rate to tune the threshold over time. The investment in a small Redis instance pays for itself quickly.
