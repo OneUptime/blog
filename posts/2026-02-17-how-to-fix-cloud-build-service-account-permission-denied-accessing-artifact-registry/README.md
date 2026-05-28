@@ -14,8 +14,8 @@ Your Cloud Build pipeline fails with a permission denied error when trying to pu
 
 Cloud Build uses different service accounts depending on your configuration:
 
-1. The default Cloud Build service account: `PROJECT_NUMBER@cloudbuild.gserviceaccount.com`
-2. The legacy Cloud Build service account (older projects): `PROJECT_ID@cloudbuild.gserviceaccount.com`
+1. The Compute Engine default service account, which Cloud Build uses by default in many newer projects: `PROJECT_NUMBER-compute@developer.gserviceaccount.com`
+2. The legacy Cloud Build service account: `PROJECT_NUMBER@cloudbuild.gserviceaccount.com`
 3. A user-specified service account (if configured in the build trigger or submission)
 
 Recent changes to Google Cloud may affect which roles are granted by default. In newer projects, the default Cloud Build service account might not have broad permissions, so you need to grant them explicitly.
@@ -47,7 +47,7 @@ See what roles the service account currently has:
 # Check project-level IAM for the Cloud Build SA
 gcloud projects get-iam-policy YOUR_PROJECT \
     --flatten="bindings[].members" \
-    --filter="bindings.members:cloudbuild.gserviceaccount.com" \
+    --filter="bindings.members:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --format="table(bindings.role)"
 ```
 
@@ -69,7 +69,7 @@ Grant at the project level (applies to all repos):
 ```bash
 # Grant Artifact Registry Writer to the Cloud Build SA
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --role="roles/artifactregistry.writer"
 ```
 
@@ -79,7 +79,7 @@ Or grant at the repository level (more restrictive):
 # Grant on a specific repository only
 gcloud artifacts repositories add-iam-policy-binding your-repo \
     --location=us-central1 \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --role="roles/artifactregistry.writer"
 ```
 
@@ -102,7 +102,7 @@ If your Artifact Registry repository is in a different project than your Cloud B
 gcloud artifacts repositories add-iam-policy-binding your-repo \
     --project=project-b \
     --location=us-central1 \
-    --member="serviceAccount:PROJECT_A_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL_FROM_PROJECT_A" \
     --role="roles/artifactregistry.writer"
 ```
 
@@ -113,28 +113,18 @@ For pulling base images from a different project:
 gcloud artifacts repositories add-iam-policy-binding base-images-repo \
     --project=shared-images-project \
     --location=us-central1 \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --role="roles/artifactregistry.reader"
 ```
 
 ## Step 5: Check for the Docker Credential Helper
 
-When Cloud Build uses Docker commands to push or pull, it needs the Artifact Registry credential helper configured. This is usually automatic, but can break if you are using a custom Docker configuration.
+When Cloud Build uses Docker commands to push or pull images in a normal Cloud Build environment, you do not need to run `gcloud auth configure-docker`. Cloud Build handles authentication for Artifact Registry, but you still need the correct IAM permissions. Authentication issues can show up if you override Docker's configuration or run Docker outside Cloud Build.
 
-In your `cloudbuild.yaml`, make sure Docker is configured to authenticate:
+In your `cloudbuild.yaml`, use the Artifact Registry image path directly:
 
 ```yaml
 steps:
-  # Step 1: Configure Docker authentication for Artifact Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        # Configure Docker to use gcloud for authentication
-        gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
-  # Step 2: Build and push the image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -148,7 +138,7 @@ steps:
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-image:$COMMIT_SHA'
 ```
 
-The `gcloud auth configure-docker` command sets up the credential helper so that `docker push` and `docker pull` authenticate automatically.
+If you are running Docker locally or in another CI system, the `gcloud auth configure-docker us-central1-docker.pkg.dev` command sets up the credential helper so that `docker push` and `docker pull` authenticate automatically.
 
 ## Step 6: Check If the Repository Exists
 
@@ -198,9 +188,9 @@ steps:
       - '.'
 ```
 
-## Step 8: Handle the Default Service Account Deprecation
+## Step 8: Handle the Default Service Account Change
 
-Google Cloud has been tightening default permissions for service accounts. In newer projects, the Cloud Build service account may not have the `roles/editor` role that was previously granted by default. If your builds suddenly stop working, this might be the cause.
+Google Cloud changed which service account Cloud Build uses by default for many newer projects. Older projects might use the legacy Cloud Build service account, while newer projects might use the Compute Engine default service account. If your builds suddenly stop working, make sure you are granting roles to the service account that is actually running the build.
 
 Check if the default Cloud Build service account has the necessary roles:
 
@@ -208,24 +198,24 @@ Check if the default Cloud Build service account has the necessary roles:
 # Check if the Cloud Build SA has basic roles
 gcloud projects get-iam-policy YOUR_PROJECT \
     --flatten="bindings[].members" \
-    --filter="bindings.members:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --filter="bindings.members:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --format="table(bindings.role)"
 ```
 
-If `roles/editor` or `roles/cloudbuild.builds.builder` is missing, you need to grant specific roles:
+If the service account is missing Artifact Registry access, grant the specific Artifact Registry role it needs:
 
 ```bash
-# Grant the minimum roles needed for Cloud Build with Artifact Registry
+# Grant the minimum Artifact Registry role needed for pushing images
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --role="roles/artifactregistry.writer"
+```
 
-gcloud projects add-iam-policy-binding YOUR_PROJECT \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
-    --role="roles/storage.objectViewer"
+If you use a user-specified service account and store build logs in Cloud Logging, grant it the Logs Writer role too:
 
+```bash
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
-    --member="serviceAccount:PROJECT_NUMBER@cloudbuild.gserviceaccount.com" \
+    --member="serviceAccount:BUILD_SERVICE_ACCOUNT_EMAIL" \
     --role="roles/logging.logWriter"
 ```
 
