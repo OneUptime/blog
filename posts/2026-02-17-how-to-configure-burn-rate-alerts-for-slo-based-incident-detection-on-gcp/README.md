@@ -38,16 +38,23 @@ Burn rate alerts are built on top of SLOs. If you do not have one yet, create it
 ```bash
 # Create a 99.9% availability SLO with a 30-day rolling window
 
-gcloud monitoring slos create \
-    --service=my-api-service \
-    --display-name="API Availability - 99.9%" \
-    --request-based-sli \
-    --good-total-ratio-threshold \
-    --good-service-filter='metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.response_code_class="200"' \
-    --total-service-filter='metric.type="loadbalancing.googleapis.com/https/request_count"' \
-    --goal=0.999 \
-    --rolling-period=30d \
-    --project=my-gcp-project
+curl --http1.1 -X POST \
+  "https://monitoring.googleapis.com/v3/projects/my-gcp-project/services/my-api-service/serviceLevelObjectives" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "API Availability - 99.9%",
+    "serviceLevelIndicator": {
+      "requestBased": {
+        "goodTotalRatio": {
+          "goodServiceFilter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\" metric.label.\"response_code_class\"=\"200\"",
+          "totalServiceFilter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\""
+        }
+      }
+    },
+    "goal": 0.999,
+    "rollingPeriod": "2592000s"
+  }'
 ```
 
 ## Step 2: Create a Burn Rate Alert Policy
@@ -88,7 +95,7 @@ The key part is the `select_slo_burn_rate` function. The second parameter (`3600
 
 ## Step 3: Configure Multiple Burn Rate Thresholds
 
-A single burn rate alert is good, but multiple thresholds at different speeds give you better signal. Here is the pattern recommended by Google's SRE book.
+A single burn rate alert is good, but multiple thresholds at different speeds give you better signal. Here is a pattern based on the burn rates and windows recommended by Google's SRE book.
 
 ```bash
 # Fast burn - catches severe incidents quickly
@@ -244,7 +251,7 @@ Before relying on burn rate alerts in production, you should test them. One appr
 
 ```bash
 # Generate synthetic errors to test the alert
-# This sends 100 requests, 50% of which should fail
+# This sends 100 requests to an endpoint you have configured to fail during the test
 for i in $(seq 1 100); do
   curl -s -o /dev/null -w "%{http_code}\n" https://my-service.example.com/test-endpoint
 done
@@ -253,10 +260,10 @@ done
 Then check if the burn rate alert fired.
 
 ```bash
-# List recent incidents
-gcloud monitoring policies list \
+# List recent open alerts
+gcloud alpha monitoring alerts list \
     --project=my-gcp-project \
-    --filter='displayName:"SLO"'
+    --filter='policy.displayName:"SLO"'
 ```
 
 ## Common Mistakes
