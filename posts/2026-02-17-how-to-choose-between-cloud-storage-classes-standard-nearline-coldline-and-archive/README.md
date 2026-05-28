@@ -12,10 +12,12 @@ Google Cloud Storage offers four storage classes: Standard, Nearline, Coldline, 
 
 ## The Storage Classes at a Glance
 
+Prices vary by location. These examples use current regional pricing for us-central1, rounded to monthly GiB rates.
+
 | Feature | Standard | Nearline | Coldline | Archive |
 |---------|----------|----------|----------|---------|
-| Storage cost (per GB/mo) | $0.020 | $0.010 | $0.004 | $0.0012 |
-| Retrieval cost (per GB) | $0 | $0.01 | $0.02 | $0.05 |
+| Storage cost (per GiB/mo) | $0.020 | $0.010 | $0.004 | $0.0012 |
+| Retrieval cost (per GiB) | $0 | $0.01 | $0.02 | $0.05 |
 | Minimum storage duration | None | 30 days | 90 days | 365 days |
 | Access latency | Milliseconds | Milliseconds | Milliseconds | Milliseconds |
 | Typical use case | Frequently accessed | Monthly access | Quarterly access | Yearly access |
@@ -27,18 +29,18 @@ All four classes serve data with the same latency - milliseconds. Archive storag
 
 The total cost of storing data is: **storage cost + retrieval cost + operation cost**. The cheaper the storage, the more expensive it is to read back.
 
-Let's say you store 1 TB of data for a year and read the entire dataset once per month.
+Let's say you store 1000 GiB of data for a year and read the entire dataset once per month.
 
 This comparison shows the monthly cost breakdown for each scenario:
 
 ```text
-Standard: 1000 GB x $0.020 + 1000 GB x $0.00 x 12 reads = $20.00/month
-Nearline: 1000 GB x $0.010 + 1000 GB x $0.01 = $10.00 + $10.00 = $20.00/month
-Coldline: 1000 GB x $0.004 + 1000 GB x $0.02 = $4.00 + $20.00 = $24.00/month
-Archive:  1000 GB x $0.0012 + 1000 GB x $0.05 = $1.20 + $50.00 = $51.20/month
+Standard: 1000 GiB x $0.020 + 1000 GiB x $0.00 x 12 reads = $20.00/month
+Nearline: 1000 GiB x $0.010 + 1000 GiB x $0.01 = $10.00 + $10.00 = $20.00/month
+Coldline: 1000 GiB x $0.004 + 1000 GiB x $0.02 = $4.00 + $20.00 = $24.00/month
+Archive:  1000 GiB x $0.0012 + 1000 GiB x $0.05 = $1.20 + $50.00 = $51.20/month
 ```
 
-For data read monthly, Nearline breaks even with Standard, and Coldline is actually more expensive. Now compare the same 1 TB with only one read per year:
+For data read monthly, Nearline breaks even with Standard, and Coldline is actually more expensive. Now compare the same 1000 GiB with only one read per year:
 
 ```text
 Standard: $20.00/month x 12 = $240.00/year + $0.00 retrieval = $240.00/year
@@ -63,15 +65,17 @@ Use Standard for data that is accessed frequently or has unpredictable access pa
 ```bash
 # Create a Standard storage bucket
 
-gsutil mb -c standard -l us-central1 gs://my-app-assets/
+gcloud storage buckets create gs://my-app-assets/ \
+    --default-storage-class=STANDARD \
+    --location=us-central1
 
 # Upload frequently accessed data
-gsutil -m cp -r ./images/ gs://my-app-assets/images/
+gcloud storage cp --recursive ./images/ gs://my-app-assets/images/
 ```
 
 ### Nearline Storage
 
-Use Nearline for data accessed roughly once a month or less. The 30-day minimum storage charge means you should not use it for temporary data.
+Use Nearline for data accessed roughly once a month or less. The 30-day minimum storage charge means you should be careful with short-lived temporary data.
 
 - Monthly backups
 - Data accessed for monthly reporting
@@ -80,10 +84,12 @@ Use Nearline for data accessed roughly once a month or less. The 30-day minimum 
 
 ```bash
 # Create a Nearline bucket for monthly backups
-gsutil mb -c nearline -l us-central1 gs://my-monthly-backups/
+gcloud storage buckets create gs://my-monthly-backups/ \
+    --default-storage-class=NEARLINE \
+    --location=us-central1
 
 # Upload monthly backup
-gsutil cp database-backup-2026-02.tar.gz gs://my-monthly-backups/
+gcloud storage cp database-backup-2026-02.tar.gz gs://my-monthly-backups/
 ```
 
 ### Coldline Storage
@@ -97,10 +103,12 @@ Use Coldline for data accessed roughly once a quarter. The 90-day minimum means 
 
 ```bash
 # Create a Coldline bucket for disaster recovery
-gsutil mb -c coldline -l us-central1 gs://my-disaster-recovery/
+gcloud storage buckets create gs://my-disaster-recovery/ \
+    --default-storage-class=COLDLINE \
+    --location=us-central1
 
 # Upload disaster recovery snapshots
-gsutil -m cp -r ./snapshots/ gs://my-disaster-recovery/snapshots/
+gcloud storage cp --recursive ./snapshots/ gs://my-disaster-recovery/snapshots/
 ```
 
 ### Archive Storage
@@ -114,10 +122,12 @@ Use Archive for data you must keep but rarely access. The 365-day minimum means 
 
 ```bash
 # Create an Archive bucket for compliance data
-gsutil mb -c archive -l us-central1 gs://my-compliance-archive/
+gcloud storage buckets create gs://my-compliance-archive/ \
+    --default-storage-class=ARCHIVE \
+    --location=us-central1
 
 # Upload compliance documents
-gsutil cp audit-records-2024.tar.gz gs://my-compliance-archive/2024/
+gcloud storage cp audit-records-2024.tar.gz gs://my-compliance-archive/2024/
 ```
 
 ## Lifecycle Management - Automate Class Transitions
@@ -128,48 +138,46 @@ This lifecycle configuration automatically transitions data through storage clas
 
 ```json
 {
-  "lifecycle": {
-    "rule": [
-      {
-        "action": {
-          "type": "SetStorageClass",
-          "storageClass": "NEARLINE"
-        },
-        "condition": {
-          "age": 30,
-          "matchesStorageClass": ["STANDARD"]
-        }
+  "rule": [
+    {
+      "action": {
+        "type": "SetStorageClass",
+        "storageClass": "NEARLINE"
       },
-      {
-        "action": {
-          "type": "SetStorageClass",
-          "storageClass": "COLDLINE"
-        },
-        "condition": {
-          "age": 90,
-          "matchesStorageClass": ["NEARLINE"]
-        }
-      },
-      {
-        "action": {
-          "type": "SetStorageClass",
-          "storageClass": "ARCHIVE"
-        },
-        "condition": {
-          "age": 365,
-          "matchesStorageClass": ["COLDLINE"]
-        }
-      },
-      {
-        "action": {
-          "type": "Delete"
-        },
-        "condition": {
-          "age": 2555
-        }
+      "condition": {
+        "age": 30,
+        "matchesStorageClass": ["STANDARD"]
       }
-    ]
-  }
+    },
+    {
+      "action": {
+        "type": "SetStorageClass",
+        "storageClass": "COLDLINE"
+      },
+      "condition": {
+        "age": 90,
+        "matchesStorageClass": ["NEARLINE"]
+      }
+    },
+    {
+      "action": {
+        "type": "SetStorageClass",
+        "storageClass": "ARCHIVE"
+      },
+      "condition": {
+        "age": 365,
+        "matchesStorageClass": ["COLDLINE"]
+      }
+    },
+    {
+      "action": {
+        "type": "Delete"
+      },
+      "condition": {
+        "age": 2555
+      }
+    }
+  ]
 }
 ```
 
@@ -177,10 +185,12 @@ Apply the lifecycle configuration to a bucket:
 
 ```bash
 # Apply lifecycle rules to a bucket
-gsutil lifecycle set lifecycle.json gs://my-data-bucket/
+gcloud storage buckets update gs://my-data-bucket/ \
+    --lifecycle-file=lifecycle.json
 
 # Verify the lifecycle configuration
-gsutil lifecycle get gs://my-data-bucket/
+gcloud storage buckets describe gs://my-data-bucket/ \
+    --format="default(lifecycle_config)"
 ```
 
 ## Autoclass - Let Google Decide
@@ -191,7 +201,8 @@ If you do not want to manage lifecycle rules manually, Autoclass automatically m
 # Create a bucket with Autoclass enabled
 gcloud storage buckets create gs://my-autoclass-bucket \
     --location=us-central1 \
-    --enable-autoclass
+    --enable-autoclass \
+    --autoclass-terminal-storage-class=ARCHIVE
 
 # Autoclass will automatically:
 # - Keep frequently accessed data in Standard
@@ -199,34 +210,39 @@ gcloud storage buckets create gs://my-autoclass-bucket \
 # - Move data back to Standard if access patterns change
 ```
 
-Autoclass is a good choice when you have mixed access patterns and do not want to manually configure lifecycle rules. The trade-off is a small premium on storage costs - Google charges Autoclass management fees - but for most workloads it saves money compared to keeping everything in Standard.
+Autoclass is a good choice when you have mixed access patterns and do not want to manually configure lifecycle rules. The trade-off is an object management fee and possible enablement charges, but for suitable workloads it can save money compared to keeping everything in Standard.
 
 ## Multi-Region and Dual-Region Considerations
 
-Storage classes interact with location types. Each location type has a cost multiplier:
+Storage classes interact with location types. Storage and replication pricing varies by location type:
 
 - **Region** (us-central1): Base price
-- **Dual-region** (us-central1 + us-east1): ~1.8x Standard storage cost
-- **Multi-region** (US, EU, ASIA): ~2x Standard storage cost
+- **Dual-region** (for example, us-central1 + us-east1): priced based on the underlying regions, with inter-region replication charges for writes
+- **Multi-region** (US, EU, ASIA): higher storage cost than regional storage, with inter-region replication charges for writes
 
 For Archive data that rarely moves, regional storage is usually the best value. For frequently accessed data that needs global availability, multi-region Standard makes more sense.
 
 ```bash
 # Regional bucket for archive data - cheapest option
-gsutil mb -c archive -l us-central1 gs://my-regional-archive/
+gcloud storage buckets create gs://my-regional-archive/ \
+    --default-storage-class=ARCHIVE \
+    --location=us-central1
 
 # Multi-region bucket for globally accessed assets
-gsutil mb -c standard -l US gs://my-global-assets/
+gcloud storage buckets create gs://my-global-assets/ \
+    --default-storage-class=STANDARD \
+    --location=US
 
 # Dual-region for data that needs low latency in two specific regions
 gcloud storage buckets create gs://my-dual-region-data \
-    --location=us-central1+us-east1 \
-    --default-storage-class=standard
+    --location=US \
+    --placement=us-central1,us-east1 \
+    --default-storage-class=STANDARD
 ```
 
 ## Common Mistakes
 
-**Mistake 1: Putting temporary data in Nearline/Coldline/Archive**. If you create data that you will delete within 30 days, Standard is always cheaper because there is no minimum storage duration.
+**Mistake 1: Putting short-lived temporary data in Nearline/Coldline/Archive**. If you create data that you will delete quickly, Standard is often cheaper because there is no minimum storage duration.
 
 **Mistake 2: Using Archive for data accessed weekly**. The retrieval costs will exceed the storage savings. Run the math for your specific access pattern.
 
