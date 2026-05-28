@@ -8,7 +8,7 @@ Description: Learn how to use hybrid connectivity network endpoint groups in GCP
 
 ---
 
-Moving to the cloud rarely happens overnight. During migration, or as a permanent architecture, you often need your GCP load balancer to route traffic to both cloud-based and on-premises backends. Hybrid connectivity network endpoint groups (NEGs) make this possible. They let you add on-premises servers, or servers in another cloud, as backends to a GCP load balancer - as long as they are reachable via Cloud VPN or Cloud Interconnect.
+Moving to the cloud rarely happens overnight. During migration, or as a permanent architecture, you often need your GCP load balancer to route traffic to both cloud-based and on-premises backends. Hybrid connectivity network endpoint groups (NEGs) make this possible. They let you add on-premises servers, or servers in another cloud, as backends to a GCP load balancer - as long as they are reachable via Cloud VPN, Cloud Interconnect, or Router appliance VMs.
 
 This post covers the setup of hybrid NEGs with practical examples for common migration and hybrid cloud scenarios.
 
@@ -17,7 +17,7 @@ This post covers the setup of hybrid NEGs with practical examples for common mig
 A hybrid connectivity NEG is a network endpoint group that contains IP addresses and ports of backends running outside of GCP. These backends must be reachable from your GCP VPC through:
 - Cloud VPN (IPsec tunnels)
 - Cloud Interconnect (dedicated or partner)
-- Any other connectivity that makes the on-premises IPs routable from GCP
+- Router appliance VMs
 
 The GCP load balancer treats these endpoints like any other backend. It sends health checks to them, distributes traffic based on load balancing algorithms, and handles failover if they become unhealthy.
 
@@ -51,8 +51,8 @@ graph TD
 
 Before configuring hybrid NEGs, you need:
 
-- A VPN tunnel or Interconnect connection between GCP and your on-premises network
-- Routes configured so GCP can reach on-premises IP addresses
+- A VPN tunnel, Interconnect connection, or Router appliance VM between GCP and your on-premises network
+- Cloud Router with global dynamic routing configured so GCP can reach on-premises IP addresses
 - On-premises servers running the workload you want to load balance
 - Firewall rules (both GCP and on-premises) allowing health check and application traffic
 
@@ -76,14 +76,14 @@ If these fail, fix your VPN/Interconnect and routing before proceeding.
 Create a NEG with the `NON_GCP_PRIVATE_IP_PORT` endpoint type:
 
 ```bash
-# Create a hybrid NEG in the same zone as your VPN gateway
+# Create a hybrid NEG in a zone close to your on-premises environment
 gcloud compute network-endpoint-groups create on-prem-neg \
     --network-endpoint-type=NON_GCP_PRIVATE_IP_PORT \
     --zone=us-central1-a \
     --network=my-vpc
 ```
 
-The zone should be in the same region as your Cloud VPN gateway or Interconnect attachment for optimal routing.
+If you use Cloud Interconnect, the zone should be in the same region as the VLAN attachment. For Envoy-based regional load balancers, configure hybrid connectivity in the same region as the load balancer.
 
 ## Step 3: Add On-Premises Endpoints
 
@@ -114,7 +114,7 @@ gcloud compute network-endpoint-groups update on-prem-neg \
 
 ## Step 4: Create a Health Check
 
-Health checks for hybrid NEGs work the same way as for regular backends. The probes are sent from GCP's health check IP ranges through the VPN/Interconnect tunnel:
+Health checks for hybrid NEGs use the same health check resources as regular backends. For global external and classic Application Load Balancers, probes are sent from Google's health check IP ranges through the VPN/Interconnect tunnel. Envoy-based regional load balancers use distributed Envoy health checks from the region's proxy-only subnet:
 
 ```bash
 # Create a health check for on-premises backends
@@ -184,7 +184,7 @@ gcloud compute forwarding-rules create hybrid-https-rule \
 
 ## Step 7: Configure On-Premises Firewalls
 
-Your on-premises firewall must allow traffic from GCP health check IP ranges and from the VPC subnet ranges:
+Your on-premises firewall must allow traffic from GCP health check IP ranges and from the load balancer proxies. For the global external and classic Application Load Balancer example above, allow the Google health check and proxy ranges. For Envoy-based regional load balancers, also allow the region's proxy-only subnet:
 
 ```text
 # On-premises firewall rules (pseudo-config)
@@ -192,8 +192,8 @@ Your on-premises firewall must allow traffic from GCP health check IP ranges and
 ALLOW TCP 8080 FROM 130.211.0.0/22
 ALLOW TCP 8080 FROM 35.191.0.0/16
 
-# Allow application traffic from GCP VPC
-ALLOW TCP 8080 FROM 10.128.0.0/16
+# For Envoy-based regional load balancers, allow the proxy-only subnet
+ALLOW TCP 8080 FROM <PROXY_ONLY_SUBNET_RANGE>
 ```
 
 The exact configuration depends on your firewall vendor.
@@ -226,13 +226,13 @@ gcloud compute backend-services add-backend mixed-backend \
     --global
 ```
 
-By adjusting `max-rate-per-endpoint` and `max-rate-per-instance`, you control the traffic split. Lower the on-premises rate as you migrate more workload to the cloud.
+By adjusting `max-rate-per-endpoint` and `max-rate-per-instance`, you influence how much traffic each backend can receive. Lower the on-premises rate as you migrate more workload to the cloud.
 
 ## Migration Strategy with Traffic Shifting
 
 Here is a practical migration approach:
 
-1. **Phase 1**: All traffic goes to on-premises (max-rate-per-endpoint=100 on-prem, max-rate-per-instance=0 cloud)
+1. **Phase 1**: All traffic goes to on-premises (max-rate-per-endpoint=100 on-prem, capacity-scaler=0 cloud)
 2. **Phase 2**: 80/20 split (reduce on-prem rate, increase cloud rate)
 3. **Phase 3**: 50/50 split
 4. **Phase 4**: 20/80 split
