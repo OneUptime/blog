@@ -38,7 +38,7 @@ gcloud sql instances describe my-db \
     --format="value(connectionName)"
 ```
 
-The output should look like `my-project:us-central1:my-db`. Copy this exactly - a typo in any part causes a timeout because the proxy cannot find the instance.
+The output should look like `my-project:us-central1:my-db`. Copy this exactly - a typo in any part causes the proxy to fail because it cannot find the instance.
 
 ## Step 2: Check IAM Permissions
 
@@ -48,7 +48,7 @@ The service account running the proxy needs the `roles/cloudsql.client` role. Wi
 # Check if the service account has Cloud SQL Client role
 gcloud projects get-iam-policy my-project \
     --flatten="bindings[].members" \
-    --filter="bindings.members:serviceAccount:my-sa@my-project.iam.gserviceaccount.com AND bindings.role:roles/cloudsql" \
+    --filter="bindings.members:serviceAccount:my-sa@my-project.iam.gserviceaccount.com AND bindings.role:roles/cloudsql.client" \
     --format="table(bindings.role)"
 ```
 
@@ -61,11 +61,11 @@ gcloud projects add-iam-binding my-project \
     --role="roles/cloudsql.client"
 ```
 
-The `cloudsql.client` role includes the `cloudsql.instances.connect` permission, which is what the proxy actually needs. If you are using a custom role, make sure that permission is included.
+The `cloudsql.client` role includes the `cloudsql.instances.connect` and `cloudsql.instances.get` permissions, which are what the proxy needs. If you are using a custom role, make sure those permissions are included.
 
 ## Step 3: Check the Cloud SQL Admin API
 
-The proxy uses the Cloud SQL Admin API to get connection information. If the API is not enabled, the proxy silently fails with a timeout.
+The proxy uses the Cloud SQL Admin API to get connection information. If the API is not enabled, the proxy fails before it can establish the connection.
 
 ```bash
 # Check if the Cloud SQL Admin API is enabled
@@ -77,14 +77,14 @@ gcloud services enable sqladmin.googleapis.com
 
 ## Step 4: Verify Network Connectivity
 
-The proxy needs to reach Google's APIs. If you are running the proxy on a VM without an external IP, or behind a firewall, it might not be able to reach the Cloud SQL Admin API.
+The proxy needs to reach Google's APIs on TCP port 443 and the Cloud SQL instance on TCP port 3307. If you are running the proxy on a VM without an external IP, or behind a firewall, it might not be able to reach the Cloud SQL Admin API or the instance.
 
 ```bash
 # Test if the VM can reach Google APIs
 curl -s https://sqladmin.googleapis.com/ -o /dev/null -w "%{http_code}"
 # Should return 404 (which means the API is reachable)
 
-# Check if there is a firewall blocking egress to port 443
+# Check if there is a firewall blocking egress to ports 443 or 3307
 gcloud compute firewall-rules list \
     --filter="network:my-vpc AND direction=EGRESS" \
     --format="table(name, denied, destinationRanges)"
@@ -106,7 +106,7 @@ Make sure you are using a recent version of the Cloud SQL Auth Proxy and that it
 ```bash
 # Download the latest Cloud SQL Auth Proxy
 curl -o cloud-sql-proxy \
-    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.linux.amd64
+    https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.22.0/cloud-sql-proxy.linux.amd64
 chmod +x cloud-sql-proxy
 
 # Run the proxy with verbose logging to see what is happening
@@ -117,7 +117,7 @@ chmod +x cloud-sql-proxy
     my-project:us-central1:my-db
 ```
 
-The structured logs will tell you exactly where the connection is failing. Common messages and what they mean:
+The structured logs will usually tell you where the connection is failing. Common messages and what they mean:
 
 - `"Authorizing with Application Default Credentials"` - The proxy is using ADC, not a key file
 - `"instance not found"` - Wrong connection name
@@ -178,7 +178,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       serviceAccountName: my-ksa  # Kubernetes SA linked via Workload Identity
       containers:
@@ -190,7 +196,7 @@ spec:
         - name: DB_PORT
           value: "5432"
       - name: cloud-sql-proxy
-        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
         args:
         - "--port=5432"
         - "--structured-logs"
@@ -244,14 +250,18 @@ echo ""
 echo "=== Checking IAM permissions ==="
 gcloud projects get-iam-policy $PROJECT \
     --flatten="bindings[].members" \
-    --filter="bindings.members:serviceAccount:$SA AND bindings.role:cloudsql" \
+    --filter="bindings.members:serviceAccount:$SA AND bindings.role:roles/cloudsql.client" \
     --format="value(bindings.role)" 2>&1
 
 echo ""
 echo "=== Checking SQL Admin API ==="
-gcloud services list --enabled \
+if gcloud services list --enabled \
     --filter="name:sqladmin.googleapis.com" \
-    --project=$PROJECT --format="value(name)" 2>&1 || echo "NOT ENABLED"
+    --project=$PROJECT --format="value(name)" 2>&1 | grep -q "sqladmin.googleapis.com"; then
+    echo "ENABLED"
+else
+    echo "NOT ENABLED"
+fi
 
 echo ""
 echo "=== Checking network connectivity ==="
