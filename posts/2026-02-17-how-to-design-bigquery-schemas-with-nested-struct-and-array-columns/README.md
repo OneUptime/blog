@@ -237,7 +237,7 @@ CREATE TABLE `my_project.my_dataset.ecommerce_events` (
   >
 )
 PARTITION BY event_date
-CLUSTER BY event_type, user.user_id;
+CLUSTER BY event_type;
 ```
 
 ## Querying Nested Schemas Efficiently
@@ -319,6 +319,7 @@ CREATE TABLE `my_project.my_dataset.sensor_readings` (
   reading_id STRING,
   reading_timestamp TIMESTAMP,
   reading_date DATE,
+  device_id STRING,
   value FLOAT64,
   unit STRING,
   -- Embedded device metadata
@@ -334,26 +335,26 @@ CREATE TABLE `my_project.my_dataset.sensor_readings` (
   >
 )
 PARTITION BY reading_date
-CLUSTER BY device.device_id;
+CLUSTER BY device_id;
 ```
 
 ## Limitations and Considerations
 
 **Maximum nesting depth**: BigQuery supports up to 15 levels of nesting. In practice, you rarely need more than 3-4 levels.
 
-**Maximum ARRAY size**: There is no hard limit on array length, but very large arrays (thousands of elements) can impact query performance.
+**Maximum ARRAY size**: There is no separate per-array element count limit, but the total size of all values in a table row is limited. Very large arrays (thousands of elements) can impact query performance.
 
-**Cannot cluster on nested fields directly**: You can cluster on `user.user_id` (a STRUCT field) but not on fields inside ARRAYs.
+**Cannot cluster on nested fields directly**: Clustering columns must be top-level, non-repeated columns. If you need to cluster by a nested key such as `user.user_id` or `device.device_id`, duplicate that key into a top-level column. You cannot cluster on fields inside ARRAYs.
 
-**Schema changes**: Adding fields to a STRUCT is easy. Changing the type of a STRUCT field requires table recreation.
+**Schema changes**: Adding new top-level columns, including STRUCT columns, is easy. Adding nested fields inside an existing STRUCT requires a schema update rather than `ALTER TABLE ADD COLUMN` dot notation. Changing some scalar or STRUCT field types is supported with `ALTER COLUMN SET DATA TYPE`, but complex nested changes, such as fields inside an ARRAY of STRUCTs, require rewriting the table.
 
 ```sql
--- Add a new field to an existing STRUCT
+-- Add a new STRUCT column
 ALTER TABLE `my_project.my_dataset.customers`
-ADD COLUMN address.latitude FLOAT64;
-
-ALTER TABLE `my_project.my_dataset.customers`
-ADD COLUMN address.longitude FLOAT64;
+ADD COLUMN marketing STRUCT<
+  opt_in BOOL,
+  source STRING
+>;
 ```
 
 ## Denormalization Strategy
