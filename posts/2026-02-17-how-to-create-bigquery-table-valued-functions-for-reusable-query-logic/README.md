@@ -8,7 +8,7 @@ Description: Learn how to create table-valued functions in BigQuery to encapsula
 
 ---
 
-Regular UDFs in BigQuery take scalar inputs and return scalar values. But what if you want a reusable function that returns an entire table? That is what table-valued functions (TVFs) are for. They encapsulate a parameterized query that returns a result set, and you call them in the FROM clause of your SQL just like a table or view.
+Regular UDFs in BigQuery return a single value. But what if you want a reusable function that returns an entire table? That is what table-valued functions (TVFs) are for. They encapsulate a parameterized query that returns a result set, and you call them in the FROM clause of your SQL just like a table or view.
 
 I use TVFs as parameterized views - they give you the reusability of views with the flexibility of accepting parameters.
 
@@ -260,7 +260,7 @@ SELECT
   created,
   last_altered
 FROM `my_project.my_dataset.INFORMATION_SCHEMA.ROUTINES`
-WHERE routine_type = 'TABLE_FUNCTION'
+WHERE routine_type = 'TABLE FUNCTION'
 ORDER BY routine_name;
 ```
 
