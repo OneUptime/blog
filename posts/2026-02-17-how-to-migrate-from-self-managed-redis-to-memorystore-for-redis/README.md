@@ -8,11 +8,11 @@ Description: A practical guide to migrating your self-managed Redis instances to
 
 ---
 
-Running Redis on your own VMs or bare-metal servers means you are responsible for patching, scaling, failover, and backups. Google Cloud Memorystore for Redis takes all of that off your plate. It gives you a fully managed Redis service with built-in high availability, automatic failover, and seamless integration with the rest of GCP. In this post, I will walk through the full migration process from a self-managed Redis deployment to Memorystore.
+Running Redis on your own VMs or bare-metal servers means you are responsible for patching, scaling, failover, and backup strategy. Google Cloud Memorystore for Redis takes much of that off your plate. It gives you a fully managed Redis service with built-in high availability, automatic failover, managed RDB snapshots when enabled, and seamless integration with the rest of GCP. In this post, I will walk through the full migration process from a self-managed Redis deployment to Memorystore.
 
 ## Why Move to Memorystore
 
-Before diving into the how, let me briefly cover the why. When you run Redis yourself, there is a long list of operational tasks that eat into your time. You need to handle OS-level security patches, manage replication topology, configure persistence, monitor memory usage, and plan capacity. Memorystore eliminates most of this. You get sub-millisecond latency, automatic failover for Standard tier instances, and native VPC connectivity. You also get IAM-based access control and integration with Cloud Monitoring out of the box.
+Before diving into the how, let me briefly cover the why. When you run Redis yourself, there is a long list of operational tasks that eat into your time. You need to handle OS-level security patches, manage replication topology, configure persistence, monitor memory usage, and plan capacity. Memorystore eliminates most of this. You get sub-millisecond latency, automatic failover for Standard tier instances, and native VPC connectivity. You also get IAM-based access control for managing Redis resources and integration with Cloud Monitoring out of the box.
 
 The trade-off is that you lose some flexibility. Memorystore does not support every Redis module, and you cannot SSH into the underlying nodes. But for the vast majority of caching and session-store use cases, this is a net win.
 
@@ -28,7 +28,7 @@ Before starting the migration, make sure you have the following ready:
 
 ## Step 1 - Provision the Memorystore Instance
 
-First, create a Memorystore for Redis instance that matches your current setup. You will want to pick the same Redis version and allocate enough memory.
+First, create a Memorystore for Redis instance that matches your current setup. You will want to pick the same Redis version, or a newer supported Redis version, and allocate enough memory.
 
 This command creates a 5GB Standard-tier Memorystore instance in the us-central1 region:
 
@@ -66,17 +66,18 @@ redis-cli -h SOURCE_HOST -p 6379 DBSIZE
 
 Note the `used_memory_human` value from the INFO output. Your Memorystore instance needs to have at least that much capacity, plus headroom for overhead.
 
-If your source Redis uses multiple databases (DB 0 through DB 15), check each one. Memorystore supports multiple databases, but you should know which ones contain data.
+If your source Redis uses multiple databases (DB 0 through DB 15 by default), check each one. Memorystore supports multiple databases, but the database count must be set when you create the instance if you need more than the default.
 
 ## Step 3 - Export Data Using RDB Dump
 
 The most reliable migration path uses an RDB dump. On your source Redis, trigger a background save and export the dump file.
 
 ```bash
-# Trigger an RDB save on the source Redis
+# Record the last successful save time, then trigger an RDB save
+redis-cli -h SOURCE_HOST -p 6379 LASTSAVE
 redis-cli -h SOURCE_HOST -p 6379 BGSAVE
 
-# Wait for the save to complete
+# Poll until LASTSAVE returns a newer timestamp
 redis-cli -h SOURCE_HOST -p 6379 LASTSAVE
 
 # Copy the dump.rdb file from the Redis data directory
@@ -101,7 +102,7 @@ gcloud redis instances import gs://my-migration-bucket/dump.rdb \
   --region=us-central1
 ```
 
-This operation will temporarily make the instance unavailable while it loads the data. For large datasets, this can take several minutes. Plan accordingly and do this during a maintenance window.
+This operation overwrites the existing data in the instance and temporarily makes the instance unavailable while it loads the data. The Memorystore instance can import RDB files from the same Redis version or from an older Redis version, but not from a newer Redis version. For large datasets, this can take several minutes. Plan accordingly and do this during a maintenance window.
 
 ## Step 5 - Validate the Migration
 
@@ -134,9 +135,11 @@ const redis = new Redis({
   host: '10.0.0.3',  // Memorystore private IP
   port: 6379,
   // Memorystore uses VPC networking, no AUTH by default
-  // Enable AUTH if you configured it during instance creation
-  retryDelayOnFailover: 100,
-  maxRetriesPerRequest: 3
+  // password: 'AUTH_STRING',  // Set this if you enabled AUTH
+  maxRetriesPerRequest: 3,
+  retryStrategy(times) {
+    return Math.min(times * 100, 2000);
+  }
 });
 ```
 
@@ -149,6 +152,7 @@ import redis
 r = redis.Redis(
     host='10.0.0.3',  # Memorystore private IP
     port=6379,
+    # password='AUTH_STRING',  # Set this if you enabled AUTH
     decode_responses=True,
     socket_connect_timeout=5,
     retry_on_timeout=True
@@ -174,7 +178,7 @@ After the migration is stable and you have monitored it for a reasonable period,
 - Decommission the self-managed Redis servers
 - Remove the RDB dump from Cloud Storage
 - Update any monitoring or alerting to point at the new Memorystore metrics in Cloud Monitoring
-- Review IAM permissions to make sure only the right service accounts can access the instance
+- Review IAM permissions to make sure only the right principals can manage the instance and access the migration bucket
 
 ## Monitoring After Migration
 
