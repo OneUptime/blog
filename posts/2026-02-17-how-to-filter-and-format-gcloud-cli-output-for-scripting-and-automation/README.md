@@ -42,7 +42,7 @@ The `value()` format is your best friend for scripting:
 ```bash
 # Get just the project ID
 
-gcloud config get-value project
+gcloud config get project
 
 # Get just the names of running VMs
 gcloud compute instances list \
@@ -102,7 +102,7 @@ gcloud compute instances list \
 gcloud compute instances list --filter="status=RUNNING"
 
 # Filter by zone
-gcloud compute instances list --filter="zone:us-central1-a"
+gcloud compute instances list --filter="zone.basename()=us-central1-a"
 
 # Filter by name prefix
 gcloud compute instances list --filter="name~^prod-"
@@ -117,7 +117,7 @@ gcloud compute disks list --filter="sizeGb>100"
 # Not equal
 gcloud compute instances list --filter="status!=RUNNING"
 
-# Contains (substring match)
+# Word or simple pattern match
 gcloud compute instances list --filter="name:web"
 
 # Regular expression match
@@ -129,14 +129,14 @@ gcloud compute instances list --filter="name~'^dev-.*-worker$'"
 ```bash
 # AND (space or AND keyword)
 gcloud compute instances list \
-  --filter="status=RUNNING zone:us-central1-a"
+  --filter="status=RUNNING zone.basename()=us-central1-a"
 
 gcloud compute instances list \
-  --filter="status=RUNNING AND zone:us-central1-a"
+  --filter="status=RUNNING AND zone.basename()=us-central1-a"
 
 # OR
 gcloud compute instances list \
-  --filter="zone:us-central1-a OR zone:us-east1-b"
+  --filter="zone.basename()=us-central1-a OR zone.basename()=us-east1-b"
 
 # NOT
 gcloud compute instances list \
@@ -144,7 +144,7 @@ gcloud compute instances list \
 
 # Complex combinations
 gcloud compute instances list \
-  --filter="(status=RUNNING OR status=STAGING) AND zone:us-central1-*"
+  --filter="(status=RUNNING OR status=STAGING) AND zone.basename()~'^us-central1-'"
 ```
 
 ### Filtering by Labels
@@ -193,10 +193,9 @@ gcloud compute instances list \
 Another common use - listing all labels:
 
 ```bash
-# Flatten labels to show one label per row
+# List labels as key=value pairs
 gcloud compute instances list \
-  --flatten="labels" \
-  --format="table(name, labels.key, labels.value)"
+  --format="table(name, labels.list())"
 ```
 
 ## Practical Scripting Patterns
@@ -207,7 +206,7 @@ gcloud compute instances list \
 # Stop all VMs with a specific label
 gcloud compute instances list \
   --filter="labels.env=development AND status=RUNNING" \
-  --format="value(name, zone)" | while read NAME ZONE; do
+  --format="value(name, zone.basename())" | while read NAME ZONE; do
     echo "Stopping $NAME in $ZONE"
     gcloud compute instances stop "$NAME" --zone="$ZONE" --quiet
 done
@@ -284,10 +283,11 @@ gcloud compute instances list \
 
 ```bash
 # Find VMs and their associated firewall rules
-for VM in $(gcloud compute instances list --format="value(name)"); do
+gcloud compute instances list \
+  --format="value(name, zone.basename())" | while read VM ZONE; do
   TAGS=$(gcloud compute instances describe "$VM" \
-    --zone=us-central1-a \
-    --format="value(tags.items)" 2>/dev/null)
+    --zone="$ZONE" \
+    --format="value(tags.items.list())" 2>/dev/null)
 
   echo "VM: $VM, Tags: $TAGS"
 
@@ -361,7 +361,7 @@ gcloud compute instances list \
 ```bash
 # Get the full resource URI (useful for referencing resources in other commands)
 gcloud compute instances list \
-  --format="value(selfLink)"
+  --format="value(uri())"
 ```
 
 ### Transformations
