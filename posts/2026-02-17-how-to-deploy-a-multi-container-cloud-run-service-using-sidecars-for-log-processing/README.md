@@ -20,7 +20,7 @@ In a multi-container Cloud Run service:
 - One or more **sidecar containers** run alongside it in the same execution environment
 - All containers share the same network namespace (they can communicate via localhost)
 - Sidecars can depend on the startup of other containers
-- Sidecars share the CPU and memory allocated to the service
+- Each container has its own configured CPU and memory limits within the same service instance
 
 ```mermaid
 graph LR
@@ -51,7 +51,7 @@ function sendToLogProcessor(logEntry) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Content-Length': data.length
+      'Content-Length': Buffer.byteLength(data)
     }
   };
 
@@ -145,6 +145,18 @@ def flush_logs():
     except Exception as e:
         print(f'Error writing to GCS: {e}')
 
+    # Insert the same batch into BigQuery.
+    try:
+        client = bigquery.Client()
+        table_id = f'{client.project}.{BQ_DATASET}.{BQ_TABLE}'
+        errors = client.insert_rows_json(table_id, batch)
+        if errors:
+            print(f'Error writing to BigQuery: {errors}')
+        else:
+            print(f'Flushed {len(batch)} logs to BigQuery')
+    except Exception as e:
+        print(f'Error writing to BigQuery: {e}')
+
 def periodic_flush():
     """Run on a timer to flush logs at regular intervals."""
     while True:
@@ -167,10 +179,11 @@ def receive_log():
 
     with buffer_lock:
         log_buffer.append(log_entry)
+        should_flush = len(log_buffer) >= BATCH_SIZE
 
-        # Flush if the buffer is full
-        if len(log_buffer) >= BATCH_SIZE:
-            flush_logs()
+    # Flush outside the lock because flush_logs also acquires buffer_lock.
+    if should_flush:
+        flush_logs()
 
     return jsonify({'status': 'accepted'}), 202
 
@@ -217,7 +230,7 @@ gcloud builds submit ./log-processor \
 
 ## Step 4: Deploy with a YAML Configuration
 
-Multi-container Cloud Run services require a YAML configuration file. The gcloud command-line flags do not support specifying multiple containers:
+You can deploy multi-container Cloud Run services with YAML, Terraform, or the Google Cloud CLI. This example uses YAML so the complete service definition is visible in one file:
 
 ```yaml
 # service.yaml - Cloud Run service with sidecar container
@@ -225,13 +238,11 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: my-app-with-sidecar
-  annotations:
-    run.googleapis.com/launch-stage: BETA
 spec:
   template:
     metadata:
       annotations:
-        # Allow the sidecar to use up to 512Mi memory
+        # Start the log processor before the main application
         run.googleapis.com/container-dependencies: '{"main-app":["log-processor"]}'
     spec:
       containerConcurrency: 80
@@ -283,7 +294,7 @@ gcloud run services replace service.yaml \
 
 The `container-dependencies` annotation in the YAML controls startup order. In the example above, `main-app` depends on `log-processor`, meaning the log processor sidecar starts first and must pass its health check before the main app starts.
 
-This is important because the main app tries to send logs to the sidecar on startup. If the sidecar is not ready, those initial log entries would be lost.
+This is important because the main app sends logs to the sidecar while handling requests. If the sidecar is not ready when the instance starts serving traffic, those initial log entries could be lost.
 
 ## Step 6: Verify the Deployment
 
@@ -327,10 +338,10 @@ gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.serv
 
 Resource Allocation
 
-Both containers share the total CPU and memory allocated to the service. Plan your resource limits accordingly:
+Each container has its own CPU and memory limits within the Cloud Run service instance. Plan those limits and the service billing setting according to what each container needs:
 
-- The sum of all container CPU limits should not exceed the service's CPU allocation
-- The sum of all container memory limits should not exceed the service's memory allocation
+- Configure CPU and memory limits separately for the ingress container and each sidecar
+- With request-based billing, sidecars receive CPU while the instance is processing requests and during startup; use instance-based billing if a sidecar must do background work while idle
 - Sidecars that do minimal work (like log forwarding) typically need 0.25-0.5 CPU and 128-256 Mi memory
 
 ## Common Sidecar Patterns
