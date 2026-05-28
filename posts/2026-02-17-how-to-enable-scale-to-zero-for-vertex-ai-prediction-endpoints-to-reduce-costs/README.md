@@ -12,9 +12,9 @@ Running a Vertex AI prediction endpoint 24/7 costs money even when nobody is sen
 
 ## What Is Scale-to-Zero
 
-With traditional autoscaling, you set a minimum replica count of at least 1. That means there is always at least one machine running, ready to serve predictions. With scale-to-zero, you set the minimum to 0. When no requests come in for a configurable period, Vertex AI shuts down all replicas. When a new request arrives, it starts a replica to handle it.
+With traditional autoscaling, you set a minimum replica count of at least 1. That means there is always at least one machine running, ready to serve predictions. With scale-to-zero, you set the minimum to 0. When no requests come in for a configurable period, Vertex AI shuts down all replicas. When a new request arrives, Vertex AI returns a 429 response, drops that request, and starts scaling the model server back up. Your client should wait and retry the request after the model is ready.
 
-The trade-off is latency. The first request after a scale-to-zero event will take longer because a new replica needs to start up and load the model. This cold start can range from a few seconds to a few minutes depending on your model size and machine type.
+The trade-off is latency and retry handling. The first request after a scale-to-zero event will fail with a 429 while a new replica starts up and loads the model. This cold start can range from a few seconds to a few minutes depending on your model size and machine type.
 
 ## Enabling Scale-to-Zero
 
@@ -63,13 +63,15 @@ You can also configure scale-to-zero with the gcloud command:
 
 ```bash
 # Deploy a model with scale-to-zero using gcloud
-gcloud ai endpoints deploy-model ENDPOINT_ID \
+gcloud beta ai endpoints deploy-model ENDPOINT_ID \
   --region=us-central1 \
   --model=MODEL_ID \
   --display-name=scale-to-zero-deployment \
   --machine-type=n1-standard-4 \
   --min-replica-count=0 \
-  --max-replica-count=5
+  --max-replica-count=5 \
+  --min-scaleup-period=300s \
+  --idle-scaledown-period=300s
 ```
 
 ## Scale-to-Zero with GPU Models
@@ -112,10 +114,11 @@ model.deploy(
 
 When a scale-to-zero endpoint receives a request with no active replicas, the following happens:
 
-1. Vertex AI provisions a machine (and GPU if configured)
-2. The serving container starts up
-3. The model is loaded from Cloud Storage into memory
-4. The prediction is served
+1. Vertex AI returns a 429 response and drops the triggering request
+2. Vertex AI provisions a machine (and GPU if configured)
+3. The serving container starts up
+4. The model is loaded from Cloud Storage into memory
+5. A later retry can be served after the model is ready
 
 This sequence introduces cold start latency. Here are typical cold start times:
 
@@ -172,7 +175,7 @@ gcloud scheduler jobs create http warmup-endpoint \
   --uri="https://us-central1-aiplatform.googleapis.com/v1/projects/your-project-id/locations/us-central1/endpoints/ENDPOINT_ID:predict" \
   --http-method=POST \
   --headers="Content-Type=application/json" \
-  --body='{"instances": [[0.0, 0.0, 0.0, 0.0, 0.0]]}' \
+  --message-body='{"instances": [[0.0, 0.0, 0.0, 0.0, 0.0]]}' \
   --oauth-service-account-email=your-sa@your-project-id.iam.gserviceaccount.com \
   --time-zone="America/New_York"
 ```
@@ -235,25 +238,25 @@ for result in results:
 
 ## Combining Scale-to-Zero with Traffic Splitting
 
-If you have a model that needs both low-latency production traffic and intermittent batch-like requests, consider using two deployments on the same endpoint:
+If you have a model that needs both low-latency production traffic and intermittent batch-like requests, do not use two deployments on the same endpoint for the scale-to-zero deployment. Scale-to-zero is only compatible with single-model deployments and one model per endpoint. Use separate endpoints instead:
 
 ```python
-# One deployment always on for production traffic
+# One endpoint always on for production traffic
 model.deploy(
-    endpoint=endpoint,
+    endpoint=production_endpoint,
     machine_type='n1-standard-4',
     min_replica_count=1,
     max_replica_count=5,
-    traffic_percentage=90,
+    traffic_percentage=100,
 )
 
-# Another deployment with scale-to-zero for testing
+# A separate endpoint with scale-to-zero for intermittent traffic
 test_model.deploy(
-    endpoint=endpoint,
+    endpoint=test_endpoint,
     machine_type='n1-standard-2',
     min_replica_count=0,
     max_replica_count=2,
-    traffic_percentage=10,
+    traffic_percentage=100,
 )
 ```
 
