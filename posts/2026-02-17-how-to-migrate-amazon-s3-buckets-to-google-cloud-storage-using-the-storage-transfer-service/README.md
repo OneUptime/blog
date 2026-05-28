@@ -33,8 +33,7 @@ The Storage Transfer Service needs read access to your S3 buckets. Create a dedi
             "Sid": "AllowListBucket",
             "Effect": "Allow",
             "Action": [
-                "s3:ListBucket",
-                "s3:GetBucketLocation"
+                "s3:ListBucket"
             ],
             "Resource": "arn:aws:s3:::source-bucket-name"
         },
@@ -42,8 +41,7 @@ The Storage Transfer Service needs read access to your S3 buckets. Create a dedi
             "Sid": "AllowGetObject",
             "Effect": "Allow",
             "Action": [
-                "s3:GetObject",
-                "s3:GetObjectVersion"
+                "s3:GetObject"
             ],
             "Resource": "arn:aws:s3:::source-bucket-name/*"
         }
@@ -51,21 +49,21 @@ The Storage Transfer Service needs read access to your S3 buckets. Create a dedi
 }
 ```
 
-Generate access keys for this user and store them in Google Cloud Secret Manager:
+Generate access keys for this user and put them in a local credentials file for the `gcloud` command:
 
 ```bash
-# Store AWS credentials in Secret Manager
+# Store AWS credentials for the transfer command
+cat > aws-creds.json <<'EOF'
+{
+    "accessKeyId": "AKIAIOSFODNN7EXAMPLE",
+    "secretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+}
+EOF
 
-echo -n "AKIAIOSFODNN7EXAMPLE" | \
-  gcloud secrets create aws-access-key-id \
-    --data-file=- \
-    --project=my-gcp-project
-
-echo -n "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" | \
-  gcloud secrets create aws-secret-access-key \
-    --data-file=- \
-    --project=my-gcp-project
+chmod 600 aws-creds.json
 ```
+
+If you want Storage Transfer Service to read AWS credentials from Google Cloud Secret Manager instead, store that JSON as one secret and create the transfer through the REST API with `awsS3DataSource.credentialsSecret`.
 
 ## Creating the Destination Bucket
 
@@ -169,15 +167,18 @@ resource "google_storage_transfer_job" "s3_to_gcs" {
     # Transfer options
     transfer_options {
       # Only transfer new or changed objects
-      overwrite_objects_already_existing_in_sink = false
+      overwrite_when = "DIFFERENT"
 
       # Delete objects from source after successful transfer
       # Use with caution - only enable after verification
       delete_objects_from_source_after_transfer = false
-
-      # Overwrite if different checksum
-      overwrite_when = "DIFFERENT"
     }
+
+    # Only transfer objects modified after a certain date
+    # Useful for catching up incrementally
+    # object_conditions {
+    #   min_time_elapsed_since_last_modification = "3600s"
+    # }
   }
 
   # Schedule: run daily at 2 AM UTC until migration is complete
@@ -201,13 +202,6 @@ resource "google_storage_transfer_job" "s3_to_gcs" {
     repeat_interval = "86400s"  # Daily
   }
 
-  # Only transfer objects modified after a certain date
-  # Useful for catching up incrementally
-  # transfer_spec {
-  #   object_conditions {
-  #     min_time_elapsed_since_last_modification = "3600s"
-  #   }
-  # }
 }
 ```
 
@@ -219,10 +213,9 @@ Keep track of your transfer jobs with this monitoring setup:
 # monitor_transfer.py
 # Monitors Storage Transfer Service job progress
 from google.cloud import storage_transfer_v1
-import json
 
 def check_transfer_status(project_id, job_name):
-    """Check the status of a transfer job and its operations."""
+    """Check the status of a transfer job and its latest operation."""
     client = storage_transfer_v1.StorageTransferServiceClient()
 
     # Get the job details
@@ -237,37 +230,37 @@ def check_transfer_status(project_id, job_name):
     print(f"Status: {job.status}")
     print(f"Description: {job.description}")
 
-    # List recent operations (transfer runs)
-    operations = client.list_transfer_operations(
-        request={
-            "name": "transferOperations",
-            "filter": json.dumps({
-                "projectId": project_id,
-                "jobNames": [job_name],
-            })
-        }
+    if not job.latest_operation_name:
+        print("No transfer operation has started yet.")
+        return
+
+    # Get the latest transfer operation
+    response = client.transport.operations_client.get_operation(
+        job.latest_operation_name
+    )
+    op = storage_transfer_v1.TransferOperation.deserialize(
+        response.metadata.value
     )
 
-    for op in operations:
-        counters = op.counters
-        print(f"\nOperation: {op.name}")
-        print(f"  Status: {op.status}")
-        print(f"  Objects found: {counters.objects_found_from_source}")
-        print(f"  Objects copied: {counters.objects_copied_to_sink}")
-        print(f"  Bytes found: {counters.bytes_found_from_source}")
-        print(f"  Bytes copied: {counters.bytes_copied_to_sink}")
+    counters = op.counters
+    print(f"\nOperation: {job.latest_operation_name}")
+    print(f"  Status: {op.status}")
+    print(f"  Objects found: {counters.objects_found_from_source}")
+    print(f"  Objects copied: {counters.objects_copied_to_sink}")
+    print(f"  Bytes found: {counters.bytes_found_from_source}")
+    print(f"  Bytes copied: {counters.bytes_copied_to_sink}")
 
-        if counters.objects_found_from_source > 0:
-            progress = (
-                counters.objects_copied_to_sink /
-                counters.objects_found_from_source * 100
-            )
-            print(f"  Progress: {progress:.1f}%")
+    if counters.objects_found_from_source > 0:
+        progress = (
+            counters.objects_copied_to_sink /
+            counters.objects_found_from_source * 100
+        )
+        print(f"  Progress: {progress:.1f}%")
 
-        if op.error_breakdowns:
-            print(f"  Errors: {len(op.error_breakdowns)}")
-            for error in op.error_breakdowns[:5]:
-                print(f"    - {error}")
+    if op.error_breakdowns:
+        print(f"  Errors: {len(op.error_breakdowns)}")
+        for error in op.error_breakdowns[:5]:
+            print(f"    - {error}")
 
 
 if __name__ == "__main__":
@@ -286,7 +279,8 @@ After the transfer completes, verify that all objects were transferred correctly
 # Verifies data integrity after S3 to GCS migration
 import boto3
 from google.cloud import storage
-import hashlib
+import base64
+import re
 
 def compare_buckets(s3_bucket, gcs_bucket, prefix=""):
     """Compare objects between S3 and GCS to verify transfer."""
@@ -316,6 +310,9 @@ def compare_buckets(s3_bucket, gcs_bucket, prefix=""):
     # Compare
     missing_in_gcs = []
     size_mismatch = []
+    checksum_mismatch = []
+    checksum_verified = 0
+    checksum_skipped = 0
     verified = 0
 
     for key, s3_info in s3_objects.items():
@@ -329,6 +326,20 @@ def compare_buckets(s3_bucket, gcs_bucket, prefix=""):
             })
         else:
             verified += 1
+            s3_etag = s3_info['etag']
+            gcs_md5 = gcs_objects[key]['md5']
+
+            # S3 ETags are MD5 hashes only for many single-part, unencrypted
+            # uploads. Multipart and some encrypted objects need size checks or
+            # source-side checksum metadata instead.
+            if re.fullmatch(r"[0-9a-fA-F]{32}", s3_etag) and gcs_md5:
+                gcs_md5_hex = base64.b64decode(gcs_md5).hex()
+                if s3_etag.lower() == gcs_md5_hex:
+                    checksum_verified += 1
+                else:
+                    checksum_mismatch.append(key)
+            else:
+                checksum_skipped += 1
 
     extra_in_gcs = [
         k for k in gcs_objects if k not in s3_objects
@@ -337,8 +348,11 @@ def compare_buckets(s3_bucket, gcs_bucket, prefix=""):
     print(f"S3 objects: {len(s3_objects)}")
     print(f"GCS objects: {len(gcs_objects)}")
     print(f"Verified (matching size): {verified}")
+    print(f"Verified (matching MD5): {checksum_verified}")
+    print(f"Checksum skipped: {checksum_skipped}")
     print(f"Missing in GCS: {len(missing_in_gcs)}")
     print(f"Size mismatches: {len(size_mismatch)}")
+    print(f"Checksum mismatches: {len(checksum_mismatch)}")
     print(f"Extra in GCS: {len(extra_in_gcs)}")
 
     if missing_in_gcs:
@@ -348,8 +362,10 @@ def compare_buckets(s3_bucket, gcs_bucket, prefix=""):
 
     return {
         "verified": verified,
+        "checksum_verified": checksum_verified,
         "missing": len(missing_in_gcs),
         "mismatched": len(size_mismatch),
+        "checksum_mismatched": len(checksum_mismatch),
         "extra": len(extra_in_gcs),
     }
 
@@ -367,9 +383,10 @@ For very large buckets (tens of terabytes or more), consider these optimizations
 # Split the transfer into multiple jobs by prefix
 for PREFIX in a b c d e f 0 1 2 3 4 5 6 7 8 9; do
   gcloud transfer jobs create \
-    s3://source-bucket/${PREFIX} \
-    gs://destination-bucket/${PREFIX} \
+    s3://source-bucket \
+    gs://destination-bucket \
     --source-creds-file=aws-creds.json \
+    --include-prefixes="${PREFIX}" \
     --name="s3-migration-prefix-${PREFIX}" \
     --project=my-gcp-project
 done
@@ -391,7 +408,7 @@ s3_compatible = boto3.client(
     aws_secret_access_key='GOOG_SECRET',
 )
 
-# Existing S3 code works with minimal changes
+# Many existing S3 object operations work with minimal changes
 response = s3_compatible.get_object(
     Bucket='my-gcs-bucket',
     Key='my-object-key'
