@@ -72,8 +72,8 @@ resource "google_container_cluster" "primary" {
     channel = "REGULAR"
   }
 
-  # Match your EKS cluster version
-  min_master_version = "1.28"
+  # Match your EKS cluster version with a currently supported GKE version
+  min_master_version = "1.35"
 }
 
 # Node pool matching EKS node group
@@ -125,8 +125,11 @@ This script exports all Kubernetes resources from EKS:
 EXPORT_DIR="./eks-export"
 mkdir -p "$EXPORT_DIR"
 
-# List of resource types to export
-RESOURCES=(
+# Export namespaces first
+kubectl get namespaces -o yaml > "$EXPORT_DIR/namespaces.yaml"
+
+# List of namespaced resource types to export
+NAMESPACED_RESOURCES=(
   "deployments"
   "statefulsets"
   "daemonsets"
@@ -140,6 +143,10 @@ RESOURCES=(
   "serviceaccounts"
   "roles"
   "rolebindings"
+)
+
+# List of cluster-scoped resource types to export
+CLUSTER_RESOURCES=(
   "clusterroles"
   "clusterrolebindings"
 )
@@ -153,9 +160,14 @@ for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
 
   mkdir -p "$EXPORT_DIR/$ns"
 
-  for resource in "${RESOURCES[@]}"; do
+  for resource in "${NAMESPACED_RESOURCES[@]}"; do
     kubectl get "$resource" -n "$ns" -o yaml > "$EXPORT_DIR/$ns/$resource.yaml" 2>/dev/null
   done
+done
+
+mkdir -p "$EXPORT_DIR/cluster"
+for resource in "${CLUSTER_RESOURCES[@]}"; do
+  kubectl get "$resource" -o yaml > "$EXPORT_DIR/cluster/$resource.yaml" 2>/dev/null
 done
 
 echo "Export complete. Resources saved to $EXPORT_DIR"
@@ -174,6 +186,13 @@ import sys
 def translate_manifest(manifest):
     """Translate AWS-specific Kubernetes resources for GKE."""
     kind = manifest.get('kind', '')
+    clean_server_managed_fields(manifest)
+
+    if kind == 'List':
+        manifest['items'] = [
+            translate_manifest(item) for item in manifest.get('items', [])
+        ]
+        return manifest
 
     # Translate annotations
     translate_annotations(manifest)
@@ -200,6 +219,29 @@ def translate_manifest(manifest):
     return manifest
 
 
+def clean_server_managed_fields(manifest):
+    """Remove fields managed by the source cluster API server."""
+    metadata = manifest.get('metadata', {})
+    for field in (
+        'creationTimestamp',
+        'generation',
+        'managedFields',
+        'resourceVersion',
+        'selfLink',
+        'uid',
+    ):
+        metadata.pop(field, None)
+
+    manifest.pop('status', None)
+
+
+def translate_annotations(manifest):
+    """Remove annotations that should not be replayed into the new cluster."""
+    annotations = manifest.get('metadata', {}).get('annotations', {})
+    annotations.pop('kubectl.kubernetes.io/last-applied-configuration', None)
+    manifest.setdefault('metadata', {})['annotations'] = annotations
+
+
 def translate_service_account(sa):
     """Convert IRSA annotations to Workload Identity annotations."""
     annotations = sa.get('metadata', {}).get('annotations', {})
@@ -217,17 +259,19 @@ def translate_service_account(sa):
 def translate_ingress(ingress):
     """Convert ALB ingress annotations to GKE ingress annotations."""
     annotations = ingress.get('metadata', {}).get('annotations', {})
-
-    # Map common ALB annotations to GKE equivalents
-    alb_to_gke = {
-        'kubernetes.io/ingress.class': 'kubernetes.io/ingress.class',
-        'alb.ingress.kubernetes.io/scheme': None,  # GKE uses internal annotation differently
-        'alb.ingress.kubernetes.io/certificate-arn': None,  # Use Google-managed certs
-    }
+    internal_ingress = (
+        annotations.get('alb.ingress.kubernetes.io/scheme') == 'internal'
+    )
 
     # Replace ingress class
     if annotations.get('kubernetes.io/ingress.class') == 'alb':
-        annotations['kubernetes.io/ingress.class'] = 'gce'
+        annotations['kubernetes.io/ingress.class'] = (
+            'gce-internal' if internal_ingress else 'gce'
+        )
+
+    for ann in list(annotations):
+        if ann.startswith('alb.ingress.kubernetes.io/'):
+            del annotations[ann]
 
     # Add GKE-specific annotations
     annotations['kubernetes.io/ingress.global-static-ip-name'] = 'web-static-ip'
@@ -238,6 +282,11 @@ def translate_ingress(ingress):
 def translate_service(service):
     """Convert AWS service annotations to GCP equivalents."""
     annotations = service.get('metadata', {}).get('annotations', {})
+    internal_service = any(
+        key.startswith('service.beta.kubernetes.io/aws-load-balancer')
+        and value in ('true', 'internal')
+        for key, value in annotations.items()
+    )
 
     # Replace NLB annotations with GCP equivalents
     aws_annotations = [k for k in annotations if 'aws' in k.lower()]
@@ -245,8 +294,8 @@ def translate_service(service):
         del annotations[ann]
 
     # Add GCP internal load balancer annotation if needed
-    if 'internal' in str(annotations):
-        annotations['cloud.google.com/load-balancer-type'] = 'Internal'
+    if internal_service:
+        annotations['networking.gke.io/load-balancer-type'] = 'Internal'
 
     service.setdefault('metadata', {})['annotations'] = annotations
 
@@ -254,8 +303,8 @@ def translate_service(service):
 def translate_storage_class(pvc):
     """Map AWS storage classes to GCP equivalents."""
     storage_class_map = {
-        'gp2': 'standard',
-        'gp3': 'standard',
+        'gp2': 'standard-rwo',
+        'gp3': 'standard-rwo',
         'io1': 'premium-rwo',
         'io2': 'premium-rwo',
     }
@@ -349,12 +398,11 @@ Deploy your translated manifests to GKE and run verification:
 # Apply namespaces first
 kubectl apply -f gke-manifests/namespaces.yaml --context gke-context
 
-# Apply configurations and secrets
-kubectl apply -f gke-manifests/configmaps/ --context gke-context
-kubectl apply -f gke-manifests/secrets/ --context gke-context
+# Apply cluster-scoped resources
+kubectl apply -f gke-manifests/cluster/ --context gke-context
 
-# Apply workloads
-kubectl apply -f gke-manifests/deployments/ --context gke-context
+# Apply namespaced resources
+kubectl apply -f gke-manifests/ --recursive --context gke-context
 
 # Verify all pods are running
 kubectl get pods --all-namespaces --context gke-context | grep -v Running
@@ -370,7 +418,7 @@ Use DNS-based traffic shifting to gradually move traffic from EKS to GKE:
 
 resource "google_dns_record_set" "app" {
   name         = "app.example.com."
-  type         = "A"
+  type         = "CNAME"
   ttl          = 60  # Low TTL for faster switching
   managed_zone = google_dns_managed_zone.example.name
 
@@ -378,12 +426,12 @@ resource "google_dns_record_set" "app" {
     wrr {
       # Start with 10% to GKE
       weight  = 10
-      rrdatas = [google_compute_global_address.gke_lb.address]
+      rrdatas = ["gke-app.example.com."]
     }
     wrr {
       # 90% still going to EKS
       weight  = 90
-      rrdatas = [data.aws_lb.eks_lb.dns_name]
+      rrdatas = ["${data.aws_lb.eks_lb.dns_name}."]
     }
   }
 }
