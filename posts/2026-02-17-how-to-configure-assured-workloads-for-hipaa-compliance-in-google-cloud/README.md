@@ -8,7 +8,7 @@ Description: Learn how to configure GCP Assured Workloads for HIPAA compliance, 
 
 ---
 
-Healthcare organizations and their business associates handling Protected Health Information (PHI) need to comply with HIPAA. Google Cloud supports HIPAA compliance through a Business Associate Agreement (BAA) and the Assured Workloads service, which creates a controlled environment with the technical safeguards HIPAA requires.
+Healthcare organizations and their business associates handling Protected Health Information (PHI) need to comply with HIPAA. Google Cloud supports HIPAA compliance through a Business Associate Agreement (BAA) and the Assured Workloads service, which creates a controlled environment that helps implement technical safeguards for regulated workloads.
 
 This post walks through setting up Assured Workloads for HIPAA, configuring the necessary encryption and access controls, and maintaining ongoing compliance.
 
@@ -52,13 +52,10 @@ gcloud assured workloads create \
   --organization=ORG_ID \
   --location=us \
   --display-name="HIPAA Workloads" \
-  --compliance-regime=HIPAA \
-  --billing-account=BILLING_ACCOUNT_ID \
+  --compliance-regime=hipaa \
+  --billing-account=billingAccounts/BILLING_ACCOUNT_ID \
   --provisioned-resources-parent=organizations/ORG_ID \
-  --resource-settings='[{
-    "resourceType": "CONSUMER_FOLDER",
-    "displayName": "hipaa-workloads"
-  }]'
+  --resource-settings=consumer-project-id=hipaa-workloads
 ```
 
 Wait for creation to complete and verify:
@@ -88,7 +85,7 @@ gcloud resource-manager org-policies list \
 
 ### Audit Controls
 
-HIPAA requires that you log all access to PHI. Enable comprehensive audit logging:
+HIPAA audit controls require mechanisms to record and examine activity in systems that contain electronic PHI. Enable comprehensive audit logging:
 
 ```bash
 # Get the current IAM policy with audit config
@@ -122,7 +119,7 @@ gcloud projects set-iam-policy hipaa-project /tmp/iam-policy.json
 
 ### Encryption Controls
 
-HIPAA requires encryption of PHI both at rest and in transit. GCP encrypts data at rest by default, but Assured Workloads recommends CMEK for additional control.
+HIPAA treats encryption of PHI at rest and in transit as an addressable implementation specification, and it is a standard control for Google Cloud healthcare workloads. GCP encrypts data at rest by default, but Assured Workloads recommends CMEK for additional control.
 
 ```bash
 # Create a key ring for HIPAA workloads
@@ -145,13 +142,20 @@ gcloud kms keys create bq-phi-key \
   --rotation-period=90d \
   --project=hipaa-project
 
+# Cloud SQL CMEK keys must be in the same region as the instance
+gcloud kms keyrings create hipaa-sql-keyring \
+  --location=us-central1 \
+  --project=hipaa-project
+
 gcloud kms keys create sql-phi-key \
-  --keyring=hipaa-keyring \
-  --location=us \
+  --keyring=hipaa-sql-keyring \
+  --location=us-central1 \
   --purpose=encryption \
   --rotation-period=90d \
   --project=hipaa-project
 ```
+
+Before using these keys with Cloud Storage, BigQuery, or Cloud SQL, grant the required service agents the Cloud KMS CryptoKey Encrypter/Decrypter role on the relevant keys.
 
 ## Configuring Services for HIPAA
 
@@ -167,14 +171,14 @@ gcloud storage buckets create gs://hipaa-phi-data \
   --uniform-bucket-level-access \
   --project=hipaa-project
 
-# Disable public access prevention at the bucket level
+# Enable public access prevention at the bucket level
 gcloud storage buckets update gs://hipaa-phi-data \
   --public-access-prevention
 ```
 
 ### Cloud SQL for PHI
 
-Database instances storing PHI need CMEK and restricted network access:
+Database instances storing PHI need CMEK and restricted network access. Create the VPC and configure private services access before creating the instance:
 
 ```bash
 # Create a Cloud SQL instance with CMEK and private IP only
@@ -184,7 +188,7 @@ gcloud sql instances create hipaa-db \
   --region=us-central1 \
   --network=projects/hipaa-project/global/networks/hipaa-vpc \
   --no-assign-ip \
-  --disk-encryption-key=projects/hipaa-project/locations/us/keyRings/hipaa-keyring/cryptoKeys/sql-phi-key \
+  --disk-encryption-key=projects/hipaa-project/locations/us-central1/keyRings/hipaa-sql-keyring/cryptoKeys/sql-phi-key \
   --require-ssl \
   --project=hipaa-project
 ```
@@ -259,9 +263,8 @@ gcloud monitoring policies create \
   --display-name="PHI Access Spike Alert" \
   --condition-display-name="Unusual PHI data access volume" \
   --condition-filter='metric.type="logging.googleapis.com/user/phi-data-access"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
+  --if='> 100' \
+  --duration=300s \
   --notification-channels="projects/hipaa-project/notificationChannels/CHANNEL_ID" \
   --combiner=OR \
   --project=hipaa-project
