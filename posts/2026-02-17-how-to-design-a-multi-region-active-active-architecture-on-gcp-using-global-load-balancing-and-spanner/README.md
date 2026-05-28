@@ -30,13 +30,14 @@ graph TD
 
 ## Setting Up Cloud Spanner
 
-Cloud Spanner is the only globally distributed database that provides external consistency (the strongest form of consistency) without sacrificing availability. This means all regions always see the same data, and there is no conflict resolution needed.
+Cloud Spanner provides external consistency for globally distributed transactions. Strong reads see all transactions that committed before the read starts, and writes use synchronous replication so the application does not need conflict resolution between regions.
 
 ```bash
 # Create a multi-region Spanner instance
 
 gcloud spanner instances create global-app-db \
   --config=nam-eur-asia1 \
+  --edition=ENTERPRISE_PLUS \
   --description="Global active-active database" \
   --nodes=3
 
@@ -56,7 +57,7 @@ CREATE TABLE Users (
   Name STRING(255) NOT NULL,
   Region STRING(50),
   CreatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
-  UpdatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+  UpdatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true)
 ) PRIMARY KEY (UserId);
 
 -- Unique index for email lookups
@@ -68,7 +69,7 @@ CREATE TABLE Orders (
   OrderId STRING(36) NOT NULL,
   TotalAmount FLOAT64 NOT NULL,
   Status STRING(50) NOT NULL,
-  CreatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+  CreatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true)
 ) PRIMARY KEY (UserId, OrderId),
   INTERLEAVE IN PARENT Users ON DELETE CASCADE;
 
@@ -91,7 +92,8 @@ gcloud run deploy app \
   --set-env-vars="SPANNER_INSTANCE=global-app-db,SPANNER_DATABASE=app_db,REGION=us-central1" \
   --min-instances=2 \
   --max-instances=100 \
-  --no-allow-unauthenticated
+  --allow-unauthenticated \
+  --ingress=internal-and-cloud-load-balancing
 
 # Deploy to Europe region
 gcloud run deploy app \
@@ -100,7 +102,8 @@ gcloud run deploy app \
   --set-env-vars="SPANNER_INSTANCE=global-app-db,SPANNER_DATABASE=app_db,REGION=europe-west1" \
   --min-instances=2 \
   --max-instances=100 \
-  --no-allow-unauthenticated
+  --allow-unauthenticated \
+  --ingress=internal-and-cloud-load-balancing
 
 # Deploy to Asia region
 gcloud run deploy app \
@@ -109,7 +112,8 @@ gcloud run deploy app \
   --set-env-vars="SPANNER_INSTANCE=global-app-db,SPANNER_DATABASE=app_db,REGION=asia-east1" \
   --min-instances=2 \
   --max-instances=100 \
-  --no-allow-unauthenticated
+  --allow-unauthenticated \
+  --ingress=internal-and-cloud-load-balancing
 ```
 
 ## Application Code with Spanner
@@ -220,7 +224,7 @@ def health():
     """Health check that verifies database connectivity."""
     try:
         with database.snapshot() as snapshot:
-            snapshot.execute_sql('SELECT 1')
+            list(snapshot.execute_sql('SELECT 1'))
         return jsonify({'status': 'healthy', 'region': current_region}), 200
     except Exception as e:
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
@@ -288,6 +292,8 @@ gcloud compute target-https-proxies create app-https-proxy \
 # Create the forwarding rule (this creates the external IP)
 gcloud compute forwarding-rules create app-forwarding-rule \
   --global \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
   --target-https-proxy=app-https-proxy \
   --ports=443
 
@@ -296,24 +302,32 @@ gcloud compute forwarding-rules describe app-forwarding-rule --global \
   --format='value(IPAddress)'
 ```
 
-## Health Checks and Failover
+## Outlier Detection and Failover
 
-The load balancer automatically monitors the health of each backend and routes traffic away from unhealthy regions.
+Backend services with serverless NEG backends do not support health checks. For multi-region Cloud Run backends, enable outlier detection so the load balancer can reduce traffic to serverless NEGs that are returning repeated 5xx responses.
 
 ```bash
-# Configure health checks
-gcloud compute health-checks create http app-health-check \
-  --port=8080 \
-  --request-path=/health \
-  --check-interval=10s \
-  --timeout=5s \
-  --healthy-threshold=2 \
-  --unhealthy-threshold=3
+# Export the backend service
+gcloud compute backend-services export app-backend \
+  --destination=app-backend.yaml \
+  --global
 
-# Attach the health check to the backend service
-gcloud compute backend-services update app-backend \
-  --global \
-  --health-checks=app-health-check
+# Add this block to app-backend.yaml
+outlierDetection:
+  baseEjectionTime:
+    nanos: 0
+    seconds: 30
+  consecutiveErrors: 5
+  enforcingConsecutiveErrors: 100
+  interval:
+    nanos: 0
+    seconds: 1
+  maxEjectionPercent: 50
+
+# Import the updated backend service
+gcloud compute backend-services import app-backend \
+  --source=app-backend.yaml \
+  --global
 ```
 
 ## Stale Read Optimization
@@ -326,7 +340,7 @@ import datetime
 @app.route('/api/users', methods=['GET'])
 def list_users():
     """List users with stale reads for better performance."""
-    # Read data up to 15 seconds old - this avoids cross-region round trips
+    # Read data exactly 15 seconds old, which can often be served by a closer replica
     staleness = datetime.timedelta(seconds=15)
 
     with database.snapshot(exact_staleness=staleness) as snapshot:
