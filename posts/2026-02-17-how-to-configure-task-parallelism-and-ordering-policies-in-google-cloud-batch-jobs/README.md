@@ -8,13 +8,13 @@ Description: Configure task parallelism and ordering policies in Google Cloud Ba
 
 ---
 
-Google Cloud Batch lets you run hundreds or thousands of tasks within a single job. But not all tasks should run the same way. Some workloads need maximum parallelism to finish quickly. Others need sequential execution because tasks depend on each other. And some need a mix - groups of parallel tasks that run in sequence.
+Google Cloud Batch lets you run hundreds or thousands of tasks within a single job. But not all tasks should run the same way. Some workloads need maximum parallelism to finish quickly. Others need sequential execution because tasks depend on each other. And some need a mix - parallel tasks that each run an ordered sequence of steps.
 
 This guide covers the different parallelism configurations and task ordering policies in Cloud Batch, with practical examples for each pattern.
 
 ## Understanding Task Groups
 
-A Batch job is organized into task groups. Each task group has its own task specification, count, and parallelism setting. Tasks within a group all run the same code but receive a unique task index through the `BATCH_TASK_INDEX` environment variable.
+A Batch job is organized around task groups. In the current Batch v1 API, a job supports one task group, which has its own task specification, count, and parallelism setting. Tasks within the group all run the same code but receive a unique task index through the `BATCH_TASK_INDEX` environment variable.
 
 ```mermaid
 graph TD
@@ -173,7 +173,7 @@ def create_rate_limited_job(project_id, region):
 
 ## Sequential Execution
 
-When tasks must run one after another, set parallelism to 1. Each task completes before the next one starts.
+When tasks must run one after another in task-index order, use the `IN_ORDER` scheduling policy with parallelism set to 1. Each task completes before the next indexed task starts.
 
 ```python
 # sequential_job.py - Tasks run one at a time in order
@@ -225,7 +225,7 @@ def create_sequential_job(project_id, region):
     # GCS volume for sharing data between sequential tasks
     gcs_volume = batch_v1.Volume()
     gcs = batch_v1.GCS()
-    gcs.remote_path = "pipeline-workspace/"
+    gcs.remote_path = "YOUR_BUCKET/pipeline-workspace/"
     gcs_volume.gcs = gcs
     gcs_volume.mount_path = "/mnt/shared"
     task_spec.volumes = [gcs_volume]
@@ -234,7 +234,8 @@ def create_sequential_job(project_id, region):
     task_group = batch_v1.TaskGroup()
     task_group.task_spec = task_spec
     task_group.task_count = 4      # 4 pipeline steps
-    task_group.parallelism = 1     # Run one at a time, in order
+    task_group.parallelism = 1     # Required for IN_ORDER scheduling
+    task_group.scheduling_policy = batch_v1.TaskGroup.SchedulingPolicy.IN_ORDER
 
     job.task_groups = [task_group]
 
@@ -280,6 +281,7 @@ def create_multi_step_task_job(project_id, region):
     download_script.text = """#!/bin/bash
     echo "Downloading data for task ${BATCH_TASK_INDEX}"
     gsutil cp gs://input-bucket/data_${BATCH_TASK_INDEX}.tar.gz /tmp/data.tar.gz
+    mkdir -p /tmp/data
     tar xzf /tmp/data.tar.gz -C /tmp/data/
     """
     download_step.script = download_script
@@ -350,4 +352,4 @@ A good approach is to start with moderate parallelism and increase it while moni
 
 ## Wrapping Up
 
-Google Cloud Batch gives you fine-grained control over how tasks execute within a job. Full parallelism gets jobs done fastest, limited parallelism respects rate limits and resource constraints, and sequential execution handles dependent pipeline steps. The multiple runnables feature adds another dimension by letting each parallel task have its own internal sequence of steps. Understanding these patterns lets you model most batch processing workflows without external orchestration tools.
+Google Cloud Batch gives you fine-grained control over how tasks execute within a job. Full parallelism gets jobs done fastest, limited parallelism respects rate limits and resource constraints, and `IN_ORDER` scheduling handles dependent pipeline steps. The multiple runnables feature adds another dimension by letting each parallel task have its own internal sequence of steps. Understanding these patterns lets you model most batch processing workflows without external orchestration tools.
