@@ -14,7 +14,7 @@ This guide covers how to generate signed URLs using different tools and language
 
 ## How Signed URLs Work
 
-A signed URL is a regular Cloud Storage URL with a cryptographic signature appended as query parameters. The signature encodes:
+A signed URL is a Cloud Storage XML API URL with a cryptographic signature appended as query parameters. The signature encodes:
 
 - Which object the URL grants access to
 - What operation is allowed (GET, PUT, DELETE)
@@ -30,7 +30,7 @@ sequenceDiagram
     participant GCS
 
     Client->>YourServer: Request access to file
-    YourServer->>YourServer: Generate signed URL with service account key
+    YourServer->>YourServer: Generate signed URL with service account credentials
     YourServer->>Client: Return signed URL
     Client->>GCS: Access object using signed URL
     GCS->>GCS: Verify signature and expiration
@@ -58,7 +58,7 @@ gcloud storage sign-url gs://my-bucket/uploads/new-file.pdf \
   --headers="Content-Type=application/pdf"
 ```
 
-Note that `gcloud storage sign-url` requires that the active account has access to a service account key, or you need to specify one:
+Note that `gcloud storage sign-url` must sign as a service account. Authenticate as a service account, use `--impersonate-service-account` with `iam.serviceAccounts.signBlob` permission, or specify a key file:
 
 ```bash
 # Generate signed URL using a specific service account key file
@@ -206,6 +206,8 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const storage = new Storage();
 
+app.use(express.json());
+
 app.post('/api/get-upload-url', async (req, res) => {
   const { contentType, fileName } = req.body;
 
@@ -263,16 +265,16 @@ async function uploadFile(file) {
 
 GCS supports two signing versions:
 
-- **V2** - older format, maximum expiration of about 10 years
+- **V2** - older format; Google recommends keeping expirations to at most 1 week for security and V4 compatibility
 - **V4** - newer format, maximum expiration of 7 days, recommended
 
-Always use V4 unless you specifically need URLs that last longer than 7 days. V4 signed URLs are more secure and include the signing timestamp in the signature.
+Always use V4 unless you have a specific legacy requirement for V2. V4 signed URLs are more secure and include the signing timestamp in the signature.
 
 ## Security Best Practices
 
 **Keep expiration times short.** Only give as much time as the user realistically needs. For downloads, 15-60 minutes is usually plenty. For uploads, 5-30 minutes works well.
 
-**Specify content types for uploads.** When generating upload signed URLs, always set the expected content type. This prevents someone from using an image upload URL to upload a script.
+**Specify content types for uploads.** When generating upload signed URLs, always set the expected content type. This prevents the URL from being used with a different `Content-Type` header, though it does not inspect the actual file contents.
 
 **Use dedicated service accounts.** Create service accounts with minimal permissions specifically for signing URLs. Do not use your application default service account for everything.
 
