@@ -24,7 +24,7 @@ You will need:
 
 - Access to your external registrar's DNS management panel
 - A GCP project with the Cloud DNS API enabled
-- The `dns.admin` role or equivalent permissions
+- The `roles/dns.admin` role or equivalent permissions
 - The `gcloud` CLI installed
 
 ## Step 1: Create a Public Managed Zone in Cloud DNS
@@ -190,9 +190,11 @@ gcloud dns managed-zones update cloud-subdomain \
     --project=my-project
 
 # Get the DS record information to add at the registrar
-gcloud dns managed-zones describe cloud-subdomain \
-    --project=my-project \
-    --format="json(dnssecConfig.defaultKeySpecs)"
+gcloud dns dns-keys list \
+    --zone=cloud-subdomain \
+    --filter='type=keySigning' \
+    --format='value(ds_record())' \
+    --project=my-project
 ```
 
 You will need to take the DS record details and add them at your registrar. The exact process depends on the registrar, but most modern registrars support DS record management in their advanced DNS settings.
