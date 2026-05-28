@@ -138,8 +138,8 @@ For configuration file based setup, create the following file.
 # Stores the GCP service account credentials for the add-on
 
 [splunk_gcp_account]
-google_credentials = <contents of your JSON key file - base64 encoded>
-google_project = my-project
+google_credentials = <contents of your JSON key file on a single line>
+account_type = service_account
 ```
 
 ### Configuring Pub/Sub Input
@@ -147,19 +147,14 @@ google_project = my-project
 Set up the Pub/Sub input to pull logs from your subscription.
 
 ```ini
-# $SPLUNK_HOME/etc/apps/Splunk_TA_google-cloudplatform/local/inputs.conf
+# $SPLUNK_HOME/etc/apps/Splunk_TA_google-cloudplatform/local/google_pubsub_inputs.conf
 # Configures the Pub/Sub input for log ingestion
 
-[google_cloud_pubsub://gcp_audit_logs]
+[gcp_audit_logs]
 google_credentials_name = splunk_gcp_account
 google_project = my-project
 google_subscriptions = splunk-logs-subscription
 index = gcp_logs
-sourcetype = google:gcp:pubsub:message
-disabled = 0
-
-# Number of parallel workers for pulling messages
-max_messages = 100
 ```
 
 ### Configuring Cloud Monitoring Input
@@ -167,15 +162,17 @@ max_messages = 100
 For metrics ingestion, configure a separate input.
 
 ```ini
+# $SPLUNK_HOME/etc/apps/Splunk_TA_google-cloudplatform/local/google_cloud_monitor_inputs.conf
 # Configures Cloud Monitoring metric collection
-[google_cloud_monitoring://gcp_metrics]
+
+[gcp_metrics]
 google_credentials_name = splunk_gcp_account
 google_project = my-project
-metrics = compute.googleapis.com/instance/cpu/utilization,compute.googleapis.com/instance/disk/read_bytes_count,loadbalancing.googleapis.com/https/request_count
+google_monitored_projects = my-project
+google_metrics = compute.googleapis.com/instance/cpu/utilization,compute.googleapis.com/instance/disk/read_bytes_count,loadbalancing.googleapis.com/https/request_count
 index = gcp_metrics
-sourcetype = google:gcp:monitoring
 polling_interval = 300
-disabled = 0
+oldest = 2026-02-17T00:00:00
 ```
 
 ## Creating Splunk Indexes
@@ -205,12 +202,12 @@ After configuring everything, verify that data is flowing into Splunk.
 
 ```spl
 # Search for recent GCP audit log events
-index=gcp_logs sourcetype="google:gcp:pubsub:message"
+index=gcp_logs sourcetype="google:gcp:pubsub:*"
 | head 10
 | table _time, source, data.logName, data.protoPayload.methodName
 
 # Check ingestion rate
-index=gcp_logs sourcetype="google:gcp:pubsub:message"
+index=gcp_logs sourcetype="google:gcp:pubsub:*"
 | timechart span=1h count
 ```
 
@@ -222,7 +219,7 @@ First, verify the Pub/Sub subscription has messages waiting. If the subscription
 # Check if messages are accumulating in the subscription
 gcloud pubsub subscriptions pull splunk-logs-subscription \
   --limit=5 \
-  --auto-ack=false \
+  --no-auto-ack \
   --project=my-project
 ```
 
@@ -236,13 +233,27 @@ index=_internal sourcetype="splunkd" component="google_cloud_pubsub"
 
 ## Tuning for Production
 
-For production deployments, consider a few optimizations. Increase the `max_messages` parameter if your log volume is high. The default is conservative, and you might need to go to 500 or 1000 to keep up with high-throughput environments.
+For production deployments, consider a few optimizations. For high-volume Pub/Sub ingestion, use the add-on's performance reference to size the number of inputs and subscriptions, and keep the subscription acknowledgment deadline at 60 seconds to reduce duplicate delivery.
 
 Set up dead-letter topics in Pub/Sub for messages that fail to process. This prevents data loss and gives you a way to diagnose issues.
 
 ```bash
 # Create a dead-letter topic for failed messages
 gcloud pubsub topics create splunk-logs-deadletter --project=my-project
+
+# Grant the Pub/Sub service agent permission to forward dead-lettered messages
+PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
+PUBSUB_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud pubsub topics add-iam-policy-binding splunk-logs-deadletter \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.publisher" \
+  --project=my-project
+
+gcloud pubsub subscriptions add-iam-policy-binding splunk-logs-subscription \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.subscriber" \
+  --project=my-project
 
 # Update the subscription with dead-letter policy
 gcloud pubsub subscriptions update splunk-logs-subscription \
