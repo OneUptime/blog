@@ -14,13 +14,13 @@ In this post, I will walk through how to enable RDB snapshots, configure the sna
 
 ## How RDB Persistence Works in Memorystore
 
-When you enable RDB persistence on a Memorystore instance, Redis periodically forks the process and writes the entire dataset to an RDB file. This file is stored on the instance's persistent disk. If the Redis process restarts, it reads the RDB file on startup and repopulates memory.
+When you enable RDB persistence on a Memorystore instance, Redis periodically forks a process and writes the entire dataset to an RDB file. This file is stored on persistent storage. If the Redis process restarts and recovery from a snapshot is needed, it reads the RDB file on startup and repopulates memory. On Standard tier instances, Memorystore takes snapshots from the replica rather than the primary to reduce impact on the primary node.
 
-The key thing to understand is that RDB snapshots are periodic. If Redis crashes between snapshots, you lose any data written since the last snapshot. This is different from AOF (Append Only File) persistence, which logs every write operation. Memorystore does not currently support AOF, so RDB is what you have to work with.
+The key thing to understand is that RDB snapshots are periodic and best-effort. If Redis crashes between snapshots, you can lose data written since the last successful snapshot, and failed snapshots can make the recoverable snapshot older. This is different from AOF (Append Only File) persistence, which logs every write operation. Memorystore for Redis instances do not currently support AOF, so RDB is what you have to work with.
 
 ## Prerequisites
 
-RDB persistence is only available on Standard tier Memorystore instances running Redis 5.0 or later. Basic tier instances do not support persistence because they lack the replica that makes recovery reliable.
+RDB persistence is available on Memorystore instances running Redis 5.0 or later. Standard tier is still recommended for high availability because it can fail over to a replica first, but Basic tier instances can also recover from the most recent snapshot after restarts, scaling operations, upgrades, planned maintenance, or failures.
 
 You will also need:
 
@@ -39,9 +39,9 @@ If you are creating a new instance, you can enable persistence right from the st
 gcloud redis instances create my-persistent-redis \
   --size=5 \
   --region=us-central1 \
-  --tier=STANDARD \
+  --tier=standard \
   --redis-version=redis_7_0 \
-  --persistence-mode=RDB \
+  --persistence-mode=rdb \
   --rdb-snapshot-period=12h
 ```
 
@@ -59,11 +59,11 @@ If you already have a Memorystore instance running without persistence, you can 
 # Enable RDB persistence on an existing instance
 gcloud redis instances update my-redis-instance \
   --region=us-central1 \
-  --persistence-mode=RDB \
+  --persistence-mode=rdb \
   --rdb-snapshot-period=6h
 ```
 
-This command does not cause downtime. The instance will start taking snapshots at the configured interval without interrupting client connections.
+The instance will start taking snapshots at the configured interval after the update completes.
 
 ## Verifying Persistence Configuration
 
@@ -86,15 +86,15 @@ persistenceConfig:
   rdbNextSnapshotTime: "2026-02-17T14:00:00Z"
 ```
 
-You can see when the next snapshot is scheduled and when the last one completed. This is useful for confirming that snapshots are actually happening.
+You can see when the next snapshot is scheduled. This is useful for confirming that snapshots are configured.
 
 ## Choosing the Right Snapshot Frequency
 
 The snapshot frequency is a balance between data safety and performance impact. Here is how to think about it:
 
-**Every 1 hour** - Best for data you really cannot afford to lose. The trade-off is that each snapshot triggers a fork of the Redis process, which temporarily doubles memory usage. On large instances, this can cause latency spikes.
+**Every 1 hour** - Best when you want the shortest available snapshot interval. The trade-off is that each snapshot triggers a fork on the node taking the snapshot, which can temporarily increase memory usage. On large instances, this can cause latency spikes.
 
-**Every 6 hours** - A good middle ground for most production workloads. You lose at most 6 hours of data, which is acceptable for session stores, caches with warm-up strategies, and similar use cases.
+**Every 6 hours** - A good middle ground for many production workloads. If snapshots are succeeding on schedule, you typically lose about one interval of data, which is acceptable for session stores, caches with warm-up strategies, and similar use cases.
 
 **Every 12 hours** - Suitable for data that is relatively easy to reconstruct. If you can re-warm your cache from a database within a few hours, this frequency keeps performance impact low.
 
@@ -104,9 +104,9 @@ The snapshot frequency is a balance between data safety and performance impact. 
 
 When Redis creates an RDB snapshot, it uses the operating system's copy-on-write mechanism. The Redis process forks, and the child process writes the dataset to disk. During this time, if the parent process modifies keys, the OS needs to copy those memory pages.
 
-In the worst case, memory usage can temporarily double during a snapshot. Memorystore accounts for this by reserving some overhead, but you should be aware of it. If your instance is using close to its maximum memory capacity, you might see evictions during snapshot creation.
+In the worst case, memory usage can temporarily double during a snapshot. You should account for this by reserving memory overhead. If your instance is using close to its maximum memory capacity, you might see evictions during snapshot creation.
 
-A good rule of thumb is to keep your memory usage below 80% of the instance capacity when using RDB persistence. This gives Redis enough room to handle the copy-on-write overhead.
+A good rule of thumb is to set `maxmemory-gb` to 80% of the instance capacity when using RDB persistence. This gives Redis enough room to handle the copy-on-write overhead.
 
 ## Configuring Snapshot Start Time
 
@@ -119,24 +119,26 @@ gcloud redis instances update my-redis-instance \
   --rdb-snapshot-start-time="2026-02-17T04:00:00Z"
 ```
 
-Subsequent snapshots will be taken at the configured interval from this start time. For example, if you set the start time to 4 AM UTC and the interval to 6 hours, snapshots happen at 4 AM, 10 AM, 4 PM, and 10 PM UTC.
+Subsequent snapshots will be attempted at the configured interval from this start time. For example, if you set the start time to 4 AM UTC and the interval to 6 hours, snapshots are scheduled for 4 AM, 10 AM, 4 PM, and 10 PM UTC, though the actual schedule can shift if a snapshot fails or takes longer than the interval to complete.
 
 ## Monitoring Snapshot Health
 
 You should monitor your snapshot status to make sure they are completing successfully. Cloud Monitoring exposes metrics for Memorystore instances:
 
 ```bash
-# List recent Memorystore metrics related to persistence
+# List Memorystore RDB snapshot metric descriptors
 gcloud monitoring metrics list \
-  --filter="metric.type = starts_with(\"redis.googleapis.com/persistence\")"
+  --filter="metric.type = starts_with(\"redis.googleapis.com/rdb/\")"
 ```
 
 Key metrics to watch:
 
-- `redis.googleapis.com/persistence/rdb/bgsave_in_progress` - Whether a snapshot is currently running
+- `redis.googleapis.com/rdb/snapshot/in_progress` - Whether a snapshot is currently running
+- `redis.googleapis.com/rdb/snapshot/last_status` - Status of the most recent snapshot attempt
+- `redis.googleapis.com/rdb/snapshot/last_success_age` - Time elapsed since the start of the last successful snapshot
 - `redis.googleapis.com/stats/memory/usage_ratio` - Memory usage as a fraction of capacity
 
-Set up an alert if memory usage exceeds 80% while persistence is enabled. This gives you time to scale up before snapshots start causing problems.
+Set up alerts for failed snapshots and stale successful snapshots. Also alert if memory usage is approaching the overhead you reserved for snapshots so you have time to scale up or adjust `maxmemory-gb`.
 
 ## Disabling Persistence
 
@@ -146,28 +148,28 @@ If you decide you no longer need persistence, you can disable it:
 # Disable RDB persistence on an instance
 gcloud redis instances update my-redis-instance \
   --region=us-central1 \
-  --persistence-mode=DISABLED
+  --persistence-mode=disabled
 ```
 
 This removes the persistence configuration and stops future snapshots. Existing snapshot data on disk is cleaned up automatically.
 
 ## What Happens During a Failover
 
-With Standard tier and RDB persistence enabled, here is what happens during different failure scenarios:
+With RDB persistence enabled, here is what happens during different failure scenarios:
 
-**Node restart** - Redis restarts and loads the most recent RDB snapshot. Any data written since the last snapshot is lost.
+**Basic tier node restart** - Redis restarts and loads the most recent RDB snapshot. Any data written since the last successful snapshot is lost.
 
-**Automatic failover** - The replica is promoted to primary. The replica has a near-real-time copy of the data (through Redis replication, not RDB). Data loss is minimal, typically less than a second of writes.
+**Standard tier automatic failover** - The replica is promoted to primary. The replica has a near-real-time copy of the data (through Redis replication, not RDB). Data loss is usually minimal, but depends on replication lag at the time of failure.
 
 **Zone outage** - Similar to automatic failover. The replica in the other zone takes over.
 
-The combination of Standard tier replication and RDB persistence gives you two layers of protection. Replication handles transient failures with minimal data loss, and RDB snapshots handle cases where both the primary and replica need to be reconstructed.
+The combination of Standard tier replication and RDB persistence gives you two layers of protection. Replication handles many primary failures with minimal data loss, and RDB snapshots handle cases where replica-based recovery is not available.
 
 ## Best Practices
 
-1. Always use Standard tier when enabling persistence. Basic tier instances lose all data on restart regardless of persistence settings.
+1. Prefer Standard tier when enabling persistence for production workloads that need high availability. Basic tier supports RDB snapshots, but it does not provide replica-based failover.
 
-2. Keep memory utilization below 80% to leave room for the copy-on-write overhead during snapshots.
+2. Set `maxmemory-gb` to 80% of the instance capacity to leave room for the copy-on-write overhead during snapshots.
 
 3. Schedule snapshots during low-traffic windows when possible.
 
