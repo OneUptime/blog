@@ -40,7 +40,7 @@ You will be presented with three options:
 - PostgreSQL
 - SQL Server
 
-Select **MySQL**. Google Cloud supports MySQL 5.7 and 8.0. For new projects, MySQL 8.0 is the recommended choice since 5.7 has reached end of life upstream.
+Select **MySQL**. Google Cloud currently supports MySQL 5.6, 5.7, 8.0, and 8.4. For new projects, use the current default version unless you have a specific compatibility requirement. MySQL 5.7 has reached end of life upstream and is in extended support on Cloud SQL, so avoid it for new workloads.
 
 ## Step 3: Configure the Instance
 
@@ -54,7 +54,7 @@ Set a root password. Store this somewhere secure - a secret manager, not a stick
 
 ### Database Version
 
-Choose between MySQL 5.7 and MySQL 8.0. Unless you have a specific compatibility requirement, go with 8.0.
+Choose the MySQL version for the instance. Unless you have a specific compatibility requirement, use the current default version shown in the console. If you need the broadest compatibility with older applications, MySQL 8.0 is usually the safer modern choice than 5.7.
 
 ### Region and Zone
 
@@ -64,14 +64,13 @@ For the zone, you can either pick a specific one or let Google choose. If you ar
 
 ### Machine Type
 
-Cloud SQL offers several machine type categories:
+Cloud SQL machine types are organized by edition and machine series. In the console, you will typically choose between options such as:
 
-- **Shared core** - Good for development and testing. The `db-f1-micro` and `db-g1-small` tiers are cheap but have limited CPU.
-- **Lightweight** - Suitable for small production workloads.
-- **Standard** - Balanced CPU and memory for most production use cases.
-- **High memory** - For memory-intensive workloads with large working sets.
+- **General purpose shared core** - Good for development and testing. The `db-f1-micro` and `db-g1-small` tiers are cheap but have limited CPU and are not covered by the Cloud SQL SLA.
+- **General purpose dedicated core** - Suitable for many production workloads where you choose the vCPU and memory allocation.
+- **N4, N2, or C4A machine series** - Newer machine series options, depending on the Cloud SQL edition and region you select.
 
-For production, I would recommend starting with a standard machine type and scaling based on your monitoring data. Do not over-provision from the start.
+For production, I would recommend starting with enough dedicated CPU and memory for your workload, then scaling based on your monitoring data. Do not over-provision from the start.
 
 ### Storage
 
@@ -132,14 +131,14 @@ The instance creation takes several minutes. You can watch the progress in the c
 
 ## Step 5: Verify the Instance
 
-Once the instance is running, you can verify connectivity. If you have the `gcloud` CLI set up, try connecting through Cloud Shell:
+Once the instance is running, you can verify connectivity. If the instance has a public IP address and you have the `gcloud` CLI set up, try connecting through Cloud Shell:
 
 ```bash
 # Connect to your new Cloud SQL instance using gcloud
 gcloud sql connect myapp-prod-mysql --user=root --quiet
 ```
 
-You will be prompted for the root password you set earlier. If everything is configured correctly, you will land in a MySQL shell.
+You will be prompted for the root password you set earlier. If everything is configured correctly, you will land in a MySQL shell. The `gcloud sql connect` command is not supported for instances that only have private IP addresses; for those, use a client from a resource with VPC access or use the Cloud SQL Auth Proxy.
 
 ## Step 6: Create Your Application Database
 
@@ -165,7 +164,7 @@ Never use the root account for application connections. Create a dedicated user 
 
 Cloud SQL pricing has several components:
 
-- **Instance cost**: Based on machine type, billed per second with a 10-minute minimum
+- **Instance cost**: Based on machine type, billed while the instance is running
 - **Storage cost**: Per GB per month for provisioned storage
 - **Network egress**: Cross-region and internet egress costs apply
 - **HA surcharge**: High availability roughly doubles the instance cost
@@ -177,7 +176,7 @@ For a development environment, a shared-core instance with 10 GB SSD runs around
 
 1. **Always enable deletion protection** on production instances. One accidental click should not wipe out your database.
 2. **Set up monitoring early**. Cloud SQL exports metrics to Cloud Monitoring automatically. Create alerts for CPU, memory, disk utilization, and connection count.
-3. **Use connection pooling**. Cloud SQL has a connection limit based on your machine type. Use a connection pooler like PgBouncer or your framework's built-in pooling to avoid hitting it.
+3. **Use connection pooling**. Cloud SQL has a connection limit based on your machine type. Use Cloud SQL's managed connection pooling when it is available for your configuration, a MySQL-aware proxy, or your framework's built-in pooling to avoid hitting it.
 4. **Test your backup and restore process**. Backups are useless if you have never verified they actually work.
 
 ## Summary
