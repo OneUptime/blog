@@ -14,7 +14,7 @@ I have set this up for teams where analysts need access to behavioral data but s
 
 ## How BigLake Access Control Works
 
-BigLake tables route all data access through a connection service account. When a user runs a query, BigQuery checks their permissions against the table's security policies before returning results. For column-level security, restricted columns return NULL for unauthorized users. For row-level security, unauthorized rows are simply filtered out.
+BigLake tables route all data access through a connection service account. When a user runs a query, BigQuery checks their permissions against the table's security policies before returning results. For column-level security, queries that reference restricted columns fail for unauthorized users. For row-level security, unauthorized rows are simply filtered out.
 
 The key insight is that users never touch Cloud Storage directly. The BigLake connection service account reads the data, and BigQuery enforces the access policies. This is fundamentally different from regular external tables where users need Cloud Storage access.
 
@@ -34,6 +34,10 @@ bq mk --connection \
   --connection_type=CLOUD_RESOURCE \
   --location=US \
   biglake-secure-connection
+
+# Then grant the connection service account access to the bucket.
+# You can find the service account with:
+bq show --connection my-project.US.biglake-secure-connection
 ```
 
 Create a BigLake table that contains sensitive data:
@@ -96,34 +100,47 @@ gcloud data-catalog taxonomies policy-tags create \
 
 Enable the taxonomy for enforcement:
 
-```bash
-# Enable policy tag enforcement on the taxonomy
-# Without this step, the tags are just labels with no access control
-gcloud data-catalog taxonomies set-iam-policy \
-  "projects/my-project/locations/us/taxonomies/1234567890" \
-  policy.json
-```
+Open the Policy tag taxonomies page in the Google Cloud console, select the taxonomy, and turn on **Enforce access control**. Without this step, the tags are just labels with no access control. If you automate this with the BigQuery Data Policy API, create a data policy with `dataPolicyType` set to `COLUMN_LEVEL_SECURITY_POLICY`.
 
 ## Applying Policy Tags to Columns
 
 Now apply the policy tags to sensitive columns on your BigLake table:
 
-```sql
--- Apply the PII policy tag to the customer_email column
--- Users without the Fine Grained Reader role on this tag
--- will see NULL for this column
-ALTER TABLE `my-project.secure_data.customer_transactions`
-ALTER COLUMN customer_email
-SET OPTIONS (
-  policy_tags = 'projects/my-project/locations/us/taxonomies/1234567890/policyTags/111111'
-);
+```bash
+# Export the current schema.
+bq show --schema --format=prettyjson \
+  my-project:secure_data.customer_transactions > schema.json
+```
 
--- Apply the Highly Restricted tag to the SSN column
-ALTER TABLE `my-project.secure_data.customer_transactions`
-ALTER COLUMN customer_ssn
-SET OPTIONS (
-  policy_tags = 'projects/my-project/locations/us/taxonomies/1234567890/policyTags/222222'
-);
+Edit `schema.json` and add the policy tag resource names to the sensitive fields:
+
+```json
+[
+  {
+    "name": "customer_email",
+    "type": "STRING",
+    "policyTags": {
+      "names": [
+        "projects/my-project/locations/us/taxonomies/1234567890/policyTags/111111"
+      ]
+    }
+  },
+  {
+    "name": "customer_ssn",
+    "type": "STRING",
+    "policyTags": {
+      "names": [
+        "projects/my-project/locations/us/taxonomies/1234567890/policyTags/222222"
+      ]
+    }
+  }
+]
+```
+
+Then update the table schema:
+
+```bash
+bq update my-project:secure_data.customer_transactions schema.json
 ```
 
 ## Granting Column-Level Access
@@ -144,16 +161,16 @@ gcloud data-catalog taxonomies policy-tags add-iam-policy-binding \
   --role="roles/datacatalog.categoryFineGrainedReader"
 ```
 
-Now when an analyst without PII access runs a query:
+Now when an analyst without PII access runs a query that references protected columns:
 
 ```sql
 -- An analyst without PII access runs this query
--- customer_email and customer_ssn will return NULL
+-- BigQuery returns an access denied error for the protected columns
 SELECT
   transaction_id,
   customer_id,
-  customer_email,    -- Returns NULL for unauthorized users
-  customer_ssn,      -- Returns NULL for unauthorized users
+  customer_email,
+  customer_ssn,
   transaction_amount,
   transaction_date
 FROM `my-project.secure_data.customer_transactions`
@@ -208,7 +225,7 @@ The real power comes from combining both. You can have different users see diffe
 ```sql
 -- View existing row access policies on the table
 SELECT *
-FROM `my-project.secure_data.INFORMATION_SCHEMA.TABLE_OPTIONS`
+FROM `my-project.secure_data.INFORMATION_SCHEMA.ROW_ACCESS_POLICIES`
 WHERE table_name = 'customer_transactions';
 ```
 
@@ -216,7 +233,7 @@ Here is a practical example showing how different roles experience the same tabl
 
 ```sql
 -- Data Engineer (full access): sees all rows, all columns
--- US Analyst (row filter + no PII): sees US rows, email/SSN are NULL
+-- US Analyst (row filter + no PII): sees US rows, but queries fail if they include email/SSN
 -- Compliance (full rows + PII access): sees all rows including PII
 
 -- To test what a specific user would see, use the SESSION_USER()
@@ -235,20 +252,23 @@ FILTER USING (
 
 ## Managing and Auditing Access
 
-Monitor who is accessing what data through BigQuery audit logs:
+Monitor who is accessing what data through BigQuery job metadata:
 
 ```sql
--- Query audit logs to see who accessed the secured table
+-- Query recent jobs to see who accessed the secured table
 -- This helps verify that access controls are working correctly
 SELECT
-  protopayload_auditlog.authenticationInfo.principalEmail AS user_email,
-  protopayload_auditlog.methodName AS method,
-  timestamp,
-  resource.labels.dataset_id,
-  protopayload_auditlog.status.code AS status_code
-FROM `my-project.region-us.INFORMATION_SCHEMA.JOBS`
+  user_email,
+  job_id,
+  creation_time,
+  referenced_table.project_id,
+  referenced_table.dataset_id,
+  referenced_table.table_id,
+  error_result
+FROM `my-project.region-us.INFORMATION_SCHEMA.JOBS`,
+UNNEST(referenced_tables) AS referenced_table
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-  AND referenced_tables.table_id = 'customer_transactions'
+  AND referenced_table.table_id = 'customer_transactions'
 ORDER BY creation_time DESC;
 ```
 
