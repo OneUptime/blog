@@ -8,18 +8,18 @@ Description: Learn how to implement cross-organization identity federation betwe
 
 ---
 
-Large enterprises often have multiple Google Cloud organizations - one per business unit, acquired company, or geographic region. When teams across these organizations need to collaborate on shared resources, you face a choice: create duplicate accounts in each organization, or federate identities so users from one organization can access resources in another.
+Large enterprises often have multiple Google Cloud organizations - one per business unit, acquired company, or geographic region. When teams across these organizations need to collaborate on shared resources, you face a choice: create duplicate accounts in each organization, or federate identities so workloads from one organization can access resources in another. For human user SSO, use Workforce Identity Federation; the workload identity pool examples below are for workload and service account access.
 
 Identity federation is the right answer. It avoids the security and management overhead of duplicate identities while giving you fine-grained control over cross-organization access.
 
 ## Architecture Overview
 
-Cross-organization federation in GCP works through workload identity pools and IAM policies. Organization A (the resource owner) creates a workload identity pool that trusts Organization B's identity provider. Users from Organization B can then access resources in Organization A using their existing credentials.
+Cross-organization federation in GCP works through workload identity pools and IAM policies. Organization A (the resource owner) creates a workload identity pool that trusts Organization B's identity provider. Workloads from Organization B can then access resources in Organization A using short-lived federated credentials.
 
 ```mermaid
 flowchart LR
     subgraph OrgB["Organization B (Identity Source)"]
-        U[User] --> IDP[Identity Provider]
+        U[Workload] --> IDP[Identity Provider]
     end
 
     subgraph OrgA["Organization A (Resource Owner)"]
@@ -51,37 +51,36 @@ gcloud iam workload-identity-pools create partner-org-pool \
 
 ### Step 2: Create an OIDC Provider for the Partner Organization
 
-If Organization B uses Google Workspace or Cloud Identity, you can federate using Google's OIDC endpoint:
+If Organization B has an OIDC identity provider for its workloads, configure a provider for that issuer:
 
 ```bash
-# Create an OIDC provider that trusts Organization B's Google identity
-gcloud iam workload-identity-pools providers create-oidc org-b-google \
+# Create an OIDC provider that trusts Organization B's workload identity provider
+gcloud iam workload-identity-pools providers create-oidc org-b-oidc \
     --workload-identity-pool=partner-org-pool \
     --project=org-a-project \
     --location=global \
-    --issuer-uri="https://accounts.google.com" \
-    --allowed-audiences="//iam.googleapis.com/projects/ORG_A_PROJECT_NUMBER/locations/global/workloadIdentityPools/partner-org-pool/providers/org-b-google" \
+    --issuer-uri="https://idp.org-b.example.com" \
+    --allowed-audiences="gcp-cross-org" \
     --attribute-mapping="\
 google.subject=assertion.sub,\
-google.groups=assertion.groups,\
 attribute.email=assertion.email,\
 attribute.email_domain=assertion.email.extract('{email_local}@{domain}').domain" \
     --attribute-condition="assertion.email.endsWith('@org-b-domain.com')"
 ```
 
-The `--attribute-condition` is critical. It ensures only users from Organization B's domain can use this federation path. Without it, any Google account could potentially authenticate.
+The `--attribute-condition` is critical. It ensures only identities from Organization B's domain can use this federation path. Without it, any token from the trusted issuer with an accepted audience could potentially authenticate.
 
 ### Step 3: Grant Cross-Organization Access
 
 Now grant specific IAM roles to the federated identities:
 
 ```bash
-# Grant read access to a shared BigQuery dataset for all Org B users
+# Grant read access to a shared BigQuery dataset for all Org B identities
 gcloud projects add-iam-policy-binding org-a-project \
     --role=roles/bigquery.dataViewer \
     --member="principalSet://iam.googleapis.com/projects/ORG_A_PROJECT_NUMBER/locations/global/workloadIdentityPools/partner-org-pool/attribute.email_domain/org-b-domain.com"
 
-# Grant specific users from Org B access to a shared GCS bucket
+# Grant a specific Org B identity access to a shared GCS bucket
 gcloud storage buckets add-iam-policy-binding gs://shared-data-bucket \
     --role=roles/storage.objectViewer \
     --member="principal://iam.googleapis.com/projects/ORG_A_PROJECT_NUMBER/locations/global/workloadIdentityPools/partner-org-pool/subject/user-id-from-org-b"
@@ -111,17 +110,16 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 ## Accessing Resources from Organization B
 
-### For Human Users
+### For Local Automation
 
-Users from Organization B authenticate and access resources using the gcloud CLI:
+Automation from Organization B can use an OIDC token from Organization B's identity provider with the gcloud CLI:
 
 ```bash
 # Generate a credential configuration file for cross-org access
 gcloud iam workload-identity-pools create-cred-config \
-    projects/ORG_A_PROJECT_NUMBER/locations/global/workloadIdentityPools/partner-org-pool/providers/org-b-google \
+    projects/ORG_A_PROJECT_NUMBER/locations/global/workloadIdentityPools/partner-org-pool/providers/org-b-oidc \
     --service-account=org-b-shared-sa@org-a-project.iam.gserviceaccount.com \
-    --credential-source-type=executable \
-    --credential-source-command="gcloud auth print-identity-token --audiences=//iam.googleapis.com/projects/ORG_A_PROJECT_NUMBER/locations/global/workloadIdentityPools/partner-org-pool/providers/org-b-google" \
+    --credential-source-file=/path/to/org-b-oidc-token.jwt \
     --output-file=cross-org-creds.json
 
 # Use the credential config
@@ -145,7 +143,7 @@ from google.cloud import bigquery
 # Configure identity pool credentials for cross-org access
 credentials = identity_pool.Credentials.from_info({
     "type": "external_account",
-    "audience": "//iam.googleapis.com/projects/ORG_A_PROJECT_NUMBER/locations/global/workloadIdentityPools/partner-org-pool/providers/org-b-google",
+    "audience": "//iam.googleapis.com/projects/ORG_A_PROJECT_NUMBER/locations/global/workloadIdentityPools/partner-org-pool/providers/org-b-oidc",
     "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
     "token_url": "https://sts.googleapis.com/v1/token",
     "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/org-b-shared-sa@org-a-project.iam.gserviceaccount.com:generateAccessToken",
@@ -183,7 +181,7 @@ resource "google_iam_workload_identity_pool" "partner" {
 # OIDC provider for Organization B
 resource "google_iam_workload_identity_pool_provider" "org_b" {
   workload_identity_pool_id          = google_iam_workload_identity_pool.partner.workload_identity_pool_id
-  workload_identity_pool_provider_id = "org-b-google"
+  workload_identity_pool_provider_id = "org-b-oidc"
   project                            = "org-a-project"
 
   # Only accept tokens from Org B's domain
@@ -196,9 +194,9 @@ resource "google_iam_workload_identity_pool_provider" "org_b" {
   }
 
   oidc {
-    issuer_uri = "https://accounts.google.com"
+    issuer_uri = "https://idp.org-b.example.com"
     allowed_audiences = [
-      "//iam.googleapis.com/projects/${data.google_project.org_a.number}/locations/global/workloadIdentityPools/partner-org-pool/providers/org-b-google"
+      "gcp-cross-org"
     ]
   }
 }
@@ -226,6 +224,12 @@ resource "google_project_iam_member" "bigquery_access" {
   role    = "roles/bigquery.dataViewer"
   member  = "serviceAccount:${google_service_account.org_b_shared.email}"
 }
+
+resource "google_project_iam_member" "bigquery_job_user" {
+  project = "org-a-project"
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.org_b_shared.email}"
+}
 ```
 
 ## Security Considerations
@@ -244,14 +248,14 @@ gcloud logging read 'protoPayload.serviceName="sts.googleapis.com"' \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.status)"
 ```
 
-**Set up VPC Service Controls.** If the shared resources contain sensitive data, use VPC Service Controls to create a perimeter that allows only specific projects from both organizations:
+**Set up VPC Service Controls.** If the shared resources contain sensitive data, use VPC Service Controls to create a perimeter around the resource projects in Organization A, then add ingress and egress rules for the specific Organization B identities or projects that need access:
 
 ```bash
-# Create a service perimeter that includes projects from both organizations
+# Create a service perimeter around the protected resource project
 gcloud access-context-manager perimeters create cross-org-perimeter \
     --policy=POLICY_ID \
     --title="Cross-Org Shared Resources" \
-    --resources="projects/ORG_A_PROJECT_NUMBER,projects/ORG_B_PROJECT_NUMBER" \
+    --resources="projects/ORG_A_PROJECT_NUMBER" \
     --restricted-services="bigquery.googleapis.com,storage.googleapis.com"
 ```
 
