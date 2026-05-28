@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Cloud Storage, Schema Auto-Detection, Data Loading
 
-Description: Learn how to load data from Google Cloud Storage into BigQuery using schema auto-detection, covering CSV, JSON, Parquet, and Avro formats with practical examples.
+Description: Learn how to load data from Google Cloud Storage into BigQuery using schema auto-detection for CSV and JSON, plus self-describing Parquet and Avro formats with practical examples.
 
 ---
 
@@ -14,11 +14,11 @@ I use auto-detection regularly when onboarding new data sources. It is a great s
 
 ## How Schema Auto-Detection Works
 
-When you enable auto-detection, BigQuery scans a sample of your source data to infer column names, data types, and modes (nullable vs required). The behavior varies by format:
+When you enable auto-detection for supported formats, BigQuery scans a sample of your source data to infer column names and data types. The behavior varies by format:
 
-- **CSV**: BigQuery reads the header row for column names and samples data rows to infer types
+- **CSV**: BigQuery can infer a header row by comparing the first row with the data rows, and samples data rows to infer types
 - **JSON (newline-delimited)**: BigQuery reads field names and values from the JSON structure
-- **Parquet/Avro/ORC**: These formats include the schema in the file metadata, so auto-detection is precise
+- **Parquet/Avro/ORC**: These formats include the schema in the file metadata, so BigQuery automatically retrieves the schema from the files
 
 ## Loading CSV Files with Auto-Detection
 
@@ -30,6 +30,7 @@ Here is the simplest way to load a CSV file with auto-detection using the bq CLI
 bq load \
   --autodetect \
   --source_format=CSV \
+  --skip_leading_rows=1 \
   my_project:my_dataset.sales_data \
   gs://my-bucket/data/sales_2026.csv
 ```
@@ -49,17 +50,17 @@ FROM FILES (
 );
 ```
 
-And with a CREATE TABLE statement.
+If the destination table does not exist, `LOAD DATA` can create it.
 
 ```sql
--- Create a new table from CSV with auto-detected schema
-CREATE TABLE `my_project.my_dataset.sales_data`
-OPTIONS (
+-- Create a new table by loading CSV with auto-detected schema
+LOAD DATA INTO `my_project.my_dataset.sales_data`
+FROM FILES (
   format = 'CSV',
   uris = ['gs://my-bucket/data/sales_*.csv'],
+  autodetect = true,
   skip_leading_rows = 1
-) AS
-SELECT * FROM EXTERNAL_QUERY('connection_id', 'SELECT 1');
+);
 ```
 
 ## Loading JSON Files with Auto-Detection
@@ -87,12 +88,11 @@ FROM FILES (
 
 ## Loading Parquet Files
 
-Parquet files embed their schema, making auto-detection straightforward and accurate.
+Parquet files embed their schema, so BigQuery can read the schema from the file metadata.
 
 ```bash
 # Load Parquet files - schema comes from the file itself
 bq load \
-  --autodetect \
   --source_format=PARQUET \
   my_project:my_dataset.orders \
   gs://my-bucket/data/orders/*.parquet
@@ -107,7 +107,7 @@ FROM FILES (
 );
 ```
 
-For Parquet and Avro files, auto-detection is essentially free because the schema is already defined in the file. The type mapping from Parquet to BigQuery is reliable.
+For Parquet and Avro files, you do not need to enable schema auto-detection because the schema is already defined in the file. The type mapping from Parquet to BigQuery is reliable.
 
 ## Loading Avro Files
 
@@ -116,7 +116,6 @@ Avro files also contain their schema, similar to Parquet.
 ```bash
 # Load Avro files - schema is embedded in the file
 bq load \
-  --autodetect \
   --source_format=AVRO \
   my_project:my_dataset.user_profiles \
   gs://my-bucket/data/users/*.avro
@@ -181,14 +180,14 @@ bq load \
   gs://my-bucket/data/orders.csv
 ```
 
-**NULL handling**: Auto-detection might mark columns as NULLABLE even when they should be REQUIRED, or vice versa.
+**NULL handling**: Auto-detection generally creates NULLABLE fields unless the source structure implies a repeated field. Use an explicit schema when REQUIRED fields matter.
 
-## Using External Tables with Auto-Detection
+## Using External Tables with Inferred Schemas
 
-Instead of loading data, you can create an external table that queries Cloud Storage data directly with auto-detected schema.
+Instead of loading data, you can create an external table that queries Cloud Storage data directly with an inferred schema.
 
 ```sql
--- Create an external table with auto-detected schema
+-- Create an external table with a schema inferred from Parquet metadata
 CREATE EXTERNAL TABLE `my_project.my_dataset.external_events`
 OPTIONS (
   format = 'PARQUET',
@@ -213,14 +212,15 @@ FROM `my_project.my_dataset.external_events`;
 You can combine auto-detection with partitioning when loading data.
 
 ```bash
-# Load with auto-detection and partition by a date column
+# Load CSV with auto-detection and partition by a date column
 bq load \
   --autodetect \
-  --source_format=PARQUET \
+  --source_format=CSV \
+  --skip_leading_rows=1 \
   --time_partitioning_field=event_date \
   --clustering_fields=user_id,event_type \
   my_project:my_dataset.events \
-  gs://my-bucket/data/events/*.parquet
+  gs://my-bucket/data/events/*.csv
 ```
 
 ## Hive-Partitioned Data
@@ -255,28 +255,35 @@ OPTIONS (
 Here is how to load data programmatically using the Python client library.
 
 ```python
-# load_data.py - Load data with auto-detection using Python
+# load_data.py - Load data with schema auto-detection using Python
 from google.cloud import bigquery
 
 def load_from_gcs(project, dataset, table, gcs_uri, source_format='PARQUET'):
-    """Load data from Cloud Storage with schema auto-detection."""
+    """Load data from Cloud Storage.
+
+    Uses schema auto-detection for CSV and JSON. For Parquet and Avro, BigQuery
+    reads the schema from the file metadata.
+    """
     client = bigquery.Client(project=project)
     table_ref = f"{project}.{dataset}.{table}"
 
     # Configure the load job
     job_config = bigquery.LoadJobConfig()
-    job_config.autodetect = True
 
     # Set format-specific options
     if source_format == 'CSV':
         job_config.source_format = bigquery.SourceFormat.CSV
+        job_config.autodetect = True
         job_config.skip_leading_rows = 1
     elif source_format == 'JSON':
         job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
+        job_config.autodetect = True
     elif source_format == 'PARQUET':
         job_config.source_format = bigquery.SourceFormat.PARQUET
     elif source_format == 'AVRO':
         job_config.source_format = bigquery.SourceFormat.AVRO
+    else:
+        raise ValueError(f"Unsupported source format: {source_format}")
 
     # Start the load job
     load_job = client.load_table_from_uri(
@@ -302,7 +309,7 @@ if __name__ == "__main__":
 
 ## Best Practices
 
-1. **Use Parquet or Avro when possible**: Their embedded schemas make auto-detection accurate and fast.
+1. **Use Parquet or Avro when possible**: Their embedded schemas make schema inference accurate and fast.
 2. **Review detected schemas before production use**: Auto-detection is a starting point, not a final answer.
 3. **Lock down schemas for recurring loads**: Once you know the schema, specify it explicitly to avoid surprises.
 4. **Use wildcards for multi-file loads**: `gs://bucket/path/*.parquet` loads all matching files in one job.
@@ -310,6 +317,6 @@ if __name__ == "__main__":
 
 ## Wrapping Up
 
-Schema auto-detection in BigQuery is a great productivity tool that removes the tedious step of manually defining schemas. It works best with self-describing formats like Parquet and Avro, and reasonably well with CSV and JSON. Use it for exploration and initial loads, then lock down your schemas for production reliability.
+Schema auto-detection in BigQuery is a great productivity tool that removes the tedious step of manually defining schemas for CSV and JSON data. Self-describing formats like Parquet and Avro already include their schemas. Use inferred schemas for exploration and initial loads, then lock down your schemas for production reliability.
 
 For monitoring your data loading pipelines and catching schema-related issues early, [OneUptime](https://oneuptime.com) provides observability tools that help you maintain data quality across your BigQuery environment.
