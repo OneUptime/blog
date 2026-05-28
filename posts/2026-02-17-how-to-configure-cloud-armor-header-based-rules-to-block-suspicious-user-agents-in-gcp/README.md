@@ -58,7 +58,7 @@ Block common web scraping frameworks:
 # Block scraping tools and frameworks
 gcloud compute security-policies rules create 1100 \
   --security-policy=ua-filter-policy \
-  --expression="has(request.headers['user-agent']) && request.headers['user-agent'].lower().matches('.*(scrapy|httrack|wget|curl\\/|python-requests|go-http-client|java\\/|libwww-perl).*')" \
+  --expression="has(request.headers['user-agent']) && request.headers['user-agent'].lower().matches('.*(scrapy|httrack|wget|curl/|python-requests|go-http-client|java/|libwww-perl).*')" \
   --action=deny-403 \
   --description="Block common scraping tools"
 ```
@@ -82,7 +82,7 @@ gcloud compute security-policies rules create 1100 \
 
 ## Step 4: Block Empty or Missing User-Agents
 
-Legitimate browsers always send a User-Agent header. Requests without one are almost always automated:
+Legitimate browsers typically send a User-Agent header. Requests without one are often automated:
 
 ```bash
 # Block requests with no User-Agent header
@@ -103,7 +103,7 @@ Very old browser User-Agents are rarely from real users. They are typically from
 # Block extremely outdated browser versions often used by bots
 gcloud compute security-policies rules create 1300 \
   --security-policy=ua-filter-policy \
-  --expression="has(request.headers['user-agent']) && request.headers['user-agent'].matches('.*(MSIE [1-8]\\.|Chrome\\/[1-3][0-9]\\.).*')" \
+  --expression="has(request.headers['user-agent']) && request.headers['user-agent'].matches('.*(MSIE [1-8]\\.|Chrome/[1-3][0-9]\\.).*')" \
   --action=deny-403 \
   --description="Block outdated browser User-Agents"
 ```
@@ -121,7 +121,7 @@ gcloud compute security-policies rules create 800 \
   --description="Allow known search engine crawlers"
 ```
 
-For better security, combine User-Agent matching with IP verification using named IP lists to prevent User-Agent spoofing.
+For better security, combine User-Agent matching with IP verification using published crawler IP ranges or maintained address groups to prevent User-Agent spoofing.
 
 ## Putting It All Together
 
@@ -171,7 +171,7 @@ After deploying, monitor what is being blocked:
 ```bash
 # View blocked requests and their User-Agent values
 gcloud logging read \
-  'resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.name="ua-filter-policy" AND jsonPayload.enforcedSecurityPolicy.configuredAction="DENY"' \
+  'resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.name="ua-filter-policy" AND jsonPayload.enforcedSecurityPolicy.outcome="DENY"' \
   --project=your-project-id \
   --limit=30 \
   --format="table(timestamp, jsonPayload.enforcedSecurityPolicy.priority, httpRequest.userAgent, httpRequest.remoteIp)"
@@ -208,6 +208,7 @@ gcloud compute security-policies rules create 1500 \
   --rate-limit-threshold-interval-sec=60 \
   --conform-action=allow \
   --exceed-action=deny-429 \
+  --enforce-on-key=IP \
   --description="Rate limit suspicious tool User-Agents"
 ```
 
