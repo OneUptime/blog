@@ -8,7 +8,7 @@ Description: Step-by-step guide to implementing efficient cursor-based paginatio
 
 ---
 
-Firestore does not support traditional offset-based pagination. There is no `OFFSET 100` clause like in SQL. Instead, Firestore uses cursor-based pagination, where you tell it to start fetching results after a specific document. This approach is actually better for most use cases - it is consistent, efficient, and does not break when data is inserted or deleted between pages.
+The Firebase Web SDK does not provide a SQL-style `OFFSET 100` pagination helper. Firestore does support offsets in some APIs, but skipped documents are still billed as reads, so cursors are the recommended approach for pagination. With cursor-based pagination, you tell Firestore to start fetching results after a specific document. This approach is actually better for most use cases - it is consistent, efficient, and does not break when data is inserted or deleted between pages.
 
 Let me show you how to build a complete pagination system with Firestore cursors.
 
@@ -16,7 +16,7 @@ Let me show you how to build a complete pagination system with Firestore cursors
 
 With offset-based pagination, if someone inserts a new row at position 5 and you are on page 2 (offset 10), you might see the same item twice or skip one entirely. Cursor-based pagination avoids this because you are always saying "give me items after this specific document," regardless of what happens to the data around it.
 
-Firestore also has a practical reason. Offset pagination would still read and discard all the skipped documents, meaning fetching page 100 with 20 items per page would read 2,000 documents. With cursor pagination, you only read the 20 documents you actually need.
+Firestore also has a practical reason. Offset pagination would still read and discard all the skipped documents, meaning fetching page 100 with 20 items per page would read the skipped documents before returning that page. With cursor pagination, you avoid those skipped document reads.
 
 ## Basic Forward Pagination
 
@@ -128,7 +128,7 @@ class FirestorePaginator {
     this.collectionPath = collectionPath;
     this.orderField = orderField;
     this.pageSize = pageSize;
-    this.pageStack = [];  // Stack of first-doc cursors for each visited page
+    this.pageStack = [];  // Stack of first-document cursors for visited pages
     this.lastDoc = null;
     this.currentPage = 0;
   }
@@ -150,7 +150,7 @@ class FirestorePaginator {
 
     const snapshot = await getDocs(q);
     this.currentPage = 1;
-    this.pageStack = [null];  // First page has no preceding cursor
+    this.pageStack = snapshot.empty ? [] : [snapshot.docs[0]];
     this.lastDoc = snapshot.docs[snapshot.docs.length - 1] || null;
 
     return this.formatResult(snapshot);
@@ -178,27 +178,20 @@ class FirestorePaginator {
   async getPreviousPage(...filters) {
     if (this.currentPage <= 1) return null;
 
-    this.pageStack.pop();
-    this.currentPage--;
+    const currentFirstDoc = this.pageStack[this.pageStack.length - 1];
+    if (!currentFirstDoc) return null;
 
-    const cursor = this.pageStack[this.pageStack.length - 1];
-    let q;
-
-    if (cursor) {
-      q = query(
-        ...this.buildBaseQuery(...filters),
-        startAfter(cursor),
-        limit(this.pageSize)
-      );
-    } else {
-      // Going back to the first page
-      q = query(
-        ...this.buildBaseQuery(...filters),
-        limit(this.pageSize)
-      );
-    }
+    const q = query(
+      ...this.buildBaseQuery(...filters),
+      endBefore(currentFirstDoc),
+      limitToLast(this.pageSize)
+    );
 
     const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+
+    this.pageStack.pop();
+    this.currentPage--;
     this.lastDoc = snapshot.docs[snapshot.docs.length - 1];
 
     return this.formatResult(snapshot);
@@ -308,6 +301,6 @@ async function getPageWithHasMore(cursor) {
 
 ## Wrapping Up
 
-Cursor-based pagination in Firestore is straightforward once you understand the pattern. Use `startAfter` with the last document to go forward, `endBefore` with the first document to go backward, and always keep track of your cursor documents. The key advantage over offset pagination is consistency and efficiency - you always read exactly the documents you need, and the results are stable even as data changes around you.
+Cursor-based pagination in Firestore is straightforward once you understand the pattern. Use `startAfter` with the last document to go forward, `endBefore` with the first document and `limitToLast` to go backward, and always keep track of your cursor documents. The key advantage over offset pagination is consistency and efficiency - you avoid paying for skipped document reads, and the results are stable even as data changes around you.
 
 For most applications, wrapping this logic in a reusable paginator class (like the one above) saves a lot of repetitive code and makes pagination a one-line operation in your UI components.
