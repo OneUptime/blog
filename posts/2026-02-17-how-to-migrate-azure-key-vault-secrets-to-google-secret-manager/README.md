@@ -20,10 +20,10 @@ Key Vault actually manages three types of objects: secrets, keys, and certificat
 | Keys (cryptographic) | Cloud KMS |
 | Certificates | Certificate Manager |
 | Access policies | IAM bindings |
-| Soft delete | Secret versions (disabled versions) |
-| Purge protection | No direct equivalent (use org policies) |
+| Soft delete | Delayed destruction of secret versions |
+| Purge protection | Delayed destruction for versions; no soft-delete recovery for deleted secrets |
 | Secret versioning | Secret versions (numbered) |
-| Key rotation | Custom rotation via Cloud Functions |
+| Secret rotation | Secret Manager rotation schedules with a Pub/Sub subscriber or Cloud Function |
 
 ## Step 1: Inventory Key Vault Secrets
 
@@ -294,7 +294,7 @@ spec:
         volumeAttributes:
           secretProviderClass: azure-kv-provider
 
-# New GKE - Using Secret Manager with environment variables
+# New GKE - Using a synchronized Kubernetes Secret with environment variables
 apiVersion: v1
 kind: Pod
 metadata:
@@ -311,7 +311,7 @@ spec:
               key: password
 ```
 
-Sync Secret Manager secrets to Kubernetes secrets using External Secrets Operator:
+To keep the environment variable pattern, sync Secret Manager secrets to Kubernetes secrets using External Secrets Operator:
 
 ```yaml
 # External Secrets Operator - sync from Secret Manager to K8s secrets
@@ -335,7 +335,7 @@ spec:
 
 ## Step 7: Set Up Rotation
 
-Replace Key Vault auto-rotation with Cloud Functions and Cloud Scheduler.
+Replace Key Vault rotation workflows with Secret Manager rotation schedules and a subscriber such as Cloud Functions. If you prefer to keep the schedule outside Secret Manager, Cloud Scheduler can trigger the same rotation function.
 
 ```bash
 # Create a Cloud Function for secret rotation
