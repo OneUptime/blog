@@ -10,7 +10,7 @@ Description: A practical guide to enabling GKE Dataplane V2 powered by Cilium fo
 
 GKE's default networking stack uses iptables for packet routing and kube-proxy for service load balancing. It works, but it has limitations: iptables rules grow linearly with the number of services, network policy enforcement is basic, and you get minimal visibility into what is actually happening on the network.
 
-Dataplane V2 replaces all of that with Cilium, an eBPF-based networking solution. Instead of iptables rules, packet processing happens in the Linux kernel through eBPF programs. This is faster, scales better, and - the real win - gives you built-in network observability that shows exactly what traffic is flowing between your pods.
+Dataplane V2 replaces much of that with a Cilium-based, eBPF-based networking dataplane managed by GKE. Instead of relying on iptables for service routing on supported GKE versions, packet processing happens in the Linux kernel through eBPF programs. This scales better, and - the real win - gives you built-in network observability that shows what traffic is flowing between your pods.
 
 ## What Dataplane V2 Gives You
 
@@ -19,9 +19,9 @@ Compared to the default networking stack:
 - **eBPF-based packet processing**: Faster than iptables, especially at scale
 - **Kernel-level network policy enforcement**: More efficient than Calico's iptables approach
 - **Built-in network observability**: See traffic flows without deploying additional tools
-- **FQDN-based network policies**: Restrict egress based on domain names, not just IPs
-- **Advanced policy features**: Deny policies, policy logging, L7 visibility
-- **Hubble integration**: Distributed networking observability platform
+- **FQDNNetworkPolicy support**: Restrict egress based on domain names, not just IPs
+- **Advanced policy features**: Cluster-wide L3/L4 policies and policy logging
+- **Managed Hubble integration**: Distributed networking observability platform
 
 ```mermaid
 graph TB
@@ -46,6 +46,7 @@ Dataplane V2 can only be enabled at cluster creation time - you cannot enable it
 gcloud container clusters create cilium-cluster \
   --region us-central1 \
   --enable-dataplane-v2 \
+  --enable-ip-alias \
   --num-nodes 3 \
   --machine-type e2-standard-4 \
   --workload-pool YOUR_PROJECT_ID.svc.id.goog
@@ -59,19 +60,21 @@ gcloud container clusters create-auto autopilot-cluster \
   --region us-central1
 ```
 
-Verify that Cilium is running after cluster creation.
+Verify that the Dataplane V2 agent is running after cluster creation.
 
 ```bash
-# Check Cilium agent pods
-kubectl -n kube-system get pods -l k8s-app=cilium
+# Check the Dataplane V2 agent DaemonSet
+kubectl -n kube-system get daemonset anetd
 
-# Check Cilium status
-kubectl -n kube-system exec ds/anetd -- cilium status
+# Confirm the cluster is using the advanced datapath provider
+gcloud container clusters describe cilium-cluster \
+  --region us-central1 \
+  --format="value(networkConfig.datapathProvider)"
 ```
 
 ## Network Policies with Dataplane V2
 
-Dataplane V2 supports standard Kubernetes NetworkPolicy resources, but it also supports Cilium-specific policies that are more powerful.
+Dataplane V2 supports standard Kubernetes NetworkPolicy resources. GKE also provides separate Dataplane V2 features for FQDN-based egress policies and Cilium cluster-wide network policies.
 
 ### Standard Network Policies
 
@@ -100,63 +103,75 @@ spec:
           port: 8080
 ```
 
-### Cilium Network Policies
+### FQDN Network Policies
 
-Cilium policies add features not available in the standard Kubernetes spec.
+FQDN network policies add domain-based egress control that is not available in the standard Kubernetes spec. You must enable the feature before creating `FQDNNetworkPolicy` resources.
+
+```bash
+# Enable FQDN Network Policy on a Dataplane V2 cluster
+gcloud container clusters update cilium-cluster \
+  --region us-central1 \
+  --enable-fqdn-network-policy
+
+# For Standard clusters, restart anetd after enabling the feature
+kubectl rollout restart ds -n kube-system anetd
+```
 
 ```yaml
 # FQDN-based egress policy - allow pods to reach specific external domains
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
 metadata:
   name: allow-external-api
-  namespace: default
 spec:
-  endpointSelector:
+  podSelector:
     matchLabels:
       app: my-service
   egress:
     # Allow HTTPS traffic to specific external domains
-    - toFQDNs:
-        - matchName: "api.stripe.com"
-        - matchName: "api.sendgrid.com"
-        - matchPattern: "*.googleapis.com"
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-    # Allow DNS for FQDN resolution
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
+    - matches:
+        - name: "api.stripe.com"
+        - name: "api.sendgrid.com"
+        - pattern: "*.googleapis.com"
+      ports:
+        - port: 443
+          protocol: TCP
 ```
 
 This is a game-changer for security. Instead of trying to maintain lists of IP addresses for external services (which change frequently), you specify domain names directly.
 
-### Deny Policies
+### Cluster-Wide Policies
 
-Standard Kubernetes NetworkPolicy does not have explicit deny rules - you can only allow traffic. Cilium adds deny policies.
+Standard Kubernetes NetworkPolicy is namespace-scoped. GKE can also enable Cilium cluster-wide network policies for cluster-scoped L3/L4 rules.
+
+```bash
+# Enable Cilium cluster-wide network policy when creating a Standard cluster
+gcloud container clusters create cilium-cluster \
+  --region us-central1 \
+  --enable-dataplane-v2 \
+  --enable-cilium-clusterwide-network-policy
+
+# Or enable it on an existing Dataplane V2 cluster
+gcloud container clusters update cilium-cluster \
+  --region us-central1 \
+  --enable-cilium-clusterwide-network-policy
+
+kubectl rollout restart ds -n kube-system anetd
+```
 
 ```yaml
-# Explicitly deny traffic to a specific destination
+# Cluster-wide L3/L4 rule for selected workloads
 apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
+kind: CiliumClusterwideNetworkPolicy
 metadata:
-  name: deny-metadata-access
-  namespace: default
+  name: restrict-crawler-egress
 spec:
   endpointSelector:
     matchLabels:
-      role: untrusted
-  egressDeny:
-    # Block access to the GCE metadata server
+      role: crawler
+  egress:
     - toCIDR:
-        - "169.254.169.254/32"
+        - "192.0.2.0/24"
       toPorts:
         - ports:
             - port: "80"
@@ -171,32 +186,23 @@ Hubble is Cilium's observability layer. On GKE with Dataplane V2, you can enable
 # Enable observability on the cluster
 gcloud container clusters update cilium-cluster \
   --region us-central1 \
-  --enable-dataplane-v2-observability
+  --enable-dataplane-v2-flow-observability
 ```
 
 After enabling, you can query network flows through the GKE console or the Hubble CLI.
 
 ```bash
-# Install the Hubble CLI
-export HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
-tar xzvf hubble-linux-amd64.tar.gz
-sudo mv hubble /usr/local/bin/
-
-# Port-forward to the Hubble relay
-kubectl -n kube-system port-forward svc/hubble-relay 4245:80 &
+# Use the managed Hubble CLI container
+alias hubble="kubectl exec -it -n gke-managed-dpv2-observability deployment/hubble-relay -c hubble-cli -- hubble"
 
 # Observe all network flows in real-time
-hubble observe --follow
+hubble observe -f
 
 # Filter flows by namespace
-hubble observe --namespace default --follow
-
-# Filter by specific pods
-hubble observe --pod default/web-app --follow
+hubble observe -n default -f
 
 # Filter by verdict (allowed or denied)
-hubble observe --verdict DROPPED --follow
+hubble observe --verdict DROPPED -f
 ```
 
 ## Observing Network Policy Decisions
@@ -205,12 +211,12 @@ One of the most useful features is seeing exactly which policies allowed or deni
 
 ```bash
 # See all denied flows with the policy that blocked them
-hubble observe --verdict DROPPED --print-raw-filters
+hubble observe --verdict DROPPED -f
 
-# See flows for a specific service
-hubble observe --to-pod default/api-server --port 8080
+# See flows for a specific pod
+hubble observe --pod api-server --namespace default
 
-# Get flow metrics
+# Get flow verdicts as JSON
 hubble observe --namespace default -o json | jq '.flow.verdict'
 ```
 
@@ -226,41 +232,22 @@ This tells you exactly which pod tried to connect where, and which policy blocke
 
 ## L7 Visibility
 
-Cilium can also inspect L7 (application layer) traffic to give you HTTP-level visibility.
+GKE's Cilium cluster-wide network policy support is limited to L3/L4 rules. Layer 7 Cilium policies, such as HTTP method and path filtering, are not supported in GKE's managed Cilium integration. If you need application-layer controls on GKE, use a service mesh or another application-layer policy tool.
 
 ```yaml
-# Enable L7 visibility for specific pods
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: l7-visibility
-  namespace: default
-spec:
-  endpointSelector:
-    matchLabels:
-      app: api-server
-  ingress:
-    - fromEndpoints:
-        - matchLabels:
-            app: frontend
-      toPorts:
-        - ports:
-            - port: "8080"
-              protocol: TCP
-          rules:
-            http:
-              # Allow only GET and POST methods
-              - method: "GET"
-              - method: "POST"
-                path: "/api/.*"
+# This type of Cilium L7 policy is rejected by GKE Dataplane V2:
+#
+# rules:
+#   http:
+#     - method: "GET"
+#       path: "/api/.*"
 ```
 
-With L7 policies, Hubble shows you the HTTP methods, paths, and response codes.
+With Dataplane V2 observability, Hubble still shows useful L3/L4 flow metadata and Kubernetes NetworkPolicy verdicts.
 
 ```bash
-# Observe L7 flows
-hubble observe --protocol http --namespace default
-# Shows: GET /api/users -> 200, POST /api/orders -> 201, etc.
+# Observe flows in a namespace
+hubble observe -n default
 ```
 
 ## Policy Logging
@@ -268,7 +255,23 @@ hubble observe --protocol http --namespace default
 Enable policy logging to see network policy decisions in Cloud Logging.
 
 ```yaml
-# Enable policy logging via annotations
+# Enable logging globally or delegate allowed-connection logging to annotated policies
+apiVersion: networking.gke.io/v1alpha1
+kind: NetworkLogging
+metadata:
+  name: default
+spec:
+  cluster:
+    allow:
+      log: true
+      delegate: true
+    deny:
+      log: true
+      delegate: false
+```
+
+```yaml
+# Enable allowed-connection logging for this policy when delegation is on
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -298,7 +301,10 @@ Then query the logs in Cloud Logging.
 ```bash
 # Query network policy logs
 gcloud logging read \
-  'resource.type="k8s_node" AND jsonPayload.connection.direction="ingress" AND jsonPayload.policy_name="logged-policy"' \
+  'resource.type="k8s_node"
+   resource.labels.location="us-central1"
+   resource.labels.cluster_name="cilium-cluster"
+   logName="projects/YOUR_PROJECT_ID/logs/policy-action"' \
   --limit 20 \
   --format json
 ```
@@ -311,12 +317,13 @@ Dataplane V2 generally performs better than the default iptables-based networkin
 # Run a network performance benchmark
 # Deploy iperf3 server
 kubectl run iperf-server --image=networkstatic/iperf3 -- -s
+kubectl expose pod iperf-server --port 5201
 
 # Run iperf3 client
 kubectl run iperf-client --rm -i --tty --image=networkstatic/iperf3 -- \
-  -c iperf-server -t 30
+  -c iperf-server -p 5201 -t 30
 
-# You should see improved throughput and lower latency compared to iptables
+# Compare results against an equivalent legacy dataplane cluster
 ```
 
 The improvement is most noticeable in clusters with hundreds of services, where iptables rule chains become a bottleneck.
@@ -330,22 +337,16 @@ Since you cannot enable Dataplane V2 on an existing cluster, migration means cre
 gcloud container clusters create new-cluster \
   --region us-central1 \
   --enable-dataplane-v2 \
+  --enable-ip-alias \
   --num-nodes 3
 
-# Export workloads from old cluster
-kubectl get deployments -o yaml > deployments.yaml
-kubectl get services -o yaml > services.yaml
-kubectl get networkpolicies -o yaml > netpol.yaml
-
-# Apply to new cluster
+# Apply your source manifests to the new cluster
 gcloud container clusters get-credentials new-cluster --region us-central1
-kubectl apply -f deployments.yaml
-kubectl apply -f services.yaml
-kubectl apply -f netpol.yaml
+kubectl apply -f k8s/
 ```
 
 Your existing Kubernetes NetworkPolicy resources work unchanged on Dataplane V2. The migration is about the cluster, not the policies.
 
 ## Wrapping Up
 
-Dataplane V2 with Cilium is a significant upgrade to GKE's networking stack. The eBPF-based packet processing is faster and more scalable than iptables, the FQDN-based network policies are genuinely useful for controlling egress to external services, and the built-in Hubble observability gives you visibility into network traffic that previously required deploying and maintaining separate tools. If you are creating a new GKE cluster, there is little reason not to enable Dataplane V2. The performance is better, the features are richer, and the observability alone is worth it for debugging connectivity issues in production.
+Dataplane V2 with GKE's managed Cilium-based dataplane is a significant upgrade to GKE's networking stack. The eBPF-based packet processing scales better than iptables in large clusters, the GKE FQDNNetworkPolicy feature is genuinely useful for controlling egress to external services, and the managed Hubble observability gives you visibility into network traffic that previously required deploying and maintaining separate tools. If you are creating a new GKE cluster, there is little reason not to evaluate Dataplane V2. The scalability characteristics are better, the supported policy features are richer, and the observability alone is worth it for debugging connectivity issues in production.
