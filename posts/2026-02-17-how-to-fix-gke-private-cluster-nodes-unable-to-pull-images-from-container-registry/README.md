@@ -76,15 +76,15 @@ This should return `True`.
 
 ## Step 3 - Configure DNS for Private Google Access
 
-For Private Google Access to work with Container Registry and Artifact Registry, DNS must resolve the API endpoints to the correct internal addresses. There are two options.
+For Private Google Access to work with Container Registry and Artifact Registry, DNS and routing must send the registry requests through a supported Google APIs path. There are two options.
 
 **Option A - Use the default DNS resolution** (simplest):
 
 With Private Google Access enabled, the default DNS resolution works. Requests to `gcr.io` and `pkg.dev` are routed through Google's internal network automatically. No additional DNS configuration needed in most cases.
 
-**Option B - Use restricted.googleapis.com or private.googleapis.com**:
+**Option B - Use private.googleapis.com or restricted.googleapis.com**:
 
-For VPC Service Controls or additional security, configure DNS to resolve Google API domains to restricted IP ranges:
+For additional security, configure DNS to resolve Google API domains to the Private Google Access VIP ranges. The example below uses `private.googleapis.com` (`199.36.153.8/30`). If you use VPC Service Controls, use `restricted.googleapis.com` instead and replace the IP addresses with `199.36.153.4`, `199.36.153.5`, `199.36.153.6`, and `199.36.153.7`.
 
 ```bash
 # Create a Cloud DNS private zone for googleapis.com
@@ -94,8 +94,8 @@ gcloud dns managed-zones create google-apis \
   --networks=your-vpc-network \
   --description="Route Google APIs through internal IPs"
 
-# Add records pointing to the Private Google Access IP ranges
-gcloud dns record-sets create googleapis.com. \
+# Add records pointing private.googleapis.com to the Private Google Access IP ranges
+gcloud dns record-sets create private.googleapis.com. \
   --zone=google-apis \
   --type=A \
   --ttl=300 \
@@ -106,7 +106,7 @@ gcloud dns record-sets create "*.googleapis.com." \
   --zone=google-apis \
   --type=CNAME \
   --ttl=300 \
-  --rrdatas="googleapis.com."
+  --rrdatas="private.googleapis.com."
 ```
 
 Do the same for `gcr.io`:
@@ -175,7 +175,7 @@ Cloud NAT gives your private nodes outbound internet access through a NAT gatewa
 
 ## Step 5 - Check Firewall Rules
 
-Verify that firewall rules are not blocking the required traffic. For Private Google Access, you need to allow egress to the Google API IP ranges:
+Verify that firewall rules are not blocking the required traffic. For the `private.googleapis.com` VIP, you need to allow egress to `199.36.153.8/30`. If you use `restricted.googleapis.com`, allow egress to `199.36.153.4/30` instead:
 
 ```bash
 # Check existing firewall rules
@@ -215,7 +215,7 @@ gsutil iam ch \
 
 ## Step 7 - Use Artifact Registry Instead of Container Registry
 
-If you are still using Container Registry (gcr.io), consider migrating to Artifact Registry (pkg.dev). Artifact Registry is the newer service with better performance and more features:
+If you are still using Container Registry (gcr.io), migrate to Artifact Registry (pkg.dev) or to Artifact Registry `gcr.io` repositories. Container Registry is deprecated and its shutdown began in 2025; `gcr.io` URLs hosted on Artifact Registry continue to work. Artifact Registry is the recommended service with better performance and more features:
 
 ```bash
 # Create an Artifact Registry repository
