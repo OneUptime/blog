@@ -40,7 +40,7 @@ gcloud iam workforce-pools create my-corporate-pool \
   --organization=ORG_ID \
   --display-name="Corporate SSO Pool" \
   --description="Workforce pool for corporate employee access" \
-  --session-duration="8h"
+  --session-duration="28800s"
 ```
 
 The `session-duration` parameter controls how long a session lasts before the user needs to re-authenticate. Eight hours is typical for a workday.
@@ -57,9 +57,9 @@ In Okta, create a new OIDC application:
 - Grant types: Authorization Code
 - Note the Client ID and Client Secret
 
-### Azure AD Configuration
+### Microsoft Entra ID Configuration
 
-In Azure AD, register a new application:
+In Microsoft Entra ID, register a new application:
 - Redirect URI: `https://auth.cloud.google/signin-callback/locations/global/workforcePools/my-corporate-pool/providers/azure-provider`
 - Note the Application (client) ID and create a client secret
 - Note your Tenant ID for the issuer URL
@@ -78,21 +78,22 @@ gcloud iam workforce-pools providers create-oidc okta-provider \
   --client-id="YOUR_OKTA_CLIENT_ID" \
   --client-secret-value="YOUR_OKTA_CLIENT_SECRET" \
   --web-sso-response-type="code" \
-  --web-sso-assertion-claims-behavior="MERGE_USER_INFO_OVER_ID_TOKEN_CLAIMS" \
+  --web-sso-assertion-claims-behavior="merge-user-info-over-id-token-claims" \
+  --web-sso-additional-scopes="groups" \
   --attribute-mapping="google.subject=assertion.sub,google.display_name=assertion.name,attribute.department=assertion.department,google.groups=assertion.groups" \
   --attribute-condition="assertion.email_verified == true"
 ```
 
-### SAML Provider (Azure AD Example)
+### SAML Provider (Microsoft Entra ID Example)
 
 ```bash
-# Create a SAML provider for Azure AD
+# Create a SAML provider for Microsoft Entra ID
 gcloud iam workforce-pools providers create-saml azure-provider \
   --location=global \
   --workforce-pool=my-corporate-pool \
-  --display-name="Azure AD SSO" \
-  --idp-metadata-path="./azure-ad-metadata.xml" \
-  --attribute-mapping="google.subject=assertion.nameId,google.display_name=assertion['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'][0],attribute.department=assertion['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/department'][0],google.groups=assertion['http://schemas.microsoft.com/ws/2008/06/identity/claims/groups']"
+  --display-name="Entra ID SSO" \
+  --idp-metadata-path="./entra-id-metadata.xml" \
+  --attribute-mapping="google.subject=assertion.subject,google.display_name=assertion.attributes['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'][0],attribute.department=assertion.attributes['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/department'][0],google.groups=assertion.attributes['http://schemas.microsoft.com/ws/2008/06/identity/claims/groups']"
 ```
 
 The `attribute-mapping` is critical. It tells GCP how to translate identity attributes from your IdP into GCP identity attributes. The `google.subject` mapping is required - it becomes the unique identifier for the user. The `google.groups` mapping is optional but extremely useful for group-based IAM bindings.
@@ -125,7 +126,7 @@ Group-based bindings are the most practical approach. Map your IdP groups to GCP
 Workforce users access the GCP Console through a special URL that includes the workforce pool:
 
 ```text
-https://console.cloud.google/?wip=locations/global/workforcePools/my-corporate-pool&wipt=okta-provider
+https://auth.cloud.google/signin/locations/global/workforcePools/my-corporate-pool/providers/okta-provider?continueUrl=https://console.cloud.google/
 ```
 
 Bookmark this URL or distribute it through your internal portal. When users visit this URL, they are redirected to your IdP for authentication. After successful login, they land in the GCP Console with the roles you granted.
@@ -179,17 +180,16 @@ resource "google_project_iam_member" "workforce_groups" {
 
 ## Session Management
 
-Workforce sessions have configurable durations. You can also force re-authentication by revoking sessions:
+Workforce sessions have configurable durations. You can also block future token exchanges for a deleted user by deleting the workforce pool subject:
 
 ```bash
-# Delete all active sessions for a specific user
-gcloud iam workforce-pools providers delete-sessions okta-provider \
-  --location=global \
+# Delete the workforce pool subject for a specific user
+gcloud iam workforce-pools subjects delete john.doe@example.com \
   --workforce-pool=my-corporate-pool \
-  --subject="john.doe@example.com"
+  --location=global
 ```
 
-This is useful when an employee leaves the company - revoke their workforce sessions in GCP immediately, even before the IdP deprovisioning completes.
+This is useful when an employee leaves the company - after deletion, token exchanges with the same mapped `google.subject` fail for 30 days. You should still deprovision the user in your IdP so new IdP tokens cannot be issued.
 
 ## Monitoring and Auditing
 
@@ -197,10 +197,10 @@ Workforce identity authentication events appear in Cloud Audit Logs. Monitor for
 
 ```bash
 # Check workforce authentication events
-gcloud logging read 'protoPayload.methodName="google.iam.v1.WorkforcePool.CreateSession"' \
+gcloud logging read 'protoPayload.serviceName="sts.googleapis.com" AND protoPayload.methodName="google.identity.sts.SecurityTokenService.WebSignIn"' \
   --organization=ORG_ID \
   --limit=20 \
-  --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.requestMetadata.callerIp)"
+  --format="table(timestamp, protoPayload.authenticationInfo.principalSubject, protoPayload.requestMetadata.callerIp)"
 ```
 
 Pay attention to logins from unexpected IP ranges or at unusual times. Since workforce identity passes through your corporate IdP, you get the benefits of your existing MFA and conditional access policies on top of GCP's own controls.
