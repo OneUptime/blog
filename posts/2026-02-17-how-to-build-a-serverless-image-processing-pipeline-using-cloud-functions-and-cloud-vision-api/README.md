@@ -18,7 +18,7 @@ This post covers building a complete pipeline that handles image upload, resizin
 graph TD
     A[Image Upload] --> B[Cloud Storage: Raw Images]
     B -->|Trigger| C[Cloud Function: Orchestrator]
-    C --> D[Cloud Function: Resize Image]
+    C --> D[Resize Image helper]
     C --> E[Cloud Vision API: Analyze]
     D --> F[Cloud Storage: Processed Images]
     E --> G[Firestore: Analysis Results]
@@ -39,8 +39,16 @@ gsutil mb -l us-central1 gs://my-project-raw-images/
 # Bucket for processed/resized images
 gsutil mb -l us-central1 gs://my-project-processed-images/
 
-# Enable the Vision API
-gcloud services enable vision.googleapis.com --project=my-project
+# Enable the required APIs
+gcloud services enable \
+  cloudfunctions.googleapis.com \
+  cloudbuild.googleapis.com \
+  firestore.googleapis.com \
+  vision.googleapis.com \
+  --project=my-project
+
+# Create a Firestore database if the project does not already have one
+gcloud firestore databases create --location=us-central1 --project=my-project
 ```
 
 ## Step 2: Build the Image Processing Functions
@@ -208,10 +216,10 @@ def check_content_safety(analysis):
     }
 ```
 
-**Function 2: Image Resizer** - creates multiple sizes of the uploaded image:
+**Image Resizer helper** - creates multiple sizes of the uploaded image. Place this helper in the same source directory as the orchestrator so `process_image` can call it:
 
 ```python
-# resize/main.py
+# orchestrator/main.py (continued)
 from google.cloud import storage
 from PIL import Image
 import io
@@ -240,11 +248,12 @@ def resize_image(bucket_name, file_name):
     # Open with Pillow
     img = Image.open(io.BytesIO(image_data))
     original_format = img.format or "JPEG"
+    output_content_type = Image.MIME.get(original_format, blob.content_type or "application/octet-stream")
 
     # Get the file extension
     name_parts = file_name.rsplit(".", 1)
     base_name = name_parts[0]
-    extension = name_parts[1] if len(name_parts) > 1 else "jpg"
+    extension = name_parts[1].lower() if len(name_parts) > 1 else "jpg"
 
     # Create each size
     output_bucket = storage_client.bucket("my-project-processed-images")
@@ -262,7 +271,7 @@ def resize_image(bucket_name, file_name):
         # Upload to the processed bucket
         output_path = f"{size_name}/{base_name}.{extension}"
         output_blob = output_bucket.blob(output_path)
-        output_blob.upload_from_file(output, content_type=f"image/{extension}")
+        output_blob.upload_from_file(output, content_type=output_content_type)
 
         logger.info(f"Created {size_name}: {output_path} "
                     f"({resized.size[0]}x{resized.size[1]})")
@@ -301,10 +310,12 @@ def store_results(file_name, analysis, safety):
 ```bash
 # Deploy the main orchestrator function
 gcloud functions deploy process-image \
+  --no-gen2 \
   --runtime=python311 \
   --trigger-resource=my-project-raw-images \
   --trigger-event=google.storage.object.finalize \
   --entry-point=process_image \
+  --source=orchestrator \
   --memory=1024MB \
   --timeout=300s \
   --region=us-central1 \
@@ -328,6 +339,7 @@ Create a Cloud Function that lets you search the analyzed images:
 # query/main.py
 from flask import jsonify, request
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 db = firestore.Client()
 
@@ -342,7 +354,7 @@ def search_images(request):
 
     # Filter by safety status
     if safe_only:
-        query = query.where("is_safe", "==", True)
+        query = query.where(filter=FieldFilter("is_safe", "==", True))
 
     # Note: Firestore has limitations on array-contains queries
     # For label search, we query and filter in memory
@@ -376,6 +388,20 @@ def search_images(request):
     return jsonify({"results": results, "count": len(results)})
 ```
 
+Deploy the query API as an HTTP function:
+
+```bash
+gcloud functions deploy search-images \
+  --no-gen2 \
+  --runtime=python311 \
+  --trigger-http \
+  --entry-point=search_images \
+  --source=query \
+  --allow-unauthenticated \
+  --region=us-central1 \
+  --project=my-project
+```
+
 ## Step 5: Test the Pipeline
 
 ```bash
@@ -383,7 +409,7 @@ def search_images(request):
 gsutil cp sample-photo.jpg gs://my-project-raw-images/
 
 # Check the function logs
-gcloud functions logs read process-image --limit=20 --project=my-project
+gcloud functions logs read process-image --no-gen2 --limit=20 --project=my-project
 
 # Check the processed images bucket
 gsutil ls gs://my-project-processed-images/thumbnail/
@@ -398,6 +424,8 @@ curl "https://us-central1-my-project.cloudfunctions.net/search-images?label=outd
 For processing existing images that are already in your bucket, create a batch processing function:
 
 ```python
+from flask import jsonify
+
 def batch_process(request):
     """Process all unprocessed images in the raw bucket."""
     bucket = storage_client.bucket("my-project-raw-images")
