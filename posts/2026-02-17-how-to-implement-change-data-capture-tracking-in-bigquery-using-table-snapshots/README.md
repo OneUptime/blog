@@ -16,16 +16,16 @@ This guide covers how to use both features to build a CDC system in BigQuery tha
 
 Before diving into implementation, let me explain the two underlying capabilities.
 
-**Time travel** lets you query a table as it existed at any point within the last seven days. You do this with the `FOR SYSTEM_TIME AS OF` clause. This is built into BigQuery - no setup required.
+**Time travel** lets you query a table as it existed at any point within its time travel window, which is seven days by default and can be configured from two to seven days. You do this with the `FOR SYSTEM_TIME AS OF` clause. This is built into BigQuery - no setup required.
 
 **Table snapshots** are point-in-time copies of a table. Unlike time travel, snapshots persist beyond seven days. They are stored efficiently as deltas from the base table, so they do not duplicate all the data.
 
 ```mermaid
 graph LR
-    subgraph "Time Travel (7 days)"
+    subgraph "Time Travel (2-7 days)"
         T1[Table at T-6d] --> T2[Table at T-3d] --> T3[Table at T-1d] --> T4[Table Now]
     end
-    subgraph "Snapshots (Indefinite)"
+    subgraph "Snapshots (Until expiration or deletion)"
         S1[Snapshot: Jan 1] --> S2[Snapshot: Feb 1] --> S3[Snapshot: Feb 15]
     end
 ```
@@ -34,14 +34,19 @@ graph LR
 
 The simplest approach uses time travel to compare the current table state with a previous state.
 
+BigQuery does not let a single query reference the same table at both the current time and a historical time. To compare those states, materialize the current state into a temporary table first.
+
 ### Detecting New Rows (Inserts)
 
 ```sql
 -- Find rows that exist now but did not exist 1 hour ago
+CREATE TEMP TABLE current_customers AS
+SELECT * FROM `analytics.customers`;
+
 SELECT current_data.*
-FROM `analytics.customers` AS current_data
+FROM current_customers AS current_data
 LEFT JOIN `analytics.customers`
-  FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR) AS previous_data
+  AS previous_data FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
   ON current_data.customer_id = previous_data.customer_id
 WHERE previous_data.customer_id IS NULL;
 ```
@@ -50,6 +55,9 @@ WHERE previous_data.customer_id IS NULL;
 
 ```sql
 -- Find rows that changed in the last hour
+CREATE TEMP TABLE current_customers AS
+SELECT * FROM `analytics.customers`;
+
 SELECT
   current_data.customer_id,
   previous_data.customer_name AS old_name,
@@ -58,23 +66,26 @@ SELECT
   current_data.email AS new_email,
   previous_data.status AS old_status,
   current_data.status AS new_status
-FROM `analytics.customers` AS current_data
+FROM current_customers AS current_data
 INNER JOIN `analytics.customers`
-  FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR) AS previous_data
+  AS previous_data FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
   ON current_data.customer_id = previous_data.customer_id
-WHERE current_data.customer_name != previous_data.customer_name
-  OR current_data.email != previous_data.email
-  OR current_data.status != previous_data.status;
+WHERE current_data.customer_name IS DISTINCT FROM previous_data.customer_name
+  OR current_data.email IS DISTINCT FROM previous_data.email
+  OR current_data.status IS DISTINCT FROM previous_data.status;
 ```
 
 ### Detecting Deleted Rows
 
 ```sql
 -- Find rows that existed 1 hour ago but no longer exist
+CREATE TEMP TABLE current_customers AS
+SELECT * FROM `analytics.customers`;
+
 SELECT previous_data.*
 FROM `analytics.customers`
-  FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR) AS previous_data
-LEFT JOIN `analytics.customers` AS current_data
+  AS previous_data FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
+LEFT JOIN current_customers AS current_data
   ON previous_data.customer_id = current_data.customer_id
 WHERE current_data.customer_id IS NULL;
 ```
@@ -85,6 +96,9 @@ Create a scheduled query that runs hourly and writes changes to a change log tab
 
 ```sql
 -- Scheduled CDC query that captures all changes
+CREATE TEMP TABLE current_customers AS
+SELECT * FROM `analytics.customers`;
+
 INSERT INTO `analytics.customer_change_log`
   (change_type, customer_id, old_values, new_values, detected_at)
 
@@ -95,9 +109,9 @@ SELECT
   NULL AS old_values,
   TO_JSON_STRING(c) AS new_values,
   CURRENT_TIMESTAMP() AS detected_at
-FROM `analytics.customers` AS c
+FROM current_customers AS c
 LEFT JOIN `analytics.customers`
-  FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR) AS prev
+  AS prev FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
   ON c.customer_id = prev.customer_id
 WHERE prev.customer_id IS NULL
 
@@ -110,9 +124,9 @@ SELECT
   TO_JSON_STRING(prev) AS old_values,
   TO_JSON_STRING(c) AS new_values,
   CURRENT_TIMESTAMP() AS detected_at
-FROM `analytics.customers` AS c
+FROM current_customers AS c
 INNER JOIN `analytics.customers`
-  FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR) AS prev
+  AS prev FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
   ON c.customer_id = prev.customer_id
 WHERE TO_JSON_STRING(c) != TO_JSON_STRING(prev)
 
@@ -126,8 +140,8 @@ SELECT
   NULL AS new_values,
   CURRENT_TIMESTAMP() AS detected_at
 FROM `analytics.customers`
-  FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR) AS prev
-LEFT JOIN `analytics.customers` AS c
+  AS prev FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
+LEFT JOIN current_customers AS c
   ON prev.customer_id = c.customer_id
 WHERE c.customer_id IS NULL;
 ```
@@ -140,7 +154,7 @@ Schedule this query:
 bq query --use_legacy_sql=false \
   --schedule="every 1 hours" \
   --display_name="Customer CDC Tracker" \
-  --destination_table="" \
+  --target_dataset="analytics" \
   "$(cat cdc_query.sql)"
 ```
 
@@ -156,32 +170,14 @@ CREATE SNAPSHOT TABLE `analytics.customers_snapshot_20260217`
 CLONE `analytics.customers`;
 ```
 
-Automate snapshot creation with a scheduled query or Cloud Scheduler:
+Automate snapshot creation with a scheduled query:
 
-```bash
-# Create a Cloud Scheduler job to take daily snapshots
-gcloud scheduler jobs create http daily-customer-snapshot \
-  --schedule="0 0 * * *" \
-  --uri="https://bigquery.googleapis.com/bigquery/v2/projects/MY_PROJECT/jobs" \
-  --http-method=POST \
-  --headers="Content-Type=application/json" \
-  --message-body='{
-    "configuration": {
-      "copy": {
-        "sourceTable": {
-          "projectId": "MY_PROJECT",
-          "datasetId": "analytics",
-          "tableId": "customers"
-        },
-        "destinationTable": {
-          "projectId": "MY_PROJECT",
-          "datasetId": "snapshots",
-          "tableId": "customers_YYYYMMDD"
-        },
-        "operationType": "SNAPSHOT"
-      }
-    }
-  }'
+```sql
+-- Scheduled query to take daily snapshots with a date suffix
+EXECUTE IMMEDIATE FORMAT("""
+  CREATE SNAPSHOT TABLE `snapshots.customers_%s`
+  CLONE `analytics.customers`
+""", FORMAT_DATE('%Y%m%d', CURRENT_DATE()));
 ```
 
 ### Compare Snapshots
@@ -264,16 +260,19 @@ LANGUAGE js AS """
 """;
 
 -- Use in your CDC query
+CREATE TEMP TABLE current_customers AS
+SELECT * FROM `analytics.customers`;
+
 SELECT
   'UPDATE' AS change_type,
   c.customer_id,
-  TO_JSON_STRING(prev) AS old_values,
-  TO_JSON_STRING(c) AS new_values,
+  TO_JSON(prev) AS old_values,
+  TO_JSON(c) AS new_values,
   changed_fields(TO_JSON_STRING(prev), TO_JSON_STRING(c)) AS modified_fields,
   CURRENT_TIMESTAMP() AS detected_at
-FROM `analytics.customers` AS c
+FROM current_customers AS c
 INNER JOIN `analytics.customers`
-  FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR) AS prev
+  AS prev FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR)
   ON c.customer_id = prev.customer_id
 WHERE TO_JSON_STRING(c) != TO_JSON_STRING(prev);
 ```
@@ -331,4 +330,4 @@ done
 
 ## Wrapping Up
 
-BigQuery's time travel and table snapshot features give you practical CDC capabilities without the complexity of log-based capture systems. Time travel handles short-term change detection (up to 7 days), while snapshots extend this indefinitely. The combination of scheduled CDC queries and a persistent change log table gives you a complete audit trail of what changed, when, and from what previous value. The approach is not real time - it depends on your polling interval - but for many analytics and compliance use cases, hourly or daily change detection is more than sufficient.
+BigQuery's time travel and table snapshot features give you practical CDC capabilities without the complexity of log-based capture systems. Time travel handles short-term change detection within the configured time travel window, while snapshots extend this until their expiration or deletion. The combination of scheduled CDC queries and a persistent change log table gives you a complete audit trail of what changed, when, and from what previous value. The approach is not real time - it depends on your polling interval - but for many analytics and compliance use cases, hourly or daily change detection is more than sufficient.
