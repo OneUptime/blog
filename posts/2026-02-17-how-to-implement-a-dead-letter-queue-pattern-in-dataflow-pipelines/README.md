@@ -192,18 +192,20 @@ Here is a simple Cloud Function that can reprocess dead letter messages from a P
 ```python
 # Cloud Function to reprocess dead letter messages
 
+import base64
 import json
+import functions_framework
 from google.cloud import pubsub_v1
 
 publisher = pubsub_v1.PublisherClient()
 INPUT_TOPIC = "projects/my-project/topics/input-events"
 
-def reprocess_dead_letter(event, context):
+@functions_framework.cloud_event
+def reprocess_dead_letter(cloud_event):
     """Triggered by a message on the dead letter subscription."""
-    import base64
-
     # Decode the dead letter message
-    dead_letter = json.loads(base64.b64decode(event['data']).decode('utf-8'))
+    message_data = cloud_event.data["message"]["data"]
+    dead_letter = json.loads(base64.b64decode(message_data).decode("utf-8"))
 
     # Extract the original payload
     original_payload = dead_letter['original_payload']
@@ -226,14 +228,14 @@ You should absolutely monitor the rate of dead letter messages. A sudden spike u
 Set up alerting on the dead letter Pub/Sub topic or BigQuery table.
 
 ```bash
-# Create a Cloud Monitoring alert for dead letter message rate
-gcloud alpha monitoring policies create \
+# Create a Cloud Monitoring alert for dead letter publish requests
+gcloud monitoring policies create \
   --notification-channels=CHANNEL_ID \
   --display-name="High Dead Letter Rate" \
-  --condition-display-name="DLQ messages above threshold" \
-  --condition-filter='resource.type="pubsub_topic" AND resource.label.topic_id="dead-letter" AND metric.type="pubsub.googleapis.com/topic/send_message_operation_count"' \
-  --condition-threshold-value=100 \
-  --condition-threshold-duration=300s
+  --condition-display-name="DLQ publish requests above threshold" \
+  --condition-filter='resource.type="pubsub_topic" AND resource.label.topic_id="dead-letter" AND metric.type="pubsub.googleapis.com/topic/send_request_count"' \
+  --if="> 100" \
+  --duration=300s
 ```
 
 ## Error Classification
@@ -264,12 +266,12 @@ public void processElement(ProcessContext c) {
             }
         } catch (PermanentException e) {
             // Permanent error - go directly to dead letter
-            c.output(deadLetterTag, buildDeadLetterRecord(message, e.getMessage()));
+            c.output(deadLetterTag, buildDeadLetterRecord(message, e.getMessage(), Instant.now()));
             return;
         }
     }
     // All retries exhausted - send to dead letter
-    c.output(deadLetterTag, buildDeadLetterRecord(message, "Max retries exceeded"));
+    c.output(deadLetterTag, buildDeadLetterRecord(message, "Max retries exceeded", Instant.now()));
 }
 ```
 
