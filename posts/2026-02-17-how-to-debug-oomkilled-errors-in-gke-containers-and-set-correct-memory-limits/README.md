@@ -18,7 +18,7 @@ There are two scenarios that lead to OOMKilled:
 
 1. **Container exceeds its memory limit** - Kubernetes sets a memory limit on the container's cgroup. When the container tries to allocate memory beyond that limit, the Linux OOM killer steps in and terminates the process.
 
-2. **Node-level OOM** - If the node itself runs out of memory (all pods combined are using more than available), the kubelet evicts pods. This is less common in GKE because the kubelet reserves memory for system components, but it can happen with aggressive overcommitment.
+2. **Node-level OOM** - If the node itself runs out of memory (all pods combined are using more than available), the kubelet can evict pods under memory pressure. If the node reaches a global OOM condition first, the Linux OOM killer can terminate a process on the node. This is less common in GKE because the kubelet reserves memory for system components, but it can happen with aggressive overcommitment.
 
 You can tell which one happened by checking the pod status:
 
@@ -28,7 +28,7 @@ You can tell which one happened by checking the pod status:
 kubectl get pod your-pod-name -n your-namespace -o jsonpath='{.status.containerStatuses[0].lastState.terminated.reason}'
 ```
 
-If it returns "OOMKilled", the container hit its memory limit.
+If it returns "OOMKilled", Kubernetes observed an OOM kill for that container. In most cases this means the container hit its memory limit; if the node also showed memory pressure or system OOM events, check node logs and events to distinguish a node-level OOM from a container-level limit breach.
 
 ## Step 1 - Check Current Memory Configuration
 
@@ -97,7 +97,13 @@ kind: Deployment
 metadata:
   name: stable-app
 spec:
+  selector:
+    matchLabels:
+      app: stable-app
   template:
+    metadata:
+      labels:
+        app: stable-app
     spec:
       containers:
       - name: app
@@ -117,7 +123,13 @@ kind: Deployment
 metadata:
   name: java-app
 spec:
+  selector:
+    matchLabels:
+      app: java-app
   template:
+    metadata:
+      labels:
+        app: java-app
     spec:
       containers:
       - name: app
@@ -150,7 +162,13 @@ kind: Deployment
 metadata:
   name: leaky-app
 spec:
+  selector:
+    matchLabels:
+      app: leaky-app
   template:
+    metadata:
+      labels:
+        app: leaky-app
     spec:
       containers:
       - name: app
@@ -159,8 +177,13 @@ spec:
             command:
             - /bin/sh
             - -c
-            # Restart if RSS memory exceeds 900MB (limit is 1Gi)
-            - "[ $(cat /sys/fs/cgroup/memory/memory.usage_in_bytes) -lt 943718400 ]"
+            # Restart if cgroup memory usage exceeds 900MB (limit is 1Gi)
+            - |
+              usage_file=/sys/fs/cgroup/memory.current
+              if [ ! -f "$usage_file" ]; then
+                usage_file=/sys/fs/cgroup/memory/memory.usage_in_bytes
+              fi
+              [ "$(cat "$usage_file")" -lt 943718400 ]
           initialDelaySeconds: 60
           periodSeconds: 30
         resources:
@@ -172,7 +195,7 @@ This gives the pod a graceful restart before the OOM killer steps in, which mean
 
 ## Step 6 - Use the Vertical Pod Autoscaler
 
-GKE's Vertical Pod Autoscaler (VPA) can automatically recommend or even set memory limits based on historical usage:
+GKE's Vertical Pod Autoscaler (VPA) can automatically recommend or even set memory requests and limits based on historical usage:
 
 ```yaml
 # VPA in recommendation mode to get memory limit suggestions
@@ -204,7 +227,7 @@ After running in "Off" mode for a day or two, check the recommendations:
 kubectl get vpa your-app-vpa -n your-namespace -o yaml | grep -A 20 recommendation
 ```
 
-The VPA gives you three values - lowerBound, target, and upperBound. Use the target for your request and the upperBound for your limit.
+The VPA gives you three values - lowerBound, target, and upperBound. Use the target as a starting point for your request, then set the limit based on the application's observed peak and headroom. If you let VPA manage limits automatically, it scales limits proportionally based on the request-to-limit ratio in the pod spec. For JVM workloads, treat VPA recommendations as advisory because GKE notes limited visibility into actual JVM memory usage.
 
 ## Step 7 - Monitor with Cloud Monitoring
 
@@ -212,11 +235,12 @@ Set up alerting before pods hit their limits:
 
 ```bash
 # Create alert for containers approaching memory limit
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Container Memory Usage High" \
   --condition-display-name="Container memory above 85% of limit" \
-  --condition-filter='metric.type="kubernetes.io/container/memory/used_bytes" AND resource.type="k8s_container"' \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --condition-filter='metric.type="kubernetes.io/container/memory/limit_utilization" AND resource.type="k8s_container"' \
+  --if="> 0.85" \
+  --duration="60s" \
   --notification-channels="CHANNEL_ID"
 ```
 
@@ -228,8 +252,8 @@ A few things that catch people off guard:
 
 - **tmpfs volumes count toward memory limits.** If you use emptyDir with medium: Memory, writes to that volume consume container memory.
 - **Go applications can look like they are leaking.** The Go runtime does not always return memory to the OS immediately. Check the Go runtime metrics, not just the process RSS.
-- **Init containers share the same memory limit.** If your init container needs 2Gi for a migration but your app needs 512Mi, the limit must accommodate the init container.
-- **Sidecar containers share the pod's total resources.** Istio proxies, log collectors, and other sidecars all consume memory within the pod.
+- **Init containers affect the pod's effective resource requirements.** If your init container needs 2Gi for a migration but your app needs 512Mi, set an appropriate limit on the init container; Kubernetes uses the highest init-container request or limit when calculating the pod's effective startup requirements.
+- **Sidecar containers add to the pod's total resources.** Istio proxies, log collectors, and other sidecars all consume memory, so give them their own requests and limits and account for them in the pod's total footprint.
 
 ## Quick Reference
 
