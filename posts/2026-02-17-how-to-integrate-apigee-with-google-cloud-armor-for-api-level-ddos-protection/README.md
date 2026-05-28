@@ -24,7 +24,7 @@ graph LR
     D --> E[Backend Services]
 ```
 
-The key insight is that Apigee X (the Google Cloud-native version) already uses a managed instance group behind a load balancer. You can attach Cloud Armor policies to this load balancer to get DDoS protection at the network edge.
+The key insight is that Apigee X (the Google Cloud-native version) supports northbound routing through a Google Cloud external Application Load Balancer that you manage. Depending on how your Apigee organization was provisioned, that load balancer might use a Private Service Connect network endpoint group or the older managed instance group pattern as its backend. You can attach Cloud Armor policies to the load balancer's backend service to get DDoS protection at the network edge.
 
 ## Prerequisites
 
@@ -37,7 +37,7 @@ Before you start, make sure you have:
 
 ## Step 1: Identify Your Apigee Load Balancer
 
-When you provision Apigee X, Google creates a load balancer for the runtime. You need to identify the backend service associated with it.
+When you configure internet-facing routing for Apigee X, you use an external Application Load Balancer in your project. You need to identify the backend service associated with that load balancer.
 
 This command lists the backend services in your project so you can find the Apigee one.
 
@@ -45,17 +45,18 @@ This command lists the backend services in your project so you can find the Apig
 # List all backend services to find the Apigee-related one
 
 gcloud compute backend-services list \
+    --global \
     --project=YOUR_PROJECT_ID \
     --format="table(name, backends[].group)"
 ```
 
-Look for a backend service that references the Apigee managed instance group. The name usually contains "apigee" in it. Note this name down - you will need it when attaching the security policy.
+Look for the backend service used by your Apigee load balancer. It might reference a PSC network endpoint group or an Apigee managed instance group, depending on your northbound routing setup. Note this name down - you will need it when attaching the security policy.
 
 ## Step 2: Create a Cloud Armor Security Policy
 
 Now create a Cloud Armor security policy that will serve as the container for your protection rules.
 
-This creates a new Cloud Armor policy with Adaptive Protection enabled, which uses ML models to detect and mitigate L7 DDoS attacks automatically.
+This creates a new global Cloud Armor backend security policy with Adaptive Protection enabled, which uses ML models to detect L7 DDoS attacks and generate suggested mitigation rules.
 
 ```yaml
 # cloud-armor-policy.yaml
@@ -72,16 +73,19 @@ adaptiveProtectionConfig:
 ```bash
 # Create the security policy with Adaptive Protection
 gcloud compute security-policies create apigee-ddos-protection \
+    --type=CLOUD_ARMOR \
+    --global \
     --description="DDoS protection for Apigee APIs" \
     --project=YOUR_PROJECT_ID
 
 # Enable Adaptive Protection on the policy
 gcloud compute security-policies update apigee-ddos-protection \
     --enable-layer7-ddos-defense \
+    --global \
     --project=YOUR_PROJECT_ID
 ```
 
-Adaptive Protection is Google's ML-based system that learns your traffic patterns over time and automatically suggests or applies rules when it detects anomalous traffic spikes that look like DDoS attacks.
+Adaptive Protection is Google's ML-based system that learns your traffic patterns over time and suggests rules when it detects anomalous traffic spikes that look like DDoS attacks. It can automatically apply mitigation rules only if you also configure an Adaptive Protection auto-deploy placeholder rule.
 
 ## Step 3: Add Rate Limiting Rules
 
@@ -93,6 +97,7 @@ This rule limits each IP address to 100 requests per minute across your API endp
 # Add a rate limiting rule - 100 requests per minute per IP
 gcloud compute security-policies rules create 1000 \
     --security-policy=apigee-ddos-protection \
+    --global \
     --expression="true" \
     --action=throttle \
     --rate-limit-threshold-count=100 \
@@ -109,6 +114,7 @@ You can get more granular by rate limiting based on specific API paths. This rul
 # Stricter rate limit for auth endpoints - 10 requests per minute
 gcloud compute security-policies rules create 900 \
     --security-policy=apigee-ddos-protection \
+    --global \
     --expression="request.path.matches('/v1/auth.*')" \
     --action=throttle \
     --rate-limit-threshold-count=10 \
@@ -129,6 +135,7 @@ This rule denies traffic from specific country codes. Adjust the list based on y
 # Block traffic from specific regions
 gcloud compute security-policies rules create 800 \
     --security-policy=apigee-ddos-protection \
+    --global \
     --expression="origin.region_code == 'XX' || origin.region_code == 'YY'" \
     --action=deny-403 \
     --description="Block traffic from restricted regions" \
@@ -143,7 +150,8 @@ Cloud Armor includes pre-configured WAF rules that catch common attack patterns.
 # Enable the SQL injection protection rule
 gcloud compute security-policies rules create 700 \
     --security-policy=apigee-ddos-protection \
-    --expression="evaluatePreconfiguredExpr('sqli-v33-stable')" \
+    --global \
+    --expression="evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 3})" \
     --action=deny-403 \
     --description="Block SQL injection attempts" \
     --project=YOUR_PROJECT_ID
@@ -151,7 +159,8 @@ gcloud compute security-policies rules create 700 \
 # Enable the cross-site scripting protection rule
 gcloud compute security-policies rules create 600 \
     --security-policy=apigee-ddos-protection \
-    --expression="evaluatePreconfiguredExpr('xss-v33-stable')" \
+    --global \
+    --expression="evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 3})" \
     --action=deny-403 \
     --description="Block XSS attempts" \
     --project=YOUR_PROJECT_ID
@@ -164,6 +173,7 @@ With all your rules configured, attach the security policy to the Apigee backend
 ```bash
 # Attach the security policy to Apigee's backend service
 gcloud compute backend-services update APIGEE_BACKEND_SERVICE_NAME \
+    --global \
     --security-policy=apigee-ddos-protection \
     --project=YOUR_PROJECT_ID
 ```
@@ -174,14 +184,13 @@ Replace `APIGEE_BACKEND_SERVICE_NAME` with the name you identified in Step 1.
 
 Cloud Armor handles the edge protection, but you should also configure Apigee-level policies for defense in depth. Create a Spike Arrest policy in your Apigee proxy to add another layer of rate limiting.
 
-This Apigee policy XML configures spike arrest to smooth out traffic bursts at the proxy level.
+This Apigee policy XML configures spike arrest at the proxy level.
 
 ```xml
 <!-- SpikeArrest policy for additional rate limiting -->
 <SpikeArrest name="SA-RateLimit">
     <Rate>30pm</Rate>
     <Identifier ref="request.header.x-api-key"/>
-    <MessageWeight ref="spike_weight"/>
     <UseEffectiveCount>true</UseEffectiveCount>
 </SpikeArrest>
 ```
@@ -198,7 +207,7 @@ gcloud logging sinks create cloud-armor-api-logs \
     --project=YOUR_PROJECT_ID
 ```
 
-You can also set up an alerting policy that notifies you when Cloud Armor blocks a surge of traffic.
+You can also set up an alerting policy that notifies you when the load balancer returns a surge of 4xx responses, such as requests blocked by Cloud Armor rules.
 
 ```bash
 # Create an alert for high block rates
@@ -207,8 +216,8 @@ gcloud alpha monitoring policies create \
     --display-name="Cloud Armor High Block Rate" \
     --condition-display-name="Blocked requests spike" \
     --condition-filter='resource.type="http_load_balancer" AND metric.type="loadbalancing.googleapis.com/https/request_count" AND metric.labels.response_code_class="400"' \
-    --condition-threshold-value=1000 \
-    --condition-threshold-duration=300s \
+    --if='> 1000' \
+    --duration=300s \
     --project=YOUR_PROJECT_ID
 ```
 
@@ -228,7 +237,7 @@ After running the test, check the Cloud Armor logs to verify that requests above
 
 A few things I have learned from running this setup in production:
 
-1. **Adaptive Protection needs baseline data.** It takes about a week of normal traffic patterns before the ML models can effectively detect anomalies. Do not expect it to work perfectly on day one.
+1. **Adaptive Protection needs baseline data.** It can take up to an hour before Adaptive Protection has enough baseline traffic to generate usable rules, and its signal improves as it observes more normal traffic. Do not expect it to work perfectly immediately after creating a new policy.
 
 2. **Rate limits need tuning.** Start with generous limits and tighten them based on actual traffic patterns. Being too aggressive will block legitimate API consumers.
 
