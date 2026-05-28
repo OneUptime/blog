@@ -83,6 +83,7 @@ gcloud compute url-maps add-path-matcher my-url-map \
     --path-matcher-name=static-paths \
     --default-service=my-dynamic-backend \
     --backend-bucket-path-rules="/static/*=static-assets-backend" \
+    --existing-host=example.com \
     --global
 ```
 
@@ -111,7 +112,8 @@ gcloud compute ssl-certificates create static-site-cert \
 # Create the HTTPS target proxy
 gcloud compute target-https-proxies create static-site-proxy \
     --url-map=static-only-map \
-    --ssl-certificates=static-site-cert
+    --ssl-certificates=static-site-cert \
+    --global
 
 # Create the forwarding rule
 gcloud compute forwarding-rules create static-site-rule \
@@ -123,10 +125,10 @@ gcloud compute forwarding-rules create static-site-rule \
 
 ## Serving a Single Page Application
 
-For single page applications (React, Vue, Angular), you want all routes to serve `index.html` from the bucket. This requires a custom URL map configuration:
+For single page applications (React, Vue, Angular), you often want unmatched routes to land on `index.html` from the bucket. One load balancer option is a URL map redirect:
 
 ```bash
-# Import a URL map for SPA hosting with fallback to index.html
+# Import a URL map for SPA hosting with a redirect to index.html
 gcloud compute url-maps import spa-map \
     --global \
     --source=/dev/stdin <<'EOF'
@@ -198,9 +200,9 @@ You can add custom headers to responses served through the backend bucket:
 ```bash
 # Add custom response headers for security and CORS
 gcloud compute backend-buckets update static-assets-backend \
-    --custom-response-headers="X-Frame-Options: DENY" \
-    --custom-response-headers="X-Content-Type-Options: nosniff" \
-    --custom-response-headers="Access-Control-Allow-Origin: https://app.example.com"
+    --custom-response-header="X-Frame-Options: DENY" \
+    --custom-response-header="X-Content-Type-Options: nosniff" \
+    --custom-response-header="Access-Control-Allow-Origin: https://app.example.com"
 ```
 
 ## Enabling Compression
@@ -213,7 +215,7 @@ gcloud compute backend-buckets update static-assets-backend \
     --compression-mode=AUTOMATIC
 ```
 
-With automatic compression, the load balancer compresses responses for clients that send an `Accept-Encoding: gzip` header. This works even if the original objects in Cloud Storage are not compressed.
+With automatic compression, the load balancer compresses text responses using Brotli or gzip based on the client's `Accept-Encoding` header. This works even if the original objects in Cloud Storage are not compressed.
 
 ## Mixed Architecture: Dynamic and Static
 
@@ -224,18 +226,18 @@ graph LR
     A[Client] --> B[Load Balancer]
     B --> C{URL Map}
     C -->|/api/*| D[Backend Service - API Servers]
-    C -->|/static/*| E[Backend Bucket - Cloud Storage]
+    C -->|/static/*| G[Cloud CDN Cache]
+    G --> E[Backend Bucket - Cloud Storage]
     C -->|/*| F[Backend Service - Web Servers]
-    E --> G[Cloud CDN Cache]
-    G --> H[Cloud Storage Bucket]
+    E --> H[Cloud Storage Bucket]
 ```
 
 ## Cost Comparison
 
 Serving static content through a backend bucket is significantly cheaper than serving it from compute instances:
 
-- **Cloud Storage**: ~$0.026/GB stored, $0.12/GB egress (first 1 TB)
-- **Cloud CDN**: ~$0.08/GB served from cache (varies by region)
+- **Cloud Storage**: about $0.026/GB-month for Standard Storage in a US multi-region bucket, with internet egress billed separately and varying by destination and usage tier
+- **Cloud CDN**: about $0.08/GB served from cache for the first 10 TiB in North America and Europe, plus cache lookup and cache fill charges
 - **Compute Engine**: Instance costs + egress + operational overhead
 
 For a site serving 100 GB of static content per month, the backend bucket approach costs a few dollars. The equivalent compute setup could easily be 10-20x more expensive.
