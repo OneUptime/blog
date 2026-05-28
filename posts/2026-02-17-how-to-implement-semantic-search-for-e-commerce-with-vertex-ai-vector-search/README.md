@@ -158,6 +158,7 @@ index = aiplatform.MatchingEngineIndex.create_tree_ah_index(
     dimensions=768,  # Must match the embedding model's output dimensions
     approximate_neighbors_count=50,
     distance_measure_type="DOT_PRODUCT_DISTANCE",
+    index_update_method="STREAM_UPDATE",  # Required for upsert_datapoints later
     shard_size="SHARD_SIZE_SMALL",  # Use SMALL for catalogs under 1M products
     description="Product catalog semantic search index",
 )
@@ -298,10 +299,12 @@ def search():
 Product catalogs change constantly. Use streaming updates to keep the index current:
 
 ```python
+from google.cloud.aiplatform_v1.types import IndexDatapoint
+
 # Add or update products in the index without rebuilding
 index.upsert_datapoints(
     datapoints=[
-        aiplatform.matching_engine.matching_engine_index_endpoint.IndexDatapoint(
+        IndexDatapoint(
             datapoint_id="prod-new-001",
             feature_vector=new_product_embedding,
         )
