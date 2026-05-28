@@ -31,7 +31,7 @@ graph TD
 ## Prerequisites
 
 - An organization-level GCP setup
-- An access policy (created automatically when you set up VPC Service Controls)
+- An access policy (create one if it does not already exist)
 - The `roles/accesscontextmanager.policyAdmin` role
 
 ```bash
@@ -59,11 +59,10 @@ Create the `office-spec.yaml` file:
 
 ```yaml
 # office-spec.yaml - Allow access from office IP ranges
-conditions:
-  - ipSubnetworks:
-      - 203.0.113.0/24      # Main office
-      - 198.51.100.0/24     # Branch office
-      - 192.0.2.0/24        # VPN endpoint
+- ipSubnetworks:
+  - 203.0.113.0/24      # Main office
+  - 198.51.100.0/24     # Branch office
+  - 192.0.2.0/24        # VPN endpoint
 ```
 
 ## Creating a Multi-Condition Access Level
@@ -72,16 +71,15 @@ Combine IP range with other conditions.
 
 ```yaml
 # secure-access-spec.yaml - Require both corporate IP and managed device
-conditions:
-  - ipSubnetworks:
-      - 203.0.113.0/24
-    devicePolicy:
-      requireScreenlock: true
-      osConstraints:
-        - osType: DESKTOP_CHROME_OS
-          requireVerifiedChromeOs: true
-        - osType: DESKTOP_WINDOWS
-        - osType: DESKTOP_MAC
+- ipSubnetworks:
+  - 203.0.113.0/24
+  devicePolicy:
+    requireScreenlock: true
+    osConstraints:
+      - osType: DESKTOP_CHROME_OS
+        requireVerifiedChromeOs: true
+      - osType: DESKTOP_WINDOWS
+      - osType: DESKTOP_MAC
 ```
 
 ```bash
@@ -94,25 +92,25 @@ gcloud access-context-manager levels create secure-access \
 
 ## Creating an Access Level with OR Conditions
 
-If you want to allow access from either one condition OR another (not requiring both), use multiple conditions in the array.
+If you want to allow access from either one condition OR another (not requiring both), use multiple conditions in the array and set the combine function to OR.
 
 ```yaml
 # flexible-access-spec.yaml - Allow access from office OR VPN
 # Each condition is evaluated independently (OR logic)
-conditions:
-  - ipSubnetworks:
-      - 203.0.113.0/24      # Office network
-  - ipSubnetworks:
-      - 10.0.0.0/8          # VPN network
+- ipSubnetworks:
+  - 203.0.113.0/24      # Office network
+- ipSubnetworks:
+  - 10.0.0.0/8          # VPN network
 ```
 
-When you have multiple conditions at the top level, they are combined with OR logic. A request only needs to match one condition.
+By default, multiple conditions are combined with AND logic. With `--combine-function=OR`, a request only needs to match one condition.
 
 ```bash
 # Create the access level
 gcloud access-context-manager levels create flexible-access \
   --title="Office or VPN Access" \
   --basic-level-spec=flexible-access-spec.yaml \
+  --combine-function=or \
   --policy=$ACCESS_POLICY_ID
 ```
 
@@ -122,11 +120,10 @@ Restrict access to specific geographic regions.
 
 ```yaml
 # region-spec.yaml - Allow access from specific countries
-conditions:
-  - regions:
-      - US
-      - CA
-      - GB
+- regions:
+  - US
+  - CA
+  - GB
 ```
 
 ```bash
@@ -143,10 +140,9 @@ You can create access levels that match specific service accounts by combining t
 
 ```yaml
 # sa-spec.yaml - Allow specific service accounts
-conditions:
-  - members:
-      - serviceAccount:trusted-pipeline@my-project.iam.gserviceaccount.com
-      - serviceAccount:monitoring-agent@ops-project.iam.gserviceaccount.com
+- members:
+  - serviceAccount:trusted-pipeline@my-project.iam.gserviceaccount.com
+  - serviceAccount:monitoring-agent@ops-project.iam.gserviceaccount.com
 ```
 
 ```bash
@@ -163,10 +159,9 @@ You can create access levels that depend on other access levels. This lets you b
 
 ```yaml
 # combined-spec.yaml - Require both office network AND endpoint verification
-conditions:
-  - requiredAccessLevels:
-      - accessPolicies/POLICY_ID/accessLevels/office-network
-      - accessPolicies/POLICY_ID/accessLevels/endpoint-verified
+- requiredAccessLevels:
+  - accessPolicies/POLICY_ID/accessLevels/office-network
+  - accessPolicies/POLICY_ID/accessLevels/endpoint-verified
 ```
 
 This condition requires the request to satisfy both the `office-network` and `endpoint-verified` access levels simultaneously.
@@ -251,7 +246,7 @@ Here are access levels I commonly create for organizations:
 2. **CI/CD Pipeline**: Service accounts used by build pipelines
 3. **On-Call Access**: Broader access during incident response (combined with specific user identities)
 4. **Vendor Access**: IP ranges and identities for trusted vendors
-5. **Cloud Shell**: Google's Cloud Shell IP ranges for developer access
+5. **Cloud Workstations or bastion access**: Network or identity-based access for controlled developer environments
 
 ## Best Practices
 
