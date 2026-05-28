@@ -23,12 +23,11 @@ gcloud services enable cloudasset.googleapis.com
 gcloud asset export \
     --organization=123456789 \
     --content-type=resource \
-    --output-bigquery-dataset=projects/my-project/datasets/asset_inventory \
-    --output-bigquery-table=resources \
+    --bigquery-table=projects/my-project/datasets/asset_inventory/tables/resources \
     --per-asset-type
 ```
 
-The export creates tables in BigQuery for each asset type, making it easy to run SQL queries across your entire organization.
+The export creates tables in BigQuery for each asset type, using the table name as a prefix, making it easy to run SQL queries across your entire organization.
 
 ## Method 1: Search APIs for Quick Queries
 
@@ -37,21 +36,21 @@ Cloud Asset Inventory provides search APIs that do not require BigQuery:
 ### Finding Resources
 
 ```bash
-# Find all public Cloud Storage buckets across the organization
+# Find buckets that do not enforce public access prevention
 gcloud asset search-all-resources \
     --scope=organizations/123456789 \
     --asset-types="storage.googleapis.com/Bucket" \
-    --query="additionalAttributes.publicAccessPrevention:inherited" \
+    --query="inherited" \
     --format="table(name, project, location)"
 
-# Find all VMs with external IP addresses
+# Find all running VMs across the organization
 gcloud asset search-all-resources \
     --scope=organizations/123456789 \
     --asset-types="compute.googleapis.com/Instance" \
-    --query="additionalAttributes.networkInterfaces.accessConfigs:*" \
+    --query="state:RUNNING" \
     --format="table(name, project, location)"
 
-# Find all Cloud SQL instances without SSL enforcement
+# List Cloud SQL instances and inspect SSL settings
 gcloud asset search-all-resources \
     --scope=organizations/123456789 \
     --asset-types="sqladmin.googleapis.com/Instance" \
@@ -60,7 +59,7 @@ gcloud asset search-all-resources \
 # Find all resources without required labels
 gcloud asset search-all-resources \
     --scope=projects/my-project \
-    --query="NOT labels:environment" \
+    --query="NOT labels.environment:*" \
     --format="table(assetType, name)"
 ```
 
@@ -109,44 +108,42 @@ bq mk --dataset \
 gcloud asset export \
     --organization=123456789 \
     --content-type=resource \
-    --output-bigquery-dataset=projects/my-project/datasets/asset_inventory \
-    --output-bigquery-table=all_resources \
+    --bigquery-table=projects/my-project/datasets/asset_inventory/tables/all_resources \
     --per-asset-type
 
 # Export IAM policies
 gcloud asset export \
     --organization=123456789 \
     --content-type=iam-policy \
-    --output-bigquery-dataset=projects/my-project/datasets/asset_inventory \
-    --output-bigquery-table=iam_policies
+    --bigquery-table=projects/my-project/datasets/asset_inventory/tables/iam_policies
 ```
 
 ### Security Compliance Queries
 
 Here are practical queries that catch common compliance issues.
 
-**Find unencrypted Cloud Storage buckets:**
+**Find Cloud Storage buckets without CMEK:**
 
 ```sql
 -- Find storage buckets not using customer-managed encryption keys
--- This violates most compliance frameworks that require CMEK
+-- This violates compliance controls that specifically require CMEK
 SELECT
     name,
     resource.data.location AS location,
     resource.parent AS project,
     resource.data.encryption.defaultKmsKeyName AS kms_key
 FROM
-    `asset_inventory.storage_googleapis_com_Bucket`
+    `asset_inventory.all_resources_storage_googleapis_com_Bucket`
 WHERE
     resource.data.encryption.defaultKmsKeyName IS NULL
     OR resource.data.encryption.defaultKmsKeyName = ''
 ORDER BY project
 ```
 
-**Find VMs without OS Login enabled:**
+**Find VMs without instance-level OS Login enabled:**
 
 ```sql
--- Find Compute instances that do not have OS Login enabled
+-- Find Compute instances that do not have OS Login enabled in instance metadata
 -- OS Login provides centralized SSH key management
 SELECT
     name,
@@ -154,7 +151,7 @@ SELECT
     resource.data.zone AS zone,
     resource.data.metadata AS metadata
 FROM
-    `asset_inventory.compute_googleapis_com_Instance`
+    `asset_inventory.all_resources_compute_googleapis_com_Instance`
 WHERE
     NOT EXISTS (
         SELECT 1
@@ -174,15 +171,19 @@ SELECT
     resource.data.sourceRanges AS source_ranges,
     resource.data.allowed AS allowed_rules
 FROM
-    `asset_inventory.compute_googleapis_com_Firewall`
+    `asset_inventory.all_resources_compute_googleapis_com_Firewall`
 WHERE
     '0.0.0.0/0' IN UNNEST(resource.data.sourceRanges)
     AND resource.data.direction = 'INGRESS'
     AND EXISTS (
         SELECT 1
-        FROM UNNEST(resource.data.allowed) AS rule,
-             UNNEST(rule.ports) AS port
-        WHERE port IN ('22', '3389', '3306', '5432', '27017')
+        FROM UNNEST(resource.data.allowed) AS rule
+        WHERE ARRAY_LENGTH(rule.ports) = 0
+           OR EXISTS (
+               SELECT 1
+               FROM UNNEST(rule.ports) AS port
+               WHERE port IN ('22', '3389', '3306', '5432', '27017')
+           )
     )
 ```
 
@@ -196,12 +197,12 @@ SELECT
     resource.parent AS project,
     resource.data.email AS sa_email
 FROM
-    `asset_inventory.iam_googleapis_com_ServiceAccount`
+    `asset_inventory.all_resources_iam_googleapis_com_ServiceAccount`
 WHERE
     EXISTS (
         SELECT 1
-        FROM `asset_inventory.iam_googleapis_com_ServiceAccountKey` AS keys
-        WHERE keys.resource.data.serviceAccountId = resource.data.uniqueId
+        FROM `asset_inventory.all_resources_iam_googleapis_com_ServiceAccountKey` AS keys
+        WHERE keys.resource.data.name LIKE CONCAT('%/serviceAccounts/', resource.data.email, '/keys/%')
         AND keys.resource.data.keyType = 'USER_MANAGED'
     )
 ```
@@ -212,7 +213,7 @@ WHERE
 -- Find principals with dangerous permission combinations
 -- These could lead to privilege escalation
 SELECT
-    resource AS target_resource,
+    name AS target_resource,
     binding.role AS role,
     member
 FROM
@@ -255,14 +256,14 @@ FINDINGS_TOPIC = f"projects/{PROJECT_ID}/topics/compliance-findings"
 
 # Define compliance checks as SQL queries
 COMPLIANCE_CHECKS = {
-    'unencrypted_buckets': {
-        'name': 'Unencrypted Storage Buckets',
+    'buckets_without_cmek': {
+        'name': 'Storage Buckets Without CMEK',
         'severity': 'HIGH',
         'framework': 'SOC 2, HIPAA',
         'query': """
             SELECT name, resource.parent AS project,
                    resource.data.location AS location
-            FROM `asset_inventory.storage_googleapis_com_Bucket`
+            FROM `asset_inventory.all_resources_storage_googleapis_com_Bucket`
             WHERE resource.data.encryption.defaultKmsKeyName IS NULL
         """
     },
@@ -271,11 +272,11 @@ COMPLIANCE_CHECKS = {
         'severity': 'CRITICAL',
         'framework': 'SOC 2, PCI DSS',
         'query': """
-            SELECT resource AS bucket_name, member, binding.role
+            SELECT name AS bucket_name, member, binding.role
             FROM `asset_inventory.iam_policies`,
                  UNNEST(iam_policy.bindings) AS binding,
                  UNNEST(binding.members) AS member
-            WHERE resource LIKE '%storage.googleapis.com/Bucket%'
+            WHERE asset_type = 'storage.googleapis.com/Bucket'
               AND (member = 'allUsers' OR member = 'allAuthenticatedUsers')
         """
     },
@@ -285,7 +286,7 @@ COMPLIANCE_CHECKS = {
         'framework': 'SOC 2, PCI DSS',
         'query': """
             SELECT name, resource.parent AS project
-            FROM `asset_inventory.compute_googleapis_com_Firewall`
+            FROM `asset_inventory.all_resources_compute_googleapis_com_Firewall`
             WHERE '0.0.0.0/0' IN UNNEST(resource.data.sourceRanges)
               AND resource.data.direction = 'INGRESS'
         """
@@ -296,8 +297,13 @@ COMPLIANCE_CHECKS = {
         'framework': 'SOC 2',
         'query': """
             SELECT name, resource.data.email
-            FROM `asset_inventory.iam_googleapis_com_ServiceAccount`
-            WHERE resource.data.email NOT LIKE '%gserviceaccount.com'
+            FROM `asset_inventory.all_resources_iam_googleapis_com_ServiceAccount`
+            WHERE EXISTS (
+                SELECT 1
+                FROM `asset_inventory.all_resources_iam_googleapis_com_ServiceAccountKey` AS keys
+                WHERE keys.resource.data.name LIKE CONCAT('%/serviceAccounts/', resource.data.email, '/keys/%')
+                  AND keys.resource.data.keyType = 'USER_MANAGED'
+            )
         """
     },
     'owner_role_usage': {
@@ -305,7 +311,7 @@ COMPLIANCE_CHECKS = {
         'severity': 'HIGH',
         'framework': 'SOC 2, HIPAA',
         'query': """
-            SELECT resource, member
+            SELECT name, member
             FROM `asset_inventory.iam_policies`,
                  UNNEST(iam_policy.bindings) AS binding,
                  UNNEST(binding.members) AS member
@@ -456,10 +462,10 @@ Create a dashboard query for an overview of your compliance posture:
 -- Compliance dashboard summary query
 -- Shows violation counts by severity and category
 SELECT
-    'Unencrypted Buckets' AS check_name,
+    'Buckets Without CMEK' AS check_name,
     'HIGH' AS severity,
     COUNT(*) AS violations
-FROM `asset_inventory.storage_googleapis_com_Bucket`
+FROM `asset_inventory.all_resources_storage_googleapis_com_Bucket`
 WHERE resource.data.encryption.defaultKmsKeyName IS NULL
 
 UNION ALL
@@ -479,7 +485,7 @@ SELECT
     'Open Firewall Rules' AS check_name,
     'HIGH' AS severity,
     COUNT(*)
-FROM `asset_inventory.compute_googleapis_com_Firewall`
+FROM `asset_inventory.all_resources_compute_googleapis_com_Firewall`
 WHERE '0.0.0.0/0' IN UNNEST(resource.data.sourceRanges)
 
 ORDER BY severity, violations DESC
