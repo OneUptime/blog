@@ -44,11 +44,17 @@ gcloud container clusters create my-cluster \
 For comparison, a routes-based cluster would be created like this:
 
 ```bash
+# First, create a subnet without secondary ranges for the legacy cluster
+gcloud compute networks subnets create legacy-gke-subnet \
+  --network my-vpc \
+  --region us-central1 \
+  --range 10.12.0.0/20
+
 # Create a routes-based GKE cluster (legacy approach)
 gcloud container clusters create my-legacy-cluster \
   --zone us-central1-a \
   --network my-vpc \
-  --subnetwork gke-subnet \
+  --subnetwork legacy-gke-subnet \
   --no-enable-ip-alias \
   --cluster-ipv4-cidr 10.4.0.0/14
 ```
@@ -60,11 +66,11 @@ gcloud container clusters create my-legacy-cluster \
 In a VPC-native cluster, pod IPs are first-class citizens in the VPC. This means:
 
 - Firewall rules can target specific pod IP ranges
-- VPC Flow Logs capture pod-level traffic
-- Cloud NAT can be configured per pod CIDR range
+- VPC Flow Logs can capture pod-level traffic, with intranode visibility required for flows between pods on the same node
+- Cloud NAT can be configured to apply to the pod secondary range
 - Network Intelligence Center can analyze pod traffic patterns
 
-In a routes-based cluster, pod IPs are essentially invisible to the VPC. You lose visibility into pod-to-pod traffic and cannot apply granular network policies at the VPC level.
+In a routes-based cluster, pod IPs are represented by per-node custom routes rather than subnet secondary ranges. You lose some VPC-level visibility and cannot apply firewall rules to pod secondary ranges in the same way.
 
 ### VPC Peering and Shared VPC
 
@@ -74,7 +80,7 @@ Routes-based clusters have limited support for peered VPCs because custom routes
 
 ### Scalability
 
-Routes-based clusters hit VPC route table limits. Each VPC can have a limited number of custom routes (typically 250 dynamic routes per VPC by default, up to several hundred with quota increases). Since each node adds a route, this limits how large your cluster can grow.
+Routes-based clusters hit VPC route table limits. Each VPC has a quota for static routes, and routes-based GKE clusters create a static route for each node's pod CIDR. Since each node adds a route, this limits how large your cluster can grow.
 
 VPC-native clusters do not have this problem because they use alias IP ranges instead of routes. You can scale to thousands of nodes without worrying about route table limits.
 
@@ -126,9 +132,9 @@ The main challenge with VPC-native clusters is IP address planning. You need to 
 Here is a rough guide:
 
 ```text
-Nodes:     /20 gives 4,096 node IPs (primary range)
-Pods:      /14 gives 262,144 pod IPs (secondary range)
-Services:  /20 gives 4,096 service IPs (secondary range)
+Nodes:     /20 gives 4,096 total addresses, with 4,092 usable node IPs in a subnet primary range
+Pods:      /14 gives 262,144 pod IPs in the secondary range
+Services:  /20 gives 4,096 service IPs in the secondary range
 ```
 
 Each node gets a /24 pod CIDR by default (configurable with --max-pods-per-node), so a /14 pod range supports up to 1,024 nodes. Plan your ranges based on expected cluster growth.
