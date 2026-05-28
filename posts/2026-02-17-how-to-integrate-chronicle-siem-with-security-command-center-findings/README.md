@@ -32,56 +32,54 @@ graph LR
 
 Before starting, you need:
 
-- Security Command Center Premium or Enterprise tier enabled
-- Chronicle SIEM instance provisioned
+- Security Command Center enabled. Security Command Center Premium or Enterprise is recommended for richer findings; direct Google SecOps ingestion supports Security Command Center Premium findings.
+- Google Security Operations SIEM instance provisioned
 - Organization-level IAM permissions for both products
-- The Chronicle service account email (provided during Chronicle onboarding)
+- Access to the Google SecOps ingestion settings or feed management UI
 
-## Method 1: Direct Integration via SCC Exports
+## Method 1: Direct Ingestion from Google Cloud
 
-SCC can export findings directly to Chronicle. This is the simplest and recommended approach.
+Google SecOps can ingest SCC findings directly from Google Cloud. This is the simplest and recommended approach when the supported direct ingestion option covers the findings you need.
 
-### Step 1: Enable the SCC Integration in Chronicle
+### Step 1: Enable SCC Findings Ingestion
 
-In the Chronicle console, go to Settings, then SIEM Settings, then Integrations. Find Security Command Center and click Configure.
+In the Google Cloud console, go to Google SecOps, then Overview, then the Ingestion tab. Open the organization ingestion settings and connect your Google SecOps instance if it is not already connected.
 
-You will need to provide:
-- Your GCP organization ID
-- The project ID where SCC is activated
+In the global ingestion settings for the organization, enable **Security Center Premium findings**.
 
-### Step 2: Grant Chronicle Access to SCC
+### Step 2: Confirm Access
 
-The Chronicle service account needs permission to read SCC findings.
+The administrator configuring ingestion needs permissions to manage Google SecOps ingestion and view the organization. If you also use SOAR playbooks to update findings later, the SOAR identity needs the relevant SCC permissions, such as the ability to set finding state or workflow state.
 
 ```bash
-# Grant the Chronicle service account viewer access to SCC findings
+# Grant findings viewer access to a SOAR or automation identity that needs to read SCC findings
 
 gcloud organizations add-iam-policy-binding YOUR_ORG_ID \
-    --member="serviceAccount:CHRONICLE_SERVICE_ACCOUNT@chronicle-prod.iam.gserviceaccount.com" \
+    --member="serviceAccount:SOAR_AUTOMATION_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/securitycenter.findingsViewer"
 ```
 
-If you also want Chronicle to be able to update finding states (for example, marking a finding as resolved from a SOAR playbook), grant the editor role instead.
+If you also want the automation identity to update finding states (for example, marking a finding as resolved from a SOAR playbook), grant the editor role instead.
 
 ```bash
-# Grant editor access if you need write capabilities
+# Grant editor access to the automation identity if you need write capabilities
 gcloud organizations add-iam-policy-binding YOUR_ORG_ID \
-    --member="serviceAccount:CHRONICLE_SERVICE_ACCOUNT@chronicle-prod.iam.gserviceaccount.com" \
+    --member="serviceAccount:SOAR_AUTOMATION_SERVICE_ACCOUNT@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/securitycenter.findingsEditor"
 ```
 
-### Step 3: Configure Finding Filters
+### Step 3: Configure Finding Classes
 
-You probably do not want every single SCC finding in Chronicle. Configure filters to send only the relevant categories.
+You probably do not want every single SCC finding in Chronicle. Configure ingestion to send only the relevant finding classes.
 
-In the integration settings, specify which finding categories to ingest:
+In the ingestion settings, specify which SCC finding classes or ingestion labels to ingest:
 
-- **THREAT** - Active threats detected by Event Threat Detection and Container Threat Detection
-- **VULNERABILITY** - Vulnerability findings from Security Health Analytics and Web Security Scanner
-- **MISCONFIGURATION** - Configuration issues found by Security Health Analytics
-- **SCC_ERROR** - Errors in SCC configuration itself
+- **GCP_SECURITYCENTER_THREAT** - Active threats detected by Event Threat Detection and Container Threat Detection
+- **GCP_SECURITYCENTER_VULNERABILITY** - Vulnerability findings from Security Health Analytics and Web Security Scanner
+- **GCP_SECURITYCENTER_MISCONFIGURATION** - Configuration issues found by Security Health Analytics
+- **GCP_SECURITYCENTER_ERROR** - Errors in SCC configuration itself
 
-For most security operations use cases, start with THREAT findings and expand from there.
+For most security operations use cases, start with threat findings and expand from there.
 
 ## Method 2: Pub/Sub-Based Export
 
@@ -109,11 +107,12 @@ Set up SCC to publish findings to the Pub/Sub topic.
 # Create a notification config that publishes findings to Pub/Sub
 gcloud scc notifications create chronicle-integration \
     --organization=YOUR_ORG_ID \
+    --location=global \
     --pubsub-topic=projects/YOUR_PROJECT_ID/topics/scc-findings-chronicle \
-    --filter='category="ACTIVE_SCAN_ATTACK" OR category="BRUTE_FORCE_SSH" OR category="CRYPTO_MINING" OR category="MALWARE" OR category="PERSISTENCE" OR severity="HIGH" OR severity="CRITICAL"'
+    --filter='state="ACTIVE" AND (severity="HIGH" OR severity="CRITICAL")'
 ```
 
-The filter ensures only high-priority findings get sent. You can adjust this based on your needs.
+The filter ensures only active, high-priority findings get sent. You can add specific `category` values from your SCC findings if you want to narrow it further.
 
 ### Step 3: Grant Permissions
 
@@ -132,10 +131,10 @@ gcloud pubsub topics add-iam-policy-binding scc-findings-chronicle \
 
 ### Step 4: Create the Chronicle Feed
 
-In the Chronicle console, create a new feed:
+In the Google SecOps console, create a new feed:
 
 - **Source Type**: Google Cloud Pub/Sub
-- **Log Type**: GCP Security Command Center
+- **Log Type**: Security Command Center findings
 - **Pub/Sub Subscription**: `projects/YOUR_PROJECT_ID/subscriptions/scc-findings-chronicle-sub`
 - **Service Account**: Upload the Chronicle feed service account key
 
@@ -153,7 +152,7 @@ You should see findings appearing as UDM events. Each finding includes:
 
 - The finding category and severity
 - The affected resource (project, instance, bucket, etc.)
-- The finding state (ACTIVE, INACTIVE, MUTED)
+- The finding state (ACTIVE or INACTIVE) and mute status when present
 - Source-specific details
 
 For a more specific search, look for threat-type findings.
@@ -211,7 +210,7 @@ rule exploitation_attempt_on_vulnerable_system {
 
         // Failed login attempts to the same resource
         $login.metadata.event_type = "USER_LOGIN"
-        $login.security_result.action = "BLOCK"
+        $login.security_result.action = "FAIL"
         $login.target.hostname = $resource
 
     match:
@@ -240,7 +239,7 @@ graph TD
 The playbook would:
 
 1. Receive the SCC finding from Chronicle
-2. Query the Data Loss Prevention API to check if the bucket contains sensitive data
+2. Query the Sensitive Data Protection API to check if the bucket contains sensitive data
 3. If sensitive data is present, automatically remove public access via the GCS API
 4. Notify the resource owner via email or Slack
 5. Create a ticket for follow-up
