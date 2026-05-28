@@ -34,13 +34,13 @@ gcloud logging read 'resource.type="dataflow_step" AND resource.labels.job_id="J
     --format="table(timestamp, textPayload)"
 ```
 
-The warning includes the key value and the element count, which tells you exactly which keys are problematic.
+By default, Dataflow might log only that a hot key is present. If you enable hot key logging, the warning includes the human-readable key value, which helps you identify exactly which keys are problematic.
 
 Also check the Dataflow monitoring UI. Look at the "Wall Time" for each stage. A stage with hot keys will show much higher wall time than expected.
 
 ## Step 2: Enable Hot Key Logging
 
-If you are not seeing hot key warnings, you might need to enable them. Dataflow has hot key detection that can be configured:
+If you are not seeing the key values in hot key warnings, you might need to enable them. Dataflow has hot key logging that can be configured for batch pipelines. Hot key detection and logging is disabled for streaming pipelines as of March 2022.
 
 ```bash
 # Set hot key logging when launching the pipeline
@@ -56,7 +56,7 @@ Or in your pipeline code:
 // Enable hot key detection in pipeline options
 PipelineOptions options = PipelineOptionsFactory.create();
 options.as(DataflowPipelineOptions.class)
-    .setExperiments(Arrays.asList("enable_hot_key_logging"));
+    .setHotKeyLoggingEnabled(true);
 ```
 
 ## Step 3: Use Combiner Lifting
@@ -90,7 +90,7 @@ The combiner approach reduces the hot key problem because partial aggregations h
 
 ## Step 4: Add a Secondary Key (Salting)
 
-If you cannot use a combiner (because your operation is not associative and commutative), you can split hot keys into multiple sub-keys. This technique is called key salting.
+If you cannot use a combiner, but your work can still be split into shard-level partial results and merged correctly, you can split hot keys into multiple sub-keys. This technique is called key salting.
 
 ```python
 import random
@@ -103,9 +103,9 @@ def salt_key(element, num_shards=100):
     return ((key, shard), element)
 
 def unsalt_results(kv):
-    """Remove the salt and merge results back by original key."""
-    (original_key, shard), values = kv
-    return (original_key, values)
+    """Remove the salt from one shard-level result."""
+    (original_key, shard), shard_result = kv
+    return (original_key, shard_result)
 
 # Pipeline with key salting
 results = (
@@ -119,7 +119,7 @@ results = (
 )
 ```
 
-This distributes the hot key's elements across `num_shards` workers for the first GroupByKey. The second GroupByKey only needs to merge `num_shards` partial results per key, which is manageable.
+This distributes the hot key's elements across up to `num_shards` salted keys for the first GroupByKey. If `process_shard` emits one partial result per salted key, the second GroupByKey only needs to merge up to `num_shards` partial results per original key, which is manageable.
 
 ## Step 5: Use withFanout for Combines
 
@@ -199,6 +199,8 @@ Reshuffle assigns new random keys, which distributes elements evenly across work
 Set up monitoring to catch hot keys early:
 
 ```python
+from apache_beam.metrics.metric import Metrics
+
 # Add a monitoring step to track key distribution
 class KeyDistributionMonitor(beam.DoFn):
     def __init__(self):
@@ -207,7 +209,8 @@ class KeyDistributionMonitor(beam.DoFn):
 
     def process(self, element):
         key, values = element
-        count = len(list(values))
+        values = list(values)
+        count = len(values)
         self.key_count.update(count)
         yield (key, values)
 ```
