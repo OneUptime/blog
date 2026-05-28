@@ -97,7 +97,7 @@ gcloud iam workload-identity-pools providers describe "github-provider" \
 Pay attention to the attribute mapping and conditions. A typical GitHub Actions setup should look like:
 
 ```bash
-# Create or update the provider with correct settings for GitHub
+# Create the provider with correct settings for GitHub
 gcloud iam workload-identity-pools providers create-oidc "github-provider" \
   --workload-identity-pool="github-pool" \
   --location="global" \
@@ -143,44 +143,44 @@ gcloud projects describe YOUR_PROJECT_ID --format="value(projectNumber)"
 
 This is where most Firebase-specific failures originate. The service account needs roles beyond what a generic GCP deployment needs.
 
-Grant the required Firebase roles:
+Grant the common Firebase deployment roles:
 
 ```bash
 SA="firebase-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com"
 
 # Firebase-specific roles
-gcloud projects add-iam-binding YOUR_PROJECT_ID \
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:$SA" \
   --role="roles/firebase.admin"
 
 # Hosting deployment
-gcloud projects add-iam-binding YOUR_PROJECT_ID \
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:$SA" \
   --role="roles/firebasehosting.admin"
 
 # Cloud Functions deployment (if deploying functions)
-gcloud projects add-iam-binding YOUR_PROJECT_ID \
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:$SA" \
-  --role="roles/cloudfunctions.developer"
+  --role="roles/cloudfunctions.admin"
 
-# Act as the default Cloud Functions service account
+# Act as the runtime service account used by functions
 gcloud iam service-accounts add-iam-policy-binding \
   YOUR_PROJECT_ID@appspot.gserviceaccount.com \
   --member="serviceAccount:$SA" \
   --role="roles/iam.serviceAccountUser"
 
 # Cloud Build (needed for functions deployment)
-gcloud projects add-iam-binding YOUR_PROJECT_ID \
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:$SA" \
-  --role="roles/cloudbuild.builds.builder"
+  --role="roles/cloudbuild.builds.editor"
 
 # Storage (for hosting assets)
-gcloud projects add-iam-binding YOUR_PROJECT_ID \
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:$SA" \
   --role="roles/storage.admin"
 
 # API Keys access (Firebase CLI needs this)
-gcloud projects add-iam-binding YOUR_PROJECT_ID \
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:$SA" \
   --role="roles/serviceusage.apiKeysViewer"
 ```
@@ -223,7 +223,7 @@ jobs:
       # Authenticate using Workload Identity Federation
       - name: Authenticate to Google Cloud
         id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: "projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "firebase-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com"
@@ -251,14 +251,14 @@ If the token exchange is failing, add debug output to your workflow:
       - name: Debug Auth
         run: |
           echo "Credentials file: $GOOGLE_APPLICATION_CREDENTIALS"
-          echo "Access token present: $(test -n "$GOOGLE_APPLICATION_CREDENTIALS" && echo yes || echo no)"
+          echo "Credentials file path set: $(test -n "$GOOGLE_APPLICATION_CREDENTIALS" && echo yes || echo no)"
           # Verify the token works with a simple GCP API call
           gcloud projects describe YOUR_PROJECT_ID 2>&1 || echo "gcloud auth failed"
 ```
 
 ## Step 6 - Handle Token Expiration
 
-Workload Identity Federation tokens are short-lived (typically 1 hour). If your Firebase deployment takes longer than this (large apps with many functions), the token can expire mid-deployment.
+Workload Identity Federation tokens are short-lived. With GitHub Actions, the GitHub OIDC token expires quickly, so derived credentials can also expire during a long deployment.
 
 For long deployments, deploy in stages:
 
@@ -268,7 +268,7 @@ For long deployments, deploy in stages:
 
       # Re-authenticate before functions deployment
       - name: Re-authenticate
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: "projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "firebase-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com"
@@ -284,7 +284,7 @@ For long deployments, deploy in stages:
 After making changes, run a test deployment:
 
 ```bash
-# Test authentication from your local machine (if using gcloud)
+# Test authentication from your local machine (if your user can impersonate the service account)
 gcloud auth print-access-token --impersonate-service-account=firebase-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com
 
 # Test Firebase CLI access
