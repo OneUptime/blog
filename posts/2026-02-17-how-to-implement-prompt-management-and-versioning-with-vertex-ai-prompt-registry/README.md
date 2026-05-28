@@ -26,6 +26,7 @@ This code initializes the environment and creates your first prompt:
 
 ```python
 import vertexai
+from vertexai.preview import prompts
 from vertexai.preview.prompts import Prompt
 
 # Initialize Vertex AI
@@ -33,7 +34,7 @@ from vertexai.preview.prompts import Prompt
 vertexai.init(project="your-project-id", location="us-central1")
 
 # Create a prompt with a name and template
-my_prompt = Prompt.create(
+my_prompt = Prompt(
     prompt_name="customer-support-classifier",
     prompt_data="Classify the following customer support ticket into one of "
                 "these categories: billing, technical, account, general.\n\n"
@@ -48,8 +49,11 @@ my_prompt = Prompt.create(
     ]
 )
 
-print(f"Prompt created with ID: {my_prompt.prompt_id}")
-print(f"Version: {my_prompt.version_id}")
+# Save the prompt and create its first version
+saved_prompt = prompts.create_version(prompt=my_prompt)
+
+print(f"Prompt created with ID: {saved_prompt.prompt_id}")
+print(f"Version: {saved_prompt.version_id}")
 ```
 
 ## Understanding Prompt Structure
@@ -84,7 +88,7 @@ This code creates a prompt with a detailed system instruction:
 
 ```python
 # Create a prompt with system instructions and generation config
-support_prompt = Prompt.create(
+support_prompt = Prompt(
     prompt_name="support-response-generator",
     model_name="gemini-2.0-flash",
     system_instruction=(
@@ -107,17 +111,21 @@ support_prompt = Prompt.create(
         "top_p": 0.8,
     }
 )
+
+saved_support_prompt = prompts.create_version(prompt=support_prompt)
 ```
 
 ## Versioning Prompts
 
-Every time you update a prompt, a new version is created. This gives you a full history of changes and the ability to roll back if needed.
+Every time you save an updated prompt with `create_version`, a new version is created. This gives you a full history of changes and the ability to roll back if needed.
 
 Here is how to update a prompt and work with versions:
 
 ```python
 # Update the prompt - this creates a new version automatically
-updated_prompt = Prompt.create(
+prompt_id = "1234567890"  # Use the prompt ID returned when you first saved the prompt
+
+updated_prompt = Prompt(
     prompt_name="customer-support-classifier",
     prompt_data="Classify the following customer support ticket into exactly one "
                 "of these categories: billing, technical, account, feature_request, "
@@ -134,30 +142,32 @@ updated_prompt = Prompt.create(
     ]
 )
 
-print(f"New version: {updated_prompt.version_id}")
+saved_update = prompts.create_version(prompt=updated_prompt, prompt_id=prompt_id)
+
+print(f"New version: {saved_update.version_id}")
 ```
 
 ## Retrieving and Using Prompts
 
-In your application code, you retrieve prompts from the registry by name and use them to generate content. This decouples your prompt logic from your application code.
+In your application code, you retrieve prompts from the registry by prompt ID and use them to generate content. This decouples your prompt logic from your application code.
 
 This code shows how to fetch a prompt and generate a response:
 
 ```python
 # Retrieve the latest version of a prompt
-prompt = Prompt.get(prompt_name="customer-support-classifier")
+prompt = prompts.get(prompt_id="1234567890")
 
 # Or retrieve a specific version
-prompt_v1 = Prompt.get(
-    prompt_name="customer-support-classifier",
+prompt_v1 = prompts.get(
+    prompt_id="1234567890",
     version_id="1"
 )
 
 # Generate content using the prompt with variable substitution
 response = prompt.generate_content(
-    variables={
+    contents=prompt.assemble_contents(**{
         "ticket_text": "I was charged twice for my last invoice."
-    }
+    })
 )
 
 print(f"Classification: {response.text}")
@@ -169,18 +179,17 @@ As your prompt library grows, you need to list and organize them.
 
 ```python
 # List all prompts in the project
-prompts = Prompt.list()
+prompt_metadata = prompts.list()
 
-for p in prompts:
-    print(f"Name: {p.prompt_name}")
-    print(f"  Latest version: {p.version_id}")
-    print(f"  Model: {p.model_name}")
+for p in prompt_metadata:
+    print(f"Name: {p.display_name}")
+    print(f"  Prompt ID: {p.prompt_id}")
     print()
 
 # List all versions of a specific prompt
-versions = Prompt.list_versions(prompt_name="customer-support-classifier")
+versions = prompts.list_versions(prompt_id="1234567890")
 for v in versions:
-    print(f"Version {v.version_id}: created at {v.create_time}")
+    print(f"Version {v.version_id}: {v.display_name}")
 ```
 
 ## Building a Prompt Testing Workflow
@@ -188,12 +197,12 @@ for v in versions:
 Before deploying a prompt update, test it against a set of known examples. Here is a pattern for prompt testing:
 
 ```python
-def test_prompt(prompt_name, test_cases, version_id=None):
+def test_prompt(prompt_id, test_cases, version_id=None):
     """Run a prompt against test cases and report results."""
     if version_id:
-        prompt = Prompt.get(prompt_name=prompt_name, version_id=version_id)
+        prompt = prompts.get(prompt_id=prompt_id, version_id=version_id)
     else:
-        prompt = Prompt.get(prompt_name=prompt_name)
+        prompt = prompts.get(prompt_id=prompt_id)
 
     results = []
     passed = 0
@@ -201,7 +210,9 @@ def test_prompt(prompt_name, test_cases, version_id=None):
 
     for case in test_cases:
         # Generate response using the prompt
-        response = prompt.generate_content(variables=case["variables"])
+        response = prompt.generate_content(
+            contents=prompt.assemble_contents(**case["variables"])
+        )
         actual = response.text.strip()
 
         # Compare with expected output
@@ -231,7 +242,7 @@ test_cases = [
     {"variables": {"ticket_text": "Add dark mode"}, "expected": "feature_request"},
 ]
 
-test_prompt("customer-support-classifier", test_cases)
+test_prompt("1234567890", test_cases)
 ```
 
 ## A/B Testing Prompt Versions
@@ -244,9 +255,9 @@ import random
 class PromptRouter:
     """Route requests between prompt versions for A/B testing."""
 
-    def __init__(self, prompt_name, version_a, version_b, traffic_split=0.5):
-        self.prompt_a = Prompt.get(prompt_name=prompt_name, version_id=version_a)
-        self.prompt_b = Prompt.get(prompt_name=prompt_name, version_id=version_b)
+    def __init__(self, prompt_id, version_a, version_b, traffic_split=0.5):
+        self.prompt_a = prompts.get(prompt_id=prompt_id, version_id=version_a)
+        self.prompt_b = prompts.get(prompt_id=prompt_id, version_id=version_b)
         self.traffic_split = traffic_split
 
     def generate(self, variables):
@@ -258,7 +269,9 @@ class PromptRouter:
             version_used = "B"
             prompt = self.prompt_b
 
-        response = prompt.generate_content(variables=variables)
+        response = prompt.generate_content(
+            contents=prompt.assemble_contents(**variables)
+        )
 
         return {
             "text": response.text,
@@ -268,7 +281,7 @@ class PromptRouter:
 
 # Set up 80/20 traffic split favoring the new version
 router = PromptRouter(
-    prompt_name="customer-support-classifier",
+    prompt_id="1234567890",
     version_a="1",  # baseline
     version_b="2",  # candidate
     traffic_split=0.2  # 20% goes to version A, 80% to version B
@@ -289,16 +302,19 @@ def promote_prompt(prompt_name, from_env, to_env, version_id):
     target_name = f"{prompt_name}-{to_env}"
 
     # Get the source prompt version
-    source = Prompt.get(prompt_name=source_name, version_id=version_id)
+    source_prompt_id = "1234567890"  # Look this up from prompts.list() for source_name
+    source = prompts.get(prompt_id=source_prompt_id, version_id=version_id)
 
     # Create the prompt in the target environment with the same config
-    Prompt.create(
+    target = Prompt(
         prompt_name=target_name,
-        prompt_data=source.prompt_data,
+        prompt_data=source.get_unassembled_prompt_data(),
         model_name=source.model_name,
         system_instruction=source.system_instruction,
         generation_config=source.generation_config,
+        variables=source.variables,
     )
+    prompts.create_version(prompt=target)
 
     print(f"Promoted {source_name} v{version_id} to {target_name}")
 
