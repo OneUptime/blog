@@ -17,7 +17,7 @@ You can access the Trace tool through the Apigee Console or the Apigee API.
 ### Through the Console
 
 1. Navigate to Apigee in the GCP Console
-2. Go to Develop > API Proxies
+2. Go to Proxy development > API Proxies
 3. Select your proxy
 4. Click the "Debug" tab (previously called "Trace")
 5. Select the environment and revision
@@ -35,7 +35,7 @@ curl -X POST \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "timeout": 300,
+    "timeout": "300",
     "count": 10
   }'
 ```
@@ -71,7 +71,7 @@ At each step, you can inspect:
 
 ### Scenario 1: 500 Internal Server Error
 
-A 500 error usually means something went wrong in the proxy itself (not the backend). Here is how to trace it.
+A 500 error can mean something went wrong in the proxy itself, or that Apigee returned or passed through an error from a backend or callout. Here is how to trace it.
 
 Start a debug session and send the failing request:
 
@@ -151,7 +151,7 @@ curl -X POST \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "timeout": 300,
+    "timeout": "300",
     "count": 10,
     "filter": "request.header.x-debug = \"true\""
   }'
@@ -165,16 +165,16 @@ curl "https://YOUR_APIGEE_HOST/api/endpoint" \
   -H "x-debug: true"
 ```
 
-### Filter by Query Parameter
+### Filter by Path
 
 ```bash
-# Only trace requests to a specific path
+# Only trace requests to a specific path suffix
 curl -X POST \
   "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/apis/your-proxy/revisions/1/debugsessions" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "timeout": 300,
+    "timeout": "300",
     "filter": "proxy.pathsuffix = \"/users/42\""
   }'
 ```
@@ -222,8 +222,8 @@ ServiceCallout policies make HTTP requests to external services. When they fail,
 
 Check these in the trace:
 - `servicecallout.POLICY_NAME.target.url` - the URL that was called
-- `servicecallout.POLICY_NAME.response.status.code` - the response code
-- `servicecallout.POLICY_NAME.response.content` - the response body
+- `calloutResponse.status.code` - the response code, where `calloutResponse` is the variable named in the policy's `<Response>` element
+- `calloutResponse.content` - the response body, where `calloutResponse` is the variable named in the policy's `<Response>` element
 
 If the callout timed out:
 - `servicecallout.POLICY_NAME.failed` will be `true`
@@ -238,10 +238,14 @@ You can download trace data for offline analysis or sharing with teammates:
 curl "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/apis/your-proxy/revisions/1/debugsessions" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)"
 
-# Get trace data for a specific session
+# List transaction IDs for a specific session
 curl "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/apis/your-proxy/revisions/1/debugsessions/SESSION_ID/data" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)"
+
+# Get trace data for a specific transaction
+curl "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/apis/your-proxy/revisions/1/debugsessions/SESSION_ID/data/TRANSACTION_ID" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -o trace-data.json
+  -o transaction-data.json
 ```
 
 ## Best Practices for Debugging
