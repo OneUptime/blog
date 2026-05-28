@@ -69,6 +69,20 @@ Chronicle parsers use a configuration that combines extraction logic with UDM ma
 
 ```conf
 filter {
+    # Initialize fields that may be missing so conditionals do not fail
+    mutate {
+        replace => {
+            "timestamp" => ""
+            "user" => ""
+            "action" => ""
+            "resource" => ""
+            "source_ip" => ""
+            "status" => ""
+            "bytes_transferred" => ""
+            "security_result_action" => ""
+        }
+    }
+
     # Parse the raw JSON log entry
     json {
         source => "message"
@@ -77,14 +91,16 @@ filter {
 
     # Skip entries that failed to parse
     if [_json_parse_error] {
-        drop {}
+        drop {
+            tag => "TAG_MALFORMED_JSON"
+        }
     }
 
     # Map the timestamp
     date {
-        source => "timestamp"
+        match => ["timestamp", "ISO8601"]
         target => "event.idm.read_only_udm.metadata.event_timestamp"
-        formats => ["ISO8601"]
+        on_error => "_timestamp_parse_error"
     }
 
     # Set the event type based on the action field
@@ -132,8 +148,21 @@ filter {
     # Map the principal (who did the action)
     mutate {
         replace => {
-            "event.idm.read_only_udm.principal.user.email_addresses" => "%{user}"
-            "event.idm.read_only_udm.principal.ip" => "%{source_ip}"
+            "event.idm.read_only_udm.principal.user.userid" => "%{user}"
+        }
+    }
+    if [user] != "" {
+        mutate {
+            merge => {
+                "event.idm.read_only_udm.principal.user.email_addresses" => "user"
+            }
+        }
+    }
+    if [source_ip] != "" {
+        mutate {
+            merge => {
+                "event.idm.read_only_udm.principal.ip" => "source_ip"
+            }
         }
     }
 
@@ -148,23 +177,44 @@ filter {
     if [status] == "success" {
         mutate {
             replace => {
-                "event.idm.read_only_udm.security_result.action" => "ALLOW"
+                "security_result_action" => "ALLOW"
             }
         }
     } else {
         mutate {
             replace => {
-                "event.idm.read_only_udm.security_result.action" => "BLOCK"
+                "security_result_action" => "BLOCK"
             }
+        }
+    }
+    mutate {
+        merge => {
+            "security_result.action" => "security_result_action"
+        }
+    }
+    mutate {
+        merge => {
+            "event.idm.read_only_udm.security_result" => "security_result"
         }
     }
 
     # Map network bytes if present
-    if [bytes_transferred] {
+    if [bytes_transferred] != "" {
         mutate {
-            replace => {
-                "event.idm.read_only_udm.network.sent_bytes" => "%{bytes_transferred}"
+            convert => {
+                "bytes_transferred" => "uinteger"
             }
+        }
+        mutate {
+            rename => {
+                "bytes_transferred" => "event.idm.read_only_udm.network.sent_bytes"
+            }
+        }
+    }
+
+    mutate {
+        merge => {
+            "@output" => "event"
         }
     }
 }
@@ -184,6 +234,21 @@ The parser uses Grok patterns to extract fields from the unstructured text.
 
 ```conf
 filter {
+    mutate {
+        replace => {
+            "syslog_timestamp" => ""
+            "device" => ""
+            "action" => ""
+            "protocol" => ""
+            "src_ip" => ""
+            "src_port" => ""
+            "dst_ip" => ""
+            "dst_port" => ""
+            "rule_name" => ""
+            "security_result_action" => ""
+        }
+    }
+
     # Extract fields from the syslog message using Grok
     grok {
         match => {
@@ -195,14 +260,17 @@ filter {
     }
 
     if [_grok_parse_error] {
-        drop {}
+        drop {
+            tag => "TAG_MALFORMED_SYSLOG"
+        }
     }
 
     # Parse the syslog timestamp
     date {
-        source => "syslog_timestamp"
+        match => ["syslog_timestamp", "MMM dd HH:mm:ss", "MMM  d HH:mm:ss"]
         target => "event.idm.read_only_udm.metadata.event_timestamp"
-        formats => ["MMM dd HH:mm:ss", "MMM  d HH:mm:ss"]
+        rebase => true
+        on_error => "_timestamp_parse_error"
     }
 
     # Set event type for firewall events
@@ -217,11 +285,25 @@ filter {
     # Map network source
     mutate {
         replace => {
-            "event.idm.read_only_udm.principal.ip" => "%{src_ip}"
-            "event.idm.read_only_udm.principal.port" => "%{src_port}"
-            "event.idm.read_only_udm.target.ip" => "%{dst_ip}"
-            "event.idm.read_only_udm.target.port" => "%{dst_port}"
             "event.idm.read_only_udm.network.ip_protocol" => "%{protocol}"
+        }
+    }
+    mutate {
+        merge => {
+            "event.idm.read_only_udm.principal.ip" => "src_ip"
+            "event.idm.read_only_udm.target.ip" => "dst_ip"
+        }
+    }
+    mutate {
+        convert => {
+            "src_port" => "integer"
+            "dst_port" => "integer"
+        }
+    }
+    mutate {
+        rename => {
+            "src_port" => "event.idm.read_only_udm.principal.port"
+            "dst_port" => "event.idm.read_only_udm.target.port"
         }
     }
 
@@ -229,13 +311,13 @@ filter {
     if [action] == "DENY" {
         mutate {
             replace => {
-                "event.idm.read_only_udm.security_result.action" => "BLOCK"
+                "security_result_action" => "BLOCK"
             }
         }
     } else {
         mutate {
             replace => {
-                "event.idm.read_only_udm.security_result.action" => "ALLOW"
+                "security_result_action" => "ALLOW"
             }
         }
     }
@@ -243,7 +325,17 @@ filter {
     # Store the rule name
     mutate {
         replace => {
-            "event.idm.read_only_udm.security_result.rule_name" => "%{rule_name}"
+            "security_result.rule_name" => "%{rule_name}"
+        }
+    }
+    mutate {
+        merge => {
+            "security_result.action" => "security_result_action"
+        }
+    }
+    mutate {
+        merge => {
+            "event.idm.read_only_udm.security_result" => "security_result"
         }
     }
 
@@ -251,6 +343,12 @@ filter {
     mutate {
         replace => {
             "event.idm.read_only_udm.observer.hostname" => "%{device}"
+        }
+    }
+
+    mutate {
+        merge => {
+            "@output" => "event"
         }
     }
 }
@@ -268,13 +366,11 @@ You can also use the Chronicle API for automated deployments.
 # Upload a custom parser using the Chronicle API
 
 curl -X POST \
-    "https://backstory.googleapis.com/v2/parsers" \
+    "https://chronicle.googleapis.com/v1alpha/projects/PROJECT_ID/locations/LOCATION/instances/INSTANCE_ID/logTypes/CUSTOM_APP_AUDIT/parsers" \
     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
     -H "Content-Type: application/json" \
     -d '{
-        "log_type": "CUSTOM_APP_AUDIT",
-        "config": "BASE64_ENCODED_PARSER_CONFIG",
-        "state": "LIVE"
+        "cbn": "BASE64_ENCODED_PARSER_CONFIG"
     }'
 ```
 
@@ -293,7 +389,7 @@ Upload a file with 10-20 representative log lines covering different event types
 After parsing, verify your UDM events look correct by running a search.
 
 ```text
-metadata.product_name = "CustomAuditLog" AND metadata.event_timestamp.seconds > timestamp("2026-02-17T00:00:00Z")
+metadata.product_name = "CustomAuditLog"
 ```
 
 Check that event types are mapped correctly, timestamps are accurate, and the principal/target fields contain the right data.
