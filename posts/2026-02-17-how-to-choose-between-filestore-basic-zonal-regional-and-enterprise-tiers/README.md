@@ -8,7 +8,7 @@ Description: A practical comparison of Google Cloud Filestore tiers including Ba
 
 ---
 
-Google Cloud Filestore offers five distinct service tiers, and picking the right one is one of the first decisions you need to make. Each tier has different performance characteristics, availability guarantees, minimum capacity requirements, and pricing. Choosing wrong means either overpaying for features you do not need or running into performance limits that require a painful migration later.
+Google Cloud Filestore offers several service tier options, and picking the right one is one of the first decisions you need to make. Each tier has different performance characteristics, availability guarantees, minimum capacity requirements, and pricing. Choosing wrong means either overpaying for features you do not need or running into performance limits that require a painful migration later.
 
 Let me walk through each tier, when to use it, and how to think about the trade-offs.
 
@@ -21,14 +21,14 @@ Before diving deep, here is a quick summary:
 | Basic HDD | 1 TB | 63.9 TB | Single zone | Dev/test, cold storage |
 | Basic SSD | 2.5 TB | 63.9 TB | Single zone | Low-latency reads |
 | Zonal | 1 TB | 100 TB | Single zone | Production workloads |
-| Regional | 1 TB | 100 TB | Multi-zone | HA production workloads |
-| Enterprise | 1 TB | 10 TB | Multi-zone | Mission-critical apps |
+| Regional | 1 TB | 100 TB | Regional | HA production workloads |
+| Enterprise | 1 TB | 10 TB | Regional | GKE multishare workloads |
 
 ## Basic HDD
 
 Basic HDD is the entry-level tier. It uses standard hard disk drives and provides consistent, moderate performance.
 
-**Performance:** 100 MB/s read, 100 MB/s write, regardless of capacity size. IOPS are limited to 600 for reads and 1000 for writes.
+**Performance:** 100 MiB/s read and 100 MiB/s write from 1 TiB to 10 TiB. Above 10 TiB, the limit increases to 180 MiB/s read and 120 MiB/s write. IOPS are limited to 600 reads and 1000 writes up to 10 TiB, then 1000 reads and 5000 writes above 10 TiB.
 
 **When to use it:** Development and testing environments, storing large datasets that are accessed infrequently (like log archives or backup staging areas), or any workload where throughput is not the bottleneck.
 
@@ -50,7 +50,7 @@ gcloud filestore instances create dev-share \
 
 Basic SSD swaps the hard drives for solid-state drives, which dramatically improves both throughput and IOPS.
 
-**Performance:** Up to 1.2 GB/s read and 350 MB/s write. IOPS jump to 60,000 for reads and 25,000 for writes. These numbers scale with capacity.
+**Performance:** Up to 1200 MiB/s read and 350 MiB/s write. IOPS jump to 60,000 for reads and 25,000 for writes.
 
 **When to use it:** Workloads that need low latency for random reads, such as serving web content, CI/CD build artifacts, or ML training datasets where many small files are read in parallel.
 
@@ -65,13 +65,13 @@ gcloud filestore instances create fast-share \
   --network=name=default
 ```
 
-**Cost:** Roughly 3-4x more expensive per TB than Basic HDD. The minimum of 2.5 TB also means a higher starting price.
+**Cost:** More expensive per TB than Basic HDD. The minimum of 2.5 TB also means a higher starting price.
 
 ## Zonal (High Scale SSD)
 
 The Zonal tier provides SSD performance with much higher throughput ceilings and more granular capacity options.
 
-**Performance:** Throughput and IOPS scale with capacity. At 10 TB, you get up to 2.4 GB/s read throughput. At higher capacities, throughput can reach 4.8 GB/s or more.
+**Performance:** Throughput and IOPS scale with capacity, and you can configure custom performance. At 10 TiB, you get up to 2600 MiB/s read throughput. At higher capacities, throughput can reach up to 26,000 MiB/s read throughput at 100 TiB.
 
 **When to use it:** Production workloads that need high throughput and consistent performance. Media processing pipelines, large-scale data analytics, and applications with many concurrent clients all benefit from Zonal tier.
 
@@ -86,13 +86,13 @@ gcloud filestore instances create prod-share \
   --network=name=default
 ```
 
-**Cost:** More expensive per TB than Basic tiers, but the performance per dollar is actually better because throughput scales with capacity.
+**Cost:** More expensive per TB than Basic HDD, but the performance per dollar can be better because throughput scales with capacity.
 
 ## Regional
 
-Regional tier is essentially the same as Zonal but with data replicated across two zones in the region. If one zone goes down, the instance fails over to the other zone automatically.
+Regional tier provides regional availability for workloads that need resilience against zone outages.
 
-**Performance:** Same as Zonal tier. Throughput and IOPS scale with capacity.
+**Performance:** Throughput and IOPS scale with capacity, and you can configure custom performance. For capacities of 10 TiB and higher, Regional and Zonal have the same listed capacity-based limits. At smaller capacities, Regional has different throughput and IOPS limits than Zonal.
 
 **When to use it:** Production workloads that cannot tolerate zone-level outages. If your application has a strict uptime SLA, Regional tier ensures the file system stays available even during zone failures.
 
@@ -101,7 +101,7 @@ Regional tier is essentially the same as Zonal but with data replicated across t
 ```bash
 # Create a Regional instance - good for HA production workloads
 gcloud filestore instances create ha-share \
-  --zone=us-central1-a \
+  --region=us-central1 \
   --tier=REGIONAL \
   --file-share=name=data,capacity=1TB \
   --network=name=default
@@ -111,13 +111,13 @@ gcloud filestore instances create ha-share \
 
 ## Enterprise
 
-Enterprise is the premium tier designed for business-critical workloads. It provides multi-zone availability, snapshot support, and the widest range of management features.
+Enterprise is the tier to use when you need Filestore multishares or when you want to use the Filestore CSI driver to create and manage regional instances. It provides regional availability and snapshot support, but for most non-GKE use cases Google recommends the Regional tier instead.
 
-**Performance:** Designed for consistent, predictable performance. Throughput scales with capacity, similar to Zonal and Regional tiers.
+**Performance:** Designed for consistent, predictable performance. Throughput scales with capacity up to 1200 MiB/s read and 1000 MiB/s write at 10 TiB.
 
-**When to use it:** Applications where data integrity, availability, and manageability are all critical. Financial systems, healthcare applications, and any workload subject to compliance requirements that mandate specific data protection features.
+**When to use it:** GKE workloads that need multishares, or workloads where you want the Filestore CSI driver to create and manage regional instances.
 
-**When to avoid it:** Development environments, batch processing, or any workload where the additional management features are not needed.
+**When to avoid it:** Development environments, batch processing, or non-GKE workloads that can use the Regional tier instead.
 
 ```bash
 # Create an Enterprise instance - for mission-critical workloads
@@ -129,7 +129,7 @@ gcloud filestore instances create critical-share \
   --network=name=default
 ```
 
-**Cost:** The most expensive tier, but you are paying for the highest level of availability and management features.
+**Cost:** More expensive than the basic tiers, but you are paying for regional availability and enterprise-specific features such as multishares.
 
 ## Decision Framework
 
@@ -141,13 +141,13 @@ Here is how I think about tier selection in practice:
 2. Do you need low latency? If yes, eliminate Basic HDD.
 3. Do you need more than 63.9 TB? If yes, you need Zonal, Regional, or Enterprise.
 4. Can you tolerate a zone outage? If no, you need Regional or Enterprise.
-5. Do you need snapshots and advanced management? If yes, Enterprise is the way to go.
+5. Do you need GKE multishares or CSI-managed regional instances? If yes, Enterprise is the way to go.
 
 **Then consider capacity and cost:**
 
 The minimum capacity requirements are important. Basic SSD starts at 2.5 TB, which might be overkill if you only need 100 GB of storage. In that case, Basic HDD at 1 TB might be more economical even if the performance is lower.
 
-For small volumes that need performance, Enterprise tier at 1 TB can actually be more cost-effective than Basic SSD at 2.5 TB, depending on the specific throughput you need.
+For small volumes that need performance, compare Basic SSD, Zonal, Regional, and Enterprise carefully. The minimum capacity, availability requirement, and whether you need GKE multishares can matter more than the per-TB price.
 
 ## Migration Between Tiers
 
@@ -162,4 +162,4 @@ This is disruptive, which is why getting the tier right at the beginning matters
 
 ## Summary
 
-Basic HDD is for development and cold data. Basic SSD is for read-heavy workloads that fit in a single zone. Zonal is for production workloads needing high throughput. Regional adds cross-zone HA on top of Zonal. Enterprise is for mission-critical applications that need every management feature available. Match the tier to your actual requirements, and you will avoid both overspending and under-provisioning.
+Basic HDD is for development and cold data. Basic SSD is for read-heavy workloads that fit in a single zone. Zonal is for production workloads needing high throughput. Regional adds regional availability for workloads that need resilience against zone outages. Enterprise is for GKE multishare and CSI-managed regional use cases. Match the tier to your actual requirements, and you will avoid both overspending and under-provisioning.
