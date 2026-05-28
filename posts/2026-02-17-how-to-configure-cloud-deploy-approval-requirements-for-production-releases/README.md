@@ -49,7 +49,7 @@ gcloud deploy apply --file=prod-target.yaml --region=us-central1
 
 ## Setting Up IAM Roles for Approvers
 
-Only users with the `clouddeploy.approver` role can approve or reject rollouts. You need to grant this role to the people or groups who should have approval authority.
+Users need the `roles/clouddeploy.approver` role, or equivalent permissions, to approve or reject rollouts. You need to grant this role to the people or groups who should have approval authority.
 
 ```bash
 # Grant approval permission to an individual user
@@ -108,7 +108,7 @@ gcloud deploy rollouts approve rel-v2.1-to-prod-0001 \
   --region=us-central1
 ```
 
-After approval, Cloud Deploy immediately begins the deployment process - rendering manifests, deploying to the cluster, and running verification if configured.
+After approval, Cloud Deploy begins the deployment process - deploying to the cluster and running verification if configured.
 
 ## Rejecting a Rollout
 
@@ -155,14 +155,17 @@ gcloud deploy releases describe rel-v2.1 \
 
 You do not want rollouts sitting in pending approval for hours because no one noticed. Set up notifications to alert approvers when a rollout needs their attention.
 
-Cloud Deploy publishes events to the `clouddeploy-operations` Pub/Sub topic. You can subscribe to this topic and filter for approval events.
+Cloud Deploy publishes approval events to the `clouddeploy-approvals` Pub/Sub topic. You can subscribe to this topic and filter for approval events.
 
 ```bash
+# Create the Pub/Sub topic for Cloud Deploy approval notifications
+gcloud pubsub topics create clouddeploy-approvals
+
 # Create a Pub/Sub subscription for approval notifications
 gcloud pubsub subscriptions create approval-notifications \
-  --topic=clouddeploy-operations \
+  --topic=clouddeploy-approvals \
   --push-endpoint=https://your-notification-service.run.app/notify \
-  --message-filter='attributes.Action="Required" AND attributes.ResourceType="Rollout"'
+  --message-filter='attributes.Action="Required"'
 ```
 
 A Cloud Function or Cloud Run service at that endpoint can parse the event and send a Slack message, email, or PagerDuty notification to the approver group.
@@ -196,7 +199,7 @@ The flow becomes: promote to prod, wait for approval, then start the canary phas
 
 ## Approving via the Console
 
-The Google Cloud Console provides a user-friendly interface for approvals. Navigate to Cloud Deploy, find the pipeline, and click on the pending rollout. There is an Approve or Reject button with a text field for notes.
+The Google Cloud Console provides a user-friendly interface for approvals. Navigate to Cloud Deploy, find the pipeline, and review the pending rollout. There are Approve and Reject actions for the rollout.
 
 This is often easier for approvers who are not comfortable with the CLI. The visual pipeline view also shows what is currently deployed to each target, making it easier to assess the change.
 
@@ -216,7 +219,7 @@ gke:
   cluster: projects/my-project/locations/us-central1/clusters/staging-cluster
 ```
 
-You can then use automation to auto-approve staging while keeping production manual, giving you an audit trail for staging deployments without the manual bottleneck.
+You can then use a custom approval integration to auto-approve staging while keeping production manual, giving you an audit trail for staging deployments without the manual bottleneck.
 
 ## Handling Approval Timeouts
 
