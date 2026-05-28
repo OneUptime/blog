@@ -17,6 +17,8 @@ In this post, I will break down the differences between batch and streaming in D
 Batch mode processes a bounded dataset - a fixed amount of data with a clear beginning and end. Think of it as "process this file" or "process today's data." The pipeline starts, reads all the input data, processes it, writes the output, and stops.
 
 ```python
+import json
+
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 
@@ -50,6 +52,8 @@ Batch pipelines are simpler to reason about. You know exactly how much data will
 Streaming mode processes an unbounded dataset - data that arrives continuously without a defined end. The pipeline starts and keeps running indefinitely, processing new data as it arrives. The most common source for streaming pipelines on GCP is Pub/Sub.
 
 ```python
+import json
+
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 
@@ -69,6 +73,7 @@ with beam.Pipeline(options=options) as pipeline:
         | 'ReadPubSub' >> beam.io.ReadFromPubSub(
             topic='projects/my-project/topics/events'
         )
+        | 'DecodePubSubMessage' >> beam.Map(lambda message: message.decode('utf-8'))
         | 'ParseJSON' >> beam.Map(json.loads)
         | 'TransformData' >> beam.Map(transform_function)
         | 'WriteToBQ' >> beam.io.WriteToBigQuery(
@@ -128,9 +133,11 @@ Autoscaling helps, but streaming will still cost more than batch for equivalent 
 
 Streaming introduces concepts that batch does not need to worry about.
 
-Windowing. In streaming, you need to decide how to group data for aggregation. Do you aggregate over 1-minute windows? 5-minute windows? Sliding windows? This concept does not exist in batch because all the data is available at once.
+Windowing. In streaming, you need to decide how to group data for aggregation. Do you aggregate over 1-minute windows? 5-minute windows? Sliding windows? Windowing can also be used with bounded data, but streaming pipelines depend on it much more often because all the data is never available at once.
 
 ```python
+import json
+
 import apache_beam as beam
 from apache_beam import window
 
@@ -139,10 +146,18 @@ with beam.Pipeline(options=streaming_options) as pipeline:
     (
         pipeline
         | 'ReadPubSub' >> beam.io.ReadFromPubSub(topic='projects/my-project/topics/events')
+        | 'DecodePubSubMessage' >> beam.Map(lambda message: message.decode('utf-8'))
         | 'ParseJSON' >> beam.Map(json.loads)
         # Window events into 5-minute intervals
         | 'Window' >> beam.WindowInto(window.FixedWindows(300))  # 300 seconds
+        | 'ExtractEventType' >> beam.Map(lambda event: event['event_type'])
         | 'CountPerWindow' >> beam.combiners.Count.PerElement()
+        | 'FormatForBigQuery' >> beam.Map(
+            lambda event_count: {
+                'event_type': event_count[0],
+                'count': event_count[1]
+            }
+        )
         | 'WriteToBQ' >> beam.io.WriteToBigQuery(
             table='my_project:analytics.event_counts_5min'
         )
@@ -152,17 +167,27 @@ with beam.Pipeline(options=streaming_options) as pipeline:
 Late data handling. In streaming, data can arrive after the window it belongs to has already been processed. You need to decide how to handle this - drop it, reprocess the window, or accumulate results.
 
 ```python
+import json
+
+import apache_beam as beam
+from apache_beam import window
+from apache_beam.transforms import trigger
+
 # Handle late data with allowed lateness
 (
     pipeline
     | 'ReadPubSub' >> beam.io.ReadFromPubSub(topic='projects/my-project/topics/events')
-    | 'AddTimestamps' >> beam.Map(lambda x: beam.window.TimestampedValue(x, x['timestamp']))
+    | 'DecodePubSubMessage' >> beam.Map(lambda message: message.decode('utf-8'))
+    | 'ParseJSON' >> beam.Map(json.loads)
+    | 'AddTimestamps' >> beam.Map(
+        lambda event: beam.window.TimestampedValue(event, event['timestamp'])
+    )
     | 'Window' >> beam.WindowInto(
         window.FixedWindows(300),
         # Allow data up to 1 hour late
         allowed_lateness=3600,
         # Accumulate results when late data arrives
-        accumulation_mode=beam.trigger.AccumulationMode.ACCUMULATING
+        accumulation_mode=trigger.AccumulationMode.ACCUMULATING
     )
 )
 ```
@@ -177,8 +202,9 @@ Sometimes the best answer is neither pure batch nor pure streaming but a middle 
 # Schedule a batch pipeline to run every 15 minutes using Cloud Scheduler
 gcloud scheduler jobs create http micro-batch-pipeline \
   --schedule="*/15 * * * *" \
-  --uri="https://dataflow.googleapis.com/v1b3/projects/my-project/locations/us-central1/templates:launch" \
+  --uri="https://dataflow.googleapis.com/v1b3/projects/my-project/locations/us-central1/templates:launch?gcsPath=gs://my-bucket/templates/micro-batch-template" \
   --http-method=POST \
+  --headers="Content-Type=application/json" \
   --message-body='{
     "jobName": "micro-batch-events",
     "parameters": {
