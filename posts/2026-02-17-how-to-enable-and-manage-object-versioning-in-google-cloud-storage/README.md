@@ -17,11 +17,11 @@ This guide walks through everything from enabling versioning to managing and cle
 When versioning is enabled on a bucket:
 
 - Overwriting an object creates a new version. The previous version becomes "noncurrent" but is not deleted.
-- Deleting an object does not actually remove the data. Instead, it creates a delete marker, and the most recent version becomes noncurrent.
+- Deleting a live object without specifying its generation does not actually remove the data. Instead, the live version becomes noncurrent, and there is no live version for that object name.
 - Every version has a unique generation number that you can use to access it directly.
 - You pay for storage of all versions, not just the current one.
 
-Without versioning, an overwrite or delete is permanent. There is no undo.
+Without versioning, and without another protection such as soft delete, an overwrite or delete is permanent. There is no undo.
 
 ## Enabling Versioning
 
@@ -36,10 +36,11 @@ gcloud storage buckets update gs://my-bucket --versioning
 Or create a new bucket with versioning enabled:
 
 ```bash
-# Create a new bucket with versioning turned on from the start
+# Create a new bucket, then enable versioning
 gcloud storage buckets create gs://my-versioned-bucket \
-  --location=us-central1 \
-  --versioning
+  --location=us-central1
+
+gcloud storage buckets update gs://my-versioned-bucket --versioning
 ```
 
 Check if versioning is enabled:
@@ -71,7 +72,7 @@ gcloud storage ls --all-versions gs://my-bucket/
 gcloud storage ls --all-versions gs://my-bucket/data/report.csv
 ```
 
-The output includes generation numbers and timestamps for each version. Live versions are marked differently from noncurrent ones.
+The output includes generation numbers appended after the `#` symbol. To include details such as timestamps, add a long listing flag such as `--long`.
 
 ## Retrieving a Specific Version
 
@@ -121,10 +122,15 @@ def restore_version(bucket_name, blob_name, generation):
     bucket = client.bucket(bucket_name)
 
     # Get the specific version to restore
-    source_blob = bucket.blob(blob_name, generation=generation)
+    source_blob = bucket.blob(blob_name)
 
     # Copy it to the same name, making it the new current version
-    bucket.copy_blob(source_blob, bucket, blob_name)
+    bucket.copy_blob(
+        source_blob,
+        bucket,
+        blob_name,
+        source_generation=generation,
+    )
 
     print(f"Restored {blob_name} to generation {generation}")
 
@@ -190,7 +196,7 @@ Set up lifecycle rules to automatically clean up old versions:
       "action": {"type": "Delete"},
       "condition": {
         "isLive": false,
-        "age": 90
+        "daysSinceNoncurrentTime": 90
       }
     },
     {
@@ -200,7 +206,7 @@ Set up lifecycle rules to automatically clean up old versions:
       },
       "condition": {
         "isLive": false,
-        "age": 30
+        "daysSinceNoncurrentTime": 30
       }
     }
   ]
@@ -209,9 +215,9 @@ Set up lifecycle rules to automatically clean up old versions:
 
 This configuration does three things:
 
-- Keeps at most 5 noncurrent versions per object
-- Deletes noncurrent versions older than 90 days
-- Moves noncurrent versions to Nearline storage after 30 days
+- Deletes noncurrent versions when at least 5 newer versions exist
+- Deletes noncurrent versions after they have been noncurrent for 90 days
+- Moves noncurrent versions to Nearline storage after they have been noncurrent for 30 days
 
 Apply it:
 
@@ -249,8 +255,8 @@ resource "google_storage_bucket" "versioned_bucket" {
       type = "Delete"
     }
     condition {
-      age        = 90
-      with_state = "ARCHIVED"
+      days_since_noncurrent_time = 90
+      with_state                 = "ARCHIVED"
     }
   }
 }
@@ -264,7 +270,7 @@ Here is how object versions transition through their lifecycle:
 stateDiagram-v2
     [*] --> Live: Object uploaded
     Live --> Noncurrent: Object overwritten
-    Live --> Noncurrent: Object deleted (delete marker created)
+    Live --> Noncurrent: Object deleted
     Noncurrent --> Noncurrent_Nearline: Lifecycle rule (30 days)
     Noncurrent_Nearline --> Deleted: Lifecycle rule (90 days)
     Noncurrent --> Deleted: numNewerVersions > 5
