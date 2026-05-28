@@ -34,9 +34,16 @@ gcloud services enable identitytoolkit.googleapis.com \
   --project=my-app-project
 
 # Enable the Identity Platform service in the project
-gcloud identity-platform config update \
-  --project=my-app-project \
-  --autodelete-anonymous-users
+curl -X POST \
+  "https://identitytoolkit.googleapis.com/v2/projects/my-app-project/identityPlatform:initializeAuth" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)"
+
+# Auto-delete anonymous users after 30 days
+curl -X PATCH \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/my-app-project/config?updateMask=autodeleteAnonymousUsers" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{ "autodeleteAnonymousUsers": true }'
 ```
 
 ## Configuring Authentication Providers
@@ -47,9 +54,18 @@ The most common starting point. Enable it and configure password requirements.
 
 ```bash
 # Enable email/password authentication
-gcloud identity-platform config update \
-  --project=my-app-project \
-  --enable-email-signin
+curl -X PATCH \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/my-app-project/config?updateMask=signIn.email" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "signIn": {
+      "email": {
+        "enabled": true,
+        "passwordRequired": true
+      }
+    }
+  }'
 ```
 
 For more granular configuration, use the REST API or Terraform.
@@ -104,24 +120,30 @@ resource "google_identity_platform_default_supported_idp_config" "github" {
 }
 ```
 
-Using gcloud for the same setup:
+Using the REST API for the same setup:
 
 ```bash
 # Configure Google as a sign-in provider
-gcloud identity-platform default-supported-idp-configs create \
-  --project=my-app-project \
-  --idp-id=google.com \
-  --client-id=YOUR_GOOGLE_CLIENT_ID \
-  --client-secret=YOUR_GOOGLE_CLIENT_SECRET \
-  --enabled=true
+curl -X POST \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/my-app-project/defaultSupportedIdpConfigs?idpId=google.com" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "clientId": "YOUR_GOOGLE_CLIENT_ID",
+    "clientSecret": "YOUR_GOOGLE_CLIENT_SECRET"
+  }'
 
 # Configure GitHub as a sign-in provider
-gcloud identity-platform default-supported-idp-configs create \
-  --project=my-app-project \
-  --idp-id=github.com \
-  --client-id=YOUR_GITHUB_CLIENT_ID \
-  --client-secret=YOUR_GITHUB_CLIENT_SECRET \
-  --enabled=true
+curl -X POST \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/my-app-project/defaultSupportedIdpConfigs?idpId=github.com" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "clientId": "YOUR_GITHUB_CLIENT_ID",
+    "clientSecret": "YOUR_GITHUB_CLIENT_SECRET"
+  }'
 ```
 
 ## Implementing Multi-Tenancy
@@ -130,32 +152,52 @@ Multi-tenancy is one of the key differentiators of Identity Platform. Each tenan
 
 ```bash
 # Create a tenant for a customer organization
-gcloud identity-platform tenants create \
-  --project=my-app-project \
-  --display-name="Acme Corporation" \
-  --allow-password-signup \
-  --enable-email-link-signin
+curl -X POST \
+  "https://identitytoolkit.googleapis.com/v2/projects/my-app-project/tenants" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "Acme Corporation",
+    "allowPasswordSignup": true,
+    "enableEmailLinkSignin": true
+  }'
 
 # Create another tenant
-gcloud identity-platform tenants create \
-  --project=my-app-project \
-  --display-name="Globex Industries" \
-  --allow-password-signup
+curl -X POST \
+  "https://identitytoolkit.googleapis.com/v2/projects/my-app-project/tenants" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "Globex Industries",
+    "allowPasswordSignup": true
+  }'
 ```
 
 Each tenant can have its own authentication providers. For enterprise customers, you can configure SAML or OIDC federation per tenant.
 
-```bash
+```hcl
 # Configure SAML federation for a tenant's enterprise IdP
-gcloud identity-platform tenants inbound-saml-configs create \
-  --project=my-app-project \
-  --tenant=TENANT_ID \
-  --display-name="Acme SSO" \
-  --idp-entity-id="https://idp.acme.com/saml" \
-  --sso-url="https://idp.acme.com/saml/sso" \
-  --idp-certificates=@acme-idp-cert.pem \
-  --sp-entity-id="https://myapp.com/saml/acme" \
-  --enabled
+resource "google_identity_platform_tenant_inbound_saml_config" "acme_sso" {
+  project      = "my-app-project"
+  name         = "saml.acme-sso"
+  display_name = "Acme SSO"
+  tenant       = "projects/my-app-project/tenants/TENANT_ID"
+  enabled      = true
+
+  idp_config {
+    idp_entity_id = "https://idp.acme.com/saml"
+    sso_url       = "https://idp.acme.com/saml/sso"
+
+    idp_certificates {
+      x509_certificate = file("acme-idp-cert.pem")
+    }
+  }
+
+  sp_config {
+    sp_entity_id = "https://myapp.com/saml/acme"
+    callback_uri = "https://myapp.com/saml/acme/callback"
+  }
+}
 ```
 
 ## Integrating with Your Application
@@ -257,10 +299,16 @@ MFA adds a second verification step after the initial authentication. Identity P
 
 ```bash
 # Enable MFA for the project
-gcloud identity-platform config update \
-  --project=my-app-project \
-  --mfa-state=ENABLED \
-  --mfa-enabled-providers=PHONE_SMS
+curl -X PATCH \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/my-app-project/config?updateMask=mfa" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mfa": {
+      "state": "ENABLED",
+      "enabledProviders": ["PHONE_SMS"]
+    }
+  }'
 ```
 
 Using Terraform:
@@ -334,11 +382,11 @@ exports.beforeSignIn = functions.auth.user().beforeSignIn((user, context) => {
 Identity Platform generates audit logs that you can use for compliance and security monitoring.
 
 ```bash
-# View recent authentication events
-gcloud logging read 'resource.type="identitytoolkit_project" AND protoPayload.methodName="google.cloud.identitytoolkit.v1.AuthenticationService.SignInWithPassword"' \
+# View recent Identity Platform configuration audit events
+gcloud logging read 'protoPayload.serviceName="identitytoolkit.googleapis.com" AND protoPayload.methodName="google.cloud.identitytoolkit.admin.v2.ProjectConfigService.UpdateConfig"' \
   --project=my-app-project \
   --limit=20 \
-  --format="table(timestamp, protoPayload.request.email, protoPayload.response.localId)"
+  --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.methodName)"
 ```
 
 ## Scaling Considerations
