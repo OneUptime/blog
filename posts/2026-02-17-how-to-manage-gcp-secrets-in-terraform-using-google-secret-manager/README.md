@@ -8,13 +8,13 @@ Description: Learn how to create, manage, and access secrets in Google Cloud Sec
 
 ---
 
-Secrets management is one of the trickiest parts of infrastructure as code. You need to store database passwords, API keys, and certificates somewhere, but you definitely should not put them in your Terraform code or state file in plain text. Google Cloud Secret Manager gives you a centralized, encrypted, access-controlled store for sensitive values, and Terraform can manage the entire lifecycle.
+Secrets management is one of the trickiest parts of infrastructure as code. You need to store database passwords, API keys, and certificates somewhere, but you definitely should not put them in your Terraform code or persist them in your Terraform state file in plain text. Google Cloud Secret Manager gives you a centralized, encrypted, access-controlled store for sensitive values, and Terraform can manage the entire lifecycle.
 
 This guide covers creating and managing secrets with Terraform, controlling access, handling rotation, and integrating secrets with your applications.
 
 ## The Challenge of Secrets in Terraform
 
-There is an inherent tension with secrets in Terraform. Terraform needs to know the secret value to store it in Secret Manager, and that value ends up in the Terraform state file. The state file itself needs to be treated as sensitive, which means encrypted storage and restricted access.
+There is an inherent tension with secrets in Terraform. If you use the `secret_data` argument or a normal managed password resource, Terraform needs to know the secret value to store it in Secret Manager, and that value ends up in the Terraform state file. With Terraform 1.11 or later and a current Google provider, use write-only arguments such as `secret_data_wo` where possible. The state file itself still needs to be treated as sensitive, which means encrypted storage and restricted access.
 
 That said, managing secret metadata (the Secret Manager secret resource, IAM policies, replication settings) with Terraform is straightforward and valuable. Managing the actual secret values requires more care.
 
@@ -92,16 +92,17 @@ Secret versions hold the actual sensitive data:
 
 ```hcl
 # Generate a random password for the database
-resource "random_password" "db_password" {
+ephemeral "random_password" "db_password" {
   length           = 32
   special          = true
   override_special = "!@#$%&*()-_=+"
 }
 
-# Store the password as a secret version
+# Store the password as a secret version without persisting it in state
 resource "google_secret_manager_secret_version" "db_password" {
-  secret      = google_secret_manager_secret.db_password.id
-  secret_data = random_password.db_password.result
+  secret                 = google_secret_manager_secret.db_password.id
+  secret_data_wo         = ephemeral.random_password.db_password.result
+  secret_data_wo_version = 1
 }
 ```
 
@@ -117,8 +118,9 @@ variable "external_api_key" {
 
 # Store the externally provided secret
 resource "google_secret_manager_secret_version" "api_key" {
-  secret      = google_secret_manager_secret.api_key.id
-  secret_data = var.external_api_key
+  secret                 = google_secret_manager_secret.api_key.id
+  secret_data_wo         = var.external_api_key
+  secret_data_wo_version = 1
 }
 ```
 
@@ -345,7 +347,7 @@ api_key = get_secret("my-project", "external-api-key")
 
 ## Secret Rotation Strategy
 
-Set up rotation topics so your application knows when secrets change:
+Set up rotation topics so your application knows when rotation is due:
 
 ```hcl
 # rotation.tf - Secret rotation configuration
@@ -432,10 +434,10 @@ resource "google_secret_manager_secret" "secrets" {
 
 ## Best Practices
 
-1. **Manage secret metadata with Terraform, but be careful with secret values.** The actual sensitive data ends up in Terraform state, so ensure your state is encrypted and access-controlled.
+1. **Manage secret metadata with Terraform, but be careful with secret values.** Use write-only arguments where possible; if you use regular secret-value arguments, the actual sensitive data ends up in Terraform state, so ensure your state is encrypted and access-controlled.
 2. **Use resource-level IAM** for secrets. Grant `secretAccessor` on individual secrets, not at the project level.
 3. **Use the `sensitive` flag** on Terraform variables that hold secret values to prevent them from appearing in plan output.
-4. **Prefer injecting secrets as environment variables** in Cloud Run and Cloud Functions over fetching them in application code. It is simpler and the platform handles caching.
+4. **Prefer injecting secrets as environment variables** in Cloud Run and Cloud Functions over fetching them in application code. It is simpler and the platform handles injection.
 5. **Set up rotation** for long-lived secrets like database passwords and API keys.
 6. **Use labels** to organize and track secrets across services and environments.
 7. **Never log secret values.** Be careful with debug logging that might accidentally print environment variables.
