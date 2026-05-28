@@ -14,7 +14,7 @@ This guide walks through the full setup from creating the service account to run
 
 ## Creating the BigQuery Service Account
 
-The service account needs specific BigQuery permissions to create datasets, run queries, and manage tables. Here is the minimum set of roles:
+The service account needs specific BigQuery permissions to run queries and manage tables. For a typical dbt Cloud setup, start with these roles:
 
 ```bash
 # Create a dedicated service account for dbt Cloud
@@ -29,12 +29,7 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:dbt-cloud@my-project.iam.gserviceaccount.com" \
   --role="roles/bigquery.dataEditor"
 
-# BigQuery Job User: run BigQuery jobs (queries)
-gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:dbt-cloud@my-project.iam.gserviceaccount.com" \
-  --role="roles/bigquery.jobUser"
-
-# BigQuery User: list datasets and get metadata
+# BigQuery User: run BigQuery jobs and create datasets
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:dbt-cloud@my-project.iam.gserviceaccount.com" \
   --role="roles/bigquery.user"
@@ -44,13 +39,13 @@ gcloud iam service-accounts keys create dbt-cloud-key.json \
   --iam-account=dbt-cloud@my-project.iam.gserviceaccount.com
 ```
 
-If your dbt project creates new datasets (not just tables within existing datasets), you also need:
+If your dbt project only writes to existing datasets and you do not want the service account to create datasets, you can replace BigQuery User with the narrower BigQuery Job User role:
 
 ```bash
-# Optional: allow dbt Cloud to create new BigQuery datasets
+# Use this instead of roles/bigquery.user when datasets already exist
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:dbt-cloud@my-project.iam.gserviceaccount.com" \
-  --role="roles/bigquery.dataOwner"
+  --role="roles/bigquery.jobUser"
 ```
 
 ## Connecting dbt Cloud to BigQuery
@@ -68,7 +63,7 @@ connection:
   project: my-gcp-project         # GCP project ID
   dataset: dbt_production         # Default BigQuery dataset
   threads: 8                      # Parallel execution threads
-  timeout_seconds: 300            # Query timeout
+  timeout_seconds: 300            # Legacy query timeout setting
   location: US                    # BigQuery data location
   priority: interactive           # Query priority
   retries: 3                      # Retry count on failure
@@ -100,7 +95,7 @@ The development environment is what your team uses in the dbt Cloud IDE for inte
 # Development environment settings (configured in dbt Cloud UI)
 name: Development
 type: development
-dbt_version: 1.7.0              # Pin to a specific dbt version
+dbt_version: 1.11.0             # Pin to a supported dbt version
 target_name: dev
 dataset: dbt_dev_<developer>    # Each developer gets their own dataset
 # The dataset uses a per-developer suffix to avoid conflicts
@@ -114,7 +109,7 @@ The production environment runs your scheduled jobs:
 # Production environment settings
 name: Production
 type: deployment
-dbt_version: 1.7.0
+dbt_version: 1.11.0
 target_name: prod
 dataset: analytics              # The production BigQuery dataset
 deploy_branch: main             # Which git branch to deploy from
@@ -128,7 +123,7 @@ The CI environment is used for pull request testing:
 # CI environment settings
 name: CI
 type: deployment
-dbt_version: 1.7.0
+dbt_version: 1.11.0
 target_name: ci
 dataset: dbt_ci                 # Temporary dataset for CI builds
 # dbt Cloud appends a PR-specific suffix to avoid conflicts
@@ -230,7 +225,7 @@ models:
       +schema: marts
 
 # Different test behavior per environment
-tests:
+data_tests:
   my_analytics:
     +severity: "{{ 'error' if target.name == 'prod' else 'warn' }}"
     +store_failures: "{{ true if target.name == 'prod' else false }}"
