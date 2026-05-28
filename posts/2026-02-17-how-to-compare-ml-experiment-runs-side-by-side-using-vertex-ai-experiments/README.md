@@ -39,7 +39,7 @@ print("Experiment created and initialized")
 
 ## Logging a Run
 
-Each training attempt becomes a run within the experiment. You log parameters, metrics, and artifacts for each run:
+Each training attempt becomes a run within the experiment. You can log parameters and metrics for each run:
 
 ```python
 # log_run.py
@@ -243,7 +243,7 @@ print(f"\nRuns with accuracy > 0.85: {len(good_runs)}")
 
 ## Integrating with Training Jobs
 
-You can automatically log Vertex AI training jobs as experiment runs:
+You can run a Vertex AI training job inside an experiment run and log its configuration and final metrics:
 
 ```python
 # training_job_experiment.py
@@ -260,8 +260,7 @@ aiplatform.init(
 job = aiplatform.CustomTrainingJob(
     display_name='churn-training-job',
     script_path='trainer/task.py',
-    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-14.py310:latest',
-    model_serving_container_image_uri='us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-14:latest',
+    container_uri='us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-17.py310:latest',
 )
 
 # Run the training job as an experiment run
@@ -274,10 +273,9 @@ with aiplatform.start_run('vertex-training-run-001') as run:
         'model_architecture': 'cnn_v2',
     })
 
-    model = job.run(
+    job.run(
         machine_type='n1-standard-4',
         args=['--epochs', '30', '--learning-rate', '0.001', '--batch-size', '128'],
-        model_display_name='churn-cnn-v2',
     )
 
     # Log the resulting metrics after training completes
