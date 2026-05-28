@@ -123,7 +123,7 @@ Pulling works the same as any Docker registry:
 docker pull us-central1-docker.pkg.dev/my-project/my-docker-repo/my-app:v1.0.0
 ```
 
-GKE clusters in the same project can pull images without any extra configuration. The default compute service account has read access to Artifact Registry.
+GKE clusters in the same project can usually pull images without extra configuration if their node service account has read access. The default Compute Engine service account has read access to same-project Artifact Registry repositories unless automatic role grants to default service accounts have been disabled.
 
 ## Listing Images and Tags
 
@@ -171,10 +171,16 @@ gcloud artifacts repositories add-iam-policy-binding my-docker-repo \
 Artifact Registry can automatically scan images for known vulnerabilities when they are pushed:
 
 ```bash
-# Enable Container Analysis API for vulnerability scanning
-gcloud services enable containeranalysis.googleapis.com --project=my-project
+# Enable the Container Scanning API for vulnerability scanning
+gcloud services enable containerscanning.googleapis.com --project=my-project
 
-# Scanning is automatic once the API is enabled
+# If scanning was disabled on this repository, allow it again
+gcloud artifacts repositories update my-docker-repo \
+  --location=us-central1 \
+  --allow-vulnerability-scanning \
+  --project=my-project
+
+# Scanning is automatic for newly pushed Docker images once the API is enabled and repository scanning is allowed
 # You can check scan results for an image like this:
 gcloud artifacts docker images describe \
   us-central1-docker.pkg.dev/my-project/my-docker-repo/my-app:v1.0.0 \
