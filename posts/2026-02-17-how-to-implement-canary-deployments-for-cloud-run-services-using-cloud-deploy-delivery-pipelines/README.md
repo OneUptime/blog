@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Run, Cloud Deploy, Canary Deployment, CI/CD, Traffic Splitting
 
-Description: Learn how to set up canary deployments for Cloud Run services using Cloud Deploy delivery pipelines with gradual traffic shifting and automated rollback capabilities.
+Description: Learn how to set up canary deployments for Cloud Run services using Cloud Deploy delivery pipelines with gradual traffic shifting and rollback capabilities.
 
 ---
 
@@ -23,7 +23,7 @@ flowchart LR
     A[Deploy New Revision] --> B[10% Traffic]
     B -->|Verify| C[50% Traffic]
     C -->|Verify| D[100% Traffic]
-    B -->|Failure| E[Rollback to 0%]
+    B -->|Failure| E[Roll back to stable revision]
     C -->|Failure| E
 ```
 
@@ -126,7 +126,7 @@ profiles:
       - name: health-check
         container:
           name: curl
-          image: curlimages/curl
+          image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
           command: ["/bin/sh"]
           args:
             - "-c"
@@ -147,7 +147,7 @@ profiles:
       - name: canary-verification
         container:
           name: verify
-          image: curlimages/curl
+          image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
           command: ["/bin/sh"]
           args:
             - "-c"
@@ -310,7 +310,7 @@ gcloud run services describe myapp \
 
 ## Step 7: Advance or Rollback
 
-If verification passes at each phase, Cloud Deploy automatically advances to the next percentage. But you can also control it manually:
+If verification passes at each phase, the rollout is ready to advance to the next percentage. You can advance it manually:
 
 ```bash
 # Manually advance to the next canary phase
@@ -334,7 +334,7 @@ For more sophisticated canary analysis, you can use Cloud Monitoring metrics in 
 from google.cloud import monitoring_v3
 import time
 
-def check_error_rate(project_id, service_name, threshold=0.05):
+def check_error_rate(project_id, service_name, revision_name, threshold=0.05):
     """Check the error rate for the canary revision."""
     client = monitoring_v3.MetricServiceClient()
     project_name = f"projects/{project_id}"
@@ -350,6 +350,7 @@ def check_error_rate(project_id, service_name, threshold=0.05):
     filter_str = (
         f'resource.type="cloud_run_revision" '
         f'AND resource.labels.service_name="{service_name}" '
+        f'AND resource.labels.revision_name="{revision_name}" '
         f'AND metric.type="run.googleapis.com/request_count"'
     )
 
@@ -382,7 +383,7 @@ def check_error_rate(project_id, service_name, threshold=0.05):
 
 if __name__ == "__main__":
     import sys
-    success = check_error_rate("my-project", "myapp")
+    success = check_error_rate("my-project", "myapp", "myapp-00042-canary")
     sys.exit(0 if success else 1)
 ```
 
@@ -396,6 +397,6 @@ if __name__ == "__main__":
 
 4. Keep the number of canary phases reasonable. Three phases (10%, 50%, 100%) gives you good coverage without making deployments take hours.
 
-5. Test your rollback process before you need it. Trigger a deliberate failure in staging to verify that Cloud Deploy rolls back correctly and traffic returns to the stable revision.
+5. Test your rollback process before you need it. Trigger a deliberate failure in staging to verify that `gcloud deploy targets rollback` creates a rollback rollout and traffic returns to the stable revision.
 
 Canary deployments add time to your release process, but that time buys you confidence. A few minutes of gradual traffic shifting is a small price to pay compared to discovering a bug after 100% of your users have been affected.
