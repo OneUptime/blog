@@ -16,8 +16,8 @@ Before diving into the how, let me quickly cover what you get with Gen 2. The mo
 
 - **Concurrency**: A single instance can handle up to 1000 concurrent requests instead of just 1. This dramatically reduces cold starts and cost.
 - **Longer timeouts**: HTTP functions can run up to 60 minutes (vs 9 minutes in Gen 1). Event-driven functions get up to 9 minutes (vs 9 minutes, same here).
-- **Larger instances**: Up to 16 GB of memory and 4 vCPUs.
-- **Traffic splitting**: Since Gen 2 runs on Cloud Run, you get revision-based traffic splitting for free.
+- **Larger instances**: Up to 32 GiB of memory and 8 vCPUs.
+- **Traffic splitting**: Since Gen 2 runs on Cloud Run, you can manage the underlying Cloud Run service and use revision-based traffic controls where appropriate.
 - **Eventarc integration**: Gen 2 uses Eventarc for event triggers, which supports over 90 event sources.
 
 ## Understanding the Key Differences
@@ -32,19 +32,19 @@ This is the biggest source of breakage during migration. If you just redeploy a 
 
 ### HTTP Endpoint Changes
 
-For HTTP functions, the URL format changes. Gen 1 URLs look like:
+For HTTP functions, the URL format can change depending on how you deploy and expose the Gen 2 function. Gen 1 URLs look like:
 
 ```text
 https://REGION-PROJECT_ID.cloudfunctions.net/FUNCTION_NAME
 ```
 
-Gen 2 URLs look like:
+Gen 2 functions deployed with `gcloud functions` or the Cloud Functions v2 API get a `cloudfunctions.net` endpoint by default, and functions deployed or managed directly on Cloud Run can also have a `run.app` URL that looks like:
 
 ```text
 https://FUNCTION_NAME-HASH-REGION.a.run.app
 ```
 
-If anything is calling your HTTP function URL directly, this is a breaking change you need to handle.
+If anything is calling your HTTP function URL directly, verify the exact URL returned by `gcloud functions describe` before cutover and treat any endpoint change as a breaking change you need to handle.
 
 ## Step 1: Audit Your Existing Function
 
@@ -149,7 +149,7 @@ Compare the output with your Gen 1 function logs to make sure the behavior is id
 
 ## Step 5: Handle the HTTP URL Migration
 
-If your function is HTTP-triggered, you need to handle the URL change. The safest approach is to put a load balancer in front of both functions and use it as the stable endpoint.
+If your function is HTTP-triggered, you need to handle any URL change. The safest approach is to put a load balancer in front of both functions and use it as the stable endpoint.
 
 ```bash
 # Create a serverless NEG pointing to the Gen 2 function (Cloud Run service)
@@ -189,9 +189,9 @@ gcloud functions delete my-function \
 
 **Duplicate event processing**: During the overlap period where both Gen 1 and Gen 2 are running, both functions will process the same events. Make sure your function logic is idempotent, or temporarily disable one.
 
-**IAM permissions**: Gen 2 functions run as Cloud Run services, so the service account needs the `run.invoker` role in addition to any existing permissions.
+**IAM permissions**: Gen 2 functions run as Cloud Run services. For authenticated invocations, the caller or trigger service account needs the Cloud Run Invoker role (`roles/run.invoker`) in addition to any existing permissions.
 
-**Eventarc permissions**: The Eventarc service agent needs the `eventarc.eventReceiver` role on the function's service account.
+**Eventarc permissions**: The service account associated with the Eventarc trigger needs the Eventarc Event Receiver role (`roles/eventarc.eventReceiver`) on the project so it can receive events from event providers.
 
 **VPC connector**: If your Gen 1 function uses a VPC connector, make sure it is also configured on the Gen 2 deployment. The flag syntax is slightly different.
 
