@@ -18,7 +18,7 @@ Before diving in, it is worth understanding the difference:
 
 **Metric-based alerts** fire when a numeric metric crosses a threshold over a time window. They are good for "too much" or "too little" scenarios - CPU too high, request count too low.
 
-**Log-based alerts** fire when one or more log entries match a filter within a time window. They are good for "this specific thing happened" scenarios - a particular error message appeared, a security event occurred, a critical process crashed.
+**Log-based alerts** fire when an individual log entry matches a filter. They are good for "this specific thing happened" scenarios - a particular error message appeared, a security event occurred, a critical process crashed.
 
 The two approaches complement each other. Use metrics for quantitative monitoring and logs for qualitative detection.
 
@@ -33,12 +33,12 @@ The two approaches complement each other. Use metrics for quantitative monitorin
 
 ### Using gcloud CLI
 
-The gcloud approach uses the `logging` command for log-based alerts (called "log alerts" or "logs-based alerting policies"):
+The gcloud approach uses the `monitoring policies create` command for log-based alerts (called "log alerts" or "logs-based alerting policies"):
 
 ```bash
 # Create a log-based alert for critical application errors
 
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --policy-from-file=log-alert-policy.json \
   --project=my-project
 ```
@@ -92,7 +92,7 @@ Detect when your application crashes or encounters unhandled exceptions:
   ],
   "alertStrategy": {
     "notificationRateLimit": {
-      "period": "60s"
+      "period": "300s"
     }
   }
 }
@@ -168,13 +168,13 @@ Get notified whenever someone modifies IAM permissions:
   ],
   "alertStrategy": {
     "notificationRateLimit": {
-      "period": "0s"
+      "period": "300s"
     }
   }
 }
 ```
 
-Setting `notificationRateLimit.period` to `0s` means you get notified for every occurrence. This is appropriate for high-priority security events.
+For high-priority security events, use the shortest practical notification interval. Cloud Monitoring enforces a minimum interval between notifications for an open log-based alert incident, so `300s` is a good starting point.
 
 ### Alert on Out of Memory Events
 
@@ -243,7 +243,12 @@ Good alert documentation helps on-call engineers respond faster. Include runbook
         "filter": "severity>=ERROR AND textPayload=~\"connection refused\""
       }
     }
-  ]
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  }
 }
 ```
 
@@ -302,7 +307,7 @@ resource "google_monitoring_alert_policy" "iam_changes" {
 
   alert_strategy {
     notification_rate_limit {
-      period = "0s"
+      period = "300s"
     }
   }
 
@@ -312,14 +317,14 @@ resource "google_monitoring_alert_policy" "iam_changes" {
 
 ## Notification Rate Limiting
 
-Notification rate limiting is an important configuration for log-based alerts. Without it, a burst of matching log entries can generate hundreds of notifications in minutes.
+Notification rate limiting is an important configuration for log-based alerts. A burst of matching log entries can generate repeated notifications, subject to Cloud Monitoring's notification limits.
 
 Recommended rate limits by alert type:
 
 | Alert Type | Rate Limit | Reasoning |
 |-----------|-----------|-----------|
-| Security events (IAM changes) | 0s | Every occurrence matters |
-| Application crashes | 60s | Know quickly, but batch nearby events |
+| Security events (IAM changes) | 300s | Use the shortest supported interval for high-priority events |
+| Application crashes | 300s | Know quickly, but batch nearby events |
 | Connection errors | 300s | Often bursty, one notification per 5 min is enough |
 | Disk warnings | 600s | Slow-developing, 10 min batching is fine |
 
