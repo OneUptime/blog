@@ -18,7 +18,7 @@ The retry behavior in Cloud Functions depends on whether your function is HTTP-t
 
 **HTTP-triggered functions**: No automatic retries. If the function returns an error, the caller gets the error response. It is up to the caller to retry.
 
-**Event-triggered functions (Gen 2)**: Automatic retries are handled by the underlying Pub/Sub subscription or Eventarc trigger. When your function throws an error or returns a rejected promise, the event is redelivered after a delay.
+**Event-triggered functions (Gen 2)**: Retries are handled by the underlying Pub/Sub subscription or Eventarc trigger, but the default depends on how the function and trigger are created. For functions deployed with the Cloud Functions v2 API or `gcloud functions deploy --gen2`, retries are disabled by default and must be enabled with `--retry`. When retries are enabled and your function throws an error or returns a rejected promise, the event is redelivered after a delay.
 
 This is important: returning successfully from your function tells the system "I have processed this message, do not send it again." Throwing an error tells the system "I failed, please retry."
 
@@ -26,16 +26,29 @@ This is important: returning successfully from your function tells the system "I
 
 ### Enabling Retries
 
-For Gen 2 functions with Pub/Sub triggers, retries are enabled by default through the Pub/Sub subscription. The subscription will keep retrying delivery until the message is acknowledged (function succeeds) or the message retention period expires (default 7 days).
+For Gen 2 functions with Pub/Sub triggers deployed through `gcloud functions deploy --gen2`, retries are disabled by default. Enable retries when deploying the function:
 
-For Gen 2 functions with Eventarc triggers (Cloud Storage, Firestore, etc.), retries are also handled automatically.
+```bash
+gcloud functions deploy process-event \
+  --gen2 \
+  --runtime=nodejs22 \
+  --region=us-central1 \
+  --source=. \
+  --entry-point=processEvent \
+  --trigger-topic=my-topic \
+  --retry
+```
+
+With this managed retry setting, Cloud Run functions retries failed event-driven invocations for up to 24 hours using exponential backoff between 10 and 600 seconds.
+
+For Gen 2 functions with Eventarc triggers (Cloud Storage, Firestore, etc.), retries are also controlled by the trigger's retry policy and are enabled with `--retry` when you deploy through the Cloud Functions v2 API.
 
 ### Setting Retry Delay Policies
 
-You can configure the retry delay using exponential backoff on the Pub/Sub subscription:
+If you need to customize the retry window, retry delay, delivery attempts, or dead letter policy directly, use a Pub/Sub subscription that you manage yourself, such as a push subscription targeting an HTTP Cloud Run function. You can configure the retry delay using exponential backoff on that Pub/Sub subscription:
 
 ```bash
-# First, find the subscription name created by the trigger
+# First, find the subscription name you manage for the topic
 
 gcloud pubsub subscriptions list \
   --format="value(name)" \
@@ -47,13 +60,7 @@ gcloud pubsub subscriptions update my-subscription-name \
   --max-retry-delay=600s
 ```
 
-With this configuration, retry delays will be:
-- 1st retry: ~10 seconds
-- 2nd retry: ~20 seconds
-- 3rd retry: ~40 seconds
-- 4th retry: ~80 seconds
-- 5th retry: ~160 seconds
-- And so on, capping at 600 seconds (10 minutes)
+With this configuration, Pub/Sub adds progressively longer delays after consecutive delivery failures, starting at about 10 seconds and capping at 600 seconds (10 minutes). The exact delay is best effort, and Pub/Sub might also apply push backoff for push subscriptions.
 
 ## Setting Up Dead Letter Topics
 
@@ -92,6 +99,8 @@ gcloud pubsub subscriptions add-iam-policy-binding my-subscription-name \
 ```
 
 ### Step 3: Configure the Dead Letter Policy
+
+Dead letter policies are configured on Pub/Sub subscriptions that you manage directly. If you deployed a Gen 2 function with `--trigger-topic`, Google manages the trigger for you; use `--retry` for the managed retry behavior, or use an HTTP function with your own Pub/Sub push subscription when you need a dead letter topic.
 
 ```bash
 # Update the subscription to use the dead letter topic
@@ -192,7 +201,8 @@ functions.cloudEvent('handleDeadLetter', async (cloudEvent) => {
     data: data,
     attributes: attributes,
     failedAt: new Date(),
-    originalTopic: attributes.CloudPubSubDeadLetterSourceTopic || 'unknown',
+    originalSubscription:
+      attributes.CloudPubSubDeadLetterSourceSubscription || 'unknown',
     deliveryAttempts: parseInt(
       attributes.CloudPubSubDeadLetterSourceDeliveryCount || '0'
     ),
@@ -218,7 +228,7 @@ Deploy the dead letter handler:
 # Deploy the dead letter handler function
 gcloud functions deploy handle-dead-letters \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --region=us-central1 \
   --source=./dead-letter-handler \
   --entry-point=handleDeadLetter \
@@ -299,7 +309,7 @@ graph TD
 
 ## Best Practices
 
-**Set a reasonable max delivery attempts**: 5-10 attempts is usually enough. If a message fails 10 times, there is likely a fundamental problem that more retries will not fix.
+**Set a reasonable max delivery attempts**: 5-10 attempts is usually enough. Pub/Sub treats this number approximately, but if a message fails around 10 times, there is likely a fundamental problem that more retries will not fix.
 
 **Always check for idempotency**: Since messages can be delivered more than once (especially with retries), make sure processing the same message twice does not cause problems.
 
@@ -307,6 +317,6 @@ graph TD
 
 **Monitor your dead letter topic**: A dead letter topic that is growing means something is wrong. Set up monitoring with OneUptime to alert when messages start landing in the dead letter topic. Even a single message there deserves investigation, because it likely represents a class of failures.
 
-**Set message retention appropriately**: Messages in Pub/Sub are retained for 7 days by default. If your retry policy means messages might be retried over several days, make sure the retention period is long enough.
+**Set message retention appropriately**: Messages in Pub/Sub subscriptions are retained for 7 days by default. If a directly managed Pub/Sub retry policy means messages might be retried over several days, make sure the retention period is long enough.
 
 Building reliable event processing is not just about writing the happy path. It is about thinking through every failure mode and building the infrastructure to handle it. Retry policies and dead letter topics give you the building blocks, but you need to wire them together thoughtfully.
