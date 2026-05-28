@@ -17,31 +17,84 @@ In this guide, I will walk through creating, configuring, and tuning a Recommend
 Before creating a recommendation model, you need:
 
 - A product catalog imported into the Retail API (see the catalog setup guide)
-- At least 90 days of user event data (the more the better)
-- A minimum of 100 unique users with purchase events
+- Enough user event data for your chosen model objective. For a CTR-optimized Recommended For You model, this includes recent `detail-page-view` and `home-page-view` events, 100 unique catalog items for `detail-page-view`, and at least 10,000 events of each required type in the last 90 days
+- `add-to-cart` events if you plan to optimize for conversion rate
 - The Retail API enabled in your project
 
-These minimums ensure the model has enough data to learn meaningful patterns. Trying to train with too little data produces generic, unhelpful recommendations.
+These minimums ensure the model has enough data to learn meaningful patterns. If the requirements are not met, the model cannot be trained.
 
 ## Understanding Model Types
 
 Recommendations AI offers several model types:
 
 - **Recommended For You**: Personalized suggestions based on individual user behavior
-- **Others You May Like**: Similar items based on a seed product
+- **Others You May Like**: Suggestions based on user history and relevance to a current product
 - **Frequently Bought Together**: Products commonly purchased together
 - **Recently Viewed**: Products the user has recently interacted with
 
 This guide focuses on the "Recommended For You" type, which is the most complex and powerful.
 
-## Step 1: Create the Serving Configuration
+## Step 1: Create the Recommendation Model
+
+Create the actual model that will power your recommendations.
+
+```python
+from google.cloud import retail_v2
+
+def create_recommendation_model(project_id, model_id, display_name):
+    """Create a Recommended For You model."""
+    client = retail_v2.ModelServiceClient()
+
+    parent = (
+        f"projects/{project_id}/locations/global"
+        f"/catalogs/default_catalog"
+    )
+
+    model_name = f"{parent}/models/{model_id}"
+
+    # Configure the model
+    model = retail_v2.Model(
+        name=model_name,
+        display_name=display_name,
+        type_="recommended-for-you",
+        optimization_objective="ctr",  # Optimize for click-through rate
+        # Other options: "cvr" for conversion rate
+
+        # Filtering allows/disallows recommendation filters
+        filtering_option=retail_v2.RecommendationsFilteringOption.RECOMMENDATIONS_FILTERING_ENABLED,
+
+        # Periodic tuning keeps the model fresh
+        periodic_tuning_state=retail_v2.Model.PeriodicTuningState.PERIODIC_TUNING_ENABLED,
+    )
+
+    request = retail_v2.CreateModelRequest(
+        parent=parent,
+        model=model,
+    )
+
+    # Model creation starts the initial training
+    operation = client.create_model(request=request)
+    print("Model training started. This typically takes 2-5 days.")
+    print(f"Operation: {operation.operation.name}")
+
+    return operation
+
+# Create the model
+operation = create_recommendation_model(
+    "my-gcp-project",
+    "homepage-rec-model",
+    "Homepage Recommended For You Model"
+)
+```
+
+## Step 2: Create the Serving Configuration
 
 A serving configuration (also called a placement) defines where recommendations will appear in your application.
 
 ```python
 from google.cloud import retail_v2
 
-def create_serving_config(project_id, serving_config_id, display_name):
+def create_serving_config(project_id, serving_config_id, display_name, model_id):
     """Create a serving configuration for recommendations."""
     client = retail_v2.ServingConfigServiceClient()
 
@@ -53,7 +106,7 @@ def create_serving_config(project_id, serving_config_id, display_name):
     serving_config = retail_v2.ServingConfig(
         display_name=display_name,
         solution_types=[retail_v2.SolutionType.SOLUTION_TYPE_RECOMMENDATION],
-        model_id="",  # Will be linked after model training
+        model_id=model_id,
     )
 
     request = retail_v2.CreateServingConfigRequest(
@@ -71,58 +124,8 @@ def create_serving_config(project_id, serving_config_id, display_name):
 serving_config = create_serving_config(
     "my-gcp-project",
     "homepage-recs",
-    "Homepage Recommended For You"
-)
-```
-
-## Step 2: Create the Recommendation Model
-
-Now create the actual model that will power your recommendations.
-
-```python
-from google.cloud import retail_v2
-
-def create_recommendation_model(project_id, model_id, display_name):
-    """Create a Recommended For You model."""
-    client = retail_v2.ModelServiceClient()
-
-    parent = (
-        f"projects/{project_id}/locations/global"
-        f"/catalogs/default_catalog"
-    )
-
-    # Configure the model
-    model = retail_v2.Model(
-        display_name=display_name,
-        type_="recommended-for-you",
-        optimization_objective="ctr",  # Optimize for click-through rate
-        # Other options: "cvr" for conversion rate
-
-        # Filtering allows/disallows certain recommendation patterns
-        filtering_option=retail_v2.RecommendationsFilteringOption.RECOMMENDATIONS_FILTERING_ENABLED,
-
-        # Periodic tuning keeps the model fresh
-        periodic_tuning_state=retail_v2.Model.PeriodicTuningState.PERIODIC_TUNING_ENABLED,
-    )
-
-    request = retail_v2.CreateModelRequest(
-        parent=parent,
-        model=model,
-        model_id=model_id
-    )
-
-    # Model creation starts the initial training
-    operation = client.create_model(request=request)
-    print(f"Model training started. This typically takes 1-3 days.")
-    print(f"Operation: {operation.operation.name}")
-
-    return operation
-
-# Create the model
-operation = create_recommendation_model(
-    "my-gcp-project",
+    "Homepage Recommended For You",
     "homepage-rec-model",
-    "Homepage Recommended For You Model"
 )
 ```
 
@@ -160,16 +163,16 @@ def check_model_status(project_id, model_id):
 model = check_model_status("my-gcp-project", "homepage-rec-model")
 ```
 
-## Step 4: Link the Model to a Serving Configuration
+## Step 4: Update the Model on a Serving Configuration
 
-Once the model is trained, connect it to your serving configuration so you can request recommendations.
+If you created the serving configuration with a placeholder model or need to switch to a compatible model later, update its `model_id`.
 
 ```python
 from google.cloud import retail_v2
 from google.protobuf import field_mask_pb2
 
-def link_model_to_serving_config(project_id, serving_config_id, model_id):
-    """Link a trained model to a serving configuration."""
+def update_serving_config_model(project_id, serving_config_id, model_id):
+    """Update the model used by a serving configuration."""
     client = retail_v2.ServingConfigServiceClient()
 
     serving_config_name = (
@@ -191,10 +194,10 @@ def link_model_to_serving_config(project_id, serving_config_id, model_id):
     )
 
     result = client.update_serving_config(request=request)
-    print(f"Model {model_id} linked to serving config {serving_config_id}")
+    print(f"Serving config {serving_config_id} now uses model {model_id}")
     return result
 
-link_model_to_serving_config(
+update_serving_config_model(
     "my-gcp-project",
     "homepage-recs",
     "homepage-rec-model"
@@ -227,7 +230,7 @@ def configure_serving_rules(project_id, serving_config_id):
         # Options: "no-diversity", "low-diversity",
         #          "medium-diversity", "high-diversity", "auto-diversity"
 
-        # Price reranking boosts products in the user's preferred price range
+        # Price reranking orders similarly ranked products by price
         price_reranking_level="low-price-reranking",
         # Options: "no-price-reranking", "low-price-reranking",
         #          "medium-price-reranking", "high-price-reranking"
@@ -251,7 +254,7 @@ configure_serving_rules("my-gcp-project", "homepage-recs")
 
 ## Step 6: Request Recommendations
 
-With the model trained and linked, you can now request personalized recommendations.
+With the model trained and the serving config active, you can now request personalized recommendations.
 
 ```python
 from google.cloud import retail_v2
@@ -279,8 +282,9 @@ def get_recommendations(project_id, serving_config_id,
         placement=placement,
         user_event=user_event,
         page_size=page_size,
-        # Optional: filter recommendations
+        # Optional: filter recommendations by filterable product attributes
         filter='availability: ANY("IN_STOCK")',
+        params={"filterSyntaxV2": True},
     )
 
     response = client.predict(request=request)
@@ -310,10 +314,10 @@ recs = get_recommendations(
 Choose the right optimization objective for your business goal:
 
 - **ctr (Click-Through Rate)**: Maximizes the chance users will click on recommended products. Best for driving engagement and product discovery.
-- **cvr (Conversion Rate)**: Maximizes the chance users will purchase recommended products. Best for driving revenue directly.
+- **cvr (Conversion Rate)**: Maximizes the chance users will add recommended products to their cart. Best for increasing add-to-cart conversions.
 
-Start with CTR optimization if you are unsure. It tends to produce more diverse recommendations. Switch to CVR optimization when you want to maximize direct sales impact.
+Start with CTR optimization if you are unsure. It tends to produce more diverse recommendations. Switch to CVR optimization when you want to maximize add-to-cart conversions.
 
 ## Wrapping Up
 
-Creating a Recommended For You model involves several steps - setting up serving configurations, creating the model, waiting for training, and linking everything together. The initial training period (1-3 days) requires patience, but once the model is ready, it delivers personalized recommendations that improve as more user events flow in. Tune diversity settings and optimization objectives based on your business goals, and remember that the model automatically retrains periodically to stay current with changing user preferences and product inventory.
+Creating a Recommended For You model involves several steps - creating the model, setting up serving configurations, and waiting for training. The initial training period (2-5 days) requires patience, but once the model is ready, it delivers personalized recommendations that improve as more user events flow in. Tune diversity settings and optimization objectives based on your business goals, and remember that the model automatically tunes periodically to stay current with changing user preferences and product inventory.
