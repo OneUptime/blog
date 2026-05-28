@@ -70,9 +70,9 @@ variable "dataset_description" {
 }
 
 variable "default_table_expiration_ms" {
-  description = "Default expiration for tables in milliseconds (0 = no expiration)"
+  description = "Default expiration for tables in milliseconds (null = no expiration)"
   type        = number
-  default     = 0
+  default     = null
 }
 
 variable "authorized_views" {
@@ -117,6 +117,12 @@ variable "policy_tags" {
     description  = optional(string, "")
   }))
   default = {}
+}
+
+variable "policy_tag_readers" {
+  description = "Map of policy tag keys to IAM members that can read columns protected by each tag"
+  type        = map(string)
+  default     = {}
 }
 ```
 
@@ -179,12 +185,7 @@ resource "google_bigquery_table" "tables" {
   schema      = file(each.value.schema_file)
 
   # Optional clustering for query performance
-  dynamic "clustering" {
-    for_each = length(each.value.clustering) > 0 ? [1] : []
-    content {
-      fields = each.value.clustering
-    }
-  }
+  clustering = length(each.value.clustering) > 0 ? each.value.clustering : null
 
   # Optional time partitioning for large tables
   dynamic "time_partitioning" {
@@ -219,10 +220,7 @@ Here is an example schema file with policy tag annotations for column-level secu
     "name": "email",
     "type": "STRING",
     "mode": "NULLABLE",
-    "description": "User email address",
-    "policyTags": {
-      "names": ["projects/my-project/locations/us/taxonomies/1234/policyTags/5678"]
-    }
+    "description": "User email address"
   },
   {
     "name": "ssn",
@@ -232,9 +230,23 @@ Here is an example schema file with policy tag annotations for column-level secu
     "policyTags": {
       "names": ["projects/my-project/locations/us/taxonomies/1234/policyTags/9012"]
     }
+  },
+  {
+    "name": "country",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "User country code"
+  },
+  {
+    "name": "created_at",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "User creation timestamp"
   }
 ]
 ```
+
+If a view query references a column protected by a policy tag, the user querying the view still needs the Fine-Grained Reader permission for that policy tag. In this example, `email` is left untagged because the analytics view masks it in SQL, while `ssn` remains protected by a policy tag.
 
 ## Setting Up Column-Level Security with Policy Tags
 
@@ -276,7 +288,7 @@ resource "google_data_catalog_policy_tag_iam_member" "fine_grained_reader" {
 
 ## Creating Authorized Views
 
-Authorized views are the bridge between restricted and accessible data. The view runs with the permissions of its dataset, not the querying user:
+Authorized views are the bridge between restricted and accessible data. The source dataset grants read access to the view, while users only need query permissions on the view and the dataset that contains it:
 
 ```hcl
 # views.tf - Authorized views that provide controlled access to data
@@ -319,9 +331,9 @@ Here is how you use the module to create a raw dataset with a table, and an anal
 module "raw_dataset" {
   source = "./modules/bigquery"
 
-  project_id  = "my-project"
-  dataset_id  = "raw_users"
-  description = "Raw user data with PII"
+  project_id           = "my-project"
+  dataset_id           = "raw_users"
+  dataset_description  = "Raw user data with PII"
 
   access_roles = [
     {
@@ -368,9 +380,9 @@ module "raw_dataset" {
 module "analytics_dataset" {
   source = "./modules/bigquery"
 
-  project_id  = "my-project"
-  dataset_id  = "analytics"
-  description = "Curated analytics views"
+  project_id           = "my-project"
+  dataset_id           = "analytics"
+  dataset_description  = "Curated analytics views"
 
   access_roles = [
     {
@@ -403,14 +415,20 @@ After deploying, verify that access controls work as expected:
 ```bash
 # As a data engineer - should see all columns
 bq query --project_id=my-project \
+  --use_legacy_sql=false \
+  --nouse_cache \
   "SELECT * FROM raw_users.users LIMIT 5"
 
 # As an analyst - should only see masked data through the view
 bq query --project_id=my-project \
+  --use_legacy_sql=false \
+  --nouse_cache \
   "SELECT * FROM analytics.users_analytics LIMIT 5"
 
 # As an analyst - should be denied direct table access
 bq query --project_id=my-project \
+  --use_legacy_sql=false \
+  --nouse_cache \
   "SELECT * FROM raw_users.users LIMIT 5"
 # Expected: Access Denied
 ```
