@@ -194,6 +194,7 @@ main:
     - setup:
         assign:
           - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - location: ${default(map.get(args, "location"), "US")}
           - query: ${args.query}
 
     - start_query:
@@ -204,6 +205,8 @@ main:
           auth:
             type: OAuth2
           body:
+            jobReference:
+              location: ${location}
             configuration:
               query:
                 query: ${query}
@@ -219,12 +222,15 @@ main:
         args:
           project_id: ${project_id}
           job_id: ${job_id}
+          location: ${location}
         result: completed_job
 
     - get_results:
         call: http.get
         args:
           url: ${"https://bigquery.googleapis.com/bigquery/v2/projects/" + project_id + "/queries/" + job_id}
+          query:
+            location: ${location}
           auth:
             type: OAuth2
         result: query_results
@@ -236,7 +242,7 @@ main:
 
 # BigQuery-specific polling subworkflow
 poll_bigquery_job:
-  params: [project_id, job_id]
+  params: [project_id, job_id, location]
   steps:
     - init:
         assign:
@@ -249,6 +255,8 @@ poll_bigquery_job:
         call: http.get
         args:
           url: ${"https://bigquery.googleapis.com/bigquery/v2/projects/" + project_id + "/jobs/" + job_id}
+          query:
+            location: ${location}
           auth:
             type: OAuth2
         result: job_status
@@ -320,7 +328,7 @@ main:
           - operations: []
 
     - launch_exports:
-        # Start three export operations
+        # Start two export operations
         parallel:
           shared: [operations]
           branches:
