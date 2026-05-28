@@ -38,12 +38,12 @@ Before starting, make sure you have:
 
 - Organization-level access to configure VPC Service Controls
 - An Access Context Manager policy at the organization level
-- A Cloud Workstations cluster already set up
-- The Security Admin and Access Context Manager Admin roles
+- A Cloud Workstations cluster ready to create or update
+- The Security Admin, Access Context Manager Admin, and Cloud Workstations Admin roles
 
 ## Step 1: Create an Access Context Manager Access Level
 
-Access levels define the conditions under which access is allowed. For Cloud Workstations, you typically create an access level based on the corporate network or specific device attributes.
+Access levels define the conditions under which access is allowed. You typically create an access level based on the corporate network or specific device attributes for administrative access from outside the perimeter, such as access through the Cloud Console.
 
 ```bash
 # Create an access level that allows access from corporate IP ranges
@@ -80,8 +80,10 @@ gcloud access-context-manager perimeters create dev-perimeter \
     --policy=ORGANIZATION_POLICY_ID \
     --title="Development Environment Perimeter" \
     --resources="projects/workstations-project-number,projects/data-project-number,projects/artifact-project-number" \
-    --restricted-services="storage.googleapis.com,bigquery.googleapis.com,artifactregistry.googleapis.com,workstations.googleapis.com" \
-    --access-levels="accessPolicies/ORGANIZATION_POLICY_ID/accessLevels/corp-network-access"
+    --restricted-services="storage.googleapis.com,bigquery.googleapis.com,artifactregistry.googleapis.com,workstations.googleapis.com,compute.googleapis.com" \
+    --access-levels="accessPolicies/ORGANIZATION_POLICY_ID/accessLevels/corp-network-access" \
+    --enable-vpc-accessible-services \
+    --vpc-allowed-services="storage.googleapis.com,bigquery.googleapis.com,artifactregistry.googleapis.com,workstations.googleapis.com,compute.googleapis.com"
 ```
 
 Let me break down the key parameters:
@@ -92,12 +94,14 @@ Let me break down the key parameters:
 
 **access-levels**: The access levels that allow exceptions. In this case, users on the corporate network can access the perimeter from outside (e.g., through the Cloud Console).
 
+**vpc-allowed-services**: These are the restricted APIs that can be accessed from VPC networks inside the perimeter. Cloud Workstations requires Cloud Storage and Artifact Registry to be VPC-accessible so workstation images can be pulled, and Compute Engine must be restricted whenever you restrict the Cloud Workstations API.
+
 ## Step 3: Configure the Workstation Cluster for Private Access
 
-For maximum security, configure your workstation cluster to use private networking so workstations cannot reach the public internet:
+For maximum security, configure your workstation cluster to use a private endpoint so clients cannot connect to workstations from the public internet:
 
 ```bash
-# Create or update the workstation cluster with private networking
+# Create the workstation cluster with a private endpoint
 gcloud workstations clusters create secure-dev-cluster \
     --project=workstations-project \
     --region=us-central1 \
@@ -106,7 +110,18 @@ gcloud workstations clusters create secure-dev-cluster \
     --enable-private-endpoint
 ```
 
-With private endpoint enabled, the workstation cluster's control plane is only accessible from within the VPC, adding another layer of protection.
+With private endpoint enabled, the workstation cluster's control plane only has an internal IP address. To use the private cluster, create a Private Service Connect endpoint for the cluster's service attachment and a private DNS record that maps `*.<clusterHostname>` to that endpoint's IP address.
+
+Also disable public IP addresses on the workstation configuration so workstation VMs do not receive external IP addresses:
+
+```bash
+# Create a workstation configuration without public IP addresses
+gcloud workstations configs create secure-dev-config \
+    --project=workstations-project \
+    --region=us-central1 \
+    --cluster=secure-dev-cluster \
+    --disable-public-ip-addresses
+```
 
 ## Step 4: Set Up Private Google Access
 
@@ -150,6 +165,8 @@ gcloud dns record-sets create "restricted.googleapis.com." \
 ```
 
 This ensures all API calls from workstations go through the restricted VIP, which enforces VPC Service Controls.
+
+If your workstation images or development dependencies use Artifact Registry or Container Registry hostnames directly, also configure private DNS records for `*.pkg.dev` and `*.gcr.io` to use `restricted.googleapis.com`.
 
 ## Step 5: Configure Ingress and Egress Rules
 
@@ -228,7 +245,7 @@ Set up alerts for VPC Service Controls violations to detect potential security i
 # Create a log sink that captures VPC SC violations
 gcloud logging sinks create vpc-sc-violations \
     --project=workstations-project \
-    --log-filter='resource.type="audited_resource" AND protoPayload.metadata.violationReason="SERVICE_NOT_ALLOWED_FROM_VPC"' \
+    --log-filter='log_id("cloudaudit.googleapis.com/policy") AND severity=ERROR AND resource.type="audited_resource" AND protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata"' \
     --destination=pubsub.googleapis.com/projects/workstations-project/topics/vpc-sc-alerts
 ```
 
