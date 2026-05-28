@@ -26,10 +26,9 @@ You can check your current quotas:
 ```bash
 # Check quotas for a specific API
 
-gcloud services quotas list \
+gcloud alpha services quota list \
   --service=compute.googleapis.com \
-  --project=my-project \
-  --format="table(metric,unit,values)"
+  --consumer=projects/my-project
 ```
 
 When you exceed a limit, the API returns either:
@@ -123,7 +122,7 @@ Most GCP client libraries have built-in retry support. You do not always need to
 ```python
 # Using google-cloud-storage with built-in retry configuration
 from google.cloud import storage
-from google.api_core.retry import Retry
+from google.api_core.retry import Retry, if_exception_type
 from google.api_core import exceptions
 
 # Create a custom retry configuration
@@ -131,8 +130,8 @@ custom_retry = Retry(
     initial=1.0,         # Initial delay in seconds
     maximum=60.0,        # Maximum delay in seconds
     multiplier=2.0,      # Multiply delay by this after each retry
-    deadline=300.0,       # Total time budget for all retries (5 minutes)
-    predicate=Retry.if_exception_type(
+    timeout=300.0,        # Total retry timeout (5 minutes)
+    predicate=if_exception_type(
         exceptions.TooManyRequests,
         exceptions.ServiceUnavailable,
         exceptions.InternalServerError,
@@ -322,6 +321,7 @@ Cache API responses to avoid redundant calls:
 # Simple in-memory cache for GCP API responses
 from functools import lru_cache
 import time
+from google.cloud import compute_v1
 
 # Cache instance details for 5 minutes
 @lru_cache(maxsize=256)
@@ -386,13 +386,17 @@ Keep track of how close you are to your limits:
 
 ```bash
 # Check current quota usage for Compute Engine API
+START_TIME=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
 gcloud monitoring time-series list \
   --project=my-project \
   --filter='metric.type="serviceruntime.googleapis.com/quota/rate/net_usage" AND
+            resource.type="consumer_quota" AND
             resource.labels.service="compute.googleapis.com"' \
-  --interval-start-time=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-  --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --format="table(metric.labels.quota_metric,points.value)"
+  --interval-start-time="$START_TIME" \
+  --interval-end-time="$END_TIME" \
+  --format="table(metric.labels.quota_metric,points[].value.int64Value)"
 ```
 
 ## Summary
