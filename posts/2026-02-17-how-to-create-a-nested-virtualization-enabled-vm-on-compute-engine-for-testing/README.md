@@ -8,43 +8,44 @@ Description: A complete guide to enabling nested virtualization on Google Comput
 
 ---
 
-Sometimes you need to run a virtual machine inside a virtual machine. Maybe you are testing a hypervisor, building a CI/CD pipeline that needs to spin up VMs, or running a local Kubernetes cluster with tools like Minikube or Kind that use KVM. Compute Engine supports nested virtualization, but it requires a specific setup. Here is how to get it working.
+Sometimes you need to run a virtual machine inside a virtual machine. Maybe you are testing a hypervisor, building a CI/CD pipeline that needs to spin up VMs, or running a local Kubernetes cluster with tools like Minikube that can use KVM. Compute Engine supports nested virtualization, but it requires a specific setup. Here is how to get it working.
 
 ## What Nested Virtualization Means on GCE
 
 Nested virtualization allows a Compute Engine VM to act as a hypervisor and run its own guest VMs using KVM. Without it, the KVM kernel module will not load because the CPU virtualization extensions are not exposed to the guest OS.
 
 There are a few requirements to keep in mind:
-- Only works on Intel Haswell or later processors (N1, N2, C2 machine types - not E2 or T2)
-- The VM must run a Linux operating system
-- You need to create a custom image with a special license or use a boot disk with the nested virtualization license
+- The VM needs an Intel Haswell or later CPU platform. E2 VMs, memory-optimized VMs, AMD or Arm based VMs, and H4D VMs are not supported.
+- The L1 hypervisor must be Linux KVM
+- You can enable nested virtualization directly on the VM, or create a custom image with the special nested virtualization license
 
-## Step 1: Create a Disk with the VMX License
+## Step 1: Create the VM with Nested Virtualization Enabled
 
-The first step is to create a boot disk from an existing image and attach the nested virtualization license to it. This license tells Compute Engine to expose the VMX CPU flag to the guest OS.
-
-```bash
-# Create a disk from a Debian 12 image with the nested virtualization license
-
-gcloud compute disks create nested-vm-disk \
-  --zone=us-central1-a \
-  --image-family=debian-12 \
-  --image-project=debian-cloud \
-  --licenses="https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx"
-```
-
-The key part here is the `--licenses` flag. This specific license URL tells GCE to enable the VMX flag, which is what KVM needs to function.
-
-## Step 2: Create the VM from the Custom Disk
-
-Now create a VM using that disk. Remember, you need to use a machine type that supports nested virtualization:
+The recommended setup is to enable nested virtualization directly when you create the VM. This tells Compute Engine to expose the VMX CPU flag to the guest OS.
 
 ```bash
-# Create a VM from the disk with nested virtualization enabled
+# Create a Debian 12 VM with nested virtualization enabled
 gcloud compute instances create nested-vm \
   --zone=us-central1-a \
   --machine-type=n1-standard-4 \
-  --disk=name=nested-vm-disk,boot=yes,auto-delete=yes \
+  --image-family=debian-12 \
+  --image-project=debian-cloud \
+  --enable-nested-virtualization \
+  --min-cpu-platform="Intel Haswell"
+```
+
+The key part here is the `--enable-nested-virtualization` flag. This tells GCE to enable the VMX flag, which is what KVM needs to function.
+
+## Step 2: Confirm the Machine Type and CPU Platform
+
+Remember, you need to use a machine type that supports nested virtualization. If you use the legacy custom-image method, the instance creation command still needs a supported CPU platform:
+
+```bash
+# Create a VM from a custom nested-virtualization image
+gcloud compute instances create nested-vm \
+  --zone=us-central1-a \
+  --machine-type=n1-standard-4 \
+  --image=nested-vm-image \
   --min-cpu-platform="Intel Haswell"
 ```
 
@@ -52,7 +53,7 @@ The `--min-cpu-platform` flag ensures you get a processor that supports the VMX 
 
 ## Alternative: Create a Custom Image First
 
-If you plan to create multiple nested virtualization VMs, it is more efficient to create a reusable custom image:
+If you plan to create multiple nested virtualization VMs, you can also create a reusable custom image with the special nested virtualization license:
 
 ```bash
 # Create a custom image with nested virtualization support
@@ -89,7 +90,7 @@ Once connected, check for the VMX flag:
 grep -cw vmx /proc/cpuinfo
 ```
 
-If this returns a number greater than 0, VMX is enabled. If it returns 0, something went wrong with the license or the machine type.
+If this returns a number greater than 0, VMX is enabled. If it returns 0, something went wrong with the nested virtualization setting, license, or machine type.
 
 You can also verify that KVM is available:
 
@@ -110,12 +111,14 @@ sudo apt-get update
 sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils virtinst
 ```
 
-Start and enable the libvirt service:
+Start and enable the libvirt service, then make sure the default libvirt network is active:
 
 ```bash
-# Enable and start the libvirt daemon
+# Enable and start the libvirt daemon and default NAT network
 sudo systemctl enable libvirtd
 sudo systemctl start libvirtd
+sudo virsh net-start default || true
+sudo virsh net-autostart default
 ```
 
 Add your user to the necessary groups:
@@ -125,6 +128,8 @@ Add your user to the necessary groups:
 sudo usermod -aG libvirt $(whoami)
 sudo usermod -aG kvm $(whoami)
 ```
+
+Log out and back in, or start a new shell with `newgrp libvirt`, so the new group membership applies.
 
 ## Step 5: Create a Nested VM
 
@@ -180,9 +185,8 @@ sudo install minikube-linux-amd64 /usr/local/bin/minikube
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 sudo install kubectl /usr/local/bin/kubectl
 
-# Install the KVM2 driver for Minikube
-curl -LO https://storage.googleapis.com/minikube/releases/latest/docker-machine-driver-kvm2
-sudo install docker-machine-driver-kvm2 /usr/local/bin/docker-machine-driver-kvm2
+# Validate that libvirt is ready for the KVM2 driver
+virt-host-validate
 
 # Start Minikube with the KVM2 driver
 minikube start --driver=kvm2 --cpus=2 --memory=4096
@@ -215,10 +219,14 @@ apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils v
 systemctl enable libvirtd
 systemctl start libvirtd
 
+# Start the default NAT network
+virsh net-start default || true
+virsh net-autostart default
+
 # Create a default storage pool if it does not exist
-virsh pool-define-as default dir --target /var/lib/libvirt/images
+virsh pool-info default >/dev/null 2>&1 || virsh pool-define-as default dir --target /var/lib/libvirt/images
 virsh pool-autostart default
-virsh pool-start default
+virsh pool-start default || true
 
 echo "Nested virtualization host ready"
 ```
@@ -231,6 +239,7 @@ gcloud compute instances create nested-host \
   --zone=us-central1-a \
   --machine-type=n1-standard-8 \
   --image=nested-vm-image \
+  --enable-nested-virtualization \
   --min-cpu-platform="Intel Haswell" \
   --boot-disk-size=100GB \
   --boot-disk-type=pd-ssd \
