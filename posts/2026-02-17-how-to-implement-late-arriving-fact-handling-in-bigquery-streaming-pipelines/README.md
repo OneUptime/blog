@@ -55,7 +55,6 @@ PARTITION BY DATE(order_timestamp)
 CLUSTER BY customer_id
 AS
 SELECT
-  order_id,
   ARRAY_AGG(o ORDER BY processed_at DESC LIMIT 1)[OFFSET(0)].*
 FROM `analytics.orders_raw` o
 GROUP BY order_id
@@ -81,7 +80,7 @@ USING (
   WHERE rn = 1
 ) AS source
 ON target.order_id = source.order_id
-WHEN MATCHED AND source.event_timestamp > target.event_timestamp THEN
+WHEN MATCHED AND source.event_timestamp > target.updated_at THEN
   UPDATE SET
     order_status = source.order_status,
     order_total = source.order_total,
@@ -99,7 +98,7 @@ Schedule this to run every few minutes for near-real-time updates:
 
 bq query --use_legacy_sql=false --schedule="every 5 minutes" \
   --display_name="Merge staging to orders" \
-  --destination_table="" \
+  --target_dataset=analytics \
   "$(cat merge_orders.sql)"
 ```
 
@@ -110,6 +109,7 @@ Dataflow's windowing system has built-in support for late data through allowed l
 ```python
 # Dataflow pipeline with late data handling
 import apache_beam as beam
+from datetime import datetime, timezone
 from apache_beam.transforms.window import FixedWindows
 from apache_beam.transforms.trigger import (
     AfterWatermark,
@@ -138,11 +138,11 @@ windowed = (
 )
 ```
 
-With accumulating mode, each firing includes all data seen so far for that window. The downstream BigQuery write needs to handle this by replacing the previous result for that window:
+With accumulating mode, each firing includes all data seen so far for that window. The downstream BigQuery write needs to handle this by using a stable key and replacing the previous result for that window:
 
 ```python
 class WriteWithUpsert(beam.DoFn):
-    """Write windowed aggregates to BigQuery using streaming buffer."""
+    """Prepare windowed aggregate rows for a downstream BigQuery upsert."""
     def process(self, element, window=beam.DoFn.WindowParam):
         window_start = window.start.to_utc_datetime().isoformat()
         window_end = window.end.to_utc_datetime().isoformat()
@@ -155,7 +155,7 @@ class WriteWithUpsert(beam.DoFn):
             'window_start': window_start,
             'window_end': window_end,
             'value': aggregate,
-            'updated_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat(),
         }
         yield row
 ```
@@ -177,7 +177,7 @@ class EmitCorrections(beam.DoFn):
                 'key': key,
                 'old_value': old_value,
                 'new_value': new_value,
-                'correction_timestamp': datetime.utcnow().isoformat(),
+                'correction_timestamp': datetime.now(timezone.utc).isoformat(),
                 'delta': new_value - old_value,
             }
             yield beam.pvalue.TaggedOutput('corrections', correction)
