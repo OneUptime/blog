@@ -182,7 +182,7 @@ final TupleTag<Order> ordersTag = new TupleTag<Order>() {};
 final TupleTag<UserProfile> usersTag = new TupleTag<UserProfile>() {};
 final TupleTag<Product> productsTag = new TupleTag<Product>() {};
 
-// All three collections keyed by product_id for this example
+// All three collections must be keyed by the same join key
 PCollection<KV<String, CoGbkResult>> threeWayJoin = KeyedPCollectionTuple
     .of(ordersTag, keyedOrders)
     .and(usersTag, keyedUsers)
@@ -207,9 +207,9 @@ threeWayJoin.apply("ProcessJoin", ParDo.of(
 
 ## Performance Considerations
 
-CoGroupByKey triggers a shuffle operation. All data for a given key must be sent to the same worker. This has important implications.
+CoGroupByKey triggers a shuffle operation. The values for a given key are grouped so downstream code processes that key together. This has important implications.
 
-**Hot keys are dangerous.** If one key has millions of values on one side, that single key's data must fit in memory on one worker. A user with 10 million orders will cause problems.
+**Hot keys are dangerous.** If one key has millions of values on one side, that single key can become a bottleneck because the values for that key are processed together. A user with 10 million orders will cause problems, especially if your code materializes the iterable into a list.
 
 ```java
 // Monitor for hot keys by adding a counter
@@ -231,9 +231,9 @@ public void processElement(ProcessContext c) {
 }
 ```
 
-**Key cardinality matters.** Joining on a low-cardinality key (like country code with only ~200 values) means all data gets concentrated on a few workers. If possible, join on a higher-cardinality key.
+**Key cardinality matters.** Joining on a low-cardinality key (like country code with only ~200 values) limits parallelism and concentrates work into a few key groups. If possible, join on a higher-cardinality key.
 
-**Prefer side inputs for small-to-large joins.** If one collection is small enough to fit in memory (a few GB), use it as a side input instead of CoGroupByKey. Side inputs avoid the shuffle entirely.
+**Prefer side inputs for small-to-large joins.** If one collection is small enough to fit comfortably in worker memory, use it as a side input instead of CoGroupByKey. Side inputs avoid shuffling the large collection by key for the join.
 
 ```java
 // For small lookup tables, side inputs are faster than CoGroupByKey
