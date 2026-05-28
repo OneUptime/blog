@@ -8,7 +8,7 @@ Description: A complete walkthrough for migrating your data and application logi
 
 ---
 
-Firebase Realtime Database served many of us well for years. It is simple, fast, and great for small-to-medium datasets. But as applications grow, its limitations start showing - limited querying capabilities, scaling challenges with deeply nested data, and the single-region constraint. Firestore addresses all of these with a more powerful query model, automatic multi-region replication, and a document-collection structure that scales better.
+Firebase Realtime Database served many of us well for years. It is simple, fast, and great for small-to-medium datasets. But as applications grow, its limitations start showing - limited querying capabilities, scaling challenges with deeply nested data, and a fixed regional location for each database instance. Firestore addresses these with a more powerful query model, regional and multi-region location options, and a document-collection structure that scales better.
 
 The migration is not a flip-a-switch operation, though. It requires careful planning around data restructuring, query rewrites, and a transition strategy that keeps your application running throughout.
 
@@ -57,7 +57,7 @@ Realtime Database (JSON tree):
     /post456: true
 ```
 
-The Firestore equivalent uses collections and subcollections:
+The Firestore equivalent uses collections and documents:
 
 ```text
 Firestore (collections/documents):
@@ -77,7 +77,7 @@ Notice that the `user-posts` fan-out pattern is unnecessary in Firestore because
 
 ## Writing the Migration Script
 
-For small-to-medium databases (under a few GB), a Node.js script running locally works fine. For larger datasets, you should run the migration on a GCE instance or as a Cloud Function to avoid timeout issues.
+For small-to-medium databases (under a few GB), a Node.js script running locally works fine. For larger datasets, you should run the migration on a GCE instance or as a Cloud Run job so the process has enough runtime and can be retried safely.
 
 This script reads from Realtime Database and writes to Firestore in batches:
 
@@ -89,7 +89,7 @@ const admin = require("firebase-admin");
 const serviceAccount = require("./service-account-key.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com"
+  databaseURL: "https://YOUR_DATABASE_NAME.firebaseio.com"
 });
 
 const rtdb = admin.database();
@@ -258,7 +258,7 @@ Realtime Database rules:
     "posts": {
       "$postId": {
         ".read": true,
-        ".write": "auth != null && data.child('authorId').val() === auth.uid"
+        ".write": "auth != null && newData.child('authorId').val() === auth.uid"
       }
     }
   }
@@ -274,7 +274,7 @@ service cloud.firestore {
     match /posts/{postId} {
       allow read: if true;
       allow write: if request.auth != null
-                   && resource.data.authorId == request.auth.uid;
+                   && request.resource.data.authorId == request.auth.uid;
     }
   }
 }
@@ -312,7 +312,7 @@ async function createPost(postData) {
 After migrating, verify data integrity by comparing record counts and sampling individual documents:
 
 ```bash
-# Count documents in Firestore
+# Export Firestore data for backup/comparison
 gcloud firestore export gs://YOUR_BUCKET/verification --project YOUR_PROJECT_ID
 ```
 
