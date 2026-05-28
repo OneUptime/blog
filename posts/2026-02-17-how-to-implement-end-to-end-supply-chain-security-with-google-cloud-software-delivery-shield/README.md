@@ -18,13 +18,13 @@ A modern software delivery pipeline has many stages where things can go wrong. S
 
 ## The SLSA Framework
 
-Software Delivery Shield is built around the SLSA (Supply chain Levels for Software Artifacts) framework. SLSA defines four levels of supply chain security maturity. Level 1 requires build provenance documentation. Level 2 requires a hosted build service. Level 3 requires hardened builds with non-falsifiable provenance. Level 4 requires hermetic, reproducible builds with two-person review.
+Software Delivery Shield uses the SLSA (Supply chain Levels for Software Artifacts) framework as one of its maturity signals. Current SLSA releases define a Build track with levels 0 through 3. Build Level 1 requires build provenance, Level 2 requires signed provenance from a hosted build platform, and Level 3 requires a hardened build platform with stronger isolation and non-falsifiable provenance.
 
-Google Cloud tools help you reach SLSA Level 3 with reasonable effort.
+Google Cloud tools help you reach SLSA Build Level 3 with reasonable effort.
 
 ## Step 1: Secure Your Source Code
 
-Start with Cloud Source Repositories or a connected GitHub/GitLab repository with proper access controls and commit signing.
+Start with Secure Source Manager or a connected GitHub/GitLab repository with proper access controls, branch protection, and commit signing. Cloud Source Repositories is no longer available to new customers, so use it only if your organization already has access.
 
 ```bash
 # Enable commit signing verification in your repository
@@ -36,11 +36,8 @@ gpg --full-generate-key
 git config --global user.signingkey YOUR_GPG_KEY_ID
 git config --global commit.gpgsign true
 
-# For Cloud Source Repositories, enable branch protection
-gcloud source repos update my-repo \
-  --project=PROJECT_ID \
-  --add-branch-protection="main" \
-  --require-signed-commits
+# Then configure branch protection and signed-commit requirements
+# in your repository host, such as Secure Source Manager, GitHub, or GitLab.
 ```
 
 ## Step 2: Configure Cloud Build with Provenance
@@ -74,20 +71,6 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}:${SHORT_SHA}', '.']
 
-  # Step 4: Scan the built image for vulnerabilities
-  - name: 'gcr.io/cloud-builders/gcloud'
-    args:
-      - 'artifacts'
-      - 'docker'
-      - 'images'
-      - 'scan'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}:${SHORT_SHA}'
-      - '--format=json'
-
-  # Step 5: Push to Artifact Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}:${SHORT_SHA}']
-
 # Enable provenance generation (SLSA Level 3)
 options:
   requestedVerifyOption: VERIFIED
@@ -115,13 +98,13 @@ gcloud artifacts repositories create secure-apps \
   --description="Secure application images" \
   --project=PROJECT_ID
 
-# Enable vulnerability scanning (on by default for Artifact Registry)
+# Enable Artifact Analysis and Container Scanning
 gcloud services enable containeranalysis.googleapis.com
 gcloud services enable containerscanning.googleapis.com
 
-# Check scan results for an image
-gcloud artifacts docker images list-vulnerabilities \
-  us-central1-docker.pkg.dev/PROJECT_ID/secure-apps/my-app:latest \
+# Check vulnerability occurrences for an image digest
+gcloud artifacts vulnerabilities list \
+  us-central1-docker.pkg.dev/PROJECT_ID/secure-apps/my-app@sha256:IMAGE_DIGEST \
   --format="table(vulnerability.shortDescription,vulnerability.severity,vulnerability.fixAvailable)"
 ```
 
@@ -132,6 +115,28 @@ Binary Authorization ensures that only trusted, verified container images can be
 ```bash
 # Enable Binary Authorization
 gcloud services enable binaryauthorization.googleapis.com
+
+# Create an Artifact Analysis note for the attestor
+cat > /tmp/build-note.json <<EOF
+{
+  "name": "projects/PROJECT_ID/notes/build-note",
+  "attestation": {
+    "hint": {
+      "human_readable_name": "Build verification attestor"
+    }
+  }
+}
+EOF
+
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "x-goog-user-project: PROJECT_ID" \
+  --data-binary @/tmp/build-note.json \
+  "https://containeranalysis.googleapis.com/v1/projects/PROJECT_ID/notes/?noteId=build-note"
+
+# Grant the Binary Authorization service account permission to view
+# occurrences attached to the note before enforcing the policy.
 
 # Create an attestor for build verification
 gcloud container binauthz attestors create build-attestor \
@@ -163,21 +168,18 @@ The policy defines which attestations are required before an image can be deploy
 ```yaml
 # binauthz-policy.yaml
 # Binary Authorization policy requiring build attestation
+name: projects/PROJECT_ID/policy
+globalPolicyEvaluationMode: ENABLE
+
 defaultAdmissionRule:
   evaluationMode: REQUIRE_ATTESTATION
   enforcementMode: ENFORCED_BLOCK_AND_AUDIT_LOG
   requireAttestationsBy:
     - projects/PROJECT_ID/attestors/build-attestor
 
-# Allow specific system images without attestation
-admissionWhitelistPatterns:
-  - namePattern: "gcr.io/google-containers/*"
-  - namePattern: "gcr.io/gke-release/*"
-  - namePattern: "us-central1-docker.pkg.dev/PROJECT_ID/secure-apps/*"
-
 # Cluster-specific overrides (optional)
 clusterAdmissionRules:
-  us-central1.production-cluster:
+  us-central1-a.production-cluster:
     evaluationMode: REQUIRE_ATTESTATION
     enforcementMode: ENFORCED_BLOCK_AND_AUDIT_LOG
     requireAttestationsBy:
@@ -197,57 +199,29 @@ gcloud container clusters update production-cluster \
 
 ## Step 6: Automate Attestation in CI/CD
 
-Add attestation creation to your Cloud Build pipeline so that images are automatically attested after passing all checks.
+Add attestation creation to your pipeline after Cloud Build has pushed the image to Artifact Registry and all checks have passed. The service account that creates attestations needs permission to attach occurrences to the note, edit occurrences in the attestation project, and use the Cloud KMS key version for signing.
 
-```python
-from google.cloud import binaryauthorization_v1
-from google.cloud import kms
+```yaml
+# Run this in a follow-up pipeline step after the image has been pushed.
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}:${SHORT_SHA}"
+      DIGEST="$(gcloud artifacts docker images describe "$$IMAGE" --format='value(image_summary.digest)')"
+      IMAGE_TO_ATTEST="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}@$$DIGEST"
 
-def create_attestation(project_id, image_uri, attestor_id):
-    """Create a Binary Authorization attestation for a verified image."""
-    client = binaryauthorization_v1.BinauthzManagementServiceV1Client()
-
-    # Get the image digest (required for attestation)
-    import subprocess
-    result = subprocess.run(
-        ["gcloud", "artifacts", "docker", "images", "describe", image_uri,
-         "--format=value(image_summary.digest)"],
-        capture_output=True, text=True,
-    )
-    digest = result.stdout.strip()
-    image_with_digest = f"{image_uri.split(':')[0]}@{digest}"
-
-    # Sign the attestation with KMS
-    kms_client = kms.KeyManagementServiceClient()
-    key_name = (
-        f"projects/{project_id}/locations/global/keyRings/binauthz-keys"
-        f"/cryptoKeys/attestation-key/cryptoKeyVersions/1"
-    )
-
-    # Create the attestation payload
-    payload = f'{{"resourceUri": "{image_with_digest}"}}'.encode()
-
-    # Sign with KMS
-    sign_response = kms_client.asymmetric_sign(
-        request={
-            "name": key_name,
-            "data": payload,
-        }
-    )
-
-    # Create the attestation via the Binary Authorization API
-    attestation = {
-        "resource_uri": image_with_digest,
-        "signatures": [
-            {
-                "public_key_id": key_name,
-                "signature": sign_response.signature,
-            }
-        ],
-    }
-
-    print(f"Created attestation for {image_with_digest}")
-    return attestation
+      gcloud beta container binauthz attestations sign-and-create \
+        --project="${PROJECT_ID}" \
+        --artifact-url="$$IMAGE_TO_ATTEST" \
+        --attestor="build-attestor" \
+        --attestor-project="${PROJECT_ID}" \
+        --keyversion-project="${PROJECT_ID}" \
+        --keyversion-location="global" \
+        --keyversion-keyring="binauthz-keys" \
+        --keyversion-key="attestation-key" \
+        --keyversion="1"
 ```
 
 ## Step 7: Monitor Supply Chain Security
@@ -266,9 +240,11 @@ gcloud logging read '
 gcloud artifacts docker images list \
   us-central1-docker.pkg.dev/PROJECT_ID/secure-apps \
   --include-tags \
-  --format="table(version,tags,metadata.vulnerabilities)"
+  --show-occurrences \
+  --occurrence-filter='kind="VULNERABILITY"' \
+  --format="table(package,version,tags)"
 ```
 
-The flow from code commit to production deployment should now look like this: code is committed with signed commits, Cloud Build builds and scans the image, vulnerability scanning checks for known CVEs, attestation is created after all checks pass, Binary Authorization verifies the attestation before allowing deployment, and everything is logged and auditable.
+The flow from code commit to production deployment should now look like this: code is committed with signed commits, Cloud Build builds the image, Artifact Analysis vulnerability scanning checks for known CVEs, attestation is created after all checks pass, Binary Authorization verifies the attestation before allowing deployment, and everything is logged and auditable.
 
 Software supply chain security is not a single tool - it is a chain of verification steps that together provide confidence that what runs in production is exactly what you intended to build. Software Delivery Shield integrates these steps into a cohesive workflow on Google Cloud.
