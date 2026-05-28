@@ -16,7 +16,7 @@ Cloud SQL's high availability configuration handles the infrastructure-level fai
 
 When you create a Cloud SQL instance with high availability enabled, Google provisions a primary instance and a standby instance in a different zone within the same region. The standby receives all writes via synchronous replication. During a failover, the standby becomes the new primary, and the IP address is remapped.
 
-The failover itself takes about 30 seconds to a few minutes. During this time, existing connections are dropped, new connections fail, and any in-flight transactions are rolled back. Your application needs to handle all of this.
+The failover itself usually makes the instance unavailable for about 60 seconds, though the duration can vary based on your Cloud SQL environment. During this time, existing connections are dropped, new connections fail, and any in-flight transactions are rolled back. Your application needs to handle all of this.
 
 ## Step 1: Enable High Availability
 
@@ -225,9 +225,15 @@ SessionFactory = sessionmaker(bind=engine)
 
 def create_order(session):
     """Example database operation."""
-    order = Order(customer_id=123, total=99.99)
-    session.add(order)
-    return order
+    result = session.execute(
+        text(
+            "INSERT INTO orders (customer_id, total) "
+            "VALUES (:customer_id, :total) "
+            "RETURNING id"
+        ),
+        {"customer_id": 123, "total": 99.99},
+    )
+    return result.scalar_one()
 
 # This will automatically retry if a failover occurs mid-transaction
 result = execute_with_retry(SessionFactory, create_order)
@@ -239,38 +245,42 @@ For planned maintenance or manual failovers, drain connections gracefully before
 
 ```python
 import psycopg2
-from google.cloud import sqladmin_v1
+import time
+from googleapiclient.discovery import build
 
 class ConnectionDrainer:
     """Drain database connections before planned failover."""
 
-    def __init__(self, project_id, instance_name):
+    def __init__(self, project_id, instance_name, pgbouncer_host, pgbouncer_admin_user):
         self.project_id = project_id
         self.instance_name = instance_name
-        self.sql_client = sqladmin_v1.SqlInstancesServiceClient()
+        self.pgbouncer_host = pgbouncer_host
+        self.pgbouncer_admin_user = pgbouncer_admin_user
+        self.sql_client = build("sqladmin", "v1")
 
     def drain_and_failover(self, db_host, db_name):
         """Gracefully drain connections then trigger failover."""
-        # Step 1: Set the instance to reject new connections
-        print("Phase 1: Rejecting new connections...")
-        self.set_max_connections(1)  # Allow only admin connections
+        # Step 1: Reject new client connections through PgBouncer
+        print("Phase 1: Rejecting new client connections...")
+        self.disable_pgbouncer_database(db_name)
 
         # Step 2: Wait for active queries to complete
         print("Phase 2: Waiting for active queries to complete...")
         self.wait_for_queries_to_complete(db_host, db_name, timeout=60)
 
-        # Step 3: Terminate remaining idle connections
-        print("Phase 3: Terminating idle connections...")
-        self.terminate_idle_connections(db_host, db_name)
+        # Step 3: Pause PgBouncer so server connections are released cleanly
+        print("Phase 3: Pausing PgBouncer...")
+        self.pause_pgbouncer_database(db_name)
 
         # Step 4: Trigger the failover
         print("Phase 4: Triggering failover...")
         self.trigger_failover()
 
-        # Step 5: Restore max connections after failover
-        print("Phase 5: Restoring max connections...")
+        # Step 5: Resume traffic after failover
+        print("Phase 5: Resuming connections...")
         time.sleep(60)  # Wait for failover to complete
-        self.set_max_connections(500)  # Restore original setting
+        self.resume_pgbouncer_database(db_name)
+        self.enable_pgbouncer_database(db_name)
 
         print("Failover complete. Connections can resume.")
 
@@ -304,50 +314,61 @@ class ConnectionDrainer:
         cursor.close()
         conn.close()
 
-    def terminate_idle_connections(self, db_host, db_name):
-        """Terminate idle client connections."""
+    def run_pgbouncer_command(self, command):
+        """Run a PgBouncer admin console command."""
         conn = psycopg2.connect(
-            host=db_host, dbname=db_name,
-            user="postgres", password="PASSWORD"
+            host=self.pgbouncer_host,
+            port=6432,
+            dbname="pgbouncer",
+            user=self.pgbouncer_admin_user,
+            password="PGBOUNCER_ADMIN_PASSWORD",
         )
         conn.autocommit = True
         cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT pg_terminate_backend(pid)
-            FROM pg_stat_activity
-            WHERE state = 'idle'
-            AND backend_type = 'client backend'
-            AND pid != pg_backend_pid()
-        """)
-
-        terminated = cursor.rowcount
-        print(f"Terminated {terminated} idle connections.")
-
+        cursor.execute(command)
         cursor.close()
         conn.close()
 
+    def disable_pgbouncer_database(self, db_name):
+        """Reject new client connections for a PgBouncer database."""
+        self.run_pgbouncer_command(f'DISABLE "{db_name}"')
+
+    def pause_pgbouncer_database(self, db_name):
+        """Wait for server connections to be released, then disconnect them."""
+        self.run_pgbouncer_command(f'PAUSE "{db_name}"')
+
+    def resume_pgbouncer_database(self, db_name):
+        """Resume work after a PgBouncer pause."""
+        self.run_pgbouncer_command(f'RESUME "{db_name}"')
+
+    def enable_pgbouncer_database(self, db_name):
+        """Allow new client connections again."""
+        self.run_pgbouncer_command(f'ENABLE "{db_name}"')
+
     def trigger_failover(self):
         """Trigger a Cloud SQL failover."""
-        request = sqladmin_v1.SqlInstancesFailoverRequest(
+        instance = self.sql_client.instances().get(
             project=self.project_id,
             instance=self.instance_name,
-            body=sqladmin_v1.InstancesFailoverRequest(
-                failover_context=sqladmin_v1.FailoverContext(
-                    settings_version=self.get_settings_version(),
-                )
-            ),
-        )
-        operation = self.sql_client.failover(request=request)
-        print(f"Failover initiated: {operation.name}")
+        ).execute()
+        operation = self.sql_client.instances().failover(
+            project=self.project_id,
+            instance=self.instance_name,
+            body={
+                "failoverContext": {
+                    "settingsVersion": instance["settings"]["settingsVersion"],
+                }
+            },
+        ).execute()
+        print(f"Failover initiated: {operation['name']}")
 ```
 
-## Step 5: Use Cloud SQL Proxy for Automatic Reconnection
+## Step 5: Use Cloud SQL Proxy for Stable Connection Strings
 
-The Cloud SQL Auth Proxy handles connection management and can help during failovers.
+The Cloud SQL Auth Proxy does not preserve existing database connections during a failover, but it lets applications continue using the same local connection string after they reconnect.
 
 ```bash
-# Run Cloud SQL Proxy with connection draining
+# Run Cloud SQL Auth Proxy with a graceful shutdown delay
 cloud-sql-proxy \
   PROJECT_ID:us-central1:production-db \
   --port=5432 \
@@ -362,7 +383,7 @@ In Kubernetes, deploy the proxy as a sidecar:
 # Sidecar proxy configuration for GKE
 containers:
   - name: cloud-sql-proxy
-    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.22.0
     args:
       - "PROJECT_ID:us-central1:production-db"
       - "--port=5432"
@@ -397,12 +418,12 @@ Set up monitoring so you know when failovers happen and how long they take.
 
 ```bash
 # Create alerts for Cloud SQL failover events
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Cloud SQL Failover Alert" \
   --condition-display-name="Failover event detected" \
   --condition-filter='resource.type="cloudsql_database" AND metric.type="cloudsql.googleapis.com/database/available_for_failover"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_LT \
+  --if="< 1" \
+  --duration=60s \
   --notification-channels="projects/PROJECT_ID/notificationChannels/CHANNEL_ID"
 ```
 
