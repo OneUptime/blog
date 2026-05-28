@@ -42,7 +42,7 @@ Key points:
 - The Interconnect and VLAN attachments are in the host project
 - The Cloud Router and shared VPC are also in the host project
 - Service projects have VMs in shared subnets
-- Routes from Cloud Router automatically apply to all VMs using the shared network
+- Routes learned by Cloud Router apply to VMs using the shared network according to the VPC network's dynamic routing mode
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ Before you start:
 - A host project with a VPC network
 - One or more service projects
 - Shared VPC already configured (or we will set it up)
-- An active Dedicated or Partner Interconnect in the host project
+- An active Dedicated Interconnect in the host project (the commands below use Dedicated Interconnect; Partner Interconnect uses a partner VLAN attachment flow)
 - Organization Admin or Shared VPC Admin role
 
 ## Step 1: Set Up Shared VPC
@@ -103,22 +103,22 @@ gcloud compute networks subnets create subnet-team-b \
 Service projects need permission to use the shared subnets:
 
 ```bash
-# Grant Service Project A access to its subnet
+# Grant Team A access to its subnet
 gcloud compute networks subnets add-iam-policy-binding subnet-team-a \
     --project=host-project-id \
     --region=us-east4 \
-    --member="serviceAccount:service-project-a-number@cloudservices.gserviceaccount.com" \
+    --member="group:team-a@example.com" \
     --role="roles/compute.networkUser"
 
-# Grant Service Project B access to its subnet
+# Grant Team B access to its subnet
 gcloud compute networks subnets add-iam-policy-binding subnet-team-b \
     --project=host-project-id \
     --region=us-east4 \
-    --member="serviceAccount:service-project-b-number@cloudservices.gserviceaccount.com" \
+    --member="group:team-b@example.com" \
     --role="roles/compute.networkUser"
 ```
 
-You can also grant access to specific users or groups instead of project service accounts.
+You can grant access to users, groups, or user-managed service accounts that create resources in the service projects. For managed instance groups, also grant the service project's Google APIs service account (`service-project-number@cloudservices.gserviceaccount.com`) access to the subnet.
 
 ## Step 4: Set Up Cloud Interconnect in the Host Project
 
@@ -138,7 +138,7 @@ gcloud compute interconnects attachments dedicated create shared-attachment \
     --interconnect=my-interconnect \
     --router=ic-router \
     --region=us-east4 \
-    --bandwidth=BPS_10G \
+    --bandwidth=10g \
     --vlan=100
 ```
 
@@ -147,6 +147,11 @@ gcloud compute interconnects attachments dedicated create shared-attachment \
 Set up BGP between Cloud Router and your on-premises router:
 
 ```bash
+# Check the BGP peering addresses allocated to the VLAN attachment
+gcloud compute interconnects attachments describe shared-attachment \
+    --project=host-project-id \
+    --region=us-east4
+
 # Add BGP interface
 gcloud compute routers add-interface ic-router \
     --project=host-project-id \
@@ -159,14 +164,15 @@ gcloud compute routers add-bgp-peer ic-router \
     --project=host-project-id \
     --peer-name=onprem-peer \
     --interface=ic-interface \
-    --peer-ip-address=169.254.60.2 \
     --peer-asn=65001 \
     --region=us-east4
 ```
 
+The Cloud Router interface and BGP peer use the `cloudRouterIpAddress` and `customerRouterIpAddress` allocated on the VLAN attachment unless you specified custom BGP addresses when you created the attachment.
+
 ## Step 6: Configure Route Advertisements
 
-By default, Cloud Router advertises all subnets in the VPC. This means your on-premises network will learn routes to all shared subnets. You might want to be more selective:
+By default, Cloud Router advertises local subnets in the VPC according to the VPC network's dynamic routing mode. With regional dynamic routing, it advertises subnets in the same region as the Cloud Router. With global dynamic routing, it advertises subnets in all regions. You might want to be more selective:
 
 ```bash
 # Advertise only specific subnets to on-premises
@@ -199,6 +205,7 @@ gcloud compute instances create vm-team-a \
     --project=service-project-a \
     --zone=us-east4-a \
     --machine-type=e2-medium \
+    --tags=onprem-access \
     --subnet=projects/host-project-id/regions/us-east4/subnetworks/subnet-team-a
 
 # Create a VM in Service Project B using the shared subnet
@@ -206,6 +213,7 @@ gcloud compute instances create vm-team-b \
     --project=service-project-b \
     --zone=us-east4-a \
     --machine-type=e2-medium \
+    --tags=onprem-access \
     --subnet=projects/host-project-id/regions/us-east4/subnetworks/subnet-team-b
 ```
 
@@ -251,14 +259,14 @@ Service project admins do not need access to the host project's Interconnect res
 Since the Interconnect is in the host project, monitoring is centralized there. But you might want service project teams to see their own traffic. Use Cloud Monitoring with cross-project metrics:
 
 ```bash
-# Create a metrics scope that includes service projects
+# Add service projects to the host project's metrics scope
 # This is done in the Cloud Console under Monitoring > Settings > Metrics Scope
-# Or via API:
-gcloud monitoring metrics-scopes create \
-    --monitored-project=service-project-a
+# Or with the Google Cloud CLI:
+gcloud beta monitoring metrics-scopes create service-project-a \
+    --project=host-project-id
 
-gcloud monitoring metrics-scopes create \
-    --monitored-project=service-project-b
+gcloud beta monitoring metrics-scopes create service-project-b \
+    --project=host-project-id
 ```
 
 This lets service project teams view network metrics in Cloud Monitoring without needing access to the host project.
@@ -272,7 +280,7 @@ When a new team needs on-premises connectivity, the process is straightforward:
 3. Grant the networkUser role
 4. The team creates VMs in the shared subnet
 
-No changes to the Interconnect, Cloud Router, or BGP configuration are needed. New subnets are automatically advertised if Cloud Router is set to advertise all subnets.
+No changes to the Interconnect, Cloud Router, or BGP configuration are needed. New subnets are automatically advertised if Cloud Router is set to advertise all subnets and the VPC network's dynamic routing mode includes the subnet's region.
 
 ```bash
 # Add a new service project
@@ -290,7 +298,7 @@ gcloud compute networks subnets create subnet-team-c \
 gcloud compute networks subnets add-iam-policy-binding subnet-team-c \
     --project=host-project-id \
     --region=us-east4 \
-    --member="serviceAccount:service-project-c-number@cloudservices.gserviceaccount.com" \
+    --member="group:team-c@example.com" \
     --role="roles/compute.networkUser"
 ```
 
