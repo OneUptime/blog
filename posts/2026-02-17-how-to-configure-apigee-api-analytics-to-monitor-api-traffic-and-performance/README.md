@@ -25,7 +25,7 @@ Out of the box, Apigee captures these metrics for every API call:
 - Target URL
 - Error codes and fault details
 
-This data is stored for 90 days in the standard tier and longer with advanced analytics.
+Analytics retention depends on your Apigee plan and whether the Apigee API Analytics add-on is enabled. For Pay-as-you-go organizations with the add-on enabled, analytics data is retained for 14 months.
 
 ## Accessing Analytics Through the API
 
@@ -73,10 +73,10 @@ curl -X POST \
   -d '{
     "displayName": "API Health Overview",
     "metrics": [
-      {"name": "sum(message_count)", "function": "sum"},
-      {"name": "sum(is_error)", "function": "sum"},
-      {"name": "avg(total_response_time)", "function": "avg"},
-      {"name": "max(total_response_time)", "function": "max"}
+      {"name": "message_count", "function": "sum"},
+      {"name": "is_error", "function": "sum"},
+      {"name": "total_response_time", "function": "avg"},
+      {"name": "total_response_time", "function": "max"}
     ],
     "dimensions": ["apiproxy"],
     "timeUnit": "hour",
@@ -99,9 +99,9 @@ curl -X POST \
   -d '{
     "displayName": "Developer Activity",
     "metrics": [
-      {"name": "sum(message_count)", "function": "sum"},
-      {"name": "avg(total_response_time)", "function": "avg"},
-      {"name": "sum(is_error)", "function": "sum"}
+      {"name": "message_count", "function": "sum"},
+      {"name": "total_response_time", "function": "avg"},
+      {"name": "is_error", "function": "sum"}
     ],
     "dimensions": ["developer_email", "developer_app", "apiproduct"],
     "timeUnit": "day",
@@ -112,37 +112,68 @@ curl -X POST \
 
 ## Adding Custom Analytics Variables
 
-You can enrich the default analytics with custom data from your API proxy. Use the StatisticsCollector policy to capture custom dimensions and metrics.
+You can enrich the default analytics with custom data from your API proxy. Use data collector resources with the DataCapture policy to capture custom dimensions and metrics.
+
+Create the data collectors first:
+
+```bash
+# Create data collector resources for custom analytics fields
+curl -X POST \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/datacollectors" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dc_api_version",
+    "description": "API version from the request header",
+    "type": "STRING"
+  }'
+
+curl -X POST \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/datacollectors" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dc_client_platform",
+    "description": "Client platform from the request header",
+    "type": "STRING"
+  }'
+
+curl -X POST \
+  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/datacollectors" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dc_client_region",
+    "description": "Client region from the request header",
+    "type": "STRING"
+  }'
+```
 
 This policy collects custom analytics data:
 
 ```xml
 <!-- apiproxy/policies/CollectAnalytics.xml -->
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<StatisticsCollector name="CollectAnalytics">
+<DataCapture name="CollectAnalytics">
     <DisplayName>Collect Custom Analytics</DisplayName>
-    <Statistics>
+    <Capture>
         <!-- Custom dimension: API version from the request path -->
-        <Statistic name="api_version" ref="request.header.api-version" type="string">
-            v1
-        </Statistic>
+        <DataCollector>dc_api_version</DataCollector>
+        <Collect ref="request.header.api-version" default="v1"/>
+    </Capture>
 
-        <!-- Custom dimension: client platform from user agent -->
-        <Statistic name="client_platform" ref="request.header.x-client-platform" type="string">
-            unknown
-        </Statistic>
+    <Capture>
+        <!-- Custom dimension: client platform from request header -->
+        <DataCollector>dc_client_platform</DataCollector>
+        <Collect ref="request.header.x-client-platform" default="unknown"/>
+    </Capture>
 
-        <!-- Custom metric: response payload size -->
-        <Statistic name="response_size" ref="response.header.content-length" type="integer">
-            0
-        </Statistic>
-
+    <Capture>
         <!-- Custom dimension: geographic region from request -->
-        <Statistic name="client_region" ref="request.header.x-client-region" type="string">
-            unknown
-        </Statistic>
-    </Statistics>
-</StatisticsCollector>
+        <DataCollector>dc_client_region</DataCollector>
+        <Collect ref="request.header.x-client-region" default="unknown"/>
+    </Capture>
+</DataCapture>
 ```
 
 Attach this policy to the response PostFlow so it captures data after the request is processed:
@@ -161,16 +192,16 @@ Attach this policy to the response PostFlow so it captures data after the reques
 Now you can query these custom dimensions in your analytics reports:
 
 ```bash
-# Query traffic by custom api_version dimension
-curl "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/stats/api_version?select=sum(message_count)&timeRange=02/10/2026+00:00~02/17/2026+23:59" \
+# Query traffic by custom dc_api_version dimension
+curl "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/stats/dc_api_version?select=sum(message_count)&timeRange=02/10/2026+00:00~02/17/2026+23:59" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)"
 ```
 
 ## Exporting Analytics to BigQuery
 
-For deeper analysis, export Apigee analytics data to BigQuery. This lets you run complex SQL queries, join with other data sources, and build dashboards in Looker or Data Studio.
+For deeper analysis, export Apigee analytics data to BigQuery. This lets you run complex SQL queries, join with other data sources, and build dashboards in Looker Studio or Looker.
 
-Enable the export in the Apigee Console under Admin > Analytics > Export Settings. Or use the API:
+Create a datastore for the export destination with the API:
 
 ```bash
 # Create a BigQuery export configuration
@@ -188,6 +219,8 @@ curl -X POST \
     }
   }'
 ```
+
+This creates the BigQuery datastore. To export analytics data, submit an export request that references the datastore returned by the API.
 
 Once exported, run SQL queries against your API data:
 
@@ -235,41 +268,42 @@ LIMIT 20;
 
 ## Setting Up Alerts
 
-Configure alerts to notify you when API metrics cross thresholds.
+Configure alerts to notify you when API metrics cross thresholds. For Apigee X and supported Apigee hybrid versions, create alerting policies in Cloud Monitoring by using the `apigee.googleapis.com` metric types.
 
 ### Alert for High Error Rate
 
 ```bash
-# Create an alert for error rate exceeding 5%
+# Create an alert for any 5xx proxy responses
 curl -X POST \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/alerts" \
+  "https://monitoring.googleapis.com/v3/projects/YOUR_PROJECT_ID/alertPolicies" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "high-error-rate",
-    "displayName": "High Error Rate Alert",
-    "enabled": true,
+    "displayName": "Apigee 5xx Response Alert",
     "conditions": [
       {
-        "description": "Error rate exceeds 5%",
-        "dimensions": {
-          "org": "YOUR_ORG",
-          "env": "prod"
-        },
-        "metric": "rate",
-        "threshold": 5,
-        "durationSeconds": 300,
-        "comparator": ">"
+        "displayName": "5xx responses in prod",
+        "conditionThreshold": {
+          "filter": "resource.type=\"apigee.googleapis.com/Proxy\" AND metric.type=\"apigee.googleapis.com/proxy/response_count\" AND metric.labels.response_code >= 500 AND metric.labels.response_code < 600 AND resource.labels.env = \"prod\"",
+          "aggregations": [
+            {
+              "alignmentPeriod": "60s",
+              "perSeriesAligner": "ALIGN_RATE",
+              "crossSeriesReducer": "REDUCE_SUM"
+            }
+          ],
+          "comparison": "COMPARISON_GT",
+          "thresholdValue": 0,
+          "duration": "300s"
+        }
       }
     ],
-    "playbook": "Check backend health, review recent deployments, check target server connectivity",
-    "throttleInterval": "1h",
-    "notifications": [
-      {
-        "channel": "email",
-        "destination": "api-team@acme.com"
-      }
-    ]
+    "combiner": "OR",
+    "documentation": {
+      "content": "Check backend health, review recent deployments, and check target server connectivity.",
+      "mimeType": "text/markdown"
+    },
+    "enabled": true
   }'
 ```
 
@@ -278,33 +312,31 @@ curl -X POST \
 ```bash
 # Create an alert for p95 latency exceeding 2 seconds
 curl -X POST \
-  "https://apigee.googleapis.com/v1/organizations/YOUR_ORG/environments/prod/alerts" \
+  "https://monitoring.googleapis.com/v3/projects/YOUR_PROJECT_ID/alertPolicies" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "high-latency",
-    "displayName": "High Latency Alert",
-    "enabled": true,
+    "displayName": "Apigee P95 Latency Alert",
     "conditions": [
       {
-        "description": "P95 latency exceeds 2000ms",
-        "dimensions": {
-          "org": "YOUR_ORG",
-          "env": "prod"
-        },
-        "metric": "percentile(total_response_time, 95)",
-        "threshold": 2000,
-        "durationSeconds": 300,
-        "comparator": ">"
+        "displayName": "P95 proxy latency exceeds 2000ms",
+        "conditionThreshold": {
+          "filter": "resource.type=\"apigee.googleapis.com/Proxy\" AND metric.type=\"apigee.googleapis.com/proxy/latencies\" AND resource.labels.env = \"prod\"",
+          "aggregations": [
+            {
+              "alignmentPeriod": "60s",
+              "perSeriesAligner": "ALIGN_PERCENTILE_95",
+              "crossSeriesReducer": "REDUCE_MAX"
+            }
+          ],
+          "comparison": "COMPARISON_GT",
+          "thresholdValue": 2000,
+          "duration": "300s"
+        }
       }
     ],
-    "throttleInterval": "30m",
-    "notifications": [
-      {
-        "channel": "email",
-        "destination": "api-team@acme.com"
-      }
-    ]
+    "combiner": "OR",
+    "enabled": true
   }'
 ```
 
@@ -312,7 +344,7 @@ curl -X POST \
 
 For a comprehensive view, create a dashboard that combines multiple metrics.
 
-In the Apigee Console, go to Analyze > Custom Reports and build a dashboard with these panels:
+In the Google Cloud console, go to Apigee > Analytics > Custom reports and build a dashboard with these panels:
 
 1. **Traffic Volume** - total requests over time, grouped by proxy
 2. **Error Rate** - percentage of 4xx and 5xx responses over time
@@ -325,8 +357,8 @@ In the Apigee Console, go to Analyze > Custom Reports and build a dashboard with
 
 You can also send Apigee metrics to Google Cloud Monitoring for unified observability.
 
-The integration happens automatically for Apigee X (the GCP-native version). Metrics appear under the `apigee.googleapis.com` metric namespace in Cloud Monitoring. From there, you can create dashboards and alerts that combine Apigee metrics with metrics from your backend services running on Cloud Run, GKE, or Compute Engine.
+Apigee metrics appear under the `apigee.googleapis.com` metric namespace in Cloud Monitoring. From there, you can create dashboards and alerts that combine Apigee metrics with metrics from your backend services running on Cloud Run, GKE, or Compute Engine.
 
 ## Summary
 
-Apigee analytics gives you deep visibility into API usage without any manual instrumentation. The built-in metrics cover traffic volume, response times, error rates, and developer activity. Extend the defaults with the StatisticsCollector policy for custom dimensions, export to BigQuery for advanced SQL analysis, and set up alerts for error rate and latency thresholds. The combination of real-time dashboards in the Apigee Console and deep analysis in BigQuery gives you both operational awareness and strategic insights into how your APIs are being used.
+Apigee analytics gives you deep visibility into API usage without any manual instrumentation. The built-in metrics cover traffic volume, response times, error rates, and developer activity. Extend the defaults with the DataCapture policy for custom dimensions, export to BigQuery for advanced SQL analysis, and set up alerts for error rate and latency thresholds. The combination of real-time dashboards in the Apigee Console and deep analysis in BigQuery gives you both operational awareness and strategic insights into how your APIs are being used.
