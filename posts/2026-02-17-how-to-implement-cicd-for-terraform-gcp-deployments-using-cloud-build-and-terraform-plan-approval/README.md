@@ -79,9 +79,10 @@ gsutil versioning set on gs://my-project-terraform-state
 The Cloud Build service account needs permissions to manage your GCP resources.
 
 ```bash
-# Get the Cloud Build service account
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+# Create a user-specified Cloud Build service account
+CB_SA="terraform-cloud-build@$PROJECT_ID.iam.gserviceaccount.com"
+gcloud iam service-accounts create terraform-cloud-build \
+  --display-name="Terraform Cloud Build"
 
 # Grant the roles Cloud Build needs
 gcloud projects add-iam-policy-binding $PROJECT_ID \
@@ -106,7 +107,7 @@ This pipeline runs on every pull request. It validates the Terraform configurati
 steps:
   # Step 1: Install Terraform
   - id: 'install-terraform'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15'
     entrypoint: 'sh'
     args:
       - '-c'
@@ -114,7 +115,7 @@ steps:
 
   # Step 2: Initialize Terraform
   - id: 'terraform-init'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15'
     dir: 'environments/${_ENVIRONMENT}'
     args:
       - 'init'
@@ -123,7 +124,7 @@ steps:
 
   # Step 3: Validate the configuration
   - id: 'terraform-validate'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15'
     dir: 'environments/${_ENVIRONMENT}'
     args:
       - 'validate'
@@ -131,7 +132,7 @@ steps:
 
   # Step 4: Run terraform fmt check
   - id: 'terraform-fmt'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15'
     dir: 'environments/${_ENVIRONMENT}'
     args:
       - 'fmt'
@@ -141,7 +142,7 @@ steps:
 
   # Step 5: Generate the plan and save it
   - id: 'terraform-plan'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15'
     dir: 'environments/${_ENVIRONMENT}'
     args:
       - 'plan'
@@ -153,7 +154,7 @@ steps:
 
   # Step 6: Convert plan to human-readable text
   - id: 'plan-output'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15'
     dir: 'environments/${_ENVIRONMENT}'
     entrypoint: 'sh'
     args:
@@ -187,15 +188,27 @@ options:
 
 ## Apply Pipeline with Approval
 
-The apply pipeline runs after the plan is approved. It uses the saved plan file to ensure exactly what was reviewed gets applied.
+The apply pipeline runs after the plan is approved. It uses the saved plan file to ensure exactly what was reviewed gets applied, so the approved plan build ID must be passed into the apply build.
 
 ```yaml
 # cloudbuild/apply.yaml
 
 steps:
+  # Step 0: Make sure a reviewed plan was selected
+  - id: 'check-plan-build-id'
+    name: 'alpine'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        test -n "${_PLAN_BUILD_ID}" || {
+          echo "_PLAN_BUILD_ID must be set to the approved plan build ID"
+          exit 1
+        }
+
   # Step 1: Initialize Terraform
   - id: 'terraform-init'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15'
     dir: 'environments/${_ENVIRONMENT}'
     args:
       - 'init'
@@ -212,7 +225,7 @@ steps:
 
   # Step 3: Apply the saved plan
   - id: 'terraform-apply'
-    name: 'hashicorp/terraform:1.7'
+    name: 'hashicorp/terraform:1.15'
     dir: 'environments/${_ENVIRONMENT}'
     args:
       - 'apply'
@@ -250,20 +263,28 @@ gcloud builds triggers create github \
   --repo-owner="my-org" \
   --pull-request-pattern="^main$" \
   --build-config="cloudbuild/plan.yaml" \
-  --substitutions="_ENVIRONMENT=production"
-
-# Create a trigger for terraform apply on merge to main
-gcloud builds triggers create github \
-  --name="terraform-apply" \
-  --repo-name="infrastructure" \
-  --repo-owner="my-org" \
-  --branch-pattern="^main$" \
-  --build-config="cloudbuild/apply.yaml" \
   --substitutions="_ENVIRONMENT=production" \
+  --service-account="projects/$PROJECT_ID/serviceAccounts/$CB_SA"
+
+# Create a manual trigger for terraform apply
+gcloud beta builds triggers create manual \
+  --name="terraform-apply" \
+  --repo="https://github.com/my-org/infrastructure" \
+  --repo-type="GITHUB" \
+  --branch="main" \
+  --build-config="cloudbuild/apply.yaml" \
+  --substitutions="_ENVIRONMENT=production,_PLAN_BUILD_ID=PLAN_BUILD_ID" \
+  --service-account="projects/$PROJECT_ID/serviceAccounts/$CB_SA" \
   --require-approval
 ```
 
-The `--require-approval` flag is the key part. It creates a manual approval gate that must be cleared before the apply runs.
+The `--require-approval` flag is the key part. It creates a manual approval gate that must be cleared before the apply runs. After reviewing the plan, run the apply trigger with the reviewed plan build ID:
+
+```bash
+gcloud builds triggers run terraform-apply \
+  --branch="main" \
+  --substitutions="_ENVIRONMENT=production,_PLAN_BUILD_ID=APPROVED_PLAN_BUILD_ID"
+```
 
 ## Adding Plan Comments to Pull Requests
 
@@ -272,21 +293,38 @@ To make the review process smoother, post the plan output as a PR comment.
 ```yaml
 # Additional step in plan.yaml to post the plan as a PR comment
   - id: 'post-plan-comment'
-    name: 'gcr.io/cloud-builders/curl'
-    entrypoint: 'sh'
+    name: 'python:3.12-alpine'
+    entrypoint: 'python'
     secretEnv: ['GITHUB_TOKEN']
     args:
-      - '-c'
+      - '-'
       - |
-        # Read the plan output and escape it for JSON
-        PLAN=$(cat /workspace/plan-output.txt | head -200)
+        import json
+        import os
+        import urllib.request
 
-        # Post as a PR comment using the GitHub API
-        curl -s -X POST \
-          -H "Authorization: token $$GITHUB_TOKEN" \
-          -H "Content-Type: application/json" \
-          "https://api.github.com/repos/${_REPO_OWNER}/${_REPO_NAME}/issues/${_PR_NUMBER}/comments" \
-          -d "{\"body\": \"## Terraform Plan\\n\\\`\\\`\\\`\\n${PLAN}\\n\\\`\\\`\\\`\"}"
+        with open("/workspace/plan-output.txt", encoding="utf-8") as f:
+            plan = "".join(f.readlines()[:200])
+
+        owner, repo = os.environ["REPO_FULL_NAME"].split("/", 1)
+        pr_number = os.environ["_PR_NUMBER"]
+        token = os.environ["GITHUB_TOKEN"]
+        body = json.dumps({"body": f"## Terraform Plan\n```\n{plan}\n```"}).encode()
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(req).read()
+    env:
+      - 'REPO_FULL_NAME=$REPO_FULL_NAME'
+      - '_PR_NUMBER=$_PR_NUMBER'
 
 availableSecrets:
   secretManager:
@@ -299,36 +337,34 @@ availableSecrets:
 Add safety checks to prevent destructive changes from going through without explicit acknowledgment.
 
 ```yaml
-# Additional step to detect destructive changes
-  - id: 'check-destructive'
-    name: 'hashicorp/terraform:1.7'
+# Additional steps to detect destructive changes
+  - id: 'export-plan-json'
+    name: 'hashicorp/terraform:1.15'
     dir: 'environments/${_ENVIRONMENT}'
     entrypoint: 'sh'
     args:
       - '-c'
       - |
-        # Count resources being destroyed
-        DESTROY_COUNT=$(terraform show -json tfplan | \
-          python3 -c "
-        import json, sys
-        plan = json.load(sys.stdin)
+        terraform show -json tfplan > /workspace/tfplan.json
+
+  - id: 'check-destructive'
+    name: 'python:3.12-alpine'
+    entrypoint: 'python'
+    args:
+      - '-'
+      - |
+        import json
+
+        with open("/workspace/tfplan.json", encoding="utf-8") as f:
+            plan = json.load(f)
+
         changes = plan.get('resource_changes', [])
         destroys = [c for c in changes if 'delete' in c.get('change', {}).get('actions', [])]
-        print(len(destroys))
-        ")
-
-        if [ "$DESTROY_COUNT" -gt "0" ]; then
-          echo "WARNING: This plan will DESTROY $DESTROY_COUNT resources!"
-          echo "Resources to be destroyed:"
-          terraform show -json tfplan | \
-            python3 -c "
-        import json, sys
-        plan = json.load(sys.stdin)
-        for c in plan.get('resource_changes', []):
-            if 'delete' in c.get('change', {}).get('actions', []):
-                print(f'  - {c[\"type\"]}.{c[\"name\"]}')
-        "
-        fi
+        if destroys:
+            print(f"WARNING: This plan will DESTROY {len(destroys)} resources!")
+            print("Resources to be destroyed:")
+            for change in destroys:
+                print(f"  - {change['address']}")
 ```
 
 ## Multi-Environment Support
@@ -336,23 +372,25 @@ Add safety checks to prevent destructive changes from going through without expl
 Handle multiple environments by parameterizing the pipeline.
 
 ```bash
-# Staging trigger - auto-applies without approval
-gcloud builds triggers create github \
+# Staging trigger - manually run after reviewing a staging plan
+gcloud beta builds triggers create manual \
   --name="terraform-apply-staging" \
-  --repo-name="infrastructure" \
-  --repo-owner="my-org" \
-  --branch-pattern="^main$" \
+  --repo="https://github.com/my-org/infrastructure" \
+  --repo-type="GITHUB" \
+  --branch="main" \
   --build-config="cloudbuild/apply.yaml" \
-  --substitutions="_ENVIRONMENT=staging"
+  --substitutions="_ENVIRONMENT=staging,_PLAN_BUILD_ID=PLAN_BUILD_ID" \
+  --service-account="projects/$PROJECT_ID/serviceAccounts/$CB_SA"
 
 # Production trigger - requires approval
-gcloud builds triggers create github \
+gcloud beta builds triggers create manual \
   --name="terraform-apply-production" \
-  --repo-name="infrastructure" \
-  --repo-owner="my-org" \
-  --branch-pattern="^main$" \
+  --repo="https://github.com/my-org/infrastructure" \
+  --repo-type="GITHUB" \
+  --branch="main" \
   --build-config="cloudbuild/apply.yaml" \
-  --substitutions="_ENVIRONMENT=production" \
+  --substitutions="_ENVIRONMENT=production,_PLAN_BUILD_ID=PLAN_BUILD_ID" \
+  --service-account="projects/$PROJECT_ID/serviceAccounts/$CB_SA" \
   --require-approval
 ```
 
@@ -382,6 +420,6 @@ flowchart TD
 
 ## Wrapping Up
 
-A CI/CD pipeline for Terraform eliminates the "it worked on my machine" class of infrastructure problems. Cloud Build handles the execution, GCS stores the state and plans, and the approval gate prevents accidental production changes. Start with the plan-on-PR and apply-on-merge pattern, and add more safety checks as your infrastructure grows.
+A CI/CD pipeline for Terraform eliminates the "it worked on my machine" class of infrastructure problems. Cloud Build handles the execution, GCS stores the state and plans, and the approval gate prevents accidental production changes. Start with the plan-on-PR and approved-apply pattern, and add more safety checks as your infrastructure grows.
 
 For monitoring the infrastructure deployed by your Terraform pipelines, OneUptime can provide uptime monitoring, resource tracking, and alerting across all your GCP environments.
