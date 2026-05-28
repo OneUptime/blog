@@ -16,7 +16,7 @@ This guide covers how to set up those guardrails using organization policies, re
 
 Google Cloud resources exist in regions and zones. A region is a specific geographic area like us-central1 (Iowa) or europe-west1 (Belgium). Zones are isolated locations within a region. Multi-regional locations like "US" or "EU" span multiple regions within a geographic boundary.
 
-For data sovereignty, you care about regions because they determine the physical location of your data. When a regulation says data must stay in the EU, you need to ensure resources only get created in EU regions and that data does not replicate to non-EU locations.
+For data sovereignty, you care about regions because, for supported data-containing services, a resource's location reflects where that resource's data is stored. When a regulation says data must stay in the EU, you need to ensure supported resources only get created in EU regions and that service-specific replication, backup, and export settings do not move data to non-EU locations.
 
 ## Step 1: Define Your Location Requirements
 
@@ -74,7 +74,7 @@ gcloud resource-manager org-policies set-policy \
 
 # Verify the policy is applied
 gcloud resource-manager org-policies describe \
-  constraints/gcp.resourceLocations \
+  gcp.resourceLocations \
   --folder=EU_FOLDER_ID
 ```
 
@@ -119,11 +119,11 @@ gcloud sql instances create eu-postgres \
 
 ## Step 4: Prevent Data Replication to Wrong Regions
 
-Even with location restrictions, data can move through replication, backups, or cross-region operations. Lock these down too.
+Even with location restrictions, data can move through replication, backups, exports, or cross-region operations. Lock these down too. The resource locations constraint helps prevent creation of supported resources, including multi-region and dual-region Cloud Storage buckets, outside the allowed boundary. You still need to configure service-specific replication and backup settings for each service you use.
 
 ```yaml
-# policy-disable-cross-region.yaml
-# Prevent Cloud Storage from replicating to non-EU locations
+# policy-disable-non-eu-locations.yaml
+# Prevent supported resources from being created outside EU locations
 constraint: constraints/gcp.resourceLocations
 listPolicy:
   allowedValues:
@@ -145,27 +145,38 @@ gcloud spanner instances create eu-spanner \
 Beyond the built-in location constraint, create custom organization policies for more specific controls.
 
 ```yaml
-# custom-policy-no-external-sharing.yaml
-# Prevent BigQuery datasets from being shared outside the organization
-name: organizations/ORG_ID/customConstraints/custom.bigquery.noExternalSharing
+# custom-policy-eu-bigquery-location.yaml
+# Require BigQuery datasets covered by this policy to use the EU multi-region
+name: organizations/ORG_ID/customConstraints/custom.bigquery.requireEuLocation
 resourceTypes:
   - bigquery.googleapis.com/Dataset
 methodTypes:
   - CREATE
   - UPDATE
-condition: "resource.access.specialGroup != 'allAuthenticatedUsers' && resource.access.specialGroup != 'allUsers'"
+condition: "resource.location == 'EU'"
 actionType: ALLOW
-displayName: "Prevent external BigQuery sharing"
-description: "Prevents BigQuery datasets from being shared with allUsers or allAuthenticatedUsers"
+displayName: "Require EU BigQuery dataset location"
+description: "Only allows BigQuery datasets in the EU multi-region"
 ```
 
 ```bash
 # Create the custom constraint
-gcloud org-policies set-custom-constraint custom-policy-no-external-sharing.yaml
+gcloud org-policies set-custom-constraint custom-policy-eu-bigquery-location.yaml
+```
 
+Then create the policy file that enforces the custom constraint:
+
+```yaml
+# custom-policy-enforcement.yaml
+name: organizations/ORG_ID/policies/custom.bigquery.requireEuLocation
+spec:
+  rules:
+    - enforce: true
+```
+
+```bash
 # Apply it to the organization
 gcloud org-policies set-policy \
-  --organization=ORG_ID \
   custom-policy-enforcement.yaml
 ```
 
@@ -221,13 +232,13 @@ for v in violations:
 When a violation is detected, automatically tag it and notify the responsible team.
 
 ```python
-from google.cloud import functions_v1
+import base64
 import json
 
 def remediate_location_violation(event, context):
     """Respond to resources created in unauthorized locations."""
-    # Parse the asset change notification
-    asset = json.loads(event["data"])
+    # Parse the Cloud Asset Inventory Pub/Sub notification.
+    asset = json.loads(base64.b64decode(event["data"]).decode("utf-8"))
 
     resource_name = asset.get("asset", {}).get("name", "")
     location = asset.get("asset", {}).get("resource", {}).get("location", "")
@@ -252,7 +263,7 @@ def remediate_location_violation(event, context):
 
 ## Using Assured Workloads for Stronger Guarantees
 
-For the strongest data sovereignty guarantees, use Assured Workloads. This creates a managed environment where Google guarantees that data stays in the specified region and that only personnel in that region can access it.
+For stronger data residency and personnel access controls, use Assured Workloads. This creates a managed environment where the selected control package applies data location controls and, where supported by that package, support and personnel access controls.
 
 ```bash
 # Create an Assured Workloads environment for EU sovereignty
@@ -260,8 +271,9 @@ gcloud assured workloads create \
   --organization=ORG_ID \
   --location=europe-west1 \
   --display-name="EU Sovereign Workload" \
-  --compliance-regime=EU_REGIONS_AND_SUPPORT \
-  --billing-account=BILLING_ACCOUNT_ID \
+  --compliance-regime=eu-regions-and-support \
+  --billing-account=billingAccounts/BILLING_ACCOUNT_ID \
+  --enable-sovereign-controls=true \
   --next-rotation-time="2026-03-01T00:00:00Z" \
   --rotation-period="2592000s"
 ```
