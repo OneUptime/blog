@@ -37,11 +37,11 @@ The first step is containerizing the monolith and deploying it to GKE. This gets
 ```dockerfile
 # Dockerfile for the monolith
 
-FROM node:20-slim
+FROM node:24-slim
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY . .
 
 EXPOSE 3000
@@ -70,7 +70,7 @@ spec:
     spec:
       containers:
         - name: monolith
-          image: gcr.io/my-project/monolith:latest
+          image: us-central1-docker.pkg.dev/my-project/app/monolith:latest
           ports:
             - containerPort: 3000
           resources:
@@ -100,20 +100,18 @@ spec:
 Install Istio on GKE. It gives you fine-grained control over traffic routing, which is essential for the strangler pattern.
 
 ```bash
-# Enable Istio on GKE
-gcloud container clusters update my-cluster \
-  --update-addons=Istio=ENABLED \
-  --zone=us-central1-a
+# Install Istio on the current GKE cluster context
+istioctl install --set profile=default --set values.global.platform=gke --skip-confirmation
 
 # Label the namespace for automatic sidecar injection
-kubectl label namespace default istio-injection=enabled
+kubectl label namespace default istio-injection=enabled --overwrite
 ```
 
 Create a VirtualService that initially routes all traffic to the monolith.
 
 ```yaml
 # virtual-service.yaml - Start by routing everything to the monolith
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routing
@@ -130,7 +128,7 @@ spec:
             port:
               number: 80
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: app-gateway
@@ -218,7 +216,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: gcr.io/my-project/user-service:latest
+          image: us-central1-docker.pkg.dev/my-project/app/user-service:latest
           ports:
             - containerPort: 8080
           resources:
@@ -244,7 +242,7 @@ Now update the VirtualService to route user-related requests to the new microser
 
 ```yaml
 # virtual-service-updated.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routing
@@ -278,7 +276,7 @@ Before routing all user traffic to the new service, do a gradual rollout. Start 
 
 ```yaml
 # canary-routing.yaml - Split traffic between monolith and new service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routing
@@ -319,6 +317,8 @@ Gradually increase the weight to 25, 50, 75, and finally 100 as you verify the n
 One of the trickiest parts of the strangler pattern is handling data. The monolith has its own database, and the new microservice might use a different one. Here is a common approach using dual writes during the transition period.
 
 ```javascript
+const {Firestore, FieldValue} = require('@google-cloud/firestore');
+
 // During migration, the monolith writes to both the old DB and the new one
 // This keeps data in sync while both systems are active
 async function createUserDualWrite(userData) {
@@ -334,7 +334,7 @@ async function createUserDualWrite(userData) {
     email: userData.email,
     name: userData.name,
     migratedFrom: 'legacy',
-    createdAt: Firestore.Timestamp.now(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   return legacyResult.rows[0].id;
@@ -352,8 +352,8 @@ kubectl logs -l app=monolith --tail=1000 | grep "/api/users"
 
 # Remove user routes from the monolith codebase
 # Then redeploy the slimmed-down monolith
-gcloud builds submit --tag gcr.io/my-project/monolith:v2 ./monolith
-kubectl set image deployment/monolith monolith=gcr.io/my-project/monolith:v2
+gcloud builds submit --tag us-central1-docker.pkg.dev/my-project/app/monolith:v2 ./monolith
+kubectl set image deployment/monolith monolith=us-central1-docker.pkg.dev/my-project/app/monolith:v2
 ```
 
 ## Tracking Migration Progress
