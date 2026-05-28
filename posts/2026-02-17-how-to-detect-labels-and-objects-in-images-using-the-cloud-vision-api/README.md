@@ -24,15 +24,18 @@ Use label detection when you want to categorize or tag images. Use object locali
 
 ## Getting Started
 
-Enable the Vision API and install the client library:
+Enable the Vision API, set up Application Default Credentials, and install the client libraries:
 
 ```bash
 # Enable the Vision API in your project
 
 gcloud services enable vision.googleapis.com
 
-# Install the Python client
-pip install google-cloud-vision Pillow
+# Authenticate local client library calls
+gcloud auth application-default login
+
+# Install the Python clients
+pip install google-cloud-vision google-cloud-storage Pillow
 ```
 
 ## Label Detection
@@ -281,9 +284,9 @@ A few practical notes from working with these APIs:
 
 **Batching**: Use the `batch_annotate_images` method when processing multiple images. It accepts up to 16 images per request, reducing network overhead.
 
-**Caching**: If the same image might be analyzed multiple times, cache the results. Vision API charges per request, not per unique image.
+**Caching**: If the same image might be analyzed multiple times, cache the results. Vision API charges per image and feature, so re-processing the same image can add cost.
 
-**Image Size**: Resize large images before sending them. The API works well with images around 1024x1024 pixels. Sending a 20MP photo does not improve accuracy but does increase latency and bandwidth costs.
+**Image Size**: Resize large images before sending them. The API works well with images around 640x480 pixels for many features. Sending a 20MP photo usually does not improve accuracy but does increase latency and bandwidth costs.
 
 **Confidence Thresholds**: Always filter results by confidence score. A threshold of 0.7 works well for most applications, but tune it based on your specific use case.
 
