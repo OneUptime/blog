@@ -17,7 +17,7 @@ This guide walks through the complete HCX setup, network configuration, and migr
 Before starting, ensure you have the following in place:
 
 - A Google Cloud VMware Engine private cloud deployed and running
-- An on-premises vSphere environment running version 6.5 or later
+- An on-premises vSphere environment running a version supported by your selected HCX migration type
 - Network connectivity between on-premises and GCP (Cloud VPN or Cloud Interconnect)
 - Sufficient bandwidth for the migration (HCX compresses data, but large VMs still need bandwidth)
 - VMware HCX license (included with GCVE)
@@ -48,30 +48,35 @@ graph LR
 Establish network connectivity between your on-premises datacenter and GCP. Cloud Interconnect provides the best performance for large migrations.
 
 ```bash
-# Option A: Set up a Cloud VPN tunnel (for smaller migrations)
+# Option A: Set up an HA VPN tunnel (for smaller migrations)
 
 gcloud compute vpn-tunnels create onprem-to-gcve \
   --region=us-central1 \
-  --peer-address=YOUR_ONPREM_VPN_IP \
+  --vpn-gateway=gcve-ha-vpn-gateway \
+  --interface=0 \
+  --peer-external-gateway=onprem-external-gateway \
+  --peer-external-gateway-interface=0 \
+  --router=gcve-router \
   --shared-secret=YOUR_SHARED_SECRET \
-  --ike-version=2 \
-  --target-vpn-gateway=gcve-vpn-gateway
+  --ike-version=2
 
-# Option B: Create a VLAN attachment for Cloud Interconnect (recommended for production)
-gcloud compute interconnects attachments create gcve-attachment \
+# Option B: Create a Dedicated Interconnect VLAN attachment (recommended for production)
+gcloud compute interconnects attachments dedicated create gcve-attachment \
   --router=gcve-router \
   --region=us-central1 \
   --interconnect=your-interconnect-name \
-  --vlan-tag=1001
+  --vlan=1001
 ```
 
 Configure the peering between your VPC and the GCVE private cloud.
 
 ```bash
-# Create a VPC peering connection to the GCVE service network
-gcloud vmware private-clouds vcenter credentials describe \
-  --private-cloud=my-gcve-cloud \
-  --location=us-central1
+# Create a VPC peering connection to a standard VMware Engine network
+gcloud vmware network-peerings create gcve-vpc-peering \
+  --description="Peering VPC with VMware Engine network" \
+  --peer-network-type=STANDARD \
+  --peer-network=your-vpc-network \
+  --vmware-engine-network=your-vmware-engine-network
 ```
 
 ## Step 2: Deploy HCX on the Cloud Side
@@ -81,13 +86,11 @@ HCX Cloud Manager is automatically available in your GCVE private cloud. Access 
 ```bash
 # Get the HCX Cloud Manager URL from your GCVE private cloud
 gcloud vmware private-clouds describe my-gcve-cloud \
-  --location=us-central1 \
+  --location=us-central1-a \
   --format="yaml(hcx)"
 ```
 
-Log into the HCX Cloud Manager and create a site pairing. You will need:
-- The on-premises vCenter URL
-- Administrative credentials for the on-premises vCenter
+Log into the HCX Cloud Manager to download the HCX Connector OVA and obtain an activation key for the on-premises Connector.
 
 ## Step 3: Deploy HCX Connector On-Premises
 
@@ -98,7 +101,7 @@ The deployment process involves:
 1. Download the HCX Connector OVA from the cloud-side HCX Manager
 2. Deploy the OVA to your on-premises vCenter
 3. Configure the network settings for the HCX Connector appliance
-4. Activate the connector with your HCX license key
+4. Activate the connector with your HCX activation key
 
 After deploying the OVA, configure the connector through its management interface.
 
@@ -108,7 +111,7 @@ After deploying the OVA, configure the connector through its management interfac
 # vMotion Network: Your vMotion network
 # Uplink Network: Network with access to the internet or GCP
 # HCX Activation URL: https://connect.hcx.vmware.com
-# Activation Key: Obtained from HCX Cloud Manager
+# Activation Key: Obtained from the Google Cloud console or HCX Cloud Manager
 ```
 
 ## Step 4: Create the Site Pairing
@@ -204,7 +207,7 @@ After migration, verify that the VMs are running correctly in GCVE.
 
 # From GCP, verify the private cloud status
 gcloud vmware private-clouds describe my-gcve-cloud \
-  --location=us-central1 \
+  --location=us-central1-a \
   --format="yaml(state, managementCluster)"
 ```
 
