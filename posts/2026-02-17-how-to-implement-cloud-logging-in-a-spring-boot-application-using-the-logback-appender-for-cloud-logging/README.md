@@ -8,7 +8,7 @@ Description: Set up structured logging in a Spring Boot application using the Lo
 
 ---
 
-When you deploy a Spring Boot application to GCP, you want your logs to show up in Cloud Logging with proper severity levels, structured JSON format, and trace correlation. The standard console output works, but you lose the ability to filter by severity, search structured fields, and correlate logs with Cloud Trace spans. The Logback appender for Cloud Logging sends your logs directly to the Cloud Logging API with all that metadata intact.
+When you deploy a Spring Boot application to GCP, you want your logs to show up in Cloud Logging with proper severity levels, structured JSON format, and trace correlation. Plain text console output works, but structured JSON or the Cloud Logging appender gives you better fields for filtering, searching, and correlating logs with Cloud Trace spans. The Logback appender for Cloud Logging sends your logs directly to the Cloud Logging API with all that metadata intact.
 
 In this post, I will show you how to configure the Logback appender for Cloud Logging in a Spring Boot application.
 
@@ -60,10 +60,10 @@ Create `src/main/resources/logback-spring.xml`:
             <!-- Cloud Logging configuration -->
             <log>my-application-log</log>
             <resourceType>cloud_run_revision</resourceType>
-            <flushLevel>WARNING</flushLevel>
+            <flushLevel>WARN</flushLevel>
 
             <!-- Custom enhancers for adding trace and request info -->
-            <enhancer>com.google.cloud.logging.TraceLoggingEnhancer</enhancer>
+            <loggingEventEnhancer>com.google.cloud.logging.logback.TraceLoggingEventEnhancer</loggingEventEnhancer>
 
             <!-- Custom labels applied to all log entries -->
             <loggingEventEnhancer>com.example.logging.CustomLabelEnhancer</loggingEventEnhancer>
@@ -91,28 +91,34 @@ Create `src/main/resources/logback-spring.xml`:
 
 ## Structured JSON Logging for Cloud Run
 
-If you prefer the stdout approach (which works without the API appender), configure Logback to output JSON that Cloud Logging understands:
+If you prefer the stdout approach (which works without direct API writes), configure Logback to output JSON that Cloud Logging understands:
 
 ```xml
-<!-- JSON appender for stdout-based logging on Cloud Run -->
-<springProfile name="cloudrun">
-    <appender name="CLOUD_JSON" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
-            <layout class="com.google.cloud.logging.logback.LoggingAppender">
-                <!-- Outputs structured JSON that Cloud Run picks up -->
-            </layout>
-        </encoder>
-    </appender>
-</springProfile>
+<configuration>
+    <!-- JSON appender for stdout-based logging on Cloud Run -->
+    <springProfile name="cloudrun">
+        <appender name="CLOUD_JSON" class="com.google.cloud.logging.logback.LoggingAppender">
+            <redirectToStdout>true</redirectToStdout>
+            <loggingEventEnhancer>com.google.cloud.logging.logback.TraceLoggingEventEnhancer</loggingEventEnhancer>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CLOUD_JSON"/>
+        </root>
+    </springProfile>
+</configuration>
 ```
 
-Or use the Spring Cloud GCP JSON layout:
+Or use the Spring Cloud GCP JSON appender in `logback-json.xml`:
 
-```properties
-# application-cloudrun.properties
+```xml
+<configuration>
+    <include resource="com/google/cloud/spring/logging/logback-json-appender.xml"/>
 
-# Enable JSON logging for Cloud Run
-logging.config=classpath:logback-json.xml
+    <root level="INFO">
+        <appender-ref ref="CONSOLE_JSON"/>
+    </root>
+</configuration>
 ```
 
 ## Custom Label Enhancer
@@ -140,6 +146,18 @@ public class CustomLabelEnhancer implements LoggingEventEnhancer {
         }
         if (mdc.containsKey("userId")) {
             builder.addLabel("user_id", mdc.get("userId"));
+        }
+        if (mdc.containsKey("operation")) {
+            builder.addLabel("operation", mdc.get("operation"));
+        }
+        if (mdc.containsKey("orderId")) {
+            builder.addLabel("order_id", mdc.get("orderId"));
+        }
+        if (mdc.containsKey("amount")) {
+            builder.addLabel("amount", mdc.get("amount"));
+        }
+        if (mdc.containsKey("paymentStatus")) {
+            builder.addLabel("payment_status", mdc.get("paymentStatus"));
         }
     }
 }
@@ -174,7 +192,7 @@ public class RequestContextFilter implements Filter {
                 String traceId = traceHeader.split("/")[0];
                 MDC.put("traceId", traceId);
                 // This enables log-trace correlation in Cloud Logging
-                TraceLoggingEnhancer.setCurrentTraceId(
+                TraceLoggingEventEnhancer.setCurrentTraceId(
                         "projects/my-project/traces/" + traceId);
             }
 
@@ -239,9 +257,9 @@ public class OrderController {
 }
 ```
 
-## Structured Logging with Key-Value Pairs
+## Request Labels with MDC
 
-For richer log entries, use structured arguments:
+For richer log entries with the direct appender, use MDC values and copy the fields you want into log entry labels:
 
 ```java
 @Service
@@ -250,8 +268,7 @@ public class PaymentService {
     private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
     public PaymentResult processPayment(String orderId, BigDecimal amount) {
-        // Add structured key-value pairs to the log entry
-        // These show up as jsonPayload fields in Cloud Logging
+        // Add request-scoped values that the custom enhancer can copy to labels
         MDC.put("orderId", orderId);
         MDC.put("amount", amount.toString());
         MDC.put("operation", "payment_processing");
@@ -288,16 +305,14 @@ Once your logs are in Cloud Logging, you can create log-based metrics:
 # Create a metric that counts payment failures
 gcloud logging metrics create payment_failures \
     --description="Count of payment failures" \
-    --log-filter='resource.type="cloud_run_revision" AND jsonPayload.operation="payment_processing" AND severity=WARNING'
+    --log-filter='resource.type="cloud_run_revision" AND labels.operation="payment_processing" AND severity=WARNING'
 ```
 
 ## Application Properties
 
-```properties
-# Spring Cloud GCP project configuration
-spring.cloud.gcp.project-id=my-project
-spring.cloud.gcp.logging.enabled=true
+For the Logback appender, use Application Default Credentials and the `GOOGLE_CLOUD_PROJECT` environment variable for project detection. Keep application properties focused on Spring profiles and log levels:
 
+```properties
 # Logging levels
 logging.level.root=INFO
 logging.level.com.example=DEBUG
