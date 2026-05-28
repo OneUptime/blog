@@ -120,6 +120,14 @@ resource "google_project_service" "firestore" {
   disable_on_destroy         = false
 }
 
+resource "google_project_service" "firebaserules" {
+  project = var.project_id
+  service = "firebaserules.googleapis.com"
+
+  disable_dependent_services = false
+  disable_on_destroy         = false
+}
+
 # Create the Firestore database
 resource "google_firestore_database" "main" {
   project     = var.project_id
@@ -143,6 +151,10 @@ Firestore security rules determine who can access what data. They are critical f
 ```hcl
 # rules.tf - Firestore security rules deployment
 
+locals {
+  firestore_rules_release_name = var.database_id == "(default)" ? "cloud.firestore" : "cloud.firestore/${var.database_id}"
+}
+
 # Deploy security rules from a file or inline content
 resource "google_firebaserules_ruleset" "firestore" {
   count   = var.security_rules_file != "" || var.security_rules_content != "" ? 1 : 0
@@ -155,15 +167,20 @@ resource "google_firebaserules_ruleset" "firestore" {
     }
   }
 
-  depends_on = [google_firestore_database.main]
+  depends_on = [
+    google_firestore_database.main,
+    google_project_service.firebaserules,
+  ]
 }
 
 # Release the ruleset to make it active
 resource "google_firebaserules_release" "firestore" {
   count        = var.security_rules_file != "" || var.security_rules_content != "" ? 1 : 0
   project      = var.project_id
-  name         = "cloud.firestore/${var.database_id}"
+  name         = local.firestore_rules_release_name
   ruleset_name = google_firebaserules_ruleset.firestore[0].name
+
+  depends_on = [google_project_service.firebaserules]
 }
 ```
 
@@ -265,7 +282,7 @@ service cloud.firestore {
 
 ## Composite Indexes
 
-Firestore requires composite indexes for queries that filter or sort on multiple fields. Without them, those queries fail at runtime. Defining them in Terraform prevents that:
+Firestore requires composite indexes for many compound queries, such as queries that combine multiple inequality filters or combine filters with ordering in a way single-field indexes cannot satisfy. Without the required index, those queries fail at runtime with an error that includes index creation details. Defining them in Terraform prevents that:
 
 ```hcl
 # indexes.tf - Composite indexes for query performance
@@ -451,8 +468,8 @@ resource "google_monitoring_alert_policy" "firestore_reads" {
 
     condition_threshold {
       filter = <<-FILTER
-        resource.type = "firestore_database"
-        AND metric.type = "firestore.googleapis.com/document/read_count"
+        resource.type = "firestore.googleapis.com/Database"
+        AND metric.type = "firestore.googleapis.com/document/read_ops_count"
       FILTER
 
       comparison      = "COMPARISON_GT"
