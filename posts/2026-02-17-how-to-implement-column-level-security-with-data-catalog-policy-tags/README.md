@@ -36,12 +36,16 @@ graph TD
 First, create a taxonomy that represents your data classification hierarchy:
 
 ```bash
-# Create a taxonomy for sensitive data
-
-gcloud data-catalog taxonomies create \
-  --location=us \
-  --display-name="Sensitive Data Classification" \
-  --description="Classification hierarchy for column-level access control"
+# Create a taxonomy for sensitive data with the Data Catalog API
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies" \
+  -d '{
+    "displayName": "Sensitive Data Classification",
+    "description": "Classification hierarchy for column-level access control",
+    "activatedPolicyTypes": ["FINE_GRAINED_ACCESS_CONTROL"]
+  }'
 ```
 
 Note the taxonomy ID from the output. You will need it for creating policy tags.
@@ -206,12 +210,16 @@ resource "google_bigquery_table" "customers" {
 You can also apply policy tags using the bq CLI:
 
 ```bash
-# Apply a policy tag to a column using bq update
-bq update --schema '[
+# Write the full updated schema to schema.json, then apply it with bq update
+cat > schema.json <<'EOF'
+[
   {"name": "customer_id", "type": "STRING"},
   {"name": "email", "type": "STRING", "policyTags": {"names": ["projects/my-project/locations/us/taxonomies/123/policyTags/456"]}},
   {"name": "signup_date", "type": "DATE"}
-]' my-project:warehouse.customers
+]
+EOF
+
+bq update my-project:warehouse.customers schema.json
 ```
 
 Or using Python:
@@ -252,10 +260,17 @@ print("Policy tags applied")
 Now control who can access the protected columns. Users need the `roles/datacatalog.categoryFineGrainedReader` role on the specific policy tag:
 
 ```hcl
-# Grant the analytics team access to PII data (but not SSN or financial)
-resource "google_data_catalog_policy_tag_iam_member" "analytics_pii" {
+# Grant the analytics team access to email and phone data (but not SSN or financial)
+resource "google_data_catalog_policy_tag_iam_member" "analytics_email" {
   provider   = google-beta
-  policy_tag = google_data_catalog_policy_tag.pii.id
+  policy_tag = google_data_catalog_policy_tag.email.id
+  role       = "roles/datacatalog.categoryFineGrainedReader"
+  member     = "group:analytics-team@company.com"
+}
+
+resource "google_data_catalog_policy_tag_iam_member" "analytics_phone" {
+  provider   = google-beta
+  policy_tag = google_data_catalog_policy_tag.phone.id
   role       = "roles/datacatalog.categoryFineGrainedReader"
   member     = "group:analytics-team@company.com"
 }
@@ -320,9 +335,9 @@ This makes permission management scalable:
 
 ```text
 Sensitive Data Classification (Taxonomy)
-  PII                          --> Analytics team has access
-    Email Address              --> (inherited from PII)
-    Phone Number              --> (inherited from PII)
+  PII                          --> Parent category
+    Email Address              --> Analytics team has access
+    Phone Number              --> Analytics team has access
     SSN                       --> Only compliance team
   Financial                    --> Billing team has access
     Credit Card               --> (inherited from Financial)
@@ -330,10 +345,10 @@ Sensitive Data Classification (Taxonomy)
   Health                       --> Only health data team
 ```
 
-For SSN specifically, you would remove the inheritance and grant access explicitly:
+For SSN specifically, do not grant the analytics team access to the parent PII tag. Grant analytics access only to the child tags they should read, and grant SSN access explicitly:
 
 ```hcl
-# SSN requires explicit access, not inherited from PII parent
+# SSN requires explicit access
 resource "google_data_catalog_policy_tag_iam_member" "compliance_ssn" {
   provider   = google-beta
   policy_tag = google_data_catalog_policy_tag.ssn.id
@@ -359,13 +374,22 @@ resource "google_bigquery_datapolicy_data_policy" "mask_email" {
     predefined_expression = "EMAIL_MASK"
   }
 }
+
+resource "google_bigquery_datapolicy_data_policy_iam_member" "masked_email_reader" {
+  provider       = google-beta
+  project        = google_bigquery_datapolicy_data_policy.mask_email.project
+  location       = google_bigquery_datapolicy_data_policy.mask_email.location
+  data_policy_id = google_bigquery_datapolicy_data_policy.mask_email.data_policy_id
+  role           = "roles/bigquerydatapolicy.maskedReader"
+  member         = "group:analytics-team@company.com"
+}
 ```
 
-With masking, a user without fine-grained reader access sees:
+With masking, a user with Masked Reader access but without fine-grained reader access sees:
 
 ```sql
 SELECT email FROM warehouse.customers;
--- Result: j***@example.com, s***@company.org, ...
+-- Result: XXXXX@example.com, XXXXX@company.org, ...
 ```
 
 ## Auditing Access
@@ -375,7 +399,7 @@ Track who is accessing protected columns using Cloud Audit Logs:
 ```bash
 # Query audit logs for policy tag access checks
 gcloud logging read '
-  resource.type="bigquery_resource"
+  (resource.type="bigquery_project" OR resource.type="bigquery_resource")
   AND protoPayload.methodName="google.cloud.bigquery.v2.JobService.InsertJob"
   AND protoPayload.authorizationInfo.permission="datacatalog.categories.fineGrainedGet"
 ' --limit=50 --format=json
@@ -385,7 +409,7 @@ gcloud logging read '
 
 1. **Start with a simple taxonomy.** Three to five top-level categories covering PII, financial, and health data cover most organizations. Add specificity through child tags.
 
-2. **Use hierarchy for permission management.** Grant broad access at parent tag level, restrict sensitive subcategories individually.
+2. **Use hierarchy for permission management.** Grant broad access at parent tag level only when users should have access to all child tags. Grant access at child tag level when sensitive subcategories need different permissions.
 
 3. **Apply tags at the lowest necessary level.** Tag the email column, not the entire table. This lets users query non-sensitive columns freely.
 
