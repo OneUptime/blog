@@ -8,7 +8,7 @@ Description: A complete guide to enabling and configuring Data Access audit logs
 
 ---
 
-GCP automatically logs administrative actions - creating VMs, changing IAM policies, modifying firewall rules. These Admin Activity audit logs are always on and free. But what about data access - who read a BigQuery table, who listed objects in a Cloud Storage bucket, who queried a Cloud SQL database? That is where Data Access audit logs come in, and they are not enabled by default.
+GCP automatically logs administrative actions - creating VMs, changing IAM policies, modifying firewall rules. These Admin Activity audit logs are always on and free. But what about data access - who read a BigQuery table, who listed objects in a Cloud Storage bucket, who called Cloud SQL data-access API methods? That is where Data Access audit logs come in, and for services other than BigQuery they are not enabled by default.
 
 In this post, I will explain why Data Access audit logs matter, how to enable them, and how to configure them without drowning in log volume and costs.
 
@@ -19,11 +19,11 @@ GCP produces four types of audit logs:
 | Type | Always On? | Free? | What It Captures |
 |------|-----------|-------|------------------|
 | Admin Activity | Yes | Yes | Resource create/update/delete operations |
-| Data Access | No (mostly) | No | Data read, data write, and metadata operations |
+| Data Access | No (except BigQuery) | No | Data read, data write, and metadata operations |
 | System Event | Yes | Yes | Google-initiated system operations |
-| Policy Denied | Yes | Yes | Denied access attempts from VPC Service Controls |
+| Policy Denied | Yes | No (storage charges can apply) | Denied access attempts caused by security policy violations |
 
-Data Access audit logs are special because they need to be explicitly enabled for most services, and they are billed at standard Cloud Logging ingestion rates. This is why GCP does not turn them on by default - for busy services, they can generate enormous log volumes.
+Data Access audit logs are special because they need to be explicitly enabled for most services, and enabling them can increase Cloud Logging charges. This is why GCP does not turn them on by default - for busy services, they can generate enormous log volumes.
 
 ## Why Enable Data Access Audit Logs?
 
@@ -237,7 +237,7 @@ SELECT
   proto_payload.audit_log.service_name AS service,
   COUNT(*) AS access_count
 FROM
-  `my-project.global._Default._AllLogs`
+  `my-project`.`global`.`_Default`.`_AllLogs`
 WHERE
   log_id = 'cloudaudit.googleapis.com/data_access'
   AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
@@ -318,4 +318,4 @@ Data Access audit logs can be expensive. Here are ways to manage costs:
 
 ## Wrapping Up
 
-Data Access audit logs are a critical security and compliance feature in GCP. They tell you who accessed what data and when, which is information you cannot get from Admin Activity logs alone. The key is being strategic about which services you enable them for and using exemptions to control volume. Enable them for your data stores (BigQuery, Cloud Storage, Cloud SQL, Spanner), exempt your automated systems where appropriate, and set up a cost-effective retention strategy using custom buckets or Cloud Storage export.
+Data Access audit logs are a critical security and compliance feature in GCP. They tell you who accessed what data and when, which is information you cannot get from Admin Activity logs alone. The key is being strategic about which services you enable them for and using exemptions to control volume. Enable them for your data stores and data services (BigQuery, Cloud Storage, Cloud SQL API methods, Spanner), exempt your automated systems where appropriate, and set up a cost-effective retention strategy using custom buckets or Cloud Storage export.
