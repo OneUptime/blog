@@ -57,7 +57,8 @@ binlog_row_image = FULL
 server_id = 1
 gtid_mode = ON
 enforce_gtid_consistency = ON
-expire_logs_days = 7
+binlog_expire_logs_seconds = 604800
+# For MySQL 5.5-5.7, use expire_logs_days = 7 instead.
 ```
 
 Restart MySQL after making these changes.
@@ -72,9 +73,8 @@ CREATE USER 'dms_user'@'%' IDENTIFIED BY 'strong-password';
 
 -- Grant required privileges
 GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'dms_user'@'%';
-GRANT SELECT ON *.* TO 'dms_user'@'%';
+GRANT SELECT, SHOW VIEW, TRIGGER, EXECUTE ON *.* TO 'dms_user'@'%';
 GRANT RELOAD ON *.* TO 'dms_user'@'%';
-GRANT SHOW DATABASES ON *.* TO 'dms_user'@'%';
 
 FLUSH PRIVILEGES;
 ```
@@ -105,10 +105,9 @@ The connection profile tells DMS how to connect to your source database:
 
 ```bash
 # Create a source connection profile for on-premises MySQL
-gcloud database-migration connection-profiles create mysql-source \
+gcloud database-migration connection-profiles create mysql mysql-source \
     --region=us-central1 \
     --display-name="On-Premises MySQL" \
-    --provider=MYSQL \
     --host=your-mysql-server-ip \
     --port=3306 \
     --username=dms_user \
@@ -119,17 +118,17 @@ If you are using SSL, add the certificate parameters:
 
 ```bash
 # Create a source connection profile with SSL
-gcloud database-migration connection-profiles create mysql-source \
+gcloud database-migration connection-profiles create mysql mysql-source \
     --region=us-central1 \
     --display-name="On-Premises MySQL (SSL)" \
-    --provider=MYSQL \
     --host=your-mysql-server-ip \
     --port=3306 \
     --username=dms_user \
     --password=strong-password \
-    --ssl-ca-certificate=server-ca.pem \
-    --ssl-client-certificate=client-cert.pem \
-    --ssl-client-key=client-key.pem
+    --ssl-type=SERVER_CLIENT \
+    --ca-certificate=server-ca.pem \
+    --client-certificate=client-cert.pem \
+    --private-key=client-key.pem
 ```
 
 ## Step 3: Create a Destination Connection Profile
@@ -140,10 +139,9 @@ To use an existing instance:
 
 ```bash
 # Create a destination connection profile pointing to an existing Cloud SQL instance
-gcloud database-migration connection-profiles create cloudsql-dest \
+gcloud database-migration connection-profiles create mysql cloudsql-dest \
     --region=us-central1 \
     --display-name="Cloud SQL Destination" \
-    --provider=CLOUDSQL \
     --cloudsql-instance=my-cloudsql-instance
 ```
 
@@ -163,6 +161,14 @@ gcloud database-migration migration-jobs create mysql-migration \
 The `--type=CONTINUOUS` setting means DMS will keep replicating changes after the initial dump until you manually trigger the cutover.
 
 ## Step 5: Test and Start the Migration
+
+If you are migrating to an existing Cloud SQL instance, demote the destination so DMS can use it as a read replica during the migration:
+
+```bash
+# Demote the existing destination instance before starting the migration
+gcloud database-migration migration-jobs demote-destination mysql-migration \
+    --region=us-central1
+```
 
 Before starting, test the connection:
 
@@ -243,9 +249,14 @@ Your source must retain binary logs long enough for DMS to read them. If logs ex
 ```sql
 -- Check current binlog retention
 SHOW VARIABLES LIKE 'expire_logs_days';
+SHOW VARIABLES LIKE 'binlog_expire_logs_seconds';
 
 -- Increase retention to 7 days during migration
+-- MySQL 5.5-5.7
 SET GLOBAL expire_logs_days = 7;
+
+-- MySQL 8.0+
+SET GLOBAL binlog_expire_logs_seconds = 604800;
 ```
 
 ### Incompatible Features
@@ -253,7 +264,7 @@ SET GLOBAL expire_logs_days = 7;
 Some MySQL features do not translate directly to Cloud SQL:
 
 - SUPER privilege operations are not available
-- Some storage engines besides InnoDB may not be supported
+- Storage engines other than InnoDB are not supported
 - Events and scheduled jobs need to be recreated separately
 - Custom plugins are not available in Cloud SQL
 
