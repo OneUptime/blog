@@ -31,17 +31,27 @@ Vertex AI RAG Engine handles much of this pipeline for you. Here is how to set i
 # Set up a Vertex AI RAG corpus
 
 import vertexai
-from vertexai.preview import rag
+from vertexai import rag
 
 vertexai.init(
     project='your-project-id',
     location='us-central1',
 )
 
+# Configure the embedding model used by the corpus
+backend_config = rag.RagVectorDbConfig(
+    rag_embedding_model_config=rag.RagEmbeddingModelConfig(
+        vertex_prediction_endpoint=rag.VertexPredictionEndpoint(
+            publisher_model='publishers/google/models/text-embedding-005'
+        )
+    )
+)
+
 # Create a RAG corpus - this is your knowledge base
 corpus = rag.create_corpus(
     display_name='product-documentation',
     description='RAG corpus for product documentation and knowledge base articles',
+    backend_config=backend_config,
 )
 
 print(f"Corpus created: {corpus.name}")
@@ -56,7 +66,7 @@ Now add your documents to the corpus. RAG Engine supports importing from GCS, Go
 # Import documents into the RAG corpus
 
 import vertexai
-from vertexai.preview import rag
+from vertexai import rag
 
 vertexai.init(
     project='your-project-id',
@@ -72,11 +82,12 @@ response = rag.import_files(
     corpus_name=corpus_name,
     paths=['gs://your-bucket/documentation/'],
     # Chunking configuration
-    chunk_size=512,
-    chunk_overlap=100,
+    transformation_config=rag.TransformationConfig(
+        rag.ChunkingConfig(chunk_size=512, chunk_overlap=100)
+    ),
 )
 
-print(f"Import completed: {response}")
+print(f"Imported {response.imported_rag_files_count} files")
 ```
 
 You can also import from Google Drive:
@@ -86,8 +97,9 @@ You can also import from Google Drive:
 response = rag.import_files(
     corpus_name=corpus_name,
     paths=['https://drive.google.com/drive/folders/YOUR_FOLDER_ID'],
-    chunk_size=512,
-    chunk_overlap=100,
+    transformation_config=rag.TransformationConfig(
+        rag.ChunkingConfig(chunk_size=512, chunk_overlap=100)
+    ),
 )
 ```
 
@@ -100,7 +112,7 @@ Once your documents are indexed, you can query the corpus to retrieve relevant c
 # Query the RAG corpus for relevant context
 
 import vertexai
-from vertexai.preview import rag
+from vertexai import rag
 
 vertexai.init(
     project='your-project-id',
@@ -113,7 +125,7 @@ corpus_name = 'projects/your-project-id/locations/us-central1/ragCorpora/CORPUS_
 response = rag.retrieval_query(
     rag_resources=[rag.RagResource(rag_corpus=corpus_name)],
     text='How do I configure SSL certificates for my load balancer?',
-    similarity_top_k=5,  # Return top 5 most relevant chunks
+    rag_retrieval_config=rag.RagRetrievalConfig(top_k=5),  # Return top 5 most relevant chunks
 )
 
 # Print the retrieved chunks
@@ -133,7 +145,7 @@ The real power comes from combining retrieval with generation:
 # Use RAG to generate grounded answers
 
 import vertexai
-from vertexai.preview import rag
+from vertexai import rag
 from vertexai.generative_models import GenerativeModel, Tool
 
 vertexai.init(
@@ -148,14 +160,14 @@ rag_retrieval_tool = Tool.from_retrieval(
     retrieval=rag.Retrieval(
         source=rag.VertexRagStore(
             rag_resources=[rag.RagResource(rag_corpus=corpus_name)],
-            similarity_top_k=5,
+            rag_retrieval_config=rag.RagRetrievalConfig(top_k=5),
         ),
     )
 )
 
 # Create a model with the RAG tool
 model = GenerativeModel(
-    'gemini-1.5-pro',
+    'gemini-2.5-flash',
     tools=[rag_retrieval_tool],
 )
 
@@ -192,6 +204,7 @@ index = aiplatform.MatchingEngineIndex.create_tree_ah_index(
     # Distance metric for similarity
     approximate_neighbors_count=150,
     distance_measure_type='DOT_PRODUCT_DISTANCE',
+    index_update_method='BATCH_UPDATE',
     description='Vector index for product documentation',
 )
 
@@ -264,11 +277,27 @@ with open('vectors.jsonl', 'w') as f:
 print(f"Prepared {len(vectors)} vectors")
 ```
 
-Upload to GCS and update the index:
+Upload the JSONL file to a Cloud Storage directory and update the index from that directory:
 
 ```bash
 # Upload vectors to GCS
 gsutil cp vectors.jsonl gs://your-bucket/vector-data/vectors.jsonl
+```
+
+```python
+# Update the Vector Search index from the Cloud Storage directory
+from google.cloud import aiplatform
+
+aiplatform.init(
+    project='your-project-id',
+    location='us-central1',
+)
+
+index = aiplatform.MatchingEngineIndex('INDEX_RESOURCE_NAME')
+index.update_embeddings(
+    contents_delta_uri='gs://your-bucket/vector-data/',
+    is_complete_overwrite=True,
+)
 ```
 
 ## Deploying the Index
@@ -327,7 +356,7 @@ vertexai.init(
 
 # Initialize models
 embedding_model = TextEmbeddingModel.from_pretrained('text-embedding-005')
-gen_model = GenerativeModel('gemini-1.5-pro')
+gen_model = GenerativeModel('gemini-2.5-flash')
 
 # Get the index endpoint
 index_endpoint = aiplatform.MatchingEngineIndexEndpoint('INDEX_ENDPOINT_RESOURCE')
