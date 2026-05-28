@@ -8,7 +8,7 @@ Description: Learn how to create custom access levels using Common Expression La
 
 ---
 
-Basic access levels in Access Context Manager cover common scenarios like IP ranges and device policies. But what if you need more complex logic? What if you want to allow access only during business hours, or only for users in a specific group, or based on a combination of attributes that basic levels cannot express?
+Basic access levels in Access Context Manager cover common scenarios like IP ranges and device policies. But what if you need more complex logic? What if you want to allow access only during business hours, or only for specific users, or based on a combination of attributes that basic levels cannot express?
 
 That is where custom access levels come in. Custom access levels use the Common Expression Language (CEL) to define arbitrary conditions. CEL is a lightweight expression language designed for policy evaluation - it is the same language used in Firebase Security Rules and IAM Conditions.
 
@@ -24,7 +24,7 @@ Basic access levels support:
 
 Custom CEL access levels add:
 - Time-based conditions (business hours, maintenance windows)
-- Identity attribute matching (email domain, specific users)
+- Identity attribute matching (specific user principal IDs and authentication claims)
 - Complex boolean logic (nested AND/OR/NOT)
 - String pattern matching on request attributes
 - Combining any of the above in a single expression
@@ -40,7 +40,7 @@ Custom CEL access levels add:
 
 ACCESS_POLICY_ID=$(gcloud access-context-manager policies list \
   --organization=ORGANIZATION_ID \
-  --format="value(name)")
+  --format="value(name.basename())")
 ```
 
 ## CEL Expression Basics
@@ -49,13 +49,14 @@ CEL expressions in Access Context Manager evaluate to a boolean (true/false). Th
 
 - `origin.ip` - The source IP address
 - `request.time` - The timestamp of the request
+- `request.auth` - Authentication and authorization attributes
 - `device` - Device attributes from Endpoint Verification
 - `levels` - Reference to other access levels
 
 Here is a simple example:
 
 ```text
-origin.ip == "203.0.113.1"
+inIpRange(origin.ip, ["203.0.113.1/32"])
 ```
 
 This evaluates to true if the request comes from the IP 203.0.113.1.
@@ -66,7 +67,7 @@ Allow access only during business hours (9 AM to 6 PM UTC, Monday through Friday
 
 ```bash
 # Create a business-hours-only access level
-gcloud access-context-manager levels create business-hours \
+gcloud access-context-manager levels create business_hours \
   --title="Business Hours Only (UTC)" \
   --custom-level-spec=business-hours.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -98,7 +99,7 @@ expression: |
 
 ```bash
 # Create the maintenance window access level
-gcloud access-context-manager levels create maintenance-window \
+gcloud access-context-manager levels create maintenance_window \
   --title="Maintenance Window Feb 20-21" \
   --custom-level-spec=maintenance-window.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -111,14 +112,14 @@ Allow access from the office network, but only during business hours.
 ```yaml
 # office-business-hours.yaml
 expression: |
-  inIpRange(origin.ip, "203.0.113.0/24") &&
+  inIpRange(origin.ip, ["203.0.113.0/24"]) &&
   request.time.getHours("UTC") >= 9 &&
   request.time.getHours("UTC") < 18
 ```
 
 ```bash
 # Create the combined access level
-gcloud access-context-manager levels create office-business-hours \
+gcloud access-context-manager levels create office_business_hours \
   --title="Office Network During Business Hours" \
   --custom-level-spec=office-business-hours.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -131,13 +132,13 @@ You can reference existing basic access levels within CEL expressions.
 ```yaml
 # combined-levels.yaml
 expression: |
-  "accessPolicies/POLICY_ID/accessLevels/office-network" in request.auth.access_levels &&
+  levels.office_network &&
   device.encryption_status == DeviceEncryptionStatus.ENCRYPTED
 ```
 
 ```bash
 # Create the combined access level
-gcloud access-context-manager levels create combined-trust \
+gcloud access-context-manager levels create combined_trust \
   --title="Office Network with Encrypted Device" \
   --custom-level-spec=combined-levels.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -161,7 +162,7 @@ expression: |
 
 ```bash
 # Create the access level
-gcloud access-context-manager levels create advanced-device-check \
+gcloud access-context-manager levels create advanced_device_check \
   --title="Admin Approved Encrypted Desktop" \
   --custom-level-spec=advanced-device.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -174,10 +175,12 @@ Check against multiple IP ranges with OR logic.
 ```yaml
 # multi-ip.yaml
 expression: |
-  inIpRange(origin.ip, "203.0.113.0/24") ||
-  inIpRange(origin.ip, "198.51.100.0/24") ||
-  inIpRange(origin.ip, "192.0.2.0/24") ||
-  inIpRange(origin.ip, "34.120.50.0/24")
+  inIpRange(origin.ip, [
+    "203.0.113.0/24",
+    "198.51.100.0/24",
+    "192.0.2.0/24",
+    "34.120.50.0/24"
+  ])
 ```
 
 This is equivalent to a basic access level with multiple IP subnets, but CEL lets you add more complex logic around it.
@@ -195,10 +198,10 @@ Allow access if:
 # complex-policy.yaml
 expression: |
   (
-    inIpRange(origin.ip, "203.0.113.0/24")
+    inIpRange(origin.ip, ["203.0.113.0/24"])
   ) ||
   (
-    inIpRange(origin.ip, "34.120.50.0/24") &&
+    inIpRange(origin.ip, ["34.120.50.0/24"]) &&
     device.encryption_status == DeviceEncryptionStatus.ENCRYPTED
   ) ||
   (
@@ -210,7 +213,7 @@ expression: |
 
 ```bash
 # Create the complex access level
-gcloud access-context-manager levels create complex-policy \
+gcloud access-context-manager levels create complex_policy \
   --title="Complex Multi-Condition Policy" \
   --custom-level-spec=complex-policy.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -229,7 +232,7 @@ expression: |
 
 ```bash
 # Create the geo-restricted access level
-gcloud access-context-manager levels create geo-restricted \
+gcloud access-context-manager levels create geo_restricted \
   --title="Allowed Countries with Encrypted Device" \
   --custom-level-spec=geo-restricted.yaml \
   --policy=$ACCESS_POLICY_ID
@@ -241,7 +244,7 @@ Here are the most useful CEL functions for access levels:
 
 | Function | Description | Example |
 |---|---|---|
-| `inIpRange(ip, cidr)` | Check if IP is in CIDR range | `inIpRange(origin.ip, "10.0.0.0/8")` |
+| `inIpRange(ip, cidrs)` | Check if IP is in one of the CIDR ranges | `inIpRange(origin.ip, ["10.0.0.0/8"])` |
 | `request.time.getHours(tz)` | Get hour of day | `request.time.getHours("UTC") >= 9` |
 | `request.time.getDayOfWeek(tz)` | Get day of week (0=Sun) | `request.time.getDayOfWeek("UTC") <= 5` |
 | `timestamp(string)` | Parse a timestamp | `request.time >= timestamp("2026-01-01T00:00:00Z")` |
@@ -263,7 +266,7 @@ Custom access levels are used exactly like basic access levels in perimeters.
 ```bash
 # Add a custom access level to a perimeter
 gcloud access-context-manager perimeters update my-perimeter \
-  --add-access-levels="accessPolicies/$ACCESS_POLICY_ID/accessLevels/business-hours" \
+  --add-access-levels="accessPolicies/$ACCESS_POLICY_ID/accessLevels/business_hours" \
   --policy=$ACCESS_POLICY_ID
 ```
 
@@ -271,7 +274,7 @@ gcloud access-context-manager perimeters update my-perimeter \
 
 CEL expressions can be tricky to get right. Here are some testing tips:
 
-1. Start with dry-run mode to see if the expression matches as expected.
+1. Attach the access level to a dry-run service perimeter to see if the expression matches as expected before enforcing it.
 
 2. Use simple expressions first and add complexity incrementally.
 
@@ -298,4 +301,4 @@ gcloud logging read \
 
 ## Conclusion
 
-Custom access levels with CEL expressions give you the flexibility to implement access policies that would be impossible with basic access levels alone. Time-based access, complex device checks, and multi-condition policies are all achievable with CEL. The key is to start simple, test thoroughly with dry-run mode, and document your expressions so future maintainers understand the logic. With CEL in your toolkit, Access Context Manager can express virtually any access policy your organization requires.
+Custom access levels with CEL expressions give you the flexibility to implement access policies that would be impossible with basic access levels alone. Time-based access, complex device checks, and multi-condition policies are all achievable with CEL. The key is to start simple, test thoroughly with dry-run service perimeters, and document your expressions so future maintainers understand the logic. With CEL in your toolkit, Access Context Manager can express virtually any access policy your organization requires.
