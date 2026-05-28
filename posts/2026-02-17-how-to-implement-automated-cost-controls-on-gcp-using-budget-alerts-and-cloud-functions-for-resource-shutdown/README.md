@@ -52,8 +52,7 @@ gcloud billing budgets create \
   --threshold-rule=percent=0.8,basis=current-spend \
   --threshold-rule=percent=1.0,basis=current-spend \
   --threshold-rule=percent=1.2,basis=current-spend \
-  --notifications-pubsub-topic="projects/my-project/topics/budget-alerts" \
-  --notifications-pubsub-enable
+  --notifications-rule-pubsub-topic="projects/my-project/topics/budget-alerts"
 ```
 
 For more granular control, create budgets per environment:
@@ -61,6 +60,8 @@ For more granular control, create budgets per environment:
 ```python
 # create_budgets.py - Create budgets for different environments
 from google.cloud import billing_budgets_v1
+from google.protobuf.struct_pb2 import ListValue, Value
+from google.type import money_pb2
 
 client = billing_budgets_v1.BudgetServiceClient()
 
@@ -68,19 +69,19 @@ budgets = [
     {
         "name": "Production Budget",
         "amount": 3000,
-        "labels": {"environment": "prod"},
+        "label_value": "prod",
         "thresholds": [0.8, 0.9, 1.0],
     },
     {
         "name": "Development Budget",
         "amount": 1000,
-        "labels": {"environment": "dev"},
+        "label_value": "dev",
         "thresholds": [0.5, 0.8, 1.0, 1.2],
     },
     {
         "name": "Staging Budget",
         "amount": 500,
-        "labels": {"environment": "staging"},
+        "label_value": "staging",
         "thresholds": [0.5, 0.8, 1.0],
     },
 ]
@@ -89,7 +90,17 @@ for budget_config in budgets:
     budget = billing_budgets_v1.Budget()
     budget.display_name = budget_config["name"]
     budget.amount = billing_budgets_v1.BudgetAmount(
-        specified_amount={"units": budget_config["amount"], "currency_code": "USD"}
+        specified_amount=money_pb2.Money(
+            units=budget_config["amount"],
+            currency_code="USD",
+        )
+    )
+    budget.budget_filter = billing_budgets_v1.Filter(
+        labels={
+            "environment": ListValue(
+                values=[Value(string_value=budget_config["label_value"])]
+            )
+        }
     )
 
     # Add threshold rules
@@ -215,17 +226,18 @@ def scale_down_resources():
         labels = cluster.resource_labels or {}
         if labels.get("environment") in ["dev", "staging"]:
             for pool in cluster.node_pools:
-                if pool.initial_node_count > 1:
-                    logging.info(
-                        f"Scaling down {cluster.name}/{pool.name} to 1 node"
-                    )
-                    gke_client.set_node_pool_size(
-                        project_id=PROJECT_ID,
-                        zone=cluster.location,
-                        cluster_id=cluster.name,
-                        node_pool_id=pool.name,
+                logging.info(
+                    f"Scaling down {cluster.name}/{pool.name} to 1 node"
+                )
+                gke_client.set_node_pool_size(
+                    request=container_v1.SetNodePoolSizeRequest(
+                        name=(
+                            f"projects/{PROJECT_ID}/locations/{cluster.location}"
+                            f"/clusters/{cluster.name}/nodePools/{pool.name}"
+                        ),
                         node_count=1,
                     )
+                )
 
     send_slack(f"Scaled down non-critical GKE node pools to 1 node each")
 
@@ -281,11 +293,13 @@ def emergency_shutdown():
                     f"EMERGENCY: Scaling {cluster.name}/{pool.name} to 0"
                 )
                 gke_client.set_node_pool_size(
-                    project_id=PROJECT_ID,
-                    zone=cluster.location,
-                    cluster_id=cluster.name,
-                    node_pool_id=pool.name,
-                    node_count=0,
+                    request=container_v1.SetNodePoolSizeRequest(
+                        name=(
+                            f"projects/{PROJECT_ID}/locations/{cluster.location}"
+                            f"/clusters/{cluster.name}/nodePools/{pool.name}"
+                        ),
+                        node_count=0,
+                    )
                 )
 
     send_slack(
@@ -341,8 +355,9 @@ Budget alerts only fire when thresholds are crossed. For continuous monitoring, 
 # scheduled_cost_check.py - Runs on a schedule to check spending rate
 import functions_framework
 from google.cloud import bigquery
-from datetime import datetime
 import requests
+
+SLACK_WEBHOOK = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 
 @functions_framework.http
 def check_spending_rate(request):
@@ -427,7 +442,7 @@ def is_resource_protected(labels):
 
 
 # Rate limiting - do not shut down resources more than once per day
-import hashlib
+from datetime import datetime
 from google.cloud import storage
 
 def check_rate_limit(action_name):
@@ -458,8 +473,7 @@ gcloud billing budgets create \
   --budget-amount=1 \
   --filter-projects="projects/my-test-project" \
   --threshold-rule=percent=0.01 \
-  --notifications-pubsub-topic="projects/my-project/topics/budget-alerts" \
-  --notifications-pubsub-enable
+  --notifications-rule-pubsub-topic="projects/my-project/topics/budget-alerts"
 ```
 
 You can also publish a test message directly:
