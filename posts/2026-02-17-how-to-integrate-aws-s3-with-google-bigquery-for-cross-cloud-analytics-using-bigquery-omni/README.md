@@ -49,7 +49,7 @@ bq mk --connection \
   --connection_type=AWS \
   --location=aws-us-east-1 \
   --project_id=my-gcp-project \
-  --properties='{"crossCloudProperties":{"serviceAccountId":"bq-omni@my-gcp-project.iam.gserviceaccount.com"}}' \
+  --iam_role_id=arn:aws:iam::123456789012:role/bigquery-omni-access \
   my-aws-connection
 ```
 
@@ -60,7 +60,7 @@ Get the connection's identity to use in the AWS IAM policy:
 bq show --connection --location=aws-us-east-1 my-gcp-project.aws-us-east-1.my-aws-connection
 ```
 
-This outputs an AWS identity ARN that you will use in the next step.
+This outputs a Google identity that you will use in the next step.
 
 ## Step 2: Configure AWS IAM for BigQuery Access
 
@@ -119,17 +119,13 @@ aws cloudformation create-stack \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-## Step 3: Update the BigQuery Connection with the AWS Role
+## Step 3: Verify the BigQuery Connection
 
-Now update the BigQuery connection to reference the AWS IAM role:
+Now verify that the BigQuery connection references the AWS IAM role:
 
 ```bash
-# Update the connection with the AWS role ARN
-bq update --connection \
-  --connection_type=AWS \
-  --location=aws-us-east-1 \
-  --properties='{"crossCloudProperties":{"serviceAccountId":"bq-omni@my-gcp-project.iam.gserviceaccount.com"},"accessRole":{"iamRoleId":"arn:aws:iam::123456789012:role/bigquery-omni-access"}}' \
-  my-gcp-project.aws-us-east-1.my-aws-connection
+# Show the connection details
+bq show --connection --location=aws-us-east-1 my-gcp-project.aws-us-east-1.my-aws-connection
 ```
 
 ## Step 4: Create External Tables Over S3 Data
@@ -148,7 +144,9 @@ CREATE EXTERNAL TABLE `my-gcp-project.aws_analytics.user_events`
 WITH CONNECTION `my-gcp-project.aws-us-east-1.my-aws-connection`
 OPTIONS (
   format = 'PARQUET',
-  uris = ['s3://my-analytics-bucket/user-events/*.parquet']
+  uris = ['s3://my-analytics-bucket/user-events/*.parquet'],
+  max_staleness = INTERVAL 4 HOUR,
+  metadata_cache_mode = 'AUTOMATIC'
 );
 
 -- For CSV files with a defined schema
@@ -222,6 +220,10 @@ BigQuery Omni queries run against S3, which has different performance characteri
 ```sql
 -- Create an external table with Hive partitioning
 CREATE EXTERNAL TABLE `my-gcp-project.aws_analytics.logs_partitioned`
+WITH PARTITION COLUMNS (
+  dt DATE,
+  region STRING
+)
 WITH CONNECTION `my-gcp-project.aws-us-east-1.my-aws-connection`
 OPTIONS (
   format = 'PARQUET',
@@ -239,21 +241,19 @@ LIMIT 1000;
 
 **Use Parquet or ORC format.** These columnar formats allow BigQuery to read only the columns needed for your query, reducing data scanned significantly.
 
-**Pre-aggregate in AWS when possible.** For frequently run queries, consider creating materialized views or summary tables:
+**Pre-aggregate in AWS when possible.** For frequently run queries, consider creating materialized views over metadata cache-enabled BigLake tables:
 
 ```sql
--- Create a BigLake-managed table in AWS to store pre-aggregated results
-CREATE TABLE `my-gcp-project.aws_analytics.daily_summaries`
-WITH CONNECTION `my-gcp-project.aws-us-east-1.my-aws-connection`
+-- Create a materialized view over the S3-backed BigLake table
+CREATE MATERIALIZED VIEW `my-gcp-project.aws_analytics.daily_summaries`
 OPTIONS (
-  format = 'PARQUET',
-  uris = ['s3://my-analytics-bucket/summaries/']
+  max_staleness = INTERVAL 8 HOUR
 ) AS
 SELECT
   event_date,
   event_type,
   COUNT(*) AS event_count,
-  COUNT(DISTINCT user_id) AS unique_users
+  APPROX_COUNT_DISTINCT(user_id) AS approximate_unique_users
 FROM `my-gcp-project.aws_analytics.user_events`
 GROUP BY event_date, event_type;
 ```
@@ -262,9 +262,9 @@ GROUP BY event_date, event_type;
 
 BigQuery Omni pricing is different from standard BigQuery:
 
-- You pay for BigQuery Omni compute slots reserved in the AWS region
-- There are no data transfer charges for queries (data stays in AWS)
-- Cross-cloud result transfers incur standard egress charges
+- By default, you pay for BigQuery Omni queries by bytes scanned with on-demand pricing
+- You can use BigQuery Omni reservations for predictable workloads
+- Cross-cloud operations that move data from AWS to Google Cloud, such as cross-cloud joins and `CREATE TABLE AS SELECT`, incur additional transfer charges
 - S3 storage costs remain on your AWS bill
 
 For predictable workloads, reservations work well. For ad-hoc queries, on-demand pricing is available but can get expensive with large scans.
@@ -275,6 +275,7 @@ Keep an eye on your BigQuery Omni usage:
 
 ```sql
 -- Check recent BigQuery Omni query jobs
+-- Run this query from the BigQuery region colocated with aws-us-east-1, such as us-east4
 SELECT
   job_id,
   user_email,
@@ -282,7 +283,7 @@ SELECT
   total_bytes_processed,
   total_slot_ms,
   statement_type
-FROM `my-gcp-project.region-aws-us-east-1`.INFORMATION_SCHEMA.JOBS
+FROM `region-aws-us-east-1`.INFORMATION_SCHEMA.JOBS
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
 ORDER BY creation_time DESC;
 ```
