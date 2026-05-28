@@ -14,7 +14,7 @@ Provider aliases let you define multiple configurations for the same provider, e
 
 ## Why Multi-Region Deployments Matter
 
-Before diving into the how, let us briefly talk about why. Multi-region deployments give you lower latency for global users, better disaster recovery, and compliance with data residency requirements. On GCP, you might need a Cloud SQL instance in us-central1 for your American users and another in europe-west1 for European users. Without provider aliases, you would need separate Terraform configurations for each region, which quickly becomes painful to manage.
+Before diving into the how, let us briefly talk about why. Multi-region deployments give you lower latency for global users, better disaster recovery, and compliance with data residency requirements. On GCP, you might need a Cloud SQL instance in us-central1 for your American users and another in europe-west1 for European users. Without provider aliases, you would either need to repeat region and zone settings on individual resources or split Terraform configurations by region, which quickly becomes painful to manage.
 
 ## Setting Up Your First Provider Alias
 
@@ -52,14 +52,14 @@ This example creates a GCS bucket in each region:
 # Bucket in US (uses default provider)
 resource "google_storage_bucket" "us_data" {
   name     = "${var.project_id}-us-data"
-  location = "US"
+  location = "US-CENTRAL1"
 }
 
 # Bucket in Europe (uses aliased provider)
 resource "google_storage_bucket" "eu_data" {
   provider = google.europe
   name     = "${var.project_id}-eu-data"
-  location = "EU"
+  location = "EUROPE-WEST1"
 }
 ```
 
