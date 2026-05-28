@@ -19,6 +19,7 @@ The `cbt` tool comes with the Google Cloud SDK as a separate component. Install 
 ```bash
 # Install the cbt CLI component
 
+gcloud components update
 gcloud components install cbt
 
 # Verify the installation
@@ -29,7 +30,7 @@ If you are using a package manager installation of gcloud instead of the officia
 
 ```bash
 # Alternative: install via go get (requires Go)
-go install cloud.google.com/go/bigtable/cmd/cbt@latest
+go install cloud.google.com/go/cbt@latest
 ```
 
 ## Configuring cbt
@@ -54,27 +55,35 @@ cbt -project=your-project-id -instance=your-instance-id ls
 
 ## Creating a Bigtable Instance
 
-First, you need to create a Bigtable instance. This is done through `gcloud` rather than `cbt`, since `cbt` works with instances that already exist.
+First, you need to create a Bigtable instance. You can create a simple instance with an initial cluster using `cbt`.
 
 ```bash
-# Create a development instance (single node, lower cost)
-# Development instances are great for testing but do not provide SLA guarantees
+# Create a small instance with one SSD cluster
+cbt -project=your-project-id createinstance my-dev-instance \
+  "My Dev Instance" \
+  my-dev-cluster \
+  us-central1-b \
+  1 \
+  SSD
+```
+
+If you need autoscaling, CMEK, editions, or other advanced instance settings, use `gcloud` instead:
+
+```bash
+# Create a small instance with one manually allocated node
 gcloud bigtable instances create my-dev-instance \
   --display-name="My Dev Instance" \
   --cluster-config=id=my-dev-cluster,zone=us-central1-b,nodes=1 \
-  --instance-type=DEVELOPMENT \
   --project=your-project-id
 ```
 
-For production workloads, create a production instance with at least 3 nodes:
+For production workloads, choose a node count or autoscaling range based on your workload, and add more clusters if you need Bigtable replication:
 
 ```bash
 # Create a production instance with 3 nodes
-# Production instances provide an SLA and auto-replication within the cluster
 gcloud bigtable instances create my-prod-instance \
   --display-name="My Production Instance" \
   --cluster-config=id=my-prod-cluster,zone=us-central1-b,nodes=3 \
-  --instance-type=PRODUCTION \
   --project=your-project-id
 ```
 
@@ -90,7 +99,7 @@ EOF
 
 ## Creating a Table
 
-Now let us create a table using `cbt`. Bigtable tables consist of a table name and one or more column families.
+Now let us create a table using `cbt`. Bigtable tables are sorted key-value maps that usually contain one or more column families.
 
 ```bash
 # Create a table called 'user-events'
@@ -121,7 +130,7 @@ cbt createfamily user-events metrics
 cbt ls user-events
 ```
 
-Choosing column families is an important design decision. Group columns that are frequently accessed together into the same family. Bigtable reads data at the column family level, so having the right groupings improves read performance.
+Choosing column families is an important design decision. Group related columns that are frequently accessed together into the same family, and separate columns that need different garbage collection policies.
 
 ## Writing Data
 
@@ -174,8 +183,8 @@ cbt read user-events start=user#12345#2026-02-17T10:00:00 end=user#12345#2026-02
 # Limit the number of rows returned
 cbt read user-events prefix=user#12345 count=10
 
-# Read only specific column families
-cbt read user-events prefix=user#12345 families=event
+# Read only specific columns
+cbt read user-events prefix=user#12345 columns=event:type,event:page,event:browser
 ```
 
 ## Setting Garbage Collection Policies
