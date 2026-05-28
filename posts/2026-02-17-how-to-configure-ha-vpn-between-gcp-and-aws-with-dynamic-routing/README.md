@@ -43,7 +43,7 @@ On the GCP side:
 
 On the AWS side:
 - A VPC with subnets
-- A Virtual Private Gateway or Transit Gateway
+- A Virtual Private Gateway attached to your VPC
 
 ## Step 1: Create the GCP Side
 
@@ -278,7 +278,7 @@ The BGP IP addresses come from the AWS VPN configuration. AWS assigns inside tun
 
 ## Step 6: Enable Route Propagation in AWS
 
-In AWS, enable route propagation on your VPC route tables so that routes learned from GCP via BGP are automatically added:
+In AWS, enable Virtual Private Gateway route propagation on your VPC route tables so that routes learned from GCP via BGP are automatically added:
 
 ```bash
 # Enable route propagation
@@ -314,7 +314,7 @@ Check AWS tunnel status:
 ```bash
 # Check AWS VPN tunnel status
 aws ec2 describe-vpn-connections \
-  --vpn-connection-ids vpn-xxxxxxxx \
+  --vpn-connection-ids vpn-aaaaaaaa vpn-bbbbbbbb \
   --query 'VpnConnections[*].VgwTelemetry'
 ```
 
