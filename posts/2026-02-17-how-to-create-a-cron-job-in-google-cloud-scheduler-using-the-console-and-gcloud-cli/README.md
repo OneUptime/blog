@@ -10,7 +10,7 @@ Description: Learn how to create and manage cron jobs in Google Cloud Scheduler 
 
 Google Cloud Scheduler is a fully managed cron job service. It lets you schedule virtually any job, including batch data processing, infrastructure operations, and API calls. If you have ever set up a cron job on a Linux server, Cloud Scheduler is the managed equivalent, but without having to maintain a VM just to run cron.
 
-In this post, I will show you how to create scheduler jobs using both the Google Cloud Console and the gcloud CLI, covering HTTP targets, Pub/Sub targets, and App Engine targets.
+In this post, I will show you how to create scheduler jobs using both the Google Cloud Console and the gcloud CLI, covering HTTP targets, Pub/Sub targets, and where App Engine targets fit.
 
 ## Prerequisites
 
@@ -22,10 +22,10 @@ Before you start, make sure the Cloud Scheduler API is enabled.
 gcloud services enable cloudscheduler.googleapis.com
 ```
 
-You also need an App Engine application in your project (even if you are not targeting App Engine). Cloud Scheduler requires it for the region configuration.
+You only need an App Engine application in your project if you are creating an App Engine HTTP target. For HTTP and Pub/Sub targets, you can create Cloud Scheduler jobs in supported Cloud Scheduler regions without an App Engine app.
 
 ```bash
-# Create an App Engine app if you do not have one
+# Create an App Engine app only if you need an App Engine HTTP target
 gcloud app create --region=us-central
 ```
 
@@ -44,7 +44,7 @@ Click "Create Job" and fill in the following:
 
 For an HTTP target, you will also need:
 - The URL to call
-- The HTTP method (GET, POST, PUT, DELETE)
+- The HTTP method (GET, POST, PUT, DELETE, HEAD)
 - Optional headers and body
 - Authentication configuration (OAuth token or OIDC token)
 
@@ -55,7 +55,7 @@ Click "Create" and your job is ready.
 The command line approach is faster and scriptable. Here is how to create an HTTP target job.
 
 ```bash
-# Create a scheduler job that sends a POST request every hour
+# Create a scheduler job that sends a GET request every hour
 gcloud scheduler jobs create http hourly-health-check \
   --location=us-central1 \
   --schedule="0 * * * *" \
@@ -73,9 +73,9 @@ For authenticated endpoints, add a service account.
 gcloud scheduler jobs create http trigger-dataflow \
   --location=us-central1 \
   --schedule="0 3 * * *" \
-  --uri="https://dataflow.googleapis.com/v1b3/projects/my-project/locations/us-central1/templates:launch" \
+  --uri="https://dataflow.googleapis.com/v1b3/projects/my-project/locations/us-central1/templates:launch?gcsPath=gs://dataflow-templates-us-central1/latest/Word_Count" \
   --http-method=POST \
-  --message-body='{"jobName": "nightly-etl", "parameters": {"input": "gs://data/input", "output": "gs://data/output"}}' \
+  --message-body='{"jobName": "nightly-etl", "parameters": {"inputFile": "gs://data/input.txt", "output": "gs://data/output/wordcount"}}' \
   --oauth-service-account-email=scheduler-sa@my-project.iam.gserviceaccount.com \
   --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
   --time-zone="America/New_York"
