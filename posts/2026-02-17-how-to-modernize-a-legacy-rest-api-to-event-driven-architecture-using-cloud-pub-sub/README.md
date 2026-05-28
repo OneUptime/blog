@@ -18,7 +18,7 @@ Consider a typical e-commerce order API:
 # The synchronous monolithic approach - everything in one request handler
 
 @app.route("/api/orders", methods=["POST"])
-def create_order(request):
+def create_order():
     order_data = request.json
 
     # Step 1: Validate the order
@@ -56,7 +56,7 @@ Problems with this approach:
 
 ## The Event-Driven Alternative
 
-With event-driven architecture, the order API does only two things: validate the order and publish an event. Everything else happens asynchronously.
+With event-driven architecture, the order API validates the order, saves it, and publishes an event. Everything else happens asynchronously.
 
 ```mermaid
 graph LR
@@ -78,6 +78,11 @@ Create the messaging infrastructure:
 # Create a topic for order events
 gcloud pubsub topics create order-events
 
+# Create a dead letter topic for failed messages
+gcloud pubsub topics create order-events-dlq
+gcloud pubsub subscriptions create order-events-dlq-monitor \
+  --topic order-events-dlq
+
 # Create subscriptions - one for each downstream service
 # Each subscription gets its own copy of every message
 
@@ -87,6 +92,19 @@ gcloud pubsub subscriptions create payment-processing \
   --ack-deadline 60 \
   --dead-letter-topic order-events-dlq \
   --max-delivery-attempts 5
+
+# Grant the Pub/Sub service agent permission to forward dead-lettered messages
+PROJECT_ID=$(gcloud config get-value project)
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+PUBSUB_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud pubsub topics add-iam-policy-binding order-events-dlq \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.publisher"
+
+gcloud pubsub subscriptions add-iam-policy-binding payment-processing \
+  --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role="roles/pubsub.subscriber"
 
 # Inventory update subscription
 gcloud pubsub subscriptions create inventory-update \
@@ -113,28 +131,24 @@ gcloud pubsub subscriptions create analytics-recording \
   --topic order-events \
   --ack-deadline 30
 
-# Create a dead letter topic for failed messages
-gcloud pubsub topics create order-events-dlq
-gcloud pubsub subscriptions create order-events-dlq-monitor \
-  --topic order-events-dlq
 ```
 
 ## Step 2 - Refactor the Order API
 
-The order API now validates the request and publishes an event:
+The order API now validates the request, saves the order, and publishes an event:
 
 ```python
 # Refactored order API - fast and focused
 from google.cloud import pubsub_v1
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 publisher = pubsub_v1.PublisherClient()
 topic_path = publisher.topic_path('my-project', 'order-events')
 
 @app.route("/api/orders", methods=["POST"])
-def create_order(request):
+def create_order():
     order_data = request.json
 
     # Step 1: Validate the order (still synchronous - this is fast)
@@ -150,25 +164,26 @@ def create_order(request):
         "items": order_data["items"],
         "total": calculate_total(order_data["items"]),
         "status": "pending",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
     save_order_to_db(order)
 
-    # Step 3: Publish the event (async - returns immediately)
+    # Step 3: Publish the event
     event = {
         "event_type": "order.created",
         "event_id": str(uuid.uuid4()),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": order
     }
-    publisher.publish(
+    future = publisher.publish(
         topic_path,
         json.dumps(event).encode('utf-8'),
         event_type="order.created",
         order_id=order_id
     )
+    future.result(timeout=10)
 
-    # Response time: <100ms instead of 5-7 seconds
+    # Response time: much faster than 5-7 seconds
     return jsonify({
         "order_id": order_id,
         "status": "pending",
@@ -226,6 +241,7 @@ def process_payment(message):
 
 # Start listening for messages
 streaming_pull = subscriber.subscribe(subscription_path, callback=process_payment)
+streaming_pull.result()
 ```
 
 ### Email Notification Service
@@ -287,11 +303,27 @@ def update_search(message):
 Instead of long-running pull subscribers, use Pub/Sub push subscriptions with Cloud Run services:
 
 ```bash
+PROJECT_ID=$(gcloud config get-value project)
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+PUBSUB_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+PUSH_SERVICE_ACCOUNT="pubsub-invoker@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# Grant the push service account permission to invoke the Cloud Run service
+gcloud run services add-iam-policy-binding email-service \
+  --region us-central1 \
+  --member "serviceAccount:${PUSH_SERVICE_ACCOUNT}" \
+  --role roles/run.invoker
+
+# Grant the Pub/Sub service agent permission to mint tokens for authenticated push
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+  --role roles/iam.serviceAccountTokenCreator
+
 # Create a push subscription that sends messages to a Cloud Run service
 gcloud pubsub subscriptions create email-push \
   --topic order-events \
   --push-endpoint https://email-service-abc123-uc.a.run.app/handle-event \
-  --push-auth-service-account pubsub-invoker@my-project.iam.gserviceaccount.com
+  --push-auth-service-account "$PUSH_SERVICE_ACCOUNT"
 ```
 
 The Cloud Run service receives events as HTTP POST requests:
