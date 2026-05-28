@@ -14,13 +14,13 @@ Setting a max instances limit gives you a safety net. It caps how many instances
 
 ## The Cost Risk
 
-Let me put this in concrete numbers. Say your Cloud Run service uses 1 vCPU and 512 MiB of memory per instance. Without a max instances limit, Cloud Run can scale to 1000 instances (the default maximum). If all 1000 instances run for just one hour:
+Let me put this in concrete numbers. Say your Cloud Run service uses 1 vCPU and 512 MiB of memory per instance. Without setting a lower max instances limit, Cloud Run can scale up to the maximum allowed by your regional CPU and memory quotas, which can be 1000 instances or more. If all 1000 instances run while processing requests for just one hour:
 
 - 1000 instances x 1 vCPU x 3600 seconds = 3,600,000 vCPU-seconds
-- At roughly $0.000024 per vCPU-second = about $86 per hour
-- If the spike lasts 8 hours, that is around $690
+- At roughly $0.000018 per vCPU-second plus $0.000002 per GiB-second of memory in Tier 1 regions = about $68 per hour
+- If the spike lasts 8 hours, that is around $550
 
-That is for a single service. If you have multiple services scaling simultaneously, the numbers add up fast. A max instances limit of 50 instead of 1000 would cap that same hour at about $4.30.
+That is for a single service. If you have multiple services scaling simultaneously, the numbers add up fast. A max instances limit of 50 instead of 1000 would cap that same hour at about $3.40.
 
 ## Setting Max Instances
 
@@ -32,12 +32,12 @@ That is for a single service. If you have multiple services scaling simultaneous
 gcloud run deploy my-service \
   --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/my-app:latest \
   --region=us-central1 \
-  --max-instances=50
+  --max=50
 
 # Update an existing service
 gcloud run services update my-service \
   --region=us-central1 \
-  --max-instances=50
+  --max=50
 ```
 
 ### Using Service YAML
@@ -48,12 +48,11 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: my-service
+  annotations:
+    # Limit to 50 instances maximum
+    run.googleapis.com/maxScale: "50"
 spec:
   template:
-    metadata:
-      annotations:
-        # Limit to 50 instances maximum
-        autoscaling.knative.dev/maxScale: "50"
     spec:
       containers:
         - image: us-central1-docker.pkg.dev/MY_PROJECT/my-repo/my-app:latest
@@ -71,12 +70,12 @@ resource "google_cloud_run_v2_service" "my_service" {
   name     = "my-service"
   location = "us-central1"
 
-  template {
-    scaling {
-      min_instance_count = 0
-      max_instance_count = 50
-    }
+  scaling {
+    min_instance_count = 0
+    max_instance_count = 50
+  }
 
+  template {
     containers {
       image = "us-central1-docker.pkg.dev/my-project/my-repo/my-app:latest"
       resources {
@@ -126,15 +125,15 @@ Work backward from your budget:
 
 ```bash
 # Monthly budget: $100
-# Cost per instance per hour (1 vCPU, 512 MiB): ~$0.086/hour
+# Cost per instance per hour (1 vCPU, 512 MiB): ~$0.068/hour
 # Hours in a month: 730
-# Max instances running 24/7: $100 / ($0.086 x 730) = ~1.6
+# Max instances running 24/7: $100 / ($0.068 x 730) = ~2
 
 # But instances do not run 24/7 - assume 20% average utilization:
-# Max instances: $100 / ($0.086 x 730 x 0.2) = ~8 instances
+# Max instances: $100 / ($0.068 x 730 x 0.2) = ~10 instances
 ```
 
-So a budget of $100/month supports roughly 8 max instances assuming 20% average utilization.
+So a budget of $100/month supports roughly 10 max instances assuming 20% average utilization.
 
 ### Common Baselines
 
@@ -150,7 +149,7 @@ Here are starting points for different service types:
 
 ## What Happens When You Hit the Limit
 
-When Cloud Run reaches the max instances limit and all instances are at full concurrency, new requests queue up. If the queue gets too long, requests start receiving 429 (Too Many Requests) errors.
+When Cloud Run reaches the max instances limit and all instances are at full concurrency, new requests queue up for a limited time. If no instance becomes available during that window, requests start receiving 429 (Too Many Requests) errors.
 
 The request flow looks like this:
 
@@ -178,7 +177,7 @@ def call_service_with_retry(url, payload, max_retries=3):
 
         if response.status_code == 429:
             # Service is at capacity - back off and retry
-            wait_time = (2 ** attempt) + 1  # 2s, 5s, 9s
+            wait_time = (2 ** attempt) + 1  # 2s, 3s, 5s
             print(f"Service at capacity, retrying in {wait_time}s (attempt {attempt + 1})")
             time.sleep(wait_time)
             continue
@@ -197,8 +196,8 @@ Max instances works best when combined with other scaling controls:
 gcloud run deploy my-service \
   --image=us-central1-docker.pkg.dev/MY_PROJECT/my-repo/my-app:latest \
   --region=us-central1 \
-  --min-instances=1 \
-  --max-instances=50 \
+  --min=1 \
+  --max=50 \
   --concurrency=80 \
   --cpu=1 \
   --memory=512Mi
@@ -210,8 +209,8 @@ gcloud run deploy my-service \
 
 These three settings together define your scaling envelope:
 
-- Minimum throughput: `min-instances x concurrency` requests
-- Maximum throughput: `max-instances x concurrency` requests
+- Minimum concurrent capacity: `min-instances x concurrency` requests
+- Maximum concurrent capacity: `max-instances x concurrency` requests
 - With concurrency 80 and max instances 50: up to 4,000 concurrent requests
 
 ## Setting Up Budget Alerts
@@ -223,22 +222,22 @@ Max instances is your first line of defense. Budget alerts are your second:
 gcloud billing budgets create \
   --billing-account=BILLING_ACCOUNT_ID \
   --display-name="Cloud Run Budget" \
-  --budget-amount=100 \
-  --threshold-rules=percent=50 \
-  --threshold-rules=percent=80 \
-  --threshold-rules=percent=100
+  --budget-amount=100USD \
+  --threshold-rule=percent=0.50 \
+  --threshold-rule=percent=0.80 \
+  --threshold-rule=percent=1.00
 ```
 
 You can also set up alerts on the instance count metric:
 
 ```bash
-# Create an alert when instance count exceeds a threshold
-gcloud alpha monitoring policies create \
+# Create an alert when instance count exceeds a threshold for 5 minutes
+gcloud monitoring policies create \
   --display-name="High Instance Count Alert" \
   --condition-display-name="Cloud Run instances > 40" \
   --condition-filter='resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/container/instance_count"' \
-  --condition-threshold-value=40 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --duration=300s \
+  --if="> 40"
 ```
 
 ## Per-Service Limits
@@ -249,17 +248,17 @@ Set different limits for different services based on their importance and cost p
 # Critical production API - higher limit
 gcloud run services update production-api \
   --region=us-central1 \
-  --max-instances=100
+  --max=100
 
 # Internal tooling - lower limit
 gcloud run services update internal-tool \
   --region=us-central1 \
-  --max-instances=5
+  --max=5
 
 # Background worker - moderate limit
 gcloud run services update worker \
   --region=us-central1 \
-  --max-instances=20
+  --max=20
 ```
 
 ## Monitoring Scaling Behavior
@@ -267,11 +266,11 @@ gcloud run services update worker \
 Track how your service scales to know if your limits are appropriate:
 
 ```bash
-# View instance count over time
+# View recent autoscaling-related log entries
 gcloud logging read '
   resource.type="cloud_run_revision"
   AND resource.labels.service_name="my-service"
-  AND metric.type="run.googleapis.com/container/instance_count"
+  AND textPayload:"Starting new instance"
 ' --limit=20
 
 # Check for 429 errors (indicates hitting the limit)
@@ -292,7 +291,7 @@ If a traffic spike is hitting your limit and causing 429 errors for legitimate u
 # Temporarily increase the limit
 gcloud run services update my-service \
   --region=us-central1 \
-  --max-instances=200
+  --max=200
 ```
 
 After the spike, lower it back:
@@ -301,7 +300,7 @@ After the spike, lower it back:
 # Return to normal limit
 gcloud run services update my-service \
   --region=us-central1 \
-  --max-instances=50
+  --max=50
 ```
 
 ## Summary
