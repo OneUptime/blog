@@ -23,18 +23,22 @@ Before optimizing, you need to measure. Gemini provides a token counting API tha
 This code measures token usage for different prompt strategies:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
+from google.genai import types
 
 # Initialize Vertex AI
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=types.HttpOptions(api_version="v1"),
+)
 
-vertexai.init(project="your-project-id", location="us-central1")
-
-model = GenerativeModel("gemini-2.0-flash")
+model_id = "gemini-2.0-flash"
 
 def count_and_report(label, content):
     """Count tokens and report the result."""
-    token_count = model.count_tokens(content)
+    token_count = client.models.count_tokens(model=model_id, contents=content)
     print(f"{label}: {token_count.total_tokens:,} tokens")
     return token_count.total_tokens
 
@@ -60,7 +64,7 @@ The fastest win is cutting unnecessary words from your instructions. Models do n
 Here is a before-and-after comparison:
 
 ```python
-# Before: 89 tokens of instruction
+# Before: verbose instruction
 before = """
 Hello! I am working on a project and I would really appreciate your help.
 Could you please analyze the following server log entries and identify any
@@ -73,7 +77,7 @@ Server logs:
 {logs}
 """
 
-# After: 27 tokens of instruction - same result quality
+# After: concise instruction with the same output structure
 after = """Analyze these server logs. For each error or warning:
 1. Severity (critical/warning/info)
 2. Likely cause
@@ -124,7 +128,7 @@ print(f"Token savings: {savings:.0f}%")
 
 ## Technique 3 - Use Structured Input Formats
 
-Structured formats like JSON or key-value pairs are more token-efficient than natural language for conveying data.
+Structured formats like JSON or key-value pairs can be more token-efficient than natural language for conveying data.
 
 ```python
 # Natural language format - more tokens
@@ -193,26 +197,30 @@ count_and_report("2 examples", optimized_examples)
 
 ## Technique 5 - Cache and Reuse Context
 
-When multiple requests share the same context (like a document being queried repeatedly), use Gemini's context caching feature to avoid resending the same tokens.
+When multiple requests share the same context (like a document being queried repeatedly), use Gemini's context caching feature to avoid sending the same content in every request.
 
 ```python
-from vertexai.preview import caching
+from google.genai import types
 
 # Cache a large document that will be queried multiple times
 with open("technical_manual.txt", "r") as f:
     manual_content = f.read()
 
 # Create a cached content object
-cached_content = caching.CachedContent.create(
-    model_name="gemini-2.0-flash",
-    contents=[manual_content],
-    display_name="technical-manual-cache",
-    # Cache expires after 1 hour
-    ttl="3600s"
+cached_content = client.caches.create(
+    model=model_id,
+    config=types.CreateCachedContentConfig(
+        contents=[
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=manual_content)],
+            )
+        ],
+        display_name="technical-manual-cache",
+        # Cache expires after 1 hour
+        ttl="3600s",
+    ),
 )
-
-# Use the cached content for multiple queries - no need to resend the document
-model_with_cache = GenerativeModel.from_cached_content(cached_content)
 
 # Each query now only sends the question, not the full document
 queries = [
@@ -222,7 +230,11 @@ queries = [
 ]
 
 for query in queries:
-    response = model_with_cache.generate_content(query)
+    response = client.models.generate_content(
+        model=model_id,
+        contents=query,
+        config=types.GenerateContentConfig(cached_content=cached_content.name),
+    )
     print(f"Q: {query}")
     print(f"A: {response.text[:200]}...")
     print()
@@ -233,10 +245,10 @@ for query in queries:
 Unnecessary long outputs waste tokens too. Set appropriate max_output_tokens and instruct the model to be concise.
 
 ```python
-from vertexai.generative_models import GenerationConfig
+from google.genai import types
 
 # Configure generation to limit output tokens
-config = GenerationConfig(
+config = types.GenerateContentConfig(
     max_output_tokens=256,   # Limit response length
     temperature=0.2,         # Lower temperature for more focused output
 )
@@ -251,7 +263,11 @@ Category: [category]
 Priority: [low/medium/high]
 Suggested response: [brief response]"""
 
-response = model.generate_content(prompt, generation_config=config)
+response = client.models.generate_content(
+    model=model_id,
+    contents=prompt,
+    config=config,
+)
 print(response.text)
 ```
 
@@ -271,14 +287,17 @@ logs = [
 
 # Bad: 5 separate calls (5x base overhead)
 # for log in logs:
-#     response = model.generate_content(f"Classify this log: {log}")
+#     response = client.models.generate_content(
+#         model=model_id,
+#         contents=f"Classify this log: {log}",
+#     )
 
 # Good: 1 batched call
 batched_prompt = "Classify each log entry below. For each, give severity and category.\n\n"
 for i, log in enumerate(logs, 1):
     batched_prompt += f"{i}. {log}\n"
 
-response = model.generate_content(batched_prompt)
+response = client.models.generate_content(model=model_id, contents=batched_prompt)
 print(response.text)
 ```
 
@@ -295,8 +314,14 @@ class TokenTracker:
 
     def track(self, prompt, response):
         """Record token usage for a request."""
-        input_tokens = model.count_tokens(prompt).total_tokens
-        output_tokens = model.count_tokens(response.text).total_tokens
+        input_tokens = client.models.count_tokens(
+            model=model_id,
+            contents=prompt,
+        ).total_tokens
+        output_tokens = client.models.count_tokens(
+            model=model_id,
+            contents=response.text,
+        ).total_tokens
 
         self.requests.append({
             "input_tokens": input_tokens,
@@ -316,4 +341,4 @@ class TokenTracker:
 
 ## Wrapping Up
 
-Token efficiency is about getting the same quality output with fewer tokens. The techniques here - trimming instructions, compressing context, using structured formats, optimizing examples, caching, controlling output, and batching - can reduce your token usage by 40-60% in most applications. Measure your baseline, apply these techniques, and track the improvement. Use monitoring tools like OneUptime to keep an eye on your API costs and latency as you optimize.
+Token efficiency is about getting the same quality output with fewer tokens. The techniques here - trimming instructions, compressing context, using structured formats, optimizing examples, caching, controlling output, and batching - can often reduce token usage in long-context applications. Measure your baseline, apply these techniques, and track the improvement. Use monitoring tools like OneUptime to keep an eye on your API costs and latency as you optimize.
