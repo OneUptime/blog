@@ -20,7 +20,7 @@ Standard is the default and most expensive per-GB storage class, but it has no r
 
 **Pricing (US multi-region):**
 - Storage: ~$0.026 per GB/month
-- Class A operations (writes): $0.05 per 10,000
+- Class A operations (writes): $0.10 per 10,000
 - Class B operations (reads): $0.004 per 10,000
 - Retrieval: Free
 
@@ -31,8 +31,8 @@ Standard is the default and most expensive per-GB storage class, but it has no r
 Nearline is for data you access less than once a month. It costs less to store but adds a per-GB retrieval fee.
 
 **Pricing (US multi-region):**
-- Storage: ~$0.010 per GB/month
-- Class A operations: $0.10 per 10,000
+- Storage: ~$0.015 per GB/month
+- Class A operations: $0.20 per 10,000
 - Class B operations: $0.01 per 10,000
 - Retrieval: $0.01 per GB
 - Minimum storage duration: 30 days
@@ -45,8 +45,8 @@ Coldline targets data you access less than once per quarter. Lower storage cost,
 
 **Pricing (US multi-region):**
 - Storage: ~$0.007 per GB/month
-- Class A operations: $0.10 per 10,000
-- Class B operations: $0.05 per 10,000
+- Class A operations: $0.40 per 10,000
+- Class B operations: $0.10 per 10,000
 - Retrieval: $0.02 per GB
 - Minimum storage duration: 90 days
 
@@ -57,8 +57,8 @@ Coldline targets data you access less than once per quarter. Lower storage cost,
 Archive is the cheapest storage available on GCP. It is meant for data you rarely if ever access but need to retain.
 
 **Pricing (US multi-region):**
-- Storage: ~$0.0012 per GB/month
-- Class A operations: $0.50 per 10,000
+- Storage: ~$0.0024 per GB/month
+- Class A operations: $1.00 per 10,000
 - Class B operations: $0.50 per 10,000
 - Retrieval: $0.05 per GB
 - Minimum storage duration: 365 days
@@ -72,9 +72,9 @@ Let me put this in perspective with a concrete example. Say you store 10 TB and 
 ```mermaid
 graph TD
     A[10 TB Storage<br/>1% monthly access] --> B[Standard<br/>$260/month storage<br/>$0 retrieval<br/>Total: ~$260/month]
-    A --> C[Nearline<br/>$100/month storage<br/>$1 retrieval<br/>Total: ~$101/month]
+    A --> C[Nearline<br/>$150/month storage<br/>$1 retrieval<br/>Total: ~$151/month]
     A --> D[Coldline<br/>$70/month storage<br/>$2 retrieval<br/>Total: ~$72/month]
-    A --> E[Archive<br/>$12/month storage<br/>$5 retrieval<br/>Total: ~$17/month]
+    A --> E[Archive<br/>$24/month storage<br/>$5 retrieval<br/>Total: ~$29/month]
 ```
 
 The savings are massive, but only if your access pattern matches the storage class.
@@ -153,7 +153,7 @@ gcloud storage buckets create gs://my-autoclass-bucket \
   --enable-autoclass
 ```
 
-Autoclass observes access patterns and transitions objects automatically. Frequently accessed objects move to Standard, and untouched objects gradually move to Nearline, Coldline, and eventually Archive.
+Autoclass observes access patterns and transitions objects automatically. Frequently accessed objects move to Standard, and untouched objects move to Nearline by default. If you configure Archive as the terminal storage class, untouched objects can continue to Coldline and eventually Archive.
 
 The trade-off is a small management fee and slightly less control. But for buckets with mixed or unpredictable access patterns, Autoclass often does a better job than manual rules.
 
