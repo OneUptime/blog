@@ -8,7 +8,7 @@ Description: Learn how to configure Google Cloud Storage buckets with regional a
 
 ---
 
-Data durability is one of those things you do not think about until something goes wrong. Google Cloud Storage offers 99.999999999% (eleven nines) annual durability, which means if you store a million objects, you can statistically expect to lose one every 10 million years. But this durability guarantee depends on how you configure your buckets - the storage location, redundancy settings, and lifecycle policies all play a role.
+Data durability is one of those things you do not think about until something goes wrong. Google Cloud Storage offers 99.999999999% (eleven nines) annual durability, which means if you store a million objects, the statistical expectation is roughly one lost object every 100,000 years. That durability is built into Cloud Storage, but your bucket configuration - the storage location, redundancy settings, versioning, retention, and lifecycle policies - determines how well your data survives real-world events like regional outages, accidental deletes, and overwrites.
 
 This guide covers the practical decisions you need to make when configuring Cloud Storage buckets for different durability and availability requirements.
 
@@ -18,9 +18,9 @@ Cloud Storage offers three types of locations, and each provides different level
 
 A regional bucket stores data in a single geographic region, like `us-central1`. Your data is replicated across multiple zones within that region, so it survives individual zone failures. This is the right choice when your data is consumed primarily by services in the same region.
 
-A dual-region bucket stores data in two specific regions that you choose, like `us-central1` and `us-east1`. Data is replicated synchronously across both regions, giving you protection against a full regional outage.
+A dual-region bucket stores data in two specific regions, like `us-central1` and `us-east1`. Data is replicated asynchronously across both regions, giving you protection against a full regional outage.
 
-A multi-region bucket stores data across a large geographic area - `US`, `EU`, or `ASIA`. Google automatically manages replication across multiple regions within that area. This gives you the highest availability for globally distributed workloads.
+A multi-region bucket stores data across a large geographic area - `US`, `EU`, or `ASIA`. Google automatically manages replication across multiple regions within that area. This gives you high availability for geographically distributed workloads.
 
 ```mermaid
 graph TD
@@ -30,7 +30,7 @@ graph TD
         R1 --- R3
     end
     subgraph Dual-Region
-        D1[Region 1<br/>us-central1] <-->|Sync Replication| D2[Region 2<br/>us-east1]
+        D1[Region 1<br/>us-central1] <-->|Async Replication| D2[Region 2<br/>us-east1]
     end
     subgraph Multi-Region
         M1[Region 1] <--> M2[Region 2]
@@ -61,8 +61,9 @@ gcloud storage buckets create gs://my-project-app-data \
   --location=us-central1 \
   --default-storage-class=STANDARD \
   --uniform-bucket-level-access \
-  --enable-versioning \
-  --public-access-prevention=enforced
+  --public-access-prevention
+
+gcloud storage buckets update gs://my-project-app-data --versioning
 ```
 
 Enabling versioning is important for durability. It means accidental overwrites or deletes do not destroy data - previous versions are preserved.
@@ -76,8 +77,9 @@ For data that needs to be highly available across a continent, use a multi-regio
 gcloud storage buckets create gs://my-project-global-assets \
   --location=US \
   --default-storage-class=STANDARD \
-  --uniform-bucket-level-access \
-  --enable-versioning
+  --uniform-bucket-level-access
+
+gcloud storage buckets update gs://my-project-global-assets --versioning
 ```
 
 Multi-regional buckets have higher storage costs but provide automatic geo-redundancy and lower latency for geographically distributed consumers.
@@ -89,11 +91,12 @@ Dual-region gives you a middle ground - you choose exactly which two regions hol
 ```bash
 # Create a dual-region bucket with turbo replication
 gcloud storage buckets create gs://my-project-critical-data \
-  --location=us-central1+us-east1 \
+  --location=NAM4 \
   --default-storage-class=STANDARD \
   --uniform-bucket-level-access \
-  --enable-versioning \
-  --placement=us-central1,us-east1
+  --rpo=ASYNC_TURBO
+
+gcloud storage buckets update gs://my-project-critical-data --versioning
 ```
 
 With turbo replication enabled, newly written objects reach both regions within 15 minutes (the Recovery Point Objective or RPO). Without turbo replication, the default RPO is 12 hours for dual-region and multi-region buckets.
@@ -152,7 +155,7 @@ Apply the lifecycle configuration.
 gsutil lifecycle set lifecycle.json gs://my-project-app-data
 ```
 
-This configuration keeps the 5 most recent non-current versions and deletes anything non-current older than 30 days.
+This configuration deletes non-current versions once there are at least 5 newer versions, and also deletes non-current versions older than 30 days.
 
 ## Storage Class Transitions
 
@@ -197,7 +200,7 @@ Not all data needs to stay in the most expensive storage class. Use lifecycle ru
 }
 ```
 
-This moves objects through Standard to Nearline (30 days), Coldline (90 days), and Archive (365 days). The durability remains the same across all storage classes - only the access latency and pricing change.
+This moves objects through Standard to Nearline (30 days), Coldline (90 days), and Archive (365 days). The durability remains the same across all storage classes, but availability SLAs, minimum storage durations, retrieval fees, and pricing differ.
 
 ## Object Retention and Holds
 
@@ -227,12 +230,13 @@ Set up monitoring to track your storage usage and detect potential issues.
 
 ```bash
 # Create an alert for sudden drops in object count (potential mass deletion)
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="Storage Object Count Alert" \
   --condition-display-name="Object count dropped significantly" \
   --condition-filter='resource.type="gcs_bucket" AND metric.type="storage.googleapis.com/storage/object_count"' \
-  --condition-threshold-value=1000 \
-  --condition-threshold-comparison=COMPARISON_LT
+  --if="< 1000" \
+  --duration=5m \
+  --combiner=OR
 ```
 
 ## Choosing the Right Configuration
