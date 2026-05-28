@@ -36,20 +36,20 @@ bq mk --dataset \
   my-billing-project:gcp_billing_export
 ```
 
-Make sure the dataset location matches where you want to run your queries. US or EU multi-region are common choices.
+Make sure the dataset location matches where you want to run your queries. US or EU multi-region are common choices, and they also affect whether Cloud Billing can backfill data from the start of the previous month.
 
 ## Step 2: Enable Billing Export
 
-You need Billing Account Administrator permissions for this step.
+For standard or detailed usage cost exports, you need either Billing Account Costs Manager or Billing Account Administrator permissions on the billing account, plus BigQuery User permissions on the project that contains the dataset. For pricing export, you need Billing Account Administrator and BigQuery Admin permissions, and the BigQuery Data Transfer Service API must be enabled in the dataset project.
 
 ### Using the Cloud Console
 
 1. Go to Billing in the Cloud Console
 2. Select your billing account
 3. Click "Billing export" in the left sidebar
-4. You will see three export options:
-   - **Standard usage cost**: Daily cost data (free)
-   - **Detailed usage cost**: Includes resource-level details (free)
+4. You will see export options such as:
+   - **Standard usage cost**: Standard usage cost data
+   - **Detailed usage cost**: Includes resource-level details
    - **Pricing**: Export pricing data
 5. For each export you want, click "Edit Settings"
 6. Select your project and dataset
@@ -58,18 +58,18 @@ You need Billing Account Administrator permissions for this step.
 ### Using the gcloud CLI
 
 ```bash
-# Enable standard billing export to BigQuery
+# Show details for a billing account
 gcloud billing accounts describe BILLING_ACCOUNT_ID \
   --format="value(name)"
 
-# Note: Billing export setup is primarily done through the Console
-# But you can verify the configuration via the API
-gcloud beta billing accounts get-iam-policy BILLING_ACCOUNT_ID
+# Note: Cloud Billing export setup is done through the Console.
+# You can use gcloud to check the IAM policy on the billing account.
+gcloud billing accounts get-iam-policy BILLING_ACCOUNT_ID
 ```
 
 ## Step 3: Wait for Data to Populate
 
-After enabling the export, it takes a few hours for data to start appearing. The export is not retroactive by default - you will only get data from the point of enablement forward. However, Google does backfill up to about 30-45 days of historical data for standard exports.
+After enabling the export, it takes a few hours for data to start appearing. If you enable standard or detailed usage cost export to a dataset in the US or EU multi-region, Google Cloud makes data available retroactively from the start of the previous month, and the initial backfill can take up to five days. If you use a supported regional dataset location, billing data starts from the date you enabled the export.
 
 You can check if data has arrived:
 
