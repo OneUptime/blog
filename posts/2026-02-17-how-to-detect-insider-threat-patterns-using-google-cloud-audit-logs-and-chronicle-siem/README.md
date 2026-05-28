@@ -14,7 +14,7 @@ Google Cloud's audit logs capture the raw data you need, and Chronicle SIEM give
 
 ## Ingesting Audit Logs into Chronicle
 
-First, get your GCP audit logs flowing into Chronicle. The simplest method is through the Google Cloud integration:
+First, get your GCP audit logs flowing into Chronicle. Google SecOps can ingest supported Google Cloud logs directly, and a Pub/Sub-based feed is also common when you need an explicit export pipeline:
 
 ```hcl
 # chronicle-ingestion.tf
@@ -23,17 +23,17 @@ First, get your GCP audit logs flowing into Chronicle. The simplest method is th
 
 # Create a dedicated log sink for Chronicle
 resource "google_logging_organization_sink" "chronicle" {
-  name             = "audit-logs-to-chronicle"
-  org_id           = var.org_id
-  destination      = "pubsub.googleapis.com/projects/${var.security_project}/topics/${google_pubsub_topic.chronicle_ingest.name}"
-  include_children = true
+  name                   = "audit-logs-to-chronicle"
+  org_id                 = var.org_id
+  destination            = "pubsub.googleapis.com/projects/${var.security_project}/topics/${google_pubsub_topic.chronicle_ingest.name}"
+  include_children       = true
+  unique_writer_identity = true
 
   filter = <<-EOT
-    logName:"logs/cloudaudit.googleapis.com"
-    OR logName:"logs/cloudaudit.googleapis.com%2Fdata_access"
-    OR logName:"logs/cloudaudit.googleapis.com%2Factivity"
-    OR logName:"logs/cloudaudit.googleapis.com%2Fsystem_event"
-    OR logName:"logs/cloudaudit.googleapis.com%2Fpolicy"
+    log_id("cloudaudit.googleapis.com/activity")
+    OR log_id("cloudaudit.googleapis.com/data_access")
+    OR log_id("cloudaudit.googleapis.com/system_event")
+    OR log_id("cloudaudit.googleapis.com/policy")
   EOT
 }
 
@@ -42,10 +42,17 @@ resource "google_pubsub_topic" "chronicle_ingest" {
   project = var.security_project
 }
 
+resource "google_pubsub_topic_iam_member" "chronicle_sink_writer" {
+  project = var.security_project
+  topic   = google_pubsub_topic.chronicle_ingest.name
+  role    = "roles/pubsub.publisher"
+  member  = google_logging_organization_sink.chronicle.writer_identity
+}
+
 # Chronicle pulls from this subscription
 resource "google_pubsub_subscription" "chronicle_sub" {
   name    = "chronicle-ingest-sub"
-  topic   = google_pubsub_topic.chronicle_ingest.name
+  topic   = google_pubsub_topic.chronicle_ingest.id
   project = var.security_project
 
   ack_deadline_seconds = 600
@@ -105,8 +112,8 @@ rule insider_self_privilege_escalation {
     $event.target.application = "cloudresourcemanager.googleapis.com"
 
     // The actor and the granted principal are the same person
-    $event.principal.user.email_addresses = $actor
-    $event.target.user.email_addresses = $actor
+    $event.principal.user.email_addresses = $user
+    $event.target.user.email_addresses = $user
 
     // The granted role is privileged
     (
@@ -117,7 +124,7 @@ rule insider_self_privilege_escalation {
     )
 
   match:
-    $actor over 1h
+    $user over 1h
 
   outcome:
     $risk_score = 90
@@ -180,11 +187,11 @@ rule insider_manual_sa_key_creation {
     $event.metadata.product_event_type = "google.iam.admin.v1.CreateServiceAccountKey"
 
     // The actor is a human user, not a service account
-    $event.principal.user.email_addresses = $actor
+    $event.principal.user.email_addresses = $user
     not $event.principal.user.email_addresses = /.*gserviceaccount\.com$/
 
   match:
-    $actor over 24h
+    $user over 24h
 
   outcome:
     $risk_score = 75
@@ -215,8 +222,8 @@ rule insider_after_hours_activity {
     // Outside business hours (adjust timezone as needed)
     // 0-7 and 20-23 in UTC (adjust for your timezone)
     (
-      $event.metadata.event_timestamp.hours < 7 or
-      $event.metadata.event_timestamp.hours > 20
+      timestamp.get_hour($event.metadata.event_timestamp.seconds, "UTC") < 7 or
+      timestamp.get_hour($event.metadata.event_timestamp.seconds, "UTC") > 20
     )
 
   match:
@@ -248,27 +255,25 @@ rule insider_threat_correlation {
 
   events:
     // Look for any detection matches from our other rules
-    $detection.metadata.event_type = "DETECTION"
-
     (
-      $detection.security_result.rule_name = "insider_self_privilege_escalation" or
-      $detection.security_result.rule_name = "insider_abnormal_download_volume" or
-      $detection.security_result.rule_name = "insider_manual_sa_key_creation" or
-      $detection.security_result.rule_name = "insider_after_hours_activity"
+      $detection.detection.detection.rule_name = "insider_self_privilege_escalation" or
+      $detection.detection.detection.rule_name = "insider_abnormal_download_volume" or
+      $detection.detection.detection.rule_name = "insider_manual_sa_key_creation" or
+      $detection.detection.detection.rule_name = "insider_after_hours_activity"
     )
 
-    $detection.principal.user.email_addresses = $user
+    $user = $detection.detection.detection.detection_fields["user"]
 
   match:
     $user over 24h
 
   outcome:
-    $indicator_count = count_distinct($detection.security_result.rule_name)
+    $indicator_count = count_distinct($detection.detection.detection.rule_name)
     $risk_score = 95
 
   condition:
     // At least 3 different indicator types for the same user
-    $indicator_count >= 3
+    #detection >= 3 and $indicator_count >= 3
 }
 ```
 
@@ -312,9 +317,6 @@ When an insider threat alert fires, you need a structured response:
 ```python
 # insider_response.py
 # Automated first-response actions for insider threat detections
-from google.cloud import iam_admin_v1
-from google.cloud import compute_v1
-import json
 
 def handle_insider_alert(alert_data):
     """Execute first-response actions based on risk score."""
@@ -351,6 +353,26 @@ def preserve_evidence(user_email):
     # Export all logs related to this user
     # Store in a locked forensics bucket
     print(f"Preserving evidence for {user_email}")
+
+
+def restrict_network_access(user_email):
+    """Apply temporary network restrictions for the user."""
+    print(f"Restricting network access for {user_email}")
+
+
+def enable_detailed_logging(user_email):
+    """Enable enhanced monitoring for the user."""
+    print(f"Enabling detailed logging for {user_email}")
+
+
+def notify_security_team(user_email, severity, indicators):
+    """Notify the security team with alert context."""
+    print(f"Notifying security team: {severity} alert for {user_email}: {indicators}")
+
+
+def create_investigation_ticket(user_email, indicators):
+    """Create a ticket for follow-up investigation."""
+    print(f"Creating investigation ticket for {user_email}: {indicators}")
 ```
 
 ## Wrapping Up
