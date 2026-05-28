@@ -42,7 +42,7 @@ Before you can reduce toil, you need to know where it is. Create a toil tracking
 # toil_tracker.py - Track and measure operational toil
 
 from google.cloud import bigquery, firestore
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 bq_client = bigquery.Client()
@@ -53,7 +53,7 @@ def log_toil_event(event):
     Team members log these as they encounter repetitive operational work."""
 
     record = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "engineer": event["engineer"],
         "task_description": event["description"],
         "category": event["category"],  # e.g., "restart", "scaling", "cert_rotation", "data_fix"
@@ -65,8 +65,8 @@ def log_toil_event(event):
     }
 
     # Store in BigQuery for analysis
-    table_ref = bq_client.dataset("sre_metrics").table("toil_events")
-    bq_client.insert_rows_json(table_ref, [record])
+    table_id = "your-project.sre_metrics.toil_events"
+    bq_client.insert_rows_json(table_id, [record])
 
     # Also store in Firestore for the team dashboard
     db.collection("toil_events").add(record)
@@ -93,14 +93,14 @@ Create BigQuery views to analyze toil patterns:
 -- Weekly toil summary by category
 CREATE OR REPLACE VIEW `your-project.sre_metrics.weekly_toil_summary` AS
 SELECT
-    DATE_TRUNC(PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%S', timestamp), WEEK) AS week,
+    TIMESTAMP_TRUNC(TIMESTAMP(timestamp), WEEK) AS week,
     category,
     COUNT(*) AS occurrence_count,
     SUM(duration_minutes) AS total_minutes,
     COUNT(DISTINCT engineer) AS engineers_affected,
     COUNT(DISTINCT service) AS services_affected,
     -- Calculate annualized cost (assuming all occurrences continue at same rate)
-    SUM(duration_minutes) * 52 / COUNT(DISTINCT DATE(PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%S', timestamp))) AS annualized_minutes
+    SUM(duration_minutes) * 365 / COUNT(DISTINCT DATE(TIMESTAMP(timestamp))) AS annualized_minutes
 FROM `your-project.sre_metrics.toil_events`
 GROUP BY 1, 2
 ORDER BY total_minutes DESC;
@@ -121,7 +121,7 @@ SELECT
         2
     ) AS roi_ratio
 FROM `your-project.sre_metrics.toil_events`
-WHERE PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%S', timestamp)
+WHERE TIMESTAMP(timestamp)
     > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
 AND automatable = TRUE
 GROUP BY 1, 2, 3
@@ -141,9 +141,40 @@ from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 secret_client = secretmanager.SecretManagerServiceClient()
+
+def generate_new_certificate(service_name):
+    """Generate a short-lived self-signed certificate for demonstration.
+    In production, replace this with your CA or Certificate Authority Service flow."""
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, service_name),
+    ])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.now(timezone.utc))
+        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=90))
+        .add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(service_name)]),
+            critical=False,
+        )
+        .sign(key, hashes.SHA256())
+    )
+
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+    key_pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    return cert_pem, key_pem
 
 @functions_framework.http
 def rotate_certificates(request):
@@ -152,13 +183,13 @@ def rotate_certificates(request):
 
     project_id = "your-project-id"
     certificates_to_check = [
-        {"secret_name": "api-tls-cert", "service": "api-service"},
-        {"secret_name": "web-tls-cert", "service": "web-service"},
+        {"cert_secret_name": "api-tls-cert", "key_secret_name": "api-tls-key", "service": "api-service"},
+        {"cert_secret_name": "web-tls-cert", "key_secret_name": "web-tls-key", "service": "web-service"},
     ]
 
     results = []
     for cert_info in certificates_to_check:
-        secret_name = f"projects/{project_id}/secrets/{cert_info['secret_name']}/versions/latest"
+        secret_name = f"projects/{project_id}/secrets/{cert_info['cert_secret_name']}/versions/latest"
 
         try:
             # Get the current certificate
@@ -167,17 +198,22 @@ def rotate_certificates(request):
 
             # Parse and check expiry
             cert = x509.load_pem_x509_certificate(cert_pem)
-            days_until_expiry = (cert.not_valid_after_utc - datetime.utcnow()).days
+            days_until_expiry = (cert.not_valid_after_utc - datetime.now(timezone.utc)).days
 
             if days_until_expiry < 30:
                 # Generate a new certificate
                 new_cert, new_key = generate_new_certificate(cert_info["service"])
 
                 # Store in Secret Manager as a new version
-                parent = f"projects/{project_id}/secrets/{cert_info['secret_name']}"
+                cert_parent = f"projects/{project_id}/secrets/{cert_info['cert_secret_name']}"
                 secret_client.add_secret_version(
-                    parent=parent,
+                    parent=cert_parent,
                     payload={"data": new_cert},
+                )
+                key_parent = f"projects/{project_id}/secrets/{cert_info['key_secret_name']}"
+                secret_client.add_secret_version(
+                    parent=key_parent,
+                    payload={"data": new_key},
                 )
 
                 results.append({
@@ -228,10 +264,10 @@ def cleanup_disks(request):
     Targets log files, temp files, and old artifacts."""
 
     # Query Cloud Monitoring for instances with high disk usage
-    query_client = monitoring_v3.QueryServiceClient()
+    metric_client = monitoring_v3.MetricServiceClient()
 
     # Find instances where disk usage is above 80%
-    # In practice, use MQL or the Monitoring API to query disk metrics
+    # In practice, use Cloud Monitoring's time series API or PromQL to query disk metrics
 
     actions_taken = []
 
@@ -274,7 +310,7 @@ def cleanup_disks(request):
 Manual scaling is pure toil. Replace it with autoscaling policies:
 
 ```bash
-# Configure Cloud Run autoscaling based on metrics
+# Configure Cloud Run autoscaling limits and request concurrency
 gcloud run services update my-service \
     --min-instances=2 \
     --max-instances=100 \
@@ -345,6 +381,8 @@ main:
             next: handle_high_memory
           - condition: ${alert.condition_name == "certificate_expiring"}
             next: handle_cert_expiry
+          - condition: true
+            next: end
 
     - handle_high_error_rate:
         steps:
@@ -367,6 +405,7 @@ main:
                           url: https://hooks.slack.com/services/YOUR/WEBHOOK
                           body:
                             text: "Auto-rollback triggered due to high error rate after recent deploy"
+        next: end
 
     - handle_high_memory:
         steps:
@@ -381,7 +420,16 @@ main:
               args:
                 url: https://hooks.slack.com/services/YOUR/WEBHOOK
                 body:
-                  text: "Auto-restarted ${alert.resource_name} due to high memory usage"
+                  text: ${"Auto-restarted " + alert.resource_name + " due to high memory usage"}
+        next: end
+
+    - handle_cert_expiry:
+        steps:
+          - rotate_cert:
+              call: http.post
+              args:
+                url: https://REGION-PROJECT.cloudfunctions.net/rotate-certificates
+        next: end
 ```
 
 ## Step 6: Track Toil Reduction Over Time
@@ -392,7 +440,7 @@ Measure the impact of your automation efforts:
 -- Track toil reduction over time
 -- Compare automated vs manual toil events
 SELECT
-    DATE_TRUNC(PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%S', timestamp), MONTH) AS month,
+    TIMESTAMP_TRUNC(TIMESTAMP(timestamp), MONTH) AS month,
     COUNTIF(engineer != 'automation') AS manual_toil_events,
     COUNTIF(engineer = 'automation') AS automated_events,
     SUM(IF(engineer != 'automation', duration_minutes, 0)) AS manual_toil_minutes,
