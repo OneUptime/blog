@@ -38,18 +38,24 @@ First, create a Vertex AI Search datastore for your legal documents:
 ```bash
 # Enable Vertex AI Search
 
-gcloud services enable discoveryengine.googleapis.com
+gcloud services enable discoveryengine.googleapis.com aiplatform.googleapis.com documentai.googleapis.com
 
 # Create a GCS bucket for document storage
-gsutil mb -l us-central1 gs://YOUR_PROJECT-legal-documents
+gcloud storage buckets create gs://YOUR_PROJECT-legal-documents --location=us-central1
 ```
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import discoveryengine_v1 as discoveryengine
 
 def create_legal_datastore(project_id, location="global"):
     """Create a Vertex AI Search datastore for legal documents"""
-    client = discoveryengine.DataStoreServiceClient()
+    client_options = (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
+    client = discoveryengine.DataStoreServiceClient(client_options=client_options)
 
     datastore = discoveryengine.DataStore(
         display_name="Legal Document Repository",
@@ -76,32 +82,55 @@ def create_legal_datastore(project_id, location="global"):
 Process and ingest documents into the search datastore:
 
 ```python
-from google.cloud import documentai_v1
-from google.cloud import storage
+from google.api_core.client_options import ClientOptions
+from google.cloud import discoveryengine_v1 as discoveryengine
+from google.genai import Client
+from google.genai import types
 import json
 
-def ingest_contract(project_id, file_path, metadata):
+def ingest_contract(project_id, gcs_uri, text_content, metadata, location="global"):
     """Process and ingest a legal document"""
 
-    # Step 1: Extract text with Document AI
-    text_content = extract_document_text(project_id, file_path)
+    # Step 1: Pre-process the document with Gemini to extract structure
+    structure = extract_document_structure(text_content, project_id)
 
-    # Step 2: Pre-process the document with Gemini to extract structure
-    structure = extract_document_structure(text_content)
+    # Step 2: Upload the original file from Cloud Storage to Vertex AI Search
+    operation = import_document_from_gcs(project_id, location, gcs_uri)
+    return {"structure": structure, "metadata": metadata, "operation": operation.operation.name}
 
-    # Step 3: Upload to Vertex AI Search
-    upload_to_datastore(project_id, file_path, text_content, structure, metadata)
+def import_document_from_gcs(project_id, location, gcs_uri):
+    """Import an unstructured document into Vertex AI Search from Cloud Storage"""
+    client_options = (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
+    client = discoveryengine.DocumentServiceClient(client_options=client_options)
+    parent = client.branch_path(
+        project=project_id,
+        location=location,
+        data_store="legal-documents",
+        branch="default_branch",
+    )
 
-def extract_document_structure(text_content):
+    request = discoveryengine.ImportDocumentsRequest(
+        parent=parent,
+        gcs_source=discoveryengine.GcsSource(
+            input_uris=[gcs_uri],
+            data_schema="content",
+        ),
+        reconciliation_mode=discoveryengine.ImportDocumentsRequest.ReconciliationMode.INCREMENTAL,
+    )
+
+    return client.import_documents(request=request)
+
+def extract_document_structure(text_content, project_id="your-project-id"):
     """Use Gemini to identify the structure of a legal document"""
-    import vertexai
-    from vertexai.generative_models import GenerativeModel
+    client = Client(vertexai=True, project=project_id, location="us-central1")
 
-    vertexai.init(project="your-project-id", location="us-central1")
-    model = GenerativeModel("gemini-1.5-pro")
-
-    response = model.generate_content(
-        f"""Analyze this legal document and extract its structure.
+    response = client.models.generate_content(
+        model="gemini-2.5-pro",
+        contents=f"""Analyze this legal document and extract its structure.
 
 Document:
 {text_content[:10000]}
@@ -117,7 +146,11 @@ Identify:
 Output as JSON with fields: document_type, parties (array),
 effective_date, expiry_date, sections (array of {{title, summary}}),
 governing_law.""",
-        generation_config={"temperature": 0.1, "max_output_tokens": 2000},
+        config=types.GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=2000,
+            response_mime_type="application/json",
+        ),
     )
 
     try:
@@ -131,14 +164,14 @@ governing_law.""",
 The core of the system - Gemini-powered analysis of legal documents:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google.genai import Client
+from google.genai import types
 import json
 
 class LegalAnalyzer:
     def __init__(self, project_id):
-        vertexai.init(project=project_id, location="us-central1")
-        self.model = GenerativeModel("gemini-1.5-pro")
+        self.client = Client(vertexai=True, project=project_id, location="us-central1")
+        self.model = "gemini-2.5-pro"
 
     def analyze_contract(self, contract_text):
         """Run comprehensive analysis on a contract"""
@@ -153,8 +186,9 @@ class LegalAnalyzer:
 
     def analyze_clauses(self, contract_text):
         """Identify and analyze key clauses"""
-        response = self.model.generate_content(
-            f"""You are a legal analyst. Review this contract and identify
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=f"""You are a legal analyst. Review this contract and identify
 all key clauses. For each clause, provide:
 
 1. Clause type (indemnification, limitation of liability, termination,
@@ -168,7 +202,11 @@ Contract:
 
 Output as JSON array with fields: clause_type, original_text (first 200 chars),
 summary, is_standard (boolean), concerns (array of strings).""",
-            generation_config={"temperature": 0.1, "max_output_tokens": 4000},
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=4000,
+                response_mime_type="application/json",
+            ),
         )
 
         try:
@@ -178,8 +216,9 @@ summary, is_standard (boolean), concerns (array of strings).""",
 
     def assess_risks(self, contract_text):
         """Identify potential legal risks in the contract"""
-        response = self.model.generate_content(
-            f"""You are a risk-focused legal reviewer. Analyze this contract
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=f"""You are a risk-focused legal reviewer. Analyze this contract
 for potential risks. Consider:
 
 1. One-sided clauses that heavily favor one party
@@ -196,7 +235,11 @@ Contract:
 
 Output as JSON array with fields: risk_description, severity,
 affected_clause, recommendation.""",
-            generation_config={"temperature": 0.1, "max_output_tokens": 3000},
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=3000,
+                response_mime_type="application/json",
+            ),
         )
 
         try:
@@ -206,8 +249,9 @@ affected_clause, recommendation.""",
 
     def extract_obligations(self, contract_text):
         """Extract all obligations and commitments from the contract"""
-        response = self.model.generate_content(
-            f"""Extract all obligations and commitments from this contract.
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=f"""Extract all obligations and commitments from this contract.
 For each obligation, identify:
 
 1. Which party has the obligation
@@ -221,7 +265,11 @@ Contract:
 
 Output as JSON array with fields: obligated_party, obligation_description,
 deadline, consequence, survives_termination (boolean).""",
-            generation_config={"temperature": 0.1, "max_output_tokens": 3000},
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=3000,
+                response_mime_type="application/json",
+            ),
         )
 
         try:
@@ -231,8 +279,9 @@ deadline, consequence, survives_termination (boolean).""",
 
     def extract_key_terms(self, contract_text):
         """Extract key commercial and legal terms"""
-        response = self.model.generate_content(
-            f"""Extract the key terms from this contract:
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=f"""Extract the key terms from this contract:
 
 1. Payment terms (amounts, schedule, currency)
 2. Duration and renewal terms
@@ -247,7 +296,11 @@ Contract:
 {contract_text[:15000]}
 
 Output as JSON with descriptive field names for each term found.""",
-            generation_config={"temperature": 0.1, "max_output_tokens": 2000},
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=2000,
+                response_mime_type="application/json",
+            ),
         )
 
         try:
@@ -258,17 +311,21 @@ Output as JSON with descriptive field names for each term found.""",
 
 ## Contract Comparison
 
-Compare two contracts to identify differences:
+Add the comparison method to `LegalAnalyzer` to identify differences:
 
 ```python
-def compare_contracts(self, contract_a_text, contract_b_text, focus_areas=None):
-    """Compare two contracts and highlight differences"""
-    focus = ""
-    if focus_areas:
-        focus = f"Focus particularly on these areas: {', '.join(focus_areas)}"
+class LegalAnalyzer:
+    # ... existing methods ...
 
-    response = self.model.generate_content(
-        f"""Compare these two contracts and identify all significant differences.
+    def compare_contracts(self, contract_a_text, contract_b_text, focus_areas=None):
+        """Compare two contracts and highlight differences"""
+        focus = ""
+        if focus_areas:
+            focus = f"Focus particularly on these areas: {', '.join(focus_areas)}"
+
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=f"""Compare these two contracts and identify all significant differences.
 
 CONTRACT A:
 {contract_a_text[:8000]}
@@ -287,13 +344,17 @@ For each difference, provide:
 
 Output as JSON array with fields: topic, contract_a_position,
 contract_b_position, more_favorable_to, risk_implication.""",
-        generation_config={"temperature": 0.1, "max_output_tokens": 4000},
-    )
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=4000,
+                response_mime_type="application/json",
+            ),
+        )
 
-    try:
-        return json.loads(response.text)
-    except json.JSONDecodeError:
-        return {"raw": response.text}
+        try:
+            return json.loads(response.text)
+        except json.JSONDecodeError:
+            return {"raw": response.text}
 ```
 
 ## Search Integration
@@ -301,14 +362,20 @@ contract_b_position, more_favorable_to, risk_implication.""",
 Build the search functionality using Vertex AI Search:
 
 ```python
+from google.api_core.client_options import ClientOptions
 from google.cloud import discoveryengine_v1 as discoveryengine
 
-def search_legal_documents(project_id, query, filters=None):
+def search_legal_documents(project_id, query, filters=None, location="global"):
     """Search across the legal document repository"""
-    client = discoveryengine.SearchServiceClient()
+    client_options = (
+        ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+        if location != "global"
+        else None
+    )
+    client = discoveryengine.SearchServiceClient(client_options=client_options)
 
     serving_config = (
-        f"projects/{project_id}/locations/global/"
+        f"projects/{project_id}/locations/{location}/"
         f"collections/default_collection/dataStores/legal-documents/"
         f"servingConfigs/default_search"
     )
@@ -317,6 +384,7 @@ def search_legal_documents(project_id, query, filters=None):
         serving_config=serving_config,
         query=query,
         page_size=10,
+        filter=filters or "",
         # Enable extractive answers for direct clause retrieval
         content_search_spec=discoveryengine.SearchRequest.ContentSearchSpec(
             extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
@@ -334,13 +402,11 @@ def search_legal_documents(project_id, query, filters=None):
     results = []
     for result in response.results:
         doc = result.document
+        snippets = doc.derived_struct_data.get("snippets", [])
         results.append({
             "document_id": doc.id,
             "title": doc.derived_struct_data.get("title", ""),
-            "snippets": [
-                s.snippet for s in result.document.derived_struct_data.get("snippets", [])
-            ],
-            "relevance_score": result.relevance_score if hasattr(result, 'relevance_score') else None,
+            "snippets": [s.get("snippet", "") for s in snippets],
         })
 
     return results
