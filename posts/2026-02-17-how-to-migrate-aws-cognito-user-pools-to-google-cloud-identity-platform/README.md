@@ -34,7 +34,7 @@ Cognito lets you export user data (but not password hashes). Export all user pro
 
 aws cognito-idp list-users \
   --user-pool-id us-east-1_abc123 \
-  --limit 60 \
+  --page-size 60 \
   --query 'Users[*].{
     Username:Username,
     Email:Attributes[?Name==`email`].Value|[0],
@@ -99,18 +99,35 @@ Enable Identity Platform and configure your authentication providers.
 
 ```bash
 # Enable the Identity Platform API
-gcloud services enable identitytoolkit.googleapis.com
+PROJECT_ID="my-project"
 
-# Enable multi-tenancy if needed (equivalent to multiple Cognito User Pools)
-gcloud identity-platform config update \
-  --enable-multi-tenancy
+gcloud services enable identitytoolkit.googleapis.com \
+  --project="${PROJECT_ID}"
 
-# Configure email/password sign-in
-gcloud identity-platform config update \
-  --enable-email-sign-in
+# Initialize Identity Platform for the project
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://identitytoolkit.googleapis.com/v2/projects/${PROJECT_ID}/identityPlatform:initializeAuth"
+
+# Configure email/password sign-in and enable multi-tenancy if needed
+curl -X PATCH \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT_ID}/config?updateMask=signIn.email,multiTenant.allowTenants" \
+  -d '{
+    "signIn": {
+      "email": {
+        "enabled": true,
+        "passwordRequired": true
+      }
+    },
+    "multiTenant": {
+      "allowTenants": true
+    }
+  }'
 ```
 
-Configure additional identity providers through the Cloud Console or using the Admin SDK.
+Configure additional identity providers through the Cloud Console or the Identity Platform REST API.
 
 ## Step 3: Import Users to Identity Platform
 
@@ -259,7 +276,7 @@ async function signIn(email, password) {
     return token;
   } catch (error) {
     // If user has not been password-migrated, try lazy migration
-    if (error.code === 'auth/wrong-password') {
+    if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
       const migrated = await lazyMigratePassword(email, password);
       if (migrated) {
         return signIn(email, password);
@@ -280,16 +297,15 @@ Cognito uses Lambda triggers for custom authentication flows. Identity Platform 
 | Post Confirmation | Cloud Function triggered by auth event |
 | Pre Authentication | beforeSignIn blocking function |
 | Post Authentication | Cloud Function triggered by auth event |
-| Custom Message | Custom SMTP/SMS provider |
-| Pre Token Generation | beforeSignIn blocking function (custom claims) |
+| Custom Message | Email templates / custom SMTP and SMS templates |
+| Pre Token Generation | beforeSignIn blocking function (session claims) |
 
 ```python
 # Identity Platform blocking function (equivalent to Cognito Pre Sign-up trigger)
-from firebase_admin import auth
 from firebase_functions import identity_fn
 
 @identity_fn.before_user_created()
-def validate_new_user(event):
+def validate_new_user(event: identity_fn.AuthBlockingEvent) -> identity_fn.BeforeCreateResponse | None:
     """Block sign-ups from non-company email domains."""
     email = event.data.email
     if email and not email.endswith('@company.com'):
@@ -297,7 +313,7 @@ def validate_new_user(event):
             code='invalid-argument',
             message='Only company.com emails are allowed'
         )
-    return event
+    return None
 ```
 
 ## Step 7: Validate the Migration
