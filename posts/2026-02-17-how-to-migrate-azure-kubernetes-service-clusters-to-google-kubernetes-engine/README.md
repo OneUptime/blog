@@ -239,10 +239,10 @@ metadata:
 
 ## Step 5: Set Up Workload Identity
 
-AKS uses Azure AD Pod Identity or Workload Identity. GKE uses GKE Workload Identity.
+AKS uses Azure AD Pod Identity or Workload Identity. GKE uses Workload Identity Federation for GKE.
 
 ```bash
-# Create a GCP service account
+# Create a Google Cloud IAM service account
 gcloud iam service-accounts create my-app-ksa \
   --display-name="My App Kubernetes SA"
 
@@ -279,13 +279,19 @@ For StatefulSets with persistent volumes, you need to migrate the data.
 # Option 1: Application-level backup and restore
 # Use your application's backup tools (e.g., pg_dump for PostgreSQL)
 
-# Option 2: Volume snapshot and restore
-# Export data from AKS PV to a file, upload to GCS, import to GKE PV
+# Option 2: File-level export and restore
+# Export data from the AKS PV to a file and upload it to GCS
 kubectl exec -n my-namespace my-statefulset-0 -- \
   tar czf /tmp/data-backup.tar.gz /data
 
 kubectl cp my-namespace/my-statefulset-0:/tmp/data-backup.tar.gz ./data-backup.tar.gz
 gsutil cp ./data-backup.tar.gz gs://my-migration-bucket/data-backup.tar.gz
+
+# After the GKE StatefulSet is running with its new PVC, restore into the GKE pod
+gsutil cp gs://my-migration-bucket/data-backup.tar.gz ./data-backup.tar.gz
+kubectl cp ./data-backup.tar.gz my-namespace/my-statefulset-0:/tmp/data-backup.tar.gz
+kubectl exec -n my-namespace my-statefulset-0 -- \
+  tar xzf /tmp/data-backup.tar.gz -C /
 ```
 
 ## Step 7: Deploy to GKE
