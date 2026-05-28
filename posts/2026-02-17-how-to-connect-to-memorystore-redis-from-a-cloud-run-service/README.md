@@ -8,7 +8,7 @@ Description: Configure a Cloud Run service to connect to Memorystore for Redis u
 
 ---
 
-Cloud Run is serverless, and Memorystore Redis lives inside a VPC. These two facts create a gap that you need to bridge. Cloud Run services do not run inside your VPC by default - they run on Google's infrastructure and access the internet directly. To reach a Memorystore Redis instance, which only has a private IP, you need a Serverless VPC Access connector.
+Cloud Run is serverless, and Memorystore Redis lives inside a VPC. These two facts create a gap that you need to bridge. Cloud Run services do not run inside your VPC by default - they run on Google's infrastructure and access the internet directly. To reach a Memorystore Redis instance, which only has a private IP, configure VPC egress. Google now recommends Direct VPC egress for new Cloud Run services, but a Serverless VPC Access connector is still a supported option and is the approach shown in this post.
 
 I have set this up for multiple production services, and while the concept is simple, there are a few gotchas that can burn an hour of debugging. In this post, I will walk through the complete setup from creating the VPC connector to deploying a Cloud Run service that talks to Redis.
 
@@ -30,7 +30,7 @@ The VPC connector creates a bridge between the serverless Cloud Run environment 
 You will need:
 - A Memorystore Redis instance (already created)
 - The Serverless VPC Access API enabled
-- A subnet with available IP space for the connector
+- A non-overlapping /28 IP range, or a supported subnet, for the connector
 
 Enable the required API:
 
@@ -81,7 +81,7 @@ REDIS_HOST=$(gcloud redis instances describe my-redis \
   --format="value(host)")
 echo "Redis host: ${REDIS_HOST}"
 
-# Get the AUTH string if AUTH is enabled
+# Get the AUTH string only if AUTH is enabled; otherwise leave REDIS_AUTH unset
 REDIS_AUTH=$(gcloud redis instances get-auth-string my-redis \
   --region=us-central1 \
   --format="value(authString)")
@@ -153,7 +153,7 @@ def get_cache():
 @app.route("/api/cache", methods=["POST"])
 def set_cache():
     """Set a value in the cache with optional TTL."""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     key = data.get("key")
     value = data.get("value")
     ttl = data.get("ttl", 3600)
@@ -206,12 +206,14 @@ redis==5.0.1
 Build the container image and deploy to Cloud Run with the VPC connector:
 
 ```bash
-# Build the container image
-gcloud builds submit --tag gcr.io/my-project/cache-service
+# Build the container image. Replace my-project and my-repo with your project
+# and Artifact Registry repository.
+IMAGE_URI=us-central1-docker.pkg.dev/my-project/my-repo/cache-service
+gcloud builds submit --tag "${IMAGE_URI}"
 
 # Deploy to Cloud Run with the VPC connector attached
 gcloud run deploy cache-service \
-  --image=gcr.io/my-project/cache-service \
+  --image="${IMAGE_URI}" \
   --region=us-central1 \
   --platform=managed \
   --vpc-connector=redis-connector \
@@ -313,7 +315,7 @@ Choose a /28 range that does not overlap. Common choices: `10.8.0.0/28`, `10.9.0
 
 If Redis operations are slower than expected (above 5ms):
 
-- Check the VPC connector instances are not overloaded - scale up max-instances
+- Check the VPC connector instances are not overloaded - recreate the connector with a higher max-instances setting if needed
 - Ensure the Cloud Run service and Redis are in the same region
 - Monitor the connector throughput in Cloud Monitoring
 
@@ -327,7 +329,7 @@ echo -n "${REDIS_AUTH}" | gcloud secrets create redis-auth-string --data-file=-
 
 # Deploy with Secret Manager reference
 gcloud run deploy cache-service \
-  --image=gcr.io/my-project/cache-service \
+  --image="${IMAGE_URI}" \
   --region=us-central1 \
   --vpc-connector=redis-connector \
   --set-env-vars="REDIS_HOST=${REDIS_HOST}" \
@@ -336,4 +338,4 @@ gcloud run deploy cache-service \
 
 ## Wrapping Up
 
-Connecting Cloud Run to Memorystore Redis requires a VPC connector as the bridge between the serverless and VPC worlds. Create the connector, attach it to your Cloud Run service, and use connection pooling in your application. The setup takes a few extra steps compared to connecting from a VM, but once configured, your Cloud Run service gets the same sub-millisecond Redis performance as any other compute resource in the VPC.
+Connecting Cloud Run to Memorystore Redis requires VPC egress as the bridge between the serverless and VPC worlds. If you use a Serverless VPC Access connector, create the connector, attach it to your Cloud Run service, and use connection pooling in your application. The setup takes a few extra steps compared to connecting from a VM, but once configured, your Cloud Run service can reach Redis over its private IP with low latency.
