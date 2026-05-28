@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Resource Manager, Go, CLI, IAM, Google Cloud
 
-Description: Build a Go CLI tool that manages GCP projects, folders, and IAM policies using the Cloud Resource Manager client library for infrastructure automation.
+Description: Build a Go CLI tool that manages GCP projects and IAM policies using the Cloud Resource Manager client library for infrastructure automation.
 
 ---
 
 Managing GCP resources through the console works for small setups, but once you have dozens of projects across multiple folders, you need better tooling. Building a custom CLI with the Cloud Resource Manager client library gives you exactly what you need - tailored commands for your organization's workflows without the complexity of Terraform for simple operations.
 
-In this post, I will build a Go CLI tool that can list projects, manage IAM policies, and organize resources using the Cloud Resource Manager API.
+In this post, I will build a Go CLI tool that can list projects and manage IAM policies using the Cloud Resource Manager API.
 
 ## Setting Up
 
@@ -21,7 +21,6 @@ go mod init gcp-manager
 go get github.com/spf13/cobra
 go get cloud.google.com/go/resourcemanager/apiv3
 go get cloud.google.com/go/iam/apiv1/iampb
-go get google.golang.org/api/cloudresourcemanager/v3
 ```
 
 ## Project Structure
@@ -33,7 +32,6 @@ gcp-manager/
     root.go
     projects.go
     iam.go
-    folders.go
   internal/
     client.go
 ```
@@ -58,7 +56,6 @@ import (
 // GCPClient wraps the Resource Manager client libraries
 type GCPClient struct {
     projects *resourcemanager.ProjectsClient
-    folders  *resourcemanager.FoldersClient
 }
 
 // NewGCPClient creates a new client with all required API connections
@@ -68,22 +65,14 @@ func NewGCPClient(ctx context.Context) (*GCPClient, error) {
         return nil, fmt.Errorf("failed to create projects client: %w", err)
     }
 
-    foldersClient, err := resourcemanager.NewFoldersClient(ctx)
-    if err != nil {
-        projectsClient.Close()
-        return nil, fmt.Errorf("failed to create folders client: %w", err)
-    }
-
     return &GCPClient{
         projects: projectsClient,
-        folders:  foldersClient,
     }, nil
 }
 
 // Close cleans up all clients
 func (c *GCPClient) Close() {
     c.projects.Close()
-    c.folders.Close()
 }
 
 // ListProjects returns all projects under a given parent (org or folder)
@@ -164,7 +153,7 @@ import (
 var rootCmd = &cobra.Command{
     Use:   "gcp-manager",
     Short: "A CLI tool for managing GCP resources",
-    Long:  "gcp-manager helps you manage GCP projects, folders, and IAM policies from the command line.",
+    Long:  "gcp-manager helps you manage GCP projects and IAM policies from the command line.",
 }
 
 // Execute runs the root command
@@ -179,7 +168,6 @@ func init() {
     // Add subcommands
     rootCmd.AddCommand(projectsCmd)
     rootCmd.AddCommand(iamCmd)
-    rootCmd.AddCommand(foldersCmd)
 }
 ```
 
@@ -207,6 +195,7 @@ var projectsCmd = &cobra.Command{
 var listProjectsCmd = &cobra.Command{
     Use:   "list",
     Short: "List all projects",
+    Args:  cobra.NoArgs,
     RunE: func(cmd *cobra.Command, args []string) error {
         ctx := context.Background()
 
@@ -217,6 +206,9 @@ var listProjectsCmd = &cobra.Command{
         defer client.Close()
 
         parent, _ := cmd.Flags().GetString("parent")
+        if parent == "" {
+            return fmt.Errorf("parent is required")
+        }
 
         projects, err := client.ListProjects(ctx, parent)
         if err != nil {
@@ -294,7 +286,6 @@ import (
 
     "gcp-manager/internal"
     "github.com/spf13/cobra"
-    iampb "google.golang.org/genproto/googleapis/iam/v1"
 )
 
 var iamCmd = &cobra.Command{
@@ -379,12 +370,16 @@ func init() {
 ## IAM Client Methods
 
 ```go
-// Add these to internal/client.go
+// Add these to internal/client.go, and add this import:
+// iampb "cloud.google.com/go/iam/apiv1/iampb"
 
 // GetIAMPolicy retrieves the IAM policy for a project
 func (c *GCPClient) GetIAMPolicy(ctx context.Context, projectID string) (*iampb.Policy, error) {
     req := &iampb.GetIamPolicyRequest{
         Resource: fmt.Sprintf("projects/%s", projectID),
+        Options: &iampb.GetPolicyOptions{
+            RequestedPolicyVersion: 3,
+        },
     }
 
     policy, err := c.projects.GetIamPolicy(ctx, req)
@@ -428,6 +423,7 @@ func (c *GCPClient) AddIAMBinding(ctx context.Context, projectID, role, member s
     }
 
     // Set the updated policy
+    policy.Version = 3
     req := &iampb.SetIamPolicyRequest{
         Resource: fmt.Sprintf("projects/%s", projectID),
         Policy:   policy,
@@ -480,18 +476,12 @@ go build -o gcp-manager
 graph TD
     Root[gcp-manager] --> Projects[projects]
     Root --> IAM[iam]
-    Root --> Folders[folders]
 
     Projects --> List[list]
     Projects --> Search[search]
-    Projects --> Get[get]
 
     IAM --> GetPolicy[get-policy]
     IAM --> AddBinding[add-binding]
-    IAM --> RemoveBinding[remove-binding]
-
-    Folders --> ListFolders[list]
-    Folders --> Create[create]
 
     style Root fill:#4285F4,color:#fff
 ```
