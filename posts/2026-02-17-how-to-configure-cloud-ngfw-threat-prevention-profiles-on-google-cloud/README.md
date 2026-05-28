@@ -32,6 +32,7 @@ flowchart TD
 ```
 
 Available actions are:
+- **No override**: Use the default action associated with the threat signature
 - **DENY**: Block the traffic and log the event
 - **ALERT**: Allow the traffic but log it as a security event
 - **ALLOW**: Allow the traffic with no alert (effectively suppress the detection)
@@ -48,19 +49,21 @@ gcloud network-security security-profiles threat-prevention create detection-pro
     --location=global \
     --description="Detection-only profile for initial deployment"
 
-# Set all severities to ALERT (detection only, no blocking)
-gcloud network-security security-profiles threat-prevention update detection-profile \
+# Set severities to ALERT (detection only, no blocking)
+gcloud network-security security-profiles threat-prevention add-override detection-profile \
     --organization=123456789 \
     --location=global \
-    --severity-overrides=\
-severity=CRITICAL,action=ALERT,\
-severity=HIGH,action=ALERT,\
-severity=MEDIUM,action=ALERT,\
-severity=LOW,action=ALERT,\
-severity=INFORMATIONAL,action=ALLOW
+    --severities=CRITICAL,HIGH,MEDIUM,LOW \
+    --action=ALERT
+
+gcloud network-security security-profiles threat-prevention add-override detection-profile \
+    --organization=123456789 \
+    --location=global \
+    --severities=INFORMATIONAL \
+    --action=ALLOW
 ```
 
-This profile detects all threats but does not block anything. You will use this during the initial deployment phase to understand what threats exist in your environment.
+This profile alerts on critical, high, medium, and low severity threats but does not block anything. You will use this during the initial deployment phase to understand what threats exist in your environment.
 
 ## Step 2 - Create a Security Profile Group
 
@@ -77,7 +80,7 @@ gcloud network-security security-profile-groups create detection-group \
 
 ## Step 3 - Associate with Firewall Policy Rules
 
-Create firewall policy rules that route traffic through the NGFW for inspection.
+After you create and associate Cloud NGFW firewall endpoints for the zones where your workloads run, create firewall policy rules that send matching traffic to those endpoints for inspection.
 
 ```bash
 # Create a network firewall policy
@@ -94,6 +97,7 @@ gcloud compute network-firewall-policies rules create 100 \
     --security-profile-group=//networksecurity.googleapis.com/organizations/123456789/locations/global/securityProfileGroups/detection-group \
     --src-ip-ranges=0.0.0.0/0 \
     --layer4-configs=tcp:80,tcp:443,tcp:8080,tcp:8443 \
+    --enable-logging \
     --description="Inspect inbound web traffic"
 
 # Rule to inspect outbound traffic
@@ -105,6 +109,7 @@ gcloud compute network-firewall-policies rules create 200 \
     --security-profile-group=//networksecurity.googleapis.com/organizations/123456789/locations/global/securityProfileGroups/detection-group \
     --dest-ip-ranges=0.0.0.0/0 \
     --layer4-configs=tcp \
+    --enable-logging \
     --description="Inspect outbound traffic"
 
 # Rule to inspect east-west traffic
@@ -116,6 +121,7 @@ gcloud compute network-firewall-policies rules create 300 \
     --security-profile-group=//networksecurity.googleapis.com/organizations/123456789/locations/global/securityProfileGroups/detection-group \
     --src-ip-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
     --layer4-configs=all \
+    --enable-logging \
     --description="Inspect internal traffic for lateral movement"
 
 # Associate the policy with your VPC
@@ -134,8 +140,8 @@ After running in detection mode for 1-2 weeks, analyze the findings.
 ```bash
 # Query threat detections from Cloud Logging
 gcloud logging read \
-    'resource.type="gce_subnetwork" AND jsonPayload.rule_details.action="APPLY_SECURITY_PROFILE_GROUP"' \
-    --format="table(timestamp, jsonPayload.threat_details.threat_id, jsonPayload.threat_details.threat_name, jsonPayload.threat_details.severity, jsonPayload.connection.src_ip, jsonPayload.connection.dest_ip)" \
+    'logName="projects/my-project/logs/networksecurity.googleapis.com%2Ffirewall_threat"' \
+    --format="table(timestamp, jsonPayload.threat_id, jsonPayload.name, jsonPayload.alert_severity, jsonPayload.source_ip_address, jsonPayload.destination_ip_address)" \
     --limit=100
 ```
 
@@ -144,18 +150,17 @@ Export to BigQuery for deeper analysis:
 ```sql
 -- Summarize detected threats by severity and type
 SELECT
-    jsonPayload.threat_details.severity AS severity,
-    jsonPayload.threat_details.threat_name AS threat_name,
-    jsonPayload.threat_details.threat_id AS threat_id,
-    jsonPayload.threat_details.category AS category,
+    jsonPayload.alert_severity AS severity,
+    jsonPayload.name AS threat_name,
+    jsonPayload.threat_id AS threat_id,
+    jsonPayload.category AS category,
     COUNT(*) AS detection_count,
-    COUNT(DISTINCT jsonPayload.connection.src_ip) AS unique_sources,
-    COUNT(DISTINCT jsonPayload.connection.dest_ip) AS unique_targets
+    COUNT(DISTINCT jsonPayload.source_ip_address) AS unique_sources,
+    COUNT(DISTINCT jsonPayload.destination_ip_address) AS unique_targets
 FROM
-    `my_project.ngfw_logs.compute_googleapis_com_firewall`
+    `my_project.ngfw_logs.networksecurity_googleapis_com_firewall_threat_*`
 WHERE
-    jsonPayload.threat_details IS NOT NULL
-    AND _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY))
+    _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY))
 GROUP BY
     severity, threat_name, threat_id, category
 ORDER BY
@@ -172,17 +177,16 @@ ORDER BY
 ```sql
 -- Find potential false positives - threats from known-good internal sources
 SELECT
-    jsonPayload.threat_details.threat_name AS threat,
-    jsonPayload.threat_details.threat_id AS threat_id,
-    jsonPayload.connection.src_ip AS source,
-    jsonPayload.connection.dest_ip AS destination,
-    jsonPayload.connection.dest_port AS port,
+    jsonPayload.name AS threat,
+    jsonPayload.threat_id AS threat_id,
+    jsonPayload.source_ip_address AS source,
+    jsonPayload.destination_ip_address AS destination,
+    jsonPayload.destination_port AS port,
     COUNT(*) AS occurrences
 FROM
-    `my_project.ngfw_logs.compute_googleapis_com_firewall`
+    `my_project.ngfw_logs.networksecurity_googleapis_com_firewall_threat_*`
 WHERE
-    jsonPayload.threat_details IS NOT NULL
-    AND jsonPayload.connection.src_ip LIKE '10.%'  -- Internal traffic
+    jsonPayload.source_ip_address LIKE '10.%'  -- Internal traffic
     AND _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY))
 GROUP BY
     threat, threat_id, source, destination, port
@@ -204,25 +208,37 @@ gcloud network-security security-profiles threat-prevention create prevention-pr
     --description="Tuned prevention profile with false positive suppression"
 
 # Set severity-based actions
-gcloud network-security security-profiles threat-prevention update prevention-profile \
+gcloud network-security security-profiles threat-prevention add-override prevention-profile \
     --organization=123456789 \
     --location=global \
-    --severity-overrides=\
-severity=CRITICAL,action=DENY,\
-severity=HIGH,action=DENY,\
-severity=MEDIUM,action=ALERT,\
-severity=LOW,action=ALERT,\
-severity=INFORMATIONAL,action=ALLOW
+    --severities=CRITICAL,HIGH \
+    --action=DENY
+
+gcloud network-security security-profiles threat-prevention add-override prevention-profile \
+    --organization=123456789 \
+    --location=global \
+    --severities=MEDIUM,LOW \
+    --action=ALERT
+
+gcloud network-security security-profiles threat-prevention add-override prevention-profile \
+    --organization=123456789 \
+    --location=global \
+    --severities=INFORMATIONAL \
+    --action=ALLOW
 
 # Override specific threats that are false positives
 # These threat IDs come from your analysis in Step 4
-gcloud network-security security-profiles threat-prevention update prevention-profile \
+gcloud network-security security-profiles threat-prevention add-override prevention-profile \
     --organization=123456789 \
     --location=global \
-    --threat-overrides=\
-threat-id=41234,action=ALLOW,\
-threat-id=41235,action=ALLOW,\
-threat-id=52789,action=ALERT
+    --threat-ids=41234,41235 \
+    --action=ALLOW
+
+gcloud network-security security-profiles threat-prevention add-override prevention-profile \
+    --organization=123456789 \
+    --location=global \
+    --threat-ids=52789 \
+    --action=ALERT
 ```
 
 ## Step 6 - Gradual Rollout to Prevention Mode
@@ -246,6 +262,7 @@ gcloud compute network-firewall-policies rules create 150 \
     --src-ip-ranges=0.0.0.0/0 \
     --dest-ip-ranges=10.0.1.0/24 \
     --layer4-configs=tcp:80,tcp:443 \
+    --enable-logging \
     --description="Prevention mode - test subnet only"
 
 # Phase 3: After validation, expand to more subnets
@@ -263,15 +280,23 @@ gcloud network-security security-profiles threat-prevention create dmz-profile \
     --location=global \
     --description="Aggressive prevention for DMZ"
 
-gcloud network-security security-profiles threat-prevention update dmz-profile \
+gcloud network-security security-profiles threat-prevention add-override dmz-profile \
     --organization=123456789 \
     --location=global \
-    --severity-overrides=\
-severity=CRITICAL,action=DENY,\
-severity=HIGH,action=DENY,\
-severity=MEDIUM,action=DENY,\
-severity=LOW,action=ALERT,\
-severity=INFORMATIONAL,action=ALLOW
+    --severities=CRITICAL,HIGH,MEDIUM \
+    --action=DENY
+
+gcloud network-security security-profiles threat-prevention add-override dmz-profile \
+    --organization=123456789 \
+    --location=global \
+    --severities=LOW \
+    --action=ALERT
+
+gcloud network-security security-profiles threat-prevention add-override dmz-profile \
+    --organization=123456789 \
+    --location=global \
+    --severities=INFORMATIONAL \
+    --action=ALLOW
 
 # Conservative profile for internal services
 gcloud network-security security-profiles threat-prevention create internal-profile \
@@ -279,15 +304,23 @@ gcloud network-security security-profiles threat-prevention create internal-prof
     --location=global \
     --description="Conservative detection for internal traffic"
 
-gcloud network-security security-profiles threat-prevention update internal-profile \
+gcloud network-security security-profiles threat-prevention add-override internal-profile \
     --organization=123456789 \
     --location=global \
-    --severity-overrides=\
-severity=CRITICAL,action=DENY,\
-severity=HIGH,action=ALERT,\
-severity=MEDIUM,action=ALERT,\
-severity=LOW,action=ALLOW,\
-severity=INFORMATIONAL,action=ALLOW
+    --severities=CRITICAL \
+    --action=DENY
+
+gcloud network-security security-profiles threat-prevention add-override internal-profile \
+    --organization=123456789 \
+    --location=global \
+    --severities=HIGH,MEDIUM \
+    --action=ALERT
+
+gcloud network-security security-profiles threat-prevention add-override internal-profile \
+    --organization=123456789 \
+    --location=global \
+    --severities=LOW,INFORMATIONAL \
+    --action=ALLOW
 ```
 
 Create separate profile groups for each:
@@ -320,34 +353,47 @@ def get_current_overrides():
     """Get the current threat overrides from the profile."""
     result = subprocess.run(
         ["gcloud", "network-security", "security-profiles",
-         "threat-prevention", "describe", PROFILE_NAME,
+         "threat-prevention", "list-overrides", PROFILE_NAME,
          "--organization", ORG_ID, "--location", "global",
          "--format", "json"],
-        capture_output=True, text=True
+        capture_output=True, text=True, check=True
     )
-    profile = json.loads(result.stdout)
-    return profile.get("threatOverrides", [])
+    overrides = json.loads(result.stdout)
+
+    threat_ids = set()
+
+    def collect_threat_ids(value):
+        if isinstance(value, dict):
+            for key, nested_value in value.items():
+                if key in ("threatId", "threat_id", "threatIds", "threat_ids"):
+                    if isinstance(nested_value, list):
+                        threat_ids.update(str(item) for item in nested_value)
+                    else:
+                        threat_ids.add(str(nested_value))
+                else:
+                    collect_threat_ids(nested_value)
+        elif isinstance(value, list):
+            for item in value:
+                collect_threat_ids(item)
+
+    collect_threat_ids(overrides)
+    return threat_ids
 
 def add_override(threat_id, action, reason):
     """Add a threat override to suppress a false positive."""
     current = get_current_overrides()
 
     # Check if override already exists
-    for override in current:
-        if override.get("threatId") == str(threat_id):
-            print(f"Override for threat {threat_id} already exists")
-            return
-
-    # Build the override string
-    override_parts = [f"threat-id={o['threatId']},action={o['action']}" for o in current]
-    override_parts.append(f"threat-id={threat_id},action={action}")
-    override_str = ",".join(override_parts)
+    if str(threat_id) in current:
+        command = "update-override"
+    else:
+        command = "add-override"
 
     subprocess.run(
         ["gcloud", "network-security", "security-profiles",
-         "threat-prevention", "update", PROFILE_NAME,
+         "threat-prevention", command, PROFILE_NAME,
          "--organization", ORG_ID, "--location", "global",
-         "--threat-overrides", override_str],
+         "--threat-ids", str(threat_id), "--action", action],
         check=True
     )
     print(f"Added override: threat {threat_id} -> {action} (Reason: {reason})")
@@ -365,15 +411,13 @@ Track key metrics to understand how well your profiles are performing:
 -- Detection vs Prevention breakdown over time
 SELECT
     DATE(timestamp) AS date,
-    jsonPayload.threat_details.severity AS severity,
-    COUNTIF(jsonPayload.threat_details.action = 'DENY') AS blocked_count,
-    COUNTIF(jsonPayload.threat_details.action = 'ALERT') AS alerted_count,
-    COUNTIF(jsonPayload.threat_details.action = 'ALLOW') AS suppressed_count
+    jsonPayload.alert_severity AS severity,
+    COUNTIF(jsonPayload.action = 'DROP') AS blocked_count,
+    COUNTIF(jsonPayload.action != 'DROP') AS logged_count
 FROM
-    `my_project.ngfw_logs.compute_googleapis_com_firewall`
+    `my_project.ngfw_logs.networksecurity_googleapis_com_firewall_threat_*`
 WHERE
-    jsonPayload.threat_details IS NOT NULL
-    AND _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
+    _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
 GROUP BY
     date, severity
 ORDER BY
