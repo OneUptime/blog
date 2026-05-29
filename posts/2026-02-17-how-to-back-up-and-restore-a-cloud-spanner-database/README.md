@@ -104,10 +104,10 @@ gcloud spanner databases restore \
 
 The restore operation creates an entirely new database with all the data and schema from the backup. The time it takes depends on the database size. For a database with a few gigabytes, expect the restore to complete in minutes. For terabyte-scale databases, it could take several hours.
 
-You can restore to a different instance than the source, as long as it is in the same project and uses the same instance configuration:
+You can restore to a different instance than the source, as long as the destination instance is compatible with the backup. The destination instance must use the same or a higher-tier Spanner edition, or use the same instance configuration with the same or a higher-tier edition:
 
 ```bash
-# Restore to a different instance (same config required)
+# Restore to a different compatible instance
 gcloud spanner databases restore \
     --destination-database=my-database-copy \
     --source-backup=my-backup-20260217 \
@@ -142,51 +142,17 @@ Deleting backups you no longer need helps reduce storage costs.
 
 ## Automating Backups
 
-Spanner does not have a built-in backup schedule, so you need to set one up yourself. A common approach is to use Cloud Scheduler with a Cloud Function:
-
-```python
-import functions_framework
-from google.cloud import spanner_admin_database_v1
-from google.protobuf import timestamp_pb2
-from datetime import datetime, timedelta, timezone
-
-@functions_framework.http
-def create_backup(request):
-    """Cloud Function triggered by Cloud Scheduler to create daily backups."""
-
-    # Configure the backup details
-    client = spanner_admin_database_v1.DatabaseAdminClient()
-    instance_path = client.instance_path("my-project", "my-spanner-instance")
-
-    # Generate a backup ID with today's date
-    today = datetime.now(timezone.utc).strftime("%Y%m%d")
-    backup_id = f"daily-backup-{today}"
-
-    # Set expiration to 30 days from now
-    expire_time = datetime.now(timezone.utc) + timedelta(days=30)
-
-    # Create the backup
-    operation = client.create_backup(
-        parent=instance_path,
-        backup_id=backup_id,
-        backup={
-            "database": f"{instance_path}/databases/my-database",
-            "expire_time": expire_time,
-        }
-    )
-
-    return f"Backup {backup_id} creation started", 200
-```
-
-Then set up a Cloud Scheduler job to trigger this function daily:
+Spanner has built-in backup schedules, so you can set up recurring full or incremental backups directly on the database. A common approach is to create a daily full backup schedule:
 
 ```bash
-# Create a Cloud Scheduler job that runs daily at 2 AM UTC
-gcloud scheduler jobs create http daily-spanner-backup \
-    --schedule="0 2 * * *" \
-    --uri="https://REGION-my-project.cloudfunctions.net/create_backup" \
-    --http-method=POST \
-    --time-zone="UTC"
+# Create a daily full backup schedule that runs at 2 AM UTC
+gcloud spanner backup-schedules create daily-spanner-backup \
+    --instance=my-spanner-instance \
+    --database=my-database \
+    --retention-duration=30d \
+    --cron="0 2 * * *" \
+    --backup-type=full-backup \
+    --encryption-type=google-default-encryption
 ```
 
 ## Backup and Restore Architecture
@@ -207,7 +173,7 @@ flowchart TD
 
 Spanner backups are charged based on the amount of data stored, at a rate significantly lower than the cost of the live database. The key cost factors are:
 
-- Backup size (typically similar to the database size)
+- Backup size (which can be smaller or larger than the live database size)
 - Retention period (longer retention means more storage cost)
 - Number of concurrent backups
 
