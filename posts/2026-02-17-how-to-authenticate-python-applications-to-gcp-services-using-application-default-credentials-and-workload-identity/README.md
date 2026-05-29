@@ -17,7 +17,8 @@ ADC is a strategy that the Google Cloud client libraries use to find credentials
 1. The `GOOGLE_APPLICATION_CREDENTIALS` environment variable (if set)
 2. The user credentials set up by `gcloud auth application-default login`
 3. The attached service account (when running on GCP infrastructure)
-4. Workload Identity Federation credentials
+
+The file referenced by `GOOGLE_APPLICATION_CREDENTIALS` can be a Workload Identity Federation credential configuration file, a Workforce Identity Federation credential configuration file, or a service account key file.
 
 This means the same code runs locally with your personal credentials and in production with the appropriate service account - no code changes needed.
 
@@ -152,8 +153,9 @@ gcloud iam workload-identity-pools providers create-oidc "github-provider" \
     --location="global" \
     --workload-identity-pool="github-pool" \
     --display-name="GitHub Provider" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-    --issuer-uri="https://token.actions.githubusercontent.com"
+    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" \
+    --attribute-condition="assertion.repository_owner=='myorg'" \
+    --issuer-uri="https://token.actions.githubusercontent.com/"
 
 # Allow the GitHub repo to impersonate a service account
 gcloud iam service-accounts add-iam-policy-binding \
@@ -171,7 +173,8 @@ After setting up the federation, configure your Python application to use it.
 # external tokens for GCP access tokens
 import json
 
-# Create a credential configuration file
+# Create a credential configuration file. The credential_source file must contain
+# an OIDC subject token from your external workload platform.
 credential_config = {
     "type": "external_account",
     "audience": "//iam.googleapis.com/projects/PROJECT_NUM/locations/global/workloadIdentityPools/github-pool/providers/github-provider",
@@ -206,6 +209,7 @@ On GKE, Workload Identity maps Kubernetes service accounts to Google Cloud servi
 ```bash
 # Enable Workload Identity on the GKE cluster
 gcloud container clusters update my-cluster \
+    --location=us-central1 \
     --workload-pool=my-project.svc.id.goog
 
 # Create a Kubernetes service account
