@@ -12,7 +12,7 @@ Change data capture (CDC) is how you keep your analytics warehouse in sync with 
 
 ## What Datastream Does Under the Hood
 
-Datastream reads the MySQL binary log or PostgreSQL replication stream from your Cloud SQL instance. It captures every INSERT, UPDATE, and DELETE operation and writes the changes to BigQuery. The result is a BigQuery table that mirrors your operational database, usually with just a few seconds of lag.
+Datastream reads the MySQL binary log or PostgreSQL replication stream from your Cloud SQL instance. It captures every INSERT, UPDATE, and DELETE operation and writes the changes to BigQuery. Depending on the BigQuery write mode you choose, the result is either a table that mirrors your operational database or an append-only table of change events, usually with low replication lag.
 
 ```mermaid
 flowchart LR
@@ -47,9 +47,13 @@ gcloud sql instances patch my-postgres-instance \
 For MySQL:
 
 ```bash
-# Enable binary logging on Cloud SQL MySQL (usually enabled by default)
+# Enable binary logging on Cloud SQL MySQL by enabling point-in-time recovery
 gcloud sql instances patch my-mysql-instance \
-  --database-flags=log_bin=ON,binlog_format=ROW,binlog_row_image=FULL
+  --enable-bin-log
+
+# Configure Datastream-friendly MySQL flags
+gcloud sql instances patch my-mysql-instance \
+  --database-flags=binlog_row_image=full,net_read_timeout=3600,net_write_timeout=3600,wait_timeout=86400,max_allowed_packet=1073741824
 ```
 
 Create a dedicated replication user:
@@ -63,7 +67,10 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO datastream_user;
 GRANT USAGE ON SCHEMA public TO datastream_user;
 
 -- Create a publication for the tables you want to replicate
-CREATE PUBLICATION datastream_pub FOR TABLE orders, customers, products;
+CREATE PUBLICATION datastream_pub FOR TABLE orders, customers, products, order_items;
+
+-- Create the replication slot that the Datastream stream will use
+SELECT PG_CREATE_LOGICAL_REPLICATION_SLOT('datastream_slot', 'pgoutput');
 ```
 
 ```sql
@@ -78,22 +85,7 @@ FLUSH PRIVILEGES;
 
 ## Step 1: Create a Connection Profile for Cloud SQL
 
-The connection profile tells Datastream how to connect to your source database:
-
-```bash
-# Create a connection profile for the Cloud SQL source
-gcloud datastream connection-profiles create cloudsql-source \
-  --location=us-central1 \
-  --type=postgresql \
-  --postgresql-hostname=10.0.0.5 \
-  --postgresql-port=5432 \
-  --postgresql-username=datastream_user \
-  --postgresql-password=secure-password \
-  --postgresql-database=production \
-  --display-name="Production Cloud SQL"
-```
-
-If your Cloud SQL instance uses a private IP, you need to set up VPC peering or a reverse proxy. For private IP connectivity:
+The connection profile tells Datastream how to connect to your source database. If your Cloud SQL instance uses a private IP, create the private connectivity configuration first:
 
 ```bash
 # Create a private connectivity configuration
@@ -106,6 +98,22 @@ gcloud datastream private-connections create my-private-conn \
 # Wait for the private connection to be provisioned (takes a few minutes)
 gcloud datastream private-connections describe my-private-conn \
   --location=us-central1
+```
+
+Then create the source connection profile:
+
+```bash
+# Create a connection profile for the Cloud SQL source
+gcloud datastream connection-profiles create cloudsql-source \
+  --location=us-central1 \
+  --type=postgresql \
+  --postgresql-hostname=10.0.0.5 \
+  --postgresql-port=5432 \
+  --postgresql-username=datastream_user \
+  --postgresql-password=secure-password \
+  --postgresql-database=production \
+  --private-connection=my-private-conn \
+  --display-name="Production Cloud SQL"
 ```
 
 ## Step 2: Create a Connection Profile for BigQuery
@@ -125,40 +133,50 @@ gcloud datastream connection-profiles create bigquery-dest \
 The stream ties the source and destination together and defines what to replicate:
 
 ```bash
-# Create the stream configuration
+# Create the source configuration
+cat > postgresql-source-config.json <<'EOF'
+{
+  "publication": "datastream_pub",
+  "replicationSlot": "datastream_slot",
+  "includeObjects": {
+    "postgresqlSchemas": [{
+      "schema": "public",
+      "postgresqlTables": [
+        {"table": "orders"},
+        {"table": "customers"},
+        {"table": "products"},
+        {"table": "order_items"}
+      ]
+    }]
+  }
+}
+EOF
+
+# Create the BigQuery destination configuration in append-only mode
+cat > bigquery-destination-config.json <<'EOF'
+{
+  "sourceHierarchyDatasets": {
+    "datasetTemplate": {
+      "location": "us-central1",
+      "datasetIdPrefix": "replicated_"
+    }
+  },
+  "appendOnly": {}
+}
+EOF
+
+# Create the stream
 gcloud datastream streams create orders-replication \
   --location=us-central1 \
   --source=cloudsql-source \
-  --postgresql-source-config='{
-    "publication": "datastream_pub",
-    "replicationSlot": "datastream_slot",
-    "includeObjects": {
-      "postgresqlSchemas": [{
-        "schema": "public",
-        "postgresqlTables": [
-          {"table": "orders"},
-          {"table": "customers"},
-          {"table": "products"},
-          {"table": "order_items"}
-        ]
-      }]
-    }
-  }' \
+  --postgresql-source-config=postgresql-source-config.json \
   --destination=bigquery-dest \
-  --bigquery-destination-config='{
-    "sourceHierarchyDatasets": {
-      "datasetTemplate": {
-        "location": "us-central1",
-        "datasetIdPrefix": "replicated_"
-      }
-    },
-    "dataFreshness": "30s"
-  }' \
+  --bigquery-destination-config=bigquery-destination-config.json \
   --display-name="Orders CDC to BigQuery" \
   --backfill-all
 ```
 
-The `--backfill-all` flag tells Datastream to do an initial full load of existing data before switching to change tracking. The `dataFreshness` setting of 30 seconds means BigQuery tables will be at most 30 seconds behind the source.
+The `--backfill-all` flag tells Datastream to do an initial full load of existing data before switching to change tracking. The `appendOnly` write mode keeps each change event in BigQuery, which is useful when you want historical tracking.
 
 ## Step 4: Start the Stream
 
@@ -198,15 +216,15 @@ SELECT
 
   -- Datastream metadata columns
   datastream_metadata.uuid AS change_uuid,
-  datastream_metadata.source_timestamp AS change_timestamp,
-  datastream_metadata.is_deleted AS is_deleted
+  TIMESTAMP_MILLIS(datastream_metadata.source_timestamp) AS change_timestamp,
+  datastream_metadata.change_type AS change_type
 FROM `my-project.replicated_public.orders`
-WHERE datastream_metadata.is_deleted = FALSE
+WHERE datastream_metadata.change_type NOT IN ('DELETE', 'UPDATE-DELETE')
 ORDER BY datastream_metadata.source_timestamp DESC
 LIMIT 100;
 ```
 
-The `is_deleted` flag is important. When a row is deleted from the source, Datastream does not delete it from BigQuery. Instead, it marks it with `is_deleted = true`. This gives you a complete history of all changes.
+The `change_type` field is important. In append-only mode, Datastream writes every change event to BigQuery and marks it as `INSERT`, `UPDATE-INSERT`, `UPDATE-DELETE`, or `DELETE`. This gives you a history of the changes, with metadata you can use for ordering and deduplication.
 
 ## Step 6: Create Clean Views for Consumers
 
@@ -220,7 +238,7 @@ WITH latest_changes AS (
     *,
     ROW_NUMBER() OVER (
       PARTITION BY order_id
-      ORDER BY datastream_metadata.source_timestamp DESC
+      ORDER BY datastream_metadata.source_timestamp DESC, datastream_metadata.change_sequence_number DESC
     ) AS rn
   FROM `my-project.replicated_public.orders`
 )
@@ -233,7 +251,7 @@ SELECT
   updated_at
 FROM latest_changes
 WHERE rn = 1
-  AND datastream_metadata.is_deleted = FALSE;
+  AND datastream_metadata.change_type NOT IN ('DELETE', 'UPDATE-DELETE');
 ```
 
 For tables where you want historical tracking:
@@ -248,14 +266,10 @@ SELECT
   status,
   created_at,
   updated_at,
-  datastream_metadata.source_timestamp AS change_timestamp,
-  CASE
-    WHEN datastream_metadata.is_deleted THEN 'DELETE'
-    WHEN datastream_metadata.source_timestamp = created_at THEN 'INSERT'
-    ELSE 'UPDATE'
-  END AS change_type
+  TIMESTAMP_MILLIS(datastream_metadata.source_timestamp) AS change_timestamp,
+  datastream_metadata.change_type AS change_type
 FROM `my-project.replicated_public.orders`
-ORDER BY order_id, datastream_metadata.source_timestamp;
+ORDER BY order_id, datastream_metadata.source_timestamp, datastream_metadata.change_sequence_number;
 ```
 
 ## Step 7: Handle Schema Changes
@@ -286,8 +300,8 @@ gcloud monitoring policies create \
   --display-name="Datastream Replication Lag Alert" \
   --condition-display-name="Replication lag over 5 minutes" \
   --condition-filter='resource.type="datastream.googleapis.com/Stream" AND metric.type="datastream.googleapis.com/stream/total_latencies"' \
-  --condition-threshold-value=300000 \
-  --condition-threshold-duration=300s \
+  --if='> 300' \
+  --duration=300s \
   --notification-channels="projects/my-project/notificationChannels/12345"
 ```
 
@@ -297,10 +311,10 @@ You can also query the replication lag directly:
 -- Check the replication lag for each table
 SELECT
   _TABLE_SUFFIX AS table_name,
-  MAX(datastream_metadata.source_timestamp) AS latest_source_change,
+  TIMESTAMP_MILLIS(MAX(datastream_metadata.source_timestamp)) AS latest_source_change,
   TIMESTAMP_DIFF(
     CURRENT_TIMESTAMP(),
-    MAX(datastream_metadata.source_timestamp),
+    TIMESTAMP_MILLIS(MAX(datastream_metadata.source_timestamp)),
     SECOND
   ) AS lag_seconds
 FROM `my-project.replicated_public.*`
@@ -314,7 +328,7 @@ Datastream pricing is based on the volume of data processed. Here are some tips 
 
 1. Only replicate the tables you need. There is no point replicating a logging table with millions of rows per day if nobody queries it in BigQuery.
 
-2. Use the `dataFreshness` setting wisely. Tighter freshness (like 10 seconds) means more frequent writes and higher BigQuery streaming costs. For most analytics use cases, 30 to 60 seconds is plenty.
+2. Choose the BigQuery write mode deliberately. Merge mode keeps destination tables close to the source state, while append-only mode retains every change event and can increase storage and query costs.
 
 3. Partition your BigQuery tables by the source timestamp. This keeps query costs low when analyzing recent changes.
 
@@ -329,4 +343,4 @@ CDC is not always the right choice. For small tables that change infrequently, a
 - You want to track the history of changes, not just the current state
 - Full table scans on the source database would impact production performance
 
-Datastream handles the hard parts of CDC - log reading, exactly-once delivery, schema tracking, and backfill management. Once the stream is running, it requires very little ongoing maintenance, which is exactly what you want from infrastructure plumbing.
+Datastream handles the hard parts of CDC - log reading, at-least-once delivery with metadata for deduplication, schema tracking, and backfill management. Once the stream is running, it requires very little ongoing maintenance, which is exactly what you want from infrastructure plumbing.
