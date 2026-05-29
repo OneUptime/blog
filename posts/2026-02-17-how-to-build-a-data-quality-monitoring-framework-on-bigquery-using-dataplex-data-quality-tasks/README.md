@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Dataplex, BigQuery, Data Quality, Data Governance, Monitoring
 
-Description: Learn how to build a comprehensive data quality monitoring framework for BigQuery tables using Dataplex Data Quality Tasks with automated checks, alerting, and dashboards.
+Description: Learn how to build a comprehensive data quality monitoring framework for BigQuery tables using Knowledge Catalog data quality tasks with automated checks, alerting, and dashboards.
 
 ---
 
-Bad data is worse than no data because it leads to wrong decisions made with confidence. If you are running analytics on BigQuery, you need automated data quality checks that catch issues before they reach your dashboards and reports. Dataplex Data Quality Tasks provide a managed way to define, run, and monitor these checks. Here is how to build a complete data quality framework on top of it.
+Bad data is worse than no data because it leads to wrong decisions made with confidence. If you are running analytics on BigQuery, you need automated data quality checks that catch issues before they reach your dashboards and reports. Knowledge Catalog data quality tasks, formerly Dataplex Universal Catalog data quality tasks, provide a managed way to define, run, and monitor these checks. Here is how to build a complete data quality framework on top of it.
 
-## What Dataplex Data Quality Tasks Offer
+## What Knowledge Catalog Data Quality Tasks Offer
 
-Dataplex Data Quality Tasks let you define rules against your BigQuery tables and run them on a schedule. Each rule checks a specific aspect of your data - completeness, uniqueness, freshness, validity, or custom business logic. Results are stored in BigQuery so you can build dashboards and set up alerts.
+Knowledge Catalog data quality tasks let you define rules against your BigQuery tables and run them on a schedule. Each rule checks a specific aspect of your data - completeness, uniqueness, freshness, validity, or custom business logic. Results are stored in BigQuery so you can build dashboards and set up alerts.
 
 ```mermaid
 flowchart TD
-    A[Define Quality Rules<br/>YAML Configuration] --> B[Dataplex Data Quality Task]
+    A[Define Quality Rules<br/>YAML Configuration] --> B[Knowledge Catalog Data Quality Task]
     B --> C[BigQuery Tables]
     B --> D[Quality Results<br/>BigQuery Table]
     D --> E[Monitoring Dashboard]
@@ -27,9 +27,14 @@ flowchart TD
 ## Step 1: Enable Dataplex and Set Up the Environment
 
 ```bash
-# Enable the Dataplex API
+# Enable the APIs used by the lake and the data quality task
 
 gcloud services enable dataplex.googleapis.com
+gcloud services enable dataproc.googleapis.com
+
+# Data quality tasks run in a VPC. Enable Private Google Access on the
+# subnet you use for the task, or on the default subnet if you do not
+# pass --vpc-network-name or --vpc-sub-network-name.
 
 # Create a Dataplex lake for organizing data quality assets
 gcloud dataplex lakes create analytics-lake \
@@ -60,8 +65,15 @@ metadata_registry_defaults:
     zones: curated-zone
 
 row_filters:
-  RECENT_DATA: "order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
-  TODAY_ONLY: "order_date = CURRENT_DATE()"
+  NONE:
+    filter_sql_expr: |-
+      True
+  RECENT_DATA:
+    filter_sql_expr: |-
+      order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+  TODAY_ONLY:
+    filter_sql_expr: |-
+      order_date = CURRENT_DATE()
 
 rule_dimensions:
   - consistency
@@ -73,29 +85,33 @@ rule_dimensions:
 rules:
   # Completeness checks - are required fields populated?
   NOT_NULL_ORDER_ID:
-    rule_type: NOT_NULL
+    rule_type: CUSTOM_SQL_EXPR
     dimension: completeness
     params:
       custom_sql_expr: order_id IS NOT NULL
 
   NOT_NULL_CUSTOMER_ID:
-    rule_type: NOT_NULL
+    rule_type: CUSTOM_SQL_EXPR
     dimension: completeness
     params:
       custom_sql_expr: customer_id IS NOT NULL
 
   NOT_NULL_ORDER_DATE:
-    rule_type: NOT_NULL
+    rule_type: CUSTOM_SQL_EXPR
     dimension: completeness
     params:
       custom_sql_expr: order_date IS NOT NULL
 
   # Uniqueness checks - no duplicate records
   UNIQUE_ORDER_ID:
-    rule_type: UNIQUENESS
+    rule_type: CUSTOM_SQL_STATEMENT
     dimension: uniqueness
     params:
-      custom_sql_expr: order_id
+      custom_sql_statement: >
+        SELECT order_id
+        FROM data
+        GROUP BY order_id
+        HAVING COUNT(*) > 1
 
   # Correctness checks - values are within expected ranges
   POSITIVE_AMOUNT:
@@ -123,11 +139,10 @@ rules:
     dimension: consistency
     params:
       custom_sql_statement: >
-        SELECT COUNT(*) AS num_rows
-        FROM `my-project.silver.orders` o
+        SELECT o.order_id, o.customer_id
+        FROM data o
         LEFT JOIN `my-project.silver.customers` c ON o.customer_id = c.customer_id
         WHERE c.customer_id IS NULL
-          AND o.order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
 
   # Timeliness checks - data is fresh
   DATA_FRESHNESS:
@@ -164,18 +179,19 @@ bq mk --dataset \
   my-project:data_quality
 
 # Upload the rules file to Cloud Storage
+gsutil mb -l us-central1 gs://my-project-dq-rules
 gsutil cp dq_rules/orders_quality.yaml gs://my-project-dq-rules/orders_quality.yaml
 
-# Create the Dataplex data quality task
+# Create the Knowledge Catalog data quality task
 gcloud dataplex tasks create orders-quality-check \
   --location=us-central1 \
   --lake=analytics-lake \
   --trigger-type=RECURRING \
   --trigger-schedule="0 */2 * * *" \
   --execution-service-account=dataplex-dq@my-project.iam.gserviceaccount.com \
-  --spark-main-class="com.google.cloud.dataplex.templates.dataqualitycheck.DataQualityCheck" \
-  --spark-file-uris="gs://my-project-dq-rules/orders_quality.yaml" \
-  --execution-args="^::^TASK_ARGS=--gcs_path=gs://my-project-dq-rules/orders_quality.yaml,--target_bigquery_summary_table=my-project.data_quality.dq_summary"
+  --spark-python-script-file="gs://dataplex-clouddq-artifacts-us-central1/clouddq_pyspark_driver.py" \
+  --spark-file-uris="gs://dataplex-clouddq-artifacts-us-central1/clouddq-executable.zip","gs://dataplex-clouddq-artifacts-us-central1/clouddq-executable.zip.hashsum","gs://my-project-dq-rules/orders_quality.yaml" \
+  --execution-args=^::^TASK_ARGS="clouddq-executable.zip, ALL, gs://my-project-dq-rules/orders_quality.yaml, --gcp_project_id='my-project', --gcp_region_id='us-central1', --gcp_bq_dataset_id='data_quality', --target_bigquery_summary_table='my-project.data_quality.dq_results',"
 ```
 
 ## Step 4: Build Quality Rules for Multiple Tables
@@ -184,6 +200,11 @@ Scale your framework by creating rules for all your important tables:
 
 ```yaml
 # dq_rules/customers_quality.yaml - Quality rules for the customers table
+row_filters:
+  NONE:
+    filter_sql_expr: |-
+      True
+
 rules:
   VALID_EMAIL:
     rule_type: CUSTOM_SQL_EXPR
@@ -193,16 +214,20 @@ rules:
         REGEXP_CONTAINS(email, r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 
   NOT_NULL_EMAIL:
-    rule_type: NOT_NULL
+    rule_type: CUSTOM_SQL_EXPR
     dimension: completeness
     params:
       custom_sql_expr: email IS NOT NULL
 
   UNIQUE_EMAIL:
-    rule_type: UNIQUENESS
+    rule_type: CUSTOM_SQL_STATEMENT
     dimension: uniqueness
     params:
-      custom_sql_expr: email
+      custom_sql_statement: >
+        SELECT email
+        FROM data
+        GROUP BY email
+        HAVING COUNT(*) > 1
 
   VALID_CREATED_DATE:
     rule_type: CUSTOM_SQL_EXPR
@@ -216,7 +241,7 @@ rule_bindings:
   CUSTOMERS_QUALITY:
     entity_uri: bigquery://projects/my-project/datasets/silver/tables/customers
     column_id: customer_id
-    row_filter_id: ALL_DATA
+    row_filter_id: NONE
     rule_ids:
       - VALID_EMAIL
       - NOT_NULL_EMAIL
@@ -226,7 +251,7 @@ rule_bindings:
 
 ## Step 5: Query Quality Results
 
-Dataplex writes quality check results to the BigQuery table you specified. Query them to understand your data quality posture:
+Knowledge Catalog writes quality check results to the BigQuery table you specified. Query them to understand your data quality posture:
 
 ```sql
 -- View the latest quality check results
@@ -239,12 +264,18 @@ SELECT
   rows_validated,
   success_count,
   failed_count,
-  SAFE_DIVIDE(success_count, rows_validated) * 100 AS pass_rate_pct,
+  complex_rule_validation_success_flag,
+  complex_rule_validation_errors_count,
+  CASE
+    WHEN success_percentage IS NOT NULL THEN success_percentage
+    WHEN complex_rule_validation_success_flag THEN 100.0
+    ELSE 0.0
+  END AS pass_rate_pct,
   execution_ts
-FROM `my-project.data_quality.dq_summary`
+FROM `my-project.data_quality.dq_results`
 WHERE execution_ts = (
   SELECT MAX(execution_ts)
-  FROM `my-project.data_quality.dq_summary`
+  FROM `my-project.data_quality.dq_results`
 )
 ORDER BY pass_rate_pct ASC;
 ```
@@ -259,10 +290,22 @@ SELECT
   table_id,
   dimension,
   COUNT(*) AS total_rules,
-  COUNTIF(SAFE_DIVIDE(success_count, rows_validated) >= 0.99) AS passing_rules,
-  AVG(SAFE_DIVIDE(success_count, rows_validated)) * 100 AS avg_pass_rate,
-  MIN(SAFE_DIVIDE(success_count, rows_validated)) * 100 AS min_pass_rate
-FROM `my-project.data_quality.dq_summary`
+  COUNTIF(CASE
+    WHEN success_percentage IS NOT NULL THEN success_percentage
+    WHEN complex_rule_validation_success_flag THEN 100.0
+    ELSE 0.0
+  END >= 99.0) AS passing_rules,
+  AVG(CASE
+    WHEN success_percentage IS NOT NULL THEN success_percentage
+    WHEN complex_rule_validation_success_flag THEN 100.0
+    ELSE 0.0
+  END) AS avg_pass_rate,
+  MIN(CASE
+    WHEN success_percentage IS NOT NULL THEN success_percentage
+    WHEN complex_rule_validation_success_flag THEN 100.0
+    ELSE 0.0
+  END) AS min_pass_rate
+FROM `my-project.data_quality.dq_results`
 WHERE execution_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY 1, 2, 3
 ORDER BY check_date DESC, avg_pass_rate ASC;
@@ -270,7 +313,7 @@ ORDER BY check_date DESC, avg_pass_rate ASC;
 
 ## Step 6: Set Up Alerting
 
-Create Cloud Monitoring alerts that fire when quality checks fail:
+Create a Cloud Function that sends an alert when quality checks fail:
 
 ```python
 # dq_alerting.py - Cloud Function triggered by quality check results
@@ -295,13 +338,22 @@ def check_quality_results(request):
         dimension,
         rows_validated,
         failed_count,
-        SAFE_DIVIDE(success_count, rows_validated) AS pass_rate
-    FROM `my-project.data_quality.dq_summary`
+        complex_rule_validation_errors_count,
+        CASE
+          WHEN success_percentage IS NOT NULL THEN success_percentage / 100
+          WHEN complex_rule_validation_success_flag THEN 1.0
+          ELSE 0.0
+        END AS pass_rate
+    FROM `my-project.data_quality.dq_results`
     WHERE execution_ts = (
         SELECT MAX(execution_ts)
-        FROM `my-project.data_quality.dq_summary`
+        FROM `my-project.data_quality.dq_results`
     )
-    AND SAFE_DIVIDE(success_count, rows_validated) < @threshold
+    AND CASE
+          WHEN success_percentage IS NOT NULL THEN success_percentage / 100
+          WHEN complex_rule_validation_success_flag THEN 1.0
+          ELSE 0.0
+        END < @threshold
     ORDER BY pass_rate ASC
     """
 
@@ -323,7 +375,7 @@ def check_quality_results(request):
             message += (
                 f"- *{row.rule_id}* on `{row.table_id}`: "
                 f"{row.pass_rate:.1%} pass rate "
-                f"({row.failed_count} failures)\n"
+                f"({row.failed_count or row.complex_rule_validation_errors_count or 0} failures)\n"
             )
 
         # Send to Slack
@@ -357,18 +409,26 @@ WITH latest_results AS (
       PARTITION BY table_id, rule_id
       ORDER BY execution_ts DESC
     ) AS rn
-  FROM `my-project.data_quality.dq_summary`
+  FROM `my-project.data_quality.dq_results`
 )
 SELECT
   table_id,
   COUNT(*) AS total_rules,
-  COUNTIF(SAFE_DIVIDE(success_count, rows_validated) >= 0.99) AS rules_passing,
-  COUNTIF(SAFE_DIVIDE(success_count, rows_validated) < 0.99
-    AND SAFE_DIVIDE(success_count, rows_validated) >= 0.95) AS rules_warning,
-  COUNTIF(SAFE_DIVIDE(success_count, rows_validated) < 0.95) AS rules_failing,
-  ROUND(AVG(SAFE_DIVIDE(success_count, rows_validated)) * 100, 2) AS overall_quality_score,
+  COUNTIF(pass_rate_pct >= 99.0) AS rules_passing,
+  COUNTIF(pass_rate_pct < 99.0 AND pass_rate_pct >= 95.0) AS rules_warning,
+  COUNTIF(pass_rate_pct < 95.0) AS rules_failing,
+  ROUND(AVG(pass_rate_pct), 2) AS overall_quality_score,
   MAX(execution_ts) AS last_check_time
-FROM latest_results
+FROM (
+  SELECT
+    *,
+    CASE
+      WHEN success_percentage IS NOT NULL THEN success_percentage
+      WHEN complex_rule_validation_success_flag THEN 100.0
+      ELSE 0.0
+    END AS pass_rate_pct
+  FROM latest_results
+)
 WHERE rn = 1
 GROUP BY table_id
 ORDER BY overall_quality_score ASC;
