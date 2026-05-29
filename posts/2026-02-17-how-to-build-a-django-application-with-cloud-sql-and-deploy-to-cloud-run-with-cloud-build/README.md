@@ -21,7 +21,7 @@ Start with a Django project. If you already have one, skip ahead to the Cloud SQ
 
 python -m venv venv
 source venv/bin/activate
-pip install django psycopg2-binary gunicorn django-environ
+pip install django psycopg[binary] gunicorn django-environ
 ```
 
 Initialize a Django project.
@@ -34,7 +34,7 @@ django-admin startapp api
 
 ## Configuring Django for Cloud SQL
 
-The key configuration is the database connection. On Cloud Run, you connect to Cloud SQL through a Unix socket provided by the Cloud SQL Auth Proxy, which Cloud Run includes automatically.
+The key configuration is the database connection. On Cloud Run, you connect to Cloud SQL through a Unix socket after attaching the Cloud SQL instance to the service.
 
 ```python
 # settings.py - Django settings configured for Cloud SQL
@@ -131,7 +131,7 @@ ENV PYTHONUNBUFFERED=1
 # Set the working directory
 WORKDIR /app
 
-# Install system dependencies needed for psycopg2
+# Install system dependencies needed for PostgreSQL client libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc \
     && rm -rf /var/lib/apt/lists/*
@@ -161,52 +161,67 @@ The requirements file should include everything your application needs.
 
 ```text
 # requirements.txt
-Django==5.0.1
-psycopg2-binary==2.9.9
+Django==5.2.9
+psycopg[binary]==3.2.13
 gunicorn==21.2.0
 django-environ==0.11.2
 ```
 
 ## Cloud Build Configuration
 
-Cloud Build automates building your container and deploying it to Cloud Run. Create a `cloudbuild.yaml` file in your project root.
+Cloud Build automates building your container and deploying it to Cloud Run. Create an Artifact Registry Docker repository for the image, then create a `cloudbuild.yaml` file in your project root.
+
+```bash
+gcloud artifacts repositories create django-repo \
+    --repository-format=docker \
+    --location=us-central1 \
+    --description="Django application images"
+```
 
 ```yaml
 # cloudbuild.yaml - Build and deploy pipeline
 steps:
   # Step 1: Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/django-app:$COMMIT_SHA', '.']
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/django-repo/django-app:$COMMIT_SHA', '.']
 
-  # Step 2: Push the image to Container Registry
+  # Step 2: Push the image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/django-app:$COMMIT_SHA']
+    args: ['push', 'us-central1-docker.pkg.dev/$PROJECT_ID/django-repo/django-app:$COMMIT_SHA']
 
-  # Step 3: Run database migrations using the Cloud SQL proxy
-  - name: 'gcr.io/cloud-builders/docker'
+  # Step 3: Download the Cloud SQL Auth Proxy for the migration step
+  - name: 'gcr.io/cloud-builders/curl'
+    entrypoint: 'sh'
     args:
-      - 'run'
-      - '--network=cloudbuild'
-      - 'gcr.io/$PROJECT_ID/django-app:$COMMIT_SHA'
-      - 'python'
-      - 'manage.py'
-      - 'migrate'
-      - '--noinput'
-    env:
-      - 'DB_HOST=$$DB_HOST'
-      - 'DB_NAME=$$DB_NAME'
-      - 'DB_USER=$$DB_USER'
-      - 'DB_PASSWORD=$$DB_PASSWORD'
-    secretEnv: ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']
+      - '-c'
+      - |
+        curl -o /workspace/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.22.0/cloud-sql-proxy.linux.amd64
+        chmod +x /workspace/cloud-sql-proxy
 
-  # Step 4: Deploy to Cloud Run
+  # Step 4: Run database migrations using the Cloud SQL Auth Proxy
+  - name: 'us-central1-docker.pkg.dev/$PROJECT_ID/django-repo/django-app:$COMMIT_SHA'
+    entrypoint: 'sh'
+    env:
+      - 'DB_HOST=127.0.0.1'
+      - 'DB_PORT=5432'
+      - 'DB_NAME=myapp'
+      - 'DB_USER=appuser'
+    secretEnv: ['DB_PASSWORD']
+    args:
+      - '-c'
+      - |
+        /workspace/cloud-sql-proxy --port 5432 $PROJECT_ID:us-central1:my-instance &
+        sleep 2
+        python manage.py migrate --noinput
+
+  # Step 5: Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
       - 'django-app'
-      - '--image=gcr.io/$PROJECT_ID/django-app:$COMMIT_SHA'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/django-repo/django-app:$COMMIT_SHA'
       - '--region=us-central1'
       - '--platform=managed'
       - '--add-cloudsql-instances=$PROJECT_ID:us-central1:my-instance'
@@ -222,15 +237,9 @@ availableSecrets:
   secretManager:
     - versionName: projects/$PROJECT_ID/secrets/db-password/versions/latest
       env: 'DB_PASSWORD'
-    - versionName: projects/$PROJECT_ID/secrets/db-host/versions/latest
-      env: 'DB_HOST'
-    - versionName: projects/$PROJECT_ID/secrets/db-name/versions/latest
-      env: 'DB_NAME'
-    - versionName: projects/$PROJECT_ID/secrets/db-user/versions/latest
-      env: 'DB_USER'
 
 images:
-  - 'gcr.io/$PROJECT_ID/django-app:$COMMIT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/django-repo/django-app:$COMMIT_SHA'
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -257,7 +266,8 @@ Cloud Build and Cloud Run need appropriate permissions.
 ```bash
 # Get the Cloud Build service account
 PROJECT_NUMBER=$(gcloud projects describe my-project --format='value(projectNumber)')
-CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+CLOUD_BUILD_SA=$(gcloud builds get-default-service-account)
+CLOUD_RUN_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
 # Grant Cloud Build permission to deploy to Cloud Run
 gcloud projects add-iam-policy-binding my-project \
@@ -266,7 +276,7 @@ gcloud projects add-iam-policy-binding my-project \
 
 # Grant Cloud Build permission to act as the Cloud Run service account
 gcloud iam service-accounts add-iam-policy-binding \
-    ${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+    ${CLOUD_RUN_SA} \
     --member="serviceAccount:${CLOUD_BUILD_SA}" \
     --role="roles/iam.serviceAccountUser"
 
@@ -275,10 +285,25 @@ gcloud projects add-iam-policy-binding my-project \
     --member="serviceAccount:${CLOUD_BUILD_SA}" \
     --role="roles/secretmanager.secretAccessor"
 
+# Grant Cloud Build permission to push to Artifact Registry
+gcloud projects add-iam-policy-binding my-project \
+    --member="serviceAccount:${CLOUD_BUILD_SA}" \
+    --role="roles/artifactregistry.writer"
+
+# Grant Cloud Build permission to connect to Cloud SQL for migrations
+gcloud projects add-iam-policy-binding my-project \
+    --member="serviceAccount:${CLOUD_BUILD_SA}" \
+    --role="roles/cloudsql.client"
+
 # Grant the Cloud Run service account access to Cloud SQL
 gcloud projects add-iam-policy-binding my-project \
-    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --member="serviceAccount:${CLOUD_RUN_SA}" \
     --role="roles/cloudsql.client"
+
+# Grant the Cloud Run service account access to runtime secrets
+gcloud projects add-iam-policy-binding my-project \
+    --member="serviceAccount:${CLOUD_RUN_SA}" \
+    --role="roles/secretmanager.secretAccessor"
 ```
 
 ## Running the Build
@@ -303,7 +328,7 @@ For local development, connect to Cloud SQL through the Cloud SQL Auth Proxy.
 
 ```bash
 # Download and run the Cloud SQL Auth Proxy
-cloud-sql-proxy my-project:us-central1:my-instance &
+cloud-sql-proxy --port 5432 my-project:us-central1:my-instance &
 
 # Set environment variables for local development
 export DB_HOST=127.0.0.1
