@@ -38,7 +38,7 @@ publisher = pubsub_v1.PublisherClient()
 # Tuned for throughput: larger batches, slightly more delay
 batch_settings = BatchSettings(
     max_messages=1000,          # Up to 1000 messages per batch
-    max_bytes=10 * 1024 * 1024, # Up to 10 MB per batch
+    max_bytes=10_000_000,       # Up to 10 MB per batch
     max_latency=0.05,           # Flush after 50ms even if batch is not full
 )
 
@@ -54,24 +54,26 @@ publisher = pubsub_v1.PublisherClient(
 ```python
 # High-throughput publisher configuration in Python
 from google.cloud import pubsub_v1
-from google.cloud.pubsub_v1.types import BatchSettings, PublisherOptions
+from google.cloud.pubsub_v1.types import (
+    BatchSettings,
+    LimitExceededBehavior,
+    PublisherOptions,
+)
 import json
 
 # Batch settings control how messages are grouped
 batch_settings = BatchSettings(
     max_messages=1000,           # Send batch at 1000 messages
-    max_bytes=10 * 1024 * 1024,  # Or when batch size hits 10 MB
+    max_bytes=10_000_000,        # Or when batch size hits 10 MB
     max_latency=0.1,             # Or after 100ms, whichever comes first
 )
 
-# Publisher options control concurrency
+# Publisher options configure publisher behavior such as flow control
 publisher_options = PublisherOptions(
     flow_control=pubsub_v1.types.PublishFlowControl(
         message_limit=10000,     # Buffer up to 10000 messages in memory
         byte_limit=100 * 1024 * 1024,  # 100 MB memory limit
-        limit_exceeded_behavior=(
-            pubsub_v1.types.PublishFlowControl.LimitExceededBehavior.BLOCK
-        ),
+        limit_exceeded_behavior=LimitExceededBehavior.BLOCK,
     ),
 )
 
@@ -107,6 +109,7 @@ def publish_events(events):
 
 ```java
 // High-throughput publisher configuration in Java
+import com.google.api.gax.batching.BatchingSettings;
 import com.google.cloud.pubsub.v1.Publisher;
 import com.google.pubsub.v1.TopicName;
 import org.threeten.bp.Duration;
@@ -114,7 +117,7 @@ import org.threeten.bp.Duration;
 // Configure batch settings for maximum throughput
 BatchingSettings batchingSettings = BatchingSettings.newBuilder()
     .setElementCountThreshold(1000L)       // 1000 messages per batch
-    .setRequestByteThreshold(10_000_000L)  // 10 MB per batch
+    .setRequestByteThreshold(10_000_000L)  // Up to 10 MB per batch
     .setDelayThreshold(Duration.ofMillis(100))  // 100ms max delay
     .build();
 
@@ -131,26 +134,30 @@ Publisher publisher = Publisher.newBuilder(
 package main
 
 import (
-    "cloud.google.com/go/pubsub"
     "context"
     "time"
+
+    "cloud.google.com/go/pubsub/v2"
 )
 
-func createPublisher(projectID, topicID string) *pubsub.Topic {
+func createPublisher(projectID, topicID string) (*pubsub.Client, *pubsub.Publisher, error) {
     ctx := context.Background()
-    client, _ := pubsub.NewClient(ctx, projectID)
-
-    topic := client.Topic(topicID)
-
-    // Configure batch settings for throughput
-    topic.PublishSettings = pubsub.PublishSettings{
-        CountThreshold: 1000,                 // 1000 messages per batch
-        ByteThreshold:  10 * 1024 * 1024,     // 10 MB per batch
-        DelayThreshold: 100 * time.Millisecond, // 100ms max delay
-        NumGoroutines:  25,                    // Parallel publish goroutines
+    client, err := pubsub.NewClient(ctx, projectID)
+    if err != nil {
+        return nil, nil, err
     }
 
-    return topic
+    publisher := client.Publisher(topicID)
+
+    // Configure batch settings for throughput
+    publisher.PublishSettings = pubsub.PublishSettings{
+        CountThreshold: 1000,                   // 1000 messages per batch
+        ByteThreshold:  10_000_000,             // Up to 10 MB per batch
+        DelayThreshold: 100 * time.Millisecond, // 100ms max delay
+        NumGoroutines:  25,                     // Parallel publish goroutines
+    }
+
+    return client, publisher, nil
 }
 ```
 
@@ -164,7 +171,7 @@ For data pipelines, log shipping, or analytics ingestion where you care about th
 # Maximize throughput: large batches, longer delay
 batch_settings = BatchSettings(
     max_messages=1000,
-    max_bytes=10 * 1024 * 1024,
+    max_bytes=10_000_000,
     max_latency=0.5,  # 500ms - allow more time to fill batches
 )
 ```
@@ -200,12 +207,16 @@ When publishing faster than Pub/Sub can accept (due to quota limits or network i
 ```python
 # Publisher with flow control to prevent memory issues
 from google.cloud import pubsub_v1
-from google.cloud.pubsub_v1.types import PublisherOptions, BatchSettings
+from google.cloud.pubsub_v1.types import (
+    BatchSettings,
+    LimitExceededBehavior,
+    PublisherOptions,
+)
 
 publisher = pubsub_v1.PublisherClient(
     batch_settings=BatchSettings(
         max_messages=1000,
-        max_bytes=10 * 1024 * 1024,
+        max_bytes=10_000_000,
         max_latency=0.1,
     ),
     publisher_options=PublisherOptions(
@@ -216,7 +227,7 @@ publisher = pubsub_v1.PublisherClient(
                 # BLOCK: wait until space is available
                 # IGNORE: publish anyway (risk OOM)
                 # ERROR: raise an exception
-                pubsub_v1.types.PublishFlowControl.LimitExceededBehavior.BLOCK
+                LimitExceededBehavior.BLOCK
             ),
         ),
     ),
@@ -271,7 +282,7 @@ benchmark_publish(BatchSettings())
 print("\nTuned settings:")
 benchmark_publish(BatchSettings(
     max_messages=1000,
-    max_bytes=10 * 1024 * 1024,
+    max_bytes=10_000_000,
     max_latency=0.1,
 ))
 ```
