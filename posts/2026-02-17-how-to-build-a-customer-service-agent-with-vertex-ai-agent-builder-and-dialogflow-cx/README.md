@@ -10,7 +10,7 @@ Description: Build a production customer service agent using Vertex AI Agent Bui
 
 Customer service is one of the most impactful use cases for AI agents. Customers want quick answers, and support teams want to handle volume without burning out. Vertex AI Agent Builder combined with Dialogflow CX gives you a platform for building customer service agents that handle common inquiries automatically, escalate complex issues to human agents, and maintain natural conversations throughout.
 
-This guide covers building a complete customer service agent from the ground up, including conversation design, entity extraction, fulfillment logic, and human handoff.
+This guide covers building the core pieces of a customer service agent from the ground up, including conversation design, entity extraction, fulfillment logic, and human handoff.
 
 ## Designing the Customer Service Agent
 
@@ -48,11 +48,23 @@ pip install google-cloud-dialogflow-cx
 ## Step 1: Create the Agent
 
 ```python
-from google.cloud.dialogflowcx_v3 import AgentsClient, Agent
+from google.api_core.client_options import ClientOptions
+from google.cloud.dialogflowcx_v3 import (
+    AdvancedSettings,
+    AgentsClient,
+    Agent,
+    SpeechToTextSettings,
+)
+
+def client_options_for_location(location: str):
+    """Use the regional Dialogflow CX endpoint for non-global agents."""
+    if location == "global":
+        return None
+    return ClientOptions(api_endpoint=f"{location}-dialogflow.googleapis.com")
 
 def create_customer_service_agent(project_id: str, location: str):
     """Create a Dialogflow CX agent for customer service."""
-    client = AgentsClient()
+    client = AgentsClient(client_options=client_options_for_location(location))
     parent = f"projects/{project_id}/locations/{location}"
 
     agent = Agent(
@@ -60,8 +72,12 @@ def create_customer_service_agent(project_id: str, location: str):
         default_language_code="en",
         time_zone="America/New_York",
         description="AI-powered customer service agent for handling order inquiries, returns, and general support",
-        enable_stackdriver_logging=True,
-        speech_to_text_settings=Agent.SpeechToTextSettings(
+        advanced_settings=AdvancedSettings(
+            logging_settings=AdvancedSettings.LoggingSettings(
+                enable_stackdriver_logging=True,
+            ),
+        ),
+        speech_to_text_settings=SpeechToTextSettings(
             enable_speech_adaptation=True,
         ),
     )
@@ -80,19 +96,17 @@ Entity types let the agent extract structured information from user messages.
 ```python
 from google.cloud.dialogflowcx_v3 import EntityTypesClient, EntityType
 
-def create_entity_types(agent_name: str):
+def create_entity_types(agent_name: str, location: str):
     """Create entity types for extracting order IDs, product names, etc."""
-    client = EntityTypesClient()
+    client = EntityTypesClient(client_options=client_options_for_location(location))
 
     # Order ID entity - matches patterns like ORD-12345
     order_entity = EntityType(
         display_name="order_id",
         kind=EntityType.Kind.KIND_REGEXP,
         entities=[
-            EntityType.Entity(
-                value="order_id",
-                synonyms=["ORD-[0-9]{5,}", "[A-Z]{2,3}-[0-9]{4,}"],
-            ),
+            EntityType.Entity(value="ORD-[0-9]{5,}", synonyms=["ORD-[0-9]{5,}"]),
+            EntityType.Entity(value="[A-Z]{2,3}-[0-9]{4,}", synonyms=["[A-Z]{2,3}-[0-9]{4,}"]),
         ],
     )
 
@@ -114,7 +128,7 @@ def create_entity_types(agent_name: str):
     created = client.create_entity_type(parent=agent_name, entity_type=priority_entity)
     print(f"Entity type created: {created.display_name}")
 
-create_entity_types(agent.name)
+create_entity_types(agent.name, "us-central1")
 ```
 
 ## Step 3: Create Intents
@@ -122,9 +136,9 @@ create_entity_types(agent.name)
 ```python
 from google.cloud.dialogflowcx_v3 import IntentsClient, Intent
 
-def create_service_intents(agent_name: str):
+def create_service_intents(agent_name: str, location: str):
     """Create intents for common customer service requests."""
-    client = IntentsClient()
+    client = IntentsClient(client_options=client_options_for_location(location))
 
     intents = {
         "order.status": [
@@ -194,7 +208,7 @@ def create_service_intents(agent_name: str):
 
     return created_intents
 
-intents = create_service_intents(agent.name)
+intents = create_service_intents(agent.name, "us-central1")
 ```
 
 ## Step 4: Build Conversation Flows
@@ -207,9 +221,9 @@ from google.cloud.dialogflowcx_v3 import (
     Fulfillment, ResponseMessage,
 )
 
-def create_order_status_flow(agent_name: str):
+def create_order_status_flow(agent_name: str, location: str, webhook_name: str):
     """Create the order status inquiry flow."""
-    flow_client = FlowsClient()
+    flow_client = FlowsClient(client_options=client_options_for_location(location))
 
     # Create the flow
     flow = Flow(
@@ -221,7 +235,7 @@ def create_order_status_flow(agent_name: str):
     print(f"Flow created: {created_flow.display_name}")
 
     # Create pages within the flow
-    page_client = PagesClient()
+    page_client = PagesClient(client_options=client_options_for_location(location))
 
     # Page 1: Collect order ID
     collect_order_page = Page(
@@ -251,6 +265,7 @@ def create_order_status_flow(agent_name: str):
                 )
             ],
             # In production, this would call your webhook for order lookup
+            webhook=webhook_name,
             tag="order_lookup",
         ),
     )
@@ -346,13 +361,18 @@ def handle_escalation(req):
     """Hand off to a human agent."""
     return jsonify({
         "fulfillmentResponse": {
-            "messages": [{"text": {"text": [
-                "I understand you would like to speak with a human agent. "
-                "Let me transfer you now. Your wait time is approximately 3 minutes. "
-                "A support representative will have access to our conversation history."
-            ]}}]
-        },
-        "targetPage": "projects/your-project/locations/us-central1/agents/your-agent/flows/main/pages/human_handoff",
+            "messages": [
+                {"text": {"text": [
+                    "I understand you would like to speak with a human agent. "
+                    "Let me transfer you now. Your wait time is approximately 3 minutes. "
+                    "A support representative will have access to our conversation history."
+                ]}},
+                {"liveAgentHandoff": {"metadata": {
+                    "reason": "customer_requested_human",
+                    "estimated_wait_minutes": 3
+                }}}
+            ]
+        }
     })
 
 if __name__ == "__main__":
@@ -367,7 +387,7 @@ import uuid
 
 def test_conversation(project_id: str, location: str, agent_id: str, messages: list):
     """Run a test conversation with the agent."""
-    client = SessionsClient()
+    client = SessionsClient(client_options=client_options_for_location(location))
     session_id = str(uuid.uuid4())
     session_path = f"projects/{project_id}/locations/{location}/agents/{agent_id}/sessions/{session_id}"
 
