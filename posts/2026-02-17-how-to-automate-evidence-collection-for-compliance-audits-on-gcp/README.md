@@ -123,15 +123,24 @@ def collect_iam_evidence(project_id):
 
     sa_data = []
     for sa in service_accounts:
-        # Check for key age
-        keys = iam_client.list_service_account_keys(
+        keys_response = iam_client.list_service_account_keys(
             request={"name": sa.name}
         )
+        keys = [
+            {
+                "name": key.name,
+                "key_type": str(key.key_type),
+                "valid_after_time": str(key.valid_after_time),
+                "valid_before_time": str(key.valid_before_time),
+            }
+            for key in keys_response.keys
+        ]
         sa_data.append({
             "email": sa.email,
             "display_name": sa.display_name,
             "disabled": sa.disabled,
-            "key_count": len(list(keys)),
+            "key_count": len(keys),
+            "keys": keys,
         })
 
     evidence.append(EvidenceItem(
@@ -148,19 +157,18 @@ def collect_iam_evidence(project_id):
 
 ## Step 3: Collect Encryption Evidence
 
-Prove that data is encrypted at rest and in transit with the required key management controls.
+Collect encryption-at-rest settings and key management controls.
 
 ```python
-from google.cloud import kms
+from google.cloud import kms_v1
 from google.cloud import bigquery
-from google.cloud import storage as gcs
 
 def collect_encryption_evidence(project_id):
     """Collect encryption-related audit evidence."""
     evidence = []
 
     # Collect KMS key configurations
-    kms_client = kms.KeyManagementServiceClient()
+    kms_client = kms_v1.KeyManagementServiceClient()
     key_data = []
 
     # List all key rings in common locations
@@ -343,7 +351,8 @@ def collect_logging_evidence(project_id):
 Run evidence collection on a regular schedule so you always have fresh data for auditors.
 
 ```bash
-# Deploy the evidence collector as a Cloud Function
+# Deploy the packaged evidence collector as a Cloud Function.
+# The source directory must define a main entry point and requirements.txt.
 
 gcloud functions deploy collect-audit-evidence \
   --runtime=python311 \
