@@ -14,12 +14,13 @@ In this guide, I will walk through everything you need to know about backing up 
 
 ## Understanding AlloyDB Backup Types
 
-AlloyDB supports two main backup strategies:
+AlloyDB supports three main backup strategies:
 
-- **Continuous backups**: These are enabled by default and provide point-in-time recovery (PITR). AlloyDB continuously streams write-ahead logs (WAL) to Cloud Storage, allowing you to restore to any point within a configurable retention window.
+- **Continuous backups**: These are enabled by default and provide point-in-time recovery (PITR). AlloyDB retains continuous backups and data-change logs, allowing you to restore to any point within a configurable retention window.
 - **On-demand backups**: These are manual snapshots you trigger yourself. They are useful before major schema changes, deployments, or migrations.
+- **Automated backups**: These are scheduled backups that you configure independently from continuous backups.
 
-Both types store data in Google Cloud Storage and are encrypted at rest using Google-managed or customer-managed encryption keys (CMEK).
+All backup data is encrypted at rest using Google-managed or customer-managed encryption keys (CMEK).
 
 ## Setting Up Continuous Backups
 
@@ -54,14 +55,13 @@ gcloud alloydb clusters update my-cluster \
 
 ## Creating On-Demand Backups
 
-On-demand backups are snapshots of your cluster at a specific moment. They persist until you explicitly delete them, unlike continuous backups which roll off after the retention window.
+On-demand backups are snapshots of your cluster at a specific moment. Standard on-demand backups can be retained for up to one year, unlike continuous backups which roll off after the retention window.
 
 ```bash
 # Create an on-demand backup of your AlloyDB cluster
 gcloud alloydb backups create my-backup-20260217 \
   --cluster=my-cluster \
-  --region=us-central1 \
-  --description="Pre-deployment backup before v2.5 release"
+  --region=us-central1
 ```
 
 To list all existing backups for your project:
@@ -87,10 +87,10 @@ gcloud alloydb backups create my-encrypted-backup \
 
 Point-in-time recovery lets you restore your cluster to any second within the retention window. This is incredibly useful when you need to recover from accidental data deletion or corruption.
 
-First, check the available recovery window:
+First, check the available recovery information:
 
 ```bash
-# Check the earliest and latest restorable times
+# Check the earliest restorable time and continuous backup enabled time
 gcloud alloydb clusters describe my-cluster \
   --region=us-central1 \
   --format="yaml(continuousBackupInfo.earliestRestorableTime, continuousBackupInfo.enabledTime)"
@@ -102,13 +102,12 @@ Then restore to a specific point in time by creating a new cluster:
 # Restore to a specific point in time - creates a new cluster
 gcloud alloydb clusters restore my-restored-cluster \
   --region=us-central1 \
-  --backup-source=CONTINUOUS \
-  --continuous-backup-source=my-cluster \
+  --source-cluster=my-cluster \
   --point-in-time="2026-02-17T10:30:00Z" \
   --network=projects/my-project/global/networks/my-vpc
 ```
 
-Note that restoring always creates a new cluster. You cannot overwrite an existing cluster with a restore operation. After the restore completes, you will need to create read pool instances if your original cluster had them.
+Note that restoring always creates a new cluster. You cannot overwrite an existing cluster with a restore operation. After the restore completes, you will need to create a primary instance and any read pool instances your original cluster had.
 
 ## Restoring from an On-Demand Backup
 
@@ -118,7 +117,6 @@ Restoring from an on-demand backup is straightforward. You reference the backup 
 # Restore from an on-demand backup to a new cluster
 gcloud alloydb clusters restore my-restored-cluster \
   --region=us-central1 \
-  --backup-source=BACKUP \
   --backup=my-backup-20260217 \
   --network=projects/my-project/global/networks/my-vpc
 ```
@@ -150,14 +148,16 @@ gcloud scheduler jobs create http trigger-alloydb-backup \
 
 ## Backup Monitoring and Alerting
 
-You should set up monitoring to track backup health. AlloyDB exposes metrics that you can use with Cloud Monitoring:
+You should set up monitoring to track backup health. AlloyDB exposes the latest backup timestamp as a Cloud Monitoring metric that you can use to detect missing backup telemetry:
 
 ```bash
-# Create an alert policy for backup failures using gcloud
-gcloud alpha monitoring policies create \
-  --display-name="AlloyDB Backup Failure Alert" \
-  --condition-display-name="Backup failure detected" \
-  --condition-filter='resource.type="alloydb.googleapis.com/Cluster" AND metric.type="alloydb.googleapis.com/database/backup/count" AND metric.labels.status="FAILED"' \
+# Create an alert policy for missing continuous backup telemetry using gcloud
+gcloud monitoring policies create \
+  --display-name="AlloyDB Backup Telemetry Alert" \
+  --condition-display-name="No recent continuous backup timestamp" \
+  --condition-filter='resource.type="alloydb.googleapis.com/Cluster" AND metric.type="alloydb.googleapis.com/cluster/last_backup_timestamp" AND metric.labels.backup_type="continuous"' \
+  --if=absent \
+  --duration=86400s \
   --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -192,7 +192,7 @@ Here are a few things I have learned from running AlloyDB in production:
 2. **Take on-demand backups before major changes** like schema migrations, application upgrades, or bulk data imports.
 3. **Test your restores regularly.** A backup you have never restored is a backup you cannot trust. Schedule quarterly restore drills.
 4. **Use CMEK for compliance-sensitive workloads.** If your organization requires control over encryption keys, configure CMEK for both continuous and on-demand backups.
-5. **Monitor backup status** using Cloud Monitoring alerts. You want to know immediately if a backup fails.
+5. **Monitor backup health** using Cloud Monitoring alerts and operation logs. You want to know immediately if expected backups are not being created.
 6. **Document your recovery procedures.** When an incident happens at 3 AM, you do not want to be reading documentation for the first time.
 
 ## Wrapping Up
