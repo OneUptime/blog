@@ -37,10 +37,18 @@ First, create a Pub/Sub topic that will receive alert notifications:
 gcloud pubsub topics create alert-notifications --project=my-project
 
 # Create a notification channel in Cloud Monitoring that sends to this topic
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="Auto-Remediation Pub/Sub" \
   --type=pubsub \
   --channel-labels=topic=projects/my-project/topics/alert-notifications \
+  --project=my-project
+
+# Allow Cloud Monitoring's notification service account to publish to the topic
+PROJECT_NUMBER=$(gcloud projects describe my-project --format="value(projectNumber)")
+gcloud pubsub topics add-iam-policy-binding \
+  projects/my-project/topics/alert-notifications \
+  --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-monitoring-notification.iam.gserviceaccount.com" \
+  --role=roles/pubsub.publisher \
   --project=my-project
 ```
 
@@ -52,15 +60,13 @@ Create alerting policies for the conditions you want to auto-remediate. Here are
 
 ```bash
 # Alert when CPU usage exceeds 85% for 5 minutes on a managed instance group
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --display-name="AUTO-REMEDIATE: High CPU on web-servers" \
   --condition-display-name="CPU > 85% for 5 minutes" \
   --condition-filter='resource.type="gce_instance" AND metric.type="compute.googleapis.com/instance/cpu/utilization" AND metadata.user_labels.group="web-servers"' \
-  --condition-threshold-value=0.85 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
-  --condition-threshold-aggregation-alignment-period=60s \
-  --condition-threshold-aggregation-per-series-aligner=ALIGN_MEAN \
+  --if='> 0.85' \
+  --duration=300s \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_MEAN"}' \
   --notification-channels=projects/my-project/notificationChannels/AUTO_REMEDIATION_CHANNEL \
   --user-labels=remediation_action=scale_up \
   --project=my-project
@@ -78,7 +84,6 @@ import json
 import logging
 from google.cloud import compute_v1
 from google.cloud import run_v2
-from google.cloud import logging as cloud_logging
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -204,12 +209,11 @@ def handle_restart_service(incident):
 def handle_clean_disk(incident):
     """Clean up disk space on a Compute Engine instance."""
     resource_labels = incident.get("resource", {}).get("labels", {})
-    project = resource_labels.get("project_id", "my-project")
     zone = resource_labels.get("zone", "us-central1-a")
     instance_name = resource_labels.get("instance_id", "")
 
-    # Use a startup script to clean up common temp directories
-    # This is a safe, non-destructive approach
+    # Define cleanup commands for common temp directories.
+    # In practice, run these with OS Config or another remote execution method.
     cleanup_script = """
     #!/bin/bash
     # Clean up old log files (older than 7 days)
@@ -223,7 +227,7 @@ def handle_clean_disk(incident):
     """
 
     logger.info(f"Disk cleanup triggered for {instance_name} in {zone}")
-    # In practice, you would use OS Config or a remote command execution method
+    logger.info(f"Cleanup script to run: {cleanup_script}")
 
 
 def handle_scale_cloud_run(incident):
@@ -257,14 +261,9 @@ def handle_scale_cloud_run(incident):
 Deploy the function with the necessary permissions:
 
 ```bash
-# Deploy the Cloud Function
-gcloud functions deploy auto-remediate \
-  --runtime=python311 \
-  --trigger-topic=alert-notifications \
-  --entry-point=auto_remediate \
-  --memory=256MB \
-  --timeout=120s \
-  --service-account=auto-remediation@my-project.iam.gserviceaccount.com \
+# Create the runtime service account
+gcloud iam service-accounts create auto-remediation \
+  --display-name="Auto Remediation Function" \
   --project=my-project
 
 # Grant the service account necessary permissions
@@ -275,6 +274,20 @@ gcloud projects add-iam-policy-binding my-project \
 gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:auto-remediation@my-project.iam.gserviceaccount.com" \
   --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:auto-remediation@my-project.iam.gserviceaccount.com" \
+  --role="roles/datastore.user"
+
+# Deploy the Cloud Function
+gcloud functions deploy auto-remediate \
+  --runtime=python311 \
+  --trigger-topic=alert-notifications \
+  --entry-point=auto_remediate \
+  --memory=256MB \
+  --timeout=120s \
+  --service-account=auto-remediation@my-project.iam.gserviceaccount.com \
+  --project=my-project
 ```
 
 ## Step 5: Add Safety Guards
@@ -287,6 +300,7 @@ Automated remediation without guardrails can make things worse. Add these safety
 
 ```python
 from google.cloud import firestore
+from datetime import datetime, timedelta, timezone
 
 def check_rate_limit(incident_id, max_actions=3, window_minutes=60):
     """Check if we have already remediated this incident recently."""
@@ -300,15 +314,14 @@ def check_rate_limit(incident_id, max_actions=3, window_minutes=60):
         action_count = data.get("action_count", 0)
 
         # Check if we are within the rate limit window
-        from datetime import datetime, timedelta
-        if last_action and (datetime.utcnow() - last_action) < timedelta(minutes=window_minutes):
+        if last_action and (datetime.now(timezone.utc) - last_action) < timedelta(minutes=window_minutes):
             if action_count >= max_actions:
                 logger.warning(f"Rate limit reached for incident {incident_id}")
                 return False
 
     # Record this action
     doc_ref.set({
-        "last_action_time": datetime.utcnow(),
+        "last_action_time": datetime.now(timezone.utc),
         "action_count": firestore.Increment(1),
     }, merge=True)
 
