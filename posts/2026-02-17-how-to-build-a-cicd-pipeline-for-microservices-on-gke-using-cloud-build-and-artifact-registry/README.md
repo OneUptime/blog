@@ -35,7 +35,8 @@ Before starting, enable the required APIs and set up Artifact Registry:
 gcloud services enable \
   cloudbuild.googleapis.com \
   artifactregistry.googleapis.com \
-  container.googleapis.com
+  container.googleapis.com \
+  containerscanning.googleapis.com
 
 # Create an Artifact Registry Docker repository
 gcloud artifacts repositories create microservices \
@@ -43,10 +44,22 @@ gcloud artifacts repositories create microservices \
   --location=us-central1 \
   --description="Docker images for microservices"
 
-# Grant Cloud Build permission to deploy to GKE
+# Create a dedicated service account for the build
+gcloud iam service-accounts create cloud-build-deploy \
+  --display-name="Cloud Build GKE deployer"
+
+# Grant the build service account permission to push images and deploy to GKE
 gcloud projects add-iam-policy-binding my-project \
-  --member="serviceAccount:$(gcloud projects describe my-project --format='value(projectNumber)')@cloudbuild.gserviceaccount.com" \
+  --member="serviceAccount:cloud-build-deploy@my-project.iam.gserviceaccount.com" \
   --role="roles/container.developer"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:cloud-build-deploy@my-project.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:cloud-build-deploy@my-project.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter"
 ```
 
 ## Repository Structure
@@ -218,6 +231,7 @@ gcloud builds triggers create github \
   --branch-pattern="^main$" \
   --included-files="services/user-service/**" \
   --build-config="cloudbuild.yaml" \
+  --service-account="projects/my-project/serviceAccounts/cloud-build-deploy@my-project.iam.gserviceaccount.com" \
   --substitutions="_SERVICE_NAME=user-service"
 
 # Create a trigger for the order-service
@@ -228,6 +242,7 @@ gcloud builds triggers create github \
   --branch-pattern="^main$" \
   --included-files="services/order-service/**" \
   --build-config="cloudbuild.yaml" \
+  --service-account="projects/my-project/serviceAccounts/cloud-build-deploy@my-project.iam.gserviceaccount.com" \
   --substitutions="_SERVICE_NAME=order-service"
 ```
 
@@ -286,54 +301,28 @@ spec:
 
 ## Automated Rollbacks
 
-If a deployment goes bad, you want to roll back automatically. Add a post-deploy verification step and rollback logic:
+If a deployment goes bad, you want to roll back automatically. Add a post-deploy verification step that rolls back the deployment before failing the build:
 
 ```yaml
   # After production deploy, verify the rollout
   - name: 'gcr.io/cloud-builders/kubectl'
     id: 'verify-rollout'
+    entrypoint: 'sh'
     args:
-      - 'rollout'
-      - 'status'
-      - 'deployment/${_SERVICE_NAME}'
-      - '-n'
-      - 'production'
-      - '--timeout=300s'
+      - '-c'
+      - |
+        if ! kubectl rollout status deployment/${_SERVICE_NAME} \
+          -n production --timeout=300s; then
+          kubectl rollout undo deployment/${_SERVICE_NAME} -n production
+          exit 1
+        fi
     env:
       - 'CLOUDSDK_COMPUTE_REGION=${_REGION}'
       - 'CLOUDSDK_CONTAINER_CLUSTER=${_PROD_CLUSTER}'
     waitFor: ['deploy-production']
 ```
 
-If the rollout status check fails (pods crash-loop or never become ready), Cloud Build marks the step as failed. You can set up a separate Cloud Function that watches for failed builds and triggers a rollback:
-
-```python
-# rollback_function/main.py - Triggered by Cloud Build failure notifications
-from google.cloud import container_v1
-import google.auth
-import subprocess
-
-def rollback_on_failure(event, context):
-    """Roll back the deployment when a Cloud Build pipeline fails."""
-    build = event['attributes']
-
-    if build.get('status') != 'FAILURE':
-        return
-
-    # Extract the service name from build substitutions
-    service_name = build.get('substitutions', {}).get('_SERVICE_NAME')
-    if not service_name:
-        return
-
-    # Execute rollback using kubectl
-    subprocess.run([
-        'kubectl', 'rollout', 'undo',
-        f'deployment/{service_name}',
-        '-n', 'production'
-    ], check=True)
-
-    print(f'Rolled back {service_name} in production')
-```
+If the rollout status check fails (pods crash-loop or never become ready), the step runs `kubectl rollout undo` and then exits with a failure so Cloud Build marks the pipeline as failed.
 
 ## Image Vulnerability Scanning
 
@@ -343,13 +332,12 @@ Artifact Registry can automatically scan your images for known vulnerabilities:
 # Enable vulnerability scanning on the repository
 gcloud artifacts repositories update microservices \
   --location=us-central1 \
-  --enable-vulnerability-scanning
+  --allow-vulnerability-scanning
 
 # Check scan results for a specific image
-gcloud artifacts docker images list \
-  us-central1-docker.pkg.dev/my-project/microservices/user-service \
-  --show-occurrences \
-  --format="table(package,version,fixAvailable,severity)"
+gcloud artifacts vulnerabilities list \
+  us-central1-docker.pkg.dev/my-project/microservices/user-service@sha256:IMAGE_DIGEST \
+  --format="table(vulnerability.effectiveSeverity, vulnerability.cvssScore, vulnerability.packageIssue[0].affectedPackage)"
 ```
 
 ## Wrapping Up
