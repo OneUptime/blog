@@ -30,13 +30,13 @@ Cloud Build runs in the `ci-cd-project`. It needs to push container images to th
 
 ## Step 1: Identify the Cloud Build Service Account
 
-Cloud Build uses a default service account or a user-specified one. Let us find the default:
+Cloud Build uses a default service account or a user-specified one. Older projects might still use the legacy Cloud Build service account. Let us find that legacy account:
 
 ```bash
-# Get the Cloud Build default service account for the CI/CD project
+# Get the legacy Cloud Build service account for the CI/CD project
 
 PROJECT_NUMBER=$(gcloud projects describe ci-cd-project --format='value(projectNumber)')
-echo "Cloud Build SA: ${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+echo "Legacy Cloud Build SA: ${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
 ```
 
 For production setups, I recommend creating a dedicated service account instead of using the default:
@@ -52,6 +52,15 @@ gcloud iam service-accounts create cross-project-builder \
 ## Step 2: Grant Cross-Project Permissions
 
 This is where most teams get stuck. You need to grant the build service account permissions in every target project.
+
+First, grant the service account permission to write build logs in the CI/CD project when you use Cloud Logging:
+
+```bash
+# Allow the custom build SA to write build logs
+gcloud projects add-iam-policy-binding ci-cd-project \
+  --member="serviceAccount:cross-project-builder@ci-cd-project.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter"
+```
 
 For pushing images to Artifact Registry in another project:
 
@@ -94,15 +103,16 @@ gcloud projects add-iam-policy-binding prod-project \
   --role="roles/container.clusterViewer"
 ```
 
-## Step 3: Configure Cloud Build with the Custom Service Account
+If your GKE clusters use Kubernetes RBAC, also create the appropriate `RoleBinding` or `ClusterRoleBinding` for `cross-project-builder@ci-cd-project.iam.gserviceaccount.com` inside each cluster so the service account can apply the Kubernetes resources.
 
-Specify your custom service account in the Cloud Build configuration:
+## Step 3: Configure Cloud Build Logging
+
+When a trigger uses a custom service account, specify the service account on the trigger. Cloud Build triggers ignore the `serviceAccount` field in the build config file. Keep the logging configuration in the build config:
 
 ```yaml
 # cloudbuild.yaml - Cross-project pipeline configuration
-serviceAccount: 'projects/ci-cd-project/serviceAccounts/cross-project-builder@ci-cd-project.iam.gserviceaccount.com'
 options:
-  logging: CLOUD_LOGGING_ONLY  # Required when using custom SA
+  logging: CLOUD_LOGGING_ONLY
 
 steps:
   # Build the container image
@@ -137,7 +147,7 @@ steps:
 
 ## Step 4: Set Up Cross-Project Triggers
 
-Cloud Build triggers can watch repositories and kick off builds. When using a source repository in a different project, you need additional configuration:
+Cloud Build triggers can watch repositories and kick off builds. When using a Cloud Source Repository in a different project, you need additional configuration. Cloud Source Repositories is not available to new customers after June 17, 2024, so use this path only if your organization already uses it:
 
 ```bash
 # Connect the source repository from the dev project
@@ -162,7 +172,7 @@ For GitHub repositories, use a GitHub trigger instead:
 # Create a GitHub-connected trigger
 gcloud builds triggers create github \
   --project=ci-cd-project \
-  --repo-name=my-org/my-app \
+  --repo-name=my-app \
   --repo-owner=my-org \
   --branch-pattern="^main$" \
   --build-config=cloudbuild.yaml \
@@ -175,7 +185,6 @@ You probably do not want every commit to automatically deploy to production. Add
 
 ```yaml
 # cloudbuild-prod.yaml - Production deployment with approval
-serviceAccount: 'projects/ci-cd-project/serviceAccounts/cross-project-builder@ci-cd-project.iam.gserviceaccount.com'
 options:
   logging: CLOUD_LOGGING_ONLY
 
@@ -228,6 +237,10 @@ Your build might need secrets stored in another project. Grant the build service
 gcloud projects add-iam-policy-binding staging-project \
   --member="serviceAccount:cross-project-builder@ci-cd-project.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
+
+gcloud projects add-iam-policy-binding prod-project \
+  --member="serviceAccount:cross-project-builder@ci-cd-project.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
 ```
 
 Reference cross-project secrets in your build config:
@@ -259,7 +272,7 @@ gcloud projects get-iam-policy staging-project \
   --filter="bindings.members:cross-project-builder@ci-cd-project.iam.gserviceaccount.com" \
   --format="table(bindings.role)"
 
-# Test if the service account can access a specific resource
+# Check who can impersonate or administer the service account
 gcloud iam service-accounts get-iam-policy \
   cross-project-builder@ci-cd-project.iam.gserviceaccount.com
 ```
