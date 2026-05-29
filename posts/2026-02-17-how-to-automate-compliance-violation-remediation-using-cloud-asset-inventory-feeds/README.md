@@ -8,7 +8,7 @@ Description: Learn how to automate compliance violation remediation on Google Cl
 
 ---
 
-Configuration drift is inevitable. Someone creates a Cloud Storage bucket without encryption. A developer opens a firewall rule too broadly. A VM gets deployed without the required labels. Catching these violations in a weekly audit is too slow. By the time you find the problem, the damage may already be done.
+Configuration drift is inevitable. Someone creates a Cloud Storage bucket without the required customer-managed encryption key. A developer opens a firewall rule too broadly. A VM gets deployed without the required labels. Catching these violations in a weekly audit is too slow. By the time you find the problem, the damage may already be done.
 
 Cloud Asset Inventory feeds give you real-time notifications when resources change. By connecting these feeds to Cloud Functions, you can automatically detect compliance violations the moment they happen and either remediate them immediately or alert the responsible team.
 
@@ -39,7 +39,7 @@ Cloud Asset Inventory monitors resource changes across your entire project or or
 gcloud pubsub topics create asset-changes \
     --project=compliance-project
 
-# Create a dead-letter topic for failed processing
+# Create a dead-letter topic you can attach to subscriptions that use a dead-letter policy
 gcloud pubsub topics create asset-changes-dlq \
     --project=compliance-project
 ```
@@ -67,6 +67,7 @@ gcloud asset feeds create firewall-feed \
 # Monitor IAM policy changes
 gcloud asset feeds create iam-policy-feed \
     --project=compliance-project \
+    --asset-types="cloudresourcemanager.googleapis.com/Project" \
     --content-type=iam-policy \
     --pubsub-topic="projects/compliance-project/topics/asset-changes"
 
@@ -113,7 +114,6 @@ from google.cloud import storage
 from google.cloud import compute_v1
 from google.cloud import firestore
 from datetime import datetime
-from google.protobuf.json_format import MessageToDict
 
 # Initialize clients
 storage_client = storage.Client()
@@ -125,7 +125,9 @@ logger = logging.getLogger(__name__)
 # Compliance rules configuration
 REQUIRED_LABELS = ['environment', 'team', 'cost-center']
 BLOCKED_FIREWALL_PORTS = ['22', '3389']  # SSH and RDP should not be open to 0.0.0.0/0
-REQUIRED_ENCRYPTION_KEY_PREFIX = 'projects/compliance-project/locations/'
+REQUIRED_KMS_KEY_NAME = (
+    'projects/compliance-project/locations/us/keyRings/compliance/cryptoKeys/storage-default'
+)
 
 
 @functions_framework.cloud_event
@@ -189,7 +191,22 @@ def handle_storage_bucket(asset_data):
             log_violation(bucket_name, 'storage_bucket', 'public_access_not_prevented',
                         f'Failed to remediate: {e}')
 
-    # Check 3: Are required labels present?
+    # Check 3: Does the bucket use the required customer-managed encryption key?
+    encryption = resource.get('encryption', {})
+    default_kms_key = encryption.get('defaultKmsKeyName', '')
+    if default_kms_key != REQUIRED_KMS_KEY_NAME:
+        violations.append('required_kms_key_missing')
+        try:
+            bucket = storage_client.get_bucket(bucket_name)
+            bucket.default_kms_key_name = REQUIRED_KMS_KEY_NAME
+            bucket.patch()
+            log_remediation(bucket_name, 'storage_bucket', 'required_kms_key',
+                          'Set the required default customer-managed encryption key')
+        except Exception as e:
+            log_violation(bucket_name, 'storage_bucket', 'required_kms_key_missing',
+                        f'Failed to remediate: {e}')
+
+    # Check 4: Are required labels present?
     labels = resource.get('labels', {})
     missing_labels = [l for l in REQUIRED_LABELS if l not in labels]
     if missing_labels:
@@ -263,13 +280,19 @@ def handle_cloudsql_instance(asset_data):
 
     settings = resource.get('settings', {})
 
-    # Check if SSL is required
+    # Check if SSL/TLS is enforced
     ip_config = settings.get('ipConfiguration', {})
-    require_ssl = ip_config.get('requireSsl', False)
-    if not require_ssl:
+    ssl_mode = ip_config.get('sslMode')
+    require_ssl = ip_config.get('requireSsl')
+    ssl_not_enforced = (
+        ssl_mode == 'ALLOW_UNENCRYPTED_AND_ENCRYPTED'
+        if ssl_mode
+        else not require_ssl
+    )
+    if ssl_not_enforced:
         log_violation(instance_name, 'cloudsql', 'ssl_not_required',
-                     'Cloud SQL instance does not require SSL')
-        send_alert(instance_name, 'Cloud SQL created without SSL requirement')
+                     'Cloud SQL instance does not enforce SSL/TLS')
+        send_alert(instance_name, 'Cloud SQL created without SSL/TLS enforcement')
 
     # Check if public IP is enabled
     ipv4_enabled = ip_config.get('ipv4Enabled', True)
@@ -326,6 +349,7 @@ def extract_project_from_asset(asset_data):
 ```bash
 # Deploy the remediation function
 gcloud functions deploy compliance-remediation \
+    --gen2 \
     --runtime=python311 \
     --trigger-topic=asset-changes \
     --source=./remediation/ \
@@ -364,20 +388,22 @@ Create a dashboard to track violations and remediations:
 gcloud logging metrics create compliance-violations \
     --project=compliance-project \
     --description="Count of compliance violations detected" \
-    --log-filter='resource.type="cloud_function" AND textPayload:"Violation:"'
+    --log-filter='resource.type="cloud_run_revision" AND resource.labels.service_name="compliance-remediation" AND textPayload:"Violation:"'
 
 gcloud logging metrics create compliance-remediations \
     --project=compliance-project \
     --description="Count of automated remediations" \
-    --log-filter='resource.type="cloud_function" AND textPayload:"Remediated:"'
+    --log-filter='resource.type="cloud_run_revision" AND resource.labels.service_name="compliance-remediation" AND textPayload:"Remediated:"'
 
 # Create an alerting policy for high violation rates
 gcloud monitoring policies create \
+    --project=compliance-project \
     --display-name="High Compliance Violation Rate" \
     --condition-display-name="Too many violations" \
     --condition-filter='metric.type="logging.googleapis.com/user/compliance-violations"' \
-    --condition-threshold-value=10 \
-    --condition-threshold-comparison=COMPARISON_GT \
+    --if='> 10' \
+    --duration=300s \
+    --combiner=OR \
     --notification-channels=projects/compliance-project/notificationChannels/CHANNEL_ID
 ```
 
@@ -464,7 +490,7 @@ resource "google_cloudfunctions2_function" "remediation" {
 
 **Log every action.** Every detection and remediation must be logged for audit purposes. Include what was detected, what action was taken, and by which service account.
 
-**Set up dead-letter queues.** If your Cloud Function fails to process a message, the dead-letter topic captures it for later investigation.
+**Set up dead-letter queues.** If you manage the Pub/Sub subscription yourself, attach a dead-letter policy so failed messages can be captured for later investigation.
 
 **Consider race conditions.** If a resource is created and immediately modified, you might get two notifications in quick succession. Your remediation logic should be idempotent.
 
