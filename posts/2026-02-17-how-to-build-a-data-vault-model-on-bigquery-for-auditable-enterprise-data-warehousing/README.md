@@ -10,7 +10,7 @@ Description: Learn how to implement a Data Vault 2.0 model on Google BigQuery fo
 
 Data Vault is a modeling methodology built for enterprise data warehousing where auditability, traceability, and adaptability matter. Unlike traditional star schemas that are optimized for querying, Data Vault is optimized for loading, historization, and compliance. Every piece of data is tracked with its source, load timestamp, and lineage - nothing gets overwritten or lost.
 
-On BigQuery, Data Vault works particularly well because BigQuery handles the storage and compute scaling that Data Vault's insert-only pattern demands. You do not need to worry about partitioning strategies for performance the same way you would with an on-premises data warehouse.
+On BigQuery, Data Vault works particularly well because BigQuery handles the storage and compute scaling that Data Vault's insert-only pattern demands. You should still partition and cluster large vault tables for cost and query performance, but you do not need to manage physical storage layout the same way you would with an on-premises data warehouse.
 
 ## Data Vault Core Concepts
 
@@ -57,7 +57,7 @@ Hubs are the anchor points of your Data Vault. Each Hub table stores unique busi
 -- Create the Customer Hub
 -- The hash key provides a consistent surrogate key derived from the business key
 CREATE TABLE IF NOT EXISTS `project.raw_vault.hub_customer` (
-  customer_hash_key BYTES NOT NULL,       -- SHA-256 of the business key
+  customer_hash_key STRING NOT NULL,      -- Hex-encoded SHA-256 of the business key
   customer_id STRING NOT NULL,            -- The actual business key
   load_timestamp TIMESTAMP NOT NULL,      -- When this record was first loaded
   record_source STRING NOT NULL           -- Which source system provided this key
@@ -67,7 +67,7 @@ CLUSTER BY customer_hash_key;
 
 -- Create the Product Hub
 CREATE TABLE IF NOT EXISTS `project.raw_vault.hub_product` (
-  product_hash_key BYTES NOT NULL,
+  product_hash_key STRING NOT NULL,
   product_id STRING NOT NULL,
   load_timestamp TIMESTAMP NOT NULL,
   record_source STRING NOT NULL
@@ -77,7 +77,7 @@ CLUSTER BY product_hash_key;
 
 -- Create the Order Hub
 CREATE TABLE IF NOT EXISTS `project.raw_vault.hub_order` (
-  order_hash_key BYTES NOT NULL,
+  order_hash_key STRING NOT NULL,
   order_id STRING NOT NULL,
   load_timestamp TIMESTAMP NOT NULL,
   record_source STRING NOT NULL
@@ -94,9 +94,9 @@ Links capture the relationships between business entities. Each Link contains ha
 -- Create the Order-Customer Link
 -- This captures which customer placed which order
 CREATE TABLE IF NOT EXISTS `project.raw_vault.link_order_customer` (
-  link_hash_key BYTES NOT NULL,           -- SHA-256 of combined hub keys
-  order_hash_key BYTES NOT NULL,          -- FK to hub_order
-  customer_hash_key BYTES NOT NULL,       -- FK to hub_customer
+  link_hash_key STRING NOT NULL,          -- Hex-encoded SHA-256 of combined hub keys
+  order_hash_key STRING NOT NULL,         -- FK to hub_order
+  customer_hash_key STRING NOT NULL,      -- FK to hub_customer
   load_timestamp TIMESTAMP NOT NULL,
   record_source STRING NOT NULL
 )
@@ -105,9 +105,9 @@ CLUSTER BY link_hash_key;
 
 -- Create the Order-Product Link
 CREATE TABLE IF NOT EXISTS `project.raw_vault.link_order_product` (
-  link_hash_key BYTES NOT NULL,
-  order_hash_key BYTES NOT NULL,
-  product_hash_key BYTES NOT NULL,
+  link_hash_key STRING NOT NULL,
+  order_hash_key STRING NOT NULL,
+  product_hash_key STRING NOT NULL,
   load_timestamp TIMESTAMP NOT NULL,
   record_source STRING NOT NULL
 )
@@ -123,10 +123,10 @@ Satellites store the descriptive attributes and maintain full history through in
 -- Create the Customer Details Satellite
 -- Every change to a customer's attributes creates a new row
 CREATE TABLE IF NOT EXISTS `project.raw_vault.sat_customer_details` (
-  customer_hash_key BYTES NOT NULL,       -- FK to hub_customer
+  customer_hash_key STRING NOT NULL,      -- FK to hub_customer
   load_timestamp TIMESTAMP NOT NULL,      -- When this version was loaded
   load_end_timestamp TIMESTAMP,           -- NULL for current version
-  hash_diff BYTES NOT NULL,               -- SHA-256 of all attribute values for change detection
+  hash_diff STRING NOT NULL,              -- Hex-encoded SHA-256 of all attribute values for change detection
   customer_name STRING,
   email STRING,
   phone STRING,
@@ -140,10 +140,10 @@ CLUSTER BY customer_hash_key;
 
 -- Create the Order Details Satellite
 CREATE TABLE IF NOT EXISTS `project.raw_vault.sat_order_details` (
-  order_hash_key BYTES NOT NULL,
+  order_hash_key STRING NOT NULL,
   load_timestamp TIMESTAMP NOT NULL,
   load_end_timestamp TIMESTAMP,
-  hash_diff BYTES NOT NULL,
+  hash_diff STRING NOT NULL,
   order_date TIMESTAMP,
   order_status STRING,
   total_amount NUMERIC,
@@ -165,7 +165,7 @@ The loading process follows a specific pattern: load Hubs first, then Links, the
 MERGE `project.raw_vault.hub_customer` AS target
 USING (
   SELECT DISTINCT
-    SHA256(CAST(customer_id AS STRING)) AS customer_hash_key,
+    TO_HEX(SHA256(CAST(customer_id AS STRING))) AS customer_hash_key,
     CAST(customer_id AS STRING) AS customer_id,
     CURRENT_TIMESTAMP() AS load_timestamp,
     'source_crm' AS record_source
@@ -185,16 +185,16 @@ Loading satellites requires change detection using the hash_diff column.
 MERGE `project.raw_vault.sat_customer_details` AS target
 USING (
   SELECT
-    SHA256(CAST(customer_id AS STRING)) AS customer_hash_key,
+    TO_HEX(SHA256(CAST(customer_id AS STRING))) AS customer_hash_key,
     CURRENT_TIMESTAMP() AS load_timestamp,
-    SHA256(CONCAT(
-      COALESCE(customer_name, ''),
-      COALESCE(email, ''),
-      COALESCE(phone, ''),
-      COALESCE(address, ''),
-      COALESCE(city, ''),
-      COALESCE(country, '')
-    )) AS hash_diff,
+    TO_HEX(SHA256(TO_JSON_STRING(STRUCT(
+      customer_name AS customer_name,
+      email AS email,
+      phone AS phone,
+      address AS address,
+      city AS city,
+      country AS country
+    )))) AS hash_diff,
     customer_name,
     email,
     phone,
@@ -284,7 +284,7 @@ WHERE hc.customer_id = 'CUST-12345'
 
 ## Automating the Load Process
 
-Schedule the vault loading using Cloud Scheduler and BigQuery scheduled queries.
+Schedule the vault loading using BigQuery scheduled queries.
 
 ```bash
 # Schedule the hub loading to run every hour
