@@ -38,8 +38,8 @@ First, the data preparation component that fetches and processes fresh training 
 ```python
 # components/data_prep.py
 
-from kfp.v2 import dsl
-from kfp.v2.dsl import Dataset, Output, Input, Metrics
+from kfp import dsl
+from kfp.dsl import Dataset, Output
 
 @dsl.component(
     base_image="python:3.10",
@@ -84,19 +84,20 @@ Next, the training component.
 
 ```python
 # components/training.py
+from kfp import dsl
+from kfp.dsl import Dataset, Input, Metrics, Model, Output
+
 @dsl.component(
     base_image="python:3.10",
     packages_to_install=[
-        "google-cloud-aiplatform",
         "pandas",
         "scikit-learn",
-        "xgboost",
-        "joblib"
+        "xgboost>=2.1,<2.2"
     ]
 )
 def train_model(
     train_data: Input[Dataset],
-    model_artifact: Output[dsl.Model],
+    model_artifact: Output[Model],
     metrics: Output[Metrics],
     target_column: str = "label",
     n_estimators: int = 100,
@@ -106,8 +107,7 @@ def train_model(
     import pandas as pd
     import xgboost as xgb
     from sklearn.metrics import accuracy_score, f1_score
-    import joblib
-    import json
+    import os
 
     # Load training data
     df = pd.read_csv(train_data.path)
@@ -119,7 +119,6 @@ def train_model(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
         eval_metric="logloss",
-        use_label_encoder=False,
     )
     model.fit(X, y)
 
@@ -136,19 +135,23 @@ def train_model(
     print(f"Training F1 score: {train_f1:.4f}")
 
     # Save the trained model
-    joblib.dump(model, model_artifact.path)
+    os.makedirs(model_artifact.path, exist_ok=True)
+    model.save_model(os.path.join(model_artifact.path, "model.bst"))
 ```
 
 The evaluation component decides whether the new model is good enough to deploy.
 
 ```python
 # components/evaluation.py
+from kfp import dsl
+from kfp.dsl import Dataset, Input, Metrics, Model, Output
+
 @dsl.component(
     base_image="python:3.10",
-    packages_to_install=["pandas", "scikit-learn", "xgboost", "joblib"]
+    packages_to_install=["pandas", "scikit-learn", "xgboost>=2.1,<2.2"]
 )
 def evaluate_model(
-    model_artifact: Input[dsl.Model],
+    model_artifact: Input[Model],
     test_data: Input[Dataset],
     metrics: Output[Metrics],
     target_column: str = "label",
@@ -157,11 +160,13 @@ def evaluate_model(
     """Evaluate the trained model against the test set.
     Returns True if the model passes the quality threshold."""
     import pandas as pd
+    import xgboost as xgb
     from sklearn.metrics import accuracy_score, f1_score, classification_report
-    import joblib
+    import os
 
     # Load model and test data
-    model = joblib.load(model_artifact.path)
+    model = xgb.XGBClassifier()
+    model.load_model(os.path.join(model_artifact.path, "model.bst"))
     df = pd.read_csv(test_data.path)
     X = df.drop(columns=[target_column])
     y = df[target_column]
@@ -195,7 +200,7 @@ Now wire the components together into a complete pipeline.
 
 ```python
 # pipeline.py
-from kfp.v2 import dsl, compiler
+from kfp import compiler, dsl
 
 @dsl.pipeline(
     name="continuous-training-pipeline",
@@ -229,7 +234,7 @@ def continuous_training_pipeline(
     )
 
     # Step 4: Conditionally register and deploy the model
-    with dsl.Condition(eval_task.output == True):
+    with dsl.If(eval_task.output == True):
         register_task = register_model(
             project_id=project_id,
             model_artifact=training_task.outputs["model_artifact"],
@@ -239,11 +244,16 @@ def continuous_training_pipeline(
             model_resource=register_task.output,
             endpoint_id=endpoint_id,
         )
+    with dsl.Else():
+        send_failure_notification(
+            project_id=project_id,
+            metrics_summary="Model evaluation failed the configured accuracy threshold",
+        )
 
-# Compile the pipeline to a JSON file
+# Compile the pipeline to a YAML file
 compiler.Compiler().compile(
     pipeline_func=continuous_training_pipeline,
-    package_path="continuous_training_pipeline.json"
+    package_path="continuous_training_pipeline.yaml"
 )
 ```
 
@@ -269,7 +279,7 @@ def trigger_training_pipeline(request):
     # Submit the pipeline run
     job = aiplatform.PipelineJob(
         display_name="scheduled-training-run",
-        template_path="gs://my-pipeline-bucket/pipelines/continuous_training_pipeline.json",
+        template_path="gs://my-pipeline-bucket/pipelines/continuous_training_pipeline.yaml",
         parameter_values={
             "project_id": "my-project",
             "dataset_name": "ml_features",
@@ -312,13 +322,16 @@ Complete the pipeline with model registration and deployment steps.
 
 ```python
 # components/register_and_deploy.py
+from kfp import dsl
+from kfp.dsl import Input, Model
+
 @dsl.component(
     base_image="python:3.10",
     packages_to_install=["google-cloud-aiplatform"]
 )
 def register_model(
     project_id: str,
-    model_artifact: Input[dsl.Model],
+    model_artifact: Input[Model],
 ) -> str:
     """Register the trained model in Vertex AI Model Registry."""
     from google.cloud import aiplatform
@@ -328,7 +341,7 @@ def register_model(
     model = aiplatform.Model.upload(
         display_name="my-model",
         artifact_uri=model_artifact.uri,
-        serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-2:latest",
+        serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/xgboost-cpu.2-1:latest",
     )
 
     print(f"Model registered: {model.resource_name}")
@@ -371,6 +384,8 @@ When a model fails the quality threshold, you want to know about it.
 
 ```python
 # components/notification.py
+from kfp import dsl
+
 @dsl.component(
     base_image="python:3.10",
     packages_to_install=["google-cloud-pubsub"]
