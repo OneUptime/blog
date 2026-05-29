@@ -44,7 +44,7 @@ resource "google_org_policy_policy" "restrict_locations" {
   }
 }
 
-# Prevent public access to Cloud Storage buckets
+# Enforce uniform bucket-level access for Cloud Storage buckets
 resource "google_org_policy_policy" "uniform_bucket_access" {
   name   = "organizations/${var.org_id}/policies/storage.uniformBucketLevelAccess"
   parent = "organizations/${var.org_id}"
@@ -97,7 +97,6 @@ import (
 
     "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
-    "google.golang.org/api/cloudresourcemanager/v1"
     "google.golang.org/api/compute/v1"
     "google.golang.org/api/storage/v1"
 )
@@ -193,10 +192,17 @@ func TestLocationExceptionWorks(t *testing.T) {
     ctx := context.Background()
     storageService, _ := storage.NewService(ctx)
 
+    bucketName := fmt.Sprintf("policy-test-exception-%d", time.Now().UnixNano())
+
     // Create a bucket in Asia in the excepted project (should succeed)
     bucket := &storage.Bucket{
-        Name:     "policy-test-exception-bucket",
+        Name:     bucketName,
         Location: "ASIA-EAST1",
+        IamConfiguration: &storage.BucketIamConfiguration{
+            UniformBucketLevelAccess: &storage.BucketIamConfigurationUniformBucketLevelAccess{
+                Enabled: true,
+            },
+        },
     }
 
     createdBucket, err := storageService.Buckets.Insert(
@@ -205,10 +211,12 @@ func TestLocationExceptionWorks(t *testing.T) {
 
     // This should succeed because the project has an exception
     assert.NoError(t, err)
-    assert.Equal(t, "ASIA-EAST1", createdBucket.Location)
+    if err == nil {
+        assert.Equal(t, "ASIA-EAST1", createdBucket.Location)
 
-    // Cleanup
-    storageService.Buckets.Delete("policy-test-exception-bucket").Do()
+        // Cleanup
+        storageService.Buckets.Delete(bucketName).Do()
+    }
 }
 ```
 
@@ -254,7 +262,7 @@ steps:
       - '-c'
       - |
         cd test
-        go test -v -timeout 30m -run TestOrgPolicies
+        go test -v -timeout 30m -run 'Test(OrgPoliciesDeployed|LocationRestrictionEnforced|LocationExceptionWorks)'
 ```
 
 ## Plan Validation Script
@@ -326,13 +334,13 @@ if __name__ == "__main__":
 Beyond CI tests, set up a scheduled job that verifies policies haven't drifted from the Terraform state:
 
 ```bash
-# Run Terraform plan in a scheduled Cloud Build trigger
+# Create a manual Cloud Build trigger, then schedule it with Cloud Scheduler
 # Any drift will show up as planned changes
-gcloud builds triggers create scheduled \
+gcloud builds triggers create manual \
     --name="policy-drift-check" \
-    --schedule="0 8 * * *" \
+    --region="REGION" \
     --build-config="cloudbuild-drift.yaml" \
-    --source="repos/org-policies" \
+    --repository="projects/PROJECT_ID/locations/REGION/connections/CONNECTION/repositories/org-policies" \
     --branch="main"
 ```
 
@@ -349,10 +357,22 @@ steps:
         cd modules/org-policies
         terraform init
         # Plan and check for any differences
-        terraform plan -detailed-exitcode -out=drift.tfplan 2>&1 | tee plan_output.txt
+        terraform plan -detailed-exitcode -out=drift.tfplan > plan_output.txt 2>&1
         EXIT_CODE=$?
+        cat plan_output.txt
         if [ $EXIT_CODE -eq 2 ]; then
           echo "DRIFT DETECTED - policies have changed outside Terraform"
+          touch /workspace/drift_detected
+        elif [ $EXIT_CODE -ne 0 ]; then
+          exit 1
+        fi
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:slim'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        if [ -f /workspace/drift_detected ]; then
           # Send alert via Pub/Sub
           gcloud pubsub topics publish policy-drift-alerts \
             --message="Policy drift detected. Check Cloud Build logs."
