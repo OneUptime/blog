@@ -58,25 +58,22 @@ import uuid
 event_id = str(uuid.uuid4())  # e.g., "a3b8f042-7c91-4e3d-b5a1-9f2c8d4e6a1b"
 ```
 
-## Solution 2: Bit-Reversed Sequential IDs
+## Solution 2: Bit-Reversed Integer IDs
 
-If you need sequential IDs for application reasons but want to avoid hotspots, you can bit-reverse the ID before using it as a key:
+If you need integer IDs for application reasons but want to avoid hotspots, use Spanner's built-in bit-reversed positive sequence:
 
-```python
-def bit_reverse_id(sequential_id):
-    """Reverse the bits of an integer to scatter sequential IDs across the key space."""
-    # Convert to 64-bit binary, reverse, convert back
-    binary = format(sequential_id, '064b')
-    reversed_binary = binary[::-1]
-    return int(reversed_binary, 2)
+```sql
+CREATE SEQUENCE EventIdSequence OPTIONS (sequence_kind = 'bit_reversed_positive');
 
-# Sequential IDs: 1, 2, 3, 4 become widely scattered values
-# bit_reverse_id(1) -> 9223372036854775808
-# bit_reverse_id(2) -> 4611686018427387904
-# bit_reverse_id(3) -> 13835058055282163712
+CREATE TABLE Events (
+    EventId INT64 DEFAULT (GET_NEXT_SEQUENCE_VALUE(SEQUENCE EventIdSequence)),
+    EventType STRING(64),
+    Payload STRING(MAX),
+    CreatedAt TIMESTAMP
+) PRIMARY KEY (EventId);
 ```
 
-This preserves the uniqueness and ordering of your IDs while scattering them across the key space.
+This preserves uniqueness while scattering the generated integer values across the key space. If your application needs a human-readable sequential number, store that number in a separate non-key column.
 
 ## Solution 3: Hash Prefix
 
@@ -98,7 +95,7 @@ Compute ShardId as a hash of EventId modulo some number:
 ```python
 import hashlib
 
-def compute_shard(event_id, num_shards=1000):
+def compute_shard(event_id, num_shards=16):
     """Compute a shard ID to distribute writes across the key space."""
     hash_value = hashlib.sha256(event_id.encode()).hexdigest()
     return int(hash_value[:8], 16) % num_shards
@@ -107,7 +104,7 @@ event_id = "order-12345"
 shard_id = compute_shard(event_id)  # Deterministic shard assignment
 ```
 
-This spreads writes across `num_shards` different key ranges. The downside is that reading all events requires scanning across all shards.
+This spreads writes across `num_shards` different key ranges. Choose the number of shards based on expected scale and node count; using far more shards than you need can make reads less efficient. The downside is that reading all events requires scanning across all shards.
 
 ## Timestamp-Based Key Patterns
 
@@ -136,17 +133,17 @@ CREATE TABLE Logs (
 
 You can detect hotspots by monitoring these signals:
 
-1. **High CPU on specific splits** - In Cloud Monitoring, look at per-split CPU utilization. If one split is consistently higher than others, you have a hotspot.
+1. **Hot split statistics** - Query `SPANNER_SYS.SPLIT_STATS_TOP_*` and look for splits with a high `CPU_USAGE_SCORE`. If one split is consistently high, you have a hotspot.
 
 2. **Increasing write latency under load** - If write latency increases linearly as you add more writers, a hotspot is likely the cause.
 
 3. **Transaction abort rate** - A high abort rate on a specific table or key range can indicate contention caused by a hotspot.
 
 ```bash
-# Check for high-priority operation statistics
+# Check hot split statistics
 gcloud spanner databases execute-sql my-database \
     --instance=my-spanner-instance \
-    --sql="SELECT * FROM SPANNER_SYS.TXN_STATS_TOP_10MINUTE ORDER BY AVG_COMMIT_LATENCY_SECONDS DESC LIMIT 10"
+    --sql="SELECT INTERVAL_END, SPLIT_START, SPLIT_LIMIT, CPU_USAGE_SCORE, AFFECTED_TABLES, UNSPLITTABLE_REASONS FROM SPANNER_SYS.SPLIT_STATS_TOP_10MINUTE ORDER BY INTERVAL_END DESC, CPU_USAGE_SCORE DESC LIMIT 10"
 ```
 
 ## Key Design Decision Flow
@@ -155,11 +152,11 @@ Here is a decision tree for choosing the right primary key strategy:
 
 ```mermaid
 flowchart TD
-    A[Choosing a Primary Key] --> B{Do you need sequential ordering?}
+    A[Choosing a Primary Key] --> B{Do you need an integer primary key?}
     B -->|No| C[Use UUID v4 - simplest and most effective]
-    B -->|Yes| D{Is it for display/business logic only?}
+    B -->|Yes| D{Is a sequence needed only for display/business logic?}
     D -->|Yes| E[Store sequential ID as a column, use UUID as PK]
-    D -->|No| F[Use bit-reversed sequential ID]
+    D -->|No| F[Use a bit-reversed positive sequence]
     A --> G{Is timestamp a key component?}
     G -->|Yes| H[Add a random shard prefix before the timestamp]
     G -->|No| C
@@ -167,7 +164,7 @@ flowchart TD
 
 ## Interleaved Table Keys
 
-For interleaved tables, the child table's primary key must start with the parent's primary key. As long as the parent's primary key is well-distributed, the children will be too:
+For interleaved tables, the child table's primary key must start with the parent's primary key. A well-distributed parent key helps distribute child rows across parents:
 
 ```sql
 -- Parent with UUID key - well distributed
@@ -185,11 +182,11 @@ CREATE TABLE UserOrders (
   INTERLEAVE IN PARENT Users ON DELETE CASCADE;
 ```
 
-Since UserId is a UUID, user orders are spread across all splits. Within each user, the OrderId UUID ensures that a single user with many orders does not create a local hotspot either.
+Since UserId is a UUID, user orders are spread across splits when writes are distributed across many users. Within each user, the OrderId UUID avoids monotonically appending that user's orders to the end of the user's child key range, but an extremely hot single user can still require separate workload or schema mitigation.
 
 ## Testing for Hotspots Before Production
 
-Before deploying to production, load-test your schema with realistic data patterns. Use the Spanner emulator or a small real instance:
+Before deploying to production, test your schema with realistic data patterns. Use the Spanner emulator for local functional testing, and use a small real instance for performance and hotspot validation because emulator performance and scalability are not comparable to the production service:
 
 ```bash
 # Start the Spanner emulator for local testing
