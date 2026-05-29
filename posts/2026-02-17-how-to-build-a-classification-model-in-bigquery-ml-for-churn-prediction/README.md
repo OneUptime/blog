@@ -67,7 +67,7 @@ OPTIONS(
   model_type='LOGISTIC_REG',
   -- Specify which column is the target label
   input_label_cols=['churned'],
-  -- Enable automatic feature preprocessing
+  -- Balance class labels for imbalanced churn data
   auto_class_weights=TRUE,
   -- Set a reasonable number of training iterations
   max_iterations=20,
@@ -125,7 +125,11 @@ SELECT
   customer_id,
   predicted_churned,
   -- Get the probability of churn (class 1)
-  predicted_churned_probs[OFFSET(0)].prob AS churn_probability
+  (
+    SELECT prob
+    FROM UNNEST(predicted_churned_probs)
+    WHERE label = '1'
+  ) AS churn_probability
 FROM
   ML.PREDICT(MODEL `my_project.churn_dataset.churn_model`,
     (
@@ -150,21 +154,22 @@ The results give you a ranked list of customers by their likelihood of churning.
 
 ## Understanding Feature Importance
 
-BigQuery ML lets you inspect which features contributed most to the model's predictions. This is useful both for validating that the model makes sense and for informing product decisions.
+BigQuery ML lets you inspect the coefficients that the logistic regression model uses. This is useful both for validating that the model makes sense and for informing product decisions.
 
-This query returns the weight of each feature in the logistic regression model.
+This query returns the standardized weight of each feature in the logistic regression model, which makes the absolute weights easier to compare.
 
 ```sql
--- Check which features matter most for churn prediction
+-- Check which features have the largest standardized coefficients
 SELECT
   *
 FROM
-  ML.WEIGHTS(MODEL `my_project.churn_dataset.churn_model`)
+  ML.WEIGHTS(MODEL `my_project.churn_dataset.churn_model`,
+    STRUCT(TRUE AS standardize))
 ORDER BY
   ABS(weight) DESC;
 ```
 
-If you see that low login counts and high support ticket counts are the strongest predictors, that aligns with intuition and gives your product team actionable information.
+If you see that low login counts and high support ticket counts have large standardized coefficients, that aligns with intuition and gives your product team actionable information.
 
 ## Scheduling Regular Retraining
 
