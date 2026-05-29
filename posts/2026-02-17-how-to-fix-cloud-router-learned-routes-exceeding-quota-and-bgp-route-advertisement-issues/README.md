@@ -14,11 +14,11 @@ Cloud Router is the backbone of hybrid connectivity in Google Cloud. It uses BGP
 
 Every Cloud Router has limits on the number of routes it can learn from BGP peers and the number of routes it can advertise. The key limits are:
 
-- Learned routes per Cloud Router: 250 (default), can be increased to 1,000 with a quota request
-- Advertised routes per BGP session: No hard limit, but best practice is to keep it reasonable
-- Maximum unique destinations per VPC: 400 dynamic routes per region (can be increased)
+- Unique dynamic route prefixes from Cloud Routers in the same region: quota per region per VPC network
+- Maximum prefixes accepted from a single BGP peer: 5,000; if a peer advertises more than this, Cloud Router resets the BGP session
+- Advertised routes per BGP session: no restriction for subnet route advertisements, and 200 custom advertised routes per BGP session
 
-When you exceed these limits, the Cloud Router starts dropping routes, and some of your on-premises destinations become unreachable from GCP, or vice versa.
+When you exceed the unique dynamic route prefix quotas, Google Cloud drops routes beyond the quota, and some of your on-premises destinations become unreachable from GCP, or vice versa.
 
 ## Step 1: Check Current Route Count
 
@@ -37,10 +37,13 @@ This shows each BGP peer and the number of learned routes. Look at the `numLearn
 To see the actual routes:
 
 ```bash
-# List all dynamic routes in the VPC
-gcloud compute routes list \
-    --filter="routeType:BGP" \
-    --format="table(destRange, nextHopIp, priority, routeType)"
+# List learned IPv4 routes from a specific BGP peer
+gcloud compute routers list-bgp-routes your-router \
+    --region=us-central1 \
+    --peer=your-bgp-peer \
+    --address-family=IPV4 \
+    --route-direction=INBOUND \
+    --format="table(destination.prefix, med, origin)"
 ```
 
 ## Step 2: Check for Route Quota Exhaustion
@@ -49,52 +52,40 @@ If routes are being dropped, check the Cloud Router logs for warnings:
 
 ```bash
 # Check Cloud Router logs for route limit warnings
-gcloud logging read 'resource.type="gce_router" AND severity>=WARNING' \
+gcloud logging read '(resource.type="gce_router" OR resource.type="gce_network_region") AND severity>=WARNING' \
     --project=your-project \
     --limit=20 \
     --format="table(timestamp, jsonPayload.message)"
 ```
 
 Look for messages like:
-- "Exceeded maximum number of learned routes"
-- "Route limit reached, some routes were dropped"
+- "No more routes can be programmed"
+- Route entries with `jsonPayload.affectedResource.routes.nextHopIpAddresses` for dropped routes
 
-You can also check the quota usage:
-
-```bash
-# Check routing quotas
-gcloud compute project-info describe \
-    --format="json(quotas)" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for q in data.get('quotas', []):
-    if 'route' in q.get('metric', '').lower():
-        print(f\"{q['metric']}: {q['usage']}/{q['limit']}\")
-"
-```
+You can also check quota usage in Cloud Monitoring with the `router.googleapis.com/dynamic_routes/learned_routes/used_unique_destinations`, `router.googleapis.com/dynamic_routes/learned_routes/unique_destinations_limit`, and `router.googleapis.com/dynamic_routes/learned_routes/any_dropped_unique_destinations` metrics.
 
 ## Step 3: Request a Quota Increase
 
 If you legitimately need more routes, request a quota increase:
 
 ```bash
-# Check current learned route limit for the router
+# Review the router and BGP peer configuration
 gcloud compute routers describe your-router \
     --region=us-central1 \
-    --format="json(bgp)"
+    --format="json(bgp,bgpPeers)"
 ```
 
-You can increase the learned route limit through the Google Cloud Console under IAM and Admin > Quotas, or by contacting Google Cloud support. The maximum is typically 1,000 learned routes per Cloud Router.
+You can review and request increases for Cloud Router dynamic route prefix quotas through the Google Cloud Console under IAM and Admin > Quotas. If quota increases are not available for your case, contact your Google Cloud Sales or support team to discuss alternatives.
 
 ## Step 4: Summarize Routes on the On-Premises Side
 
 The better long-term fix is to reduce the number of routes being advertised. Instead of advertising every individual /24 subnet from your on-premises network, summarize them into larger CIDR blocks.
 
 For example, if your on-premises network advertises:
+- 10.1.0.0/24
 - 10.1.1.0/24
 - 10.1.2.0/24
 - 10.1.3.0/24
-- 10.1.4.0/24
 
 You can summarize these into a single route: 10.1.0.0/22
 
@@ -129,7 +120,7 @@ The `advertisement-mode=CUSTOM` setting lets you control exactly which routes ar
 
 ## Step 6: Filter Learned Routes
 
-If your on-premises network advertises routes you do not need in GCP, you can filter them. Unfortunately, Cloud Router does not support inbound route filtering directly. You need to filter on the on-premises side by configuring route policies that limit what gets advertised to GCP.
+If your on-premises network advertises routes you do not need in GCP, you can filter them. Cloud Router supports BGP import route policies for learned routes, and you can also filter on the on-premises side by configuring route policies that limit what gets advertised to GCP.
 
 On a Cisco router, this might look like:
 
@@ -146,7 +137,7 @@ This only advertises routes within 10.0.0.0/8 with a prefix length of /16 or sho
 
 ## Step 7: Use Multiple Cloud Routers
 
-If you have a large network with many routes, consider spreading the load across multiple Cloud Routers. Each Cloud Router has its own route limit, so using multiple routers effectively multiplies your capacity.
+If you have a large network with many routes or many BGP peers, consider spreading connectivity across multiple Cloud Routers and regions. Keep in mind that unique dynamic route prefix quotas apply per region per VPC network across Cloud Routers in that region, so additional routers do not remove the need to summarize or filter routes.
 
 ```bash
 # Create additional Cloud Routers in different regions
@@ -174,11 +165,11 @@ gcloud compute routers get-status your-router \
     --format="json(result.bgpPeerStatus[].name, result.bgpPeerStatus[].status, result.bgpPeerStatus[].state, result.bgpPeerStatus[].uptimeSeconds)"
 ```
 
-The `status` should be `UP` and the `state` should be `ESTABLISHED`. If the state is `CONNECT` or `ACTIVE`, the BGP session is trying to establish but failing. Common causes:
+The `status` should be `UP` and the `state` should be `Established`. If the state is `Connect` or `Active`, the BGP session is trying to establish but failing. Common causes:
 
 - ASN mismatch between Cloud Router and on-premises router
 - Incorrect BGP peer IP addresses
-- Firewall blocking BGP (TCP port 179) between the tunnel endpoints
+- Firewall or ACL blocking BGP (TCP port 179) between the BGP peers
 - MD5 authentication key mismatch
 
 ## Step 9: Verify Route Propagation
@@ -187,14 +178,17 @@ After fixing route issues, verify that routes are propagating correctly:
 
 ```bash
 # Check routes learned from a specific peer
+gcloud compute routers list-bgp-routes your-router \
+    --region=us-central1 \
+    --peer=your-bgp-peer \
+    --address-family=IPV4 \
+    --route-direction=INBOUND \
+    --format="table(destination.prefix, med, origin)"
+
+# Verify the best dynamic routes for the router
 gcloud compute routers get-status your-router \
     --region=us-central1 \
-    --format="json(result.bgpPeerStatus[0].advertisedRoutes)"
-
-# Verify the routes appear in the VPC routing table
-gcloud compute routes list \
-    --filter="network:your-vpc AND routeType:BGP" \
-    --format="table(destRange, nextHopIp, priority)"
+    --format="json(result.bestRoutes)"
 ```
 
 ## Monitoring Route Health
