@@ -33,15 +33,20 @@ Gemini can process PDF files directly without any text extraction step. This pre
 Here is the basic setup for PDF question-answering:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from google import genai
+from google.genai import types
 
 # Initialize Vertex AI
 
-vertexai.init(project="your-project-id", location="us-central1")
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=types.HttpOptions(api_version="v1"),
+)
+model_id = "gemini-2.5-flash"
 
-model = GenerativeModel(
-    "gemini-2.0-flash",
+config = types.GenerateContentConfig(
     system_instruction=(
         "You are a document analysis assistant. Answer questions based "
         "strictly on the provided documents. If the answer is not in the "
@@ -54,28 +59,41 @@ model = GenerativeModel(
 with open("technical-manual.pdf", "rb") as f:
     pdf_bytes = f.read()
 
-pdf_part = Part.from_data(data=pdf_bytes, mime_type="application/pdf")
+pdf_part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
 
 # Ask a question about the document
-response = model.generate_content([
-    pdf_part,
-    "What are the minimum system requirements listed in this manual?"
-])
+response = client.models.generate_content(
+    model=model_id,
+    contents=[
+        pdf_part,
+        "What are the minimum system requirements listed in this manual?"
+    ],
+    config=config,
+)
 
 print(response.text)
 ```
 
 ## Building an Interactive QA Session
 
-For multiple questions about the same document, use a chat session. This avoids resending the document with every question and maintains context between questions.
+For multiple questions about the same document, use a chat session. This keeps the document in the conversation history and maintains context between questions. Use context caching when you want to avoid repeatedly sending the same document content.
 
 ```python
+from google import genai
+from google.genai import types
+
 class DocumentQA:
     """Interactive QA system for documents."""
 
-    def __init__(self, model_name="gemini-2.0-flash"):
-        self.model = GenerativeModel(
-            model_name,
+    def __init__(self, model_name="gemini-2.5-flash"):
+        self.client = genai.Client(
+            vertexai=True,
+            project="your-project-id",
+            location="us-central1",
+            http_options=types.HttpOptions(api_version="v1"),
+        )
+        self.model_name = model_name
+        self.config = types.GenerateContentConfig(
             system_instruction=(
                 "You are a precise document analyst. Answer only from the "
                 "provided documents. Quote relevant passages when possible. "
@@ -87,12 +105,15 @@ class DocumentQA:
 
     def load_document(self, file_path):
         """Load a document into the chat context."""
-        self.chat = self.model.start_chat()
+        self.chat = self.client.chats.create(
+            model=self.model_name,
+            config=self.config,
+        )
 
         # Determine file type and load accordingly
         if file_path.endswith(".pdf"):
             with open(file_path, "rb") as f:
-                doc_part = Part.from_data(
+                doc_part = types.Part.from_bytes(
                     data=f.read(),
                     mime_type="application/pdf"
                 )
@@ -141,12 +162,21 @@ print(f"Answer: {answer}")
 When users need to query across multiple documents, load them all into the context with clear labels.
 
 ```python
+from google import genai
+from google.genai import types
+
 class MultiDocumentQA:
     """QA system for multiple documents."""
 
-    def __init__(self):
-        self.model = GenerativeModel(
-            "gemini-2.0-flash",
+    def __init__(self, model_name="gemini-2.5-flash"):
+        self.client = genai.Client(
+            vertexai=True,
+            project="your-project-id",
+            location="us-central1",
+            http_options=types.HttpOptions(api_version="v1"),
+        )
+        self.model_name = model_name
+        self.config = types.GenerateContentConfig(
             system_instruction=(
                 "You analyze multiple documents. When answering, always "
                 "specify which document contains the information. "
@@ -157,7 +187,10 @@ class MultiDocumentQA:
 
     def load_documents(self, file_paths):
         """Load multiple documents into the context."""
-        self.chat = self.model.start_chat()
+        self.chat = self.client.chats.create(
+            model=self.model_name,
+            config=self.config,
+        )
 
         parts = []
         for i, path in enumerate(file_paths, 1):
@@ -165,7 +198,7 @@ class MultiDocumentQA:
 
             if path.endswith(".pdf"):
                 with open(path, "rb") as f:
-                    doc_part = Part.from_data(
+                    doc_part = types.Part.from_bytes(
                         data=f.read(),
                         mime_type="application/pdf"
                     )
@@ -208,49 +241,70 @@ print(answer)
 For applications that need programmatic access to answers, configure structured JSON output.
 
 ```python
-from vertexai.generative_models import GenerationConfig
+from google import genai
+from google.genai import types
+
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=types.HttpOptions(api_version="v1"),
+)
+model_id = "gemini-2.5-flash"
 
 def extract_structured_answer(pdf_path, questions):
     """Extract structured answers from a document."""
     with open(pdf_path, "rb") as f:
-        pdf_part = Part.from_data(data=f.read(), mime_type="application/pdf")
+        pdf_part = types.Part.from_bytes(
+            data=f.read(),
+            mime_type="application/pdf"
+        )
 
     # Build the extraction prompt
     question_list = "\n".join(
         f"{i+1}. {q}" for i, q in enumerate(questions)
     )
 
-    config = GenerationConfig(
+    config = types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema={
-            "type": "object",
+            "type": "OBJECT",
             "properties": {
                 "answers": {
-                    "type": "array",
+                    "type": "ARRAY",
                     "items": {
-                        "type": "object",
+                        "type": "OBJECT",
                         "properties": {
-                            "question": {"type": "string"},
-                            "answer": {"type": "string"},
+                            "question": {"type": "STRING"},
+                            "answer": {"type": "STRING"},
                             "confidence": {
-                                "type": "string",
+                                "type": "STRING",
                                 "enum": ["high", "medium", "low"]
                             },
-                            "source_section": {"type": "string"},
-                            "found_in_document": {"type": "boolean"}
-                        }
-                    }
+                            "source_section": {"type": "STRING"},
+                            "found_in_document": {"type": "BOOLEAN"}
+                        },
+                        "required": [
+                            "question",
+                            "answer",
+                            "confidence",
+                            "source_section",
+                            "found_in_document"
+                        ]
+                    },
                 }
-            }
+            },
+            "required": ["answers"]
         }
     )
 
-    response = model.generate_content(
-        [
+    response = client.models.generate_content(
+        model=model_id,
+        contents=[
             pdf_part,
             f"Answer these questions based on the document:\n{question_list}"
         ],
-        generation_config=config
+        config=config,
     )
 
     import json
@@ -279,35 +333,52 @@ for answer in result["answers"]:
 For frequently accessed documents, use context caching to avoid resending the same PDF with every request.
 
 ```python
-from vertexai.preview import caching
+import os
+from google import genai
+from google.genai import types
 
 def create_cached_document_qa(pdf_path, cache_ttl="3600s"):
     """Create a QA system with a cached document for faster queries."""
+    client = genai.Client(
+        vertexai=True,
+        project="your-project-id",
+        location="us-central1",
+        http_options=types.HttpOptions(api_version="v1"),
+    )
+    model_id = "gemini-2.5-flash"
+
+    if os.path.getsize(pdf_path) > 10 * 1024 * 1024:
+        raise ValueError(
+            "Context caches can use local blob content up to 10MB. "
+            "Upload larger PDFs to Cloud Storage and use Part.from_uri()."
+        )
+
     # Read the PDF
     with open(pdf_path, "rb") as f:
         pdf_bytes = f.read()
 
-    pdf_part = Part.from_data(data=pdf_bytes, mime_type="application/pdf")
+    pdf_part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
 
     # Create a cache entry for the document
-    cached = caching.CachedContent.create(
-        model_name="gemini-2.0-flash",
-        system_instruction=(
-            "You are a document QA assistant. Answer based on the "
-            "provided document only. Cite page numbers when possible."
-        ),
-        contents=[pdf_part],
-        display_name=f"doc-cache-{pdf_path.split('/')[-1]}",
-        ttl=cache_ttl
+    cached = client.caches.create(
+        model=model_id,
+        config=types.CreateCachedContentConfig(
+            system_instruction=(
+                "You are a document QA assistant. Answer based on the "
+                "provided document only. Cite page numbers when possible."
+            ),
+            contents=[
+                types.Content(role="user", parts=[pdf_part])
+            ],
+            display_name=f"doc-cache-{pdf_path.split('/')[-1]}",
+            ttl=cache_ttl,
+        )
     )
 
-    # Create a model from the cached content
-    cached_model = GenerativeModel.from_cached_content(cached)
-
-    return cached_model, cached
+    return client, model_id, cached
 
 # Create cached QA
-cached_model, cache = create_cached_document_qa("large-manual.pdf")
+client, model_id, cache = create_cached_document_qa("manual.pdf")
 
 # Queries are fast because the document is cached
 for question in [
@@ -315,13 +386,17 @@ for question in [
     "How do I configure networking?",
     "What are the backup procedures?"
 ]:
-    response = cached_model.generate_content(question)
+    response = client.models.generate_content(
+        model=model_id,
+        contents=question,
+        config=types.GenerateContentConfig(cached_content=cache.name),
+    )
     print(f"Q: {question}")
     print(f"A: {response.text[:200]}...")
     print()
 
 # Clean up cache when done
-cache.delete()
+client.caches.delete(name=cache.name)
 ```
 
 ## Loading Documents from Cloud Storage
@@ -329,6 +404,17 @@ cache.delete()
 In production, documents usually live in Cloud Storage rather than local files.
 
 ```python
+from google import genai
+from google.genai import types
+
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=types.HttpOptions(api_version="v1"),
+)
+model_id = "gemini-2.5-flash"
+
 def load_document_from_gcs(bucket_name, blob_name):
     """Load a document from Cloud Storage."""
     gcs_uri = f"gs://{bucket_name}/{blob_name}"
@@ -341,17 +427,22 @@ def load_document_from_gcs(bucket_name, blob_name):
     }
 
     ext = "." + blob_name.rsplit(".", 1)[-1].lower()
-    mime_type = mime_types.get(ext, "application/octet-stream")
+    mime_type = mime_types.get(ext)
+    if mime_type is None:
+        raise ValueError(f"Unsupported document type: {ext}")
 
-    return Part.from_uri(uri=gcs_uri, mime_type=mime_type)
+    return types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
 
 # Load and query a document from GCS
 doc_part = load_document_from_gcs("my-documents", "reports/annual-2025.pdf")
 
-response = model.generate_content([
-    doc_part,
-    "Summarize the key financial highlights from this annual report."
-])
+response = client.models.generate_content(
+    model=model_id,
+    contents=[
+        doc_part,
+        "Summarize the key financial highlights from this annual report."
+    ],
+)
 print(response.text)
 ```
 
@@ -361,6 +452,16 @@ Documents can be corrupted, too large, or in unsupported formats. Handle these c
 
 ```python
 import os
+from google import genai
+from google.genai import types
+
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="us-central1",
+    http_options=types.HttpOptions(api_version="v1"),
+)
+model_id = "gemini-2.5-flash"
 
 def safe_document_qa(file_path, question):
     """Process a document with comprehensive error handling."""
@@ -370,7 +471,7 @@ def safe_document_qa(file_path, question):
 
     # Check file size (Gemini has limits)
     file_size = os.path.getsize(file_path)
-    max_size = 100 * 1024 * 1024  # 100MB
+    max_size = 50 * 1024 * 1024  # 50MB for PDF inputs
     if file_size > max_size:
         return {"error": f"File too large: {file_size / 1024 / 1024:.1f}MB"}
 
@@ -378,9 +479,15 @@ def safe_document_qa(file_path, question):
         with open(file_path, "rb") as f:
             pdf_bytes = f.read()
 
-        pdf_part = Part.from_data(data=pdf_bytes, mime_type="application/pdf")
+        pdf_part = types.Part.from_bytes(
+            data=pdf_bytes,
+            mime_type="application/pdf"
+        )
 
-        response = model.generate_content([pdf_part, question])
+        response = client.models.generate_content(
+            model=model_id,
+            contents=[pdf_part, question],
+        )
 
         if not response.candidates:
             return {"error": "No response generated - content may be blocked"}
