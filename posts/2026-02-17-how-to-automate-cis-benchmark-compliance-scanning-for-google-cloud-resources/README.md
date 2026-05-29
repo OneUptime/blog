@@ -34,14 +34,18 @@ Security Command Center Premium includes built-in CIS benchmark scanning through
 ```bash
 # Enable Security Health Analytics
 
-gcloud scc settings services enable \
+gcloud scc manage services update security-health-analytics \
   --organization=123456789 \
-  --service=SECURITY_HEALTH_ANALYTICS
+  --enablement-state=ENABLED
 
-# List all active SHA findings categorized by CIS benchmark
-gcloud scc findings list 123456789 \
-  --source=SECURITY_HEALTH_ANALYTICS \
-  --filter='state="ACTIVE" AND category:"CIS"' \
+# Get the Security Health Analytics source ID
+gcloud scc sources describe organizations/123456789 \
+  --source-display-name="Security Health Analytics"
+
+# List active SHA findings; correlate categories to CIS controls in SCC Compliance
+gcloud scc findings list organizations/123456789 \
+  --source=SOURCE_ID \
+  --filter='state="ACTIVE"' \
   --format="table(resourceName, category, severity, createTime)" \
   --limit=50
 ```
@@ -57,7 +61,7 @@ Here are the key mappings between SHA finding categories and CIS benchmark recom
 | MFA_NOT_ENFORCED | 1.1 - Ensure MFA is enabled for all users |
 | AUDIT_LOGGING_DISABLED | 2.1 - Ensure Cloud Audit Logging is configured |
 | SQL_PUBLIC_IP | 6.2 - Ensure Cloud SQL instances are not publicly accessible |
-| SQL_NO_ROOT_PASSWORD | 6.1 - Ensure Cloud SQL database instances require SSL |
+| SSL_NOT_ENFORCED | 6.1 - Ensure Cloud SQL database instances require SSL |
 | KMS_KEY_NOT_ROTATED | 1.9 - Ensure KMS encryption keys are rotated |
 
 ## Custom CIS Scanning Script
@@ -68,9 +72,9 @@ While SCC covers many checks, some CIS recommendations need custom scanning. Her
 # CIS Google Cloud Benchmark scanner - custom checks
 from google.cloud import compute_v1
 from google.cloud import storage
-from google.cloud import logging_v2
+from google.cloud import iam_admin_v1
 from google.cloud import resourcemanager_v3
-import json
+from datetime import datetime, timezone
 
 class CISBenchmarkScanner:
     """Scans Google Cloud resources for CIS Benchmark compliance."""
@@ -80,19 +84,18 @@ class CISBenchmarkScanner:
         self.findings = []
 
     def check_1_4_service_account_keys(self, project_id):
-        """CIS 1.4: Ensure service account has no admin privileges."""
-        from google.cloud import iam_v1
+        """CIS 1.4: Check for user-managed service account keys."""
 
-        client = iam_v1.IAMClient()
-        request = iam_v1.ListServiceAccountsRequest(
+        client = iam_admin_v1.IAMClient()
+        request = iam_admin_v1.ListServiceAccountsRequest(
             name=f"projects/{project_id}"
         )
 
         for sa in client.list_service_accounts(request=request):
             # Check for user-managed keys
-            key_request = iam_v1.ListServiceAccountKeysRequest(
+            key_request = iam_admin_v1.ListServiceAccountKeysRequest(
                 name=sa.name,
-                key_types=[iam_v1.ListServiceAccountKeysRequest.KeyType.USER_MANAGED]
+                key_types=[iam_admin_v1.ListServiceAccountKeysRequest.KeyType.USER_MANAGED]
             )
             keys = client.list_service_account_keys(request=key_request)
 
@@ -176,7 +179,7 @@ class CISBenchmarkScanner:
     def generate_report(self):
         """Generate a compliance report from collected findings."""
         report = {
-            "scan_date": datetime.utcnow().isoformat(),
+            "scan_date": datetime.now(timezone.utc).isoformat(),
             "organization": self.org_id,
             "total_findings": len(self.findings),
             "by_severity": {},
@@ -198,6 +201,9 @@ class CISBenchmarkScanner:
 Run CIS benchmark scans on a regular schedule using Cloud Functions and Cloud Scheduler.
 
 ```bash
+# Create a Pub/Sub topic for triggering scans
+gcloud pubsub topics create cis-scan-trigger --project=security-admin-project
+
 # Deploy the scanner as a Cloud Function
 gcloud functions deploy cis-benchmark-scanner \
   --runtime=python311 \
@@ -206,9 +212,6 @@ gcloud functions deploy cis-benchmark-scanner \
   --timeout=540s \
   --memory=512MB \
   --project=security-admin-project
-
-# Create a Pub/Sub topic for triggering scans
-gcloud pubsub topics create cis-scan-trigger --project=security-admin-project
 
 # Schedule weekly scans
 gcloud scheduler jobs create pubsub weekly-cis-scan \
@@ -228,9 +231,9 @@ gcloud resource-manager org-policies enable-enforce \
   iam.disableServiceAccountKeyCreation \
   --organization=123456789
 
-# CIS 3.6: Restrict external IP addresses
+# Restrict public Cloud Storage access
 gcloud resource-manager org-policies enable-enforce \
-  compute.vmExternalIpAccess \
+  storage.publicAccessPrevention \
   --organization=123456789
 
 # CIS 5.1: Enforce uniform bucket-level access
@@ -249,7 +252,7 @@ gcloud resource-manager org-policies enable-enforce \
 Use Terraform validation to catch CIS violations before deployment.
 
 ```hcl
-# Sentinel-style validation in Terraform
+# Terraform resource configuration enforcing CIS-aligned controls
 # Ensure all GCS buckets have uniform access enabled
 resource "google_storage_bucket" "example" {
   name     = "my-compliant-bucket"
@@ -284,7 +287,7 @@ resource "google_sql_database_instance" "example" {
       private_network = google_compute_network.private.id
 
       # CIS 6.1 - Require SSL
-      require_ssl = true
+      ssl_mode = "ENCRYPTED_ONLY"
     }
 
     backup_configuration {
