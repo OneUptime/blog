@@ -69,10 +69,13 @@ If you do not want to depend on the full gcloud CLI, you can install the standal
 ```bash
 # Install the standalone Docker credential helper for GCR/Artifact Registry
 # On Linux
-VERSION=2.1.8
-curl -fsSL "https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v${VERSION}/docker-credential-gcr_linux_amd64-${VERSION}.tar.gz" \
+VERSION=2.1.29
+OS=linux
+ARCH=amd64
+curl -fsSL "https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v${VERSION}/docker-credential-gcr_${OS}_${ARCH}-${VERSION}.tar.gz" \
   | tar xz docker-credential-gcr
 
+chmod +x docker-credential-gcr
 sudo mv docker-credential-gcr /usr/local/bin/
 
 # Configure it
@@ -148,13 +151,13 @@ jobs:
 
       # Authenticate to GCP using Workload Identity Federation
       - id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: 'projects/123456/locations/global/workloadIdentityPools/github/providers/my-repo'
           service_account: 'docker-pusher@my-project.iam.gserviceaccount.com'
 
       # Configure Docker credentials
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
       - run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
       # Build and push
@@ -165,7 +168,7 @@ jobs:
 
 ## Authentication in GKE
 
-GKE clusters pull images from Artifact Registry using the node's service account. If both the cluster and repository are in the same project, this works automatically.
+GKE clusters pull images from Artifact Registry using the node's service account. If the cluster and repository are in the same project, this works automatically when the nodes use the default service account, the nodes have a storage read scope, the cluster is on a supported GKE version, and the service account has the required read permission. If automatic grants to default service accounts are disabled in your organization, grant the Compute Engine default service account the Artifact Registry Reader role.
 
 For cross-project access, grant the GKE node service account read permissions:
 
@@ -226,7 +229,7 @@ If you have manually added credentials that conflict with the credential helper,
 cat ~/.docker/config.json
 ```
 
-Make sure there are no `auths` entries for the same registry that has a `credHelpers` entry. The credential helper should take priority, but sometimes old entries cause issues.
+If the same registry appears in both `auths` and `credHelpers`, Docker uses the credential helper and ignores the `auths` entry for that host. Make sure the hostname in `credHelpers` exactly matches the Artifact Registry hostname you are using.
 
 ### Token Expiration Issues
 
@@ -246,7 +249,7 @@ Here is a quick decision guide:
 
 - **Local development**: Use the gcloud credential helper (Method 1). It is the simplest and most secure.
 - **Cloud Build**: No configuration needed - Cloud Build authenticates automatically.
-- **GKE**: Automatic for same-project, IAM binding for cross-project.
+- **GKE**: Automatic for same-project when the node service account, access scopes, GKE version, and IAM permissions meet the default requirements; IAM binding for cross-project.
 - **External CI/CD**: Use Workload Identity Federation if your provider supports it, access tokens otherwise.
 - **Scripts and automation**: Access tokens for short-lived scripts, service account keys for long-running processes (but prefer WIF when possible).
 
