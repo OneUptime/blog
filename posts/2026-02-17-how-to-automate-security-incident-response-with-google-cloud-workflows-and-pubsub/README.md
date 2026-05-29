@@ -46,20 +46,27 @@ resource "google_pubsub_topic" "security_events" {
   message_retention_duration = "604800s"  # 7 days
 }
 
-resource "google_pubsub_subscription" "workflow_trigger" {
-  name    = "incident-response-workflow-trigger"
-  topic   = google_pubsub_topic.security_events.name
-  project = var.project_id
+resource "google_eventarc_trigger" "workflow_trigger" {
+  name     = "incident-response-workflow-trigger"
+  project  = var.project_id
+  location = var.region
 
-  push_config {
-    push_endpoint = google_workflows_workflow.incident_response.url
-    oidc_token {
-      service_account_email = google_service_account.workflow_invoker.email
+  matching_criteria {
+    attribute = "type"
+    value     = "google.cloud.pubsub.topic.v1.messagePublished"
+  }
+
+  destination {
+    workflow = google_workflows_workflow.incident_response.id
+  }
+
+  transport {
+    pubsub {
+      topic = google_pubsub_topic.security_events.id
     }
   }
 
-  # Acknowledge deadline gives the workflow time to process
-  ack_deadline_seconds = 600
+  service_account = google_service_account.workflow_invoker.email
 }
 ```
 
@@ -76,7 +83,7 @@ main:
     # Step 1: Parse the incoming security event
     - parse_event:
         assign:
-          - incident_data: ${json.decode(base64.decode(event.data))}
+          - incident_data: ${json.decode(base64.decode(event.data.message.data))}
           - incident_type: ${incident_data.type}
           - severity: ${incident_data.severity}
           - resource_id: ${incident_data.resource}
@@ -118,12 +125,12 @@ main:
                 incident_id: ${incident_id}
               result: evidence_result
           - page_on_call:
-              call: send_page
+              call: send_notification
               args:
                 incident_id: ${incident_id}
                 severity: ${severity}
-                incident_type: ${incident_type}
-                containment_result: ${containment_result}
+                project_id: ${project_id}
+                message: '${"Critical incident detected: " + incident_type + ". Containment result: " + json.encode_to_string(containment_result)}'
         next: create_record
 
     # High severity gets containment with a brief delay for review
@@ -134,7 +141,8 @@ main:
               args:
                 incident_id: ${incident_id}
                 severity: ${severity}
-                message: ${"High severity incident detected: " + incident_type + ". Auto-containment in 5 minutes."}
+                message: '${"High severity incident detected: " + incident_type + ". Auto-containment in 5 minutes."}'
+                project_id: ${project_id}
           - wait_for_override:
               call: sys.sleep
               args:
@@ -148,7 +156,7 @@ main:
               result: override_check
           - conditional_contain:
               switch:
-                - condition: ${override_check.body.override == false}
+                - condition: ${map.get(override_check.body, "override") != true}
                   steps:
                     - do_containment:
                         call: contain_resource
@@ -157,6 +165,13 @@ main:
                           resource_id: ${resource_id}
                           project_id: ${project_id}
                         result: containment_result
+          - collect_high_evidence:
+              call: collect_evidence
+              args:
+                resource_id: ${resource_id}
+                project_id: ${project_id}
+                incident_id: ${incident_id}
+              result: evidence_result
         next: create_record
 
     # Standard response just creates a ticket
@@ -167,7 +182,8 @@ main:
               args:
                 incident_id: ${incident_id}
                 severity: ${severity}
-                message: ${"Standard incident detected: " + incident_type + ". Review when available."}
+                message: '${"Standard incident detected: " + incident_type + ". Review when available."}'
+                project_id: ${project_id}
         next: create_record
 
     # Create incident record in BigQuery
@@ -191,14 +207,28 @@ main:
         return:
           incident_id: ${incident_id}
           status: "processed"
+
+send_notification:
+  params: [incident_id, severity, message, project_id]
+  steps:
+    - call_notification_function:
+        call: http.post
+        args:
+          url: ${"https://us-central1-" + project_id + ".cloudfunctions.net/send_incident_notification"}
+          auth:
+            type: OIDC
+          body:
+            incident_id: ${incident_id}
+            severity: ${severity}
+            message: ${message}
 ```
 
 ## Containment Subworkflow
 
-The containment logic lives in a separate subworkflow so it can be reused:
+The containment logic lives in a subworkflow in the same workflow definition so it can be reused:
 
 ```yaml
-# containment-subworkflow.yaml
+# Add to incident-response-workflow.yaml
 # Handles automated containment actions based on incident type
 contain_resource:
   params: [incident_type, resource_id, project_id]
@@ -221,6 +251,8 @@ contain_resource:
                     url: ${"https://iam.googleapis.com/v1/" + resource_id + "/keys"}
                     auth:
                       type: OAuth2
+                    query:
+                      keyTypes: "USER_MANAGED"
                   result: keys_response
               - delete_each_key:
                   for:
@@ -234,7 +266,7 @@ contain_resource:
                             auth:
                               type: OAuth2
 
-          # Compromised VM - stop it and snapshot the disk
+          # Compromised VM - stop it and capture a machine image
           - condition: ${incident_type == "COMPROMISED_INSTANCE"}
             steps:
               - stop_instance:
@@ -243,14 +275,15 @@ contain_resource:
                     url: ${"https://compute.googleapis.com/compute/v1/" + resource_id + "/stop"}
                     auth:
                       type: OAuth2
-              - snapshot_disk:
+              - capture_machine_image:
                   call: http.post
                   args:
-                    url: ${"https://compute.googleapis.com/compute/v1/" + resource_id + "/createSnapshot"}
+                    url: ${"https://compute.googleapis.com/compute/v1/projects/" + project_id + "/global/machineImages"}
                     auth:
                       type: OAuth2
                     body:
-                      name: ${"forensic-snapshot-" + string(int(sys.now()))}
+                      name: ${"forensic-image-" + string(int(sys.now()))}
+                      sourceInstance: ${resource_id}
 
           # Data exfiltration - restrict network
           - condition: ${incident_type == "DATA_EXFILTRATION"}
@@ -266,7 +299,9 @@ contain_resource:
                       direction: "EGRESS"
                       priority: 0
                       denied:
-                        - IPProtocol: "all"
+                        - IPProtocol: "tcp"
+                        - IPProtocol: "udp"
+                        - IPProtocol: "icmp"
                       targetTags:
                         - "compromised"
 
@@ -282,7 +317,7 @@ contain_resource:
 Collecting evidence automatically during an incident is critical for post-incident analysis:
 
 ```yaml
-# evidence-collection.yaml
+# Add to incident-response-workflow.yaml
 # Collects forensic evidence and stores it in a secure bucket
 collect_evidence:
   params: [resource_id, project_id, incident_id]
@@ -297,7 +332,7 @@ collect_evidence:
           body:
             resourceNames:
               - ${"projects/" + project_id}
-            filter: ${"resource.labels.instance_id=\"" + resource_id + "\" AND timestamp>=\"" + string(sys.now() - 86400) + "\""}
+            filter: ${"timestamp>=\"" + time.format(sys.now() - 86400) + "\" AND (protoPayload.resourceName=\"" + resource_id + "\" OR resource.labels.instance_id=\"" + resource_id + "\")"}
             orderBy: "timestamp desc"
             pageSize: 1000
         result: logs_response
@@ -314,7 +349,7 @@ collect_evidence:
     - return_evidence:
         return:
           location: ${"gs://forensics-" + project_id + "/" + incident_id + "/"}
-          log_entries: ${len(logs_response.body.entries)}
+          log_entries: ${len(default(map.get(logs_response.body, "entries"), []))}
 ```
 
 ## Notification Function
@@ -323,7 +358,7 @@ Use a Cloud Function to handle multi-channel notifications:
 
 ```python
 # notify.py
-# Sends incident notifications via Slack, email, and PagerDuty
+# Sends incident notifications via Slack and PagerDuty
 import json
 import requests
 import os
@@ -353,7 +388,7 @@ def send_incident_notification(request):
 
 def get_secret(client, secret_id):
     """Retrieve a secret from Secret Manager."""
-    project = os.environ.get("GCP_PROJECT")
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT")
     name = f"projects/{project}/secrets/{secret_id}/versions/latest"
     response = client.access_secret_version(request={"name": name})
     return response.payload.data.decode("UTF-8")
@@ -374,6 +409,25 @@ def send_slack_alert(webhook_url, incident_id, severity, message):
         }]
     }
     requests.post(webhook_url, json=payload)
+
+
+def send_pagerduty_alert(routing_key, incident_id, severity, message):
+    """Create or update a PagerDuty incident through Events API v2."""
+    payload = {
+        "routing_key": routing_key,
+        "event_action": "trigger",
+        "dedup_key": incident_id,
+        "payload": {
+            "summary": message,
+            "source": "gcp-security-automation",
+            "severity": "critical" if severity == "CRITICAL" else "error",
+            "custom_details": {
+                "incident_id": incident_id,
+                "severity": severity,
+            },
+        },
+    }
+    requests.post("https://events.pagerduty.com/v2/enqueue", json=payload)
 ```
 
 ## Testing the Pipeline
