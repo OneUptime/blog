@@ -16,11 +16,11 @@ In this post, I will walk through how to use BigQuery slot reservations, committ
 
 BigQuery offers two pricing models:
 
-**On-demand pricing** charges you per TB of data scanned. As of this writing, that is $6.25 per TB in most regions. This is simple and requires no commitment, but it can get expensive if your team runs a lot of queries.
+**On-demand pricing** charges you per TiB of data scanned. As of this writing, that is $6.25 per TiB in most regions, after the free monthly query processing tier. This is simple and requires no commitment, but it can get expensive if your team runs a lot of queries.
 
 **Capacity pricing (slot reservations)** lets you buy a fixed amount of compute capacity measured in slots. You pay for the slots whether you use them or not, but you are not charged per query. This becomes cheaper than on-demand once your usage passes a certain threshold.
 
-The break-even point varies, but a rough rule of thumb: if your team consistently scans more than 15-20 TB per month, slot reservations will save you money.
+The break-even point varies by edition, region, and workload shape. As a rough rule of thumb, compare your monthly on-demand spend with the fixed monthly cost of the smallest reservation that can cover your average and peak slot usage; for example, a 100-slot Enterprise annual commitment at roughly $2,040 per month breaks even against $6.25/TiB on-demand pricing at about 326 TiB processed per month.
 
 ## Setting Up BigQuery Slot Reservations
 
@@ -32,8 +32,10 @@ Here is how to create slot reservations using the BigQuery Reservation API:
 bq mk \
   --project_id=my-project \
   --location=US \
-  --capacity_commitment \
+  --capacity_commitment=true \
+  --edition=ENTERPRISE \
   --plan=ANNUAL \
+  --renewal_plan=NONE \
   --slots=500
 
 # Create a reservation that allocates slots to a specific project
@@ -42,7 +44,9 @@ bq mk \
   --location=US \
   --reservation \
   --slots=500 \
-  --reservation_id=data-team-reservation
+  --ignore_idle_slots=false \
+  --edition=ENTERPRISE \
+  data-team-reservation
 
 # Assign the reservation to your project
 bq mk \
@@ -65,6 +69,8 @@ resource "google_bigquery_capacity_commitment" "annual" {
   # 500 slots with annual commitment for the best discount
   slot_count = 500
   plan       = "ANNUAL"
+  edition    = "ENTERPRISE"
+  renewal_plan = "NONE"
 }
 
 resource "google_bigquery_reservation" "data_team" {
@@ -72,7 +78,8 @@ resource "google_bigquery_reservation" "data_team" {
   location = "US"
   name     = "data-team-reservation"
   # Allocate all 500 committed slots
-  slot_count = 500
+  slot_capacity = 500
+  edition       = "ENTERPRISE"
 }
 
 resource "google_bigquery_reservation_assignment" "primary" {
@@ -98,7 +105,7 @@ SELECT
   -- Total slot-milliseconds used
   SUM(total_slot_ms) AS total_slot_ms,
   -- Peak concurrent slot usage (approximate)
-  MAX(total_slot_ms / TIMESTAMP_DIFF(end_time, start_time, MILLISECOND)) AS peak_slots,
+  MAX(total_slot_ms / GREATEST(TIMESTAMP_DIFF(end_time, start_time, MILLISECOND), 1)) AS peak_slots,
   -- Average slot usage
   AVG(total_slot_ms / GREATEST(TIMESTAMP_DIFF(end_time, start_time, MILLISECOND), 1)) AS avg_slots,
   -- Total bytes scanned (for on-demand cost comparison)
@@ -118,7 +125,8 @@ Then compare costs:
 WITH usage AS (
   SELECT
     SUM(total_bytes_processed) / POW(1024, 4) AS total_tb_scanned,
-    SUM(total_slot_ms) / 1000 / 3600 AS total_slot_hours
+    SUM(total_slot_ms) / 1000 / 3600 AS total_slot_hours,
+    CEIL(SAFE_DIVIDE(SUM(total_slot_ms) / 1000 / 3600, 30 * 24) / 50) * 50 AS estimated_baseline_slots
   FROM `region-US`.INFORMATION_SCHEMA.JOBS
   WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
     AND job_type = 'QUERY'
@@ -127,10 +135,11 @@ WITH usage AS (
 SELECT
   total_tb_scanned,
   total_slot_hours,
-  -- On-demand cost at $6.25 per TB
+  estimated_baseline_slots,
+  -- On-demand cost at $6.25 per TiB
   ROUND(total_tb_scanned * 6.25, 2) AS on_demand_cost_usd,
-  -- Annual commitment cost (100 slots at roughly $2,040/month)
-  ROUND(2040 * (total_slot_hours / (30 * 24 * 100)), 2) AS estimated_reservation_cost_usd
+  -- Annual Enterprise commitment cost estimate (100 slots at roughly $2,040/month)
+  ROUND((estimated_baseline_slots / 100) * 2040, 2) AS estimated_reservation_cost_usd
 FROM usage;
 ```
 
@@ -139,41 +148,40 @@ FROM usage;
 For organizations with different teams that have different usage patterns, set up a multi-tier reservation strategy:
 
 ```bash
-# Create a parent reservation with your total committed slots
-bq mk --reservation \
-  --project_id=my-project \
-  --location=US \
-  --slots=1000 \
-  --reservation_id=org-total
-
-# Create child reservations for different teams
+# Create separate reservations for different teams
 # Data engineering gets a guaranteed 400 slots
 bq mk --reservation \
   --project_id=my-project \
   --location=US \
   --slots=400 \
-  --reservation_id=org-total/data-engineering
+  --ignore_idle_slots=false \
+  --edition=ENTERPRISE \
+  data-engineering
 
 # Analytics team gets 300 slots
 bq mk --reservation \
   --project_id=my-project \
   --location=US \
   --slots=300 \
-  --reservation_id=org-total/analytics
+  --ignore_idle_slots=false \
+  --edition=ENTERPRISE \
+  analytics
 
 # The remaining 300 slots are shared by anyone who needs them
 bq mk --reservation \
   --project_id=my-project \
   --location=US \
   --slots=300 \
-  --reservation_id=org-total/shared-pool
+  --ignore_idle_slots=false \
+  --edition=ENTERPRISE \
+  shared-pool
 ```
 
-The idle slots from one reservation can be borrowed by other reservations in the same commitment, so you do not waste capacity when one team is quiet.
+The idle slots from one reservation can be borrowed by other reservations in the same administration project and edition when `ignore_idle_slots` is false, so you do not waste capacity when one team is quiet.
 
 ## Committed Use Discounts for Compute Engine
 
-If your data platform includes always-on Compute Engine instances (for Airflow workers, Kafka brokers, or processing nodes), committed use discounts can save 57% for a 3-year commitment or 20% for 1 year.
+If your data platform includes always-on Compute Engine instances (for Airflow workers, Kafka brokers, or processing nodes), committed use discounts can reduce costs. For N2-family workloads, compute flexible CUDs provide 28% for a 1-year commitment or 46% for a 3-year commitment; resource-based CUDs can provide up to 55% for non-memory-optimized machine series.
 
 ```bash
 # Purchase a 1-year commitment for n2-standard-8 instances
@@ -181,7 +189,7 @@ gcloud compute commitments create data-platform-commitment \
   --region=us-central1 \
   --plan=12-month \
   --resources=vcpu=32,memory=128GB \
-  --type=GENERAL_PURPOSE \
+  --type=general-purpose-n2 \
   --project=my-project
 ```
 
@@ -237,7 +245,7 @@ ALTER TABLE `my-project.analytics.events`
 SET OPTIONS (partition_expiration_days = 90);
 ```
 
-3. **Use BigQuery Storage API for physical billing.** Physical billing charges for compressed bytes instead of logical bytes, which can be 70-80% cheaper for well-compressed data.
+3. **Use BigQuery physical storage billing.** Physical billing charges for compressed bytes instead of logical bytes at the dataset level, which can be cheaper for well-compressed data. Check time travel and fail-safe storage before switching, because those are billed separately with physical storage billing.
 
 ## Building a Cost Dashboard
 
@@ -267,11 +275,12 @@ ORDER BY on_demand_equivalent_usd DESC;
 When you have occasional spikes in demand (end-of-month reporting, data backfills), use flex slots instead of permanently increasing your commitment:
 
 ```bash
-# Purchase flex slots (billed per second, no long-term commitment)
+# Purchase flex slots (billed per second with a one-minute minimum, no long-term commitment)
 bq mk \
   --project_id=my-project \
   --location=US \
-  --capacity_commitment \
+  --capacity_commitment=true \
+  --edition=ENTERPRISE \
   --plan=FLEX \
   --slots=500
 ```
@@ -294,8 +303,9 @@ def manage_flex_slots():
         commitment = client.create_capacity_commitment(
             parent=parent,
             capacity_commitment=bigquery_reservation_v1.CapacityCommitment(
-                plan="FLEX",
+                plan=bigquery_reservation_v1.CapacityCommitment.CommitmentPlan.FLEX,
                 slot_count=500,
+                edition=bigquery_reservation_v1.Edition.ENTERPRISE,
             ),
         )
         print(f"Purchased flex slots: {commitment.name}")
@@ -303,7 +313,7 @@ def manage_flex_slots():
         # Release flex slots outside peak hours
         commitments = client.list_capacity_commitments(parent=parent)
         for c in commitments:
-            if c.plan.name == "FLEX":
+            if c.plan == bigquery_reservation_v1.CapacityCommitment.CommitmentPlan.FLEX:
                 client.delete_capacity_commitment(name=c.name)
                 print(f"Released flex slots: {c.name}")
 ```
