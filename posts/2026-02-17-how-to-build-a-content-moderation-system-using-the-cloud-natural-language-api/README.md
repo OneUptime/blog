@@ -4,19 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Natural Language API, Content Moderation, NLP, Safety
 
-Description: Build a content moderation system using Google Cloud Natural Language API to detect toxic content, classify text categories, and analyze sentiment for user-generated content.
+Description: Build a content moderation system using Google Cloud Natural Language API to detect harmful content, classify text categories, and analyze sentiment for user-generated content.
 
 ---
 
 If you run any platform that accepts user-generated content - forums, comment sections, reviews, social feeds - you know that content moderation is not optional. Left unchecked, toxic comments, spam, and inappropriate content will drive away your users. Building a moderation system from scratch is a massive undertaking, but Google Cloud's Natural Language API gives you a strong foundation to work with.
 
-In this guide, I will show you how to build a content moderation pipeline that uses sentiment analysis, content classification, and entity analysis to flag problematic content automatically.
+In this guide, I will show you how to build a content moderation pipeline that uses text moderation, sentiment analysis, content classification, and entity analysis to flag problematic content automatically.
 
 ## How the Natural Language API Helps with Moderation
 
 The Cloud Natural Language API offers several features relevant to content moderation:
 
 - **Sentiment Analysis**: Detects whether text is positive, negative, or neutral. Extremely negative sentiment often correlates with toxic or abusive content.
+- **Text Moderation**: Scores text against safety attributes such as toxic, derogatory, violent, sexual, insult, profanity, and related categories.
 - **Content Classification**: Categorizes text into predefined categories. This helps identify content related to violence, adult themes, or other sensitive topics.
 - **Entity Sentiment Analysis**: Identifies entities mentioned in the text and determines sentiment toward each. This catches cases where someone is targeting a specific person or group.
 
@@ -32,7 +33,7 @@ Start by enabling the API and installing dependencies.
 gcloud services enable language.googleapis.com
 
 # Install the Python client library
-pip install google-cloud-language flask
+pip install google-cloud-language google-cloud-firestore flask requests
 ```
 
 ## Building the Moderation Service
@@ -50,6 +51,16 @@ language_client = language_v1.LanguageServiceClient()
 # Thresholds for flagging content - tune these based on your needs
 SENTIMENT_THRESHOLD = -0.6       # Flag very negative content
 MAGNITUDE_THRESHOLD = 0.8        # Must have strong emotional signal
+MODERATION_THRESHOLD = 0.5       # Flag likely harmful or sensitive content
+HARMFUL_CATEGORIES = [
+    "Toxic",
+    "Derogatory",
+    "Violent",
+    "Sexual",
+    "Insult",
+    "Profanity",
+    "Death, Harm & Tragedy",
+]
 TOXIC_CATEGORIES = [
     "/Sensitive Subjects",
     "/Adult",
@@ -69,8 +80,20 @@ def analyze_content(text):
     )
     doc_sentiment = sentiment_response.document_sentiment
 
+    # Get harmful and sensitive content scores
+    moderation_response = language_client.moderate_text(
+        request={"document": document}
+    )
+    moderation_categories = [
+        {
+            "name": category.name,
+            "confidence": round(category.confidence, 3)
+        }
+        for category in moderation_response.moderation_categories
+    ]
+
     # Classify the content into categories
-    # Content classification requires at least 20 tokens
+    # Content classification with the V1 model requires at least 20 tokens
     categories = []
     if len(text.split()) >= 20:
         try:
@@ -106,6 +129,7 @@ def analyze_content(text):
     return {
         "sentiment_score": round(doc_sentiment.score, 3),
         "sentiment_magnitude": round(doc_sentiment.magnitude, 3),
+        "moderation_categories": moderation_categories,
         "categories": categories,
         "negative_entity_sentiments": entity_sentiments
     }
@@ -118,6 +142,12 @@ def make_moderation_decision(analysis):
     if (analysis["sentiment_score"] < SENTIMENT_THRESHOLD and
             analysis["sentiment_magnitude"] > MAGNITUDE_THRESHOLD):
         flags.append("highly_negative_sentiment")
+
+    # Check text moderation categories
+    for category in analysis["moderation_categories"]:
+        if (category["name"] in HARMFUL_CATEGORIES and
+                category["confidence"] > MODERATION_THRESHOLD):
+            flags.append(f"moderation_category:{category['name']}")
 
     # Check content categories
     for category in analysis["categories"]:
@@ -149,7 +179,7 @@ def make_moderation_decision(analysis):
 @app.route("/moderate", methods=["POST"])
 def moderate():
     """API endpoint that accepts text and returns a moderation decision."""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     text = data.get("text", "")
 
     if not text:
@@ -237,6 +267,7 @@ Automated moderation should always have a human review component. Not every flag
 
 ```python
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 db = firestore.Client()
 
@@ -254,7 +285,7 @@ def get_pending_reviews(limit=50):
     """Fetch items awaiting human review."""
     docs = (
         db.collection("moderation_queue")
-        .where("status", "==", "pending")
+        .where(filter=FieldFilter("status", "==", "pending"))
         .order_by("created_at")
         .limit(limit)
         .stream()
@@ -280,7 +311,7 @@ The moderation thresholds I used above are starting points. Every platform is di
 
 ## Limitations to Keep in Mind
 
-The Natural Language API is not a dedicated moderation tool. It will not catch everything:
+The Natural Language API's text moderation results are only one signal. It will not catch everything:
 
 - Sarcasm and irony can confuse sentiment analysis
 - Coded language and slang evolve faster than models can adapt
@@ -291,4 +322,4 @@ For production systems, consider combining this approach with dedicated moderati
 
 ## Wrapping Up
 
-Building a content moderation system with the Cloud Natural Language API gives you a practical starting point that you can deploy quickly. By combining sentiment analysis, content classification, and entity sentiment, you get multiple signals that help separate harmful content from legitimate posts. The key is to treat automated moderation as a first pass, not a final decision. Always keep humans in the loop, continuously tune your thresholds, and layer additional tools as your platform grows.
+Building a content moderation system with the Cloud Natural Language API gives you a practical starting point that you can deploy quickly. By combining text moderation, sentiment analysis, content classification, and entity sentiment, you get multiple signals that help separate harmful content from legitimate posts. The key is to treat automated moderation as a first pass, not a final decision. Always keep humans in the loop, continuously tune your thresholds, and layer additional tools as your platform grows.
