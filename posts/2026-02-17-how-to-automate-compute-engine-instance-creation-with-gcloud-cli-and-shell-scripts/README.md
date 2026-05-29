@@ -28,7 +28,7 @@ gcloud compute instances create my-vm \
   --tags=http-server,https-server
 ```
 
-This gives you a Debian 12 VM with a 20GB boot disk and network tags for HTTP/HTTPS traffic. But hardcoding all these values is not great for automation. Let us make this more flexible.
+This gives you a Debian 12 VM with a 20GB boot disk and network tags that firewall rules can target for HTTP/HTTPS traffic. But hardcoding all these values is not great for automation. Let us make this more flexible.
 
 ## Parameterizing with Shell Variables
 
@@ -218,7 +218,7 @@ for i in "${!ZONES[@]}"; do
 
   echo "Creating ${INSTANCE_NAME} in ${ZONE}..."
 
-  # Create one instance per zone for geographic distribution
+  # Create one instance per zone for zonal distribution
   gcloud compute instances create "${INSTANCE_NAME}" \
     --zone="${ZONE}" \
     --machine-type="${MACHINE_TYPE}" \
