@@ -55,15 +55,22 @@ gcloud privateca roots create my-root-ca \
     --key-algorithm=ec-p256-sha256 \
     --max-chain-length=1 \
     --validity=P10Y \
+    --auto-enable \
     --project=my-project
 ```
 
 For production environments, use a two-tier CA hierarchy:
 
 ```bash
+# Create a CA pool for the subordinate issuing CA
+gcloud privateca pools create my-issuing-ca-pool \
+    --location=us-central1 \
+    --tier=enterprise \
+    --project=my-project
+
 # Create a subordinate CA for issuing end-entity certificates
 gcloud privateca subordinates create my-issuing-ca \
-    --pool=my-ca-pool \
+    --pool=my-issuing-ca-pool \
     --location=us-central1 \
     --issuer-pool=my-ca-pool \
     --issuer-ca=my-root-ca \
@@ -71,6 +78,7 @@ gcloud privateca subordinates create my-issuing-ca \
     --subject="CN=My Organization Issuing CA, O=My Organization, C=US" \
     --key-algorithm=ec-p256-sha256 \
     --validity=P5Y \
+    --auto-enable \
     --project=my-project
 ```
 
@@ -82,6 +90,8 @@ Certificate templates define the properties of issued certificates, enforcing co
 # Create a template for server certificates (TLS)
 gcloud privateca templates create server-tls-template \
     --location=us-central1 \
+    --copy-subject \
+    --copy-sans \
     --predefined-values-file=server-tls-values.yaml \
     --identity-cel-expression="subject_alt_names.all(san, san.type == DNS)" \
     --description="Template for server TLS certificates" \
@@ -105,6 +115,8 @@ caOptions:
 # Create a template for client certificates (mTLS)
 gcloud privateca templates create client-mtls-template \
     --location=us-central1 \
+    --copy-subject \
+    --copy-sans \
     --predefined-values-file=client-mtls-values.yaml \
     --description="Template for client mTLS certificates" \
     --project=my-project
@@ -132,22 +144,19 @@ openssl genrsa -out server.key 2048
 
 # Create a CSR (Certificate Signing Request)
 openssl req -new -key server.key -out server.csr \
-    -subj "/CN=api.internal.example.com/O=My Organization"
+    -subj "/CN=api.internal.example.com/O=My Organization" \
+    -addext "subjectAltName=DNS:api.internal.example.com"
 
 # Issue a certificate using CA Service
 gcloud privateca certificates create server-cert-001 \
-    --issuer-pool=my-ca-pool \
+    --issuer-pool=my-issuing-ca-pool \
     --issuer-location=us-central1 \
-    --certificate-template=server-tls-template \
+    --template=server-tls-template \
+    --template-location=us-central1 \
     --csr=server.csr \
     --validity=P365D \
+    --cert-output-file=server.crt \
     --project=my-project
-
-# Download the issued certificate
-gcloud privateca certificates describe server-cert-001 \
-    --issuer-pool=my-ca-pool \
-    --issuer-location=us-central1 \
-    --format="value(pemCertificate)" > server.crt
 ```
 
 ### Using Python for Automated Issuance
@@ -157,7 +166,6 @@ gcloud privateca certificates describe server-cert-001 \
 # Automated certificate issuance using the CA Service API
 # Used by CI/CD pipelines and service mesh components
 
-from google.cloud import security
 from google.cloud.security import privateca_v1
 from google.protobuf import duration_pb2
 from cryptography import x509
@@ -200,6 +208,7 @@ def issue_certificate(
     )
 
     csr = csr_builder.sign(key, hashes.SHA256())
+    safe_common_name = common_name.replace(".", "-")
 
     # Create the certificate request
     certificate = privateca_v1.Certificate(
@@ -212,7 +221,7 @@ def issue_certificate(
     request = privateca_v1.CreateCertificateRequest(
         parent=f"projects/{project_id}/locations/{location}/caPools/{ca_pool_id}",
         certificate=certificate,
-        certificate_id=f"cert-{common_name}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+        certificate_id=f"cert-{safe_common_name}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
     )
 
     response = ca_client.create_certificate(request=request)
@@ -239,9 +248,9 @@ Build a Cloud Function that renews certificates before they expire:
 # Runs daily via Cloud Scheduler
 
 import functions_framework
-from google.cloud import privateca_v1
+from google.cloud.security import privateca_v1
 from google.cloud import secretmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import json
 import logging
 
@@ -252,7 +261,7 @@ sm_client = secretmanager.SecretManagerServiceClient()
 
 PROJECT_ID = "my-project"
 LOCATION = "us-central1"
-CA_POOL = "my-ca-pool"
+CA_POOL = "my-issuing-ca-pool"
 
 # Renew certificates 30 days before expiration
 RENEWAL_WINDOW_DAYS = 30
@@ -266,19 +275,19 @@ def check_and_renew_certificates(request):
     renewed = []
     expiring_soon = []
 
-    # List all active certificates
-    request = privateca_v1.ListCertificatesRequest(
-        parent=parent,
-        filter='revocation_details.revocation_state != REVOKED'
-    )
+    # List issued certificates
+    list_request = privateca_v1.ListCertificatesRequest(parent=parent)
 
-    for cert in ca_client.list_certificates(request=request):
+    for cert in ca_client.list_certificates(request=list_request):
+        if cert.revocation_details:
+            continue
+
         # Parse the expiration time
         not_after = cert.certificate_description.subject_description.not_after_time
 
         # Check if certificate expires within the renewal window
-        expiry = not_after.replace(tzinfo=None)
-        days_until_expiry = (expiry - datetime.utcnow()).days
+        expiry = not_after.ToDatetime().replace(tzinfo=timezone.utc)
+        days_until_expiry = (expiry - datetime.now(timezone.utc)).days
 
         if days_until_expiry <= RENEWAL_WINDOW_DAYS:
             logger.info(f"Certificate {cert.name} expires in {days_until_expiry} days")
@@ -311,7 +320,7 @@ def renew_certificate(old_cert):
     logger.info(f"Renewing certificate: {old_cert.name}")
 
     # Store the new certificate in Secret Manager
-    # Applications reading from Secret Manager automatically get the new cert
+    # Applications that load the latest Secret Manager version can pick up the new cert
 ```
 
 Schedule the renewal check:
@@ -331,10 +340,11 @@ When a certificate needs to be revoked (key compromise, decommissioned service):
 
 ```bash
 # Revoke a specific certificate
-gcloud privateca certificates revoke server-cert-001 \
-    --issuer-pool=my-ca-pool \
+gcloud privateca certificates revoke \
+    --certificate=server-cert-001 \
+    --issuer-pool=my-issuing-ca-pool \
     --issuer-location=us-central1 \
-    --reason=KEY_COMPROMISE \
+    --reason=key_compromise \
     --project=my-project
 
 # The CRL is automatically updated and published
@@ -432,8 +442,8 @@ gcloud monitoring policies create \
     --display-name="Certificate Expiring Soon" \
     --condition-display-name="Certificate expires within 30 days" \
     --condition-filter='resource.type="privateca.googleapis.com/CertificateAuthority" AND metric.type="privateca.googleapis.com/ca/cert_expiration"' \
-    --condition-threshold-value=2592000 \
-    --condition-threshold-comparison=COMPARISON_LT \
+    --if="< 2592000" \
+    --duration=0s \
     --notification-channels=projects/my-project/notificationChannels/CHANNEL_ID
 
 # Monitor CA health
