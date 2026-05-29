@@ -8,7 +8,7 @@ Description: Step-by-step guide to building a scalable content moderation system
 
 ---
 
-If you run a platform where users submit content - comments, images, reviews, forum posts - you need content moderation. Manual review does not scale, and basic keyword filters catch maybe 30% of problematic content while flagging a ton of false positives. In this post, I will show you how to build a content moderation system on GCP that uses Vertex AI for intelligent classification and Cloud Functions for serverless, event-driven processing.
+If you run a platform where users submit content - comments, reviews, forum posts - you need content moderation. Manual review does not scale, and basic keyword filters miss many problematic submissions while flagging a ton of false positives. In this post, I will show you how to build a text content moderation system on GCP that uses Vertex AI for intelligent classification and Cloud Functions for serverless, event-driven processing.
 
 ## System Architecture
 
@@ -17,11 +17,8 @@ The design is straightforward: content comes in, gets classified by Vertex AI, a
 ```mermaid
 graph TD
     A[User Submits Content] --> B[Cloud Function - Intake]
-    B --> C{Content Type}
-    C -->|Text| D[Gemini Text Classification]
-    C -->|Image| E[Vertex AI Vision]
+    B --> D[Gemini Text Classification]
     D --> F{Decision}
-    E --> F
     F -->|Safe| G[Approve and Publish]
     F -->|Violation| H[Block and Notify]
     F -->|Borderline| I[Human Review Queue]
@@ -37,10 +34,14 @@ Set up the required services:
 
 gcloud services enable \
     cloudfunctions.googleapis.com \
+    run.googleapis.com \
+    eventarc.googleapis.com \
+    artifactregistry.googleapis.com \
     aiplatform.googleapis.com \
     pubsub.googleapis.com \
     firestore.googleapis.com \
     cloudbuild.googleapis.com \
+    logging.googleapis.com \
     --project=your-project-id
 ```
 
@@ -108,16 +109,15 @@ This function subscribes to the content-submitted topic and uses Gemini on Verte
 # moderate_text.py - Text content moderation using Gemini
 import functions_framework
 from google.cloud import pubsub_v1
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
+from google.genai import types
 import json
 import base64
 
 # Initialize clients at module level for reuse
-vertexai.init(project="your-project-id", location="us-central1")
-model = GenerativeModel("gemini-2.0-flash")
-publisher = pubsub_v1.PublisherClient()
 PROJECT_ID = "your-project-id"
+client = genai.Client(vertexai=True, project=PROJECT_ID, location="us-central1")
+publisher = pubsub_v1.PublisherClient()
 
 # The classification prompt instructs Gemini on what to look for
 MODERATION_PROMPT = """You are a content moderation system. Analyze the following user-submitted content and classify it.
@@ -136,6 +136,17 @@ Rules:
 
 Content to analyze:
 {content}"""
+
+MODERATION_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "decision": {"type": "STRING", "enum": ["approve", "block", "review"]},
+        "confidence": {"type": "NUMBER"},
+        "categories": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "reasoning": {"type": "STRING"},
+    },
+    "required": ["decision", "confidence", "categories", "reasoning"],
+}
 
 @functions_framework.cloud_event
 def moderate_text(cloud_event):
@@ -157,16 +168,19 @@ def moderate_text(cloud_event):
 
     try:
         # Send the content to Gemini for classification
-        response = model.generate_content(
-            MODERATION_PROMPT.format(content=content_body),
-            generation_config={
-                "temperature": 0.1,
-                "max_output_tokens": 512,
-            }
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=MODERATION_PROMPT.format(content=content_body),
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=512,
+                response_mime_type="application/json",
+                response_schema=MODERATION_SCHEMA,
+            ),
         )
 
         # Parse the classification result
-        result = json.loads(response.text)
+        result = json.loads(response.text or "{}")
         decision = result.get("decision", "review")
         confidence = result.get("confidence", 0.0)
         categories = result.get("categories", [])
@@ -273,11 +287,39 @@ def store_moderation_result(cloud_event):
     })
 ```
 
+Deploy the same function for each decision topic:
+
+```bash
+gcloud functions deploy store-approved-result \
+    --gen2 \
+    --runtime=python311 \
+    --region=us-central1 \
+    --source=./storage \
+    --entry-point=store_moderation_result \
+    --trigger-topic=content-approved
+
+gcloud functions deploy store-blocked-result \
+    --gen2 \
+    --runtime=python311 \
+    --region=us-central1 \
+    --source=./storage \
+    --entry-point=store_moderation_result \
+    --trigger-topic=content-blocked
+
+gcloud functions deploy store-review-needed-result \
+    --gen2 \
+    --runtime=python311 \
+    --region=us-central1 \
+    --source=./storage \
+    --entry-point=store_moderation_result \
+    --trigger-topic=content-review-needed
+```
+
 ## Performance and Cost
 
-In testing, this setup handles about 100 moderation requests per second with a single Cloud Function instance, and it autoscales from there. Each Gemini call for text classification costs fractions of a cent, making this approach far cheaper than human-only moderation for high-volume platforms.
+Actual throughput depends on Cloud Functions concurrency, regional quotas, Pub/Sub delivery, and Vertex AI quota, and it autoscales from there. Gemini pricing is token-based, so short text classification prompts usually cost a small fraction of a cent, making this approach far cheaper than human-only moderation for high-volume platforms.
 
-The median latency for text moderation is around 800ms - fast enough for near-real-time content feeds, though not suitable for chat where you need sub-100ms responses.
+Latency depends on prompt size, model choice, region, and cold starts. For many content feeds, this is fast enough for near-real-time moderation, though not suitable for chat where you need sub-100ms responses.
 
 ## Monitoring and Alerting
 
