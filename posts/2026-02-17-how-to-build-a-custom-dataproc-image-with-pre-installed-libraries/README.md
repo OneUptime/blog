@@ -77,17 +77,8 @@ pip3 install --no-cache-dir \
     google-cloud-bigtable==2.21.0 \
     pyspark-stubs==3.0.0
 
-# Install Java libraries needed by Spark jobs
-# Download JARs to the Spark jars directory
-SPARK_JARS_DIR="/usr/lib/spark/jars"
-cd "$SPARK_JARS_DIR"
-
-# BigQuery connector
-wget -q "https://repo1.maven.org/maven2/com/google/cloud/spark/spark-3.3-bigquery/0.32.2/spark-3.3-bigquery-0.32.2.jar"
-
-# Delta Lake support
-wget -q "https://repo1.maven.org/maven2/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar"
-wget -q "https://repo1.maven.org/maven2/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar"
+# Dataproc 2.3 includes the Spark BigQuery connector.
+# Delta Lake is installed with the DELTA optional component when the image is built.
 
 # Configure Spark defaults
 cat >> /etc/spark/conf/spark-defaults.conf << 'EOF'
@@ -128,11 +119,12 @@ Use the `generate_custom_image.py` script to create the image.
 # Build the custom Dataproc image
 python3 generate_custom_image.py \
   --image-name=dataproc-custom-v1 \
-  --dataproc-version=2.1.27-debian11 \
+  --dataproc-version=2.3.30-debian12 \
   --customization-script=custom-image-script.sh \
   --zone=us-central1-a \
   --gcs-bucket=gs://my-bucket/dataproc-images \
   --disk-size=100 \
+  --optional-components=DELTA \
   --no-smoke-test
 ```
 
@@ -144,6 +136,7 @@ The key parameters:
 - `--dataproc-version`: The base Dataproc image version to customize
 - `--customization-script`: Path to your customization script
 - `--disk-size`: Size of the boot disk in GB (increase if you install large software)
+- `--optional-components`: Optional components to install into the image, such as Delta Lake on Dataproc 2.3 and later
 - `--no-smoke-test`: Skip the validation test (useful during development)
 
 ## Using the Custom Image
@@ -155,6 +148,7 @@ Once the image is built, reference it when creating clusters.
 gcloud dataproc clusters create my-cluster \
   --region=us-central1 \
   --image=dataproc-custom-v1 \
+  --optional-components=DELTA \
   --num-workers=4 \
   --worker-machine-type=n1-standard-8 \
   --master-machine-type=n1-standard-4
@@ -170,10 +164,11 @@ Treat custom images like any other build artifact. Version them and keep track o
 # Build with version number in the image name
 python3 generate_custom_image.py \
   --image-name=dataproc-custom-v2-0-1 \
-  --dataproc-version=2.1.27-debian11 \
+  --dataproc-version=2.3.30-debian12 \
   --customization-script=custom-image-script.sh \
   --zone=us-central1-a \
-  --gcs-bucket=gs://my-bucket/dataproc-images
+  --gcs-bucket=gs://my-bucket/dataproc-images \
+  --optional-components=DELTA
 ```
 
 Keep a changelog that records what changed in each version.
@@ -183,13 +178,13 @@ Keep a changelog that records what changed in each version.
 
 ## v2.0.1 (2026-02-17)
 - Updated pandas to 2.1.0
-- Added Delta Lake 2.4.0 support
+- Added Delta Lake support
 - Enabled Spark adaptive query execution by default
 
 ## v2.0.0 (2026-02-01)
-- Based on Dataproc 2.1.27-debian11
+- Based on Dataproc 2.3.30-debian12
 - Initial custom image with data science stack
-- Includes BigQuery connector 0.32.2
+- Includes the Dataproc-provided BigQuery connector
 ```
 
 ## Automating Image Builds with Cloud Build
@@ -204,20 +199,21 @@ steps:
     args: ['clone', 'https://github.com/GoogleCloudDataproc/custom-images.git']
 
   # Run the image generation script
-  - name: 'python:3.9'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:stable'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         cd custom-images
-        pip install -r requirements.txt
-        python generate_custom_image.py \
+        python3 -m pip install -r requirements.txt
+        python3 generate_custom_image.py \
           --image-name=dataproc-custom-${SHORT_SHA} \
-          --dataproc-version=2.1.27-debian11 \
+          --dataproc-version=2.3.30-debian12 \
           --customization-script=../custom-image-script.sh \
           --zone=us-central1-a \
           --gcs-bucket=gs://my-bucket/dataproc-images \
-          --disk-size=100
+          --disk-size=100 \
+          --optional-components=DELTA
 
 timeout: '3600s'  # 1 hour timeout for image build
 ```
@@ -233,6 +229,7 @@ Always test a new image before using it for production workloads.
 gcloud dataproc clusters create test-image \
   --region=us-central1 \
   --image=dataproc-custom-v2-0-1 \
+  --optional-components=DELTA \
   --single-node
 
 # Run a smoke test job
@@ -251,6 +248,8 @@ Here is a simple smoke test that verifies key packages are installed.
 # smoke-test.py - Verify custom image has expected software
 from pyspark.sql import SparkSession
 import sys
+import tempfile
+import shutil
 
 def main():
     spark = SparkSession.builder.appName("ImageSmokeTest").getOrCreate()
@@ -270,14 +269,17 @@ def main():
     assert df.count() == 100, "Spark basic operation failed"
     print("OK: Spark is working")
 
-    # Test BigQuery connector
+    # Test Delta Lake support
+    delta_path = tempfile.mkdtemp(prefix="delta-smoke-test-")
     try:
-        spark.conf.set("spark.sql.catalog.spark_catalog",
-                       "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        print("OK: Delta Lake catalog configured")
+        df.write.format("delta").mode("overwrite").save(delta_path)
+        assert spark.read.format("delta").load(delta_path).count() == 100
+        print("OK: Delta Lake is working")
     except Exception as e:
-        print(f"FAIL: Delta Lake configuration issue: {e}")
+        print(f"FAIL: Delta Lake issue: {e}")
         sys.exit(1)
+    finally:
+        shutil.rmtree(delta_path, ignore_errors=True)
 
     print("All smoke tests passed")
     spark.stop()
@@ -307,10 +309,11 @@ Custom images are stored as Compute Engine images in your project. Set up image 
 # Build image in a family for easy reference
 python3 generate_custom_image.py \
   --image-name=dataproc-custom-v2-0-1 \
-  --dataproc-version=2.1.27-debian11 \
+  --dataproc-version=2.3.30-debian12 \
   --customization-script=custom-image-script.sh \
   --zone=us-central1-a \
   --gcs-bucket=gs://my-bucket/dataproc-images \
+  --optional-components=DELTA \
   --family=dataproc-custom
 ```
 
@@ -321,6 +324,7 @@ With image families, your cluster creation command can reference the family inst
 gcloud dataproc clusters create my-cluster \
   --region=us-central1 \
   --image=projects/my-project/global/images/family/dataproc-custom \
+  --optional-components=DELTA \
   --num-workers=4
 ```
 
