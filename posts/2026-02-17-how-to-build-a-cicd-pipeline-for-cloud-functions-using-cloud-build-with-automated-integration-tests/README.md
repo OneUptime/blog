@@ -310,14 +310,11 @@ steps:
     waitFor: ['install']
 
   # Step 3: Start emulators and run integration tests
-  - name: 'node:20'
-    entrypoint: 'bash'
+  - name: 'us-docker.pkg.dev/firebase-cli/us/firebase'
+    entrypoint: 'sh'
     args:
       - '-c'
       - |
-        # Install Firebase CLI for emulators
-        npm install -g firebase-tools
-
         # Start Firestore emulator in background
         firebase emulators:start --only firestore,pubsub --project=test-project &
         EMULATOR_PID=$!
@@ -353,13 +350,15 @@ steps:
     args:
       - '-c'
       - |
+        FAILED=0
         for dir in functions/*/; do
           if [ -f "$dir/package.json" ]; then
             cd "$dir"
-            npx eslint . --ext .js || true
+            npx eslint . || FAILED=1
             cd /workspace
           fi
         done
+        exit $FAILED
     id: 'lint'
     waitFor: ['install']
 
@@ -470,8 +469,7 @@ Cloud Functions Gen2 supports traffic splitting for rollback:
 # List recent revisions
 gcloud run revisions list \
   --service=process-orders \
-  --region=us-central1 \
-  --platform=managed
+  --region=us-central1
 
 # Roll back to a previous revision
 gcloud run services update-traffic process-orders \
