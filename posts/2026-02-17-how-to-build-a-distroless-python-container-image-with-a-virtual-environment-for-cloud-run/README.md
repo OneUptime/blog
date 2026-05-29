@@ -29,7 +29,7 @@ Here is the Dockerfile that makes this work.
 ```dockerfile
 # Stage 1: Build dependencies in a full Python image
 
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
@@ -53,7 +53,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Stage 2: Distroless runtime image
-FROM gcr.io/distroless/python3-debian12
+FROM gcr.io/distroless/python3-debian13
 
 WORKDIR /app
 
@@ -64,8 +64,7 @@ COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app /app
 
 # Set the virtual environment as the Python path
-ENV PYTHONPATH="/opt/venv/lib/python3.12/site-packages"
-ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/opt/venv/lib/python3.13/site-packages"
 
 # Cloud Run uses PORT environment variable
 ENV PORT=8080
@@ -73,10 +72,10 @@ ENV PORT=8080
 EXPOSE 8080
 
 # Run the application
-CMD ["python", "app.py"]
+CMD ["app.py"]
 ```
 
-The key insight is that the virtual environment in `/opt/venv` is self-contained. It has all the Python packages your application needs. When we copy it to the distroless image, all the dependencies come along.
+The key insight is that the virtual environment in `/opt/venv` contains the Python packages your application needs. When we copy it to a distroless image with a compatible Python runtime, all the dependencies come along.
 
 ## A Sample Flask Application
 
@@ -86,7 +85,7 @@ Here is a Flask application to containerize.
 # app.py - A Flask API for Cloud Run
 import os
 from flask import Flask, jsonify
-from datetime import datetime
+from datetime import UTC, datetime
 
 app = Flask(__name__)
 
@@ -95,7 +94,7 @@ def index():
     """Root endpoint with service info."""
     return jsonify({
         "service": "python-distroless-demo",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "python_env": "distroless"
     })
 
@@ -129,7 +128,7 @@ Flask==3.0.0
 waitress==2.1.2
 ```
 
-I am using waitress instead of gunicorn here because gunicorn requires a shell to start workers. Waitress is a pure-Python WSGI server that works well in distroless containers.
+I am using waitress here because it can be started directly from Python code. Waitress is a pure-Python WSGI server that works well in distroless containers.
 
 ## Building and Testing Locally
 
@@ -152,7 +151,7 @@ For packages that need specific shared libraries, you need to copy those from th
 
 ```dockerfile
 # Stage 1: Builder
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
@@ -169,13 +168,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Find shared libraries needed by compiled packages
-RUN ldd /opt/venv/lib/python3.12/site-packages/*.so 2>/dev/null \
+RUN ldd /opt/venv/lib/python3.13/site-packages/*.so 2>/dev/null \
     | grep "=> /" | awk '{print $3}' | sort -u > /tmp/needed-libs.txt || true
 
 COPY . .
 
 # Stage 2: Distroless
-FROM gcr.io/distroless/python3-debian12
+FROM gcr.io/distroless/python3-debian13
 
 WORKDIR /app
 
@@ -188,12 +187,11 @@ COPY --from=builder /usr/lib/x86_64-linux-gnu/libldap*.so* /usr/lib/x86_64-linux
 
 COPY --from=builder /app /app
 
-ENV PYTHONPATH="/opt/venv/lib/python3.12/site-packages"
-ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/opt/venv/lib/python3.13/site-packages"
 ENV PORT=8080
 
 EXPOSE 8080
-CMD ["python", "app.py"]
+CMD ["app.py"]
 ```
 
 ## Using Gunicorn with Distroless
@@ -213,7 +211,7 @@ worker_class = "sync"
 
 ```dockerfile
 # Modified CMD for gunicorn
-CMD ["python", "-m", "gunicorn", "--config", "gunicorn_config.py", "app:app"]
+CMD ["-m", "gunicorn", "--config", "gunicorn_config.py", "app:app"]
 ```
 
 ## Deploying to Cloud Run
@@ -268,10 +266,10 @@ steps:
 
 Here is how different base images compare for the same Flask application:
 
-- `python:3.12`: ~1.0GB
-- `python:3.12-slim`: ~155MB
-- `python:3.12-alpine`: ~60MB
-- `gcr.io/distroless/python3-debian12`: ~55MB
+- `python:3.13`: ~1.0GB
+- `python:3.13-slim`: ~155MB
+- `python:3.13-alpine`: ~60MB
+- `gcr.io/distroless/python3-debian13`: ~55MB
 
 The distroless image is comparable in size to Alpine but without Alpine's musl compatibility issues.
 
@@ -283,7 +281,7 @@ Since there is no shell, debugging requires different techniques.
 
 ```dockerfile
 # For debugging only - not for production
-FROM gcr.io/distroless/python3-debian12:debug
+FROM gcr.io/distroless/python3-debian13:debug
 ```
 
 The debug variant includes a busybox shell.
