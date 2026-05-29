@@ -16,7 +16,7 @@ Cleaning this up manually is tedious and risky. You do not want to delete a rule
 
 Google Cloud tracks which firewall rules are actually being matched by traffic. This data is available through the Firewall Insights API and through firewall rule logging. This is the foundation of any cleanup effort.
 
-First, enable firewall rule logging on your VPC network:
+First, enable firewall rule logging on the firewall rules that you want to analyze:
 
 ```hcl
 # firewall-logging.tf
@@ -44,13 +44,14 @@ resource "google_compute_firewall" "example_rule" {
 
 ## Identifying Unused Firewall Rules
 
-This Python script uses the Compute API and Recommender API to find firewall rules that have not been hit in the past 30 days:
+This Python script uses the Compute API and Recommender API to find firewall rules that have not been hit during the configured Firewall Insights observation period:
 
 ```python
 # firewall_analyzer.py
 # Identifies unused and overly permissive firewall rules
 from google.cloud import compute_v1
-from google.cloud import recommender_v2
+from google.cloud import recommender_v1
+from google.protobuf.json_format import MessageToDict
 import json
 from datetime import datetime
 
@@ -79,7 +80,7 @@ def get_all_firewall_rules(project_id):
 
 def get_firewall_insights(project_id):
     """Get firewall insights from the Recommender API."""
-    client = recommender_v2.RecommenderClient()
+    client = recommender_v1.RecommenderClient()
     parent = (
         f"projects/{project_id}/locations/global/"
         f"insightTypes/google.compute.firewall.Insight"
@@ -89,11 +90,13 @@ def get_firewall_insights(project_id):
     for insight in client.list_insights(request={"parent": parent}):
         insights.append({
             "name": insight.name,
+            "insight_subtype": insight.insight_subtype,
             "category": insight.category,
             "description": insight.description,
             "severity": str(insight.severity),
             "state": str(insight.state_info.state),
-            "content": dict(insight.content),
+            "target_resources": list(insight.target_resources),
+            "content": MessageToDict(insight.content),
         })
 
     return insights
@@ -105,8 +108,11 @@ def find_unused_rules(project_id):
 
     unused_rules = []
     for insight in insights:
-        # Firewall insights with UNUSED category
-        if "UNUSED" in insight.get("description", "").upper():
+        subtype = insight.get("insight_subtype", "").upper()
+        description = insight.get("description", "").upper()
+
+        # Match allow-rule insights that report no hits during the observation period.
+        if "NO_HITS" in subtype or "UNUSED" in subtype or "NO HITS" in description:
             unused_rules.append(insight)
 
     return unused_rules
@@ -189,8 +195,11 @@ This script implements a safe cleanup workflow:
 from google.cloud import compute_v1
 from google.cloud import storage
 import json
-import time
 from datetime import datetime, timedelta
+
+def enum_name(value):
+    """Return a Compute enum value in the API's string form."""
+    return value.name if hasattr(value, "name") else str(value).split(".")[-1]
 
 def stage_rule_for_cleanup(project_id, rule_name, reason):
     """Stage 1: Disable the rule and tag it for future deletion."""
@@ -236,13 +245,22 @@ def backup_rule(project_id, rule_name, rule):
     rule_data = {
         "name": rule.name,
         "network": rule.network,
-        "direction": str(rule.direction),
+        "direction": enum_name(rule.direction),
         "priority": rule.priority,
         "source_ranges": list(rule.source_ranges),
         "allowed": [
             {"protocol": a.I_p_protocol, "ports": list(a.ports)}
             for a in rule.allowed
         ],
+        "denied": [
+            {"protocol": d.I_p_protocol, "ports": list(d.ports)}
+            for d in rule.denied
+        ],
+        "destination_ranges": list(rule.destination_ranges),
+        "source_tags": list(rule.source_tags),
+        "target_tags": list(rule.target_tags),
+        "source_service_accounts": list(rule.source_service_accounts),
+        "target_service_accounts": list(rule.target_service_accounts),
         "disabled_at": datetime.now().isoformat(),
     }
 
@@ -294,8 +312,22 @@ def rollback_rule(project_id, rule_name):
     firewall = compute_v1.Firewall()
     firewall.name = rule_data["name"]
     firewall.network = rule_data["network"]
+    firewall.direction = rule_data["direction"]
     firewall.priority = rule_data["priority"]
     firewall.source_ranges = rule_data["source_ranges"]
+    firewall.destination_ranges = rule_data.get("destination_ranges", [])
+    firewall.source_tags = rule_data.get("source_tags", [])
+    firewall.target_tags = rule_data.get("target_tags", [])
+    firewall.source_service_accounts = rule_data.get("source_service_accounts", [])
+    firewall.target_service_accounts = rule_data.get("target_service_accounts", [])
+    firewall.allowed = [
+        compute_v1.Allowed(I_p_protocol=a["protocol"], ports=a.get("ports", []))
+        for a in rule_data.get("allowed", [])
+    ]
+    firewall.denied = [
+        compute_v1.Denied(I_p_protocol=d["protocol"], ports=d.get("ports", []))
+        for d in rule_data.get("denied", [])
+    ]
     firewall.disabled = False
 
     operation = compute_client.insert(
@@ -329,13 +361,24 @@ steps:
     args:
       - '-c'
       - |
-        python -c "
+        pip install google-cloud-compute google-cloud-storage
+        python - <<'PY'
         import json
         from firewall_cleanup import stage_rule_for_cleanup
+
+        def firewall_rule_name(resource_name):
+            return resource_name.rstrip('/').split('/')[-1]
+
         report = json.load(open('report.json'))
+        project_id = '${PROJECT_ID}'
         for rule in report['unused_rules']:
-            stage_rule_for_cleanup('${PROJECT_ID}', rule['name'], 'Unused per Firewall Insights')
-        "
+            for target in rule.get('target_resources', []):
+                stage_rule_for_cleanup(
+                    project_id,
+                    firewall_rule_name(target),
+                    'Unused per Firewall Insights'
+                )
+        PY
 
   # Delete rules disabled more than 14 days ago (stage 2)
   - name: 'python:3.11'
@@ -343,10 +386,11 @@ steps:
     args:
       - '-c'
       - |
-        python -c "
+        pip install google-cloud-compute
+        python - <<'PY'
         from firewall_cleanup import delete_stale_disabled_rules
         delete_stale_disabled_rules('${PROJECT_ID}', days_threshold=14)
-        "
+        PY
 
   # Upload report to GCS for review
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
