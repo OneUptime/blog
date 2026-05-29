@@ -64,7 +64,7 @@ def run(argv=None):
     parser.add_argument(
         '--output_table',
         required=True,
-        help='BigQuery output table'
+        help='Existing BigQuery output table'
     )
     parser.add_argument(
         '--input_format',
@@ -126,7 +126,7 @@ def run(argv=None):
             | 'WriteToBQ' >> beam.io.WriteToBigQuery(
                 table=known_args.output_table,
                 write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+                create_disposition=beam.io.BigQueryDisposition.CREATE_NEVER
             )
         )
 
@@ -141,13 +141,16 @@ The Dockerfile packages your pipeline code with all dependencies, including syst
 
 ```dockerfile
 # Dockerfile
-# Use the official Apache Beam Python SDK image as the base
-FROM gcr.io/dataflow-templates-base/python311-template-launcher-base:latest
+# Copy the Flex Template launcher into a custom Apache Beam SDK image
+FROM gcr.io/dataflow-templates-base/python311-template-launcher-base:latest AS template_launcher
+FROM apache/beam_python3.11_sdk:2.53.0
+
+COPY --from=template_launcher \
+    /opt/google/dataflow/python_template_launcher \
+    /opt/google/dataflow/python_template_launcher
 
 # Set environment variables
 ENV FLEX_TEMPLATE_PYTHON_PY_FILE="/template/src/pipeline.py"
-ENV FLEX_TEMPLATE_PYTHON_SETUP_FILE="/template/setup.py"
-ENV FLEX_TEMPLATE_PYTHON_REQUIREMENTS_FILE="/template/requirements.txt"
 
 # Install system dependencies required by your Python packages
 # lxml needs libxml2 and libxslt
@@ -169,6 +172,8 @@ RUN pip install --no-cache-dir -r /template/requirements.txt
 # Install the project package itself
 RUN pip install --no-cache-dir -e /template/
 ```
+
+Using the Apache Beam SDK image as the final image lets the same container run as the worker SDK container, so system dependencies such as libxml2 and libxslt are available when your transforms execute on Dataflow workers.
 
 The requirements.txt includes all Python dependencies.
 
@@ -235,7 +240,7 @@ The metadata file describes the template and its parameters.
     {
       "name": "output_table",
       "label": "Output BigQuery Table",
-      "helpText": "BigQuery table in format project:dataset.table",
+      "helpText": "Existing BigQuery table in format project:dataset.table",
       "isOptional": false
     },
     {
@@ -278,7 +283,8 @@ Launch the template with runtime parameters.
 gcloud dataflow flex-template run csv-processor-20260217 \
   --template-file-gcs-location=gs://my-bucket/templates/flex/csv-processor-v1.json \
   --region=us-central1 \
-  --parameters="input_path=gs://my-bucket/data/2026-02-17/*.xml,output_table=my-project:analytics.processed_data,input_format=xml,lookup_table=my-project:reference.enrichment_data" \
+  --parameters="input_path=gs://my-bucket/data/2026-02-17/*.xml,output_table=my-project:analytics.processed_data,input_format=xml,lookup_table=my-project:reference.enrichment_data,sdk_container_image=us-central1-docker.pkg.dev/my-project/dataflow-templates/csv-processor:v1.0" \
+  --additional-experiments=use_runner_v2 \
   --max-workers=20 \
   --worker-machine-type=n2-standard-4
 ```
@@ -292,7 +298,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   "https://dataflow.googleapis.com/v1b3/projects/my-project/locations/us-central1/flexTemplates:launch" \
   -d '{
-    "launch_parameter": {
+    "launchParameter": {
       "jobName": "csv-processor-20260217",
       "containerSpecGcsPath": "gs://my-bucket/templates/flex/csv-processor-v1.json",
       "parameters": {
@@ -302,7 +308,9 @@ curl -X POST \
       },
       "environment": {
         "machineType": "n2-standard-4",
-        "maxWorkers": 20
+        "maxWorkers": 20,
+        "sdkContainerImage": "us-central1-docker.pkg.dev/my-project/dataflow-templates/csv-processor:v1.0",
+        "additionalExperiments": ["use_runner_v2"]
       }
     }
   }'
