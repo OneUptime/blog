@@ -30,6 +30,7 @@ For example, if someone has the `roles/storage.admin` role but has only read obj
 
 - The Recommender API enabled on your project
 - The `roles/recommender.iamAdmin` role
+- An IAM admin role for the resources you want to update, such as `roles/resourcemanager.projectIamAdmin` for project-level recommendations
 - Python 3.8 or later with the Google Cloud client libraries
 
 ## Step 1: Enable the Recommender API
@@ -58,11 +59,11 @@ Each recommendation includes:
 - The current role assignment
 - The suggested replacement role
 - The permissions that would be removed
-- The confidence level based on usage data
+- The recommendation priority and security impact
 
 ## Step 3: Build an Automated Recommendation Review Script
 
-Here is a Python script that fetches recommendations across multiple projects, filters them by confidence level, and generates a report:
+Here is a Python script that fetches recommendations across multiple projects and generates a report:
 
 ```python
 # review_iam_recommendations.py
@@ -70,6 +71,7 @@ Here is a Python script that fetches recommendations across multiple projects, f
 
 from google.cloud import recommender_v1
 from google.cloud import resourcemanager_v3
+from google.protobuf.json_format import MessageToDict
 import json
 from datetime import datetime
 
@@ -112,8 +114,10 @@ def parse_recommendation(rec):
             operations.append({
                 "action": op.action,
                 "resource": op.resource,
+                "resource_type": op.resource_type,
                 "path": op.path,
-                "value": str(op.value) if op.value else None
+                "path_filters": value_map_to_dict(op.path_filters),
+                "value": value_to_dict(op.value)
             })
 
     return {
@@ -133,7 +137,8 @@ def extract_current_role(rec):
     for group in rec.content.operation_groups:
         for op in group.operations:
             if op.action == "remove":
-                return op.value.get("role", "unknown") if op.value else "unknown"
+                filters = value_map_to_dict(op.path_filters)
+                return filters.get("/iamPolicy/bindings/*/role", "unknown")
     return "unknown"
 
 def extract_suggested_role(rec):
@@ -141,14 +146,22 @@ def extract_suggested_role(rec):
     for group in rec.content.operation_groups:
         for op in group.operations:
             if op.action == "add":
-                return op.value.get("role", "none") if op.value else "none"
+                return value_to_dict(op.value).get("role", "none")
     return "none (remove entirely)"
+
+def value_to_dict(value):
+    """Convert a protobuf Value to a Python value."""
+    return MessageToDict(value) if value else {}
+
+def value_map_to_dict(value_map):
+    """Convert a map of protobuf Values to regular Python values."""
+    return {key: MessageToDict(value) for key, value in value_map.items()}
 
 def generate_report(all_recommendations):
     """Generate a summary report of all recommendations."""
     report = {
         "generated_at": datetime.now().isoformat(),
-        "total_recommendations": len(all_recommendations),
+        "total_recommendations": sum(len(recs) for recs in all_recommendations.values()),
         "by_project": {},
         "high_impact": []
     }
@@ -163,8 +176,8 @@ def generate_report(all_recommendations):
         # Flag high-impact recommendations
         # (e.g., removing Editor or Owner role suggestions)
         for p in parsed:
-            if "Editor" in str(p.get("current_role", "")) or \
-               "Owner" in str(p.get("current_role", "")):
+            current_role = str(p.get("current_role", "")).lower()
+            if current_role in ("roles/editor", "roles/owner"):
                 p["project"] = project_id
                 report["high_impact"].append(p)
 
@@ -210,7 +223,7 @@ For recommendations that are clearly safe (like replacing a broad viewer role wi
 
 from google.cloud import recommender_v1
 from google.cloud import resourcemanager_v3
-import json
+from google.protobuf.json_format import MessageToDict
 
 def is_safe_to_auto_apply(recommendation):
     """Determine if a recommendation is safe to apply automatically."""
@@ -271,43 +284,61 @@ def apply_recommendation(client, recommendation):
 def apply_operation(operation):
     """Apply a single IAM operation from the recommendation."""
     from google.cloud import resourcemanager_v3
+    from google.iam.v1 import policy_pb2
 
     # Parse the resource to determine the project
     # Operations modify the IAM policy for the resource
     if operation.resource_type == "cloudresourcemanager.googleapis.com/Project":
         project_client = resourcemanager_v3.ProjectsClient()
+        resource = operation.resource.replace("//cloudresourcemanager.googleapis.com/", "")
 
         # Get current policy
         policy = project_client.get_iam_policy(
-            request={"resource": operation.resource}
+            request={"resource": resource}
         )
 
         if operation.action == "remove":
             # Remove the specified role binding
-            role = operation.value.get("role")
-            member = operation.value.get("member")
-            for binding in policy.bindings:
+            filters = value_map_to_dict(operation.path_filters)
+            role = filters.get("/iamPolicy/bindings/*/role")
+            member = filters.get("/iamPolicy/bindings/*/members/*")
+            for binding in list(policy.bindings):
                 if binding.role == role and member in binding.members:
                     binding.members.remove(member)
+                    if not binding.members:
+                        policy.bindings.remove(binding)
 
         elif operation.action == "add":
             # Add the new role binding
-            from google.iam.v1 import policy_pb2
-            role = operation.value.get("role")
-            member = operation.value.get("member")
-            new_binding = policy_pb2.Binding(
-                role=role,
-                members=[member]
-            )
-            policy.bindings.append(new_binding)
+            value = value_to_dict(operation.value)
+            role = value.get("role")
+            members = value.get("members", [])
+            if value.get("member"):
+                members.append(value["member"])
+            for binding in policy.bindings:
+                if binding.role == role:
+                    for member in members:
+                        if member not in binding.members:
+                            binding.members.append(member)
+                    break
+            else:
+                policy.bindings.append(policy_pb2.Binding(role=role, members=members))
 
         # Set the updated policy
         project_client.set_iam_policy(
             request={
-                "resource": operation.resource,
+                "resource": resource,
                 "policy": policy
             }
         )
+
+def value_to_dict(value):
+    """Convert a protobuf Value to a Python value."""
+    return MessageToDict(value) if value else {}
+
+def value_map_to_dict(value_map):
+    """Convert a map of protobuf Values to regular Python values."""
+    return {key: MessageToDict(value) for key, value in value_map.items()}
 
 def main():
     client = recommender_v1.RecommenderClient()
@@ -345,6 +376,10 @@ if __name__ == "__main__":
 Set up a Cloud Scheduler job that runs the recommendation review weekly:
 
 ```bash
+# Create the Pub/Sub topic used by the function and scheduler
+gcloud pubsub topics create iam-review-trigger \
+    --project=my-project
+
 # Create a Cloud Function that runs the review
 gcloud functions deploy iam-recommendation-review \
     --project=my-project \
