@@ -8,7 +8,7 @@ Description: Learn how to implement a data mesh architecture on GCP using Datapl
 
 ---
 
-Data mesh is an organizational and architectural approach where domain teams own and manage their own data products. Instead of a central data team that owns all the data (and becomes a bottleneck), each business domain - orders, customers, inventory, marketing - manages its own data pipeline, quality, and governance. Dataplex is GCP's service for implementing this pattern, providing the organizational structure, access control, and governance layer that makes data mesh practical.
+Data mesh is an organizational and architectural approach where domain teams own and manage their own data products. Instead of a central data team that owns all the data (and becomes a bottleneck), each business domain - orders, customers, inventory, marketing - manages its own data pipeline, quality, and governance. Dataplex is one GCP service you can use to implement this pattern, providing the organizational structure, access control, and governance layer that makes data mesh practical.
 
 ## Data Mesh Principles
 
@@ -126,55 +126,98 @@ gcloud dataplex assets create orders-raw-gcs \
 
 A data product is a curated dataset that a domain team publishes for consumption by other teams. In the data mesh model, it should have clear ownership, documentation, quality standards, and an SLA.
 
-### Documenting Data Products with Data Catalog
+### Documenting Data Products with Dataplex Aspects
 
-```bash
-# Add rich metadata to a data product table using Data Catalog tags
-
-# First, create a tag template for data products
-gcloud data-catalog tag-templates create data-product-template \
-  --location=us-central1 \
-  --display-name="Data Product Metadata" \
-  --field=id=owner_team,type=string,display-name="Owner Team",required=true \
-  --field=id=sla_freshness_hours,type=double,display-name="Freshness SLA (hours)",required=true \
-  --field=id=quality_score,type=double,display-name="Data Quality Score (0-100)" \
-  --field=id=update_frequency,type=string,display-name="Update Frequency" \
-  --field=id=pii_contains,type=bool,display-name="Contains PII"
+```json
+{
+  "name": "data_product_metadata",
+  "type": "record",
+  "recordFields": [
+    {
+      "name": "owner_team",
+      "type": "string",
+      "index": 1,
+      "annotations": {
+        "displayName": "Owner Team"
+      },
+      "constraints": {
+        "required": true
+      }
+    },
+    {
+      "name": "sla_freshness_hours",
+      "type": "double",
+      "index": 2,
+      "annotations": {
+        "displayName": "Freshness SLA (hours)"
+      },
+      "constraints": {
+        "required": true
+      }
+    },
+    {
+      "name": "quality_score",
+      "type": "double",
+      "index": 3,
+      "annotations": {
+        "displayName": "Data Quality Score (0-100)"
+      }
+    },
+    {
+      "name": "update_frequency",
+      "type": "string",
+      "index": 4,
+      "annotations": {
+        "displayName": "Update Frequency"
+      }
+    },
+    {
+      "name": "pii_contains",
+      "type": "bool",
+      "index": 5,
+      "annotations": {
+        "displayName": "Contains PII"
+      }
+    }
+  ]
+}
 ```
 
-Apply the tag to a data product:
+Save the file as `data-product-aspect.json`, then create an aspect type for data products:
 
-```python
-# Python: Tag a BigQuery table as a data product with metadata
-from google.cloud import datacatalog_v1
+```bash
+# Add rich metadata to a data product table using Dataplex aspects
+gcloud dataplex aspect-types create data-product-template \
+  --location=us-central1 \
+  --display-name="Data Product Metadata" \
+  --metadata-template-file-name=data-product-aspect.json
+```
 
-client = datacatalog_v1.DataCatalogClient()
+Apply the aspect to a data product entry:
 
-# Look up the Data Catalog entry for the BigQuery table
-resource_name = (
-    "//bigquery.googleapis.com/projects/my-project"
-    "/datasets/orders_products/tables/order_summary"
-)
-entry = client.lookup_entry(
-    request={"linked_resource": resource_name}
-)
+```yaml
+# data-product-aspect-values.yaml
+my-project.us-central1.data-product-template:
+  data:
+    owner_team: orders-engineering
+    sla_freshness_hours: 6.0
+    quality_score: 98.5
+    update_frequency: hourly
+    pii_contains: false
+```
 
-# Create a tag with data product metadata
-tag = datacatalog_v1.Tag()
-tag.template = (
-    "projects/my-project/locations/us-central1"
-    "/tagTemplates/data-product-template"
-)
-tag.fields = {
-    "owner_team": datacatalog_v1.TagField(string_value="orders-engineering"),
-    "sla_freshness_hours": datacatalog_v1.TagField(double_value=6.0),
-    "quality_score": datacatalog_v1.TagField(double_value=98.5),
-    "update_frequency": datacatalog_v1.TagField(string_value="hourly"),
-    "pii_contains": datacatalog_v1.TagField(bool_value=False),
-}
+```bash
+# Find the Dataplex entry for the BigQuery table, then update that entry's aspects.
+gcloud dataplex entries search \
+  "fully_qualified_name:bigquery:my-project.orders_products.order_summary" \
+  --project=my-project \
+  --scope=projects/my-project
 
-client.create_tag(parent=entry.name, tag=tag)
-print(f"Tagged {entry.display_name} as a data product")
+gcloud dataplex entries update-aspects ENTRY_ID \
+  --location=us-central1 \
+  --entry-group=@bigquery \
+  --project=my-project \
+  --aspects=data-product-aspect-values.yaml
 ```
 
 ## Implementing Domain Ownership with IAM
@@ -193,11 +236,16 @@ gcloud dataplex lakes add-iam-policy-binding orders-domain \
   --member="group:orders-team@company.com" \
   --role="roles/dataplex.editor"
 
-# Grant BigQuery Data Owner on their datasets
-gcloud projects add-iam-policy-binding my-project \
-  --member="group:orders-team@company.com" \
-  --role="roles/bigquery.dataOwner" \
-  --condition="expression=resource.name.startsWith('projects/my-project/datasets/orders_'),title=orders-datasets-only"
+# Grant BigQuery Data Owner on each dataset they own
+bq query --use_legacy_sql=false \
+  'GRANT `roles/bigquery.dataOwner`
+  ON SCHEMA `my-project`.orders_raw
+  TO "group:orders-team@company.com"'
+
+bq query --use_legacy_sql=false \
+  'GRANT `roles/bigquery.dataOwner`
+  ON SCHEMA `my-project`.orders_products
+  TO "group:orders-team@company.com"'
 
 # Grant read access to other domains' data products (not raw data)
 # The Marketing team can read Orders data products
@@ -210,7 +258,7 @@ gcloud dataplex zones add-iam-policy-binding orders-curated \
 
 ## Federated Governance with Data Quality Rules
 
-Dataplex supports data quality rules that domain teams define and manage for their own data products:
+Dataplex data quality tasks use CloudDQ YAML specifications that domain teams can define and manage for their own data products:
 
 ```yaml
 # data_quality_rules.yaml
@@ -218,41 +266,118 @@ Dataplex supports data quality rules that domain teams define and manage for the
 # These are enforced by Dataplex data quality tasks
 
 rules:
-  - rule_type: NOT_NULL
-    column: order_id
+  ORDER_ID_NOT_NULL:
+    rule_type: NOT_NULL
     dimension: completeness
-    threshold: 1.0           # 100% of values must be non-null
 
-  - rule_type: UNIQUENESS
-    column: order_id
+  ORDER_ID_UNIQUE:
+    rule_type: CUSTOM_SQL_STATEMENT
     dimension: uniqueness
-    threshold: 1.0
+    params:
+      custom_sql_arguments:
+        - column_names
+      custom_sql_statement: |-
+        SELECT a.*
+        FROM data a
+        INNER JOIN (
+          SELECT $column_names
+          FROM data
+          GROUP BY $column_names
+          HAVING COUNT(*) > 1
+        ) duplicates
+        USING ($column_names)
 
-  - rule_type: RANGE
-    column: total_amount
+  TOTAL_AMOUNT_NON_NEGATIVE:
+    rule_type: CUSTOM_SQL_EXPR
     dimension: accuracy
-    min_value: 0
-    threshold: 0.999         # 99.9% of values must be in range
+    params:
+      custom_sql_expr: |-
+        $column >= 0
 
-  - rule_type: FRESHNESS
-    column: order_timestamp
+  ORDER_DATA_FRESH:
+    rule_type: CUSTOM_SQL_STATEMENT
     dimension: timeliness
-    max_staleness_hours: 6   # Data must be no more than 6 hours old
+    params:
+      custom_sql_statement: |-
+        SELECT MAX(order_timestamp) AS latest_order_timestamp
+        FROM data
+        HAVING TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), latest_order_timestamp, HOUR) > 6
 
-  - rule_type: ROW_COUNT
+  ORDER_ROW_COUNT_MIN:
+    rule_type: CUSTOM_SQL_STATEMENT
     dimension: completeness
-    min_count: 1000          # Table must have at least 1000 rows
+    params:
+      custom_sql_statement: |-
+        SELECT COUNT(*) AS row_count
+        FROM data
+        HAVING row_count < 1000
+
+row_filters:
+  NONE:
+    filter_sql_expr: |-
+      True
+
+rule_dimensions:
+  - completeness
+  - uniqueness
+  - accuracy
+  - timeliness
+
+rule_bindings:
+  ORDER_SUMMARY_ORDER_ID_NOT_NULL:
+    entity_uri: bigquery://projects/my-project/datasets/orders_products/tables/order_summary
+    column_id: order_id
+    row_filter_id: NONE
+    rule_ids:
+      - ORDER_ID_NOT_NULL
+
+  ORDER_SUMMARY_ORDER_ID_UNIQUE:
+    entity_uri: bigquery://projects/my-project/datasets/orders_products/tables/order_summary
+    column_id: order_id
+    row_filter_id: NONE
+    rule_ids:
+      - ORDER_ID_UNIQUE:
+          column_names: "order_id"
+
+  ORDER_SUMMARY_TOTAL_AMOUNT_NON_NEGATIVE:
+    entity_uri: bigquery://projects/my-project/datasets/orders_products/tables/order_summary
+    column_id: total_amount
+    row_filter_id: NONE
+    rule_ids:
+      - TOTAL_AMOUNT_NON_NEGATIVE
+
+  ORDER_SUMMARY_FRESHNESS:
+    entity_uri: bigquery://projects/my-project/datasets/orders_products/tables/order_summary
+    column_id: order_timestamp
+    row_filter_id: NONE
+    rule_ids:
+      - ORDER_DATA_FRESH
+
+  ORDER_SUMMARY_ROW_COUNT:
+    entity_uri: bigquery://projects/my-project/datasets/orders_products/tables/order_summary
+    row_filter_id: NONE
+    rule_ids:
+      - ORDER_ROW_COUNT_MIN
 ```
 
 ```bash
 # Create a Dataplex data quality task that runs these rules
+export DATAPLEX_REGION_ID="us-central1"
+export DATAPLEX_PUBLIC_GCS_BUCKET_NAME="dataplex-clouddq-artifacts-${DATAPLEX_REGION_ID}"
+export USER_CLOUDDQ_YAML_CONFIGS_GCS_PATH="gs://my-config-bucket/data_quality_rules.yaml"
+export DATAPLEX_TASK_SERVICE_ACCOUNT="orders-dq-runner@my-project.iam.gserviceaccount.com"
+export TARGET_BQ_DATASET="data_quality"
+export TARGET_BQ_TABLE="orders_quality_results"
+
 gcloud dataplex tasks create orders-quality-check \
   --lake=orders-domain \
-  --location=us-central1 \
+  --location="${DATAPLEX_REGION_ID}" \
   --trigger-type=RECURRING \
   --trigger-schedule="0 * * * *" \
-  --spark-main-class="com.google.cloud.dataplex.DataQualityTask" \
-  --spark-file-uris="gs://my-config-bucket/data_quality_rules.yaml"
+  --execution-service-account="${DATAPLEX_TASK_SERVICE_ACCOUNT}" \
+  --spark-python-script-file="gs://${DATAPLEX_PUBLIC_GCS_BUCKET_NAME}/clouddq_pyspark_driver.py" \
+  --spark-file-uris="gs://${DATAPLEX_PUBLIC_GCS_BUCKET_NAME}/clouddq-executable.zip","gs://${DATAPLEX_PUBLIC_GCS_BUCKET_NAME}/clouddq-executable.zip.hashsum","${USER_CLOUDDQ_YAML_CONFIGS_GCS_PATH}" \
+  --execution-args=^::^TASK_ARGS="clouddq-executable.zip, ALL, ${USER_CLOUDDQ_YAML_CONFIGS_GCS_PATH}, --gcp_project_id='my-project', --gcp_region_id='${DATAPLEX_REGION_ID}', --gcp_bq_dataset_id='${TARGET_BQ_DATASET}', --target_bigquery_summary_table='my-project.${TARGET_BQ_DATASET}.${TARGET_BQ_TABLE}'"
 ```
 
 ## Self-Serve Data Infrastructure
@@ -362,21 +487,22 @@ class DataProductQualityChecker:
 
 ## Discovering Data Products Across Domains
 
-Teams need to find data products from other domains. Dataplex and Data Catalog provide search capabilities:
+Teams need to find data products from other domains. Dataplex provides search capabilities:
 
 ```bash
 # Search for data products across all domains
-gcloud data-catalog search \
-  --include-project-ids=my-project \
-  --scope=include-all \
-  "tag:data-product-template.owner_team=*"
+gcloud dataplex entries search \
+  "aspect:my-project.us-central1.data-product-template" \
+  --project=my-project \
+  --scope=projects/my-project
 
 # Search for data products containing customer data
-gcloud data-catalog search \
-  --include-project-ids=my-project \
-  "column:customer_id type:table"
+gcloud dataplex entries search \
+  "column:customer_id type=bigquery-table" \
+  --project=my-project \
+  --scope=projects/my-project
 ```
 
 ## Wrapping Up
 
-Data mesh on GCP with Dataplex provides a structured way to scale data ownership across teams. Dataplex lakes map to business domains, zones separate raw from curated data, and IAM policies enforce domain-level access control. Data Catalog tags document data products with ownership, SLAs, and quality scores. The shared infrastructure layer - dbt templates, quality frameworks, and governance policies - gives domain teams the tools they need to be self-sufficient. The result is an architecture where domain teams move fast independently while maintaining the governance and discoverability that the organization needs.
+Data mesh on GCP with Dataplex provides a structured way to scale data ownership across teams. Dataplex lakes map to business domains, zones separate raw from curated data, and IAM policies enforce domain-level access control. Dataplex aspects document data products with ownership, SLAs, and quality scores. The shared infrastructure layer - dbt templates, quality frameworks, and governance policies - gives domain teams the tools they need to be self-sufficient. The result is an architecture where domain teams move fast independently while maintaining the governance and discoverability that the organization needs.
