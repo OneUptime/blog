@@ -30,7 +30,24 @@ gcloud services enable cloudscheduler.googleapis.com
 gcloud services enable compute.googleapis.com
 ```
 
-Now create a service account that the workflow will run as. This account needs permissions to list and delete disks.
+Now create a service account that the workflow will run as. This account needs permissions to list and delete disks, write logs, and later invoke the workflow from Cloud Scheduler.
+
+```bash
+gcloud iam service-accounts create toil-automation \
+  --display-name="Toil automation"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:toil-automation@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/compute.storageAdmin"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:toil-automation@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:toil-automation@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/workflows.invoker"
+```
 
 ```yaml
 # cleanup-disks-workflow.yaml
@@ -59,11 +76,11 @@ main:
             - check_disks:
                 for:
                   value: disk
-                  in: ${disk_list.items}
+                  in: ${default(map.get(disk_list, "items"), [])}
                   steps:
                     - check_if_unattached:
                         switch:
-                          - condition: ${"users" not in disk}
+                          - condition: ${not("users" in disk)}
                             steps:
                               - log_deletion:
                                   call: sys.log
@@ -151,6 +168,13 @@ main:
 
     - done:
         return: ${cleanup_result}
+
+cleanup_disks:
+  steps:
+    - run_cleanup:
+        return:
+          deleted_disks: 0
+          status: "replace this subworkflow with the disk cleanup steps above"
 ```
 
 ## Building a Multi-Step Toil Reduction Pipeline
@@ -217,8 +241,8 @@ gcloud alpha monitoring policies create \
   --display-name="Workflow Execution Failures" \
   --condition-display-name="Failed executions" \
   --condition-filter='resource.type="workflows.googleapis.com/Workflow" AND metric.type="workflows.googleapis.com/finished_execution_count" AND metric.labels.status="FAILED"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --duration=60s \
+  --if="> 0" \
   --notification-channels="projects/YOUR_PROJECT/notificationChannels/CHANNEL_ID"
 ```
 
