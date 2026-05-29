@@ -53,17 +53,21 @@ gcloud pubsub topics create scc-auto-remediate \
 # Get your org ID
 ORG_ID=$(gcloud organizations list --format="value(ID)" --limit=1)
 
-# Grant SCC publish permission
-gcloud pubsub topics add-iam-policy-binding scc-auto-remediate \
-  --member="serviceAccount:service-org-${ORG_ID}@security-center-api.iam.gserviceaccount.com" \
-  --role="roles/pubsub.publisher" \
+# Grant your account permission to let SCC configure publishing to the topic.
+# When the notification config is created, SCC automatically grants its
+# notification service agent access to publish to this topic.
+GOOGLE_ACCOUNT=$(gcloud config get-value account)
+
+gcloud pubsub topics add-iam-policy-binding projects/my-project-id/topics/scc-auto-remediate \
+  --member="user:${GOOGLE_ACCOUNT}" \
+  --role="roles/pubsub.admin" \
   --project=my-project-id
 
 # Create notification config for findings we want to auto-remediate
 gcloud scc notifications create auto-remediate \
   --organization=$ORG_ID \
   --pubsub-topic=projects/my-project-id/topics/scc-auto-remediate \
-  --filter='state="ACTIVE" AND (category="PUBLIC_BUCKET_ACL" OR category="OPEN_FIREWALL" OR category="FLOW_LOGS_DISABLED" OR category="SQL_PUBLIC_IP")'
+  --filter='state="ACTIVE" AND (category="PUBLIC_BUCKET_ACL" OR category="OPEN_FIREWALL" OR category="FLOW_LOGS_DISABLED")'
 ```
 
 ## Step 2: Create the Service Account
@@ -234,6 +238,7 @@ def fix_flow_logs(resource_name, finding):
 ```text
 google-cloud-storage==2.14.0
 google-cloud-compute==1.14.0
+requests==2.31.0
 ```
 
 ## Step 5: Deploy the Function
@@ -241,6 +246,7 @@ google-cloud-compute==1.14.0
 ```bash
 # Deploy the Cloud Function triggered by Pub/Sub
 gcloud functions deploy scc-auto-remediate \
+  --no-gen2 \
   --runtime=python311 \
   --trigger-topic=scc-auto-remediate \
   --entry-point=remediate_finding \
@@ -321,6 +327,10 @@ def should_remediate(resource_name, finding):
         return False
 
     return True
+
+# In remediate_finding, add this before selecting and running a remediation handler:
+    if not should_remediate(resource_name, finding):
+        return
 ```
 
 ## Step 8: Test the Pipeline
@@ -359,8 +369,8 @@ gcloud monitoring policies create \
   --display-name="SCC Remediation Function Errors" \
   --condition-display-name="Function execution errors" \
   --condition-filter='resource.type="cloud_function" AND metric.type="cloudfunctions.googleapis.com/function/execution_count" AND metric.labels.status!="ok"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-duration=300s \
+  --if='> 0' \
+  --duration=300s \
   --notification-channels=CHANNEL_ID \
   --project=my-project-id
 ```
