@@ -25,26 +25,34 @@ To use the code interpreter, you add it as a tool when creating the model.
 This code enables the code interpreter:
 
 ```python
-import vertexai
-from vertexai.generative_models import GenerativeModel, Tool
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions, Tool, ToolCodeExecution
 
-# Initialize Vertex AI
+# Create a Vertex AI client. This uses Application Default Credentials.
+client = genai.Client(
+    vertexai=True,
+    project="your-project-id",
+    location="global",
+    http_options=HttpOptions(api_version="v1"),
+)
 
-vertexai.init(project="your-project-id", location="us-central1")
+model_id = "gemini-2.5-flash"
 
 # Create the code execution tool
-code_interpreter_tool = Tool.from_code_execution()
-
-# Create a model with code execution enabled
-model = GenerativeModel(
-    "gemini-2.0-flash",
-    tools=[code_interpreter_tool]
+code_execution_tool = Tool(code_execution=ToolCodeExecution())
+code_execution_config = GenerateContentConfig(
+    tools=[code_execution_tool],
+    temperature=0,
 )
 
 # Ask a question that benefits from computation
-response = model.generate_content(
-    "Calculate the compound interest on a $10,000 investment "
-    "at 7.5% annual rate compounded monthly over 15 years."
+response = client.models.generate_content(
+    model=model_id,
+    contents=(
+        "Calculate the compound interest on a $10,000 investment "
+        "at 7.5% annual rate compounded monthly over 15 years."
+    ),
+    config=code_execution_config,
 )
 
 print(response.text)
@@ -58,8 +66,10 @@ Here is how to extract the executed code:
 
 ```python
 # Generate a response that involves computation
-response = model.generate_content(
-    "Generate the first 20 prime numbers and calculate their sum."
+response = client.models.generate_content(
+    model=model_id,
+    contents="Generate the first 20 prime numbers and calculate their sum.",
+    config=code_execution_config,
 )
 
 # Inspect all parts of the response
@@ -92,7 +102,9 @@ sales_data = """date,product,quantity,revenue
 2025-01-05,Widget A,145,4350
 2025-01-05,Widget B,210,8400"""
 
-response = model.generate_content(f"""Analyze this sales data:
+response = client.models.generate_content(
+    model=model_id,
+    contents=f"""Analyze this sales data:
 
 {sales_data}
 
@@ -101,7 +113,9 @@ Please:
 2. Find the average daily quantity for each product
 3. Identify which product has better revenue per unit
 4. Calculate the day-over-day growth rate for each product
-""")
+""",
+    config=code_execution_config,
+)
 
 print(response.text)
 ```
@@ -112,7 +126,9 @@ For multi-step calculations that would be error-prone with text generation alone
 
 ```python
 # Complex financial calculation
-response = model.generate_content("""
+response = client.models.generate_content(
+    model=model_id,
+    contents="""
 I have a loan with these terms:
 - Principal: $350,000
 - Annual interest rate: 6.25%
@@ -124,7 +140,9 @@ Calculate:
 2. Total interest paid over the life of the loan
 3. Amortization schedule for the first 12 months (show month, payment, principal portion, interest portion, remaining balance)
 4. How much would I save if I made an extra $200 payment each month?
-""")
+""",
+    config=code_execution_config,
+)
 
 print(response.text)
 ```
@@ -135,7 +153,9 @@ The code interpreter can create matplotlib charts. The generated images are retu
 
 ```python
 # Ask for a chart to be generated
-response = model.generate_content("""
+response = client.models.generate_content(
+    model=model_id,
+    contents="""
 Using this monthly revenue data, create a line chart:
 
 Month, Revenue
@@ -158,7 +178,9 @@ Make the chart professional with:
 - X-axis label: "Month"
 - A trend line
 - Grid lines
-""")
+""",
+    config=code_execution_config,
+)
 
 # Extract the generated image
 for part in response.candidates[0].content.parts:
@@ -177,7 +199,7 @@ The code interpreter works in chat sessions too, allowing iterative analysis whe
 
 ```python
 # Interactive data analysis session
-chat = model.start_chat()
+chat = client.chats.create(model=model_id, config=code_execution_config)
 
 # Step 1: Load and explore data
 response = chat.send_message("""
@@ -218,9 +240,13 @@ print(response.text)
 The code interpreter can retry when code fails, but you should still handle cases where execution does not produce the expected results.
 
 ```python
-def execute_with_validation(model, prompt, expected_output_type="text"):
+def execute_with_validation(client, model_id, prompt, expected_output_type="text"):
     """Execute a code-interpreted prompt with validation."""
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model=model_id,
+        contents=prompt,
+        config=code_execution_config,
+    )
 
     result = {
         "text": "",
@@ -236,10 +262,11 @@ def execute_with_validation(model, prompt, expected_output_type="text"):
         if part.executable_code:
             result["code_executed"].append(part.executable_code.code)
         if part.code_execution_result:
-            output = part.code_execution_result.output
+            execution_result = part.code_execution_result
+            output = execution_result.output
             result["code_outputs"].append(output)
             # Check for execution errors
-            if "Error" in output or "Traceback" in output:
+            if execution_result.outcome != "OUTCOME_OK":
                 result["success"] = False
         if part.inline_data:
             result["images"].append(part.inline_data.data)
@@ -254,7 +281,8 @@ def execute_with_validation(model, prompt, expected_output_type="text"):
 
 # Usage
 result = execute_with_validation(
-    model,
+    client,
+    model_id,
     "Calculate the standard deviation of [23, 45, 12, 67, 34, 89, 56]"
 )
 
@@ -273,7 +301,7 @@ Combine code execution with Gemini's text generation to create automated reports
 ```python
 def generate_analysis_report(data_csv, report_title):
     """Generate a complete analysis report with charts and statistics."""
-    chat = model.start_chat()
+    chat = client.chats.create(model=model_id, config=code_execution_config)
 
     # Step 1: Statistical analysis
     stats_response = chat.send_message(f"""
