@@ -1,4 +1,4 @@
-# How to Automate Network Security Group Auditing Across GCP Projects
+# How to Automate Firewall Rule Auditing Across GCP Projects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -39,15 +39,17 @@ Cloud Scheduler triggers a Cloud Function on a regular cadence. The function que
 
 Cloud Asset Inventory is the backbone of this approach. It gives you a unified view of all resources across your org without needing to iterate through projects one by one.
 
-First, enable the required APIs:
+First, enable the required APIs in the project that will run the auditor:
 
 ```bash
-# Enable Cloud Asset API at the organization level
-
-gcloud services enable cloudasset.googleapis.com
-
-# Enable BigQuery for storing audit results
-gcloud services enable bigquery.googleapis.com
+# Enable the APIs used by the auditing pipeline
+gcloud services enable \
+    cloudasset.googleapis.com \
+    bigquery.googleapis.com \
+    cloudfunctions.googleapis.com \
+    cloudscheduler.googleapis.com \
+    pubsub.googleapis.com \
+    --project YOUR_PROJECT
 ```
 
 You'll also need a service account with the right permissions:
@@ -66,6 +68,11 @@ gcloud organizations add-iam-policy-binding YOUR_ORG_ID \
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
     --member="serviceAccount:firewall-auditor@YOUR_PROJECT.iam.gserviceaccount.com" \
     --role="roles/bigquery.dataEditor"
+
+# Grant Pub/Sub publisher for sending alerts
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+    --member="serviceAccount:firewall-auditor@YOUR_PROJECT.iam.gserviceaccount.com" \
+    --role="roles/pubsub.publisher"
 ```
 
 ## Building the Audit Function
@@ -74,6 +81,8 @@ Here's the Cloud Function that pulls firewall rules and evaluates them against a
 
 ```python
 import json
+from collections import Counter
+from google.protobuf.json_format import MessageToDict
 from google.cloud import asset_v1
 from google.cloud import bigquery
 from google.cloud import pubsub_v1
@@ -106,7 +115,12 @@ def _has_open_port(rule, target_port):
     if "0.0.0.0/0" not in rule.get("sourceRanges", []):
         return False
     for allowed in rule.get("allowed", []):
+        protocol = allowed.get("IPProtocol", "").lower()
+        if protocol not in ("tcp", "all"):
+            continue
         ports = allowed.get("ports", [])
+        if not ports:
+            return True
         for port_spec in ports:
             if "-" in str(port_spec):
                 start, end = port_spec.split("-")
@@ -119,10 +133,13 @@ def _has_open_port(rule, target_port):
 def _has_wide_port_range(rule, max_width):
     """Flag rules with excessively broad port ranges"""
     for allowed in rule.get("allowed", []):
+        protocol = allowed.get("IPProtocol", "").lower()
+        if protocol in ("tcp", "udp", "all") and not allowed.get("ports"):
+            return True
         for port_spec in allowed.get("ports", []):
             if "-" in str(port_spec):
                 start, end = port_spec.split("-")
-                if int(end) - int(start) > max_width:
+                if int(end) - int(start) + 1 > max_width:
                     return True
     return False
 
@@ -132,31 +149,48 @@ def _logging_disabled(rule):
         return True
     return False
 
+def _get_firewall_details(asset):
+    """Extract the Compute Engine firewall JSON body from a Cloud Asset."""
+    return MessageToDict(asset.resource.data)
+
+def _project_from_asset_name(asset_name):
+    """Extract the project ID from a full Cloud Asset resource name."""
+    parts = asset_name.split("/")
+    try:
+        return parts[parts.index("projects") + 1]
+    except (ValueError, IndexError):
+        return "unknown"
+
+def _count_by_type(violations):
+    """Return a violation count grouped by violation type."""
+    return dict(Counter(v["violation_type"] for v in violations))
+
 def audit_firewall_rules(event, context):
     """Main entry point for the Cloud Function"""
     client = asset_v1.AssetServiceClient()
     org_id = "organizations/YOUR_ORG_ID"
 
-    # Search for all firewall rules across the organization
-    request = asset_v1.SearchAllResourcesRequest(
-        scope=org_id,
-        asset_types=["compute.googleapis.com/Firewall"]
+    # List all firewall rules across the organization with RESOURCE content
+    request = asset_v1.ListAssetsRequest(
+        parent=org_id,
+        asset_types=["compute.googleapis.com/Firewall"],
+        content_type=asset_v1.ContentType.RESOURCE
     )
 
     violations = []
     total_rules = 0
 
     # Iterate through every firewall rule in the org
-    for resource in client.search_all_resources(request=request):
+    for asset in client.list_assets(request=request):
         total_rules += 1
-        rule_data = _get_firewall_details(resource)
+        rule_data = _get_firewall_details(asset)
 
         for violation_id, violation_def in VIOLATION_RULES.items():
             if violation_def["check"](rule_data):
                 violations.append({
                     "timestamp": datetime.utcnow().isoformat(),
-                    "project": resource.project,
-                    "rule_name": resource.display_name,
+                    "project": _project_from_asset_name(asset.name),
+                    "rule_name": rule_data.get("name", asset.name),
                     "violation_type": violation_id,
                     "violation_description": violation_def["description"],
                     "network": rule_data.get("network", "unknown"),
@@ -216,12 +250,13 @@ def _publish_alerts(violations):
     for violation in violations:
         message = json.dumps(violation).encode("utf-8")
         # Publish each violation as a separate message
-        publisher.publish(
+        future = publisher.publish(
             topic_path,
             message,
             severity="critical",
             violation_type=violation["violation_type"]
         )
+        future.result()
 ```
 
 ## Deploying the Pipeline
@@ -229,9 +264,15 @@ def _publish_alerts(violations):
 Deploy the function and set up the scheduler:
 
 ```bash
+# Create the Pub/Sub topics used by the function
+gcloud pubsub topics create firewall-audit-trigger
+gcloud pubsub topics create firewall-violations
+
 # Deploy the Cloud Function
 gcloud functions deploy audit-firewall-rules \
+    --no-gen2 \
     --runtime python311 \
+    --entry-point audit_firewall_rules \
     --trigger-topic firewall-audit-trigger \
     --service-account firewall-auditor@YOUR_PROJECT.iam.gserviceaccount.com \
     --timeout 540 \
@@ -257,12 +298,12 @@ def _allows_all_protocols(rule):
             return True
     return False
 
-# Check for rules missing required tags
-def _missing_required_tags(rule):
-    """Ensure every firewall rule has ownership labels"""
-    required_labels = ["team", "environment", "ticket"]
-    labels = rule.get("labels", {})
-    return not all(label in labels for label in required_labels)
+# Check for rules missing required ownership metadata in the description
+def _missing_owner_metadata(rule):
+    """Ensure every firewall rule description records ownership"""
+    description = rule.get("description", "")
+    required_markers = ["team:", "environment:", "ticket:"]
+    return not all(marker in description for marker in required_markers)
 
 # Check for stale rules that reference deleted instances
 def _targets_nonexistent_tags(rule, active_tags):
