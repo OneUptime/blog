@@ -28,8 +28,8 @@ flowchart TD
     F --> G[BigQuery External Tables]
     G --> H[Looker / Analytics Tools]
 
-    subgraph Iceberg Catalog
-        I[BigQuery Metastore]
+    subgraph Iceberg Metadata
+        I[Metadata files in Cloud Storage]
     end
 
     C -.-> I
@@ -65,24 +65,26 @@ The lifecycle configuration to move old data to nearline storage:
 
 ```json
 {
-  "rule": [
-    {
-      "action": {
-        "type": "SetStorageClass",
-        "storageClass": "NEARLINE"
-      },
-      "condition": {
-        "age": 90,
-        "matchesPrefix": ["raw/"]
+  "lifecycle": {
+    "rule": [
+      {
+        "action": {
+          "type": "SetStorageClass",
+          "storageClass": "NEARLINE"
+        },
+        "condition": {
+          "age": 90,
+          "matchesPrefix": ["landing/"]
+        }
       }
-    }
-  ]
+    ]
+  }
 }
 ```
 
 ## Step 2: Create a Dataproc Cluster with Iceberg Support
 
-Create a Dataproc cluster that has Apache Iceberg libraries pre-installed:
+Create a Dataproc cluster that loads Apache Iceberg libraries:
 
 ```bash
 # Create a Dataproc cluster with Iceberg and BigQuery connector
@@ -94,7 +96,7 @@ gcloud dataproc clusters create lakehouse-cluster \
   --num-workers=4 \
   --image-version=2.2-debian12 \
   --optional-components=JUPYTER \
-  --properties="spark:spark.jars.packages=org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.4.3,spark:spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,spark:spark.sql.catalog.lakehouse=org.apache.iceberg.spark.SparkCatalog,spark:spark.sql.catalog.lakehouse.type=hadoop,spark:spark.sql.catalog.lakehouse.warehouse=gs://myproject-lakehouse-silver/iceberg" \
+  --properties="^#^spark:spark.jars.packages=org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.10.1#spark:spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions#spark:spark.sql.catalog.lakehouse=org.apache.iceberg.spark.SparkCatalog#spark:spark.sql.catalog.lakehouse.type=hadoop#spark:spark.sql.catalog.lakehouse.warehouse=gs://myproject-lakehouse-silver/iceberg" \
   --enable-component-gateway
 ```
 
@@ -176,6 +178,12 @@ silver_orders = bronze_orders \
 silver_orders.createOrReplaceTempView("updates")
 
 spark.sql("""
+    CREATE TABLE IF NOT EXISTS lakehouse.silver.orders
+    USING iceberg
+    AS SELECT * FROM updates WHERE 1 = 0
+""")
+
+spark.sql("""
     MERGE INTO lakehouse.silver.orders AS target
     USING updates AS source
     ON target.order_id = source.order_id
@@ -198,7 +206,7 @@ The gold layer contains business-level aggregates optimized for specific use cas
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, sum as _sum, count, avg, max as _max, min as _min,
-    date_trunc, current_timestamp
+    when, current_timestamp
 )
 
 spark = SparkSession.builder \
@@ -214,7 +222,7 @@ silver_orders = spark.read.format("iceberg") \
 
 # Create daily order summary - a common gold layer table
 daily_summary = silver_orders \
-    .groupBy(date_trunc("day", col("order_date")).alias("date")) \
+    .groupBy(col("order_date").alias("date")) \
     .agg(
         count("order_id").alias("total_orders"),
         _sum("total_amount").alias("total_revenue"),
@@ -246,33 +254,35 @@ BigQuery can query Iceberg tables directly through BigLake, giving you the power
 -- Run this in the BigQuery console or bq CLI
 
 -- First, create a BigLake connection
--- (done via gcloud, shown in bash below)
+-- (done with the bq CLI, shown in bash below)
 ```
 
 ```bash
 # Create a BigLake connection
 bq mk --connection \
   --connection_type=CLOUD_RESOURCE \
+  --project_id=my-project \
   --location=us-central1 \
   lakehouse-connection
 
 # Get the service account created for the connection
-bq show --connection --location=us-central1 lakehouse-connection
+bq show --connection my-project.us-central1.lakehouse-connection
 
 # Grant the connection's service account access to Cloud Storage
-gsutil iam ch serviceAccount:<connection-sa>:objectViewer \
-  gs://myproject-lakehouse-gold
+gcloud storage buckets add-iam-policy-binding gs://myproject-lakehouse-gold \
+  --member=serviceAccount:<connection-sa> \
+  --role=roles/storage.objectViewer
 ```
 
-Now create BigQuery external tables pointing to your Iceberg data:
+Now create BigQuery external tables pointing to your Iceberg data. When using a metadata file directly, use the latest metadata JSON file for the table snapshot:
 
 ```sql
 -- Create a BigLake table over the gold layer Iceberg data
 CREATE OR REPLACE EXTERNAL TABLE `my-project.lakehouse.daily_order_summary`
-WITH CONNECTION `us-central1.lakehouse-connection`
+WITH CONNECTION `my-project.us-central1.lakehouse-connection`
 OPTIONS (
   format = 'ICEBERG',
-  uris = ['gs://myproject-lakehouse-gold/iceberg/gold/daily_order_summary/metadata/v1.metadata.json']
+  uris = ['gs://myproject-lakehouse-gold/iceberg/gold/daily_order_summary/metadata/<latest-metadata-file>.metadata.json']
 );
 
 -- Now you can query it with standard SQL
@@ -294,9 +304,20 @@ Tie everything together with an Airflow DAG:
 # lakehouse_dag.py - Orchestrates the full lakehouse pipeline
 from airflow import DAG
 from airflow.providers.google.cloud.operators.dataproc import (
-    DataprocSubmitPySpark JobOperator,
+    DataprocSubmitJobOperator,
 )
 from airflow.utils.dates import days_ago
+
+PROJECT_ID = "my-project"
+REGION = "us-central1"
+CLUSTER_NAME = "lakehouse-cluster"
+
+
+def pyspark_job(main_python_file_uri):
+    return {
+        "placement": {"cluster_name": CLUSTER_NAME},
+        "pyspark_job": {"main_python_file_uri": main_python_file_uri},
+    }
 
 # Define the DAG
 dag = DAG(
@@ -307,29 +328,29 @@ dag = DAG(
 )
 
 # Bronze ingestion step
-bronze_task = DataprocSubmitPySparkJobOperator(
+bronze_task = DataprocSubmitJobOperator(
     task_id="bronze_ingestion",
-    main="gs://myproject-lakehouse-scripts/bronze_ingestion.py",
-    cluster_name="lakehouse-cluster",
-    region="us-central1",
+    job=pyspark_job("gs://myproject-lakehouse-scripts/bronze_ingestion.py"),
+    region=REGION,
+    project_id=PROJECT_ID,
     dag=dag,
 )
 
 # Silver transformation step
-silver_task = DataprocSubmitPySparkJobOperator(
+silver_task = DataprocSubmitJobOperator(
     task_id="silver_transform",
-    main="gs://myproject-lakehouse-scripts/silver_transform.py",
-    cluster_name="lakehouse-cluster",
-    region="us-central1",
+    job=pyspark_job("gs://myproject-lakehouse-scripts/silver_transform.py"),
+    region=REGION,
+    project_id=PROJECT_ID,
     dag=dag,
 )
 
 # Gold aggregation step
-gold_task = DataprocSubmitPySparkJobOperator(
+gold_task = DataprocSubmitJobOperator(
     task_id="gold_aggregation",
-    main="gs://myproject-lakehouse-scripts/gold_aggregation.py",
-    cluster_name="lakehouse-cluster",
-    region="us-central1",
+    job=pyspark_job("gs://myproject-lakehouse-scripts/gold_aggregation.py"),
+    region=REGION,
+    project_id=PROJECT_ID,
     dag=dag,
 )
 
