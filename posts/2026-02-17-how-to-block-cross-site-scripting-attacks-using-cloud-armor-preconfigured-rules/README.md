@@ -10,20 +10,20 @@ Description: Protect your web applications from cross-site scripting attacks by 
 
 Cross-site scripting (XSS) remains one of the most common web application vulnerabilities. Attackers inject malicious scripts into web pages, which then execute in the browsers of other users. The consequences range from session hijacking to full account takeover. While fixing XSS in your application code is the right long-term approach, Cloud Armor gives you an immediate layer of defense by catching XSS payloads before they reach your backend.
 
-Google Cloud Armor includes preconfigured WAF rules based on the OWASP ModSecurity Core Rule Set. These rules have been tuned for low false positives and can be deployed in minutes. Here is how to set them up.
+Google Cloud Armor includes preconfigured WAF rules based on the OWASP ModSecurity Core Rule Set. These rules can be tuned to reduce false positives and can be deployed in minutes. Here is how to set them up.
 
 ## Understanding the XSS Rule Set
 
-Cloud Armor's XSS protection is part of the preconfigured WAF rule set identified as `xss-v33-stable`. This rule set includes detection for:
+Cloud Armor's XSS protection is part of the preconfigured WAF rule set identified as `xss-v422-stable`. This rule set includes detection for:
 
 - Script tag injection (`<script>alert(1)</script>`)
 - Event handler injection (`onerror=`, `onload=`, etc.)
 - JavaScript URI injection (`javascript:alert(1)`)
 - HTML attribute injection with script content
 - Encoded and obfuscated XSS payloads
-- DOM-based XSS patterns
+- Client-side template injection patterns when the payload is present in request data
 
-The rules inspect multiple parts of the request including URL paths, query parameters, request headers, and POST body content.
+The rules inspect multiple parts of the request including request URIs, query parameters, request headers, and POST body content.
 
 ## Step 1: Create a Security Policy
 
@@ -37,36 +37,34 @@ gcloud compute security-policies create xss-protection-policy \
   --project=your-project-id
 ```
 
-## Step 2: Add the XSS Preconfigured Rule
+## Step 2: Add the XSS Preconfigured Rule in Preview Mode
 
-Add the XSS rule set to your security policy:
-
-```bash
-# Add the XSS preconfigured WAF rule at a specific priority
-gcloud compute security-policies rules create 1000 \
-  --security-policy=xss-protection-policy \
-  --expression="evaluatePreconfiguredExpr('xss-v33-stable')" \
-  --action=deny-403 \
-  --description="Block cross-site scripting attacks using OWASP rules"
-```
-
-This single rule deploys the entire XSS rule set. Every incoming request will be evaluated against all the XSS detection signatures.
-
-## Step 3: Start in Preview Mode
-
-Before enforcing the rule, it is a good idea to run it in preview mode first. This logs what would have been blocked without actually blocking anything:
+Add the XSS rule set to your security policy in preview mode first. This logs what would have been blocked without actually blocking anything:
 
 ```bash
-# Add the rule in preview mode for testing
+# Add the XSS preconfigured WAF rule in preview mode for testing
 gcloud compute security-policies rules create 1000 \
   --security-policy=xss-protection-policy \
-  --expression="evaluatePreconfiguredExpr('xss-v33-stable')" \
+  --expression="evaluatePreconfiguredWaf('xss-v422-stable')" \
   --action=deny-403 \
   --preview \
   --description="Preview: XSS protection rules"
 ```
 
-Let this run for a few days while monitoring the logs to check for false positives.
+This single rule deploys the entire XSS rule set. Every incoming request will be evaluated against the enabled XSS detection signatures.
+
+## Step 3: Enforce the Rule
+
+Let the preview rule run for a few days while monitoring the logs to check for false positives. When you are ready to enforce the rule, update it to turn preview mode off:
+
+```bash
+# Enforce the previewed XSS protection rule
+gcloud compute security-policies rules update 1000 \
+  --security-policy=xss-protection-policy \
+  --action=deny-403 \
+  --no-preview \
+  --description="Block cross-site scripting attacks using OWASP rules"
+```
 
 ## Step 4: Attach the Policy to Your Backend Service
 
@@ -87,7 +85,7 @@ Check Cloud Logging to see what the XSS rules are catching:
 ```bash
 # View XSS rule matches in Cloud Armor logs
 gcloud logging read \
-  'resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.preconfiguredExprIds:("owasp-crs-v030301-id941")' \
+  'resource.type="http_load_balancer" AND (jsonPayload.enforcedSecurityPolicy.preconfiguredExprIds:("owasp-crs-v042200-id941") OR jsonPayload.previewSecurityPolicy.preconfiguredExprIds:("owasp-crs-v042200-id941"))' \
   --project=your-project-id \
   --limit=20 \
   --format=json
@@ -107,7 +105,7 @@ You can exclude specific detection signatures that are causing false positives w
 # Enable XSS rules but exclude specific sub-rules causing false positives
 gcloud compute security-policies rules update 1000 \
   --security-policy=xss-protection-policy \
-  --expression="evaluatePreconfiguredExpr('xss-v33-stable', ['owasp-crs-v030301-id941160-xss', 'owasp-crs-v030301-id941340-xss'])" \
+  --expression="evaluatePreconfiguredWaf('xss-v422-stable', {'sensitivity': 2, 'opt_out_rule_ids': ['owasp-crs-v042200-id941160-xss', 'owasp-crs-v042200-id941340-xss']})" \
   --action=deny-403 \
   --description="XSS protection with false positive exclusions"
 ```
@@ -120,7 +118,7 @@ If only certain paths trigger false positives, you can scope the rule to exclude
 # Apply XSS rules only to non-admin paths
 gcloud compute security-policies rules update 1000 \
   --security-policy=xss-protection-policy \
-  --expression="!request.path.matches('/admin/editor.*') && evaluatePreconfiguredExpr('xss-v33-stable')" \
+  --expression="!request.path.matches('/admin/editor.*') && evaluatePreconfiguredWaf('xss-v422-stable')" \
   --action=deny-403 \
   --description="XSS protection excluding admin editor paths"
 ```
@@ -131,14 +129,14 @@ Cloud Armor XSS rules come in different sensitivity levels. Higher sensitivity c
 
 ```bash
 # Use sensitivity level 1 (lowest - fewest false positives)
-gcloud compute security-policies rules create 1000 \
+gcloud compute security-policies rules update 1000 \
   --security-policy=xss-protection-policy \
-  --expression="evaluatePreconfiguredExpr('xss-v33-stable', ['owasp-crs-v030301-id941150-xss', 'owasp-crs-v030301-id941320-xss', 'owasp-crs-v030301-id941330-xss', 'owasp-crs-v030301-id941340-xss'])" \
+  --expression="evaluatePreconfiguredWaf('xss-v422-stable', {'sensitivity': 1})" \
   --action=deny-403 \
   --description="XSS protection at sensitivity level 1"
 ```
 
-A practical approach is to start at sensitivity level 1, monitor for a week, then gradually increase sensitivity by removing exclusions.
+A practical approach is to start at sensitivity level 1, monitor for a week, then gradually increase sensitivity.
 
 ## Combining XSS Rules with Other OWASP Rules
 
@@ -148,28 +146,28 @@ XSS protection is just one piece of the puzzle. You should combine it with other
 # Add SQL injection protection
 gcloud compute security-policies rules create 1100 \
   --security-policy=xss-protection-policy \
-  --expression="evaluatePreconfiguredExpr('sqli-v33-stable')" \
+  --expression="evaluatePreconfiguredWaf('sqli-v422-stable')" \
   --action=deny-403 \
   --description="Block SQL injection attacks"
 
 # Add local file inclusion protection
 gcloud compute security-policies rules create 1200 \
   --security-policy=xss-protection-policy \
-  --expression="evaluatePreconfiguredExpr('lfi-v33-stable')" \
+  --expression="evaluatePreconfiguredWaf('lfi-v422-stable')" \
   --action=deny-403 \
   --description="Block local file inclusion attacks"
 
 # Add remote file inclusion protection
 gcloud compute security-policies rules create 1300 \
   --security-policy=xss-protection-policy \
-  --expression="evaluatePreconfiguredExpr('rfi-v33-stable')" \
+  --expression="evaluatePreconfiguredWaf('rfi-v422-stable')" \
   --action=deny-403 \
   --description="Block remote file inclusion attacks"
 
 # Add remote code execution protection
 gcloud compute security-policies rules create 1400 \
   --security-policy=xss-protection-policy \
-  --expression="evaluatePreconfiguredExpr('rce-v33-stable')" \
+  --expression="evaluatePreconfiguredWaf('rce-v422-stable')" \
   --action=deny-403 \
   --description="Block remote code execution attacks"
 ```
@@ -209,7 +207,7 @@ Create an alert to notify your security team when XSS attacks are detected:
 gcloud logging metrics create xss-attacks-blocked \
   --project=your-project-id \
   --description="Count of XSS attacks blocked by Cloud Armor" \
-  --log-filter='resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.preconfiguredExprIds:("owasp-crs-v030301-id941")'
+  --log-filter='resource.type="http_load_balancer" AND jsonPayload.enforcedSecurityPolicy.preconfiguredExprIds:("owasp-crs-v042200-id941")'
 ```
 
 You can then build a monitoring alert on this metric to get notified of attack spikes.
@@ -226,4 +224,4 @@ From experience running these rules in production:
 
 ## Wrapping Up
 
-Cloud Armor's preconfigured XSS rules give you immediate protection against one of the most common web vulnerabilities. The setup takes minutes, and the rules are maintained by Google's security team. Start with preview mode, tune out any false positives, then enforce. Combined with proper application-level security practices, these WAF rules significantly reduce your XSS attack surface.
+Cloud Armor's preconfigured XSS rules give you immediate protection against one of the most common web vulnerabilities. The setup takes minutes, and Google provides the rules as preconfigured WAF rule sets. Start with preview mode, tune out any false positives, then enforce. Combined with proper application-level security practices, these WAF rules significantly reduce your XSS attack surface.
