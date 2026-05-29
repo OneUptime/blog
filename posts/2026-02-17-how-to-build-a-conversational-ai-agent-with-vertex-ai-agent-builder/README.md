@@ -25,17 +25,17 @@ Agent Builder bundles several capabilities:
 
 ## Prerequisites
 
-- Google Cloud project with Vertex AI API and Dialogflow API enabled
+- Google Cloud project with Dialogflow API enabled, plus Discovery Engine API if you use Vertex AI Search data stores
 - Python 3.9+
 
 ```bash
 # Enable required APIs
 
-gcloud services enable aiplatform.googleapis.com --project=your-project-id
 gcloud services enable dialogflow.googleapis.com --project=your-project-id
+gcloud services enable discoveryengine.googleapis.com --project=your-project-id
 
 # Install the SDK
-pip install google-cloud-aiplatform google-cloud-dialogflow-cx
+pip install google-cloud-dialogflow-cx
 ```
 
 ## Step 1: Create the Agent
@@ -43,7 +43,7 @@ pip install google-cloud-aiplatform google-cloud-dialogflow-cx
 You can create an agent through the Cloud Console or programmatically. Here is the programmatic approach.
 
 ```python
-from google.cloud import aiplatform
+from google.cloud.dialogflowcx_v3 import AgentsClient, Agent
 
 def create_agent(
     project_id: str,
@@ -51,13 +51,11 @@ def create_agent(
     display_name: str,
 ):
     """Create a new conversational agent using Vertex AI Agent Builder."""
-    aiplatform.init(project=project_id, location=location)
+    client_options = None
+    if location != "global":
+        client_options = {"api_endpoint": f"{location}-dialogflow.googleapis.com:443"}
 
-    # The agent is created through the Agent Builder interface
-    # For programmatic creation, we use the Dialogflow CX API
-    from google.cloud.dialogflowcx_v3 import AgentsClient, Agent
-
-    client = AgentsClient()
+    client = AgentsClient(client_options=client_options)
     parent = f"projects/{project_id}/locations/{location}"
 
     agent = Agent(
@@ -65,8 +63,6 @@ def create_agent(
         default_language_code="en",
         time_zone="America/New_York",
         description="A conversational AI agent for customer support",
-        start_flow=None,  # Will use default start flow
-        enable_stackdriver_logging=True,
     )
 
     created_agent = client.create_agent(parent=parent, agent=agent)
@@ -81,11 +77,16 @@ def create_agent(
 Intents define what the agent can understand. Each intent represents a user's goal.
 
 ```python
-from google.cloud.dialogflowcx_v3 import IntentsClient, Intent
+from google.cloud.dialogflowcx_v3 import AgentsClient, IntentsClient, Intent
 
 def create_intent(agent_name: str, display_name: str, training_phrases: list):
     """Create an intent with training phrases for the agent."""
-    client = IntentsClient()
+    agent_location = AgentsClient.parse_agent_path(agent_name)["location"]
+    client_options = None
+    if agent_location != "global":
+        client_options = {"api_endpoint": f"{agent_location}-dialogflow.googleapis.com:443"}
+
+    client = IntentsClient(client_options=client_options)
 
     # Build training phrases from example utterances
     phrases = []
@@ -136,11 +137,16 @@ create_intent(
 Flows define the conversation structure. Each flow handles a specific part of the conversation.
 
 ```python
-from google.cloud.dialogflowcx_v3 import FlowsClient, Flow
+from google.cloud.dialogflowcx_v3 import AgentsClient, FlowsClient, Flow
 
 def create_flow(agent_name: str, display_name: str, description: str):
     """Create a conversation flow for a specific topic."""
-    client = FlowsClient()
+    agent_location = AgentsClient.parse_agent_path(agent_name)["location"]
+    client_options = None
+    if agent_location != "global":
+        client_options = {"api_endpoint": f"{agent_location}-dialogflow.googleapis.com:443"}
+
+    client = FlowsClient(client_options=client_options)
 
     flow = Flow(
         display_name=display_name,
@@ -170,14 +176,25 @@ refund_flow = create_flow(
 Tools let the agent interact with external systems. Define the tools your agent needs.
 
 ```python
-from google.cloud.dialogflowcx_v3 import ToolsClient
+import json
+
+from google.cloud.dialogflowcx_v3beta1 import AgentsClient, Tool
+from google.cloud.dialogflowcx_v3beta1.services.tools import ToolsClient
 
 def create_api_tool(agent_name: str):
     """Create a tool that connects the agent to an external API."""
+    agent_location = AgentsClient.parse_agent_path(agent_name)["location"]
+    client_options = None
+    if agent_location != "global":
+        client_options = {"api_endpoint": f"{agent_location}-dialogflow.googleapis.com:443"}
+
+    client = ToolsClient(client_options=client_options)
+
     # Tools are defined as OpenAPI specs that the agent can call
     openapi_spec = {
         "openapi": "3.0.0",
         "info": {"title": "Order API", "version": "1.0"},
+        "servers": [{"url": "https://api.example.com"}],
         "paths": {
             "/orders/{order_id}": {
                 "get": {
@@ -213,8 +230,15 @@ def create_api_tool(agent_name: str):
         },
     }
 
-    print("Tool defined with OpenAPI spec for order status lookup")
-    return openapi_spec
+    tool = Tool(
+        display_name="order_status_api",
+        description="Looks up order status by order ID.",
+        open_api_spec=Tool.OpenApiTool(text_schema=json.dumps(openapi_spec)),
+    )
+
+    created = client.create_tool(parent=agent_name, tool=tool)
+    print(f"Tool created: {created.name}")
+    return created
 ```
 
 ## Step 4: Add Data Grounding
@@ -222,19 +246,49 @@ def create_api_tool(agent_name: str):
 Ground the agent's responses in your enterprise data using Vertex AI Search data stores.
 
 ```python
-def configure_grounding(agent_name: str, data_store_id: str, project_id: str):
+from google.cloud.dialogflowcx_v3beta1 import AgentsClient, DataStoreConnection, DataStoreType, Tool
+from google.cloud.dialogflowcx_v3beta1.services.tools import ToolsClient
+
+def configure_grounding(
+    agent_name: str,
+    data_store_id: str,
+    project_id: str,
+    data_store_location: str = "global",
+    data_store_type: DataStoreType = DataStoreType.UNSTRUCTURED,
+):
     """Configure the agent to ground responses using a Vertex AI Search data store."""
     # Grounding connects the agent to your indexed documents
     # so it can answer questions based on your actual content
+    agent_location = AgentsClient.parse_agent_path(agent_name)["location"]
+    client_options = None
+    if agent_location != "global":
+        client_options = {"api_endpoint": f"{agent_location}-dialogflow.googleapis.com:443"}
 
-    grounding_config = {
-        "data_store": f"projects/{project_id}/locations/global/collections/default_collection/dataStores/{data_store_id}",
-        "grounding_enabled": True,
-    }
+    client = ToolsClient(client_options=client_options)
 
-    print(f"Grounding configured with data store: {data_store_id}")
+    data_store = (
+        f"projects/{project_id}/locations/{data_store_location}"
+        f"/collections/default_collection/dataStores/{data_store_id}"
+    )
+
+    tool = Tool(
+        display_name="enterprise_knowledge",
+        description="Answers questions from the connected Vertex AI Search data store.",
+        data_store_spec=Tool.DataStoreTool(
+            data_store_connections=[
+                DataStoreConnection(
+                    data_store_type=data_store_type,
+                    data_store=data_store,
+                )
+            ],
+            fallback_prompt=Tool.DataStoreTool.FallbackPrompt(),
+        ),
+    )
+
+    created = client.create_tool(parent=agent_name, tool=tool)
+    print(f"Grounding tool created: {created.name}")
     print("The agent will now use your indexed documents to answer questions")
-    return grounding_config
+    return created
 ```
 
 ## Step 5: Test the Agent
@@ -242,7 +296,7 @@ def configure_grounding(agent_name: str, data_store_id: str, project_id: str):
 ### Using the Sessions API
 
 ```python
-from google.cloud.dialogflowcx_v3 import SessionsClient, TextInput, QueryInput
+from google.cloud.dialogflowcx_v3 import DetectIntentRequest, QueryInput, SessionsClient, TextInput
 import uuid
 
 def chat_with_agent(
@@ -253,7 +307,11 @@ def chat_with_agent(
     message: str,
 ):
     """Send a message to the agent and get a response."""
-    client = SessionsClient()
+    client_options = None
+    if location != "global":
+        client_options = {"api_endpoint": f"{location}-dialogflow.googleapis.com:443"}
+
+    client = SessionsClient(client_options=client_options)
 
     session_path = (
         f"projects/{project_id}/locations/{location}"
@@ -265,10 +323,11 @@ def chat_with_agent(
     query_input = QueryInput(text=text_input, language_code="en")
 
     # Send the message
-    response = client.detect_intent(
+    request = DetectIntentRequest(
         session=session_path,
         query_input=query_input,
     )
+    response = client.detect_intent(request=request)
 
     # Extract the agent's response
     response_messages = response.query_result.response_messages
@@ -307,15 +366,16 @@ chat_with_agent(
 # agent_api.py - FastAPI wrapper for the agent
 from fastapi import FastAPI
 from pydantic import BaseModel
-from google.cloud.dialogflowcx_v3 import SessionsClient, TextInput, QueryInput
+from google.cloud.dialogflowcx_v3 import DetectIntentRequest, QueryInput, SessionsClient, TextInput
 import uuid
 
 app = FastAPI()
-sessions_client = SessionsClient()
 
 PROJECT_ID = "your-project-id"
 LOCATION = "us-central1"
 AGENT_ID = "your-agent-id"
+client_options = {"api_endpoint": f"{LOCATION}-dialogflow.googleapis.com:443"} if LOCATION != "global" else None
+sessions_client = SessionsClient(client_options=client_options)
 
 class ChatRequest(BaseModel):
     message: str
@@ -338,10 +398,11 @@ async def chat(request: ChatRequest):
     text_input = TextInput(text=request.message)
     query_input = QueryInput(text=text_input, language_code="en")
 
-    response = sessions_client.detect_intent(
+    detect_request = DetectIntentRequest(
         session=session_path,
         query_input=query_input,
     )
+    response = sessions_client.detect_intent(request=detect_request)
 
     # Collect all text responses
     texts = []
