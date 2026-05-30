@@ -16,14 +16,14 @@ Having spent years building and debugging ADF pipelines, I have developed a syst
 
 When an ADF pipeline fails, the first thing to check is the Monitor hub in the ADF Studio. Navigate to Pipeline runs, find the failed run, and click into it. Each activity in the pipeline shows its status, and you can click on a failed activity to see the error details.
 
-ADF errors typically include an error code, a message, and sometimes a failure type. The error code is your best friend for troubleshooting because it points you to a specific category of problem.
+ADF errors typically include an error code, a message, and sometimes a failure type. The error code is your best friend for troubleshooting because it points you to a specific category of problem. ADF does not publish a single universal numeric prefix map for every failure, so always read both the top-level error code and the inner error code in the message.
 
-Common error code prefixes:
-- **2001-2099**: Source-related errors (cannot read from source)
-- **2101-2199**: Sink-related errors (cannot write to destination)
-- **2200-2299**: Data flow errors
-- **9001-9099**: Integration runtime errors
-- **4001-4099**: Timeout errors
+Common patterns you will see:
+- **Connector-specific codes** such as `SqlFailedToConnect`, `SqlOperationFailed`, or `HttpSourceUnsupportedStatusCode`
+- **Copy activity wrapper codes** such as `2200`, with the detailed source or sink error in the message
+- **Mapping data flow codes** that often start with `DF-`
+- **Integration runtime status messages** such as a self-hosted integration runtime being offline
+- **Timeout messages** that identify the activity, query, or connector operation that exceeded its configured limit
 
 ## Pipeline-Level Failures
 
@@ -33,22 +33,25 @@ Pipeline-level failures are usually orchestration issues rather than data issues
 
 **Parameter and variable issues.** Pipelines fail if required parameters are missing or if dynamic expressions evaluate to null. Check parameter values passed by triggers or parent pipelines.
 
+Example: a common pattern that causes null reference errors if the trigger does not include `scheduledTime`.
+
 ```json
-// Example: A common pattern that causes null reference errors
-// If the trigger does not include scheduledTime, this expression fails
 {
   "type": "Expression",
   "value": "@formatDateTime(trigger().scheduledTime, 'yyyy-MM-dd')"
 }
+```
 
-// Fix: Use coalesce to provide a fallback value
+Fix: use `coalesce` to provide a fallback value.
+
+```json
 {
   "type": "Expression",
   "value": "@formatDateTime(coalesce(trigger().scheduledTime, utcNow()), 'yyyy-MM-dd')"
 }
 ```
 
-**Timeout errors.** Pipeline activities have a default timeout of 7 days, but individual activities like Copy or Data Flow have their own timeout settings. If a long-running query or data movement exceeds the timeout, the activity fails with error code 4002.
+**Timeout errors.** Activity policies have a default timeout, and individual connectors can also have their own query or write timeout settings. If a long-running query or data movement exceeds the configured timeout, the activity fails with a timeout message in the activity run details.
 
 ## Copy Activity Failures
 
@@ -60,11 +63,11 @@ Copy activity is the workhorse of ADF, and it has the most diverse set of failur
 # Check Self-Hosted Integration Runtime status
 
 # A degraded or offline SHIR is a common cause of connection failures
-az datafactory integration-runtime show \
+az datafactory integration-runtime get-status \
   --resource-group myResourceGroup \
   --factory-name myDataFactory \
   --name mySelfHostedIR \
-  --query "{name:name, state:properties.state, version:properties.version}" \
+  --query "{name:name, state:properties.state, nodes:properties.typeProperties.nodes[].{nodeName:nodeName,status:status,version:version}}" \
   -o table
 ```
 
@@ -75,7 +78,6 @@ az datafactory integration-runtime show \
 To enable fault tolerance, configure the copy activity settings:
 
 ```json
-// Copy activity settings that handle bad rows gracefully
 {
   "typeProperties": {
     "source": { "type": "DelimitedTextSource" },
@@ -98,7 +100,7 @@ Mapping Data Flows add a layer of complexity because they execute on Spark clust
 
 **Cluster startup failures.** Data flows need a Spark cluster to execute. If the cluster fails to start (often due to Azure capacity constraints or subnet exhaustion for VNet-injected runtimes), the entire data flow fails before processing a single row.
 
-If you see error code 2200 with a message about cluster creation, try:
+If you see a data flow failure with a message about cluster creation, try:
 - Running the data flow again (transient capacity issues)
 - Using a different Azure Integration Runtime region
 - Reducing the core count in the Data Flow runtime configuration
@@ -129,7 +131,7 @@ The integration runtime is the compute infrastructure that executes ADF activiti
 
 **Auto-resolve IR capacity.** The Azure Integration Runtime in auto-resolve mode picks the closest region, but during capacity crunches, it might fail to allocate resources. Create a dedicated Azure IR in a specific region as a fallback.
 
-**VNet-injected IR subnet exhaustion.** Managed VNet integration runtimes consume IP addresses from the delegated subnet. If the subnet is too small and you run many concurrent data flows, new executions fail because there are no available IPs.
+**VNet-injected IR subnet exhaustion.** Azure-SSIS integration runtimes that are joined to your virtual network consume IP addresses from the selected subnet. If the subnet is too small for the number of nodes you run, new executions can fail because there are no available IPs. For Azure Integration Runtime with managed virtual network, the virtual network is managed by Data Factory; monitor managed VNet IR capacity metrics and waiting queue length instead of sizing a customer subnet.
 
 ## Retry and Error Handling Patterns
 
@@ -140,7 +142,6 @@ Use the retry policy on activities that interact with external systems. A retry 
 Use the "On Failure" dependency to create error-handling branches. When an activity fails, route to a Logic App or Function that sends an alert and logs the error details.
 
 ```json
-// Pipeline pattern: activity with retry and error handling branch
 {
   "name": "CopyFromSource",
   "type": "Copy",
@@ -153,7 +154,7 @@ Use the "On Failure" dependency to create error-handling branches. When an activ
 }
 ```
 
-For pipelines that process multiple files or partitions, use ForEach with the "Continue on error" option so that one failed file does not stop processing of all others.
+For pipelines that process multiple files or partitions, put error handling inside the ForEach iteration, such as an "On Failure" branch that logs the failed item and completes successfully, or call a child pipeline that handles and records per-item failures. That way one failed file does not stop processing of all others.
 
 ## Monitoring and Proactive Alerting
 
