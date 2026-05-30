@@ -250,6 +250,13 @@ Docker builds can be slow if layers are rebuilt from scratch every time. Azure P
 
 ```yaml
 steps:
+  # Log in before pulling from a private registry
+  - task: Docker@2
+    displayName: 'Login to ACR'
+    inputs:
+      command: 'login'
+      containerRegistry: 'acr-connection'
+
   # Pull the previous image to use as a cache source
   - script: |
       docker pull myappregistry.azurecr.io/myapp/web:latest || true
@@ -294,9 +301,9 @@ steps:
   # Install and run Trivy vulnerability scanner
   - script: |
       # Install Trivy
-      sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-      wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-      echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+      sudo apt-get install -y wget gnupg
+      wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+      echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
       sudo apt-get update && sudo apt-get install -y trivy
 
       # Scan the image - fail if HIGH or CRITICAL vulnerabilities found
