@@ -40,9 +40,28 @@ provider "azurerm" {
   features {}
 }
 
+variable "admin_group_id" {
+  description = "Microsoft Entra ID group object ID for AKS cluster administrators"
+  type        = string
+}
+
 resource "azurerm_resource_group" "aks" {
   name     = "rg-aks-gitops"
   location = "eastus"
+}
+
+resource "azurerm_virtual_network" "aks" {
+  name                = "vnet-aks-gitops"
+  location            = azurerm_resource_group.aks.location
+  resource_group_name = azurerm_resource_group.aks.name
+  address_space       = ["10.40.0.0/16"]
+}
+
+resource "azurerm_subnet" "aks" {
+  name                 = "snet-aks"
+  resource_group_name  = azurerm_resource_group.aks.name
+  virtual_network_name = azurerm_virtual_network.aks.name
+  address_prefixes     = ["10.40.0.0/20"]
 }
 
 # AKS cluster with RBAC and workload identity enabled
@@ -51,7 +70,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   location            = azurerm_resource_group.aks.location
   resource_group_name = azurerm_resource_group.aks.name
   dns_prefix          = "aks-gitops"
-  kubernetes_version  = "1.28"
+  kubernetes_version  = "1.35"
 
   # System node pool for cluster services (including ArgoCD)
   default_node_pool {
@@ -62,7 +81,7 @@ resource "azurerm_kubernetes_cluster" "main" {
     os_disk_type        = "Managed"
     vnet_subnet_id      = azurerm_subnet.aks.id
     max_pods            = 50
-    zones               = [1, 2, 3]
+    zones               = ["1", "2", "3"]
 
     node_labels = {
       "role" = "system"
@@ -70,8 +89,9 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 
   # Azure AD RBAC for cluster access
+  role_based_access_control_enabled = true
+
   azure_active_directory_role_based_access_control {
-    managed                = true
     azure_rbac_enabled     = true
     admin_group_object_ids = [var.admin_group_id]
   }
@@ -109,7 +129,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "apps" {
   max_count             = 10
   min_count             = 2
   enable_auto_scaling   = true
-  zones                 = [1, 2, 3]
+  zones                 = ["1", "2", "3"]
   vnet_subnet_id        = azurerm_subnet.aks.id
 
   node_labels = {
@@ -121,7 +141,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "apps" {
 
 # Output kubeconfig for ArgoCD installation
 output "kube_config" {
-  value     = azurerm_kubernetes_cluster.main.kube_config_raw
+  value     = azurerm_kubernetes_cluster.main.kube_config
   sensitive = true
 }
 
@@ -240,11 +260,9 @@ resource "helm_release" "argocd" {
     yamlencode({
       server = {
         ingress = {
-          enabled = true
-          annotations = {
-            "kubernetes.io/ingress.class" = "nginx"
-          }
-          hosts = ["argocd.example.com"]
+          enabled          = true
+          ingressClassName = "nginx"
+          hosts            = ["argocd.example.com"]
         }
       }
     })
@@ -403,12 +421,12 @@ ArgoCD provides built-in Prometheus metrics. Export them to your monitoring stac
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: argocd-metrics
+  name: argocd-server-metrics
   namespace: argocd
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: argocd-server
+      app.kubernetes.io/name: argocd-server-metrics
   endpoints:
     - port: metrics
       interval: 30s
