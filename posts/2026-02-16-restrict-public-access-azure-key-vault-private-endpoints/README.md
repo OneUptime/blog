@@ -16,10 +16,10 @@ Private endpoints let you bring Key Vault into your virtual network with a priva
 
 There are several reasons to put Key Vault behind a private endpoint:
 
-- **Reduced attack surface**: No public endpoint means no public-facing target for attackers.
-- **Data exfiltration prevention**: Even if an attacker compromises a VM, they cannot send secrets to an external Key Vault because the traffic would need to go through the public internet, which you can block.
+- **Reduced attack surface**: No public access means the public data-plane endpoint refuses requests unless they arrive through an allowed private path.
+- **Data exfiltration prevention**: When paired with egress controls, private endpoints help prevent compromised workloads from sending secrets to external Key Vault instances over public network paths.
 - **Compliance**: Many regulatory frameworks (PCI DSS, HIPAA, SOC 2) require that sensitive data access happens over private networks.
-- **Network-level control**: You can apply NSG rules and monitor traffic to Key Vault using VNet flow logs.
+- **Network-level control**: You can use private endpoint network policies for NSG or route-table controls where appropriate, and monitor data-plane access with Key Vault diagnostic logs.
 
 ## Step 1: Create the Key Vault
 
@@ -65,7 +65,7 @@ az network vnet subnet create \
   --disable-private-endpoint-network-policies true
 ```
 
-The `--disable-private-endpoint-network-policies true` setting is required for the subnet to host private endpoints.
+The `--disable-private-endpoint-network-policies true` setting keeps private endpoint network policies disabled on this subnet, which is the default behavior. If you want to use NSG or route-table policies for private endpoint traffic, enable private endpoint network policies and design those rules explicitly.
 
 ## Step 3: Create the Private Endpoint
 
@@ -133,7 +133,7 @@ az keyvault update \
   --public-network-access Disabled
 ```
 
-After this change, any attempt to access the Key Vault from outside the VNet will fail with a "ForbiddenByPolicy" error.
+After this change, any data-plane attempt to access the Key Vault from outside the VNet or another approved private link path will fail with a 403 error, often with a `ForbiddenByFirewall` inner error or a message that public network access is disabled.
 
 ## Step 6: Verify the Setup
 
@@ -295,11 +295,11 @@ AzureDiagnostics
 | order by AccessCount desc
 ```
 
-With private endpoints configured, you should see only private IP addresses (10.x.x.x) in the CallerIPAddress field.
+With private endpoints configured and public access disabled, you should see private addresses from your VNet address space, such as 10.x.x.x, in the CallerIPAddress field.
 
 ## Troubleshooting
 
-**"ForbiddenByPolicy" from VMs in the VNet**: Check DNS resolution. If the VM resolves the Key Vault hostname to a public IP instead of the private IP, the request goes to the public endpoint, which is blocked. Verify the private DNS zone link.
+**"ForbiddenByFirewall" or public network access errors from VMs in the VNet**: Check DNS resolution. If the VM resolves the Key Vault hostname to a public IP instead of the private IP, the request goes to the public endpoint, which is blocked. Verify the private DNS zone link.
 
 **"AuthorizationFailed" errors**: Private endpoints handle network-level access. You still need proper RBAC roles or access policies for the identity making the request.
 
