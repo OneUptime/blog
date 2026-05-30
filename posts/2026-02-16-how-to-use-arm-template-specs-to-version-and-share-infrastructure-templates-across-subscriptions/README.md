@@ -127,16 +127,17 @@ param location string = resourceGroup().location
 param sku string = 'P1v3'
 
 @allowed([
-  'dotnet|8.0'
-  'node|20-lts'
-  'python|3.11'
+  'DOTNETCORE|8.0'
+  'NODE|20-lts'
+  'PYTHON|3.11'
 ])
-param runtime string = 'dotnet|8.0'
+param runtime string = 'DOTNETCORE|8.0'
 
 // App Service Plan
 resource plan 'Microsoft.Web/serverfarms@2023-01-01' = {
   name: 'asp-${appName}'
   location: location
+  kind: 'linux'
   sku: {
     name: sku
   }
@@ -198,7 +199,7 @@ SPEC_ID=$(az ts show \
 az deployment group create \
   --resource-group "rg-myapp-dev" \
   --template-spec "$SPEC_ID" \
-  --parameters appName="myapp-dev" runtime="node|20-lts"
+  --parameters appName="myapp-dev" runtime="NODE|20-lts"
 ```
 
 ### Using Bicep Modules
@@ -207,12 +208,12 @@ This is where template specs really shine. You can reference a template spec as 
 
 ```bicep
 // main.bicep - references the template spec as a module
-// The template spec ID is used as the module source
-module webapp 'ts:rg-template-specs/secure-webapp:1.0' = {
+// Replace the subscription ID with the subscription that contains the template spec
+module webapp 'ts:00000000-0000-0000-0000-000000000000/rg-template-specs/secure-webapp:1.0' = {
   name: 'webapp-deployment'
   params: {
     appName: 'myapp-prod'
-    runtime: 'dotnet|8.0'
+    runtime: 'DOTNETCORE|8.0'
     sku: 'P1v3'
   }
 }
@@ -314,7 +315,7 @@ With this setup:
 
 ## Template Specs with Linked Templates
 
-If your ARM template uses linked templates, you can include them in the template spec. Azure stores all linked templates within the spec, so consumers do not need access to the linked template files.
+If your ARM template uses linked templates, you can include them in the template spec by referencing them with `relativePath` from deployment resources in the main template. Azure stores all linked templates within the spec, so consumers do not need access to the linked template files.
 
 ```bash
 # Create a template spec with linked templates
@@ -323,8 +324,7 @@ az ts create \
   --version "1.0" \
   --resource-group "rg-template-specs" \
   --location "eastus2" \
-  --template-file "main.json" \
-  --linked-templates "networking.json" "compute.json" "storage.json"
+  --template-file "main.json"
 ```
 
 ## Governance Patterns
