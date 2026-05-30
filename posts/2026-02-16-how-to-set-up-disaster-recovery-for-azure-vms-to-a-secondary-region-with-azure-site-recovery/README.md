@@ -30,7 +30,7 @@ During normal operations, no VMs exist in the secondary region. Only the replica
 - Azure VMs running in the source region (any supported OS)
 - A Recovery Services vault in the target region (already configured - see the vault setup guide)
 - A virtual network in the target region for the failover VMs
-- The source VMs must use managed disks (unmanaged disks are not supported for Azure-to-Azure ASR)
+- Managed disks for new deployments. Azure Site Recovery has supported Azure-to-Azure replication for unmanaged disks, but unmanaged disks are deprecated and should not be used for new DR designs.
 - The Azure Site Recovery extension will be installed automatically on the VMs
 
 ## Step 1: Prepare the Target Region Network
@@ -97,36 +97,51 @@ $vaultRG = "rg-dr-centralus"
 $targetVNet = "vnet-dr-centralus"
 $targetSubnet = "subnet-web"
 $cacheStorageAccount = "stasrcacheeastus2"
+$primaryFabricName = "A2A-EastUS2"
+$primaryContainerName = "A2A-EastUS2-Container"
+$containerMappingName = "A2A-EastUS2-To-CentralUS"
 
 # Get the vault context
 $vault = Get-AzRecoveryServicesVault -Name $vaultName -ResourceGroupName $vaultRG
 Set-AzRecoveryServicesAsrVaultContext -Vault $vault
 
-# Get the source VM
+# Get the source VM and target resources
 $vm = Get-AzVM -ResourceGroupName $sourceRG -Name "vm-web-01"
+$targetResourceGroup = Get-AzResourceGroup -Name $targetRG
+$targetNetwork = Get-AzVirtualNetwork -ResourceGroupName $targetRG -Name $targetVNet
+$cacheAccount = Get-AzStorageAccount -ResourceGroupName $sourceRG -Name $cacheStorageAccount
+
+# Get the protection container mapping created during vault/policy setup
+$primaryFabric = Get-AzRecoveryServicesAsrFabric -Name $primaryFabricName
+$primaryContainer = Get-AzRecoveryServicesAsrProtectionContainer `
+    -Fabric $primaryFabric `
+    -Name $primaryContainerName
+$containerMapping = Get-AzRecoveryServicesAsrProtectionContainerMapping `
+    -ProtectionContainer $primaryContainer `
+    -Name $containerMappingName
 
 # Get the managed disk IDs for the VM
-$diskList = New-Object System.Collections.ArrayList
+$diskList = @()
 foreach ($disk in $vm.StorageProfile.DataDisks) {
     $diskInput = New-AzRecoveryServicesAsrAzureToAzureDiskReplicationConfig `
         -ManagedDisk `
-        -LogStorageAccountId "/subscriptions/<sub-id>/resourceGroups/$sourceRG/providers/Microsoft.Storage/storageAccounts/$cacheStorageAccount" `
+        -LogStorageAccountId $cacheAccount.Id `
         -DiskId $disk.ManagedDisk.Id `
-        -RecoveryResourceGroupId "/subscriptions/<sub-id>/resourceGroups/$targetRG" `
+        -RecoveryResourceGroupId $targetResourceGroup.ResourceId `
         -RecoveryReplicaDiskAccountType "StandardSSD_LRS" `
         -RecoveryTargetDiskAccountType "StandardSSD_LRS"
-    $diskList.Add($diskInput)
+    $diskList += $diskInput
 }
 
 # Include the OS disk
 $osDiskInput = New-AzRecoveryServicesAsrAzureToAzureDiskReplicationConfig `
     -ManagedDisk `
-    -LogStorageAccountId "/subscriptions/<sub-id>/resourceGroups/$sourceRG/providers/Microsoft.Storage/storageAccounts/$cacheStorageAccount" `
+    -LogStorageAccountId $cacheAccount.Id `
     -DiskId $vm.StorageProfile.OsDisk.ManagedDisk.Id `
-    -RecoveryResourceGroupId "/subscriptions/<sub-id>/resourceGroups/$targetRG" `
+    -RecoveryResourceGroupId $targetResourceGroup.ResourceId `
     -RecoveryReplicaDiskAccountType "StandardSSD_LRS" `
     -RecoveryTargetDiskAccountType "StandardSSD_LRS"
-$diskList.Add($osDiskInput)
+$diskList += $osDiskInput
 
 # Start replication
 New-AzRecoveryServicesAsrReplicationProtectedItem `
@@ -135,8 +150,8 @@ New-AzRecoveryServicesAsrReplicationProtectedItem `
     -Name "vm-web-01-replication" `
     -ProtectionContainerMapping $containerMapping `
     -AzureToAzureDiskReplicationConfiguration $diskList `
-    -RecoveryResourceGroupId "/subscriptions/<sub-id>/resourceGroups/$targetRG" `
-    -RecoveryAzureNetworkId "/subscriptions/<sub-id>/resourceGroups/$targetRG/providers/Microsoft.Network/virtualNetworks/$targetVNet" `
+    -RecoveryResourceGroupId $targetResourceGroup.ResourceId `
+    -RecoveryAzureNetworkId $targetNetwork.Id `
     -RecoveryAzureSubnetName $targetSubnet
 ```
 
@@ -178,7 +193,7 @@ ASR creates recovery points continuously. You can configure how many to retain a
 
 A **crash-consistent** recovery point captures the disk state at a point in time. It is like pulling the power cord - the data is consistent at the disk level but applications may need to recover uncommitted transactions.
 
-An **application-consistent** recovery point uses VSS (Windows) or pre/post scripts (Linux) to flush application buffers before the snapshot. This gives you a clean recovery point where applications do not need crash recovery.
+An **application-consistent** recovery point uses VSS (Windows) or pre/post scripts (Linux) so applications can flush in-memory data and pending transactions before the snapshot. This reduces recovery work compared with a crash-consistent point, assuming the application integration succeeds.
 
 Configure these settings in the replication policy:
 
