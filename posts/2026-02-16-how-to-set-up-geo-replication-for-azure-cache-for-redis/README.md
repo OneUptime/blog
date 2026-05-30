@@ -17,7 +17,7 @@ Geo-replication in Azure Cache for Redis creates a link between two Premium tier
 There are two flavors of geo-replication available:
 
 - **Passive geo-replication** (available on Premium tier): Links two independent cache instances. The secondary is read-only. Failover is manual.
-- **Active geo-replication** (available on Enterprise tier): Allows writes to multiple linked caches simultaneously using conflict-free replicated data types (CRDTs). Failover is automatic.
+- **Active geo-replication** (available on Enterprise and Enterprise Flash tiers): Allows writes to multiple linked caches simultaneously using conflict-free replicated data types (CRDTs). Applications can keep using available replicas if one region is unavailable, but removing an unavailable replica can require a force unlink operation.
 
 This guide focuses on passive geo-replication with the Premium tier, since it is the most commonly used option and does not require the Enterprise tier pricing.
 
@@ -26,9 +26,13 @@ This guide focuses on passive geo-replication with the Premium tier, since it is
 Before starting, you will need:
 
 - Two Azure Cache for Redis instances on the Premium tier, in different Azure regions
-- Both caches must have the same SKU size (e.g., both P1 or both P2)
+- Both caches must be in the same Azure subscription
+- Both caches must run the same Redis server version
+- The secondary cache must be the same SKU size as the primary or larger. If you want to use geo-failover, both caches must be the same size (e.g., both P1 or both P2)
 - Neither cache can already be part of a geo-replication link
+- Both caches should have only one replica per primary per shard
 - Both caches must not have clustering enabled, or if clustering is used, both must have the same number of shards
+- Persistence must not be enabled on either cache
 - Azure CLI version 2.40 or later, or access to the Azure Portal
 
 ## Step 1: Create Two Premium Tier Caches
@@ -54,7 +58,7 @@ az redis create \
   --vm-size P1
 ```
 
-Both caches must use the same `--vm-size`. If the primary is P2, the secondary must also be P2. Mismatched sizes will cause the linking step to fail.
+For this failover-focused setup, both caches should use the same `--vm-size`. A larger secondary can be linked, but Azure does not support geo-failover unless both caches are the same size.
 
 Wait for both caches to reach the "Running" state before proceeding. This usually takes 15-20 minutes per cache.
 
@@ -66,7 +70,7 @@ az redis show --name redis-secondary-westeu --resource-group rg-redis-geo --quer
 
 ## Step 2: Link the Caches
 
-Geo-replication is established by creating a link from the secondary to the primary. This is a one-way relationship: the primary receives writes, and the secondary receives replicated data.
+Geo-replication is established by creating a link from the primary to the secondary. This is a one-way relationship: the primary receives writes, and the secondary receives replicated data.
 
 **Using the Azure Portal:**
 
@@ -79,17 +83,17 @@ Geo-replication is established by creating a link from the secondary to the prim
 **Using Azure CLI:**
 
 ```bash
-# Get the resource ID of the primary cache
-PRIMARY_ID=$(az redis show \
-  --name redis-primary-eastus \
+# Get the resource ID of the secondary cache
+SECONDARY_ID=$(az redis show \
+  --name redis-secondary-westeu \
   --resource-group rg-redis-geo \
   --query id -o tsv)
 
-# Create the geo-replication link from the secondary to the primary
+# Create the geo-replication link from the primary to the secondary
 az redis server-link create \
-  --name redis-secondary-westeu \
+  --name redis-primary-eastus \
   --resource-group rg-redis-geo \
-  --server-to-link $PRIMARY_ID \
+  --server-to-link $SECONDARY_ID \
   --replication-role Secondary
 ```
 
@@ -144,7 +148,7 @@ Note that you cannot write to the secondary cache. Attempting a SET command on t
 Your application needs to know about both caches and route traffic appropriately. The typical pattern is:
 
 - **Writes** always go to the primary cache.
-- **Reads** can go to either the primary (for strong consistency) or the secondary (for lower latency in the secondary's region).
+- **Reads** can go to either the primary (for strong consistency) or the secondary (for lower latency in the secondary's region). Applications that read from the secondary should fall back to the primary if the secondary returns errors during full sync, updates, or some reboot scenarios.
 
 Here is a simplified example in Python showing how you might implement this routing:
 
@@ -187,18 +191,18 @@ In a real production setup, you would use your application's region detection or
 
 ## Handling Failover
 
-Passive geo-replication does not support automatic failover. If the primary region goes down, you need to manually promote the secondary to become the new primary. Here is how:
+Passive geo-replication does not support automatic failover. If the primary region goes down, you need to manually fail over to the secondary or unlink the pair and route writes to the former secondary. Here is the unlink-based approach:
 
 ### Step 1: Unlink the Caches
 
-Before promoting the secondary, you must break the replication link.
+Before using the secondary as a standalone read-write cache, you must break the replication link.
 
 ```bash
 # Remove the geo-replication link
 az redis server-link delete \
-  --name redis-secondary-westeu \
+  --name redis-primary-eastus \
   --resource-group rg-redis-geo \
-  --linked-server-name redis-primary-eastus
+  --linked-server-name redis-secondary-westeu
 ```
 
 ### Step 2: Update Your Application
@@ -211,7 +215,7 @@ Once the original primary region recovers, you can either:
 - Create a new replication link with the recovered cache as the secondary
 - Or set up a fresh primary in a new region and link the current cache to it
 
-The key point is that failover is a manual, multi-step process. If you need automatic failover, consider the Enterprise tier with active geo-replication.
+The key point is that failover is a manual, multi-step process. If you need active-active writes across regions, consider the Enterprise or Enterprise Flash tiers with active geo-replication.
 
 ## Monitoring Replication Health
 
@@ -221,7 +225,7 @@ Keep an eye on replication lag and link health with Azure Monitor.
 # Check replication metrics
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/rg-redis-geo/providers/Microsoft.Cache/redis/redis-secondary-westeu" \
-  --metric "ReplicationLag" \
+  --metric "GeoReplicationConnectivityLag" \
   --interval PT1M
 ```
 
@@ -233,7 +237,7 @@ az monitor metrics alert create \
   --name redis-geo-lag-alert \
   --resource-group rg-redis-geo \
   --scopes "/subscriptions/<sub-id>/resourceGroups/rg-redis-geo/providers/Microsoft.Cache/redis/redis-secondary-westeu" \
-  --condition "avg ReplicationLag > 30" \
+  --condition "avg GeoReplicationConnectivityLag > 30" \
   --action "/subscriptions/<sub-id>/resourceGroups/rg-redis-geo/providers/Microsoft.Insights/actionGroups/ops-team"
 ```
 
@@ -242,10 +246,10 @@ az monitor metrics alert create \
 Before committing to geo-replication, be aware of these constraints:
 
 - **Premium tier only**: Standard and Basic tiers do not support geo-replication.
-- **Same SKU size required**: Both caches must have the same VM size.
+- **Size requirements**: The secondary can be the same size as the primary or larger, but geo-failover requires both caches to have the same VM size.
 - **Manual failover**: Passive geo-replication requires manual intervention to fail over.
 - **No cascading replication**: You cannot chain multiple secondaries. It is strictly one primary to one secondary.
-- **Data persistence interactions**: If both caches have persistence enabled, they maintain independent persistence. The secondary's persistence is based on its replicated data.
+- **No persistence**: Persistence is not supported with passive geo-replication, and you cannot enable persistence on either linked cache.
 - **Write latency**: Writes to the primary are not slowed by replication (it is async), but this means the secondary can be slightly behind.
 
 ## Cost Considerations
@@ -254,7 +258,7 @@ Geo-replication effectively doubles your cache cost because you are running two 
 
 - If you only need disaster recovery, consider whether periodic RDB backups to geo-redundant storage might be sufficient and cheaper.
 - If you need low-latency reads in multiple regions, geo-replication is worth the cost.
-- If you need active-active writes across regions, you will need the Enterprise tier, which is significantly more expensive.
+- If you need active-active writes across regions, you will need the Enterprise or Enterprise Flash tiers, which are significantly more expensive.
 
 ## Wrapping Up
 
