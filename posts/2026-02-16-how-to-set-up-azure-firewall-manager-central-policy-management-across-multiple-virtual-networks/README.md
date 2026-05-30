@@ -58,10 +58,10 @@ az network firewall policy rule-collection-group create \
   --priority 100
 ```
 
-Now add the baseline rules that should apply globally. This adds network rules that allow essential Azure management traffic:
+Now add the baseline rules that should apply globally. This adds a network rule that allows outbound Azure Monitor traffic:
 
 ```bash
-# Allow Azure management plane traffic (required for Azure services to function)
+# Allow outbound Azure Monitor traffic
 az network firewall policy rule-collection-group collection add-filter-collection \
   --name "AllowAzureManagement" \
   --policy-name fw-policy-base \
@@ -131,7 +131,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
 
 Child policies inherit all rules from the base policy and add region-specific rules.
 
-This creates child policies for two regions that inherit from the base:
+This creates child policies for two regions that inherit from the base. Parent and child policies must be created in the same region, but the policies can still be associated with firewalls in other regions:
 
 ```bash
 # Child policy for US East hub - inherits from base policy
@@ -151,7 +151,7 @@ az network firewall policy create \
 az network firewall policy create \
   --name fw-policy-westus \
   --resource-group rg-firewall-policies \
-  --location westus2 \
+  --location eastus \
   --base-policy "$BASE_POLICY_ID" \
   --sku Premium
 ```
@@ -298,7 +298,7 @@ az network firewall policy rule-collection-group collection add-nat-collection \
   --policy-name fw-policy-eastus \
   --resource-group rg-firewall-policies \
   --rule-collection-group-name "EastUSRuleCollectionGroup" \
-  --collection-priority 50 \
+  --collection-priority 120 \
   --action DNAT \
   --rule-name "WebServerDNAT" \
   --source-addresses "*" \
@@ -316,7 +316,7 @@ One of the biggest advantages of centralized policy management is that changes t
 However, be careful with changes to the base policy. A misconfigured rule at the base level can break connectivity across your entire environment. I recommend:
 
 1. **Test changes in a staging environment first.** Have a test firewall with a child of the base policy where you validate changes.
-2. **Use rule collection group priorities carefully.** Base policy rules should use lower priority numbers (100-199) so child policy rules (200+) can override them if needed.
+2. **Use rule collection group priorities carefully.** Parent policy rule collection groups always take precedence over child policy rule collection groups, so avoid broad base policy rules that would prevent child policies from adding narrower workload-specific access.
 3. **Review changes with your security team.** Any base policy change affects every firewall, so it should go through your change management process.
 
 ## Logging and Analytics
