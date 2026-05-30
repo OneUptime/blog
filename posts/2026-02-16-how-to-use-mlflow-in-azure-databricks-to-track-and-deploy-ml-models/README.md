@@ -18,7 +18,7 @@ MLflow is an open-source platform with four main components:
 
 - **Tracking** - log parameters, metrics, and artifacts from your training runs
 - **Models** - package models in a standard format that can be deployed anywhere
-- **Model Registry** - version and manage models through staging and production lifecycle stages
+- **Model Registry** - version and manage models with aliases, tags, and legacy lifecycle stages
 - **Projects** - package ML code for reproducible runs (less commonly used in Databricks)
 
 In Azure Databricks, MLflow is managed for you. The tracking server, artifact storage, and model registry are all handled automatically.
@@ -32,13 +32,14 @@ Let us start by training a model and tracking the experiment with MLflow.
 
 import mlflow
 import mlflow.sklearn
+from mlflow.models import infer_signature
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import pandas as pd
 
 # Set the experiment name (creates it if it does not exist)
-mlflow.set_experiment("/Experiments/customer-churn-prediction")
+mlflow.set_experiment("/Shared/customer-churn-prediction")
 
 # Load the training data from a Delta table
 df = spark.table("production.ml.customer_features").toPandas()
@@ -90,11 +91,14 @@ with mlflow.start_run(run_name="random_forest_v1") as run:
     mlflow.log_metric("f1_score", f1)
 
     # Log the model artifact
-    mlflow.sklearn.log_model(
+    signature = infer_signature(X_test, y_pred)
+    model_info = mlflow.sklearn.log_model(
         model,
-        artifact_path="model",
+        name="model",
+        signature=signature,
         input_example=X_test.head(5)
     )
+    mlflow.set_tag("model_uri", model_info.model_uri)
 
     # Log feature importances as an artifact
     importances = pd.DataFrame({
@@ -128,7 +132,7 @@ param_grid = [
     {"n_estimators": 200, "max_depth": None, "min_samples_split": 5},
 ]
 
-mlflow.set_experiment("/Experiments/customer-churn-prediction")
+mlflow.set_experiment("/Shared/customer-churn-prediction")
 
 results = []
 
@@ -157,9 +161,16 @@ for i, params in enumerate(param_grid):
         mlflow.log_metric("f1_score", f1)
 
         # Log the model
-        mlflow.sklearn.log_model(model, "model")
+        signature = infer_signature(X_test, y_pred)
+        model_info = mlflow.sklearn.log_model(
+            model,
+            name="model",
+            signature=signature,
+            input_example=X_test.head(5)
+        )
+        mlflow.set_tag("model_uri", model_info.model_uri)
 
-        results.append({"config": i+1, "accuracy": accuracy, "f1": f1})
+        results.append({"config": i+1, "accuracy": accuracy, "f1": f1, "model_uri": model_info.model_uri})
         print(f"Config {i+1}: accuracy={accuracy:.4f}, f1={f1:.4f}")
 ```
 
@@ -174,7 +185,7 @@ Once you have identified the best model from your experiments, register it in th
 
 # Find the best run based on f1_score
 best_run = mlflow.search_runs(
-    experiment_names=["/Experiments/customer-churn-prediction"],
+    experiment_names=["/Shared/customer-churn-prediction"],
     order_by=["metrics.f1_score DESC"],
     max_results=1
 ).iloc[0]
@@ -183,10 +194,13 @@ best_run_id = best_run["run_id"]
 print(f"Best run: {best_run_id} with f1_score: {best_run['metrics.f1_score']:.4f}")
 
 # Register the model from the best run
-model_uri = f"runs:/{best_run_id}/model"
+model_uri = best_run["tags.model_uri"]
+registered_model_name = "production.ml_models.customer_churn"
+
+mlflow.set_registry_uri("databricks-uc")
 registered_model = mlflow.register_model(
     model_uri=model_uri,
-    name="customer-churn-model"
+    name=registered_model_name
 )
 
 print(f"Model registered: {registered_model.name}, version: {registered_model.version}")
@@ -194,60 +208,68 @@ print(f"Model registered: {registered_model.name}, version: {registered_model.ve
 
 ### Using Unity Catalog for Model Registry
 
-If you have Unity Catalog set up, register models there for centralized governance.
+The example above uses Unity Catalog, which provides centralized governance with a three-level namespace.
 
 ```python
 # Register in Unity Catalog (three-level namespace)
 mlflow.set_registry_uri("databricks-uc")
 
 registered_model = mlflow.register_model(
-    model_uri=f"runs:/{best_run_id}/model",
+    model_uri=model_uri,
     name="production.ml_models.customer_churn"
 )
 ```
 
 ## Step 4: Manage Model Lifecycle
 
-The Model Registry supports lifecycle stages to manage model promotion.
+For Unity Catalog models, use aliases and tags to manage model promotion. Model Registry stages such as `Staging` and `Production` are only supported by the legacy Workspace Model Registry.
 
 ```python
-# promote_model.py - Manage model versions and stages
+# promote_model.py - Manage model versions with aliases
 from mlflow.tracking import MlflowClient
 
 client = MlflowClient()
+registered_model_name = "production.ml_models.customer_churn"
 
-# Transition the model to staging for testing
-client.transition_model_version_stage(
-    name="customer-churn-model",
+# Mark the model version as ready for staging validation
+client.set_registered_model_alias(
+    name=registered_model_name,
+    alias="Staging",
     version=1,
-    stage="Staging"
 )
 
-# After validation, promote to production
-client.transition_model_version_stage(
-    name="customer-churn-model",
+# After validation, point the production alias at this version
+client.set_registered_model_alias(
+    name=registered_model_name,
+    alias="Champion",
     version=1,
-    stage="Production"
 )
 
 # Add a description to the model version
 client.update_model_version(
-    name="customer-churn-model",
+    name=registered_model_name,
     version=1,
     description="Random Forest model with 200 trees, max_depth=10. F1 score: 0.87 on test set."
 )
+
+client.set_model_version_tag(
+    name=registered_model_name,
+    version=1,
+    key="validation_status",
+    value="approved"
+)
 ```
 
-The typical workflow is: **None -> Staging -> Production -> Archived**.
+The typical Unity Catalog workflow is: **New Version -> Staging alias -> Validation -> Champion alias -> Previous version unaliased or archived by policy**.
 
 ```mermaid
 flowchart LR
-    A[New Version] --> B[Staging]
+    A[New Version] --> B[Staging Alias]
     B --> C[Validation Tests]
-    C -->|Pass| D[Production]
-    C -->|Fail| E[Archived]
+    C -->|Pass| D[Champion Alias]
+    C -->|Fail| E[Tagged Rejected]
     D --> F[New Version Replaces]
-    F --> G[Previous Archived]
+    F --> G[Previous Version Unaliased]
 ```
 
 ## Step 5: Load and Use the Model
@@ -257,8 +279,8 @@ Load a registered model for inference.
 ```python
 # inference.py - Load a registered model and make predictions
 
-# Load the production version of the model
-model = mlflow.pyfunc.load_model("models:/customer-churn-model/Production")
+# Load the model version pointed to by the production alias
+model = mlflow.pyfunc.load_model("models:/production.ml_models.customer_churn@Champion")
 
 # Make predictions on new data
 new_customers = spark.table("production.ml.new_customer_features").toPandas()
@@ -281,7 +303,7 @@ For large-scale batch inference, use the Spark UDF approach.
 # Load model as a Spark UDF for distributed inference
 predict_udf = mlflow.pyfunc.spark_udf(
     spark,
-    model_uri="models:/customer-churn-model/Production",
+    model_uri="models:/production.ml_models.customer_churn@Champion",
     result_type="integer"
 )
 
@@ -342,11 +364,11 @@ mlflow.sklearn.autolog()
 with mlflow.start_run():
     model = RandomForestClassifier(n_estimators=200, max_depth=10)
     model.fit(X_train, y_train)
-    # Parameters, metrics, model, and feature importances are all logged automatically
+    # Parameters, the training score, the model, and supported post-training metrics are logged automatically
 ```
 
 Autologging supports scikit-learn, TensorFlow, PyTorch, XGBoost, LightGBM, and more.
 
 ## Wrapping Up
 
-MLflow in Azure Databricks covers the full ML lifecycle from experimentation to production. Use experiment tracking to log and compare training runs. Use the Model Registry to version and promote models through staging to production. Use Model Serving for real-time inference or Spark UDFs for batch predictions. The integration with Databricks is seamless - no infrastructure to manage, no separate services to configure. Start by adding `mlflow.start_run()` to your training notebooks, and build up to a full MLOps pipeline as your team's needs grow.
+MLflow in Azure Databricks covers the full ML lifecycle from experimentation to production. Use experiment tracking to log and compare training runs. Use the Model Registry to version and promote models with aliases and tags. Use Model Serving for real-time inference or Spark UDFs for batch predictions. The integration with Databricks is seamless - no infrastructure to manage, no separate services to configure. Start by adding `mlflow.start_run()` to your training notebooks, and build up to a full MLOps pipeline as your team's needs grow.
