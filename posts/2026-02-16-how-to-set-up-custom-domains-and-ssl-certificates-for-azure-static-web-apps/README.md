@@ -18,7 +18,7 @@ There are two scenarios for custom domains:
 
 **Subdomain** (like `app.example.com`): Uses a CNAME record pointing to your Static Web App's default hostname. This is the simpler and more common setup.
 
-**Apex/root domain** (like `example.com`): Cannot use a CNAME record (that would break DNS standards). Instead, you use an ALIAS record or Azure DNS zone delegation.
+**Apex/root domain** (like `example.com`): Cannot use a standard CNAME record (that would break DNS standards). Instead, you use Azure DNS, an ALIAS/ANAME record, CNAME flattening, or an A record.
 
 Most DNS providers support CNAME records easily. Apex domain support varies by provider, so check your DNS provider's documentation if you need a root domain.
 
@@ -73,7 +73,7 @@ For root domains like `example.com`, the process depends on whether you use Azur
 
 ### Option A: Using Azure DNS
 
-If your domain's nameservers point to Azure DNS, you can use an ALIAS record.
+If your domain's nameservers point to Azure DNS, Azure can create the required TXT and ALIAS records for you.
 
 First, create a DNS zone in Azure if you do not already have one.
 
@@ -86,45 +86,30 @@ az network dns zone create \
 
 Then update your domain registrar's nameservers to point to the Azure DNS nameservers shown in the zone.
 
-Next, create an ALIAS record set.
-
-```bash
-# Get the resource ID of your Static Web App
-RESOURCE_ID=$(az staticwebapp show \
-  --name my-static-app \
-  --resource-group myResourceGroup \
-  --query id \
-  --output tsv)
-
-# Create an ALIAS record pointing to the Static Web App
-az network dns record-set a create \
-  --resource-group myResourceGroup \
-  --zone-name example.com \
-  --name "@" \
-  --target-resource "$RESOURCE_ID"
-```
+Next, go to your Static Web App in the Azure portal, open Custom domains, click "Add," and choose "Custom Domain on Azure DNS." Select the apex domain from your Azure DNS zone and add it. Azure creates the necessary TXT and ALIAS records during validation.
 
 ### Option B: Using an External DNS Provider
 
 If your DNS is managed outside Azure, you need a provider that supports ALIAS, ANAME, or flattened CNAME records at the apex. Cloudflare, for instance, supports CNAME flattening.
 
-Create a CNAME record at the apex:
+Create an ALIAS, ANAME, or flattened CNAME record at the apex:
 
-- **Type**: CNAME (with flattening enabled)
+- **Type**: ALIAS, ANAME, or CNAME (with flattening enabled)
 - **Name**: @ (apex)
 - **Value**: Your Static Web App's default URL.
 
-Then add the domain in Azure.
+Then add the domain in Azure using TXT validation.
 
 ```bash
 # Add the apex domain
 az staticwebapp hostname set \
   --name my-static-app \
   --resource-group myResourceGroup \
-  --hostname example.com
+  --hostname example.com \
+  --validation-method dns-txt-token
 ```
 
-If your DNS provider does not support any form of apex aliasing, you have two options: migrate to Azure DNS or use a subdomain like `www.example.com` and set up a redirect from the apex.
+If your DNS provider does not support any form of apex aliasing, you have three options: migrate to Azure DNS, use a subdomain like `www.example.com` and set up a redirect from the apex, or use an A record pointing to the Static Web App's `stableInboundIP`. The A record option works, but it directs traffic to a single regional host and does not get the same global distribution benefits.
 
 ## Step 3: SSL Certificate Provisioning
 
@@ -159,30 +144,9 @@ az staticwebapp hostname list \
 
 Most sites want both `example.com` and `www.example.com` to work, with one redirecting to the other. Here is how to set that up.
 
-First, add both domains to your Static Web App following the steps above. Then configure a redirect in your `staticwebapp.config.json`.
+First, add both domains to your Static Web App following the steps above. Then choose one custom domain as the default domain in the Custom domains page. When a default domain is set, requests to the other configured domains are redirected to it.
 
-```json
-{
-  "routes": [
-    {
-      "route": "/*",
-      "headers": {
-        "Cache-Control": "public, max-age=3600"
-      }
-    }
-  ],
-  "globalHeaders": {
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY"
-  },
-  "navigationFallback": {
-    "rewrite": "/index.html",
-    "exclude": ["/images/*.{png,jpg,gif}", "/css/*", "/js/*"]
-  }
-}
-```
-
-For the actual www-to-apex redirect (or vice versa), you handle this at the DNS level rather than in the app config. Set up a redirect record with your DNS provider pointing `www.example.com` to `example.com`.
+If you are forwarding an apex domain to a `www` subdomain without adding the apex domain to Static Web Apps, use your domain registrar's domain forwarding feature. DNS records alone do not perform HTTP redirects.
 
 ## Step 5: Verify HTTPS Works
 
@@ -196,7 +160,7 @@ curl -I https://app.example.com
 openssl s_client -connect app.example.com:443 -servername app.example.com </dev/null 2>/dev/null | openssl x509 -noout -subject -dates
 ```
 
-The output should show a valid certificate with your custom domain in the subject and an expiration date several months in the future.
+The output should show a valid certificate for your custom domain and an expiration date several months in the future.
 
 ## Step 6: Force HTTPS
 
