@@ -146,7 +146,7 @@ If `useRemoteGateways` is set on VNet B but `allowGatewayTransit` is not set on 
 
 ## Issue 5: Not Allowing Forwarded Traffic
 
-By default, peering does not allow forwarded traffic. This means if a VM in VNet A sends traffic to VNet B that is destined for a third network (like on-premises), VNet B will drop it unless `allowForwardedTraffic` is enabled.
+By default, peering does not allow forwarded traffic. This means if traffic is forwarded by an NVA or gateway in VNet A and then sent into VNet B, VNet B will drop it unless `allowForwardedTraffic` is enabled on VNet B's peering to VNet A.
 
 ```bash
 # Enable forwarded traffic on the peering
