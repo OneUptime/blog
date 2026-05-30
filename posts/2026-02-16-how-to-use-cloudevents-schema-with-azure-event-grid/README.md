@@ -49,7 +49,7 @@ Compare that to the Event Grid native schema:
 }
 ```
 
-The fields map roughly to each other, but the names and conventions are different. CloudEvents uses `type` instead of `eventType`, `source` instead of `subject`, and `specversion` to identify the schema version.
+The fields map roughly to each other, but the names and conventions are different. CloudEvents uses `type` instead of `eventType`, `source` for the producer context, `subject` for the event subject, and `specversion` to identify the schema version.
 
 ## Creating a CloudEvents Topic
 
@@ -107,34 +107,36 @@ Console.WriteLine("CloudEvent published successfully");
 
 ## Publishing CloudEvents with HTTP
 
-You can also publish CloudEvents directly via HTTP. When publishing to Event Grid, use the structured content mode with JSON.
+You can also publish CloudEvents directly via HTTP. For an Event Grid custom topic, send a CloudEvents batch payload with JSON.
 
 ```bash
 # Publish a CloudEvent using curl
 TOPIC_ENDPOINT=$(az eventgrid topic show --name topic-orders-cloudevents --resource-group rg-events --query "endpoint" --output tsv)
 TOPIC_KEY=$(az eventgrid topic key list --name topic-orders-cloudevents --resource-group rg-events --query "key1" --output tsv)
 
-# Note the content-type header - this tells Event Grid it is a CloudEvent
+# Note the content-type header - this tells Event Grid the payload is a CloudEvents batch
 curl -X POST "$TOPIC_ENDPOINT" \
-  -H "Content-Type: application/cloudevents+json; charset=utf-8" \
+  -H "Content-Type: application/cloudevents-batch+json; charset=utf-8" \
   -H "aeg-sas-key: $TOPIC_KEY" \
-  -d '{
-    "specversion": "1.0",
-    "type": "com.mycompany.orders.placed",
-    "source": "/myapp/orders",
-    "id": "order-event-001",
-    "time": "2026-02-16T12:00:00Z",
-    "datacontenttype": "application/json",
-    "subject": "/orders/12345",
-    "data": {
-      "orderId": "12345",
-      "customerId": "cust-789",
-      "totalAmount": 99.95
+  -d '[
+    {
+      "specversion": "1.0",
+      "type": "com.mycompany.orders.placed",
+      "source": "/myapp/orders",
+      "id": "order-event-001",
+      "time": "2026-02-16T12:00:00Z",
+      "datacontenttype": "application/json",
+      "subject": "/orders/12345",
+      "data": {
+        "orderId": "12345",
+        "customerId": "cust-789",
+        "totalAmount": 99.95
+      }
     }
-  }'
+  ]'
 ```
 
-For batch publishing, use an array with the `application/cloudevents-batch+json` content type.
+For publishing multiple events, include multiple CloudEvents in the array.
 
 ```bash
 curl -X POST "$TOPIC_ENDPOINT" \
@@ -169,6 +171,7 @@ When your subscriber receives a CloudEvent from Event Grid, the event follows th
 ```csharp
 using Azure.Messaging;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Extensions.EventGrid;
 using Microsoft.Extensions.Logging;
 
 public class OrderEventHandler
@@ -218,7 +221,8 @@ graph LR
         B[subject]
         C[id]
         D[eventTime]
-        E[dataVersion]
+        E[topic]
+        V[dataVersion]
         F[data]
     end
     subgraph "CloudEvents Schema"
@@ -233,7 +237,7 @@ graph LR
     B --> H
     C --> I
     D --> J
-    E -.->|Dropped| K
+    E --> K
     F --> L
 ```
 
@@ -251,9 +255,9 @@ CloudEvents supports extension attributes for metadata that does not fit in the 
   "id": "event-001",
   "time": "2026-02-16T12:00:00Z",
   "data": { "orderId": "12345" },
-  "traceparent": "00-abc123-def456-01",
-  "myapp_region": "us-east",
-  "myapp_priority": "high"
+  "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+  "myappregion": "us-east",
+  "myapppriority": "high"
 }
 ```
 
@@ -288,7 +292,7 @@ Use the native Event Grid schema when:
 - You are working with Azure system topics that emit in Event Grid schema
 - You want simpler field names and do not need vendor neutrality
 
-Both schemas are fully supported, and you can even have Event Grid convert between them on the fly for subscriptions. Pick the one that fits your architecture and stick with it.
+Both schemas are fully supported, and you can have Event Grid deliver Event Grid schema events as CloudEvents for subscriptions. Pick the one that fits your architecture and stick with it.
 
 ## Summary
 
