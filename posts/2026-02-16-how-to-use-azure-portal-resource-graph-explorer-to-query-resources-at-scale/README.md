@@ -16,8 +16,8 @@ This post covers how to use Resource Graph Explorer effectively, with practical 
 
 Azure Resource Graph is a service that maintains an index of all your Azure resources. Unlike ARM API calls that query each resource provider individually (which is slow and subject to throttling), Resource Graph queries run against a pre-built index. This makes it possible to:
 
-- Query resources across all your subscriptions in a single query
-- Get results in seconds regardless of how many resources you have
+- Query resources across your subscriptions in a single query, within Resource Graph scope limits
+- Get results quickly across large environments
 - Join resource data with policy compliance data
 - Filter, sort, and aggregate results using KQL
 
@@ -96,6 +96,7 @@ Security teams often want to know about public-facing resources:
 // Find all resources with public IP addresses
 Resources
 | where type == 'microsoft.network/publicipaddresses'
+| where isnotempty(properties.ipAddress)
 | extend ipAddress = properties.ipAddress
 | extend associatedResource = properties.ipConfiguration.id
 | project name, tostring(ipAddress), tostring(associatedResource), resourceGroup, subscriptionId
@@ -203,14 +204,14 @@ Resources
 
 ## Pagination for Large Result Sets
 
-Resource Graph returns a maximum of 1,000 rows per query by default. For larger result sets, use the `$top` and `$skip` parameters.
+Resource Graph returns a maximum of 1,000 rows per query by default. For larger result sets, use the REST API `$top` and `$skip` options, or the Azure CLI `--first` and `--skip` options. Sort by a stable column such as `id` when paging so results are repeatable.
 
 ```bash
 # Get the first 1000 results
-az graph query -q "Resources | project name, type" --first 1000
+az graph query -q "Resources | project id, name, type | order by id asc" --first 1000
 
 # Get the next 1000 results
-az graph query -q "Resources | project name, type" --first 1000 --skip 1000
+az graph query -q "Resources | project id, name, type | order by id asc" --first 1000 --skip 1000
 ```
 
 In the portal, Resource Graph Explorer handles pagination automatically with a "Load more" button.
@@ -245,9 +246,9 @@ Resource Graph is fast, but you can make it faster:
 
 Resource Graph has some constraints:
 
-- Data freshness is typically within a few minutes, but it is not real-time. Resource changes may take up to 5 minutes to appear in the index.
-- Not all resource properties are indexed. Some deeply nested or rarely used properties may not be queryable.
+- Data freshness is usually quick, but it is not real-time. Change records are normally available in less than five minutes, and some fields can converge more slowly.
+- Not all resource properties are available. Resource Graph uses Resource Manager provider APIs, so some expected properties may be missing or delayed.
 - Cross-tenant queries require Azure Lighthouse or multi-tenant app registrations.
-- The maximum query result size is 5 MB, regardless of pagination.
+- Very large responses can exceed the current 16 MB response size limit. Use paging or partitioning for large result sets.
 
 Resource Graph Explorer is one of those tools that becomes indispensable once you start using it. For anyone managing Azure resources beyond a trivial scale, it replaces hours of portal clicking and API scripting with quick, repeatable queries.
