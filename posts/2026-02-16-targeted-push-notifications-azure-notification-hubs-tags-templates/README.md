@@ -16,7 +16,7 @@ In this post, I will cover how to use tags for audience segmentation and templat
 
 Tags in Azure Notification Hubs are simple string labels that you attach to device registrations. When you send a notification, you can include a tag expression that filters which devices receive the message. Think of tags like labels on email - you can use them to categorize and target specific groups.
 
-Each registration can have up to 60 tags. Tags are case-sensitive strings up to 120 characters long. You can use any naming convention you like, but a common pattern is to use a prefix scheme.
+Each registration can have up to 60 tags. Tags are case-sensitive strings up to 120 characters long, using alphanumeric characters plus `_`, `@`, `#`, `.`, `:`, and `-`. You can use any naming convention that fits those rules, but a common pattern is to use a prefix scheme.
 
 ```text
 user:12345          -- Target a specific user
@@ -39,13 +39,11 @@ using Microsoft.Azure.NotificationHubs;
 var hub = NotificationHubClient.CreateClientFromConnectionString(
     connectionString, hubName);
 
-// Register an Android device with multiple tags
-public async Task RegisterDevice(string fcmToken, UserProfile user)
+// Register an Android device with multiple tags using FCM v1
+async Task RegisterDevice(string fcmV1Token, UserProfile user)
 {
-    var registration = new FcmRegistrationDescription(fcmToken);
-
     // Build the tag set based on user profile
-    registration.Tags = new HashSet<string>
+    var tags = new HashSet<string>
     {
         $"user:{user.Id}",
         $"city:{user.City.ToLower()}",
@@ -56,8 +54,10 @@ public async Task RegisterDevice(string fcmToken, UserProfile user)
     // Add interest tags from user preferences
     foreach (var interest in user.Interests)
     {
-        registration.Tags.Add($"topic:{interest.ToLower()}");
+        tags.Add($"topic:{interest.ToLower()}");
     }
+
+    var registration = new FcmV1RegistrationDescription(fcmV1Token, tags);
 
     await hub.CreateOrUpdateRegistrationAsync(registration);
 }
@@ -70,18 +70,18 @@ Tag expressions let you combine tags using boolean operators: `||` (OR), `&&` (A
 ```csharp
 // Send to all users interested in sports in Seattle
 string tagExpression = "topic:sports && city:seattle";
-await hub.SendFcmNativeNotificationAsync(payload, tagExpression);
+await hub.SendFcmV1NativeNotificationAsync(payload, tagExpression);
 
 // Send to admins who speak English or Spanish
 string tagExpression2 = "role:admin && (language:en || language:es)";
-await hub.SendFcmNativeNotificationAsync(payload, tagExpression2);
+await hub.SendFcmV1NativeNotificationAsync(payload, tagExpression2);
 
 // Send to everyone except users in a specific city
 string tagExpression3 = "topic:news && !city:portland";
 await hub.SendAppleNativeNotificationAsync(payload, tagExpression3);
 ```
 
-Tag expressions support up to 20 tags in a single expression. If you need more complex targeting, you can split the send into multiple calls or restructure your tags to be more specific.
+Tag expressions using only `||` can reference up to 20 tags. Expressions using `&&` but no `||` can reference up to 10 tags. Expressions that combine operators are limited to 6 tags. If you need more complex targeting, you can split the send into multiple calls or restructure your tags to be more specific.
 
 Here is how the tag filtering works at a high level.
 
@@ -110,7 +110,7 @@ Instead of registering with a native registration, you use a template registrati
 
 ```csharp
 // Register an iOS device with a template
-public async Task RegisterIosWithTemplate(string apnsToken, string userId)
+async Task RegisterIosWithTemplate(string apnsToken, string userId)
 {
     // Define the APNs payload template with placeholders
     string apnsTemplate = @"{
@@ -120,7 +120,7 @@ public async Task RegisterIosWithTemplate(string apnsToken, string userId)
                 ""body"": ""$(message)""
             },
             ""sound"": ""default"",
-            ""badge"": $(badge)
+            ""badge"": #(badge)
         }
     }";
 
@@ -132,22 +132,24 @@ public async Task RegisterIosWithTemplate(string apnsToken, string userId)
     await hub.CreateOrUpdateRegistrationAsync(templateRegistration);
 }
 
-// Register an Android device with a template
-public async Task RegisterAndroidWithTemplate(string fcmToken, string userId)
+// Register an Android device with an FCM v1 template
+async Task RegisterAndroidWithTemplate(string fcmV1Token, string userId)
 {
     // Define the FCM payload template with the same placeholders
     string fcmTemplate = @"{
-        ""notification"": {
-            ""title"": ""$(title)"",
-            ""body"": ""$(message)""
-        },
-        ""data"": {
-            ""badge"": ""$(badge)""
+        ""message"": {
+            ""notification"": {
+                ""title"": ""$(title)"",
+                ""body"": ""$(message)""
+            },
+            ""data"": {
+                ""badge"": ""$(badge)""
+            }
         }
     }";
 
-    var templateRegistration = new FcmTemplateRegistrationDescription(
-        fcmToken, fcmTemplate);
+    var templateRegistration = new FcmV1TemplateRegistrationDescription(
+        fcmV1Token, fcmTemplate);
 
     templateRegistration.Tags = new HashSet<string> { $"user:{userId}" };
 
@@ -155,7 +157,7 @@ public async Task RegisterAndroidWithTemplate(string fcmToken, string userId)
 }
 ```
 
-Notice that both templates use the same placeholder names: `$(title)`, `$(message)`, and `$(badge)`. This is the key. Your backend sends one message with these properties and each platform gets its native format.
+Notice that both templates use the same property names: `title`, `message`, and `badge`. This is the key. Your backend sends one message with these properties and each platform gets its native format.
 
 ## Sending Template Notifications
 
@@ -163,7 +165,7 @@ Sending becomes much simpler because you only need to send once, regardless of h
 
 ```csharp
 // Send a single template notification that works on all platforms
-public async Task SendTemplateNotification(string userId, string title, string message, int badge)
+async Task SendTemplateNotification(string userId, string title, string message, int badge)
 {
     // Create a dictionary of template properties
     var properties = new Dictionary<string, string>
@@ -187,7 +189,7 @@ The real power comes from combining tags with templates. You can send a single t
 
 ```csharp
 // Send a localized sports update to users in Seattle
-public async Task SendLocalizedSportsUpdate(string title, string body)
+async Task SendLocalizedSportsUpdate(string title, string body)
 {
     var properties = new Dictionary<string, string>
     {
@@ -211,7 +213,7 @@ A device can register multiple templates for different notification types. For e
 string breakingNewsTemplate = @"{
     ""aps"": {
         ""alert"": {
-            ""title"": ""BREAKING: $(headline)"",
+            ""title"": ""{'BREAKING: ' + $(headline)}"",
             ""body"": ""$(summary)""
         },
         ""sound"": ""breaking.caf"",
