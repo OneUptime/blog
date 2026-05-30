@@ -93,6 +93,7 @@ You can check the last sync time to understand how current the secondary data is
 az storage account show \
   --name mystorageaccount \
   --resource-group myResourceGroup \
+  --expand geoReplicationStats \
   --query "geoReplicationStats" -o json
 ```
 
@@ -168,7 +169,7 @@ def get_blob_with_failover(account_name, container, blob_name):
 
 ## Performing a Storage Account Failover
 
-When the primary region experiences a prolonged outage, you can initiate a failover to promote the secondary region to primary. This is a significant operation with important implications.
+When the primary region experiences a prolonged outage, you can initiate an unplanned failover to promote the secondary region to primary. This is a significant operation with important implications.
 
 ### What Happens During Failover
 
@@ -187,11 +188,12 @@ flowchart TD
 ### Initiating Failover
 
 ```bash
-# Initiate a storage account failover
+# Initiate an unplanned storage account failover
 # WARNING: This is a significant operation - data written after the last sync time may be lost
 az storage account failover \
   --name mystorageaccount \
   --resource-group myResourceGroup \
+  --failover-type unplanned \
   --no-wait
 ```
 
@@ -214,6 +216,7 @@ Because geo-replication is asynchronous, a failover can result in data loss. Any
 az storage account show \
   --name mystorageaccount \
   --resource-group myResourceGroup \
+  --expand geoReplicationStats \
   --query "geoReplicationStats.lastSyncTime" -o tsv
 ```
 
