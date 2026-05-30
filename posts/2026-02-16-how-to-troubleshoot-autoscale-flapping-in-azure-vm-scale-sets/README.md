@@ -30,7 +30,7 @@ Check the autoscale activity log to confirm flapping:
 az monitor activity-log list \
   --resource-group myResourceGroup \
   --offset 24h \
-  --query "[?contains(operationName.value, 'Autoscale')].{Time:eventTimestamp, Operation:operationName.localizedValue, Status:status.localizedValue, Description:description}" \
+  --query "[?category.value=='Autoscale'].{Time:eventTimestamp, Operation:operationName.localizedValue, Status:status.localizedValue, Description:description}" \
   -o table
 ```
 
@@ -120,7 +120,7 @@ A 10-minute window with Average aggregation means the average CPU across all ins
 
 New instances joining the scale set can temporarily increase the average CPU of the fleet. This happens when the instance's Custom Script Extension runs heavy installation tasks (compiling, downloading large packages) during startup. The new instance shows high CPU, which can re-trigger the scale-out rule before the instance is actually serving traffic.
 
-To mitigate this, ensure that new instances are excluded from metrics until they pass health checks. The Application Health Extension with a grace period handles this:
+The Application Health Extension does not exclude a VM from autoscale CPU metrics, but it is still useful for making sure Azure has an instance-level health signal for upgrade and repair workflows. Use it with a grace period, and keep heavy startup work out of the autoscale feedback loop by pre-baking images, reducing boot-time scripts, or making sure the load balancer does not send traffic to an instance until the app is warm:
 
 ```bash
 # Add health extension with a grace period
@@ -129,13 +129,19 @@ az vmss extension set \
   --vmss-name myScaleSet \
   --name ApplicationHealthLinux \
   --publisher Microsoft.ManagedServices \
-  --version 1.0 \
+  --version 2.0 \
   --settings '{
     "protocol": "http",
     "port": 8080,
     "requestPath": "/health",
     "gracePeriod": 600
   }'
+
+# If the scale set uses manual upgrade policy, apply the model change to instances
+az vmss update-instances \
+  --resource-group myResourceGroup \
+  --name myScaleSet \
+  --instance-ids "*"
 ```
 
 ### Cause 5: External Load Patterns
@@ -156,7 +162,7 @@ For periodic workloads, consider:
 az monitor activity-log list \
   --resource-group myResourceGroup \
   --offset 24h \
-  --query "[?contains(operationName.value, 'Autoscale')].{Time:eventTimestamp, Description:description}" \
+  --query "[?category.value=='Autoscale'].{Time:eventTimestamp, Description:description}" \
   -o json
 ```
 
@@ -261,7 +267,7 @@ This configuration has:
 Set up ongoing monitoring to detect flapping early:
 
 ```bash
-# Alert if more than 4 scale events happen in 1 hour
+# Alert on autoscale activity log events
 az monitor activity-log alert create \
   --resource-group myResourceGroup \
   --name "flapping-alert" \
@@ -269,6 +275,8 @@ az monitor activity-log alert create \
   --condition category=Autoscale \
   --description "Possible autoscale flapping detected"
 ```
+
+Activity log alerts fire when matching events occur; they do not count "more than 4 events in 1 hour" by themselves. For a rate-based flapping alert, send the Activity Log to a Log Analytics workspace and create a scheduled query alert that counts autoscale events over a 1-hour window.
 
 Feed autoscale events into OneUptime to visualize scaling patterns over time. A healthy autoscale should show gradual, infrequent changes - not rapid oscillations.
 
