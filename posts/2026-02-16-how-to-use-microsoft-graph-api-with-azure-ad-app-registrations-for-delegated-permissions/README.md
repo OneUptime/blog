@@ -53,7 +53,7 @@ Common delegated permissions:
 | `Calendars.ReadWrite` | Read and write the user's calendar |
 | `Files.ReadWrite` | Read and write the user's OneDrive files |
 | `Sites.Read.All` | Read SharePoint sites the user has access to |
-| `Teams.ReadBasic.All` | Read the user's Teams memberships |
+| `Team.ReadBasic.All` | Read the names and descriptions of teams |
 
 4. Click Add permissions.
 
@@ -104,9 +104,18 @@ This is the standard OAuth 2.0 flow for web applications. Here is the implementa
 // Express.js application using MSAL for Graph API authentication
 // Implements the authorization code flow for delegated permissions
 const express = require('express');
+const session = require('express-session');
 const msal = require('@azure/msal-node');
 
 const app = express();
+
+app.use(express.json());
+app.use(session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: true }
+}));
 
 // MSAL configuration matching your app registration
 const msalConfig = {
@@ -123,6 +132,7 @@ const msalClient = new msal.ConfidentialClientApplication(msalConfig);
 const SCOPES = [
     'User.Read',
     'Mail.Read',
+    'Mail.Send',
     'Calendars.ReadWrite'
 ];
 
@@ -311,6 +321,7 @@ Sometimes you want to start with minimal permissions and request more as the use
 ```javascript
 // Request additional permissions when the user accesses a new feature
 // For example, request Mail.Send only when they try to send an email
+// if it was not included in the initial SCOPES list
 app.get('/auth/consent-mail', async (req, res) => {
     const authUrl = await msalClient.getAuthCodeUrl({
         scopes: ['User.Read', 'Mail.Read', 'Mail.Send'],  // Add new scope
