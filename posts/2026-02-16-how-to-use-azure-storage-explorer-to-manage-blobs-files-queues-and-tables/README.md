@@ -14,7 +14,7 @@ Azure Storage Explorer is a free desktop application from Microsoft that gives y
 
 Download Azure Storage Explorer from the official Microsoft site. It runs on Windows, macOS, and Linux. Once installed, the first thing you need to do is connect to your Azure account.
 
-The simplest method is to sign in with your Azure AD account:
+The simplest method is to sign in with your Microsoft Entra ID account:
 
 1. Open Storage Explorer
 2. Click the plug icon in the left sidebar (Manage Accounts)
@@ -45,16 +45,16 @@ Click the Upload button in the toolbar. You have two options:
 
 In the upload dialog, you can set:
 - **Blob type**: Block blob (default), Page blob, or Append blob
-- **Access tier**: Hot, Cool, Cold, or Archive
+- **Access tier**: Hot, Cool, Cold, or Archive for block blobs in supported storage accounts
 - **Content type**: Auto-detected, but you can override it
 
 ### Managing Access Tiers
 
-Right-click a blob and select "Change Access Tier" to move it between Hot, Cool, Cold, and Archive tiers. This is useful for ad-hoc tiering of individual blobs. For example, if you find old log files sitting in the Hot tier, you can quickly move them to Cool or Archive.
+Right-click a block blob and select "Change Access Tier" to move it between Hot, Cool, Cold, and Archive tiers, subject to the storage account's redundancy and feature support. This is useful for ad-hoc tiering of individual blobs. For example, if you find old log files sitting in the Hot tier, you can quickly move them to Cool or Archive.
 
 ### Creating and Managing Containers
 
-Right-click on "Blob Containers" in the tree and select "Create Blob Container." Name it (lowercase, hyphens, and numbers only), and set the public access level. For most workloads, keep the access level as Private.
+Right-click on "Blob Containers" in the tree and select "Create Blob Container." Name it using lowercase letters, numbers, and hyphens. For most workloads, keep the access level as Private; after creating the container, you can right-click it and choose "Set Public Access Level" if you need to change that setting.
 
 ### Generating SAS URLs
 
@@ -78,7 +78,7 @@ Right-click inside a file share and select "New Folder" to create directories. T
 
 ### Connecting to Snapshots
 
-If you have file share snapshots, they appear as child nodes under the file share in the tree view. You can browse snapshots to find and restore specific files from a point in time.
+If you have file share snapshots, you can browse and restore them through supported Azure Files tools such as the Azure portal, PowerShell, Azure CLI, SMB previous versions, NFS snapshot paths, or the Azure Files APIs.
 
 ## Managing Queues
 
@@ -94,7 +94,7 @@ Click "Add Message" in the toolbar to put a new message on the queue. You can en
 
 ### Dequeuing and Deleting Messages
 
-You can dequeue the next message (which removes it from the queue after the visibility timeout) or delete specific messages. When troubleshooting a stuck queue processor, you might need to manually remove a poison message that keeps failing.
+You can dequeue the next message, which makes it temporarily invisible and increments its dequeue count. The message is not permanently removed unless it is deleted; if the visibility timeout expires first, it becomes visible again. When troubleshooting a stuck queue processor, you might need to manually remove a poison message that keeps failing.
 
 ### Clearing Queues
 
