@@ -50,6 +50,14 @@ az network vnet create \
   --subnet-name snet-wp \
   --subnet-prefix 10.0.1.0/24
 
+# Create a delegated subnet for Azure Database for MySQL Flexible Server
+az network vnet subnet create \
+  --resource-group rg-wp-multisite \
+  --vnet-name vnet-wp \
+  --name snet-mysql \
+  --address-prefixes 10.0.2.0/24 \
+  --delegations Microsoft.DBforMySQL/flexibleServers
+
 # Create a Network Security Group
 az network nsg create \
   --resource-group rg-wp-multisite \
@@ -97,6 +105,13 @@ az storage share-rm create \
   --name wordpress \
   --enabled-protocol NFS \
   --quota 100
+
+# Allow native NFS mounts without the AZNFS mount helper
+az storage account file-service-properties update \
+  --resource-group rg-wp-multisite \
+  --account-name wpfilestorage \
+  --nfs-eit \
+  --require-nfs-encryption-in-transit false
 ```
 
 You also need a private endpoint for the storage account so VMs can access it over the private network.
@@ -111,6 +126,25 @@ az network private-endpoint create \
   --private-connection-resource-id $(az storage account show --name wpfilestorage --resource-group rg-wp-multisite --query id -o tsv) \
   --group-id file \
   --connection-name storage-connection
+
+# Create and link private DNS for the Azure Files endpoint
+az network private-dns zone create \
+  --resource-group rg-wp-multisite \
+  --name privatelink.file.core.windows.net
+
+az network private-dns link vnet create \
+  --resource-group rg-wp-multisite \
+  --zone-name privatelink.file.core.windows.net \
+  --name link-files-vnet \
+  --virtual-network vnet-wp \
+  --registration-enabled false
+
+az network private-endpoint dns-zone-group create \
+  --resource-group rg-wp-multisite \
+  --endpoint-name pe-storage \
+  --name storage-dns-zone-group \
+  --private-dns-zone privatelink.file.core.windows.net \
+  --zone-name file
 ```
 
 ## Creating the Database
@@ -130,7 +164,8 @@ az mysql flexible-server create \
   --storage-size 64 \
   --version 8.0 \
   --vnet vnet-wp \
-  --subnet snet-wp
+  --subnet snet-mysql \
+  --private-dns-zone wp-mysql.private.mysql.database.azure.com
 
 # Create the database
 az mysql flexible-server db create \
@@ -149,27 +184,50 @@ Create a VM image template using cloud-init that installs Nginx, PHP, and mounts
 package_update: true
 packages:
   - nginx
-  - php8.2-fpm
-  - php8.2-mysql
-  - php8.2-curl
-  - php8.2-gd
-  - php8.2-mbstring
-  - php8.2-xml
-  - php8.2-zip
-  - php8.2-imagick
+  - php8.3-fpm
+  - php8.3-mysql
+  - php8.3-curl
+  - php8.3-gd
+  - php8.3-mbstring
+  - php8.3-xml
+  - php8.3-zip
+  - php8.3-imagick
+  - php8.3-redis
   - nfs-common
+
+write_files:
+  - path: /etc/nginx/sites-available/wordpress
+    content: |
+      server {
+          listen 80;
+          server_name _;
+          root /var/www/wordpress;
+          index index.php index.html;
+
+          location / {
+              try_files $uri $uri/ /index.php?$args;
+          }
+
+          location ~ \.php$ {
+              include snippets/fastcgi-php.conf;
+              fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+          }
+      }
 
 runcmd:
   # Mount the Azure Files NFS share
   - mkdir -p /var/www/wordpress
-  - mount -t nfs wpfilestorage.file.core.windows.net:/wpfilestorage/wordpress /var/www/wordpress -o vers=4,minorversion=1,sec=sys
+  - mount -t nfs wpfilestorage.file.core.windows.net:/wpfilestorage/wordpress /var/www/wordpress -o vers=4,minorversion=1,_netdev,nofail,sec=sys,nconnect=4
   # Add to fstab for persistence across reboots
-  - echo "wpfilestorage.file.core.windows.net:/wpfilestorage/wordpress /var/www/wordpress nfs vers=4,minorversion=1,sec=sys 0 0" >> /etc/fstab
+  - echo "wpfilestorage.file.core.windows.net:/wpfilestorage/wordpress /var/www/wordpress nfs vers=4,minorversion=1,_netdev,nofail,sec=sys,nconnect=4 0 0" >> /etc/fstab
+  # Configure Nginx to serve WordPress
+  - rm -f /etc/nginx/sites-enabled/default
+  - ln -s /etc/nginx/sites-available/wordpress /etc/nginx/sites-enabled/wordpress
   # Set correct ownership
   - chown -R www-data:www-data /var/www/wordpress
   # Start PHP-FPM and Nginx
-  - systemctl enable php8.2-fpm
-  - systemctl start php8.2-fpm
+  - systemctl enable php8.3-fpm
+  - systemctl start php8.3-fpm
   - systemctl enable nginx
   - systemctl restart nginx
 ```
@@ -188,7 +246,7 @@ az vm availability-set create \
 az vm create \
   --resource-group rg-wp-multisite \
   --name vm-wp-1 \
-  --image Ubuntu2204 \
+  --image Canonical:ubuntu-24_04-lts:server:latest \
   --size Standard_D2s_v3 \
   --availability-set avset-wp \
   --vnet-name vnet-wp \
@@ -202,7 +260,7 @@ az vm create \
 az vm create \
   --resource-group rg-wp-multisite \
   --name vm-wp-2 \
-  --image Ubuntu2204 \
+  --image Canonical:ubuntu-24_04-lts:server:latest \
   --size Standard_D2s_v3 \
   --availability-set avset-wp \
   --vnet-name vnet-wp \
@@ -243,7 +301,7 @@ az network lb probe create \
   --port 80 \
   --path /wp-login.php
 
-# Create load balancing rules for HTTP and HTTPS
+# Create a load balancing rule for HTTP
 az network lb rule create \
   --resource-group rg-wp-multisite \
   --lb-name lb-wp \
@@ -254,17 +312,6 @@ az network lb rule create \
   --protocol Tcp \
   --frontend-port 80 \
   --backend-port 80
-
-az network lb rule create \
-  --resource-group rg-wp-multisite \
-  --lb-name lb-wp \
-  --name rule-https \
-  --frontend-ip-name fe-wp \
-  --backend-pool-name be-wp \
-  --probe-name hp-wp \
-  --protocol Tcp \
-  --frontend-port 443 \
-  --backend-port 443
 ```
 
 Add the VMs to the backend pool by associating their NICs.
@@ -324,7 +371,8 @@ define('PATH_CURRENT_SITE', '/');
 define('SITE_ID_CURRENT_SITE', 1);
 define('BLOG_ID_CURRENT_SITE', 1);
 
-// Handle load balancer HTTPS termination
+// If you later put a TLS-terminating reverse proxy in front of the VMs,
+// use its forwarded protocol header to tell WordPress the original scheme.
 if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) &&
     $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
     $_SERVER['HTTPS'] = 'on';
@@ -338,7 +386,7 @@ define('FS_CHMOD_FILE', 0664);
 
 ## Session Handling
 
-With multiple VMs, PHP sessions need to be stored externally so that a user session works regardless of which VM handles their request. Use Azure Cache for Redis for session storage.
+WordPress core authentication uses cookies rather than PHP sessions, but some plugins and custom code use PHP sessions. If your network uses session-dependent plugins, store PHP sessions externally so that those sessions work regardless of which VM handles a request. Use Azure Cache for Redis for session storage.
 
 ```bash
 # Create a Redis cache for sessions
@@ -353,9 +401,9 @@ az redis create \
 Install the Redis PHP extension on each VM and configure PHP to use it for sessions.
 
 ```ini
-; /etc/php/8.2/fpm/conf.d/30-redis-sessions.ini
+; /etc/php/8.3/fpm/conf.d/30-redis-sessions.ini
 session.save_handler = redis
-session.save_path = "tcp://wp-sessions-cache.redis.cache.windows.net:6380?auth=YOUR_REDIS_KEY&tls=1"
+session.save_path = "tls://wp-sessions-cache.redis.cache.windows.net:6380?auth=YOUR_REDIS_KEY"
 ```
 
 ## Wrapping Up
