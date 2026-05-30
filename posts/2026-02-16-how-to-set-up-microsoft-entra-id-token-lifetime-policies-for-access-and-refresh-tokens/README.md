@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Microsoft Entra ID, Token Lifetime, Access Tokens, Refresh Tokens, Identity Security, OAuth
 
-Description: Step-by-step guide to creating and assigning token lifetime policies in Microsoft Entra ID to control access token and refresh token expiration behavior.
+Description: Step-by-step guide to creating and assigning token lifetime policies in Microsoft Entra ID to control access token and ID token expiration behavior.
 
 ---
 
-Token lifetime policies in Microsoft Entra ID give you control over how long access tokens and refresh tokens remain valid. This is one of those settings that most teams leave at the defaults and never think about, but getting it right can make a meaningful difference in both security and user experience. Too short, and your users are constantly getting interrupted to re-authenticate. Too long, and you are giving stolen tokens a wider window to cause damage.
+Token lifetime policies in Microsoft Entra ID give you control over how long access tokens, ID tokens, and SAML tokens remain valid. This is one of those settings that most teams leave at the defaults and never think about, but getting it right can make a meaningful difference in both security and user experience. Too short, and clients need to replace tokens more often. Too long, and you are giving stolen tokens a wider window to cause damage.
 
 In this post, I will explain how token lifetimes work in Entra ID, walk through creating custom policies, and share some guidance on what values actually make sense for different scenarios.
 
@@ -18,19 +18,19 @@ Before configuring anything, let us make sure we are on the same page about the 
 
 **Access tokens** are short-lived tokens that grant access to a resource (like an API). They are typically valid for 60 to 90 minutes by default. When an access token expires, the client uses a refresh token to get a new one without requiring the user to sign in again.
 
-**Refresh tokens** have a longer lifetime. For single-page apps, the default is 24 hours. For other client types, refresh tokens can last up to 90 days, with a sliding window that resets each time the token is used.
+**Refresh tokens** have a longer lifetime. For single-page apps, the default is 24 hours. For apps that use the email one-time passcode authentication flow, the default is also 24 hours. For other scenarios, the default is 90 days. Refresh tokens replace themselves with a fresh token when used, but token lifetime policies cannot change those defaults.
 
 **ID tokens** are used for authentication and have a default lifetime similar to access tokens.
 
-Here is the important caveat: Microsoft has been narrowing the scope of what token lifetime policies can control. As of the current configuration, you can customize access token lifetimes (between 10 minutes and 1 day), but refresh token and session token lifetimes are now managed through Conditional Access session controls for most scenarios. The configurable token lifetime policy still works for access tokens and ID tokens though, which is what we will focus on.
+Here is the important caveat: Microsoft has narrowed the scope of what token lifetime policies can control. As of the current configuration, you can customize access token, ID token, and SAML token lifetimes (between 10 minutes and 23:59:59), but refresh token and session token lifetimes are no longer configurable through token lifetime policies. Conditional Access session controls are the right place to control how often users must sign in again. Token lifetime policies also are not supported for managed identity service principals.
 
 ## When to Customize Token Lifetimes
 
 Here are some real scenarios where customizing token lifetimes makes sense:
 
 - **High-security applications** where you want access tokens to expire more frequently, forcing more frequent token refresh and reducing the window of opportunity if a token is compromised.
-- **Internal tools** where security requirements are lower and you want to reduce friction by extending token lifetimes so users are not constantly re-authenticating.
-- **Service-to-service communication** where you might want shorter access tokens but rely on managed identities for renewal.
+- **Internal tools** where security requirements are lower and you want to reduce token acquisition frequency by extending token lifetimes.
+- **Service-to-service communication** where you might want shorter access tokens for confidential client applications that are not managed identities.
 - **Compliance requirements** that mandate specific session durations or token expiration windows.
 
 ## Step 1: Create a Token Lifetime Policy Using Microsoft Graph PowerShell
@@ -45,7 +45,7 @@ First, install and connect to Microsoft Graph PowerShell. This script connects w
 Install-Module Microsoft.Graph -Scope CurrentUser
 
 # Connect with the required permissions for policy management
-Connect-MgGraph -Scopes "Policy.ReadWrite.ApplicationConfiguration"
+Connect-MgGraph -Scopes "Policy.ReadWrite.ApplicationConfiguration","Policy.Read.All","Application.ReadWrite.All"
 ```
 
 Now, create a token lifetime policy. The policy definition is a JSON string that specifies the token lifetime values.
@@ -76,9 +76,9 @@ Let me break down the configurable parameters in the policy definition:
 
 | Parameter | Description | Min | Max | Default |
 |-----------|-------------|-----|-----|---------|
-| AccessTokenLifetime | How long an access token is valid | 10 minutes | 1 day | 1 hour |
+| AccessTokenLifetime | How long access, ID, and SAML2 tokens are valid | 10 minutes | 23:59:59 | 60-90 minutes for access tokens; 1 hour for ID and SAML2 tokens |
 
-For refresh tokens and session tokens, you should use Conditional Access session controls instead of token lifetime policies. Microsoft deprecated those settings in token lifetime policies for new tenants.
+For refresh tokens and session tokens, you should use Conditional Access session controls instead of token lifetime policies. Microsoft retired those settings in token lifetime policies on January 30, 2021, and Microsoft Entra ID ignores refresh and session token lifetime properties in existing policies.
 
 You can also set `isOrganizationDefault` to `true` if you want the policy to apply to all applications in your tenant by default. Be careful with this - it affects everything.
 
@@ -151,7 +151,7 @@ function Decode-JwtToken {
 
     # Split the token into its three parts (header, payload, signature)
     $parts = $Token.Split('.')
-    $payload = $parts[1]
+    $payload = $parts[1].Replace('-', '+').Replace('_', '/')
 
     # Add padding if needed for base64 decoding
     $padding = 4 - ($payload.Length % 4)
@@ -182,7 +182,7 @@ Write-Output "Token lifetime: $($lifetime.TotalMinutes) minutes"
 
 As I mentioned earlier, refresh token and session token lifetimes are now best managed through Conditional Access policies. Here is how the two approaches complement each other:
 
-- **Token lifetime policies**: Control access token and ID token lifetimes per application.
+- **Token lifetime policies**: Control access token, ID token, and SAML token lifetimes per application.
 - **Conditional Access session controls**: Control sign-in frequency (how often users must re-authenticate), persistent browser sessions, and Continuous Access Evaluation.
 
 For a comprehensive approach, I recommend using both. Set shorter access token lifetimes with a token lifetime policy for your sensitive applications, and use Conditional Access to control the overall session behavior.
@@ -205,7 +205,7 @@ If you need to remove a policy assignment or delete a policy entirely, here is h
 
 ```powershell
 # Remove the policy assignment from a service principal
-Remove-MgServicePrincipalTokenLifetimePolicyByRef `
+Remove-MgServicePrincipalTokenLifetimePolicyTokenLifetimePolicyByRef `
     -ServicePrincipalId $servicePrincipal.Id `
     -TokenLifetimePolicyId $policy.Id
 
