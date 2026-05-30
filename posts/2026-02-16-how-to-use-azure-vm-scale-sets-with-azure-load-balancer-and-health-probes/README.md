@@ -14,11 +14,11 @@ This guide covers the full integration - from creating the load balancer to conf
 
 ## Choosing Between Load Balancer SKUs
 
-Azure offers two Load Balancer SKUs:
+Azure Load Balancer has three SKUs: Basic (retired), Standard, and Gateway. For VM scale set application tiers, the Basic and Standard SKUs are the relevant comparison:
 
-**Basic Load Balancer**: Free, supports up to 300 instances, no availability zone support, limited diagnostics. Being deprecated for production use.
+**Basic Load Balancer**: Retired on September 30, 2025. It supported a backend pool size of up to 300 IP configurations, had no availability zone support, and limited diagnostics.
 
-**Standard Load Balancer**: Paid, supports up to 1000 instances, zone-redundant, comprehensive diagnostics and metrics. Required for production workloads.
+**Standard Load Balancer**: Paid, supports backend pools up to 5,000 instances, zone-redundant and zonal frontends, comprehensive diagnostics and metrics. Required for production workloads.
 
 Always use Standard Load Balancer for production scale sets.
 
@@ -173,7 +173,7 @@ az network lb probe create \
   --threshold 2
 ```
 
-HTTPS probes do not validate certificates. They just verify that the HTTPS handshake completes and the endpoint returns 200.
+HTTPS probes behave like HTTP probes over TLS: the TLS handshake must complete, the certificate chain must use a minimum SHA-256 signature hash, and the endpoint must return HTTP 200. Mutual client certificate authentication is not supported.
 
 ## Designing a Good Health Endpoint
 
@@ -224,15 +224,16 @@ Notice how the database failure returns 503 (unhealthy) but the cache failure st
 The load balancer distributes traffic to all instances, but sometimes you need to access a specific instance for debugging. Inbound NAT rules map a unique port on the load balancer to a specific port on each instance:
 
 ```bash
-# Create an inbound NAT pool for SSH access
-az network lb inbound-nat-pool create \
+# Create a group of inbound NAT rules for SSH access
+az network lb inbound-nat-rule create \
   --resource-group myResourceGroup \
   --lb-name myLoadBalancer \
-  --name sshNatPool \
+  --name sshNatRule \
   --protocol Tcp \
   --frontend-port-range-start 50000 \
   --frontend-port-range-end 50100 \
   --backend-port 22 \
+  --backend-pool-name myBackendPool \
   --frontend-ip-name myFrontendIP
 ```
 
@@ -283,12 +284,12 @@ Standard Load Balancer provides rich metrics through Azure Monitor:
 # Get health probe status
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/loadBalancers/myLoadBalancer" \
-  --metric "HealthProbeStatus" \
+  --metric "DipAvailability" \
   --interval PT1M \
   --aggregation Average \
   -o table
 
-# Get data path availability (overall traffic throughput)
+# Get data path availability
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/loadBalancers/myLoadBalancer" \
   --metric "VipAvailability" \
@@ -307,7 +308,7 @@ az monitor metrics list \
 
 Key metrics to watch:
 
-- **HealthProbeStatus**: Percentage of health probe responses that were successful. Should be near 100%.
+- **DipAvailability** (Health Probe Status): Percentage of health probe responses that were successful. Should be near 100%.
 - **VipAvailability**: Data path availability. Should be 100% for a healthy load balancer.
 - **SnatConnectionCount/UsedSnatPorts**: SNAT port exhaustion can cause outbound connection failures.
 
@@ -323,7 +324,7 @@ az network lb address-pool show \
   --name myBackendPool \
   --query "backendIPConfigurations[].id" -o tsv
 
-# Check health probe status per instance
+# Check health probe configuration
 az network lb probe show \
   --resource-group myResourceGroup \
   --lb-name myLoadBalancer \
