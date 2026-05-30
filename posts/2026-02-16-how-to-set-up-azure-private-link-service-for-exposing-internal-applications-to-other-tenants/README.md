@@ -38,8 +38,8 @@ The connection is one-way. The consumer can reach your application, but you cann
 ## Prerequisites
 
 - A Standard Load Balancer (Basic LB is not supported)
-- At least one backend pool member (VM, VMSS, etc.)
-- A dedicated subnet for the Private Link Service NAT IPs
+- At least one backend pool member (VM, VMSS, etc.) configured by NIC, not by IP address
+- A subnet for the Private Link Service NAT IPs
 - Network Contributor role on the provider VNet
 
 ## Step 1: Prepare the Load Balancer
@@ -81,7 +81,7 @@ az network lb rule create \
 
 ## Step 2: Create a Subnet for Private Link Service NAT
 
-The Private Link Service needs a dedicated subnet for its NAT (Network Address Translation) IP addresses. These IPs are used to translate the consumer's private endpoint IP to an IP that your load balancer can receive.
+The Private Link Service needs a subnet for its NAT (Network Address Translation) IP addresses. These IPs are used to translate the consumer's private endpoint IP to an IP that your load balancer can receive. A dedicated subnet is a good operational practice, but Azure does not require one.
 
 ```bash
 # Create a dedicated subnet for Private Link Service
@@ -91,10 +91,10 @@ az network vnet subnet create \
   --vnet-name myProviderVNet \
   --resource-group myResourceGroup \
   --address-prefixes 10.0.3.0/24 \
-  --disable-private-link-service-network-policies true
+  --private-link-service-network-policies Disabled
 ```
 
-The `--disable-private-link-service-network-policies` flag is important. Without it, the Private Link Service cannot be created in the subnet because NSG and UDR policies would interfere with the NAT process.
+The `--private-link-service-network-policies Disabled` setting is important. Without it, the Private Link Service cannot be created in the subnet. This setting affects only Private Link Service network policies on that subnet; other resources in the subnet are still controlled by their NSG rules.
 
 ## Step 3: Create the Private Link Service
 
@@ -161,7 +161,7 @@ az network private-link-service update \
 On the consumer side, they create a private endpoint pointing to your Private Link Service. They can do this using the alias or the resource ID (if they have Reader access to your subscription).
 
 ```bash
-# Consumer side: Create a private endpoint using the PLS alias
+# Consumer side: Create a private endpoint using the PLS resource ID
 az network private-endpoint create \
   --name pe-to-provider-app \
   --resource-group consumerResourceGroup \
@@ -177,7 +177,7 @@ az network private-endpoint create \
   --resource-group consumerResourceGroup \
   --vnet-name consumerVNet \
   --subnet consumerSubnet \
-  --manual-request \
+  --manual-request true \
   --private-connection-resource-id "myPrivateLinkService.{guid}.eastus.azure.privatelinkservice" \
   --connection-name "connection-to-contoso-app" \
   --request-message "Fabrikam requesting access"
@@ -228,7 +228,8 @@ az network private-dns link vnet create \
 PE_IP=$(az network private-endpoint show \
   --name pe-to-provider-app \
   --resource-group consumerResourceGroup \
-  --query "customDnsConfigurations[0].ipAddresses[0]" --output tsv)
+  --expand networkinterfaces \
+  --query "networkInterfaces[0].ipConfigurations[0].privateIpAddress" --output tsv)
 
 # Create an A record pointing to the private endpoint IP
 az network private-dns record-set a add-record \
@@ -267,17 +268,28 @@ az network private-link-service connection update \
 
 ## Scaling with Multiple NAT IPs
 
-If you expect many consumer connections, you may need multiple NAT IP addresses. Each NAT IP supports up to 64,000 connections.
+If you expect many consumer connections, you may need multiple NAT IP addresses. Each NAT IP supports up to 64,000 TCP connections per VM behind the Standard Load Balancer.
 
 ```bash
 # Add additional NAT IPs to the Private Link Service
+PLS_SUBNET_ID=$(az network vnet subnet show \
+  --name plsNatSubnet \
+  --vnet-name myProviderVNet \
+  --resource-group myResourceGroup \
+  --query id --output tsv)
+
 az network private-link-service update \
   --name myPrivateLinkService \
   --resource-group myResourceGroup \
-  --ip-configs '[
-    {"name": "natIp1", "privateIpAllocationMethod": "Dynamic", "subnet": {"id": "/subscriptions/.../subnets/plsNatSubnet"}, "primary": true},
-    {"name": "natIp2", "privateIpAllocationMethod": "Dynamic", "subnet": {"id": "/subscriptions/.../subnets/plsNatSubnet"}, "primary": false}
-  ]'
+  --add ipConfigurations "{
+    \"name\": \"natIp2\",
+    \"properties\": {
+      \"privateIPAllocationMethod\": \"Dynamic\",
+      \"privateIPAddressVersion\": \"IPv4\",
+      \"subnet\": {\"id\": \"$PLS_SUBNET_ID\"},
+      \"primary\": false
+    }
+  }"
 ```
 
 ## Seeing the Consumer's Real IP (Proxy Protocol)
