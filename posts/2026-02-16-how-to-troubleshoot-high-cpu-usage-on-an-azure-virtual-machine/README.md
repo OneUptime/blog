@@ -21,8 +21,7 @@ az monitor metrics list \
   --resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/myVM" \
   --metric "Percentage CPU" \
   --interval PT5M \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --offset 1h \
   --output table
 ```
 
@@ -88,7 +87,7 @@ ps -p <PID> -o pid,ppid,user,%cpu,%mem,etime,cmd
 ls -la /proc/<PID>/fd | head -30
 
 # Check what the process is doing right now with strace
-sudo strace -p <PID> -c -t 10
+sudo timeout 10 strace -p <PID> -c
 ```
 
 For application processes, check the application logs:
@@ -151,22 +150,9 @@ Look for jobs that overlap - if a job takes 10 minutes but runs every 5 minutes,
 
 Azure has a built-in performance diagnostics tool that can analyze the VM and generate a report:
 
-```bash
-# Install the Performance Diagnostics extension
-az vm extension set \
-  --resource-group myResourceGroup \
-  --vm-name myVM \
-  --name AzurePerformanceDiagnostics \
-  --publisher Microsoft.Azure.Performance.Diagnostics \
-  --version 1.0 \
-  --settings '{"performanceScenario":"basic"}'
-```
-
-Or use the portal:
-
 1. Go to your VM.
 2. Under "Help," click "Performance diagnostics."
-3. Choose the analysis level (basic, performance, or advanced).
+3. Choose the analysis type (Quick analysis or Performance analysis; Advanced performance analysis is Windows only).
 4. Run the diagnostics.
 
 The tool collects data on CPU usage, memory, disk I/O, and networking, then generates a report with findings and recommendations.
