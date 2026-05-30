@@ -1,4 +1,4 @@
-# Use Azure Service Bus with Spring Boot Using azure-spring-cloud-stream-binder
+# Use Azure Service Bus with Spring Boot Using spring-cloud-azure-stream-binder-servicebus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Learn how to integrate Azure Service Bus with Spring Boot using the
 
 ---
 
-Azure Service Bus is an enterprise-grade message broker with support for queues and topics (publish-subscribe). Spring Cloud Stream provides an abstraction layer over messaging systems, letting you switch between Kafka, RabbitMQ, and Azure Service Bus without changing your business logic. The `azure-spring-cloud-stream-binder` connects these two worlds, giving you a Spring-native way to send and receive messages through Azure Service Bus.
+Azure Service Bus is an enterprise-grade message broker with support for queues and topics (publish-subscribe). Spring Cloud Stream provides an abstraction layer over messaging systems, letting you switch between Kafka, RabbitMQ, and Azure Service Bus without changing your business logic. The `spring-cloud-azure-stream-binder-servicebus` connects these two worlds, giving you a Spring-native way to send and receive messages through Azure Service Bus.
 
 In this post, we will build a Spring Boot application that uses Azure Service Bus for asynchronous messaging. We will cover both queue-based (point-to-point) and topic-based (publish-subscribe) patterns.
 
@@ -78,8 +78,20 @@ Add the Spring Cloud Stream binder for Azure Service Bus to your project.
 <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.2.0</version>
+    <version>3.5.14</version>
 </parent>
+
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.azure.spring</groupId>
+            <artifactId>spring-cloud-azure-dependencies</artifactId>
+            <version>5.25.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
 
 <dependencies>
     <dependency>
@@ -91,21 +103,8 @@ Add the Spring Cloud Stream binder for Azure Service Bus to your project.
     <dependency>
         <groupId>com.azure.spring</groupId>
         <artifactId>spring-cloud-azure-stream-binder-servicebus</artifactId>
-        <version>5.8.0</version>
     </dependency>
 </dependencies>
-
-<dependencyManagement>
-    <dependencies>
-        <dependency>
-            <groupId>com.azure.spring</groupId>
-            <artifactId>spring-cloud-azure-dependencies</artifactId>
-            <version>5.8.0</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
-    </dependencies>
-</dependencyManagement>
 ```
 
 ## Configuring Spring Cloud Stream
@@ -119,6 +118,8 @@ spring:
     azure:
       servicebus:
         connection-string: "Endpoint=sb://my-servicebus-ns.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=your-key"
+    function:
+      definition: orderInput;notificationInput
     stream:
       bindings:
         # Producer binding for sending messages to a queue
@@ -321,20 +322,44 @@ spring:
             max-attempts: 3         # Retry up to 3 times
             back-off-initial-interval: 1000  # Wait 1 second before first retry
             back-off-multiplier: 2.0         # Double the wait time for each retry
+      servicebus:
+        bindings:
+          orderInput-in-0:
+            consumer:
+              requeue-rejected: true
 ```
 
-For messages that exhaust all retries, Azure Service Bus can automatically move them to a dead letter queue. Enable this on the queue itself.
+With `requeue-rejected` enabled, the Service Bus binder dead-letters a message after the Spring Cloud Stream retries are exhausted. Azure Service Bus also automatically moves a message to the dead-letter queue when its delivery count exceeds the queue's `max-delivery-count`, which defaults to 10. You can set that limit on the queue.
 
 ```bash
-# Enable dead lettering on the queue
+# Set the maximum delivery count for the queue
 az servicebus queue update \
   --namespace-name my-servicebus-ns \
   --resource-group servicebus-demo-rg \
   --name order-queue \
-  --enable-dead-lettering-on-message-expiration true
+  --max-delivery-count 10
 ```
 
-You can then create a separate consumer to process dead-lettered messages.
+Dead-lettering on message expiration is a separate setting for expired messages. You can enable it with `--enable-dead-lettering-on-message-expiration true` if you want expired messages to be retained in the dead-letter queue.
+
+You can then create a separate binding and consumer to process dead-lettered messages.
+
+```yaml
+spring:
+  cloud:
+    function:
+      definition: orderInput;notificationInput;deadLetterProcessor
+    stream:
+      bindings:
+        deadLetterProcessor-in-0:
+          destination: order-queue
+      servicebus:
+        bindings:
+          deadLetterProcessor-in-0:
+            consumer:
+              entity-type: queue
+              sub-queue: DEAD_LETTER_QUEUE
+```
 
 ```java
 // Consumer for dead letter messages - for manual review or retry
