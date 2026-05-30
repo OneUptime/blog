@@ -81,11 +81,13 @@ The `@secure()` decorator is particularly important. It tells Azure to treat the
 
 ## Parameter Files
 
-For environment-specific configurations, parameter files are the standard approach. A parameter file is a JSON file that provides values for all or some of the template parameters.
+For environment-specific configurations, parameter files are the standard approach. A parameter file is a `.bicepparam` or JSON file that provides values for all or some of the template parameters.
 
 ### Bicep Parameter Files (.bicepparam)
 
 Bicep now supports its own parameter file format, which is cleaner than the JSON format:
+
+For secure parameters, a `.bicepparam` file can use the `getSecret()` function to retrieve values from Azure Key Vault without storing the secret in source control.
 
 ```bicep
 // parameters.dev.bicepparam - Development environment parameters
@@ -96,6 +98,7 @@ param appName = 'myapp-dev'
 param instanceCount = 1
 param skuName = 'B1'
 param enableDiagnostics = false
+param sqlAdminPassword = getSecret('<subscription-id>', 'rg-shared', 'kv-secrets', 'sql-admin-password-dev')
 param tags = {
   environment: 'dev'
   team: 'engineering'
@@ -112,6 +115,8 @@ param appName = 'myapp-staging'
 param instanceCount = 2
 param skuName = 'P1v3'
 param enableDiagnostics = true
+param logAnalyticsWorkspaceId = '/subscriptions/<subscription-id>/resourceGroups/rg-shared/providers/Microsoft.OperationalInsights/workspaces/log-myapp-shared'
+param sqlAdminPassword = getSecret('<subscription-id>', 'rg-shared', 'kv-secrets', 'sql-admin-password-staging')
 param tags = {
   environment: 'staging'
   team: 'engineering'
@@ -128,6 +133,8 @@ param appName = 'myapp-prod'
 param instanceCount = 3
 param skuName = 'P2v3'
 param enableDiagnostics = true
+param logAnalyticsWorkspaceId = '/subscriptions/<subscription-id>/resourceGroups/rg-shared/providers/Microsoft.OperationalInsights/workspaces/log-myapp-shared'
+param sqlAdminPassword = getSecret('<subscription-id>', 'rg-shared', 'kv-secrets', 'sql-admin-password-production')
 param tags = {
   environment: 'production'
   team: 'engineering'
@@ -141,13 +148,11 @@ Deploy using a parameter file:
 # Deploy to dev using the dev parameter file
 az deployment group create \
   --resource-group "rg-myapp-dev" \
-  --template-file "main.bicep" \
   --parameters "parameters.dev.bicepparam"
 
 # Deploy to production using the production parameter file
 az deployment group create \
   --resource-group "rg-myapp-prod" \
-  --template-file "main.bicep" \
   --parameters "parameters.production.bicepparam"
 ```
 
@@ -174,6 +179,17 @@ The traditional JSON format is still widely used and supported:
         },
         "enableDiagnostics": {
             "value": true
+        },
+        "logAnalyticsWorkspaceId": {
+            "value": "/subscriptions/<subscription-id>/resourceGroups/rg-shared/providers/Microsoft.OperationalInsights/workspaces/log-myapp-shared"
+        },
+        "sqlAdminPassword": {
+            "reference": {
+                "keyVault": {
+                    "id": "/subscriptions/<subscription-id>/resourceGroups/rg-shared/providers/Microsoft.KeyVault/vaults/kv-secrets"
+                },
+                "secretName": "sql-admin-password-production"
+            }
         },
         "tags": {
             "value": {
@@ -232,6 +248,7 @@ param instanceCount int = 1
 
 param skuName string = 'B1'
 param enableDiagnostics bool = false
+param logAnalyticsWorkspaceId string = ''
 param tags object = {}
 
 @secure()
@@ -239,8 +256,8 @@ param sqlAdminPassword string
 
 // Determine SKU settings based on environment
 var sqlSkuName = environmentName == 'production' ? 'S2' : 'S0'
-var sqlBackupRetentionDays = environmentName == 'production' ? 35 : 7
 var resourcePrefix = '${appName}-${environmentName}'
+var diagnosticsEnabled = enableDiagnostics && !empty(logAnalyticsWorkspaceId)
 
 // App Service Plan - scales with environment
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
@@ -267,7 +284,7 @@ resource webApp 'Microsoft.Web/sites@2023-01-01' = {
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|8.0'
       minTlsVersion: '1.2'
-      alwaysOn: skuName != 'B1'  // AlwaysOn not supported on Basic tier
+      alwaysOn: skuName != 'F1' && skuName != 'D1'  // Always On isn't available on Free or Shared tiers
     }
   }
   identity: {
@@ -301,19 +318,16 @@ resource sqlDb 'Microsoft.Sql/servers/databases@2023-05-01-preview' = {
   }
 }
 
-// Diagnostic settings - only deployed when enabled
-resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableDiagnostics) {
+// Diagnostic settings - only deployed when enabled and a destination is provided
+resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (diagnosticsEnabled) {
   name: 'diag-${resourcePrefix}'
   scope: webApp
   properties: {
+    workspaceId: logAnalyticsWorkspaceId
     logs: [
       {
         category: 'AppServiceHTTPLogs'
         enabled: true
-        retentionPolicy: {
-          days: sqlBackupRetentionDays
-          enabled: true
-        }
       }
     ]
   }
@@ -365,7 +379,6 @@ stages:
                     inlineScript: |
                       az deployment group create \
                         --resource-group "$(resourceGroup)" \
-                        --template-file "infra/main.bicep" \
                         --parameters "infra/parameters.${{ parameters.environment }}.bicepparam"
                   displayName: 'Deploy infrastructure'
 ```
