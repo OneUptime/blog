@@ -1,10 +1,10 @@
-# How to Use the google-cloud/secret-manager npm Package to Inject Secrets into a
+# How to Use the @google-cloud/secret-manager npm Package to Inject Secrets into a Cloud Function
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Secret Manager, Node.js, Cloud Function, Security, Google Cloud
 
-Description: Learn how to securely inject secrets from Google Cloud Secret Manager into Node.js Cloud Functions using the google-cloud/secret-manager npm package.
+Description: Learn how to securely inject secrets from Google Cloud Secret Manager into Node.js Cloud Functions using the @google-cloud/secret-manager npm package.
 
 ---
 
@@ -50,7 +50,7 @@ gcloud secrets list
 Your Cloud Function's service account needs the `secretmanager.secretAccessor` role.
 
 ```bash
-# Get the default compute service account
+# Get the default runtime service account if you did not deploy with a custom one
 PROJECT_NUMBER=$(gcloud projects describe your-project-id --format='value(projectNumber)')
 SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
@@ -84,7 +84,7 @@ const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 // Create the client outside the handler for reuse across invocations
 const secretClient = new SecretManagerServiceClient();
 
-const PROJECT_ID = process.env.GCP_PROJECT || 'your-project-id';
+const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || 'your-project-id';
 
 // Helper function to access a secret's latest version
 async function getSecret(secretName) {
@@ -121,7 +121,7 @@ Accessing Secret Manager on every function invocation adds latency and costs. Si
 const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 
 const secretClient = new SecretManagerServiceClient();
-const PROJECT_ID = process.env.GCP_PROJECT || 'your-project-id';
+const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || 'your-project-id';
 
 // Cache object to store loaded secrets
 let secretsCache = null;
