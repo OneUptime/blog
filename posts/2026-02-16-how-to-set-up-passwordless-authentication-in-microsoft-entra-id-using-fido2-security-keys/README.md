@@ -20,23 +20,23 @@ FIDO2 is a set of standards developed by the FIDO Alliance and the W3C. It consi
 - **Privacy-preserving:** No shared secrets are stored on the server. The server only stores a public key.
 - **Hardware-backed:** The private key lives on the physical security key and cannot be extracted.
 
-Popular FIDO2 security keys include YubiKey 5 series, Feitian BioPass, and Google Titan keys. Microsoft also supports their own security keys from partners like AuthenTrend.
+Popular FIDO2 security keys include YubiKey 5 series, Feitian BioPass, and Google Titan keys. Microsoft also lists compatible security keys from vendors such as AuthenTrend.
 
 ## Prerequisites
 
 Before you start configuring, make sure you have:
 
-- Microsoft Entra ID P1 or P2 license (or Microsoft 365 E3/E5)
+- A Microsoft Entra ID tenant. Passkeys (FIDO2) are available in all Microsoft Entra ID editions.
 - Global Administrator or Authentication Policy Administrator role
 - Compatible FIDO2 security keys (check the Microsoft compatibility list)
 - Users with modern browsers (Edge, Chrome, Firefox on Windows 10/11 or macOS)
-- Combined security information registration enabled in your tenant
+- Users who can complete multifactor authentication during registration, or who can be issued a Temporary Access Pass for initial registration
 
 ## Step 1: Enable FIDO2 as an Authentication Method
 
-Go to the Microsoft Entra admin center (entra.microsoft.com). Navigate to Protection, then Authentication methods, then Policies.
+Go to the Microsoft Entra admin center (entra.microsoft.com). Navigate to Entra ID, then Protection, then Authentication methods, then Policies.
 
-Find "FIDO2 Security Key" in the list of methods and click on it. Toggle it to "Enabled."
+Find "Passkey (FIDO2)" in the list of methods and click on it. Toggle it to "Enabled."
 
 You have two targeting options:
 
@@ -49,9 +49,9 @@ Under the "Configure" tab, you will find additional settings:
 
 **Allow self-service setup:** Enable this so users can register their own keys through the My Security Info portal.
 
-**Enforce attestation:** When enabled, Entra ID verifies that the security key is from a trusted manufacturer. Enable this in production to prevent users from registering software-based authenticators that claim to be FIDO2 keys.
+**Enforce attestation:** When enabled on a passkey profile, Entra ID verifies that the security key is from a trusted manufacturer during registration. Enable this in production for device-bound security-key profiles when you need assurance about the authenticator make and model.
 
-**Key restriction policy:** This is where you can restrict which specific key models are allowed. You configure this using AAGUIDs (a unique identifier for each key model).
+**Key restriction policy:** This is where you can restrict which specific key models are allowed. You configure this using AAGUIDs (a unique identifier for each key model) in the passkey profile.
 
 Here is how to configure the FIDO2 policy using Microsoft Graph PowerShell:
 
@@ -64,27 +64,37 @@ Connect-MgGraph -Scopes "Policy.ReadWrite.AuthenticationMethod"
 $fido2Config = Get-MgPolicyAuthenticationMethodPolicyAuthenticationMethodConfiguration `
     -AuthenticationMethodConfigurationId "fido2"
 
+$defaultProfileId = "00000000-0000-0000-0000-000000000001"
+
 # Update the FIDO2 configuration
-# Enable for a specific group, enforce attestation, allow self-service
+# Enable for a specific group, enforce attestation in the passkey profile, allow self-service
 $params = @{
     "@odata.type" = "#microsoft.graph.fido2AuthenticationMethodConfiguration"
     State = "enabled"
+    IsSelfServiceRegistrationAllowed = $true
     # Target a specific group for phased rollout
     IncludeTargets = @(
         @{
             TargetType = "group"
             Id = "your-security-group-id"
             IsRegistrationRequired = $false
+            AllowedPasskeyProfiles = @($defaultProfileId)
         }
     )
-    # Enforce manufacturer attestation for security
-    IsAttestationEnforced = $true
-    IsSelfServiceRegistrationAllowed = $true
-    KeyRestrictions = @{
-        IsEnforced = $false
-        EnforcementType = "block"
-        AaGuids = @()
-    }
+    ExcludeTargets = @()
+    PasskeyProfiles = @(
+        @{
+            Id = $defaultProfileId
+            Name = "Default passkey profile"
+            PasskeyTypes = "deviceBound"
+            AttestationEnforcement = "registrationOnly"
+            KeyRestrictions = @{
+                IsEnforced = $false
+                EnforcementType = "allow"
+                AaGuids = @()
+            }
+        }
+    )
 }
 
 Update-MgPolicyAuthenticationMethodPolicyAuthenticationMethodConfiguration `
@@ -96,7 +106,7 @@ Update-MgPolicyAuthenticationMethodPolicyAuthenticationMethodConfiguration `
 
 If your organization has standardized on a specific security key model, you should restrict registration to only those keys. This prevents users from buying random keys that might not meet your security requirements.
 
-Find the AAGUID for your approved keys. For example, YubiKey 5 NFC has AAGUID `cb69481e-8ff7-4039-93ec-0a2729a154a8`. You can find AAGUIDs in the FIDO Alliance Metadata Service or from the key manufacturer.
+Find the AAGUID for your approved keys. For example, one YubiKey 5 Series with NFC AAGUID listed by Microsoft is `2fc0579f-8113-47ea-b116-bb5a8db9202a`. The exact value depends on the model, firmware, and profile, so check the Microsoft attestation list, the FIDO Alliance Metadata Service, or the key manufacturer.
 
 In the FIDO2 configuration, set key restrictions:
 
@@ -111,11 +121,11 @@ Walk your pilot users through these steps:
 
 1. Sign in to mysignins.microsoft.com/security-info
 2. Click "Add sign-in method"
-3. Select "Security key" from the dropdown
-4. Choose "USB device" or "NFC device" depending on the key type
-5. Insert the security key when prompted
-6. Touch the key when it blinks (this confirms physical presence)
-7. Create a PIN for the security key if prompted (this is the key's local PIN, not related to Windows Hello)
+3. Select "Passkey" from the dropdown
+4. Choose to save the passkey on a security key when prompted
+5. Insert or connect the security key when prompted
+6. Create or enter the PIN for the security key if prompted (this is the key's local PIN, not related to Windows Hello)
+7. Touch the key when it blinks or perform the required key gesture
 8. Give the key a friendly name like "YubiKey - Office Desk"
 
 The enrollment process creates a credential pair. The private key stays on the security key, and the public key is stored in Entra ID. The user can register multiple keys for redundancy.
@@ -146,7 +156,7 @@ Cloud apps: Microsoft Azure Management, Microsoft 365 admin center
 Grant: Require authentication strength - Phishing-resistant MFA
 ```
 
-The "Phishing-resistant MFA" built-in authentication strength includes FIDO2 security keys and Windows Hello for Business. This means users cannot satisfy this policy with a phone call, SMS, or even the Authenticator app push notification - they need a FIDO2 key or Windows Hello.
+The "Phishing-resistant MFA" built-in authentication strength includes FIDO2 security keys, Windows Hello for Business or platform credentials, and multifactor certificate-based authentication. This means users cannot satisfy this policy with a phone call, SMS, or even the Authenticator app push notification - they need one of the phishing-resistant methods included in the authentication strength.
 
 ## Handling Lost or Stolen Keys
 
@@ -190,7 +200,7 @@ Rolling out FIDO2 across a large organization takes planning. Here is a phased a
 3. **Phase 3 - General rollout:** Expand to all users, department by department.
 4. **Phase 4 - Enforcement:** Create Conditional Access policies that require phishing-resistant MFA, gradually reducing reliance on weaker methods.
 
-Throughout this process, keep password authentication available as a fallback. Only disable it after you are confident that all users have working FIDO2 keys and a backup method.
+Throughout this process, keep password-based sign-in paths available as a fallback. Only enforce passwordless-only access after you are confident that all users have working FIDO2 keys and a backup method.
 
 ## Summary
 
