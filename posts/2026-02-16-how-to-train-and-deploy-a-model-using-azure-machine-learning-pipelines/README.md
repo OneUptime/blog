@@ -206,7 +206,7 @@ prep_component = command(
     command="python prep_data.py --input_data ${{inputs.input_data}} "
             "--train_data ${{outputs.train_data}} --test_data ${{outputs.test_data}} "
             "--test_size ${{inputs.test_size}}",
-    environment="azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:1"
+    environment="azureml://registries/azureml/environments/sklearn-1.5-ubuntu20.04-py310-cpu/labels/latest"
 )
 
 # Define the training component
@@ -227,7 +227,7 @@ train_component = command(
             "--model_output ${{outputs.model_output}} "
             "--n_estimators ${{inputs.n_estimators}} "
             "--learning_rate ${{inputs.learning_rate}}",
-    environment="azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:1"
+    environment="azureml://registries/azureml/environments/sklearn-1.5-ubuntu20.04-py310-cpu/labels/latest"
 )
 
 # Define the evaluation component
@@ -246,7 +246,7 @@ eval_component = command(
     command="python evaluate_model.py --model_input ${{inputs.model_input}} "
             "--test_data ${{inputs.test_data}} "
             "--evaluation_output ${{outputs.evaluation_output}}",
-    environment="azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:1"
+    environment="azureml://registries/azureml/environments/sklearn-1.5-ubuntu20.04-py310-cpu/labels/latest"
 )
 ```
 
@@ -258,7 +258,7 @@ Use the `@dsl.pipeline` decorator to connect the components:
 @dsl.pipeline(
     name="training_pipeline",
     description="End-to-end ML pipeline: prep, train, evaluate",
-    compute="cpu-cluster"  # Default compute for all steps
+    default_compute="cpu-cluster"  # Default compute for all steps
 )
 def training_pipeline(raw_data, test_size=0.2, n_estimators=100, learning_rate=0.1):
     """
@@ -316,10 +316,56 @@ The pipeline visualizes in Azure ML Studio as a directed graph showing each step
 
 ## Step 7: Deploy the Model
 
-After training, register and deploy the model as a real-time endpoint:
+After training, create a scoring script, register the model, and deploy it as a real-time endpoint.
+
+Create `deployment/score.py`:
 
 ```python
-from azure.ai.ml.entities import Model, ManagedOnlineEndpoint, ManagedOnlineDeployment
+import json
+import os
+
+import joblib
+import numpy as np
+
+
+def init():
+    global model
+    model_path = os.path.join(os.getenv("AZUREML_MODEL_DIR"), "model.pkl")
+    model = joblib.load(model_path)
+
+
+def run(raw_data):
+    data = json.loads(raw_data)["data"]
+    predictions = model.predict(np.array(data))
+    return predictions.tolist()
+```
+
+Create `env/conda.yml` for the deployment environment:
+
+```yaml
+name: sklearn-inference
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy
+  - scikit-learn=1.5.*
+  - joblib
+  - pip
+  - pip:
+      - azureml-inference-server-http
+```
+
+Then deploy:
+
+```python
+from azure.ai.ml.entities import (
+    CodeConfiguration,
+    Environment,
+    ManagedOnlineDeployment,
+    ManagedOnlineEndpoint,
+    Model,
+)
 
 # Register the model from the pipeline output
 model = Model(
@@ -333,21 +379,36 @@ registered_model = ml_client.models.create_or_update(model)
 # Create an endpoint
 endpoint = ManagedOnlineEndpoint(
     name="my-classifier-endpoint",
-    description="Real-time prediction endpoint"
+    description="Real-time prediction endpoint",
+    auth_mode="key"
 )
 ml_client.online_endpoints.begin_create_or_update(endpoint).result()
 
 # Deploy the model to the endpoint
+env = Environment(
+    conda_file="./env/conda.yml",
+    image="mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest"
+)
+
 deployment = ManagedOnlineDeployment(
     name="blue",
     endpoint_name="my-classifier-endpoint",
     model=registered_model.id,
+    environment=env,
+    code_configuration=CodeConfiguration(
+        code="./deployment/",
+        scoring_script="score.py"
+    ),
     instance_type="Standard_DS3_v2",
     instance_count=1
 )
 ml_client.online_deployments.begin_create_or_update(deployment).result()
+
+# Send all endpoint traffic to the blue deployment
+endpoint.traffic = {"blue": 100}
+ml_client.online_endpoints.begin_create_or_update(endpoint).result()
 ```
 
 ## Wrapping Up
 
-Azure ML pipelines bring structure and reproducibility to your ML workflows. Each component is versioned, each run is tracked, and the data lineage is maintained automatically. Start by converting your notebook cells into individual component scripts, connect them with the pipeline DSL, and then iterate. Once you have a working pipeline, you can schedule it, trigger it from CI/CD, or integrate it into a larger MLOps workflow. The upfront investment in building a pipeline pays off quickly when you need to retrain models on new data or hand off your workflow to another team member.
+Azure ML pipelines bring structure and reproducibility to your ML workflows. Components can be versioned, each run is tracked, and the data lineage is maintained automatically. Start by converting your notebook cells into individual component scripts, connect them with the pipeline DSL, and then iterate. Once you have a working pipeline, you can schedule it, trigger it from CI/CD, or integrate it into a larger MLOps workflow. The upfront investment in building a pipeline pays off quickly when you need to retrain models on new data or hand off your workflow to another team member.
