@@ -14,7 +14,7 @@ Azure Network Watcher is a suite of diagnostic tools designed to help you figure
 
 ## Enabling Network Watcher
 
-Network Watcher needs to be enabled for the region where your VMs run. It is usually enabled automatically, but verify.
+Network Watcher needs to be enabled for the region where your VMs run. It is enabled automatically when you create or update a virtual network, unless you previously opted out, but verify.
 
 ```bash
 # Check if Network Watcher is enabled in your region
@@ -105,7 +105,7 @@ az network watcher test-connectivity \
   --source-resource my-app-vm \
   --dest-address api.example.com \
   --dest-port 443 \
-  --protocol TCP
+  --protocol Tcp
 ```
 
 The output includes:
@@ -122,26 +122,23 @@ az network watcher test-connectivity \
   --source-resource my-app-vm \
   --dest-resource my-db-vm \
   --dest-port 5432 \
-  --protocol TCP
+  --protocol Tcp
 ```
 
 This is the single most useful command when debugging "cannot connect" issues. It combines routing analysis, NSG evaluation, and actual connectivity testing.
 
-## Tool 4: NSG Flow Logs
+## Tool 4: Virtual Network Flow Logs
 
-NSG Flow Logs record all traffic flowing through a Network Security Group. They show whether traffic was allowed or denied, and include source/destination IPs, ports, and protocols.
+NSG Flow Logs are being retired and cannot be created after June 30, 2025. Use Virtual Network Flow Logs for new deployments. They record IP traffic flowing through a virtual network and show whether traffic was allowed or denied, including source/destination IPs, ports, and protocols.
 
 ```bash
-# Enable NSG flow logs
+# Enable virtual network flow logs
 az network watcher flow-log create \
+  --location eastus \
   --resource-group prod-rg \
-  --name my-nsg-flow-log \
-  --nsg my-nsg \
+  --name my-vnet-flow-log \
+  --vnet my-vnet \
   --storage-account mystorageaccount \
-  --enabled true \
-  --format JSON \
-  --log-version 2 \
-  --retention 30 \
   --traffic-analytics true \
   --workspace "/subscriptions/<sub-id>/resourceGroups/monitoring-rg/providers/Microsoft.OperationalInsights/workspaces/my-workspace"
 ```
@@ -154,19 +151,19 @@ With Traffic Analytics enabled, query the data in Log Analytics:
 
 ```kql
 // Find denied traffic flows in the last hour
-AzureNetworkAnalytics_CL
+NTANetAnalytics
 | where TimeGenerated > ago(1h)
-| where FlowStatus_s == "D"  // Denied
-| project TimeGenerated, SrcIP_s, DestIP_s, DestPort_d, L7Protocol_s, NSGRule_s
+| where FlowStatus == "D"  // Denied
+| project TimeGenerated, SrcIp, DestIp, DestPort, L7Protocol, AclRule
 | order by TimeGenerated desc
 ```
 
 ```kql
 // Find top talkers by traffic volume
-AzureNetworkAnalytics_CL
+NTANetAnalytics
 | where TimeGenerated > ago(1h)
-| where FlowStatus_s == "A"  // Allowed
-| summarize TotalBytes = sum(InboundBytes_d + OutboundBytes_d) by SrcIP_s, DestIP_s
+| where FlowStatus == "A"  // Allowed
+| summarize TotalBytes = sum(BytesDestToSrc + BytesSrcToDest) by SrcIp, DestIp
 | top 10 by TotalBytes
 ```
 
@@ -233,7 +230,8 @@ For VPN connectivity issues, Network Watcher can run diagnostics on VPN gateways
 # Troubleshoot a VPN gateway
 az network watcher troubleshooting start \
   --resource-group prod-rg \
-  --resource "/subscriptions/<sub-id>/resourceGroups/prod-rg/providers/Microsoft.Network/virtualNetworkGateways/my-vpn-gateway" \
+  --resource my-vpn-gateway \
+  --resource-type vnetGateway \
   --storage-account mystorageaccount \
   --storage-path "https://mystorageaccount.blob.core.windows.net/troubleshoot"
 ```
@@ -272,6 +270,6 @@ Set up continuous monitoring with these Network Watcher features:
 
 - **Connection Monitor**: Continuously tests connectivity between sources and destinations, alerting on failures
 - **Traffic Analytics**: Provides insights into traffic patterns, security threats, and bandwidth utilization
-- **NSG Flow Logs**: Historical record of all network flows for audit and troubleshooting
+- **Virtual Network Flow Logs**: Historical record of network flows for audit and troubleshooting
 
 Azure Network Watcher transforms network debugging from guesswork into a structured process. Learn these tools and you will solve connectivity problems in minutes instead of hours.
