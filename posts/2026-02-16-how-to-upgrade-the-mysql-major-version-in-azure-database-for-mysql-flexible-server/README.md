@@ -8,7 +8,7 @@ Description: A practical guide to upgrading from MySQL 5.7 to 8.0 on Azure Datab
 
 ---
 
-MySQL 5.7 is approaching end of life, and Azure Database for MySQL Flexible Server supports both 5.7 and 8.0. If you are still on 5.7, it is time to plan your upgrade. MySQL 8.0 brings significant improvements - better performance, window functions, common table expressions, improved JSON support, and enhanced security features. But a major version upgrade is not something you do casually. Queries that worked fine on 5.7 might behave differently on 8.0, and some deprecated features have been removed entirely.
+MySQL 5.7 community support has ended, and Azure Database for MySQL Flexible Server supports both 5.7 and 8.0. If you are still on 5.7, it is time to plan your upgrade before Azure standard support ends. MySQL 8.0 brings significant improvements - better performance, window functions, common table expressions, improved JSON support, and enhanced security features. But a major version upgrade is not something you do casually. Queries that worked fine on 5.7 might behave differently on 8.0, and some deprecated features have been removed entirely.
 
 This post covers the full upgrade process: assessing compatibility, testing, performing the upgrade, and handling the things that inevitably go sideways.
 
@@ -18,7 +18,7 @@ Before upgrading, understand what changed. Here are the most impactful differenc
 
 ### SQL Changes
 - The default character set changed from `latin1` to `utf8mb4`.
-- The default collation changed from `utf8mb4_general_ci` to `utf8mb4_0900_ai_ci`.
+- The default server collation changed from `latin1_swedish_ci` to `utf8mb4_0900_ai_ci`.
 - `GROUP BY` no longer implicitly sorts results. If your application relies on sorted GROUP BY output, you need to add an explicit `ORDER BY`.
 - `ASC` and `DESC` designators for `GROUP BY` columns are removed.
 - Reserved words list has expanded (e.g., `RANK`, `ROW_NUMBER`, `GROUPS`).
@@ -122,10 +122,10 @@ az mysql flexible-server restore \
 
 ```bash
 # Upgrade the test server to MySQL 8.0
-az mysql flexible-server update \
+az mysql flexible-server upgrade \
   --resource-group myResourceGroup \
   --name my-mysql-upgrade-test \
-  --version 8.0.21
+  --version 8
 ```
 
 ### Validate on the Test Server
@@ -174,10 +174,10 @@ The upgrade causes downtime. Schedule it during your lowest traffic period:
 
 ```bash
 # Perform the major version upgrade
-az mysql flexible-server update \
+az mysql flexible-server upgrade \
   --resource-group myResourceGroup \
   --name my-mysql-production \
-  --version 8.0.21
+  --version 8
 ```
 
 The upgrade typically takes 5-30 minutes depending on the database size and complexity. During this time, the server is unavailable.
@@ -206,7 +206,7 @@ Connect to MySQL and run post-upgrade tasks:
 -- Run mysql_upgrade equivalent checks
 -- Azure handles this automatically, but verify key tables
 
--- Check for any warnings or errors in the error log
+-- Check for warnings after individual validation statements
 SHOW WARNINGS;
 
 -- Verify the authentication plugin for your users
@@ -243,7 +243,7 @@ az mysql flexible-server parameter set \
 If the upgrade goes wrong, your options are:
 
 1. **Point-in-time restore**: Restore to a point just before the upgrade. This creates a new server on MySQL 5.7 with your pre-upgrade data.
-2. **Read replica promotion**: If you had a read replica that was not upgraded, promote it.
+2. **On-demand backup restore**: Restore the on-demand backup you took before the upgrade. Backups taken before a major version upgrade restore to a server with the previous version.
 
 You cannot downgrade a server in place. The only rollback path is restoring from backup.
 
@@ -261,16 +261,16 @@ az mysql flexible-server restore \
 If your server has read replicas:
 
 - Replicas are NOT automatically upgraded when you upgrade the primary.
-- You must upgrade replicas separately after upgrading the primary.
-- The primary must be upgraded before the replicas.
-- During the primary upgrade, replication will break temporarily and resume after the replica is also upgraded.
+- You must upgrade replicas separately before upgrading the primary.
+- Replicas running an older MySQL major version should be upgraded first so replication remains compatible.
+- After replicas are upgraded and validated, upgrade the primary.
 
 ```bash
-# After upgrading the primary, upgrade each replica
-az mysql flexible-server update \
+# Upgrade each replica first
+az mysql flexible-server upgrade \
   --resource-group myResourceGroup \
   --name my-mysql-replica-1 \
-  --version 8.0.21
+  --version 8
 ```
 
 ## Taking Advantage of MySQL 8.0 Features
@@ -295,7 +295,8 @@ SELECT
 FROM employees;
 
 -- JSON improvements
-SELECT JSON_TABLE(
+SELECT *
+FROM JSON_TABLE(
     '[{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}]',
     '$[*]' COLUMNS (
         name VARCHAR(50) PATH '$.name',
@@ -306,4 +307,4 @@ SELECT JSON_TABLE(
 
 ## Summary
 
-Upgrading from MySQL 5.7 to 8.0 on Azure Database for MySQL Flexible Server is a planned operation that requires preparation but is well worth it. The pre-upgrade assessment catches compatibility issues before they become production problems. Always test on a copy of your production data first. Plan for the downtime window, have a rollback strategy ready, and upgrade replicas after the primary. Once you are on 8.0, take advantage of the new features - CTEs, window functions, and improved performance will make your life easier.
+Upgrading from MySQL 5.7 to 8.0 on Azure Database for MySQL Flexible Server is a planned operation that requires preparation but is well worth it. The pre-upgrade assessment catches compatibility issues before they become production problems. Always test on a copy of your production data first. Plan for the downtime window, have a rollback strategy ready, and upgrade replicas before the primary. Once you are on 8.0, take advantage of the new features - CTEs, window functions, and improved performance will make your life easier.
