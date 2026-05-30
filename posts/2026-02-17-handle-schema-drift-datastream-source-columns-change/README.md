@@ -39,9 +39,12 @@ SELECT
   COUNT(*) AS total_rows,
   COUNTIF(column_value IS NOT NULL) AS non_null_rows
 FROM (
-  SELECT *
+  SELECT
+    CAST(order_status AS STRING) AS order_status,
+    CAST(customer_id AS STRING) AS customer_id,
+    CAST(total_amount AS STRING) AS total_amount
   FROM `my-project.replicated.orders`
-  WHERE datastream_metadata.source_timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
+  WHERE TIMESTAMP_MILLIS(datastream_metadata.source_timestamp) > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 )
 UNPIVOT(column_value FOR column_name IN (
   order_status, customer_id, total_amount
@@ -74,7 +77,6 @@ Create a Cloud Function that runs on a schedule to detect schema drift and send 
 ```python
 import json
 from google.cloud import bigquery
-from google.cloud import monitoring_v3
 
 def check_schema_drift(request):
     """Compare source and destination schemas to detect drift."""
@@ -98,8 +100,8 @@ def check_schema_drift(request):
     added = set(bq_columns.keys()) - set(expected_columns.keys())
     removed = set(expected_columns.keys()) - set(bq_columns.keys())
 
-    # Filter out Datastream metadata columns
-    metadata_cols = {"datastream_metadata", "_metadata_deleted", "_metadata_change_type"}
+    # Filter out Datastream's BigQuery metadata column
+    metadata_cols = {"datastream_metadata"}
     added = added - metadata_cols
 
     if added or removed:
@@ -125,7 +127,7 @@ If the new column has a NOT NULL constraint with a default value in the source, 
 UPDATE `my-project.replicated.orders`
 SET priority_level = 'normal'
 WHERE priority_level IS NULL
-  AND datastream_metadata.source_timestamp < TIMESTAMP('2026-02-15 00:00:00 UTC')
+  AND TIMESTAMP_MILLIS(datastream_metadata.source_timestamp) < TIMESTAMP('2026-02-15 00:00:00 UTC')
 ```
 
 ## Handling Dropped Columns
@@ -143,8 +145,7 @@ SELECT
   total_amount,
   order_status,
   created_at,
-  datastream_metadata,
-  _metadata_deleted
+  datastream_metadata
 FROM `my-project.replicated.orders`;
 
 -- Option 2: Use a view to hide dropped columns
@@ -155,8 +156,7 @@ SELECT
   total_amount,
   order_status,
   created_at
-FROM `my-project.replicated.orders`
-WHERE _metadata_deleted IS NOT TRUE;
+FROM `my-project.replicated.orders`;
 ```
 
 ## Handling Data Type Changes
@@ -184,8 +184,7 @@ SELECT
   SAFE_CAST(total_amount AS NUMERIC) AS total_amount,
   CAST(order_status AS STRING) AS order_status,
   created_at
-FROM `my-project.staging.orders`
-WHERE _metadata_deleted IS NOT TRUE;
+FROM `my-project.staging.orders`;
 ```
 
 The `SAFE_CAST` function returns NULL instead of failing when a cast is not possible, which prevents your pipeline from breaking on type mismatches.
@@ -213,10 +212,10 @@ gcloud datastream streams describe my-stream \
   --location=us-central1 \
   --format="yaml(state, errors)"
 
-# If the stream is in ERROR state, check the specific error
+# If the stream is in FAILED state, check the specific error
 gcloud datastream streams list \
   --location=us-central1 \
-  --filter="state=ERROR"
+  --filter="state=FAILED"
 ```
 
 In most cases, you can fix the BigQuery schema to match the new source schema and resume the stream:
@@ -225,7 +224,8 @@ In most cases, you can fix the BigQuery schema to match the new source schema an
 # Resume a paused or errored stream after fixing the schema
 gcloud datastream streams update my-stream \
   --location=us-central1 \
-  --state=RUNNING
+  --state=RUNNING \
+  --update-mask=state
 ```
 
 If the stream cannot recover, you may need to create a new stream with a fresh backfill. This is the nuclear option, but sometimes it is the fastest path forward.
