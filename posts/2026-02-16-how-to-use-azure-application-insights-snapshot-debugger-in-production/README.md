@@ -10,29 +10,30 @@ Description: Learn how to enable and use Application Insights Snapshot Debugger 
 
 Production exceptions are frustrating. You get a stack trace in Application Insights that tells you an exception happened on line 47 of OrderService.cs, but you have no idea what the variable values were, what state the request was in, or what data triggered the bug. Reproducing the issue locally with different data and different timing rarely works.
 
-Application Insights Snapshot Debugger solves this by automatically capturing a minidump of your application state whenever an exception occurs. You can then open these snapshots in Visual Studio and inspect local variables, method parameters, and the full call stack - just like you would if you had a debugger attached at the moment the exception was thrown.
+Application Insights Snapshot Debugger solves this by automatically capturing a minidump of your application state for qualifying exceptions reported to Application Insights. You can then open these snapshots in Visual Studio and inspect local variables, method parameters, and the full call stack - just like you would if you had a debugger attached at the moment the exception was thrown.
 
 ## How Snapshot Debugger Works
 
-When you enable Snapshot Debugger, a lightweight collector runs alongside your application. It monitors for exceptions that match your configuration. When a qualifying exception occurs (by default, exceptions must occur at least 5 times before a snapshot is captured), the collector takes a minidump of the process.
+When you enable Snapshot Debugger, a lightweight collector runs alongside your application. It monitors exceptions reported to Application Insights. When a qualifying exception occurs (by default, the same exception must occur twice before a snapshot is created), the collector takes a minidump of the process.
 
 The snapshot is uploaded to your Application Insights resource where you can download and inspect it. The entire process is designed to be low-overhead and safe for production use.
 
 Important characteristics:
 
-- Snapshots are only captured after a threshold of repeated exceptions (to avoid capturing snapshots for transient issues)
-- Each snapshot collection adds roughly 10-30 milliseconds of latency to the request that triggered it
+- Snapshots are captured after a threshold of repeated exceptions and are rate-limited (to avoid capturing snapshots for transient issues)
+- Snapshot creation briefly pauses the thread that triggered the exception; Microsoft reports typical pauses around 0.3 seconds, with higher latency possible
 - Snapshots are stored for 15 days by default
-- Only .NET and .NET Core applications are supported
+- Snapshot collection supports .NET Framework 4.6.2 and later, and .NET 6.0 or later on Windows, in supported server environments
 
 ## Step 1: Enable Snapshot Debugger on App Service
 
-The easiest path is enabling it through the portal for an App Service application.
+The easiest path is enabling it through the portal for an App Service application running on a Windows service plan.
 
-1. Go to your Application Insights resource
-2. Click on Settings > Snapshot Debugger
-3. Toggle it to "On"
-4. Click Save
+1. Go to your App Service resource
+2. Click Monitoring > Application Insights
+3. Turn on Application Insights if it is not already enabled
+4. Under Instrument your application, select .NET
+5. Toggle the Snapshot Debugger options to "On"
 
 For more control, add the NuGet package to your project:
 
@@ -46,22 +47,25 @@ Then register it in your application:
 
 ```csharp
 // Program.cs - Register the Snapshot Collector
+using Microsoft.ApplicationInsights.SnapshotCollector;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add Application Insights with Snapshot Collector
+builder.Services.AddControllers();
 builder.Services.AddApplicationInsightsTelemetry();
 builder.Services.AddSnapshotCollector(config =>
 {
-    // Capture a snapshot after the same exception occurs 3 times
+    // Add the exception to the collection plan after repeated occurrences
     config.ThresholdForSnapshotting = 3;
 
-    // Maximum number of snapshots per day (to limit overhead)
+    // Maximum number of snapshots to collect for a single problem
     config.MaximumSnapshotsRequired = 5;
 
     // Time window for counting exception occurrences
-    config.ThresholdForSnapshotting = 3;
+    config.ProblemCounterResetInterval = TimeSpan.FromDays(1);
 
-    // Include PDB files for better symbol resolution
+    // Keep snapshot collection disabled while debugging locally
     config.IsEnabledInDeveloperMode = false;
 });
 
@@ -72,41 +76,50 @@ app.Run();
 
 ## Step 2: Configure Snapshot Collection Rules
 
-By default, Snapshot Debugger captures snapshots for all unhandled exceptions. You can customize this to focus on specific exceptions.
+By default, ASP.NET and ASP.NET Core applications report unhandled exceptions that escape a controller method or endpoint route handler. You can customize the collector's thresholds and rate limits to control how aggressively snapshots are captured.
 
 ```csharp
-// Configure which exceptions trigger snapshot collection
+// Configure how often snapshot collection is triggered
 builder.Services.AddSnapshotCollector(config =>
 {
-    // Only snapshot after the exception occurs 5 times in a 24-hour window
+    // Add the exception to the collection plan after repeated occurrences
     config.ThresholdForSnapshotting = 5;
 
-    // Maximum snapshots to collect per problem per day
+    // Maximum snapshots to collect for a single problem
     config.MaximumSnapshotsRequired = 3;
 
-    // Cool-down period between snapshots for the same exception
+    // Maximum number of problems to track at the same time
     config.MaximumCollectionPlanSize = 50;
 
-    // Snapshot upload timeout
+    // Run snapshot collection with low-priority I/O
     config.SnapshotInLowPriorityThread = true;
 
-    // Track specific exceptions only
-    config.IsEnabledWhenProfiling = true;
+    // Disable the processor after repeated failed snapshot requests
+    config.FailedRequestLimit = 3;
 });
 ```
 
-You can also configure exception filtering in appsettings.json:
+You can also configure the collector in appsettings.json. Bind the section before calling `AddSnapshotCollector()`:
+
+```csharp
+builder.Services.Configure<SnapshotCollectorConfiguration>(
+    builder.Configuration.GetSection("SnapshotCollector"));
+builder.Services.AddSnapshotCollector();
+```
 
 ```json
 {
   "SnapshotCollector": {
+    "IsEnabledInDeveloperMode": false,
     "ThresholdForSnapshotting": 3,
     "MaximumSnapshotsRequired": 5,
+    "MaximumCollectionPlanSize": 50,
     "SnapshotsPerTenMinutesLimit": 1,
     "SnapshotsPerDayLimit": 30,
-    "ProblemCounterResetInterval": "24:00:00",
+    "ProblemCounterResetInterval": "1.00:00:00",
+    "SnapshotInLowPriorityThread": true,
     "ProvideAnonymousTelemetry": true,
-    "IsEnabled": true
+    "FailedRequestLimit": 3
   }
 }
 ```
@@ -142,7 +155,7 @@ In Visual Studio, you can:
 
 - Inspect all local variables and object properties
 - Navigate the call stack and switch between threads
-- Evaluate expressions in the Immediate Window
+- Use debugger windows to inspect available state
 - View the state of collections and complex objects
 
 This is where Snapshot Debugger really shines. You are essentially doing a post-mortem debugging session with the exact state of your application at the moment the exception occurred.
@@ -203,9 +216,9 @@ You can create alerts that notify you when new snapshots are available, so you d
 // Query to find recent snapshot events
 AppExceptions
 | where TimeGenerated > ago(1h)
-| where Properties contains "SnapshotId"
-| project TimeGenerated, ExceptionType = Type, ExceptionMessage = Message,
-          OperationName, SnapshotId = tostring(Properties["SnapshotId"])
+| where isnotempty(tostring(Properties["ai.snapshot.id"]))
+| project TimeGenerated, ExceptionType, ExceptionMessage = Message,
+          OperationName, SnapshotId = tostring(Properties["ai.snapshot.id"])
 | order by TimeGenerated desc
 ```
 
@@ -222,27 +235,27 @@ Snapshots contain a dump of your application's memory at the time of the excepti
 Take these precautions:
 
 - **Restrict access**: Use RBAC to limit who can view and download snapshots. The "Application Insights Snapshot Debugger" role provides read access to snapshots.
-- **Data retention**: Set snapshot retention to the minimum period you need (default is 15 days)
+- **Data retention**: Plan around the default 15-day snapshot retention period, and request a change only if you need longer retention
 - **Review compliance**: If your application processes regulated data (healthcare, financial, PII), check whether capturing memory dumps complies with your data handling policies
 
 ## Performance Impact
 
 Snapshot Debugger is designed for production use, but it is not completely free:
 
-- **Memory**: The snapshot collector uses approximately 10-20 MB of additional memory
-- **CPU**: Snapshot collection causes a brief pause (10-30ms) on the thread that triggered the exception
-- **Disk I/O**: Snapshots are written to local temp storage before upload (typical size: 10-50 MB each)
-- **No impact when not collecting**: Between snapshots, the overhead is negligible
+- **Memory and CPU**: Snapshot Debugger adds small overhead when exceptions are thrown, when a snapshot is created, and when `TrackException` is called
+- **Pause time**: Snapshot creation briefly pauses the thread that triggered the exception while the process snapshot is created
+- **Disk I/O**: Snapshots are written to local temp storage before upload, and disk usage is roughly proportional to the application's working set
+- **Limited impact between snapshots**: Between snapshots, the default rate limits keep overhead low, but exception processing still has some overhead
 
-The throttling settings (snapshots per minute, per day) ensure the collector does not overwhelm your application even during an exception storm.
+The throttling settings (snapshots per ten minutes, per day) ensure the collector does not overwhelm your application even during an exception storm.
 
 ## Troubleshooting
 
 **No snapshots appearing**: Check that the exception has occurred at least as many times as your `ThresholdForSnapshotting` setting. Also verify that the Snapshot Collector is actually running - check the Application Insights logs for snapshot collector status messages.
 
-**"Snapshot collection not supported"**: This happens on unsupported platforms (Linux with .NET Framework, non-.NET languages). Ensure you are running .NET Core 2.0+ or .NET Framework 4.6+.
+**"Snapshot collection not supported"**: This happens on unsupported platforms (Linux with .NET Framework, non-.NET languages, or client applications such as WPF, Windows Forms, or UWP). Ensure you are running .NET Framework 4.6.2+ or .NET 6.0+ on Windows in a supported server environment.
 
-**Snapshots are too large to upload**: If your application uses a lot of memory, snapshots can be large. The collector has a default size limit. You can adjust it, but consider whether the large memory footprint itself is a problem worth investigating.
+**Snapshots are too large to upload**: If your application uses a lot of memory, snapshots can be large because the minidump size is related to the process working set. Consider whether the large memory footprint itself is a problem worth investigating.
 
 ## Summary
 
