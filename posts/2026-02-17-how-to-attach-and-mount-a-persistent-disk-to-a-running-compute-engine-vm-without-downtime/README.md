@@ -193,7 +193,7 @@ Note that Terraform handles the attach/detach but not the formatting and mountin
 
 ## Attaching a Disk in Read-Only Mode to Multiple VMs
 
-One interesting capability is that you can attach a persistent disk in read-only mode to up to 10 VMs simultaneously. This is useful for sharing reference data across instances.
+One interesting capability is that you can attach a persistent disk in read-only mode to multiple VMs simultaneously. This is useful for sharing reference data across instances. The exact limit depends on the disk type: for example, zonal or regional Balanced Persistent Disk volumes support up to 10 instances in read-only mode, while SSD Persistent Disk has a higher recommended maximum.
 
 ```bash
 # Attach a disk in read-only mode to a VM
