@@ -229,7 +229,7 @@ nsg_rules = [
 
 ## Handling Multiple Port Ranges
 
-Some rules need multiple destination ports. The NSG resource supports both `destination_port_range` (single port) and `destination_port_ranges` (multiple ports), but you can only use one. Dynamic blocks handle this with conditional logic.
+Some rules need multiple destination ports. The NSG resource supports both `destination_port_range` (single port) and `destination_port_ranges` (multiple ports), but you can only use one. You can model each rule so only one of those attributes is set, and Terraform treats `null` as though the argument were omitted.
 
 ```hcl
 locals {
@@ -360,7 +360,7 @@ Do not mix inline `security_rule` blocks with separate `azurerm_network_security
 
 Dynamic blocks make the plan output harder to read because Terraform shows them as indexed items. Use descriptive rule names so the plan output is still understandable.
 
-Consider using the `azurerm_network_security_rule` resource with `for_each` as an alternative to dynamic blocks. This approach creates each rule as its own Terraform resource, which means adding or removing a rule does not force a recreation of the entire NSG. For production environments where you want minimal blast radius on changes, this can be preferable.
+Consider using the `azurerm_network_security_rule` resource with `for_each` as an alternative to dynamic blocks. This approach creates each rule as its own Terraform resource instance, so Terraform can track rule additions, removals, and changes separately from the NSG resource. For production environments where you want clearer per-rule diffs and smaller Terraform state changes, this can be preferable.
 
 ## Conclusion
 
