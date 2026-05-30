@@ -14,7 +14,7 @@ GCP provides two approaches for accessing Secret Manager secrets from Cloud Func
 
 ## Approach 1: Built-in Secret References (Recommended)
 
-Cloud Functions (2nd gen) supports referencing Secret Manager secrets directly in the deployment configuration. The function runtime fetches the secret at startup and makes it available as an environment variable or a mounted file.
+Cloud Functions (2nd gen) supports referencing Secret Manager secrets directly in the deployment configuration. The function runtime fetches environment variable secrets at startup, and mounted file secrets are read from Secret Manager when the file is accessed.
 
 ### Prerequisites
 
@@ -69,13 +69,15 @@ def handler(request):
     db_password = os.environ.get("DB_PASSWORD")
 
     # Use the secrets in your application logic
-    charge = stripe.Charge.create(
+    payment_intent = stripe.PaymentIntent.create(
         amount=1000,
         currency="usd",
-        source=request.json.get("token"),
+        payment_method=request.json.get("payment_method"),
+        confirm=True,
+        payment_method_types=["card"],
     )
 
-    return {"status": "success", "charge_id": charge.id}
+    return {"status": "success", "payment_intent_id": payment_intent.id}
 ```
 
 ### Deploying with Secret Volume Mounts
@@ -257,30 +259,36 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 Use the **built-in secret references** when:
 - You want the simplest setup with minimal code
-- Your secrets do not change frequently during a function's lifetime
-- You are comfortable with secrets being fetched only at cold start
+- Your environment variable secrets do not change frequently during a function's lifetime
+- You are comfortable with environment variable secrets being fetched only at cold start
 
 Use the **client library** when:
 - You need to access different secrets based on runtime conditions
 - You want explicit error handling for secret access failures
 - You need to refresh secrets without redeploying the function
-- You are accessing secrets from a different project
+- You need to choose secrets or projects dynamically at runtime
 
 ## Cold Start Impact
 
-With built-in secret references, the secret fetch happens during cold start before your function code runs. This adds latency to cold starts - typically 50-200ms per secret. For functions with many secrets, this can be noticeable.
+With built-in secret references exposed as environment variables, the secret fetch happens during instance startup before your function code runs. This can add latency to cold starts. Mounted secret volumes are different: the secret value is fetched when your code reads the file.
 
 With the client library, you control when secrets are fetched. You can fetch them lazily on first use, which means the cold start only pays the cost for secrets actually needed by the first request.
 
 ## Updating Secrets
 
-When you add a new version to a secret, existing warm function instances keep the old value. New instances (from cold starts or scaling) get the new value. If you need all instances to pick up a new secret immediately, redeploy the function:
+When you add a new version to a secret used as an environment variable, existing warm function instances keep the old value. New instances (from cold starts or scaling) get the new value. If you need all instances to pick up a new environment variable secret immediately, redeploy the function using the same deployment settings:
 
 ```bash
 # Force a new deployment to pick up updated secrets
 gcloud functions deploy process-payment \
   --gen2 \
+  --runtime=python311 \
   --region=us-central1 \
+  --source=./function-source/ \
+  --entry-point=handler \
+  --trigger-http \
+  --set-secrets="STRIPE_KEY=stripe-api-key:latest,DB_PASSWORD=db-password:latest" \
+  --service-account=my-sa@my-project-id.iam.gserviceaccount.com \
   --project=my-project-id
 ```
 
