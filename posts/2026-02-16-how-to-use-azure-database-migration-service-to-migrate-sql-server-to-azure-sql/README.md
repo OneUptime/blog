@@ -8,48 +8,46 @@ Description: A complete walkthrough of using Azure Database Migration Service to
 
 ---
 
-Migrating a SQL Server database to Azure SQL Database is one of the most common cloud migration scenarios. Azure Database Migration Service (DMS) makes this process manageable by handling the heavy lifting of data transfer, schema migration, and even continuous sync for online migrations. This guide walks through the end-to-end process of using DMS to move your SQL Server database to Azure SQL.
+Migrating a SQL Server database to Azure SQL Database is one of the most common cloud migration scenarios. Azure Database Migration Service (DMS) makes this process manageable by handling the heavy lifting of data transfer and, in current portal workflows, schema migration. This guide walks through the end-to-end process of using DMS to move your SQL Server database to Azure SQL.
 
 ## What Is Azure Database Migration Service?
 
-Azure Database Migration Service is a fully managed service designed to enable seamless migrations from multiple database sources to Azure data platforms. For SQL Server to Azure SQL migrations, it supports:
+Azure Database Migration Service is a fully managed service designed to enable seamless migrations from multiple database sources to Azure data platforms. For SQL Server to Azure SQL Database migrations, it supports:
 
-- **Offline migrations**: The source database is unavailable for writes during the migration. Simpler to set up, but requires a maintenance window.
-- **Online migrations**: The source database remains available during migration. DMS continuously syncs changes until you cut over. Requires the Premium tier of DMS.
+- **Offline migrations**: Application downtime starts when the migration starts. Simpler to set up, but requires a maintenance window.
 
-This guide covers both, but focuses primarily on offline migration since it is more common for smaller databases.
+Currently, online migrations for Azure SQL Database targets are not available with DMS. This guide focuses on offline migration.
 
 ## Prerequisites
 
 Before starting the migration, make sure you have:
 
-- A source SQL Server (2005 or later, on-premises or in a VM)
+- A source SQL Server (2008 or later, on-premises or in a VM)
 - An Azure SQL Database target (already created)
 - Network connectivity between the source server and Azure (VPN, ExpressRoute, or public internet)
-- Azure Database Migration Service instance (Standard for offline, Premium for online)
-- SQL Server Management Studio (SSMS) or Azure Data Studio for schema pre-assessment
+- Azure Database Migration Service instance or permission to create one
+- SQL Server Management Studio (SSMS) 22 or Azure Migrate for pre-assessment
 - The source database backed up as a precaution
 
 ## Step 1: Assess Your Database for Compatibility
 
 Before migrating, check if your database is compatible with Azure SQL Database. Azure SQL does not support everything that on-premises SQL Server does (e.g., cross-database queries, CLR assemblies, some system stored procedures).
 
-Use the Data Migration Assistant (DMA) for this assessment:
+Use the migration component in SSMS 22 or Azure Migrate for this assessment. For SSMS:
 
-1. Download and install DMA from Microsoft's website.
-2. Create a new Assessment project.
-3. Select the source as SQL Server and the target as Azure SQL Database.
-4. Connect to your source SQL Server.
-5. Select the database to assess.
-6. Run the assessment.
+1. Download and install the latest SSMS.
+2. Connect to your source SQL Server.
+3. Right-click the SQL Server instance in Object Explorer and select "Migrate SQL Server".
+4. Run the database assessment.
+5. Review the Azure SQL Database readiness results.
 
-DMA will report compatibility issues, broken dependencies, and feature parity gaps. Address any blocking issues before proceeding with the migration.
+The assessment will report compatibility issues, broken dependencies, and feature parity gaps. Address any blocking issues before proceeding with the migration.
 
 Common issues to look for:
 - Cross-database queries (not supported in Azure SQL)
 - FILESTREAM usage (not supported)
 - SQL Server Agent jobs (need to be migrated to Azure Automation or Elastic Jobs)
-- Windows authentication (Azure SQL uses SQL auth or Azure AD auth)
+- Windows authentication (Azure SQL Database uses SQL authentication or Microsoft Entra authentication)
 
 ## Step 2: Create an Azure SQL Database Target
 
@@ -86,7 +84,7 @@ az sql server firewall-rule create \
 
 DMS migrates data, but it is best to migrate the schema separately so you can review and adjust it.
 
-Use DMA or SSMS to generate the schema script:
+Use SSMS to generate the schema script, or use sqlpackage to extract and publish a DACPAC:
 
 **Using SSMS:**
 1. Right-click the source database, select Tasks, then Generate Scripts.
@@ -117,12 +115,12 @@ sqlpackage /Action:Publish \
 ## Step 4: Create the Azure Database Migration Service Instance
 
 ```bash
-# Create a DMS instance (Standard tier for offline migrations)
+# Create a DMS instance
 az dms create \
   --name my-dms-instance \
   --resource-group rg-migration \
   --location eastus \
-  --sku-name Standard_1vCores \
+  --sku-name Basic_2vCores \
   --subnet "/subscriptions/<sub-id>/resourceGroups/rg-migration/providers/Microsoft.Network/virtualNetworks/vnet-migration/subnets/snet-dms"
 ```
 
@@ -135,6 +133,7 @@ The DMS instance needs to be in a VNet that can reach both the source SQL Server
 az dms project create \
   --name sql-to-azure-migration \
   --resource-group rg-migration \
+  --location eastus \
   --service-name my-dms-instance \
   --source-platform SQL \
   --target-platform SQLDB
@@ -147,7 +146,7 @@ This is where you define the source, target, and which tables to migrate.
 **Using the Azure Portal** (recommended for first-time setup):
 
 1. Navigate to your DMS instance in the Azure Portal.
-2. Click "New Migration Activity".
+2. Click "New migration".
 3. Select the migration project you created.
 4. Configure the source connection:
    - Server name: your on-premises SQL Server hostname or IP
@@ -160,8 +159,7 @@ This is where you define the source, target, and which tables to migrate.
    - Database name: MyAppDB
 6. Map source database to target database.
 7. Select the tables to migrate (or select all).
-8. Choose the migration type: Offline or Online.
-9. Start the migration.
+8. Start the offline migration.
 
 **Using Azure CLI for offline migration:**
 
@@ -190,8 +188,8 @@ az dms project task create \
   }' \
   --database-options-json '[{
     "name": "MyAppDB",
-    "targetDatabaseName": "MyAppDB",
-    "tableMap": {
+    "target_database_name": "MyAppDB",
+    "table_map": {
       "dbo.Customers": "dbo.Customers",
       "dbo.Orders": "dbo.Orders",
       "dbo.Products": "dbo.Products"
@@ -241,15 +239,14 @@ Also verify:
 - Stored procedures, views, and functions work correctly
 - Application connection strings point to the new Azure SQL Database
 
-## Step 9: Cut Over (for Online Migrations)
+## Step 9: Cut Over
 
-If you used an online migration, DMS continuously syncs changes from the source to the target. When you are ready to cut over:
+For an offline DMS migration, your application downtime starts when the migration starts. When the migration is complete:
 
-1. Stop all writes to the source database.
-2. Wait for DMS to sync the final changes (check the latency metric).
-3. Verify the target is fully caught up.
-4. Update your application connection string to point to Azure SQL.
-5. Complete the migration task in DMS.
+1. Keep writes stopped on the source database.
+2. Verify the target data and schema.
+3. Update your application connection string to point to Azure SQL.
+4. Resume the application against the target database.
 
 ## Post-Migration Tasks
 
@@ -257,10 +254,10 @@ After the migration is complete:
 
 - **Disable the DMS instance** to stop billing if you no longer need it.
 - **Configure Azure SQL firewalls** to restrict access appropriately.
-- **Set up monitoring** with Azure SQL Analytics or Azure Monitor.
+- **Set up monitoring** with Azure Monitor or database watcher.
 - **Review and tune performance** - Azure SQL might need different indexes or query patterns than on-premises SQL Server.
 - **Back up the source database** one final time as an archive.
 
 ## Wrapping Up
 
-Azure Database Migration Service streamlines the SQL Server to Azure SQL Database migration path. The key steps are: assess compatibility, migrate the schema, migrate the data with DMS, validate, and cut over. For small to medium databases, offline migration is the simplest approach. For large databases where downtime is not an option, use online migration with the Premium DMS tier. Either way, always run a compatibility assessment first and test the migration in a non-production environment before doing it for real.
+Azure Database Migration Service streamlines the SQL Server to Azure SQL Database migration path. The key steps are: assess compatibility, migrate the schema, migrate the data with DMS, validate, and cut over. For small to medium databases, offline migration is the simplest approach. For large databases where downtime is not an option, consider transactional replication or another continuous sync approach supported by Azure SQL Database. Either way, always run a compatibility assessment first and test the migration in a non-production environment before doing it for real.
