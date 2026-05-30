@@ -71,15 +71,15 @@ Not every column is a good candidate for clustering. Here is what I look for:
 
 **Columns used in aggregations**: GROUP BY columns benefit from clustering because BigQuery can read pre-sorted data more efficiently.
 
-Let me show you how to check which columns your queries filter on most often.
+Let me show you how to review recent query text and referenced tables so you can spot which columns your queries filter on most often.
 
 ```sql
--- Check which columns appear most in query filters
--- by looking at recent job metadata
+-- Review recent query text and referenced tables
 SELECT
   referenced_table.table_id,
   query
-FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT,
+  UNNEST(referenced_tables) AS referenced_table
 WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   AND state = 'DONE'
@@ -88,7 +88,7 @@ LIMIT 100;
 
 ## Adding Clustering to an Existing Table
 
-You cannot alter an existing table to add clustering directly. Instead, you create a new clustered table from the existing one using CTAS.
+You can update an existing table's clustering specification, but that does not automatically reorganize all existing rows. If you want a fully clustered copy right away, create a new clustered table from the existing one using CTAS.
 
 ```sql
 -- Create a clustered copy of an existing table
@@ -115,7 +115,7 @@ After verifying the new table, you can drop the old one and rename if needed.
 
 ## How Clustering Affects Query Performance
 
-Let me show a concrete example. Say you have a 500 GB orders table. Without clustering, a query filtering on region scans all 500 GB.
+Let me show a concrete example. Say you have a 500 GB orders table. Without clustering, a query filtering on region may still scan all relevant storage blocks for the columns used by the query.
 
 ```sql
 -- Without clustering: scans the entire table (or entire partition)
@@ -129,13 +129,13 @@ GROUP BY product_category
 ORDER BY total_revenue DESC;
 ```
 
-With clustering on `region`, BigQuery might only scan 50-100 GB depending on how many rows match. That is a 5-10x cost reduction on a single query.
+With clustering on `region`, BigQuery might only scan 50-100 GB of the referenced columns depending on how many rows match and how the data is distributed. That is a 5-10x cost reduction on a single query.
 
 ## Understanding Automatic Re-Clustering
 
 One nice thing about BigQuery clustering is that it is maintained automatically. When you insert, update, or stream data into a clustered table, BigQuery periodically re-clusters the data in the background. You do not need to trigger this manually, and there is no cost for the re-clustering operation itself.
 
-However, there is a gap between when data is inserted and when it gets re-clustered. During that gap, newly inserted data might not be as well organized. For most workloads, this is not a problem - but if you are streaming millions of rows per second, be aware that very recent data might not benefit from clustering until the next re-clustering pass.
+However, there is a gap between when data is inserted and when it gets re-clustered. During that gap, newly inserted data might not be as well organized. For most workloads, this is not a problem - but if you are streaming very high volumes of data, be aware that very recent data might not benefit from clustering until the next re-clustering pass.
 
 ## Verifying Clustering Benefits
 
