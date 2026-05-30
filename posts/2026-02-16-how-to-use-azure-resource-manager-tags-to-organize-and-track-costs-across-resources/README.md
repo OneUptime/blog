@@ -14,7 +14,7 @@ Azure Resource Manager tags solve this problem. Tags are simple key-value pairs 
 
 ## Understanding How Tags Work
 
-A tag consists of a name (key) and a value. For example, `Environment: Production` or `CostCenter: CC-1234`. Each resource can have up to 50 tags, each tag name is limited to 512 characters, and each tag value is limited to 256 characters. Tag names are case-insensitive for operations but case-preserving for display.
+A tag consists of a name (key) and a value. For example, `Environment: Production` or `CostCenter: CC-1234`. Each resource, resource group, and subscription can usually have up to 50 tags, each tag name is limited to 512 characters, and each tag value is limited to 256 characters. Some resource types have exceptions. For example, storage account tag names are limited to 128 characters. Tag names are case-insensitive for operations but case-preserving for display.
 
 One important thing to know: tags are not inherited. If you tag a resource group with `Environment: Production`, the resources inside that group do not automatically get that tag. You need to either apply tags explicitly to each resource or use Azure Policy to enforce inheritance (more on that later).
 
@@ -84,7 +84,10 @@ If PowerShell is more your style, here are the equivalent operations:
 $resource = Get-AzResource -Name "my-vm" -ResourceGroupName "my-rg"
 
 # Merge new tags with existing tags (preserves what is already there)
-$existingTags = $resource.Tags
+$existingTags = @{}
+if ($resource.Tags) {
+    $existingTags = @{} + $resource.Tags
+}
 $existingTags["Environment"] = "Production"
 $existingTags["CostCenter"] = "CC-1234"
 $existingTags["Team"] = "PlatformEng"
@@ -143,9 +146,9 @@ resource virtualMachine 'Microsoft.Compute/virtualMachines@2023-07-01' = {
 
 ## Enforcing Tags with Azure Policy
 
-Tags are only useful if they are applied consistently. Azure Policy lets you enforce tagging rules so that no one can create resources without the required tags.
+Tags are only useful if they are applied consistently. Azure Policy lets you enforce tagging rules so that no one can create taggable resources without the required tags.
 
-Here is a policy definition that requires the `Environment` tag on all resources:
+Here is a policy definition that requires the `Environment` tag on taggable resources:
 
 ```json
 {
@@ -228,20 +231,36 @@ Azure Policy also supports tag inheritance - automatically copying tags from the
 
 ## Using Tags for Cost Analysis
 
-The real payoff of a good tagging strategy is cost visibility. Azure Cost Management lets you filter, group, and analyze costs by any tag.
+The real payoff of a good tagging strategy is cost visibility. Azure Cost Management lets you filter, group, and analyze costs by tags for services that emit tags in cost data.
 
 In the Azure portal, navigate to Cost Management and click on Cost Analysis. You can group costs by tag and see a breakdown of spending. For example, grouping by the `Environment` tag shows you exactly how much production costs versus staging versus development.
 
-You can also export tagged cost data programmatically:
+You can also query tagged cost data programmatically:
 
 ```bash
-# Export cost data grouped by a tag for the current billing period
-az costmanagement query \
-  --type Usage \
-  --scope "subscriptions/YOUR_SUBSCRIPTION_ID" \
-  --timeframe MonthToDate \
-  --dataset-grouping name="Environment" type=TagKey \
-  --dataset-aggregation totalCost=Sum \
+# Query cost data grouped by a tag for the current billing period
+az rest \
+  --method post \
+  --url "https://management.azure.com/subscriptions/YOUR_SUBSCRIPTION_ID/providers/Microsoft.CostManagement/query?api-version=2025-03-01" \
+  --body '{
+    "type": "Usage",
+    "timeframe": "MonthToDate",
+    "dataset": {
+      "aggregation": {
+        "totalCost": {
+          "name": "PreTaxCost",
+          "function": "Sum"
+        }
+      },
+      "granularity": "None",
+      "grouping": [
+        {
+          "name": "Environment",
+          "type": "TagKey"
+        }
+      ]
+    }
+  }' \
   --output table
 ```
 
@@ -274,7 +293,7 @@ The `--is-incremental` flag merges new tags with existing ones instead of replac
 
 ## Tag-Based Access Control
 
-Tags can also drive access control through Azure RBAC. You can create role assignments that are scoped to resources with specific tags, using attribute-based access control (ABAC) conditions. This is useful for scenarios like "the staging team should only be able to manage resources tagged with Environment=Staging."
+Tags can also drive fine-grained access control in supported Azure RBAC scenarios. Azure attribute-based access control (ABAC) conditions currently apply to role assignments with blob storage or queue storage data actions, such as allowing access to blobs with a specific blob index tag. For general Azure resources, use normal RBAC scopes, management groups, subscriptions, resource groups, and Azure Policy rather than assuming every ARM resource tag can be used as an RBAC condition.
 
 ## Wrapping Up
 
