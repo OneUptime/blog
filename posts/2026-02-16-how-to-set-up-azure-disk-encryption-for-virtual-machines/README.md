@@ -12,6 +12,8 @@ Data at rest encryption is a fundamental security requirement for most organizat
 
 In this guide, I will walk through the setup process for both Linux and Windows VMs, including Key Vault configuration, encryption enablement, and monitoring.
 
+Note: Azure Disk Encryption is scheduled for retirement on September 15, 2028. Microsoft recommends using encryption at host for new VMs and migrating ADE-enabled workloads before that date.
+
 ## How Azure Disk Encryption Works
 
 Azure Disk Encryption integrates with Azure Key Vault to manage encryption keys. Here is the flow:
@@ -34,21 +36,21 @@ flowchart LR
 
 ## ADE vs. Server-Side Encryption
 
-Azure actually provides two types of disk encryption, and it is worth understanding the difference:
+Azure provides several disk encryption options, including Server-Side Encryption (SSE), encryption at host, confidential disk encryption, and Azure Disk Encryption (ADE). It is worth understanding the difference between the two options you will most often compare with ADE:
 
-**Server-Side Encryption (SSE)**: Enabled by default on all managed disks. Encrypts data at the storage layer using platform-managed keys. The encryption happens automatically and transparently.
+**Server-Side Encryption (SSE)**: Enabled by default on all managed disks. Encrypts data at the storage layer using platform-managed keys by default, or customer-managed keys when configured with a Disk Encryption Set. The encryption happens automatically and transparently, but SSE alone does not encrypt temporary disks or disk caches.
 
 **Azure Disk Encryption (ADE)**: Encrypts data inside the VM using BitLocker or dm-crypt. You control the keys through Key Vault. This provides encryption at the guest OS level.
 
-For most compliance requirements, SSE (which is already enabled by default) is sufficient. ADE provides additional control over encryption keys and satisfies requirements that mandate guest-level encryption.
+For many compliance requirements, SSE (which is already enabled by default) is sufficient. ADE provides guest-level encryption and satisfies requirements that mandate BitLocker or dm-crypt encryption inside the VM.
 
 ## Prerequisites
 
 Before enabling ADE:
 
-- The VM must use managed disks (unmanaged disks are not supported).
-- The VM size must support encryption (most standard sizes do, but some basic-tier sizes do not).
-- You need a Key Vault in the same region and subscription as the VM.
+- Back up or snapshot the VM before enabling encryption. Managed disk VMs require a backup before encryption.
+- The VM size and OS image must support encryption (basic-tier VMs, v6 series, v7 series and newer, and several specialized disk scenarios are not supported).
+- You need a Key Vault in the same region and tenant as the VM.
 - The Key Vault must have the "enabledForDiskEncryption" property set to true.
 
 ## Step 1: Create a Key Vault
@@ -114,9 +116,9 @@ The `--volume-type` parameter accepts:
 - `Data`: Encrypt only data disks.
 
 For Linux VMs, there are some important notes:
-- The OS disk encryption requires a reboot.
-- Data disk encryption can happen while the VM is running.
-- Supported Linux distributions include Ubuntu 18.04+, RHEL 7.2+, CentOS 7.2+, SUSE 15+, and Debian 9+.
+- Encrypting or disabling encryption may cause the VM to reboot.
+- Data disk encryption can happen while the VM is running, but mounted data disks are not usable while encryption is in progress.
+- Supported Linux distributions are limited to specific Azure-endorsed images and versions. Check the current Azure Disk Encryption supported operating systems list before enabling ADE.
 - The root partition must be on a standard filesystem (ext4, XFS).
 
 ## Step 4: Enable Encryption on a Windows VM
@@ -191,6 +193,8 @@ az vm encryption enable \
 ```
 
 This is useful when you have sensitive data on separate disks but do not need to encrypt the OS disk.
+
+On Windows VMs, Azure Disk Encryption can encrypt the OS disk alone or all disks together. Encrypting only data disks is not supported for Windows VMs.
 
 ## Enabling Encryption at Scale
 
@@ -271,15 +275,21 @@ az keyvault key create \
   --size 4096
 
 # Re-encrypt the VM with the new key version
+KEK_URI=$(az keyvault key show \
+  --vault-name myEncryptionVault \
+  --name myKEK \
+  --query key.kid \
+  --output tsv)
+
 az vm encryption enable \
   --resource-group myResourceGroup \
   --name myLinuxVM \
   --disk-encryption-keyvault myEncryptionVault \
-  --key-encryption-key myKEK \
+  --key-encryption-key "$KEK_URI" \
   --volume-type All
 ```
 
-Azure automatically uses the latest version of the KEK. The re-encryption is transparent and does not require the VM to be stopped.
+Azure Disk Encryption does not automatically follow Azure Key Vault key auto-rotation. Re-run the encryption command with the new versioned KEK URL when you rotate the KEK. Encrypting or disabling encryption may cause the VM to reboot.
 
 ## Disabling Encryption
 
@@ -300,18 +310,23 @@ Note: On Linux VMs, you can only disable encryption on data volumes, not the OS 
 Ensure all VMs in your organization are encrypted:
 
 ```bash
-# Assign the built-in policy to audit unencrypted VMs
+# Assign the built-in policies to audit Linux and Windows VMs that do not use ADE or encryption at host
 az policy assignment create \
-  --name "audit-unencrypted-vms" \
+  --name "audit-linux-vm-encryption" \
   --scope "/subscriptions/{sub-id}" \
-  --policy "0961003e-5a0a-4549-abde-af6a37f2724d"
+  --policy "ca88aadc-6e2b-416c-9de2-5a0f01d1693f"
+
+az policy assignment create \
+  --name "audit-windows-vm-encryption" \
+  --scope "/subscriptions/{sub-id}" \
+  --policy "3dc5edcd-002d-444c-b216-e123bbfa37c0"
 ```
 
-This policy audits VMs that do not have disk encryption enabled and reports them as non-compliant.
+These policies audit VMs that do not have Azure Disk Encryption or encryption at host enabled and report them as non-compliant.
 
 ## Troubleshooting Common Issues
 
-**Encryption fails with permission error**: Make sure the Key Vault has `enabledForDiskEncryption` set to true. Also verify that the VM's identity has access to the Key Vault.
+**Encryption fails with permission error**: Make sure the Key Vault has `enabledForDiskEncryption` set to true. If the vault firewall is enabled, allow Microsoft trusted services. Also verify that the account enabling encryption has the required permissions.
 
 **Linux encryption fails on OS disk**: Check that the OS disk has enough free space (at least 5% free). dm-crypt needs space to set up the encryption layer.
 
@@ -319,17 +334,17 @@ This policy audits VMs that do not have disk encryption enabled and reports them
 
 **VM does not boot after encryption**: Check boot diagnostics for errors. In rare cases, you may need to disable encryption from the platform level and re-enable it.
 
-**Encryption not supported on VM size**: Some older or basic-tier VM sizes do not support ADE. Resize to a supported size before enabling encryption.
+**Encryption not supported on VM size**: Basic-tier VMs, v6 series, v7 series and newer, and some specialized disk scenarios do not support ADE. Resize to a supported size before enabling encryption.
 
 ## Best Practices
 
 1. **Always use a KEK.** The additional layer of encryption makes key management more secure.
 2. **Back up encryption keys.** Enable Key Vault soft delete and purge protection to prevent accidental key loss.
 3. **Test encryption in dev/test first.** Verify that your application works correctly with encrypted disks before enabling in production.
-4. **Monitor encryption status.** Use Azure Policy to continuously audit for unencrypted VMs.
+4. **Monitor encryption status.** Use Azure Policy to continuously audit for VMs that do not use ADE or encryption at host.
 5. **Plan for encryption time.** Initial encryption takes time, especially for large disks. Schedule it during a maintenance window.
 6. **Use Premium SKU Key Vault for HSM-backed keys** if your compliance requirements mandate hardware key protection.
 
 ## Wrapping Up
 
-Azure Disk Encryption provides guest-level encryption that satisfies compliance requirements and adds defense in depth to your security posture. The setup involves creating a Key Vault, generating a KEK, and running a single CLI command per VM. The encryption is transparent to applications and users - the only visible impact is a slight increase in disk latency during the initial encryption process. For organizations handling sensitive data, enabling ADE on all VMs should be a standard part of the deployment checklist.
+Azure Disk Encryption provides guest-level encryption that satisfies compliance requirements and adds defense in depth to your security posture. The setup involves creating a Key Vault, generating a KEK, and running a single CLI command per VM. The encryption is transparent to applications and users - the most visible impacts are encryption time and possible reboots during the initial encryption process. For existing organizations handling sensitive data, ADE can still be part of the deployment checklist until its retirement date, but new VMs should use encryption at host instead.
