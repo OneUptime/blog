@@ -301,29 +301,59 @@ resource "azurerm_consumption_budget_resource_group" "per_team" {
 
 ## Cost Anomaly Alerts
 
-Beyond static budgets, Azure can detect unusual spending patterns. While Terraform does not have a direct resource for cost anomaly alerts at the time of writing, you can set up metric alerts that watch for cost spikes.
+Beyond static budgets, Azure can detect unusual spending patterns. While the AzureRM provider does not expose a dedicated anomaly alert resource, you can create the Cost Management scheduled action with the AzAPI provider.
 
 ```hcl
-# Set up a cost anomaly alert using Azure Monitor
-resource "azurerm_monitor_metric_alert" "cost_spike" {
-  name                = "cost-spike-detection"
-  resource_group_name = azurerm_resource_group.monitoring.name
-  scopes              = [data.azurerm_subscription.current.id]
-  description         = "Alert when daily cost exceeds normal patterns"
-  severity            = 2
-  frequency           = "PT1H"
-  window_size         = "P1D"
-
-  criteria {
-    metric_namespace = "Microsoft.CostManagement/externalBillingAccounts"
-    metric_name      = "BillingCurrency"
-    aggregation      = "Total"
-    operator         = "GreaterThan"
-    threshold        = 500
+# Set up a Cost Management anomaly alert using the Scheduled Actions API
+terraform {
+  required_providers {
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 2.0"
+    }
   }
+}
 
-  action {
-    action_group_id = azurerm_monitor_action_group.cost_alert.id
+provider "azapi" {}
+
+data "azurerm_client_config" "current" {}
+
+data "azapi_resource" "subscription" {
+  type        = "Microsoft.Resources/subscriptions@2021-01-01"
+  resource_id = data.azurerm_subscription.current.id
+}
+
+data "azapi_resource_id" "daily_anomaly_view" {
+  type      = "Microsoft.CostManagement/views@2023-04-01-preview"
+  parent_id = data.azurerm_subscription.current.id
+  name      = "ms:DailyAnomalyByResourceGroup"
+}
+
+resource "azapi_resource" "cost_anomaly_alert" {
+  type      = "Microsoft.CostManagement/scheduledActions@2023-09-01"
+  name      = "daily-cost-anomaly-alert"
+  parent_id = data.azapi_resource.subscription.id
+
+  body = {
+    kind = "InsightAlert"
+    properties = {
+      displayName       = "Daily cost anomaly alert"
+      notificationEmail = "finops@example.com"
+      notification = {
+        subject = "Azure cost anomaly detected"
+        to = [
+          "finops@example.com",
+        ]
+      }
+      schedule = {
+        endDate   = "2027-02-01T00:00:00Z"
+        frequency = "Daily"
+        startDate = "2026-02-01T00:00:00Z"
+      }
+      scope  = trimprefix(data.azurerm_subscription.current.id, "/")
+      status = "Enabled"
+      viewId = data.azapi_resource_id.daily_anomaly_view.id
+    }
   }
 }
 ```
@@ -337,7 +367,7 @@ Budgets work best when resources are properly tagged. You can enforce tagging re
 resource "azurerm_subscription_policy_assignment" "require_cost_center" {
   name                 = "require-cost-center-tag"
   subscription_id      = data.azurerm_subscription.current.id
-  policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b466-ef391786e56f"
+  policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b590-94f262ecfa99"
   description          = "Require cost-center tag on all resources"
   display_name         = "Require cost-center tag"
 
@@ -356,14 +386,14 @@ For teams that want to analyze costs in their own tools, Terraform can set up co
 ```hcl
 # Export daily cost data to a storage account for analysis
 resource "azurerm_subscription_cost_management_export" "daily" {
-  name                    = "daily-cost-export"
-  subscription_id         = data.azurerm_subscription.current.id
-  recurrence_type         = "Daily"
-  recurrence_period_start = "2026-02-01T00:00:00Z"
-  recurrence_period_end   = "2027-02-01T00:00:00Z"
+  name                         = "daily-cost-export"
+  subscription_id              = data.azurerm_subscription.current.id
+  recurrence_type              = "Daily"
+  recurrence_period_start_date = "2026-02-01T00:00:00Z"
+  recurrence_period_end_date   = "2027-02-01T00:00:00Z"
 
   export_data_storage_location {
-    container_id = azurerm_storage_container.cost_exports.resource_manager_id
+    container_id      = azurerm_storage_container.cost_exports.resource_manager_id
     root_folder_path = "/cost-exports"
   }
 
