@@ -8,7 +8,7 @@ Description: Learn how to write, register, and execute stored procedures in Azur
 
 ---
 
-Stored procedures in Azure Cosmos DB let you run JavaScript directly on the database server. They execute within a single partition, and all operations within a stored procedure are wrapped in a transaction. If anything fails, the entire operation rolls back. This makes stored procedures the only way to get ACID transactions across multiple documents in Cosmos DB.
+Stored procedures in Azure Cosmos DB let you run JavaScript directly on the database server. They execute within a single partition, and all operations within a stored procedure are wrapped in a transaction. If anything fails, the entire operation rolls back. This makes stored procedures one way to get ACID transactions across multiple documents in the same logical partition in Cosmos DB. For same-partition point operations from application code, transactional batch is another option.
 
 ## Why Use Stored Procedures?
 
@@ -156,10 +156,14 @@ function transferBalance(fromAccountId, toAccountId, amount) {
     var response = context.getResponse();
 
     // Read the source account
-    var filterFrom = 'SELECT * FROM c WHERE c.id = "' + fromAccountId + '"';
+    var filterFrom = {
+        query: 'SELECT * FROM c WHERE c.id = @fromAccountId',
+        parameters: [{ name: '@fromAccountId', value: fromAccountId }]
+    };
     var acceptedFrom = container.queryDocuments(
         container.getSelfLink(),
         filterFrom,
+        {},
         function (err, docs) {
             if (err) throw new Error("Error reading source account: " + err.message);
             if (docs.length === 0) throw new Error("Source account not found");
@@ -172,10 +176,14 @@ function transferBalance(fromAccountId, toAccountId, amount) {
             }
 
             // Read the destination account
-            var filterTo = 'SELECT * FROM c WHERE c.id = "' + toAccountId + '"';
+            var filterTo = {
+                query: 'SELECT * FROM c WHERE c.id = @toAccountId',
+                parameters: [{ name: '@toAccountId', value: toAccountId }]
+            };
             var acceptedTo = container.queryDocuments(
                 container.getSelfLink(),
                 filterTo,
+                {},
                 function (err, docs) {
                     if (err) throw new Error("Error reading destination account: " + err.message);
                     if (docs.length === 0) throw new Error("Destination account not found");
@@ -250,7 +258,7 @@ function bulkInsert(docs) {
     var count = 0;
 
     if (!docs || docs.length === 0) {
-        response.setBody({ inserted: 0 });
+        response.setBody({ inserted: 0, completed: true });
         return;
     }
 
@@ -315,24 +323,17 @@ while (!completed)
 
 1. Always check the `accepted` return value from container operations. If it returns false, the operation was not queued due to resource constraints.
 
-2. Use try-catch in your stored procedures to provide meaningful error messages:
+2. Use try-catch in your stored procedures to add meaningful error context, then rethrow the error if you need the transaction to roll back:
 
 ```javascript
 // Wrap stored procedure logic in try-catch for better error messages
 function safeOperation(docId) {
-    var context = getContext();
-    var response = context.getResponse();
-
     try {
         // Your logic here
         doSomething(docId);
     } catch (error) {
-        // Return a structured error response
-        response.setBody({
-            success: false,
-            error: error.message,
-            documentId: docId
-        });
+        // Rethrow so Cosmos DB rolls back any writes in this stored procedure
+        throw new Error("safeOperation failed for document " + docId + ": " + error.message);
     }
 }
 ```
