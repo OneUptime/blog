@@ -10,7 +10,7 @@ Description: Learn how to use Bicep deployment scripts to execute custom PowerSh
 
 There are things that ARM templates and Bicep simply cannot do natively. Seeding a database after creation, uploading an initial configuration file to a storage account, registering a DNS record with an external provider, or calling a third-party API to configure something outside of Azure. These gaps are exactly what deployment scripts fill.
 
-Deployment scripts in Bicep let you run PowerShell or Azure CLI scripts as part of your infrastructure deployment. They execute inside a container instance that Azure manages for you, and they have full access to the Azure context of the deployment. The script runs, produces outputs that other resources can reference, and then the container is cleaned up.
+Deployment scripts in Bicep let you run PowerShell or Azure CLI scripts as part of your infrastructure deployment. They execute inside a container instance that Azure manages for you, and they can access Azure through the identity you assign to the script. The script runs, produces outputs that other resources can reference, and then the container is cleaned up.
 
 ## How Deployment Scripts Work
 
@@ -29,7 +29,7 @@ graph LR
     G --> H[Deployment Continues]
 ```
 
-After the script completes, its outputs are available to other resources in the template through the reference function. The container instance and associated storage account are retained for a configurable period (for debugging) and then deleted.
+After the script completes, its outputs are available to other resources in the template through the reference function. The deployment script resource is retained for a configurable period, and the container instance and associated storage account are cleaned up according to the `cleanupPreference` setting.
 
 ## Basic Deployment Script Example
 
@@ -64,7 +64,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   }
 }
 
-// Role assignment - give the managed identity Contributor on the storage account
+// Role assignment - give the managed identity Storage Blob Data Contributor on the storage account
 resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(storageAccount.id, managedIdentity.id, 'contributor')
   scope: storageAccount
@@ -124,7 +124,8 @@ resource seedScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
         --name "default-config.json" \
         --file "/tmp/default-config.json" \
         --account-name $STORAGE_ACCOUNT_NAME \
-        --auth-mode login
+        --auth-mode login \
+        --overwrite true
 
       # Output the blob URL for reference by other resources
       echo "{\"configUrl\": \"https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/config/default-config.json\"}" > $AZ_SCRIPTS_OUTPUT_PATH
@@ -215,10 +216,12 @@ resource dbSetupScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
       # Run database migrations using the connection string
       # The DB_CONNECTION_STRING variable is injected securely
       echo "Running database setup..."
-      # Your database migration logic here
-      az sql db execute \
-        --connection-string "$DB_CONNECTION_STRING" \
-        --query "CREATE TABLE IF NOT EXISTS AppConfig (Key NVARCHAR(256), Value NVARCHAR(MAX))"
+      if [ -z "$DB_CONNECTION_STRING" ]; then
+        echo "DB_CONNECTION_STRING is required" >&2
+        exit 1
+      fi
+      # Invoke your database migration tool here, for example:
+      # ./migrate --connection-string "$DB_CONNECTION_STRING"
     '''
     environmentVariables: [
       {
@@ -267,7 +270,7 @@ resource externalScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
 
 ## Idempotency Considerations
 
-Deployment scripts need to be idempotent because Azure might re-run them during retries or redeployments. By default, a deployment script runs every time the template is deployed. You can control this with the `forceUpdateTag` property.
+Deployment scripts need to be idempotent because Azure might re-run them during retries or when you intentionally force a new execution. If none of the `deploymentScripts` resource properties change, redeploying the same Bicep file does not run the script again. You can control explicit reruns with the `forceUpdateTag` property.
 
 ```bicep
 // Use forceUpdateTag to control when the script re-runs
