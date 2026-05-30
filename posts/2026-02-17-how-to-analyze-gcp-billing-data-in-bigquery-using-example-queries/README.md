@@ -18,7 +18,7 @@ Before running these queries, you need:
 
 - Billing export enabled to BigQuery (standard or detailed)
 - Access to the BigQuery dataset containing the billing export
-- The table name, which looks like `gcp_billing_export_v1_XXXXXX` where XXXXXX is your billing account ID
+- The table name, which looks like `gcp_billing_export_v1_XXXXXX` for standard export or `gcp_billing_export_resource_v1_XXXXXX` for detailed export, where XXXXXX is your billing account ID
 
 Replace `my-project.billing.gcp_billing_export_v1_XXXXXX` in all queries below with your actual table reference.
 
@@ -30,7 +30,7 @@ The billing export table has some nested fields that you need to know how to wor
 - **labels**: An array of key-value pairs from resource labels
 - **system_labels**: GCP-managed labels
 - **project**: A struct with id, name, and other fields
-- **location**: A struct with region, zone, and country
+- **location**: A struct with location, region, zone, and country
 
 For net cost (what you actually pay), you need to add cost and credits together:
 
@@ -118,8 +118,8 @@ SELECT
 FROM monthly_project_costs current_month
 LEFT JOIN monthly_project_costs prev_month
   ON current_month.project_name = prev_month.project_name
-  AND prev_month.month = FORMAT_TIMESTAMP('%Y-%m',
-    TIMESTAMP_SUB(PARSE_TIMESTAMP('%Y-%m', current_month.month), INTERVAL 1 MONTH))
+  AND prev_month.month = FORMAT_DATE('%Y-%m',
+    DATE_SUB(PARSE_DATE('%Y-%m-%d', CONCAT(current_month.month, '-01')), INTERVAL 1 MONTH))
 WHERE current_month.month = FORMAT_TIMESTAMP('%Y-%m', CURRENT_TIMESTAMP())
 ORDER BY current_month.net_cost DESC
 ```
@@ -174,10 +174,10 @@ SELECT
   d.date,
   d.daily_cost,
   ROUND(s.avg_cost, 2) AS avg_daily_cost,
-  ROUND((d.daily_cost - s.avg_cost) / s.stddev_cost, 2) AS z_score,
+  ROUND(SAFE_DIVIDE(d.daily_cost - s.avg_cost, s.stddev_cost), 2) AS z_score,
   CASE
-    WHEN (d.daily_cost - s.avg_cost) / s.stddev_cost > 2 THEN 'HIGH ANOMALY'
-    WHEN (d.daily_cost - s.avg_cost) / s.stddev_cost > 1.5 THEN 'MODERATE ANOMALY'
+    WHEN SAFE_DIVIDE(d.daily_cost - s.avg_cost, s.stddev_cost) > 2 THEN 'HIGH ANOMALY'
+    WHEN SAFE_DIVIDE(d.daily_cost - s.avg_cost, s.stddev_cost) > 1.5 THEN 'MODERATE ANOMALY'
     ELSE 'NORMAL'
   END AS status
 FROM daily_costs d
@@ -304,16 +304,16 @@ SELECT
   ROUND(SUM(cost), 2) AS gross_cost,
   ROUND(SUM(IFNULL(
     (SELECT SUM(c.amount) FROM UNNEST(credits) c
-     WHERE c.name LIKE '%Sustained%'), 0
+     WHERE LOWER(c.name) LIKE '%sustained%'), 0
   )), 2) AS sud_credits,
   ROUND(SUM(IFNULL(
     (SELECT SUM(c.amount) FROM UNNEST(credits) c
-     WHERE c.name LIKE '%Committed%'), 0
+     WHERE LOWER(c.name) LIKE '%committed%'), 0
   )), 2) AS cud_credits,
   ROUND(SUM(IFNULL(
     (SELECT SUM(c.amount) FROM UNNEST(credits) c
-     WHERE c.name NOT LIKE '%Sustained%'
-     AND c.name NOT LIKE '%Committed%'), 0
+     WHERE LOWER(c.name) NOT LIKE '%sustained%'
+     AND LOWER(c.name) NOT LIKE '%committed%'), 0
   )), 2) AS other_credits
 FROM
   `my-project.billing.gcp_billing_export_v1_XXXXXX`
