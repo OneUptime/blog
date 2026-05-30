@@ -33,7 +33,7 @@ Create a new Azure Functions project with the Pillow library for image processin
 ```bash
 # Create the function project
 
-func init image-pipeline --python --model V2
+func init image-pipeline --worker-runtime python --model V2
 cd image-pipeline
 
 # The requirements.txt needs these packages
@@ -76,27 +76,27 @@ JPEG_QUALITY = 85
 @app.function_name(name="process_image")
 @app.blob_trigger(
     arg_name="inputblob",
-    path="uploads/{name}",
+    path="uploads/{name}.{extension}",
     connection="AzureWebJobsStorage"
 )
 @app.blob_output(
     arg_name="thumbnail_small",
-    path="thumbnails/small/{name}",
+    path="thumbnails/small/{name}.jpg",
     connection="AzureWebJobsStorage"
 )
 @app.blob_output(
     arg_name="thumbnail_medium",
-    path="thumbnails/medium/{name}",
+    path="thumbnails/medium/{name}.jpg",
     connection="AzureWebJobsStorage"
 )
 @app.blob_output(
     arg_name="thumbnail_large",
-    path="thumbnails/large/{name}",
+    path="thumbnails/large/{name}.jpg",
     connection="AzureWebJobsStorage"
 )
 @app.blob_output(
     arg_name="optimized",
-    path="optimized/{name}",
+    path="optimized/{name}.jpg",
     connection="AzureWebJobsStorage"
 )
 @app.blob_output(
@@ -190,6 +190,8 @@ def create_thumbnail(image: Image.Image, size: tuple) -> Image.Image:
         background = Image.new("RGB", thumb.size, (255, 255, 255))
         background.paste(thumb, mask=thumb.split()[3])
         thumb = background
+    elif thumb.mode != "RGB":
+        thumb = thumb.convert("RGB")
 
     # Create thumbnail maintaining aspect ratio
     thumb.thumbnail(size, Image.LANCZOS)
@@ -237,12 +239,12 @@ Here is a separate function that adds a text watermark to images.
 @app.function_name(name="watermark_image")
 @app.blob_trigger(
     arg_name="inputblob",
-    path="uploads/{name}",
+    path="uploads/{name}.{extension}",
     connection="AzureWebJobsStorage"
 )
 @app.blob_output(
     arg_name="watermarked",
-    path="watermarked/{name}",
+    path="watermarked/{name}.jpg",
     connection="AzureWebJobsStorage"
 )
 def watermark_image(
@@ -371,6 +373,11 @@ Test the pipeline locally using Azurite as the storage emulator.
 ```bash
 # Start Azurite in a separate terminal
 azurite --silent --location /tmp/azurite
+
+# Create the trigger container in the emulator
+az storage container create \
+    --name uploads \
+    --connection-string "UseDevelopmentStorage=true"
 
 # Start the functions locally
 func start
