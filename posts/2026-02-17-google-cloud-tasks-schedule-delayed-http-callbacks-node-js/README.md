@@ -1,20 +1,20 @@
-# How to Use the google-cloud/tasks npm Package to Schedule Delayed HTTP
+# How to Use the @google-cloud/tasks npm Package to Schedule Delayed HTTP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Tasks, Node.js, Scheduling, Callback, Google Cloud
 
-Description: Schedule delayed HTTP callbacks from Node.js applications using the google-cloud/tasks npm package for deferred processing and timed workflows.
+Description: Schedule delayed HTTP callbacks from Node.js applications using the @google-cloud/tasks npm package for deferred processing and timed workflows.
 
 ---
 
-There are plenty of situations where you need something to happen later - send a reminder email in 24 hours, retry a failed webhook in 5 minutes, expire a temporary access token after an hour, or check if a user completed onboarding after 3 days. Google Cloud Tasks lets you schedule HTTP callbacks with precise delays, and the `@google-cloud/tasks` npm package makes it easy to create these scheduled callbacks from any Node.js application.
+There are plenty of situations where you need something to happen later - send a reminder email in 24 hours, retry a failed webhook in 5 minutes, expire a temporary access token after an hour, or check if a user completed onboarding after 3 days. Google Cloud Tasks lets you schedule delayed HTTP callbacks, and the `@google-cloud/tasks` npm package makes it easy to create these scheduled callbacks from any Node.js application.
 
-In this post, I will show you how to set up delayed HTTP callbacks using Cloud Tasks, including precise scheduling, payload handling, authentication, and practical patterns for common use cases.
+In this post, I will show you how to set up delayed HTTP callbacks using Cloud Tasks, including scheduled delivery, payload handling, authentication, and practical patterns for common use cases.
 
 ## How Delayed Callbacks Work
 
-When you create a Cloud Task with a `scheduleTime`, the task sits in the queue until that time arrives. Once the scheduled time passes, Cloud Tasks delivers the task as an HTTP request to your specified URL. If the target returns a non-2xx response, Cloud Tasks retries according to the queue's retry configuration.
+When you create a Cloud Task with a `scheduleTime`, the task sits in the queue until that time arrives. Once the scheduled time passes, Cloud Tasks attempts the task as an HTTP request to your specified URL, subject to queue rate limits and occasional delivery delays. If the target returns a non-2xx response, Cloud Tasks retries according to the queue's retry configuration.
 
 Think of it as a reliable `setTimeout` that survives server restarts, scales across instances, and handles retries automatically.
 
@@ -83,10 +83,10 @@ module.exports = { scheduleCallback };
 
 ## Scheduling at a Specific Time
 
-Sometimes you want the callback to fire at an exact time rather than a relative delay.
+Sometimes you want the callback to be attempted at a particular scheduled time rather than after a relative delay.
 
 ```javascript
-// Schedule a callback at an exact datetime
+// Schedule a callback for a target datetime
 async function scheduleAt(path, payload, targetDate) {
   // Accept a Date object or ISO string
   const date = targetDate instanceof Date ? targetDate : new Date(targetDate);
@@ -302,7 +302,8 @@ For production, secure your callback endpoints with OIDC tokens.
 ```javascript
 // Schedule a callback with OIDC authentication
 async function scheduleAuthenticatedCallback(path, payload, delaySeconds) {
-  const serviceAccountEmail = `${PROJECT_ID}@appspot.gserviceaccount.com`;
+  const serviceAccountEmail = process.env.TASK_SERVICE_ACCOUNT_EMAIL ||
+    `tasks-invoker@${PROJECT_ID}.iam.gserviceaccount.com`;
 
   const task = {
     httpRequest: {
