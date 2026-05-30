@@ -76,7 +76,7 @@ The first step is creating the DNS zone itself. This is the container that holds
     # Print the name servers so we know what to configure at the registrar
     - name: Display name servers
       ansible.builtin.debug:
-        msg: "Name servers: {{ dns_zone_result.name_servers }}"
+        msg: "Name servers: {{ dns_zone_result.state.name_servers }}"
 ```
 
 After running this playbook, Azure assigns name servers to your zone. You will need to update your domain registrar to point to these name servers for the delegation to work.
@@ -200,6 +200,9 @@ a_records:
     ttl: 300
     records:
       - entry: "20.50.100.20"
+cname_records: []
+mx_records: []
+txt_records: []
 ```
 
 ```yaml
@@ -212,7 +215,12 @@ a_records:
     ttl: 60
     records:
       - entry: "10.0.1.50"
+cname_records: []
+mx_records: []
+txt_records: []
 ```
+
+If you move records into vars files, remove the default record lists from the playbook or define every list in each environment file so Ansible does not keep applying records from the playbook defaults.
 
 Then run the playbook with the appropriate vars file.
 
@@ -241,9 +249,7 @@ If you are running services inside a virtual network and need internal DNS resol
     resource_group: "{{ resource_group }}"
     zone_name: "internal.example.com"
     name: "vnet-link-production"
-    virtual_network:
-      name: "vnet-production"
-      resource_group: "{{ resource_group }}"
+    virtual_network: "vnet-production"
     registration_enabled: true
 ```
 
