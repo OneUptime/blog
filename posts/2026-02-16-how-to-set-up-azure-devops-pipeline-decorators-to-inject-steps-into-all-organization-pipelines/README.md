@@ -43,7 +43,6 @@ The extension structure looks like a normal Azure DevOps extension with a few sp
 my-decorator/
   vss-extension.json
   decorator.yml
-  icon.png
 ```
 
 ### Step 1: Create the Extension Manifest
@@ -67,12 +66,10 @@ The `vss-extension.json` file describes your extension and tells Azure DevOps th
             "id": "security-scan-injector",
             "type": "ms.azure-pipelines.pipeline-decorator",
             "targets": [
-                "ms.azure-pipelines-agent-job"
+                "ms.azure-pipelines-agent-job.pre-job-tasks"
             ],
             "properties": {
-                "template": "decorator.yml",
-                "targettask": "",
-                "targettaskorder": "PreJob"
+                "template": "decorator.yml"
             }
         }
     ],
@@ -85,9 +82,9 @@ The `vss-extension.json` file describes your extension and tells Azure DevOps th
 }
 ```
 
-There are a few key things to note here. The `type` field must be `ms.azure-pipelines.pipeline-decorator`. The `targets` array under the contribution specifies where the decorator fires. Using `ms.azure-pipelines-agent-job` means it runs in every agent job. You can also target `ms.azure-pipelines-server-job` for server jobs or `ms.azure-pipelines.pipeline-decorator` for both.
+There are a few key things to note here. The `type` field must be `ms.azure-pipelines.pipeline-decorator`. The `targets` array under the contribution specifies where the decorator fires. Using `ms.azure-pipelines-agent-job.pre-job-tasks` means it runs before other tasks in every agent job. You can also target `ms.azure-pipelines-agent-job.post-job-tasks` to run after other tasks, or `ms.azure-pipelines-agent-job.post-checkout-tasks` to run after checkout.
 
-The `targettaskorder` property controls timing. Use `PreJob` to inject steps before all other steps, or `PostJob` to append them after everything else runs.
+The target you choose controls timing. Use `ms.azure-pipelines-agent-job.pre-job-tasks` to inject steps before other tasks, or `ms.azure-pipelines-agent-job.post-job-tasks` to append them after everything else runs.
 
 ### Step 2: Define the Decorator Template
 
@@ -161,7 +158,7 @@ steps:
     displayName: 'Decorator: Initialize Telemetry'
     inputs:
       script: |
-        echo "##vso[task.setvariable variable=DecoratorStartTime]$(date +%s)"
+        echo "##vso[task.setvariable variable=DecoratorBuildId]$(Build.BuildId)"
         echo "Pipeline telemetry initialized"
     condition: always()
 
@@ -184,19 +181,17 @@ You can create two contributions in the same extension - one for PreJob and one 
         {
             "id": "pre-job-decorator",
             "type": "ms.azure-pipelines.pipeline-decorator",
-            "targets": ["ms.azure-pipelines-agent-job"],
+            "targets": ["ms.azure-pipelines-agent-job.pre-job-tasks"],
             "properties": {
-                "template": "pre-decorator.yml",
-                "targettaskorder": "PreJob"
+                "template": "pre-decorator.yml"
             }
         },
         {
             "id": "post-job-decorator",
             "type": "ms.azure-pipelines.pipeline-decorator",
-            "targets": ["ms.azure-pipelines-agent-job"],
+            "targets": ["ms.azure-pipelines-agent-job.post-job-tasks"],
             "properties": {
-                "template": "post-decorator.yml",
-                "targettaskorder": "PostJob"
+                "template": "post-decorator.yml"
             }
         }
     ]
@@ -227,15 +222,18 @@ Another useful technique is to add a step that writes decorator metadata to the 
 
 ```yaml
 steps:
-  - task: CmdLine@2
+  - task: PowerShell@2
     displayName: 'Decorator: Metadata Report'
     inputs:
+      pwsh: true
+      targetType: 'inline'
       script: |
-        echo "##vso[task.uploadsummary]$(System.DefaultWorkingDirectory)/decorator-report.md"
-        echo "# Decorator Report" > decorator-report.md
-        echo "- Decorator Version: 1.0.0" >> decorator-report.md
-        echo "- Applied At: $(date)" >> decorator-report.md
-        echo "- Pipeline: $(Build.DefinitionName)" >> decorator-report.md
+        $report = "$(System.DefaultWorkingDirectory)/decorator-report.md"
+        "# Decorator Report" | Out-File -FilePath $report -Encoding utf8
+        "- Decorator Version: 1.0.0" | Out-File -FilePath $report -Append -Encoding utf8
+        "- Build ID: $(Build.BuildId)" | Out-File -FilePath $report -Append -Encoding utf8
+        "- Pipeline: $(Build.DefinitionName)" | Out-File -FilePath $report -Append -Encoding utf8
+        Write-Host "##vso[task.uploadsummary]$report"
     condition: always()
 ```
 
