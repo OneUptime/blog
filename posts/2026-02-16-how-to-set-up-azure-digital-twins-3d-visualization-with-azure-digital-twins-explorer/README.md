@@ -28,6 +28,7 @@ Think of it as the visual interface for your digital twin instance. While you ca
 - An Azure Digital Twins instance
 - A 3D model of your environment in GLB/GLTF format (for 3D visualization)
 - A storage account for hosting 3D assets
+- Storage Blob Data Contributor or Storage Blob Data Owner access to the storage container for building 3D scenes
 
 ## Step 1: Create an Azure Digital Twins Instance
 
@@ -323,36 +324,46 @@ az storage account create \
     --sku Standard_LRS \
     --kind StorageV2
 
+STORAGE_ID=$(az storage account show \
+    --name $STORAGE_ACCOUNT \
+    --resource-group $RESOURCE_GROUP \
+    --query id -o tsv)
+
+az role assignment create \
+    --role "Storage Blob Data Contributor" \
+    --assignee $USER_ID \
+    --scope $STORAGE_ID
+
 # Create a container for the 3D files
 az storage container create \
     --name $CONTAINER_NAME \
-    --account-name $STORAGE_ACCOUNT
+    --account-name $STORAGE_ACCOUNT \
+    --auth-mode login
 
 # Enable CORS for the storage account (required for the 3D viewer)
 az storage cors add \
     --account-name $STORAGE_ACCOUNT \
     --services b \
-    --methods GET HEAD OPTIONS \
-    --origins "https://explorer.digitaltwins.azure.net" \
-    --allowed-headers "*" \
-    --exposed-headers "*" \
-    --max-age 3600
+    --methods GET OPTIONS POST PUT \
+    --origins https://explorer.digitaltwins.azure.net \
+    --allowed-headers Authorization Content-Type Content-Length x-ms-version x-ms-blob-type x-ms-copy-source x-ms-requires-sync
 
 # Upload your 3D model
 az storage blob upload \
     --account-name $STORAGE_ACCOUNT \
     --container-name $CONTAINER_NAME \
     --name "building-model.glb" \
-    --file ./models/building-model.glb
+    --file ./models/building-model.glb \
+    --auth-mode login
 ```
 
 ### Create a 3D Scene Configuration
 
 In Digital Twins Explorer, navigate to the 3D Scenes tab:
 
-1. Click **Create scene**
-2. Provide the storage account container URL
-3. Upload or select your GLB model
+1. Open 3D Scenes Studio and configure the environment with your Azure Digital Twins instance URL, storage account URL, and container name
+2. Click **Add 3D scene**
+3. Upload your GLB model or choose the file that is already in the storage container
 4. The 3D model loads in the viewer
 
 ### Link Twins to 3D Elements
@@ -373,6 +384,7 @@ To make the 3D visualization truly useful, connect it to live sensor data throug
 ```python
 # iot_to_twins.py
 # Route IoT Hub telemetry to update Azure Digital Twins
+import json
 import os
 from azure.digitaltwins.core import DigitalTwinsClient
 from azure.identity import DefaultAzureCredential
@@ -381,6 +393,13 @@ from azure.functions import EventHubEvent
 ADT_URL = os.environ["ADT_INSTANCE_URL"]
 credential = DefaultAzureCredential()
 client = DigitalTwinsClient(ADT_URL, credential)
+
+ROOM_BY_SENSOR = {
+    "sensor-temp-101": "room-101"
+}
+
+def get_parent_room(sensor_twin_id):
+    return ROOM_BY_SENSOR.get(sensor_twin_id)
 
 def process_iot_event(event: EventHubEvent):
     """Process an IoT Hub message and update the corresponding digital twin."""
