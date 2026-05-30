@@ -68,7 +68,8 @@ The Office 365 Outlook connector provides a trigger that fires when a new email 
         "recurrence": {
           "frequency": "Minute",
           "interval": 5
-        }
+        },
+        "splitOn": "@triggerBody()?['value']"
       }
     },
     "actions": {}
@@ -83,18 +84,18 @@ Key settings:
 
 ## Processing Attachments
 
-When the trigger fires, the email object includes an `Attachments` array. Each attachment has a `Name`, `ContentType`, `ContentBytes` (base64-encoded content), and `Size`.
+When the trigger fires, the email object includes an `attachments` array. Each attachment has a `name`, `contentType`, `contentBytes` (base64-encoded content), and `size`.
 
 ```json
 {
   "actions": {
     "For_Each_Attachment": {
       "type": "Foreach",
-      "foreach": "@triggerBody()?['Attachments']",
+      "foreach": "@triggerBody()?['attachments']",
       "actions": {
         "Check_Attachment_Type": {
           "type": "Switch",
-          "expression": "@items('For_Each_Attachment')?['ContentType']",
+          "expression": "@items('For_Each_Attachment')?['contentType']",
           "cases": {
             "PDF": {
               "case": "application/pdf",
@@ -111,10 +112,10 @@ When the trigger fires, the email object includes an `Attachments` array. Each a
                     "path": "/v2/datasets/@{encodeURIComponent('stinvoices')}/files",
                     "queries": {
                       "folderPath": "/invoices/@{formatDateTime(utcNow(), 'yyyy/MM/dd')}",
-                      "name": "@items('For_Each_Attachment')?['Name']",
+                      "name": "@items('For_Each_Attachment')?['name']",
                       "queryParametersSingleEncoded": true
                     },
-                    "body": "@base64ToBinary(items('For_Each_Attachment')?['ContentBytes'])"
+                    "body": "@base64ToBinary(items('For_Each_Attachment')?['contentBytes'])"
                   },
                   "runAfter": {}
                 }
@@ -125,14 +126,14 @@ When the trigger fires, the email object includes an `Attachments` array. Each a
               "actions": {
                 "Parse_CSV_Content": {
                   "type": "Compose",
-                  "inputs": "@base64ToString(items('For_Each_Attachment')?['ContentBytes'])",
+                  "inputs": "@base64ToString(items('For_Each_Attachment')?['contentBytes'])",
                   "runAfter": {}
                 },
                 "Process_CSV_Data": {
                   "type": "Http",
                   "inputs": {
                     "method": "POST",
-                    "uri": "@appsetting('DataImportApiUrl')/csv",
+                    "uri": "@{parameters('DataImportApiUrl')}/csv",
                     "headers": {
                       "Content-Type": "text/csv"
                     },
@@ -159,9 +160,9 @@ When the trigger fires, the email object includes an `Attachments` array. Each a
                     "path": "/v2/datasets/@{encodeURIComponent('stinvoices')}/files",
                     "queries": {
                       "folderPath": "/spreadsheets/@{formatDateTime(utcNow(), 'yyyy/MM/dd')}",
-                      "name": "@items('For_Each_Attachment')?['Name']"
+                      "name": "@items('For_Each_Attachment')?['name']"
                     },
-                    "body": "@base64ToBinary(items('For_Each_Attachment')?['ContentBytes'])"
+                    "body": "@base64ToBinary(items('For_Each_Attachment')?['contentBytes'])"
                   },
                   "runAfter": {}
                 }
@@ -182,9 +183,9 @@ When the trigger fires, the email object includes an `Attachments` array. Each a
                   "path": "/v2/datasets/@{encodeURIComponent('stinvoices')}/files",
                   "queries": {
                     "folderPath": "/other/@{formatDateTime(utcNow(), 'yyyy/MM/dd')}",
-                    "name": "@items('For_Each_Attachment')?['Name']"
+                    "name": "@items('For_Each_Attachment')?['name']"
                   },
-                  "body": "@base64ToBinary(items('For_Each_Attachment')?['ContentBytes'])"
+                  "body": "@base64ToBinary(items('For_Each_Attachment')?['contentBytes'])"
                 },
                 "runAfter": {}
               }
@@ -201,18 +202,18 @@ When the trigger fires, the email object includes an `Attachments` array. Each a
 
 ## Extracting Data from Email Body
 
-Sometimes the valuable data is in the email body, not the attachments. Use HTML parsing and regex to extract structured information.
+Sometimes the valuable data is in the email body, not the attachments. Use HTML parsing and string expressions to extract structured information.
 
 ```json
 {
   "Extract_Order_Number": {
     "type": "Compose",
-    "inputs": "@{first(split(last(split(triggerBody()?['Body'], 'Order #')), '<'))}",
+    "inputs": "@{first(split(last(split(triggerBody()?['body'], 'Order #')), '<'))}",
     "runAfter": {}
   },
   "Extract_Amount": {
     "type": "Compose",
-    "inputs": "@{first(split(last(split(triggerBody()?['Body'], 'Total: $')), '<'))}",
+    "inputs": "@{first(split(last(split(triggerBody()?['body'], 'Total: $')), '<'))}",
     "runAfter": {}
   }
 }
@@ -226,15 +227,15 @@ For more complex parsing, send the email body to an Azure Function or an HTTP AP
     "type": "Http",
     "inputs": {
       "method": "POST",
-      "uri": "@appsetting('EmailParserApiUrl')/parse",
+      "uri": "@{parameters('EmailParserApiUrl')}/parse",
       "headers": {
         "Content-Type": "application/json"
       },
       "body": {
-        "subject": "@triggerBody()?['Subject']",
-        "body": "@triggerBody()?['Body']",
-        "from": "@triggerBody()?['From']",
-        "receivedDateTime": "@triggerBody()?['DateTimeReceived']"
+        "subject": "@triggerBody()?['subject']",
+        "body": "@triggerBody()?['body']",
+        "from": "@triggerBody()?['from']",
+        "receivedDateTime": "@triggerBody()?['receivedDateTime']"
       }
     },
     "runAfter": {}
@@ -250,7 +251,7 @@ Route emails to different handlers based on the sender, subject, or body content
 {
   "Route_By_Sender": {
     "type": "Switch",
-    "expression": "@triggerBody()?['From']",
+    "expression": "@triggerBody()?['from']",
     "cases": {
       "Supplier_A": {
         "case": "invoices@supplier-a.com",
@@ -259,7 +260,7 @@ Route emails to different handlers based on the sender, subject, or body content
             "type": "Http",
             "inputs": {
               "method": "POST",
-              "uri": "@appsetting('InvoiceApiUrl')/supplier-a",
+              "uri": "@{parameters('InvoiceApiUrl')}/supplier-a",
               "body": "@triggerBody()"
             },
             "runAfter": {}
@@ -273,7 +274,7 @@ Route emails to different handlers based on the sender, subject, or body content
             "type": "Http",
             "inputs": {
               "method": "POST",
-              "uri": "@appsetting('InvoiceApiUrl')/supplier-b",
+              "uri": "@{parameters('InvoiceApiUrl')}/supplier-b",
               "body": "@triggerBody()"
             },
             "runAfter": {}
@@ -294,9 +295,9 @@ Route emails to different handlers based on the sender, subject, or body content
             "method": "post",
             "path": "/v2/Mail/Forward",
             "body": {
-              "To": "manual-processing@mycompany.com",
+              "ToRecipients": "manual-processing@mycompany.com",
               "Comment": "This email could not be automatically processed.",
-              "MessageId": "@triggerBody()?['Id']"
+              "message_id": "@triggerBody()?['id']"
             }
           },
           "runAfter": {}
@@ -323,9 +324,9 @@ After processing, move the email to a "Processed" folder to keep the inbox clean
         }
       },
       "method": "post",
-      "path": "/v2/Mail/Move/@{triggerBody()?['Id']}",
+      "path": "/v2/Mail/Move/@{encodeURIComponent(triggerBody()?['id'])}",
       "body": {
-        "DestinationId": "Processed"
+        "folderPath": "Processed"
       }
     },
     "runAfter": {
@@ -341,9 +342,9 @@ After processing, move the email to a "Processed" folder to keep the inbox clean
         }
       },
       "method": "post",
-      "path": "/v2/Mail/Move/@{triggerBody()?['Id']}",
+      "path": "/v2/Mail/Move/@{encodeURIComponent(triggerBody()?['id'])}",
       "body": {
-        "DestinationId": "Failed"
+        "folderPath": "Failed"
       }
     },
     "runAfter": {
@@ -355,7 +356,7 @@ After processing, move the email to a "Processed" folder to keep the inbox clean
 
 ## Handling Large Attachments
 
-The Office 365 connector has a size limit for attachments included in the trigger output (about 50 MB for the entire email). For larger attachments, use a two-step approach: trigger on the email without attachments, then use a separate action to download each attachment by ID.
+The Office 365 connector skips emails whose total message size is greater than your Exchange admin limit or 50 MB, whichever is less. Including attachment content in the trigger can also cause timeouts while the connector downloads attachments. For larger or busier attachment workflows, trigger on the email without attachment content, then use the attachment metadata from the trigger and download each attachment by ID.
 
 ```json
 {
@@ -366,27 +367,20 @@ The Office 365 connector has a size limit for attachments included in the trigge
           "includeAttachments": false,
           "fetchOnlyWithAttachment": true
         }
-      }
+      },
+      "splitOn": "@triggerBody()?['value']"
     }
   },
   "actions": {
-    "Get_Attachment_Details": {
-      "type": "ApiConnection",
-      "inputs": {
-        "method": "get",
-        "path": "/v2/Mail/@{triggerBody()?['Id']}/Attachments"
-      },
-      "runAfter": {}
-    },
     "Download_Each_Attachment": {
       "type": "Foreach",
-      "foreach": "@body('Get_Attachment_Details')?['value']",
+      "foreach": "@triggerBody()?['attachments']",
       "actions": {
         "Get_Attachment_Content": {
           "type": "ApiConnection",
           "inputs": {
             "method": "get",
-            "path": "/v2/Mail/@{triggerBody()?['Id']}/Attachments/@{items('Download_Each_Attachment')?['Id']}/$value"
+            "path": "/v2/Mail/@{encodeURIComponent(triggerBody()?['id'])}/Attachments/@{encodeURIComponent(items('Download_Each_Attachment')?['id'])}"
           },
           "runAfter": {}
         }
@@ -406,7 +400,7 @@ Set up monitoring for the workflow's failure rate. A sudden spike in failures us
 
 ## Security Considerations
 
-The Logic App needs access to the target mailbox. Use a service account (a dedicated mailbox for automation) rather than a personal account. Use Managed Identity where possible, or at minimum, use OAuth with a service principal rather than basic authentication.
+The Logic App needs access to the target mailbox. Use a service account (a dedicated mailbox for automation) rather than a personal account. The Office 365 Outlook connector signs in with Office 365 credentials and currently does not support service principal-based authentication; use managed identity for other Azure resources in the workflow where possible.
 
 Never log email content or attachment data to public logs. Email often contains sensitive business information or personal data subject to privacy regulations.
 
