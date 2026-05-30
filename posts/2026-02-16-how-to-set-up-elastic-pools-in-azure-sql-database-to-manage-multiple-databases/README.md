@@ -35,7 +35,7 @@ Elastic pools are not ideal when:
 - You have a single database that needs dedicated resources
 - Each database needs guaranteed, consistent performance
 
-A good rule of thumb from Microsoft's documentation is that an elastic pool becomes cost-effective when you have at least two S3 databases or at least fifteen S0 databases.
+Microsoft's documentation notes that, depending on utilization patterns, you can see savings with as few as two S3 databases. The best way to confirm savings is to compare the pool price with the single-database compute sizes that would otherwise be needed.
 
 ```mermaid
 graph LR
@@ -77,7 +77,7 @@ You will choose between **DTU-based** and **vCore-based** models:
 For each model, set:
 
 - **Pool eDTUs or vCores**: The total resources available to all databases in the pool.
-- **Per-database settings**: The minimum and maximum resources any single database can use. The minimum can be 0, meaning a database can go fully idle. The maximum should be less than the pool total to ensure one database cannot starve the others.
+- **Per-database settings**: The minimum and maximum resources any single database can use. The minimum can be 0, meaning a database can go fully idle. The maximum can be set below the pool total to reduce the chance of one database monopolizing pool resources.
 
 For example, with a Standard pool of 200 eDTUs and 10 databases, you might set:
 
@@ -153,7 +153,7 @@ New-AzSqlElasticPool `
 
 ## Managing Databases in the Pool
 
-Once the pool is running, you can move databases in and out at any time without downtime. This is one of the great things about elastic pools - you are not locked in.
+Once the pool is running, you can move databases in and out at any time with no downtime except for a brief period, on the order of seconds, when database connections are dropped at the end of the operation. This is one of the great things about elastic pools - you are not locked in.
 
 To remove a database from the pool (it becomes a standalone database):
 
@@ -163,10 +163,11 @@ az sql db update \
     --resource-group myResourceGroup \
     --server myserver \
     --name mydb \
+    --edition Standard \
     --service-objective S0
 ```
 
-The `--service-objective` flag specifies which tier the database should move to outside the pool.
+The `--edition` and `--service-objective` flags specify which tier and compute size the database should move to outside the pool.
 
 ## Monitoring Pool Utilization
 
@@ -212,7 +213,7 @@ The actual savings depend on your workload patterns, but 30-60% cost reductions 
 
 - All databases in a pool must be on the same logical server.
 - The number of databases per pool is limited (varies by tier, typically up to 500).
-- Cross-database queries are not supported within elastic pools in Azure SQL Database (they are supported in SQL Managed Instance).
+- Azure SQL Database supports cross-database queries through elastic query, which is still documented as a preview feature. SQL Managed Instance is usually the better fit if you need full SQL Server-style cross-database querying.
 - You cannot mix DTU and vCore databases in the same pool.
 
 ## Summary
