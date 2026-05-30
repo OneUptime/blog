@@ -52,11 +52,16 @@ PRINCIPAL_ID=$(az containerapp identity show \
   --resource-group my-rg \
   --query "principalId" -o tsv)
 
-# Grant access to Key Vault secrets
-az keyvault set-policy \
+# Get the Key Vault resource ID
+KEYVAULT_ID=$(az keyvault show \
   --name my-keyvault \
-  --object-id $PRINCIPAL_ID \
-  --secret-permissions get list
+  --query "id" -o tsv)
+
+# Grant access to read Key Vault secrets
+az role assignment create \
+  --assignee $PRINCIPAL_ID \
+  --role "Key Vault Secrets User" \
+  --scope $KEYVAULT_ID
 ```
 
 **Access Azure Storage:**
@@ -72,12 +77,12 @@ az role assignment create \
 **Access Azure SQL Database:**
 
 ```bash
-# Assign the identity as an Azure AD admin on the SQL server
-az sql server ad-admin create \
-  --server-name my-sql-server \
-  --resource-group my-rg \
-  --display-name "container-app-identity" \
-  --object-id $PRINCIPAL_ID
+# Run this while connected as a Microsoft Entra admin for the database
+sqlcmd -S my-sql-server.database.windows.net -d my-database -G -Q "
+CREATE USER [my-api] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [my-api];
+ALTER ROLE db_datawriter ADD MEMBER [my-api];
+"
 ```
 
 **Access Azure Service Bus:**
