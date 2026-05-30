@@ -10,7 +10,7 @@ Description: Learn how to configure Microsoft Sentinel Fusion detection rules to
 
 Modern attackers rarely rely on a single technique. They chain together multiple steps - initial access through a phishing email, lateral movement via compromised credentials, data staging, and finally exfiltration. Each step individually might look benign or generate a low-severity alert that gets lost in the noise. But when you connect the dots across those steps, the picture of a coordinated attack becomes clear. That is exactly what Microsoft Sentinel's Fusion detection does.
 
-Fusion is Sentinel's built-in machine learning engine that automatically correlates alerts from multiple sources and identifies multi-stage attack patterns. In this post, I will explain how Fusion works, how to enable and configure it, and what you can expect from it in practice.
+Fusion is Sentinel's built-in machine learning engine that automatically correlates alerts from multiple sources and identifies multi-stage attack patterns. In workspaces onboarded to the Microsoft Defender portal, Fusion is disabled and its functionality is replaced by the Microsoft Defender XDR correlation engine. In this post, I will explain how Fusion works in Microsoft Sentinel in the Azure portal, how to enable and configure it, and what you can expect from it in practice.
 
 ## How Fusion Detection Works
 
@@ -79,11 +79,11 @@ az sentinel data-connector list \
 
 Fusion comes as a built-in analytics rule in Sentinel. It should be enabled by default when you set up Sentinel, but let us verify and enable it if needed.
 
-In the Azure portal, navigate to Microsoft Sentinel, then go to Analytics in the left menu. Click on the "Rule templates" tab and search for "Advanced Multistage Attack Detection." This is the Fusion rule.
+In the Azure portal, navigate to Microsoft Sentinel, then go to Analytics in the left menu. Click on the "Active rules" tab and filter for the Fusion rule type, then locate "Advanced Multistage Attack Detection." This is the Fusion rule.
 
-If it shows as "Not configured," click on it and then click "Create rule." The creation wizard is straightforward since Fusion does not require custom query logic - it is entirely ML-driven.
+If it shows as disabled, select it, click "Edit," and enable it in the analytics rule wizard. The creation wizard is straightforward since Fusion does not require custom query logic - it is entirely ML-driven.
 
-You can also check and enable it using the Azure CLI:
+You can also check it using the Azure CLI:
 
 ```bash
 # Check if the Fusion rule is active
@@ -122,7 +122,7 @@ az sentinel automation-rule create \
   --display-name "Route Fusion Incidents to SOC" \
   --order 1 \
   --triggering-logic "{\"isEnabled\":true,\"triggersOn\":\"Incidents\",\"triggersWhen\":\"Created\",\"conditions\":[{\"conditionType\":\"Property\",\"conditionProperties\":{\"propertyName\":\"IncidentProviderName\",\"operator\":\"Equals\",\"propertyValues\":[\"Fusion\"]}}]}" \
-  --actions "[{\"order\":1,\"actionType\":\"ModifyProperties\",\"actionConfiguration\":{\"owner\":{\"objectId\":\"<soc-team-group-id>\"}}}]"
+  --actions "[{\"order\":1,\"actionType\":\"ModifyProperties\",\"actionConfiguration\":{\"owner\":{\"objectId\":\"<soc-team-group-id>\",\"ownerType\":\"Group\"},\"status\":\"Active\"}}]"
 ```
 
 ## Step 5: Integrate Custom Analytics Rules with Fusion
@@ -143,7 +143,7 @@ Here is an example of a custom analytics rule that is Fusion-compatible. This KQ
 SecurityEvent
 | where TimeGenerated > ago(1h)
 | where EventID == 4688
-| where Process == "powershell.exe" or Process == "pwsh.exe"
+| where NewProcessName endswith "powershell.exe" or NewProcessName endswith "pwsh.exe"
 | where CommandLine contains "-EncodedCommand"
     or CommandLine contains "-enc "
     or CommandLine contains "FromBase64String"
@@ -186,7 +186,7 @@ SecurityIncident
 | where ProviderName == "Fusion"
 | summarize
     IncidentCount = count(),
-    AvgAlertCount = avg(AdditionalData.alertsCount)
+    AvgAlertCount = avg(todouble(AdditionalData.alertsCount))
     by
     Severity,
     Title
