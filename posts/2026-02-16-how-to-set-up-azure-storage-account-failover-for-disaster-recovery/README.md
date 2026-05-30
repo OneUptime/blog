@@ -65,6 +65,7 @@ After setting up geo-replication, check the replication status to ensure data is
 az storage account show \
   --name stdrprod2026 \
   --resource-group rg-dr \
+  --expand geoReplicationStats \
   --query "{primaryLocation:primaryLocation, secondaryLocation:secondaryLocation, statusOfSecondary:statusOfSecondary, lastSyncTime:geoReplicationStats.lastSyncTime}" \
   --output json
 ```
@@ -73,9 +74,9 @@ The key field here is `lastSyncTime`. This tells you the last time data was succ
 
 This is your Recovery Point Objective (RPO). Azure targets an RPO of less than 15 minutes for geo-replication, but it is not guaranteed.
 
-## Step 3: Understand What Happens During Failover
+## Step 3: Understand What Happens During Unplanned Failover
 
-When you initiate a failover, several things happen:
+When you initiate an unplanned failover during an outage, several things happen:
 
 1. The secondary region becomes the new primary
 2. DNS records for your storage account are updated to point to the new primary
@@ -105,7 +106,7 @@ sequenceDiagram
     Note over Secondary: Account is now LRS in West US
 ```
 
-After failover, your storage account is running in the secondary region as LRS. You should then set up geo-replication again to protect against future outages:
+After an unplanned failover, your storage account is running in the secondary region as LRS. You should then set up geo-replication again to protect against future outages:
 
 ```bash
 # After failover, restore geo-redundancy
@@ -121,14 +122,15 @@ Azure supports customer-managed failover, which you can initiate manually. This 
 
 ```bash
 # Initiate storage account failover
-# WARNING: This has real impact - data after last sync is lost
+# Planned failover is intended for DR testing and waits for replication to complete
 az storage account failover \
   --name stdrprod2026 \
   --resource-group rg-dr \
+  --failover-type Planned \
   --no-wait
 ```
 
-The `--no-wait` flag makes the command return immediately. Failover can take up to an hour.
+The `--failover-type Planned` option initiates a planned failover. In a planned failover, the primary and secondary regions are swapped, no data loss is expected as long as both regions remain available, and the account remains geo-replicated. The `--no-wait` flag makes the command return immediately. Failover can take up to an hour.
 
 Monitor the failover progress:
 
@@ -150,16 +152,18 @@ Your application needs to handle failover gracefully. Here are the key design pa
 Here is a Python example using the Azure SDK's built-in retry with secondary endpoint:
 
 ```python
-from azure.storage.blob import BlobServiceClient
-from azure.core.pipeline.policies import RetryPolicy
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient, ExponentialRetry
+
+credential = DefaultAzureCredential()
 
 # Configure retry policy to use secondary endpoint
-# The SDK automatically retries on the secondary for RA-GRS accounts
-retry_policy = RetryPolicy(
+# Enable retry_to_secondary only when your app can handle stale reads
+retry_policy = ExponentialRetry(
+    initial_backoff=1,
+    increment_base=2,
     retry_total=5,
-    retry_backoff_factor=1,
-    retry_mode="exponential",
-    retry_on_status_codes=[500, 502, 503, 504]
+    retry_to_secondary=True
 )
 
 # Connect with retry policy
@@ -195,6 +199,8 @@ The basic logic is:
 Here is a simplified Azure Function that checks availability and initiates failover:
 
 ```python
+import os
+
 import azure.functions as func
 from azure.mgmt.storage import StorageManagementClient
 from azure.identity import DefaultAzureCredential
@@ -203,6 +209,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     """Evaluate and potentially initiate storage failover"""
 
     credential = DefaultAzureCredential()
+    subscription_id = os.environ["AZURE_SUBSCRIPTION_ID"]
     storage_client = StorageManagementClient(credential, subscription_id)
 
     # Get the storage account status
@@ -223,7 +230,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     # Initiate failover
     storage_client.storage_accounts.begin_failover(
-        "rg-dr", "stdrprod2026"
+        "rg-dr", "stdrprod2026", failover_type=None
     )
 
     return func.HttpResponse("Failover initiated", status_code=200)
