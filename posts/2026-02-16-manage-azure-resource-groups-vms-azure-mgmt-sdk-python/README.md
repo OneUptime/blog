@@ -46,10 +46,10 @@ network_client = NetworkManagementClient(credential, SUBSCRIPTION_ID)
 
 ## Managing Resource Groups
 
-Resource groups are containers for Azure resources. Every resource lives in a resource group.
+Resource groups are containers for Azure resources. Most Azure resources you create for an application live in a resource group.
 
 ```python
-def create_resource_group(name: str, location: str) -> dict:
+def create_resource_group(name: str, location: str):
     """Create a new resource group."""
     result = resource_client.resource_groups.create_or_update(
         name,
@@ -336,11 +336,11 @@ def get_vm_status(group_name: str, vm_name: str):
     return "Unknown"
 ```
 
-## Listing VMs Across Subscriptions
+## Listing VMs in a Subscription
 
 ```python
 def list_all_vms():
-    """List all VMs in the subscription with their status."""
+    """List all VMs in the configured subscription."""
     vms = compute_client.virtual_machines.list_all()
 
     for vm in vms:
