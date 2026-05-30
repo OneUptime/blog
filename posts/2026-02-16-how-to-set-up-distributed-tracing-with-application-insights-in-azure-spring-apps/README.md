@@ -27,6 +27,7 @@ az monitor app-insights component create \
   --app my-spring-insights \
   --resource-group spring-rg \
   --location eastus \
+  --workspace my-log-analytics-workspace \
   --kind java \
   --application-type web
 
@@ -42,15 +43,9 @@ AI_CONN=$(az monitor app-insights component show \
 Azure Spring Apps has built-in Application Insights integration. Enable it at the service level, and all applications within the service will be instrumented.
 
 ```bash
-# Enable Application Insights for the Spring Apps instance
-az spring build-service update \
-  --service my-spring-service \
-  --resource-group spring-rg \
-  --build-agent-pool-size S1
-
-# Bind Application Insights
+# Bind Application Insights to the Spring Apps instance
 az spring app-insights update \
-  --service my-spring-service \
+  --name my-spring-service \
   --resource-group spring-rg \
   --app-insights my-spring-insights \
   --sampling-rate 100
@@ -58,7 +53,9 @@ az spring app-insights update \
 
 The `--sampling-rate` controls what percentage of traces are collected. 100 means every request is traced. For high-traffic production environments, a lower rate (like 10-25%) reduces costs while still providing enough data for analysis.
 
-You can also enable it by setting the connection string as an environment variable on your applications.
+The `az spring` command group is deprecated because Azure Spring Apps entered retirement on March 17, 2025 and is scheduled to retire on March 31, 2028. Use it for existing Azure Spring Apps services, and plan migrations for new long-lived workloads.
+
+You can also point an application at an Application Insights resource by setting the connection string as an environment variable.
 
 ```bash
 # Set Application Insights connection string on each app
@@ -71,51 +68,50 @@ az spring app update \
 
 ## Step 3: Configure Spring Boot for Application Insights
 
-For more control over what is traced, add the Application Insights SDK to your Spring Boot application.
+For most Azure Spring Apps deployments, the built-in Java agent is enough and you do not need the old Application Insights Spring Boot starter. Add the OpenTelemetry API only if you want to create custom spans in your code.
 
 Add the dependency to `pom.xml`.
 
 ```xml
-<!-- Application Insights SDK for Spring Boot -->
+<!-- OpenTelemetry API for custom spans -->
 <dependency>
-    <groupId>com.microsoft.azure</groupId>
-    <artifactId>applicationinsights-spring-boot-starter</artifactId>
-    <version>2.6.4</version>
-</dependency>
-
-<!-- OpenTelemetry support for richer tracing -->
-<dependency>
-    <groupId>io.opentelemetry.instrumentation</groupId>
-    <artifactId>opentelemetry-spring-boot-starter</artifactId>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-api</artifactId>
+    <version>1.62.0</version>
 </dependency>
 ```
 
-Configure it in `application.yml`.
+For self-managed Java agent configuration, create an `applicationinsights.json` file next to the `applicationinsights-agent-*.jar`, or provide it with `APPLICATIONINSIGHTS_CONFIGURATION_CONTENT`.
+
+```json
+{
+  "connectionString": "<connection-string>",
+  "role": {
+    "name": "order-service"
+  },
+  "sampling": {
+    "percentage": 100
+  },
+  "instrumentation": {
+    "logging": {
+      "level": "INFO"
+    },
+    "micrometer": {
+      "enabled": true
+    }
+  }
+}
+```
+
+Configure your logging pattern to include trace context if your logging framework populates MDC values.
 
 ```yaml
-# Application Insights configuration
-azure:
-  application-insights:
-    enabled: true
-    connection-string: ${APPLICATIONINSIGHTS_CONNECTION_STRING}
-    default-modules:
-      # Enable automatic instrumentation for common frameworks
-      SpringMVC: true
-      JDBC: true
-      HTTP: true
-      Logging: true
-    channel:
-      in-process:
-        developer-mode: false
-        max-telemetry-buffer-capacity: 500
-
-# Configure logging to include trace context
 logging:
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [traceId=%X{traceId} spanId=%X{spanId}] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [trace_id=%X{trace_id} span_id=%X{span_id}] %-5level %logger{36} - %msg%n"
 ```
 
-The logging pattern includes `traceId` and `spanId` so you can correlate log entries with distributed traces.
+The logging pattern includes `trace_id` and `span_id` so you can correlate log entries with distributed traces.
 
 ## Step 4: Add Custom Spans for Business Operations
 
@@ -123,21 +119,25 @@ The Java agent automatically instruments HTTP calls, database queries, and messa
 
 ```java
 // OrderService.java - Add custom spans for business logic
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import org.springframework.stereotype.Service;
 
 @Service
 public class OrderService {
 
-    private final Tracer tracer;
+    private static final Tracer tracer = GlobalOpenTelemetry.getTracer("order-service");
+
     private final PaymentClient paymentClient;
     private final InventoryClient inventoryClient;
+    private final OrderRepository orderRepository;
 
-    public OrderService(Tracer tracer, PaymentClient paymentClient, InventoryClient inventoryClient) {
-        this.tracer = tracer;
+    public OrderService(PaymentClient paymentClient, InventoryClient inventoryClient, OrderRepository orderRepository) {
         this.paymentClient = paymentClient;
         this.inventoryClient = inventoryClient;
+        this.orderRepository = orderRepository;
     }
 
     public Order createOrder(OrderRequest request) {
@@ -147,7 +147,7 @@ public class OrderService {
             .setAttribute("order.customer_id", request.getCustomerId())
             .startSpan();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
             // Validate inventory - this creates a child span automatically
             boolean available = inventoryClient.checkAvailability(request.getItems());
             span.addEvent("inventory_checked");
@@ -201,9 +201,9 @@ requests
 | project timestamp, name, duration, cloud_RoleName, operation_Id
 
 // View the complete trace for a specific operation
-dependencies
+union requests, dependencies, exceptions, traces
 | where operation_Id == "abc123"
-| project timestamp, name, duration, type, target, success
+| project timestamp, itemType, name, duration, type, target, success, resultCode, message
 | order by timestamp asc
 
 // Find failed requests and their error details
@@ -252,8 +252,10 @@ public class OrderController {
 
     private final Timer orderTimer;
     private final Counter orderCounter;
+    private final OrderService orderService;
 
-    public OrderController(MeterRegistry registry) {
+    public OrderController(MeterRegistry registry, OrderService orderService) {
+        this.orderService = orderService;
         // Timer for order creation duration
         this.orderTimer = Timer.builder("order.creation.time")
             .description("Time to create an order")
@@ -291,9 +293,9 @@ graph TD
 
 Every span shares the same Trace ID (`abc123`), which lets Application Insights reconstruct the complete request flow.
 
-## Step 8: Set Up Smart Detection Alerts
+## Step 8: Set Up Metric Alerts
 
-Application Insights can automatically detect anomalies in your application's behavior.
+Create Azure Monitor metric alerts when key Application Insights metrics cross your thresholds.
 
 ```bash
 # Create an alert for slow response times
@@ -308,18 +310,14 @@ az monitor metrics alert create \
 
 ## Sampling Strategy
 
-For production environments with high traffic, tracing every request is expensive. Use adaptive sampling to keep costs manageable.
+For production environments with high traffic, tracing every request is expensive. Use fixed-percentage or rate-limited sampling to keep costs manageable.
 
-```yaml
-# Configure adaptive sampling
-azure:
-  application-insights:
-    channel:
-      in-process:
-        max-telemetry-buffer-capacity: 500
-    sampling:
-      percentage: 25
-      include-types: "Request;Dependency;Exception"
+```json
+{
+  "sampling": {
+    "percentage": 25
+  }
+}
 ```
 
 A 25% sampling rate means 1 in 4 requests is fully traced. This is usually enough to identify performance issues and errors while keeping the data volume manageable.
@@ -336,4 +334,4 @@ A 25% sampling rate means 1 in 4 requests is fully traced. This is usually enoug
 
 ## Summary
 
-Distributed tracing with Application Insights gives you deep visibility into how requests flow through your Spring Boot microservices. Azure Spring Apps makes setup easy with built-in Java agent instrumentation. For most applications, the automatic instrumentation covers HTTP calls, database queries, and message operations. Add custom spans for business-specific logic, use KQL for analysis, and configure adaptive sampling to manage costs. The ability to see the end-to-end journey of every request is what makes debugging microservice architectures practical.
+Distributed tracing with Application Insights gives you deep visibility into how requests flow through your Spring Boot microservices. Azure Spring Apps makes setup easy with built-in Java agent instrumentation. For most applications, the automatic instrumentation covers HTTP calls, database queries, and message operations. Add custom spans for business-specific logic, use KQL for analysis, and configure sampling to manage costs. The ability to see the end-to-end journey of every request is what makes debugging microservice architectures practical.
