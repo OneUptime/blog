@@ -23,7 +23,7 @@ With SQL Managed Instance, a single instance can serve as both publisher and dis
 ```mermaid
 graph LR
     A[Publisher MI] -->|Distribution DB| B[Distributor MI]
-    B -->|Log Reader Agent| C[Subscriber MI / SQL DB / On-Prem]
+    B -->|Distribution Agent| C[Subscriber MI / SQL DB / On-Prem]
 ```
 
 In many setups, the publisher and distributor live on the same Managed Instance, which simplifies the architecture.
@@ -45,7 +45,7 @@ First, configure your Managed Instance as the distributor. Connect to the instan
 -- Configure the Managed Instance as a distributor
 -- The @distributor parameter should match the instance name
 EXEC sp_adddistributor
-    @distributor = N'myinstance.abc123.database.windows.net',
+    @distributor = @@SERVERNAME,
     @password = N'StrongDistributorPassword123!';
 
 -- Create the distribution database
@@ -67,18 +67,16 @@ Next, register the publisher with the distributor. Since the publisher and distr
 -- Register the local instance as a publisher
 -- This tells the distributor which server is allowed to publish
 EXEC sp_adddistpublisher
-    @publisher = N'myinstance.abc123.database.windows.net',
+    @publisher = @@SERVERNAME,
     @distribution_db = N'distribution',
     @security_mode = 0,
     @login = N'adminuser',
     @password = N'StrongDistributorPassword123!',
-    @working_directory = N'\\storageaccount.file.core.windows.net\replshare',
-    @trusted = N'false',
-    @thirdparty_flag = 0,
-    @publisher_type = N'MSSQLSERVER';
+    @working_directory = N'\\replstorage.file.core.windows.net\replshare',
+    @storage_connection_string = N'DefaultEndpointsProtocol=https;AccountName=replstorage;AccountKey=YourStorageAccountKey;EndpointSuffix=core.windows.net';
 ```
 
-The working directory must be an Azure file share. This is where snapshot files are stored. Create the Azure file share before running this command.
+The working directory must be an Azure file share. This is where snapshot files are stored. Create the Azure file share and copy its storage account connection string before running this command.
 
 ## Step 3: Set Up the Azure File Share
 
@@ -98,23 +96,14 @@ az storage share create \
     --name replshare \
     --account-name replstorage
 
-# Get the storage account key (you will need this for the credential)
-az storage account keys list \
-    --account-name replstorage \
+# Get the storage account connection string
+az storage account show-connection-string \
+    --name replstorage \
     --resource-group myResourceGroup \
-    --query '[0].value' -o tsv
+    --query connectionString -o tsv
 ```
 
-Then create a credential on the Managed Instance so it can access the file share:
-
-```sql
--- Create a credential for accessing the Azure file share
--- The identity is the storage account name
--- The secret is the storage account key
-CREATE CREDENTIAL [\\replstorage.file.core.windows.net\replshare]
-    WITH IDENTITY = 'replstorage',
-    SECRET = 'YourStorageAccountKey';
-```
+Use that connection string in the `@storage_connection_string` parameter when you register the publisher with `sp_adddistpublisher`.
 
 ## Step 4: Create a Publication
 
@@ -138,6 +127,15 @@ EXEC sp_addpublication
     @allow_push = N'true',
     @allow_pull = N'true',
     @snapshot_in_defaultfolder = N'true';
+
+-- Configure the log reader agent
+-- This agent reads the publisher transaction log and sends changes to the distributor
+EXEC sp_changelogreader_agent
+    @publisher_security_mode = 0,
+    @publisher_login = N'adminuser',
+    @publisher_password = N'StrongPassword123!',
+    @job_login = N'adminuser',
+    @job_password = N'StrongPassword123!';
 
 -- Set the snapshot agent schedule
 -- This agent generates the initial snapshot of published data
@@ -265,13 +263,13 @@ EXEC sp_replmonitorsubscriptionpendingcmds
 
 Here are the most common problems people run into:
 
-**Snapshot agent fails**: Usually a permissions issue with the Azure file share. Double-check the credential and make sure the storage account key is correct. Also verify the file share exists and the Managed Instance can reach it over the network.
+**Snapshot agent fails**: Usually a permissions issue with the Azure file share. Double-check the `@storage_connection_string` value and make sure the storage account key is correct. Also verify the file share exists and the Managed Instance can reach it over the network.
 
 **Log reader agent not starting**: Make sure the database has been enabled for replication with sp_replicationdboption. Also check that the database recovery model is set to FULL.
 
 **Subscriber falling behind**: This usually means the subscriber cannot keep up with the rate of changes. Check the subscriber's DTU or vCore usage and consider scaling up. You can also look at the undistributed commands count to see how far behind the subscriber is.
 
-**Network connectivity errors**: If the publisher and subscriber are in different VNets, make sure VNet peering is configured and that the SQL Managed Instance ports (1433, 11000-11999) are allowed through NSG rules.
+**Network connectivity errors**: If the publisher and subscriber are in different VNets, make sure VNet peering is configured and that outbound TCP 1433 is allowed for SQL connectivity. Also allow outbound TCP 445 from the Managed Instance subnet so replication agents can access the Azure file share.
 
 ## Cleaning Up Replication
 
