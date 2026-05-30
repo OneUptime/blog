@@ -47,8 +47,8 @@ Self-service sign-up is enabled at the tenant level. If it is not already enable
 # Check current external collaboration settings
 
 az rest --method GET \
-  --url "https://graph.microsoft.com/v1.0/policies/authorizationPolicy" \
-  --query "allowedToSignUpEmailBasedSubscriptions"
+  --url "https://graph.microsoft.com/v1.0/policies/authenticationFlowsPolicy" \
+  --query "selfServiceSignUp.isEnabled"
 ```
 
 If this returns `false`, enable it through the Entra admin center: Go to Microsoft Entra admin center, then Identity, then External Identities, then External collaboration settings. Under "Enable guest self-service sign up via user flows," toggle it to Yes.
@@ -67,7 +67,7 @@ Connect-MgGraph -Scopes "IdentityUserFlow.ReadWrite.All"
 $companyAttribute = @{
     displayName = "Company Name"
     description = "The name of the user's company"
-    dataType = "String"
+    dataType = "string"
 }
 
 New-MgIdentityUserFlowAttribute -BodyParameter $companyAttribute
@@ -76,7 +76,7 @@ New-MgIdentityUserFlowAttribute -BodyParameter $companyAttribute
 $deptAttribute = @{
     displayName = "Department"
     description = "The user's department"
-    dataType = "String"
+    dataType = "string"
 }
 
 New-MgIdentityUserFlowAttribute -BodyParameter $deptAttribute
@@ -85,7 +85,7 @@ New-MgIdentityUserFlowAttribute -BodyParameter $deptAttribute
 $justificationAttribute = @{
     displayName = "Access Justification"
     description = "Why the user needs access to the application"
-    dataType = "String"
+    dataType = "string"
 }
 
 New-MgIdentityUserFlowAttribute -BodyParameter $justificationAttribute
@@ -169,7 +169,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             "version": "1.0.0",
             "action": "Continue",
             # These attributes will be written to the user's profile
-            "extension_<app-id>_PartnerRole": partner_role,
+            "extension_<extensions-app-id>_PartnerRole": partner_role,
             "jobTitle": f"{partner_role} User",
         }),
         status_code=200,
@@ -177,7 +177,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-Deploy this function to Azure Functions with HTTP trigger authentication. Make note of the function URL and the function key, which you will need for the API connector configuration.
+Deploy this function to Azure Functions. If you use a function access key, include it in the endpoint URL as the `code` query parameter; Azure Functions keys are not the same thing as the API connector's Basic authentication username and password. In production, also protect the endpoint with Basic authentication or client certificate authentication and validate those credentials in your API.
 
 ## Step 4: Configure the API Connector in Entra ID
 
@@ -186,14 +186,17 @@ Register your API endpoint as an API connector in the Entra admin center.
 This creates the API connector using Microsoft Graph PowerShell:
 
 ```powershell
+# Connect to Microsoft Graph
+Connect-MgGraph -Scopes "APIConnectors.ReadWrite.All"
+
 # Create the API connector that calls your Azure Function
 $apiConnector = @{
     displayName = "Validate Partner Domain"
-    targetUrl = "https://func-signup-validation.azurewebsites.net/api/ValidateSignUp"
+    targetUrl = "https://func-signup-validation.azurewebsites.net/api/ValidateSignUp?code=<your-function-key>"
     authenticationConfiguration = @{
         "@odata.type" = "#microsoft.graph.basicAuthentication"
         username = "apiconnector"
-        password = "<your-function-key>"
+        password = "<your-api-basic-auth-password>"
     }
 }
 
@@ -201,7 +204,7 @@ $connector = New-MgIdentityApiConnector -BodyParameter $apiConnector
 Write-Output "API Connector ID: $($connector.Id)"
 ```
 
-You can also use certificate-based authentication or client credentials for the API connector, which is more secure than basic authentication for production use.
+You can also use certificate-based authentication for the API connector, which is more secure than basic authentication for production use.
 
 ## Step 5: Create the User Flow
 
@@ -214,20 +217,17 @@ Alternatively, use PowerShell:
 ```powershell
 # Create the self-service sign-up user flow
 $userFlow = @{
-    id = "B2X_1_PartnerSignUp"
+    id = "PartnerSignUp"
     userFlowType = "signUpOrSignIn"
     userFlowTypeVersion = 1
-    # Enable email one-time passcode as an identity provider
-    identityProviders = @()
 }
 
-# Note: Full user flow creation requires the beta endpoint
-# For production, use the Entra admin center UI
+New-MgIdentityB2XUserFlow -BodyParameter $userFlow
 ```
 
 In the admin center, configure these settings:
 
-1. **Identity providers** - Enable "Email one-time passcode" at minimum. Add Google or Microsoft account if you want social sign-up.
+1. **Identity providers** - Microsoft Entra ID is available by default. Add Email one-time passcode, Google, Facebook, or Microsoft account if you want those sign-up options.
 2. **User attributes** - Select the built-in attributes (Display Name, Email Address) and your custom attributes (Company Name, Department, Access Justification).
 3. **Page layouts** - Customize the look and feel of the sign-up page if needed.
 
@@ -245,25 +245,7 @@ This means after the user fills out the registration form and clicks submit, Ent
 
 The user flow needs to be associated with an application registration so it triggers when users sign up for that specific app.
 
-```powershell
-# Get your application's service principal
-$app = Get-MgServicePrincipal -Filter "displayName eq 'My Partner Portal'"
-
-# Associate the user flow with the application
-# This is done through the app's authentication configuration
-$appUpdate = @{
-    selfServiceSignUp = @{
-        isEnabled = $true
-        userFlows = @(
-            @{
-                id = "B2X_1_PartnerSignUp"
-            }
-        )
-    }
-}
-```
-
-In the admin center, go to Enterprise applications, select your app, and under Properties, set "Enable users to sign in" to Yes and configure the self-service sign-up settings.
+In the admin center, go to Identity, External Identities, User flows, select your user flow, then select Applications under Use. Click "Add application," select the application, and choose Select.
 
 ## Step 8: Test the Complete Flow
 
@@ -328,7 +310,7 @@ def validate_signup(email, company_name, justification):
 Enable Application Insights on your Azure Function to monitor API connector calls. Look for:
 
 - **Failed invocations** - These indicate issues with your API endpoint.
-- **High latency** - The API connector has a timeout (currently around 10 seconds). If your API takes too long, the sign-up will fail.
+- **High latency** - Microsoft Entra ID waits up to 20 seconds for the API connector response and then retries once. If your API takes too long, the sign-up will fail.
 - **Block rate** - Track how many sign-ups are being blocked to detect potential issues with your validation logic.
 
 In the Entra ID audit logs, you can also see sign-up flow events:
