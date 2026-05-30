@@ -34,7 +34,7 @@ graph LR
     E --> H[Function Instance 3]
 ```
 
-The function runtime scales out to match the number of partitions. If your event hub has 8 partitions, the runtime can run up to 8 instances of your function in parallel.
+The function runtime scales based on the number of unprocessed events, with the partition count acting as the upper limit for target instances. If your event hub has 8 partitions, the runtime can run up to 8 instances of your function in parallel.
 
 ## Setting Up the Event Hub
 
@@ -143,8 +143,7 @@ Configure the function binding in `function.json`.
       "eventHubName": "telemetry-events",
       "connection": "EventHubConnection",
       "consumerGroup": "function-processor",
-      "cardinality": "many",
-      "dataType": "string"
+      "cardinality": "many"
     }
   ]
 }
@@ -161,11 +160,9 @@ Tune the batch settings in `host.json` to optimize throughput.
   "version": "2.0",
   "extensions": {
     "eventHubs": {
-      "batchCheckpointFrequency": 5,
-      "eventProcessorOptions": {
-        "maxBatchSize": 100,
-        "prefetchCount": 300
-      },
+      "maxEventBatchSize": 100,
+      "prefetchCount": 300,
+      "batchCheckpointFrequency": 1,
       "initialOffsetOptions": {
         "type": "fromEnqueuedTime",
         "enqueuedTimeUtc": "2026-02-16T00:00:00Z"
@@ -177,9 +174,9 @@ Tune the batch settings in `host.json` to optimize throughput.
 
 Key settings:
 
-- **maxBatchSize**: Maximum number of events per function invocation. Higher values mean better throughput but more memory usage.
-- **prefetchCount**: Number of events to prefetch from the event hub. Set this higher than maxBatchSize for smoother processing.
-- **batchCheckpointFrequency**: Checkpoint every N batches instead of every batch. Higher values reduce checkpoint overhead but increase the window for reprocessing after a failure.
+- **maxEventBatchSize**: Maximum number of events per function invocation. Higher values mean better throughput but more memory usage.
+- **prefetchCount**: Number of events to prefetch from the event hub. Set this higher than maxEventBatchSize for smoother processing.
+- **batchCheckpointFrequency**: Checkpoint every N batches instead of every batch. The default value of 1 works well with target-based scaling; higher values reduce checkpoint overhead but increase the window for reprocessing after a failure and can affect scale decisions.
 
 ## Sending Events to the Event Hub
 
@@ -196,11 +193,11 @@ const producer = new EventHubProducerClient(connectionString, eventHubName);
 
 async function sendTelemetryBatch(events) {
   // Create a batch of events
-  const batch = await producer.createBatch();
+  let batch = await producer.createBatch();
 
   for (const event of events) {
     // Try to add each event to the batch
-    const added = batch.tryAdd({
+    let added = batch.tryAdd({
       body: event,
       properties: { type: event.type }
     });
@@ -208,8 +205,15 @@ async function sendTelemetryBatch(events) {
     if (!added) {
       // Batch is full, send it and start a new one
       await producer.sendBatch(batch);
-      const newBatch = await producer.createBatch();
-      newBatch.tryAdd({ body: event });
+      batch = await producer.createBatch();
+      added = batch.tryAdd({
+        body: event,
+        properties: { type: event.type }
+      });
+
+      if (!added) {
+        throw new Error('Event is too large to fit in a batch');
+      }
     }
   }
 
@@ -340,11 +344,11 @@ module.exports = async function (context, inputEvents) {
 
 ## Scaling Considerations
 
-The Event Hubs trigger scales based on partition count. Here is what to keep in mind:
+The Event Hubs trigger scales based on the number of unprocessed events, up to the partition count. Here is what to keep in mind:
 
-- **Maximum parallelism equals partition count.** If you have 4 partitions, at most 4 function instances process events concurrently.
+- **Maximum target instances are limited by partition count.** If you have 4 partitions, at most 4 function instances process events concurrently for that event hub.
 - **Choose partition count based on throughput needs.** More partitions means more parallelism but also more complexity in ordering guarantees.
-- **Use partition keys** to group related events. Events with the same partition key go to the same partition, which means they are processed in order by the same function instance.
+- **Use partition keys** to group related events. Events with the same partition key go to the same partition, which means they are processed in partition order by one active consumer for that partition at a time.
 - **Monitor the lag.** If your function cannot keep up with the event rate, the lag (difference between latest event and last processed event) grows. Scale up by increasing partition count or optimizing processing time.
 
 ## Wrapping Up
