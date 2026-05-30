@@ -8,7 +8,7 @@ Description: Learn how to blend data from multiple BigQuery tables in Looker Stu
 
 ---
 
-Most real dashboards need data from more than one table. Your revenue numbers live in one dataset, marketing spend in another, and customer satisfaction scores in a third. Looker Studio's data blending feature lets you combine these into a single chart without creating new BigQuery views. It is essentially a left join performed in the Looker Studio layer.
+Most real dashboards need data from more than one table. Your revenue numbers live in one dataset, marketing spend in another, and customer satisfaction scores in a third. Looker Studio's data blending feature lets you combine these into a single chart without creating new BigQuery views. For simple blends, you will often configure a left outer join in the Looker Studio layer, but the blend editor also supports other join types.
 
 Data blending is convenient, but it has quirks that can produce incorrect results if you are not careful. This guide covers when to use blending, how to set it up correctly, and when you should push the join back to BigQuery instead.
 
@@ -23,7 +23,7 @@ Data blending works well when:
 
 Data blending is a poor choice when:
 
-- You need complex join conditions (multi-column joins, inequality joins)
+- You need complex non-equality join conditions (inequality joins, range joins, or custom SQL logic)
 - You are joining on high-cardinality fields (like user_id across millions of rows)
 - You need consistent results across many charts (each blended chart is independent)
 - Performance matters (blending is slower than pre-joined views)
@@ -34,14 +34,14 @@ When you blend two data sources in a chart, Looker Studio performs the following
 
 1. Queries each data source independently
 2. Aggregates the results according to the chart configuration
-3. Performs a left join on the shared dimension (the join key)
+3. Joins the results on the shared dimension (the join key) using the configured join operator
 4. Renders the combined result in the chart
 
-The left join means all rows from the first (left) data source are included, even if there is no matching row in the second (right) data source. Unmatched rows show NULL for the right-side metrics.
+If you use a left outer join, all rows from the first (left) data source are included, even if there is no matching row in the second (right) data source. Unmatched rows show NULL for the right-side metrics. Looker Studio also supports inner, right outer, full outer, and cross joins, so check the join operator in the blend editor.
 
 ```mermaid
 graph TD
-    A[Data Source 1: Sales] -->|Query & Aggregate| C[Left Join on Date]
+    A[Data Source 1: Sales] -->|Query & Aggregate| C[Join on Date]
     B[Data Source 2: Marketing] -->|Query & Aggregate| C
     C --> D[Blended Result]
     D --> E[Chart]
@@ -72,7 +72,7 @@ Configure the blend:
 - Metric: `revenue`
 
 **Right data source:** Click "Join another table" and add your second source (e.g., marketing_spend)
-- Dimension: `date` (this must match the left side)
+- Dimension: `date` (this must contain the same data as the left side; the field names can differ)
 - Metric: `spend`
 
 **Join key:** The shared dimension that connects the two sources. Looker Studio calls this the "Join key" and it must exist in both data sources.
@@ -81,7 +81,7 @@ Configure the blend:
 
 The join key is critical. It determines how rows from the two sources are matched.
 
-Click on the join configuration to select which fields to join on. The fields must have the same data type (you cannot join a date on a string).
+Click on the join configuration to select which fields to join on. Join conditions can use one or more fields, but Looker Studio only supports equality between those fields. The fields should contain compatible data (you cannot reliably join a date to a string without first normalizing one side).
 
 Good join keys:
 - Date (most common for time series blending)
@@ -144,7 +144,7 @@ graph LR
     C[Daily NPS Scores] -->|Join on date| D
 ```
 
-Each additional data source is left-joined to the first source. This means if the first source has dates that the others do not, those rows still appear with NULLs for the missing data.
+Each additional data source adds another join configuration between neighboring tables in the blend. If you use left outer joins from left to right, dates from the left side still appear with NULLs for missing data on the right.
 
 ## Calculated Fields in Blended Data
 
@@ -178,9 +178,9 @@ These fields use metrics from both data sources to compute values that neither s
 
 **Missing dates in one source.** If revenue data exists for every day but marketing data only exists on days when ads ran, the blend shows NULL for spend on no-ad days. This is correct behavior but can confuse users. Add a note explaining this in the dashboard.
 
-**Cross joins from wrong join keys.** If you forget to set a join key, or set the wrong one, Looker Studio may produce a cross join where every row from the left matches every row from the right. This gives wildly inflated numbers.
+**Cross joins and many-to-many matches.** If you choose a cross join, every row from the left matches every row from the right. If you set the wrong join key, you can also create many-to-many matches that inflate row counts and metrics.
 
-**Filter behavior.** Filters applied to the left data source affect the left query. Filters applied to the right source affect the right query. A chart-level filter affects both. Be explicit about where filters are applied.
+**Filter behavior.** Filters applied to a table in the blend affect that table before the join. Filters applied to a chart based on a blend are applied after the blend is created. Inherited report, page, or group filters may act before or after the blend depending on whether they are compatible with the underlying data sources or the blended result. Be explicit about where filters are applied.
 
 ## When to Use BigQuery Views Instead
 
