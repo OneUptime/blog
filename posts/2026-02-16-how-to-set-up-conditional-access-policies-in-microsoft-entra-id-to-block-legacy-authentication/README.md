@@ -17,7 +17,7 @@ In this guide, I will walk you through the entire process of identifying legacy 
 Legacy authentication clients send credentials in a way that is fundamentally less secure than modern authentication. Here is what makes them problematic:
 
 - They do not support MFA, making them ideal targets for credential stuffing and brute force attacks.
-- They often transmit credentials in plaintext or use weak encryption.
+- They rely on password-based basic authentication flows that cannot satisfy modern interactive security challenges.
 - Attackers actively exploit these protocols because they know many organizations still have them enabled.
 - Microsoft's own data shows that more than 99 percent of password spray attacks target legacy authentication endpoints.
 
@@ -28,7 +28,7 @@ Even if you have MFA enabled for all your users, an attacker can still authentic
 Before you start configuring policies, make sure you have:
 
 - A Microsoft Entra ID P1 or P2 license (required for Conditional Access)
-- Global Administrator or Security Administrator role
+- Global Administrator, Conditional Access Administrator, or Security Administrator role
 - At least one emergency access account excluded from Conditional Access policies
 - Access to the Microsoft Entra admin center
 
@@ -45,10 +45,10 @@ Here is a KQL query you can run in Log Analytics if you have sign-in logs forwar
 // over the past 30 days, grouped by user and client app
 SigninLogs
 | where TimeGenerated > ago(30d)
-| where ClientAppUsed in ("Exchange ActiveSync", "IMAP4", "MAPI Over HTTP",
+| where ClientAppUsed in~ ("Exchange ActiveSync", "IMAP4", "MAPI over HTTP",
     "Offline Address Book", "Other clients", "Outlook Anywhere (RPC over HTTP)",
-    "POP3", "Reporting Web Services", "SMTP",
-    "Authenticated SMTP", "Exchange Web Services")
+    "POP3", "Reporting Web Services", "Authenticated SMTP",
+    "Exchange Web Services")
 | summarize Count = count() by UserPrincipalName, ClientAppUsed, AppDisplayName
 | sort by Count desc
 ```
@@ -83,7 +83,7 @@ Set the policy state to Report-only and click Create.
 
 ## Step 3: Monitor the Report-Only Policy
 
-Let the report-only policy run for at least one to two weeks. During this time, review the Conditional Access insights workbook:
+Let the report-only policy run for at least one to two weeks. During this time, review the Conditional Access insights workbook if you have a Log Analytics workspace retaining sign-in logs:
 
 1. Navigate to Protection, then Conditional Access, then Insights and reporting.
 2. Select your report-only policy from the dropdown.
@@ -110,7 +110,7 @@ For users still on legacy clients, here are the typical migration paths:
 - Exchange ActiveSync users should move to the Outlook mobile app or Outlook desktop client with modern authentication.
 - IMAP and POP3 users should switch to a modern email client or use OAuth 2.0 where supported.
 - Third-party applications using SMTP AUTH may need to be reconfigured to use Microsoft Graph API or OAuth-based SMTP.
-- PowerShell scripts using basic authentication should be updated to use the Microsoft Graph PowerShell SDK.
+- PowerShell scripts using basic authentication should be updated to use modern authentication with the Exchange Online PowerShell module or the Microsoft Graph PowerShell SDK, depending on the workload.
 
 Here is an example of updating a PowerShell script from basic authentication to modern authentication:
 
@@ -150,28 +150,28 @@ Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess"
 
 # Define the Conditional Access policy to block legacy authentication
 $params = @{
-    DisplayName = "Block Legacy Authentication"
-    State = "enabled"
-    Conditions = @{
+    displayName = "Block Legacy Authentication"
+    state = "enabled"
+    conditions = @{
         # Apply to all users
-        Users = @{
-            IncludeUsers = @("All")
+        users = @{
+            includeUsers = @("All")
             # Exclude emergency access accounts
-            ExcludeUsers = @("EMERGENCY_ACCOUNT_OBJECT_ID")
+            excludeUsers = @("EMERGENCY_ACCOUNT_OBJECT_ID")
         }
         # Target legacy authentication client apps
-        ClientAppTypes = @(
+        clientAppTypes = @(
             "exchangeActiveSync"
             "other"
         )
-        Applications = @{
-            IncludeApplications = @("All")
+        applications = @{
+            includeApplications = @("All")
         }
     }
     # Block access for legacy authentication attempts
-    GrantControls = @{
-        Operator = "OR"
-        BuiltInControls = @("block")
+    grantControls = @{
+        operator = "OR"
+        builtInControls = @("block")
     }
 }
 
@@ -193,7 +193,7 @@ There are several related steps you should take alongside blocking legacy authen
 
 First, enable Security Defaults if you do not have Conditional Access licenses for all users. Security Defaults automatically block legacy authentication for the entire tenant.
 
-Second, disable legacy authentication at the protocol level in Exchange Online. Go to the Exchange admin center and disable POP3, IMAP, and basic authentication for SMTP at the organizational level.
+Second, disable legacy authentication at the protocol level in Exchange Online. Disable Basic authentication with Exchange Online authentication policies, turn off SMTP AUTH at the organization level unless specific mailboxes still require it, and disable POP3 and IMAP4 access for mailboxes that do not need those protocols.
 
 Third, use Microsoft Entra ID sign-in risk policies to detect and respond to suspicious sign-in behavior that may indicate compromised accounts.
 
