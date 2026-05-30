@@ -12,7 +12,7 @@ CrashLoopBackOff is one of the most frustrating Kubernetes errors because it tel
 
 ## Understanding CrashLoopBackOff
 
-CrashLoopBackOff is not an error state itself - it is a restart policy behavior. When a container exits with a non-zero exit code, Kubernetes restarts it. If it keeps crashing, Kubernetes increases the delay between restarts: 10 seconds, 20 seconds, 40 seconds, up to a maximum of 5 minutes. The "BackOff" part refers to this exponential backoff.
+CrashLoopBackOff is not an error state itself - it is a restart policy behavior. When a container exits and the pod's restart policy says it should be restarted, Kubernetes restarts it. If it keeps crashing, Kubernetes increases the delay between restarts: 10 seconds, 20 seconds, 40 seconds, up to a maximum of 5 minutes by default. The "BackOff" part refers to this exponential backoff.
 
 The actual error that caused the crash is somewhere in the container logs, events, or pod description. Your job is to find it.
 
@@ -111,7 +111,7 @@ Common exit codes and their meanings:
 |-----------|---------|
 | 0 | Success (should not cause CrashLoopBackOff) |
 | 1 | Generic application error |
-| 2 | Shell command not found |
+| 2 | Shell built-in misuse or command-line usage error |
 | 126 | Permission denied (binary not executable) |
 | 127 | Command not found |
 | 137 | OOM killed (SIGKILL) |
@@ -199,7 +199,13 @@ kind: Deployment
 metadata:
   name: myapp-debug
 spec:
+  selector:
+    matchLabels:
+      app: myapp-debug
   template:
+    metadata:
+      labels:
+        app: myapp-debug
     spec:
       containers:
         - name: myapp
@@ -283,7 +289,7 @@ Common image issues:
 
 ## Prevention Strategies
 
-**Always set resource limits.** Without them, a memory leak will crash the container and potentially take down the node.
+**Set resource requests and limits deliberately.** Without memory limits, a memory leak can consume node memory and destabilize other workloads.
 
 **Use readiness and liveness probes carefully.** An overly aggressive liveness probe can kill a healthy container that is just slow to respond, causing a CrashLoopBackOff cycle.
 
