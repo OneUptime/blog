@@ -19,7 +19,7 @@ Access policies and RBAC differ in several important ways:
 | Feature | Access Policies | RBAC Authorization |
 |---|---|---|
 | Granularity | Per vault (all-or-nothing per secret/key/cert) | Per individual secret, key, or certificate |
-| Maximum policies per vault | 1024 | No limit (standard Azure RBAC) |
+| Maximum policies per vault | 1024 | Azure RBAC role assignment limits |
 | Conditional Access | Not supported | Supported through Entra ID |
 | Audit integration | Limited | Full Azure Activity Log integration |
 | Management plane | Separate from data plane | Unified with Azure RBAC |
@@ -65,12 +65,12 @@ If you are creating a new vault, enable RBAC from the start:
 ```powershell
 # Create a new Key Vault with RBAC authorization enabled
 
-# The -EnableRbacAuthorization flag is the key setting
+# The current Az.KeyVault cmdlet defaults new vaults to RBAC. Use
+# -DisableRbacAuthorization only when you intentionally want access policies.
 $vault = New-AzKeyVault `
     -VaultName "myapp-keyvault-rbac" `
     -ResourceGroupName "myapp-rg" `
     -Location "eastus" `
-    -EnableRbacAuthorization `
     -Sku "Standard" `
     -EnablePurgeProtection `
     -SoftDeleteRetentionInDays 90
@@ -100,7 +100,7 @@ Azure provides several built-in roles specifically for Key Vault:
 
 | Role | Description | Scope |
 |---|---|---|
-| Key Vault Administrator | Full access to manage vault and all objects | Vault, secret, key, or cert |
+| Key Vault Administrator | Full data plane access to keys, secrets, and certificates; cannot manage the vault resource or role assignments | Vault, secret, key, or cert |
 | Key Vault Secrets Officer | Manage secrets (create, update, delete, list) | Vault or specific secret |
 | Key Vault Secrets User | Read secret values | Vault or specific secret |
 | Key Vault Certificates Officer | Manage certificates | Vault or specific cert |
@@ -152,7 +152,7 @@ Write-Host "This principal cannot read any other secrets in the vault."
 
 ## Step 5: Set Up Admin Access
 
-Administrators need the Key Vault Administrator role to manage the vault:
+Administrators need the Key Vault Administrator role to manage keys, secrets, and certificates in the vault:
 
 ```powershell
 # Grant admin access to the security team group
@@ -274,7 +274,7 @@ Once all RBAC assignments are in place, switch the vault:
 Update-AzKeyVault `
     -VaultName "existing-keyvault" `
     -ResourceGroupName "myapp-rg" `
-    -EnableRbacAuthorization $true
+    -DisableRbacAuthorization $false
 
 Write-Host "Vault switched to RBAC authorization."
 Write-Host "Access policies are now ignored. Only RBAC assignments control access."
