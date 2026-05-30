@@ -14,14 +14,14 @@ In AKS, etcd is managed by Microsoft as part of the control plane. You do not ha
 
 ## Understanding etcd's Role
 
-etcd is a distributed key-value store that serves as Kubernetes' system of record. Every API request that reads or writes cluster state goes through etcd:
+etcd is a distributed key-value store that serves as Kubernetes' system of record. Kubernetes API requests are served by the API server's storage layer, which is backed by etcd:
 
-- `kubectl get pods` reads from etcd
-- `kubectl create deployment` writes to etcd
+- `kubectl get pods` reads cluster state through the API server
+- `kubectl create deployment` writes cluster state through the API server
 - The controller manager reads and writes to etcd continuously
 - The scheduler reads pod and node data from etcd
 
-When etcd latency increases, all of these operations slow down proportionally. A healthy etcd cluster should handle read operations in under 10ms and write operations in under 50ms. When these numbers climb to hundreds of milliseconds or seconds, the cluster becomes visibly degraded.
+When etcd latency increases, operations that depend on fresh cluster state can slow down. A healthy etcd cluster should usually handle read operations in milliseconds and apply write requests in under 50ms. When these numbers climb to hundreds of milliseconds or seconds, the cluster becomes visibly degraded.
 
 ```mermaid
 graph LR
@@ -58,8 +58,8 @@ time kubectl get namespaces
 # Compare with a more complex query
 time kubectl get pods --all-namespaces
 
-# Check API server health endpoints
-kubectl get --raw /healthz
+# Check API server liveness and readiness endpoints
+kubectl get --raw /livez
 kubectl get --raw /readyz
 
 # Check the API server response time for different resource types
@@ -70,39 +70,53 @@ If simple queries (like listing namespaces) are slow, the issue is likely at the
 
 ## Step 2: Check Control Plane Diagnostic Logs
 
-If you have diagnostic logging enabled (you should), query the API server logs for etcd-related errors.
+If you have diagnostic logging enabled (you should), query the API server logs for etcd-related errors. AKS can send logs to the resource-specific `AKSControlPlane` table or, in Azure diagnostics mode, to `AzureDiagnostics`.
 
 ```text
 // KQL query: Find etcd timeout errors in API server logs
-AzureDiagnostics
-| where Category == "kube-apiserver"
-| where log_s contains "etcd" and (log_s contains "timeout" or log_s contains "slow" or log_s contains "deadline")
-| project TimeGenerated, log_s
+let ApiServerLogs = union isfuzzy=true
+  (AKSControlPlane | where Category == "kube-apiserver" | project TimeGenerated, Message),
+  (AzureDiagnostics | where Category == "kube-apiserver" | project TimeGenerated, Message = log_s);
+ApiServerLogs
+| where Message contains "etcd" and (Message contains "timeout" or Message contains "slow" or Message contains "deadline")
+| project TimeGenerated, Message
 | order by TimeGenerated desc
 | take 50
 ```
 
 ```text
 // KQL query: Find slow API requests that indicate etcd latency
-AzureDiagnostics
-| where Category == "kube-apiserver"
-| where log_s contains "response"
-| extend latency = extract("latency=([0-9.]+)", 1, log_s)
-| where todouble(latency) > 1
-| project TimeGenerated, log_s, latency
-| order by todouble(latency) desc
+let ApiServerLogs = union isfuzzy=true
+  (AKSControlPlane | where Category == "kube-apiserver" | project TimeGenerated, Message),
+  (AzureDiagnostics | where Category == "kube-apiserver" | project TimeGenerated, Message = log_s);
+ApiServerLogs
+| where Message contains "response" and Message contains "latency"
+| extend latencyValue = todouble(extract(@"latency=""?([0-9.]+)", 1, Message))
+| extend latencyUnit = extract(@"latency=""?[0-9.]+(ms|s)", 1, Message)
+| extend latencySeconds = case(latencyUnit == "ms", latencyValue / 1000.0, latencyValue)
+| where latencySeconds > 1
+| project TimeGenerated, Message, latencySeconds
+| order by latencySeconds desc
 | take 20
 ```
 
 ## Step 3: Check API Server Metrics
 
-AKS exposes some API server metrics through Azure Monitor that can indicate etcd issues.
+AKS exposes some control plane platform metrics through Azure Monitor that can indicate API server or etcd pressure. Request latency histograms are available through managed Prometheus, not as standard Azure Monitor platform metrics.
 
 ```bash
-# Check API server request latency metrics
+# Check API server inflight requests
 az monitor metrics list \
   --resource $(az aks show -g myResourceGroup -n myAKSCluster --query id -o tsv) \
-  --metric "apiserver_request_duration_seconds" \
+  --metric "apiserver_current_inflight_requests" \
+  --interval PT5M \
+  --aggregation Average \
+  --output table
+
+# Check etcd database usage
+az monitor metrics list \
+  --resource $(az aks show -g myResourceGroup -n myAKSCluster --query id -o tsv) \
+  --metric "etcd_database_usage_percentage" \
   --interval PT5M \
   --aggregation Average \
   --output table
@@ -146,7 +160,7 @@ If you have thousands of completed Jobs or Events, clean them up:
 ```bash
 # Delete completed Jobs older than 1 hour
 kubectl get jobs -A -o json | \
-  jq -r '.items[] | select(.status.succeeded==1) | "\(.metadata.namespace) \(.metadata.name)"' | \
+  jq -r '.items[] | select(.status.succeeded==1 and .status.completionTime != null and (.status.completionTime | fromdateiso8601) < (now - 3600)) | "\(.metadata.namespace) \(.metadata.name)"' | \
   while read NS NAME; do
     kubectl delete job $NAME -n $NS
   done
@@ -181,7 +195,7 @@ Kubernetes controllers, operators, and your applications use watch streams to mo
 ```bash
 # Check the number of active watch streams (requires API server metrics)
 # If using Prometheus:
-# apiserver_registered_watchers
+# sum(apiserver_longrunning_requests{verb="WATCH"}) by (resource, scope)
 
 # Check which controllers might be creating excessive watches
 kubectl get pods -n kube-system -o name | while read POD; do
@@ -192,7 +206,7 @@ done
 
 ### Large Objects in etcd
 
-Kubernetes has a 1.5MB limit on individual object sizes, but even objects well below this limit can cause latency if there are many large ones. Secrets and ConfigMaps with large data blobs are common culprits.
+Secrets and ConfigMaps are limited to 1MiB of data per object, but even objects below this limit can cause latency if there are many large ones. Secrets and ConfigMaps with large data blobs are common culprits.
 
 ```bash
 # Find the largest Secrets
@@ -208,7 +222,7 @@ kubectl get configmaps -A -o json | \
 
 ### Cluster Size Relative to Control Plane Tier
 
-AKS scales the control plane based on the cluster tier. Free tier clusters get a less powerful control plane than Standard or Premium tier clusters.
+AKS cluster management tiers affect the API server SLA and supported scale targets. The Free tier is recommended for development, testing, and clusters with fewer than 10 nodes, while Standard and Premium are intended for production and larger clusters.
 
 ```bash
 # Check your cluster's SKU tier
@@ -218,10 +232,10 @@ az aks show \
   --query "sku" -o json
 ```
 
-If you are running a large cluster (50+ nodes) on the Free tier, upgrading to Standard or Premium gives you a more powerful control plane with better etcd performance.
+If you are running a production or larger cluster on the Free tier, upgrading to Standard or Premium gives you the supported production tier, API server uptime SLA, and higher documented scale targets.
 
 ```bash
-# Upgrade to Standard tier for better control plane performance
+# Upgrade to Standard tier
 az aks update \
   --resource-group myResourceGroup \
   --name myAKSCluster \
@@ -233,7 +247,7 @@ az aks update \
 ### Clean Up Stale Resources
 
 ```bash
-# Delete orphaned ReplicaSets (keep the 2 most recent per deployment)
+# Delete scaled-down ReplicaSets after confirming you do not need rollback history
 kubectl get replicasets -A -o json | \
   jq -r '.items[] | select(.spec.replicas==0) | "\(.metadata.namespace) \(.metadata.name)"' | \
   while read NS NAME; do
@@ -241,40 +255,13 @@ kubectl get replicasets -A -o json | \
   done
 ```
 
-### Configure Event TTL
+### Check Event TTL
 
-Events accumulate quickly and add load to etcd. While you cannot configure the event TTL directly in AKS, you can use a cleanup CronJob:
+Events accumulate quickly and add load to etcd, but Kubernetes retains events only for the API server's configured `--event-ttl` duration, which defaults to 1 hour. In AKS you cannot configure the API server event TTL directly. If events are accumulating far beyond the expected retention period, include that evidence in your Microsoft support ticket rather than running an ad hoc cleanup controller.
 
-```yaml
-# event-cleanup.yaml
-# CronJob that cleans up old events hourly
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: event-cleanup
-  namespace: kube-system
-spec:
-  schedule: "0 * * * *"
-  jobTemplate:
-    spec:
-      ttlSecondsAfterFinished: 300
-      template:
-        spec:
-          serviceAccountName: event-cleanup-sa
-          containers:
-          - name: cleanup
-            image: bitnami/kubectl:latest
-            command:
-            - /bin/sh
-            - -c
-            # Delete events older than 2 hours
-            - |
-              kubectl get events -A --sort-by='.lastTimestamp' -o json | \
-              jq -r '.items[] | select((.lastTimestamp // .eventTime) < (now - 7200 | todate)) | "\(.metadata.namespace) \(.metadata.name)"' | \
-              while read NS NAME; do
-                kubectl delete event $NAME -n $NS 2>/dev/null
-              done
-          restartPolicy: OnFailure
+```bash
+# Check whether old events are still present
+kubectl get events -A --sort-by='.lastTimestamp' | tail -20
 ```
 
 ### Reduce Watch Cardinality
