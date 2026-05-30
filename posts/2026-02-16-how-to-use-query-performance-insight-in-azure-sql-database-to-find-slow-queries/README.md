@@ -18,7 +18,7 @@ Query Performance Insight (QPI) is a visualization tool built into the Azure Por
 
 QPI answers three key questions:
 
-1. Which queries are consuming the most CPU, data I/O, or log I/O?
+1. Which queries are consuming the most CPU, duration, or executions?
 2. How have query performance patterns changed over time?
 3. What are the individual execution details for a specific query?
 
@@ -51,17 +51,17 @@ You will see a dashboard with two main views: a timeline chart showing resource 
 
 Resource Consumption Chart
 
-The top section shows a timeline of resource usage. You can switch between three metrics:
+The top section shows a timeline of resource usage. You can switch between three query metrics:
 
 - **CPU**: Total CPU consumption by queries over time
-- **Data IO**: Physical reads from data files
-- **Log IO**: Writes to the transaction log
+- **Duration**: Total or average query execution duration
+- **Execution count**: How often each query runs
 
 The chart shows stacked bars where each color represents a different query. This immediately reveals which queries dominate your resource usage. Often, you will see that 2-3 queries account for 80% or more of total consumption.
 
 ### Time Range Selection
 
-You can adjust the time range to look at the last hour, 24 hours, 7 days, or a custom range. Looking at different time ranges helps you distinguish between:
+You can adjust the time range to look at the last 24 hours, past week, past month, or a custom view in the portal. Looking at different time ranges helps you distinguish between:
 
 - One-time spikes (a single bad query execution)
 - Recurring patterns (a nightly batch job that hammers the database)
@@ -72,7 +72,7 @@ You can adjust the time range to look at the last hour, 24 hours, 7 days, or a c
 Below the chart, you see a numbered list of the top queries ranked by resource consumption. For each query, you see:
 
 - The query ID
-- The CPU/IO consumption as a percentage of total
+- The CPU or duration consumption during the selected interval
 - The query text (truncated - click to see the full text)
 - The execution count
 
@@ -84,7 +84,7 @@ Click on any query in the list to see its details. The detail view shows:
 
 **Execution statistics over time**: A chart showing how the query's performance has changed. This helps you identify when a query started performing poorly. Did it coincide with a deployment? A data growth milestone? A missing index?
 
-**Per-execution metrics**: Average duration, CPU time, logical reads, physical reads, and execution count. These numbers tell you whether the query is expensive because it runs frequently (high count, low per-execution cost) or because each execution is expensive (low count, high per-execution cost).
+**Execution metrics**: CPU consumption, duration, and execution count over time. These numbers tell you whether the query is expensive because it runs frequently (high count, low per-execution cost) or because each execution is expensive (low count, high per-execution cost).
 
 ## Common Patterns and How to Fix Them
 
@@ -123,9 +123,9 @@ No single query is a problem, but thousands of small queries collectively consum
 2. Consider batching, caching, or query consolidation at the application level.
 3. Check if the ORM is generating N+1 query patterns.
 
-### Pattern 3: Data IO Spikes
+### Pattern 3: Duration Spikes
 
-Queries that cause high physical reads are often scanning large tables without appropriate indexes. They force data to be read from disk instead of the buffer cache.
+Queries with high duration are often scanning large tables without appropriate indexes, waiting on locks, or doing more work than expected. Large scans can also drive high physical or logical reads.
 
 **Investigation steps**:
 1. Check if the query has appropriate indexes.
@@ -159,44 +159,62 @@ While QPI provides a nice visual interface, sometimes you need to query the unde
 Find the top 10 queries by average CPU time:
 
 ```sql
--- Top 10 queries by average CPU consumption
+-- Top 10 queries by average CPU consumption over the last 24 hours
 SELECT TOP 10
     qt.query_sql_text,
     q.query_id,
-    rs.avg_cpu_time,
-    rs.count_executions,
-    rs.avg_duration,
-    rs.avg_logical_io_reads,
-    rs.last_execution_time
+    SUM(rs.avg_cpu_time * rs.count_executions) / NULLIF(SUM(rs.count_executions), 0) AS avg_cpu_time,
+    SUM(rs.count_executions) AS count_executions,
+    SUM(rs.avg_duration * rs.count_executions) / NULLIF(SUM(rs.count_executions), 0) AS avg_duration,
+    SUM(rs.avg_logical_io_reads * rs.count_executions) / NULLIF(SUM(rs.count_executions), 0) AS avg_logical_io_reads,
+    MAX(rs.last_execution_time) AS last_execution_time
 FROM sys.query_store_query_text qt
 JOIN sys.query_store_query q ON qt.query_text_id = q.query_text_id
 JOIN sys.query_store_plan p ON q.query_id = p.query_id
 JOIN sys.query_store_runtime_stats rs ON p.plan_id = rs.plan_id
 JOIN sys.query_store_runtime_stats_interval rsi ON rs.runtime_stats_interval_id = rsi.runtime_stats_interval_id
-WHERE rsi.start_time > DATEADD(HOUR, -24, GETUTCDATE())
-ORDER BY rs.avg_cpu_time DESC;
+WHERE rsi.start_time > DATEADD(HOUR, -24, SYSUTCDATETIME())
+GROUP BY qt.query_sql_text, q.query_id
+ORDER BY avg_cpu_time DESC;
 ```
 
-Find queries with plan regressions (queries that used to be fast and are now slow):
+Find queries whose recent average duration is much worse than older intervals:
 
 ```sql
 -- Find queries where recent performance is worse than historical
+WITH recent AS (
+    SELECT
+        q.query_id,
+        SUM(rs.avg_duration * rs.count_executions) / NULLIF(SUM(rs.count_executions), 0) AS avg_duration
+    FROM sys.query_store_query q
+    JOIN sys.query_store_plan p ON q.query_id = p.query_id
+    JOIN sys.query_store_runtime_stats rs ON p.plan_id = rs.plan_id
+    JOIN sys.query_store_runtime_stats_interval rsi ON rs.runtime_stats_interval_id = rsi.runtime_stats_interval_id
+    WHERE rsi.start_time > DATEADD(HOUR, -1, SYSUTCDATETIME())
+    GROUP BY q.query_id
+),
+historical AS (
+    SELECT
+        q.query_id,
+        SUM(rs.avg_duration * rs.count_executions) / NULLIF(SUM(rs.count_executions), 0) AS avg_duration
+    FROM sys.query_store_query q
+    JOIN sys.query_store_plan p ON q.query_id = p.query_id
+    JOIN sys.query_store_runtime_stats rs ON p.plan_id = rs.plan_id
+    JOIN sys.query_store_runtime_stats_interval rsi ON rs.runtime_stats_interval_id = rsi.runtime_stats_interval_id
+    WHERE rsi.start_time BETWEEN DATEADD(DAY, -7, SYSUTCDATETIME()) AND DATEADD(DAY, -1, SYSUTCDATETIME())
+    GROUP BY q.query_id
+)
 SELECT
     q.query_id,
     qt.query_sql_text,
-    rs_recent.avg_duration AS recent_avg_duration,
-    rs_old.avg_duration AS historical_avg_duration,
-    (rs_recent.avg_duration - rs_old.avg_duration) AS duration_increase
+    recent.avg_duration AS recent_avg_duration,
+    historical.avg_duration AS historical_avg_duration,
+    (recent.avg_duration - historical.avg_duration) AS duration_increase
 FROM sys.query_store_query q
 JOIN sys.query_store_query_text qt ON q.query_text_id = qt.query_text_id
-JOIN sys.query_store_plan p ON q.query_id = p.query_id
-JOIN sys.query_store_runtime_stats rs_recent ON p.plan_id = rs_recent.plan_id
-JOIN sys.query_store_runtime_stats rs_old ON p.plan_id = rs_old.plan_id
-JOIN sys.query_store_runtime_stats_interval rsi_recent ON rs_recent.runtime_stats_interval_id = rsi_recent.runtime_stats_interval_id
-JOIN sys.query_store_runtime_stats_interval rsi_old ON rs_old.runtime_stats_interval_id = rsi_old.runtime_stats_interval_id
-WHERE rsi_recent.start_time > DATEADD(HOUR, -1, GETUTCDATE())
-    AND rsi_old.start_time BETWEEN DATEADD(DAY, -7, GETUTCDATE()) AND DATEADD(DAY, -1, GETUTCDATE())
-    AND rs_recent.avg_duration > rs_old.avg_duration * 2
+JOIN recent ON q.query_id = recent.query_id
+JOIN historical ON q.query_id = historical.query_id
+WHERE recent.avg_duration > historical.avg_duration * 2
 ORDER BY duration_increase DESC;
 ```
 
