@@ -37,7 +37,7 @@ graph TD
 
 1. Standard SKU public IP addresses (NAT Gateway requires Standard SKU)
 2. A VNet with at least one subnet
-3. No conflicting outbound rules (remove load balancer outbound rules or instance-level public IPs on the subnet VMs)
+3. No Basic SKU resources in the subnet (Basic Load Balancer and Basic Public IP resources are not compatible with NAT Gateway)
 
 ## Step 1: Create Multiple Public IP Addresses
 
@@ -149,11 +149,11 @@ A /28 prefix gives you 16 IPs and over a million SNAT ports. You can also combin
 
 ## How NAT Gateway Selects the Outbound IP
 
-When a VM makes an outbound connection through a NAT Gateway with multiple IPs, the gateway selects the source IP based on a hash of the connection flow. This means:
+When a VM makes an outbound connection through a NAT Gateway with multiple IPs, the gateway can use any of the public IPs attached to the NAT Gateway. NAT Gateway dynamically allocates SNAT ports from the shared inventory, and Microsoft recommends that you do not take a dependency on the specific way source ports are assigned. This means:
 
-- Connections to the same destination tend to use the same source IP
-- Different destination IPs may use different source IPs
-- The distribution is not round-robin - it is hash-based for connection consistency
+- Connections can originate from any public IP attached to the NAT Gateway
+- Different flows may use different public IPs and SNAT ports
+- The distribution should not be treated as round-robin or pinned to a specific IP
 
 This matters if the destination service uses IP-based allow lists. You need to add all NAT Gateway IPs to those allow lists:
 
@@ -176,7 +176,7 @@ Monitor your SNAT usage to know when you need to add more IPs:
 # Check NAT Gateway metrics
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/natGateways/myNATGateway" \
-  --metric "SNATConnectionCount" \
+  --metric "TotalConnectionCount" \
   --interval PT1M \
   --aggregation Total \
   --output table
@@ -184,9 +184,9 @@ az monitor metrics list \
 
 Key metrics:
 
-- **SNAT Connection Count:** Total active SNAT connections
-- **Total SNAT Connection Count:** Including failed attempts
-- **Dropped Packets:** Packets dropped due to SNAT exhaustion
+- **SNAT Connection Count (`SNATConnectionCount`):** New attempted or failed SNAT connections within the selected time range
+- **Total SNAT Connection Count (`TotalConnectionCount`):** Total active SNAT connections
+- **Dropped Packets (`PacketDropCount`):** Packets dropped by the NAT Gateway
 - **Bytes Processed:** Data volume through the gateway
 
 Set up alerts for SNAT exhaustion:
@@ -197,10 +197,10 @@ az monitor metrics alert create \
   --resource-group myResourceGroup \
   --name snatExhaustionAlert \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/natGateways/myNATGateway" \
-  --condition "total DroppedPackets > 0" \
+  --condition "total PacketDropCount > 0" \
   --window-size 5m \
   --evaluation-frequency 1m \
-  --action-group opsTeam \
+  --action opsTeam \
   --description "NAT Gateway dropping packets - possible SNAT exhaustion"
 ```
 
@@ -230,11 +230,11 @@ All subnets share the same pool of SNAT ports. Keep this in mind when calculatin
 
 | Feature | NAT Gateway | LB Outbound Rules | Instance Public IP |
 |---------|-------------|-------------------|-------------------|
-| SNAT ports per IP | 64,512 | 1,024 per instance | 64,512 |
+| SNAT ports per IP | 64,512 | Configurable; default allocation varies by backend pool size, up to 1,024 per instance | No SNAT; VM has all ephemeral ports available |
 | Max IPs | 16 | Multiple | 1 per NIC |
 | Managed | Yes | Partially | No |
 | Per-subnet config | Yes | Per backend pool | Per VM |
-| Idle timeout | 4-120 min | 4-66 min | N/A |
+| Idle timeout | 4-120 min for TCP; UDP is 4 min | 4-120 min | N/A |
 
 NAT Gateway is the clear winner for most outbound scenarios. It provides the most ports, the simplest configuration, and the best management experience.
 
@@ -248,10 +248,10 @@ az network vnet subnet update \
   --resource-group myResourceGroup \
   --vnet-name myVNet \
   --name appSubnet \
-  --nat-gateway ""
+  --nat-gateway null
 ```
 
-After removal, VMs in that subnet revert to the default outbound access method.
+After removal, VMs in that subnet fall back to the next configured outbound method, if any, such as an instance-level public IP, load balancer outbound rules, or default outbound access where it is available.
 
 ## Common Issues
 
@@ -259,7 +259,7 @@ After removal, VMs in that subnet revert to the default outbound access method.
 
 **Existing connections not migrated.** When you first associate a NAT Gateway, existing connections continue on their current path. New connections use the NAT Gateway. If you need all connections through the NAT Gateway, restart the affected services.
 
-**Cannot associate NAT Gateway.** A subnet cannot have both a NAT Gateway and VMs with instance-level public IPs for outbound. Remove the public IPs first, or use a different subnet.
+**Cannot associate NAT Gateway.** NAT Gateway is not compatible with Basic SKU resources in the subnet, such as Basic Load Balancer or Basic Public IP. Upgrade those resources to Standard SKU or use a different subnet.
 
 **Idle timeout causing dropped connections.** Long-running idle connections (like database connection pools) may be dropped when the idle timeout expires. Increase the timeout or implement keepalive on the application side.
 
