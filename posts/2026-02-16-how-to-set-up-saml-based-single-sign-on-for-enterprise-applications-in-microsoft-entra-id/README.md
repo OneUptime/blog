@@ -136,7 +136,7 @@ Some applications also accept the Federation Metadata XML, which contains all th
 
 ## Step 4: Assign Users and Groups
 
-Users cannot access the application until they are assigned to it:
+If the application is configured with **Assignment required** set to **Yes**, users cannot access the application until they are assigned to it:
 
 1. In the enterprise application, click Users and groups.
 2. Click Add user/group.
@@ -144,7 +144,7 @@ Users cannot access the application until they are assigned to it:
 4. If the application supports roles, select the appropriate role.
 5. Click Assign.
 
-If you want all users in your tenant to access the application, you can disable the assignment requirement:
+By default, many enterprise applications allow all users in the tenant to access them without assignment. If you want all users in your tenant to access the application, you can disable the assignment requirement:
 
 1. Go to the application's Properties page.
 2. Set Assignment required to No.
@@ -201,25 +201,39 @@ For organizations managing many SAML applications, automation is essential:
 
 Connect-MgGraph -Scopes "Application.ReadWrite.All"
 
-# Create a new service principal for a custom SAML application
+# Create a non-gallery enterprise application from the Microsoft Graph template
 $params = @{
     DisplayName = "My Custom SAML App"
-    # Use a non-gallery application template
-    Tags = @("WindowsAzureActiveDirectoryIntegratedApp")
 }
 
-$sp = New-MgServicePrincipal @params
+$templateId = "8adf8e6e-67b2-4cf2-a259-e3dc5476c621"
+$appInstance = Invoke-MgInstantiateApplicationTemplate -ApplicationTemplateId $templateId -BodyParameter $params
+$sp = $appInstance.ServicePrincipal
+$app = $appInstance.Application
 
 # Configure SAML SSO properties
 $samlParams = @{
     PreferredSingleSignOnMode = "saml"
-    # Set the SAML SSO URL configuration
     SamlSingleSignOnSettings = @{
         RelayState = ""
     }
 }
 
 Update-MgServicePrincipal -ServicePrincipalId $sp.Id -BodyParameter $samlParams
+
+# Configure the application's Identifier (Entity ID) and Reply URL (ACS URL)
+$appParams = @{
+    IdentifierUris = @(
+        "https://app.example.com/saml/metadata"
+    )
+    Web = @{
+        RedirectUris = @(
+            "https://app.example.com/saml/acs"
+        )
+    }
+}
+
+Update-MgApplication -ApplicationId $app.Id -BodyParameter $appParams
 
 Write-Host "Service Principal created with ID: $($sp.Id)"
 Write-Host "Configure SAML settings in the portal for detailed claim mapping."
@@ -230,12 +244,12 @@ Write-Host "Configure SAML settings in the portal for detailed claim mapping."
 SAML signing certificates expire, and if you do not plan for rotation, SSO will break. Here is a simple process:
 
 1. Set a calendar reminder 60 days before expiration.
-2. Generate a new certificate in Entra ID (you can have multiple active certificates).
+2. Generate a new certificate in Entra ID. It is created as an inactive certificate until you make it active.
 3. Upload the new certificate to the application.
 4. Set the new certificate as active in Entra ID.
 5. Remove the old certificate after confirming everything works.
 
-Entra ID lets you have up to three certificates per application, making zero-downtime rotation possible.
+This makes zero-downtime rotation possible when the application can trust both the current certificate and the staged replacement certificate during the rollover.
 
 ## Conclusion
 
