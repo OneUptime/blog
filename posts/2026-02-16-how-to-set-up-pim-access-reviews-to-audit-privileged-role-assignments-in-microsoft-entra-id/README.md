@@ -25,8 +25,8 @@ Common findings from access reviews:
 
 ## Prerequisites
 
-- Microsoft Entra ID P2 license
-- Privileged Role Administrator or Global Administrator role
+- Microsoft Entra ID P2 or Microsoft Entra ID Governance license
+- Privileged Role Administrator or Global Administrator role for Microsoft Entra role reviews; Owner or User Access Administrator on the Azure resource for Azure resource role reviews
 - PIM enabled in your tenant (it is enabled by default)
 
 ## Step 1: Plan Your Review Strategy
@@ -50,9 +50,9 @@ Before creating reviews, decide on your review strategy:
 
 ## Step 2: Create an Access Review for Entra ID Roles
 
-Go to the Microsoft Entra admin center. Navigate to Identity Governance, then Access Reviews. Click "New access review."
+Go to the Microsoft Entra admin center. Navigate to ID Governance, then Privileged Identity Management. Select Microsoft Entra roles, then Access reviews, and click "New."
 
-**Review type:** Select "Privileged Identity Management - Azure AD roles" (or "Entra ID roles" depending on your portal version).
+**Review type:** Select Microsoft Entra roles in Privileged Identity Management.
 
 **Scope:**
 
@@ -78,13 +78,13 @@ $reviewParams = @{
     Scope = @{
         "@odata.type" = "#microsoft.graph.accessReviewQueryScope"
         # Query for eligible role assignments to Global Administrator
-        Query = "/roleManagement/directory/roleAssignmentScheduleInstances?`$filter=roleDefinitionId eq '62e90394-69f5-4237-9190-012177145e10'"
+        Query = "/roleManagement/directory/roleEligibilityScheduleInstances?`$expand=principal&`$filter=(isof(principal,'microsoft.graph.user') and roleDefinitionId eq '62e90394-69f5-4237-9190-012177145e10')"
         QueryType = "MicrosoftGraph"
         QueryRoot = $null
     }
     Reviewers = @(
         @{
-            Query = "/users/security-admin-user-id"
+            Query = "/users/{security-admin-user-id}"
             QueryType = "MicrosoftGraph"
         }
     )
@@ -134,16 +134,16 @@ The settings determine how the review process works:
 
 For privileged roles, "Remove access" is the recommended default. If a reviewer does not bother to review, the access should be removed.
 
-**Justification required:** When enabled, reviewers must provide a reason for their approval or denial. Always enable this for audit trail purposes.
+**Justification required:** When enabled, reviewers must provide a reason when they approve access. Always enable this for audit trail purposes.
 
 ## Step 4: Review Process for Reviewers
 
 When a review starts, reviewers receive an email notification with a link to the access review. Here is what the reviewer does:
 
-1. Click the link in the email (or navigate to myaccess.microsoft.com)
+1. Click the link in the email (or navigate to the Microsoft Entra admin center, then ID Governance > Privileged Identity Management > Review access)
 2. See the list of users with the role assignment
 3. For each user, decide: **Approve** or **Deny**
-4. Provide a justification for each decision
+4. Provide a justification when required, especially for approvals if that setting is enabled
 5. Submit the review
 
 The reviewer should check:
@@ -161,9 +161,10 @@ $instances = Get-MgIdentityGovernanceAccessReviewDefinitionInstance `
     -AccessReviewScheduleDefinitionId $review.Id
 
 # Get decisions for the most recent instance
+$latestInstance = $instances | Sort-Object StartDateTime -Descending | Select-Object -First 1
 $decisions = Get-MgIdentityGovernanceAccessReviewDefinitionInstanceDecision `
     -AccessReviewScheduleDefinitionId $review.Id `
-    -AccessReviewInstanceId $instances[0].Id
+    -AccessReviewInstanceId $latestInstance.Id
 
 # Display the results
 foreach ($decision in $decisions) {
@@ -179,58 +180,28 @@ If auto-apply is disabled, you need to manually apply the results:
 ```powershell
 # Apply the review decisions manually
 # This removes access for denied assignments
-Invoke-MgApplyIdentityGovernanceAccessReviewDefinitionInstanceDecision `
+Add-MgIdentityGovernanceAccessReviewDefinitionInstanceDecision `
     -AccessReviewScheduleDefinitionId $review.Id `
-    -AccessReviewInstanceId $instances[0].Id
+    -AccessReviewInstanceId $latestInstance.Id
 ```
 
 ## Step 6: Create Reviews for Azure Resource Roles
 
 PIM also manages Azure resource roles (like Owner, Contributor on subscriptions and resource groups). Create access reviews for these too:
 
-```powershell
-# Create an access review for Azure subscription Owner role
-$azureReviewParams = @{
-    DisplayName = "Subscription Owner - Semi-Annual Review"
-    DescriptionForAdmins = "Review all Owner role assignments on production subscription"
-    DescriptionForReviewers = "Verify that this user still needs Owner access to the production subscription."
-    Scope = @{
-        "@odata.type" = "#microsoft.graph.accessReviewQueryScope"
-        # Query for Owner role assignments on a specific subscription
-        Query = "/roleManagement/directory/roleAssignmentScheduleInstances?`$filter=directoryScopeId eq '/subscriptions/{sub-id}' and roleDefinitionId eq '{owner-role-id}'"
-        QueryType = "MicrosoftGraph"
-    }
-    Reviewers = @(
-        @{
-            # Use manager review
-            Query = "./manager"
-            QueryType = "MicrosoftGraph"
-            QueryRoot = "decisions"
-        }
-    )
-    Settings = @{
-        MailNotificationsEnabled = $true
-        ReminderNotificationsEnabled = $true
-        JustificationRequiredOnApproval = $true
-        AutoApplyDecisionsEnabled = $true
-        DefaultDecisionEnabled = $true
-        DefaultDecision = "Deny"
-        Recurrence = @{
-            Pattern = @{
-                Type = "absoluteMonthly"
-                Interval = 6
-            }
-            Range = @{
-                Type = "noEnd"
-                StartDate = "2026-03-01"
-            }
-        }
-        InstanceDurationInDays = 21
-    }
-}
+In the Microsoft Entra admin center, navigate to ID Governance, then Privileged Identity Management. Select Azure resources, choose the subscription, resource group, or resource you want to review, then select Access reviews and New.
 
-New-MgIdentityGovernanceAccessReviewDefinition -BodyParameter $azureReviewParams
-```
+For a production subscription Owner role review, configure:
+
+- **Review name:** Subscription Owner - Semi-Annual Review
+- **Review role membership:** Owner
+- **Assignment type:** Eligible assignments, active assignments, or all active and eligible assignments
+- **Reviewers:** Managers, selected users or groups, or users reviewing their own access
+- **Recurrence:** Every six months
+- **Duration:** 21 days
+- **Upon completion:** Auto-apply if this matches your governance policy, and use "Deny" as the default decision for non-response
+
+The Microsoft Graph example above is for Microsoft Entra roles. PIM APIs for Azure resource roles are managed through Azure Resource Manager APIs rather than the Microsoft Graph `/roleManagement/directory` endpoints.
 
 ## Step 7: Monitor Review Progress
 
