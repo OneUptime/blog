@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure AD, Conditional Access, Sign-In, Troubleshooting, Identity, Security
 
-Description: Diagnose and resolve Azure AD Conditional Access policies that unexpectedly block legitimate user sign-ins using sign-in logs and what-if analysis.
+Description: Diagnose and resolve Microsoft Entra ID Conditional Access policies that unexpectedly block legitimate user sign-ins using sign-in logs and what-if analysis.
 
 ---
 
@@ -14,24 +14,24 @@ Conditional Access is powerful, but when policies interact in unexpected ways, t
 
 ## Understanding How Conditional Access Evaluates
 
-Before debugging, you need to understand the evaluation logic. When a user signs in, Azure AD evaluates all Conditional Access policies that apply to the user and the target application. If multiple policies match, their controls are combined:
+Before debugging, you need to understand the evaluation logic. When a user signs in, Microsoft Entra ID (formerly Azure AD) evaluates all Conditional Access policies that apply to the user and the target application. If multiple policies match, their controls are combined:
 
 - If any matching policy blocks access, the sign-in is blocked (block takes priority)
-- If multiple policies require controls (like MFA, compliant device, approved app), all required controls must be satisfied
+- If multiple policies require controls (like MFA, compliant device, app protection policy), all required controls must be satisfied
 - Policies in "Report-only" mode are evaluated but not enforced
 
 The evaluation happens in this order:
 
-1. Azure AD evaluates the sign-in against all enabled policies
+1. Microsoft Entra ID evaluates the sign-in against all enabled policies
 2. For each policy, it checks if the user, application, and conditions match
 3. If a policy matches, its grant or session controls are collected
 4. The combined controls determine the outcome
 
 ## Step 1: Check the Sign-In Logs
 
-The Azure AD sign-in logs tell you exactly which policies were evaluated and what their outcome was.
+The Microsoft Entra sign-in logs tell you exactly which policies were evaluated and what their outcome was.
 
-Navigate to Azure AD > Sign-in logs in the portal, or use the CLI:
+Navigate to Microsoft Entra admin center > Entra ID > Monitoring & health > Sign-in logs, or use the CLI:
 
 ```bash
 # Get recent failed sign-ins for a specific user
@@ -51,9 +51,9 @@ The "Failure" entries are what you are looking for. Click on each one to see whi
 
 ## Step 2: Use the What-If Tool
 
-The What-If tool in the Azure portal lets you simulate a sign-in without the user actually trying. This is extremely useful for testing policy changes before deploying them.
+The What-If tool in the Microsoft Entra admin center lets you simulate a sign-in without the user actually trying. This is extremely useful for testing policy changes before deploying them.
 
-Navigate to Azure AD > Security > Conditional Access > Policies > What If.
+Navigate to Microsoft Entra admin center > Entra ID > Conditional Access > Policies > What If.
 
 Fill in the simulation parameters:
 
@@ -74,7 +74,7 @@ A policy requires MFA, but the user has not registered any MFA methods. They get
 
 **Fix**: Temporarily exclude the user from the MFA policy (or add them to an exclusion group) so they can sign in and register their MFA methods. Then remove the exclusion.
 
-Better long-term fix: Configure the MFA registration policy in Identity Protection to allow users to register from trusted locations without existing MFA.
+Better long-term fix: Configure combined security information registration with Conditional Access so users can register from trusted locations, or use a Temporary Access Pass (TAP) for bootstrap scenarios.
 
 ### Scenario: Device Compliance Required but Device Is Not Enrolled
 
@@ -99,7 +99,7 @@ az rest --method GET \
 
 A policy blocks legacy authentication, and the user is connecting with an email client that uses IMAP, POP, or basic authentication with SMTP.
 
-**Fix**: Update the email client to use modern authentication (OAuth 2.0). Outlook 2016+ and the Outlook mobile app support modern authentication. If the user is stuck on an old client, they need to upgrade.
+**Fix**: Update the email client or protocol path to use modern authentication (OAuth 2.0). Outlook 2016+ supports modern authentication for Exchange profiles, and the Outlook mobile app supports modern authentication. For POP, IMAP, or SMTP clients, confirm that the specific client and protocol configuration supports OAuth; otherwise, move the user to a supported client or profile type.
 
 ### Scenario: Client App Filter Mismatch
 
@@ -137,13 +137,14 @@ Run a policy in report-only mode for at least a week before switching to "On." C
 # Check report-only outcomes in sign-in logs
 # Look for entries where a report-only policy would have blocked access
 az rest --method GET \
-  --url "https://graph.microsoft.com/v1.0/auditLogs/signIns?\$filter=conditionalAccessStatus eq 'reportOnlyFailure'&\$top=50" \
-  --headers "Content-Type=application/json"
+  --url "https://graph.microsoft.com/v1.0/auditLogs/signIns?\$top=50" \
+  --headers "Content-Type=application/json" "Prefer=include-unknown-enum-members" \
+  --query "value[?appliedConditionalAccessPolicies[?result=='reportOnlyFailure']]"
 ```
 
 ## Step 6: Review Conditional Access Insights Workbook
 
-Azure AD provides a Conditional Access Insights workbook in the portal under Azure AD > Security > Conditional Access > Insights and reporting.
+Microsoft Entra ID provides a Conditional Access Insights workbook in the portal under Microsoft Entra admin center > Entra ID > Conditional Access > Insights and reporting.
 
 This workbook shows:
 
@@ -156,7 +157,7 @@ Use it to identify policies that are blocking more users than expected.
 
 ## Step 7: Debugging Token and Session Issues
 
-Conditional Access evaluates at sign-in time and during token refresh. If a user was signed in before a policy was created, they might not be affected until their token refreshes (typically 1 hour for access tokens, up to 90 days for refresh tokens).
+Conditional Access evaluates at sign-in time and during token refresh. If a user was signed in before a policy was created, they might not be affected until their access token expires and the client refreshes it. The default access token lifetime is typically 1 hour for non-CAE sessions; refresh tokens and primary refresh tokens can remain renewable for longer, commonly up to 90 days depending on client and tenant conditions.
 
 To force re-evaluation, you can revoke the user's sessions:
 
@@ -167,7 +168,7 @@ az rest --method POST \
   --headers "Content-Type=application/json"
 ```
 
-If you have Continuous Access Evaluation (CAE) enabled, critical events like location changes or risk detection trigger immediate re-evaluation without waiting for token expiry.
+If you have Continuous Access Evaluation (CAE) enabled and both the client and resource support it, critical events like user disablement, session revocation, elevated user risk, or network location changes for supported resources can trigger near-real-time re-evaluation without waiting for token expiry.
 
 ## Best Practices for Avoiding Blocking Issues
 
