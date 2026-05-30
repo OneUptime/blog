@@ -87,10 +87,10 @@ ORDER BY r.cpu_time DESC;
 
 ## Analyzing Execution Plans
 
-Once you have identified a slow query, look at its execution plan. The plan tells you exactly how SQL Server is processing the query - which indexes it uses, where it scans instead of seeks, and where the most time is spent.
+Once you have identified a slow query, look at its execution plan. The plan shows how SQL Server is processing the query - which indexes it uses, where it scans instead of seeks, and which operators are likely to be expensive.
 
 ```sql
--- Get the actual execution plan for a specific query from Query Store
+-- Get the stored Showplan XML for a specific query from Query Store
 -- Replace the query_id with the one you found above
 SELECT
     p.plan_id,
@@ -149,7 +149,7 @@ Here is what the most common waits mean:
 | SOS_SCHEDULER_YIELD | CPU pressure | Scale up vCores, optimize queries |
 | WRITELOG | Transaction log writes | Reduce transaction size, scale storage |
 | LCK_M_X, LCK_M_S | Lock contention | Optimize transaction scope |
-| MEMORY_ALLOCATION_EXT | Memory pressure | Scale up, optimize memory grants |
+| RESOURCE_SEMAPHORE | Query memory grant waits | Scale up, optimize memory grants |
 
 ## Investigating Index Issues
 
@@ -224,11 +224,13 @@ Managed Instance has resource limits based on your service tier and hardware gen
 ```sql
 -- Check current resource utilization
 SELECT
+    end_time,
     avg_cpu_percent,
-    avg_data_io_percent,
-    avg_log_write_percent,
-    avg_memory_usage_percent,
-    avg_instance_cpu_percent
+    io_request,
+    io_bytes_read / 1048576.0 AS io_mb_read,
+    io_bytes_written / 1048576.0 AS io_mb_written,
+    storage_space_used_mb,
+    reserved_storage_mb
 FROM sys.server_resource_stats
 ORDER BY end_time DESC;
 
