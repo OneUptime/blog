@@ -8,7 +8,7 @@ Description: Build a synchronization pipeline that copies Microsoft 365 calendar
 
 ---
 
-Microsoft 365 calendars are where organizations track meetings, appointments, and events. But building custom analytics, search, or reporting on top of calendar data is hard when it lives only in Exchange Online. By syncing calendar events to Azure Cosmos DB, you get a queryable, low-latency copy that supports full-text search, aggregation pipelines, and custom APIs that the Graph API alone cannot provide.
+Microsoft 365 calendars are where organizations track meetings, appointments, and events. But building custom analytics, search, or reporting on top of calendar data is hard when it lives only in Exchange Online. By syncing calendar events to Azure Cosmos DB, you get a queryable, low-latency copy that supports text search, aggregation queries, and custom APIs that the Graph API alone cannot provide.
 
 This guide covers building a sync pipeline with Azure Functions that uses Microsoft Graph API delta queries to efficiently keep Cosmos DB in sync with Exchange Online calendars.
 
@@ -16,10 +16,10 @@ This guide covers building a sync pipeline with Azure Functions that uses Micros
 
 Cosmos DB gives you capabilities that Exchange Online does not expose through Graph API:
 
-- Full-text search across all calendar events (Graph API search is limited).
+- Text search across all calendar events (Graph API search is limited).
 - Cross-user aggregation queries (e.g., "how many meetings does the engineering team have this week?").
 - Complex filtering and sorting that Graph API does not support.
-- Sub-millisecond read latency for custom calendar UIs.
+- Low-latency reads for custom calendar UIs.
 - Change feed for triggering downstream processes when events change.
 
 ## Architecture
@@ -83,16 +83,18 @@ The document structure for a calendar event:
     "isAllDay": false,
     "isCancelled": false,
     "sensitivity": "normal",
+    "startUtc": "2026-02-16T17:00:00Z",
+    "endUtc": "2026-02-16T17:30:00Z",
     "syncedAt": "2026-02-16T08:00:00Z",
     "deltaLink": null
 }
 ```
 
-## Step 2: Register the Azure AD Application
+## Step 2: Register the Microsoft Entra Application
 
 Create an app registration with the right permissions:
 
-1. Register a new app in Azure AD.
+1. Register a new app in Microsoft Entra ID.
 2. Add Application permissions (not Delegated since this is a background sync):
    - `Calendars.Read` - Read all users' calendars
    - `User.Read.All` - List users to know whose calendars to sync
@@ -109,7 +111,9 @@ Delta queries are the key to efficient sync. Instead of fetching all events ever
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Graph;
+using Microsoft.Graph.Models;
 using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -161,41 +165,37 @@ public class CalendarSyncFunction
 
         if (syncState?.DeltaLink != null)
         {
-            // Use the delta link to get only changes since last sync
+            // Use the full delta link URL saved from the previous completed sync.
             var deltaResult = await _graphClient.Users[userId]
                 .CalendarView
                 .Delta
-                .GetAsync(config => {
-                    // The delta link contains the previous query parameters
-                });
+                .WithUrl(syncState.DeltaLink)
+                .GetAsDeltaGetResponseAsync();
 
             changedEvents = deltaResult.Value;
-            newDeltaLink = deltaResult.OdataNextLink ?? deltaResult.OdataDeltaLink;
+            newDeltaLink = deltaResult.OdataDeltaLink ?? deltaResult.OdataNextLink;
         }
         else
         {
-            // First sync - get all events from the last 6 months
+            // First sync - start a delta query for the last 6 months through the next 6 months.
             var startDate = DateTime.UtcNow.AddMonths(-6);
             var endDate = DateTime.UtcNow.AddMonths(6);
 
-            var events = await _graphClient.Users[userId]
+            var deltaResult = await _graphClient.Users[userId]
                 .CalendarView
-                .GetAsync(config => {
+                .Delta
+                .GetAsDeltaGetResponseAsync(config => {
                     config.QueryParameters.StartDateTime = startDate.ToString("o");
                     config.QueryParameters.EndDateTime = endDate.ToString("o");
-                    config.QueryParameters.Select = new[] {
-                        "id", "subject", "bodyPreview", "start", "end",
-                        "location", "organizer", "attendees", "isAllDay",
-                        "isCancelled", "sensitivity"
-                    };
-                    config.QueryParameters.Top = 500;
+                    config.Headers.Add("Prefer", "odata.maxpagesize=500");
                 });
 
-            changedEvents = events.Value;
-            newDeltaLink = events.OdataDeltaLink;
+            changedEvents = deltaResult.Value;
+            newDeltaLink = deltaResult.OdataDeltaLink ?? deltaResult.OdataNextLink;
         }
 
-        // Upsert changed events to Cosmos DB
+        // Upsert changed events to Cosmos DB. If newDeltaLink is an @odata.nextLink,
+        // call the function again to continue paging until Graph returns an @odata.deltaLink.
         int upsertCount = 0;
         foreach (var evt in changedEvents)
         {
@@ -207,7 +207,9 @@ public class CalendarSyncFunction
             upsertCount++;
         }
 
-        // Save the new delta link for the next sync
+        // Save the new state link for the next sync.
+        // If it is an @odata.nextLink, the next run continues the current round.
+        // If it is an @odata.deltaLink, the next run starts a new incremental round.
         await SaveSyncState(userId, newDeltaLink);
 
         log.LogInformation($"Synced {upsertCount} events for {userId}");
@@ -229,6 +231,14 @@ public class CalendarSyncFunction
             IsAllDay = evt.IsAllDay ?? false,
             IsCancelled = evt.IsCancelled ?? false,
             Sensitivity = evt.Sensitivity?.ToString(),
+            StartUtc = TimeZoneInfo.ConvertTimeToUtc(
+                DateTime.Parse(evt.Start.DateTime),
+                TimeZoneInfo.FindSystemTimeZoneById(evt.Start.TimeZone)
+            ),
+            EndUtc = TimeZoneInfo.ConvertTimeToUtc(
+                DateTime.Parse(evt.End.DateTime),
+                TimeZoneInfo.FindSystemTimeZoneById(evt.End.TimeZone)
+            ),
             SyncedAt = DateTime.UtcNow
         };
     }
@@ -244,7 +254,7 @@ Delta queries indicate deleted events by including them in the response with a `
 // Deleted events have a @removed reason property
 foreach (var evt in deltaResponse.Value)
 {
-    if (evt.AdditionalData.ContainsKey("@removed"))
+    if (evt.AdditionalData?.ContainsKey("@removed") == true)
     {
         // Event was deleted - remove from Cosmos DB
         try
@@ -289,9 +299,9 @@ public async Task<IActionResult> SearchEvents(
     var query = new QueryDefinition(
         @"SELECT * FROM c
           WHERE CONTAINS(LOWER(c.subject), LOWER(@search))
-          AND c.start.dateTime >= @startDate
-          AND c.start.dateTime <= @endDate
-          ORDER BY c.start.dateTime ASC")
+          AND c.startUtc >= @startDate
+          AND c.startUtc <= @endDate
+          ORDER BY c.startUtc ASC")
         .WithParameter("@search", searchTerm)
         .WithParameter("@startDate", startDate)
         .WithParameter("@endDate", endDate);
@@ -322,10 +332,10 @@ public async Task<IActionResult> GetMeetingAnalytics(
         @"SELECT
             c.userId,
             COUNT(1) AS meetingCount,
-            AVG(DateTimeDiff('minute', c.start.dateTime, c.end.dateTime)) AS avgDuration
+            AVG(DATETIMEDIFF('mi', c.startUtc, c.endUtc)) AS avgDuration
           FROM c
-          WHERE c.start.dateTime >= @startDate
-          AND c.start.dateTime <= @endDate
+          WHERE c.startUtc >= @startDate
+          AND c.startUtc <= @endDate
           AND c.isCancelled = false
           GROUP BY c.userId")
         .WithParameter("@startDate", startDate)
@@ -383,7 +393,7 @@ public async Task Run(
 
 ### Recurring Events
 
-Graph API returns individual instances of recurring events in calendar view queries. Each instance has a unique ID. Store them as separate documents in Cosmos DB.
+Graph API calendar view queries return single instances, occurrences, and exceptions of recurring series. Store returned occurrences as separate documents in Cosmos DB.
 
 ### Time Zone Handling
 
@@ -428,4 +438,4 @@ When syncing many users, you will hit Graph API rate limits. Implement throttlin
 
 ## Wrapping Up
 
-Syncing Microsoft 365 calendar events to Azure Cosmos DB opens up capabilities that the Graph API alone does not support: cross-user search, meeting analytics, real-time change processing, and custom APIs with sub-millisecond latency. The delta query pattern ensures efficient incremental sync, Cosmos DB's change feed enables real-time downstream processing, and the partition-per-user design scales to large organizations. Handle edge cases like recurring events, time zones, and API throttling to make the system production-ready.
+Syncing Microsoft 365 calendar events to Azure Cosmos DB opens up capabilities that the Graph API alone does not support: cross-user search, meeting analytics, real-time change processing, and custom APIs with low-latency reads. The delta query pattern ensures efficient incremental sync, Cosmos DB's change feed enables real-time downstream processing, and the partition-per-user design scales to large organizations. Handle edge cases like recurring events, time zones, and API throttling to make the system production-ready.
