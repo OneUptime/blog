@@ -178,6 +178,8 @@ await blobClient.UploadAsync(
 ### Upload a Large File with Transfer Options
 
 ```csharp
+using Azure.Storage;
+
 // Configure parallel upload for large files
 var largeBlobClient = containerClient.GetBlobClient("backups/database.bak");
 
@@ -389,7 +391,7 @@ using Azure.Storage.Sas;
 var blobClient = containerClient.GetBlobClient("reports/2026/february.pdf");
 
 // Generate a read-only SAS URL valid for 1 hour
-// Requires the BlobClient to be created with a storage key or user delegation key
+// Requires the BlobClient to be created with a storage shared key credential
 if (blobClient.CanGenerateSasUri)
 {
     var sasBuilder = new BlobSasBuilder
