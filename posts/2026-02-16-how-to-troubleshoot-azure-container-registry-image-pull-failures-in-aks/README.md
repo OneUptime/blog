@@ -54,7 +54,7 @@ az aks update \
   --attach-acr myacr
 ```
 
-This command grants the AKS kubelet managed identity the AcrPull role on your ACR. After running it, wait a minute and try deploying again.
+This command grants the AKS kubelet managed identity the AcrPull role on your ACR for registries that use standard RBAC. If your registry is enabled for ABAC repository permissions, manually assign the Container Registry Repository Reader role instead. After running it, wait a minute and try deploying again.
 
 ### Fix 2: Verify the Role Assignment
 
@@ -81,7 +81,8 @@ az role assignment list \
   --scope "$ACR_ID" \
   --output table
 
-# If no AcrPull role is listed, create it manually
+# If no AcrPull role is listed, create it manually.
+# For ABAC-enabled registries, use "Container Registry Repository Reader" instead.
 az role assignment create \
   --assignee "$KUBELET_ID" \
   --role AcrPull \
@@ -143,10 +144,10 @@ az acr repository show-tags \
   --output table
 
 # Check if the specific tag exists
-az acr repository show-manifests \
-  --name myacr \
-  --repository my-app \
-  --query "[?tags[0]=='v1.0']" \
+az acr manifest list-metadata \
+  --registry myacr \
+  --name my-app \
+  --query "[?tags != null && contains(tags, 'v1.0')]" \
   --output json
 ```
 
@@ -235,18 +236,19 @@ Very large images (multi-gigabyte) can cause pull timeouts, especially on smalle
 
 ```dockerfile
 # Use multi-stage builds to reduce image size
-FROM node:18 AS build
+FROM node:24 AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci
 COPY . .
 RUN npm run build
 
 # Final stage - smaller base image
-FROM node:18-slim
+FROM node:24-slim
 WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
 CMD ["node", "dist/index.js"]
 ```
 
