@@ -41,38 +41,38 @@ Each span records:
 
 Open **Trace > Trace Explorer** in the Cloud Console. The main view shows:
 
-1. **Latency distribution chart**: A scatter plot showing request latency over time. Each dot is a trace.
-2. **Filter bar**: Where you build queries to find specific traces.
-3. **Trace list**: Individual traces matching your filter, sorted by time.
+1. **Latency chart**: A heatmap or percentile chart showing span latency over time.
+2. **Filter bar**: Where you add predefined span filters or custom attribute filters.
+3. **Spans and Grouped tables**: Individual spans and span groupings matching your filter, sortable by columns like duration.
 
 ### Filtering Traces
 
 The filter bar is your primary tool for narrowing down traces. Here are the most useful filters.
 
-To find traces from a specific service:
+To find spans from a specific service, use the **OpenTelemetry service** filter or add an attribute filter for `service.name`:
 
 ```text
-RootSpan: /api/orders
+service.name: orders-api
 ```
 
-To find slow traces over a certain duration:
+To find slow spans over a certain duration, use the **Duration** span filter:
 
 ```text
-Latency > 1s
+Duration: > 1s
 ```
 
-To filter by HTTP method and status:
+To filter by HTTP method and status, add attribute filters for the attributes your instrumentation emits. For example, older HTTP instrumentation might use:
 
 ```text
-http.method: GET
-http.status_code: 500
+/http/method: GET
+/http/status_code: 500
 ```
 
-To find traces from a specific time window, use the time range picker at the top of the page. You can also click directly on the latency distribution chart to zoom into a specific time range.
+To find traces from a specific time window, use the time range picker at the top of the page. You can also highlight a range on the x-axis to zoom into a specific time range.
 
 ### Reading the Waterfall View
 
-When you click on a trace in the list, you get the waterfall view. This is where the real analysis happens.
+When you click on a span in the table, the details flyout opens and shows the span in the context of its trace. This is where the real analysis happens.
 
 The waterfall shows each span as a horizontal bar. The length of the bar represents the span's duration. Bars are nested to show the parent-child hierarchy, and they are positioned on a timeline so you can see overlapping operations.
 
@@ -87,7 +87,7 @@ Things to look for:
 
 ### Finding the Slowest Operation
 
-Click on the latency distribution chart and drag to select a time range where latency spiked. Then sort the trace list by duration (descending) to find the slowest traces. Open one and look at the waterfall to identify which span is taking the most time.
+Highlight a time range on the chart where latency spiked. Then sort the Spans table by duration (descending) to find the slowest spans. Open one and look at the trace waterfall to identify which span is taking the most time.
 
 ### Comparing Fast vs. Slow Traces
 
@@ -135,24 +135,24 @@ If you have instrumented your database client, you can filter traces to find tho
 In the Trace Explorer filter:
 
 ```text
-SpanName: db.query
-Latency > 500ms
+Span name: db.query
+Duration: > 500ms
 ```
 
 Open the matching traces and look at the `db.statement` attribute on the slow spans. This tells you exactly which query is slow and lets you optimize it.
 
-## Using the Analysis Reports
+## Using Aggregated Trace Data
 
-Cloud Trace also provides automated analysis reports that aggregate data across many traces.
+Cloud Trace also provides aggregated views across many spans.
 
-Go to **Trace > Analysis Reports**. Here you can:
+Go to **Trace > Trace Explorer**. Here you can:
 
-1. Select a root span (like `/api/orders`)
+1. Filter by a span name (like `/api/orders`)
 2. Choose a time range
-3. See latency percentiles (p50, p95, p99) for that endpoint
-4. See a breakdown of time spent in each child span
+3. Set the chart view to **Span duration (percentile)** to see p50, p90, p95, and p99 latency
+4. Use the **Grouped** table to see latency statistics grouped by span name and service or workload
 
-The analysis report shows you something like:
+The grouped view shows you something like:
 
 | Span | p50 | p95 | p99 |
 |------|-----|-----|-----|
@@ -171,16 +171,14 @@ This Python script fetches traces matching specific criteria and calculates late
 
 ```python
 # analyze_traces.py - Query Cloud Trace API for latency analysis
-from google.cloud import trace_v2
-from google.protobuf import timestamp_pb2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from google.cloud import trace_v1
 import statistics
 
-client = trace_v2.TraceServiceClient()
-project = "projects/your-project-id"
+client = trace_v1.TraceServiceClient()
 
 # Define the time range
-end_time = datetime.utcnow()
+end_time = datetime.now(timezone.utc)
 start_time = end_time - timedelta(hours=1)
 
 # List traces for a specific endpoint
@@ -190,7 +188,7 @@ traces = client.list_traces(
         "start_time": start_time,
         "end_time": end_time,
         "filter": '+root:/api/orders',
-        "view": trace_v2.ListTracesRequest.ViewType.COMPLETE,
+        "view": trace_v1.ListTracesRequest.ViewType.COMPLETE,
     }
 )
 
@@ -213,12 +211,12 @@ if latencies:
 
 Here is the workflow I follow when investigating latency issues:
 
-1. **Start with the overview**: Check the latency distribution chart for the affected time period. Look for spikes or shifts in the baseline.
+1. **Start with the overview**: Check the latency chart for the affected time period. Look for spikes or shifts in the baseline.
 2. **Sample slow traces**: Pick 5-10 traces from the p99 range and examine their waterfalls.
 3. **Identify the pattern**: Usually 2-3 of those traces will share the same bottleneck. That is your target.
-4. **Quantify the impact**: Use analysis reports to see what percentage of time the bottleneck represents.
-5. **Fix and verify**: Make your optimization, deploy, and compare the latency distribution before and after.
+4. **Quantify the impact**: Use the Grouped table and percentile chart to see what percentage of time the bottleneck represents.
+5. **Fix and verify**: Make your optimization, deploy, and compare the latency chart before and after.
 
 ## Wrapping Up
 
-Cloud Trace is most valuable when you know how to read the data it collects. Focus on the waterfall view for individual request analysis, use the latency distribution chart to spot trends, and leverage analysis reports for aggregate insights. The combination of these views will reliably point you toward the operations that need optimization.
+Cloud Trace is most valuable when you know how to read the data it collects. Focus on the waterfall view for individual request analysis, use the latency chart to spot trends, and leverage the Grouped table for aggregate insights. The combination of these views will reliably point you toward the operations that need optimization.
