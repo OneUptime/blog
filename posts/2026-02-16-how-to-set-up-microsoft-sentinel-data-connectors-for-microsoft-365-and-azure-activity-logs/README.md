@@ -54,12 +54,10 @@ $workspace = New-AzOperationalInsightsWorkspace `
     -Sku "PerGB2018"
 
 # Enable Microsoft Sentinel on the workspace
-# This adds the SecurityInsights solution
-New-AzMonitorLogAnalyticsSolution `
-    -Type "SecurityInsights" `
+New-AzSentinelOnboardingState `
     -ResourceGroupName "sentinel-rg" `
-    -Location "eastus" `
-    -WorkspaceResourceId $workspace.ResourceId
+    -WorkspaceName "sentinel-workspace" `
+    -Name "default"
 
 Write-Host "Sentinel workspace created and enabled."
 ```
@@ -93,7 +91,7 @@ $subscriptionId = "YOUR_SUBSCRIPTION_ID"
 $resourceGroupName = "sentinel-rg"
 $workspaceName = "sentinel-workspace"
 
-# The Microsoft 365 data connector uses the Office ATP connector type
+# The Microsoft 365 data connector uses the Office365 connector kind
 # Enable it using the Sentinel REST API via PowerShell
 $uri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.OperationalInsights/workspaces/$workspaceName/providers/Microsoft.SecurityInsights/dataConnectors/office365-connector?api-version=2023-02-01"
 
@@ -104,13 +102,13 @@ $body = @{
         tenantId = (Get-AzContext).Tenant.Id
         dataTypes = @{
             exchange = @{
-                state = "enabled"  # Enable Exchange Online logs
+                state = "Enabled"  # Enable Exchange Online logs
             }
             sharePoint = @{
-                state = "enabled"  # Enable SharePoint Online logs
+                state = "Enabled"  # Enable SharePoint Online logs
             }
             teams = @{
-                state = "enabled"  # Enable Microsoft Teams logs
+                state = "Enabled"  # Enable Microsoft Teams logs
             }
         }
     }
@@ -225,7 +223,7 @@ OfficeActivity
 // or an accidental destructive operation
 AzureActivity
 | where OperationNameValue endswith "DELETE"
-| where ActivityStatusValue == "Success"
+| where ActivityStatusValue == "Succeeded"
 | summarize DeleteCount = count() by Caller, bin(TimeGenerated, 1h)
 | where DeleteCount > 10
 ```
@@ -234,10 +232,10 @@ AzureActivity
 
 Data ingestion into Sentinel is billed per GB ingested. Microsoft 365 and Azure Activity logs can generate significant volume in larger organizations. Here are some cost management tips:
 
-- Microsoft 365 logs are free for the first 90 days of retention (basic logs tier).
-- Azure Activity logs are free to ingest into Sentinel (they are part of the free data sources).
+- Office 365 audit logs, including SharePoint activity, Exchange admin activity, and Teams, are free to ingest into Sentinel.
+- Azure Activity logs are free to ingest into Sentinel and the AzureActivity table keeps at least 90 days of data at no charge by default.
 - Set appropriate retention periods - 90 days is often sufficient for operational monitoring, with longer retention for compliance needs.
-- Use data collection rules to filter out low-value events before they reach Sentinel.
+- Where supported, use transformations or data collection rules to reduce low-value events before they reach Sentinel.
 
 ## Common Troubleshooting
 
