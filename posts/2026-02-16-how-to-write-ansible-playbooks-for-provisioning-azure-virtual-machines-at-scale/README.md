@@ -233,9 +233,14 @@ plugin: azure.azcollection.azure_rm
 # Authenticate using environment variables or Azure CLI
 auth_source: auto
 
-# Only include VMs from specific resource groups
+# Only include VMs from explicit resource groups
 include_vm_resource_groups:
-  - "rg-myapp-*"
+  - "rg-myapp-staging"
+  - "rg-myapp-production"
+
+# Only include running VMs managed by this playbook
+include_host_filters:
+  - tags.ManagedBy is defined and tags.ManagedBy == 'Ansible' and powerstate == 'running'
 
 # Group VMs by their tags
 keyed_groups:
@@ -251,9 +256,9 @@ keyed_groups:
 hostvar_expressions:
   ansible_host: private_ipv4_addresses[0]
 
-# Only include running VMs
+# Create a running group for playbook targeting
 conditional_groups:
-  running: powerstate == "running"
+  running: true
 ```
 
 Test the dynamic inventory to see what it discovers:
@@ -349,7 +354,7 @@ And the common role that every VM gets:
 
 ## Running at Scale
 
-When you have 50 or 100 VMs, Ansible's default serial execution is too slow. Tune these settings in `ansible.cfg`:
+When you have 50 or 100 VMs, Ansible's default fork count can be too low. Tune these settings in `ansible.cfg`:
 
 ```ini
 # ansible.cfg - Performance tuning for large-scale deployments
