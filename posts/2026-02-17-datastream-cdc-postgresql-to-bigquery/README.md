@@ -14,7 +14,7 @@ The PostgreSQL setup is a bit different from MySQL because Postgres uses logical
 
 ## How PostgreSQL CDC Works with Datastream
 
-Unlike MySQL which uses binary logs, PostgreSQL uses a feature called logical decoding. Datastream creates a replication slot on your PostgreSQL instance and subscribes to changes through a publication. The publication defines which tables to replicate, and the replication slot ensures Datastream does not miss any changes even if the connection drops temporarily.
+Unlike MySQL which uses binary logs, PostgreSQL uses a feature called logical decoding. Datastream reads from a replication slot on your PostgreSQL instance and subscribes to changes through a publication. The publication defines which tables to replicate, and the replication slot ensures Datastream does not miss any changes even if the connection drops temporarily.
 
 Datastream uses the `pgoutput` logical decoding plugin, which is built into PostgreSQL 10 and later.
 
@@ -84,6 +84,9 @@ CREATE PUBLICATION datastream_pub FOR TABLE
   public.orders,
   public.customers,
   public.products;
+
+-- Create the logical replication slot that Datastream will use
+SELECT PG_CREATE_LOGICAL_REPLICATION_SLOT('datastream_slot', 'pgoutput');
 ```
 
 If you want to replicate all tables in the public schema, you can use:
@@ -109,7 +112,7 @@ gcloud datastream private-connections create pg-private-conn \
   --project=my-project
 ```
 
-Also update your PostgreSQL `pg_hba.conf` to allow connections from the Datastream IP range:
+For self-managed PostgreSQL, also update your PostgreSQL `pg_hba.conf` to allow connections from the Datastream IP range:
 
 ```text
 # Allow Datastream to connect for replication
@@ -131,6 +134,7 @@ gcloud datastream connection-profiles create pg-source-profile \
   --postgresql-username=datastream_user \
   --postgresql-password=strong-password-here \
   --postgresql-database=mydb \
+  --private-connection=pg-private-conn \
   --location=us-central1 \
   --project=my-project
 ```
@@ -148,6 +152,39 @@ gcloud datastream connection-profiles create bq-dest-profile \
 
 ## Step 5: Create and Start the Stream
 
+Create the PostgreSQL source configuration file:
+
+```json
+{
+  "publication": "datastream_pub",
+  "replicationSlot": "datastream_slot",
+  "includeObjects": {
+    "postgresqlSchemas": [
+      {
+        "schema": "public",
+        "postgresqlTables": [
+          {"table": "orders"},
+          {"table": "customers"},
+          {"table": "products"}
+        ]
+      }
+    ]
+  }
+}
+```
+
+Create the BigQuery destination configuration file:
+
+```json
+{
+  "dataFreshness": "300s",
+  "singleTargetDataset": {
+    "datasetId": "my-project:pg_replicated"
+  },
+  "merge": {}
+}
+```
+
 Create the stream with the PostgreSQL-specific configuration:
 
 ```bash
@@ -156,29 +193,10 @@ gcloud datastream streams create pg-to-bq-stream \
   --display-name="PostgreSQL to BigQuery CDC" \
   --location=us-central1 \
   --source=pg-source-profile \
-  --postgresql-source-config='{
-    "publication": "datastream_pub",
-    "replicationSlot": "datastream_slot",
-    "includeObjects": {
-      "postgresqlSchemas": [
-        {
-          "schema": "public",
-          "postgresqlTables": [
-            {"table": "orders"},
-            {"table": "customers"},
-            {"table": "products"}
-          ]
-        }
-      ]
-    }
-  }' \
+  --postgresql-source-config=postgresql-source-config.json \
   --destination=bq-dest-profile \
-  --bigquery-destination-config='{
-    "dataFreshness": "300s",
-    "singleTargetDataset": {
-      "datasetId": "projects/my-project/datasets/pg_replicated"
-    }
-  }' \
+  --bigquery-destination-config=bigquery-destination-config.json \
+  --backfill-all \
   --project=my-project
 ```
 
@@ -189,6 +207,7 @@ Start the stream:
 gcloud datastream streams update pg-to-bq-stream \
   --location=us-central1 \
   --state=RUNNING \
+  --update-mask=state \
   --project=my-project
 ```
 
@@ -199,43 +218,41 @@ Datastream maps PostgreSQL data types to BigQuery types. Most mappings are strai
 | PostgreSQL Type | BigQuery Type | Notes |
 |----------------|---------------|-------|
 | integer, bigint | INT64 | Direct mapping |
-| numeric, decimal | NUMERIC | Precision preserved |
+| numeric, decimal | NUMERIC, BIGNUMERIC, or STRING | Depends on precision and scale |
 | text, varchar | STRING | No length limit in BQ |
 | timestamp | TIMESTAMP | Converted to UTC |
 | timestamptz | TIMESTAMP | Timezone preserved then UTC |
-| jsonb, json | STRING | Stored as JSON string |
+| jsonb, json | JSON | Stored as native BigQuery JSON |
 | uuid | STRING | Stored as string |
 | boolean | BOOL | Direct mapping |
 | bytea | BYTES | Binary data |
-| array types | STRING | Serialized as JSON |
+| array types | JSON | Arrays of date and timestamp types are not supported |
 
-The JSON and array handling deserves attention. PostgreSQL JSONB columns become STRING columns in BigQuery, but you can use BigQuery's JSON functions to parse them in queries:
+The JSON and array handling deserves attention. PostgreSQL JSONB columns become JSON columns in BigQuery, and you can use BigQuery's JSON functions to query them:
 
 ```sql
--- Parse a JSONB column that was replicated as STRING
+-- Query a JSONB column that was replicated as BigQuery JSON
 SELECT
   order_id,
   JSON_VALUE(metadata, '$.source') AS order_source,
   JSON_VALUE(metadata, '$.campaign_id') AS campaign_id
 FROM
   `my-project.pg_replicated.orders`
-WHERE
-  _metadata_deleted IS NOT TRUE
 ```
 
 ## Handling TOAST Columns
 
 PostgreSQL uses a mechanism called TOAST (The Oversized-Attribute Storage Technique) to store large column values. When a row is updated but the TOAST columns are not changed, PostgreSQL does not include those values in the WAL record.
 
-This means Datastream might see NULL values for unchanged TOAST columns during updates. To work around this, set the replica identity to FULL on tables with TOAST columns:
+For streams created before February 17, 2026, Datastream does not support replicating UPDATE events for rows that include TOAST values in columns that are part of the table's replica identity. Avoid putting TOAST columns in a replica identity. If a table does not have a primary key, prefer a `UNIQUE NOT NULL` index and set the replica identity to that index:
 
 ```sql
--- Set replica identity to FULL to include all columns in WAL records
-ALTER TABLE public.orders REPLICA IDENTITY FULL;
-ALTER TABLE public.customers REPLICA IDENTITY FULL;
+-- Use a unique, not-null index as the replica identity for tables without a primary key
+CREATE UNIQUE INDEX orders_replica_identity_idx ON public.orders (order_id);
+ALTER TABLE public.orders REPLICA IDENTITY USING INDEX orders_replica_identity_idx;
 ```
 
-This increases WAL size but ensures all column values are captured during updates.
+Use `REPLICA IDENTITY FULL` only as a last resort for tables without any unique identifier. When BigQuery is the destination, `FULL` can break streams for wide tables because Datastream uses the logged columns as the logical key for BigQuery merge operations.
 
 ## Monitoring Replication Slot Health
 
@@ -261,10 +278,9 @@ After starting the stream, verify data is flowing by checking BigQuery:
 -- Check the most recent replicated events
 SELECT
   order_id,
-  datastream_metadata.source_timestamp,
-  _metadata_change_type
+  datastream_metadata.SOURCE_TIMESTAMP
 FROM `my-project.pg_replicated.orders`
-ORDER BY datastream_metadata.source_timestamp DESC
+ORDER BY datastream_metadata.SOURCE_TIMESTAMP DESC
 LIMIT 10;
 ```
 
