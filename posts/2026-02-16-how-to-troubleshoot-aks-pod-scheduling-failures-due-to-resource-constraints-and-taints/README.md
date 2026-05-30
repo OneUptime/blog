@@ -42,14 +42,14 @@ This is the most common scheduling failure. The pod requests more CPU or memory 
 # Check resource usage across all nodes
 kubectl top nodes
 
-# Check how much capacity each node has
+# Check requested resources and limits per node
 kubectl describe nodes | grep -A 5 "Allocated resources"
 
-# Get a summary of resource requests and limits per node
+# Get a summary of allocatable CPU and memory per node
 kubectl get nodes -o custom-columns=\
 NAME:.metadata.name,\
-CPU_CAPACITY:.status.capacity.cpu,\
-MEM_CAPACITY:.status.capacity.memory
+CPU_ALLOCATABLE:.status.allocatable.cpu,\
+MEM_ALLOCATABLE:.status.allocatable.memory
 ```
 
 To understand the gap, compare what the pod requests with what is available.
@@ -62,7 +62,7 @@ kubectl get pod <pod-name> -o jsonpath='{.spec.containers[*].resources.requests}
 kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, allocatable: .status.allocatable}'
 ```
 
-The key insight is that "allocatable" is not the same as "available". Allocatable is the total that can be used by pods. Available is allocatable minus what is already requested by running pods. A node might show 8 CPU allocatable but have 7.5 CPU already requested, leaving only 0.5 CPU for new pods.
+The key insight is that "allocatable" is not the same as "available". Allocatable is the total that can be used by pods. Available is allocatable minus what is already requested by pods scheduled to that node. A node might show 8 CPU allocatable but have 7.5 CPU already requested, leaving only 0.5 CPU for new pods.
 
 ### Fixes for Resource Constraints
 
@@ -198,7 +198,7 @@ Topology spread constraints ensure pods are distributed across nodes, zones, or 
 kubectl get pod <pod-name> -o jsonpath='{.spec.topologySpreadConstraints}'
 ```
 
-A common scenario: you have a constraint that says "spread evenly across zones" with `whenUnsatisfiable: DoNotSchedule`, but all nodes in one zone are full. The scheduler will not put pods in other zones because that would violate the spread constraint.
+A common scenario: you have a constraint that says "spread evenly across zones" with `whenUnsatisfiable: DoNotSchedule`, but the zone with the fewest matching pods has no eligible nodes or no remaining capacity. The scheduler may reject nodes in other zones because placing the pod there would exceed the allowed skew.
 
 ### Fix
 
@@ -217,12 +217,12 @@ topologySpreadConstraints:
 
 ## Diagnosing MaxPods Limit
 
-Each AKS node has a maximum number of pods it can run (default is 30 for Kubenet, 250 for Azure CNI). If all nodes have reached their limit, new pods cannot be scheduled even if there is CPU and memory available.
+Each AKS node has a maximum number of pods it can run. The default depends on the networking mode: 30 for Azure CNI standard networking, 110 for kubenet, and 250 for Azure CNI overlay. If all nodes have reached their limit, new pods cannot be scheduled even if there is CPU and memory available.
 
 ```bash
 # Check the current pod count per node
 kubectl get pods --all-namespaces -o json | \
-  jq '[.items[] | .spec.nodeName] | group_by(.) | map({node: .[0], count: length}) | sort_by(.count) | reverse'
+  jq '[.items[] | select(.spec.nodeName != null) | .spec.nodeName] | group_by(.) | map({node: .[0], count: length}) | sort_by(.count) | reverse'
 
 # Check the maxPods setting for the node pool
 az aks nodepool show \
