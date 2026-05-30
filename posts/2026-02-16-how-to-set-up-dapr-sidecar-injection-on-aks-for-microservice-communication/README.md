@@ -24,7 +24,7 @@ The sidecar pattern means your application does not need a DAPR SDK (though SDKs
 
 ## Prerequisites
 
-You need an AKS cluster running Kubernetes 1.24 or later, kubectl configured, and Helm 3 installed. The DAPR CLI is helpful for debugging but not strictly required for the installation.
+You need an AKS cluster running a supported Kubernetes version, kubectl configured, and Helm 3 installed. The DAPR CLI is helpful for debugging but not strictly required for the installation.
 
 ## Step 1: Install DAPR on AKS
 
@@ -42,6 +42,7 @@ kubectl create namespace dapr-system
 # Install DAPR with high availability enabled
 helm install dapr dapr/dapr \
   --namespace dapr-system \
+  --create-namespace \
   --set global.ha.enabled=true \
   --set global.logAsJson=true \
   --wait
@@ -54,7 +55,7 @@ The `global.ha.enabled=true` flag runs multiple replicas of each control plane c
 kubectl get pods -n dapr-system
 ```
 
-You should see pods for dapr-operator, dapr-sidecar-injector, dapr-placement-server, dapr-sentry, and dapr-dashboard.
+You should see pods for dapr-operator, dapr-sidecar-injector, dapr-placement-server, and dapr-sentry. If you install the optional DAPR dashboard chart, you should also see a dapr-dashboard pod.
 
 ## Step 2: Understand Sidecar Injection
 
@@ -248,7 +249,7 @@ apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
   name: daprsystem
-  namespace: default
+  namespace: dapr-system
 spec:
   # Enable distributed tracing
   tracing:
@@ -256,7 +257,7 @@ spec:
     zipkin:
       endpointAddress: "http://zipkin.default.svc.cluster.local:9411/api/v2/spans"
   # Enable metrics collection
-  metric:
+  metrics:
     enabled: true
   # mTLS settings
   mtls:
