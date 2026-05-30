@@ -40,11 +40,11 @@ The following commands download the agent, extract it, and run the configuration
 
 mkdir -p ~/azagent && cd ~/azagent
 
-# Download the latest agent package (check for current version)
-curl -O -L https://vstsagentpackage.azureedge.net/agent/3.232.1/vsts-agent-linux-x64-3.232.1.tar.gz
+# Download the agent package (check the GitHub releases page for the current version)
+curl -O -L https://download.agent.dev.azure.com/agent/4.273.0/vsts-agent-linux-x64-4.273.0.tar.gz
 
 # Extract the agent
-tar zxvf vsts-agent-linux-x64-3.232.1.tar.gz
+tar zxvf vsts-agent-linux-x64-4.273.0.tar.gz
 
 # Run the configuration script
 ./config.sh
@@ -80,10 +80,10 @@ You can verify the service is running with systemctl directly.
 
 ```bash
 # Check the agent service status
-systemctl status vsts.agent.yourorg.linux-agents.linux-agent-01
+systemctl status vsts.agent.yourorg.linux-agent-01
 
 # View recent logs
-journalctl -u vsts.agent.yourorg.linux-agents.linux-agent-01 -n 50
+journalctl -u vsts.agent.yourorg.linux-agent-01 -n 50
 ```
 
 ## Step 4: Install Build Dependencies
@@ -132,10 +132,11 @@ curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 echo "Build tools installation complete."
 ```
 
-After installing tools, restart the agent service so it picks up the new environment.
+After installing tools, refresh the service environment snapshot and restart the agent service so it picks up the new environment.
 
 ```bash
-# Restart the agent to pick up new tools
+# Refresh the agent service environment and restart the agent
+./env.sh
 sudo ./svc.sh stop && sudo ./svc.sh start
 ```
 
@@ -191,15 +192,15 @@ pool:
 
 ## Running Multiple Agents on One VM
 
-If your VM has enough resources, you can run multiple agents to handle parallel jobs. Each agent needs its own directory.
+If your VM has enough resources, you can run multiple agents to handle parallel jobs, although Microsoft recommends one agent per machine for predictable performance. Each agent needs its own directory.
 
 ```bash
 # Set up a second agent
 mkdir -p ~/azagent2 && cd ~/azagent2
 
 # Download and extract (same package)
-curl -O -L https://vstsagentpackage.azureedge.net/agent/3.232.1/vsts-agent-linux-x64-3.232.1.tar.gz
-tar zxvf vsts-agent-linux-x64-3.232.1.tar.gz
+curl -O -L https://download.agent.dev.azure.com/agent/4.273.0/vsts-agent-linux-x64-4.273.0.tar.gz
+tar zxvf vsts-agent-linux-x64-4.273.0.tar.gz
 
 # Configure with a different agent name
 ./config.sh  # Use name like linux-agent-02
@@ -213,17 +214,14 @@ A good rule of thumb is one agent per 2 vCPUs, assuming typical build workloads.
 
 ## Keeping Agents Updated
 
-Microsoft releases agent updates regularly. Agents can auto-update if you enable it, but I prefer controlling updates in production.
+Microsoft releases agent updates regularly. Self-hosted agents automatically update when a pipeline needs a newer compatible agent version, and you can also trigger updates from the Agent pools page. I prefer controlling updates in production.
 
 ```bash
-# Check the current agent version
-cat ~/azagent/.agent | jq '.agentVersion'
+# Check the current agent version in Azure DevOps
+# Agent pools > your pool > Agents > your agent > Capabilities > Agent.Version
 
-# To update manually: stop the service, download new version, reconfigure
-sudo ./svc.sh stop
-# Download and extract new version
-./config.sh --unattended --replace
-sudo ./svc.sh start
+# To update manually from Azure DevOps:
+# Agent pools > your pool > Update all agents
 ```
 
 ## Cleaning Up Build Artifacts
@@ -277,7 +275,7 @@ A down agent means stuck pipelines. Set up basic monitoring to catch issues befo
 #!/bin/bash
 # check-agent-health.sh
 
-SERVICE_NAME="vsts.agent.yourorg.linux-agents.linux-agent-01"
+SERVICE_NAME="vsts.agent.yourorg.linux-agent-01"
 
 # Check if service is running
 if ! systemctl is-active --quiet $SERVICE_NAME; then
