@@ -8,7 +8,7 @@ Description: Use template registrations in Azure Notification Hubs to send a sin
 
 ---
 
-If you are sending push notifications to multiple platforms, you quickly run into a problem: each platform has a different payload format. APNs expects a JSON structure with an `aps` key. FCM expects a `notification` object or a `data` object. WNS has its own XML-based format. Without templates, your backend needs to construct a separate payload for each platform and send them individually.
+If you are sending push notifications to multiple platforms, you quickly run into a problem: each platform has a different payload format. APNs expects a JSON structure with an `aps` key. FCM v1 expects a JSON structure with a `message` object that can contain `notification` and `data` fields. WNS has its own XML-based format. Without templates, your backend needs to construct a separate payload for each platform and send them individually.
 
 Azure Notification Hubs templates solve this by letting each device register with a platform-specific template. When your backend sends a notification, it just provides the data properties. The service fills in the template for each registered device and sends the correctly formatted payload to each platform. One API call, all platforms covered.
 
@@ -20,7 +20,7 @@ The concept is straightforward. Instead of a standard registration that just map
 graph TD
     A[Backend sends: title=Alert, body=CPU high] --> B[Notification Hubs]
     B --> C[iOS Template: aps.alert.title=$(title)]
-    B --> D[Android Template: notification.title=$(title)]
+    B --> D[Android Template: message.notification.title=$(title)]
     B --> E[Windows Template: toast text=$(title)]
     C --> F[APNs]
     D --> G[FCM]
@@ -29,13 +29,18 @@ graph TD
 
 ## Registering Devices with Templates
 
-On the mobile client side, when registering with the notification hub, you include the template along with the device token and tags.
+When your app or registration service registers with the notification hub, you include the template along with the device token and tags.
 
 Here is how you register an Android device with a template.
 
 ```javascript
 // register-android-template.js - Register an Android device with a template
-const { NotificationHubsClient } = require('@azure/notification-hubs');
+const {
+  NotificationHubsClient,
+  createAppleNotification,
+  createFcmV1Notification,
+  createTemplateNotification
+} = require('@azure/notification-hubs');
 
 const connectionString = process.env.NOTIFICATION_HUB_CONNECTION_STRING;
 const hubName = 'my-notification-hub';
@@ -44,19 +49,21 @@ const client = new NotificationHubsClient(connectionString, hubName);
 async function registerAndroidWithTemplate(fcmToken, userId) {
   // The template defines the FCM payload structure with placeholders
   const template = JSON.stringify({
-    notification: {
-      title: '$(title)',       // Placeholder for the title
-      body: '$(body)'         // Placeholder for the body
+    message: {
+      notification: {
+        title: '$(title)',       // Placeholder for the title
+        body: '$(body)'          // Placeholder for the body
+      },
+      data: {
+        action: '$(action)',     // Custom data placeholder
+        timestamp: '$(timestamp)'
+      }
     },
-    data: {
-      action: '$(action)',    // Custom data placeholder
-      timestamp: '$(timestamp)'
-    }
   });
 
   const registration = await client.createOrUpdateRegistration({
-    kind: 'GcmTemplate',
-    gcmRegistrationId: fcmToken,
+    kind: 'FcmV1Template',
+    fcmV1RegistrationId: fcmToken,
     bodyTemplate: template,
     tags: [`user:${userId}`, 'platform:android'],
     templateName: 'default' // A name to identify this template
@@ -80,7 +87,7 @@ async function registerIosWithTemplate(deviceToken, userId) {
         body: '$(body)'
       },
       sound: 'default',
-      badge: '$(badge)'
+      badge: '#(badge)'
     },
     action: '$(action)',
     timestamp: '$(timestamp)'
@@ -93,7 +100,7 @@ async function registerIosWithTemplate(deviceToken, userId) {
     tags: [`user:${userId}`, 'platform:ios'],
     templateName: 'default',
     // Set the APNs headers for the template
-    headers: {
+    apnsHeaders: {
       'apns-push-type': 'alert',
       'apns-priority': '10'
     }
@@ -118,14 +125,13 @@ async function sendTemplateNotification(title, body, action) {
     body: body,
     action: action || 'default',
     timestamp: new Date().toISOString(),
-    badge: '1'
+    badge: 1
   };
 
   // One call sends to all platforms
-  const result = await client.sendNotification({
-    kind: 'Template',
-    body: JSON.stringify(properties)
-  });
+  const result = await client.sendBroadcastNotification(
+    createTemplateNotification({ body: properties })
+  );
 
   console.log('Tracking ID:', result.trackingId);
   return result;
@@ -149,10 +155,9 @@ Template notifications work with the same tag system as regular notifications.
 // targeted-template.js - Send template notifications to specific audiences
 async function notifyUser(userId, title, body) {
   const result = await client.sendNotification(
-    {
-      kind: 'Template',
-      body: JSON.stringify({ title, body, action: 'default', badge: '1', timestamp: new Date().toISOString() })
-    },
+    createTemplateNotification({
+      body: { title, body, action: 'default', badge: 1, timestamp: new Date().toISOString() }
+    }),
     { tagExpression: `user:${userId}` }
   );
 
@@ -162,10 +167,9 @@ async function notifyUser(userId, title, body) {
 // Notify a specific team
 async function notifyTeam(teamName, title, body) {
   const result = await client.sendNotification(
-    {
-      kind: 'Template',
-      body: JSON.stringify({ title, body, action: 'default', badge: '0', timestamp: new Date().toISOString() })
-    },
+    createTemplateNotification({
+      body: { title, body, action: 'default', badge: 0, timestamp: new Date().toISOString() }
+    }),
     { tagExpression: `team:${teamName}` }
   );
 
@@ -182,17 +186,23 @@ A single device can have multiple template registrations. This is useful when yo
 async function registerAlertTemplate(fcmToken, userId) {
   // Alert template with high-priority settings
   const alertTemplate = JSON.stringify({
-    notification: {
-      title: 'ALERT: $(title)',
-      body: '$(body)',
-      click_action: 'ALERT_ACTIVITY'
-    },
-    priority: 'high'
+    message: {
+      notification: {
+        title: 'ALERT: $(title)',
+        body: '$(body)'
+      },
+      android: {
+        priority: 'HIGH',
+        notification: {
+          click_action: 'ALERT_ACTIVITY'
+        }
+      }
+    }
   });
 
   await client.createOrUpdateRegistration({
-    kind: 'GcmTemplate',
-    gcmRegistrationId: fcmToken,
+    kind: 'FcmV1Template',
+    fcmV1RegistrationId: fcmToken,
     bodyTemplate: alertTemplate,
     tags: [`user:${userId}`, 'type:alert'],
     templateName: 'alert'
@@ -202,19 +212,21 @@ async function registerAlertTemplate(fcmToken, userId) {
 async function registerInfoTemplate(fcmToken, userId) {
   // Info template with normal priority
   const infoTemplate = JSON.stringify({
-    notification: {
-      title: '$(title)',
-      body: '$(body)'
-    },
-    data: {
-      type: 'info',
-      link: '$(link)'
+    message: {
+      notification: {
+        title: '$(title)',
+        body: '$(body)'
+      },
+      data: {
+        type: 'info',
+        link: '$(link)'
+      }
     }
   });
 
   await client.createOrUpdateRegistration({
-    kind: 'GcmTemplate',
-    gcmRegistrationId: fcmToken,
+    kind: 'FcmV1Template',
+    fcmV1RegistrationId: fcmToken,
     bodyTemplate: infoTemplate,
     tags: [`user:${userId}`, 'type:info'],
     templateName: 'info'
@@ -224,33 +236,33 @@ async function registerInfoTemplate(fcmToken, userId) {
 // Now you can target different templates using tags
 // Send an alert notification
 await client.sendNotification(
-  { kind: 'Template', body: JSON.stringify({ title: 'CPU Critical', body: '95% usage' }) },
+  createTemplateNotification({ body: { title: 'CPU Critical', body: '95% usage' } }),
   { tagExpression: 'user:user-123 && type:alert' }
 );
 
 // Send an info notification
 await client.sendNotification(
-  { kind: 'Template', body: JSON.stringify({ title: 'Weekly Report', body: 'Your report is ready', link: '/reports/weekly' }) },
+  createTemplateNotification({ body: { title: 'Weekly Report', body: 'Your report is ready', link: '/reports/weekly' } }),
   { tagExpression: 'user:user-123 && type:info' }
 );
 ```
 
 ## Template Expressions
 
-Templates support more than simple property substitution. You can use expressions for conditional content and string manipulation.
+Templates support more than simple property substitution. You can use expressions for clipping, URI encoding, JSON numeric values, and string concatenation.
 
 ```javascript
-// The template can include conditional expressions
-const conditionalTemplate = JSON.stringify({
+// The template can include template expressions
+const expressionTemplate = JSON.stringify({
   aps: {
     alert: {
       title: '$(title)',
-      // The body will show the full message or a default if not provided
-      body: '$(body)'
+      // Clip long body text to 120 characters
+      body: '$(body, 120)'
     },
     sound: '$(sound)',
-    // Badge can be set dynamically
-    badge: '$(badge)'
+    // Badge can be set dynamically as a JSON number
+    badge: '#(badge)'
   }
 });
 ```
@@ -271,22 +283,25 @@ If you already have a working notification system that sends platform-specific p
 
 // BEFORE: Platform-specific sends (two separate calls)
 async function sendOldWay(title, body) {
-  await client.sendNotification({
-    kind: 'Gcm',
-    body: JSON.stringify({ notification: { title, body } })
-  });
-  await client.sendNotification({
-    kind: 'Apple',
-    body: JSON.stringify({ aps: { alert: { title, body }, sound: 'default' } })
-  });
+  await client.sendNotification(
+    createFcmV1Notification({
+      body: { message: { notification: { title, body } } }
+    }),
+    { tagExpression: 'platform:android' }
+  );
+  await client.sendNotification(
+    createAppleNotification({
+      body: { aps: { alert: { title, body }, sound: 'default' } }
+    }),
+    { tagExpression: 'platform:ios' }
+  );
 }
 
 // AFTER: Template send (one call)
 async function sendNewWay(title, body) {
-  await client.sendNotification({
-    kind: 'Template',
-    body: JSON.stringify({ title, body, badge: '1' })
-  });
+  await client.sendBroadcastNotification(
+    createTemplateNotification({ body: { title, body, badge: 1 } })
+  );
 }
 ```
 
