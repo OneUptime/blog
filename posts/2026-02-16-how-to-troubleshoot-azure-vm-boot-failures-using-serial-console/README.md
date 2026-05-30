@@ -24,7 +24,7 @@ Before you can use Serial Console, there are a few things that need to be in pla
 
 1. Boot diagnostics must be enabled on the VM.
 2. The VM must have a password-based user account (SSH key-only accounts will not work for console login on Linux).
-3. Your Azure account needs at least the Virtual Machine Contributor role.
+3. Your Azure account needs at least the Virtual Machine Contributor role on the VM and the boot diagnostics storage account.
 
 If boot diagnostics are not already enabled, you can turn them on from the Azure portal.
 
@@ -38,14 +38,22 @@ Here is how to check and enable it using the Azure CLI:
 
 ```bash
 # Check if Serial Console is enabled for the subscription
+subscriptionId=$(az account show --query id -o tsv)
+az resource show \
+  --ids "/subscriptions/$subscriptionId/providers/Microsoft.SerialConsole/consoleServices/default" \
+  --api-version "2023-01-01" \
+  --query properties
 
-az vm diagnostics get-default-config --is-windows-os false
+# Enable Serial Console for the subscription if it has been disabled
+az resource invoke-action \
+  --action enableConsole \
+  --ids "/subscriptions/$subscriptionId/providers/Microsoft.SerialConsole/consoleServices/default" \
+  --api-version "2023-01-01"
 
 # Enable boot diagnostics on a specific VM (required for Serial Console)
 az vm boot-diagnostics enable \
   --resource-group myResourceGroup \
-  --name myVM \
-  --storage https://mystorageaccount.blob.core.windows.net/
+  --name myVM
 ```
 
 Once boot diagnostics are enabled, navigate to your VM in the Azure portal and click "Serial console" under the "Help" section in the left menu. You should see a terminal window appear.
@@ -165,15 +173,14 @@ SAC> ch -si 1
 # You now have a command prompt
 ```
 
-From the Windows command prompt through SAC, you can check event logs, restart services, fix boot configuration, and more:
+From the Windows command prompt through SAC, you can check event logs, restart services, inspect boot configuration, and more:
 
 ```cmd
 :: Check the BCD (Boot Configuration Data)
 bcdedit /enum
 
-:: Fix the boot record
-bootrec /fixmbr
-bootrec /fixboot
+:: Check recent system events
+wevtutil qe System /c:20 /f:text
 
 :: Check and repair system files
 sfc /scannow
@@ -183,18 +190,18 @@ sfc /scannow
 
 Sometimes Serial Console does not connect properly. Here are a few things to check:
 
-First, make sure boot diagnostics are enabled. Serial Console will not work without them. Second, verify that your subscription has not had Serial Console disabled at the subscription level - this is sometimes done as a security policy. Third, check that the VM agent is installed and running. While Serial Console does not strictly require the agent for basic functionality, some features depend on it.
+First, make sure boot diagnostics are enabled. Serial Console will not work without them. Second, verify that your subscription has not had Serial Console disabled at the subscription level - this is sometimes done as a security policy. Third, if you use a custom boot diagnostics storage account, check the storage account firewall and make sure storage account key access has not been disabled.
 
 If you see a blank screen in the console, try pressing Enter a few times. The VM might be waiting for input at a login prompt that has not rendered yet.
 
 ## Automating Boot Diagnostics Monitoring
 
-If you manage a fleet of VMs, you probably want to catch boot issues before they become emergencies. Azure Monitor can watch boot diagnostics and alert you when things go wrong.
+If you manage a fleet of VMs, you probably want to catch boot issues before they become emergencies. You can collect boot diagnostics output and feed known error patterns into Azure Monitor, Log Analytics, or your incident tooling.
 
-You can also use the Azure CLI to pull boot diagnostics screenshots programmatically:
+You can also use the Azure CLI to pull boot diagnostics serial logs programmatically:
 
 ```bash
-# Get the boot diagnostics screenshot URL
+# Get the boot diagnostics serial log
 az vm boot-diagnostics get-boot-log \
   --resource-group myResourceGroup \
   --name myVM
