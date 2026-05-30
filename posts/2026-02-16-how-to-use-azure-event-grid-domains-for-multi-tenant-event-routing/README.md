@@ -57,7 +57,7 @@ az eventgrid domain key list \
   --output tsv
 ```
 
-You do not need to explicitly create domain topics. They are created automatically the first time you publish an event to them or create a subscription on them.
+You do not need to explicitly create domain topics before creating subscriptions. By default, Event Grid automatically creates the domain topic when you create the first event subscription for it.
 
 ## Publishing Events to Domain Topics
 
@@ -121,7 +121,7 @@ Each tenant can have their own subscriptions on their domain topic.
 
 ```bash
 # Create a subscription for tenant-001
-az eventgrid domain-topic event-subscription create \
+az eventgrid domain topic event-subscription create \
   --name sub-tenant-001 \
   --resource-group rg-events \
   --domain-name domain-saas-events \
@@ -129,7 +129,7 @@ az eventgrid domain-topic event-subscription create \
   --endpoint "https://tenant-001.myapp.com/api/events"
 
 # Create a subscription for tenant-002 with a different endpoint type
-az eventgrid domain-topic event-subscription create \
+az eventgrid domain topic event-subscription create \
   --name sub-tenant-002 \
   --resource-group rg-events \
   --domain-name domain-saas-events \
@@ -222,9 +222,11 @@ This prevents one tenant from publishing events to another tenant's topic - a cr
 When a new tenant signs up, you need to create their domain topic and subscription programmatically.
 
 ```csharp
-using Azure.Messaging.EventGrid;
+using Azure;
+using Azure.Core;
 using Azure.ResourceManager;
 using Azure.ResourceManager.EventGrid;
+using Azure.ResourceManager.EventGrid.Models;
 
 public class TenantOnboardingService
 {
@@ -245,7 +247,7 @@ public class TenantOnboardingService
         );
         var domain = _armClient.GetEventGridDomainResource(domainId);
 
-        // Create the domain topic (or it auto-creates on first publish)
+        // Create the domain topic explicitly so onboarding owns the lifecycle
         var topics = domain.GetDomainTopics();
         var topicOperation = await topics.CreateOrUpdateAsync(
             Azure.WaitUntil.Completed,
@@ -255,7 +257,20 @@ public class TenantOnboardingService
 
         // Create a subscription for the tenant
         var subscriptions = topic.GetDomainTopicEventSubscriptions();
-        // Configure the subscription with the tenant's webhook
+        var subscriptionData = new EventGridSubscriptionData
+        {
+            Destination = new WebHookEventSubscriptionDestination
+            {
+                Endpoint = new Uri(webhookUrl)
+            }
+        };
+
+        await subscriptions.CreateOrUpdateAsync(
+            Azure.WaitUntil.Completed,
+            $"sub-{tenantId}",
+            subscriptionData
+        );
+
         Console.WriteLine($"Tenant {tenantId} onboarded with webhook {webhookUrl}");
     }
 }
@@ -267,7 +282,7 @@ Event Grid domains are designed for massive scale. Some numbers to keep in mind:
 
 - Up to 100,000 domain topics per domain
 - Up to 500 event subscriptions per domain topic
-- 5,000 events per second per domain (can be increased)
+- 5,000 events or 5 MB per second per domain, whichever comes first
 - Events in a single batch can target different domain topics
 
 For high-throughput scenarios, batch events efficiently. Since a single publish call can route events to multiple domain topics, you can group events from your application's event bus and publish them in bulk.
@@ -284,7 +299,7 @@ az monitor metrics list \
   --interval PT5M
 
 # List all domain topics (to see which tenants have topics)
-az eventgrid domain-topic list \
+az eventgrid domain topic list \
   --resource-group rg-events \
   --domain-name domain-saas-events \
   --output table
