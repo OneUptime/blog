@@ -8,20 +8,20 @@ Description: Learn how to configure ephemeral OS disks on Azure VMs to achieve f
 
 ---
 
-Azure VMs typically use managed disks for their OS disk, which are persisted in Azure Storage. This is great for durability but comes with a trade-off: storage latency and cost. Ephemeral OS disks flip that trade-off by placing the OS disk on the local SSD of the physical host machine. The result is faster boot times, lower read/write latency, and zero storage costs for the OS disk. The catch is that the data is not persistent - if the VM is deallocated, moved, or the host fails, the OS disk content is lost.
+Azure VMs typically use managed disks for their OS disk, which are persisted in Azure Storage. This is great for durability but comes with a trade-off: storage latency and cost. Ephemeral OS disks flip that trade-off by placing the OS disk on the local storage of the physical host machine. The result is faster boot times, lower read/write latency, and zero storage costs for the OS disk. The catch is that the data is not persistent - if the VM is stopped and deallocated, redeployed, moved during service healing, or the host fails, the OS disk content is lost.
 
 For stateless workloads, scale set nodes, and CI/CD build agents, that trade-off is not just acceptable - it is preferred.
 
 ## How Ephemeral OS Disks Work
 
-Instead of storing the OS disk in Azure Storage (backed by Standard HDD, Standard SSD, or Premium SSD), ephemeral OS disks use the VM's local temporary storage or the VM's cache disk. This is the same fast NVMe or SSD storage that the temporary disk uses.
+Instead of storing the OS disk in Azure Storage (backed by Standard HDD, Standard SSD, or Premium SSD), ephemeral OS disks use the VM's local temporary storage, NVMe storage, or cache disk.
 
 The key characteristics:
 
 - The OS disk is created from the VM image at deploy time, directly on the local storage.
 - Read and write latency matches local SSD performance, not remote storage performance.
 - There is no storage cost for the OS disk because it does not use Azure Storage.
-- The OS disk is lost when the VM is deallocated, resized, or redeployed (stop/start preserves it, but deallocation does not).
+- The OS disk is lost when the VM is stopped and deallocated, resized, or redeployed. Ephemeral OS disk VMs do not support the stop-deallocated state.
 - Reimaging the VM is extremely fast since it just writes the image to local storage.
 
 ## When to Use Ephemeral OS Disks
@@ -32,7 +32,7 @@ Ephemeral OS disks work best for:
 - Stateless application servers behind a load balancer
 - CI/CD build agents and test runners
 - Batch processing workers
-- Container host nodes (AKS nodes use ephemeral OS disks by default)
+- Container host nodes (AKS uses ephemeral OS disks by default whenever the selected node pool configuration supports them)
 - Development and test VMs where you rebuild frequently
 
 They are not appropriate for:
@@ -44,23 +44,16 @@ They are not appropriate for:
 
 ## VM Size Requirements
 
-Not all VM sizes support ephemeral OS disks. The VM's cache size or temp disk size must be large enough to hold the OS image. Here is how to check:
+Not all VM sizes support ephemeral OS disks. The VM's cache, temp, or NVMe disk size must be large enough to hold the OS image. Here is how to check:
 
 ```bash
-# List VM sizes with their cache and temp disk sizes
-
-az vm list-sizes --location eastus \
-  --query "[?contains(name,'Standard_D')].{Name:name, CacheSizeGB:resourceDiskSizeInMb, MaxDataDisks:maxDataDiskCount}" \
-  -o table
-
-# For a specific size, check if it supports ephemeral OS disks
-# The cache size must be >= the OS image size
-az vm list-skus --location eastus --size Standard_D4s_v5 \
-  --query "[].{Name:name, CacheSizeGB:capabilities[?name=='CachedDiskBytes'].value | [0]}" \
+# Check whether a specific size supports ephemeral OS disks and which placements are available
+az vm list-skus --location eastus --size Standard_D4ds_v5 \
+  --query "[?name=='Standard_D4ds_v5'].{Name:name, EphemeralOSDisk:capabilities[?name=='EphemeralOSDiskSupported'].value | [0], TempDiskMB:capabilities[?name=='MaxResourceVolumeMB'].value | [0], CacheBytes:capabilities[?name=='CachedDiskBytes'].value | [0], Placements:capabilities[?name=='SupportedEphemeralOSDiskPlacements'].value | [0]}" \
   -o table
 ```
 
-Generally, VMs with at least 40 GB of cache storage can support ephemeral OS disks for standard Linux images. Windows images are larger and may need more cache space.
+The image OS disk size must be less than or equal to the VM's available local storage for the selected placement. Standard Ubuntu marketplace images are about 30 GiB, while standard Windows Server images are about 127 GiB. Small-size images are available for some distributions and make more VM sizes eligible.
 
 ## Creating a VM with an Ephemeral OS Disk
 
@@ -72,22 +65,27 @@ az vm create \
   --resource-group myResourceGroup \
   --name ephemeralVM \
   --image Ubuntu2204 \
-  --size Standard_D4s_v5 \
+  --size Standard_DS3_v2 \
   --ephemeral-os-disk true \
+  --ephemeral-os-disk-placement CacheDisk \
   --os-disk-caching ReadOnly \
   --admin-username azureuser \
   --generate-ssh-keys
 ```
 
-The `--os-disk-caching ReadOnly` is required for ephemeral OS disks placed on the cache. This might seem counterintuitive, but the caching mode here refers to the Azure Storage layer caching behavior. Since the disk is on local storage, the "caching" concept works differently.
+The `--os-disk-caching ReadOnly` setting is required for ephemeral OS disks. This might seem counterintuitive, but the caching mode here refers to the Azure Storage layer caching behavior. Since the disk is on local storage, the "caching" concept works differently.
 
-### Choosing Placement: Cache vs. Temp Disk
+### Choosing Placement: Cache, Temp Disk, or NVMe
 
-Ephemeral OS disks can be placed in two locations:
+Ephemeral OS disks can be placed in three locations, depending on the VM size:
 
-**Cache disk** (default): Uses the VM's cache storage. Best performance for the OS disk, but reduces the available cache for data disks.
+**Cache disk**: Uses the VM's cache storage. This is available on older VM families that have a cache disk.
 
-**Temp disk (resource disk)**: Uses the VM's temporary storage allocation. Frees up the cache for data disks but means you lose the temp disk for other uses.
+**Temp disk (resource disk)**: Uses the VM's temporary storage allocation. The remaining temp disk space is the initial temp disk size minus the OS image size.
+
+**NVMe disk**: Uses the VM's local NVMe storage. This is generally available on supported v6 VM series.
+
+By default, Azure selects the appropriate placement for the VM SKU. Placement does not directly change the cost; performance depends on the underlying local storage for the selected VM size.
 
 ```bash
 # Place ephemeral OS disk on the temp (resource) disk instead
@@ -95,9 +93,10 @@ az vm create \
   --resource-group myResourceGroup \
   --name ephemeralVM-temp \
   --image Ubuntu2204 \
-  --size Standard_D4s_v5 \
+  --size Standard_D4ds_v5 \
   --ephemeral-os-disk true \
   --ephemeral-os-disk-placement ResourceDisk \
+  --os-disk-caching ReadOnly \
   --admin-username azureuser \
   --generate-ssh-keys
 ```
@@ -114,7 +113,7 @@ For infrastructure-as-code deployments:
   "location": "eastus",
   "properties": {
     "hardwareProfile": {
-      "vmSize": "Standard_D4s_v5"
+      "vmSize": "Standard_DS3_v2"
     },
     "storageProfile": {
       "imageReference": {
@@ -202,10 +201,11 @@ az vmss create \
   --resource-group myResourceGroup \
   --name myScaleSet \
   --image Ubuntu2204 \
-  --vm-sku Standard_D4s_v5 \
+  --vm-sku Standard_D4ds_v5 \
   --instance-count 3 \
   --upgrade-policy-mode Automatic \
   --ephemeral-os-disk true \
+  --ephemeral-os-disk-placement ResourceDisk \
   --os-disk-caching ReadOnly \
   --admin-username azureuser \
   --generate-ssh-keys
@@ -221,18 +221,18 @@ The benefits compound with scale sets:
 
 The cost savings can be meaningful at scale. Here is a rough comparison:
 
-A managed Premium SSD P10 (128 GB) costs about $19.71 per month. For a scale set with 50 instances, that is $985.50 per month just for OS disks. With ephemeral OS disks, that cost drops to zero.
+A managed Premium SSD P10 LRS (128 GiB) in East US costs about $19.71 per month. For a scale set with 50 instances, that is $985.50 per month just for OS disks. With ephemeral OS disks, that cost drops to zero.
 
-For Standard SSD, a 128 GB disk is about $10.24 per month, which saves you $512 per month across 50 instances.
+For Standard SSD, an E10 LRS 128 GiB disk in East US is about $9.60 per month before transaction charges, which saves about $480 per month across 50 instances.
 
 The savings are per-instance, so they scale linearly with your fleet size.
 
 ## Handling VM Maintenance Events
 
-Azure periodically performs maintenance on physical hosts. With persistent managed disks, a maintenance event restarts the VM but preserves the OS disk. With ephemeral OS disks, the behavior depends on the type of maintenance:
+Azure periodically performs maintenance on physical hosts. With persistent managed disks, maintenance preserves the OS disk. With ephemeral OS disks, the behavior depends on the type of maintenance:
 
 - **Live migration**: The VM is moved to another host with minimal interruption. The ephemeral OS disk is migrated in memory. This usually works seamlessly.
-- **Non-live migration**: The VM is stopped and restarted. If the VM stays on the same host, the ephemeral disk survives. If it moves to a new host, the OS disk is recreated from the original image.
+- **Service healing**: If Azure needs to heal or move the VM in a way that cannot preserve the local disk, the OS disk data is not preserved and the VM is reprovisioned from the original image.
 
 For scale sets, the recommended approach is to use the `Automatic` upgrade policy and handle maintenance events by replacing instances rather than preserving them.
 
@@ -256,8 +256,8 @@ A few constraints to plan for:
 
 - You cannot resize a VM to a size that does not support ephemeral OS disks without recreating it.
 - You cannot switch an existing VM from managed disk to ephemeral OS disk - you need to create a new VM.
-- You cannot capture an image from a VM with an ephemeral OS disk directly. You need to reimage it, make your changes, generalize, and capture.
-- The OS disk size is limited by the cache or temp disk size of the VM. If your image is larger than the available local storage, ephemeral OS disks will not work.
+- You cannot capture an image from a VM with an ephemeral OS disk. Build and capture custom images from a VM that uses a persistent managed OS disk instead.
+- The OS disk size is limited by the cache, temp, or NVMe disk size of the VM. If your image is larger than the available local storage, ephemeral OS disks will not work.
 - OS disk snapshots are not supported.
 
 ## Wrapping Up
