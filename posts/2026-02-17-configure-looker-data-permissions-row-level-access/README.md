@@ -39,8 +39,8 @@ Create a user attribute for region-based access:
 ```text
 Name: allowed_region
 Label: Allowed Region
-Type: String
-Default Value: (leave blank or set to "ALL" for admins)
+Type: String Filter (advanced)
+Default Value: (leave blank or set to "%, NULL" for admins)
 Hide Values: No
 User Access: View (users can see their value but not change it)
 ```
@@ -50,7 +50,7 @@ Create another for department-based access:
 ```text
 Name: allowed_department
 Label: Allowed Department
-Type: String
+Type: String Filter (advanced)
 Default Value: (blank)
 User Access: View
 ```
@@ -103,7 +103,7 @@ The `access_filter` tells Looker to add a WHERE clause that matches the `orders.
 
 Users often need access to multiple regions or departments. You can assign comma-separated values to user attributes:
 
-**User attribute value:** `West, Central`
+**User attribute value:** `West,Central`
 
 Looker treats comma-separated values as an IN list, generating SQL like:
 
@@ -111,19 +111,13 @@ Looker treats comma-separated values as an IN list, generating SQL like:
 WHERE region IN ('West', 'Central')
 ```
 
-For admins who need access to all data, set their user attribute to a special value and handle it in LookML:
+For admins who need access to all data through an `access_filter`, use a wildcard filter expression in the user attribute:
 
-```lookml
-# In the view definition
-dimension: region {
-  type: string
-  sql: ${TABLE}.region ;;
-}
-
-# The access filter handles "ALL" automatically when the
-# user attribute contains all possible values.
-# Alternative: use sql_always_where with liquid for more control
+```text
+User attribute value: %, NULL
 ```
+
+If you need custom values like `ALL`, use `sql_always_where` with Liquid for more control.
 
 ## Advanced: Using Liquid Templates for Complex Logic
 
@@ -153,7 +147,7 @@ For admin users (allowed_region = "ALL"):
 WHERE 1=1  -- No restriction
 ```
 
-For regional users (allowed_region = "West, Central"):
+For regional users (allowed_region = "West,Central"):
 ```sql
 WHERE region IN ('West', 'Central')
 ```
@@ -163,18 +157,12 @@ WHERE region IN ('West', 'Central')
 For SaaS platforms where each client should only see their own data, the pattern is similar but uses a client ID:
 
 ```lookml
-# User attribute: client_id (assigned per user)
+# User attribute: client_id (Number or Number Filter (advanced), assigned per user)
 
 explore: client_data {
   access_filter: {
     field: client_data.client_id
     user_attribute: client_id
-  }
-
-  # Prevent users from even seeing the client_id dimension
-  # to avoid confusion
-  always_filter: {
-    filters: [client_data.client_id: ""]
   }
 }
 
@@ -302,7 +290,7 @@ explore: history {
 ```lookml
 sql_always_where:
   {% if _user_attributes['allowed_region'] == '' or _user_attributes['allowed_region'] == null %}
-    1=0  -- Block access if no region is assigned
+    1=0
   {% elsif _user_attributes['allowed_region'] == 'ALL' %}
     1=1
   {% else %}
