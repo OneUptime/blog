@@ -14,13 +14,13 @@ Azure Automation's source control integration solves this by syncing your runboo
 
 ## How Source Control Integration Works
 
-The integration creates a one-way or two-way sync between a GitHub repository (or a folder within it) and your Azure Automation account:
+The integration creates a one-way sync from a GitHub repository (or a folder within it) to your Azure Automation account:
 
 - **Source to Automation (recommended)**: Changes in GitHub are synced to Azure Automation. This makes GitHub the source of truth.
 - **Auto-sync**: Changes pushed to the configured branch are automatically synced to Azure Automation.
 - **Manual sync**: You trigger the sync manually when ready.
 
-The sync process publishes runbooks to Azure Automation. PowerShell files (.ps1) become PowerShell runbooks. Python files (.py) become Python runbooks.
+The sync process publishes runbooks to Azure Automation. Source control integration is supported for PowerShell 5.1 runbooks, so keep the synced folder focused on .ps1 runbooks.
 
 ## Step 1: Prepare Your GitHub Repository
 
@@ -33,9 +33,6 @@ azure-automation-runbooks/
         Scale-VMSS.ps1
         Cleanup-OldSnapshots.ps1
         Update-NSGRules.ps1
-    python-runbooks/
-        process_logs.py
-        sync_inventory.py
     README.md
     .gitignore
 ```
@@ -49,10 +46,10 @@ Each .ps1 file should contain a complete, publishable runbook:
 # Triggered by webhook or schedule
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory=$false)]
     [string]$VMName,
 
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory=$false)]
     [string]$ResourceGroupName,
 
     [Parameter(Mandatory=$false)]
@@ -66,6 +63,10 @@ if ($WebhookData) {
     $ResourceGroupName = $Body.ResourceGroup
 }
 
+if (-not $VMName -or -not $ResourceGroupName) {
+    throw "VMName and ResourceGroupName are required."
+}
+
 Write-Output "Starting restart of VM: $VMName in RG: $ResourceGroupName"
 
 # Authenticate using managed identity
@@ -74,8 +75,7 @@ Connect-AzAccount -Identity
 # Verify the VM exists before attempting restart
 $vm = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -ErrorAction SilentlyContinue
 if (-not $vm) {
-    Write-Error "VM '$VMName' not found in resource group '$ResourceGroupName'"
-    exit 1
+    throw "VM '$VMName' not found in resource group '$ResourceGroupName'"
 }
 
 # Restart the VM
@@ -85,21 +85,23 @@ Write-Output "Successfully restarted VM: $VMName"
 
 ## Step 2: Create a GitHub Personal Access Token
 
-Azure Automation needs a token to access your GitHub repository. Create a personal access token (PAT) or use a GitHub App.
+Azure Automation needs a token to access your GitHub repository. Create a personal access token (PAT).
 
 For a PAT:
 
 1. Go to GitHub > Settings > Developer settings > Personal access tokens > Tokens (classic)
 2. Click "Generate new token"
-3. Select the `repo` scope (full control of private repositories)
+3. Select the `repo` scope for private repositories, and include repository hook permissions such as `admin:repo_hook` if you want auto-sync to create and manage the GitHub webhook
 4. Set a reasonable expiration date
 5. Generate and copy the token
 
-For better security, use a fine-grained personal access token with access only to the specific repository.
+For better security, limit the token to the repository Azure Automation will sync and set a reasonable expiration date.
 
 ## Step 3: Configure Source Control in Azure Automation
 
 Connect your Automation Account to the GitHub repository:
+
+Before creating the source control connection, make sure the Automation Account has a system-assigned or user-assigned managed identity and that the identity has Contributor access on the Automation Account.
 
 ```bash
 # Create source control connection to GitHub
@@ -244,22 +246,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/login@v1
+      - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+          enable-AzPSSession: true
 
       - name: Update Automation Account modules
         shell: pwsh
         run: |
           # Read the requirements file and update modules
           $requirements = Import-PowerShellDataFile -Path ./requirements.psd1
+          Install-Module -Name Az.Automation -Force -Scope CurrentUser
           foreach ($module in $requirements.GetEnumerator()) {
             Write-Output "Updating module: $($module.Key) to version $($module.Value)"
-            az automation module create `
-              --automation-account-name myAutomationAccount `
-              --resource-group myRG `
-              --name $module.Key `
-              --content-link "https://www.powershellgallery.com/api/v2/package/$($module.Key)/$($module.Value)"
+            New-AzAutomationModule `
+              -AutomationAccountName myAutomationAccount `
+              -ResourceGroupName myRG `
+              -Name $module.Key `
+              -ContentLinkUri "https://www.powershellgallery.com/api/v2/package/$($module.Key)/$($module.Value)" `
+              -RuntimeVersion 5.1
           }
 ```
 
@@ -269,7 +274,7 @@ Check the sync status to make sure changes are being applied:
 
 ```bash
 # List recent source control sync jobs
-az automation source-control-sync-job list \
+az automation source-control sync-job list \
   --automation-account-name myAutomationAccount \
   --resource-group myRG \
   --source-control-name github-runbooks \
@@ -280,11 +285,11 @@ If a sync fails, check the sync job details:
 
 ```bash
 # Get details of a specific sync job
-az automation source-control-sync-job show \
+az automation source-control sync-job show \
   --automation-account-name myAutomationAccount \
   --resource-group myRG \
   --source-control-name github-runbooks \
-  --sync-job-id <job-id>
+  --job-id <job-id>
 ```
 
 Common sync failures:
