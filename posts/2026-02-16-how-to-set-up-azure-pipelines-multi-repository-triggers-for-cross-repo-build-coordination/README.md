@@ -8,16 +8,16 @@ Description: Learn how to configure Azure Pipelines multi-repository triggers to
 
 ---
 
-Modern software systems rarely live in a single repository. You might have a shared library in one repo, a frontend in another, a backend API in a third, and infrastructure templates in a fourth. When someone updates the shared library, you want the frontend and backend pipelines to trigger automatically. Azure Pipelines multi-repository triggers make this possible without resorting to webhook gymnastics or custom orchestration scripts.
+Modern software systems rarely live in a single repository. You might have a shared library in one repo, a frontend in another, a backend API in a third, and infrastructure templates in a fourth. When someone updates the shared library, you want the frontend and backend pipelines to trigger automatically. Azure Pipelines multi-repository triggers for Azure Repos Git repositories make this possible without resorting to webhook gymnastics or custom orchestration scripts.
 
-Multi-repo triggers let a single pipeline monitor changes across several repositories and trigger builds when any of them change. The pipeline checks out code from all specified repositories and can use resources from each of them during the build process.
+Multi-repo triggers let a single pipeline monitor changes across several Azure Repos Git repositories and trigger builds when any of them change. The pipeline checks out code from all specified repositories and can use resources from each of them during the build process.
 
 ## The Basic Multi-Repo Setup
 
 At its simplest, a multi-repo pipeline declares additional repositories as resources and optionally sets up triggers on them.
 
 ```yaml
-# azure-pipelines.yml - Pipeline that monitors two repositories
+# azure-pipelines.yml - Pipeline that monitors two Azure Repos Git repositories
 
 # This pipeline lives in the "frontend" repo but also watches "shared-lib"
 
@@ -80,7 +80,7 @@ When a commit lands on `main` in either the frontend repo (self), the shared-lib
 
 ## Understanding Trigger Sources
 
-When a multi-repo pipeline runs, it is useful to know which repository triggered the build. Azure Pipelines provides the `Build.Repository.Name` variable for the self repository, but for multi-repo triggers, you need `Build.Reason` and the resources context.
+When a multi-repo pipeline runs, it is useful to know which repository triggered the build. For repository resource triggers, Azure Pipelines sets variables such as `Build.Repository.Name`, `Build.SourceBranch`, and `Build.SourceVersion` based on the triggering repository. You can also use `Build.Reason` and the resources context.
 
 ```yaml
 steps:
@@ -131,6 +131,7 @@ stages:
       - job: BuildLib
         steps:
           - checkout: sharedLib
+            path: s/shared-library
 
           - task: DotNetCoreCLI@2
             displayName: 'Build shared library'
@@ -191,10 +192,10 @@ stages:
 
 ## Using GitHub Repositories
 
-Multi-repo triggers work with GitHub repositories too, not just Azure Repos. The syntax changes slightly.
+Multi-repo checkout works with GitHub repositories too, not just Azure Repos. Repository resource triggers do not work for GitHub repository resources, so this example checks out a GitHub repository but only uses repository triggers for the Azure Repos Git resource.
 
 ```yaml
-# Pipeline that watches both Azure Repos and GitHub repositories
+# Pipeline that checks out both Azure Repos and GitHub repositories
 
 resources:
   repositories:
@@ -202,11 +203,6 @@ resources:
       type: github
       name: 'your-org/shared-components'
       endpoint: 'GitHub-Service-Connection'  # Name of your GitHub service connection
-      trigger:
-        branches:
-          include:
-            - main
-            - release/*
 
     - repository: azureConfigs
       type: git
@@ -275,7 +271,7 @@ resources:
 steps:
   - checkout: self
 
-  # Check out a specific branch of the shared library
+  # Check out the shared library at the pinned tag, unless this repository's tag trigger started the run
   - checkout: sharedLib
     fetchDepth: 1  # Shallow clone for speed
     displayName: 'Checkout shared library at tag'
