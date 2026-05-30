@@ -8,19 +8,19 @@ Description: Learn how to read and analyze heap allocation profiles in Cloud Pro
 
 ---
 
-Memory problems in production are some of the hardest to debug. Your service might be using 2GB of RAM when you expected 500MB, or garbage collection pauses might be causing latency spikes. Heap allocation profiles in Cloud Profiler give you the data to understand exactly where memory is being allocated and which code paths are the biggest consumers.
+Memory problems in production are some of the hardest to debug. Your service might be using 2GB of RAM when you expected 500MB, or garbage collection pauses might be causing latency spikes. Heap profiles in Cloud Profiler give you the data to understand where memory is being used, and for Go services, allocated heap profiles show which code paths allocate the most memory over a profiling window.
 
-Unlike heap snapshots (which show live objects at a point in time), allocation profiles show all allocations made during a profiling window, including temporary objects that were quickly garbage collected. This distinction matters because high-frequency temporary allocations create garbage collection pressure even if they do not contribute to long-term memory usage.
+Unlike heap snapshots (which show live objects at a point in time), allocated heap profiles show allocations made during a profiling window, including temporary objects that were quickly garbage collected. This distinction matters because high-frequency temporary allocations create garbage collection pressure even if they do not contribute to long-term memory usage.
 
 ## Heap Profile Types in Cloud Profiler
 
-Cloud Profiler provides two heap-related profile types:
+Cloud Profiler provides two heap-related profile types, depending on the language runtime. Go supports both heap and allocated heap profiles. Java and Node.js support heap profiles. Python does not support Cloud Profiler heap profiles.
 
 **Heap (in-use)**: Shows memory currently in use on the heap. Each bar in the flame graph represents objects that are alive at the time of sampling. Use this to find memory leaks and understand what is consuming your working memory.
 
-**Heap (allocated)**: Shows total bytes allocated during the profiling window, regardless of whether the objects are still alive. Use this to find functions that create lots of temporary objects and generate garbage collection pressure.
+**Heap (allocated)**: Shows bytes allocated during the profiling window, regardless of whether the objects are still alive. In Cloud Profiler, this profile type is available for Go services. Use this to find functions that create lots of temporary objects and generate garbage collection pressure.
 
-Both are valuable. If your concern is memory usage (OOM issues, high RSS), focus on the in-use profile. If your concern is GC pauses and latency, focus on the allocation profile.
+When both are available, both are valuable. If your concern is memory usage (OOM issues, high RSS), focus on the in-use profile. If your concern is GC pauses and latency, focus on the allocation profile.
 
 ## Reading the Heap Flame Graph
 
@@ -40,9 +40,9 @@ A function with high self allocation is the one actually creating objects. A fun
 
 ## Practical Analysis Examples
 
-### Example 1: Finding the Biggest Allocator (Python)
+### Example 1: Finding the Biggest Allocator (Go)
 
-You open Cloud Profiler, select your Python service, and choose "Heap (allocated)." The flame graph shows:
+You open Cloud Profiler, select your Go service, and choose "Allocated heap." The flame graph shows:
 
 ```text
 handle_request()                   (total: 100%)
@@ -60,7 +60,7 @@ Reading this:
 
 ### Example 2: Reducing Allocation in JSON Parsing
 
-If JSON parsing dominates your heap profile, consider these optimizations:
+If JSON parsing dominates your allocation measurements, consider these optimizations:
 
 ```python
 # BEFORE: Parse entire JSON payload into memory
@@ -126,7 +126,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 ### Example 4: Java Heap Analysis
 
-For Java applications, Cloud Profiler heap profiles show allocations by method. Common hotspots include:
+For Java applications, Cloud Profiler heap profiles show in-use heap attributed by method and call stack. Common allocation hotspots that can increase heap pressure include:
 
 ```java
 // BEFORE: String concatenation in a loop creates many temporary String objects
@@ -153,11 +153,11 @@ public String buildReport(List<Record> records) {
 To detect memory growth, compare the heap in-use profile from two different time periods.
 
 1. Select your service in Cloud Profiler
-2. Choose "Heap" as the profile type
+2. Choose "Heap" as the profile type for a language that supports heap profiling
 3. Set the time range to the current period
-4. Click "Compare to" and select an earlier period
+4. In "Compare to," choose "End date/time" and select an earlier period
 
-Functions that show more memory in the recent period (highlighted in red/orange) are growing. This could indicate:
+Functions that show more memory in the recent period (highlighted in red) are growing. This could indicate:
 - A cache that is accumulating entries
 - A connection pool that is growing
 - A data structure that holds references longer than intended
@@ -245,11 +245,10 @@ gcloud monitoring policies create \
   --display-name="High Memory Usage" \
   --condition-display-name="Memory above 80%" \
   --condition-filter='resource.type="k8s_container" AND metric.type="kubernetes.io/container/memory/used_bytes"' \
-  --condition-threshold-value=429496729 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT
+  --if='> 429496729' \
+  --duration=300s
 ```
 
 ## Wrapping Up
 
-Heap allocation profiles reveal the memory behavior that metrics alone cannot show. The in-use profile tells you what is consuming memory, and the allocation profile tells you what is creating garbage collection pressure. Compare profiles over time to detect leaks, focus on the widest self-allocation bars to find optimization targets, and apply language-specific strategies to reduce unnecessary allocations. Regular review of heap profiles prevents memory problems from reaching production users.
+Heap profiles reveal the memory behavior that metrics alone cannot show. The in-use profile tells you what is consuming memory, and the allocation profile, when available, tells you what is creating garbage collection pressure. Compare profiles over time to detect leaks, focus on the widest self-allocation bars to find optimization targets, and apply language-specific strategies to reduce unnecessary allocations. Regular review of heap profiles prevents memory problems from reaching production users.
