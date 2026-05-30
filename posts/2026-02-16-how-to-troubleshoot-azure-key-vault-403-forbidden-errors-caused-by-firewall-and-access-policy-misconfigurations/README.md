@@ -8,7 +8,7 @@ Description: A systematic troubleshooting guide for diagnosing and resolving Azu
 
 ---
 
-Few Azure error messages cause as much frustration as the Key Vault 403 Forbidden response. It tells you that your request was denied, but it does not always make it obvious why. The denial could come from the network layer (firewall), the authorization layer (access policies or RBAC), or the key vault's soft-delete and purge protection settings. And when multiple layers are involved, the error message from one layer can mask the real issue on another.
+Few Azure error messages cause as much frustration as the Key Vault 403 Forbidden response. It tells you that your request was denied, but it does not always make it obvious why. The denial could come from the network layer (firewall) or the authorization layer (access policies or RBAC). And when multiple layers are involved, the error message from one layer can mask the real issue on another.
 
 In this post, I will walk through a systematic approach to diagnosing 403 errors on Key Vault, covering each possible cause with specific checks and fixes.
 
@@ -231,7 +231,7 @@ AzureDiagnostics
     CallerIPAddress,
     // The identity that made the request
     identity_claim_appid_g,
-    identity_claim_upn_s,
+    identity_claim_ipaddr_s,
     ResultSignature,
     ResultDescription,
     // Resource being accessed
@@ -240,13 +240,13 @@ AzureDiagnostics
 | order by TimeGenerated desc
 ```
 
-The `identity_claim_appid_g` field tells you which application ID made the request, and `CallerIPAddress` tells you where the request came from. This is the definitive way to determine whether it is a firewall or authorization issue.
+The `identity_claim_appid_g` field tells you which application ID made the request when that claim is present, and `CallerIPAddress` tells you where the request came from. This is the best way to determine whether it is a firewall or authorization issue.
 
 ## Step 6: Common Scenario Fixes
 
-**Scenario: App Service cannot read secrets after redeployment**
+**Scenario: App Service cannot read secrets after identity changes**
 
-App Service slot swaps or redeployments can change the managed identity's object ID. Verify and update:
+App Service managed identity configuration is slot-specific, and disabling/re-enabling a system-assigned identity or recreating the app changes the identity's object ID. Verify and update:
 
 ```bash
 # Get the current managed identity object ID
