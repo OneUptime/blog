@@ -8,9 +8,9 @@ Description: Use Azure Network Watcher NSG diagnostics to verify which security 
 
 ---
 
-When you have multiple Network Security Groups in Azure - one on the subnet, another on the NIC, maybe augmented by Application Security Groups - figuring out whether a specific traffic flow is allowed or blocked can feel like solving a puzzle. You end up reading through dozens of rules, mentally evaluating priority orders, and still second-guessing the result. Azure Network Watcher's NSG diagnostics takes the guesswork out by telling you exactly which rule matches a given traffic flow.
+When you have multiple Network Security Groups in Azure - one on the subnet, another on the NIC, maybe augmented by Application Security Groups - figuring out whether a specific traffic flow is allowed or blocked can feel like solving a puzzle. You end up reading through dozens of rules, mentally evaluating priority orders, and still second-guessing the result. Azure Network Watcher's IP flow verify and NSG diagnostics tools take the guesswork out by telling you exactly which rule matches a given traffic flow.
 
-This guide covers how to use NSG diagnostics to verify security rules, troubleshoot connectivity issues, and audit your NSG configuration.
+This guide covers how to use Network Watcher flow checks to verify security rules, troubleshoot connectivity issues, and audit your NSG configuration.
 
 ## What NSG Diagnostics Does
 
@@ -19,7 +19,7 @@ NSG diagnostics evaluates a hypothetical traffic flow against the NSG rules asso
 1. Whether the traffic would be allowed or denied
 2. Which specific NSG rule matches the traffic
 3. Whether the matching rule is on the subnet-level NSG or the NIC-level NSG
-4. The effective security rules after evaluating all NSG layers
+4. The NSGs and rules evaluated across the applicable NSG layers
 
 This is a dry-run evaluation. It does not send any actual packets. It just reads the NSG rules and tells you the result, which makes it safe to run in production at any time.
 
@@ -31,7 +31,7 @@ This is a dry-run evaluation. It does not send any actual packets. It just reads
 - Azure CLI installed
 - Network Contributor or equivalent role
 
-## Step 1: Run a Basic NSG Diagnostic Check
+## Step 1: Run a Basic IP Flow Check
 
 The simplest use case is checking whether a specific traffic flow is allowed:
 
@@ -60,7 +60,7 @@ This tells you that SSH from 203.0.113.50 to the VM is denied, and the rule that
 
 ## Step 2: Check Outbound Traffic
 
-NSG diagnostics works for outbound traffic too:
+IP flow verify works for outbound traffic too:
 
 ```bash
 # Check if the VM can reach an external API on port 443
@@ -83,7 +83,6 @@ For more detailed results that show every NSG and rule evaluated, use the full N
 # Run NSG diagnostics with full detail
 az network watcher run-configuration-diagnostic \
   --resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/myVM" \
-  --direction Inbound \
   --queries '[{
     "direction": "Inbound",
     "protocol": "TCP",
@@ -108,7 +107,6 @@ When auditing your security configuration, you often need to verify multiple flo
 # Check multiple traffic flows at once
 az network watcher run-configuration-diagnostic \
   --resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/myVM" \
-  --direction Inbound \
   --queries '[
     {
       "direction": "Inbound",
@@ -157,7 +155,7 @@ For a more readable output:
 az network nic list-effective-nsg \
   --name myvm-nic \
   --resource-group myResourceGroup \
-  --output json | jq '.value[].effectiveSecurityRules[] | select(.destinationPortRange == "443" or .destinationPortRanges[] == "443")'
+  --output json | jq '.value[].effectiveSecurityRules[] | select(.destinationPortRange == "443" or .destinationPortRange == "443-443" or ((.destinationPortRanges // []) | any(. == "443" or . == "443-443")))'
 ```
 
 ## Step 6: Automate Security Audits
@@ -173,23 +171,25 @@ Create a script that validates your expected security posture against the actual
 RESOURCE_GROUP="myResourceGroup"
 VM_NAME="myWebServer"
 
-# Define expected flows: direction|protocol|source|destination|port|expected_result
+# Define representative inbound flows: protocol|source_ip|destination_ip|destination_port|expected_result
+# test-ip-flow requires concrete IP addresses. Use run-configuration-diagnostic
+# when you need to test CIDR prefixes or service tags directly.
 EXPECTED_FLOWS=(
-  "Inbound|TCP|Internet|10.0.1.10|443|Allow"
-  "Inbound|TCP|Internet|10.0.1.10|80|Allow"
-  "Inbound|TCP|Internet|10.0.1.10|22|Deny"
-  "Inbound|TCP|10.0.2.0/24|10.0.1.10|8080|Allow"
-  "Inbound|TCP|10.0.3.0/24|10.0.1.10|1433|Deny"
+  "TCP|203.0.113.50|10.0.1.10|443|Allow"
+  "TCP|203.0.113.50|10.0.1.10|80|Allow"
+  "TCP|203.0.113.50|10.0.1.10|22|Deny"
+  "TCP|10.0.2.10|10.0.1.10|8080|Allow"
+  "TCP|10.0.3.10|10.0.1.10|1433|Deny"
 )
 
 FAILURES=0
 
 for flow in "${EXPECTED_FLOWS[@]}"; do
-  IFS='|' read -r direction protocol source destination port expected <<< "$flow"
+  IFS='|' read -r protocol source destination port expected <<< "$flow"
 
   # Run the IP flow check
   result=$(az network watcher test-ip-flow \
-    --direction "$direction" \
+    --direction Inbound \
     --protocol "$protocol" \
     --remote "${source}:50000" \
     --local "${destination}:${port}" \
@@ -198,9 +198,9 @@ for flow in "${EXPECTED_FLOWS[@]}"; do
     --query "access" -o tsv 2>/dev/null)
 
   if [ "$result" == "$expected" ]; then
-    echo "PASS: $direction $protocol $source -> $destination:$port = $result"
+    echo "PASS: Inbound $protocol $source -> $destination:$port = $result"
   else
-    echo "FAIL: $direction $protocol $source -> $destination:$port = $result (expected $expected)"
+    echo "FAIL: Inbound $protocol $source -> $destination:$port = $result (expected $expected)"
     FAILURES=$((FAILURES + 1))
   fi
 done
@@ -220,7 +220,7 @@ Run this script as part of your deployment pipeline to catch NSG misconfiguratio
 
 ## Step 7: Troubleshoot Common Connectivity Issues
 
-Here are the most common scenarios where NSG diagnostics helps:
+Here are the most common scenarios where Network Watcher flow checks help:
 
 **VM cannot reach the internet**: Check outbound rules for port 80/443:
 
