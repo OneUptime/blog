@@ -144,15 +144,18 @@ Installing dependencies from scratch on every build wastes time. Azure Pipelines
     path: '.venv'
     restoreKeys: |
       pip | "$(Agent.OS)" | "$(python.version)"
+    cacheHitVar: VENV_CACHE_RESTORED
   displayName: 'Cache pip packages'
 
 # Only install if the cache was not restored (or if requirements changed)
 - script: |
+    python -m venv .venv
     source .venv/bin/activate
     pip install -r requirements.txt
     pip install -r requirements-dev.txt
     pip install -e .
   displayName: 'Install dependencies'
+  condition: ne(variables.VENV_CACHE_RESTORED, 'true')
 ```
 
 The cache key includes the Python version and the content hash of both requirements files. If neither file has changed and the Python version is the same, the cached virtual environment is restored and the install step finishes almost instantly.
@@ -175,6 +178,9 @@ flake8>=6.1.0
 black>=23.7.0
 isort>=5.12.0
 mypy>=1.5.0
+
+# Packaging
+build>=1.0.0
 
 # Coverage reporting
 coverage[toml]>=7.3.0
