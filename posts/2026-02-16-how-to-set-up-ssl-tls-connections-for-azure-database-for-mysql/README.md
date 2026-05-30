@@ -18,7 +18,7 @@ When you create an Azure Database for MySQL Flexible Server, SSL enforcement is 
 
 - Unencrypted connections are rejected.
 - TLS 1.2 is the minimum supported version.
-- The server presents a certificate signed by a trusted Certificate Authority (DigiCert).
+- The server presents a certificate chain anchored by trusted root Certificate Authorities (DigiCert Global Root G2 and Microsoft RSA Root CA 2017).
 
 You can check the current SSL enforcement status:
 
@@ -35,7 +35,7 @@ If the value is ON, SSL is required. I strongly recommend keeping it that way.
 
 ## Understanding the TLS Versions
 
-Azure Database for MySQL Flexible Server supports TLS 1.2 and TLS 1.3. Older versions (TLS 1.0 and 1.1) are not supported because they have known security vulnerabilities.
+Azure Database for MySQL Flexible Server supports TLS 1.2 and TLS 1.3. TLS 1.3 is recommended for Azure Database for MySQL Flexible Server version 8.0 and later. Older versions (TLS 1.0 and 1.1) are no longer available because they have known security vulnerabilities.
 
 To check which TLS version your connection uses:
 
@@ -53,23 +53,28 @@ az mysql flexible-server parameter set \
   --resource-group myResourceGroup \
   --server-name my-mysql-server \
   --name tls_version \
-  --value TLSv1.2
+  --value "TLS 1.2"
 ```
 
 ## Downloading the CA Certificate
 
-To verify the server's identity, your client needs the Certificate Authority (CA) certificate that signed the server's certificate. Azure Database for MySQL uses the DigiCert Global Root G2 certificate.
+To verify the server's identity, your client needs the root Certificate Authority (CA) certificates used by Azure Database for MySQL. Azure currently uses certificates anchored by DigiCert Global Root G2 and Microsoft RSA Root CA 2017.
 
 ```bash
-# Download the DigiCert Global Root G2 CA certificate
+# Download the Azure root CA certificates
 curl -o DigiCertGlobalRootG2.crt.pem \
-  https://dl.cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem
+  https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem
+curl -o MicrosoftRSARootCA2017.crt \
+  "https://www.microsoft.com/pkiops/certs/Microsoft%20RSA%20Root%20Certificate%20Authority%202017.crt"
+openssl x509 -inform DER -in MicrosoftRSARootCA2017.crt -out MicrosoftRSARootCA2017.crt.pem
+cat DigiCertGlobalRootG2.crt.pem MicrosoftRSARootCA2017.crt.pem > azure-mysql-ca-bundle.pem
 
 # Verify the downloaded certificate
 openssl x509 -in DigiCertGlobalRootG2.crt.pem -text -noout | head -20
+openssl x509 -in MicrosoftRSARootCA2017.crt.pem -text -noout | head -20
 ```
 
-Store this certificate in a secure location accessible to your application. Common locations:
+Store this CA bundle in a secure location accessible to your application. Common locations:
 
 - `/etc/ssl/certs/` on Linux
 - Your application's configuration directory
@@ -85,7 +90,7 @@ mysql -h my-mysql-server.mysql.database.azure.com \
   -u myadmin \
   -p \
   --ssl-mode=VERIFY_CA \
-  --ssl-ca=DigiCertGlobalRootG2.crt.pem
+  --ssl-ca=azure-mysql-ca-bundle.pem
 ```
 
 The `--ssl-mode` parameter controls the level of SSL enforcement:
@@ -108,13 +113,13 @@ For production, use VERIFY_CA or VERIFY_IDENTITY. REQUIRED encrypts the connecti
 import mysql.connector
 
 # Connect with full SSL verification
-# ssl_ca points to the downloaded DigiCert certificate
+# ssl_ca points to the downloaded Azure CA bundle
 connection = mysql.connector.connect(
     host="my-mysql-server.mysql.database.azure.com",
     user="myadmin",
     password="StrongPassword123!",
     database="myapp",
-    ssl_ca="/path/to/DigiCertGlobalRootG2.crt.pem",
+    ssl_ca="/path/to/azure-mysql-ca-bundle.pem",
     ssl_verify_cert=True,
     ssl_verify_identity=True
 )
@@ -133,8 +138,8 @@ connection.close()
 const mysql = require('mysql2');
 const fs = require('fs');
 
-// Read the CA certificate
-const caCert = fs.readFileSync('/path/to/DigiCertGlobalRootG2.crt.pem');
+// Read the CA bundle
+const caCert = fs.readFileSync('/path/to/azure-mysql-ca-bundle.pem');
 
 // Create a connection pool with SSL enabled
 const pool = mysql.createPool({
@@ -143,7 +148,7 @@ const pool = mysql.createPool({
     password: 'StrongPassword123!',
     database: 'myapp',
     ssl: {
-        // Provide the CA certificate for server verification
+        // Provide the CA bundle for server verification
         ca: caCert,
         rejectUnauthorized: true  // Enforce certificate validation
     },
@@ -176,11 +181,9 @@ public class MySQLSSLConnection {
         props.setProperty("password", "StrongPassword123!");
 
         // Enable SSL with certificate verification
-        props.setProperty("useSSL", "true");
-        props.setProperty("requireSSL", "true");
-        props.setProperty("verifyServerCertificate", "true");
+        props.setProperty("sslMode", "VERIFY_IDENTITY");
 
-        // Point to the Java truststore containing the CA cert
+        // Point to the Java truststore containing the CA certificates
         props.setProperty("trustCertificateKeyStoreUrl",
             "file:///path/to/truststore.jks");
         props.setProperty("trustCertificateKeyStorePassword", "changeit");
@@ -190,14 +193,23 @@ public class MySQLSSLConnection {
 }
 ```
 
-For Java, you need to import the CA certificate into a Java truststore:
+For Java, you need to import the CA certificates into a Java truststore:
 
 ```bash
-# Import the CA certificate into a Java truststore
+# Import the CA certificates into a Java truststore
 keytool -importcert \
   -alias DigiCertGlobalRootG2 \
   -file DigiCertGlobalRootG2.crt.pem \
   -keystore truststore.jks \
+  -storetype JKS \
+  -storepass changeit \
+  -noprompt
+
+keytool -importcert \
+  -alias MicrosoftRSARootCA2017 \
+  -file MicrosoftRSARootCA2017.crt.pem \
+  -keystore truststore.jks \
+  -storetype JKS \
   -storepass changeit \
   -noprompt
 ```
@@ -215,7 +227,7 @@ var connectionString = new MySqlConnectionStringBuilder
     Password = "StrongPassword123!",
     Database = "myapp",
     SslMode = MySqlSslMode.VerifyCA,
-    SslCa = "/path/to/DigiCertGlobalRootG2.crt.pem"
+    SslCa = "/path/to/azure-mysql-ca-bundle.pem"
 }.ConnectionString;
 
 using var connection = new MySqlConnection(connectionString);
@@ -258,8 +270,8 @@ az mysql flexible-server parameter set \
 
 Azure periodically rotates the server certificates. When this happens:
 
-- The CA certificate (DigiCert Global Root G2) stays the same.
-- The server's leaf certificate changes.
+- The root CA set normally stays the same when Azure rotates intermediate CAs or server certificates.
+- The server's leaf certificate or intermediate certificate can change.
 - If your application uses VERIFY_CA mode, the rotation is transparent because you trust the CA, not the specific server certificate.
 - If you have pinned the server certificate directly (which you should not do), you will need to update it.
 
@@ -293,9 +305,9 @@ az mysql flexible-server parameter show \
 
 ## Troubleshooting Common SSL Issues
 
-**Error: SSL connection error - unable to get local issuer certificate**: The client cannot find the CA certificate. Make sure you have downloaded the DigiCert Global Root G2 certificate and the path in your connection configuration is correct.
+**Error: SSL connection error - unable to get local issuer certificate**: The client cannot find the CA certificate. Make sure you have downloaded the Azure CA bundle and the path in your connection configuration is correct.
 
-**Error: SSL peer certificate validation failed**: The certificate chain is invalid. This can happen if you are using an outdated CA certificate or if the certificate file is corrupted. Re-download it.
+**Error: SSL peer certificate validation failed**: The certificate chain is invalid. This can happen if you are using an outdated CA bundle or if the certificate file is corrupted. Re-download it.
 
 **Connection works but SSL is not being used**: Check your ssl-mode setting. PREFERRED mode will silently fall back to unencrypted if there is any issue with SSL negotiation.
 
@@ -303,4 +315,4 @@ az mysql flexible-server parameter show \
 
 ## Summary
 
-SSL/TLS for Azure Database for MySQL Flexible Server is straightforward to set up and should be non-negotiable for production workloads. Keep `require_secure_transport` enabled, use the VERIFY_CA or VERIFY_IDENTITY ssl-mode in your applications, download the DigiCert CA certificate, and make sure your connection pooling strategy minimizes the overhead of TLS handshakes. Security is not something you bolt on later - build it into your database connectivity from day one.
+SSL/TLS for Azure Database for MySQL Flexible Server is straightforward to set up and should be non-negotiable for production workloads. Keep `require_secure_transport` enabled, use the VERIFY_CA or VERIFY_IDENTITY ssl-mode in your applications, download the Azure CA bundle, and make sure your connection pooling strategy minimizes the overhead of TLS handshakes. Security is not something you bolt on later - build it into your database connectivity from day one.
