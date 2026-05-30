@@ -8,23 +8,23 @@ Description: Learn how to use the Azure Cosmos DB Change Feed with the Java SDK 
 
 ---
 
-Azure Cosmos DB's Change Feed provides an ordered stream of changes to documents in a container. Every time a document is created or updated, the change appears in the feed. This makes it possible to react to data changes in real time without polling or building complex trigger mechanisms. The Java SDK includes a Change Feed Processor that handles the heavy lifting of reading the feed, distributing work across consumers, and checkpointing progress.
+Azure Cosmos DB's Change Feed provides a persistent stream of changes to documents in a container, ordered within each partition key. Every time a document is created or updated, the change appears in the latest-version feed. This makes it possible to react to data changes in real time without polling or building complex trigger mechanisms. The Java SDK includes a Change Feed Processor that handles the heavy lifting of reading the feed, distributing work across consumers, and checkpointing progress.
 
 In this post, we will build a Java application that uses the Cosmos DB Change Feed Processor to listen for document changes and process them in real time. We will cover setup, configuration, scaling, and error handling.
 
 ## What the Change Feed Gives You
 
-The Change Feed is not a separate service you need to provision. It is a built-in feature of every Cosmos DB container. When you insert or update a document, Cosmos DB records the change in a persistent, ordered log. Your application subscribes to this log and receives changes as they happen.
+The Change Feed is not a separate service you need to provision. It is a built-in feature of every Cosmos DB container. When you insert or update a document, Cosmos DB records the change in a persistent change feed. Your application subscribes to this feed and receives changes as they happen.
 
 Common use cases include:
 
 - Keeping a materialized view in sync with the source data
-- Feeding changes into a search index like Azure Cognitive Search
+- Feeding changes into a search index like Azure AI Search
 - Triggering workflows when specific data changes occur
 - Replicating data to another data store or region
 - Building an audit trail
 
-One important thing to note: the Change Feed captures inserts and updates, but not deletes. If you need to track deletes, use a soft-delete pattern where you set a `deleted` flag instead of actually removing the document.
+One important thing to note: the latest-version Change Feed captures inserts and updates, but not deletes. If you need to track deletes with this mode, use a soft-delete pattern where you set a `deleted` flag instead of actually removing the document. Azure Cosmos DB also has an all-versions-and-deletes Change Feed mode in preview for accounts that use continuous backup.
 
 ## Setting Up the Project
 
@@ -98,7 +98,7 @@ import com.azure.cosmos.models.*;
 
 public class CosmosDbSetup {
 
-    // Connection string from the Azure Portal
+    // Endpoint and key from the Azure Portal
     private static final String ENDPOINT = "https://my-cosmos-account.documents.azure.com:443/";
     private static final String KEY = "your-primary-key";
     private static final String DATABASE_NAME = "EventStore";
@@ -124,7 +124,7 @@ public class CosmosDbSetup {
         System.out.println("Connected to Cosmos DB successfully");
 
         // Start the change feed processor
-        startChangeFeedProcessor(ordersContainer, leaseContainer);
+        ChangeFeedProcessor processor = startChangeFeedProcessor(ordersContainer, leaseContainer);
 
         // Insert some test documents to trigger the change feed
         insertTestOrders(ordersContainer);
@@ -133,6 +133,7 @@ public class CosmosDbSetup {
         System.out.println("Press Enter to stop...");
         System.in.read();
 
+        processor.stop().block();
         client.close();
     }
 }
@@ -148,7 +149,6 @@ import com.azure.cosmos.models.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -174,11 +174,9 @@ public class OrderChangeFeedProcessor {
             })
             .buildChangeFeedProcessor();
 
-        // Start the processor asynchronously
-        processor.start()
-            .doOnSuccess(v -> log.info("Change Feed Processor started"))
-            .doOnError(e -> log.error("Failed to start Change Feed Processor", e))
-            .subscribe();
+        // Start the processor before inserting test data
+        processor.start().block();
+        log.info("Change Feed Processor started");
 
         return processor;
     }
@@ -230,7 +228,10 @@ public class OrderChangeFeedProcessor {
 Instead of working with JsonNode, you can use POJO classes.
 
 ```java
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 // Order model class
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Order {
     private String id;
     private String customerId;
@@ -277,6 +278,8 @@ Create some documents to trigger the change feed.
 
 ```java
 import reactor.core.publisher.Flux;
+
+import java.util.List;
 
 public static void insertTestOrders(CosmosAsyncContainer container) {
     // Create several test orders
@@ -337,7 +340,7 @@ ChangeFeedProcessor processor = new ChangeFeedProcessorBuilder()
 
 ## Error Handling
 
-When processing fails, you need to decide whether to retry, skip, or dead-letter the change. The Change Feed Processor does not automatically retry failed batches, so you need to handle errors in your delegate.
+When processing fails, you need to decide whether to retry, skip, or dead-letter the change. The Change Feed Processor has at-least-once delivery: if your delegate throws an unhandled exception, the processor restarts from the last checkpoint and sends the batch again. If you catch exceptions inside the delegate, handle retry or dead-letter logic yourself before allowing the delegate to complete.
 
 ```java
 .handleChanges((List<JsonNode> changes) -> {
@@ -370,15 +373,17 @@ When processing fails, you need to decide whether to retry, skip, or dead-letter
 Monitor how far behind your processor is using the estimator.
 
 ```java
-// Build an estimator to monitor the change feed lag
-ChangeFeedProcessor estimator = new ChangeFeedProcessorBuilder()
-    .hostName("estimator-host")
-    .feedContainer(feedContainer)
-    .leaseContainer(leaseContainer)
-    .handleLatestVersionChanges(changes -> {
-        // This estimator handler is required but not used for lag estimation
+import java.util.Map;
+
+processor.getEstimatedLag()
+    .doOnNext((Map<String, Integer> lagByLease) -> {
+        int totalLag = lagByLease.values().stream()
+            .mapToInt(Integer::intValue)
+            .sum();
+
+        log.info("Estimated change feed lag: {}", totalLag);
     })
-    .buildChangeFeedProcessor();
+    .subscribe();
 ```
 
 In production, push the lag metric to your monitoring system and alert when it exceeds a threshold.
