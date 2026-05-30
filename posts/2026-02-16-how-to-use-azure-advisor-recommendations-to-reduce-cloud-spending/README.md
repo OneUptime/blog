@@ -41,7 +41,7 @@ Recommendations are sorted by potential savings, so the biggest opportunities ap
 
 ## Evaluating VM Right-Sizing Recommendations
 
-VM right-sizing is typically the largest source of savings. Advisor flags VMs where the average CPU utilization is below 5% over the past 14 days (or a configurable threshold). It recommends either:
+VM right-sizing is typically the largest source of savings. Advisor analyzes recent CPU, memory, and outbound network utilization to decide whether a VM can be moved to a smaller SKU without expected performance impact. For shutdown recommendations, Advisor looks for resources with no meaningful CPU or outbound network activity over the recent lookback period. It recommends either:
 
 - **Shutting down** the VM if utilization is near zero.
 - **Resizing** to a smaller SKU that matches the actual workload.
@@ -50,7 +50,7 @@ Before acting on these recommendations, do some due diligence:
 
 1. **Check the workload pattern**: Is the VM part of a batch process that only runs on specific days? If Advisor averaged usage over a quiet period, the recommendation might be misleading.
 
-2. **Check memory usage**: Advisor primarily looks at CPU and network. A VM might have low CPU but high memory utilization. Resizing could cause memory pressure.
+2. **Check memory usage**: Advisor includes memory in resize recommendations, but you should still validate memory trends yourself. A VM might have low CPU but memory spikes that make a smaller SKU risky.
 
 3. **Check dependent services**: Is the VM a domain controller, DNS server, or other infrastructure component that needs to stay running regardless of CPU usage?
 
@@ -70,7 +70,7 @@ If the P95 is below 20% and the max never exceeds 40%, the VM is genuinely overs
 
 ## Acting on Reserved Instance Recommendations
 
-Advisor identifies resources that have been running consistently for the past 30 days and would save money with a Reserved Instance (RI) purchase. RIs provide up to 72% savings compared to pay-as-you-go pricing in exchange for a 1-year or 3-year commitment.
+Advisor identifies resources with usage patterns over recent 7-, 30-, and 60-day lookback periods that would save money with a Reserved Instance (RI) purchase. RIs provide up to 72% savings compared to pay-as-you-go pricing in exchange for a 1-year or 3-year commitment.
 
 The recommendation shows:
 
@@ -135,14 +135,14 @@ You can tune Advisor's behavior to produce more relevant recommendations.
 
 ### Adjust the CPU Utilization Threshold
 
-By default, Advisor flags VMs with average CPU below 5%. You might want to adjust this.
+Advisor lets you filter VM and Virtual Machine Scale Sets right-sizing recommendations by average CPU utilization. This filter controls which recommendations are shown for a subscription; it does not change how Advisor generates the recommendations.
 
 1. In Azure Advisor, click **Configuration** in the left menu.
 2. Select the subscription.
-3. Under **VM right-sizing**, adjust the CPU utilization threshold (e.g., change to 10% or 15%).
+3. Select the **VM/Virtual Machine Scale Sets right sizing** tab and edit the average CPU utilization filter.
 4. Click **Apply**.
 
-A higher threshold catches more potentially oversized VMs but may produce more false positives.
+A higher CPU filter shows recommendations for VMs with higher average CPU utilization, which can surface more candidates but may require more careful review.
 
 ### Filter by Subscription or Resource Group
 
@@ -150,7 +150,7 @@ If you manage multiple subscriptions, use the filter at the top of the Advisor p
 
 ## Tracking Savings Over Time
 
-Advisor provides an **Advisor Score** that represents the overall health of your Azure environment across all five categories. For cost, the score reflects how many cost recommendations you have implemented versus how many are outstanding.
+Advisor provides an **Advisor Score** that represents the overall health of your Azure environment across all five categories. For cost, the score is based on the retail cost of assessed resources, healthy resource ratios for recommendation types, and additional weights such as recommendation impact, age, and whether recommendations were postponed or dismissed.
 
 Track this score monthly. A rising score means you are implementing recommendations faster than new ones appear. A falling score means your environment is growing faster than your optimization efforts.
 
