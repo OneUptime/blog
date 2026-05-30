@@ -146,7 +146,7 @@ The main template orchestrates the linked templates. Here is where linked templa
   },
   "variables": {
     "baseName": "[concat('myapp-', parameters('environment'))]",
-    "storageAccountName": "[concat(replace(variables('baseName'), '-', ''), uniqueString(resourceGroup().id))]"
+    "storageAccountName": "[substring(concat(replace(variables('baseName'), '-', ''), uniqueString(resourceGroup().id)), 0, 24)]"
   },
   "resources": [
     {
@@ -218,7 +218,7 @@ The key element is `Microsoft.Resources/deployments` with a `templateLink` prope
 
 ## Hosting Linked Templates
 
-Linked templates must be accessible via a URL. The three common hosting options are:
+Linked templates are commonly fetched from a URL, or from a template spec by resource ID. The three common hosting options are:
 
 **Azure Blob Storage (recommended for production)**
 
@@ -240,7 +240,7 @@ az storage container create \
 # Upload templates
 az storage blob upload-batch \
   --destination templates \
-  --source ./linked \
+  --source ./infrastructure/linked \
   --account-name armtemplatesstore
 
 # Generate a SAS token (valid for 1 hour)
