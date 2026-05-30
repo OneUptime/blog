@@ -12,7 +12,7 @@ Every time your organization spins up a new Azure subscription for a project or 
 
 In this post, I will walk through how Blueprints work, how to create one, and how to use them to establish consistent, compliant environments across your organization.
 
-Note: Microsoft has announced that Azure Blueprints will eventually be superseded by Azure Deployment Stacks and other tools. However, Blueprints remain fully supported and are still the most integrated solution for packaging governance artifacts together. The concepts and patterns in this post apply regardless of which tooling you use.
+Note: Microsoft has announced that Azure Blueprints (Preview) will be deprecated on July 11, 2026. Existing blueprints should be migrated to Template Specs and Deployment Stacks. The concepts and patterns in this post are still useful when maintaining existing Blueprints deployments or planning a migration.
 
 ## What Azure Blueprints Include
 
@@ -50,7 +50,7 @@ graph TD
 
 ### Through the REST API
 
-Blueprints do not have full Azure CLI support, so we use the REST API:
+The Azure CLI Blueprint extension is deprecated and scheduled for removal, so these examples use the REST API:
 
 ```bash
 # Create a blueprint definition at a management group
@@ -92,20 +92,56 @@ az rest --method put \
 
 ## Adding Artifacts
 
-### Adding a Resource Group Artifact
+### Adding Resource Group Placeholders
+
+Resource group placeholders are defined on the Blueprint definition, not as separate artifact resources. Add them to the `resourceGroups` property before referencing them from template, policy, or role assignment artifacts:
 
 ```bash
-# Add a resource group for networking resources
+# Add resource group placeholders for baseline resources
 az rest --method put \
-  --url "https://management.azure.com/providers/Microsoft.Management/managementGroups/Workloads/providers/Microsoft.Blueprint/blueprints/compliant-subscription/artifacts/rg-networking?api-version=2018-11-01-preview" \
+  --url "https://management.azure.com/providers/Microsoft.Management/managementGroups/Workloads/providers/Microsoft.Blueprint/blueprints/compliant-subscription?api-version=2018-11-01-preview" \
   --body '{
-    "kind": "resourceGroup",
     "properties": {
-      "displayName": "Networking Resource Group",
-      "description": "Contains all networking baseline resources",
-      "resourceGroup": {
-        "name": "[concat(parameters(\"organizationName\"), \"-rg-networking-\", parameters(\"environment\"))]",
-        "location": "eastus"
+      "displayName": "Compliant Subscription Baseline",
+      "description": "Baseline configuration for new subscriptions including networking, monitoring, policies, and access control",
+      "targetScope": "subscription",
+      "parameters": {
+        "organizationName": {
+          "type": "string",
+          "metadata": {
+            "displayName": "Organization Name",
+            "description": "Short name of the business unit or team"
+          }
+        },
+        "environment": {
+          "type": "string",
+          "allowedValues": ["dev", "staging", "production"],
+          "metadata": {
+            "displayName": "Environment",
+            "description": "Deployment environment"
+          }
+        },
+        "allowedLocations": {
+          "type": "array",
+          "metadata": {
+            "displayName": "Allowed Locations",
+            "description": "Regions where resources can be deployed"
+          }
+        }
+      },
+      "resourceGroups": {
+        "rg-networking": {
+          "metadata": {
+            "displayName": "Networking Resource Group",
+            "description": "Contains all networking baseline resources"
+          }
+        },
+        "rg-monitoring": {
+          "metadata": {
+            "displayName": "Monitoring Resource Group",
+            "description": "Contains all monitoring baseline resources"
+          }
+        }
       }
     }
   }'
@@ -166,12 +202,17 @@ az rest --method put \
       "template": {
         "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
         "contentVersion": "1.0.0.0",
+        "parameters": {
+          "workspaceName": {
+            "type": "string"
+          }
+        },
         "resources": [
           {
             "type": "Microsoft.OperationalInsights/workspaces",
             "apiVersion": "2021-06-01",
-            "name": "[concat(parameters(\"organizationName\"), \"-la-\", parameters(\"environment\"))]",
-            "location": "eastus",
+            "name": "[parameters(\"workspaceName\")]",
+            "location": "[resourceGroup().location]",
             "properties": {
               "sku": {
                 "name": "PerGB2018"
@@ -181,7 +222,11 @@ az rest --method put \
           }
         ]
       },
-      "parameters": {}
+      "parameters": {
+        "workspaceName": {
+          "value": "[concat(parameters(\"organizationName\"), \"-la-\", parameters(\"environment\"))]"
+        }
+      }
     }
   }'
 ```
@@ -210,6 +255,7 @@ Versioning is important because it lets you:
 
 ```bash
 # Assign the published blueprint to a subscription
+# The Azure Blueprints service principal must have Owner permissions on the target subscription.
 az rest --method put \
   --url "https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Blueprint/blueprintAssignments/baseline-assignment?api-version=2018-11-01-preview" \
   --body '{
@@ -275,6 +321,19 @@ az rest --method put \
         "organizationName": { "value": "sales" },
         "environment": { "value": "production" },
         "allowedLocations": { "value": ["eastus", "eastus2"] }
+      },
+      "resourceGroups": {
+        "rg-networking": {
+          "name": "sales-rg-networking-prod",
+          "location": "eastus"
+        },
+        "rg-monitoring": {
+          "name": "sales-rg-monitoring-prod",
+          "location": "eastus"
+        }
+      },
+      "locks": {
+        "mode": "AllResourcesDoNotDelete"
       }
     }
   }'
@@ -290,7 +349,7 @@ az rest --method delete \
   --url "https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Blueprint/blueprintAssignments/baseline-assignment?api-version=2018-11-01-preview"
 ```
 
-Unassigning a Blueprint removes the policy assignments and RBAC assignments it created, but does not delete the resources deployed by ARM templates. Those resources persist and need to be cleaned up separately if desired.
+Unassigning a Blueprint removes the assignment and any Blueprint locks. The artifact resources assigned as part of that Blueprint, including policy assignments, role assignments, and resources deployed by ARM templates, are left behind and need to be cleaned up separately if desired.
 
 ## Practical Blueprint Examples
 
