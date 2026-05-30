@@ -41,7 +41,7 @@ export AZURE_TENANT="your-tenant-id"
 
 For a more Ansible-native approach, store credentials in a file.
 
-```yaml
+```ini
 # ~/.azure/credentials
 [default]
 subscription_id=your-subscription-id
@@ -67,7 +67,7 @@ Here is a playbook that creates a resource group and an AKS cluster.
     location: eastus
     cluster_name: aks-demo-cluster
     dns_prefix: aks-demo
-    kubernetes_version: "1.29"
+    kubernetes_version: "1.35"
     node_count: 3
     node_vm_size: Standard_D4s_v3
 
@@ -126,10 +126,10 @@ Here is a playbook that creates a resource group and an AKS cluster.
     - name: Display cluster info
       ansible.builtin.debug:
         msg: |
-          Cluster Name: {{ aks_result.name }}
-          FQDN: {{ aks_result.fqdn }}
-          Kubernetes Version: {{ aks_result.kubernetes_version }}
-          Provisioning State: {{ aks_result.provisioning_state }}
+          Cluster Name: {{ (aks_result.state | default(aks_result)).name }}
+          FQDN: {{ (aks_result.state | default(aks_result)).fqdn }}
+          Kubernetes Version: {{ (aks_result.state | default(aks_result)).kubernetes_version }}
+          Provisioning State: {{ (aks_result.state | default(aks_result)).provisioning_state }}
 ```
 
 Run the playbook with:
@@ -157,7 +157,7 @@ In production, you separate system workloads from application workloads using di
   tasks:
     # Add a node pool for general application workloads
     - name: Add application node pool
-      azure.azcollection.azure_rm_aks_agentpool:
+      azure.azcollection.azure_rm_aksagentpool:
         name: apppool
         resource_group: "{{ resource_group }}"
         cluster_name: "{{ cluster_name }}"
@@ -181,7 +181,7 @@ In production, you separate system workloads from application workloads using di
 
     # Add a spot instance node pool for batch jobs
     - name: Add spot node pool for batch workloads
-      azure.azcollection.azure_rm_aks_agentpool:
+      azure.azcollection.azure_rm_aksagentpool:
         name: spotpool
         resource_group: "{{ resource_group }}"
         cluster_name: "{{ cluster_name }}"
@@ -193,9 +193,9 @@ In production, you separate system workloads from application workloads using di
         mode: User
         os_type: Linux
         os_disk_size_gb: 128
-        priority: Spot
+        scale_set_priority: Spot
         spot_max_price: -1
-        eviction_policy: Delete
+        scale_set_eviction_policy: Delete
         node_labels:
           workload-type: batch
           kubernetes.azure.com/scalesetpriority: spot
@@ -222,16 +222,16 @@ After creating the cluster, you need the kubeconfig to interact with it. Ansible
   tasks:
     # Fetch the cluster's kubeconfig
     - name: Get AKS credentials
-      azure.azcollection.azure_rm_aks_info:
-        name: "{{ cluster_name }}"
+      azure.azcollection.azure_rm_akscredentials_info:
+        cluster_name: "{{ cluster_name }}"
         resource_group: "{{ resource_group }}"
-        show_kubeconfig: admin
-      register: aks_info
+        show_admin_credentials: true
+      register: aks_credentials
 
     # Write kubeconfig to a local file
     - name: Save kubeconfig
       ansible.builtin.copy:
-        content: "{{ aks_info.aks[0].kube_config }}"
+        content: "{{ aks_credentials.cluster_credentials[0].value }}"
         dest: "~/.kube/config-{{ cluster_name }}"
         mode: '0600'
 
@@ -249,7 +249,7 @@ Structure your variables to support dev, staging, and production clusters.
 resource_group: rg-aks-dev
 cluster_name: aks-dev
 location: eastus
-kubernetes_version: "1.29"
+kubernetes_version: "1.35"
 node_vm_size: Standard_D2s_v3
 node_count: 2
 min_count: 1
@@ -261,7 +261,7 @@ max_count: 3
 resource_group: rg-aks-prod
 cluster_name: aks-prod
 location: eastus
-kubernetes_version: "1.28"
+kubernetes_version: "1.34"
 node_vm_size: Standard_D8s_v3
 node_count: 5
 min_count: 3
@@ -289,25 +289,33 @@ Kubernetes version upgrades are a regular maintenance task. Ansible handles this
   vars:
     resource_group: rg-aks-demo
     cluster_name: aks-demo-cluster
-    target_version: "1.30"
+    dns_prefix: aks-demo
+    target_version: "1.35"
 
   tasks:
-    # Check available versions first
-    - name: Get available versions
-      azure.azcollection.azure_rm_aksversion_info:
-        location: eastus
-      register: versions
+    # Check available upgrade versions first
+    - name: Get available upgrades
+      azure.azcollection.azure_rm_aksupgrade_info:
+        name: "{{ cluster_name }}"
+        resource_group: "{{ resource_group }}"
+      register: upgrades
 
-    - name: Display available versions
+    - name: Display available upgrades
       ansible.builtin.debug:
-        msg: "{{ versions.azure_aks_versions }}"
+        msg: "{{ upgrades.azure_aks_upgrades }}"
 
     # Upgrade the control plane
     - name: Upgrade AKS cluster
       azure.azcollection.azure_rm_aks:
         name: "{{ cluster_name }}"
         resource_group: "{{ resource_group }}"
+        dns_prefix: "{{ dns_prefix }}"
         kubernetes_version: "{{ target_version }}"
+        agent_pool_profiles:
+          - name: system
+            count: 3
+            vm_size: Standard_D4s_v3
+            mode: System
 ```
 
 ## Deleting the Cluster
@@ -340,7 +348,7 @@ Cleanup is straightforward.
 
 One of the advantages of using Ansible for AKS management is idempotency. Running the creation playbook multiple times will not create duplicate clusters - it will update the existing one to match the desired state. This makes it safe to run the same playbook in CI/CD without worrying about duplicates.
 
-Unlike Terraform, Ansible does not maintain a state file. It queries Azure directly each time to determine the current state. This means there is no state drift between your state file and reality, but it also means that Ansible cannot track resources it did not create.
+Unlike Terraform, Ansible does not maintain a state file. It queries Azure directly each time to determine the current state. This means there is no state drift between your state file and reality, but it also means that Ansible only manages resources you describe in your playbooks.
 
 ## Conclusion
 
