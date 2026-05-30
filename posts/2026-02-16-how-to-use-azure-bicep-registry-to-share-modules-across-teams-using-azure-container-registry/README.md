@@ -137,7 +137,7 @@ az bicep publish \
 # You can also publish with a documentation URI
 az bicep publish \
   --file modules/storage-account/main.bicep \
-  --target "br:myorgbicepregistry.azurecr.io/modules/storage-account:1.1.0" \
+  --target "br:myorgbicepregistry.azurecr.io/modules/storage-account:1.1.1" \
   --documentation-uri "https://wiki.yourcompany.com/bicep-modules/storage-account"
 ```
 
@@ -150,6 +150,11 @@ Other teams reference published modules in their Bicep files using the `br:` pre
 // Teams reference published modules instead of writing their own
 
 @description('Environment name')
+@allowed([
+  'dev'
+  'test'
+  'prod'
+])
 param environment string
 
 @description('Azure region')
@@ -161,7 +166,7 @@ module appStorage 'br:myorgbicepregistry.azurecr.io/modules/storage-account:1.0.
   params: {
     storageAccountName: 'st${environment}app${uniqueString(resourceGroup().id)}'
     location: location
-    skuName: environment == 'production' ? 'Standard_ZRS' : 'Standard_LRS'
+    skuName: environment == 'prod' ? 'Standard_ZRS' : 'Standard_LRS'
     tags: {
       Environment: environment
       ManagedBy: 'Bicep'
@@ -252,7 +257,7 @@ steps:
   - script: |
       # Find modules that changed in the last commit
       CHANGED_MODULES=$(git diff --name-only HEAD~1 HEAD -- modules/ | \
-        cut -d'/' -f1-2 | sort -u)
+        cut -d'/' -f1-2 | sort -u | tr '\n' ' ')
 
       echo "Changed modules:"
       echo "$CHANGED_MODULES"
@@ -276,7 +281,12 @@ steps:
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        for module_dir in modules/*/; do
+        if [ -z "$(ChangedModules)" ]; then
+          echo "No changed modules to publish."
+          exit 0
+        fi
+
+        for module_dir in $(ChangedModules); do
           module_name=$(basename "$module_dir")
 
           # Read version from a version.txt file in the module directory
@@ -314,11 +324,11 @@ az role assignment create \
   --scope "/subscriptions/.../resourceGroups/rg-bicep-registry/providers/Microsoft.ContainerRegistry/registries/myorgbicepregistry"
 ```
 
-For local development, developers authenticate to the registry using `az acr login`.
+For local development, developers authenticate to Azure using `az login`. Bicep uses the Azure CLI credentials by default when restoring modules from a private registry.
 
 ```bash
-# Authenticate your local machine to pull modules from the registry
-az acr login --name "myorgbicepregistry"
+# Authenticate your local machine so Bicep can pull modules from the registry
+az login
 
 # Now bicep commands can pull modules from the registry
 az deployment group create \
