@@ -40,7 +40,7 @@ graph LR
 
 ## Prerequisites
 
-- Azure Spring Apps Standard or Enterprise tier (Basic tier only supports one deployment per app)
+- Azure Spring Apps Standard or Enterprise tier for an existing Azure Spring Apps customer (Basic tier only supports one deployment per app, and Azure Spring Apps is in retirement for new customers)
 - Azure CLI with the spring extension
 - A Spring Boot application to deploy
 - Familiarity with basic Azure CLI commands
@@ -94,6 +94,8 @@ az spring app deployment create \
     --artifact-path target/payment-service-2.0.0.jar \
     --env "SPRING_PROFILES_ACTIVE=production" \
     --jvm-options "-Xmx1g -Xms512m" \
+    --cpu 1 \
+    --memory 2Gi \
     --instance-count 2
 ```
 
@@ -114,7 +116,7 @@ az spring app deployment show \
 
 # Get the test endpoint for the service
 TEST_ENDPOINT=$(az spring test-endpoint list \
-    --service $SERVICE_NAME \
+    --name $SERVICE_NAME \
     --resource-group $RESOURCE_GROUP \
     --query "primaryTestEndpoint" -o tsv)
 
@@ -129,7 +131,8 @@ Beyond a simple health check, you should run a meaningful validation suite. Here
 # validate-staging.sh
 # Runs a set of validation checks against the staging deployment
 
-STAGING_BASE="${TEST_ENDPOINT}/${APP_NAME}/green"
+STAGING_DEPLOYMENT="${STAGING_DEPLOYMENT:-green}"
+STAGING_BASE="${TEST_ENDPOINT}/${APP_NAME}/${STAGING_DEPLOYMENT}"
 
 echo "Running validation checks against staging deployment..."
 
@@ -195,7 +198,7 @@ az spring app show \
     --name $APP_NAME \
     --service $SERVICE_NAME \
     --resource-group $RESOURCE_GROUP \
-    --query "properties.activeDeploymentName" -o tsv
+    --query "properties.activeDeployment.name" -o tsv
 
 # Check instance health of the new production deployment
 az spring app deployment show \
@@ -271,25 +274,64 @@ jobs:
 
       - name: Deploy to Staging
         run: |
-          # Delete existing staging if present
-          az spring app deployment delete \
-            --name green \
-            --app payment-service \
+          ACTIVE_DEPLOYMENT=$(az spring app show \
+            --name payment-service \
             --service myorg-spring-apps \
             --resource-group rg-spring-production \
-            --yes || true
+            --query "properties.activeDeployment.name" -o tsv)
 
-          # Create new staging deployment
-          az spring app deployment create \
-            --name green \
+          if [ "$ACTIVE_DEPLOYMENT" = "green" ]; then
+            STAGING_DEPLOYMENT="default"
+          else
+            STAGING_DEPLOYMENT="green"
+          fi
+
+          if az spring app deployment show \
+            --name "$STAGING_DEPLOYMENT" \
             --app payment-service \
             --service myorg-spring-apps \
             --resource-group rg-spring-production \
-            --artifact-path target/payment-service.jar \
-            --instance-count 2
+            --output none 2>/dev/null; then
+            az spring app scale \
+              --name payment-service \
+              --service myorg-spring-apps \
+              --resource-group rg-spring-production \
+              --deployment "$STAGING_DEPLOYMENT" \
+              --cpu 1 \
+              --memory 2Gi \
+              --instance-count 2
+
+            az spring app deploy \
+              --name payment-service \
+              --service myorg-spring-apps \
+              --resource-group rg-spring-production \
+              --deployment "$STAGING_DEPLOYMENT" \
+              --artifact-path target/payment-service.jar
+          else
+            az spring app deployment create \
+              --name "$STAGING_DEPLOYMENT" \
+              --app payment-service \
+              --service myorg-spring-apps \
+              --resource-group rg-spring-production \
+              --artifact-path target/payment-service.jar \
+              --cpu 1 \
+              --memory 2Gi \
+              --instance-count 2
+          fi
+
+          echo "STAGING_DEPLOYMENT=$STAGING_DEPLOYMENT" >> "$GITHUB_ENV"
 
       - name: Validate Staging
-        run: ./scripts/validate-staging.sh
+        run: |
+          TEST_ENDPOINT=$(az spring test-endpoint list \
+            --name myorg-spring-apps \
+            --resource-group rg-spring-production \
+            --query "primaryTestEndpoint" -o tsv)
+
+          APP_NAME=payment-service \
+          TEST_ENDPOINT="$TEST_ENDPOINT" \
+          STAGING_DEPLOYMENT="$STAGING_DEPLOYMENT" \
+          ./scripts/validate-staging.sh
 
       - name: Swap to Production
         run: |
@@ -297,7 +339,7 @@ jobs:
             --name payment-service \
             --service myorg-spring-apps \
             --resource-group rg-spring-production \
-            --deployment green
+            --deployment "$STAGING_DEPLOYMENT"
 ```
 
 ## Best Practices
