@@ -104,41 +104,41 @@ resource eventSubscription 'Microsoft.EventGrid/topics/eventSubscriptions@2022-0
 
 ## What Dead-Lettered Events Look Like
 
-When an event is dead-lettered, Event Grid writes a JSON blob to the storage container. The blob path follows this structure:
+When an event is dead-lettered, Event Grid writes a JSON blob to the storage container. The blob name includes the event subscription name in uppercase and follows this structure:
 
 ```text
-deadletters/{topicname}/{eventsubscriptionname}/{year}/{month}/{day}/{hour}/{hash}.json
+{EVENTSUBSCRIPTIONNAME}/{year}/{month}/{day}/{hour}/{guid}.json
 ```
 
-The blob contains the original event plus additional metadata about why it was dead-lettered.
+The blob contains one or more events in an array. Each event preserves the original event shape and adds metadata about why it was dead-lettered.
 
 ```json
-{
-  "deadLetterReason": "MaxDeliveryAttemptsExceeded",
-  "deliveryAttempts": 10,
-  "lastDeliveryOutcome": "BadRequest",
-  "publishTime": "2026-02-16T10:30:00.000Z",
-  "lastDeliveryAttemptTime": "2026-02-16T11:45:00.000Z",
-  "lastHttpStatusCode": 400,
-  "event": {
+[
+  {
     "id": "event-12345",
     "eventType": "Orders.OrderPlaced",
     "subject": "/orders/12345",
     "eventTime": "2026-02-16T10:30:00Z",
+    "dataVersion": "1.0",
+    "metadataVersion": "1",
+    "topic": "/subscriptions/{sub-id}/resourceGroups/rg-events/providers/Microsoft.EventGrid/topics/topic-orders",
     "data": {
       "orderId": "12345",
       "customerId": "cust-789",
       "totalAmount": 99.95
     },
-    "dataVersion": "1.0"
+    "deadLetterReason": "MaxDeliveryAttemptsExceeded",
+    "deliveryAttempts": 10,
+    "lastDeliveryOutcome": "BadRequest",
+    "publishTime": "2026-02-16T10:30:00.000Z",
+    "lastDeliveryAttemptTime": "2026-02-16T11:45:00.000Z"
   }
-}
+]
 ```
 
 The `deadLetterReason` tells you why the event was dead-lettered:
 - `MaxDeliveryAttemptsExceeded` - ran out of retry attempts
-- `Unmatched` - event did not match any subscription (for system topics)
-- `TtlExpired` - the event's time-to-live expired
+- the event's time-to-live expired before delivery
 
 ## Processing Dead-Lettered Events
 
@@ -146,11 +146,18 @@ Having dead-lettered events in Blob Storage is only useful if you actually proce
 
 ```csharp
 using Azure.Storage.Blobs;
+using System;
+using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 public class DeadLetterProcessor
 {
     private readonly BlobContainerClient _container;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public DeadLetterProcessor(string storageConnectionString)
     {
@@ -165,48 +172,47 @@ public class DeadLetterProcessor
         {
             var blobClient = _container.GetBlobClient(blobItem.Name);
             var content = await blobClient.DownloadContentAsync();
-            var deadLetter = JsonSerializer.Deserialize<DeadLetterEnvelope>(
-                content.Value.Content.ToString()
-            );
+            var deadLetters = JsonSerializer.Deserialize<List<DeadLetterEnvelope>>(
+                content.Value.Content.ToString(),
+                JsonOptions
+            ) ?? new List<DeadLetterEnvelope>();
 
-            Console.WriteLine($"Dead letter reason: {deadLetter.DeadLetterReason}");
-            Console.WriteLine($"Last HTTP status: {deadLetter.LastHttpStatusCode}");
-            Console.WriteLine($"Delivery attempts: {deadLetter.DeliveryAttempts}");
-
-            // Decide what to do based on the reason
-            switch (deadLetter.DeadLetterReason)
+            foreach (var deadLetter in deadLetters)
             {
-                case "MaxDeliveryAttemptsExceeded":
-                    // The subscriber was failing - maybe retry after fixing the bug
-                    await RetryEvent(deadLetter.Event);
-                    break;
+                Console.WriteLine($"Dead letter reason: {deadLetter.DeadLetterReason}");
+                Console.WriteLine($"Last delivery outcome: {deadLetter.LastDeliveryOutcome}");
+                Console.WriteLine($"Delivery attempts: {deadLetter.DeliveryAttempts}");
 
-                case "TtlExpired":
-                    // The event aged out - log it and move on
-                    LogExpiredEvent(deadLetter.Event);
-                    break;
+                // Decide what to do based on the reason
+                switch (deadLetter.DeadLetterReason)
+                {
+                    case "MaxDeliveryAttemptsExceeded":
+                        // The subscriber was failing - maybe retry after fixing the bug
+                        await RetryEvent(deadLetter);
+                        break;
 
-                default:
-                    // Unknown reason - investigate manually
-                    Console.WriteLine($"Unknown dead letter reason: {deadLetter.DeadLetterReason}");
-                    break;
+                    default:
+                        // TTL expiry and other reasons should be investigated or logged
+                        LogExpiredEvent(deadLetter);
+                        break;
+                }
             }
 
-            // Move processed blob to an archive container
+            // Move the processed blob to an archive container
             await ArchiveAndDelete(blobClient, blobItem.Name);
         }
     }
 
-    private async Task RetryEvent(JsonElement eventData)
+    private async Task RetryEvent(DeadLetterEnvelope eventData)
     {
         // Re-publish the event to the topic for another attempt
         Console.WriteLine("Re-publishing event for retry...");
         // Your republishing logic here
     }
 
-    private void LogExpiredEvent(JsonElement eventData)
+    private void LogExpiredEvent(DeadLetterEnvelope eventData)
     {
-        Console.WriteLine("Event expired before delivery - logging for audit");
+        Console.WriteLine("Event was dead-lettered - logging for audit");
     }
 
     private async Task ArchiveAndDelete(BlobClient blob, string name)
@@ -220,13 +226,19 @@ public class DeadLetterProcessor
 // Model matching the dead-letter blob structure
 public class DeadLetterEnvelope
 {
+    public string Id { get; set; }
+    public string EventType { get; set; }
+    public string Subject { get; set; }
+    public string EventTime { get; set; }
+    public string DataVersion { get; set; }
+    public string MetadataVersion { get; set; }
+    public string Topic { get; set; }
+    public JsonElement Data { get; set; }
     public string DeadLetterReason { get; set; }
     public int DeliveryAttempts { get; set; }
     public string LastDeliveryOutcome { get; set; }
-    public int LastHttpStatusCode { get; set; }
     public string PublishTime { get; set; }
     public string LastDeliveryAttemptTime { get; set; }
-    public JsonElement Event { get; set; }
 }
 ```
 
@@ -267,6 +279,13 @@ az monitor metrics alert create \
 For production, use Managed Identity instead of storage account keys. Grant the Event Grid topic a `Storage Blob Data Contributor` role on the storage account, and configure the dead-letter destination to use the identity.
 
 ```bash
+# Enable the topic's system-assigned identity if it is not already enabled
+az eventgrid topic update \
+  --name topic-orders \
+  --resource-group rg-events \
+  --identity systemassigned \
+  --sku basic
+
 # Assign the role to Event Grid's system identity
 TOPIC_PRINCIPAL=$(az eventgrid topic show --name topic-orders --resource-group rg-events --query "identity.principalId" --output tsv)
 
@@ -274,6 +293,13 @@ az role assignment create \
   --assignee "$TOPIC_PRINCIPAL" \
   --role "Storage Blob Data Contributor" \
   --scope "$STORAGE_ID"
+
+# Use the identity-specific dead-letter endpoint on the event subscription
+az eventgrid event-subscription update \
+  --name sub-orders-with-dl \
+  --source-resource-id "/subscriptions/{sub-id}/resourceGroups/rg-events/providers/Microsoft.EventGrid/topics/topic-orders" \
+  --deadletter-identity-endpoint "${STORAGE_ID}/blobServices/default/containers/deadletters" \
+  --deadletter-identity systemassigned
 ```
 
 ## Retention and Cleanup
