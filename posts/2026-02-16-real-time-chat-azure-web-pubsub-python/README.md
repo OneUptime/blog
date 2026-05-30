@@ -144,7 +144,7 @@ def send_message(room):
     # Send to the group (room)
     service.send_to_group(
         room,
-        message=json.dumps(message),
+        message=message,
         content_type="application/json"
     )
 
@@ -170,7 +170,7 @@ def send_direct_message(user_id):
 
     service.send_to_user(
         user_id,
-        message=json.dumps(message),
+        message=message,
         content_type="application/json"
     )
 
@@ -179,7 +179,7 @@ def send_direct_message(user_id):
 
 ## Handling Events with Upstream
 
-Web PubSub can forward events (client connected, disconnected, messages) to your server. This is called the upstream configuration.
+Web PubSub can forward events (client connected, disconnected, and custom user events) to your server. This is called the upstream configuration.
 
 ```bash
 # Configure the event handler (upstream URL)
@@ -189,7 +189,9 @@ az webpubsub hub create \
     --hub-name chat \
     --event-handler url-template="https://my-server.azurewebsites.net/api/pubsub/events" \
     user-event-pattern="*" \
-    system-event="connect,connected,disconnected"
+    system-event="connect" \
+    system-event="connected" \
+    system-event="disconnected"
 ```
 
 Add event handling to your Flask app.
@@ -243,7 +245,7 @@ def handle_events():
         return "", 200
 
     elif event_type == "azure.webpubsub.user.message":
-        # A user sent a message through the WebSocket
+        # A user sent a custom "message" event through the WebSocket
         data = request.get_data(as_text=True)
         print(f"Message from {user_id}: {data}")
 
@@ -302,7 +304,7 @@ CHAT_HTML = """
         ws.onmessage = function(event) {
             const msg = JSON.parse(event.data);
             if (msg.type === 'message' && msg.group) {
-                const content = JSON.parse(msg.data);
+                const content = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
                 addMessage(content.from, content.content);
             }
         };
@@ -313,7 +315,8 @@ CHAT_HTML = """
             ws.send(JSON.stringify({
                 type: 'sendToGroup',
                 group: 'general',
-                data: JSON.stringify({from: userId, content: input.value})
+                dataType: 'json',
+                data: {from: userId, content: input.value}
             }));
             input.value = '';
         };
@@ -386,9 +389,9 @@ init_db()
 
 ## Scaling Considerations
 
-Azure Web PubSub Free tier supports 20 concurrent connections. For production, you will want the Standard tier which supports up to 100K concurrent connections per unit. The service handles all the WebSocket scaling - you do not need to worry about sticky sessions or connection affinity.
+Azure Web PubSub Free tier supports 20 concurrent connections per unit. For production, you will want the Standard tier, where each unit supports up to 1,000 concurrent connections and a Standard instance can scale up to 100 units. The service handles all the WebSocket scaling - you do not need to worry about sticky sessions or connection affinity.
 
-Your Python server stays stateless. It just handles negotiation (generating client URLs) and event processing. Since it communicates with Web PubSub via REST API, you can scale it horizontally without any special configuration.
+Your Python server can stay stateless if you store user state and message history in external services. It just handles negotiation (generating client URLs) and event processing. Since it communicates with Web PubSub via REST API, you can scale it horizontally without any special configuration.
 
 ## Wrapping Up
 
