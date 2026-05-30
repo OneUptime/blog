@@ -19,12 +19,12 @@ When you enable Microsoft peering on an ExpressRoute circuit, Microsoft is ready
 ```mermaid
 graph LR
     subgraph Microsoft Edge
-        M365[Microsoft 365 Routes<br/>Community: 12076:5100]
+        M365[Microsoft 365 Routes<br/>Community: 12076:5010]
         Azure[Azure Services Routes<br/>Community: 12076:5XXX]
-        Dynamics[Dynamics 365 Routes<br/>Community: 12076:5300]
+        Dynamics[Dynamics 365 Routes<br/>Community: 12076:5040 or regional]
     end
     subgraph Route Filter
-        RF[Selected Communities:<br/>12076:5100 Exchange Online<br/>12076:5110 SharePoint Online]
+        RF[Selected Communities:<br/>12076:5010 Exchange Online<br/>12076:5020 SharePoint Online]
     end
     subgraph On-Premises
         Router[On-Prem Router]
@@ -44,6 +44,7 @@ Each Microsoft service is identified by a BGP community value. By selecting spec
 - Your on-premises edge routers configured for BGP peering
 - Azure CLI installed
 - Understanding of which Microsoft services your organization uses
+- Authorization to consume Microsoft 365 services through ExpressRoute if you plan to include Microsoft 365 communities
 
 ## Step 1: Understand BGP Communities
 
@@ -51,14 +52,15 @@ Microsoft organizes its services into BGP communities. Here are the most commonl
 
 | Service | BGP Community | Description |
 |---------|--------------|-------------|
-| Exchange Online | 12076:5100 | Exchange Online, EOP |
-| SharePoint Online | 12076:5110 | SharePoint, OneDrive |
-| Skype/Teams | 12076:5120 | Teams, Skype for Business Online |
-| Microsoft 365 Common | 12076:5200 | AAD, Portal, shared infrastructure |
-| Dynamics 365 | 12076:5300 | Dynamics 365 |
-| Azure (region-specific) | 12076:51XXX | Azure PaaS services by region |
+| Exchange Online | 12076:5010 | Exchange Online, EOP |
+| SharePoint Online | 12076:5020 | SharePoint, OneDrive |
+| Skype/Teams | 12076:5030 | Teams, Skype for Business Online |
+| Microsoft Entra ID | 12076:5060 | Microsoft Entra ID |
+| Other Office 365 Online services | 12076:5100 | Other Office 365 Online services |
+| Dynamics 365 | 12076:5040 or regional community | CRM Online for Dynamics v8.2 and earlier, or the regional community for newer Dynamics deployments |
+| Azure (region-specific) | 12076:51XXX | Azure services by region |
 
-You can also filter by Azure region. For example, Azure services in East US have the community 12076:51004, and West Europe has 12076:51012.
+You can also filter by Azure region. For example, Azure services in East US have the community 12076:51004, and West Europe has 12076:51002.
 
 ## Step 2: Create a Route Filter
 
@@ -73,59 +75,29 @@ az network route-filter create \
   --location eastus
 ```
 
-## Step 3: Add Route Filter Rules
+## Step 3: Add a Route Filter Rule
 
-Add rules to the filter for the BGP communities you want to receive. Each rule specifies one or more BGP community values:
+Add a rule to the filter for the BGP communities you want to receive. A route filter can have only one rule, and that rule specifies one or more BGP community values:
 
 ```bash
-# Allow Exchange Online routes
+# Allow Microsoft 365 routes
 az network route-filter rule create \
   --filter-name myRouteFilter \
   --resource-group myResourceGroup \
-  --name AllowExchangeOnline \
+  --name AllowM365 \
   --access Allow \
-  --communities "12076:5100" \
-  --route-filter-type Community
-
-# Allow SharePoint Online routes
-az network route-filter rule create \
-  --filter-name myRouteFilter \
-  --resource-group myResourceGroup \
-  --name AllowSharePoint \
-  --access Allow \
-  --communities "12076:5110" \
-  --route-filter-type Community
-
-# Allow Teams routes
-az network route-filter rule create \
-  --filter-name myRouteFilter \
-  --resource-group myResourceGroup \
-  --name AllowTeams \
-  --access Allow \
-  --communities "12076:5120" \
-  --route-filter-type Community
-
-# Allow Microsoft 365 Common routes (AAD, portal, etc.)
-az network route-filter rule create \
-  --filter-name myRouteFilter \
-  --resource-group myResourceGroup \
-  --name AllowM365Common \
-  --access Allow \
-  --communities "12076:5200" \
-  --route-filter-type Community
+  --communities "12076:5010" "12076:5020" "12076:5030" "12076:5060" "12076:5100"
 ```
 
-You can combine multiple communities in a single rule:
+Update that single rule when you need to add or remove communities:
 
 ```bash
-# Allow multiple services in one rule
-az network route-filter rule create \
+# Add Azure Resource Manager to the existing rule
+az network route-filter rule update \
   --filter-name myRouteFilter \
   --resource-group myResourceGroup \
-  --name AllowAllM365 \
-  --access Allow \
-  --communities "12076:5100" "12076:5110" "12076:5120" "12076:5200" \
-  --route-filter-type Community
+  --name AllowM365 \
+  --add communities="12076:5070"
 ```
 
 ## Step 4: Associate the Route Filter with Microsoft Peering
@@ -163,7 +135,7 @@ az network express-route list-route-tables \
   --output table
 ```
 
-You should see only the route prefixes associated with the BGP communities you selected. If you selected Exchange Online (12076:5100), you will see the IP prefixes used by Exchange Online endpoints.
+You should see only the route prefixes associated with the BGP communities you selected. If you selected Exchange Online (12076:5010), you will see the IP prefixes used by Exchange Online endpoints.
 
 Also check the routes on your on-premises router:
 
@@ -178,13 +150,15 @@ On your on-premises routers, you should apply additional filtering to ensure onl
 
 ```text
 ! Cisco IOS example - accept only specific communities from Microsoft peering
-ip community-list standard MSFT-EXCHANGE permit 12076:5100
-ip community-list standard MSFT-SHAREPOINT permit 12076:5110
-ip community-list standard MSFT-TEAMS permit 12076:5120
-ip community-list standard MSFT-M365COMMON permit 12076:5200
+ip bgp-community new-format
+ip community-list standard MSFT-EXCHANGE permit 12076:5010
+ip community-list standard MSFT-SHAREPOINT permit 12076:5020
+ip community-list standard MSFT-TEAMS permit 12076:5030
+ip community-list standard MSFT-ENTRA permit 12076:5060
+ip community-list standard MSFT-O365OTHER permit 12076:5100
 
 route-map ACCEPT-MSFT-ROUTES permit 10
-  match community MSFT-EXCHANGE MSFT-SHAREPOINT MSFT-TEAMS MSFT-M365COMMON
+  match community MSFT-EXCHANGE MSFT-SHAREPOINT MSFT-TEAMS MSFT-ENTRA MSFT-O365OTHER
 
 route-map ACCEPT-MSFT-ROUTES deny 20
   ! Deny everything else
@@ -208,13 +182,13 @@ az network route-filter show \
   --output table
 ```
 
-Create an alert for when the number of routes changes unexpectedly:
+Monitor BGP availability and circuit traffic metrics, and use the route table command above to track route-count changes:
 
 ```bash
 # Monitor the ExpressRoute circuit metrics
 az monitor metrics list \
   --resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Network/expressRouteCircuits/myExpressRouteCircuit" \
-  --metric "BgpAvailability" "RoutesAdvertisedToMSFTPeer" "RoutesAdvertisedToPeer" \
+  --metrics "BgpAvailability" "BitsInPerSecond" "BitsOutPerSecond" \
   --interval PT5M \
   --output table
 ```
@@ -224,31 +198,30 @@ az monitor metrics list \
 As your organization adopts new Microsoft services, update the route filter:
 
 ```bash
-# Add Dynamics 365 routes to the filter
-az network route-filter rule create \
+# Add CRM Online routes for Dynamics v8.2 and earlier to the existing rule
+az network route-filter rule update \
   --filter-name myRouteFilter \
   --resource-group myResourceGroup \
-  --name AllowDynamics365 \
-  --access Allow \
-  --communities "12076:5300" \
-  --route-filter-type Community
+  --name AllowM365 \
+  --add communities="12076:5040"
 ```
 
 To remove a service:
 
 ```bash
-# Remove a route filter rule
-az network route-filter rule delete \
+# Reset the existing rule to the communities you still want
+az network route-filter rule update \
   --filter-name myRouteFilter \
   --resource-group myResourceGroup \
-  --name AllowDynamics365
+  --name AllowM365 \
+  --set communities='["12076:5010","12076:5020","12076:5030","12076:5060","12076:5100"]'
 ```
 
 Route changes propagate within a few minutes. During the propagation, there should be no traffic disruption for existing services.
 
 ## Common Mistakes
 
-**Not including Microsoft 365 Common (12076:5200)**: Many people select Exchange and SharePoint but forget the Common community. Azure AD authentication, the Microsoft 365 portal, and other shared infrastructure are in this community. Without it, authentication to Microsoft 365 services may fail or fall back to the internet path.
+**Not including Microsoft Entra ID (12076:5060) and other Office 365 services (12076:5100)**: Many people select Exchange and SharePoint but forget the supporting communities. Microsoft Entra ID authentication, the Microsoft 365 portal, and other shared infrastructure can depend on these routes. Without them, authentication to Microsoft 365 services may fail or fall back to the internet path.
 
 **Selecting too many communities**: Only select the services you actually use. Each community adds routes to your routing table, and some services have hundreds of prefixes. Unnecessary routes waste router memory and make troubleshooting harder.
 
