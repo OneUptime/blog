@@ -14,7 +14,7 @@ I use this for everything from keeping backup copies current to deploying static
 
 ## How AzCopy Sync Works
 
-Unlike `azcopy copy`, which transfers everything you point it at, `azcopy sync` compares the source and destination and only transfers files that are different. The comparison is based on last modified time and file size by default.
+Unlike `azcopy copy`, which transfers everything you point it at, `azcopy sync` compares the source and destination and only transfers files that are different. The comparison is based on file names and last modified times by default.
 
 Here is the flow:
 
@@ -36,7 +36,7 @@ flowchart TD
     J --> K
 ```
 
-By default, sync only uploads new or changed files. Files that exist in the destination but not the source are left alone unless you set `--delete-destination=true`.
+By default, sync only transfers new or changed files from the source to the destination. Files that exist in the destination but not the source are left alone unless you set `--delete-destination=true`.
 
 ## Basic Sync: Local to Azure
 
@@ -186,14 +186,10 @@ For unattended sync jobs, you need non-interactive authentication. The best opti
 
 ```bash
 # Set up environment variables for service principal authentication
+export AZCOPY_AUTO_LOGIN_TYPE=SPN
 export AZCOPY_SPA_APPLICATION_ID="your-app-id"
 export AZCOPY_SPA_CLIENT_SECRET="your-client-secret"
 export AZCOPY_TENANT_ID="your-tenant-id"
-
-# Log in with the service principal
-azcopy login --service-principal \
-  --application-id "$AZCOPY_SPA_APPLICATION_ID" \
-  --tenant-id "$AZCOPY_TENANT_ID"
 
 # Now run the sync
 azcopy sync "./data/" "https://mystorageaccount.blob.core.windows.net/mycontainer/"
@@ -238,7 +234,7 @@ azcopy sync "./data/" "https://mystorageaccount.blob.core.windows.net/mycontaine
 
 ## Dry Run
 
-Unfortunately, AzCopy does not have a native dry-run flag. To preview what would be synced, you can use the `--dry-run` flag which was added in recent versions:
+AzCopy sync has a `--dry-run` flag that previews what would be synced:
 
 ```bash
 # Preview what would be synced without actually transferring
@@ -251,7 +247,7 @@ This shows you what files would be uploaded, downloaded, or deleted without actu
 
 ## Handling Conflicts
 
-AzCopy sync uses a "last writer wins" approach based on the comparison method (timestamp or hash). If a file is modified in both the source and destination between syncs, the source version overwrites the destination when syncing local-to-Azure.
+AzCopy sync uses a "last writer wins" approach based on the comparison method (timestamp or hash). With the default timestamp comparison, the source version transfers only if it is newer than the destination. If the destination is newer, AzCopy skips that file.
 
 There is no built-in conflict resolution. If you need bidirectional sync with conflict handling, AzCopy sync is not the right tool. Consider Azure File Sync or a purpose-built synchronization service instead.
 
