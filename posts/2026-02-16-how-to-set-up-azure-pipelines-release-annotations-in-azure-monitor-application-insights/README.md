@@ -8,13 +8,13 @@ Description: Learn how to configure release annotations in Azure Monitor Applica
 
 ---
 
-When you are looking at a performance chart in Application Insights and see a sudden spike in errors or a drop in response time, the first question is always "did someone deploy something?" Release annotations answer this question instantly. They are vertical markers on your Application Insights charts that show exactly when a deployment happened, what version was deployed, and who triggered it.
+When you are looking at a performance chart in Application Insights and see a sudden spike in errors or an increase in response time, the first question is always "did someone deploy something?" Release annotations answer this question instantly. They are vertical markers on your Application Insights charts that show exactly when a deployment happened, what version was deployed, and who triggered it.
 
 Without annotations, correlating deployments with metric changes requires switching between your monitoring dashboard and your release pipeline, comparing timestamps manually. With annotations, the information is right there on the chart. In this post, I will walk through setting up release annotations from Azure Pipelines, customizing them with useful metadata, and using them effectively for incident investigation.
 
 ## What Release Annotations Look Like
 
-Release annotations appear as small icons on the timeline of Application Insights charts. When you hover over one, you see:
+Release annotations appear as small icons on the timeline in supported Application Insights experiences. When you hover over one, you see:
 
 - The release name or build number
 - The deployment timestamp
@@ -22,7 +22,7 @@ Release annotations appear as small icons on the timeline of Application Insight
 - A link back to the pipeline run
 - Any custom properties you added
 
-On any Application Insights chart - response time, failure rate, server requests, custom metrics - annotations provide immediate context. If you see a spike, you can instantly check whether it coincides with a deployment.
+On supported Application Insights charts, such as Performance, Failures, Usage, and Workbooks time-series visualizations, annotations provide immediate context. If you see a spike, you can instantly check whether it coincides with a deployment.
 
 ```mermaid
 graph LR
@@ -33,9 +33,9 @@ graph LR
     B --> D[Annotation details:<br/>Build 456<br/>Branch: main<br/>By: Jane Dev<br/>Time: 14:32 UTC]
 ```
 
-## Method 1: Using the Application Insights Release Annotation Task
+## Method 1: Using AzureCLI@2 in Azure Pipelines
 
-The simplest way to create release annotations is with the built-in Azure DevOps task. This works in both YAML and classic pipelines.
+The simplest way to create release annotations from YAML is with the AzureCLI@2 task and the Application Insights annotations REST API.
 
 First, make sure you have the Application Insights resource and know its resource ID. Then add the task to your pipeline:
 
@@ -108,21 +108,21 @@ import requests
 import json
 from datetime import datetime
 
-def create_release_annotation(app_insights_id, api_key, build_info):
+def create_release_annotation(app_insights_resource_id, access_token, build_info):
     """
     Create a release annotation in Application Insights.
 
     Args:
-        app_insights_id: The Application Insights instrumentation key or app ID
-        api_key: An Application Insights API key with write access
+        app_insights_resource_id: The Azure resource ID of the Application Insights component
+        access_token: Microsoft Entra access token for https://management.azure.com/
         build_info: Dictionary with build details
     """
 
     # Application Insights annotations endpoint
-    url = f"https://aigs1.aisvc.visualstudio.com/applications/{app_insights_id}/Annotations"
+    url = f"https://management.azure.com{app_insights_resource_id}/Annotations?api-version=2015-05-01"
 
     headers = {
-        "X-AIAPIKEY": api_key,
+        "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
 
@@ -142,7 +142,7 @@ def create_release_annotation(app_insights_id, api_key, build_info):
         })
     }
 
-    response = requests.put(url, headers=headers, json=[annotation])
+    response = requests.put(url, headers=headers, json=annotation)
 
     if response.status_code == 200:
         print(f"Release annotation created: {build_info['build_number']}")
@@ -152,9 +152,9 @@ def create_release_annotation(app_insights_id, api_key, build_info):
     return response
 ```
 
-## Method 3: Using Azure CLI with az monitor app-insights
+## Method 3: Using Azure CLI with az rest
 
-The Azure CLI provides a more straightforward way to create annotations:
+The Azure CLI can call the annotations REST API and attach the right Azure Resource Manager token automatically:
 
 ```bash
 #!/bin/bash
@@ -165,21 +165,23 @@ BUILD_NUMBER="${BUILD_BUILDNUMBER}"
 BUILD_URL="${SYSTEM_COLLECTIONURI}${SYSTEM_TEAMPROJECT}/_build/results?buildId=${BUILD_BUILDID}"
 BRANCH="${BUILD_SOURCEBRANCHNAME}"
 TRIGGERED_BY="${BUILD_REQUESTEDFOR}"
-APP_INSIGHTS_NAME="myapp-insights"
-RESOURCE_GROUP="prod-rg"
+APP_INSIGHTS_RESOURCE_ID="/subscriptions/SUB_ID/resourceGroups/prod-rg/providers/Microsoft.Insights/components/myapp-insights"
 
 # Create the annotation
-az monitor app-insights component create-annotation \
-  --app "$APP_INSIGHTS_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --annotation-name "Release $BUILD_NUMBER" \
-  --category "Deployment" \
-  --properties "{
-    \"ReleaseName\": \"$BUILD_NUMBER\",
-    \"ReleaseUrl\": \"$BUILD_URL\",
-    \"Branch\": \"$BRANCH\",
-    \"TriggeredBy\": \"$TRIGGERED_BY\"
-  }"
+ANNOTATION_PROPERTIES=$(cat <<EOF
+{
+  "Id": "$BUILD_BUILDID",
+  "AnnotationName": "Release $BUILD_NUMBER",
+  "EventTime": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+  "Category": "Deployment",
+  "Properties": "{\"ReleaseName\":\"$BUILD_NUMBER\",\"ReleaseUrl\":\"$BUILD_URL\",\"Branch\":\"$BRANCH\",\"TriggeredBy\":\"$TRIGGERED_BY\"}"
+}
+EOF
+)
+
+az rest --method put \
+  --uri "$APP_INSIGHTS_RESOURCE_ID/Annotations?api-version=2015-05-01" \
+  --body "$ANNOTATION_PROPERTIES"
 
 echo "Annotation created for release $BUILD_NUMBER"
 ```
@@ -237,12 +239,22 @@ steps:
             ChangedFileCount: $files
           }')
 
-        az monitor app-insights component create-annotation \
-          --app "myapp-insights" \
-          --resource-group "prod-rg" \
-          --annotation-name "Release $(Build.BuildNumber)" \
-          --category "Deployment" \
-          --properties "$PROPERTIES"
+        ANNOTATION_PROPERTIES=$(jq -n \
+          --arg id "$(Build.BuildId)" \
+          --arg name "Release $(Build.BuildNumber)" \
+          --arg time "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+          --arg properties "$PROPERTIES" \
+          '{
+            Id: $id,
+            AnnotationName: $name,
+            EventTime: $time,
+            Category: "Deployment",
+            Properties: $properties
+          }')
+
+        az rest --method put \
+          --uri "/subscriptions/SUB_ID/resourceGroups/prod-rg/providers/Microsoft.Insights/components/myapp-insights/Annotations?api-version=2015-05-01" \
+          --body "$ANNOTATION_PROPERTIES"
 ```
 
 ## Viewing Annotations in Application Insights
@@ -250,7 +262,7 @@ steps:
 After annotations are created, view them in the Azure portal:
 
 1. Open your Application Insights resource
-2. Go to any chart (e.g., Performance, Failures, or a custom chart)
+2. Go to a supported view such as Performance, Failures, Usage, or a Workbook time-series visualization
 3. Look for the small annotation icons on the timeline
 4. Click an icon to see the annotation details
 
@@ -291,12 +303,20 @@ stages:
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
-                      az monitor app-insights component create-annotation \
-                        --app "myapp-insights" \
-                        --resource-group "prod-rg" \
-                        --annotation-name "${{ parameters.environment }} - $(Build.BuildNumber)" \
-                        --category "Deployment" \
-                        --properties "{\"Environment\":\"${{ parameters.environment }}\",\"Release\":\"$(Build.BuildNumber)\"}"
+                      ANNOTATION_PROPERTIES=$(cat <<EOF
+                      {
+                        "Id": "$(Build.BuildId)-${{ parameters.environment }}",
+                        "AnnotationName": "${{ parameters.environment }} - $(Build.BuildNumber)",
+                        "EventTime": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+                        "Category": "Deployment",
+                        "Properties": "{\"Environment\":\"${{ parameters.environment }}\",\"Release\":\"$(Build.BuildNumber)\"}"
+                      }
+                      EOF
+                      )
+
+                      az rest --method put \
+                        --uri "/subscriptions/SUB_ID/resourceGroups/prod-rg/providers/Microsoft.Insights/components/myapp-insights/Annotations?api-version=2015-05-01" \
+                        --body "$ANNOTATION_PROPERTIES"
 ```
 
 ## Using Annotations for Incident Investigation
@@ -325,12 +345,20 @@ When you roll back a deployment, create an annotation for that too:
     scriptType: 'bash'
     scriptLocation: 'inlineScript'
     inlineScript: |
-      az monitor app-insights component create-annotation \
-        --app "myapp-insights" \
-        --resource-group "prod-rg" \
-        --annotation-name "ROLLBACK - $(Build.BuildNumber)" \
-        --category "Deployment" \
-        --properties "{\"Type\":\"Rollback\",\"RolledBackFrom\":\"$(Build.BuildNumber)\",\"Reason\":\"Elevated error rate detected\"}"
+      ANNOTATION_PROPERTIES=$(cat <<EOF
+      {
+        "Id": "$(Build.BuildId)-rollback",
+        "AnnotationName": "ROLLBACK - $(Build.BuildNumber)",
+        "EventTime": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+        "Category": "Deployment",
+        "Properties": "{\"Type\":\"Rollback\",\"RolledBackFrom\":\"$(Build.BuildNumber)\",\"Reason\":\"Elevated error rate detected\"}"
+      }
+      EOF
+      )
+
+      az rest --method put \
+        --uri "/subscriptions/SUB_ID/resourceGroups/prod-rg/providers/Microsoft.Insights/components/myapp-insights/Annotations?api-version=2015-05-01" \
+        --body "$ANNOTATION_PROPERTIES"
   condition: failed()  # Only create rollback annotation if deployment failed
 ```
 
@@ -339,12 +367,6 @@ When you roll back a deployment, create an annotation for that too:
 You can retrieve annotations through the API for reporting or automated analysis:
 
 ```bash
-# List recent annotations for an Application Insights resource
-az monitor app-insights component show-annotations \
-  --app "myapp-insights" \
-  --resource-group "prod-rg" \
-  --output table
-
 # Query annotations within a specific time range
 START_DATE=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
 END_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
