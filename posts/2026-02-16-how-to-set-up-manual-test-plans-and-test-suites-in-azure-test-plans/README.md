@@ -58,7 +58,7 @@ Click the **+** button on the test plan node and select **New static suite**. Na
 
 ### Requirement-Based Test Suites
 
-These are the most powerful type. A requirement-based suite automatically includes test cases linked to a specific user story or requirement. When you add a test case to a user story, it appears in the suite.
+These are the most powerful type. A requirement-based suite is linked to a specific user story or requirement. When you add a test case to the requirement-based suite, Azure Test Plans automatically links the test case to that backlog item.
 
 To create one:
 
@@ -66,7 +66,7 @@ To create one:
 2. Search for the user story you want to associate
 3. Select it and click **Create suites**
 
-Now every test case linked to that user story appears in this suite. As new test cases are added to the story, they automatically show up.
+Now every test case you add to that suite is tied back to the user story. As new test cases are added to the suite, Azure Test Plans maintains the requirement link.
 
 ### Query-Based Test Suites
 
@@ -151,14 +151,15 @@ When it is time to test, you can run tests from the test plan directly.
    - Take a screenshot (the runner can capture screenshots)
    - Create a bug directly from the test run (pre-populated with test details)
 
-### Running Tests on Desktop
+### Running Tests for Desktop Apps
 
-For more demanding testing scenarios, use the **Test Runner** desktop app. It provides:
+For desktop application testing, use the browser-based **Microsoft Test Runner** alongside your desktop app. It provides:
 
 - Screen recording during test execution
-- Automatic screenshot capture on each step
-- Audio recording for narrating observations
-- Image annotation tools
+- Screenshots and action logs
+- Comments and captured diagnostic data on bugs you create from the run
+
+Microsoft is retiring the Windows Test Runner client, so prefer the web-based runner for new manual test runs.
 
 ### Exploratory Testing
 
