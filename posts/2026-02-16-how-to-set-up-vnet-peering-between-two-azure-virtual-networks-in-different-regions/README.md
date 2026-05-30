@@ -160,7 +160,7 @@ If you prefer the portal, navigate to your virtual network, click "Peerings" in 
 
 ## Monitoring Peered Traffic
 
-Once peering is active, you can use Azure Network Watcher to monitor traffic between the peered networks. Enable NSG flow logs to see which traffic is flowing between the VNets, and use Connection Monitor to track latency and packet loss across the peering link.
+Once peering is active, you can use Azure Network Watcher to monitor traffic between the peered networks. Enable virtual network flow logs to see which traffic is flowing between the VNets, and use Connection Monitor to track latency and packet loss across the peering link.
 
 ## Cleanup
 
