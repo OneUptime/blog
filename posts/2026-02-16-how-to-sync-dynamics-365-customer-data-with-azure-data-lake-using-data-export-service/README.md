@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dynamics 365, Azure Data Lake, Data Export Service, Dataverse, Data Sync, Analytics, ETL
+Tags: Dynamics 365, Azure Data Lake, Azure Synapse Link, Dataverse, Data Sync, Analytics, ETL
 
-Description: Sync Dynamics 365 customer data to Azure Data Lake Storage using the Data Export Service for analytics, reporting, and machine learning workloads.
+Description: Sync Dynamics 365 customer data to Azure Data Lake Storage using Azure Synapse Link for Dataverse for analytics, reporting, and machine learning workloads.
 
 ---
 
@@ -32,11 +32,11 @@ graph TD
     end
 ```
 
-Azure Synapse Link is the easiest option but gives you less control over the export format and schedule. A custom export with Azure Data Factory or Azure Functions gives you full control over what gets exported, how it is transformed, and when it runs.
+Azure Synapse Link is the easiest option but gives you less control over the export layout and transformation logic. A custom export with Azure Data Factory or Azure Functions gives you full control over what gets exported, how it is transformed, and when it runs.
 
 ## Option 1: Azure Synapse Link for Dataverse
 
-This is the fastest path. Synapse Link continuously exports Dataverse tables to your data lake in Delta or CSV format:
+This is the fastest path. Synapse Link exports Dataverse tables to your data lake as CSV files, with an option to convert them to Delta Lake when you connect through a Synapse workspace and Spark pool:
 
 ```bash
 # Create the Data Lake Storage account
@@ -52,19 +52,20 @@ az storage account create \
 # Create a container for the exported data
 az storage container create \
   --name d365-export \
-  --account-name std365datalake
+  --account-name std365datalake \
+  --auth-mode login
 ```
 
 Then configure Synapse Link in the Power Platform admin center:
 
-1. Navigate to your environment settings
-2. Go to Data management, then Azure Synapse Link
-3. Click "New link to data lake"
-4. Select the storage account and container
+1. Sign in to Power Apps and select the environment
+2. Go to Azure Synapse Link
+3. Click "New link"
+4. Select the Azure Synapse workspace, Spark pool, and storage account
 5. Choose the tables to export: account, contact, lead, opportunity, incident, etc.
-6. Select the export format (Delta Lake recommended)
+6. Enable the Delta Lake option if you want Synapse Link to convert the exported CSV data to Delta Lake
 
-The initial sync can take several hours for large datasets. After that, changes are streamed with about 15-30 minutes of latency.
+The initial sync can take several hours for large datasets. After that, incremental updates are captured on the interval you configure for the link.
 
 ## Option 2: Custom Export with Azure Functions
 
@@ -93,6 +94,8 @@ public class DataverseExporter
         [TimerTrigger("0 0 */2 * * *")] TimerInfo timer, // Every 2 hours
         ILogger log)
     {
+        var exportStartedAt = DateTime.UtcNow;
+
         // Get the last export timestamp from storage
         var lastExport = await GetLastExportTimestampAsync();
 
@@ -102,12 +105,14 @@ public class DataverseExporter
             new EntityExportConfig("accounts", "account",
                 "accountid,name,telephone1,emailaddress1,address1_city,address1_stateorprovince,revenue,numberofemployees,industrycode,createdon,modifiedon"),
             new EntityExportConfig("contacts", "contact",
-                "contactid,fullname,emailaddress1,telephone1,jobtitle,parentcustomerid,createdon,modifiedon"),
+                "contactid,fullname,emailaddress1,telephone1,jobtitle,_parentcustomerid_value,createdon,modifiedon"),
             new EntityExportConfig("leads", "lead",
                 "leadid,fullname,emailaddress1,companyname,leadsourcecode,statuscode,createdon,modifiedon"),
             new EntityExportConfig("opportunities", "opportunity",
-                "opportunityid,name,estimatedvalue,actualvalue,closeprobability,statuscode,actualclosedate,parentaccountid,createdon,modifiedon")
+                "opportunityid,name,estimatedvalue,actualvalue,closeprobability,statuscode,actualclosedate,_parentaccountid_value,createdon,modifiedon")
         };
+
+        var hasFailures = false;
 
         foreach (var entityConfig in entities)
         {
@@ -117,13 +122,20 @@ public class DataverseExporter
             }
             catch (Exception ex)
             {
+                hasFailures = true;
                 log.LogError(ex,
                     "Failed to export entity: {Entity}", entityConfig.EntityName);
             }
         }
 
-        // Update the last export timestamp
-        await SetLastExportTimestampAsync(DateTime.UtcNow);
+        if (hasFailures)
+        {
+            log.LogWarning("One or more entities failed to export; last export timestamp was not advanced");
+            return;
+        }
+
+        // Update the last export timestamp to the time this run started
+        await SetLastExportTimestampAsync(exportStartedAt);
 
         log.LogInformation("Customer data export completed");
     }
@@ -131,7 +143,7 @@ public class DataverseExporter
     private async Task ExportEntityAsync(
         EntityExportConfig config, DateTime lastExport)
     {
-        var filter = $"modifiedon gt {lastExport:yyyy-MM-ddTHH:mm:ssZ}";
+        var filter = $"modifiedon ge {lastExport.ToUniversalTime():yyyy-MM-dd'T'HH:mm:ss'Z'}";
         var url = $"api/data/v9.2/{config.PluralName}?" +
                   $"$select={config.Columns}&" +
                   $"$filter={filter}&" +
@@ -149,8 +161,8 @@ public class DataverseExporter
             var data = await response.Content
                 .ReadFromJsonAsync<DataverseResponse>();
 
-            allRecords.AddRange(data.Value);
-            nextLink = data.NextLink;
+            allRecords.AddRange(data?.Value ?? new List<Dictionary<string, object>>());
+            nextLink = data?.NextLink;
         }
 
         if (allRecords.Count == 0)
@@ -161,7 +173,7 @@ public class DataverseExporter
             return;
         }
 
-        // Write to Data Lake as a Parquet file
+        // Write to Data Lake as JSON Lines
         await WriteToDataLakeAsync(config.FolderName, allRecords);
 
         _logger.LogInformation(
@@ -213,6 +225,9 @@ public class DataverseExporter
     private async Task SetLastExportTimestampAsync(DateTime timestamp)
     {
         var fileSystem = _dataLakeClient.GetFileSystemClient("d365-export");
+        var directory = fileSystem.GetDirectoryClient("_state");
+        await directory.CreateIfNotExistsAsync();
+
         var fileClient = fileSystem.GetFileClient("_state/last-export.txt");
 
         var content = Encoding.UTF8.GetBytes(timestamp.ToString("o"));
@@ -299,7 +314,7 @@ opportunities = spark.read.json("abfss://d365-export@std365datalake.dfs.core.win
 # Join accounts with their opportunities
 customer_pipeline = accounts.alias("a").join(
     opportunities.alias("o"),
-    col("a.accountid") == col("o.parentaccountid"),
+    col("a.accountid") == col("o._parentaccountid_value"),
     "left"
 ).select(
     col("a.accountid"),
