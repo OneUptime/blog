@@ -256,9 +256,17 @@ Azure Pipelines supports a rich expression language for conditions. Here are som
 
 ```yaml
 stages:
+  - stage: Build
+    jobs:
+      - job: BuildApp
+        steps:
+          - script: echo "Building..."
+
   - stage: ConditionalStage
+    dependsOn: Build
     # Run only for scheduled builds on main branch
     condition: and(
+      succeeded(),
       eq(variables['Build.Reason'], 'Schedule'),
       eq(variables['Build.SourceBranch'], 'refs/heads/main')
     )
@@ -266,6 +274,14 @@ stages:
       - job: ScheduledTask
         steps:
           - script: echo "Running scheduled task..."
+
+  - stage: Deploy
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: DeployApp
+        steps:
+          - script: echo "Deploying..."
 
   - stage: HotfixDeploy
     dependsOn: Build
@@ -282,7 +298,9 @@ stages:
   - stage: AlwaysNotify
     dependsOn:
       - Build
+      - ConditionalStage
       - Deploy
+      - HotfixDeploy
     # Run regardless of whether previous stages succeeded or failed
     condition: always()
     jobs:
@@ -299,16 +317,17 @@ Pipeline parameters let users choose which stages to run at queue time.
 ```yaml
 # Allow users to select which environments to deploy to
 parameters:
-  - name: deployEnvironments
-    type: object
-    default:
-      - dev
-      - staging
-      - production
-    values:
-      - dev
-      - staging
-      - production
+  - name: deployDev
+    type: boolean
+    default: true
+
+  - name: deployStaging
+    type: boolean
+    default: true
+
+  - name: deployProduction
+    type: boolean
+    default: true
 
   - name: skipTests
     type: boolean
@@ -323,31 +342,40 @@ stages:
 
   - stage: Test
     dependsOn: Build
-    condition: and(succeeded(), eq('${{ parameters.skipTests }}', 'false'))
+    condition: and(succeeded(), ${{ eq(parameters.skipTests, false) }})
     jobs:
       - job: RunTests
         steps:
           - script: echo "Running tests..."
 
   - stage: DeployDev
-    dependsOn: Test
-    condition: and(succeeded(), containsValue('${{ parameters.deployEnvironments }}', 'dev'))
+    dependsOn:
+      - Build
+      - Test
+    condition: and(in(dependencies.Build.result, 'Succeeded', 'SucceededWithIssues'), in(dependencies.Test.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), ${{ eq(parameters.deployDev, true) }})
     jobs:
       - job: Deploy
         steps:
           - script: echo "Deploying to dev..."
 
   - stage: DeployStaging
-    dependsOn: DeployDev
-    condition: and(succeeded(), containsValue('${{ parameters.deployEnvironments }}', 'staging'))
+    dependsOn:
+      - Build
+      - Test
+      - DeployDev
+    condition: and(in(dependencies.Build.result, 'Succeeded', 'SucceededWithIssues'), in(dependencies.Test.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), in(dependencies.DeployDev.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), ${{ eq(parameters.deployStaging, true) }})
     jobs:
       - job: Deploy
         steps:
           - script: echo "Deploying to staging..."
 
   - stage: DeployProduction
-    dependsOn: DeployStaging
-    condition: and(succeeded(), containsValue('${{ parameters.deployEnvironments }}', 'production'))
+    dependsOn:
+      - Build
+      - Test
+      - DeployDev
+      - DeployStaging
+    condition: and(in(dependencies.Build.result, 'Succeeded', 'SucceededWithIssues'), in(dependencies.Test.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), in(dependencies.DeployDev.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), in(dependencies.DeployStaging.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), ${{ eq(parameters.deployProduction, true) }})
     jobs:
       - job: Deploy
         steps:
