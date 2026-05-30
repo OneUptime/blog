@@ -111,7 +111,7 @@ az postgres flexible-server parameter set \
 
 **Limitations in transaction mode:**
 
-- Session-level features do not work across transactions: `SET` commands, `LISTEN/NOTIFY`, prepared statements (unless using protocol-level ones), advisory locks, temporary tables.
+- Session-level features do not work across transactions: `SET` commands, `LISTEN`, SQL-level prepared statements, session-level advisory locks, and temporary tables that need to persist beyond the transaction. Protocol-level named prepared statements require `pgbouncer.max_prepared_statements` to be set to a non-zero value.
 - Each transaction may run on a different backend connection.
 
 ### Session Mode
@@ -186,18 +186,6 @@ az postgres flexible-server parameter set \
   --value 600
 ```
 
-### Connection Lifetime
-
-```bash
-# Maximum age of a server connection before it gets recycled (seconds)
-# This helps with graceful handling of DNS changes during failover
-az postgres flexible-server parameter set \
-  --resource-group myResourceGroup \
-  --server-name my-pg-server \
-  --name pgbouncer.server_lifetime \
-  --value 3600
-```
-
 ### Ignore Startup Parameters
 
 Some applications send startup parameters that PgBouncer does not recognize. You can tell PgBouncer to ignore them:
@@ -214,6 +202,15 @@ az postgres flexible-server parameter set \
 ## Monitoring PgBouncer
 
 You can query PgBouncer's internal statistics database to monitor its health:
+
+```bash
+# Allow pgadmin to connect to the PgBouncer statistics console
+az postgres flexible-server parameter set \
+  --resource-group myResourceGroup \
+  --server-name my-pg-server \
+  --name pgbouncer.stats_users \
+  --value pgadmin
+```
 
 ```bash
 # Connect to the pgbouncer virtual database
@@ -277,13 +274,13 @@ engine = create_engine(
 
 **"FATAL: no pg_hba.conf entry for host"**: Make sure you are connecting to port 6432 with the correct username format. PgBouncer uses the same authentication as PostgreSQL.
 
-**Prepared statements not working**: In transaction mode, named prepared statements do not persist across transactions. Use protocol-level prepared statements or switch to session mode.
+**Prepared statements not working**: In transaction mode, SQL-level prepared statements do not persist across transactions. Use protocol-level prepared statements with `pgbouncer.max_prepared_statements` set to a non-zero value, or switch to session mode.
 
-**SET commands lost between transactions**: In transaction mode, SET commands are reset when the connection is returned to the pool. Move session-level settings to the connection string or use `SET LOCAL` within transactions.
+**SET commands lost between transactions**: In transaction mode, do not rely on `SET` commands persisting between transactions. Move session-level settings to the connection string or use `SET LOCAL` within transactions.
 
 **High cl_waiting count**: Your pool is too small for the workload. Increase default_pool_size, but make sure the total does not exceed max_connections on PostgreSQL.
 
-**Connections timing out**: Increase query_wait_timeout if legitimate long-running queries are being killed, or investigate why clients are waiting too long.
+**Connections timing out**: Increase query_wait_timeout if clients legitimately need to wait longer for a server connection, or investigate why clients are waiting too long.
 
 ## Summary
 
