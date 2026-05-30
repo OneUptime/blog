@@ -8,7 +8,7 @@ Description: Configure Power BI DirectQuery mode with Azure Cosmos DB to build i
 
 ---
 
-Azure Cosmos DB is a globally distributed NoSQL database that handles massive volumes of transactional data. Power BI can connect to it in two modes: Import (loads data into Power BI memory) and DirectQuery (queries Cosmos DB on every interaction). DirectQuery is the better choice when your Cosmos DB dataset is too large to import, changes frequently, or when you need reports that always show the latest data.
+Azure Cosmos DB is a globally distributed NoSQL database that handles massive volumes of transactional data. Power BI can connect to Azure Cosmos DB data by importing data with the native connector, by using DirectQuery through Azure Synapse Link and serverless SQL views for existing Synapse Link projects, or by using Microsoft Fabric mirroring with Direct Lake for new projects. DirectQuery is the better choice when your Cosmos DB dataset is too large to import, changes frequently, or when you need reports that query the analytical copy instead of loading the data into Power BI.
 
 This guide covers connecting Power BI to Cosmos DB in DirectQuery mode, handling the NoSQL-to-tabular translation, optimizing performance, and working around common limitations.
 
@@ -17,14 +17,14 @@ This guide covers connecting Power BI to Cosmos DB in DirectQuery mode, handling
 DirectQuery is the right choice when:
 
 - Your Cosmos DB collection has millions of documents and importing them all would exceed Power BI memory limits.
-- The data changes frequently and you need reports to reflect the latest state.
+- The data changes frequently and you need reports to reflect near-real-time data after analytical replication and report refresh.
 - You want to avoid scheduling refreshes and managing dataset sizes.
 - Your Cosmos DB container is the authoritative source and you want to report on it directly.
 
 Import mode is better when:
 
 - The dataset is small enough to fit in memory (under a few million rows).
-- You need complex DAX calculations that DirectQuery does not support.
+- You need complex DAX calculations or transformations that do not fold well in DirectQuery.
 - Dashboard performance is the top priority and data freshness can lag.
 
 ## Step 1: Prepare Your Cosmos DB Container
@@ -33,9 +33,9 @@ Before connecting Power BI, make sure your Cosmos DB container is set up for ana
 
 ### Enable Analytical Store (Recommended)
 
-Azure Cosmos DB analytical store is a column-oriented store that runs alongside the transactional row store. It is optimized for analytical queries and is the best option for Power BI DirectQuery.
+Azure Cosmos DB analytical store is a column-oriented store that runs alongside the transactional row store. It is optimized for analytical queries and is the store used by Azure Synapse Link and Synapse serverless SQL for Power BI DirectQuery.
 
-To enable it on an existing container, you need to create a new container with analytical store enabled and migrate data. For new containers:
+For new containers:
 
 1. Go to your Cosmos DB account in the Azure portal.
 2. Click Data Explorer > New Container.
@@ -44,11 +44,13 @@ To enable it on an existing container, you need to create a new container with a
 
 The analytical store syncs automatically from the transactional store with no performance impact on your production workloads.
 
+You can also enable analytical store on existing API for NoSQL containers from the Azure portal, Azure CLI, PowerShell, or Azure Cosmos DB SDKs. For new analytics projects, Microsoft recommends Azure Cosmos DB mirroring in Microsoft Fabric instead of starting a new Synapse Link project.
+
 ### Index Design
 
 Cosmos DB indexes all properties by default, which is good for transactional queries but can be expensive. For analytical queries through Power BI, the analytical store handles indexing separately.
 
-If you are not using analytical store and are querying the transactional store directly, make sure your indexing policy includes the properties used in Power BI filters:
+If you are not using analytical store and are importing from the transactional store with the native connector, make sure your indexing policy includes the properties used in Power BI filters:
 
 ```json
 {
@@ -107,38 +109,40 @@ For this guide, we will use an orders collection:
 
 ## Step 2: Connect Power BI Desktop
 
-### Using the Native Cosmos DB Connector
+### Using the Native Cosmos DB Connector for Import Mode
 
 1. Open Power BI Desktop.
 2. Click Get Data > Azure > Azure Cosmos DB.
 3. Enter the connection details:
-   - URL: Your Cosmos DB account endpoint (e.g., `https://youracccount.documents.azure.com:443/`)
-   - Or use the account key authentication
+   - URL: Your Cosmos DB account endpoint (e.g., `https://your-account.documents.azure.com:443/`)
 4. Click OK.
-5. Authenticate with your account key or Azure AD credentials.
+5. Authenticate with your account key or Microsoft Entra ID credentials.
 6. Select the database and container.
 
-### Choose DirectQuery Mode
+The native Azure Cosmos DB connector is only available in import mode and consumes request units (RUs) from your transactional workload when it reads data.
 
-When the Navigator shows your container:
+### Choose DirectQuery Mode Through an Analytical Layer
 
-1. Select the container.
-2. Before clicking Load, click "Transform Data" to open Power Query Editor.
-3. In the connection dialog, you will see the option to choose Import or DirectQuery.
-4. Select DirectQuery.
+To use DirectQuery, connect Power BI to a relational analytical layer over Cosmos DB data, such as Synapse serverless SQL views for existing Synapse Link projects:
 
-If you do not see a DirectQuery option with the native connector, use the Azure Synapse Link alternative described below.
+1. Create Synapse serverless SQL views over the Cosmos DB analytical store.
+2. In Power BI Desktop, choose Get Data > Azure > Azure Synapse Analytics (SQL DW) or Azure SQL Database.
+3. Enter the serverless SQL endpoint.
+4. Select DirectQuery as the data connectivity mode.
+5. Select the database and views.
 
-### Alternative: Use Synapse Link for Cosmos DB
+If you are starting a new project, use the Microsoft Fabric mirroring alternative described below.
 
-Azure Synapse Link for Cosmos DB provides a better DirectQuery experience:
+### Existing Projects: Use Synapse Link for Cosmos DB
+
+Azure Synapse Link for Cosmos DB provides a DirectQuery experience for existing Synapse Link projects. Microsoft no longer supports Synapse Link for new Cosmos DB projects, so use Fabric mirroring for new work:
 
 1. Enable Synapse Link on your Cosmos DB account.
-2. In Power BI, connect to the Synapse Analytics serverless SQL pool instead.
+2. In Power BI, connect to the Synapse Analytics serverless SQL pool.
 3. Query the Cosmos DB analytical store through Synapse views.
 
 This approach gives you:
-- Better DirectQuery performance (Synapse optimizes analytical queries).
+- Better DirectQuery performance than querying the transactional store for analytics.
 - T-SQL interface that Power BI handles natively.
 - Ability to join Cosmos DB data with other data lake sources.
 
@@ -152,13 +156,13 @@ SELECT
     doc.orderDate AS OrderDate,
     doc.status AS Status,
     doc.totalAmount AS TotalAmount,
-    doc.shippingAddress.city AS City,
-    doc.shippingAddress.state AS State,
+    doc.city AS City,
+    doc.state AS State,
     doc.region AS Region
 FROM OPENROWSET(
     'CosmosDB',
-    'Account=youracccount;Database=sales;Key=YOUR_KEY',
-    [orders]
+    'Account=your-account;Database=sales;Region=westus2;Key=YOUR_KEY',
+    orders
 ) WITH (
     id VARCHAR(100),
     customerId VARCHAR(100),
@@ -166,10 +170,15 @@ FROM OPENROWSET(
     orderDate VARCHAR(30),
     status VARCHAR(50),
     totalAmount FLOAT,
-    shippingAddress VARCHAR(MAX) AS JSON,
+    city VARCHAR(100) '$.shippingAddress.city',
+    state VARCHAR(100) '$.shippingAddress.state',
     region VARCHAR(50)
 ) AS doc;
 ```
+
+### New Projects: Use Microsoft Fabric Mirroring
+
+Microsoft Fabric mirroring continuously replicates Azure Cosmos DB for NoSQL data into OneLake without consuming transactional RUs for replication. Power BI can then use Direct Lake mode over the mirrored data, and the generated SQL analytics endpoint can be used for T-SQL views when you need to flatten JSON.
 
 ## Step 3: Handle Nested Documents
 
@@ -190,7 +199,7 @@ For arrays like `items`, expand them to create one row per item:
 2. Click "Expand to New Rows" to create separate rows for each item.
 3. Then expand the item object to get productName, quantity, etc.
 
-Be careful with array expansion in DirectQuery mode - it can generate expensive queries against Cosmos DB.
+Be careful with array expansion in DirectQuery mode - it can generate expensive queries against the analytical source.
 
 ### Flatten in Synapse Views
 
@@ -210,13 +219,13 @@ SELECT
     item.quantity * item.unitPrice AS lineTotal
 FROM OPENROWSET(
     'CosmosDB',
-    'Account=youracccount;Database=sales;Key=YOUR_KEY',
-    [orders]
+    'Account=your-account;Database=sales;Region=westus2;Key=YOUR_KEY',
+    orders
 ) WITH (
     id VARCHAR(100),
     customerName VARCHAR(200),
     orderDate VARCHAR(30),
-    items VARCHAR(MAX) AS JSON
+    items VARCHAR(MAX) '$.items'
 ) AS doc
 CROSS APPLY OPENJSON(doc.items) WITH (
     productName VARCHAR(200),
@@ -262,15 +271,15 @@ Avg Order Value = AVERAGE(Orders[TotalAmount])
 Order Count = COUNTROWS(Orders)
 ```
 
-Complex DAX functions like CALCULATE with multiple filters, iterators like SUMX, and time intelligence functions may not translate well to Cosmos DB queries. Test each measure and check if it generates reasonable query plans.
+Complex DAX functions, iterators like SUMX, and time intelligence calculations can generate expensive source queries in DirectQuery models. Calculated columns and row-level security rules also have more restrictions in DirectQuery than in import models. Test each measure and check whether it generates reasonable query plans.
 
 ## Step 5: Optimize Performance
 
-DirectQuery performance depends on how efficiently Power BI queries translate to Cosmos DB operations.
+DirectQuery performance depends on how efficiently Power BI queries translate to the analytical source.
 
 ### Reduce Visual Count
 
-Each visual on a report page generates one or more queries. More visuals means more concurrent queries against Cosmos DB. Keep pages focused with 6-8 visuals maximum.
+Each visual on a report page generates one or more queries. More visuals means more concurrent queries against the analytical source. Keep pages focused with 6-8 visuals maximum.
 
 ### Use Aggregation Tables
 
@@ -287,8 +296,8 @@ SELECT
     SUM(doc.totalAmount) AS TotalRevenue
 FROM OPENROWSET(
     'CosmosDB',
-    'Account=youracccount;Database=sales;Key=YOUR_KEY',
-    [orders]
+    'Account=your-account;Database=sales;Region=westus2;Key=YOUR_KEY',
+    orders
 ) WITH (
     orderDate VARCHAR(30),
     region VARCHAR(50),
@@ -297,13 +306,13 @@ FROM OPENROWSET(
 GROUP BY LEFT(doc.orderDate, 7), doc.region;
 ```
 
-### Monitor Request Units
+### Monitor Analytical Query Cost
 
-Every Cosmos DB query consumes Request Units (RU). Monitor the RU consumption of queries generated by Power BI:
+Queries against the transactional store consume Request Units (RUs). Synapse serverless SQL queries against the analytical store do not consume transactional RUs, but they are billed as analytical reads and Synapse serverless SQL data processing. Monitor the cost and latency of queries generated by Power BI:
 
-1. Enable diagnostics logging on your Cosmos DB account.
-2. Send logs to Log Analytics.
-3. Query for high-RU operations and correlate them with Power BI refresh times.
+1. Enable diagnostics logging for Cosmos DB if you also use the native connector or transactional queries.
+2. Monitor Synapse serverless SQL query history and data processed for analytical queries.
+3. Correlate expensive operations with Power BI report interactions and refresh times.
 
 ### Limit the Data Scope
 
@@ -318,12 +327,12 @@ These options prevent every slicer change from triggering immediate queries.
 
 ## Common Issues
 
-**Timeout errors**: DirectQuery has a timeout (typically 4 minutes). If Cosmos DB queries take longer, you get errors. Fix by reducing the data scope, adding filters, or using aggregated views.
+**Timeout errors**: DirectQuery has a timeout (typically 4 minutes in the Power BI service). If source queries take longer, you get errors. Fix by reducing the data scope, adding filters, or using aggregated views.
 
 **Missing data types**: Cosmos DB is schema-less, so data types can be inconsistent. A field might be a number in one document and a string in another. This causes errors in Power BI. Standardize your data or cast types in the query.
 
-**Cross-partition queries**: Queries that span multiple partitions are more expensive. Design your partition key and filters so Power BI queries target specific partitions when possible.
+**Cross-partition transactional queries**: Queries against the transactional store that span multiple partitions are more expensive. If you use the native connector or transactional queries, design your partition key and filters so Power BI reads target specific partitions when possible.
 
 ## Wrapping Up
 
-Using Power BI DirectQuery with Azure Cosmos DB lets you build interactive reports over large NoSQL datasets without moving data. The direct connector works for simple scenarios, while the Synapse Link approach gives you better performance and more control through SQL views. The main challenges are handling nested documents, managing query performance, and working within DirectQuery's DAX limitations. Flatten your data at the view layer, limit the number of visuals per page, use pre-aggregated views for dashboards, and monitor RU consumption to keep costs under control.
+Using Power BI DirectQuery with Azure Cosmos DB data lets you build interactive reports over large NoSQL datasets without importing the data into Power BI. The native connector works for simple import scenarios, Synapse Link can support existing DirectQuery implementations through SQL views, and Fabric mirroring is the recommended path for new projects. The main challenges are handling nested documents, managing query performance, and working within DirectQuery's DAX limitations. Flatten your data at the view layer, limit the number of visuals per page, use pre-aggregated views for dashboards, and monitor analytical query costs to keep spending under control.
