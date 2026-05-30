@@ -30,10 +30,10 @@ graph LR
 
 ## Prerequisites
 
-- An AKS cluster running Kubernetes 1.24+
+- An AKS cluster running a currently supported Kubernetes version
 - A GitHub or Azure DevOps repository for your Kubernetes manifests
 - Azure CLI installed
-- Flux CLI installed (https://fluxcd.io/docs/installation/)
+- Flux CLI installed (https://fluxcd.io/flux/installation/)
 - GitHub personal access token with repo permissions (if using GitHub)
 
 ## Step 1: Install the Flux CLI
@@ -75,8 +75,7 @@ flux bootstrap github \
   --owner=my-org \
   --repository=fleet-config \
   --branch=main \
-  --path=clusters/production \
-  --personal
+  --path=clusters/production
 ```
 
 This command does several things:
@@ -184,9 +183,12 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
-  namespace: ingress-nginx
+  namespace: flux-system
 spec:
   interval: 10m
+  targetNamespace: ingress-nginx
+  install:
+    createNamespace: true
   chart:
     spec:
       chart: ingress-nginx
@@ -225,6 +227,7 @@ flux bootstrap github \
   --repository=fleet-config \
   --branch=main \
   --path=clusters/production \
+  --read-write-key \
   --components-extra=image-reflector-controller,image-automation-controller
 ```
 
@@ -255,6 +258,31 @@ spec:
   policy:
     semver:
       range: ">=1.0.0"
+```
+
+Create an ImageUpdateAutomation so Flux knows which Git repository to write image updates to.
+
+```yaml
+# apps/production/my-app/image-update.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  interval: 30m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+    push:
+      branch: main
+  update:
+    path: ./
 ```
 
 Add a marker comment in your deployment manifest so Flux knows where to update the tag.
@@ -302,10 +330,11 @@ kubectl create secret generic db-credentials \
 
 # Encrypt with SOPS using an Azure Key Vault key
 sops --encrypt --azure-kv https://myvault.vault.azure.net/keys/sops-key/abc123 \
+  --encrypted-regex '^(data|stringData)$' \
   secret.yaml > secret.enc.yaml
 ```
 
-Configure Flux to decrypt SOPS secrets.
+Configure Flux to decrypt SOPS secrets. The referenced `sops-azure` secret must exist in the same namespace as the Kustomization and contain Azure Key Vault credentials, or you can use `serviceAccountName` for Workload Identity instead of `secretRef`.
 
 ```yaml
 # clusters/production/apps.yaml
