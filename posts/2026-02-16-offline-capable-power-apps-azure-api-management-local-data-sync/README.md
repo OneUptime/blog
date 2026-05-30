@@ -68,14 +68,22 @@ The backend API needs to support delta sync - returning only records that change
 const { app } = require('@azure/functions');
 const sql = require('mssql');
 
+const syncTables = {
+  inspections: 'inspections'
+};
+
 // Delta sync endpoint - returns changes since last sync timestamp
 app.http('sync-pull', {
   methods: ['GET'],
   route: 'sync/pull',
   handler: async (request, context) => {
     const lastSyncTimestamp = request.query.get('since') || '1970-01-01T00:00:00Z';
-    const tableName = request.query.get('table');
+    const tableName = syncTables[request.query.get('table')];
     const userId = request.headers.get('x-user-id');
+
+    if (!tableName || !userId) {
+      return { status: 400, jsonBody: { error: 'Invalid sync request' } };
+    }
 
     const pool = await sql.connect(process.env.SQL_CONNECTION);
 
@@ -218,6 +226,12 @@ Here is the core pattern for building offline-capable screens in Power Apps.
 // Load cached data from local storage
 LoadData(colInspections, "inspections_cache", true);
 LoadData(colPendingChanges, "pending_changes", true);
+LoadData(colSyncState, "sync_state", true);
+
+// Initialize sync state on first run
+If(IsEmpty(colSyncState),
+    Collect(colSyncState, {Table: "inspections", LastSync: "1970-01-01T00:00:00Z"})
+);
 
 // Check connectivity
 Set(varIsOnline, Connection.Connected);
@@ -269,6 +283,7 @@ If(varIsOnline,
         LookUp(colSyncState, Table = "inspections"),
         {LastSync: varSyncResult.syncTimestamp}
     );
+    SaveData(colSyncState, "sync_state");
 );
 ```
 
@@ -375,19 +390,26 @@ Add API Management policies to handle retry logic and rate limiting for sync ope
 
     <!-- Validate the request -->
     <validate-jwt header-name="Authorization"
+                  require-scheme="Bearer"
+                  output-token-variable-name="jwt"
                   failed-validation-error-message="Unauthorized">
-      <openid-config url="https://login.microsoftonline.com/{tenant}/.well-known/openid-configuration" />
+      <openid-config url="https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration" />
       <required-claims>
         <claim name="aud" match="all">
           <value>{your-app-id}</value>
         </claim>
       </required-claims>
     </validate-jwt>
+
+    <!-- Set this from the validated token instead of trusting a client-supplied header -->
+    <set-header name="x-user-id" exists-action="override">
+      <value>@(((Jwt)context.Variables["jwt"]).Claims.GetValueOrDefault("oid", ""))</value>
+    </set-header>
   </inbound>
 
   <backend>
     <!-- Retry on transient failures -->
-    <retry condition="@(context.Response.StatusCode == 503 || context.Response.StatusCode == 429)"
+    <retry condition="@(context.Response != null && (context.Response.StatusCode == 503 || context.Response.StatusCode == 429))"
            count="3" interval="2" first-fast-retry="true">
       <forward-request />
     </retry>
