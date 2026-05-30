@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, GraphQL, Apollo Server, Firestore, Cloud Run, Node.js, Google Cloud
 
-Description: Build a production-ready GraphQL API using Apollo Server 4 with Firestore as the database, deployed to Cloud Run with proper error handling and pagination.
+Description: Build a production-ready GraphQL API using Apollo Server 5 with Firestore as the database, deployed to Cloud Run with proper error handling and pagination.
 
 ---
 
 GraphQL and Firestore make a natural pair. GraphQL lets clients request exactly the data they need, and Firestore's document model maps cleanly to GraphQL types. Add Cloud Run to the mix and you get a serverless GraphQL API that scales automatically and costs nothing when idle.
 
-In this post, I will build a complete GraphQL API using Apollo Server 4 with Firestore as the backing database, and deploy it to Cloud Run. We will cover schema design, resolvers, data loaders for efficient queries, error handling, and pagination.
+In this post, I will build a complete GraphQL API using Apollo Server 5 with Firestore as the backing database, and deploy it to Cloud Run. We will cover schema design, resolvers, data loaders for efficient queries, error handling, and pagination.
 
 ## Project Setup
 
@@ -19,7 +19,10 @@ In this post, I will build a complete GraphQL API using Apollo Server 4 with Fir
 
 mkdir graphql-firestore && cd graphql-firestore
 npm init -y
-npm install @apollo/server graphql @google-cloud/firestore express cors
+npm pkg set type="module"
+npm pkg set scripts.start="node server.js"
+npm pkg set engines.node=">=20"
+npm install @apollo/server @as-integrations/express5 graphql @google-cloud/firestore express cors
 ```
 
 ## Defining the GraphQL Schema
@@ -58,7 +61,7 @@ const typeDefs = `#graphql
   type TaskConnection {
     tasks: [Task!]!
     nextPageToken: String
-    totalCount: Int
+    count: Int!
   }
 
   input CreateTaskInput {
@@ -96,32 +99,30 @@ const typeDefs = `#graphql
   }
 `;
 
-module.exports = typeDefs;
+export default typeDefs;
 ```
 
 ## Setting Up Firestore
 
 ```javascript
 // firestore.js - Initialize Firestore client
-const { Firestore } = require('@google-cloud/firestore');
+import { Firestore } from '@google-cloud/firestore';
 
-const db = new Firestore({
-  projectId: process.env.PROJECT_ID || 'your-project-id',
-});
+const db = new Firestore();
 
 // Collection references
 const tasksCollection = db.collection('tasks');
 const usersCollection = db.collection('users');
 
-module.exports = { db, tasksCollection, usersCollection };
+export { db, tasksCollection, usersCollection };
 ```
 
 ## Building the Resolvers
 
 ```javascript
 // resolvers.js - GraphQL resolvers backed by Firestore
-const { tasksCollection, usersCollection } = require('./firestore');
-const { GraphQLError } = require('graphql');
+import { GraphQLError } from 'graphql';
+import { tasksCollection, usersCollection } from './firestore.js';
 
 const resolvers = {
   Query: {
@@ -173,7 +174,7 @@ const resolvers = {
       return {
         tasks,
         nextPageToken,
-        totalCount: tasks.length,
+        count: tasks.length,
       };
     },
 
@@ -303,8 +304,10 @@ const resolvers = {
   },
 };
 
-module.exports = resolvers;
+export default resolvers;
 ```
+
+If you use the `status` or `assigneeId` filters with `orderBy('createdAt', 'desc')`, create the composite indexes Firestore suggests in the error message the first time you run those filtered queries.
 
 ## Solving the N+1 Problem with DataLoader
 
@@ -312,14 +315,13 @@ The naive Task.assignee resolver above will make one Firestore query per task. I
 
 ```javascript
 // dataloader.js - Batch Firestore reads with DataLoader
-const DataLoader = require('dataloader');
-const { usersCollection } = require('./firestore');
+import DataLoader from 'dataloader';
+import { usersCollection } from './firestore.js';
 
 function createLoaders() {
   return {
     // Batch load users by their IDs
     userLoader: new DataLoader(async (userIds) => {
-      // Firestore getAll supports up to 500 documents at once
       const refs = userIds.map((id) => usersCollection.doc(id));
       const docs = await usersCollection.firestore.getAll(...refs);
 
@@ -337,7 +339,7 @@ function createLoaders() {
   };
 }
 
-module.exports = { createLoaders };
+export { createLoaders };
 ```
 
 Install DataLoader and update the resolvers.
@@ -346,17 +348,27 @@ Install DataLoader and update the resolvers.
 npm install dataloader
 ```
 
+```javascript
+Task: {
+  // Resolve the assignee field by loading the user document
+  assignee: async (task, _, { loaders }) => {
+    if (!task.assigneeId) return null;
+    return loaders.userLoader.load(task.assigneeId);
+  },
+},
+```
+
 ## Putting It All Together
 
 ```javascript
 // server.js - Apollo Server with Express on Cloud Run
-const { ApolloServer } = require('@apollo/server');
-const { expressMiddleware } = require('@apollo/server/express4');
-const express = require('express');
-const cors = require('cors');
-const typeDefs = require('./schema');
-const resolvers = require('./resolvers');
-const { createLoaders } = require('./dataloader');
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@as-integrations/express5';
+import cors from 'cors';
+import express from 'express';
+import { createLoaders } from './dataloader.js';
+import resolvers from './resolvers.js';
+import typeDefs from './schema.js';
 
 async function startServer() {
   const app = express();
