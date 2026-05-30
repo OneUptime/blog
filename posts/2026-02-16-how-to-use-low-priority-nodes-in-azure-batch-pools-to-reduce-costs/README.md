@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Batch, Low-Priority, Spot VMs, Cost Optimization, HPC, Cloud Computing
 
-Description: Learn how to use low-priority and spot nodes in Azure Batch pools to reduce compute costs by up to 80% while managing preemption gracefully.
+Description: Learn how to use Spot nodes in Azure Batch pools to reduce compute costs while managing preemption gracefully.
 
 ---
 
-Azure Batch compute costs can add up fast, especially for large-scale workloads that need dozens or hundreds of VMs. Low-priority nodes (also called spot VMs) let you tap into Azure's excess capacity at a steep discount - up to 80% less than regular pricing. The catch is that Azure can reclaim these nodes at any time when it needs the capacity back. This post shows you how to use low-priority nodes effectively, handle preemptions, and design your workloads to tolerate interruptions.
+Azure Batch compute costs can add up fast, especially for large-scale workloads that need dozens or hundreds of VMs. Spot nodes let you tap into Azure's excess capacity at a steep discount compared with regular pricing. The catch is that Azure can reclaim these nodes at any time when it needs the capacity back. This post shows you how to use Spot nodes effectively, handle preemptions, and design your workloads to tolerate interruptions.
 
-## What Are Low-Priority Nodes?
+## What Are Spot Nodes?
 
-Low-priority nodes in Azure Batch use surplus VM capacity in Azure datacenters. Because this capacity is not guaranteed, it is offered at a significant discount. When Azure needs the capacity back for pay-as-you-go customers, low-priority nodes are preempted (stopped and deallocated).
+Spot nodes in Azure Batch use surplus VM capacity in Azure datacenters. Because this capacity is not guaranteed, it is offered at a significant discount. When Azure needs the capacity back, Spot nodes are preempted. Azure Batch low-priority compute nodes were retired on September 30, 2025, but some Azure Batch APIs and CLI options still use "low-priority" in property and flag names for the Spot node target count.
 
-The pricing difference is substantial. For example, a Standard_D4s_v3 VM might cost around $0.192/hour as a dedicated node, but only about $0.038/hour as a low-priority node. That is an 80% savings.
+The pricing difference can be substantial. Exact Spot prices vary by region, VM size, and available Azure capacity, so check Azure pricing for current rates before estimating savings.
 
-## When to Use Low-Priority Nodes
+## When to Use Spot Nodes
 
-Low-priority nodes are a good fit for:
+Spot nodes are a good fit for:
 
 - **Batch processing** that can tolerate interruptions and resume from checkpoints
 - **Rendering** workloads where individual frames can be re-rendered
@@ -32,12 +32,12 @@ They are not suitable for:
 - Time-sensitive workloads with strict deadlines
 - Stateful workloads that lose progress on preemption
 
-## Step 1: Create a Pool with Low-Priority Nodes
+## Step 1: Create a Pool with Spot Nodes
 
-You can create a pool that uses only low-priority nodes or a mix of dedicated and low-priority.
+You can create a pool that uses only Spot nodes or a mix of dedicated and Spot nodes. Spot nodes require a Batch account that uses user subscription pool allocation mode. In the Azure CLI, the target Spot node count is still set with `--target-low-priority-nodes`.
 
 ```bash
-# Create a pool with only low-priority nodes
+# Create a pool with only Spot nodes
 
 az batch pool create \
   --id low-pri-pool \
@@ -48,10 +48,10 @@ az batch pool create \
   --node-agent-sku-id "batch.node.ubuntu 22.04"
 ```
 
-For a mixed pool with both dedicated and low-priority nodes.
+For a mixed pool with both dedicated and Spot nodes.
 
 ```bash
-# Create a mixed pool - dedicated for reliability, low-priority for cost savings
+# Create a mixed pool - dedicated for reliability, Spot for cost savings
 az batch pool create \
   --id mixed-pool \
   --vm-size Standard_D4s_v3 \
@@ -61,18 +61,19 @@ az batch pool create \
   --node-agent-sku-id "batch.node.ubuntu 22.04"
 ```
 
-This gives you 5 dedicated nodes that will always be available, plus 15 low-priority nodes for extra capacity.
+This gives you 5 dedicated nodes that will remain available, plus 15 Spot nodes for extra capacity when surplus capacity is available.
 
 ## Step 2: Handle Preemption
 
-When a low-priority node is preempted, Azure Batch takes the following actions:
+When a Spot node is preempted, Azure Batch takes the following actions:
 
 1. The node's state changes to "preempted"
 2. Any running task on the node is interrupted
 3. The task is re-queued and rescheduled on another available node
-4. The node is removed from the pool
+4. Local data on the VM is lost
+5. The pool continues trying to reach the target number of Spot nodes; when replacement capacity is found, the node can be reinitialized
 
-Batch automatically retries preempted tasks, but you need to make sure your tasks are idempotent - running the same task twice should produce the same result.
+Batch automatically requeues preempted tasks, but you need to make sure your tasks are idempotent - running the same task twice should produce the same result.
 
 Check for preempted nodes.
 
@@ -92,7 +93,7 @@ az batch node show \
 
 ## Step 3: Design Tasks for Preemption Tolerance
 
-The key to using low-priority nodes successfully is making your tasks resilient to interruption.
+The key to using Spot nodes successfully is making your tasks resilient to interruption.
 
 **Short tasks:** Break large jobs into small tasks. If a task takes 5 minutes and gets preempted at minute 4, you lose 4 minutes of work. If the same work is split into 5 one-minute tasks, a preemption loses at most 1 minute.
 
@@ -145,7 +146,7 @@ def process_data(task_id, data_items):
 
 ## Step 4: Configure Retry Policies
 
-Set up retry policies so preempted tasks are automatically rescheduled.
+Preempted tasks are automatically requeued by Azure Batch. Retry policies are still useful for application failures, such as a nonzero process exit code.
 
 ```json
 {
@@ -164,30 +165,30 @@ Set up retry policies so preempted tasks are automatically rescheduled.
 }
 ```
 
-Set `maxTaskRetryCount` to a value that accounts for potential multiple preemptions. Five retries is usually enough.
+Set `maxTaskRetryCount` to a value that accounts for transient application failures. Batch recovery retries caused by node recovery or preemption are independent of this count.
 
 ## Step 5: Use Autoscale to Maintain Target Capacity
 
-When low-priority nodes are preempted, the pool shrinks. An autoscale formula can request replacement nodes.
+When Spot nodes are preempted, usable pool capacity drops. An autoscale formula can request replacement nodes.
 
 ```text
-// Maintain the desired capacity by requesting new low-priority nodes
+// Maintain the desired capacity by requesting new Spot nodes
 $taskSlotsPerNode = 4;
 $neededNodes = ceil($PendingTasks / $taskSlotsPerNode);
 
 // Always try to have at least 3 dedicated nodes for reliability
 $TargetDedicatedNodes = min(5, max(3, $neededNodes));
 
-// Use low-priority for the rest of the demand
+// Use Spot nodes for the rest of the demand
 $remainingNeed = max(0, $neededNodes - $TargetDedicatedNodes);
 $TargetLowPriorityNodes = min(50, $remainingNeed);
 ```
 
-This formula ensures that even if all low-priority nodes are preempted, the dedicated nodes keep processing tasks. When low-priority capacity becomes available again, the pool scales back up.
+This formula ensures that even if all Spot nodes are preempted, the dedicated nodes keep processing tasks. When Spot capacity becomes available again, the pool scales back up.
 
 ## Step 6: Monitor Cost Savings
 
-Track how much you are saving with low-priority nodes.
+Track how much you are saving with Spot nodes.
 
 ```bash
 # View pool usage statistics
@@ -197,14 +198,14 @@ az batch pool usage-metrics list \
   --output table
 ```
 
-You can also estimate savings by comparing the dedicated price against the low-priority price for your VM size.
+You can also estimate savings by comparing the dedicated price against the Spot price for your VM size.
 
-| VM Size | Dedicated Price/hr | Low-Priority Price/hr | Savings |
+| VM Size | Dedicated Price/hr | Spot Price/hr | Savings |
 |---------|-------------------|----------------------|---------|
-| Standard_D2s_v3 | $0.096 | $0.019 | 80% |
-| Standard_D4s_v3 | $0.192 | $0.038 | 80% |
-| Standard_D8s_v3 | $0.384 | $0.077 | 80% |
-| Standard_F16s_v2 | $0.680 | $0.136 | 80% |
+| Standard_D2s_v3 | Check current Azure pricing | Check current Azure pricing | Varies |
+| Standard_D4s_v3 | Check current Azure pricing | Check current Azure pricing | Varies |
+| Standard_D8s_v3 | Check current Azure pricing | Check current Azure pricing | Varies |
+| Standard_F16s_v2 | Check current Azure pricing | Check current Azure pricing | Varies |
 
 Note: Prices vary by region and change over time. Check Azure pricing for current rates.
 
@@ -216,19 +217,19 @@ The preemption rate varies by VM size, region, and time. Some strategies to redu
 
 **Spread across multiple pools:** Create pools in different regions to reduce the chance that all nodes are preempted simultaneously.
 
-**Set the right mix:** For critical workloads, use a higher ratio of dedicated to low-priority nodes. A common starting point is 20% dedicated and 80% low-priority.
+**Set the right mix:** For critical workloads, use a higher ratio of dedicated to Spot nodes. A common starting point is 20% dedicated and 80% Spot.
 
 ## Preemption Handling Flow
 
 ```mermaid
 graph TD
-    A[Task Running on Low-Priority Node] --> B{Node Preempted?}
+    A[Task Running on Spot Node] --> B{Node Preempted?}
     B -->|No| C[Task Completes Normally]
     B -->|Yes| D[Task Interrupted]
     D --> E[Task Re-queued]
     E --> F{Available Node?}
     F -->|Dedicated Node| G[Task Runs on Dedicated Node]
-    F -->|New Low-Priority Node| H[Task Runs on Low-Priority Node]
+    F -->|New Spot Node| H[Task Runs on Spot Node]
     F -->|No Nodes| I[Task Waits in Queue]
     G --> C
     H --> B
@@ -236,14 +237,14 @@ graph TD
 
 ## Common Pitfalls
 
-**Not setting maxTaskRetryCount:** Without retries, a preempted task is marked as failed. Set a reasonable retry count.
+**Confusing preemption with task failure retries:** Preempted tasks are automatically requeued by Batch. Set a reasonable `maxTaskRetryCount` for transient failures in your application code.
 
 **Large, monolithic tasks:** A task that runs for 8 hours and gets preempted at hour 7 loses all progress. Break it into smaller pieces or implement checkpointing.
 
 **Ignoring preemption in progress tracking:** If you track progress by completed tasks, preempted and retried tasks can cause confusing counts. Track unique task IDs and final states.
 
-**Overcommitting to low-priority:** If your workload has a hard deadline, do not rely solely on low-priority nodes. Preemption events can cascade and significantly delay completion.
+**Overcommitting to Spot:** If your workload has a hard deadline, do not rely solely on Spot nodes. Preemption events can cascade and significantly delay completion.
 
 ## Summary
 
-Low-priority nodes in Azure Batch can cut your compute costs by up to 80%, making large-scale batch processing much more affordable. The trade-off is the risk of preemption, but with proper task design - short tasks, checkpointing, retry policies, and a mix of dedicated and low-priority nodes - you can handle interruptions gracefully. Start with a mixed pool, monitor preemption rates for your chosen VM size and region, and adjust the ratio based on your experience.
+Spot nodes in Azure Batch can cut your compute costs significantly, making large-scale batch processing much more affordable. The trade-off is the risk of preemption, but with proper task design - short tasks, checkpointing, retry policies for application failures, and a mix of dedicated and Spot nodes - you can handle interruptions gracefully. Start with a mixed pool, monitor preemption rates for your chosen VM size and region, and adjust the ratio based on your experience.
