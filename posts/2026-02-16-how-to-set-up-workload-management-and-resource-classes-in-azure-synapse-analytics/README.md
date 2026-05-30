@@ -18,29 +18,29 @@ There are two types of resource classes:
 
 ### Static Resource Classes
 
-Static resource classes allocate a fixed amount of memory regardless of the DWU level.
+Static resource classes allocate a fixed amount of memory regardless of the DWU level. The exact concurrency impact depends on the service level because static resource classes consume a fixed number of concurrency slots.
 
-| Resource Class | Memory Allocation |
-|---------------|-------------------|
-| staticrc10 | 250 MB |
-| staticrc20 | 500 MB |
-| staticrc30 | 750 MB |
-| staticrc40 | 1 GB |
-| staticrc50 | 1.25 GB |
-| staticrc60 | 1.5 GB |
-| staticrc70 | 1.75 GB |
-| staticrc80 | 2 GB |
+| Resource Class | Slots Used at DW500c | Slots Used at DW1000c |
+|---------------|----------------------|------------------------|
+| staticrc10 | 1 | 1 |
+| staticrc20 | 2 | 2 |
+| staticrc30 | 4 | 4 |
+| staticrc40 | 8 | 8 |
+| staticrc50 | 16 | 16 |
+| staticrc60 | 16 | 32 |
+| staticrc70 | 16 | 32 |
+| staticrc80 | 16 | 32 |
 
 ### Dynamic Resource Classes
 
 Dynamic resource classes allocate memory as a percentage of total available memory. The actual allocation grows as you increase DWU.
 
-| Resource Class | % of Memory | Memory at DW500c | Memory at DW1000c |
-|---------------|-------------|-------------------|-------------------|
-| smallrc | ~3% | 250 MB | 250 MB |
-| mediumrc | ~10% | 800 MB | 800 MB |
-| largerc | ~22% | 1.6 GB | 3.2 GB |
-| xlargerc | ~70% | 5.2 GB | 10.4 GB |
+| Resource Class | Memory Percentage at DW500c | Memory Percentage at DW1000c and higher |
+|---------------|------------------|------------------------------|
+| smallrc | 5% | 3% |
+| mediumrc | 10% | 10% |
+| largerc | 22% | 22% |
+| xlargerc | 70% | 70% |
 
 The tradeoff between memory and concurrency is inverse. A query using xlargerc gets more memory but consumes more concurrency slots, meaning fewer other queries can run simultaneously.
 
@@ -94,7 +94,7 @@ CREATE WORKLOAD GROUP wg_Reporting
 WITH (
     MIN_PERCENTAGE_RESOURCE = 25,
     CAP_PERCENTAGE_RESOURCE = 75,
-    REQUEST_MIN_RESOURCE_GRANT_PERCENT = 3,
+    REQUEST_MIN_RESOURCE_GRANT_PERCENT = 5,
     REQUEST_MAX_RESOURCE_GRANT_PERCENT = 10
 );
 
@@ -118,7 +118,7 @@ Key parameters explained:
 
 ### Step 2: Create Workload Classifiers
 
-Classifiers route queries to workload groups based on criteria like username, role, or label.
+Classifiers route queries to workload groups based on a required member name, such as a user or role, and optional criteria like a query label, session context, or time window.
 
 ```sql
 -- Route ETL user queries to the ETL workload group
@@ -150,7 +150,8 @@ WITH (
 CREATE WORKLOAD CLASSIFIER cls_DashboardQueries
 WITH (
     WORKLOAD_GROUP = 'wg_Reporting',
-    LABEL = 'dashboard',
+    MEMBERNAME = 'reporting_service',
+    WLM_LABEL = 'dashboard',
     IMPORTANCE = ABOVE_NORMAL
 );
 ```
@@ -210,7 +211,16 @@ SELECT
     r.command
 FROM sys.dm_pdw_exec_requests r
 WHERE r.status IN ('Running', 'Suspended')
-ORDER BY r.importance DESC, r.submit_time ASC;
+ORDER BY
+    CASE r.importance
+        WHEN 'high' THEN 5
+        WHEN 'above_normal' THEN 4
+        WHEN 'normal' THEN 3
+        WHEN 'below_normal' THEN 2
+        WHEN 'low' THEN 1
+        ELSE 0
+    END DESC,
+    r.submit_time ASC;
 ```
 
 ### Check Resource Utilization by Workload Group
@@ -218,29 +228,45 @@ ORDER BY r.importance DESC, r.submit_time ASC;
 ```sql
 -- View resource utilization per workload group
 SELECT
-    group_name,
+    name AS workload_group,
     total_request_count,
-    active_request_count,
-    queued_request_count,
-    total_resource_consumption_percent,
+    total_shared_resource_requests,
+    total_queued_request_count,
+    total_request_execution_timeouts,
     effective_min_percentage_resource,
-    effective_cap_percentage_resource
+    effective_cap_percentage_resource,
+    effective_request_min_resource_grant_percent
 FROM sys.dm_workload_management_workload_groups_stats;
 ```
 
-### View Classifier Effectiveness
+### View Classifier Definitions and Recent Matches
 
 ```sql
--- Check which classifier is matching which queries
+-- Check classifier definitions
 SELECT
+    c.name AS classifier_name,
+    c.group_name,
+    c.importance,
+    c.is_enabled,
+    d.classifier_type,
+    d.classifier_value
+FROM sys.workload_management_workload_classifiers c
+JOIN sys.workload_management_workload_classifier_details d
+    ON c.classifier_id = d.classifier_id
+ORDER BY c.name, d.classifier_type;
+
+-- Check which classifiers have matched recent requests
+SELECT
+    request_id,
     classifier_name,
     group_name,
     importance,
-    total_classify_count,
-    start_time,
-    end_time
-FROM sys.dm_pdw_exec_classifier_info
-ORDER BY start_time DESC;
+    submit_time,
+    status,
+    command
+FROM sys.dm_pdw_exec_requests
+WHERE classifier_name IS NOT NULL
+ORDER BY submit_time DESC;
 ```
 
 ## Practical Example: Multi-Tenant Workload
@@ -265,7 +291,7 @@ CREATE WORKLOAD GROUP wg_Dashboard
 WITH (
     MIN_PERCENTAGE_RESOURCE = 40,
     CAP_PERCENTAGE_RESOURCE = 80,
-    REQUEST_MIN_RESOURCE_GRANT_PERCENT = 3,
+    REQUEST_MIN_RESOURCE_GRANT_PERCENT = 5,
     REQUEST_MAX_RESOURCE_GRANT_PERCENT = 10
 );
 
@@ -274,7 +300,7 @@ CREATE WORKLOAD GROUP wg_Exploration
 WITH (
     MIN_PERCENTAGE_RESOURCE = 20,
     CAP_PERCENTAGE_RESOURCE = 60,
-    REQUEST_MIN_RESOURCE_GRANT_PERCENT = 3,
+    REQUEST_MIN_RESOURCE_GRANT_PERCENT = 5,
     REQUEST_MAX_RESOURCE_GRANT_PERCENT = 10
 );
 
