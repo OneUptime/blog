@@ -57,15 +57,18 @@ Looking at this waterfall, the critical path is immediately visible: the payment
 To analyze waterfall diagrams, you first need to find the right traces. Cloud Trace provides several ways to search:
 
 ```bash
-# Use gcloud to list recent traces matching criteria
+# Use the Cloud Trace API to list recent traces matching criteria
 
-gcloud trace traces list \
-  --project=my-project \
-  --filter="rootSpan.name:checkout AND rootSpan.duration>3s" \
-  --limit=20
+curl --get \
+  --header "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-urlencode "view=ROOTSPAN" \
+  --data-urlencode "filter=+root:checkout latency:3s" \
+  --data-urlencode "orderBy=duration desc" \
+  --data-urlencode "pageSize=20" \
+  "https://cloudtrace.googleapis.com/v1/projects/my-project/traces"
 ```
 
-In the Cloud Console, navigate to Trace > Trace List and use filters:
+In the Cloud Console, navigate to Trace Explorer and use filters:
 
 - **Latency:** Filter for traces above a certain duration to find slow requests
 - **Service name:** Filter by specific service to narrow down
@@ -98,20 +101,17 @@ Here is how to find it:
 
 ```python
 # Python script to extract the critical path from Cloud Trace
-from google.cloud import trace_v2
+from google.cloud import trace_v1
 
 def get_critical_path(project_id, trace_id):
     """Extract the critical path from a Cloud Trace trace."""
-    client = trace_v2.TraceServiceClient()
+    client = trace_v1.TraceServiceClient()
 
-    # Get all spans for this trace
-    parent = f"projects/{project_id}"
-    spans = list(client.list_spans(
-        request={"parent": f"{parent}/traces/{trace_id}"}
-    ))
+    # Get all spans for this trace.
+    trace = client.get_trace(project_id=project_id, trace_id=trace_id)
+    spans = list(trace.spans)
 
     # Build a tree structure
-    span_map = {span.span_id: span for span in spans}
     children = {}
 
     for span in spans:
@@ -130,19 +130,17 @@ def get_critical_path(project_id, trace_id):
     if not root:
         return []
 
-    # Walk the tree, always following the longest child
+    # Walk the tree, always following the child that ends latest
     critical_path = []
     current = root
 
     while current:
         critical_path.append({
-            'name': current.display_name.value,
+            'name': current.name,
             'duration_ms': (
                 current.end_time.timestamp() - current.start_time.timestamp()
             ) * 1000,
-            'service': current.attributes.attribute_map.get(
-                'service.name', type('', (), {'string_value': type('', (), {'value': 'unknown'})})
-            ).string_value.value,
+            'component': current.labels.get('/component', 'unknown'),
         })
 
         # Find the child that ends latest (critical child)
@@ -157,7 +155,7 @@ def get_critical_path(project_id, trace_id):
 # Usage
 path = get_critical_path('my-project', 'abc123def456')
 for step in path:
-    print(f"  {step['service']:20s} | {step['name']:30s} | {step['duration_ms']:.0f}ms")
+    print(f"  {step['component']:20s} | {step['name']:30s} | {step['duration_ms']:.0f}ms")
 ```
 
 ## Common Latency Patterns in Waterfalls
@@ -296,25 +294,58 @@ Set up regular analysis of your slowest traces:
 
 ```python
 # Automated weekly analysis of slow traces
-from google.cloud import trace_v2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-def weekly_latency_report(project_id, service_name, threshold_ms=3000):
+from google.cloud import trace_v1
+from google.protobuf.timestamp_pb2 import Timestamp
+
+def weekly_latency_report(project_id, root_span_name, threshold_ms=3000):
     """Analyze the slowest traces from the past week."""
-    client = trace_v2.TraceServiceClient()
+    client = trace_v1.TraceServiceClient()
 
     # Find slow traces from the past week
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=7)
 
+    start_timestamp = Timestamp()
+    start_timestamp.FromDatetime(start_time)
+    end_timestamp = Timestamp()
+    end_timestamp.FromDatetime(end_time)
+
     # Get traces exceeding the threshold
-    # Note: actual implementation depends on Cloud Trace API version
-    print(f"Analyzing traces slower than {threshold_ms}ms for {service_name}")
+    traces = client.list_traces(
+        request=trace_v1.ListTracesRequest(
+            project_id=project_id,
+            view=trace_v1.ListTracesRequest.ViewType.COMPLETE,
+            start_time=start_timestamp,
+            end_time=end_timestamp,
+            filter=f"+root:{root_span_name} latency:{threshold_ms}ms",
+            order_by="duration desc",
+            page_size=100,
+        )
+    )
+
+    print(f"Analyzing traces slower than {threshold_ms}ms for {root_span_name}")
     print(f"Time range: {start_time} to {end_time}")
 
     # Group slow traces by their critical path pattern
     # This helps identify recurring bottlenecks
     patterns = {}
+    for trace in traces:
+        children = {}
+        for span in trace.spans:
+            children.setdefault(span.parent_span_id, []).append(span)
+
+        root = next((span for span in trace.spans if not span.parent_span_id), None)
+        path = []
+        current = root
+        while current:
+            path.append(current.name)
+            child_spans = children.get(current.span_id, [])
+            current = max(child_spans, key=lambda span: span.end_time.timestamp(), default=None)
+
+        pattern = " -> ".join(path)
+        patterns[pattern] = patterns.get(pattern, 0) + 1
 
     # Analyze and report
     for pattern, count in sorted(patterns.items(), key=lambda x: -x[1]):
