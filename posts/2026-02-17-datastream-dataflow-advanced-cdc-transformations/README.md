@@ -40,8 +40,8 @@ gsutil mb -l us-central1 gs://my-project-datastream-staging/
 gcloud datastream connection-profiles create gcs-staging-profile \
   --display-name="GCS Staging for CDC" \
   --type=google-cloud-storage \
-  --gcs-bucket=my-project-datastream-staging \
-  --gcs-root-path=/cdc-events/ \
+  --bucket=my-project-datastream-staging \
+  --root-path=/ \
   --location=us-central1 \
   --project=my-project
 ```
@@ -49,34 +49,42 @@ gcloud datastream connection-profiles create gcs-staging-profile \
 Now create the stream that writes to Cloud Storage:
 
 ```bash
+cat > mysql_source_config.json <<'EOF'
+{
+  "includeObjects": {
+    "mysqlDatabases": [{
+      "database": "production",
+      "mysqlTables": [
+        {"table": "orders"},
+        {"table": "customers"}
+      ]
+    }]
+  }
+}
+EOF
+
+cat > gcs_destination_config.json <<'EOF'
+{
+  "path": "/cdc-events/",
+  "avroFileFormat": {},
+  "fileRotationInterval": "60s",
+  "fileRotationMb": 50
+}
+EOF
+
 # Create the stream with GCS destination
 gcloud datastream streams create mysql-to-gcs-stream \
   --display-name="MySQL CDC to Cloud Storage" \
   --location=us-central1 \
   --source=mysql-source-profile \
-  --mysql-source-config='{
-    "includeObjects": {
-      "mysqlDatabases": [{
-        "database": "production",
-        "mysqlTables": [
-          {"table": "orders"},
-          {"table": "customers"}
-        ]
-      }]
-    }
-  }' \
+  --mysql-source-config=mysql_source_config.json \
   --destination=gcs-staging-profile \
-  --gcs-destination-config='{
-    "avroFileFormat": {},
-    "fileRotation": {
-      "intervalSeconds": "60",
-      "maxFileSizeBytes": "52428800"
-    }
-  }' \
+  --gcs-destination-config=gcs_destination_config.json \
+  --backfill-all \
   --project=my-project
 ```
 
-The `fileRotation` settings control how frequently Datastream creates new files. Shorter intervals mean lower latency but more files to process.
+The `fileRotationInterval` and `fileRotationMb` settings control how frequently Datastream creates new files. Shorter intervals mean lower latency but more files to process.
 
 ## Step 2: Use the Datastream to BigQuery Template
 
@@ -85,125 +93,86 @@ Google provides a Dataflow template specifically for processing Datastream CDC o
 ```bash
 # Launch the Datastream to BigQuery template
 gcloud dataflow flex-template run datastream-to-bq-job \
-  --template-file-gcs-location=gs://dataflow-templates/latest/flex/Cloud_Datastream_to_BigQuery \
+  --project=my-project \
   --region=us-central1 \
+  --enable-streaming-engine \
+  --template-file-gcs-location=gs://dataflow-templates-us-central1/latest/flex/Cloud_Datastream_to_BigQuery \
   --parameters \
+inputFileFormat=avro,\
 inputFilePattern=gs://my-project-datastream-staging/cdc-events/,\
-outputStagingDatasetTemplate=my_project:staging,\
-outputDatasetTemplate=my_project:analytics,\
+outputProjectId=my-project,\
+outputStagingDatasetTemplate=staging,\
+outputDatasetTemplate=analytics,\
 outputStagingTableNameTemplate={_metadata_schema}_{_metadata_table}_staging,\
 outputTableNameTemplate={_metadata_schema}_{_metadata_table},\
 deadLetterQueueDirectory=gs://my-project-datastream-staging/dead-letter/,\
-mergeFrequencyMinutes=5,\
-gcsPubSubSubscription=projects/my-project/subscriptions/datastream-notifications
+mergeFrequencyMinutes=5
 ```
 
 ## Step 3: Adding Custom Transformations
 
-The template handles basic CDC operations, but for custom transformations, you need to write your own Dataflow pipeline. Here is a Python pipeline using Apache Beam that reads Datastream Avro files and applies transformations.
+The template handles basic CDC operations, and it also supports user-defined functions for per-record transformations. Here is a Python UDF that masks and enriches Datastream records before the template writes them to BigQuery. If you add new fields such as `region`, make sure the destination table schema includes those fields because the UDF output must match the BigQuery destination schema.
 
 ```python
-import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions
-from apache_beam.io.gcp.bigquery import WriteToBigQuery
 import json
-
-class MaskPIIFields(beam.DoFn):
-    """Mask personally identifiable information before writing to BigQuery."""
-
-    def process(self, record):
-        # Mask email addresses - keep domain but hash the local part
-        if 'email' in record and record['email']:
-            parts = record['email'].split('@')
-            if len(parts) == 2:
-                record['email'] = f"***@{parts[1]}"
-
-        # Mask phone numbers - keep last 4 digits
-        if 'phone' in record and record['phone']:
-            record['phone'] = f"***-***-{record['phone'][-4:]}"
-
-        yield record
+import hashlib
 
 
-class EnrichWithRegion(beam.DoFn):
-    """Add region information based on country code."""
-
-    def setup(self):
-        # Load reference data once per worker
-        self.region_map = {
-            'US': 'North America',
-            'CA': 'North America',
-            'GB': 'Europe',
-            'DE': 'Europe',
-            'FR': 'Europe',
-            'JP': 'Asia Pacific',
-            'AU': 'Asia Pacific',
-        }
-
-    def process(self, record):
-        country = record.get('country_code', '')
-        record['region'] = self.region_map.get(country, 'Other')
-        yield record
+REGION_MAP = {
+    'US': 'North America',
+    'CA': 'North America',
+    'GB': 'Europe',
+    'DE': 'Europe',
+    'FR': 'Europe',
+    'JP': 'Asia Pacific',
+    'AU': 'Asia Pacific',
+}
 
 
-class FilterDeletedRecords(beam.DoFn):
-    """Separate active records from deleted records."""
+def transform_cdc_record(json_str):
+    """Mask personally identifiable information and add region data."""
+    record = json.loads(json_str)
 
-    def process(self, record):
-        if record.get('_metadata_deleted', False):
-            # Send deleted records to a separate output for audit
-            yield beam.pvalue.TaggedOutput('deleted', record)
-        else:
-            yield record
+    # Mask email addresses - keep domain but hash the local part
+    if record.get('email'):
+        parts = record['email'].split('@')
+        if len(parts) == 2:
+            digest = hashlib.sha256(parts[0].encode('utf-8')).hexdigest()[:12]
+            record['email'] = f"{digest}@{parts[1]}"
 
+    # Mask phone numbers - keep last 4 digits
+    if record.get('phone'):
+        record['phone'] = f"***-***-{record['phone'][-4:]}"
 
-def run_pipeline():
-    """Main pipeline that reads CDC events and applies transformations."""
-    options = PipelineOptions([
-        '--project=my-project',
-        '--region=us-central1',
-        '--runner=DataflowRunner',
-        '--temp_location=gs://my-project-datastream-staging/temp/',
-        '--streaming',
-    ])
+    # Add region information based on country code
+    country = record.get('country_code', '')
+    record['region'] = REGION_MAP.get(country, 'Other')
 
-    with beam.Pipeline(options=options) as pipeline:
-        # Read Avro files from Cloud Storage
-        raw_events = (
-            pipeline
-            | 'ReadAvro' >> beam.io.ReadFromAvro(
-                'gs://my-project-datastream-staging/cdc-events/*.avro',
-                use_fastavro=True
-            )
-        )
+    return json.dumps(record)
+```
 
-        # Apply transformations
-        transformed = (
-            raw_events
-            | 'MaskPII' >> beam.ParDo(MaskPIIFields())
-            | 'EnrichRegion' >> beam.ParDo(EnrichWithRegion())
-            | 'FilterDeleted' >> beam.ParDo(
-                FilterDeletedRecords()
-            ).with_outputs('deleted', main='active')
-        )
+Upload the file and add the UDF parameters when you launch the template:
 
-        # Write active records to BigQuery
-        transformed['active'] | 'WriteActive' >> WriteToBigQuery(
-            table='my-project:analytics.customers',
-            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-        )
+```bash
+gsutil cp transforms.py gs://my-project-datastream-staging/transforms.py
 
-        # Write deleted records to audit table
-        transformed['deleted'] | 'WriteDeleted' >> WriteToBigQuery(
-            table='my-project:audit.deleted_customers',
-            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-        )
-
-
-if __name__ == '__main__':
-    run_pipeline()
+gcloud dataflow flex-template run datastream-to-bq-job \
+  --project=my-project \
+  --region=us-central1 \
+  --enable-streaming-engine \
+  --template-file-gcs-location=gs://dataflow-templates-us-central1/latest/flex/Cloud_Datastream_to_BigQuery \
+  --parameters \
+inputFileFormat=avro,\
+inputFilePattern=gs://my-project-datastream-staging/cdc-events/,\
+outputProjectId=my-project,\
+outputStagingDatasetTemplate=staging,\
+outputDatasetTemplate=analytics,\
+outputStagingTableNameTemplate={_metadata_schema}_{_metadata_table}_staging,\
+outputTableNameTemplate={_metadata_schema}_{_metadata_table},\
+deadLetterQueueDirectory=gs://my-project-datastream-staging/dead-letter/,\
+mergeFrequencyMinutes=5,\
+pythonTextTransformGcsPath=gs://my-project-datastream-staging/transforms.py,\
+pythonTextTransformFunctionName=transform_cdc_record
 ```
 
 ## Step 4: Handling the CDC Merge Logic
@@ -213,6 +182,8 @@ One of the trickiest parts of processing CDC data is applying the correct merge 
 The Dataflow template handles this through a merge operation, but if you are writing a custom pipeline, you need to implement it yourself:
 
 ```python
+import apache_beam as beam
+
 class CDCMergeTransform(beam.DoFn):
     """Apply CDC merge logic to produce the current state of each record."""
 
@@ -231,7 +202,7 @@ class CDCMergeTransform(beam.DoFn):
         }
 ```
 
-For a more robust approach, use BigQuery's MERGE statement in a scheduled query after the Dataflow pipeline appends new events:
+For a more robust approach in a custom pipeline, use BigQuery's MERGE statement in a scheduled query after the Dataflow pipeline appends new events:
 
 ```sql
 -- Merge CDC events into the final table
@@ -272,12 +243,18 @@ Instead of polling Cloud Storage for new files, use Pub/Sub notifications to tri
 gcloud pubsub topics create datastream-file-notifications
 
 # Set up GCS notifications
-gsutil notification create -t datastream-file-notifications \
-  -f json -e OBJECT_FINALIZE \
-  gs://my-project-datastream-staging/
+gcloud storage buckets notifications create gs://my-project-datastream-staging \
+  --topic=datastream-file-notifications \
+  --event-types=OBJECT_FINALIZE \
+  --payload-format=json
+
+# Create the subscription used by the Dataflow template
+gcloud pubsub subscriptions create datastream-notifications \
+  --topic=datastream-file-notifications
 ```
 
 Your Dataflow pipeline can then subscribe to this topic and process files as they arrive, reducing latency.
+For the Google-provided template, use `gcsPubSubSubscription=projects/my-project/subscriptions/datastream-notifications` instead of `inputFilePattern` when you launch the job.
 
 ## Monitoring the Combined Pipeline
 
