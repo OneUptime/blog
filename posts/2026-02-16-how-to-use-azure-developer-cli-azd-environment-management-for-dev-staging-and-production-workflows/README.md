@@ -48,7 +48,6 @@ azd env new dev
 # Configure the environment settings
 azd env set AZURE_SUBSCRIPTION_ID "your-dev-subscription-id"
 azd env set AZURE_LOCATION "eastus"
-azd env set AZURE_ENV_NAME "dev"
 
 # Set environment-specific variables
 azd env set DATABASE_SKU "Free"
@@ -65,6 +64,7 @@ Create a full set of environments for your development workflow.
 ```bash
 # Create staging environment
 azd env new staging
+azd env select staging
 azd env set AZURE_SUBSCRIPTION_ID "your-staging-subscription-id"
 azd env set AZURE_LOCATION "eastus"
 azd env set DATABASE_SKU "Standard"
@@ -74,6 +74,7 @@ azd env set CUSTOM_DOMAIN "staging.myapp.example.com"
 
 # Create production environment
 azd env new production
+azd env select production
 azd env set AZURE_SUBSCRIPTION_ID "your-prod-subscription-id"
 azd env set AZURE_LOCATION "eastus"
 azd env set DATABASE_SKU "Premium"
@@ -90,9 +91,9 @@ The output of `azd env list` shows all environments and indicates which one is c
 
 ```text
 NAME        DEFAULT  LOCAL  REMOTE
-dev         true     true   true
+dev         false    true   true
 staging     false    true   true
-production  false    true   true
+production  true     true   true
 ```
 
 ## Switching Between Environments
@@ -184,9 +185,11 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
 resource webApp 'Microsoft.Web/sites@2023-01-01' = {
   name: '${resourcePrefix}-app'
   location: location
+  kind: 'app,linux'
   properties: {
     serverFarmId: appServicePlan.id
     siteConfig: {
+      linuxFxVersion: 'PYTHON|3.11'
       appSettings: [
         {
           name: 'ENVIRONMENT'
@@ -278,7 +281,11 @@ case "$ENV_NAME" in
     ;;
   "production")
     echo "Production environment - creating backup before deployment"
-    az webapp create-snapshot --name "myapp-production-app" --resource-group "myapp-production-rg"
+    az webapp config backup create \
+      --resource-group "myapp-production-rg" \
+      --webapp-name "myapp-production-app" \
+      --backup-name "pre-deploy-$(date +%Y%m%d%H%M%S)" \
+      --container-url "$BACKUP_CONTAINER_SAS_URL"
     ;;
 esac
 ```
@@ -295,7 +302,7 @@ azd env select dev-feature-xyz
 azd down --force --purge
 
 # Remove the local environment configuration
-azd env delete dev-feature-xyz
+azd env remove dev-feature-xyz
 ```
 
 The `--purge` flag ensures soft-deleted resources (like Key Vault) are permanently deleted rather than recoverable. Use this carefully.
@@ -397,6 +404,6 @@ Keep sensitive values out of the local `.env` files. For secrets like database p
 
 Add `.azure/` to your `.gitignore` for local development, but consider storing environment configurations in a shared secret manager for CI/CD pipelines to consume.
 
-Use the `azd env refresh` command after manual changes to Azure resources to sync the local environment state with what actually exists in Azure.
+Use the `azd env refresh` command when you need to refresh local environment values from the latest infrastructure deployment outputs. It does not reconcile arbitrary manual resource changes in Azure.
 
 azd environment management turns multi-environment Azure deployment from a complex manual process into a streamlined, repeatable workflow. Each environment is self-contained, independently manageable, and provisioned from the same templates. This consistency across environments is what makes it possible to confidently promote changes from dev through staging to production.
