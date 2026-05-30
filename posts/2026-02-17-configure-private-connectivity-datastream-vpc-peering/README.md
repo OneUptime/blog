@@ -34,13 +34,13 @@ The peering uses a /29 subnet that you allocate from your VPC's IP space. This s
 Before setting up private connectivity, make sure you have:
 
 - A VPC network in your GCP project
-- An available /29 IP range that does not overlap with existing subnets
+- An available /29 IP range that does not overlap with existing subnets, private services access allocated ranges, or custom routes
 - The Datastream API enabled
 - IAM permissions for Datastream admin and Compute Network admin
 
 ## Step 1: Choose Your IP Range
 
-You need to allocate a /29 CIDR block for the peering connection. This gives you 8 IP addresses, of which 4 are usable. Pick a range that does not conflict with your existing subnets.
+You need to allocate a /29 CIDR block for the peering connection. This gives you 8 IP addresses, of which 4 are usable. Pick a range that does not conflict with your existing subnets, private services access allocated ranges, or custom routes.
 
 ```bash
 # List existing subnets to find available IP ranges
@@ -135,7 +135,7 @@ The key parameter is `--private-connection`, which tells Datastream to use the p
 
 ## Connecting to Cloud SQL
 
-Cloud SQL requires additional configuration for private connectivity. You need to enable the private IP on your Cloud SQL instance:
+Cloud SQL requires additional configuration for private connectivity. You need to enable private IP on your Cloud SQL instance:
 
 ```bash
 # Enable private IP on Cloud SQL
@@ -144,7 +144,7 @@ gcloud sql instances patch my-sql-instance \
   --project=my-project
 ```
 
-Then use the private IP of the Cloud SQL instance in your connection profile:
+For Datastream VPC peering, Cloud SQL also requires a NAT VM or reverse proxy in the peered VPC. Use the Cloud SQL private IP as the proxy target, then use the NAT VM's internal IP in your Datastream connection profile:
 
 ```bash
 # Get the private IP of your Cloud SQL instance
@@ -152,11 +152,11 @@ gcloud sql instances describe my-sql-instance \
   --project=my-project \
   --format="value(ipAddresses.filter('type:PRIVATE').ipAddress)"
 
-# Create connection profile using the private IP
+# Create connection profile using the NAT VM internal IP
 gcloud datastream connection-profiles create cloudsql-private \
   --display-name="Cloud SQL Private" \
   --type=mysql \
-  --mysql-hostname=10.0.2.3 \
+  --mysql-hostname=10.0.1.10 \
   --mysql-port=3306 \
   --mysql-username=datastream_user \
   --mysql-password=my-password \
@@ -258,13 +258,13 @@ gcloud compute firewall-rules list \
 
 Common issues include:
 
-**IP range conflict** - The /29 subnet overlaps with an existing range. Use `gcloud compute networks subnets list` to find available ranges.
+**IP range conflict** - The /29 subnet overlaps with an existing subnet, a private services access allocated range, or a custom route. Use `gcloud compute networks subnets list` and check your routes and allocated ranges to find an available range.
 
 **Firewall blocking traffic** - Ensure your firewall rule allows traffic from the peering subnet to the database port. Check that target tags match.
 
-**Cloud SQL private IP not enabled** - Cloud SQL instances need private IP explicitly enabled. Just having a VPC does not automatically give Cloud SQL a private address.
+**Cloud SQL needs a proxy** - Cloud SQL instances need private IP explicitly enabled, and Datastream VPC peering access to Cloud SQL requires a NAT VM or reverse proxy in the peered VPC. Just having a VPC does not automatically give Cloud SQL a directly reachable private address from Datastream.
 
-**DNS resolution** - If you reference your database by hostname instead of IP, make sure DNS resolves correctly from within the VPC. Use private DNS zones if needed.
+**DNS resolution** - Datastream does not support DNS resolution for private connections. Use private IP addresses in the connection profile.
 
 ## Testing Connectivity
 
@@ -273,6 +273,7 @@ After everything is configured, test the connection through Datastream's built-i
 ```bash
 # Discover objects to verify connectivity
 gcloud datastream connection-profiles discover mysql-private-profile \
+  --connection-profile-name=mysql-private-profile \
   --location=us-central1 \
   --project=my-project
 ```
