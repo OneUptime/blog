@@ -29,7 +29,7 @@ The key difference from a public load balancer:
 
 - **No public IP.** The frontend uses a private IP from your VNet subnet.
 - **Only accessible from within the VNet** (or peered/connected networks).
-- **Same SKU options.** Standard and Basic, though Standard is recommended for production.
+- **Standard SKU.** Basic Load Balancer was retired on September 30, 2025, so use Standard for new deployments.
 
 ## When to Use Internal Load Balancer
 
@@ -218,19 +218,19 @@ If you have a VPN or ExpressRoute connection, on-premises servers can reach the 
 Check backend pool health and track metrics:
 
 ```bash
-# View load balancer health probe status
-az network lb show \
-  --resource-group myResourceGroup \
-  --name myInternalLB \
-  --query "loadBalancingRules[].{name:name, probe:probe.id}" \
-  --output table
+# View health probe status from Azure Monitor metrics
+az monitor metrics list \
+  --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/loadBalancers/myInternalLB" \
+  --metric DipAvailability \
+  --aggregation Average \
+  --interval PT1M
 ```
 
 Key metrics to monitor in Azure Monitor:
 
 - **Health Probe Status:** Shows which backends are healthy or unhealthy
 - **Data Path Availability:** Whether the ILB itself is functioning
-- **SNAT Connection Count:** Relevant if backend VMs make outbound connections
+- **SNAT Connection Count:** Relevant when a public load balancer frontend is used for outbound SNAT
 - **Byte Count and Packet Count:** Traffic volume through the ILB
 
 Set up alerts for probe failures:
@@ -241,16 +241,16 @@ az monitor metrics alert create \
   --resource-group myResourceGroup \
   --name backendHealthAlert \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/loadBalancers/myInternalLB" \
-  --condition "avg HealthProbeStatus < 100" \
+  --condition "avg DipAvailability < 100" \
   --window-size 5m \
   --evaluation-frequency 1m \
-  --action-group myAlertGroup \
+  --action myAlertGroup \
   --description "One or more backend VMs are unhealthy"
 ```
 
 ## Common Issues
 
-**Cannot reach the ILB from a VM in the same subnet.** Standard SKU ILBs require NSG rules on the backend subnet. Make sure there is an inbound rule allowing traffic to the ILB port from the source subnets.
+**Cannot reach the ILB from a VM in the same subnet.** Standard Load Balancer is secure by default, so NSGs on the backend subnet or NICs must allow the client traffic to the backend port. Also allow Azure Load Balancer health probes by permitting the `AzureLoadBalancer` service tag, or the backends will be marked unhealthy.
 
 **Backend VMs cannot make outbound internet connections.** Standard ILB does not provide outbound connectivity. You need a NAT Gateway, a public load balancer, or instance-level public IPs for outbound traffic.
 
