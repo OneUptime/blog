@@ -29,11 +29,11 @@ flowchart LR
     G --> H
 ```
 
-On the first run, there is no cache, so the full restore runs and then the result is saved. On subsequent runs, if the lockfile has not changed, the cache is restored and the restore step either skips entirely or finishes in seconds.
+On the first run, there is no cache, so the full restore runs and then the result is saved. On subsequent runs, if the lockfile has not changed, the cache is restored and the restore step either skips entirely if you use a cache-hit condition or finishes in seconds.
 
 ## Setting Up npm Caching
 
-For Node.js projects, the cache target is typically the `node_modules` directory or the npm cache folder. I prefer caching `node_modules` directly because it avoids the extra time npm spends resolving and linking packages even with a warm cache.
+For Node.js projects, the cache target is typically npm's shared cache folder. This works well with `npm ci`, which deletes `node_modules` before installing to guarantee a clean dependency tree.
 
 Here is a YAML pipeline configuration that caches npm packages:
 
@@ -87,24 +87,25 @@ If you want to skip the npm resolution step entirely, you can cache `node_module
   inputs:
     key: 'node_modules | "$(Agent.OS)" | package-lock.json'
     path: 'node_modules'
+    cacheHitVar: NODE_MODULES_RESTORED
   displayName: 'Cache node_modules'
 
 # Only run install if the cache was not restored
 - script: npm ci
   displayName: 'Install dependencies'
-  condition: ne(variables['CacheRestored-node_modules'], 'true')
+  condition: ne(variables.NODE_MODULES_RESTORED, 'true')
 ```
 
-This approach is faster but has a trade-off: if your build modifies `node_modules` (some post-install scripts do this), you might get inconsistent results. Test this carefully before relying on it.
+This approach is faster but has a trade-off: `npm ci` removes `node_modules` before installing, so you must skip it on an exact cache hit as shown above. If your build modifies `node_modules` (some post-install scripts do this), you might get inconsistent results. Test this carefully before relying on it.
 
 ## Setting Up NuGet Caching
 
-NuGet caching follows the same pattern. The key difference is that NuGet stores packages in a global cache directory, and the lockfile is typically the solution file or a combination of project files.
+NuGet caching follows the same pattern. The key difference is that NuGet stores packages in a global packages directory, and the cache key should be based on committed `packages.lock.json` files when you use PackageReference lock files.
 
 Here is the YAML for NuGet caching:
 
 ```yaml
-# Pipeline with NuGet caching - uses project files as the cache key
+# Pipeline with NuGet caching - uses packages.lock.json as the cache key
 trigger:
   - main
 
@@ -115,12 +116,13 @@ variables:
   NUGET_PACKAGES: $(Pipeline.Workspace)/.nuget/packages
 
 steps:
-  # Cache NuGet packages based on all project files
+  # Cache NuGet packages based on lock files
   - task: Cache@2
     inputs:
-      key: 'nuget | "$(Agent.OS)" | **/packages.lock.json'
+      key: 'nuget | "$(Agent.OS)" | **/packages.lock.json,!**/bin/**,!**/obj/**'
       restoreKeys: |
         nuget | "$(Agent.OS)"
+        nuget
       path: $(NUGET_PACKAGES)
     displayName: 'Cache NuGet packages'
 
@@ -188,9 +190,10 @@ steps:
   # Cache NuGet packages
   - task: Cache@2
     inputs:
-      key: 'nuget | "$(Agent.OS)" | **/packages.lock.json'
+      key: 'nuget | "$(Agent.OS)" | **/packages.lock.json,!**/bin/**,!**/obj/**'
       restoreKeys: |
         nuget | "$(Agent.OS)"
+        nuget
       path: $(NUGET_PACKAGES)
     displayName: 'Cache NuGet'
 
@@ -231,15 +234,15 @@ The exact savings depend on your project size, the number of packages, and the n
 
 ## Cache Limits and Gotchas
 
-Azure Pipelines has some limits on caching that you should be aware of:
+Azure Pipelines has some caching behavior and trade-offs that you should be aware of:
 
-1. **Cache size limit.** Each cache entry can be up to 2 GB. If your `node_modules` is larger than that (it happens with monorepos), you will need to split the cache or use a different strategy.
+1. **Large caches.** Azure Pipelines does not enforce a documented size limit for individual caches or total cache storage, but very large caches can take longer to upload and restore than the packages take to download. If your cache is huge (it happens with monorepos), you may need to split the cache or use a different strategy.
 
 2. **Cache expiration.** Caches expire after 7 days of not being accessed. For active projects this is never an issue, but for repositories with infrequent builds, you might see more cache misses than expected.
 
 3. **Cross-branch caching.** Caches are scoped to the branch by default. A cache created on the `main` branch can be used by feature branches, but not the other way around. This is intentional - it prevents feature branch experiments from polluting the main branch cache.
 
-4. **Parallel jobs.** If you have multiple jobs running in parallel, they each manage their own cache independently. This means you might store the same packages multiple times under different cache keys.
+4. **Parallel jobs.** If you have multiple jobs running in parallel, each job has its own workspace, but jobs can read the same remote cache when the key and scope match. You might still store the same packages multiple times if the jobs use different cache keys.
 
 ## Tips for Getting the Most Out of Caching
 
