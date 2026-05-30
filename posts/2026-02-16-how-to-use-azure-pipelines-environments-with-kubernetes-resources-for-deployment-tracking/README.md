@@ -41,10 +41,10 @@ You can create environments through the Azure DevOps UI or directly in your YAML
 
 In the Azure DevOps UI, go to Pipelines, then Environments, and click "New environment." Give it a name like "staging" or "production" and select "Kubernetes" as the resource type.
 
-Alternatively, referencing an environment in YAML creates it automatically:
+Alternatively, referencing an environment in YAML can create it automatically when Azure Pipelines can identify the user running or saving the pipeline and that user has permission to create environments:
 
 ```yaml
-# Simply referencing an environment in YAML creates it if it does not exist
+# Referencing an environment can create it if it does not exist and permissions allow it
 
 stages:
   - stage: DeployStaging
@@ -70,12 +70,12 @@ Azure DevOps will create a service account in the specified namespace and set up
 
 ### Option B: Using Any Kubernetes Cluster
 
-For non-AKS clusters, you can provide a kubeconfig or use a service account. Go to the environment, click "Add resource," select "Kubernetes," then choose "Generic provider."
+For non-AKS clusters, use an existing service account. Go to the environment, click "Add resource," select "Kubernetes," then choose "Generic provider."
 
 You will need to provide:
 
 - The cluster API server URL
-- A kubeconfig file or service account token
+- A service account secret
 - The namespace to target
 
 Here is how to create a service account for Azure DevOps on your cluster:
@@ -102,9 +102,18 @@ subjects:
   - kind: ServiceAccount
     name: azure-devops-deploy
     namespace: staging
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: azure-devops-deploy-token
+  namespace: staging
+  annotations:
+    kubernetes.io/service-account.name: azure-devops-deploy
+type: kubernetes.io/service-account-token
 ```
 
-Apply this to your cluster and use the service account token in Azure DevOps.
+Apply this to your cluster, then provide the service account secret JSON to Azure DevOps.
 
 ## Step 3: Configure Your Deployment Pipeline
 
@@ -138,6 +147,9 @@ stages:
               Dockerfile: '**/Dockerfile'
               tags: '$(tag)'
             displayName: 'Build and push container image'
+          - publish: manifests
+            artifact: manifests
+            displayName: 'Publish Kubernetes manifests'
 
   # Deploy to staging
   - stage: DeployStaging
@@ -206,7 +218,7 @@ You can also add other checks:
 
 ## Step 5: Use Deployment Strategies
 
-The `deployment` job type supports several strategies beyond `runOnce`:
+For Kubernetes targets, Azure Pipelines deployment jobs support canary deployments. Rolling updates are usually handled by Kubernetes itself through the Deployment manifest.
 
 ### Canary Deployment
 
@@ -230,7 +242,13 @@ The `deployment` job type supports several strategies beyond `runOnce`:
       on:
         success:
           steps:
-            - script: echo "Canary at $(strategy.increment)% succeeded"
+            - task: KubernetesManifest@1
+              inputs:
+                action: 'promote'
+                namespace: 'default'
+                strategy: 'canary'
+                manifests: '$(Pipeline.Workspace)/manifests/*.yaml'
+                containers: '$(containerRegistry)/$(imageRepository):$(tag)'
         failure:
           steps:
             - task: KubernetesManifest@1
@@ -244,12 +262,11 @@ The `deployment` job type supports several strategies beyond `runOnce`:
 ### Rolling Deployment
 
 ```yaml
-# Rolling update strategy - update pods in batches
+# Kubernetes rolling update - update pods in batches through the Deployment spec
 - deployment: RollingDeploy
   environment: 'production.default'
   strategy:
-    rolling:
-      maxParallel: 2
+    runOnce:
       deploy:
         steps:
           - task: KubernetesManifest@1
