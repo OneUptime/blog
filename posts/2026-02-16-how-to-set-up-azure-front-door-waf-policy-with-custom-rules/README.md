@@ -8,7 +8,7 @@ Description: A hands-on guide to creating Azure Front Door WAF policies with cus
 
 ---
 
-Azure Front Door sits at the edge of Microsoft's global network, making it the ideal place to inspect and filter HTTP traffic before it reaches your backend. The Web Application Firewall (WAF) on Front Door can run managed rule sets (like OWASP CRS) and custom rules that you define. Custom rules are particularly powerful because they let you implement business-specific logic like rate limiting by IP, blocking traffic from certain countries, or inspecting specific request headers.
+Azure Front Door sits at the edge of Microsoft's global network, making it the ideal place to inspect and filter HTTP traffic before it reaches your backend. The Web Application Firewall (WAF) on Front Door can run managed rule sets (like OWASP CRS, on Premium profiles) and custom rules that you define. Custom rules are particularly powerful because they let you implement business-specific logic like rate limiting by IP, blocking traffic from certain countries, or inspecting specific request headers.
 
 This guide walks through creating a WAF policy for Front Door and building custom rules for common security scenarios.
 
@@ -42,6 +42,7 @@ flowchart TD
 - An Azure subscription
 - An Azure Front Door profile (Standard or Premium tier)
 - Azure CLI installed
+- The Azure Front Door CLI extension installed (`az extension add --name front-door`) if it is not installed automatically
 
 ## Step 1: Create a WAF Policy
 
@@ -83,12 +84,12 @@ az network front-door waf-policy rule match-condition add \
   --resource-group rg-waf-fd-demo \
   --policy-name wafpolicyfd \
   --name RateLimitPerIP \
-  --match-variable RemoteAddr \
-  --operator IPMatch \
-  --values "0.0.0.0/0" "::/0"
+  --match-variable RequestHeader.Host \
+  --operator GreaterThanOrEqual \
+  --values "0"
 ```
 
-This rule limits each IP address to 100 requests per minute. When exceeded, the client gets a 403 response until the rate drops below the threshold.
+This rule limits each source IP address to 100 requests per minute. When exceeded, subsequent matching requests get a 403 response for the remainder of the fixed one-minute window.
 
 You can also rate limit based on other groupings. For example, rate limiting per IP plus specific URL path:
 
@@ -160,7 +161,7 @@ az network front-door waf-policy rule match-condition add \
   --name GeoAllow \
   --match-variable RemoteAddr \
   --operator GeoMatch \
-  --negate \
+  --negate true \
   --values "US" "CA" "GB" "DE" "FR"
 ```
 
@@ -193,9 +194,9 @@ az network front-door waf-policy rule match-condition add \
   --resource-group rg-waf-fd-demo \
   --policy-name wafpolicyfd \
   --name BlockAdminExceptAllowed \
-  --match-variable RemoteAddr \
+  --match-variable SocketAddr \
   --operator IPMatch \
-  --negate \
+  --negate true \
   --values "203.0.113.0/24" "198.51.100.10"
 ```
 
@@ -220,8 +221,7 @@ az network front-door waf-policy rule match-condition add \
   --resource-group rg-waf-fd-demo \
   --policy-name wafpolicyfd \
   --name BlockBadBots \
-  --match-variable RequestHeader \
-  --selector "User-Agent" \
+  --match-variable RequestHeader.User-Agent \
   --operator Contains \
   --transforms Lowercase \
   --values "sqlmap" "nikto" "masscan" "dirbuster" "nmap"
@@ -234,7 +234,7 @@ The `--transforms Lowercase` ensures case-insensitive matching.
 Some applications require API keys or custom headers. You can enforce this at the WAF level.
 
 ```bash
-# Block API requests without an API key header
+# Block API requests without the expected API key header
 az network front-door waf-policy rule create \
   --resource-group rg-waf-fd-demo \
   --policy-name wafpolicyfd \
@@ -253,15 +253,14 @@ az network front-door waf-policy rule match-condition add \
   --operator BeginsWith \
   --values "/api/"
 
-# AND no X-API-Key header present
+# AND the X-API-Key header is missing or does not match the expected value
 az network front-door waf-policy rule match-condition add \
   --resource-group rg-waf-fd-demo \
   --policy-name wafpolicyfd \
   --name RequireAPIKey \
-  --match-variable RequestHeader \
-  --selector "X-API-Key" \
+  --match-variable RequestHeader.X-API-Key \
   --operator Equal \
-  --negate \
+  --negate true \
   --values "valid-api-key-12345"
 ```
 
@@ -271,12 +270,15 @@ Link the policy to your Front Door endpoint.
 
 ```bash
 # Associate WAF policy with Front Door security policy
+WAF_ID=$(az network front-door waf-policy show --resource-group rg-waf-fd-demo --name wafpolicyfd --query id -o tsv)
+ENDPOINT_ID=$(az afd endpoint show --resource-group rg-waf-fd-demo --profile-name fd-myapp --endpoint-name myapp-endpoint --query id -o tsv)
+
 az afd security-policy create \
   --resource-group rg-waf-fd-demo \
   --profile-name fd-myapp \
   --security-policy-name sp-waf \
-  --waf-policy wafpolicyfd \
-  --domains myapp-endpoint
+  --waf-policy $WAF_ID \
+  --domains $ENDPOINT_ID
 ```
 
 ## Step 8: Enable WAF Logging
@@ -323,4 +325,4 @@ az group delete --name rg-waf-fd-demo --yes --no-wait
 
 ## Wrapping Up
 
-Custom WAF rules on Azure Front Door let you implement application-specific security controls at the global edge. Rate limiting protects against abuse, geo-filtering reduces attack surface, IP allow lists secure admin endpoints, and header inspection validates API access. Start with Detection mode to understand your traffic patterns, then switch to Prevention mode for active blocking. Always enable logging so you can monitor matches and tune rules over time. The combination of custom rules and managed rule sets gives you comprehensive Layer 7 protection for your web applications.
+Custom WAF rules on Azure Front Door let you implement application-specific security controls at the global edge. Rate limiting protects against abuse, geo-filtering reduces attack surface, IP allow lists secure admin endpoints, and header inspection validates API access. Start with Detection mode to understand your traffic patterns, then switch to Prevention mode for active blocking. Always enable logging so you can monitor matches and tune rules over time. The combination of custom rules and managed rule sets, where available, gives you comprehensive Layer 7 protection for your web applications.
