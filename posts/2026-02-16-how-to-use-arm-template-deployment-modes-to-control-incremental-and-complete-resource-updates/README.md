@@ -61,7 +61,7 @@ StorageA and WebApp1 get updated. StorageB stays as-is because incremental mode 
 
 ## Complete Mode
 
-Complete mode treats the template as the full desired state for the resource group. Any resource that exists in the resource group but is not in the template gets deleted.
+Complete mode treats the template as the full desired state for the resource group. Any supported resource type that exists in the deployment target resource group but is not in the template gets deleted. Microsoft now recommends using deployment stacks for deletion workflows because complete mode is being gradually deprecated.
 
 ```bash
 # Deploy in complete mode - WARNING: this will delete unlisted resources
@@ -75,9 +75,9 @@ In complete mode:
 
 - Resources in the template that do not exist yet are **created**
 - Resources in the template that already exist are **updated**
-- Resources in the resource group that are not in the template are **deleted**
+- Supported resources in the deployment target resource group that are not in the template are **deleted**
 
-This is powerful for ensuring your resource group exactly matches your template, but it is also dangerous. If you accidentally forget a resource in your template, complete mode will delete it.
+This is powerful for ensuring your resource group exactly matches your template, but it is also dangerous and is no longer the recommended deletion mechanism. If you accidentally forget a supported resource in your template, complete mode will delete it.
 
 ### Example: Complete Deployment Behavior
 
@@ -103,7 +103,7 @@ graph TD
     end
 ```
 
-StorageB gets deleted because it is not in the template.
+StorageB gets deleted because it is not in the template, assuming its resource type supports complete mode deletion.
 
 ## Using What-If to Preview Changes
 
@@ -158,6 +158,7 @@ az deployment group create \
 - You want to enforce drift detection and correction
 - The resource group is dedicated to a single application or service
 - You have verified the template is comprehensive using what-if
+- You have considered deployment stacks and still need complete mode for this deployment
 
 ```bash
 # Complete mode for a dedicated resource group where the template is authoritative
@@ -197,11 +198,11 @@ resource storageLock 'Microsoft.Authorization/locks@2020-05-01' = {
 
 An important subtlety: deployment mode affects resources, not individual properties. In both modes, when a resource is in the template, its properties are updated to match. But there is a catch with certain resource types.
 
-Some resource types have properties that behave differently. For example, tags in incremental mode are merged (existing tags are kept, new tags are added), while in complete mode they are replaced (only tags in the template survive).
+When you redeploy an existing resource in incremental mode, Resource Manager reapplies the properties in the template. Properties are not incrementally merged just because the deployment mode is incremental. If you leave out non-default values, Resource Manager can treat that as overwriting those values or resetting them to defaults.
 
 ```bicep
-// In incremental mode, deploying this will ADD the "Version" tag
-// but keep any existing tags like "Owner" that were set manually
+// In incremental mode, deploying this reapplies the resource's tags.
+// Tags not listed here, such as a manually added "Owner" tag, can be removed.
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: 'mystore'
   location: resourceGroup().location
@@ -214,13 +215,13 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   properties: {}
 }
 
-// In complete mode, deploying this will REPLACE all tags
-// Any tags not listed here will be removed
+// Complete mode affects whether resources outside the template are deleted;
+// it does not make properties merge differently for resources in the template.
 ```
 
 ## Combining Modes in a Pipeline
 
-A common pattern is to use incremental mode during development and complete mode for production deployments, with what-if gating.
+A legacy pattern is to use incremental mode during development and complete mode for production deployments, with what-if gating. For new deletion workflows, consider deployment stacks before relying on complete mode.
 
 ```yaml
 # azure-pipelines.yml - Deployment with mode selection
@@ -262,7 +263,8 @@ stages:
                 if [ "${{ parameters.deploymentMode }}" = "Complete" ]; then
                   echo ""
                   echo "WARNING: Complete mode is selected."
-                  echo "Resources not in the template WILL BE DELETED."
+                  echo "Supported resources not in the template WILL BE DELETED."
+                  echo "For new deletion workflows, consider deployment stacks."
                   echo "Review the what-if output carefully."
                 fi
 
@@ -292,7 +294,7 @@ stages:
 
 ## Handling Mixed Ownership Resource Groups
 
-In organizations where multiple teams share a resource group, complete mode is problematic. Team A's template does not know about Team B's resources, so a complete mode deployment by Team A would delete Team B's resources.
+In organizations where multiple teams share a resource group, complete mode is problematic. Team A's template does not know about Team B's resources, so a complete mode deployment by Team A could delete Team B's resources if those resource types support complete mode deletion.
 
 Solutions for this scenario:
 
@@ -313,12 +315,12 @@ az bicep decompile --file full-state.json
 
 ## The Case for Complete Mode in Production
 
-Despite its risks, complete mode has significant benefits for production environments:
+Despite its risks and Microsoft's recommendation to use deployment stacks for deletion workflows, complete mode has benefits in production environments where it is still used:
 
-Drift correction: If someone manually creates a resource in the resource group through the portal, the next complete mode deployment removes it. This enforces the rule that all infrastructure must be in code.
+Drift correction: If someone manually creates a supported resource in the resource group through the portal, the next complete mode deployment removes it. This enforces the rule that all infrastructure must be in code.
 
-Resource cleanup: When you remove a resource from your template, complete mode ensures it is actually deleted from Azure. With incremental mode, you would need a separate cleanup step.
+Resource cleanup: When you remove a supported resource from your template, complete mode ensures it is actually deleted from Azure. With incremental mode, you would need a separate cleanup step, such as a deployment stack.
 
 Audit clarity: With complete mode, the template is the exact representation of what should exist. There are no surprise resources lurking in the resource group.
 
-The choice between incremental and complete mode comes down to confidence. If you are confident your template captures everything in the resource group, complete mode gives you stronger guarantees. If there is any doubt, incremental mode is the safer choice. And regardless of which mode you choose, always run what-if first.
+The choice between incremental and complete mode comes down to confidence and current Azure guidance. If you are confident your template captures everything in the resource group, complete mode gives you stronger guarantees for supported resources, but deployment stacks are the recommended way to manage deletions with ARM templates and Bicep. If there is any doubt, incremental mode is the safer choice. And regardless of which mode you choose, always run what-if first.
