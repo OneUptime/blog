@@ -31,24 +31,23 @@ The Schema Registry is part of your Event Hubs namespace. You need a Standard ti
 Schema groups organize related schemas together. Think of them like namespaces for your schemas:
 
 ```bash
-# Create a schema group with Avro serialization and forward compatibility
+# Create a schema group with Avro serialization and backward compatibility
 
 az eventhubs namespace schema-registry create \
   --resource-group my-resource-group \
   --namespace-name my-eventhubs-namespace \
   --name "user-events-schemas" \
-  --schema-compatibility Forward \
+  --schema-compatibility Backward \
   --schema-type Avro
 ```
 
 The compatibility mode determines what changes are allowed when updating a schema:
 
 - **None**: Any change is allowed (no compatibility checking)
-- **Forward**: New schema can read data written by old schema
-- **Backward**: Old schema can read data written by new schema
-- **Full**: Both forward and backward compatible
+- **Backward**: Consumer code using the new schema can read data written with the old schema
+- **Forward**: Consumer code using the old schema can read data written with the new schema
 
-For most event streaming scenarios, **Forward** compatibility is the right choice. It means consumers using the new schema can read events produced with the old schema.
+For most event streaming scenarios where consumers are upgraded after producers, **Backward** compatibility is the right choice. It means consumers using the new schema can read events produced with the old schema.
 
 ### Register a Schema
 
@@ -99,7 +98,7 @@ user_event_schema = """{
 }"""
 
 # Register the schema
-# If the schema already exists with the same content, it returns the existing registration
+# If this schema name already exists, compatible changes create a new version
 schema_properties = schema_registry_client.register_schema(
     group_name="user-events-schemas",
     name="UserEvent",
@@ -113,12 +112,12 @@ print(f"Schema version: {schema_properties.version}")
 
 ## Producing Events with Schema Registry
 
-Now let us integrate the schema registry into the producer workflow. The `SchemaRegistryAvroSerializer` handles serialization and schema ID embedding:
+Now let us integrate the schema registry into the producer workflow. The `AvroEncoder` handles serialization and sets the schema ID in the event content type:
 
 ```python
 from azure.eventhub import EventHubProducerClient, EventData
 from azure.schemaregistry import SchemaRegistryClient
-from azure.schemaregistry.serializer.avroserializer import AvroSerializer
+from azure.schemaregistry.encoder.avroencoder import AvroEncoder
 from azure.identity import DefaultAzureCredential
 import time
 
@@ -132,7 +131,7 @@ schema_registry_client = SchemaRegistryClient(
 )
 
 # The serializer automatically registers or retrieves schemas from the registry
-avro_serializer = AvroSerializer(
+avro_encoder = AvroEncoder(
     client=schema_registry_client,
     group_name="user-events-schemas",
     auto_register=True  # Set to False in production after initial registration
@@ -157,15 +156,13 @@ event_data = {
 }
 
 # Serialize the event using Avro and the Schema Registry
-# The serializer embeds the schema ID in the payload so consumers
+# The encoder sets the schema ID in EventData.content_type so consumers
 # can look up the schema without the producer sending it inline
-serialized_event = avro_serializer.serialize(
+event = avro_encoder.encode(
     event_data,
-    schema="UserEvent"  # Name of the registered schema
+    schema=user_event_schema,
+    message_type=EventData
 )
-
-# Create an EventData object from the serialized bytes
-event = EventData(body=serialized_event)
 
 # Send the event
 event_batch = producer.create_batch()
@@ -174,17 +171,17 @@ producer.send_batch(event_batch)
 
 print("Event sent with schema-registered Avro serialization")
 producer.close()
-avro_serializer.close()
+avro_encoder.close()
 ```
 
 ## Consuming Events with Schema Registry
 
-On the consumer side, the serializer uses the schema ID embedded in each event to look up the correct schema from the registry:
+On the consumer side, the serializer uses the schema ID in each event's content type to look up the correct schema from the registry:
 
 ```python
 from azure.eventhub import EventHubConsumerClient
 from azure.schemaregistry import SchemaRegistryClient
-from azure.schemaregistry.serializer.avroserializer import AvroSerializer
+from azure.schemaregistry.encoder.avroencoder import AvroEncoder
 from azure.identity import DefaultAzureCredential
 
 # Set up the Avro deserializer
@@ -194,10 +191,7 @@ schema_registry_client = SchemaRegistryClient(
     credential=credential
 )
 
-avro_serializer = AvroSerializer(
-    client=schema_registry_client,
-    group_name="user-events-schemas"
-)
+avro_encoder = AvroEncoder(client=schema_registry_client)
 
 # Create the consumer
 consumer = EventHubConsumerClient.from_connection_string(
@@ -209,8 +203,8 @@ consumer = EventHubConsumerClient.from_connection_string(
 def on_event(partition_context, event):
     """Deserialize and process each event using the Schema Registry."""
     # Deserialize the event body using the schema from the registry
-    # The schema ID is extracted from the event payload automatically
-    deserialized_data = avro_serializer.deserialize(event.body_as_bytes())
+    # The schema ID is extracted from the event content type automatically
+    deserialized_data = avro_encoder.decode(event)
 
     # Now you have a Python dictionary with typed fields
     print(f"User: {deserialized_data['userId']}")
@@ -230,9 +224,9 @@ with consumer:
 
 Over time, your event schemas will need to change. The Schema Registry's compatibility modes control what changes are safe.
 
-### Adding an Optional Field (Forward Compatible)
+### Adding an Optional Field (Backward Compatible)
 
-Adding a new field with a default value is forward compatible - new consumers can read old events (the new field just uses the default):
+Adding a new field with a default value is backward compatible - new consumers can read old events (the new field just uses the default):
 
 ```python
 # Updated schema - added 'sessionId' field with a default value
@@ -255,7 +249,7 @@ updated_schema = """{
 }"""
 
 # Register the updated schema
-# If compatibility mode is Forward, this succeeds because new consumers
+# If compatibility mode is Backward, this succeeds because new consumers
 # can read old events (sessionId defaults to null)
 updated_properties = schema_registry_client.register_schema(
     group_name="user-events-schemas",
@@ -302,7 +296,7 @@ The Schema Registry adds a network call for schema lookup. To minimize the impac
 
 **Pre-registration**: Register schemas during deployment rather than using `auto_register=True` in production. This avoids the first-event latency penalty and prevents accidental schema creation.
 
-**Schema ID in events**: The serialized payload includes only the schema ID (a GUID), not the full schema. This keeps event sizes small - you save bandwidth compared to self-describing formats like JSON.
+**Schema ID in events**: The encoded event includes the schema ID (a GUID) in the content type, not the full schema. This keeps event sizes small - you save bandwidth compared to self-describing formats like JSON.
 
 ## Integration with Event Hubs Capture
 
@@ -315,12 +309,18 @@ from io import BytesIO
 
 # Read the captured file
 # The Body field contains your schema-registered serialized payload
-reader = fastavro.reader(avro_file_bytes)
+reader = fastavro.reader(BytesIO(avro_file_bytes))
 for record in reader:
     body_bytes = record.get("Body")
+    content_type = record.get("SystemProperties", {}).get("content-type")
+    if isinstance(content_type, bytes):
+        content_type = content_type.decode("utf-8")
     if body_bytes:
         # Deserialize using the Schema Registry
-        event = avro_serializer.deserialize(body_bytes)
+        event = avro_encoder.decode({
+            "content": body_bytes,
+            "content_type": content_type
+        })
         print(event)
 ```
 
@@ -336,4 +336,4 @@ for record in reader:
 
 ## Summary
 
-The Azure Event Hubs Schema Registry provides centralized schema management for your event streaming pipelines. By using Avro serialization with registered schemas, you get compact event payloads, enforced data contracts through compatibility checking, and a clear audit trail of schema evolution. Integrate the schema registry into your producer and consumer code using the Azure SDK, use forward compatibility mode to safely evolve schemas over time, and treat schema management as a first-class part of your data platform operations.
+The Azure Event Hubs Schema Registry provides centralized schema management for your event streaming pipelines. By using Avro serialization with registered schemas, you get compact event payloads, enforced data contracts through compatibility checking, and a clear audit trail of schema evolution. Integrate the schema registry into your producer and consumer code using the Azure SDK, use backward compatibility mode to safely evolve schemas over time, and treat schema management as a first-class part of your data platform operations.
