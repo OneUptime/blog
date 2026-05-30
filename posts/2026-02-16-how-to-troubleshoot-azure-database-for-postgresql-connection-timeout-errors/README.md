@@ -70,6 +70,8 @@ az postgres flexible-server firewall-rule create \
   --end-ip-address "$MY_IP"
 ```
 
+In Azure CLI 2.86.0 and later, use `--server-name my-postgres-server --name allow-my-ip` instead of `--name my-postgres-server --rule-name allow-my-ip`.
+
 ### For Azure Services
 
 If your application runs in Azure (App Service, AKS, Functions), there are two approaches:
@@ -85,6 +87,8 @@ az postgres flexible-server firewall-rule create \
   --start-ip-address 0.0.0.0 \
   --end-ip-address 0.0.0.0
 ```
+
+In Azure CLI 2.86.0 and later, use `--server-name my-postgres-server --name allow-azure-services` instead of `--name my-postgres-server --rule-name allow-azure-services`.
 
 **Private access through VNet integration (recommended for production):**
 
@@ -177,7 +181,7 @@ Typical limits:
 
 - Burstable (B1ms): 50 connections
 - General Purpose (D2s_v3): 859 connections
-- Memory Optimized (E2s_v3): 859 connections
+- Memory Optimized (E2s_v3): 1,718 connections
 
 If your application opens more connections than the limit, new connections are rejected. Check the current connection count:
 
@@ -231,7 +235,7 @@ az postgres flexible-server parameter set \
   --name pgbouncer.enabled \
   --value true
 
-# Configure PgBouncer pool mode
+# Configure PgBouncer pool size
 az postgres flexible-server parameter set \
   --resource-group my-rg \
   --server-name my-postgres-server \
