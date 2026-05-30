@@ -8,7 +8,7 @@ Description: Write effective Pester tests for Azure PowerShell infrastructure sc
 
 ---
 
-If you are using PowerShell to automate Azure infrastructure, you should be testing those scripts with Pester. Pester is the testing framework for PowerShell, and it is built right into Windows and available on all platforms where PowerShell Core runs. It gives you the structure to write unit tests that run in seconds (using mocks instead of real Azure calls) and integration tests that validate your scripts against actual Azure resources.
+If you are using PowerShell to automate Azure infrastructure, you should be testing those scripts with Pester. Pester is the testing framework for PowerShell, an older version ships with Windows 10 / Windows Server 2016 and later, and current versions are available on all platforms where PowerShell runs. It gives you the structure to write unit tests that run in seconds (using mocks instead of real Azure calls) and integration tests that validate your scripts against actual Azure resources.
 
 I have seen too many teams skip testing on their infrastructure scripts because "it is just automation." Then a script change breaks the deployment pipeline at 2 AM and suddenly testing does not seem optional anymore. Pester catches those issues before they escape.
 
@@ -32,10 +32,10 @@ Describe "Math Operations" {
 }
 ```
 
-Install the latest version of Pester:
+Install the current stable version of Pester:
 
 ```powershell
-# Install Pester v5 (the latest major version)
+# Install Pester v5
 Install-Module -Name Pester -Force -SkipPublisherCheck
 Import-Module Pester
 ```
@@ -139,25 +139,27 @@ function Deploy-WebApp {
         "ENVIRONMENT" = $Environment
         "WEBSITE_RUN_FROM_PACKAGE" = "1"
     }
-    Set-AzWebApp -Name $Name -ResourceGroupName $ResourceGroupName -AppSettings $settings
+    Set-AzWebApp -Name $Name -ResourceGroupName $ResourceGroupName -AppSettings $settings -HttpsOnly $true
 
     return $app
 }
 
-# Main execution
-$names = Get-ResourceNames -AppName $AppName -Environment $Environment
+if ($MyInvocation.InvocationName -ne '.') {
+    # Main execution
+    $names = Get-ResourceNames -AppName $AppName -Environment $Environment
 
-$tags = @{
-    Environment = $Environment
-    Application = $AppName
-    ManagedBy   = "PowerShell"
+    $tags = @{
+        Environment = $Environment
+        Application = $AppName
+        ManagedBy   = "PowerShell"
+    }
+
+    $rg = Ensure-ResourceGroup -Name $names.ResourceGroup -Location $Location -Tags $tags
+    $plan = Deploy-AppServicePlan -Name $names.AppServicePlan -ResourceGroupName $names.ResourceGroup -Location $Location -SkuName $SkuName
+    $app = Deploy-WebApp -Name $names.WebApp -ResourceGroupName $names.ResourceGroup -AppServicePlanId $plan.Id -Environment $Environment
+
+    Write-Output "Deployment complete: $($app.DefaultHostName)"
 }
-
-$rg = Ensure-ResourceGroup -Name $names.ResourceGroup -Location $Location -Tags $tags
-$plan = Deploy-AppServicePlan -Name $names.AppServicePlan -ResourceGroupName $names.ResourceGroup -Location $Location -SkuName $SkuName
-$app = Deploy-WebApp -Name $names.WebApp -ResourceGroupName $names.ResourceGroup -AppServicePlanId $plan.Id -Environment $Environment
-
-Write-Output "Deployment complete: $($app.DefaultHostName)"
 ```
 
 ## Writing Unit Tests with Mocks
@@ -312,7 +314,7 @@ Describe "Deploy-WebApp" {
         It "should configure environment-specific app settings" {
             Deploy-WebApp -Name "app-test-prod" -ResourceGroupName "rg-test" -AppServicePlanId "/sub/rg/plan" -Environment "prod"
             Should -Invoke Set-AzWebApp -ParameterFilter {
-                $AppSettings.ENVIRONMENT -eq "prod"
+                $AppSettings.ENVIRONMENT -eq "prod" -and $HttpsOnly -eq $true
             }
         }
     }
@@ -323,7 +325,10 @@ Describe "Deploy-WebApp" {
 
 ```powershell
 # Run all tests in the current directory
-Invoke-Pester -Path ./Deploy-WebApp.Tests.ps1 -Output Detailed
+$config = New-PesterConfiguration
+$config.Run.Path = "./Deploy-WebApp.Tests.ps1"
+$config.Output.Verbosity = "Detailed"
+Invoke-Pester -Configuration $config
 
 # Run with code coverage reporting
 $config = New-PesterConfiguration
@@ -345,7 +350,7 @@ BeforeAll {
     # Generate unique names to avoid conflicts
     $script:testId = Get-Random -Maximum 9999
     $script:appName = "pestertest$($script:testId)"
-    $script:environment = "test"
+    $script:environment = "dev"
     $script:resourceGroup = "rg-$($script:appName)-$($script:environment)"
     $script:location = "eastus2"
 }
@@ -401,10 +406,18 @@ Run integration tests separately from unit tests using tags:
 
 ```powershell
 # Run only unit tests (fast, no Azure required)
-Invoke-Pester -Path ./ -ExcludeTag "Integration" -Output Detailed
+$config = New-PesterConfiguration
+$config.Run.Path = "./"
+$config.Filter.ExcludeTag = @("Integration")
+$config.Output.Verbosity = "Detailed"
+Invoke-Pester -Configuration $config
 
 # Run only integration tests (slow, requires Azure auth)
-Invoke-Pester -Path ./ -Tag "Integration" -Output Detailed
+$config = New-PesterConfiguration
+$config.Run.Path = "./"
+$config.Filter.Tag = @("Integration")
+$config.Output.Verbosity = "Detailed"
+Invoke-Pester -Configuration $config
 ```
 
 ## CI/CD Integration
