@@ -94,7 +94,7 @@ The listener runs on your on-premises server and maintains an outbound connectio
 
 ```javascript
 // listener.js - On-premises Hybrid Connection listener
-const { RelayedServer } = require('hyco-https');
+const https = require('hyco-https');
 
 const connectionString = process.env.RELAY_LISTENER_CONNECTION_STRING;
 const hybridConnectionName = 'my-hybrid-connection';
@@ -113,16 +113,16 @@ const config = parseConnectionString(connectionString);
 const ns = config['Endpoint'].replace('sb://', '').replace('/', '');
 const keyName = config['SharedAccessKeyName'];
 const key = config['SharedAccessKey'];
+const listenUri = https.createRelayListenUri(ns, hybridConnectionName);
 
 // Create the relayed HTTP server
-const server = RelayedServer.createRelayedServer(
+const server = https.createRelayedServer(
   {
-    server: ns,
-    path: hybridConnectionName,
+    server: listenUri,
     token: () => {
       // Generate a SAS token for authentication
-      return RelayedServer.createRelayToken(
-        `https://${ns}/${hybridConnectionName}`,
+      return https.createRelayToken(
+        listenUri,
         keyName,
         key
       );
@@ -170,30 +170,17 @@ The sender is your cloud application that needs to reach the on-premises service
 
 ```javascript
 // sender.js - Cloud application that sends requests through the relay
-const https = require('https');
-const crypto = require('crypto');
+const https = require('hyco-https');
 
 const namespace = 'my-relay-ns.servicebus.windows.net';
 const hybridConnectionName = 'my-hybrid-connection';
 const keyName = 'sender-rule';
 const key = process.env.RELAY_SENDER_KEY;
 
-// Generate a SAS token for the sender
-function createSasToken(uri, keyName, key, expiry) {
-  const encoded = encodeURIComponent(uri);
-  const ttl = Math.round(Date.now() / 1000) + (expiry || 3600);
-  const signature = crypto
-    .createHmac('sha256', key)
-    .update(`${encoded}\n${ttl}`)
-    .digest('base64');
-
-  return `SharedAccessSignature sr=${encoded}&sig=${encodeURIComponent(signature)}&se=${ttl}&skn=${keyName}`;
-}
-
 // Send a request through the Hybrid Connection
 async function sendRequest(method, path, data) {
-  const uri = `https://${namespace}/${hybridConnectionName}${path}`;
-  const token = createSasToken(uri, keyName, key);
+  const relayUri = https.createRelayHttpsUri(namespace, hybridConnectionName);
+  const token = https.createRelayToken(relayUri, keyName, key);
 
   return new Promise((resolve, reject) => {
     const body = data ? JSON.stringify(data) : '';
@@ -250,7 +237,7 @@ The outbound WebSocket connection from the listener can drop due to network issu
 ```javascript
 // resilient-listener.js - Listener with automatic reconnection
 function startListener() {
-  const server = RelayedServer.createRelayedServer(
+  const server = https.createRelayedServer(
     { /* config */ },
     requestHandler
   );
@@ -286,13 +273,20 @@ In addition to the HTTP request/response model, Hybrid Connections support raw W
 
 ```javascript
 // websocket-listener.js - WebSocket-based Hybrid Connection listener
-const { HybridConnectionsWebSocketServer } = require('hyco-ws');
+const WebSocket = require('hyco-ws');
 
-const wss = new HybridConnectionsWebSocketServer({
-  server: namespace,
-  path: hybridConnectionName,
-  token: tokenProvider
-});
+const namespace = 'my-relay-ns.servicebus.windows.net';
+const hybridConnectionName = 'my-hybrid-connection';
+const keyName = 'listener-rule';
+const key = process.env.RELAY_LISTENER_KEY;
+
+const listenUri = WebSocket.createRelayListenUri(namespace, hybridConnectionName);
+const wss = WebSocket.createRelayedServer(
+  {
+    server: listenUri,
+    token: () => WebSocket.createRelayToken(listenUri, keyName, key)
+  }
+);
 
 wss.on('connection', (ws) => {
   console.log('New WebSocket client connected through relay');
@@ -322,7 +316,7 @@ wss.on('error', (err) => {
 Hybrid Connections adds latency because traffic passes through the Azure relay. Here is what to expect:
 
 - Each request adds roughly 10-50ms of latency for the relay hop, depending on the geographic distance between your on-premises network and the Azure region.
-- Throughput is limited by the relay plan. The Standard plan supports up to 25 hybrid connections per namespace.
+- Throughput is limited by Azure Relay quotas. Azure Relay supports up to 25 concurrent listeners per Hybrid Connection and up to 5,000 concurrent relay connections per namespace.
 - For high-throughput scenarios, batch your requests rather than sending many small requests.
 
 To minimize latency, choose an Azure region that is geographically close to your on-premises data center.
