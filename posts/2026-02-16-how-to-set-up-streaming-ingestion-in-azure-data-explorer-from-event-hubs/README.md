@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Data Explorer, Streaming Ingestion, Azure Event Hub, Real-Time Data, Kusto, Data Pipeline, Low Latency
 
-Description: Learn how to configure streaming ingestion in Azure Data Explorer from Event Hubs for sub-second data availability in your analytical queries.
+Description: Learn how to configure streaming ingestion in Azure Data Explorer from Event Hubs for low-latency data availability in your analytical queries.
 
 ---
 
 Standard batched ingestion in Azure Data Explorer provides data availability within a few minutes of ingestion. For many workloads, that is perfectly fine. But when you need data to be queryable within seconds of it being produced - live monitoring dashboards, real-time alerting, operational intelligence during incidents - you need streaming ingestion.
 
-Streaming ingestion in Azure Data Explorer allows events flowing through Azure Event Hubs to appear in your ADX tables within seconds, making them immediately queryable with KQL. In this post, we will enable streaming ingestion, set up an Event Hubs data connection with streaming mode, and handle the operational considerations.
+Streaming ingestion in Azure Data Explorer allows events flowing through Azure Event Hubs to appear in your ADX tables within seconds, making them immediately queryable with KQL. In this post, we will enable streaming ingestion, set up an Event Hubs data connection, and handle the operational considerations.
 
 ## How Streaming Ingestion Differs from Batched
 
@@ -85,7 +85,10 @@ The table needs an explicit streaming ingestion policy:
 
 ```kql
 // Enable streaming ingestion for the LiveTelemetry table
-.alter table LiveTelemetry policy streamingingestion enable
+.alter table LiveTelemetry policy streamingingestion '{"IsEnabled": true}'
+
+// Enable ingestion-time tracking for latency queries that use ingestion_time()
+.alter table LiveTelemetry policy ingestiontime true
 
 // Verify the policy is set
 .show table LiveTelemetry policy streamingingestion
@@ -95,12 +98,12 @@ You can also enable streaming ingestion at the database level, which applies to 
 
 ```kql
 // Enable streaming ingestion for all tables in the database
-.alter database mydb policy streamingingestion enable
+.alter database mydb policy streamingingestion '{"IsEnabled": true}'
 ```
 
 ## Step 4: Create the Event Hubs Data Connection
 
-Now create a data connection between Event Hubs and ADX with streaming mode enabled:
+Now create a data connection between Event Hubs and ADX. Event Hubs data connections can use streaming ingestion when streaming is enabled on the cluster and the target table has a streaming ingestion policy:
 
 ```bash
 # Create an Event Hubs data connection with streaming ingestion
@@ -108,13 +111,14 @@ az kusto data-connection event-hub create \
   --resource-group my-resource-group \
   --cluster-name mycluster \
   --database-name mydb \
+  --location eastus \
   --data-connection-name "live-telemetry-stream" \
   --event-hub-resource-id "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.EventHub/namespaces/my-eh-namespace/eventhubs/telemetry-events" \
   --consumer-group "adx-streaming" \
   --table-name "LiveTelemetry" \
   --mapping-rule-name "TelemetryMapping" \
   --data-format "MULTIJSON" \
-  --event-system-properties "x-opt-enqueued-time" \
+  --managed-identity \
   --managed-identity-resource-id "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.Kusto/clusters/mycluster"
 ```
 
@@ -123,7 +127,7 @@ Key parameters:
 - **consumer-group**: Create a dedicated consumer group for the ADX connection. Do not use `$Default`.
 - **data-format**: Match the format of your events (JSON, MULTIJSON, CSV, Avro, etc.)
 - **mapping-rule-name**: The ingestion mapping created in Step 2.
-- **managed-identity-resource-id**: Use the cluster's managed identity for authentication to Event Hubs.
+- **managed-identity** and **managed-identity-resource-id**: Use the cluster's managed identity for authentication to Event Hubs.
 
 ### Grant ADX Access to Event Hubs
 
@@ -226,18 +230,19 @@ LiveTelemetry
 
 // Check for streaming ingestion failures
 .show streamingingestion failures
-| where Timestamp > ago(1h)
-| project Timestamp, Database, Table, ErrorKind, ErrorMessage
+| where LastFailureOn > ago(1h)
+| project LastFailureOn, Database, Table, FailureKind, ErrorCode, Details
 ```
 
-### Fallback Behavior
+### Failure Behavior
 
-If streaming ingestion fails (for example, due to schema mismatch or resource pressure), ADX automatically falls back to batched ingestion for those events. This means data is never lost, but it may take longer to become queryable. Monitor the fallback rate:
+If streaming ingestion fails (for example, due to schema mismatch or resource pressure), the failures are recorded in streaming ingestion diagnostics and should be monitored. For transactional update policy failures, retries fall back to batch ingestion. Monitor streaming ingestion status and failures:
 
 ```kql
-// Check streaming ingestion statistics including fallback
+// Check streaming ingestion statistics
 .show streamingingestion statistics
-| where Timestamp > ago(1h)
+| where EndTime > ago(1h)
+| summarize Count = sum(Count) by IngestionStatus, Database, Table
 ```
 
 ## Handling Schema Changes
@@ -269,11 +274,11 @@ When you need to change the table schema, consider the impact on streaming inges
 
 Streaming ingestion has higher CPU overhead compared to batched ingestion. Here are guidelines for capacity planning:
 
-**Cluster sizing**: For streaming workloads, add 20-30% more compute capacity compared to what you would need for the same volume with batched ingestion.
+**Cluster sizing**: Streaming ingestion performance and capacity scale with VM and cluster size. Benchmark your workload and scale the cluster when CPU, SSD, or ingestion latency metrics approach your limits.
 
 **Event size**: Streaming ingestion works best with events up to 4MB. Larger payloads should use batched ingestion.
 
-**Throughput limits**: A single ADX cluster can handle up to approximately 200MB per second of streaming ingestion, depending on the number of nodes and VM size.
+**Throughput limits**: Use queued ingestion instead of streaming ingestion when a table receives more than about 4GB per hour. Streaming ingestion concurrency is also limited by cluster cores.
 
 **Concurrent streams**: Each data connection consumes resources. Limit the number of streaming data connections to what your cluster can handle comfortably.
 
@@ -307,8 +312,8 @@ Configure caching to keep recently ingested streaming data in hot storage for fa
 @'{"SoftDeletePeriod": "365.00:00:00", "Recoverability": "Enabled"}'
 ```
 
-For streaming dashboards that only query recent data, a generous hot cache ensures sub-second query response times.
+For streaming dashboards that only query recent data, a generous hot cache helps keep query response times low.
 
 ## Summary
 
-Streaming ingestion from Event Hubs to Azure Data Explorer gives you sub-second data freshness for real-time analytics and monitoring. The setup involves enabling streaming at the cluster level, creating a streaming ingestion policy on your table, and configuring an Event Hubs data connection. The automatic fallback to batched ingestion provides resilience - if streaming encounters issues, data still arrives through the batch path. Monitor ingestion latency and fallback rates to ensure your streaming pipeline is performing as expected, and size your cluster with extra capacity to handle the higher CPU overhead of streaming writes.
+Streaming ingestion from Event Hubs to Azure Data Explorer gives you low-latency data freshness for real-time analytics and monitoring. The setup involves enabling streaming at the cluster level, creating a streaming ingestion policy on your table, and configuring an Event Hubs data connection. Monitor ingestion latency, status, and failures to ensure your streaming pipeline is performing as expected, and size your cluster with enough capacity to handle the higher CPU overhead of streaming writes.
