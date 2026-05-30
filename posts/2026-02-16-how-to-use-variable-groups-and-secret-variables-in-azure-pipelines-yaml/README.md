@@ -21,7 +21,7 @@ The simplest approach is defining variables directly in your YAML file. These ar
 
 variables:
   buildConfiguration: 'Release'
-  dotnetVersion: '8.0'
+  dotnetVersion: '8.0.x'
   projectPath: 'src/MyApp/MyApp.csproj'
 
 pool:
@@ -118,7 +118,7 @@ Secrets have special behavior:
 
 - They are not printed in logs. If a step outputs a secret value, it shows as `***` in the log.
 - They are not available as environment variables by default. You must explicitly map them.
-- They cannot be accessed in YAML template expressions (`${{ }}` syntax). You must use runtime expressions (`$()` syntax).
+- They should not be used in YAML template expressions (`${{ }}` syntax). Use macro syntax (`$()`) in task inputs or explicitly map them with `env`.
 
 Here is how to pass a secret to a script.
 
@@ -160,14 +160,6 @@ variables:
   - group: 'keyvault-secrets'  # Linked to Key Vault
 
 steps:
-  - task: AzureKeyVault@2
-    displayName: 'Fetch secrets from Key Vault'
-    inputs:
-      azureSubscription: 'my-service-connection'
-      KeyVaultName: 'my-keyvault'
-      SecretsFilter: 'db-password,api-key,storage-connection'
-      RunAsPreJob: true
-
   - script: |
       echo "Secrets are now available as variables"
     env:
@@ -175,36 +167,38 @@ steps:
       API_KEY: $(api-key)
 ```
 
-Note: Key Vault secret names use hyphens, but Azure Pipelines converts them to underscores when exposing them as environment variables. So `db-password` in Key Vault becomes accessible as `$(db-password)` in pipeline syntax.
+Note: Key Vault secret names can use hyphens. In the example above, `$(db-password)` is the pipeline variable reference, and the `env` block maps it to a shell-friendly environment variable name like `DB_PASSWORD`.
 
 ## Variable Precedence
 
 When the same variable name is defined in multiple places, Azure Pipelines follows a precedence order:
 
-1. **Queue-time variables** (set when manually running the pipeline) - highest
-2. **Pipeline-level UI variables** (set in pipeline settings)
-3. **Stage/job/step-level YAML variables**
-4. **Variable groups**
-5. **YAML file-level variables** - lowest
+1. **Job-level YAML variables** - highest
+2. **Stage-level YAML variables**
+3. **Pipeline-level YAML variables**
+4. **Queue-time variables** (set when manually running the pipeline)
+5. **Pipeline-level UI variables** (set in pipeline settings) - lowest
 
 This means a variable defined at the stage level overrides the same variable from a variable group or file-level definition.
 
 ```mermaid
 graph TD
-    A[Queue-time Variables] -->|Highest Priority| F[Final Value]
-    B[Pipeline UI Variables] --> F
-    C[Stage/Job YAML Variables] --> F
-    D[Variable Groups] --> F
-    E[YAML File Variables] -->|Lowest Priority| F
+    A[Job-level YAML Variables] -->|Highest Priority| F[Final Value]
+    B[Stage-level YAML Variables] --> F
+    C[Pipeline-level YAML Variables] --> F
+    D[Queue-time Variables] --> F
+    E[Pipeline UI Variables] -->|Lowest Priority| F
 ```
 
 ## Runtime vs. Compile-Time Expressions
 
-Azure Pipelines has two expression syntaxes that evaluate at different times:
+Azure Pipelines has three variable syntaxes that evaluate at different times:
 
 **Compile-time expressions** (`${{ }}`) are evaluated when the YAML is processed, before the pipeline runs. They can access parameters and statically defined variables, but not runtime values like secret variables.
 
-**Runtime expressions** (`$[ ]` and `$()`) are evaluated during pipeline execution. They can access all variables, including secrets and dynamically set values.
+**Macro syntax** (`$()`) is evaluated during runtime before a task runs. Use it for most task inputs and for secure values passed into tasks.
+
+**Runtime expressions** (`$[ ]`) are evaluated during runtime and are intended for conditions and expressions.
 
 ```yaml
 variables:
@@ -268,7 +262,7 @@ The syntax for cross-stage references is verbose but follows a consistent patter
 
 **Rotate secrets regularly.** Set up alerts in Key Vault to notify you when secrets are approaching expiration.
 
-**Do not use secret variables in conditions or template expressions.** They are not available in `${{ }}` expressions and attempting to use them there will result in empty values.
+**Do not use secret variables in template expressions.** They are not available in `${{ }}` expressions and attempting to use them there will result in empty values.
 
 ## Wrapping Up
 
