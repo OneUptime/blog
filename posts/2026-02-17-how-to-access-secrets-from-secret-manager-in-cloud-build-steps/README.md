@@ -12,10 +12,10 @@ Build pipelines need secrets - API keys, database passwords, service account cre
 
 ## Two Ways to Access Secrets in Cloud Build
 
-Cloud Build provides two mechanisms for accessing Secret Manager secrets:
+Cloud Build provides two common patterns for using Secret Manager secrets:
 
 1. **availableSecrets** - Makes secrets available as environment variables in specific build steps
-2. **volumes** - Mounts secrets as files in the build step's filesystem
+2. **files** - Writes secrets to files inside a build step when a tool expects a file
 
 The environment variable approach is more common and simpler for most use cases. The file-based approach is useful when a tool expects a credential file (like a service account JSON key).
 
@@ -37,10 +37,10 @@ echo -n "sk-abc123def456" | gcloud secrets versions add my-api-key --data-file=-
 
 ### Step 2: Grant Cloud Build Access
 
-The Cloud Build service account needs the `secretmanager.secretAccessor` role on the secret:
+The service account that runs the build needs the `secretmanager.secretAccessor` role on the secret. If your build uses the legacy Cloud Build service account, you can grant it access like this:
 
 ```bash
-# Get the Cloud Build service account
+# Get the legacy Cloud Build service account
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
 
@@ -150,7 +150,7 @@ steps:
       - '-c'
       - |
         # Write the service account key to a file
-        echo "$$SA_KEY" > /workspace/sa-key.json
+        printf '%s' "$$SA_KEY" > /workspace/sa-key.json
         # Activate the service account
         gcloud auth activate-service-account --key-file=/workspace/sa-key.json
         # Run your command that needs the credentials
@@ -263,16 +263,25 @@ steps:
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA', '.']
 
   - name: 'bash'
-    id: 'sign-image'
+    id: 'write-cosign-key'
     secretEnv: ['COSIGN_KEY']
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         # Write the signing key to a temporary file
-        echo "$$COSIGN_KEY" > /tmp/cosign.key
-        cosign sign --key /tmp/cosign.key gcr.io/$PROJECT_ID/my-app:$SHORT_SHA
-        rm /tmp/cosign.key
+        printf '%s' "$$COSIGN_KEY" > /workspace/cosign.key
+
+  - name: 'gcr.io/projectsigstore/cosign'
+    id: 'sign-image'
+    args: ['sign', '--key', '/workspace/cosign.key', 'gcr.io/$PROJECT_ID/my-app:$SHORT_SHA']
+
+  - name: 'bash'
+    id: 'remove-cosign-key'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'rm -f /workspace/cosign.key'
 
 availableSecrets:
   secretManager:
