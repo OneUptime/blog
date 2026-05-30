@@ -37,6 +37,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
+  --version v1.20.2 \
   --set crds.enabled=true \
   --set crds.keep=true
 ```
@@ -48,7 +49,7 @@ Verify the installation.
 kubectl get pods -n cert-manager
 
 # Verify the webhook is working
-kubectl get apiservice v1.cert-manager.io -o yaml
+cmctl check api --wait=2m
 ```
 
 You should see three pods: cert-manager, cert-manager-cainjector, and cert-manager-webhook.
@@ -77,7 +78,7 @@ spec:
       # Use HTTP-01 challenge with the NGINX ingress class
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 Apply it.
@@ -113,7 +114,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ```bash
@@ -182,9 +183,23 @@ kubectl describe certificate my-app-tls
 
 If your service is not publicly accessible or you need wildcard certificates, use DNS-01 validation with Azure DNS.
 
-First, create a managed identity for cert-manager to manage DNS records.
+First, configure Azure Workload Identity and create a managed identity for cert-manager to manage DNS records.
 
 ```bash
+# Enable AKS workload identity support
+az aks update \
+  --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+
+# Label the cert-manager controller pods for Azure Workload Identity
+helm upgrade cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --version v1.20.2 \
+  --reuse-values \
+  --set 'podLabels.azure\.workload\.identity/use=true'
+
 # Create a managed identity for DNS management
 az identity create \
   --name cert-manager-dns-identity \
@@ -207,6 +222,19 @@ az role assignment create \
   --assignee $DNS_IDENTITY_CLIENT_ID \
   --role "DNS Zone Contributor" \
   --scope $DNS_ZONE_ID
+
+# Create a federated credential for cert-manager's service account
+SERVICE_ACCOUNT_ISSUER=$(az aks show \
+  --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --query "oidcIssuerProfile.issuerUrl" -o tsv)
+
+az identity federated-credential create \
+  --name cert-manager \
+  --identity-name cert-manager-dns-identity \
+  --resource-group myResourceGroup \
+  --issuer $SERVICE_ACCOUNT_ISSUER \
+  --subject system:serviceaccount:cert-manager:cert-manager
 ```
 
 Now create a ClusterIssuer that uses DNS-01 with Azure DNS.
@@ -316,7 +344,7 @@ kubectl get challenges --all-namespaces
 
 **Rate limiting on production.** Let's Encrypt limits you to 50 certificates per registered domain per week. If you hit this during testing, that is why you should always test with staging first.
 
-**Secret not being updated.** If you change a certificate (add a new SAN, for example), delete the existing secret and cert-manager will recreate it: `kubectl delete secret my-app-tls`.
+**Secret not being updated.** If you change a certificate (add a new SAN, for example), make sure the Ingress `tls.hosts` or Certificate spec has been updated. If you need to manually trigger reissuance, use `cmctl renew my-app-tls` instead of deleting the existing secret.
 
 ## Production Recommendations
 
