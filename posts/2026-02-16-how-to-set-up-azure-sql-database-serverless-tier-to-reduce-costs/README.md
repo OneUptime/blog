@@ -14,11 +14,11 @@ I switched several development and staging databases to serverless and cut costs
 
 ## What Is the Serverless Tier?
 
-The serverless tier is a compute option within the vCore purchasing model's General Purpose service tier. It differs from the provisioned tier in two fundamental ways:
+The serverless tier is a compute option within the vCore purchasing model's General Purpose and Hyperscale service tiers. Auto-pause and auto-resume are currently only supported in the General Purpose tier. It differs from the provisioned tier in two fundamental ways:
 
-**Auto-scaling**: Instead of a fixed number of vCores, you configure a minimum and maximum range. The database scales up and down within this range based on actual CPU demand. You pay per second of compute used, based on the number of vCores consumed.
+**Auto-scaling**: Instead of a fixed number of vCores, you configure a minimum and maximum range. The database scales up and down within this range based on actual CPU and memory demand. You pay per second of compute used, based on the greater of CPU or memory consumed, with a floor based on the configured minimum vCores and memory while the database is online.
 
-**Auto-pause**: When the database has been idle for a configurable period (no active queries or connections consuming CPU), it automatically pauses. While paused, you only pay for storage. When a new connection arrives, the database automatically resumes.
+**Auto-pause**: For General Purpose serverless databases, when the database has been idle for a configurable period (no sessions and no CPU for user workload), it automatically pauses. While paused, you only pay for storage. When a new login attempt or other activity occurs, the database automatically resumes.
 
 This makes serverless ideal for workloads with unpredictable, intermittent, or bursty usage patterns.
 
@@ -71,7 +71,7 @@ For a development database, 0.5 to 2 vCores is usually sufficient. For a low-tra
 Set the auto-pause delay:
 
 - **Enable auto-pause**: Toggle this on.
-- **Auto-pause delay**: The minimum is 1 hour (60 minutes). This is how long the database waits with no activity before pausing.
+- **Auto-pause delay**: The default is 1 hour (60 minutes), and the minimum is 15 minutes. This is how long the database waits with no activity before pausing.
 
 If your workload has brief idle gaps between active periods, set a longer delay to avoid frequent pause/resume cycles. If the database is typically idle for long stretches, a shorter delay saves more money.
 
@@ -136,11 +136,11 @@ az sql db update \
 
 The auto-pause feature has some nuances that are important to understand.
 
-**What triggers pausing**: The database pauses when there are no active user sessions performing queries and no background operations that require CPU. Certain maintenance operations run by Azure (like backups) do not prevent auto-pause.
+**What triggers pausing**: The database pauses when the number of sessions is zero and CPU is zero for user workload throughout the auto-pause delay. An open application or user session can prevent auto-pause even if it is not actively running a query.
 
-**What triggers resuming**: Any new connection attempt or any T-SQL query against the database triggers a resume. This includes health checks, monitoring queries, and application connection pool warmup.
+**What triggers resuming**: A new login attempt or other database activity triggers a resume. This includes health checks, monitoring queries, and application connection pool warmup.
 
-**Resume latency**: When a paused database receives a connection, it takes approximately 1-2 minutes to resume. During this time, the first connection will wait and may time out if your application has a short connection timeout. Set your connection timeout to at least 60 seconds.
+**Resume latency**: When a paused database receives a connection, it generally takes around a minute to resume, though the latency can vary. The first connection attempt can receive a "database unavailable" error while the database resumes, so your application should use connection retry logic. Set your connection timeout to at least 60 seconds.
 
 Here is how to handle the resume delay in your application's connection string:
 
@@ -189,11 +189,12 @@ You can view these in the Azure Portal under your database's Metrics page. Set u
 
 There are a few things serverless does not support:
 
-- Only available in the General Purpose service tier (not Business Critical or Hyperscale)
+- Only available in the General Purpose and Hyperscale service tiers (not Business Critical)
 - Only available in the vCore purchasing model (not DTU)
-- Minimum auto-pause delay is 1 hour
-- Resume time is 1-2 minutes, which may not be acceptable for latency-sensitive applications
-- Some features like long-term backup retention and geo-replication work fine, but the secondary must also be configured appropriately
+- Auto-pause and auto-resume are only supported in the General Purpose tier
+- Minimum auto-pause delay is 15 minutes
+- Resume time is generally around a minute, which may not be acceptable for latency-sensitive applications
+- Some features, including long-term backup retention and geo-replication, support serverless auto-scaling but require auto-pause to be disabled
 
 ## Real-World Cost Example
 
