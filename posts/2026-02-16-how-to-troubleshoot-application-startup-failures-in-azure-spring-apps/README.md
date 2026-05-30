@@ -10,6 +10,8 @@ Description: A systematic troubleshooting guide for diagnosing and fixing Spring
 
 Your Spring Boot application starts perfectly on your laptop but fails on Azure Spring Apps. The deployment shows "Failed" and the logs are either empty or filled with cryptic error messages. This is a frustrating but common experience. Spring Boot applications have many moving parts - dependency injection, database connections, configuration properties, auto-configuration - and any of them can cause a startup failure. This guide walks through the most common causes and how to fix them systematically.
 
+Note: Azure Spring Apps Basic, Standard, and Enterprise plans entered a retirement period on March 17, 2025 and are scheduled for retirement on March 31, 2028. The guidance below applies to existing Azure Spring Apps workloads during that support window.
+
 ## The Diagnostic Process
 
 When a Spring Boot app fails to start on Azure Spring Apps, follow this sequence:
@@ -31,8 +33,8 @@ az spring app deployment show \
   --app order-service \
   --service my-spring-service \
   --resource-group spring-rg \
-  --deployment default \
-  --query "{status:properties.provisioningState, instances:properties.instances}"
+  --name default \
+  --query "{status:properties.status, provisioningState:properties.provisioningState, instances:properties.instances}"
 ```
 
 Common status messages and what they mean:
@@ -63,15 +65,22 @@ az spring app logs \
   --lines 1000
 ```
 
-If the logs are empty, the application might be crashing before the logging framework initializes. Check the system-level logs.
+If the logs are empty, the application might be crashing before the logging framework initializes. Check the deployment status and recent Azure Activity Log entries for failed platform operations.
 
 ```bash
-# Check for system-level events
-az spring app show \
+# Get the app resource ID
+APP_ID=$(az spring app show \
   --name order-service \
   --service my-spring-service \
   --resource-group spring-rg \
-  --query "properties.activeDeployment.properties.status"
+  --query id \
+  --output tsv)
+
+# Check recent failed platform operations for the app
+az monitor activity-log list \
+  --resource-id "$APP_ID" \
+  --status Failed \
+  --max-events 20
 ```
 
 ## Common Failure #1: Database Connection Errors
@@ -89,11 +98,12 @@ The database URL is wrong or not set.
 
 ```bash
 # Check current environment variables
-az spring app show \
-  --name order-service \
+az spring app deployment show \
+  --app order-service \
   --service my-spring-service \
   --resource-group spring-rg \
-  --query "properties.activeDeployment.properties.deploymentSettings.environmentVariables"
+  --name default \
+  --query "properties.deploymentSettings.environmentVariables"
 ```
 
 The database firewall blocks access from Azure Spring Apps.
@@ -115,7 +125,7 @@ The SSL configuration is wrong. Azure databases require SSL by default.
 spring:
   datasource:
     url: jdbc:postgresql://myserver.postgres.database.azure.com:5432/mydb?sslmode=require
-    username: admin@myserver
+    username: myadmin
     password: ${DB_PASSWORD}
 ```
 
@@ -169,25 +179,24 @@ private boolean newCheckoutEnabled;
 
 ## Common Failure #3: Port Mismatch
 
-Azure Spring Apps expects your application to listen on port 1025 (the default for the platform) or the port configured in the `server.port` property. If your app listens on a different port, health probes fail.
+Azure Spring Apps expects your application to listen on the platform probe port: port 1025 in the Basic/Standard plan or port 8080 in the Enterprise plan. If your code bypasses `server.port` and listens on a different port, health probes fail.
 
 **Symptoms:**
 - App starts successfully (you see the Spring Boot banner) but is marked as unhealthy
 - Health check endpoints return connection refused
 
-**Fix:** Let Azure Spring Apps manage the port.
+**Fix:** Avoid hardcoding a different application port. If you must set it explicitly, use the correct port for your plan.
 
 ```yaml
-# Let the platform set the port
+# Basic/Standard plan
 server:
   port: 1025
 ```
 
-Or use the `SERVER_PORT` environment variable, which Azure Spring Apps sets automatically.
-
 ```yaml
+# Enterprise plan
 server:
-  port: ${SERVER_PORT:8080}
+  port: 8080
 ```
 
 ## Common Failure #4: Out of Memory
@@ -321,15 +330,16 @@ Be aware that debug logging is very verbose. Use it only for troubleshooting and
 Azure Spring Apps supports remote debugging for deeper investigation.
 
 ```bash
-# Enable remote debugging on the app
-az spring app update \
+# Enable remote debugging on the app deployment
+az spring app enable-remote-debugging \
   --name order-service \
   --service my-spring-service \
   --resource-group spring-rg \
-  --jvm-options "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+  --deployment default \
+  --port 5005
 ```
 
-Then connect your IDE's remote debugger to the application instance. This lets you set breakpoints and step through the startup process.
+Then connect your IDE through the Azure Toolkit for IntelliJ or the Azure Spring Apps extension for VS Code. This lets you set breakpoints and step through the startup process.
 
 ## Prevention Tips
 
