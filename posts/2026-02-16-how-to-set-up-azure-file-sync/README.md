@@ -37,9 +37,10 @@ Key components:
 
 ## Prerequisites
 
-- Windows Server 2016 or later (2019 or 2022 recommended)
-- .NET Framework 4.7.2 or later
-- An Azure File Share (standard tier, SMB protocol)
+- Windows Server 2016, 2019, 2022, or 2025 (2019 or 2022 recommended)
+- PowerShell 5.1 or PowerShell 6+ with the Az PowerShell module installed
+- .NET Framework 4.7.2 or later if you use PowerShell 5.1
+- An SMB Azure File Share in the same region as the Storage Sync Service (provisioned v2 recommended for new deployments)
 - Outbound internet connectivity from the server (HTTPS on port 443)
 - At least one NTFS volume on the server (ReFS is not supported)
 
@@ -111,10 +112,11 @@ After installing the agent, register the server with your Storage Sync Service:
 
 ```powershell
 # Import the Azure File Sync module
-Import-Module "C:\Program Files\Azure\StorageSyncAgent\StorageSync.Management.PowerShell.Cmdlets.dll"
+Import-Module Az.StorageSync
 
 # Log in to Azure
-Login-AzStorageSync -SubscriptionId "your-subscription-id" -TenantId "your-tenant-id"
+Connect-AzAccount -TenantId "your-tenant-id"
+Set-AzContext -SubscriptionId "your-subscription-id"
 
 # Register the server with the Storage Sync Service
 Register-AzStorageSyncServer `
@@ -133,7 +135,7 @@ A sync group defines the sync relationship between one Azure File Share and one 
 New-AzStorageSyncGroup `
   -ResourceGroupName "myresourcegroup" `
   -StorageSyncServiceName "myStorageSyncService" `
-  -SyncGroupName "mySyncGroup"
+  -Name "mySyncGroup"
 ```
 
 ## Step 6: Add the Cloud Endpoint
@@ -146,6 +148,7 @@ New-AzStorageSyncCloudEndpoint `
   -ResourceGroupName "myresourcegroup" `
   -StorageSyncServiceName "myStorageSyncService" `
   -SyncGroupName "mySyncGroup" `
+  -Name "myfileshare" `
   -StorageAccountResourceId (Get-AzStorageAccount -ResourceGroupName "myresourcegroup" -Name "mysyncstorage").Id `
   -AzureFileShareName "myfileshare"
 ```
@@ -162,16 +165,17 @@ New-AzStorageSyncServerEndpoint `
   -ResourceGroupName "myresourcegroup" `
   -StorageSyncServiceName "myStorageSyncService" `
   -SyncGroupName "mySyncGroup" `
-  -ServerResourceId (Get-AzStorageSyncServer -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "myStorageSyncService")[0].ServerId `
+  -Name "myServerEndpoint" `
+  -ServerResourceId (Get-AzStorageSyncServer -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "myStorageSyncService")[0].ResourceId `
   -ServerLocalPath "D:\FileShare" `
-  -CloudTieringEnabled `
+  -CloudTiering `
   -VolumeFreeSpacePercent 20 `
   -TierFilesOlderThanDays 30
 ```
 
 The cloud tiering parameters:
 
-- `CloudTieringEnabled` - Turns on cloud tiering
+- `CloudTiering` - Turns on cloud tiering
 - `VolumeFreeSpacePercent 20` - Keep at least 20% of the volume free. When the volume gets fuller than this, Azure File Sync tiers the oldest files to the cloud.
 - `TierFilesOlderThanDays 30` - Tier files that have not been accessed in 30 days regardless of volume space.
 
@@ -195,7 +199,8 @@ Tiered files have a special attribute visible in File Explorer (a cloud icon ove
 $file = Get-Item "D:\FileShare\old-report.pdf"
 $attributes = $file.Attributes
 
-if ($attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -and
+    ($attributes -band [System.IO.FileAttributes]::Offline)) {
     Write-Host "File is tiered (stored in Azure)"
 } else {
     Write-Host "File is stored locally"
@@ -208,6 +213,7 @@ You can force a tiered file to be downloaded locally:
 
 ```powershell
 # Recall a specific tiered file
+Import-Module "C:\Program Files\Azure\StorageSyncAgent\StorageSync.Management.ServerCmdlets.dll"
 Invoke-StorageSyncFileRecall -Path "D:\FileShare\old-report.pdf"
 ```
 
@@ -215,7 +221,8 @@ To recall all files in a directory (useful before taking a backup):
 
 ```powershell
 # Recall all tiered files in a directory
-Invoke-StorageSyncFileRecall -Path "D:\FileShare\important-docs" -Order LastAccessTime
+Import-Module "C:\Program Files\Azure\StorageSyncAgent\StorageSync.Management.ServerCmdlets.dll"
+Invoke-StorageSyncFileRecall -Path "D:\FileShare\important-docs" -Order CloudTieringPolicy
 ```
 
 ## Multi-Server Sync
@@ -231,7 +238,7 @@ graph TD
 
 Each server gets its own copy of the file share data, with cloud tiering independently managed. Changes made on any server propagate to all others through the Azure File Share.
 
-Note that conflict resolution uses "last writer wins" at the file level. If two users edit the same file on different servers simultaneously, the last upload wins and the other version is saved as a conflict file.
+Note that conflict resolution uses "last writer wins" at the file level. If two users edit the same file on different servers simultaneously, the most recently written change keeps the original file name and the older version is saved as a conflict file.
 
 ## Monitoring Sync Health
 
@@ -260,8 +267,8 @@ az monitor metrics alert create \
   --name "sync-failure-alert" \
   --resource-group myresourcegroup \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myresourcegroup/providers/Microsoft.StorageSync/storageSyncServices/myStorageSyncService" \
-  --condition "total SyncSessionResult < 1" \
-  --description "Alert when Azure File Sync session fails"
+  --condition "total ServerSyncSessionResult < 1" \
+  --description "Alert when no successful Azure File Sync session is recorded in the evaluation window"
 ```
 
 ## Best Practices
