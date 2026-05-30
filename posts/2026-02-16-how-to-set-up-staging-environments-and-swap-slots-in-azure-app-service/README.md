@@ -16,7 +16,7 @@ This post covers how to set up deployment slots, configure them properly, perfor
 
 Deployment slots are live instances of your App Service with their own hostnames, configurations, and content. Every App Service has a production slot by default. You can add additional slots like "staging," "testing," or "canary."
 
-Each slot gets its own URL in the format `https://your-app-staging.azurewebsites.net`. You deploy your new code to the staging slot, verify it works, then swap it with production. The swap is fast because it just changes the routing - it does not redeploy anything.
+Each slot gets its own URL in the format `https://your-app-staging.azurewebsites.net`. You deploy your new code to the staging slot, verify it works, then swap it with production. The swap is fast because it changes routing after preparing the source slot - it does not redeploy your code.
 
 Deployment slots are available on Standard tier and above. The number of available slots depends on your plan:
 
@@ -71,13 +71,17 @@ az webapp config appsettings set \
     --name my-app-service \
     --resource-group my-resource-group \
     --slot staging \
-    --slot-settings \
+    --settings \
         DATABASE_URL="Server=staging-db.database.windows.net;Database=staging" \
         APPINSIGHTS_KEY="staging-key-here" \
-        ENVIRONMENT_NAME="staging"
+        ENVIRONMENT_NAME="staging" \
+    --slot-settings \
+        DATABASE_URL \
+        APPINSIGHTS_KEY \
+        ENVIRONMENT_NAME
 ```
 
-The `--slot-settings` flag (note the plural) marks these as slot-sticky. If you use `--settings` instead, they will swap with the code.
+The `--slot-settings` flag (note the plural) marks the named settings as slot-sticky. If you use only `--settings`, they will swap with the code.
 
 ### Settings That Should Swap
 
@@ -127,7 +131,8 @@ az webapp deployment slot swap \
     --name my-app-service \
     --resource-group my-resource-group \
     --slot staging \
-    --target-slot production
+    --target-slot production \
+    --action swap
 ```
 
 This completes in seconds. What actually happens during a swap:
@@ -207,7 +212,7 @@ az webapp traffic-routing clear \
     --resource-group my-resource-group
 ```
 
-Users are assigned to a slot using a cookie (`x-ms-routing-name`), so they get a consistent experience. Once a user is routed to staging, they stay on staging for the duration of their session.
+Users are assigned to a slot using a cookie (`x-ms-routing-name`), so they get a consistent experience. Once a user is routed to staging, they stay on staging until the cookie expires or is deleted.
 
 ## The Deployment Flow
 
@@ -250,7 +255,7 @@ If you forget to mark a database connection string as slot-sticky, your staging 
 
 ### Slot-Specific Custom Domains
 
-Custom domains are not slot-sticky by default. If you have a custom domain on production, it stays on production after a swap (which is what you want).
+Custom domains are not swapped. If you have a custom domain on production, it stays on production after a swap (which is what you want).
 
 ## Summary
 
