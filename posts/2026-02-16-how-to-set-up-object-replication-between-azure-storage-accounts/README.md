@@ -21,13 +21,13 @@ Object replication makes sense in several scenarios:
 - **Data distribution.** Share data with partners or other teams through a separate storage account while keeping your primary account unaffected.
 - **Disaster recovery.** Maintain a copy of critical data in a secondary region that you control.
 
-Object replication does not replace backup. Deletions and overwrites also replicate to the destination. If someone deletes a blob in the source, it eventually gets deleted in the destination too. Use versioning and soft delete on both accounts for proper data protection.
+Object replication does not replace backup. Overwrites replicate to the destination as new blob versions. If someone deletes the current blob in the source, that state is replicated to the destination too, leaving previous versions preserved but no current version. Use versioning and soft delete on both accounts for proper data protection.
 
 ## Prerequisites
 
 Both the source and destination storage accounts must meet these requirements:
 
-- General-purpose v2 (GPv2) or BlobStorage account types
+- General-purpose v2 (GPv2) or premium block blob account types
 - Blob versioning must be enabled on both accounts
 - Change feed must be enabled on the source account
 - The accounts can be in the same or different regions, and even in different subscriptions
@@ -61,40 +61,53 @@ A replication policy defines which blobs get replicated from source to destinati
 ### Using Azure CLI
 
 ```bash
-# Create a replication policy with a rule that replicates from one container to another
-az storage account or-policy create \
+# Create a replication policy on the destination account with a rule that
+# replicates from one container to another
+POLICY_ID=$(az storage account or-policy create \
   --account-name deststorageaccount \
   --resource-group destresourcegroup \
   --source-account sourcestorageaccount \
   --destination-account deststorageaccount \
   --source-container sourcecontainer \
   --destination-container destcontainer \
-  --min-creation-time "2026-01-01T00:00:00Z"
+  --min-creation-time "2026-01-01T00:00:00Z" \
+  --query policyId \
+  --output tsv)
+
+# Associate the same policy with the source account so replication can start
+az storage account or-policy show \
+  --account-name deststorageaccount \
+  --resource-group destresourcegroup \
+  --policy-id $POLICY_ID \
+  | az storage account or-policy create \
+      --account-name sourcestorageaccount \
+      --resource-group sourceresourcegroup \
+      --policy "@-"
 ```
 
-The `--min-creation-time` parameter tells Azure to only replicate blobs created after the specified time. Without it, all existing blobs get replicated, which could take a long time and incur significant costs for large containers.
+The `--min-creation-time` parameter tells Azure to only replicate blobs created after the specified time. Without it, the default behavior is to replicate only new block blobs added after the rule is created.
 
 ### Using the Azure Portal
 
-1. Navigate to the destination storage account.
+1. Navigate to the source storage account.
 2. Under "Data management," click "Object replication."
-3. Click "Set up replication rules."
-4. Select the source storage account.
+3. Click "Create replication rules."
+4. Select the destination storage account.
 5. Choose the source and destination containers.
 6. Configure filters if needed.
 7. Click "Save and apply."
 
-Azure creates the policy on the destination account and automatically creates a corresponding policy on the source account.
+Azure creates the policy on the source account and automatically creates a corresponding policy on the destination account.
 
 ### Using Bicep
 
 ```bicep
 // Define an object replication policy on the destination storage account
-resource replicationPolicy 'Microsoft.Storage/storageAccounts/objectReplicationPolicies@2023-01-01' = {
+resource replicationPolicy 'Microsoft.Storage/storageAccounts/objectReplicationPolicies@2023-05-01' = {
   name: '${destStorageAccount.name}/default'
   properties: {
-    sourceAccount: sourcestorageaccount.id
-    destinationAccount: deststorageaccount.id
+    sourceAccount: sourceStorageAccount.id
+    destinationAccount: destStorageAccount.id
     rules: [
       {
         sourceContainer: 'sourcecontainer'
@@ -110,6 +123,8 @@ resource replicationPolicy 'Microsoft.Storage/storageAccounts/objectReplicationP
   }
 }
 ```
+
+When you create the policy through an ARM or Bicep deployment, make sure the matching policy is also associated with the source account using the same policy ID.
 
 ## Filtering What Gets Replicated
 
@@ -143,19 +158,19 @@ from azure.storage.blob import BlobServiceClient
 # Connect to the source storage account
 blob_service_client = BlobServiceClient.from_connection_string("source-connection-string")
 container_client = blob_service_client.get_container_client("sourcecontainer")
+blob_client = container_client.get_blob_client("example.txt")
 
-# Check replication status for blobs in the container
-blob_list = container_client.list_blobs(include=["copy"])
+# Check replication status for a blob in the source container
+properties = blob_client.get_blob_properties()
 
-for blob in blob_list:
-    # The object replication source properties show the replication status
-    if blob.object_replication_source_properties:
-        for policy in blob.object_replication_source_properties:
-            for rule in policy.rules:
-                print(f"Blob: {blob.name}")
-                print(f"  Policy: {policy.policy_id}")
-                print(f"  Rule: {rule.rule_id}")
-                print(f"  Status: {rule.status}")
+# The object replication source properties show the replication status
+if properties.object_replication_source_properties:
+    for policy in properties.object_replication_source_properties:
+        for rule in policy.rules:
+            print(f"Blob: {properties.name}")
+            print(f"  Policy: {policy.policy_id}")
+            print(f"  Rule: {rule.rule_id}")
+            print(f"  Status: {rule.status}")
 ```
 
 Replication status values include:
@@ -165,7 +180,7 @@ Replication status values include:
 
 ## Replication Lag
 
-Object replication is asynchronous. There is no SLA on how quickly blobs are replicated. In practice, most blobs replicate within minutes, but during high-throughput periods or for large blobs, it can take longer.
+Object replication is asynchronous. For standard object replication, there is no SLA on how quickly blobs are replicated. Priority replication can provide an SLA for supported workloads when it is enabled. In practice, most blobs replicate within minutes, but during high-throughput periods or for large blobs, it can take longer.
 
 The replication lag depends on:
 
@@ -180,13 +195,12 @@ Do not build applications that depend on real-time replication. Treat it as even
 
 A single replication policy can contain up to 1000 rules. This lets you set up fine-grained replication where different containers or prefixes get replicated to different destinations.
 
-You can also create multiple policies to replicate from one source to multiple destinations:
+You can also create policies to replicate from one source to multiple destinations, up to Azure's limit of two destination accounts per source account:
 
 ```mermaid
 graph LR
     A[Source Account<br/>East US] --> B[Dest Account 1<br/>West Europe]
     A --> C[Dest Account 2<br/>Southeast Asia]
-    A --> D[Dest Account 3<br/>Brazil South]
 ```
 
 Each destination gets its own policy with its own set of rules.
@@ -220,7 +234,7 @@ For large-scale replication across regions, bandwidth is usually the biggest cos
 
 ## Deleting a Replication Policy
 
-If you no longer need replication, remove the policy from the destination account:
+If you no longer need replication, remove the policy from both the source and destination accounts:
 
 ```bash
 # List replication policies on the destination account
@@ -228,7 +242,13 @@ az storage account or-policy list \
   --account-name deststorageaccount \
   --resource-group destresourcegroup
 
-# Delete a replication policy
+# Delete the replication policy from the source account
+az storage account or-policy delete \
+  --account-name sourcestorageaccount \
+  --resource-group sourceresourcegroup \
+  --policy-id $POLICY_ID
+
+# Delete the replication policy from the destination account
 az storage account or-policy delete \
   --account-name deststorageaccount \
   --resource-group destresourcegroup \
