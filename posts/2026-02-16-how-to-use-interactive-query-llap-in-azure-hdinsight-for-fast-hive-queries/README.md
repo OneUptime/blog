@@ -10,7 +10,7 @@ Description: Learn how to deploy and use Interactive Query with LLAP in Azure HD
 
 Standard Hive queries on Hadoop can take minutes to return results because each query launches a new set of containers, reads data from disk, and processes it through the Tez execution engine. For interactive analytics where users expect quick responses, this latency is unacceptable. That is where Interactive Query comes in.
 
-Interactive Query is an HDInsight cluster type that uses LLAP (Live Long and Process) to cache data in memory and keep long-running daemons ready to execute queries instantly. Instead of spinning up new containers for each query, LLAP daemons are always running and hold frequently accessed data in an in-memory cache. The result is dramatically faster query performance - often sub-second for cached data.
+Interactive Query is an HDInsight cluster type that uses LLAP (Low Latency Analytical Processing) to cache data in memory and keep long-running daemons ready to execute queries instantly. Instead of spinning up new containers for each query, LLAP daemons are always running and hold frequently accessed data in an in-memory cache. The result is dramatically faster query performance - often sub-second for cached data.
 
 In this post, we will set up an Interactive Query cluster, configure LLAP for optimal performance, and walk through practical examples of using it for interactive data exploration.
 
@@ -37,22 +37,23 @@ Create an Interactive Query cluster using the Azure CLI:
 az hdinsight create \
   --name my-llap-cluster \
   --resource-group my-resource-group \
-  --type InteractiveHive \
+  --type interactivehive \
+  --version 5.1 \
   --component-version InteractiveHive=3.1 \
   --http-user admin \
   --http-password "YourStr0ngP@ssword!" \
   --ssh-user sshuser \
   --ssh-password "YourSSHP@ssword!" \
   --workernode-count 4 \
-  --workernode-size Standard_D13_V2 \
-  --headnode-size Standard_D13_V2 \
+  --workernode-size Standard_E8ads_v5 \
+  --headnode-size Standard_E8ads_v5 \
   --storage-account mystorageaccount \
   --storage-account-key "your-storage-key" \
-  --storage-default-container llap-data \
+  --storage-container llap-data \
   --location eastus
 ```
 
-For Interactive Query, worker node sizing is particularly important because LLAP cache size depends on the available memory. The D13 v2 VMs provide 56GB of RAM each, which gives a meaningful amount of cache space after accounting for the OS, YARN, and other services.
+For Interactive Query, worker node sizing is particularly important because LLAP cache size depends on the available memory. Dv2-series VMs are no longer available for new HDInsight clusters, so use a supported memory-rich VM size such as Eadsv5 or Easv4 in a region where that size is available. For example, Standard_E8ads_v5 provides 64GB of RAM, which gives a meaningful amount of cache space after accounting for the OS, YARN, and other services.
 
 ## Connecting to the Cluster
 
@@ -75,15 +76,15 @@ For command-line access, SSH into the cluster and use Beeline:
 ssh sshuser@my-llap-cluster-ssh.azurehdinsight.net
 
 # Connect to HiveServer2 using Beeline with LLAP
-beeline -u "jdbc:hive2://my-llap-cluster-int.azurehdinsight.net:2181/default;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2-interactive" \
+beeline -u "jdbc:hive2://headnodehost:10001/;transportMode=http" \
   -n admin -p "YourStr0ngP@ssword!"
 ```
 
-Notice the `hiveserver2-interactive` namespace in the connection string - this ensures you connect to the LLAP-enabled HiveServer2 instance rather than the standard one.
+On an Interactive Query cluster, this connects to the HiveServer2 service hosted by the cluster. If you need the full Interactive HiveServer2 JDBC URL, copy it from Ambari under Hive > Summary.
 
 ### Ambari Hive View
 
-The Ambari web interface provides a Hive View for running queries interactively:
+For HDInsight versions where Hive View is available, the Ambari web interface provides a Hive View for running queries interactively:
 
 ```text
 https://my-llap-cluster.azurehdinsight.net
@@ -116,12 +117,11 @@ CREATE TABLE sales_data (
 )
 STORED AS ORC
 TBLPROPERTIES (
-    'orc.compress'='SNAPPY',
-    'transactional'='true'  -- Enable ACID for LLAP compatibility
+    'orc.compress'='SNAPPY'
 );
 ```
 
-The `transactional=true` property enables ACID support, which is required for certain LLAP optimizations and allows INSERT, UPDATE, and DELETE operations.
+The `transactional=true` property is only needed for Hive ACID tables that use transactional writes such as UPDATE and DELETE. It is not required for LLAP caching.
 
 ### Loading Sample Data
 
@@ -197,12 +197,12 @@ Navigate to Hive > Configs > Interactive in Ambari. Key settings include:
 - **LLAP Daemon Cache Size**: Off-heap memory for data caching. This is where your table data is cached. Larger is better.
 - **Number of LLAP Daemons**: By default, one per worker node. You can increase this if your VMs have enough resources.
 
-A common configuration for D13 v2 nodes (56GB RAM):
+A common configuration for an 8-vCPU worker node with 64GB RAM:
 
 ```text
 LLAP Daemon Heap Size: 4GB
-LLAP Cache Size: 24GB
-YARN Container Memory: 16GB
+LLAP Cache Size: 28GB
+YARN Container Memory: 20GB
 Remaining for OS and other services: 12GB
 ```
 
@@ -216,7 +216,7 @@ SET hive.llap.execution.mode;
 SET hive.llap.daemon.num.executors;
 ```
 
-For D13 v2 nodes with 8 vCPUs, setting 6-7 executors per daemon is reasonable, leaving 1-2 cores for the daemon itself and OS.
+For 8-vCPU worker nodes, setting 6-7 executors per daemon is reasonable, leaving 1-2 cores for the daemon itself and OS.
 
 ## Monitoring LLAP Performance
 
@@ -224,13 +224,11 @@ For D13 v2 nodes with 8 vCPUs, setting 6-7 executors per daemon is reasonable, l
 
 The most important LLAP metric is the cache hit ratio. A high hit ratio means most queries are served from memory:
 
-```sql
--- Check LLAP cache statistics
--- Run this from the Hive CLI
-SET hive.llap.io.enabled=true;
-```
+You can check LLAP metrics through the Ambari UI under Hive > Summary > LLAP, including daemon metrics and cache behavior. From Beeline, you can verify that LLAP I/O is enabled with:
 
-You can also check LLAP metrics through the Ambari UI under Hive > Summary > LLAP.
+```sql
+SET hive.llap.io.enabled;
+```
 
 ### Query Performance Comparison
 
