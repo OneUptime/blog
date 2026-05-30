@@ -26,29 +26,31 @@ Install-Module -Name PowerShellGet -Force -AllowClobber
 
 # Restart your PowerShell session after updating PowerShellGet
 # Then install the Az module
-Install-Module -Name Az -Repository PSGallery -Force
+Install-Module -Name Az -Repository PSGallery -Force -AllowClobber
 ```
 
-The `-AllowClobber` flag is important because it lets the new version overwrite files from the old version. Without it, you may get conflicts.
+The `-AllowClobber` flag is important because it allows installation even when the module exports commands with the same names as commands from another module. Without it, you may get conflicts.
 
 ### TLS 1.2 Errors When Connecting to PSGallery
 
-The PowerShell Gallery requires TLS 1.2. Older Windows systems may default to TLS 1.0 or 1.1, which causes connection failures with errors like "Unable to resolve package source" or "No match was found for the specified search criteria."
+The PowerShell Gallery requires TLS 1.2 or higher. Older Windows systems may default to TLS 1.0 or 1.1, which causes connection failures with errors like "Unable to resolve package source" or "No match was found for the specified search criteria."
 
 ```powershell
 # Force TLS 1.2 for the current session
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+[Net.ServicePointManager]::SecurityProtocol =
+    [Net.ServicePointManager]::SecurityProtocol -bor
+    [Net.SecurityProtocolType]::Tls12
 
 # Make this permanent by adding it to your PowerShell profile
-Add-Content -Path $PROFILE -Value '[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12'
+Add-Content -Path $PROFILE -Value '[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12'
 
 # Now try the installation again
-Install-Module -Name Az -Repository PSGallery -Force
+Install-Module -Name Az -Repository PSGallery -Force -AllowClobber
 ```
 
 ### Conflicts Between AzureRM and Az Modules
 
-The older AzureRM module and the current Az module cannot coexist in the same PowerShell session. If you have AzureRM installed, you will see errors about conflicting assemblies or duplicate commands.
+The older AzureRM module and the current Az module cannot coexist in the same Windows PowerShell 5.1 environment. If both are installed for the same PowerShell version, you will see errors about conflicting assemblies or duplicate commands.
 
 ```powershell
 # Check if AzureRM is installed
@@ -63,10 +65,10 @@ Uninstall-Module -Name AzureRM -AllVersions -Force
 
 # Remove the directory manually if Uninstall-Module does not work
 # Then install Az fresh
-Install-Module -Name Az -Repository PSGallery -Force
+Install-Module -Name Az -Repository PSGallery -Force -AllowClobber
 ```
 
-If you cannot remove AzureRM for some reason (legacy scripts depend on it), use separate PowerShell sessions or configure the `Enable-AzureRmAlias` command to bridge the two. But honestly, migrating away from AzureRM is the right long-term fix.
+If you cannot remove AzureRM for some reason (legacy scripts depend on it), keep AzureRM in Windows PowerShell 5.1 and install Az in PowerShell 7.2 or later, or configure the `Enable-AzureRmAlias` command while you migrate scripts. But honestly, migrating away from AzureRM is the right long-term fix.
 
 ### "Module Az is already installed" but Commands Do Not Work
 
@@ -77,7 +79,7 @@ This usually means you have a corrupted installation or mismatched sub-module ve
 Get-Module -Name Az* -ListAvailable | Uninstall-Module -Force -ErrorAction SilentlyContinue
 
 # Clean up any leftover module files
-$modulePaths = $env:PSModulePath -split ';'
+$modulePaths = $env:PSModulePath -split [IO.Path]::PathSeparator
 foreach ($path in $modulePaths) {
     # List Az module directories that might need manual removal
     Get-ChildItem -Path $path -Directory -Filter "Az*" -ErrorAction SilentlyContinue
@@ -171,16 +173,10 @@ Azure PowerShell caches authentication tokens. Sometimes these tokens expire or 
 # Clear all cached account data
 Clear-AzContext -Force
 
-# Remove the token cache file
-$tokenCachePath = Join-Path $env:USERPROFILE ".Azure" "TokenCache.dat"
-if (Test-Path $tokenCachePath) {
-    Remove-Item $tokenCachePath -Force
-}
-
-# Also clear the msal token cache
-$msalCachePath = Join-Path $env:USERPROFILE ".Azure" "msal_token_cache.json"
-if (Test-Path $msalCachePath) {
-    Remove-Item $msalCachePath -Force
+# Remove any remaining saved Azure profile data
+$azureProfilePath = Join-Path $HOME ".Azure"
+if (Test-Path $azureProfilePath) {
+    Remove-Item $azureProfilePath -Recurse -Force
 }
 
 # Re-authenticate
