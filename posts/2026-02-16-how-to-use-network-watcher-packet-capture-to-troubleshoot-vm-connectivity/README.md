@@ -40,7 +40,10 @@ az vm extension set \
   --resource-group myResourceGroup \
   --vm-name myLinuxVM \
   --name NetworkWatcherAgentLinux \
-  --publisher Microsoft.Azure.NetworkWatcher
+  --publisher Microsoft.Azure.NetworkWatcher \
+  --extension-instance-name AzureNetworkWatcherExtension \
+  --enable-auto-upgrade true \
+  --version 1.4
 ```
 
 For Windows VMs:
@@ -51,7 +54,10 @@ az vm extension set \
   --resource-group myResourceGroup \
   --vm-name myWindowsVM \
   --name NetworkWatcherAgentWindows \
-  --publisher Microsoft.Azure.NetworkWatcher
+  --publisher Microsoft.Azure.NetworkWatcher \
+  --extension-instance-name AzureNetworkWatcherExtension \
+  --enable-auto-upgrade true \
+  --version 1.4
 ```
 
 You can verify the extension is installed:
@@ -115,12 +121,12 @@ While a capture is running, you can check its status:
 
 ```bash
 # Check the status of a running packet capture
-az network watcher packet-capture show \
+az network watcher packet-capture show-status \
   --location eastus \
   --name myCapture01
 ```
 
-The status will be `Running`, `Stopped`, `Failed`, or `Error`. If it fails, the output usually includes a reason, such as insufficient storage space or extension issues.
+The `packetCaptureStatus` value will show whether the capture is running or stopped. If it fails, the output usually includes a reason in `packetCaptureError`, such as insufficient storage space or extension issues.
 
 ## Step 5: Stop and Download the Capture
 
@@ -133,14 +139,27 @@ az network watcher packet-capture stop \
   --name myCapture01
 ```
 
-The capture file (.cap format) will be in your storage account under the `networkwatcherpacketcapture` container. Download it:
+The capture file (.cap format) will be in your storage account under the `network-watcher-logs` container. The blob name includes the subscription, VM path, date, and capture timestamp, so list the blobs to find the exact name:
+
+```bash
+# List packet capture files in the default container
+az storage blob list \
+  --account-name myStorageAccount \
+  --container-name network-watcher-logs \
+  --prefix "subscriptions/" \
+  --query "[].name" \
+  --output table \
+  --auth-mode login
+```
+
+Then download it:
 
 ```bash
 # Download the capture file from the storage account
 az storage blob download \
   --account-name myStorageAccount \
-  --container-name networkwatcherpacketcapture \
-  --name "myCapture01.cap" \
+  --container-name network-watcher-logs \
+  --name "subscriptions/<subscriptionId>/resourcegroups/myresourcegroup/providers/microsoft.compute/virtualmachines/mylinuxvm/2026/02/16/packetcapture_<UTCcreationTime>.cap" \
   --file ./myCapture01.cap \
   --auth-mode login
 ```
@@ -216,7 +235,7 @@ flowchart TD
 
 ## Limitations to Be Aware Of
 
-- **Maximum file size** defaults to 1 GB. You can adjust with `--total-bytes-per-session`.
+- **Maximum file size** defaults to 1 GB. You can adjust with `--capture-limit`.
 - **Maximum capture duration** is 5 hours.
 - **Performance impact** is minimal but not zero. On very high-throughput VMs, packet capture may drop some packets.
 - **VM must be running.** You cannot capture on a stopped or deallocated VM.
