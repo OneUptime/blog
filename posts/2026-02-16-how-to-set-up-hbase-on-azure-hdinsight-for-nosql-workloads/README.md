@@ -35,18 +35,19 @@ Provision an HBase cluster using the Azure CLI:
 az hdinsight create \
   --name my-hbase-cluster \
   --resource-group my-resource-group \
-  --type HBase \
+  --type hbase \
+  --version 5.1 \
   --component-version HBase=2.4 \
   --http-user admin \
   --http-password "YourStr0ngP@ssword!" \
   --ssh-user sshuser \
   --ssh-password "YourSSHP@ssword!" \
   --workernode-count 4 \
-  --workernode-size Standard_D13_V2 \
-  --headnode-size Standard_D13_V2 \
+  --workernode-size Standard_E8ads_v5 \
+  --headnode-size Standard_E8ads_v5 \
   --storage-account mystorageaccount \
   --storage-account-key "your-storage-key" \
-  --storage-default-container hbase-data \
+  --storage-container hbase-data \
   --location eastus
 ```
 
@@ -158,22 +159,24 @@ deleteall 'user_activity', 'a7f3_user123_9223370449035775807'
 
 ## Using the HBase REST API
 
-For application integration, HBase exposes a REST API (Stargate) that runs on the cluster:
+For application integration, HDInsight can expose the HBase REST API through a REST proxy. Enable it with a Script Action on the Region Server nodes, then call the cluster gateway over HTTPS:
 
 ```bash
-# Start the REST server if not already running
-hbase rest start -p 8080
+# Example Script Action command for Region Server nodes
+sudo python /usr/lib/python2.7/dist-packages/hdinsight_hbrest/HbaseRestAgent.py
 
-# Create a scanner to read data via REST
-# First, create the scanner
-curl -X PUT \
-  'http://wn0-myhbas.internal.cloudapp.net:8080/user_activity/scanner' \
-  -H 'Content-Type: text/xml' \
-  -d '<Scanner batch="10"/>'
+# Set the cluster login password and cluster name
+export PASSWORD='YourStr0ngP@ssword!'
+export CLUSTER_NAME=my-hbase-cluster
 
-# The response Location header contains the scanner URL
-# Use it to fetch rows
-curl 'http://wn0-myhbas.internal.cloudapp.net:8080/user_activity/scanner/SCANNER_ID' \
+# List HBase tables through the HDInsight gateway
+curl -u admin:$PASSWORD \
+  -G "https://$CLUSTER_NAME.azurehdinsight.net/hbaserest/" \
+  -H 'Accept: application/json'
+
+# Get a row through the REST API
+curl -u admin:$PASSWORD \
+  "https://$CLUSTER_NAME.azurehdinsight.net/hbaserest/user_activity/a7f3_user123_9223370449035775807" \
   -H 'Accept: application/json'
 ```
 
@@ -185,6 +188,7 @@ For production applications, the HBase Java client provides the best performance
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.conf.Configuration;
 
 // Create a connection to HBase
 // Configuration is loaded from hbase-site.xml on the classpath
@@ -257,7 +261,7 @@ HBase periodically compacts small files into larger ones. For latency-sensitive 
 ```ruby
 # Disable automatic major compaction
 # Then schedule it manually via cron
-alter 'user_activity', {NAME => 'activity', CONFIGURATION => {'hbase.hregion.majorcompaction' => '0'}}
+alter 'user_activity', CONFIGURATION => {'hbase.hregion.majorcompaction' => '0'}
 ```
 
 ## Scaling the Cluster
