@@ -8,7 +8,7 @@ Description: Learn how to write and test autoscale formulas for Azure Batch pool
 
 ---
 
-A fixed-size Azure Batch pool either wastes money when idle or cannot keep up during peak loads. Autoscaling solves this by dynamically adjusting the number of compute nodes based on pending tasks, time of day, or custom metrics. Azure Batch uses a formula-based autoscale system where you write expressions that the platform evaluates periodically to determine the desired node count. This post explains the formula language and walks through practical examples.
+A fixed-size Azure Batch pool either wastes money when idle or cannot keep up during peak loads. Autoscaling solves this by dynamically adjusting the number of compute nodes based on task counts, resource metrics, time of day, or custom logic. Azure Batch uses a formula-based autoscale system where you write expressions that the platform evaluates periodically to determine the desired node count. This post explains the formula language and walks through practical examples.
 
 ## How Autoscale Works in Azure Batch
 
@@ -16,9 +16,9 @@ When autoscale is enabled on a pool, Azure Batch evaluates your formula at regul
 
 The formula has access to several built-in variables that describe the current state of the pool and its workload:
 
-- `$PendingTasks` - number of tasks waiting to run
-- `$ActiveTasks` - number of tasks currently running
-- `$RunningTasks` - alias for ActiveTasks
+- `$PendingTasks` - sum of active tasks and running tasks
+- `$ActiveTasks` - number of tasks that are ready to execute but are not yet executing
+- `$RunningTasks` - number of tasks currently running
 - `$SucceededTasks` - tasks that completed successfully
 - `$FailedTasks` - tasks that failed
 - `$CurrentDedicatedNodes` - current number of dedicated nodes
@@ -38,13 +38,12 @@ az batch pool create \
   --vm-size Standard_D2s_v3 \
   --image "canonical:0001-com-ubuntu-server-jammy:22_04-lts" \
   --node-agent-sku-id "batch.node.ubuntu 22.04" \
-  --auto-scale-formula '$TargetDedicatedNodes = max(0, $PendingTasks);' \
-  --auto-scale-evaluation-interval "PT5M"
+  --auto-scale-formula '$TargetDedicatedNodes = max(0, $PendingTasks);'
 ```
 
-The `--auto-scale-evaluation-interval` specifies how often the formula is evaluated. `PT5M` means every 5 minutes. The minimum is 5 minutes.
+When creating a pool with the Azure CLI, the autoscale evaluation interval uses the Batch default unless you create the pool from a JSON request body. The default is 15 minutes, and the minimum interval is 5 minutes.
 
-For an existing pool, enable autoscale like this.
+For an existing pool, enable autoscale like this. The `--auto-scale-evaluation-interval` specifies how often the formula is evaluated. `PT5M` means every 5 minutes.
 
 ```bash
 # Enable autoscale on an existing fixed-size pool
@@ -139,6 +138,7 @@ $desiredNodes = ceil($PendingTasks / $taskSlotsPerNode);
 $scaleDown = max(0, $CurrentDedicatedNodes - 2);
 $TargetDedicatedNodes = max($desiredNodes, min($CurrentDedicatedNodes, $scaleDown));
 $TargetDedicatedNodes = min(30, max(0, $TargetDedicatedNodes));
+$NodeDeallocationOption = taskcompletion;
 ```
 
 ## Step 7: Test Your Formula
