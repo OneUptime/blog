@@ -14,9 +14,9 @@ In this post, I will cover how tags work, how to design a tagging strategy, and 
 
 ## What Are Tags?
 
-Tags are string labels that you attach to device registrations. When you send a notification, you specify a tag expression, and only devices whose tags match the expression receive the notification.
+Tags are string labels that you attach to device registrations. When you send a notification, you specify a tag or tag expression, and only devices whose tags match it receive the notification.
 
-A device can have up to 60 tags. Tags are arbitrary strings up to 120 characters. You decide the naming convention and what they represent.
+A device can have up to 60 tags. Tags are strings up to 120 characters and can contain alphanumeric characters plus `_`, `@`, `#`, `.`, `:`, and `-`. You decide the naming convention and what they represent.
 
 Common tag patterns include:
 
@@ -58,7 +58,7 @@ async function registerDevice(deviceToken, userProfile) {
     tags.push('pref:marketing');
   }
 
-  const registration = await client.createOrUpdateRegistration({
+  const registration = await client.createRegistration({
     kind: 'Apple',
     deviceToken: deviceToken,
     tags: tags
@@ -115,7 +115,8 @@ The simplest targeting sends to a single tag.
 async function notifyUser(userId, title, message) {
   const result = await client.sendNotification(
     {
-      kind: 'Gcm',
+      platform: 'fcmv1',
+      contentType: 'application/json;charset=utf-8',
       body: JSON.stringify({
         notification: { title, body: message }
       })
@@ -131,7 +132,8 @@ async function notifyUser(userId, title, message) {
 async function notifyAdmins(title, message) {
   const result = await client.sendNotification(
     {
-      kind: 'Gcm',
+      platform: 'fcmv1',
+      contentType: 'application/json;charset=utf-8',
       body: JSON.stringify({
         notification: { title, body: message }
       })
@@ -175,7 +177,8 @@ await sendWithTag('(team:engineering || team:ops) && platform:android', title, b
 async function sendWithTag(tagExpression, title, body) {
   const result = await client.sendNotification(
     {
-      kind: 'Gcm',
+      platform: 'fcmv1',
+      contentType: 'application/json;charset=utf-8',
       body: JSON.stringify({
         notification: { title, body }
       })
@@ -188,7 +191,7 @@ async function sendWithTag(tagExpression, title, body) {
 }
 ```
 
-Tag expressions have a limit of 20 tags per expression. If you need more complex targeting, you will need to break it into multiple sends or restructure your tagging strategy.
+Tag expressions that use only `OR` operators can reference up to 20 tags. Expressions that use `AND` operators but no `OR` operators can reference up to 10 tags. More complex expressions are limited to 6 tags. If you need more complex targeting, you will need to break it into multiple sends or restructure your tagging strategy.
 
 ## Designing a Tagging Strategy
 
@@ -250,11 +253,20 @@ async function registerUserDevice(userId, deviceToken, platform, deviceName) {
     `platform:${platform}`,     // Target by platform
   ];
 
-  await client.createOrUpdateRegistration({
-    kind: platform === 'ios' ? 'Apple' : 'Gcm',
-    deviceToken: deviceToken,
-    tags: tags
-  });
+  const registration =
+    platform === 'ios'
+      ? {
+          kind: 'Apple',
+          deviceToken: deviceToken,
+          tags: tags
+        }
+      : {
+          kind: 'FcmV1',
+          fcmV1RegistrationId: deviceToken,
+          tags: tags
+        };
+
+  await client.createRegistration(registration);
 }
 
 // Send to a specific device
@@ -270,10 +282,10 @@ It is helpful to know how many devices are registered with each tag. This tells 
 
 ```javascript
 // tag-stats.js - Check registration counts for tags
-async function getTagReach(tagExpression) {
-  // Count registrations matching the tag expression
+async function getTagReach(tag) {
+  // Count registrations matching the tag
   let count = 0;
-  const registrations = client.listRegistrationsByTag(tagExpression);
+  const registrations = client.listRegistrationsByTag(tag);
 
   for await (const reg of registrations) {
     count++;
@@ -286,8 +298,8 @@ async function getTagReach(tagExpression) {
 const adminCount = await getTagReach('role:admin');
 console.log(`Admin notification would reach ${adminCount} devices`);
 
-const engineeringIos = await getTagReach('team:engineering');
-console.log(`Engineering notification would reach ${engineeringIos} devices`);
+const engineeringCount = await getTagReach('team:engineering');
+console.log(`Engineering notification would reach ${engineeringCount} devices`);
 ```
 
 ## Cleaning Up Stale Tags
@@ -316,4 +328,4 @@ async function cleanupStaleRegistrations() {
 
 ## Wrapping Up
 
-Tags in Azure Notification Hubs give you a flexible, scalable way to target push notifications. By designing a thoughtful tagging strategy with namespaced, stable tags, you can target individual users, teams, platforms, regions, or any combination using tag expressions. Keep your tags meaningful, manage them as user profiles change, and clean up stale registrations periodically. The 60-tag limit per device and 20-tag limit per expression are generous enough for most use cases, and the boolean expression support covers complex targeting scenarios without requiring multiple API calls.
+Tags in Azure Notification Hubs give you a flexible, scalable way to target push notifications. By designing a thoughtful tagging strategy with namespaced, stable tags, you can target individual users, teams, platforms, regions, or any combination using tag expressions. Keep your tags meaningful, manage them as user profiles change, and clean up stale registrations periodically. The 60-tag limit per device and the expression limits are generous enough for most use cases, and the boolean expression support covers complex targeting scenarios without requiring multiple API calls.
