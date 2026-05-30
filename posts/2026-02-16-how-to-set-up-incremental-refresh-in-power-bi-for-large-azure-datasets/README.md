@@ -8,7 +8,7 @@ Description: Step-by-step instructions for configuring incremental refresh in Po
 
 ---
 
-When your Power BI dataset grows to millions of rows, a full refresh on every schedule becomes painful. It takes forever, puts heavy load on your Azure data source, and sometimes times out entirely. Incremental refresh solves this by only loading the data that has changed since the last refresh, while keeping historical data intact.
+When your Power BI dataset grows to millions of rows, a full refresh on every schedule becomes painful. It takes forever, puts heavy load on your Azure data source, and sometimes times out entirely. Incremental refresh solves this by reloading only the recent range that can change, while keeping historical data intact.
 
 This feature works especially well with Azure data sources like Azure SQL Database and Azure Synapse Analytics, where you can leverage query folding to push the date filtering down to the source. The result is faster refreshes, lower source load, and a much better experience overall.
 
@@ -35,9 +35,9 @@ graph LR
 ## Prerequisites
 
 - Power BI Desktop (latest version)
-- Power BI Premium, Premium Per User, or Power BI Pro with a Premium capacity workspace
+- Power BI Premium, Premium Per User, Power BI Pro, or Power BI Embedded
 - An Azure data source with a reliable date/timestamp column (e.g., OrderDate, ModifiedDate)
-- Query folding must work on the date filter (native queries from Azure SQL and Synapse support this)
+- Query folding must work on the date filter for efficient refreshes (simple table or view queries from Azure SQL and Synapse usually support this; hand-written native SQL queries should be avoided for incremental refresh)
 
 ## Step 1: Create RangeStart and RangeEnd Parameters
 
@@ -58,9 +58,9 @@ Now you need to filter your fact table using these parameters. Open the table in
 
 For example, if your table is called Orders and has a column called OrderDate:
 
-1. Click the filter dropdown on the OrderDate column
-2. Select "Date/Time Filters" then "Between"
-3. Set the start value to `RangeStart` and the end value to `RangeEnd`
+1. Create a normal date/time filter on the OrderDate column
+2. Open the formula bar or Advanced Editor
+3. Replace the literal start and end values with `RangeStart` and `RangeEnd`
 4. Make sure the filter is "is after or equal to" for the start and "is before" for the end
 
 This should produce M code that looks like the following:
@@ -103,7 +103,7 @@ WHERE
     AND [OrderDate] < '2024-02-01 00:00:00'
 ```
 
-If "View Native Query" is greyed out, you have a query folding problem. Common causes include custom M functions applied after the filter, data type conversions that break folding, or using non-foldable transformations. Move the date filter to as late a step as possible in the query, or restructure your transformations.
+If "View Native Query" is greyed out, you might have a query folding problem. Common causes include custom M functions, data type conversions that break folding, using non-foldable transformations before the range filter, or starting from a hand-written native SQL query. Move the date filter before non-foldable transformations, use a source table or view where possible, and verify the query sent to the source with diagnostics or database tracing if the folding status is unclear.
 
 ## Step 4: Define the Incremental Refresh Policy
 
@@ -127,37 +127,20 @@ Here is what a typical configuration looks like:
 
 ## Step 5: Publish to the Power BI Service
 
-Save your .pbix file and publish it to a Premium workspace. When you publish, Power BI creates the partition structure based on your incremental refresh policy.
+Save your .pbix file and publish it to the Power BI service. A Premium, Premium Per User, or Embedded workspace is required if you use real-time DirectQuery with incremental refresh, XMLA endpoint partition management, or very large model features.
 
-The first refresh will be a full refresh since there is no existing data. This initial load might take a while depending on how much historical data you are bringing in. Subsequent refreshes will be incremental.
+When you publish, the table initially has a single partition. The first service refresh applies the incremental refresh policy, creates the historical and refresh partitions, and loads the historical data. This initial load might take a while depending on how much historical data you are bringing in. Subsequent refreshes will be incremental.
 
 ## Step 6: Monitor Refresh Performance
 
-After the first refresh completes, go to the dataset settings in the Power BI service. Under "Refresh history," you can see how long each refresh took and whether it was incremental.
+After the first refresh completes, go to the semantic model settings in the Power BI service. Under "Refresh history," you can see how long each refresh took and whether it succeeded.
 
 For deeper monitoring, use the XMLA endpoint (available with Premium) to connect SQL Server Management Studio or Tabular Editor to the dataset. You can inspect the partition structure directly:
 
-```python
-# Use the Tabular Object Model (TOM) via Python to inspect partitions
-
-# This requires the pyadomd or pytabular library
-import pytabular
-
-# Connect to the Power BI Premium XMLA endpoint
-model = pytabular.Tabular(
-    "powerbi://api.powerbi.com/v1.0/myorg/YourWorkspace",
-    "your-dataset-name"
-)
-
-# List all partitions for the Orders table
-orders_table = model.Tables["Orders"]
-for partition in orders_table.Partitions:
-    print(f"Partition: {partition.Name}")
-    print(f"  State: {partition.State}")
-    print(f"  Refreshed: {partition.RefreshedTime}")
-    print(f"  Rows: {partition.Source}")
-    print()
-```
+1. Connect to `powerbi://api.powerbi.com/v1.0/myorg/YourWorkspace`
+2. Open the semantic model
+3. Expand the Orders table
+4. Inspect the generated partitions and their source expressions
 
 ## Handling Schema Changes
 
@@ -176,8 +159,8 @@ To get the best performance out of incremental refresh with Azure data sources:
 - **Index your date column**: Make sure the date column used for filtering has an index in Azure SQL Database or Synapse.
 - **Use partitioned tables**: If your Azure SQL table is already partitioned by date, query folding aligns nicely with partition elimination.
 - **Right-size the refresh window**: Do not make the refresh window larger than necessary. If data only changes in the last 7 days, use 7 days instead of 30.
-- **Enable query caching**: In the dataset settings, enable query caching to reduce load on the source for frequently accessed reports.
+- **Enable query caching**: In the semantic model settings, enable query caching for Import models on Power BI Premium or Embedded capacity to reduce repeated report query work.
 
 ## Summary
 
-Incremental refresh transforms how Power BI handles large datasets from Azure sources. Instead of pulling everything on every refresh, it intelligently partitions your data and only updates what is necessary. The setup involves creating RangeStart/RangeEnd parameters, applying date filters that fold to the source, defining a refresh policy, and publishing to a Premium workspace. Once configured, you will see dramatically faster refresh times and less strain on your Azure data sources.
+Incremental refresh transforms how Power BI handles large datasets from Azure sources. Instead of pulling everything on every refresh, it intelligently partitions your data and only updates what is necessary. The setup involves creating RangeStart/RangeEnd parameters, applying date filters that fold to the source, defining a refresh policy, and publishing to the Power BI service. Once configured, you will see dramatically faster refresh times and less strain on your Azure data sources.
