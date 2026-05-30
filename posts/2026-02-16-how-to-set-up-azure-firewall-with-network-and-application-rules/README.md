@@ -103,7 +103,7 @@ This typically returns something like `10.0.1.4`.
 
 ## Step 3: Create a Firewall Policy
 
-Azure Firewall uses policies to organize rules. A policy can contain multiple rule collection groups, each with rule collections, each with individual rules.
+Azure Firewall can use Firewall Policy to organize rules. A policy can contain multiple rule collection groups, each with rule collections, each with individual rules.
 
 ```bash
 # Create a firewall policy
@@ -132,7 +132,7 @@ az network firewall policy rule-collection-group create \
   --name rcg-network \
   --priority 200
 
-# Add a network rule collection that allows DNS and NTP
+# Add a network rule collection that allows DNS
 az network firewall policy rule-collection-group collection add-filter-collection \
   --resource-group rg-firewall-demo \
   --policy-name policy-fw-demo \
@@ -202,7 +202,7 @@ az network firewall policy rule-collection-group collection rule add \
 
 ## Step 6: Add DNAT Rules (Optional)
 
-If you need to expose internal services to the internet through the firewall, use DNAT (Destination NAT) rules.
+If you need to expose internal services to the internet through the firewall, use DNAT (Destination NAT) rules. Application rules are not applied to inbound connections, so use DNAT and network rules for this traffic.
 
 ```bash
 # Create a rule collection group for DNAT rules
@@ -290,9 +290,11 @@ Azure Firewall processes rules in a specific order, and understanding this is cr
 
 If a network rule allows traffic, application rules for the same traffic are not evaluated. This means if you have a network rule allowing all TCP/443 traffic, your FQDN-based application rules will never be hit for HTTPS traffic.
 
+If threat intelligence-based filtering is enabled, it can block traffic before configured network and application rules are evaluated.
+
 ```mermaid
 flowchart TD
-    A[Incoming Traffic] --> B{DNAT Rule Match?}
+    A[Traffic] --> B{DNAT Rule Match?}
     B -->|Yes| C[Apply DNAT]
     B -->|No| D{Network Rule Match?}
     D -->|Allow| E[Traffic Allowed]
