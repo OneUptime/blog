@@ -42,7 +42,7 @@ The async client uses `aiohttp` under the hood for non-blocking HTTP requests.
 # Async Cosmos DB client configuration
 import asyncio
 from azure.cosmos.aio import CosmosClient
-from azure.cosmos import PartitionKey
+from azure.cosmos import PartitionKey, ThroughputProperties
 
 # Connection settings - use environment variables in production
 ENDPOINT = "https://my-account.documents.azure.com:443/"
@@ -50,7 +50,7 @@ KEY = "your-cosmos-key"
 DATABASE_NAME = "TelemetryDB"
 CONTAINER_NAME = "Events"
 
-async def get_client():
+def get_client():
     """Create and return an async Cosmos DB client."""
     # The client manages its own connection pool internally
     client = CosmosClient(ENDPOINT, credential=KEY)
@@ -62,10 +62,11 @@ async def setup_database(client):
     database = await client.create_database_if_not_exists(id=DATABASE_NAME)
 
     # Create container with autoscale throughput
+    throughput = ThroughputProperties(auto_scale_max_throughput=4000)
     container = await database.create_container_if_not_exists(
         id=CONTAINER_NAME,
         partition_key=PartitionKey(path="/deviceId"),
-        offer_throughput=4000,  # 4000 RU/s
+        offer_throughput=throughput,  # Autoscale max 4000 RU/s
     )
     return database, container
 ```
@@ -94,10 +95,14 @@ async def bulk_insert(container, documents, max_concurrency=50):
     async def insert_one(doc):
         async with semaphore:
             try:
-                response = await container.create_item(body=doc)
+                headers = {}
+                await container.create_item(
+                    body=doc,
+                    response_hook=lambda response_headers, _: headers.update(response_headers),
+                )
                 results["success"] += 1
-                # Track RU consumption
-                # The request charge is in the response headers
+                # Track RU consumption from the response headers
+                results["total_ru"] += float(headers.get("x-ms-request-charge", 0))
             except Exception as e:
                 results["failed"] += 1
                 print(f"Failed to insert {doc.get('id', 'unknown')}: {e}")
@@ -220,12 +225,11 @@ async def cross_partition_search(container, min_value, max_value):
         {"name": "@max", "value": max_value},
     ]
 
-    # Enable cross-partition queries explicitly
+    # Without a partition key, the async SDK attempts a cross-partition query
     results = []
     async for item in container.query_items(
         query=query,
         parameters=parameters,
-        enable_cross_partition_query=True,
     ):
         results.append(item)
 
@@ -239,6 +243,9 @@ A common pattern is reading from one container, transforming the data, and writi
 ```python
 # pipeline.py
 # Async pipeline that reads, transforms, and writes concurrently
+import asyncio
+from queries import query_by_device
+
 async def transform_and_write(source_container, dest_container, device_id):
     """
     Read events from the source container, transform them,
@@ -281,7 +288,7 @@ async def transform_and_write(source_container, dest_container, device_id):
 
 ## Retry Logic with Backoff
 
-When you push high throughput, you will eventually hit 429 (rate limited) responses. Implement exponential backoff to handle this gracefully.
+When you push high throughput, you may eventually hit 429 (rate limited) responses. The SDK retries many transient failures by default, but if you add operation-level retry logic, honor the server's retry-after header and use exponential backoff as a fallback.
 
 ```python
 # retry.py
@@ -292,7 +299,7 @@ from azure.cosmos.exceptions import CosmosHttpResponseError
 async def insert_with_retry(container, document, max_retries=5):
     """
     Insert a document with automatic retry on rate limiting.
-    Uses exponential backoff with the retry-after header.
+    Uses the retry-after header, with exponential backoff as a fallback.
     """
     for attempt in range(max_retries):
         try:
@@ -300,7 +307,9 @@ async def insert_with_retry(container, document, max_retries=5):
         except CosmosHttpResponseError as e:
             if e.status_code == 429:
                 # Use the retry-after header if available
-                retry_after = e.headers.get("x-ms-retry-after-ms", 1000)
+                retry_after = e.headers.get("x-ms-retry-after-ms")
+                if retry_after is None:
+                    retry_after = min(1000 * (2 ** attempt), 30000)
                 wait_time = int(retry_after) / 1000.0
                 print(f"Rate limited. Waiting {wait_time:.1f}s (attempt {attempt + 1})")
                 await asyncio.sleep(wait_time)
