@@ -36,7 +36,8 @@ Defender for App Service uses multiple detection engines to identify threats at 
 **Azure-specific threats:**
 - Access from anonymizing networks (Tor exit nodes)
 - Access from suspicious Azure IP addresses
-- Management API calls from unexpected locations
+- Known malicious IP addresses connecting to the App Service FTP interface
+- Dangling DNS records for deleted App Service resources
 
 ```mermaid
 flowchart TD
@@ -54,7 +55,7 @@ flowchart TD
 
 ## Prerequisites
 
-- An Azure App Service plan (Basic tier or higher - Free and Shared tiers are not supported)
+- An Azure App Service plan on any App Service tier
 - Owner or Contributor access to the subscription
 - Microsoft Defender for Cloud enabled on the subscription
 
@@ -88,13 +89,13 @@ After enabling Defender, it starts monitoring your App Service instances immedia
 Check which App Service instances are covered.
 
 ```bash
-# List App Service instances and their Defender coverage status
+# List App Service instances in the subscription
 az webapp list \
-  --query '[].{name: name, resourceGroup: resourceGroup, state: state, sku: appServicePlan}' \
+  --query '[].{name: name, resourceGroup: resourceGroup, state: state, appServicePlan: appServicePlan}' \
   --output table
 ```
 
-All App Service instances on Basic, Standard, Premium, Isolated, and Elastic Premium plans are automatically protected once the subscription-level Defender plan is enabled.
+App Service plans in the subscription are protected once the subscription-level Defender plan is enabled. Defender for App Service billing is calculated according to the total compute instances across all App Service plan tiers.
 
 ## Step 3: Configure Alert Notifications
 
@@ -103,10 +104,10 @@ Set up email notifications so your security team gets alerted immediately when t
 ```bash
 # Configure security contact for alert notifications
 az security contact create \
-  --name "default1" \
+  --name "default" \
   --emails "security-team@contoso.com" \
-  --alert-notifications on \
-  --alerts-to-admins on
+  --alert-notifications '{"state":"On","minimalSeverity":"Low"}' \
+  --notifications-by-role '{"state":"On","roles":["Owner"]}'
 ```
 
 You can also route alerts to specific teams based on severity. Create an action group for high-severity alerts.
@@ -136,16 +137,15 @@ az security alert list \
   --output table
 ```
 
-Common alert types you might see:
+Common App Service alert categories you might see:
 
-| Alert | Severity | Description |
+| Category | Typical severity | Description |
 |---|---|---|
-| AppServices_SQLInjection | Medium | SQL injection attempt detected in request |
-| AppServices_CommandInjection | High | Command injection attempt in request parameters |
-| AppServices_DanglingDnsRecord | Medium | DNS record pointing to decommissioned App Service |
-| AppServices_WebShell | High | Potential web shell detected on the application |
-| AppServices_SuspiciousProcessExecution | High | Unexpected process running in App Service sandbox |
-| AppServices_TorAccess | Low | Access from Tor network detected |
+| Dangling DNS | High | DNS record pointing to a deleted App Service resource |
+| Vulnerability scanner | Medium | Scanner activity targeting a content management system or vulnerable path |
+| Web fingerprinting | Medium | Reconnaissance activity against the web app |
+| Suspicious code execution | High | Evidence of unauthorized or suspicious code execution |
+| Web shell or crypto mining activity | High | Workload runtime activity that indicates compromise |
 
 ## Step 5: Integrate with Microsoft Sentinel
 
@@ -153,11 +153,20 @@ For organizations using Microsoft Sentinel, forward Defender for Cloud alerts to
 
 ```bash
 # Enable the Microsoft Defender for Cloud data connector in Sentinel
-az sentinel data-connector create \
-  --resource-group sentinel-rg \
-  --workspace-name sentinel-workspace \
-  --data-connector-id "MicrosoftDefenderForCloud" \
-  --kind "AzureSecurityCenter"
+az rest \
+  --method put \
+  --url "https://management.azure.com/subscriptions/<sentinel-subscription-id>/resourceGroups/sentinel-rg/providers/Microsoft.OperationalInsights/workspaces/sentinel-workspace/providers/Microsoft.SecurityInsights/dataConnectors/MicrosoftDefenderForCloud?api-version=2024-03-01" \
+  --body '{
+    "kind": "AzureSecurityCenter",
+    "properties": {
+      "subscriptionId": "<defender-for-cloud-subscription-id>",
+      "dataTypes": {
+        "alerts": {
+          "state": "Enabled"
+        }
+      }
+    }
+  }'
 ```
 
 In Sentinel, you can create automation rules that respond to specific App Service alert types. For example, automatically isolate an App Service by restricting its network access when a web shell is detected.
@@ -273,7 +282,7 @@ When you receive this alert:
 
 ## Cost Considerations
 
-Microsoft Defender for App Service is priced per App Service instance per hour. The exact cost depends on your region, but it is typically a few dollars per App Service per month. For production applications exposed to the internet, this is a small price for the detection coverage it provides.
+Microsoft Defender for App Service billing is calculated according to the total compute instances across all App Service plan tiers. The exact cost depends on your region and current Azure pricing. For production applications exposed to the internet, this is a small price for the detection coverage it provides.
 
 You get a 30-day free trial when you first enable it, which is enough time to evaluate the detection quality in your environment.
 
