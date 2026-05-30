@@ -12,7 +12,7 @@ You check your cluster one morning and find that one or more nodes are in NotRea
 
 ## What NotReady Actually Means
 
-A node goes into NotReady status when the Kubernetes API server has not received a heartbeat from the kubelet on that node within the configured timeout (default is 40 seconds). The kubelet sends periodic status updates to the API server. When those stop, the node is marked NotReady, and the node controller starts evicting pods from it.
+A node goes into NotReady status when the Kubernetes node controller has not heard from the node within the configured `node-monitor-grace-period` (default is 50 seconds). The kubelet sends node status updates and renews a lightweight Lease object in the `kube-node-lease` namespace. When those heartbeats stop, the node is marked NotReady or Unknown, and existing pods may be evicted after Kubernetes applies the corresponding `NoExecute` taint.
 
 The reasons the kubelet might stop sending heartbeats include:
 
@@ -67,7 +67,7 @@ Common events you might see:
 - `NodeNotReady` - The node condition changed
 - `NodeHasDiskPressure` - Disk space is critically low
 - `NodeHasInsufficientMemory` - Memory is exhausted
-- `Rebooted` - The node was restarted (possibly by the OOM killer or a kernel crash)
+- `Rebooted` - The node was restarted (possibly by host maintenance, a manual restart, or a kernel crash)
 
 ## Step 3: Check Kubelet Logs
 
@@ -75,7 +75,7 @@ If the node is somewhat accessible, you can look at kubelet logs through the AKS
 
 ```bash
 # Start a debug pod on the NotReady node
-kubectl debug node/<node-name> -it --image=mcr.microsoft.com/cbl-mariner/base/core:2.0
+kubectl debug node/<node-name> -it --profile=sysadmin --image=mcr.microsoft.com/azurelinux/busybox:1.36
 
 # Inside the debug pod, check kubelet logs
 chroot /host
@@ -96,6 +96,7 @@ If the node is still somewhat responsive, check its resource consumption.
 
 ```bash
 # From the debug pod, check disk usage
+chroot /host
 df -h
 
 # Check memory usage
@@ -122,7 +123,7 @@ If the kubelet is running but the node is still NotReady, the problem might be n
 ```bash
 # From the debug pod, test connectivity to the API server
 chroot /host
-curl -k https://<api-server-fqdn>:443/healthz
+curl -k https://<api-server-fqdn>:443/readyz
 
 # Check DNS resolution
 nslookup <api-server-fqdn>
@@ -135,7 +136,7 @@ ip route show
 wget --spider --timeout=5 https://<api-server-fqdn>:443
 ```
 
-Network issues can be caused by NSG rules blocking traffic, route table misconfiguration, Azure CNI IP exhaustion, or the node's primary NIC being in a failed state.
+Network issues can be caused by NSG rules blocking traffic, route table misconfiguration, egress/firewall rules that block the API server, or the node's primary NIC being in a failed state.
 
 ## Step 6: Check Azure-Level VM Health
 
@@ -194,7 +195,7 @@ kubectl uncordon <node-name>
 
 ### Option 3: Delete and Replace the Node
 
-If reimaging does not work, delete the VMSS instance and let the cluster autoscaler provision a replacement.
+If reimaging does not work, delete the VMSS instance and let the VMSS or the cluster autoscaler provision a replacement, depending on how your node pool is configured.
 
 ```bash
 # Delete the specific VMSS instance
@@ -203,7 +204,7 @@ az vmss delete-instances \
   --name <vmss-name> \
   --instance-ids <instance-id>
 
-# The cluster autoscaler will provision a new node if needed
+# The VMSS or cluster autoscaler will provision a new node if needed
 ```
 
 ### Option 4: Free Up Disk Space
@@ -248,7 +249,7 @@ flowchart TD
 
 Prevention is better than firefighting. Here are steps to reduce the frequency of NotReady events.
 
-**Set resource requests and limits on all pods.** Without limits, a single misbehaving pod can consume all memory or CPU on a node, taking it down.
+**Set resource requests and limits on all pods.** Without requests and limits, a single misbehaving pod can consume more memory or CPU than expected on a node, disrupting other workloads.
 
 ```yaml
 # Always set resource limits to prevent node resource exhaustion
@@ -263,19 +264,15 @@ resources:
 
 **Use ephemeral OS disks.** They are faster and if a node gets into a bad state, reimaging is nearly instant since there is nothing to preserve.
 
-**Enable node auto-repair.** AKS has a built-in node auto-repair feature that detects NotReady nodes and automatically tries to recover them.
+**Use node auto-repair.** AKS has a built-in node auto-repair feature that detects unhealthy nodes and automatically tries to recover them.
 
 ```bash
-# Node auto-repair is enabled by default on new clusters
-# Verify it is enabled
-az aks show \
-  --resource-group myResourceGroup \
-  --name myCluster \
-  --query "autoRepairProfile"
+# Check for AKS node auto-repair events
+kubectl get events --all-namespaces --sort-by='.lastTimestamp' | grep aks-auto-repair
 ```
 
 **Monitor node health proactively.** Set up alerts for node conditions in your monitoring system. Catching MemoryPressure or DiskPressure early gives you time to act before the node goes NotReady.
 
-**Use Pod Disruption Budgets.** PDBs ensure that when pods are evicted from a NotReady node, your application maintains its availability guarantees by limiting how many pods can be down simultaneously.
+**Use Pod Disruption Budgets.** PDBs help protect availability during voluntary and API-initiated evictions such as `kubectl drain`, but they do not protect against every node failure or kubelet node-pressure eviction.
 
 Node NotReady issues are not a matter of if but when. Having a systematic debugging process and the right preventive measures in place means the difference between a 5-minute fix and a stressful hour-long outage.
