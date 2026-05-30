@@ -8,7 +8,7 @@ Description: A complete guide to enabling Azure DDoS Protection diagnostic logs,
 
 ---
 
-Azure DDoS Protection Standard provides always-on traffic monitoring and automatic mitigation for distributed denial-of-service attacks. But enabling the protection is only half the picture. Without diagnostic logs flowing to a central location, your security team has no visibility into attack patterns, mitigation effectiveness, or the traffic volumes involved. Integrating DDoS Protection logs with Microsoft Sentinel gives you dashboards, alerting, and the ability to correlate DDoS events with other security incidents.
+Azure DDoS Protection provides always-on traffic monitoring and automatic mitigation for distributed denial-of-service attacks. But enabling the protection is only half the picture. Without diagnostic logs flowing to a central location, your security team has no visibility into attack patterns, mitigation effectiveness, or the traffic volumes involved. Integrating DDoS Protection logs with Microsoft Sentinel gives you dashboards, alerting, and the ability to correlate DDoS events with other security incidents.
 
 This guide covers enabling diagnostic logging, configuring the Sentinel integration, and building useful detection rules.
 
@@ -24,8 +24,8 @@ Azure DDoS Protection generates three categories of logs:
 
 ## Prerequisites
 
-- Azure DDoS Protection Standard enabled on a virtual network (DDoS Network Protection plan)
-- At least one public IP address associated with resources in the protected VNet
+- Azure DDoS Network Protection enabled on a virtual network or DDoS IP Protection enabled on a public IP address
+- At least one public IP address covered by DDoS Network Protection or DDoS IP Protection
 - A Log Analytics workspace connected to Microsoft Sentinel
 - Network Contributor or higher role on the resources
 
@@ -37,7 +37,7 @@ DDoS diagnostic logs are configured per public IP address, not at the DDoS plan 
 # List all public IPs in the subscription to find DDoS-protected ones
 
 az network public-ip list \
-  --query "[?ddosSettings.ddosProtectionPlan != null].{Name:name, ResourceGroup:resourceGroup, IP:ipAddress, DDoSPlan:ddosSettings.ddosProtectionPlan.id}" \
+  --query "[?ddosSettings.protectionMode == 'Enabled' || ddosSettings.protectionMode == 'VirtualNetworkInherited'].{Name:name, ResourceGroup:resourceGroup, IP:ipAddress, DDoSMode:ddosSettings.protectionMode, DDoSPlan:ddosSettings.ddosProtectionPlan.id}" \
   --output table
 
 # Enable diagnostic settings on a specific public IP
@@ -80,7 +80,7 @@ Repeat this for each public IP you want to monitor. If you have many public IPs,
 WORKSPACE_ID="/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/mySentinelWorkspace"
 
 az network public-ip list \
-  --query "[?ddosSettings.protectionMode == 'Enabled'].id" \
+  --query "[?ddosSettings.protectionMode == 'Enabled' || ddosSettings.protectionMode == 'VirtualNetworkInherited'].id" \
   --output tsv | while read -r pip_id; do
     pip_name=$(basename "$pip_id")
     echo "Enabling diagnostics on $pip_name"
@@ -102,14 +102,12 @@ In the Sentinel portal, go to Content Hub and search for "Azure DDoS Protection.
 
 - Data connector configuration
 - Workbook template for DDoS visualization
-- Analytics rules for attack detection
-- Hunting queries
 
 After installing, go to Data Connectors, find "Azure DDoS Protection," and click "Open connector page." Follow the instructions to connect your DDoS-protected resources.
 
 ## Step 3: Verify Data Ingestion
 
-After enabling diagnostic settings, test that data is flowing. DDoS notification logs generate data even when there is no active attack - they produce periodic "no attack" status messages.
+After enabling diagnostic settings, test that the configuration is in place. DDoS notification logs are generated when a public IP resource is under attack and when mitigation is over, so you may not see notification records until an attack or approved simulation occurs.
 
 Run this query in Log Analytics to check:
 
@@ -118,7 +116,7 @@ Run this query in Log Analytics to check:
 AzureDiagnostics
 | where Category == "DDoSProtectionNotifications"
 | where TimeGenerated > ago(24h)
-| project TimeGenerated, Resource, publicIpAddress_s, type_s, msg_s
+| project TimeGenerated, Resource, publicIpAddress_s, type_s, Message
 | order by TimeGenerated desc
 | take 20
 ```
@@ -127,7 +125,7 @@ If you see results, data is flowing. If not, check:
 
 1. The diagnostic setting is configured correctly
 2. The public IP actually has DDoS Protection enabled
-3. Wait at least 15 minutes for initial data to appear
+3. Wait for an attack event or run an approved DDoS simulation to generate sample data
 
 ## Step 4: Create Sentinel Analytics Rules
 
@@ -142,7 +140,7 @@ AzureDiagnostics
 | project
     TimeGenerated,
     PublicIP = publicIpAddress_s,
-    Message = msg_s,
+    Message,
     ResourceGroup = split(ResourceId, "/")[4],
     SubscriptionId
 | extend AlertTitle = strcat("DDoS Attack Detected on ", PublicIP)
@@ -168,7 +166,7 @@ AzureDiagnostics
 | project
     TimeGenerated,
     PublicIP = publicIpAddress_s,
-    Message = msg_s
+    Message
 ```
 
 ## Step 5: Build a DDoS Monitoring Workbook
@@ -200,11 +198,7 @@ AzureDiagnostics
 AzureDiagnostics
 | where Category == "DDoSMitigationFlowLogs"
 | where TimeGenerated > ago(7d)
-| summarize
-    FlowCount = count(),
-    DroppedFlows = countif(action_s == "Dropped"),
-    ForwardedFlows = countif(action_s == "Forwarded")
-    by sourcePublicIpAddress_s
+| summarize FlowCount = count() by sourcePublicIpAddress_s
 | order by FlowCount desc
 | take 20
 ```
@@ -230,10 +224,10 @@ flowchart TD
     C --> D[Automation Rule Triggered]
     D --> E[Assign to Network Team]
     D --> F[Run Playbook: Notify Slack]
-    D --> G[Run Playbook: Block Source IPs at NSG]
+    D --> G[Run Playbook: Enrich Incident with Top Source IPs]
 ```
 
-The playbook for blocking source IPs can analyze the DDoSMitigationFlowLogs, find the top source IPs, and add them to a Network Security Group deny rule. This provides an additional layer of defense beyond the automatic DDoS mitigation.
+The playbook can analyze the DDoSMitigationFlowLogs and add the top source IPs to the incident for investigation. Only block source IPs automatically after you validate that the traffic is not spoofed and that the Network Security Group rule scale and ordering are appropriate for your environment.
 
 ## Step 7: Configure Alert Notifications
 
@@ -245,8 +239,8 @@ az monitor action-group create \
   --name "DDoS-Alert-Team" \
   --resource-group myResourceGroup \
   --short-name "DDoSTeam" \
-  --email-receiver name="NetworkTeam" email-address="network-team@contoso.com" \
-  --email-receiver name="SecurityTeam" email-address="security-team@contoso.com"
+  --action email NetworkTeam network-team@contoso.com \
+  --action email SecurityTeam security-team@contoso.com
 
 # Create a metric alert for "Under DDoS Attack" metric
 az monitor metrics alert create \
@@ -269,7 +263,7 @@ You can reduce costs by:
 
 - Only enabling DDoSMitigationFlowLogs on your most critical public IPs
 - Setting shorter retention periods for flow log data
-- Using data collection rules to filter or sample flow log data before ingestion
+- Routing high-volume flow logs to Event Hubs or storage for separate processing when you do not need every record in Sentinel
 
 ## Summary
 
