@@ -106,9 +106,9 @@ parameters:
   - name: dockerfilePath
     type: string
     default: 'Dockerfile'
-  - name: registry
+  - name: registryServiceConnection
     type: string
-    default: 'myregistry.azurecr.io'
+    default: 'my-acr-service-connection'
   - name: tag
     type: string
     default: '$(Build.BuildId)'
@@ -124,14 +124,15 @@ jobs:
         displayName: 'Login to ACR'
         inputs:
           command: 'login'
-          containerRegistry: '${{ parameters.registry }}'
+          containerRegistry: '${{ parameters.registryServiceConnection }}'
 
       # Build the Docker image
       - task: Docker@2
         displayName: 'Build image'
         inputs:
           command: 'build'
-          dockerfile: '${{ parameters.dockerfilePath }}'
+          containerRegistry: '${{ parameters.registryServiceConnection }}'
+          Dockerfile: '${{ parameters.dockerfilePath }}'
           repository: '${{ parameters.imageName }}'
           tags: '${{ parameters.tag }}'
 
@@ -140,6 +141,7 @@ jobs:
         displayName: 'Push image'
         inputs:
           command: 'push'
+          containerRegistry: '${{ parameters.registryServiceConnection }}'
           repository: '${{ parameters.imageName }}'
           tags: '${{ parameters.tag }}'
 ```
