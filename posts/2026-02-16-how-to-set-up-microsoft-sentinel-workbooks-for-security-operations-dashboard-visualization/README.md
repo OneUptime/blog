@@ -71,8 +71,9 @@ Click **Add query** to add your first data visualization. Here is a KQL query th
 // Count security incidents grouped by severity and time
 SecurityIncident
 | where TimeGenerated {TimeRange}
-| summarize IncidentCount = count() by Severity, bin(TimeGenerated, 1h)
-| order by TimeGenerated asc
+| summarize arg_max(TimeGenerated, *) by IncidentNumber
+| summarize IncidentCount = count() by Severity, bin(CreatedTime, 1h)
+| order by CreatedTime asc
 ```
 
 In the visualization settings:
@@ -90,10 +91,11 @@ Add another query block with this KQL.
 // Summary table of recent incidents with key details
 SecurityIncident
 | where TimeGenerated {TimeRange}
-| summarize
-    TotalAlerts = sum(AdditionalData.alertsCount),
-    LastUpdate = max(LastModifiedTime)
-    by IncidentNumber, Title, Severity, Status, Owner = AssignedTo
+| summarize arg_max(TimeGenerated, *) by IncidentNumber
+| extend
+    TotalAlerts = array_length(AlertIds),
+    OwnerName = tostring(Owner.assignedTo)
+| project IncidentNumber, Title, Severity, Status, Owner = OwnerName, TotalAlerts, LastUpdate = LastModifiedTime
 | order by LastUpdate desc
 | take 50
 ```
@@ -108,13 +110,17 @@ Tiles are great for showing key numbers at a glance. Add a query block with this
 // Key metrics for the SOC dashboard header
 SecurityIncident
 | where TimeGenerated {TimeRange}
+| summarize arg_max(TimeGenerated, *) by IncidentNumber
+| extend CloseTimeHrs = iff(
+    isnotnull(ClosedTime),
+    todouble(datetime_diff('hour', ClosedTime, CreatedTime)),
+    real(null)
+)
 | summarize
     TotalIncidents = count(),
     HighSeverity = countif(Severity == "High"),
     OpenIncidents = countif(Status == "New" or Status == "Active"),
-    AvgCloseTimeHrs = round(avg(
-        datetime_diff('hour', ClosedTime, CreatedTime)
-    ), 1)
+    AvgCloseTimeHrs = round(avg(CloseTimeHrs), 1)
 ```
 
 Set the visualization to **Tiles**. Configure each column as a separate tile with appropriate formatting. The result is a row of metric cards at the top of your dashboard showing total incidents, high-severity count, open incidents, and average closure time.
@@ -127,7 +133,9 @@ One of the most valuable workbook pages tracks how your SOC team is performing. 
 // Analyst performance metrics - incidents handled and average response time
 SecurityIncident
 | where TimeGenerated {TimeRange}
-| where isnotempty(AssignedTo)
+| summarize arg_max(TimeGenerated, *) by IncidentNumber
+| extend AnalystName = tostring(Owner.assignedTo)
+| where isnotempty(AnalystName)
 | summarize
     IncidentsHandled = count(),
     AvgResponseMinutes = round(avg(
@@ -135,7 +143,7 @@ SecurityIncident
     ), 0),
     ClosedCount = countif(Status == "Closed"),
     HighSevHandled = countif(Severity == "High")
-    by Analyst = AssignedTo
+    by Analyst = AnalystName
 | order by IncidentsHandled desc
 ```
 
@@ -147,14 +155,15 @@ If you have threat intelligence connectors enabled, you can show active indicato
 
 ```kql
 // Active threat intelligence indicators by type and source
-ThreatIntelligenceIndicator
+ThreatIntelIndicators
 | where TimeGenerated {TimeRange}
-| where Active == true
-| summarize IndicatorCount = count() by ThreatType, SourceSystem
+| where IsActive == true and IsDeleted == false and Revoked == false
+| summarize arg_max(TimeGenerated, *) by Id
+| summarize IndicatorCount = count() by IndicatorType = ObservableKey, SourceSystem
 | order by IndicatorCount desc
 ```
 
-Visualize this as a bar chart to show which threat types have the most active indicators. This helps analysts understand the current threat landscape at a glance.
+Visualize this as a bar chart to show which observable types have the most active indicators. This helps analysts understand the current threat landscape at a glance.
 
 ## Step 6: Create a Multi-Page Workbook
 
@@ -190,15 +199,19 @@ For teams that use multiple Sentinel workspaces, you can export workbook templat
 
 az monitor app-insights workbook show \
   --resource-group myResourceGroup \
-  --name "SOC-Overview-Dashboard" \
-  --query 'serializedData' > workbook-template.json
+  --name 00000000-0000-0000-0000-000000000000 \
+  --can-fetch-content true \
+  --query serializedData \
+  --output tsv > workbook-template.json
 
 # Import the template into another workspace
 az monitor app-insights workbook create \
   --resource-group targetResourceGroup \
-  --name "SOC-Overview-Dashboard" \
-  --serialized-data @workbook-template.json \
+  --name 11111111-1111-1111-1111-111111111111 \
+  --display-name "SOC-Overview-Dashboard" \
+  --serialized-data "$(cat workbook-template.json)" \
   --kind shared \
+  --category workbook \
   --location eastus
 ```
 
