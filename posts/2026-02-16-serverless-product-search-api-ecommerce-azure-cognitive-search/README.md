@@ -8,7 +8,7 @@ Description: Build a serverless product search API for e-commerce using Azure Co
 
 ---
 
-Search is the most critical feature of any e-commerce site. When customers cannot find what they are looking for, they leave. Basic SQL LIKE queries do not cut it for product search - you need full-text search with typo tolerance, faceted filtering, relevance ranking, autocomplete, and synonym handling. Azure Cognitive Search (now called Azure AI Search) provides all of this as a managed service. Pair it with Azure Functions for a serverless API, and you have a product search system that scales automatically and costs nothing when no one is searching.
+Search is the most critical feature of any e-commerce site. When customers cannot find what they are looking for, they leave. Basic SQL LIKE queries do not cut it for product search - you need full-text search with typo tolerance, faceted filtering, relevance ranking, autocomplete, and synonym handling. Azure Cognitive Search (now called Azure AI Search) provides all of this as a managed service. Pair it with Azure Functions for a serverless API, and you have an API layer that scales automatically while the managed search service handles the index and query workload.
 
 In this guide, I will build a complete product search API with advanced features like faceted navigation, autocomplete, and boosted results.
 
@@ -45,7 +45,7 @@ az search service create \
   --partition-count 1
 ```
 
-The Standard tier supports up to 50 million documents per partition. For most e-commerce catalogs, a single partition is plenty.
+The Standard tier supports large indexes, with capacity governed by the current storage, document, index, partition, and replica limits for the selected SKU and region. For most e-commerce catalogs, a single partition is plenty.
 
 ## Defining the Search Index
 
@@ -201,8 +201,8 @@ app.http('search', {
   route: 'products/search',
   handler: async (request, context) => {
     const query = request.query.get('q') || '*';
-    const page = parseInt(request.query.get('page') || '1');
-    const pageSize = parseInt(request.query.get('pageSize') || '24');
+    const page = parsePositiveInt(request.query.get('page'), 1);
+    const pageSize = parsePositiveInt(request.query.get('pageSize'), 24, 100);
     const sortBy = request.query.get('sort') || 'relevance';
     const category = request.query.get('category');
     const brand = request.query.get('brand');
@@ -212,10 +212,12 @@ app.http('search', {
 
     // Build filter expression
     const filters = [];
-    if (category) filters.push(`category eq '${category}'`);
-    if (brand) filters.push(`brand eq '${brand}'`);
-    if (minPrice) filters.push(`price ge ${minPrice}`);
-    if (maxPrice) filters.push(`price le ${maxPrice}`);
+    const minPriceValue = parseNumberFilter(minPrice);
+    const maxPriceValue = parseNumberFilter(maxPrice);
+    if (category) filters.push(`category eq '${escapeODataString(category)}'`);
+    if (brand) filters.push(`brand eq '${escapeODataString(brand)}'`);
+    if (minPriceValue !== undefined) filters.push(`price ge ${minPriceValue}`);
+    if (maxPriceValue !== undefined) filters.push(`price le ${maxPriceValue}`);
     if (inStock === 'true') filters.push('inStock eq true');
 
     // Build sort expression
@@ -253,10 +255,7 @@ app.http('search', {
     };
 
     // Add fuzzy search for short queries (likely typos)
-    let searchText = query;
-    if (query !== '*' && query.length < 20) {
-      searchText = `${query}~1`;  // Allow 1 edit distance
-    }
+    const searchText = buildSearchText(query);
 
     const results = await searchClient.search(searchText, searchOptions);
 
@@ -295,6 +294,39 @@ function buildSortExpression(sortBy) {
   }
 }
 
+function buildSearchText(query) {
+  if (query === '*') return '*';
+
+  const terms = query.trim().split(/\s+/).filter(Boolean).map(escapeLuceneTerm);
+  if (terms.length === 0) return '*';
+
+  if (query.length < 20) {
+    return terms.map(term => `${term}~1`).join(' '); // Allow 1 edit distance
+  }
+
+  return terms.join(' ');
+}
+
+function escapeLuceneTerm(term) {
+  return term.replace(/[+\-&|!(){}\[\]^"~*?:\\/]/g, '\\$&');
+}
+
+function escapeODataString(value) {
+  return value.replace(/'/g, "''");
+}
+
+function parseNumberFilter(value) {
+  if (value === null) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parsePositiveInt(value, fallback, max) {
+  const parsed = Number.parseInt(value || '', 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return max ? Math.min(parsed, max) : parsed;
+}
+
 function formatFacets(facets) {
   if (!facets) return {};
   const formatted = {};
@@ -312,6 +344,15 @@ function formatFacets(facets) {
 
 ```javascript
 // src/functions/autocomplete.js
+const { app } = require('@azure/functions');
+const { SearchClient, AzureKeyCredential } = require('@azure/search-documents');
+
+const searchClient = new SearchClient(
+  'https://ecommerce-search.search.windows.net',
+  'products',
+  new AzureKeyCredential(process.env.SEARCH_QUERY_KEY)
+);
+
 app.http('autocomplete', {
   methods: ['GET'],
   authLevel: 'anonymous',
@@ -361,7 +402,18 @@ Keep the search index in sync with your product database using an indexer or dir
 
 ```javascript
 // src/functions/index-product.js
-const { SearchIndexingBufferedSender } = require('@azure/search-documents');
+const { app } = require('@azure/functions');
+const {
+  SearchClient,
+  AzureKeyCredential,
+  SearchIndexingBufferedSender
+} = require('@azure/search-documents');
+
+const searchClient = new SearchClient(
+  'https://ecommerce-search.search.windows.net',
+  'products',
+  new AzureKeyCredential(process.env.SEARCH_ADMIN_KEY)
+);
 
 // Bulk index products (called by data pipeline or admin)
 app.http('index-products', {
@@ -370,14 +422,12 @@ app.http('index-products', {
   handler: async (request, context) => {
     const products = await request.json();
 
-    const sender = new SearchIndexingBufferedSender(searchClient, {
+    const sender = new SearchIndexingBufferedSender(searchClient, product => product.id, {
       autoFlush: true,
       flushWindowInMs: 1000
     });
 
-    for (const product of products) {
-      await sender.uploadDocuments([product]);
-    }
+    await sender.uploadDocuments(products);
 
     await sender.flush();
     await sender.dispose();
