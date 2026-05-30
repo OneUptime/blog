@@ -63,7 +63,7 @@ az monitor data-collection endpoint create \
 
 ## Step 3: Create the Data Collection Rule
 
-Now create the DCR that defines the collection. Here is an ARM template for collecting a custom text log file.
+Now create the DCR that defines the collection. Here is a DCR resource definition for collecting a custom text log file.
 
 ```json
 {
@@ -74,7 +74,7 @@ Now create the DCR that defines the collection. Here is an ARM template for coll
   "properties": {
     "dataCollectionEndpointId": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', 'dce-custom-logs')]",
     "streamDeclarations": {
-      "Custom-MyAppLogs_CL": {
+      "Custom-MyAppLogs": {
         "columns": [
           { "name": "TimeGenerated", "type": "datetime" },
           { "name": "RawData", "type": "string" }
@@ -84,7 +84,7 @@ Now create the DCR that defines the collection. Here is an ARM template for coll
     "dataSources": {
       "logFiles": [
         {
-          "streams": ["Custom-MyAppLogs_CL"],
+          "streams": ["Custom-MyAppLogs"],
           "filePatterns": ["/var/log/myapp/*.log"],
           "format": "text",
           "settings": {
@@ -106,9 +106,9 @@ Now create the DCR that defines the collection. Here is an ARM template for coll
     },
     "dataFlows": [
       {
-        "streams": ["Custom-MyAppLogs_CL"],
+        "streams": ["Custom-MyAppLogs"],
         "destinations": ["lawDestination"],
-        "transformKql": "source | extend Level = extract('\\[(\\w+)\\]', 1, RawData) | extend Message = extract('\\]\\s+(.*)', 1, RawData)",
+        "transformKql": "source | extend Level = extract('\\[(\\w+)\\]', 1, RawData) | extend Message = extract('\\]\\s+(.*)', 1, RawData) | extend Source = 'myapp' | project TimeGenerated, RawData, Level, Message, Source",
         "outputStream": "Custom-MyAppLogs_CL"
       }
     ]
@@ -158,11 +158,12 @@ source
 | extend TimeGenerated = todatetime(extract('^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})', 1, RawData))
 | extend Level = extract('\\[(\\w+)\\]', 1, RawData)
 | extend Message = extract('\\]\\s+(.*)', 1, RawData)
+| extend Source = "myapp"
 | where Level != "DEBUG"
-| project TimeGenerated, Level, Message
+| project TimeGenerated, RawData, Level, Message, Source
 ```
 
-This transformation extracts the timestamp, log level, and message from each line, drops DEBUG-level entries (saving ingestion costs), and only stores the structured fields.
+This transformation extracts the timestamp, log level, and message from each line, adds a source label, and drops DEBUG-level entries (saving ingestion costs).
 
 ## Collecting Windows Event Logs
 
@@ -239,15 +240,20 @@ DCRs also handle performance counter collection, replacing the legacy agent's pe
 
 In a large environment with many VMs, you do not want to manually associate DCRs with each VM. Use Azure Policy to automatically associate DCRs with VMs based on tags, resource groups, or subscriptions.
 
-Azure provides built-in policies like "Configure Linux machines to be associated with a data collection rule" and "Configure Windows machines to be associated with a data collection rule."
+Azure provides built-in policies like "Configure Linux Machines to be associated with a Data Collection Rule or a Data Collection Endpoint" and "Configure Windows Machines to be associated with a Data Collection Rule or a Data Collection Endpoint."
 
 ```bash
+# Look up the current built-in policy definition ID
+POLICY_ID=$(az policy definition list \
+  --query "[?displayName=='Configure Linux Machines to be associated with a Data Collection Rule or a Data Collection Endpoint'].name | [0]" \
+  -o tsv)
+
 # Assign a policy that auto-associates a DCR with all VMs in a resource group
 az policy assignment create \
   --name "auto-dcr-linux" \
-  --policy "a4034bc6-4c15-4a55-ad73-0fcf62085200" \
+  --policy "$POLICY_ID" \
   --scope "/subscriptions/<sub-id>/resourceGroups/rg-prod" \
-  --params "{\"dcrResourceId\": {\"value\": \"$DCR_ID\"}}" \
+  --params "{\"dcrResourceId\": {\"value\": \"$DCR_ID\"}, \"resourceType\": {\"value\": \"Microsoft.Insights/dataCollectionRules\"}}" \
   --assign-identity \
   --location eastus
 ```
@@ -258,7 +264,7 @@ az policy assignment create \
 
 **Transformation errors**: If your KQL transformation has a syntax error, the DCR creation will fail. Test your transformation query in the Log Analytics query editor first using sample data.
 
-**Permission issues**: The managed identity of the Azure Monitor Agent needs the "Monitoring Metrics Publisher" role on the Data Collection Rule. This is usually configured automatically, but verify if data is not flowing.
+**Permission issues**: Verify that the user or automation creating the DCR, DCE, custom table, and DCR association has the required Azure RBAC permissions. If you use Azure Policy for association, make sure the policy assignment's managed identity has the roles required by the built-in policy.
 
 **File pattern not matching**: Make sure the file pattern in your DCR matches the actual log file paths on the VM. Patterns are case-sensitive on Linux.
 
