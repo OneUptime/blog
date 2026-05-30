@@ -46,7 +46,7 @@ WORKSPACE_ID=$(az monitor log-analytics workspace show \
     --query id -o tsv)
 
 # Create the diagnostic setting
-# This sends all AVD log categories to Log Analytics
+# This sends the AVD log categories used in this guide to Log Analytics
 az monitor diagnostic-settings create \
     --name avd-diagnostics \
     --resource "$HOST_POOL_ID" \
@@ -63,7 +63,7 @@ az monitor diagnostic-settings create \
     ]'
 ```
 
-It takes about 15 to 30 minutes for data to start appearing after you enable diagnostics. Do not panic if you query immediately and see nothing.
+Azure Monitor can have a 15-minute latency period for log data, and the first diagnostics setup can take a few hours before data is available. Do not panic if you query immediately and see nothing.
 
 ## Understanding the Log Tables
 
@@ -74,7 +74,7 @@ AVD diagnostics data lands in several tables within Log Analytics:
 - **WVDCheckpoints** - Granular event checkpoints during the connection lifecycle
 - **WVDAgentHealthStatus** - Health status of the AVD agent running on session hosts
 - **WVDConnectionNetworkData** - Network performance metrics for active connections
-- **WVDConnectionGraphicsData** - Graphics rendering performance data
+- **WVDConnectionGraphicsDataPreview** - Graphics rendering performance data
 
 The most useful table for troubleshooting connection failures is WVDConnections joined with WVDErrors. Let me walk through the common scenarios.
 
@@ -85,45 +85,52 @@ When users report they cannot connect, start by looking at recent connection fai
 ```kusto
 // Find all failed connections in the last 24 hours
 // Join with errors to get the failure reason
-WVDConnections
+WVDErrors
 | where TimeGenerated > ago(24h)
-| where State == "Failed" or State == "Broken"
 | join kind=leftouter (
-    WVDErrors
+    WVDConnections
     | where TimeGenerated > ago(24h)
+    | summarize arg_max(TimeGenerated, *) by CorrelationId
 ) on CorrelationId
-| project TimeGenerated, UserName, SessionHostName, State,
+| project TimeGenerated, UserName, SessionHostName,
     ErrorCode = CodeSymbolic, ErrorMessage = Message,
-    ClientOS, ClientType, ClientVersion
+    ServiceError, Source, ClientOS, ClientType, ClientVersion
 | order by TimeGenerated desc
 ```
 
-This query gives you a clear picture: who failed, when, what session host they were targeting, and what error occurred. The ErrorCode is particularly useful for looking up Microsoft documentation.
+This query gives you a clear picture: who hit an error, when, what session host they were targeting, and what error occurred. The ErrorCode is particularly useful for looking up Microsoft documentation.
 
 ## Scenario 2: Diagnosing Slow Connections
 
-Users often complain about slow connections rather than outright failures. The connection process has multiple phases, and you can measure the time spent in each:
+Users often complain about slow connections rather than outright failures. Start by measuring how long it takes each connection to move from started to connected:
 
 ```kusto
-// Measure connection duration by phase
-// This helps identify which step is causing delays
-WVDCheckpoints
+// Measure connection duration from Started to Connected
+// This helps identify slow logons and new-session placement delays
+WVDConnections
 | where TimeGenerated > ago(7d)
-| where Name in ("LoadBalancedNewConnection", "SessionHostFound",
-    "SessionCreated", "ConnectionSucceeded")
-| summarize Timestamp = min(TimeGenerated) by CorrelationId, Name
-| evaluate pivot(Name, min(Timestamp))
-| extend LoadBalancingDuration = datetime_diff('second',
-    SessionHostFound, LoadBalancedNewConnection)
-| extend SessionCreationDuration = datetime_diff('second',
-    SessionCreated, SessionHostFound)
-| extend TotalConnectionTime = datetime_diff('second',
-    ConnectionSucceeded, LoadBalancedNewConnection)
-| where TotalConnectionTime > 30
+| where State == "Started"
+| project CorrelationId, UserName, ConnectionType,
+    StartTime = TimeGenerated, _ResourceId
+| join kind=inner (
+    WVDConnections
+    | where TimeGenerated > ago(7d)
+    | where State == "Connected"
+    | project CorrelationId, ConnectTime = TimeGenerated
+) on CorrelationId
+| join kind=leftouter (
+    WVDCheckpoints
+    | where TimeGenerated > ago(7d)
+    | where Name =~ "LoadBalancedNewConnection"
+    | extend LoadBalanceOutcome = tostring(parse_json(Parameters).LoadBalanceOutcome)
+    | project CorrelationId, LoadBalanceOutcome
+) on CorrelationId
+| extend TotalConnectionTime = ConnectTime - StartTime
+| where TotalConnectionTime > 30s
 | order by TotalConnectionTime desc
 ```
 
-If the load balancing duration is high, you might have too few available session hosts. If session creation takes long, the session hosts might be overloaded or the user profile is taking too long to load (common with FSLogix profile containers on slow storage).
+If many new-session connections take a long time, you might have too few available session hosts. Long connection times can also point to overloaded session hosts or user profiles taking too long to load (common with FSLogix profile containers on slow storage).
 
 ## Scenario 3: Session Drops and Disconnects
 
@@ -160,9 +167,9 @@ Sometimes the problem is not the connection itself but the session host being un
 WVDAgentHealthStatus
 | where TimeGenerated > ago(24h)
 | summarize arg_max(TimeGenerated, *) by SessionHostName
-| where HealthStatus != "Healthy"
-| project SessionHostName, HealthStatus, LastHeartBeat,
-    UpgradeState = AgentVersion, ActiveSessions
+| where Status != "Healthy"
+| project SessionHostName, Status, LastHeartBeat,
+    AgentVersion, ActiveSessions
 | order by LastHeartBeat asc
 ```
 
@@ -197,13 +204,22 @@ Beyond ad-hoc troubleshooting, you should set up proactive alerts. Here is a que
 
 ```kusto
 // Alert when failure rate exceeds 10% in a 15-minute window
-WVDConnections
-| where TimeGenerated > ago(15m)
-| summarize
-    TotalConnections = count(),
-    FailedConnections = countif(State == "Failed")
-| extend FailureRate = round(todouble(FailedConnections) /
-    todouble(TotalConnections) * 100, 2)
+let ConnectionAttempts =
+    WVDConnections
+    | where TimeGenerated > ago(15m)
+    | where State == "Started"
+    | summarize TotalConnections = dcount(CorrelationId);
+let FailedConnections =
+    WVDErrors
+    | where TimeGenerated > ago(15m)
+    | where isnotempty(CorrelationId)
+    | summarize FailedConnections = dcount(CorrelationId);
+ConnectionAttempts
+| extend JoinKey = 1
+| join kind=inner (FailedConnections | extend JoinKey = 1) on JoinKey
+| project-away JoinKey, JoinKey1
+| extend FailureRate = iff(TotalConnections == 0, 0.0,
+    round(todouble(FailedConnections) / todouble(TotalConnections) * 100, 2))
 | where FailureRate > 10
 ```
 
