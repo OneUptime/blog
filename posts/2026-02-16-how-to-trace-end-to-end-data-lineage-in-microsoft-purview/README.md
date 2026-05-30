@@ -19,29 +19,29 @@ Purview's lineage view answers several critical questions:
 - **Where did this data come from?** Trace a dashboard metric back through aggregations, transformations, and joins to the original source tables.
 - **What will be affected if I change this table?** See every downstream pipeline, report, and dataset that depends on a given source.
 - **How was this data transformed?** Understand the business logic applied at each step of the pipeline.
-- **Who last modified this pipeline?** Track changes to data processing logic.
+- **Who owns this pipeline or dataset?** Use catalog metadata and contacts alongside lineage to find the right owner.
 
 This information is essential for impact analysis (before making changes), root cause analysis (when something breaks), and regulatory compliance (proving data provenance).
 
 ## Sources of Automated Lineage
 
-Purview captures lineage automatically from several Azure services. No custom code is needed for these integrations - just connect Purview to these services and lineage flows in.
+Purview captures lineage automatically from several Azure services. No custom code is needed for these integrations, but you need to register, scan, or connect each supported source so lineage can flow into Purview.
 
 ### Azure Data Factory and Synapse Pipelines
 
 This is the richest source of automated lineage. When ADF or Synapse pipelines run, they push lineage data to Purview, including:
 
 - Source and destination datasets
-- Copy activity data flows
-- Data flow transformations (joins, aggregations, filters, derived columns)
-- Column-level lineage for data flows
+- Copy activity lineage
+- Data Flow activity source and sink lineage
+- Column-level lineage where the supported connector and lineage pattern provide it
 
-The connection happens through the ADF pipeline settings. Here is how to enable it:
+The connection happens through a Data Factory lineage connection in Purview. Here is how to enable it:
 
 ```bash
 # Link Azure Data Factory to Purview for automated lineage
 
-# This is done in the ADF portal under Manage > Purview
+# This is done in the Purview portal under Management > Lineage connections > Data Factory
 # Or via ARM template:
 az resource update \
   --resource-group my-resource-group \
@@ -52,11 +52,11 @@ az resource update \
 
 ### Azure SQL Database
 
-Purview captures table-level dependencies within Azure SQL Database, including views, stored procedures, and functions that reference other tables.
+Purview captures table-level dependencies within Azure SQL Database, including views and stored procedures when lineage extraction is enabled during scanning. Function and trigger lineage isn't supported by the Azure SQL Database lineage extraction scan.
 
 ### Azure Synapse Analytics
 
-Both dedicated SQL pools and serverless SQL pools push lineage to Purview when queries create new tables or views from existing ones.
+Azure Synapse pipelines push runtime lineage to Purview for supported Copy Data and Data Flow activities after the Synapse workspace is connected to Purview. Dedicated SQL pools and serverless SQL pools can also be registered and scanned as Synapse workspace assets.
 
 ### Power BI
 
@@ -87,7 +87,7 @@ You can trace upstream (where data comes from) or downstream (where data goes) b
 
 ### Column-Level Lineage
 
-For ADF Data Flows, Purview captures column-level lineage. This means you can see not just which tables are connected, but which specific columns map to which output columns through transformations.
+For supported lineage patterns, Purview can capture column-level lineage. This means you can see not just which tables are connected, but which specific columns map to downstream columns.
 
 Click on any data asset in the lineage graph and expand the column view to see column-level mappings. This is incredibly valuable for impact analysis - if you rename or remove a column, you can see exactly which downstream processes depend on it.
 
@@ -99,7 +99,7 @@ For automated reporting or integration with other tools, use the Purview REST AP
 import requests
 
 purview_account = "my-purview-account"
-base_url = f"https://{purview_account}.purview.azure.com"
+base_url = f"https://{purview_account}.purview.azure.com/datamap/api"
 
 headers = {
     "Authorization": f"Bearer {access_token}",
@@ -119,7 +119,7 @@ search_payload = {
 }
 
 response = requests.post(
-    f"{base_url}/catalog/api/search/query?api-version=2022-08-01-preview",
+    f"{base_url}/search/query?api-version=2023-09-01",
     headers=headers,
     json=search_payload
 )
@@ -131,7 +131,7 @@ print(f"Asset GUID: {asset_guid}")
 # Now get the lineage for this asset
 # Direction can be "INPUT" (upstream) or "OUTPUT" (downstream) or "BOTH"
 lineage_response = requests.get(
-    f"{base_url}/catalog/api/atlas/v2/lineage/{asset_guid}?direction=BOTH&depth=5&api-version=2022-08-01-preview",
+    f"{base_url}/atlas/v2/lineage/{asset_guid}?direction=BOTH&depth=5&api-version=2023-09-01",
     headers=headers
 )
 
@@ -160,38 +160,27 @@ Purview is built on Apache Atlas, and you can use the Atlas API to create custom
 # Create a custom lineage entry for a Python ETL script
 # This tells Purview that a process reads from source_table and writes to target_table
 
-# First, define the process entity
+# First, define the process entity. Use existing asset GUIDs from Purview search results.
+source_table_guid = "24558fd8-9cdc-47de-9310-56a58108bab0"
+target_table_guid = "e33c694a-2c4f-4cae-8c27-06f6f6f60000"
+
 process_entity = {
-    "entity": {
-        "typeName": "Process",
-        "attributes": {
-            "name": "daily-customer-etl",
-            "qualifiedName": "custom://daily-customer-etl",
-            "description": "Python script that aggregates customer data daily"
-        },
-        "relationshipAttributes": {
-            "inputs": [
-                {
-                    "typeName": "azure_sql_table",
-                    "uniqueAttributes": {
-                        "qualifiedName": "mssql://myserver.database.windows.net/mydb/dbo/raw_customers"
-                    }
-                }
-            ],
-            "outputs": [
-                {
-                    "typeName": "azure_sql_table",
-                    "uniqueAttributes": {
-                        "qualifiedName": "mssql://myserver.database.windows.net/mydb/dbo/dim_customers"
-                    }
-                }
-            ]
+    "entities": [
+        {
+            "typeName": "Process",
+            "attributes": {
+                "name": "daily-customer-etl",
+                "qualifiedName": "custom://daily-customer-etl",
+                "description": "Python script that aggregates customer data daily",
+                "inputs": [{"guid": source_table_guid}],
+                "outputs": [{"guid": target_table_guid}]
+            }
         }
-    }
+    ]
 }
 
 response = requests.post(
-    f"{base_url}/catalog/api/atlas/v2/entity",
+    f"{base_url}/atlas/v2/entity/bulk?api-version=2023-09-01",
     headers=headers,
     json=process_entity
 )
@@ -203,21 +192,31 @@ print(f"Custom lineage created: {response.status_code}")
 For detailed column-level tracking in custom processes:
 
 ```python
-# Define column-level lineage for a custom transformation
+# Define column-level lineage for a direct dataset-to-dataset relationship
 column_lineage = {
-    "entity": {
-        "typeName": "Process",
-        "attributes": {
-            "name": "customer-aggregation",
-            "qualifiedName": "custom://customer-aggregation",
-            "columnMapping": "[{\"DatasetMapping\":{\"Source\":\"raw_customers\",\"Sink\":\"dim_customers\"},\"ColumnMapping\":[{\"Source\":\"first_name,last_name\",\"Sink\":\"full_name\"},{\"Source\":\"email\",\"Sink\":\"email_address\"},{\"Source\":\"order_count\",\"Sink\":\"total_orders\"}]}]"
-        },
-        "relationshipAttributes": {
-            "inputs": [{"typeName": "azure_sql_table", "uniqueAttributes": {"qualifiedName": "mssql://myserver/mydb/dbo/raw_customers"}}],
-            "outputs": [{"typeName": "azure_sql_table", "uniqueAttributes": {"qualifiedName": "mssql://myserver/mydb/dbo/dim_customers"}}]
+    "typeName": "direct_lineage_dataset_dataset",
+    "end1": {
+        "typeName": "azure_sql_table",
+        "uniqueAttributes": {
+            "qualifiedName": "mssql://myserver.database.windows.net/mydb/dbo/raw_customers"
         }
+    },
+    "end2": {
+        "typeName": "azure_sql_table",
+        "uniqueAttributes": {
+            "qualifiedName": "mssql://myserver.database.windows.net/mydb/dbo/dim_customers"
+        }
+    },
+    "attributes": {
+        "columnMapping": "[{\"Source\":\"first_name,last_name\",\"Sink\":\"full_name\"},{\"Source\":\"email\",\"Sink\":\"email_address\"},{\"Source\":\"order_count\",\"Sink\":\"total_orders\"}]"
     }
 }
+
+response = requests.post(
+    f"{base_url}/atlas/v2/relationship?api-version=2023-09-01",
+    headers=headers,
+    json=column_lineage
+)
 ```
 
 ## Practical Use Cases
@@ -238,9 +237,9 @@ When a dashboard shows incorrect numbers:
 
 1. Search for the dashboard dataset in Purview
 2. Open the lineage view
-3. Trace upstream through each transformation step
+3. Trace upstream through each process and data asset
 4. Check the lineage timestamps to identify when the pipeline last ran
-5. Identify which specific transformation or source might be causing the issue
+5. Identify which process or source might be causing the issue
 
 ### Regulatory Compliance
 
@@ -253,7 +252,7 @@ For regulations like GDPR that require knowing where personal data flows:
 
 ## Lineage Best Practices
 
-**Connect all automated sources first**: Start by linking ADF, Synapse, and Power BI to Purview. This gives you the most lineage coverage with the least effort.
+**Connect all automated sources first**: Start by linking ADF and Synapse, and by registering and scanning sources like Azure SQL Database and Power BI. This gives you the most lineage coverage with the least effort.
 
 **Fill gaps with custom lineage**: Identify any data movements not covered by automated lineage (custom scripts, third-party tools) and add custom lineage entries for them.
 
