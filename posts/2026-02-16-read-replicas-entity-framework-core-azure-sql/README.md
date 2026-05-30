@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Entity Framework Core, Azure SQL, Read Replica, .NET, Performance, Database, Scaling
 
-Description: Scale read-heavy workloads by routing queries to Azure SQL Database read replicas using Entity Framework Core interceptors.
+Description: Scale read-heavy workloads by routing queries to Azure SQL Database read replicas using separate Entity Framework Core contexts.
 
 ---
 
-Most applications read data far more than they write it. A product catalog page, a user profile view, a dashboard query - these are all reads. When your primary database starts struggling under load, the first instinct is to scale up (bigger tier). But scaling up has limits and gets expensive fast. A better approach for read-heavy workloads is to route read queries to a read replica, keeping the primary database focused on writes. Azure SQL Database supports read replicas through its Business Critical and Hyperscale tiers, and Entity Framework Core can be configured to route queries accordingly.
+Most applications read data far more than they write it. A product catalog page, a user profile view, a dashboard query - these are all reads. When your primary database starts struggling under load, the first instinct is to scale up (bigger tier). But scaling up has limits and gets expensive fast. A better approach for read-heavy workloads is to route read queries to a read replica, keeping the primary database focused on writes. Azure SQL Database supports read scale-out in the Premium and Business Critical tiers, and in the Hyperscale tier when at least one secondary replica is configured. Entity Framework Core can be configured to route queries accordingly.
 
 ## How Azure SQL Read Replicas Work
 
-Azure SQL Database Business Critical and Hyperscale tiers maintain read-only replicas automatically. These replicas are kept in sync with the primary through log shipping. You access them using the same connection string with an extra parameter: `ApplicationIntent=ReadOnly`. Azure's gateway routes the connection to an available replica instead of the primary.
+Azure SQL Database Premium and Business Critical tiers maintain read-only replicas automatically, and Hyperscale supports read-only replicas when secondary replicas are configured. These replicas are kept in sync by propagating and applying transaction log records from the primary. You access them using the same connection string with an extra parameter: `ApplicationIntent=ReadOnly`. Azure's gateway routes the connection to an available replica instead of the primary.
 
 ```mermaid
 graph LR
@@ -20,16 +20,16 @@ graph LR
     App -->|Writes| Primary[Primary Database]
     App -->|Reads| Replica1[Read Replica 1]
     App -->|Reads| Replica2[Read Replica 2]
-    Primary -->|Log Shipping| Replica1
-    Primary -->|Log Shipping| Replica2
+    Primary -->|Transaction log records| Replica1
+    Primary -->|Transaction log records| Replica2
 ```
 
-There is a small replication lag - usually under a second - so the replicas may not have the absolute latest data. This is fine for most read scenarios but not for reads that immediately follow a write (like reading back a record you just inserted).
+There is a small replication lag - often from tens of milliseconds to single-digit seconds, but with no fixed upper bound - so the replicas may not have the absolute latest data. This is fine for most read scenarios but not for reads that immediately follow a write (like reading back a record you just inserted).
 
 ## Prerequisites
 
 - .NET 8 SDK
-- Azure SQL Database (Business Critical or Hyperscale tier)
+- Azure SQL Database (Premium or Business Critical tier, or Hyperscale with at least one secondary replica)
 - Basic Entity Framework Core knowledge
 
 ## Setting Up Connection Strings
@@ -230,38 +230,28 @@ public class ProductService
 
 ## Interceptor-Based Approach
 
-If you prefer a single DbContext with automatic routing, you can use an interceptor:
+If you want extra protection around a read-only context, you can use an interceptor to prevent accidental writes. Avoid switching a `DbCommand` connection string inside `ReaderExecuting`; at that point EF Core has already prepared the command for the current connection, and changing the connection can leak the read-only connection into later write operations on the same context.
 
 ```csharp
-// Interceptors/ReadReplicaInterceptor.cs - Automatic read/write routing
+// Interceptors/ReadOnlyCommandInterceptor.cs - Guard a read-only context
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using System.Data;
 using System.Data.Common;
+using System.Text.RegularExpressions;
 
 namespace ReadReplicaDemo.Interceptors;
 
-public class ReadReplicaInterceptor : DbCommandInterceptor
+public class ReadOnlyCommandInterceptor : DbCommandInterceptor
 {
-    private readonly string _readOnlyConnectionString;
-    private readonly string _primaryConnectionString;
-
-    public ReadReplicaInterceptor(string primaryConnectionString, string readOnlyConnectionString)
-    {
-        _primaryConnectionString = primaryConnectionString;
-        _readOnlyConnectionString = readOnlyConnectionString;
-    }
+    private static readonly Regex WriteCommandPattern = new(
+        @"^\s*(?:(?:--[^\r\n]*(?:\r?\n|$))|(?:/\*.*?\*/\s*)|(?:SET\s+[^;]+;\s*))*\s*(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC|EXECUTE)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
 
     public override InterceptionResult<DbDataReader> ReaderExecuting(
         DbCommand command,
         CommandEventData eventData,
         InterceptionResult<DbDataReader> result)
     {
-        // Route SELECT queries to the read replica
-        if (IsReadQuery(command.CommandText))
-        {
-            SwitchToReadReplica(command);
-        }
-
+        EnsureReadOnly(command);
         return result;
     }
 
@@ -271,32 +261,52 @@ public class ReadReplicaInterceptor : DbCommandInterceptor
         InterceptionResult<DbDataReader> result,
         CancellationToken cancellationToken = default)
     {
-        if (IsReadQuery(command.CommandText))
-        {
-            SwitchToReadReplica(command);
-        }
-
+        EnsureReadOnly(command);
         return ValueTask.FromResult(result);
     }
 
-    // Determine if the command is a read-only query
-    private static bool IsReadQuery(string commandText)
+    public override InterceptionResult<int> NonQueryExecuting(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<int> result)
     {
-        var trimmed = commandText.TrimStart();
-        return trimmed.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase);
+        EnsureReadOnly(command);
+        return result;
     }
 
-    // Switch the connection to the read replica
-    private void SwitchToReadReplica(DbCommand command)
+    public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
     {
-        if (command.Connection != null &&
-            !command.Connection.ConnectionString.Contains("ApplicationIntent=ReadOnly"))
-        {
-            var wasOpen = command.Connection.State == ConnectionState.Open;
-            if (wasOpen) command.Connection.Close();
-            command.Connection.ConnectionString = _readOnlyConnectionString;
-            if (wasOpen) command.Connection.Open();
-        }
+        EnsureReadOnly(command);
+        return ValueTask.FromResult(result);
+    }
+
+    public override InterceptionResult<object> ScalarExecuting(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<object> result)
+    {
+        EnsureReadOnly(command);
+        return result;
+    }
+
+    public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<object> result,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureReadOnly(command);
+        return ValueTask.FromResult(result);
+    }
+
+    private static void EnsureReadOnly(DbCommand command)
+    {
+        if (WriteCommandPattern.IsMatch(command.CommandText))
+            throw new InvalidOperationException("Write command attempted on a read-only DbContext.");
     }
 }
 ```
@@ -331,20 +341,38 @@ public class ReplicaHealthCheck : IHealthCheck
             using var connection = new SqlConnection(_readOnlyConnectionString);
             await connection.OpenAsync(cancellationToken);
 
-            // Query the replica's view of replication lag
+            // Query the replica's redo queue as an indicator of data propagation latency
             using var command = new SqlCommand(
-                "SELECT DATABASEPROPERTYEX(DB_NAME(), 'ReplicaLag')", connection);
+                """
+                SELECT redo_queue_size, redo_rate
+                FROM sys.dm_database_replica_states
+                WHERE is_local = 1
+                """, connection);
 
-            var result = await command.ExecuteScalarAsync(cancellationToken);
-            var lagSeconds = result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
-
-            if (lagSeconds > MaxAcceptableLagSeconds)
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
             {
-                return HealthCheckResult.Degraded(
-                    $"Read replica lag is {lagSeconds}s (threshold: {MaxAcceptableLagSeconds}s)");
+                return HealthCheckResult.Degraded("Replica state is not available");
             }
 
-            return HealthCheckResult.Healthy($"Read replica lag: {lagSeconds}s");
+            var redoQueueSizeKb = reader.GetInt64(0);
+            var redoRateKbPerSecond = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+            if (redoQueueSizeKb > 0 && redoRateKbPerSecond == 0)
+            {
+                return HealthCheckResult.Degraded("Read replica has a redo queue but no current redo rate");
+            }
+
+            var estimatedLagSeconds = redoRateKbPerSecond > 0
+                ? redoQueueSizeKb / redoRateKbPerSecond
+                : 0;
+
+            if (estimatedLagSeconds > MaxAcceptableLagSeconds)
+            {
+                return HealthCheckResult.Degraded(
+                    $"Read replica estimated redo lag is {estimatedLagSeconds}s (threshold: {MaxAcceptableLagSeconds}s)");
+            }
+
+            return HealthCheckResult.Healthy($"Read replica estimated redo lag: {estimatedLagSeconds}s");
         }
         catch (Exception ex)
         {
@@ -356,4 +384,4 @@ public class ReplicaHealthCheck : IHealthCheck
 
 ## Wrapping Up
 
-Read replicas are one of the most effective ways to scale a read-heavy application without rewriting your data access layer. Azure SQL handles the replication automatically - you just add `ApplicationIntent=ReadOnly` to your connection string and queries go to a replica. The dual-context pattern in Entity Framework Core makes it explicit which operations hit the primary and which hit the replica, reducing the chance of accidentally writing through the read context. Watch out for the replication lag in read-after-write scenarios, and monitor the lag to catch any synchronization issues early. For applications where reads outnumber writes by 10:1 or more, this pattern can significantly reduce the load on your primary database and improve overall application responsiveness.
+Read replicas are one of the most effective ways to scale a read-heavy application without rewriting your data access layer. Azure SQL handles the replication automatically - you just add `ApplicationIntent=ReadOnly` to your connection string and eligible read-scale-out connections go to a replica. The dual-context pattern in Entity Framework Core makes it explicit which operations hit the primary and which hit the replica, reducing the chance of accidentally writing through the read context. Watch out for the replication lag in read-after-write scenarios, and monitor the lag to catch any synchronization issues early. For applications where reads outnumber writes by 10:1 or more, this pattern can significantly reduce the load on your primary database and improve overall application responsiveness.
