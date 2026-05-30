@@ -110,10 +110,10 @@ requests
 
 To reduce cold starts:
 
-- Use the Premium plan or Dedicated plan instead of the Consumption plan
-- Keep functions warm with a timer-triggered ping function
+- Use the Premium plan with always ready instances, Flex Consumption with always ready instances, or a Dedicated plan with Always On enabled
+- Use a warmup trigger on Premium plans to preload dependencies during prewarming
 - Minimize dependencies and startup initialization
-- Use the `WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT` setting to control instance count
+- Set an appropriate maximum scale-out limit when you need to protect downstream services, but do not use scale limits as a cold-start mitigation
 
 ## Step 4: Monitor Dependencies
 
@@ -142,11 +142,31 @@ dependencies
 
 For business-specific monitoring, add custom telemetry to your functions.
 
-For C# functions:
+For C# isolated worker functions, first add the `Microsoft.ApplicationInsights.WorkerService` and `Microsoft.Azure.Functions.Worker.ApplicationInsights` packages and register Application Insights in `Program.cs` so `TelemetryClient` can be injected:
 
 ```csharp
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
+var host = new HostBuilder()
+    .ConfigureFunctionsWorkerDefaults()
+    .ConfigureServices(services =>
+    {
+        services.AddApplicationInsightsTelemetryWorkerService();
+        services.ConfigureFunctionsApplicationInsights();
+    })
+    .Build();
+
+host.Run();
+```
+
+Then inject `TelemetryClient` into the function class:
+
+```csharp
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.ApplicationInsights;
-using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
@@ -197,11 +217,15 @@ For JavaScript/Node.js functions:
 ```javascript
 const appInsights = require('applicationinsights');
 
-// The Functions runtime initializes Application Insights automatically
-// Access the default client for custom telemetry
+// Initialize the classic Application Insights SDK for custom telemetry
+appInsights.setup();
+const client = appInsights.defaultClient;
+
 module.exports = async function (context, queueMessage) {
-    const client = appInsights.defaultClient;
     const startTime = Date.now();
+    const operationIdOverride = {
+        "ai.operation.id": context.traceContext.traceparent
+    };
 
     context.log('Processing order:', queueMessage.orderId);
 
@@ -211,6 +235,7 @@ module.exports = async function (context, queueMessage) {
         // Track custom event
         client.trackEvent({
             name: 'OrderProcessed',
+            tagOverrides: operationIdOverride,
             properties: {
                 orderId: queueMessage.orderId,
                 status: 'success'
@@ -226,6 +251,7 @@ module.exports = async function (context, queueMessage) {
         // Track the failure with context
         client.trackException({
             exception: error,
+            tagOverrides: operationIdOverride,
             properties: {
                 orderId: queueMessage.orderId,
                 functionName: 'ProcessOrder'
@@ -320,15 +346,19 @@ Query the orchestration history:
 
 ```kql
 // Track Durable Functions orchestration performance
-requests
+traces
 | where timestamp > ago(24h)
-| where name startswith "Orchestrator_"
+| where customDimensions.Category == "Host.Triggers.DurableTask"
+| extend functionName = tostring(customDimensions["prop__functionName"])
+| extend functionType = tostring(customDimensions["prop__functionType"])
+| extend state = tostring(customDimensions["prop__state"])
+| extend isReplay = tobool(tolower(customDimensions["prop__isReplay"]))
+| where isReplay != true and functionType == "Orchestrator"
 | summarize
-    AvgDuration = avg(duration),
-    Completions = countif(success == true),
-    Failures = countif(success == false)
-    by name
-| order by AvgDuration desc
+    Completions = countif(state == "Completed"),
+    Failures = countif(state == "Failed")
+    by functionName
+| order by Failures desc
 ```
 
 ## Common Issues
