@@ -117,15 +117,15 @@ Add a SQL Server action to query the sync metadata:
 - Action: Execute a SQL query
 - Query: `SELECT LastSyncTime FROM dbo.SyncMetadata WHERE TableName = 'Contacts'`
 
-Store the result in a variable.
+Store the result in a variable. Also initialize a `SyncStartedAt` variable with `utcNow()` before you query Dataverse. This gives each run a fixed upper bound and avoids missing records that change while the flow is running.
 
 ### Query Dataverse for Changed Records
 
 Add a Dataverse "List rows" action:
 
 - Table name: Contacts
-- Filter rows: `modifiedon gt @{variables('LastSyncTime')}`
-- Select columns: `contactid,firstname,lastname,emailaddress1,telephone1,parentcustomerid,createdon,modifiedon`
+- Filter rows: `modifiedon gt @{formatDateTime(variables('LastSyncTime'), 'yyyy-MM-ddTHH:mm:ssZ')} and modifiedon le @{formatDateTime(variables('SyncStartedAt'), 'yyyy-MM-ddTHH:mm:ssZ')}`
+- Select columns: `contactid,firstname,lastname,emailaddress1,telephone1,_parentcustomerid_value,createdon,modifiedon`
 - Order by: `modifiedon asc`
 
 The filter ensures you only fetch records modified since the last sync.
@@ -142,7 +142,7 @@ Add an "Apply to each" loop over the Dataverse results. Inside the loop, add a S
 After the loop completes, add a SQL Server action to update the metadata:
 
 - Action: Execute a SQL query
-- Query: `UPDATE dbo.SyncMetadata SET LastSyncTime = GETUTCDATE(), LastSyncStatus = 'Success', RecordsSynced = @{length(outputs('List_rows')?['body/value'])} WHERE TableName = 'Contacts'`
+- Query: `UPDATE dbo.SyncMetadata SET LastSyncTime = '@{formatDateTime(variables('SyncStartedAt'), 'yyyy-MM-ddTHH:mm:ssZ')}', LastSyncStatus = 'Success', RecordsSynced = @{length(outputs('List_rows')?['body/value'])} WHERE TableName = 'Contacts'`
 
 ## Step 4: Handle Pagination
 
@@ -169,12 +169,26 @@ If your Dataverse table uses a status field (Active/Inactive), sync the status a
 Run a weekly flow that compares all Dataverse record IDs with the Azure SQL table and removes any records from SQL that no longer exist in Dataverse.
 
 ```sql
--- Delete records that no longer exist in Dataverse
--- Pass the list of current Dataverse IDs as a parameter
-DELETE FROM dbo.SyncedContacts
-WHERE DataverseId NOT IN (
-    SELECT DataverseId FROM @CurrentDataverseIds
+-- Table type used by the comparison procedure
+CREATE TYPE dbo.DataverseIdList AS TABLE (
+    DataverseId UNIQUEIDENTIFIER PRIMARY KEY
 );
+GO
+
+-- Delete records that no longer exist in Dataverse
+-- Pass the list of current Dataverse IDs as a table-valued parameter
+CREATE PROCEDURE dbo.sp_DeleteMissingContacts
+    @CurrentDataverseIds dbo.DataverseIdList READONLY
+AS
+BEGIN
+    DELETE target
+    FROM dbo.SyncedContacts AS target
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM @CurrentDataverseIds AS source
+        WHERE source.DataverseId = target.DataverseId
+    );
+END;
 ```
 
 ### Option C: Use Dataverse Audit Log
@@ -211,7 +225,7 @@ Syncing record by record is slow. Here are ways to speed things up:
 
 ### Batch Operations
 
-Instead of calling the stored procedure for each record, collect records in an array and send them to SQL in batches using a table-valued parameter:
+Instead of calling the stored procedure for each record, move the batch write into a component that can call SQL with a table-valued parameter, such as an Azure Function or another custom API:
 
 ```sql
 -- Table type for batch inserts
@@ -233,7 +247,7 @@ In the Apply to each action settings, set the Degree of Parallelism to a higher 
 
 ### Use Premium Connectors Wisely
 
-If you have a premium license, consider using the HTTP action with the Azure SQL REST API for bulk operations instead of the SQL Server connector, which is designed for single-row operations.
+If you have a premium license, consider using the HTTP action to call an Azure Function or custom API that performs set-based writes with `SqlBulkCopy` or table-valued parameters instead of making one SQL connector call per row.
 
 ## Monitoring the Sync
 
