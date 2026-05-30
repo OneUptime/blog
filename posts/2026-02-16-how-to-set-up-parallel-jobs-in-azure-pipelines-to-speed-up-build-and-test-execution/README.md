@@ -18,7 +18,7 @@ Azure Pipelines supports parallelism at multiple levels:
 
 1. **Parallel stages**: Independent stages that run simultaneously
 2. **Parallel jobs within a stage**: Multiple jobs in a stage running on separate agents
-3. **Parallel steps within a job**: Running tasks concurrently (limited support)
+3. **Parallel work within a job**: Running concurrent work inside a script or tool, while pipeline steps themselves run sequentially
 4. **Parallel test execution**: Splitting tests across multiple agents
 5. **Matrix strategies**: Running the same job with different configurations simultaneously
 
@@ -26,10 +26,10 @@ Each level addresses a different bottleneck, and they can be combined.
 
 ## Parallel Stages
 
-If your pipeline has stages that do not depend on each other, they run in parallel by default. The key is managing `dependsOn` correctly.
+By default, stages run sequentially in the order they are defined. If your pipeline has stages that do not depend on each other, use `dependsOn` to make the dependency graph explicit so those stages can run in parallel.
 
 ```yaml
-# Stages without dependencies run in parallel
+# Stages with no dependency on each other can run in parallel
 
 stages:
   - stage: Build
@@ -183,21 +183,21 @@ jobs:
     strategy:
       parallel: 4  # Run 4 agents, each getting a slice of the tests
     pool:
-      vmImage: 'ubuntu-latest'
+      vmImage: 'windows-latest'
     steps:
-      - task: DotNetCoreCLI@2
+      - task: VSTest@3
         displayName: 'Run test slice'
         inputs:
-          command: 'test'
-          projects: '**/*Tests.csproj'
-          arguments: '--configuration Release'
-        env:
-          # Azure Pipelines sets these variables automatically
-          SYSTEM_TOTALJOBSINPHASE: $(System.TotalJobsInPhase)
-          SYSTEM_JOBPOSITIONINPHASE: $(System.JobPositionInPhase)
+          testSelector: 'testAssemblies'
+          testAssemblyVer2: |
+            **\*Tests.dll
+            !**\*TestAdapter.dll
+            !**\obj\**
+          searchFolder: '$(System.DefaultWorkingDirectory)'
+          distributionBatchType: 'basedOnExecutionTime'
 ```
 
-Azure Pipelines uses its built-in test slicing to distribute tests across the agents. It can use historical test run data to balance the slices so each agent finishes at roughly the same time.
+The Visual Studio Test task detects the multi-agent job and distributes tests across the agents. It can use historical test run data to balance the slices so each agent finishes at roughly the same time. For other test runners, Azure Pipelines sets variables such as `System.TotalJobsInPhase` and `System.JobPositionInPhase`, and your script or test runner needs to use them to divide the work.
 
 For more control over how tests are distributed, you can do it manually.
 
@@ -231,16 +231,16 @@ jobs:
 Azure DevOps has limits on how many parallel jobs you can run simultaneously. These limits depend on your plan and agent type.
 
 **Microsoft-hosted agents:**
-- Free tier: 1 parallel job (limited minutes per month)
-- Basic plan: 1 parallel job (unlimited minutes)
-- Additional parallel jobs: Purchasable in increments
+- Private projects can get 1 free parallel job with limited monthly minutes
+- Public projects can get up to 10 free parallel jobs with no overall monthly minute limit
+- Paid parallel jobs remove the monthly minute limit and increase concurrency
 
 **Self-hosted agents:**
-- Free tier: 1 parallel job
-- Each additional agent counts as an additional parallel job
+- Private projects get 1 free self-hosted parallel job, plus additional capacity from eligible Visual Studio Enterprise subscribers or purchased parallel jobs
+- Public projects can use unlimited self-hosted parallel jobs
 - No minute limits
 
-To check your current limits, go to **Organization Settings > Parallel jobs**.
+To check your current limits, go to **Organization Settings > Pipelines > Parallel jobs**.
 
 If you have 2 parallel jobs and a pipeline tries to run 4 jobs simultaneously, 2 will start immediately and 2 will queue until a slot opens up.
 
@@ -320,6 +320,9 @@ Even with parallelism, each job still needs to install dependencies. Caching red
 
 ```yaml
 # Cache npm packages across pipeline runs
+variables:
+  npm_config_cache: $(Pipeline.Workspace)/.npm
+
 steps:
   - task: Cache@2
     displayName: 'Cache npm'
@@ -367,16 +370,16 @@ jobs:
     pool:
       vmImage: 'windows-latest'
     steps:
-      - script: dotnet test --logger trx
-      - publish: TestResults
+      - script: dotnet test --logger trx --results-directory $(Agent.TempDirectory)/TestResults
+      - publish: $(Agent.TempDirectory)/TestResults
         artifact: results-windows
 
   - job: TestLinux
     pool:
       vmImage: 'ubuntu-latest'
     steps:
-      - script: dotnet test --logger trx
-      - publish: TestResults
+      - script: dotnet test --logger trx --results-directory $(Agent.TempDirectory)/TestResults
+      - publish: $(Agent.TempDirectory)/TestResults
         artifact: results-linux
 
   # Fan in: aggregate results
@@ -393,6 +396,7 @@ jobs:
         inputs:
           testResultsFormat: 'VSTest'
           testResultsFiles: '**/*.trx'
+          searchFolder: '$(Pipeline.Workspace)'
           mergeTestResults: true
 ```
 
