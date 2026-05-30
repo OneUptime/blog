@@ -10,16 +10,16 @@ Description: Learn three different approaches to trigger an Azure Logic App when
 
 Triggering a workflow when a file lands in Azure Blob Storage is one of the most common automation scenarios. Maybe you need to process uploaded images, parse incoming CSV files, validate documents, or kick off a data pipeline. Azure gives you multiple ways to connect blob uploads to Logic Apps, and the approach you choose affects latency, cost, and reliability.
 
-In this post, I will walk through three approaches: the built-in Blob Storage trigger, Event Grid integration, and Event Grid with a Service Bus queue for guaranteed delivery. I will explain the tradeoffs of each so you can pick the right one.
+In this post, I will walk through three approaches: the built-in Blob Storage trigger, Event Grid integration, and Event Grid with a Service Bus queue for durable, at-least-once delivery. I will explain the tradeoffs of each so you can pick the right one.
 
 ## Approach 1: Built-in Blob Storage Polling Trigger
 
-The simplest approach uses the Azure Blob Storage connector's "When a blob is added or modified" trigger. This trigger polls the storage container at a configured interval.
+The simplest approach uses the Azure Blob Storage connector's "When a blob is added or modified (properties only) (V2)" trigger. This trigger polls the storage container at a configured interval.
 
 ### Setup
 
 1. Create a new Logic App (Consumption or Standard)
-2. Add the trigger "When a blob is added or modified (properties only)" from the Azure Blob Storage connector
+2. Add the trigger "When a blob is added or modified (properties only) (V2)" from the Azure Blob Storage connector
 3. Configure the connection to your storage account
 4. Set the container name
 5. Set the polling interval (e.g., every 1 minute)
@@ -44,7 +44,7 @@ The polling trigger returns blob metadata (name, path, size, content type) but n
           }
         },
         "method": "get",
-        "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/GetFileContentByPath",
+        "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('https://<storage-account>.blob.core.windows.net/'))}/GetFileContentByPath_V2",
         "queries": {
           "path": "@triggerBody()?['Path']",
           "inferContentType": true
@@ -57,7 +57,7 @@ The polling trigger returns blob metadata (name, path, size, content type) but n
 
 ### Limitations
 
-- **Latency**: The minimum polling interval is 1 second for Standard and 1 minute for Consumption, but in practice there is a delay equal to your polling interval plus processing time.
+- **Latency**: The supported polling interval depends on the workflow type and connector version, but in practice there is a delay equal to your polling interval plus processing time.
 - **Cost**: Every poll counts as a trigger execution, even if no new blobs are found. At 1-minute polling, that is 43,800 trigger checks per month regardless of how many blobs are uploaded.
 - **Scalability**: For containers with thousands of blobs, the polling trigger can become slow because it needs to enumerate blobs to find changes.
 - **Reliability**: If the Logic App is disabled or the platform has a brief outage during a poll cycle, you might miss blobs.
@@ -162,8 +162,8 @@ The Event Grid event contains the blob URL in the event data. Use it to fetch th
 
 - **Near real-time**: Events arrive within seconds of blob creation
 - **Cost effective**: No empty polls. You only pay when a blob is actually created
-- **Scalable**: Event Grid handles millions of events per second
-- **Reliable**: Event Grid has built-in retry with exponential backoff
+- **Scalable**: Event Grid is designed for high-volume event routing, subject to documented service quotas
+- **Reliable**: Event Grid has built-in at-least-once delivery with retry and exponential backoff
 
 ### When to Use It
 
@@ -171,7 +171,7 @@ Use Event Grid for most production scenarios. It is better than polling in almos
 
 ## Approach 3: Event Grid with Service Bus Queue (Most Reliable)
 
-For critical workflows where you absolutely cannot miss a blob upload event, add a Service Bus queue between Event Grid and the Logic App. This gives you durable message storage - if the Logic App is temporarily unavailable, events queue up in Service Bus and are processed when the Logic App comes back.
+For critical workflows where you need durable buffering and replay, add a Service Bus queue between Event Grid and the Logic App. This gives you durable message storage - if the Logic App is temporarily unavailable, events queue up in Service Bus and are processed when the Logic App comes back.
 
 ### Architecture
 
@@ -219,7 +219,7 @@ Use the "When a message is received in a queue (auto-complete)" trigger from the
 
 This approach gives you:
 
-- **Guaranteed delivery**: If the Logic App fails to process a message, Service Bus retries delivery
+- **At-least-once delivery**: If the Logic App fails to process a message, Service Bus retries delivery until the message expires or reaches the max delivery count
 - **Dead letter queue**: After max delivery attempts, failed messages go to a dead letter queue for manual review
 - **Ordering**: Service Bus can provide ordered delivery with sessions
 - **Batch processing**: You can use "peek-lock" and process messages in batches
@@ -263,9 +263,9 @@ After processing, move the blob to an archive container:
           }
         },
         "method": "post",
-        "path": "/v2/datasets/default/copyFile",
+        "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('https://<storage-account>.blob.core.windows.net/'))}/CopyFile_V2",
         "queries": {
-          "source": "@triggerBody()?['data']?['url']",
+          "source": "@uriPath(triggerBody()?['data']?['url'])",
           "destination": "/archive/@{utcNow('yyyy/MM/dd')}/@{last(split(triggerBody()?['data']?['url'], '/'))}"
         }
       }
@@ -279,7 +279,7 @@ After processing, move the blob to an archive container:
           }
         },
         "method": "delete",
-        "path": "/v2/datasets/default/files/@{encodeURIComponent(triggerBody()?['data']?['url'])}"
+        "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('https://<storage-account>.blob.core.windows.net/'))}/files/@{encodeURIComponent(uriPath(triggerBody()?['data']?['url']))}"
       },
       "runAfter": {
         "Copy_To_Archive": ["Succeeded"]
@@ -302,4 +302,4 @@ After processing, move the blob to an archive container:
 
 ## Wrapping Up
 
-For most scenarios, the Event Grid trigger is the right choice. It gives you near real-time notifications, eliminates polling costs, and handles the vast majority of reliability requirements. Add a Service Bus queue in front of the Logic App only when you need guaranteed delivery for critical business processes. Reserve the polling trigger for quick prototypes or situations where Event Grid is not available. Whichever approach you choose, always include error handling and archive processed blobs so you have an audit trail.
+For most scenarios, the Event Grid trigger is the right choice. It gives you near real-time notifications, eliminates polling costs, and handles the vast majority of reliability requirements. Add a Service Bus queue in front of the Logic App only when you need durable buffering and retries for critical business processes. Reserve the polling trigger for quick prototypes or situations where Event Grid is not available. Whichever approach you choose, always include error handling and archive processed blobs so you have an audit trail.
