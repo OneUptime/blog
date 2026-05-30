@@ -32,7 +32,7 @@ Unlike physical replication, logical replication:
 - Supports cross-version replication (e.g., PostgreSQL 14 to 16).
 - Allows the subscriber to have additional indexes, tables, or different schemas.
 - Lets the subscriber be writable (though writing to replicated tables is risky).
-- Replicates INSERT, UPDATE, and DELETE operations.
+- Replicates INSERT, UPDATE, DELETE, and, on PostgreSQL 11+, TRUNCATE operations.
 - Does NOT replicate DDL (schema changes), sequences, or large objects.
 
 ## Prerequisites
@@ -41,7 +41,7 @@ Unlike physical replication, logical replication:
 
 - Azure Database for PostgreSQL Flexible Server or an on-premises PostgreSQL 10+.
 - The `wal_level` parameter must be set to `logical`.
-- The tables being published must have a primary key or REPLICA IDENTITY set.
+- Tables in publications that include UPDATE or DELETE operations must have a primary key or REPLICA IDENTITY set.
 
 ### On the Subscriber (Target)
 
@@ -110,7 +110,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO replication_user;
 
 ### Ensure Tables Have Primary Keys
 
-Logical replication requires a way to identify rows for UPDATE and DELETE operations. Tables need either a primary key or a REPLICA IDENTITY:
+Logical replication requires a way to identify rows for UPDATE and DELETE operations. Tables in publications that include UPDATE or DELETE need either a primary key or a REPLICA IDENTITY:
 
 ```sql
 -- Check which tables lack primary keys
@@ -154,7 +154,7 @@ Verify the publication:
 
 ```sql
 -- List all publications
-SELECT pubname, puballtables, pubinsert, pubupdate, pubdelete
+SELECT pubname, puballtables, pubinsert, pubupdate, pubdelete, pubtruncate
 FROM pg_publication;
 
 -- List tables in a publication
@@ -223,7 +223,8 @@ The `srsubstate` values:
 | State | Meaning |
 |-------|---------|
 | i | Initializing (initial data copy in progress) |
-| d | Data copy completed, waiting for sync |
+| d | Data is being copied |
+| f | Finished table copy |
 | s | Synchronized (initial sync done) |
 | r | Ready (streaming changes) |
 
