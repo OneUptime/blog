@@ -8,7 +8,7 @@ Description: Learn how to configure message routing in Azure IoT Hub to direct d
 
 ---
 
-IoT devices generate a constant stream of telemetry data - temperature readings, location updates, sensor measurements, status reports. By default, this data lands in IoT Hub's built-in Event Hub-compatible endpoint where a single consumer reads it. But in a real production system, you need that data flowing to multiple destinations: cold storage for long-term archival, Event Hubs for real-time stream processing, Service Bus for reliable message queuing, and maybe different routes for different types of messages.
+IoT devices generate a constant stream of telemetry data - temperature readings, location updates, sensor measurements, status reports. By default, this data lands in IoT Hub's built-in Event Hub-compatible endpoint where back-end services can read it. But in a real production system, you need that data flowing to multiple destinations: cold storage for long-term archival, Event Hubs for real-time stream processing, Service Bus for reliable message queuing, and maybe different routes for different types of messages.
 
 Azure IoT Hub message routing lets you define rules that direct messages to different endpoints based on message properties, body content, or device metadata. This guide covers setting up the two most common routing destinations: Azure Storage and Event Hubs.
 
@@ -29,7 +29,7 @@ If no custom routes match a message, it goes to the built-in endpoint (unless th
 
 ## Prerequisites
 
-- An Azure IoT Hub (S1 tier or higher - routing is not available on the free tier)
+- An Azure IoT Hub (Basic or Standard tier for message routing; use Standard tier if you use device twin features in routing queries or enrichments)
 - Devices sending telemetry to the hub
 - An Azure Storage account for archival
 - An Azure Event Hub namespace and event hub for stream processing
@@ -72,7 +72,7 @@ az eventhubs eventhub create \
     --resource-group rg-iot-production \
     --namespace-name ehns-iot-processing \
     --name eh-iot-alerts \
-    --message-retention 7 \
+    --retention-time 168 \
     --partition-count 4
 
 # Create an authorization rule for IoT Hub to send messages
@@ -100,11 +100,10 @@ EH_CONN_STRING=$(az eventhubs eventhub authorization-rule keys list \
     --query "primaryConnectionString" -o tsv)
 
 # Add Event Hub as a routing endpoint
-az iot hub routing-endpoint create \
+az iot hub message-endpoint create eventhub \
     --resource-group rg-iot-production \
     --hub-name iothub-production-001 \
     --endpoint-name "eh-alerts-endpoint" \
-    --endpoint-type eventhub \
     --endpoint-resource-group rg-iot-production \
     --endpoint-subscription-id "<subscription-id>" \
     --connection-string "$EH_CONN_STRING"
@@ -116,19 +115,18 @@ STORAGE_CONN_STRING=$(az storage account show-connection-string \
     --query "connectionString" -o tsv)
 
 # Add Storage as a routing endpoint
-az iot hub routing-endpoint create \
+az iot hub message-endpoint create storage-container \
     --resource-group rg-iot-production \
     --hub-name iothub-production-001 \
     --endpoint-name "storage-archive-endpoint" \
-    --endpoint-type azurestoragecontainer \
     --endpoint-resource-group rg-iot-production \
     --endpoint-subscription-id "<subscription-id>" \
     --connection-string "$STORAGE_CONN_STRING" \
-    --container-name "telemetry-archive" \
+    --container "telemetry-archive" \
     --encoding json \
     --file-name-format "{iothub}/{partition}/{YYYY}/{MM}/{DD}/{HH}/{mm}" \
     --batch-frequency 60 \
-    --max-chunk-size 100
+    --chunk-size 100
 ```
 
 The storage endpoint configuration deserves attention:
@@ -139,7 +137,7 @@ The storage endpoint configuration deserves attention:
 
 **batch-frequency** - How often (in seconds) to write a batch to storage. Range: 60-720 seconds.
 
-**max-chunk-size** - Maximum size (in MB) of each blob before a new one is created. Range: 10-500 MB.
+**chunk-size** - Maximum size (in MB) of each blob before a new one is created. Range: 10-500 MB.
 
 ## Step 3: Create Routing Rules
 
@@ -150,7 +148,7 @@ Now create routes that direct messages to the appropriate endpoints based on con
 ```bash
 # Route all device messages to storage for long-term archival
 # The query "true" matches every message
-az iot hub route create \
+az iot hub message-route create \
     --resource-group rg-iot-production \
     --hub-name iothub-production-001 \
     --route-name "archive-all-telemetry" \
@@ -165,7 +163,7 @@ az iot hub route create \
 ```bash
 # Route high-temperature alerts to Event Hub for real-time processing
 # This uses a query that checks the message body for temperature values
-az iot hub route create \
+az iot hub message-route create \
     --resource-group rg-iot-production \
     --hub-name iothub-production-001 \
     --route-name "temperature-alerts" \
@@ -182,7 +180,7 @@ Devices can set application properties on messages that the routing engine can e
 ```bash
 # Route messages with a specific application property
 # Devices set message.custom_properties["severity"] = "critical"
-az iot hub route create \
+az iot hub message-route create \
     --resource-group rg-iot-production \
     --hub-name iothub-production-001 \
     --route-name "critical-alerts" \
@@ -198,7 +196,7 @@ You can also route based on device ID, content type, or other system properties:
 
 ```bash
 # Route messages from gateway devices to a separate endpoint
-az iot hub route create \
+az iot hub message-route create \
     --resource-group rg-iot-production \
     --hub-name iothub-production-001 \
     --route-name "gateway-telemetry" \
@@ -214,34 +212,33 @@ The fallback route catches messages that do not match any custom route. By defau
 
 ```bash
 # Verify the fallback route is enabled
-az iot hub route show \
+az iot hub message-route fallback show \
     --resource-group rg-iot-production \
-    --hub-name iothub-production-001 \
-    --route-name '$fallback'
+    --hub-name iothub-production-001
 ```
 
 If you have a route that matches all messages (like the archive route with condition "true"), the fallback route will not receive any messages because everything is already routed. This is fine if you are intentionally handling all messages through custom routes.
 
 ## Step 5: Enrich Messages with IoT Hub Data
 
-Message enrichments add metadata to messages before they are delivered to endpoints. This is useful for adding device twin tags or other contextual information to the message payload.
+Message enrichments add metadata to messages before they are delivered to endpoints. This is useful for adding device twin tags or other contextual information to the message metadata.
 
 ```bash
 # Add device twin tag data to messages routed to storage
 # This adds the device's location information to every message
 az iot hub message-enrichment create \
     --resource-group rg-iot-production \
-    --hub-name iothub-production-001 \
+    --name iothub-production-001 \
     --key "deviceLocation" \
     --value '$twin.tags.location.building' \
     --endpoints "storage-archive-endpoint"
 
-# Add the device ID as an enrichment (useful for multi-tenant scenarios)
+# Add the IoT Hub name as an enrichment (useful for multi-tenant scenarios)
 az iot hub message-enrichment create \
     --resource-group rg-iot-production \
-    --hub-name iothub-production-001 \
-    --key "sourceDeviceId" \
-    --value '$twin.deviceId' \
+    --name iothub-production-001 \
+    --key "sourceHub" \
+    --value '$iothubname' \
     --endpoints "storage-archive-endpoint" "eh-alerts-endpoint"
 ```
 
@@ -324,7 +321,7 @@ az iot hub message-route test \
 # Look at "Routing: messages delivered to storage" and "Routing: messages delivered to Event Hub"
 ```
 
-Also check the dead letter endpoint. Messages that fail to deliver to an endpoint (e.g., the Event Hub is temporarily unavailable) are retried and eventually dead-lettered. Monitor dead-lettered message counts to catch endpoint health issues.
+Also check routing metrics, resource logs, and endpoint health. Messages that fail to deliver to an endpoint (e.g., the Event Hub is temporarily unavailable) are retried, and IoT Hub reports unhealthy or dead endpoints and dropped messages through routing logs and metrics.
 
 ## Monitoring and Troubleshooting
 
