@@ -10,7 +10,7 @@ Description: A practical guide to using Azure Traffic Manager weighted routing t
 
 Blue-green deployments reduce the risk of releasing new software by running two identical production environments side by side. When the new version (green) is ready, you shift traffic from the old version (blue) to the new one. Azure Traffic Manager's weighted routing method makes this traffic shifting simple and controllable.
 
-Instead of flipping all traffic at once, you can gradually shift traffic - start with 10% to green, watch the metrics, increase to 25%, then 50%, and finally 100%. If something goes wrong at any stage, shift traffic back to blue in seconds.
+Instead of flipping all traffic at once, you can gradually shift traffic - start with 10% to green, watch the metrics, increase to 25%, then 50%, and finally 100%. If something goes wrong at any stage, shift traffic back to blue as DNS TTLs expire.
 
 ## How Weighted Routing Works
 
@@ -71,18 +71,18 @@ az network traffic-manager endpoint create \
 ## Step 3: Add the Green Endpoint (New Version)
 
 ```bash
-# Add the green (new) environment endpoint with zero weight initially
+# Add the green (new) environment endpoint disabled initially
 az network traffic-manager endpoint create \
   --resource-group myResourceGroup \
   --profile-name blueGreenProfile \
   --type azureEndpoints \
   --name greenEndpoint \
   --target-resource-id "/subscriptions/<sub-id>/resourceGroups/rgGreen/providers/Microsoft.Web/sites/myapp-green" \
-  --weight 0 \
-  --endpoint-status Enabled
+  --weight 1 \
+  --endpoint-status Disabled
 ```
 
-Starting green at weight 0 means no production traffic reaches it yet. You can still test it directly by hitting the App Service URL.
+Starting green as disabled means no production traffic reaches it yet. You can still test it directly by hitting the App Service URL.
 
 ## Step 4: Begin the Traffic Shift (Canary Phase)
 
@@ -90,6 +90,13 @@ Start by sending a small percentage of traffic to green. This is your canary pha
 
 ```bash
 # Shift 10% of traffic to green
+az network traffic-manager endpoint update \
+  --resource-group myResourceGroup \
+  --profile-name blueGreenProfile \
+  --type azureEndpoints \
+  --name greenEndpoint \
+  --endpoint-status Enabled
+
 az network traffic-manager endpoint update \
   --resource-group myResourceGroup \
   --profile-name blueGreenProfile \
@@ -161,17 +168,18 @@ az network traffic-manager endpoint update \
   --profile-name blueGreenProfile \
   --type azureEndpoints \
   --name blueEndpoint \
-  --weight 0
+  --endpoint-status Disabled
 
 az network traffic-manager endpoint update \
   --resource-group myResourceGroup \
   --profile-name blueGreenProfile \
   --type azureEndpoints \
   --name greenEndpoint \
-  --weight 100
+  --weight 100 \
+  --endpoint-status Enabled
 ```
 
-Keep blue running for a rollback window (typically 24-48 hours). If issues surface after full deployment, you can shift back instantly.
+Keep blue running for a rollback window (typically 24-48 hours). If issues surface after full deployment, you can shift back as DNS TTLs expire.
 
 ## Rollback
 
@@ -184,14 +192,15 @@ az network traffic-manager endpoint update \
   --profile-name blueGreenProfile \
   --type azureEndpoints \
   --name blueEndpoint \
-  --weight 100
+  --weight 100 \
+  --endpoint-status Enabled
 
 az network traffic-manager endpoint update \
   --resource-group myResourceGroup \
   --profile-name blueGreenProfile \
   --type azureEndpoints \
   --name greenEndpoint \
-  --weight 0
+  --endpoint-status Disabled
 ```
 
 This takes effect as DNS TTLs expire. With a 30-second TTL, most traffic shifts within a minute.
@@ -217,20 +226,30 @@ for WEIGHT in "${STAGES[@]}"; do
 
     echo "Setting green weight to $WEIGHT%..."
 
-    # Update both endpoint weights
-    az network traffic-manager endpoint update \
-      --resource-group $RESOURCE_GROUP \
-      --profile-name $PROFILE \
-      --type azureEndpoints \
-      --name blueEndpoint \
-      --weight $BLUE_WEIGHT
+    if [ "$WEIGHT" -eq 100 ]; then
+        az network traffic-manager endpoint update \
+          --resource-group "$RESOURCE_GROUP" \
+          --profile-name "$PROFILE" \
+          --type azureEndpoints \
+          --name blueEndpoint \
+          --endpoint-status Disabled
+    else
+        az network traffic-manager endpoint update \
+          --resource-group "$RESOURCE_GROUP" \
+          --profile-name "$PROFILE" \
+          --type azureEndpoints \
+          --name blueEndpoint \
+          --weight "$BLUE_WEIGHT" \
+          --endpoint-status Enabled
+    fi
 
     az network traffic-manager endpoint update \
-      --resource-group $RESOURCE_GROUP \
-      --profile-name $PROFILE \
+      --resource-group "$RESOURCE_GROUP" \
+      --profile-name "$PROFILE" \
       --type azureEndpoints \
       --name greenEndpoint \
-      --weight $WEIGHT
+      --weight "$WEIGHT" \
+      --endpoint-status Enabled
 
     echo "Waiting $WAIT_MINUTES minutes to observe..."
     sleep $((WAIT_MINUTES * 60))
@@ -241,15 +260,18 @@ for WEIGHT in "${STAGES[@]}"; do
     if [ "$ERROR_RATE" -gt "$GREEN_ERROR_THRESHOLD" ]; then
         echo "Error rate $ERROR_RATE% exceeds threshold. Rolling back!"
         az network traffic-manager endpoint update \
-          --resource-group $RESOURCE_GROUP \
-          --profile-name $PROFILE \
+          --resource-group "$RESOURCE_GROUP" \
+          --profile-name "$PROFILE" \
           --type azureEndpoints \
-          --name blueEndpoint --weight 100
+          --name blueEndpoint \
+          --weight 100 \
+          --endpoint-status Enabled
         az network traffic-manager endpoint update \
-          --resource-group $RESOURCE_GROUP \
-          --profile-name $PROFILE \
+          --resource-group "$RESOURCE_GROUP" \
+          --profile-name "$PROFILE" \
           --type azureEndpoints \
-          --name greenEndpoint --weight 0
+          --name greenEndpoint \
+          --endpoint-status Disabled
         exit 1
     fi
 done
@@ -287,8 +309,8 @@ az network traffic-manager endpoint create \
   --type externalEndpoints \
   --name greenExternal \
   --target "green.myapp.com" \
-  --weight 0 \
-  --endpoint-status Enabled
+  --weight 1 \
+  --endpoint-status Disabled
 ```
 
 This works with any publicly accessible endpoint, including other clouds or on-premises deployments.
@@ -321,7 +343,7 @@ Set up Azure Monitor alerts for both environments to catch issues quickly:
 
 **Database migrations.** Blue-green deployments are harder when the new version requires database schema changes. Both versions need to work with the same database during the transition period.
 
-**Weight of 0 vs. disabled.** A weight of 0 means no traffic, but the endpoint is still monitored. Disabling the endpoint stops monitoring too. Use weight 0 to keep health checks running.
+**Weight minimum vs. disabled.** Weighted endpoints use weights from 1 to 1000. To send no Traffic Manager traffic to an endpoint, disable that endpoint. Disabling the endpoint stops Traffic Manager health monitoring too. If you need monitoring to continue, keep the endpoint enabled with the minimum weight of 1.
 
 ## Summary
 
