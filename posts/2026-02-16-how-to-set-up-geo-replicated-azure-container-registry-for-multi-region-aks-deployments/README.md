@@ -12,7 +12,7 @@ Running AKS clusters in multiple Azure regions improves availability and brings 
 
 ## Why Geo-Replication Matters
 
-Without geo-replication, an AKS cluster in Southeast Asia pulling a 500 MB image from a registry in East US has to transfer that data across the Pacific. This adds seconds to every pod startup and minutes to large-scale deployments. With geo-replication, the same cluster pulls from a local replica in the same region, with latency measured in milliseconds rather than seconds.
+Without geo-replication, an AKS cluster in Southeast Asia pulling a 500 MB image from a registry in East US has to transfer that data across the Pacific. This adds seconds to every pod startup and minutes to large-scale deployments. With geo-replication, the same cluster usually pulls from a nearby replica, which reduces latency and startup time.
 
 The benefits go beyond speed:
 
@@ -36,7 +36,7 @@ graph TD
 - Azure Container Registry on the **Premium** SKU (geo-replication requires Premium)
 - AKS clusters in multiple Azure regions
 - Azure CLI 2.40+
-- Contributor role on the ACR and AKS resources
+- Contributor permissions to manage the ACR and AKS resources, plus Owner or Role Based Access Control Administrator permissions on the registry when using `--attach-acr` to create the pull role assignment
 
 ## Step 1: Create or Upgrade to Premium ACR
 
@@ -78,7 +78,7 @@ az acr replication create \
   --location westus2
 ```
 
-Each replication creates a read replica of all images in the registry. When you push a new image, it is replicated to all regions automatically.
+Each replication creates an active geo-replica of the registry. You can push and pull through any geo-replica, and when you push a new image, it is replicated to all regions automatically.
 
 ## Step 3: Verify Replications
 
@@ -95,7 +95,7 @@ The output shows each region and its status. All replications should show `Succe
 
 ## Step 4: Connect AKS Clusters to the ACR
 
-Attach each AKS cluster to the same ACR. The geo-replicated registry uses a single DNS name (`myregistry.azurecr.io`), and Azure automatically routes pulls to the nearest replica.
+Attach each AKS cluster to the same ACR. The geo-replicated registry uses a single DNS name (`myregistry.azurecr.io`), and Azure automatically routes pulls to the geo-replica with the best network performance profile, which is usually the nearest healthy replica.
 
 ```bash
 # Attach ACR to the East US AKS cluster
@@ -121,7 +121,7 @@ All clusters use the same registry URL (`myregistry.azurecr.io`). No region-spec
 
 ## Step 5: Push Images and Verify Replication
 
-Push an image and verify it replicates to all regions.
+Push an image and verify it is available in the registry. Replication to geo-replicas happens asynchronously.
 
 ```bash
 # Log in to the registry
@@ -131,25 +131,25 @@ az acr login --name myregistry
 docker tag my-app:latest myregistry.azurecr.io/my-app:1.0.0
 docker push myregistry.azurecr.io/my-app:1.0.0
 
-# Check the image exists in all regions
+# Check the image exists in the registry
 az acr manifest list-metadata \
   --registry myregistry \
   --name my-app \
   --output table
 ```
 
-Replication happens asynchronously. For small images (under 100 MB), replication to all regions typically completes within 30 seconds. Larger images take longer but are usually available within a few minutes.
+Replication happens asynchronously, and replication time depends on image size and current service conditions. Use regional webhooks when you need a positive signal that a pushed image has reached a specific geo-replica.
 
 ## Step 6: Monitor Replication Status
 
-Check the replication status for specific images.
+Check the health and provisioning details for a specific geo-replica.
 
 ```bash
-# Show replication status for a specific repository
+# Show status for a specific geo-replica
 az acr replication show \
   --registry myregistry \
   --name westeurope \
-  --query "status" \
+  --query "{name:name, location:location, provisioningState:provisioningState, status:status.displayStatus}" \
   --output json
 ```
 
@@ -167,7 +167,7 @@ az monitor diagnostic-settings create \
 
 ## Step 7: Deploy to Multiple Regions
 
-With geo-replication set up, deploying the same image to clusters in different regions uses the same image reference. Each cluster pulls from its nearest replica.
+With geo-replication set up, deploying the same image to clusters in different regions uses the same image reference. Each cluster usually pulls from the nearest healthy replica.
 
 ```yaml
 # deployment.yaml
@@ -209,14 +209,14 @@ az acr webhook create \
   --scope "my-app:*"
 ```
 
-You can create region-specific webhooks to trigger deployments in specific clusters when images are replicated to their region.
+You can create region-specific webhooks to trigger deployments in specific clusters when images are replicated to their region. For a geo-replicated registry, add `--location <region>` when creating the webhook, and narrow `--scope` to the repository or tag you want to track.
 
 ## Cost Considerations
 
 Geo-replication adds cost in two areas:
 
-- **Per-replica cost**: Each replica adds a Premium SKU registry cost for that region (around $50/month as of 2026).
-- **Storage duplication**: Images are stored in each region. If you have 100 GB of images and 3 replicas, you are storing 300 GB total.
+- **Per-replica cost**: Geo-replication is supported on the Premium SKU and is charged per replicated region according to the current Azure Container Registry pricing page.
+- **Storage duplication**: Images are stored in each region. If you have 100 GB of images replicated across 3 regions, you are storing 300 GB total.
 - **Replication bandwidth**: Data transfer between regions for replication is charged at standard Azure egress rates.
 
 To manage costs:
@@ -239,46 +239,43 @@ az acr config retention update \
 There is a brief window between pushing an image and it being available in all regions. For most use cases, this delay is negligible (under a minute). But if you are deploying immediately after pushing, consider these strategies:
 
 - **Wait for replication**: Add a delay in your CI/CD pipeline between push and deploy.
-- **Check replication status**: Query the replication status before triggering deployments in remote regions.
+- **Use regional webhooks**: Trigger deployments in remote regions after the webhook for that replica fires.
 - **Deploy to the push region first**: Deploy to the region where the image was pushed, then deploy to other regions after a brief delay.
 
 ```bash
-# Script to wait for replication to complete
 #!/bin/bash
+# Script to wait for a regional webhook event
 # wait-for-replication.sh
-# Waits until an image is available in a specific region
+# Waits until a region-specific webhook scoped to the image tag has received an event
 
 REGISTRY="myregistry"
-IMAGE="my-app"
-TAG="1.0.0"
-TARGET_REGION="westeurope"
+WEBHOOK_NAME="notify-pipeline-westeurope"
 MAX_RETRIES=30
 RETRY_INTERVAL=10
 
 for i in $(seq 1 $MAX_RETRIES); do
-    # Check if the manifest exists in the target region
-    STATUS=$(az acr replication show \
+    EVENT_COUNT=$(az acr webhook list-events \
         --registry "$REGISTRY" \
-        --name "$TARGET_REGION" \
-        --query "status.displayStatus" \
+        --name "$WEBHOOK_NAME" \
+        --query "length(@)" \
         --output tsv)
 
-    if [ "$STATUS" = "Ready" ]; then
-        echo "Image replicated to $TARGET_REGION"
+    if [ "$EVENT_COUNT" -gt 0 ]; then
+        echo "Regional webhook received a push event"
         exit 0
     fi
 
-    echo "Waiting for replication... attempt $i/$MAX_RETRIES"
+    echo "Waiting for regional webhook event... attempt $i/$MAX_RETRIES"
     sleep $RETRY_INTERVAL
 done
 
-echo "Replication timeout"
+echo "Timed out waiting for regional webhook event"
 exit 1
 ```
 
 ## Private Endpoints with Geo-Replication
 
-In enterprise environments, you may need private endpoints for each replica. Create private endpoints in each region's VNet.
+In enterprise environments, you may need private endpoints for each VNet that pulls from the registry. Create a private endpoint in each VNet that needs private access.
 
 ```bash
 # Create a private endpoint for the ACR replica in West Europe
@@ -292,7 +289,7 @@ az network private-endpoint create \
   --connection-name acr-connection-westeurope
 ```
 
-Each region needs its own private endpoint and private DNS zone link to ensure local pulls go through the private network.
+Each VNet that uses private access needs a private endpoint and private DNS zone link. For geo-replicated registries, private endpoints use dedicated regional data endpoints, so make sure your private DNS records include each replica's data endpoint and that the private endpoint subnet has enough IP capacity for the additional regional endpoints.
 
 ## Summary
 
