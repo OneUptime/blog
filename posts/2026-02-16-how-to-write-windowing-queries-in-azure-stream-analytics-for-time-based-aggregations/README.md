@@ -10,13 +10,13 @@ Description: Master the different windowing functions in Azure Stream Analytics 
 
 When you process streaming data, you rarely care about individual events in isolation. What matters is the aggregate picture - average values over the last 5 minutes, total counts per hour, or trend changes over sliding time intervals. Azure Stream Analytics provides windowing functions for exactly this purpose.
 
-Windowing functions divide a continuous stream of events into finite time-based groups so you can apply aggregate operations like COUNT, SUM, AVG, MIN, and MAX. Stream Analytics offers four types of windows, each suited to different analytical patterns.
+Windowing functions divide a continuous stream of events into finite time-based groups so you can apply aggregate operations like COUNT, SUM, AVG, MIN, and MAX. This post covers four commonly used Stream Analytics window types, each suited to different analytical patterns.
 
 In this post, I will explain each window type, show practical query examples, and help you choose the right one for your use case.
 
 ## The Four Window Types
 
-Stream Analytics supports these windowing functions:
+This post covers these windowing functions:
 
 1. **Tumbling Window** - fixed-size, non-overlapping time intervals
 2. **Hopping Window** - fixed-size windows that overlap by a configurable hop size
@@ -200,7 +200,7 @@ Session windows group events that arrive close together in time. A session start
 ```sql
 -- Group device readings into sessions
 -- A session ends after 30 seconds of inactivity
--- Maximum session length is 5 minutes
+-- Maximum session duration is checked every 5 minutes
 SELECT
     DeviceId,
     COUNT(*) AS EventsInSession,
@@ -214,11 +214,11 @@ FROM [input]
 TIMESTAMP BY EventTime
 GROUP BY
     DeviceId,
-    -- SessionWindow(unit, timeout, maxDuration)
-    SessionWindow(second, 30, 300)
+    -- SessionWindow(unit, timeout, maxDuration) OVER (PARTITION BY key)
+    SessionWindow(second, 30, 300) OVER (PARTITION BY DeviceId)
 ```
 
-If a device sends events continuously for 3 minutes, that is one session. If it then goes silent for more than 30 seconds, the session ends. If it sends events for 6 minutes straight, the session is capped at 5 minutes (the max duration) and a new session starts.
+If a device sends events continuously for 3 minutes, that is one session. If it then goes silent for more than 30 seconds, the session ends. If it sends events continuously, Stream Analytics checks the maximum duration at intervals equal to the max duration, so the actual session can extend beyond 5 minutes before a new session starts.
 
 ### Session Window for Activity Analysis
 
@@ -238,7 +238,7 @@ FROM [telemetry-input]
 TIMESTAMP BY EventTime
 GROUP BY
     MachineId,
-    SessionWindow(minute, 5, 60)
+    SessionWindow(minute, 5, 60) OVER (PARTITION BY MachineId)
 ```
 
 ## Combining Windows with Joins
