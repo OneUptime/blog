@@ -25,7 +25,6 @@ k8s/
     deployment.yaml
     service.yaml
     configmap.yaml
-    hpa.yaml
   overlays/
     dev/
       kustomization.yaml
@@ -38,7 +37,7 @@ k8s/
     production/
       kustomization.yaml
       replica-patch.yaml
-      hpa-patch.yaml
+      hpa.yaml
       ingress.yaml
       resource-patch.yaml
 ```
@@ -132,8 +131,10 @@ resources:
   - deployment.yaml
   - service.yaml
   - configmap.yaml
-commonLabels:
-  managed-by: kustomize
+labels:
+  - pairs:
+      managed-by: kustomize
+    includeSelectors: true
 ```
 
 ## Step 2: Create the Dev Overlay
@@ -250,7 +251,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: staging-web-app
+                name: web-app
                 port:
                   number: 80
 ```
@@ -315,6 +316,34 @@ spec:
 ```
 
 ```yaml
+# k8s/overlays/production/ingress.yaml
+# Production-specific ingress with production hostname
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-app-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - secretName: prod-tls
+      hosts:
+        - example.com
+  rules:
+    - host: example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-app
+                port:
+                  number: 80
+```
+
+```yaml
 # k8s/overlays/production/hpa.yaml
 # Horizontal Pod Autoscaler for production
 apiVersion: autoscaling/v2
@@ -325,7 +354,7 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: prod-web-app
+    name: web-app
   minReplicas: 5
   maxReplicas: 20
   metrics:
@@ -427,7 +456,7 @@ secretGenerator:
       - tls.key=certs/tls.key
 ```
 
-When the content changes, Kustomize generates a new name (like `web-app-env-abc123`), which automatically triggers a rolling update of the deployment referencing it.
+When the content changes, Kustomize generates a new name (like `web-app-env-abc123`). If a Deployment references that generated ConfigMap or Secret, Kustomize updates the reference in the rendered manifest, which triggers a rolling update.
 
 ## Integration with CI/CD
 
