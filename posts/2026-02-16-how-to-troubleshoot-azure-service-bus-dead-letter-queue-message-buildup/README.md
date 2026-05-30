@@ -17,12 +17,12 @@ This post covers why messages end up in the dead-letter queue, how to inspect th
 Every Azure Service Bus queue and topic subscription has an associated dead-letter queue. Messages are moved to the DLQ in several situations:
 
 - The message exceeds the maximum delivery count (too many processing failures)
-- The message's time-to-live (TTL) expires before it is consumed
-- A subscription filter evaluation causes an error
+- The message's time-to-live (TTL) expires before it is consumed, if dead-lettering on message expiration is enabled
+- A subscription filter evaluation causes an error, if dead-lettering on filter evaluation exceptions is enabled
 - The receiving application explicitly dead-letters the message
 - The message cannot be forwarded to the next queue
 
-The DLQ path is the main queue name with `/$deadletterqueue` appended. For example: `my-queue/$deadletterqueue`.
+The DLQ path for a queue is the main queue name with `/$deadletterqueue` appended. For example: `my-queue/$deadletterqueue`. For a topic subscription, use `<topic-name>/Subscriptions/<subscription-name>/$deadletterqueue`.
 
 ## Step 1: Check the DLQ Message Count
 
@@ -301,7 +301,7 @@ az monitor metrics alert create \
   --resource-group my-rg \
   --name dlq-alert \
   --scopes "/subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.ServiceBus/namespaces/my-servicebus" \
-  --condition "total DeadletteredMessages > 100" \
+  --condition "avg DeadletteredMessages > 100" \
   --window-size PT5M \
   --evaluation-frequency PT1M \
   --action "/subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.Insights/actionGroups/ops-team"
