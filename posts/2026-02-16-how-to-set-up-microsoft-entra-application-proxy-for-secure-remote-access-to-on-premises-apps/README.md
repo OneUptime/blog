@@ -36,7 +36,7 @@ sequenceDiagram
     Cloud-->>User: Deliver response
 ```
 
-The key security advantage: the connector only makes outbound connections to Azure on ports 80 and 443. Your firewall does not need any inbound rules, and the connector does not need to be in a DMZ.
+The key security advantage: the connector only makes outbound connections to Azure. Your firewall does not need any inbound rules, and the connector does not need to be in a DMZ.
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ Before starting, verify you have:
 
 - Microsoft Entra ID P1 or P2 license (included in Microsoft 365 E3/E5)
 - A Windows Server (2016 or later) on your network that can reach the internal application. This server will run the connector.
-- The connector server must be able to reach `*.msappproxy.net` and `*.servicebus.windows.net` on ports 443 and 80
+- The connector server must be able to reach `*.msappproxy.net` and `*.servicebus.windows.net` on port 443, plus the Microsoft Entra ID and certificate revocation endpoints required for registration and certificate validation on ports 443 and 80
 - An internal web application you want to publish (any HTTP/HTTPS application)
 - Global Administrator or Application Administrator role in Entra ID
 
@@ -69,9 +69,9 @@ Get-Service -Name "WAPCSvc"
 # Check the connector updater service (handles auto-updates)
 Get-Service -Name "WAPCUpdaterSvc"
 
-# Verify outbound connectivity to the Application Proxy service
-# This should return 200 OK
-Invoke-WebRequest -Uri "https://adoncs.msappproxy.net/ssp/health" -UseBasicParsing
+# Verify outbound connectivity to the Application Proxy service endpoints
+Test-NetConnection -ComputerName "connectorregistration.msappproxy.net" -Port 443
+Test-NetConnection -ComputerName "servicebus.windows.net" -Port 443
 ```
 
 For production, install at least two connectors on separate servers for high availability. You can group connectors into "Connector groups" and assign applications to specific groups.
@@ -84,13 +84,19 @@ Connector groups let you assign specific connectors to specific applications. Th
 # Install the Microsoft Graph module if needed
 # Install-Module Microsoft.Graph -Force
 
+Import-Module Microsoft.Graph.Beta.Applications
+
 Connect-MgGraph -Scopes "Directory.ReadWrite.All"
 
 # Create a new connector group
-$group = New-MgOnPremisePublishingProfileConnectorGroup `
+$params = @{
+    Name = "US-East Data Center Connectors"
+    Region = "nam"
+}
+
+$group = New-MgBetaOnPremisePublishingProfileConnectorGroup `
     -OnPremisesPublishingProfileId "applicationProxy" `
-    -Name "US-East Data Center Connectors" `
-    -Region "nam"
+    -BodyParameter $params
 
 Write-Output "Connector Group ID: $($group.Id)"
 ```
@@ -113,31 +119,49 @@ Fill in these fields:
 
 **Connector Group:** Select the connector group you created.
 
-Here is the equivalent using Microsoft Graph API:
+Here is the equivalent using Microsoft Graph PowerShell. Application Proxy settings are currently configured through the Microsoft Graph beta application API:
 
 ```powershell
 # Publish an on-premises application through Application Proxy
-Connect-MgGraph -Scopes "Application.ReadWrite.All"
+Import-Module Microsoft.Graph.Applications
+Import-Module Microsoft.Graph.Beta.Applications
 
-# Create the application registration
-$app = New-MgApplication -DisplayName "Intranet HR Portal" `
-    -Web @{
-        # Redirect URI for authentication flow
-        RedirectUris = @("https://hr-contoso.msappproxy.net/")
-    }
+Connect-MgGraph -Scopes "Application.ReadWrite.All", "Directory.ReadWrite.All"
 
-# Configure Application Proxy settings on the service principal
+# Create the application registration and enterprise application
+$app = New-MgApplication -DisplayName "Intranet HR Portal"
 $sp = New-MgServicePrincipal -AppId $app.AppId
 
-# Set Application Proxy properties
-# Note: These are set through the onPremisesPublishing property
-$proxySettings = @{
-    InternalUrl = "https://hr.internal.contoso.com/"
-    ExternalUrl = "https://hr-contoso.msappproxy.net/"
-    ExternalAuthenticationType = "aadPreAuthentication"
-    IsTranslateHostHeaderEnabled = $true
-    IsTranslateLinksInBodyEnabled = $false
+# Configure the public URI values first. The onPremisesPublishing
+# property cannot be configured until these URIs exist.
+$uriParams = @{
+    IdentifierUris = @("api://$($app.AppId)")
+    Web = @{
+        RedirectUris = @("https://hr-contoso.msappproxy.net")
+        HomePageUrl = "https://hr-contoso.msappproxy.net"
+    }
 }
+
+Update-MgApplication -ApplicationId $app.Id -BodyParameter $uriParams
+
+# Set Application Proxy properties on the application object's
+# onPremisesPublishing property
+$params = @{
+    onPremisesPublishing = @{
+        externalAuthenticationType = "aadPreAuthentication"
+        internalUrl = "https://hr.internal.contoso.com/"
+        externalUrl = "https://hr-contoso.msappproxy.net"
+        isHttpOnlyCookieEnabled = $true
+        isOnPremPublishingEnabled = $true
+        isPersistentCookieEnabled = $true
+        isSecureCookieEnabled = $true
+        isStateSessionEnabled = $true
+        isTranslateHostHeaderEnabled = $true
+        isTranslateLinksInBodyEnabled = $false
+    }
+}
+
+Update-MgBetaApplication -ApplicationId $app.Id -BodyParameter $params
 ```
 
 ## Step 4: Configure Single Sign-On
@@ -164,9 +188,10 @@ Set-ADUser -Identity "svc-hrapp" -ServicePrincipalNames @{
     Add = "HTTP/hr.internal.contoso.com"
 }
 
-# Grant the connector server permission to delegate to the SPN
-Set-ADComputer -Identity $connectorComputer `
-    -PrincipalsAllowedToDelegateToAccount (Get-ADUser "svc-hrapp")
+# For resource-based KCD, grant the connector server permission
+# on the target application's service account
+Set-ADUser -Identity "svc-hrapp" `
+    -PrincipalsAllowedToDelegateToAccount $connectorComputer
 ```
 
 ## Step 5: Configure Custom Domains
@@ -209,14 +234,14 @@ On the connector server, check the event logs:
 ```powershell
 # Check Application Proxy connector event logs
 # These logs show connection issues and authentication failures
-Get-EventLog -LogName "Application" -Source "Microsoft AAD Application Proxy Connector" -Newest 20 |
+Get-EventLog -LogName "Application" -Source "Microsoft Entra private network connector" -Newest 20 |
     Format-Table TimeGenerated, EntryType, Message -Wrap
 ```
 
 Common issues and solutions:
 
 - **502 Bad Gateway:** The connector cannot reach the internal application. Verify the internal URL is accessible from the connector server.
-- **Authentication loops:** Often caused by cookie domain mismatches. Enable "Translate URLs in headers" in the proxy settings.
+- **Authentication loops:** Often caused by cookie domain mismatches. Use the same internal and external URL with a custom domain where possible, or review the proxy URL translation and cookie settings.
 - **Slow performance:** The connector is in a different region than the Entra Application Proxy service. Use the connector group region setting to match your location.
 - **Kerberos SSO failing:** Check that the connector server has the correct SPNs registered and KCD is configured. Run `klist` on the connector server to verify ticket acquisition.
 
