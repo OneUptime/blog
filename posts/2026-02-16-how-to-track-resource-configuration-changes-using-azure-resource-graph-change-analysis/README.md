@@ -28,22 +28,14 @@ Change Analysis stores up to 14 days of change history by default. This is maint
 
 ## Enabling Change Analysis
 
-For most resources, Change Analysis works automatically through Azure Resource Graph. However, for in-guest changes (changes inside the operating system, like web app file modifications), you need to enable the Application Change Analysis feature separately.
+Change Analysis works automatically through Azure Resource Graph for supported Resource Graph resource, resource container, and health resource changes.
 
-For the Resource Graph-based change tracking, no explicit enablement is needed. It works out of the box for all ARM resources.
+For the Resource Graph-based change tracking, no explicit enablement is needed. It works out of the box for supported Azure Resource Manager control plane changes.
 
-For web app in-guest change tracking:
+To query changes from the Azure CLI, add the Resource Graph extension if it is not already installed:
 
 ```bash
-# Enable the Application Change Analysis provider
-
-az provider register --namespace Microsoft.ChangeAnalysis
-
-# Enable in-guest change tracking for a web app
-az webapp config appsettings set \
-    --resource-group "myapp-rg" \
-    --name "my-webapp" \
-    --settings "CHANGE_ANALYSIS_ENABLED=true"
+az extension add --name resource-graph
 ```
 
 ## Querying Changes with Resource Graph
@@ -93,7 +85,7 @@ resourcechanges
 | sort by changeTime desc
 ```
 
-The `changedByType` field tells you whether the change was made by a user, service principal, or system process. The `clientType` tells you the tool used (Azure Portal, CLI, PowerShell, etc.).
+The `changedByType` field tells you the type of actor associated with the change, such as a user, application, managed identity, key, system, or unspecified actor. The `clientType` tells you the tool used (Azure Portal, CLI, PowerShell, etc.).
 
 ## Practical Troubleshooting Scenarios
 
@@ -197,9 +189,9 @@ resourcechanges
 
 ## Using Change Analysis in the Azure Portal
 
-In addition to KQL queries, Change Analysis is available through the portal UI. Navigate to any resource, and in the "Diagnose and solve problems" blade, you will find a "Change Analysis" tab that shows a timeline of changes to that resource.
+In addition to KQL queries, Change Analysis is available through the portal UI. Search for "Change Analysis" in the Azure portal to view and filter resource changes.
 
-For web apps specifically, the Change Analysis blade shows both ARM-level changes and in-guest changes (file modifications, configuration changes, dependency changes).
+For App Service resources, Azure Resource Graph Change Analysis shows supported ARM-level changes. It does not currently support App Service file or configuration changes.
 
 ## Automating Change Detection Alerts
 
@@ -218,7 +210,8 @@ resourcechanges
     'microsoft.keyvault/vaults',
     'microsoft.authorization/roleassignments'
 )
-| project changeTime, targetResourceType, changedBy, properties.targetResourceId
+| extend targetResourceId = tostring(properties.targetResourceId)
+| project changeTime, targetResourceType, changedBy, targetResourceId
 "@
 
 if ($sensitiveChanges.Count -gt 0) {
@@ -245,7 +238,7 @@ For complete visibility, use both. Activity Log for the full audit trail of who 
 
 - Change history is retained for 14 days
 - Some resource types may have limited change tracking support
-- In-guest changes require the Application Change Analysis provider
+- Azure Resource Graph Change Analysis does not currently support App Service file or configuration changes
 - Very high-frequency changes (like auto-scaling events) may be batched
 - The change data is eventually consistent, so there may be a short delay
 
