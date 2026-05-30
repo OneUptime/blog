@@ -8,7 +8,7 @@ Description: A practical guide to writing KQL queries in Azure Data Explorer for
 
 ---
 
-Kusto Query Language (KQL) is the query language for Azure Data Explorer, Azure Monitor, Azure Sentinel, and several other Microsoft services. If you work with logs, metrics, or time-series data on Azure, learning KQL is one of the most valuable skills you can develop. It is designed for exploring large datasets quickly, with a pipe-forward syntax that reads naturally from left to right.
+Kusto Query Language (KQL) is the query language for Azure Data Explorer, Azure Monitor, Microsoft Sentinel, and several other Microsoft services. If you work with logs, metrics, or time-series data on Azure, learning KQL is one of the most valuable skills you can develop. It is designed for exploring large datasets quickly, with a pipe-forward syntax that reads naturally from left to right.
 
 In this post, we will build up KQL skills progressively - starting with basic filtering and moving through aggregations, time-series analysis, joins, and advanced patterns that are particularly useful for log analysis.
 
@@ -37,7 +37,7 @@ The `where` operator is your primary filter. It supports a rich set of compariso
 AppLogs
 | where Service == "auth-service"
 
-// Multiple conditions (AND is implicit)
+// Multiple chained filters apply AND logic
 AppLogs
 | where Level == "ERROR"
 | where Service == "payment-service"
@@ -50,7 +50,7 @@ AppLogs
 // String operations
 AppLogs
 | where Message contains "timeout"          // Case-insensitive substring
-| where Message has "connection refused"     // Word-level match (faster)
+| where Message has_all ("connection", "refused") // Word-level match (faster)
 | where Message startswith "Failed to"       // Prefix match
 | where Message matches regex @"user-\d{3}" // Regular expression match
 
@@ -146,7 +146,7 @@ AppLogs
 | summarize EventCount = count() by bin(Timestamp, 15m), Level
 | render timechart
 
-// Detect anomalies in error rate
+// Detect anomalies in error counts
 let error_series = AppLogs
 | where Timestamp > ago(7d)
 | where Level == "ERROR"
@@ -269,7 +269,7 @@ AppLogs
 
 ```kql
 // Find the most common error message patterns
-// Use extract to normalize variable parts of messages
+// Use replace_regex to normalize variable parts of messages
 AppLogs
 | where Timestamp > ago(24h)
 | where Level == "ERROR"
@@ -343,12 +343,12 @@ AppLogs
 | summarize Count = count() by Service
 | render piechart
 
-// Scatter plot of duration vs timestamp (spot outliers)
+// Time chart of duration over time (spot outliers)
 AppLogs
 | where Timestamp > ago(1h)
 | where DurationMs > 0
 | project Timestamp, DurationMs, Service
-| render scatterchart
+| render timechart
 ```
 
 ## Summary
