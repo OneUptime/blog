@@ -39,9 +39,12 @@ Start at the beginning. When you send a notification, the API returns a tracking
 // check-send-result.js - Capture and log the send result
 const result = await client.sendNotification(
   {
-    kind: 'Gcm',
+    platform: 'fcmv1',
+    contentType: 'application/json;charset=utf-8',
     body: JSON.stringify({
-      notification: { title: 'Test', body: 'Testing delivery' }
+      message: {
+        notification: { title: 'Test', body: 'Testing delivery' }
+      }
     })
   },
   { tagExpression: 'user:test-user', enableTestSend: true }
@@ -62,11 +65,14 @@ The most valuable debugging tool is test send mode. It limits delivery to a maxi
 async function debugNotification(tagExpression) {
   const result = await client.sendNotification(
     {
-      kind: 'Gcm',
+      platform: 'fcmv1',
+      contentType: 'application/json;charset=utf-8',
       body: JSON.stringify({
-        notification: {
-          title: 'Debug Test',
-          body: 'Checking delivery pipeline'
+        message: {
+          notification: {
+            title: 'Debug Test',
+            body: 'Checking delivery pipeline'
+          }
         }
       })
     },
@@ -111,7 +117,10 @@ async function checkRegistrations(tagExpression) {
 
     // Check the push handle
     if (reg.gcmRegistrationId) {
-      console.log('  FCM Token:', reg.gcmRegistrationId.substring(0, 20) + '...');
+      console.log('  FCM Legacy Token:', reg.gcmRegistrationId.substring(0, 20) + '...');
+    }
+    if (reg.fcmV1RegistrationId) {
+      console.log('  FCM v1 Token:', reg.fcmV1RegistrationId.substring(0, 20) + '...');
     }
     if (reg.deviceToken) {
       console.log('  APNs Token:', reg.deviceToken.substring(0, 20) + '...');
@@ -160,7 +169,8 @@ For each platform, verify:
 - If using token auth, the key ID and team ID are correct.
 
 **FCM (Android)**:
-- The server key or service account JSON is from the correct Firebase project.
+- Use FCM v1 credentials and payloads. The FCM legacy HTTP APIs are retired, so older GCM/FCM legacy registrations and payloads should be migrated.
+- The service account JSON is from the correct Firebase project.
 - The Firebase project has Cloud Messaging API enabled.
 
 ## Step 5: Check the Notification Payload
@@ -184,16 +194,18 @@ const validIosPayload = {
   }
 };
 
-// Android - FCM payload
+// Android - FCM v1 payload
 const validAndroidPayload = {
-  notification: {
-    title: 'Title here',
-    body: 'Body here'
-  },
-  // data values MUST be strings
-  data: {
-    key1: 'value1',
-    key2: 'value2'  // NOT: key2: 123 (number would cause rejection)
+  message: {
+    notification: {
+      title: 'Title here',
+      body: 'Body here'
+    },
+    // data values MUST be strings
+    data: {
+      key1: 'value1',
+      key2: 'value2'  // NOT: key2: 123 (number would cause rejection)
+    }
   }
 };
 
@@ -223,29 +235,28 @@ Common device-side issues:
 
 ## Step 7: Enable Diagnostic Logs
 
-For a comprehensive view of what is happening, enable diagnostic logging on your notification hub.
+Diagnostic logging is useful for management operations on your hub, but it does not capture every push delivery attempt. For push delivery failures, use test send, hub metrics, and per-message telemetry when your namespace tier supports it.
 
 ```bash
-# Enable diagnostic logging
+# Enable operational diagnostic logging
 az monitor diagnostic-settings create \
   --name nh-diagnostics \
   --resource "/subscriptions/<sub-id>/resourceGroups/rg-notifications/providers/Microsoft.NotificationHubs/namespaces/my-notification-ns/notificationHubs/my-notification-hub" \
-  --workspace <log-analytics-workspace-id> \
+  --storage-account <storage-account-resource-id> \
   --logs '[
-    {"category":"OperationalLogs","enabled":true,"retentionPolicy":{"enabled":false,"days":0}},
-    {"category":"PushNotificationLogs","enabled":true,"retentionPolicy":{"enabled":false,"days":0}}
+    {"category":"OperationalLogs","enabled":true,"retentionPolicy":{"enabled":false,"days":0}}
   ]'
 ```
 
-Once enabled, you can query the logs in Log Analytics.
+For send-level details, capture the `notificationId` from the send result and query outcome details. This is only available on Standard tier and above.
 
-```text
-// Kusto query to find failed notifications
-NHPushNotificationLog
-| where TimeGenerated > ago(1h)
-| where Result != "Success"
-| project TimeGenerated, Platform, PnsHandle, Result, Error
-| order by TimeGenerated desc
+```javascript
+const details = await client.getNotificationOutcomeDetails(result.notificationId);
+
+console.log('State:', details.state);
+console.log('FCM v1 outcomes:', details.fcmV1OutcomeCounts);
+console.log('APNs outcomes:', details.apnsOutcomeCounts);
+console.log('PNS errors:', details.pnsErrorDetailsUrl);
 ```
 
 ## Step 8: Check for Throttling
@@ -268,7 +279,7 @@ Here is a quick checklist to run through when notifications go missing:
 4. Are platform credentials valid and for the correct environment? Check expiration dates.
 5. Is the payload within size limits and correctly formatted? Validate against platform specs.
 6. Is the device online and has notifications enabled? Check device settings.
-7. Are diagnostic logs showing any errors? Enable and query them.
+7. Are metrics or per-message telemetry showing any errors? Check outcome details and hub metrics.
 8. Is the notification hub or platform service throttling? Check metrics.
 
 ## Wrapping Up
