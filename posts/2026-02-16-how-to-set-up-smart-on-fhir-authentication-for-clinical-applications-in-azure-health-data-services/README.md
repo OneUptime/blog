@@ -8,13 +8,13 @@ Description: Learn how to configure SMART on FHIR authentication in Azure Health
 
 ---
 
-SMART on FHIR is the standard framework for launching clinical applications from within electronic health records (EHRs) and accessing patient data with appropriate authorization. It builds on OAuth 2.0 and OpenID Connect, adding healthcare-specific scopes and launch context. When a clinician opens an app from their EHR, SMART handles the authentication, determines which patient is in context, and limits the app's access to only the data it needs. Azure Health Data Services supports SMART on FHIR, and this guide shows how to configure it.
+SMART on FHIR is the standard framework for launching clinical applications from within electronic health records (EHRs) and accessing patient data with appropriate authorization. It builds on OAuth 2.0 and OpenID Connect, adding healthcare-specific scopes and launch context. When a clinician opens an app from their EHR, SMART handles the authentication, determines which patient is in context, and limits the app's access to only the data it needs. Azure Health Data Services supports SMART on FHIR through the SMART on FHIR (Enhanced) samples and, for existing deployments, the legacy SMART on FHIR proxy. Microsoft recommends the Enhanced approach because the legacy proxy is retiring in September 2026.
 
 ## What SMART on FHIR Adds to OAuth 2.0
 
 Standard OAuth 2.0 handles authentication and authorization. SMART on FHIR extends it with:
 
-- **Launch context**: When an app is launched from an EHR, it receives the current patient ID and encounter ID, so it knows which patient the clinician is working with.
+- **Launch context**: When an app is launched from an EHR, it can request launch context such as the current patient ID and encounter ID, so it knows which patient the clinician is working with.
 - **Clinical scopes**: Instead of generic read/write permissions, SMART defines scopes like `patient/Observation.read` or `user/MedicationRequest.write` that limit access to specific FHIR resource types.
 - **Standalone and EHR launch flows**: Apps can be launched from within an EHR (EHR launch) or independently (standalone launch).
 
@@ -23,7 +23,7 @@ sequenceDiagram
     participant User as Clinician
     participant EHR as EHR System
     participant App as SMART App
-    participant Auth as Azure AD
+    participant Auth as Microsoft Entra ID
     participant FHIR as FHIR Server
 
     User->>EHR: Opens patient chart
@@ -39,16 +39,16 @@ sequenceDiagram
 ## Prerequisites
 
 - Azure Health Data Services workspace with a FHIR service
-- Azure AD tenant
+- Microsoft Entra ID tenant
 - Understanding of OAuth 2.0 authorization code flow
 - A SMART on FHIR client application (we will create a simple one)
 
-## Step 1: Register the SMART Application in Azure AD
+## Step 1: Register the SMART Application in Microsoft Entra ID
 
-Each SMART on FHIR application needs an Azure AD app registration:
+Each SMART on FHIR application needs a Microsoft Entra ID app registration:
 
 ```bash
-# Register the SMART app in Azure AD
+# Register the SMART app in Microsoft Entra ID
 
 SMART_APP_NAME="clinical-dashboard"
 REDIRECT_URI="https://myapp.example.com/callback"
@@ -70,50 +70,64 @@ echo "Client ID: $APP_ID"
 echo "Client Secret: $CLIENT_SECRET"
 ```
 
-## Step 2: Configure API Permissions
+## Step 2: Configure Access Permissions
 
-The app needs permission to access the FHIR API. In Azure AD, this is configured through API permissions:
+The signed-in users who launch the SMART app need access to the FHIR service. For SMART on FHIR (Enhanced), assign the users or groups the `FHIR SMART User` role on the FHIR service:
 
 ```bash
-# Get the FHIR service's Application ID URI
+# Get the FHIR service resource ID
+RESOURCE_GROUP="rg-health-data"
+WORKSPACE_NAME="healthworkspace01"
+FHIR_SERVICE="fhir-clinical"
 FHIR_URL="https://healthworkspace01-fhir-clinical.fhir.azurehealthcareapis.com"
+SMART_USER_OBJECT_ID="<user-or-group-object-id>"
 
-# Add API permission for the FHIR service
-# The FHIR server's API scope is typically "user_impersonation"
-az ad app permission add \
-    --id $APP_ID \
-    --api "4f6778d8-5aef-43dc-a1ff-b073724b9495" \
-    --api-permissions "311a71cc-e848-46a1-bdf8-97ff7156d8e6=Scope"
+FHIR_SERVICE_ID=$(az healthcareapis workspace fhir-service show \
+    --name $FHIR_SERVICE \
+    --workspace-name $WORKSPACE_NAME \
+    --resource-group $RESOURCE_GROUP \
+    --query id -o tsv)
 
-# Grant admin consent
-az ad app permission admin-consent --id $APP_ID
+# Assign the SMART user role
+az role assignment create \
+    --assignee $SMART_USER_OBJECT_ID \
+    --role "FHIR SMART User" \
+    --scope $FHIR_SERVICE_ID
 ```
 
 ## Step 3: Configure SMART on FHIR on the FHIR Service
 
-Azure Health Data Services supports SMART on FHIR through its authentication configuration. You need to set up the SMART configuration properties:
+Azure Health Data Services supports SMART on FHIR (Enhanced) by integrating the FHIR service with the Azure Health Data and AI SMART samples, typically behind Azure API Management. If you are maintaining an existing legacy SMART proxy deployment, enable the proxy in the FHIR service authentication configuration and set the audience to the FHIR service URL:
 
 ```bash
-# Update the FHIR service with SMART configuration
+# Enable the legacy SMART on FHIR proxy
 RESOURCE_GROUP="rg-health-data"
 WORKSPACE_NAME="healthworkspace01"
 FHIR_SERVICE="fhir-clinical"
+TENANT_ID="<your-tenant-id>"
+FHIR_URL="https://healthworkspace01-fhir-clinical.fhir.azurehealthcareapis.com"
 
-# Enable SMART on FHIR by configuring the authority and audience
-az healthcareapis fhir-service update \
+FHIR_SERVICE_ID=$(az healthcareapis workspace fhir-service show \
     --name $FHIR_SERVICE \
     --workspace-name $WORKSPACE_NAME \
     --resource-group $RESOURCE_GROUP \
-    --smart-proxy-enabled true
+    --query id -o tsv)
+
+az resource update \
+    --ids $FHIR_SERVICE_ID \
+    --set properties.authenticationConfiguration.authority="https://login.microsoftonline.com/${TENANT_ID}" \
+          properties.authenticationConfiguration.audience="${FHIR_URL}" \
+          properties.authenticationConfiguration.smartProxyEnabled=true
 ```
 
 ## Step 4: Set Up the SMART Well-Known Configuration
 
-SMART on FHIR clients discover server capabilities through a well-known endpoint. The FHIR server should expose `.well-known/smart-configuration`:
+SMART on FHIR clients discover server capabilities through a well-known endpoint. With SMART on FHIR (Enhanced), use the SMART endpoint exposed by the deployed sample or API Management layer. The endpoint should expose `.well-known/smart-configuration`:
 
 ```bash
 # Verify the SMART configuration endpoint
-curl -s "${FHIR_URL}/.well-known/smart-configuration" | jq .
+SMART_BASE_URL="https://<your-smart-api-host>/smart"
+curl -s "${SMART_BASE_URL}/.well-known/smart-configuration" | jq .
 ```
 
 The response should include:
@@ -154,20 +168,25 @@ Here is a Python Flask application that implements the SMART on FHIR standalone 
 from flask import Flask, redirect, request, session, jsonify
 import requests
 import secrets
+from urllib.parse import urlencode
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
 
 # Configuration
 FHIR_URL = "https://healthworkspace01-fhir-clinical.fhir.azurehealthcareapis.com"
+SMART_BASE_URL = "https://my-smart-api.example.com/smart"
 CLIENT_ID = "<your-client-id>"
 CLIENT_SECRET = "<your-client-secret>"
 REDIRECT_URI = "https://myapp.example.com/callback"
-TENANT_ID = "<your-tenant-id>"
 
-# Azure AD endpoints
-AUTH_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/authorize"
-TOKEN_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+# Discover SMART endpoints
+SMART_CONFIG = requests.get(
+    f"{SMART_BASE_URL}/.well-known/smart-configuration",
+    timeout=10
+).json()
+AUTH_URL = SMART_CONFIG["authorization_endpoint"]
+TOKEN_URL = SMART_CONFIG["token_endpoint"]
 
 
 @app.route("/launch")
@@ -183,13 +202,13 @@ def launch():
         "response_type": "code",
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
-        "scope": f"openid profile launch/patient patient/*.read offline_access {FHIR_URL}/.default",
+        "scope": "openid profile launch/patient patient/*.read offline_access",
         "state": state,
         "aud": FHIR_URL,
     }
 
-    # Redirect the user to Azure AD for authentication
-    auth_redirect = f"{AUTH_URL}?{'&'.join(f'{k}={v}' for k, v in params.items())}"
+    # Redirect the user to the authorization server for authentication
+    auth_redirect = f"{AUTH_URL}?{urlencode(params)}"
     return redirect(auth_redirect)
 
 
@@ -209,8 +228,9 @@ def callback():
         "redirect_uri": REDIRECT_URI,
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
-        "scope": f"{FHIR_URL}/.default",
-    })
+    }, timeout=10)
+
+    token_response.raise_for_status()
 
     tokens = token_response.json()
 
@@ -229,7 +249,7 @@ def dashboard():
     access_token = session.get("access_token")
     patient_id = session.get("patient_id")
 
-    if not access_token:
+    if not access_token or not patient_id:
         return redirect("/launch")
 
     # Fetch patient data from the FHIR server
@@ -295,13 +315,13 @@ def ehr_launch():
         "response_type": "code",
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
-        "scope": f"openid profile launch patient/*.read {iss}/.default",
+        "scope": "openid profile launch patient/*.read",
         "state": state,
         "aud": iss,
         "launch": launch_token,  # This ties the auth to the EHR context
     }
 
-    auth_redirect = f"{AUTH_URL}?{'&'.join(f'{k}={v}' for k, v in params.items())}"
+    auth_redirect = f"{AUTH_URL}?{urlencode(params)}"
     return redirect(auth_redirect)
 ```
 
@@ -309,15 +329,15 @@ The key difference is the `launch` parameter in the authorization request. This 
 
 ## Step 7: Configure Scope-Based Access Control
 
-SMART scopes control what data the app can access. Azure Health Data Services can enforce these scopes to restrict API access:
+SMART scopes control what data the app can access. Azure Health Data Services SMART on FHIR (Enhanced) can enforce these scopes to restrict API access:
 
 - `patient/Patient.read` - Read access to Patient resources only
 - `patient/Observation.read` - Read access to Observations only
 - `patient/*.read` - Read access to all resource types for the patient in context
-- `user/MedicationRequest.write` - Write access to MedicationRequests for any patient the user can access
+- `user/MedicationRequest.write` - Write access to MedicationRequests the current user is authorized to access
 - `launch/patient` - Request patient context during launch
 
-Configure your app registration to request only the scopes it needs. Requesting broad scopes when you only need specific ones is a security concern and will raise red flags during app review.
+Configure your app to request only the scopes it needs. Requesting broad scopes when you only need specific ones is a security concern and will raise red flags during app review.
 
 ## Testing with a SMART Launcher
 
@@ -328,9 +348,9 @@ During development, use the SMART Launcher tool to simulate EHR launches without
 # https://launch.smarthealthit.org
 
 # Configure it with:
-# - FHIR Server URL: your Azure FHIR endpoint
+# - FHIR Server URL: your SMART endpoint or Azure FHIR endpoint, depending on your deployment
 # - App Launch URL: your app's /ehr-launch endpoint
-# - Client ID: your Azure AD app registration client ID
+# - Client ID: your Microsoft Entra app registration client ID
 ```
 
 This tool simulates the EHR context and lets you test the full SMART launch flow without needing access to a real EHR system. It is invaluable during development and debugging.
@@ -348,4 +368,4 @@ When implementing SMART on FHIR:
 
 ## Summary
 
-SMART on FHIR in Azure Health Data Services enables clinical applications to securely access patient data with proper authorization. The setup involves registering your app in Azure AD, configuring SMART capabilities on the FHIR service, and implementing either the standalone or EHR launch flow in your application. The key healthcare-specific additions over standard OAuth 2.0 are launch context (knowing which patient is selected) and clinical scopes (limiting access to specific resource types). With this foundation, you can build clinical decision support tools, patient portals, and care coordination apps that integrate with any SMART-enabled EHR.
+SMART on FHIR in Azure Health Data Services enables clinical applications to securely access patient data with proper authorization. The setup involves registering your app in Microsoft Entra ID, configuring SMART on FHIR (Enhanced) with the Azure samples or maintaining the legacy proxy until its retirement, and implementing either the standalone or EHR launch flow in your application. The key healthcare-specific additions over standard OAuth 2.0 are launch context (knowing which patient is selected) and clinical scopes (limiting access to specific resource types). With this foundation, you can build clinical decision support tools, patient portals, and care coordination apps that integrate with any SMART-enabled EHR.
