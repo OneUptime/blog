@@ -8,18 +8,18 @@ Description: Learn how to use Azure Cosmos DB with the .NET SDK and leverage the
 
 ---
 
-Azure Cosmos DB is a globally distributed, multi-model database service that offers low-latency reads and writes at any scale. One of its most powerful features is the Change Feed, which provides a sorted list of documents within a container in the order they were modified. When you pair the Change Feed with the .NET SDK's Change Feed Processor, you get a robust mechanism for reacting to data changes in near real-time.
+Azure Cosmos DB is a globally distributed database service that offers low-latency reads and writes at any scale. One of its most powerful features is the Change Feed, which provides a sorted list of changes within each logical partition in the order they were modified. When you pair the Change Feed with the .NET SDK's Change Feed Processor, you get a robust mechanism for reacting to data changes in near real-time.
 
 In this post, we will walk through setting up a Cosmos DB account, connecting to it with the .NET SDK, performing basic CRUD operations, and then building a Change Feed Processor that listens for changes and processes them as they happen.
 
 ## Why Cosmos DB and the Change Feed?
 
-Traditional polling approaches to detect data changes are wasteful. You keep hitting the database asking "anything new?" over and over. The Change Feed flips this model on its head. Cosmos DB maintains an ordered log of changes for each logical partition. Your application subscribes to this feed and receives a push notification whenever something changes. This is useful for:
+Traditional polling approaches to detect data changes are wasteful. You keep hitting the database asking "anything new?" over and over. The Change Feed flips this model on its head. Cosmos DB maintains an ordered log of changes for each logical partition. Your Change Feed Processor reads this feed and calls your delegate whenever it finds new changes. This is useful for:
 
 - Triggering downstream workflows when a document is created or updated
 - Keeping a materialized view in sync with the source data
 - Feeding events into an analytics pipeline or event hub
-- Building audit trails without adding complexity to your write path
+- Building audit trails when you model updates as events or use the all versions and deletes change feed mode
 
 The Change Feed Processor library, built into the .NET SDK (Microsoft.Azure.Cosmos), handles the heavy lifting of reading the feed, checkpointing progress, and distributing work across multiple consumers.
 
@@ -244,6 +244,7 @@ async Task HandleChangesWithErrorHandling(
             await deadLetterContainer.CreateItemAsync(new
             {
                 id = Guid.NewGuid().ToString(),
+                customerId = order.CustomerId,
                 originalOrderId = order.Id,
                 error = ex.Message,
                 timestamp = DateTime.UtcNow,
@@ -291,7 +292,7 @@ Second, choose your partition key wisely. The Change Feed operates at the partit
 
 Third, use the WithMaxItems option to control batch sizes. Smaller batches mean lower latency per change but higher overhead. Larger batches mean better throughput but higher latency for individual changes. Find the right balance for your workload.
 
-Fourth, do not forget to handle the case where the lease container gets corrupted or cleared. Your processor will start from the beginning of the feed, and you need to make sure your processing logic is idempotent.
+Fourth, do not forget to handle the case where the lease container gets corrupted or cleared. Without existing leases, your processor initializes from its configured starting point, such as the beginning of the feed when you use `WithStartTime(DateTime.MinValue.ToUniversalTime())`. Make sure your processing logic is idempotent.
 
 ## Wrapping Up
 
