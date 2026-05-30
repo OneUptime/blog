@@ -42,44 +42,60 @@ graph TD
 
 ## Creating a Taxonomy
 
-You can create taxonomies through the console, but using Terraform or the gcloud CLI is better for reproducibility. Let me walk through both approaches.
+You can create taxonomies through the console, but using Terraform or the Data Catalog API is better for reproducibility. Let me walk through both approaches.
 
-Using gcloud to create the taxonomy and policy tags:
+Using the Data Catalog API to create the taxonomy and policy tags:
 
 ```bash
 # Create the top-level taxonomy
 
-gcloud data-catalog taxonomies create \
-  --display-name="GDPR Data Classification" \
-  --description="Classification system for GDPR compliance" \
-  --location=us \
-  --project=my-project
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies" \
+  -d '{
+    "displayName": "GDPR Data Classification",
+    "description": "Classification system for GDPR compliance",
+    "activatedPolicyTypes": ["FINE_GRAINED_ACCESS_CONTROL"]
+  }'
 
 # Note the taxonomy ID from the output, you will need it
-# Format: projects/PROJECT_NUM/locations/LOCATION/taxonomies/TAXONOMY_ID
+# Format: projects/PROJECT_ID/locations/LOCATION/taxonomies/TAXONOMY_ID
 ```
 
 Now add policy tags under the taxonomy. You will need the taxonomy resource name from the previous command.
 
 ```bash
 # Create parent policy tags for each category
-gcloud data-catalog taxonomies policy-tags create \
-  --taxonomy="projects/123456/locations/us/taxonomies/789" \
-  --display-name="PII - Direct Identifiers" \
-  --description="Data that can directly identify a person"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies/789/policyTags" \
+  -d '{
+    "displayName": "PII - Direct Identifiers",
+    "description": "Data that can directly identify a person"
+  }'
 
 # Create child policy tags under the parent
-gcloud data-catalog taxonomies policy-tags create \
-  --taxonomy="projects/123456/locations/us/taxonomies/789" \
-  --parent-policy-tag="projects/123456/locations/us/taxonomies/789/policyTags/101" \
-  --display-name="Email Address" \
-  --description="Personal email addresses covered under GDPR Article 4"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies/789/policyTags" \
+  -d '{
+    "displayName": "Email Address",
+    "description": "Personal email addresses covered under GDPR Article 4",
+    "parentPolicyTag": "projects/my-project/locations/us/taxonomies/789/policyTags/101"
+  }'
 
-gcloud data-catalog taxonomies policy-tags create \
-  --taxonomy="projects/123456/locations/us/taxonomies/789" \
-  --parent-policy-tag="projects/123456/locations/us/taxonomies/789/policyTags/101" \
-  --display-name="Full Name" \
-  --description="First name, last name, or full name of individuals"
+curl -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://datacatalog.googleapis.com/v1/projects/my-project/locations/us/taxonomies/789/policyTags" \
+  -d '{
+    "displayName": "Full Name",
+    "description": "First name, last name, or full name of individuals",
+    "parentPolicyTag": "projects/my-project/locations/us/taxonomies/789/policyTags/101"
+  }'
 ```
 
 ## Terraform Approach
@@ -219,7 +235,7 @@ Manually tagging every column is impractical when you have hundreds of tables. C
 from google.cloud import dlp_v2
 
 def scan_table_for_pii(project_id, dataset_id, table_id):
-    """Scan a BigQuery table for PII and return findings."""
+    """Start a DLP inspection job for a BigQuery table and return the job name."""
     dlp_client = dlp_v2.DlpServiceClient()
 
     # Define what types of PII to look for
@@ -265,14 +281,13 @@ You can then map DLP findings to your policy tags and apply them programmaticall
 
 ## Auditing and Reporting
 
-For GDPR compliance, you need to demonstrate that you know where PII lives and who has access. Data Catalog provides this through its search and tag APIs.
+For GDPR compliance, you need to demonstrate that you know where PII lives and who has access. Data Catalog provides this through its search APIs.
 
 ```bash
 # Search for all columns tagged with a specific policy tag
-gcloud data-catalog entries search \
-  --query="tag:email_address" \
-  --location=us \
-  --project=my-project
+gcloud data-catalog search 'policytag:"Email Address" system=bigquery' \
+  --include-project-ids=my-project \
+  --restricted-locations=us
 ```
 
 You can also export a complete inventory of tagged columns to build compliance reports for your Data Protection Officer.
