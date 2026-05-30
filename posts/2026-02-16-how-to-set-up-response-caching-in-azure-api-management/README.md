@@ -16,7 +16,7 @@ APIM provides a built-in internal cache and also supports connecting to an exter
 
 The caching mechanism in APIM is straightforward. When a cacheable request comes in, APIM checks its cache for a stored response that matches the request. If it finds one (a cache hit), it returns the cached response immediately without contacting the backend. If it does not find one (a cache miss), it forwards the request to the backend, stores the response in the cache, and returns it to the client.
 
-The cache key is composed of the request method, URL, and optionally, specific headers or query parameters that you configure. Two requests that produce the same cache key will share the same cached response.
+Response caching applies to HTTP GET requests. The cache key is based on the resource URL, and you can vary cached responses by specific headers or query parameters. Two requests that produce the same cache key will share the same cached response.
 
 ## Enabling Basic Response Caching
 
@@ -87,7 +87,7 @@ This is important for APIs that return personalized or tenant-specific data.
 
 ## Conditional Caching
 
-You might not want to cache every response. Maybe you only want to cache successful responses, or only cache GET requests (POST, PUT, DELETE should almost never be cached). The `cache-store` policy has conditions for this:
+You might not want to cache every response. APIM response caching only caches GET responses, and `cache-store` caches only `200 OK` responses by default unless you set `cache-response="true"`. You can still wrap `cache-store` in a `choose` policy when you want to make the intent explicit or add other conditions:
 
 ```xml
 <!-- Only cache successful GET responses -->
@@ -95,7 +95,7 @@ You might not want to cache every response. Maybe you only want to cache success
 <outbound>
     <base />
     <choose>
-        <when condition="@(context.Request.Method == "GET" && context.Response.StatusCode == 200)">
+        <when condition='@(context.Request.Method == "GET" && context.Response.StatusCode == 200)'>
             <cache-store duration="300" />
         </when>
     </choose>
@@ -140,8 +140,8 @@ When data changes on your backend, you want to invalidate the cached response. A
 <inbound>
     <base />
     <choose>
-        <when condition="@(context.Request.Method != "GET")">
-            <cache-remove-value key="@("orders-cache-" + context.Request.MatchedParameters["orderId"])" />
+        <when condition='@(context.Request.Method != "GET")'>
+            <cache-remove-value key='@("orders-cache-" + context.Request.MatchedParameters["orderId"])' />
         </when>
     </choose>
 </inbound>
@@ -153,15 +153,15 @@ For this to work, you need to use the `cache-lookup-value` and `cache-store-valu
 
 The built-in internal cache works fine for single-region deployments and moderate data volumes. But it has limitations:
 
-- It is local to each gateway instance. In a multi-region deployment, each region has its own cache.
-- The cache size is limited by the APIM instance's memory.
-- Cache entries are lost when the gateway restarts.
+- It is shared by units in the same region, but in a multi-region deployment each region has its own cache.
+- The cache size varies by APIM service tier.
+- In the classic tiers, internal cache contents do not persist across service updates. The v2 tiers provide persistent built-in cache.
 
 For production workloads, connecting an external Azure Cache for Redis is usually the better option. Here is how to set it up.
 
 First, create an Azure Cache for Redis instance in the same region as your APIM instance. Then, in APIM, go to "External cache" and click "Add." Provide the Redis connection string and select the region.
 
-Once configured, APIM automatically uses the external cache for all cache policies. No policy changes are needed - the cache policies work the same way regardless of whether the cache is internal or external.
+By default, cache policies use `caching-type="prefer-external"`, which means APIM uses the external cache if one is configured and falls back to the built-in cache otherwise. If a policy explicitly sets `caching-type="internal"`, change it to `external` or `prefer-external` to use Redis.
 
 ## Cache Strategies by API Type
 
@@ -197,16 +197,16 @@ Notice that the downstream TTL (120 seconds) is shorter than the gateway cache T
 
 ## Monitoring Cache Performance
 
-Keep an eye on your cache hit rate through APIM analytics and Application Insights. A high cache hit rate means your caching strategy is working. A low hit rate might mean your cache keys are too specific (every request generates a unique key) or your TTLs are too short.
+Keep an eye on request count, backend duration, and gateway duration through Azure Monitor metrics and Application Insights. A lower backend request volume and lower gateway latency for repeated requests usually mean your caching strategy is working. If repeated requests still reach the backend, your cache keys may be too specific or your TTLs may be too short.
 
-You can also log cache hits and misses explicitly:
+For debugging, use APIM's test trace to inspect the `cache-lookup` policy result. A response returned from `cache-lookup` short-circuits the pipeline, so outbound policies are not a reliable place to add a response-cache hit or miss header for the built-in response cache.
 
 ```xml
-<!-- Log whether the response came from cache or backend -->
+<!-- Example: add a miss marker only when the request was not served from response cache -->
 <outbound>
     <base />
     <set-header name="X-Cache-Status" exists-action="override">
-        <value>@(context.Response.Headers.ContainsKey("X-APIM-Cache") ? "HIT" : "MISS")</value>
+        <value>MISS</value>
     </set-header>
 </outbound>
 ```
