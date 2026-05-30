@@ -21,7 +21,7 @@ The installation depends on your operating system.
 ```bash
 # macOS (using Homebrew)
 
-brew tap azure/azd && brew install azd
+brew install azure/azd/azd
 
 # Linux (using the install script)
 curl -fsSL https://aka.ms/install-azd.sh | bash
@@ -40,7 +40,7 @@ After installation, authenticate with Azure.
 azd auth login
 
 # Verify your account
-azd auth show
+azd auth status
 ```
 
 ## Browsing Available Templates
@@ -78,7 +78,7 @@ mkdir my-web-app && cd my-web-app
 azd init --template todo-nodejs-mongo
 ```
 
-This command downloads the template and sets up the project structure. It also prompts you for:
+This command downloads the template and sets up the project structure. If this is your first environment in the project, `azd` creates it and sets it as the default. During the first provisioning or deployment flow, `azd` also prompts you for:
 
 - **Environment name**: A unique name for this deployment (like `dev` or `prod`)
 - **Azure location**: The region to deploy to
@@ -260,26 +260,26 @@ output WEB_URI string = resources.outputs.WEB_URI
 output API_URI string = resources.outputs.API_URI
 ```
 
-To add a new resource, edit the Bicep files. For example, adding a Redis cache.
+To add a new resource, edit the Bicep files. For example, adding a storage account.
 
 ```bicep
-// Add to resources.bicep - Redis cache for session storage
-resource redisCache 'Microsoft.Cache/redis@2023-04-01' = {
-  name: 'redis-${environmentName}'
+// Add to resources.bicep - Storage account for application files
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: 'st${uniqueString(resourceGroup().id, environmentName)}'
   location: location
+  sku: {
+    name: 'Standard_LRS'
+  }
+  kind: 'StorageV2'
   properties: {
-    sku: {
-      name: 'Basic'
-      family: 'C'
-      capacity: 0
-    }
-    enableNonSslPort: false
-    minimumTlsVersion: '1.2'
+    accessTier: 'Hot'
+    allowBlobPublicAccess: false
+    minimumTlsVersion: 'TLS1_2'
   }
 }
 
-// Output the connection string for the application
-output REDIS_CONNECTION string = '${redisCache.properties.hostName}:${redisCache.properties.sslPort},ssl=True'
+// Output the blob endpoint for the application
+output STORAGE_BLOB_ENDPOINT string = storageAccount.properties.primaryEndpoints.blob
 ```
 
 After modifying infrastructure, run `azd provision` again to apply the changes.
