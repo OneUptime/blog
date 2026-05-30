@@ -20,7 +20,7 @@ For Next.js SSR, this means your dynamic pages render on the server for each req
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 20.9 or later
 - Docker installed
 - Azure CLI with the containerapp extension
 - Azure account
@@ -115,9 +115,10 @@ async function getProduct(id: string): Promise<Product | null> {
 export default async function ProductPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const product = await getProduct(params.id);
+  const { id } = await params;
+  const product = await getProduct(id);
 
   if (!product) {
     return (
@@ -160,26 +161,26 @@ Create a multi-stage Dockerfile optimized for production:
 
 ```dockerfile
 # Stage 1: Install dependencies
-FROM node:18-alpine AS deps
+FROM node:20-alpine AS deps
 WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Stage 2: Build the application
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+COPY --from=deps /app/node_modules ./node_modules
 
 # Copy source code and build
 COPY . .
 RUN npm run build
 
 # Stage 3: Production runtime
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Set production environment
@@ -212,10 +213,6 @@ Update `next.config.js` to enable standalone output:
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  // Optimize for container environments
-  experimental: {
-    // Reduce memory usage in containers
-  },
 };
 
 module.exports = nextConfig;
@@ -328,7 +325,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Login to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
