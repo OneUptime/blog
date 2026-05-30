@@ -14,10 +14,10 @@ This guide covers when to use ZRS, how to set it up, and how to migrate existing
 
 ## Understanding Zone-Redundant Storage
 
-With ZRS, every write operation is confirmed only after the data has been written to all three availability zones. This synchronous replication means:
+With ZRS, every write operation is confirmed only after the data has been written to replicas across the availability zones. This synchronous replication means:
 
 - **Zero data loss** if an entire availability zone goes down
-- **No downtime** during single zone failures - your storage account remains accessible
+- **Zone-level availability** during single zone failures - your storage account is designed to remain accessible, although DNS updates and transient errors can still affect applications during the event
 - **Strong consistency** - reads always return the most recent write
 
 The trade-off compared to LRS is a slightly higher cost (roughly 25% more) and marginally higher write latency due to synchronous replication across zones.
@@ -27,10 +27,10 @@ Here is how ZRS compares to other redundancy options:
 | Feature | LRS | ZRS | GRS | GZRS |
 |---------|-----|-----|-----|------|
 | Copies | 3 | 3 | 6 | 6 |
-| Zones | 1 | 3 | 1+1 (secondary region) | 3+1 |
+| Replication layout | Single datacenter in the primary region | Three or more availability zones in the primary region | LRS in the primary region plus LRS in the secondary region | ZRS in the primary region plus LRS in the secondary region |
 | Survives zone failure | No | Yes | No (primary) | Yes |
 | Survives region failure | No | No | Yes | Yes |
-| Durability (11 nines) | 99.999999999% | 99.9999999999% | 99.99999999999999% | 99.99999999999999% |
+| Annual durability | 99.999999999% | 99.9999999999% | 99.99999999999999% | 99.99999999999999% |
 
 ## When to Use ZRS
 
@@ -108,18 +108,26 @@ The SKU should show `Standard_ZRS` (or `Premium_ZRS` for premium accounts).
 
 If you have an existing LRS storage account and want to upgrade to ZRS, you have two options:
 
-**Option A: Live migration (no downtime)**
+**Option A: Redundancy conversion (no downtime)**
 
-Request a live migration through Azure. This is handled by Microsoft and requires no downtime, but it can take days to weeks:
+Start a redundancy conversion through the Azure portal, PowerShell, Azure CLI, or a support request. It requires no downtime, but it can take days to weeks:
 
 ```bash
-# Request a live migration from LRS to ZRS
-# This is initiated through a support request or the portal
-# The Azure CLI does not directly support live migration requests
-# Use the portal: Storage Account > Settings > Configuration > Replication > Change
+# Start a redundancy conversion from LRS to ZRS
+az storage account migration start \
+  --account-name stexisting2026 \
+  --resource-group rg-ha-storage \
+  --sku Standard_ZRS \
+  --name default \
+  --no-wait
+
+# Check conversion status
+az storage account migration show \
+  --account-name stexisting2026 \
+  --resource-group rg-ha-storage
 ```
 
-Live migration is only available for Standard storage accounts, not Premium.
+Conversion support depends on the storage account type. Standard general-purpose v2 accounts and premium file share accounts support conversion to ZRS; premium block blob accounts require manual migration.
 
 **Option B: Manual migration (faster but requires planning)**
 
@@ -145,20 +153,6 @@ azcopy copy \
 # After verifying all data is copied, update your application
 # connection strings to point to the new account
 ```
-
-**Option C: In-place SKU change**
-
-For some scenarios, you can change the SKU directly:
-
-```bash
-# Change SKU from LRS to ZRS (if supported for the account type)
-az storage account update \
-  --name stexisting2026 \
-  --resource-group rg-ha-storage \
-  --sku Standard_ZRS
-```
-
-This works for Standard general-purpose v2 accounts. The change triggers an asynchronous data migration in the background. During migration, your account remains accessible with LRS durability until the migration completes.
 
 ## Step 4: Configure for Maximum Availability
 
@@ -287,8 +281,8 @@ The SLA for ZRS is higher than LRS:
 - **ZRS**: 99.9% availability for read and write (Hot tier)
 - **RA-GZRS**: 99.99% availability for read (Hot tier)
 
-While the listed SLAs are similar, ZRS provides better actual availability in practice because it survives zone-level failures that would cause LRS downtime.
+While the listed SLAs are similar, ZRS provides better resilience in practice because it is designed to keep data available during zone-level failures that could affect LRS accounts.
 
 ## Wrapping Up
 
-Zone-Redundant Storage is a straightforward upgrade from LRS that significantly improves your storage account's resilience against datacenter-level failures. The setup is as simple as choosing the ZRS SKU when creating or updating your storage account. For existing accounts, you can request a live migration or perform a manual data copy. Combine ZRS with application-level zone redundancy, retry logic, and monitoring to build a truly resilient architecture. If you also need cross-region protection, step up to GZRS or RA-GZRS for comprehensive disaster recovery.
+Zone-Redundant Storage is a straightforward upgrade from LRS that significantly improves your storage account's resilience against datacenter-level failures. The setup is as simple as choosing the ZRS SKU when creating your storage account or starting a redundancy conversion for an existing supported account. For existing accounts, you can use a redundancy conversion or perform a manual data copy. Combine ZRS with application-level zone redundancy, retry logic, and monitoring to build a truly resilient architecture. If you also need cross-region protection, step up to GZRS or RA-GZRS for comprehensive disaster recovery.
