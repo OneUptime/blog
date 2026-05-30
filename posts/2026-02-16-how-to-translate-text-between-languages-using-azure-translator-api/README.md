@@ -20,7 +20,7 @@ In the Azure Portal:
 4. Choose the Free F0 tier (2 million characters per month) or Standard S1 for production.
 5. Review and create.
 
-Copy the API key and the region from the resource. The Translator API uses a different authentication pattern than most Azure Cognitive Services - it requires a region parameter in the request header.
+Copy the API key and endpoint from the resource. If you create a regional Translator resource or use an Azure AI multi-service resource, also copy the region because the API requires it in the `Ocp-Apim-Subscription-Region` request header. For a single-service global Translator resource, the region header is optional.
 
 ## Step 2: Translate Text
 
@@ -135,13 +135,13 @@ for lang, text in results.items():
 
 ## Step 4: Batch Translation
 
-For translating multiple texts efficiently, batch them into a single request. The API accepts up to 100 elements per request, with a total limit of 10,000 characters.
+For translating multiple texts efficiently, batch them into a single request. The API accepts up to 1,000 elements per request, with a total request limit of 50,000 characters across all target languages.
 
 ```python
 def translate_batch(texts, target_language, source_language=None):
     """
     Translate multiple texts in a single API call.
-    Accepts up to 100 texts, max 10,000 characters total.
+    Accepts up to 1,000 texts, max 50,000 characters across all target languages.
     """
     url = f"{translator_endpoint}/translate"
 
@@ -350,7 +350,7 @@ class AzureTranslator:
 
         all_translations = []
 
-        # Process in batches to respect the 10,000 character limit
+        # Process in batches to respect the 50,000 character request limit
         batch = []
         batch_chars = 0
 
@@ -358,7 +358,7 @@ class AzureTranslator:
             text_len = len(text)
 
             # If adding this text would exceed the limit, process the current batch
-            if batch_chars + text_len > 9500 or len(batch) >= 100:
+            if batch_chars + text_len > 49000 or len(batch) >= 1000:
                 result = self._translate_batch(batch, target, source, max_retries)
                 all_translations.extend(result)
                 batch = []
@@ -426,7 +426,7 @@ Azure Translator pricing is based on the number of characters translated:
 - **Free tier (F0)**: 2 million characters per month
 - **Standard tier (S1)**: $10 per million characters
 
-Characters are counted in the source text, not the translated output. Every character counts, including spaces and punctuation. For high-volume scenarios, this is significantly cheaper than professional human translation while providing near-instant results.
+Characters are counted from the input text, not the translated output. Every character counts, including spaces and punctuation, and translating the same text to multiple target languages counts once per target language. For high-volume scenarios, this is significantly cheaper than professional human translation while providing near-instant results.
 
 ## Wrapping Up
 
