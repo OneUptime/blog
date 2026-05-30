@@ -8,11 +8,11 @@ Description: How to configure managed identities and Azure RBAC to access Azure 
 
 ---
 
-Every time you embed a storage account key or connection string in your application code or configuration, you create a security liability. Keys do not expire unless you rotate them manually, they grant full access to everything in the account, and if they leak, anyone can read and delete your data. Managed identities solve this by letting your Azure resources authenticate to Azure Storage using their own identity, with no secrets to store, rotate, or accidentally commit to source control.
+Every time you embed a storage account key or connection string in your application code or configuration, you create a security liability. Keys do not expire unless you rotate them manually, they grant full access to everything in the account, and if they leak, anyone can read and delete your data. Managed identities solve this by letting your Azure resources authenticate to Azure Storage using their own Microsoft Entra identity, with no secrets to store, rotate, or accidentally commit to source control.
 
 ## What Is a Managed Identity?
 
-A managed identity is an Azure AD identity automatically managed by Azure. It is tied to an Azure resource (like a VM, App Service, or Function App) and provides that resource with the ability to authenticate against Azure AD without any credentials in code.
+A managed identity is a Microsoft Entra ID identity automatically managed by Azure. It is tied to an Azure resource (like a VM, App Service, or Function App) and provides that resource with the ability to authenticate against Microsoft Entra ID without any credentials in code.
 
 There are two types:
 
@@ -65,7 +65,7 @@ echo "Principal ID: ${PRINCIPAL_ID}"
 
 ## Step 2: Assign Azure RBAC Roles for Storage Access
 
-Managed identities authenticate via Azure AD, which means access to storage is controlled by Azure RBAC (Role-Based Access Control) instead of keys. You need to assign the appropriate role to the managed identity.
+Managed identities authenticate via Microsoft Entra ID, which means access to storage is controlled by Azure RBAC (Role-Based Access Control) instead of keys. You need to assign the appropriate role to the managed identity.
 
 ### Common Storage Roles
 
@@ -109,7 +109,7 @@ az role assignment create \
   --scope "/subscriptions/{sub-id}/resourceGroups/myResourceGroup"
 ```
 
-Role assignments can take up to 5 minutes to propagate. If your application gets a 403 error immediately after assigning a role, wait a few minutes and try again.
+Role assignments can take up to 30 minutes to propagate. If your application gets a 403 error immediately after assigning a role, wait a few minutes and try again.
 
 ## Step 3: Update Application Code
 
@@ -199,14 +199,13 @@ listBlobs().catch(console.error);
 
 ## How DefaultAzureCredential Works
 
-`DefaultAzureCredential` tries multiple authentication methods in order:
+`DefaultAzureCredential` tries multiple authentication methods, with the exact chain varying slightly by SDK language and version. Common credentials include:
 
 1. **Environment variables**: Checks for `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`
 2. **Workload Identity**: For Kubernetes workloads
 3. **Managed Identity**: Uses the system-assigned or user-assigned managed identity
-4. **Azure CLI**: Uses the logged-in Azure CLI session (useful for local development)
-5. **Azure PowerShell**: Uses the logged-in PowerShell session
-6. **Interactive browser**: Prompts for login (disabled by default)
+4. **Developer tools**: Uses signed-in developer tools such as Azure CLI, Azure PowerShell, Azure Developer CLI, Visual Studio, or Visual Studio Code when supported by the SDK
+5. **Interactive browser**: Prompts for login when explicitly enabled (disabled by default in common SDKs)
 
 This chain means the same code works both locally (using your Azure CLI login) and in production (using managed identity), without any code changes.
 
@@ -258,22 +257,22 @@ credential = DefaultAzureCredential(
 
 ## Disabling Key-Based Access
 
-Once you have migrated to managed identities, you can disable key-based access to enforce that all authentication goes through Azure AD:
+Once you have migrated to managed identities, you can disable key-based access to enforce that requests use Microsoft Entra ID instead of Shared Key authorization:
 
 ```bash
 # Disable shared key access on the storage account
-# After this, account keys and SAS tokens signed with account keys stop working
+# After this, account keys, service SAS tokens, and account SAS tokens stop working
 az storage account update \
   --name mystorageaccount \
   --resource-group myResourceGroup \
   --allow-shared-key-access false
 ```
 
-This is the ultimate security posture - even if someone extracts an account key, it will not work. Be sure that all your applications and tools are using Azure AD authentication before flipping this switch.
+This is a stronger security posture - even if someone extracts an account key, it will not work. User delegation SAS tokens for Blob Storage can still work because they are authorized with Microsoft Entra ID. Be sure that all your applications and tools are using Microsoft Entra ID authentication before flipping this switch.
 
 ## Troubleshooting
 
-**403 AuthorizationPermissionMismatch**: The managed identity does not have the right RBAC role, or the role has not propagated yet. Verify the role assignment and wait 5 minutes.
+**403 AuthorizationPermissionMismatch**: The managed identity does not have the right RBAC role, or the role has not propagated yet. Verify the role assignment and wait up to 30 minutes.
 
 **EnvironmentCredential: Environment variables not configured**: This is normal when running locally without environment variables. `DefaultAzureCredential` will fall through to the next method (Azure CLI).
 
