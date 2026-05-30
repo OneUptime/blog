@@ -16,11 +16,13 @@ The key to making self-service work is setting up the connection properly so use
 
 Open Looker Studio at lookerstudio.google.com and create a new report. When prompted for a data source, select BigQuery.
 
-You have three connection options:
+You have several connection options:
+
+**Recent Projects** - Shows projects you have accessed recently in the Google Cloud console. You can also enter a project ID manually.
 
 **My Projects** - Connects to BigQuery datasets in your own GCP project. This is the simplest option and works for most teams.
 
-**Shared Projects** - Connects to datasets that have been shared with you from other GCP projects. Useful in organizations where data engineering and analytics are in separate projects.
+**Shared Projects** - Connects to projects that have been shared with you. Useful in organizations where data engineering and analytics are in separate projects.
 
 **Custom Query** - Lets you write a SQL query as your data source. This is the most flexible option but means the query runs every time the dashboard refreshes.
 
@@ -110,11 +112,13 @@ gcloud projects add-iam-policy-binding my-project \
 
 ## Data Source Credentials
 
-Looker Studio data sources can use two credential modes:
+Looker Studio BigQuery data sources commonly use these credential modes:
 
 **Owner's credentials** - The dashboard uses the data source creator's permissions. Viewers do not need BigQuery access. This is simpler but means the creator's account is used for all queries.
 
 **Viewer's credentials** - Each viewer uses their own permissions. This is more secure and enables row-level security, but every viewer needs BigQuery access.
+
+**Service account credentials** - A Google Workspace or Cloud Identity managed organization can use a configured service account for BigQuery data sources. This avoids tying dashboard access to an individual user's account.
 
 For self-service dashboards within a team, owner's credentials are usually fine. For dashboards shared across the organization with different access levels, viewer's credentials are better.
 
@@ -169,10 +173,10 @@ AS SELECT * FROM `my-project.analytics.orders`;
 
 ```bash
 # Create a BI Engine reservation
-bq mk --bi_reservation \
+bq --project_id=my-project update \
+  --reservation \
   --location=us-central1 \
-  --size=1G \
-  --project_id=my-project
+  --bi_reservation_size=1
 ```
 
 **Use Looker Studio's data extract feature.** For dashboards that do not need real-time data, create a data extract that snapshots the data and refreshes on a schedule. This dramatically reduces BigQuery costs.
@@ -217,7 +221,7 @@ There are a few things that trip up teams new to Looker Studio with BigQuery:
 
 **Blending data sources creates cross joins.** If you blend two data sources in Looker Studio without matching join keys, you get a cross join that produces incorrect numbers. Always define join keys when blending.
 
-**Cache behavior is inconsistent.** Looker Studio caches query results for about 15 minutes, but this varies. Do not rely on caching for performance, use BI Engine or extracts instead.
+**Cache behavior is not guaranteed.** Looker Studio's default BigQuery data freshness threshold is 12 hours, but a new query or an expired freshness threshold can still send a new query to BigQuery. Do not rely on caching for performance, use BI Engine or extracts instead.
 
 ## Wrapping Up
 
