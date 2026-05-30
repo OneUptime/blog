@@ -22,10 +22,10 @@ Azure NetApp Files cross-region replication uses SnapMirror technology under the
 
 ```mermaid
 flowchart LR
-    subgraph Primary Region - East US 2
+    subgraph primary["Primary Region - East US 2"]
         A[Source Volume<br/>Read-Write]
     end
-    subgraph Secondary Region - West US 2
+    subgraph secondary["Secondary Region - West US 2"]
         B[Destination Volume<br/>Read-Only]
     end
     A -->|Async Replication<br/>10min / hourly / daily| B
@@ -41,7 +41,7 @@ Before setting up replication, make sure you have:
 2. A NetApp account in the destination region
 3. A capacity pool in the destination region with enough capacity for the replicated volume
 4. A delegated subnet in the destination region's virtual network
-5. Cross-region replication enabled for the region pair (most region pairs support this by default)
+5. A supported cross-region replication region pair for the source and destination regions
 
 ## Step 1: Set Up the Destination Infrastructure
 
@@ -98,7 +98,7 @@ SOURCE_VOLUME_ID=$(az netappfiles volume show \
   --query "id" -o tsv)
 
 # Create the destination volume with replication configured
-# The volume size must be at least as large as the source
+# The destination volume quota should mirror the source volume quota
 az netappfiles volume create \
   --resource-group netapp-dr-rg \
   --account-name drnetappaccount \
@@ -160,12 +160,12 @@ The output shows:
 
 ## Step 4: Perform a Failover
 
-When you need to fail over to the secondary region (either due to a real disaster or a planned DR test), you break the replication and make the destination volume read-write.
+When you need to fail over to the secondary region (either due to a real disaster or a planned DR test), first check that the mirror state is `Mirrored` and the relationship status is `Idle`. Then you break the replication and make the destination volume read-write.
 
 ```bash
 # Break the replication relationship
 # This promotes the destination volume to read-write
-az netappfiles volume replication break \
+az netappfiles volume replication suspend \
   --resource-group netapp-dr-rg \
   --account-name drnetappaccount \
   --pool-name dr-pool \
@@ -193,36 +193,35 @@ Once the primary region is back online, you can reverse the replication directio
 If the destination has accumulated new writes during the failover, you might want to reverse replication so that changes flow back to the primary:
 
 ```bash
-# Re-sync from the current destination back to the original source
-# This is called a "reverse resync"
-az netappfiles volume replication re-initialize \
-  --resource-group netapp-dr-rg \
-  --account-name drnetappaccount \
-  --pool-name dr-pool \
-  --volume-name app-data-vol-dr
+# Reverse-resync from the current destination back to the original source
+az netappfiles volume replication resume \
+  --resource-group netapp-rg \
+  --account-name mynetappaccount \
+  --pool-name premium-pool \
+  --volume-name app-data-vol
 ```
 
 ### Option B: Re-establish Original Direction
 
-If you want to fail back to the primary region, re-establish the original replication direction:
+After the reverse resync has completed and you are ready to fail back to the primary region, break the peering again and then resume replication in the original direction:
 
 ```bash
-# Resync replication in the original direction
-az netappfiles volume replication resync \
+# Resume replication in the original direction
+az netappfiles volume replication resume \
   --resource-group netapp-dr-rg \
   --account-name drnetappaccount \
   --pool-name dr-pool \
   --volume-name app-data-vol-dr
 ```
 
-This sends any changes from the destination back to the source, and then resumes the original replication schedule.
+This resumes source-to-destination replication on the original replication schedule.
 
 ## Monitoring Replication Health
 
 Set up monitoring to ensure replication stays healthy. Azure NetApp Files exposes replication metrics through Azure Monitor:
 
 - **Volume replication lag time**: How far behind the destination is from the source
-- **Volume replication transfer rate**: Data transfer speed between regions
+- **Volume replication last transfer duration and size**: How long the last replication transfer took and how much data it moved
 - **Volume replication progress**: Bytes transferred vs. total
 
 You can create alerts on these metrics:
@@ -254,11 +253,10 @@ The RTO is primarily the time it takes to break the replication and redirect cli
 
 ## Cost Implications
 
-Cross-region replication has three cost components:
+Cross-region replication has two main cost components:
 
-1. **Destination volume**: You pay for the provisioned capacity in the destination pool, same as a regular volume
-2. **Replication data transfer**: Cross-region data transfer charges apply for data replicated between regions
-3. **Destination capacity pool**: The capacity pool in the secondary region has its own cost based on size and service level
+1. **Destination storage capacity**: Regular Azure NetApp Files capacity charges apply to the destination data protection volume through the destination capacity pool
+2. **Replicated data**: Cross-region replication charges apply to the amount of data replicated between regions
 
 To optimize costs, you can use a lower service level for the destination pool during normal operation (since it is read-only and performance requirements are lower), and then change the service level if you need to fail over.
 
