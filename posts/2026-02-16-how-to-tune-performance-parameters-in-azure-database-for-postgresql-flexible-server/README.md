@@ -117,7 +117,7 @@ az postgres flexible-server parameter set \
 
 Memory used for maintenance operations like VACUUM, CREATE INDEX, and ALTER TABLE ADD FOREIGN KEY. These operations run infrequently but benefit significantly from more memory.
 
-**Default**: Usually 64 MB.
+**Default in Azure**: Calculated from the server memory when the server is provisioned.
 
 **Recommendation**: Set to 512 MB - 2 GB depending on your server RAM. Since maintenance operations typically run one at a time, this is safe to increase.
 
@@ -160,7 +160,7 @@ GROUP BY datname ORDER BY count DESC;
 
 Tells PostgreSQL how many concurrent disk I/O operations the storage system can handle. Higher values allow PostgreSQL to issue more parallel I/O requests.
 
-**Default**: 1 (conservative, designed for spinning disks).
+**Default in Azure**: Version-dependent; many supported versions default to 1, while newer versions can differ.
 
 **Recommendation**: For Azure's SSD-based storage, set to 200.
 
@@ -177,7 +177,7 @@ az postgres flexible-server parameter set \
 
 The planner's estimate of the cost of a random disk page fetch relative to a sequential fetch. Lower values make the planner prefer index scans.
 
-**Default**: 4.0 (assumes spinning disks where random I/O is 4x slower than sequential).
+**Default in Azure**: 2.0. PostgreSQL's upstream default is 4.0, which assumes random I/O is 4x slower than sequential I/O.
 
 **Recommendation**: For SSD storage, set to 1.1-1.5.
 
@@ -204,17 +204,17 @@ Controls how quickly checkpoints are spread over the checkpoint interval. A high
 
 Memory used for WAL (write-ahead log) buffers.
 
-**Default**: Auto-calculated as 1/32 of shared_buffers (usually sufficient).
+**Default in Azure**: Calculated from the vCore count when the server is provisioned, commonly 2048 pages (16 MB) for up to 4 vCores and 16384 pages (128 MB) for larger servers.
 
 **When to adjust**: If you have very high write throughput and see WAL-related waits.
 
 ```bash
-# Set to 64 MB for high-write workloads
+# Set to 128 MB if your current value is lower and the workload needs it
 az postgres flexible-server parameter set \
   --resource-group myResourceGroup \
   --server-name my-pg-server \
   --name wal_buffers \
-  --value 8192
+  --value 16384
 ```
 
 ## max_parallel_workers_per_gather
