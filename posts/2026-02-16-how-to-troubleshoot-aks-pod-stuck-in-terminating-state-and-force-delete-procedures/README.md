@@ -23,7 +23,7 @@ When you delete a pod, Kubernetes follows a specific sequence:
 5. The kubelet waits for the `terminationGracePeriodSeconds` (default 30 seconds)
 6. If the process is still running, the kubelet sends SIGKILL
 7. The kubelet reports back to the API server that the containers have stopped
-8. The API server removes the pod from etcd
+8. The API server removes the pod API object
 
 A pod gets stuck in Terminating when something in this sequence fails to complete.
 
@@ -49,14 +49,13 @@ Look for these specific things in the describe output:
 
 ## Step 2: Check for Finalizers
 
-Finalizers are the number one reason pods get stuck in Terminating. A finalizer is a string in the pod's metadata that tells Kubernetes "do not delete this resource until I have cleaned up." If the controller responsible for removing the finalizer is broken or missing, the pod hangs forever.
+Finalizers are a common reason pods get stuck in Terminating. A finalizer is a string in the pod's metadata that tells Kubernetes "do not delete this resource until I have cleaned up." If the controller responsible for removing the finalizer is broken or missing, the pod hangs forever.
 
 ```bash
 # Check for finalizers on the pod
 kubectl get pod my-pod -o jsonpath='{.metadata.finalizers}'
 
 # Common finalizers you might see:
-# - kubernetes.io/pv-protection (related to persistent volumes)
 # - foregroundDeletion (related to garbage collection)
 # - Custom finalizers from operators or controllers
 ```
@@ -64,7 +63,7 @@ kubectl get pod my-pod -o jsonpath='{.metadata.finalizers}'
 If you find a finalizer that should not be there or whose controller is broken, you can remove it manually.
 
 ```bash
-# Remove all finalizers from a stuck pod using a JSON patch
+# Remove all finalizers from a stuck pod using a merge patch
 kubectl patch pod my-pod -p '{"metadata":{"finalizers":null}}' --type=merge
 ```
 
@@ -119,7 +118,7 @@ journalctl -u kubelet | grep -i "detach\|unmount" | tail -20
 
 ## Step 5: Check for Processes That Will Not Die
 
-Sometimes the container process ignores SIGTERM and does not respond to SIGKILL either. This can happen with zombie processes or processes stuck in uninterruptible sleep (D state).
+Sometimes the container process ignores SIGTERM, or the runtime cannot complete cleanup even after SIGKILL. This can happen with zombie processes or processes stuck in uninterruptible sleep (D state).
 
 ```bash
 # If you can exec into the node, check for stuck processes
@@ -142,13 +141,13 @@ If you have diagnosed the issue and determined that the pod will not terminate o
 ```bash
 # Force delete a single pod
 # --grace-period=0 skips the graceful shutdown period
-# --force removes the pod from etcd immediately
+# --force removes the pod from the API immediately
 kubectl delete pod my-pod --grace-period=0 --force
 ```
 
 This does several things:
 
-- Immediately removes the pod from the API server (etcd)
+- Immediately removes the pod from the API server
 - Does NOT guarantee that containers are stopped on the node
 - The kubelet will eventually clean up orphaned containers when it recovers
 
@@ -161,14 +160,10 @@ If you have multiple stuck pods (common after a node failure), you can force del
 ```bash
 # Force delete all pods stuck in Terminating in a specific namespace
 kubectl get pods -n my-namespace \
-  --field-selector=status.phase=Running \
-  -o name | while read pod; do
-    # Check if the pod has a deletion timestamp (means it is terminating)
-    DT=$(kubectl get $pod -n my-namespace -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null)
-    if [ -n "$DT" ]; then
-      echo "Force deleting $pod"
-      kubectl delete $pod -n my-namespace --grace-period=0 --force
-    fi
+  -o json | jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name' | \
+  while read pod; do
+    echo "Force deleting $pod"
+    kubectl delete pod "$pod" -n my-namespace --grace-period=0 --force
   done
 ```
 
@@ -176,9 +171,10 @@ A simpler approach if you know all Terminating pods need to be cleaned up:
 
 ```bash
 # Find and force delete all Terminating pods across all namespaces
-kubectl get pods --all-namespaces | grep Terminating | \
-  awk '{print $1, $2}' | while read ns pod; do
-    kubectl delete pod $pod -n $ns --grace-period=0 --force
+kubectl get pods --all-namespaces -o json | \
+  jq -r '.items[] | select(.metadata.deletionTimestamp != null) | [.metadata.namespace, .metadata.name] | @tsv' | \
+  while read ns pod; do
+    kubectl delete pod "$pod" -n "$ns" --grace-period=0 --force
   done
 ```
 
@@ -205,7 +201,7 @@ spec:
     lifecycle:
       preStop:
         exec:
-          # Run cleanup before SIGTERM is sent
+          # Run cleanup before SIGTERM is sent; this time counts against terminationGracePeriodSeconds
           command: ["/bin/sh", "-c", "cleanup.sh"]
 ```
 
