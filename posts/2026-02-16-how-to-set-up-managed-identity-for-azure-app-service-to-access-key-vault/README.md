@@ -8,7 +8,7 @@ Description: How to use Azure Managed Identity to securely connect your App Serv
 
 ---
 
-Storing secrets like database connection strings, API keys, and certificates in your application configuration is risky. If someone gets access to your code repository or app settings, they get your secrets. Azure Managed Identity solves this by giving your App Service an identity in Azure Active Directory, which it can use to authenticate to other Azure services like Key Vault - without any credentials stored anywhere.
+Storing secrets like database connection strings, API keys, and certificates in your application configuration is risky. If someone gets access to your code repository or app settings, they get your secrets. Azure Managed Identity solves this by giving your App Service an identity in Microsoft Entra ID, which it can use to authenticate to other Azure services like Key Vault - without any credentials stored anywhere.
 
 This post walks through setting up Managed Identity on an App Service and configuring it to read secrets from Azure Key Vault.
 
@@ -53,9 +53,10 @@ az identity create \
     --name my-app-identity \
     --resource-group my-resource-group
 
-# Get the identity's resource ID and client ID
+# Get the identity's resource ID, client ID, and principal ID
 IDENTITY_ID=$(az identity show --name my-app-identity --resource-group my-resource-group --query id -o tsv)
 CLIENT_ID=$(az identity show --name my-app-identity --resource-group my-resource-group --query clientId -o tsv)
+IDENTITY_PRINCIPAL_ID=$(az identity show --name my-app-identity --resource-group my-resource-group --query principalId -o tsv)
 
 # Assign it to the App Service
 az webapp identity assign \
@@ -73,7 +74,21 @@ If you do not have a Key Vault yet:
 az keyvault create \
     --name my-app-vault \
     --resource-group my-resource-group \
-    --location eastus
+    --location eastus \
+    --enable-rbac-authorization true
+
+# If you are creating secrets with your signed-in user, grant yourself permission first
+VAULT_ID=$(az keyvault show \
+    --name my-app-vault \
+    --resource-group my-resource-group \
+    --query id -o tsv)
+
+CURRENT_USER_OBJECT_ID=$(az ad signed-in-user show --query id -o tsv)
+
+az role assignment create \
+    --assignee $CURRENT_USER_OBJECT_ID \
+    --role "Key Vault Secrets Officer" \
+    --scope $VAULT_ID
 
 # Add some secrets
 az keyvault secret set \
@@ -101,15 +116,19 @@ The managed identity needs permission to read secrets from the Key Vault. There 
 Azure RBAC is the newer and recommended approach:
 
 ```bash
-# Get the principal ID of the managed identity
+# Get the principal ID of a system-assigned managed identity
 PRINCIPAL_ID=$(az webapp identity show \
     --name my-app-service \
     --resource-group my-resource-group \
     --query principalId -o tsv)
 
+# If you are using a user-assigned identity instead, use its principal ID:
+# PRINCIPAL_ID=$IDENTITY_PRINCIPAL_ID
+
 # Get the Key Vault resource ID
 VAULT_ID=$(az keyvault show \
     --name my-app-vault \
+    --resource-group my-resource-group \
     --query id -o tsv)
 
 # Grant the "Key Vault Secrets User" role
@@ -144,14 +163,21 @@ az keyvault set-policy \
 The simplest way to use Key Vault secrets in your App Service is through Key Vault references. This lets you reference secrets directly in your app settings without changing any application code.
 
 ```bash
+# If you are using a user-assigned identity for Key Vault references, tell App Service which identity to use.
+# Skip this for a system-assigned identity.
+az webapp update \
+    --name my-app-service \
+    --resource-group my-resource-group \
+    --set keyVaultReferenceIdentity=$IDENTITY_ID
+
 # Set an app setting that references a Key Vault secret
 az webapp config appsettings set \
     --name my-app-service \
     --resource-group my-resource-group \
     --settings \
-        "DatabaseConnectionString=@Microsoft.KeyVault(SecretUri=https://my-app-vault.vault.azure.net/secrets/DatabaseConnectionString/)" \
-        "ApiKey=@Microsoft.KeyVault(SecretUri=https://my-app-vault.vault.azure.net/secrets/ApiKey/)" \
-        "StorageAccountKey=@Microsoft.KeyVault(SecretUri=https://my-app-vault.vault.azure.net/secrets/StorageAccountKey/)"
+        "DatabaseConnectionString=@Microsoft.KeyVault(SecretUri=https://my-app-vault.vault.azure.net/secrets/DatabaseConnectionString)" \
+        "ApiKey=@Microsoft.KeyVault(SecretUri=https://my-app-vault.vault.azure.net/secrets/ApiKey)" \
+        "StorageAccountKey=@Microsoft.KeyVault(SecretUri=https://my-app-vault.vault.azure.net/secrets/StorageAccountKey)"
 ```
 
 The syntax is `@Microsoft.KeyVault(SecretUri=<secret-uri>)`. When your app reads these settings, Azure automatically fetches the current value from Key Vault.
@@ -210,8 +236,11 @@ async function getSecret(secretName) {
     return secret.value;
 }
 
-// Usage
-const dbConnection = await getSecret("DatabaseConnectionString");
+async function main() {
+    const dbConnection = await getSecret("DatabaseConnectionString");
+}
+
+main().catch(console.error);
 ```
 
 ### Python
@@ -237,6 +266,8 @@ The `DefaultAzureCredential` class is the key here. It automatically detects the
 
 - On Azure App Service: Uses the managed identity
 - In local development: Uses Azure CLI credentials, Visual Studio credentials, or environment variables
+
+If you are using a user-assigned managed identity with `DefaultAzureCredential`, set the `AZURE_CLIENT_ID` app setting to the identity's client ID, or pass the client ID in the credential options for your language.
 
 ## Verifying the Setup
 
