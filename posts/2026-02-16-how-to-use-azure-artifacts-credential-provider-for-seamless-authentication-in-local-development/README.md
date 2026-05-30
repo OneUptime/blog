@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Artifacts, Credential Provider, NuGet, Npm, Authentication, Local Development, DevOps
 
-Description: Learn how to install and configure the Azure Artifacts Credential Provider for seamless package authentication in NuGet, npm, pip, and other package managers.
+Description: Learn how to install and configure the Azure Artifacts Credential Provider for seamless NuGet authentication, with notes for npm and pip Azure Artifacts feeds.
 
 ---
 
 Every developer who has set up a new machine to work with Azure Artifacts feeds has experienced the authentication dance. You try to restore NuGet packages, get a 401 error, search for how to configure credentials, generate a PAT, paste it into a config file, and hope it works. A few months later, the PAT expires and you do the whole thing again. The Azure Artifacts Credential Provider eliminates this friction by handling authentication automatically using your Azure AD identity.
 
-The credential provider is a plugin for package managers (NuGet, dotnet, npm, pip, and others) that intercepts authentication challenges from Azure Artifacts feeds and handles them transparently. On first use, it opens a browser window for you to sign in. After that, it caches your credentials and refreshes them automatically. No more PATs in config files.
+The credential provider is a plugin for NuGet-based tools (`dotnet`, NuGet.exe, and MSBuild) that intercepts authentication challenges from Azure Artifacts feeds and handles them transparently. Other package managers, such as npm and pip, use their own Azure Artifacts authentication helpers. On first use with `dotnet`, run the restore command with `--interactive` so it can open a browser window or show a device-code prompt for you to sign in. After that, it caches your credentials and refreshes them automatically. No more PATs in config files for NuGet restores.
 
 ## How the Credential Provider Works
 
-When your package manager tries to access an Azure Artifacts feed, the feed returns a 401 challenge. The credential provider intercepts this challenge, authenticates you against Azure AD, obtains an access token, and passes it back to the package manager. The token is cached locally and refreshed before it expires.
+When your NuGet client tries to access an Azure Artifacts feed, the feed returns a 401 challenge. The credential provider intercepts this challenge, authenticates you against Azure AD, obtains an access token, and passes it back to the client. The token is cached locally and refreshed before it expires.
 
 ```mermaid
 graph LR
@@ -29,7 +29,7 @@ graph LR
     C -->|200 OK + Packages| B
 ```
 
-The credential provider supports multiple authentication modes:
+For NuGet-based workflows, the credential provider supports multiple authentication modes:
 
 - Interactive browser login (default for developer machines)
 - Device code flow (for headless environments)
@@ -85,11 +85,11 @@ With the credential provider installed, configure your NuGet source to point at 
 </configuration>
 ```
 
-Now when you run `dotnet restore`, the credential provider handles authentication automatically. On the first run, it opens a browser for you to sign in.
+Now when you run `dotnet restore --interactive`, the credential provider handles authentication. On the first run, it opens a browser or shows a device-code prompt for you to sign in.
 
 ```bash
 # First restore will prompt for authentication
-dotnet restore
+dotnet restore --interactive
 
 # Subsequent restores use cached credentials
 dotnet restore  # No prompt, just works
@@ -97,14 +97,14 @@ dotnet restore  # No prompt, just works
 
 ## Configuring npm for Azure Artifacts
 
-For npm packages, the credential provider works through a helper tool. First, install `vsts-npm-auth` or use the credential provider directly with the npm registry configuration.
+For npm packages, Azure Artifacts uses npm's `.npmrc` configuration and npm-specific authentication. On Windows, install `vsts-npm-auth`. On macOS and Linux, configure a user-level `.npmrc` with a PAT as shown in the Azure Artifacts "Connect to feed" instructions.
 
 ```bash
 # Option 1: Use vsts-npm-auth (Windows)
 npm install -g vsts-npm-auth
 vsts-npm-auth -config .npmrc
 
-# Option 2: Configure .npmrc manually with credential provider
+# Option 2: Configure the project-level .npmrc
 # Create project-level .npmrc
 cat > .npmrc << 'EOF'
 registry=https://pkgs.dev.azure.com/your-org/your-project/_packaging/your-feed/npm/registry/
@@ -112,18 +112,7 @@ always-auth=true
 EOF
 ```
 
-For a cross-platform approach that works with the credential provider, use the `ado-npm-auth` tool.
-
-```bash
-# Install ado-npm-auth globally
-npm install -g ado-npm-auth
-
-# Configure authentication for the current project
-ado-npm-auth
-
-# This reads your .npmrc, detects Azure Artifacts registries,
-# and configures authentication tokens automatically
-```
+For a cross-platform setup, keep the registry URL in the project-level `.npmrc` and store the generated authentication lines in your user-level `.npmrc` so credentials are not committed to the repository.
 
 ## Configuring pip for Azure Artifacts
 
@@ -131,7 +120,7 @@ Python developers can use the credential provider with pip through the `artifact
 
 ```bash
 # Install the Azure Artifacts keyring backend
-pip install artifacts-keyring
+pip install keyring artifacts-keyring
 
 # Now pip install from Azure Artifacts feeds just works
 pip install --index-url https://pkgs.dev.azure.com/your-org/your-project/_packaging/your-feed/pypi/simple/ my-package
@@ -144,17 +133,17 @@ index-url = https://pkgs.dev.azure.com/your-org/your-project/_packaging/your-fee
 EOF
 ```
 
-When you run `pip install`, the `artifacts-keyring` backend intercepts the authentication challenge and uses the same Azure AD flow as the NuGet credential provider.
+When you run `pip install`, the `artifacts-keyring` backend supplies credentials through Python's keyring integration. On first use, Azure Artifacts may prompt for credentials; use any non-empty username and a PAT with the required Packaging scope as the password.
 
 ## Non-Interactive Authentication
 
-For environments without a browser (Docker containers, SSH sessions, CI runners), use the device code flow or service principal authentication.
+For environments without a browser (Docker containers, SSH sessions, CI runners), supply an access token explicitly or use service principal authentication.
 
 ```bash
-# Use device code flow for headless authentication
+# Provide credentials for an unattended restore
 # Set the environment variable before running your package manager
-export NUGET_CREDENTIALPROVIDER_SESSIONTOKENCACHE_ENABLED=true
-export VSS_NUGET_EXTERNAL_FEED_ENDPOINTS='{
+export ARTIFACTS_CREDENTIALPROVIDER_SESSIONTOKENCACHE_ENABLED=true
+export ARTIFACTS_CREDENTIALPROVIDER_EXTERNAL_FEED_ENDPOINTS='{
   "endpointCredentials": [{
     "endpoint": "https://pkgs.dev.azure.com/your-org/_packaging/your-feed/nuget/v3/index.json",
     "username": "optional",
@@ -166,15 +155,19 @@ export VSS_NUGET_EXTERNAL_FEED_ENDPOINTS='{
 dotnet restore
 ```
 
-For service principal authentication in automated environments, set the following environment variables.
+For service principal authentication in automated environments, set the following environment variable.
 
 ```bash
 # Service principal authentication for CI/CD environments
-export AZURE_TENANT_ID="your-tenant-id"
-export AZURE_CLIENT_ID="your-client-id"
-export AZURE_CLIENT_SECRET="your-client-secret"
+export ARTIFACTS_CREDENTIALPROVIDER_FEED_ENDPOINTS='{
+  "endpointCredentials": [{
+    "endpoint": "https://pkgs.dev.azure.com/your-org/_packaging/your-feed/nuget/v3/index.json",
+    "clientId": "your-service-principal-client-id",
+    "clientCertificateFilePath": "/path/to/service-principal-certificate.pem"
+  }]
+}'
 
-# The credential provider will detect these and authenticate automatically
+# The credential provider will use the service principal for this feed
 dotnet restore
 ```
 
@@ -195,7 +188,7 @@ COPY *.csproj ./
 
 # Restore using the feed credentials passed as build arguments
 ARG FEED_ACCESSTOKEN
-ENV VSS_NUGET_EXTERNAL_FEED_ENDPOINTS="{\"endpointCredentials\": [{\"endpoint\":\"https://pkgs.dev.azure.com/your-org/_packaging/your-feed/nuget/v3/index.json\", \"password\":\"${FEED_ACCESSTOKEN}\"}]}"
+ENV ARTIFACTS_CREDENTIALPROVIDER_EXTERNAL_FEED_ENDPOINTS="{\"endpointCredentials\": [{\"endpoint\":\"https://pkgs.dev.azure.com/your-org/_packaging/your-feed/nuget/v3/index.json\", \"username\":\"docker\", \"password\":\"${FEED_ACCESSTOKEN}\"}]}"
 
 RUN dotnet restore
 
@@ -212,8 +205,8 @@ ENTRYPOINT ["dotnet", "MyApp.dll"]
 Build the image with the token.
 
 ```bash
-# Build with the feed access token (use a PAT or service connection token)
-docker build --build-arg FEED_ACCESSTOKEN=$(az account get-access-token --query accessToken -o tsv) -t myapp .
+# Build with the feed access token (use a PAT or, in Azure Pipelines, the NuGetAuthenticate task token)
+docker build --build-arg FEED_ACCESSTOKEN="$FEED_ACCESSTOKEN" -t myapp .
 ```
 
 ## Troubleshooting Common Issues
@@ -243,7 +236,7 @@ Remove-Item -Recurse -Force "$env:LOCALAPPDATA\MicrosoftCredentialProvider"
 dotnet restore
 ```
 
-For npm authentication issues, check that your `.npmrc` does not have stale PAT-based credentials that conflict with the credential provider.
+For npm authentication issues, check that your user-level `.npmrc` does not have stale PAT-based credentials that conflict with the registry entries in your project-level `.npmrc`.
 
 ## Managing Multiple Feeds
 
