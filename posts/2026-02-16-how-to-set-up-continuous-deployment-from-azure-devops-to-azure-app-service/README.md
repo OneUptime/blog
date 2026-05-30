@@ -28,11 +28,11 @@ The service connection allows Azure DevOps to deploy to your Azure subscription.
 1. In Azure DevOps, go to Project Settings > Service connections
 2. Click "New service connection"
 3. Select "Azure Resource Manager"
-4. Choose "Service principal (automatic)"
+4. Choose "App registration (automatic) with workload identity federation"
 5. Select your subscription and resource group
 6. Give it a name like "AzureSubscription" and save
 
-This creates a service principal in Azure AD with contributor access to your resource group.
+This creates an app registration and service principal in Microsoft Entra ID, configures workload identity federation for the service connection, and grants access to the selected scope.
 
 ## Creating a Build Pipeline (CI)
 
@@ -245,10 +245,10 @@ If you want a quicker setup without writing YAML, Azure App Service has a built-
 2. Click "Deployment Center" in the left menu
 3. Select "Azure DevOps" as the source
 4. Select your organization, project, repository, and branch
-5. Choose the build provider (Azure Pipelines)
+5. Choose the build provider
 6. Review and finish
 
-This generates a pipeline YAML file and commits it to your repository. It is a decent starting point, though you will likely want to customize it.
+If you choose App Service Build Service, Deployment Center configures continuous deployment for the selected branch. If you choose Azure Pipelines as the build provider, Deployment Center sends you to Azure DevOps to configure the pipeline there. It is a decent starting point, though you will likely want to customize it.
 
 ## Environment Variables and App Settings
 
