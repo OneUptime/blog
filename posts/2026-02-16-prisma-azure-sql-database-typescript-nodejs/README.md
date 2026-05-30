@@ -12,7 +12,7 @@ Prisma is known for its PostgreSQL and MySQL support, but it works with Microsof
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 20.19 or later
 - Azure CLI installed and authenticated
 - An Azure account
 - Basic TypeScript and SQL Server knowledge
@@ -24,28 +24,32 @@ Prisma is known for its PostgreSQL and MySQL support, but it works with Microsof
 
 az group create --name prisma-sql-rg --location eastus
 
-# Create a SQL Server
+# Create a SQL Server. The server name must be globally unique.
+SQL_SERVER_NAME=prisma-sql-server-$RANDOM
+
 az sql server create \
-  --name prisma-sql-server \
+  --name "$SQL_SERVER_NAME" \
   --resource-group prisma-sql-rg \
   --location eastus \
   --admin-user sqladmin \
-  --admin-password SecureP@ss123!
+  --admin-password 'SecureP@ss123!'
 
 # Create a database
 az sql db create \
   --name PrismaApp \
   --resource-group prisma-sql-rg \
-  --server prisma-sql-server \
+  --server "$SQL_SERVER_NAME" \
   --edition Basic
 
 # Allow your IP through the firewall
+MY_IP=$(curl -s https://api.ipify.org)
+
 az sql server firewall-rule create \
   --resource-group prisma-sql-rg \
-  --server prisma-sql-server \
+  --server "$SQL_SERVER_NAME" \
   --name dev-access \
-  --start-ip-address 0.0.0.0 \
-  --end-ip-address 255.255.255.255
+  --start-ip-address "$MY_IP" \
+  --end-ip-address "$MY_IP"
 ```
 
 ## Project Setup
@@ -57,25 +61,26 @@ npm init -y
 
 # Install dependencies
 npm install prisma --save-dev
-npm install @prisma/client
+npm install @prisma/client @prisma/adapter-mssql
 npm install express dotenv
-npm install --save-dev typescript @types/express @types/node ts-node
+npm install --save-dev typescript @types/express @types/node @types/mssql ts-node
 
-# Initialize TypeScript
-npx tsc --init
+# Initialize TypeScript for Prisma's ESM client
+npm pkg set type=module
+npx tsc --init --module ESNext --moduleResolution bundler --target ES2023 --strict --esModuleInterop
 
 # Initialize Prisma with SQL Server
-npx prisma init --datasource-provider sqlserver
+npx prisma init --datasource-provider sqlserver --output ../generated/prisma
 ```
 
 Configure the `.env` file with your Azure SQL connection string:
 
 ```env
 # Azure SQL Database connection string for Prisma
-DATABASE_URL="sqlserver://prisma-sql-server.database.windows.net:1433;database=PrismaApp;user=sqladmin;password=SecureP@ss123!;encrypt=true;trustServerCertificate=false"
+DATABASE_URL="sqlserver://<your-server-name>.database.windows.net:1433;database=PrismaApp;user=sqladmin;password=SecureP@ss123!;encrypt=true;trustServerCertificate=false"
 ```
 
-Note the Prisma SQL Server connection string format. It uses semicolons to separate parameters, which is different from the PostgreSQL format.
+Note the Prisma SQL Server connection string format. It uses semicolons to separate parameters, which is different from the PostgreSQL format. Prisma also creates a `prisma.config.ts` file that reads this connection string for CLI commands such as migrations.
 
 ## Defining the Prisma Schema
 
@@ -84,12 +89,12 @@ Open `prisma/schema.prisma` and define your models. SQL Server has some specific
 ```prisma
 // prisma/schema.prisma - Schema for Azure SQL Database
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "sqlserver"
-  url      = env("DATABASE_URL")
 }
 
 // Employee directory model
@@ -173,7 +178,8 @@ Create an Express application that uses the Prisma client:
 ```typescript
 // src/index.ts - Express API with Prisma and Azure SQL
 import express from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaMssql } from '@prisma/adapter-mssql';
+import { PrismaClient, Prisma } from '../generated/prisma/client';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -181,8 +187,10 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// Initialize Prisma with logging in development
+// Initialize Prisma with the SQL Server driver adapter and logging in development
+const adapter = new PrismaMssql(process.env.DATABASE_URL!);
 const prisma = new PrismaClient({
+  adapter,
   log: process.env.NODE_ENV === 'development' ? ['query'] : ['error'],
 });
 
@@ -410,7 +418,7 @@ Prisma supports some SQL Server-specific features through raw queries:
 // Using raw SQL for SQL Server specific features
 // Full-text search (requires a full-text index on the table)
 const searchResults = await prisma.$queryRaw`
-  SELECT * FROM employees
+  SELECT * FROM [Employee]
   WHERE CONTAINS((firstName, lastName), ${searchTerm})
 `;
 
@@ -418,11 +426,11 @@ const searchResults = await prisma.$queryRaw`
 const hierarchy = await prisma.$queryRaw`
   WITH DeptHierarchy AS (
     SELECT id, name, managerId, 0 AS level
-    FROM departments
+    FROM [Department]
     WHERE managerId IS NULL
     UNION ALL
     SELECT d.id, d.name, d.managerId, h.level + 1
-    FROM departments d
+    FROM [Department] d
     INNER JOIN DeptHierarchy h ON d.managerId = h.id
   )
   SELECT * FROM DeptHierarchy ORDER BY level, name
@@ -431,11 +439,25 @@ const hierarchy = await prisma.$queryRaw`
 
 ## Connection Configuration
 
-Azure SQL Database has connection limits based on the tier. Configure Prisma's connection pool accordingly:
+Azure SQL Database has connection limits based on the tier. With the SQL Server driver adapter, configure the `mssql` connection pool when you create the adapter:
 
-```env
-# Limit connections for the Basic tier (max 30)
-DATABASE_URL="sqlserver://server.database.windows.net:1433;database=PrismaApp;user=sqladmin;password=SecureP@ss123!;encrypt=true;connection_limit=10;pool_timeout=20"
+```typescript
+const adapter = new PrismaMssql({
+  server: '<your-server-name>.database.windows.net',
+  port: 1433,
+  database: 'PrismaApp',
+  user: 'sqladmin',
+  password: process.env.DB_PASSWORD,
+  pool: {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000,
+  },
+  options: {
+    encrypt: true,
+    trustServerCertificate: false,
+  },
+});
 ```
 
 ## Wrapping Up
