@@ -8,7 +8,7 @@ Description: Set up MLflow experiment tracking in Azure Machine Learning to log 
 
 ---
 
-When you are experimenting with different models, hyperparameters, and feature sets, keeping track of what you tried and what worked is critical. Without proper experiment tracking, you end up with a mess of notebooks, scattered log files, and the dreaded "which model was it that got 94% accuracy last Tuesday?" question. MLflow is the standard open-source tool for experiment tracking, and Azure Machine Learning has first-class integration with it. Every Azure ML workspace comes with a built-in MLflow tracking server, so you do not need to set up any additional infrastructure.
+When you are experimenting with different models, hyperparameters, and feature sets, keeping track of what you tried and what worked is critical. Without proper experiment tracking, you end up with a mess of notebooks, scattered log files, and the dreaded "which model was it that got 94% accuracy last Tuesday?" question. MLflow is the standard open-source tool for experiment tracking, and Azure Machine Learning has first-class integration with it. Every Azure ML workspace is MLflow-compatible and exposes an MLflow tracking URI, so you do not need to set up any additional infrastructure.
 
 In this post, I will show you how to use MLflow with Azure ML to track experiments, log metrics, compare runs, and manage model artifacts.
 
@@ -16,7 +16,7 @@ In this post, I will show you how to use MLflow with Azure ML to track experimen
 
 Azure ML's MLflow integration gives you several advantages over running your own MLflow server:
 
-- **Zero setup**: The tracking server is built into every workspace. No need to provision servers or databases.
+- **Zero setup**: The workspace acts as your MLflow tracking target. No need to provision servers or databases.
 - **Automatic authentication**: Azure ML handles authentication through your Azure credentials.
 - **Integrated UI**: MLflow runs appear in the Azure ML Studio experiments view alongside native Azure ML runs.
 - **Artifact storage**: Model artifacts and files are stored in the workspace's blob storage, which is managed and backed up.
@@ -25,6 +25,12 @@ Azure ML's MLflow integration gives you several advantages over running your own
 ## Step 1: Configure MLflow to Use Azure ML
 
 There are two ways to connect MLflow to your Azure ML workspace.
+
+Make sure your environment has the Azure ML MLflow plugin installed. Azure Machine Learning currently supports MLflow 2.16.x or earlier for model logging.
+
+```bash
+pip install "mlflow<=2.16.2" azureml-mlflow
+```
 
 ### Option A: Inside an Azure ML Compute Instance or Job
 
@@ -123,7 +129,7 @@ with mlflow.start_run(run_name="random-forest-baseline"):
     print(f"Accuracy: {accuracy:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
 
     # Log the model itself
-    mlflow.sklearn.log_model(model, "model")
+    mlflow.sklearn.log_model(model, artifact_path="model")
 
     print(f"Run ID: {mlflow.active_run().info.run_id}")
 ```
