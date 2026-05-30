@@ -12,19 +12,20 @@ Azure Event Grid is a fully managed event routing service that delivers events f
 
 ## What Events Does Storage Emit?
 
-Azure Storage publishes the following event types through Event Grid:
+Azure Storage publishes the following event types through Event Grid. Event Grid integration is supported for StorageV2 (general purpose v2), BlockBlobStorage, and BlobStorage accounts; general purpose v1 storage accounts don't support Event Grid integration.
 
 | Event Type | Description |
 |-----------|-------------|
 | Microsoft.Storage.BlobCreated | A blob was created or replaced |
 | Microsoft.Storage.BlobDeleted | A blob was deleted |
-| Microsoft.Storage.BlobRenamed | A blob was renamed (ADLS Gen2 only) |
-| Microsoft.Storage.DirectoryCreated | A directory was created (ADLS Gen2 only) |
-| Microsoft.Storage.DirectoryDeleted | A directory was deleted (ADLS Gen2 only) |
-| Microsoft.Storage.DirectoryRenamed | A directory was renamed (ADLS Gen2 only) |
+| Microsoft.Storage.BlobRenamed | A blob was renamed (hierarchical namespace accounts via ADLS Gen2 or SFTP APIs) |
+| Microsoft.Storage.DirectoryCreated | A directory was created (hierarchical namespace accounts via ADLS Gen2 or SFTP APIs) |
+| Microsoft.Storage.DirectoryDeleted | A directory was deleted (hierarchical namespace accounts via ADLS Gen2 or SFTP APIs) |
+| Microsoft.Storage.DirectoryRenamed | A directory was renamed (hierarchical namespace accounts via ADLS Gen2 or SFTP APIs) |
 | Microsoft.Storage.BlobTierChanged | A blob's access tier was changed |
 | Microsoft.Storage.AsyncOperationInitiated | Archive-to-hot/cool rehydration started |
 | Microsoft.Storage.BlobInventoryPolicyCompleted | An inventory run completed |
+| Microsoft.Storage.LifecyclePolicyCompleted | A lifecycle management policy action completed |
 
 The most commonly used events are BlobCreated and BlobDeleted.
 
@@ -44,7 +45,7 @@ az eventgrid event-subscription create \
   --included-event-types "Microsoft.Storage.BlobCreated" "Microsoft.Storage.BlobDeleted"
 ```
 
-When Event Grid creates a webhook subscription, it sends a validation event to your endpoint. Your endpoint must respond with the validation code to confirm it can receive events. Most frameworks handle this automatically.
+When Event Grid creates a webhook subscription, it sends a validation event to your endpoint. Your endpoint must respond with the validation code to confirm it can receive events. Azure Functions Event Grid triggers, Logic Apps with the Event Grid connector, and Azure Automation webhooks handle this automatically; custom HTTP endpoints need to implement the handshake.
 
 ### Azure Function Subscriber
 
@@ -74,7 +75,7 @@ az eventgrid event-subscription create \
 
 ### Service Bus Subscriber
 
-For ordered processing or complex routing, use Azure Service Bus:
+For complex routing, or FIFO processing when paired with Service Bus sessions, use Azure Service Bus:
 
 ```bash
 # Route events to a Service Bus topic
@@ -163,7 +164,7 @@ Here is what a BlobCreated event looks like:
 }
 ```
 
-The `data.api` field tells you which API operation created the blob (PutBlob, PutBlockList, CopyBlob, etc.). The `data.sequencer` field provides ordering for events on the same blob.
+The `data.api` field tells you which API operation created the blob (PutBlob, PutBlockList, CopyBlob, etc.). The `data.sequencer` field is an opaque string you can compare to understand the relative sequence of events on the same blob; Event Grid delivery itself doesn't guarantee ordering.
 
 ## Handling Events in Application Code
 
@@ -211,6 +212,7 @@ def handle_storage_event():
 
 ```csharp
 using Azure.Messaging.EventGrid;
+using Azure.Messaging.EventGrid.SystemEvents;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
@@ -223,18 +225,17 @@ public class StorageEventsController : ControllerBase
         foreach (var eventGridEvent in events)
         {
             // Handle validation
-            if (eventGridEvent.EventType == "Microsoft.EventGrid.SubscriptionValidationEvent")
+            if (eventGridEvent.TryGetSystemEventData(out object eventData) &&
+                eventData is SubscriptionValidationEventData validationData)
             {
-                var validationData = eventGridEvent.Data.ToObjectFromJson<dynamic>();
-                return Ok(new { validationResponse = validationData.validationCode });
+                return Ok(new { validationResponse = validationData.ValidationCode });
             }
 
             // Handle blob created
-            if (eventGridEvent.EventType == "Microsoft.Storage.BlobCreated")
+            if (eventData is StorageBlobCreatedEventData blobData)
             {
-                var blobData = eventGridEvent.Data.ToObjectFromJson<dynamic>();
-                string blobUrl = blobData.url;
-                long contentLength = blobData.contentLength;
+                string blobUrl = blobData.Url;
+                long? contentLength = blobData.ContentLength;
 
                 Console.WriteLine($"New blob: {blobUrl}, Size: {contentLength}");
                 // Process the blob
@@ -279,8 +280,8 @@ az eventgrid event-subscription show \
 Azure Monitor also provides Event Grid metrics:
 
 - **Matched Events**: Events that matched the subscription filter
-- **Delivery Successful**: Events delivered to the endpoint
-- **Delivery Failed**: Events that failed delivery after all retries
+- **Delivered Events**: Events delivered to the endpoint
+- **Delivery Failed Events**: Events that failed delivery
 - **Dead Lettered Events**: Events sent to the dead-letter destination
 
 Event Grid is the backbone of event-driven architectures in Azure. Setting up storage event notifications takes just a few commands, and the filtering capabilities let you be precise about which events your application cares about. Combined with Azure Functions, Service Bus, or custom webhooks, it enables powerful automation workflows that react to storage changes in near real-time.
