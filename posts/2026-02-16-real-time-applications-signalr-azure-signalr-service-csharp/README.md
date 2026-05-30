@@ -8,7 +8,7 @@ Description: Build real-time web applications using SignalR in ASP.NET Core with
 
 ---
 
-Real-time features like live notifications, chat, dashboards, and collaborative editing need persistent connections between the server and clients. SignalR is the .NET library that handles this. It abstracts WebSockets (and falls back to other transports when needed) and gives you a simple hub-based programming model. Azure SignalR Service takes it further by offloading connection management to a managed service, so your server handles business logic while Azure handles the thousands of concurrent WebSocket connections.
+Real-time features like live notifications, chat, dashboards, and collaborative editing need persistent connections between the server and clients. SignalR is the .NET library that handles this. It abstracts WebSockets (and falls back to other transports when needed) and gives you a simple hub-based programming model. Azure SignalR Service takes it further by offloading client connection management to a managed service, so your server handles business logic while Azure handles the thousands of concurrent WebSocket connections.
 
 In this post, I will build a real-time application with SignalR and Azure SignalR Service.
 
@@ -30,7 +30,7 @@ graph TD
 
 ## Why Azure SignalR Service?
 
-Self-hosted SignalR works fine for a single server. But when you scale to multiple app servers, you need a backplane to coordinate messages across instances. Azure SignalR Service is that backplane, plus it handles the WebSocket connections directly. Your servers stay lightweight because they do not hold any persistent connections.
+Self-hosted SignalR works fine for a single server. But when you scale to multiple app servers, you need a backplane to coordinate messages across instances. Azure SignalR Service is that backplane, plus it handles the client WebSocket connections directly. Your servers stay lightweight because they do not hold the persistent client connections.
 
 ```mermaid
 graph LR
@@ -44,11 +44,14 @@ graph LR
 ## Setting Up Azure SignalR Service
 
 ```bash
+# Create the resource group
+az group create --name signalr-rg --location eastus
+
 # Create the SignalR Service
 
 az signalr create \
     --name my-signalr-service \
-    --resource-group my-rg \
+    --resource-group signalr-rg \
     --location eastus \
     --sku Free_F1 \
     --service-mode Default
@@ -56,7 +59,7 @@ az signalr create \
 # Get the connection string
 az signalr key list \
     --name my-signalr-service \
-    --resource-group my-rg \
+    --resource-group signalr-rg \
     --query primaryConnectionString -o tsv
 ```
 
@@ -76,6 +79,7 @@ The hub is where you define the server-side methods that clients can call, and f
 
 ```csharp
 // Hubs/ChatHub.cs
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
 
 /// <summary>
@@ -86,8 +90,8 @@ public class ChatHub : Hub
 {
     private readonly ILogger<ChatHub> _logger;
 
-    // Track connected users (use Redis in production for multi-server)
-    private static readonly Dictionary<string, string> _connectedUsers = new();
+    // Track connected users (use shared storage in production for multi-server)
+    private static readonly ConcurrentDictionary<string, string> _connectedUsers = new();
 
     public ChatHub(ILogger<ChatHub> logger)
     {
@@ -108,10 +112,8 @@ public class ChatHub : Hub
     /// </summary>
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        if (_connectedUsers.TryGetValue(Context.ConnectionId, out var username))
+        if (_connectedUsers.TryRemove(Context.ConnectionId, out var username))
         {
-            _connectedUsers.Remove(Context.ConnectionId);
-
             // Notify all clients that the user left
             await Clients.All.SendAsync("UserLeft", username);
             _logger.LogInformation("{User} disconnected", username);
@@ -465,25 +467,23 @@ az appservice plan create \
 az webapp create \
     --name my-signalr-app \
     --resource-group signalr-rg \
-    --plan signalr-plan \
-    --runtime "DOTNET|8.0"
+    --plan signalr-plan
+
+az webapp config set \
+    --name my-signalr-app \
+    --resource-group signalr-rg \
+    --linux-fx-version "DOTNETCORE|8.0"
 
 # Set the SignalR Service connection string
 SIGNALR_CONN=$(az signalr key list \
     --name my-signalr-service \
-    --resource-group my-rg \
+    --resource-group signalr-rg \
     --query primaryConnectionString -o tsv)
 
 az webapp config appsettings set \
     --name my-signalr-app \
     --resource-group signalr-rg \
     --settings "Azure__SignalR__ConnectionString=$SIGNALR_CONN"
-
-# Enable WebSockets on App Service
-az webapp config set \
-    --name my-signalr-app \
-    --resource-group signalr-rg \
-    --web-sockets-enabled true
 
 # Deploy
 dotnet publish -c Release -o ./publish
@@ -496,13 +496,13 @@ az webapp deployment source config-zip \
 
 ## Scaling
 
-With Azure SignalR Service, scaling is straightforward. Your app servers are stateless - all connection state lives in the SignalR Service.
+With Azure SignalR Service, scaling is straightforward. Your app servers do not hold client WebSocket connections, but any application-level user or session state still needs shared storage if multiple app instances need to read it.
 
 ```bash
 # Scale the SignalR Service for more connections
 az signalr update \
     --name my-signalr-service \
-    --resource-group my-rg \
+    --resource-group signalr-rg \
     --sku Standard_S1 \
     --unit-count 2  # Each unit supports ~1000 concurrent connections
 
@@ -534,7 +534,7 @@ Key metrics to watch:
 ## Best Practices
 
 1. **Use Azure SignalR Service** instead of self-hosted for any production workload. It handles connection management and scaling.
-2. **Enable WebSockets on App Service.** It is disabled by default and SignalR falls back to long polling without it.
+2. **Enable WebSockets on App Service when self-hosting SignalR without Azure SignalR Service.** Apps using Azure SignalR Service do not require this setting because clients connect their WebSockets to the service.
 3. **Use groups for targeted messaging.** Broadcasting to all clients when you only need to reach a subset wastes bandwidth.
 4. **Implement automatic reconnection** on the client side. Network interruptions happen.
 5. **Use IHubContext for server-initiated messages.** Inject it into services and controllers to push messages from anywhere in your application.
@@ -542,4 +542,4 @@ Key metrics to watch:
 
 ## Wrapping Up
 
-SignalR with Azure SignalR Service gives you a production-grade real-time communication layer for .NET applications. The hub-based model is intuitive - define methods on the server, call them from clients, and push messages back. Azure SignalR Service handles the hard parts: managing thousands of concurrent WebSocket connections, distributing messages across multiple app servers, and scaling automatically. Your application code stays focused on business logic.
+SignalR with Azure SignalR Service gives you a production-grade real-time communication layer for .NET applications. The hub-based model is intuitive - define methods on the server, call them from clients, and push messages back. Azure SignalR Service handles the hard parts: managing thousands of concurrent WebSocket connections, distributing messages across multiple app servers, and supporting scale-out. Your application code stays focused on business logic.
