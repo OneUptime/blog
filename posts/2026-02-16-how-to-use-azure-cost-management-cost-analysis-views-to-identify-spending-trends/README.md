@@ -187,7 +187,7 @@ Open the Daily Costs view for the current subscription. Look for any anomalies i
 
 ## Advanced Analysis with Custom Groupings
 
-Cost analysis supports multiple levels of grouping and filtering that enable sophisticated analysis.
+Cost analysis supports detailed grouping and filtering that enable sophisticated analysis.
 
 ### Grouping by Meter
 
@@ -200,14 +200,14 @@ Meters are the most granular level of Azure billing. Grouping by meter shows you
 
 If you use Azure Marketplace resources (third-party software), grouping by publisher shows how much you are spending on Microsoft services versus third-party solutions.
 
-### Using Multiple Group-Bys
+### Combining Filters and Group-By
 
-You can use nested groupings by setting a primary and secondary group-by. For example:
+Cost Analysis doesn't support grouping by multiple attributes in the same chart. To get a two-dimensional view, filter by one attribute and group by another. For example:
 
-- Primary: Service name
-- Secondary: Resource group
+- Filter: Service name
+- Group by: Resource group
 
-This shows services broken down by which resource group is consuming them, giving you a two-dimensional view of your spending.
+This shows which resource groups are consuming a selected service, giving you a focused view of that part of your spending.
 
 ## Forecast Feature
 
@@ -220,13 +220,29 @@ If the forecast exceeds your budget, you have a visual cue that action is needed
 For automated reporting, you can access cost data through the Cost Management API.
 
 ```bash
-# Query costs for the current month grouped by service
+# Query actual costs for the current month grouped by service
 
-az costmanagement query \
-  --type ActualCost \
-  --scope "/subscriptions/<sub-id>" \
-  --timeframe MonthToDate \
-  --dataset-grouping name="ServiceName" type="Dimension" \
+az rest --method post \
+  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.CostManagement/query?api-version=2025-03-01" \
+  --body '{
+    "type": "ActualCost",
+    "timeframe": "MonthToDate",
+    "dataset": {
+      "granularity": "None",
+      "aggregation": {
+        "totalCost": {
+          "name": "PreTaxCost",
+          "function": "Sum"
+        }
+      },
+      "grouping": [
+        {
+          "type": "Dimension",
+          "name": "ServiceName"
+        }
+      ]
+    }
+  }' \
   -o table
 ```
 
