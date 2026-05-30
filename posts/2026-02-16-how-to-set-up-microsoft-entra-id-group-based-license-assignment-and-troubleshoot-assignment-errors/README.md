@@ -36,7 +36,7 @@ Group-based licensing requires:
 
 - Microsoft Entra ID P1 or P2 licenses (or Microsoft 365 E3/E5 which include Entra ID P1/P2).
 - The licenses you want to assign must be purchased and available in your tenant.
-- You need the License Administrator, User Administrator, or Global Administrator role.
+- You need an admin role that can manage groups and licenses, such as Groups Administrator, License Administrator, User Administrator, or Global Administrator.
 
 ## Step 1: Plan Your License Groups
 
@@ -192,7 +192,7 @@ foreach ($member in $members) {
     $user = Get-MgUser -UserId $member.Id -Property "id,displayName,licenseAssignmentStates"
 
     foreach ($licState in $user.LicenseAssignmentStates) {
-        if ($licState.State -ne "Active") {
+        if ($licState.AssignedByGroup -eq $group.Id -and $licState.State -ne "Active") {
             Write-Output "ERROR: $($user.DisplayName) - State: $($licState.State) - Error: $($licState.Error)"
         }
     }
@@ -210,25 +210,34 @@ This occurs when you run out of available licenses for the SKU. The user is plac
 Fix: Purchase more licenses or remove licenses from users who no longer need them.
 
 ```powershell
-# Find users with "NotEnoughLicenses" errors
-$groups = Get-MgGroup -Filter "assignedLicenses/any()"
+# Find groups with license assignment errors, including CountViolation errors
+$groups = Get-MgGroup -All -Property "id,displayName,assignedLicenses" | Where-Object {
+    $_.AssignedLicenses
+}
+
 foreach ($group in $groups) {
-    $processingState = Get-MgGroupLicenseProcessingState -GroupId $group.Id
-    if ($processingState) {
-        Write-Output "Group: $($group.DisplayName) - Errors exist"
+    $membersWithErrors = Get-MgGroupMemberWithLicenseError -GroupId $group.Id -All
+    foreach ($member in $membersWithErrors) {
+        $user = Get-MgUser -UserId $member.Id -Property "id,displayName,userPrincipalName,licenseAssignmentStates"
+        $errors = $user.LicenseAssignmentStates | Where-Object {
+            $_.AssignedByGroup -eq $group.Id -and $_.Error -eq "CountViolation"
+        }
+
+        foreach ($error in $errors) {
+            Write-Output "ERROR: $($user.UserPrincipalName) in $($group.DisplayName) - $($error.Error)"
+        }
     }
 }
 ```
 
 ### Error: "Conflicting service plans"
 
-This happens when a user is in two groups that assign licenses with overlapping service plans. For example, if a user is in both the E3 and E5 groups, many service plans overlap.
+This happens when a user receives service plans that cannot be assigned together. For example, if a user is in multiple license groups, some service plans from different products might be mutually exclusive. Microsoft Graph reports this as `MutuallyExclusiveViolation`.
 
 Fix: Restructure your groups so users are only in one group that includes the services they need, or disable the conflicting service plans in one of the license assignments.
 
 ```powershell
-# Resolve conflicting plans by disabling overlap in the lower-tier license
-# For E3 group, disable plans that are also in E5
+# Inspect E3 and E5 service plans before deciding which plans to disable
 $skuE3 = Get-MgSubscribedSku | Where-Object { $_.SkuPartNumber -eq "ENTERPRISEPACK" }
 $skuE5 = Get-MgSubscribedSku | Where-Object { $_.SkuPartNumber -eq "ENTERPRISEPREMIUM" }
 
@@ -238,12 +247,13 @@ $e5Plans = $skuE5.ServicePlans | Select-Object -ExpandProperty ServicePlanId
 $overlapping = $e3Plans | Where-Object { $_ -in $e5Plans }
 
 Write-Output "Found $($overlapping.Count) overlapping service plans"
-# If a user needs both E3 and E5, disable the overlapping plans in E3
+# If a user needs licenses from both groups and a MutuallyExclusiveViolation occurs,
+# disable the specific conflicting plan in one of the group license assignments.
 ```
 
-### Error: "Usage location not set"
+### Error: "Usage location not specified or unsupported"
 
-Licenses require a usage location on the user object. Some licenses are not available in all countries, so Entra ID checks the usage location before assigning.
+Some Microsoft services are not available in all countries, so Entra ID checks the usage location before assigning licenses. For group-based licensing, users without a usage location inherit the tenant location, but Microsoft recommends setting the correct usage location on users before relying on group-based licensing. Microsoft Graph reports unsupported locations as `ProhibitedInUsageLocationViolation`.
 
 Fix: Set the usage location for all users before adding them to license groups.
 
@@ -303,7 +313,7 @@ foreach ($group in $licenseGroups) {
         $user = Get-MgUser -UserId $member.Id -Property "id,displayName,userPrincipalName,licenseAssignmentStates"
 
         foreach ($state in $user.LicenseAssignmentStates) {
-            if ($state.State -eq "Error") {
+            if ($state.AssignedByGroup -eq $group.Id -and $state.State -eq "Error") {
                 $errors += [PSCustomObject]@{
                     Group = $group.DisplayName
                     User  = $user.UserPrincipalName
