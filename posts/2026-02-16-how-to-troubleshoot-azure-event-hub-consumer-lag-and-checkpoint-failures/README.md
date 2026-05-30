@@ -16,12 +16,11 @@ I have debugged Event Hub consumer issues in production systems processing hundr
 
 Consumer lag is the difference between the latest event in a partition and the event your consumer is currently processing. A small amount of lag is normal and expected. But when lag keeps growing, it means your consumers cannot keep up with the event production rate.
 
-To monitor consumer lag, you need to compare the sequence number of the last enqueued event in each partition with the sequence number of the last checkpointed event.
+To monitor consumer lag, you need to compare the sequence number of the last enqueued event in each partition with the sequence number of the last checkpointed event. The Azure CLI can show you the partition IDs, but the runtime last-enqueued sequence number is exposed by the Event Hubs SDK when you enable last-enqueued event tracking.
 
 ```bash
-# Check the last enqueued sequence number for each partition
+# List the partition IDs for the event hub
 
-# This tells you how far ahead the event stream is
 az eventhubs eventhub show \
   --resource-group myResourceGroup \
   --namespace-name myEventHubNamespace \
@@ -80,7 +79,7 @@ When checkpointing fails, your consumer does not record its progress. On restart
 
 Common checkpoint failure causes:
 
-**Storage account connectivity.** The checkpoint store requires network access to Azure Blob Storage. If the storage account has firewall rules, make sure your consumer's network (or managed identity) has access.
+**Storage account connectivity.** The checkpoint store requires network access to Azure Blob Storage and credentials with permission to read and write checkpoint blobs. If the storage account has firewall rules, make sure your consumer's network is allowed and that its managed identity or connection string has the required storage permissions.
 
 ```bash
 # Check if the storage account has network restrictions
@@ -126,8 +125,8 @@ client = EventHubConsumerClient.from_connection_string(
 )
 
 async with client:
-    await client.receive(
-        on_event=process_events,
+    await client.receive_batch(
+        on_event_batch=process_events,
         on_partition_initialize=on_partition_initialize,
         on_partition_close=on_partition_close,
         starting_position="-1"
