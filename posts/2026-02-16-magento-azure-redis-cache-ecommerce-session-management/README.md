@@ -28,7 +28,7 @@ Create a Redis instance sized appropriately for your Magento store.
 az group create --name rg-magento --location eastus
 
 # Create a Redis cache instance
-# Standard C1 is good for small-medium stores
+# Standard C2 is good for small-medium stores
 # Premium P1 with clustering for large stores
 az redis create \
   --name magento-redis-cache \
@@ -36,7 +36,6 @@ az redis create \
   --location eastus \
   --sku Standard \
   --vm-size c2 \
-  --enable-non-ssl-port false \
   --minimum-tls-version 1.2
 
 # Get the connection details
@@ -255,7 +254,7 @@ az redis update \
   --vm-size p2
 ```
 
-For very large stores, use Redis clustering on the Premium tier. This distributes data across multiple Redis shards.
+For very large stores, use Redis clustering on the Premium tier. This distributes data across multiple Redis shards. Azure Redis clustering supports only database 0, so do not use the DB 0, DB 1, and DB 2 layout above on a clustered cache. Use separate Redis cache instances for sessions, default cache, and page cache, or use a non-clustered cache if you need multiple logical databases in one instance.
 
 ```bash
 # Create a clustered Redis instance
