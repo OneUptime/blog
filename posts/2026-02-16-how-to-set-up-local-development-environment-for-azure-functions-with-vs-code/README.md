@@ -15,7 +15,7 @@ Getting a proper local development environment set up for Azure Functions is one
 Before you start, make sure you have these installed:
 
 - VS Code (latest version)
-- .NET 8 SDK (or Node.js 20+ / Python 3.11+ depending on your language)
+- .NET 8 SDK (or Node.js 22+ / Python 3.11+ depending on your language)
 - Azure CLI (for deployment and Azure resource management later)
 
 ## Step 1: Install Azure Functions Core Tools
@@ -31,10 +31,17 @@ brew install azure-functions-core-tools@4
 # On Windows using npm
 npm install -g azure-functions-core-tools@4
 
-# On Ubuntu/Debian
+# On Ubuntu
 curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
 sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
-sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-$(lsb_release -cs)-prod $(lsb_release -cs) main" > /etc/apt/sources.list.d/dotnetdev.list'
+sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-$(lsb_release -cs 2>/dev/null)-prod $(lsb_release -cs 2>/dev/null) main" > /etc/apt/sources.list.d/dotnetdev.list'
+sudo apt-get update
+sudo apt-get install azure-functions-core-tools-4
+
+# On Debian
+curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
+sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
+sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/debian/$(lsb_release -rs 2>/dev/null | cut -d'.' -f 1)/prod $(lsb_release -cs 2>/dev/null) main" > /etc/apt/sources.list.d/dotnetdev.list'
 sudo apt-get update
 sudo apt-get install azure-functions-core-tools-4
 ```
@@ -68,7 +75,7 @@ You can create a project from the command line or through the VS Code command pa
 mkdir my-functions && cd my-functions
 
 # Initialize a .NET isolated worker function project
-func init --dotnet-isolated
+func init --worker-runtime dotnet-isolated
 
 # Create an HTTP trigger function
 func new --name HelloWorld --template "HTTP trigger" --authlevel anonymous
@@ -78,12 +85,12 @@ For Node.js or Python, swap the init flag.
 
 ```bash
 # Node.js project
-func init --javascript
+func init --worker-runtime javascript
 # or
-func init --typescript
+func init --worker-runtime typescript
 
 # Python project
-func init --python
+func init --worker-runtime python
 ```
 
 ## Step 4: Configure Azurite for Local Storage
