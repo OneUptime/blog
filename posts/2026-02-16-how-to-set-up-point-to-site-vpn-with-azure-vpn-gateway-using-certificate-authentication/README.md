@@ -27,7 +27,7 @@ graph LR
 - An Azure subscription
 - Azure CLI installed
 - OpenSSL installed (for certificate generation)
-- A VPN client on your device (built into Windows, available for macOS/Linux)
+- A VPN client on your device (OpenVPN Connect or Azure VPN Client for OpenVPN; native clients for IKEv2/SSTP)
 
 ## Step 1: Create the VNet and VPN Gateway
 
@@ -125,7 +125,8 @@ openssl x509 -req \
   -CAkey rootCA.key \
   -CAcreateserial \
   -out client1.crt \
-  -days 365
+  -days 365 \
+  -extfile <(printf "subjectAltName=DNS:P2SClient1\nextendedKeyUsage=clientAuth\n")
 
 # Export the client certificate as PFX (for Windows) or P12 (for macOS)
 openssl pkcs12 -export \
@@ -158,6 +159,7 @@ az network vnet-gateway update \
   --name vng-p2s \
   --address-prefixes "172.16.0.0/24" \
   --client-protocol OpenVPN \
+  --vpn-auth-type Certificate \
   --root-cert-name "AzureVPN-RootCA" \
   --root-cert-data "$ROOT_CERT_DATA"
 ```
@@ -189,7 +191,7 @@ This returns a URL to download a ZIP file containing configuration profiles for 
 1. Install the client certificate (`client1.pfx`) by double-clicking it and following the import wizard
 2. Extract the downloaded ZIP file
 3. For OpenVPN: import the `OpenVPN/vpnconfig.ovpn` file into the OpenVPN Connect client
-4. For native VPN: run the installer from the `WindowsAmd64` or `WindowsX86` folder
+4. For native VPN: if you configured IKEv2 or SSTP instead of OpenVPN, run the installer from the `WindowsAmd64` or `WindowsX86` folder
 
 ### macOS
 
@@ -283,14 +285,14 @@ Choose the SKU based on your expected concurrent user count.
 
 **Slow performance.** P2S VPN performance depends on the user's internet connection and the gateway SKU. VpnGw2 and above provide better throughput. Using OpenVPN protocol instead of SSTP generally gives better performance on non-Windows platforms.
 
-**DNS resolution not working.** Configure custom DNS servers in the P2S configuration so VPN clients use Azure DNS for name resolution.
+**DNS resolution not working.** Configure custom DNS servers on the VNet so VPN clients can use your DNS server for name resolution, then regenerate and reimport the VPN client profile.
 
 ```bash
-# Add custom DNS servers to the gateway
-az network vnet-gateway update \
+# Add a custom DNS server to the VNet
+az network vnet update \
   --resource-group rg-p2s-demo \
-  --name vng-p2s \
-  --dns-servers 10.0.0.10 168.63.129.16
+  --name vnet-demo \
+  --dns-servers 10.0.0.10
 ```
 
 ## Cleanup
