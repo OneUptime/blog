@@ -36,8 +36,8 @@ az group create \
   --name rg-sec-compliance \
   --location eastus2
 
-# Create a storage account with geo-redundant storage
-# RA-GRS ensures data availability even during regional outages
+# Create a storage account with read-access geo-zone-redundant storage
+# RA-GZRS ensures data availability even during regional outages
 az storage account create \
   --name stsec17a4records \
   --resource-group rg-sec-compliance \
@@ -125,7 +125,7 @@ This is the critical step. Locking the policy makes it irrevocable. After lockin
 - The retention period cannot be shortened (only extended)
 - The policy cannot be deleted
 - Blobs cannot be deleted or modified until the retention period expires
-- Even Azure support cannot override a locked policy
+- Account administrators cannot modify or delete protected blob data
 
 ```bash
 # Get the ETag for the trade-records policy
@@ -174,7 +174,7 @@ This Python script demonstrates proper record ingestion with metadata tagging:
 ```python
 from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Authenticate using managed identity or service principal
 credential = DefaultAzureCredential()
@@ -189,14 +189,14 @@ def upload_trade_record(record_id, record_content, record_type):
     """Upload a trade record with compliance metadata"""
 
     # Generate a structured blob name for easy indexing
-    timestamp = datetime.utcnow().strftime("%Y/%m/%d")
+    timestamp = datetime.now(timezone.utc).strftime("%Y/%m/%d")
     blob_name = f"{timestamp}/{record_type}/{record_id}.json"
 
     # Set metadata for record classification and retrieval
     metadata = {
         "record_type": record_type,
         "record_id": record_id,
-        "ingestion_time": datetime.utcnow().isoformat(),
+        "ingestion_time": datetime.now(timezone.utc).isoformat(),
         "retention_years": "6",
         "classification": "SEC-17a4"
     }
@@ -228,7 +228,7 @@ When a regulatory investigation requires preservation of specific records, apply
 az storage container legal-hold set \
   --account-name stsec17a4records \
   --container-name trade-records \
-  --tags "SEC-INV-2026-0042" "FINRA-REQ-2026-0015"
+  --tags secinv20260042 finrareq20260015
 
 # Verify legal holds are active
 az storage container legal-hold show \
@@ -243,12 +243,12 @@ Legal holds prevent deletion even after the retention period expires. They remai
 az storage container legal-hold clear \
   --account-name stsec17a4records \
   --container-name trade-records \
-  --tags "SEC-INV-2026-0042"
+  --tags secinv20260042
 ```
 
 ## Step 7: Set Up an Index for Record Retrieval
 
-SEC 17a-4 requires an index for record retrieval. Use Azure Cognitive Search or a custom index stored in a database:
+SEC 17a-4 requires an index for record retrieval. Use Azure AI Search or a custom index stored in a database:
 
 ```bash
 # Create a search service for indexing records
@@ -262,7 +262,7 @@ az search service create \
 # This allows searching records by type, date, and record ID
 ```
 
-Alternatively, maintain an index in Azure SQL or Cosmos DB that stores metadata for each record along with its blob path. The index itself does not need immutability since it is a reference to the immutable data.
+Alternatively, maintain an index in Azure SQL or Cosmos DB that stores metadata for each record along with its blob path. Confirm with your compliance team whether the index itself must be retained immutably for your recordkeeping program.
 
 ## Step 8: Configure Audit Logging
 
