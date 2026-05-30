@@ -93,27 +93,27 @@ kubectl top pod <pod-name> -n <namespace> --containers
 If you have Prometheus, these queries give deeper insight.
 
 ```text
-// Maximum memory usage over the last 24 hours
-// This helps set limits that accommodate peak usage
+# Maximum memory usage over the last 24 hours
+# This helps set limits that accommodate peak usage
 max_over_time(container_memory_working_set_bytes{
   namespace="default",
   pod=~"my-app-.*",
   container="my-app"
 }[24h])
 
-// P99 memory usage over 7 days
-// Good for understanding typical usage patterns
+# P99 memory usage over 7 days
+# Good for understanding typical usage patterns
 quantile_over_time(0.99, container_memory_working_set_bytes{
   namespace="default",
   pod=~"my-app-.*",
   container="my-app"
 }[7d])
 
-// Memory usage as percentage of limit
-// Containers consistently above 80% are at risk of OOMKill
-container_memory_working_set_bytes{namespace="default"}
-  / on(container, pod)
-container_spec_memory_limit_bytes{namespace="default"}
+# Memory usage as percentage of limit
+# Containers consistently above 80% are at risk of OOMKill
+container_memory_working_set_bytes{namespace="default", container!=""}
+  / on(namespace, pod, container)
+  (container_spec_memory_limit_bytes{namespace="default", container!=""} > 0)
   * 100
 ```
 
@@ -145,8 +145,8 @@ The application gradually consumes more memory over time without releasing it. S
 - Usage is not correlated with traffic
 
 ```text
-// Prometheus query to detect memory leaks
-// Positive derivative over time indicates growing memory usage
+# Prometheus query to detect memory leaks
+# Positive derivative over time indicates growing memory usage
 deriv(container_memory_working_set_bytes{
   pod=~"my-app-.*"
 }[1h])
@@ -244,7 +244,7 @@ containers:
   env:
   # Set heap to 70% of the container limit
   # Leave 30% for non-heap memory (metaspace, thread stacks, NIO buffers)
-  - name: JAVA_OPTS
+  - name: JAVA_TOOL_OPTIONS
     value: "-Xmx1400m -Xms1400m -XX:MaxMetaspaceSize=256m -XX:+UseContainerSupport"
 ```
 
@@ -269,7 +269,8 @@ spec:
     - alert: ContainerMemoryNearLimit
       expr: |
         container_memory_working_set_bytes{container!=""}
-          / container_spec_memory_limit_bytes{container!=""}
+          / on(namespace, pod, container)
+        (container_spec_memory_limit_bytes{container!=""} > 0)
           > 0.85
       for: 5m
       labels:
