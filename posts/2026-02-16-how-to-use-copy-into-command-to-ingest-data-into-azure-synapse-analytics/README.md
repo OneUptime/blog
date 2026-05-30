@@ -8,7 +8,7 @@ Description: A detailed guide to using the COPY INTO command for fast and flexib
 
 ---
 
-The COPY INTO statement is the recommended way to load data into Azure Synapse dedicated SQL pools. It replaced PolyBase as the go-to bulk loading tool because it is simpler to use, supports more file formats, handles more edge cases in file parsing, and does not require you to create external data sources, file formats, or external tables. One statement, a few parameters, and your data is loaded.
+The COPY INTO statement is the recommended way to load data into Azure Synapse dedicated SQL pools. It has become the primary bulk loading strategy because it is simpler to use, handles more edge cases in file parsing, and does not require you to create external data sources, file formats, or external tables. One statement, a few parameters, and your data is loaded.
 
 ## Why COPY INTO Over PolyBase?
 
@@ -47,7 +47,7 @@ WITH (
 Parquet is the preferred format for data lake storage. It is columnar, compressed, and self-describing (includes schema metadata).
 
 ```sql
--- Simple Parquet load - schema is inferred from the file
+-- Simple Parquet load - target table already exists
 COPY INTO dbo.FactSales
 FROM 'https://mydatalake.dfs.core.windows.net/data/sales/2025/*.parquet'
 WITH (
@@ -56,7 +56,7 @@ WITH (
 );
 ```
 
-Since Parquet files contain column names and types, COPY INTO automatically maps file columns to table columns by name. If the file has columns not in the table, they are ignored. If the table has columns not in the file, they receive NULL or default values.
+Since Parquet files contain column names and types, COPY INTO can use automatic schema discovery when `AUTO_CREATE_TABLE = 'ON'` is specified. Without automatic table creation, the target table must already exist, and when you do not specify a column list, COPY INTO maps source fields to target columns by order.
 
 ### Loading Specific Columns from Parquet
 
@@ -102,7 +102,7 @@ WITH (
     FILE_TYPE = 'CSV',                  -- TSV is still FILE_TYPE = CSV
     CREDENTIAL = (IDENTITY = 'Managed Identity'),
     FIRSTROW = 1,                       -- No header row
-    FIELDTERMINATOR = '\t',             -- Tab delimiter
+    FIELDTERMINATOR = '0x09',           -- Tab delimiter
     ROWTERMINATOR = '0x0A'
 );
 ```
@@ -160,7 +160,7 @@ When file columns are in a different order than table columns, or you want to sk
 -- Table columns: CustomerId, FullName, Email, CreatedDate
 
 -- Map file columns by ordinal position
-COPY INTO dbo.Customers (CustomerId, Email, CreatedDate)
+COPY INTO dbo.Customers (CustomerId 1, Email 4, CreatedDate 6)
 FROM 'https://mydatalake.dfs.core.windows.net/data/customers/*.csv'
 WITH (
     FILE_TYPE = 'CSV',
@@ -170,7 +170,7 @@ WITH (
 );
 ```
 
-For more complex mapping with Parquet files, use auto-mapping by column name, which handles reordering automatically as long as names match.
+For Parquet files, use `AUTO_CREATE_TABLE = 'ON'` when you want automatic schema discovery. Otherwise, use a column list and make sure the source fields and target columns line up as intended.
 
 ## Error Handling
 
@@ -227,7 +227,7 @@ WITH (
 ```
 
 Prerequisites:
-- The Synapse workspace managed identity must have "Storage Blob Data Reader" (or Contributor) role on the storage account.
+- The Synapse workspace managed identity must have the "Storage Blob Data Contributor" role on the storage account.
 
 ### Shared Access Signature (SAS)
 
@@ -238,7 +238,7 @@ WITH (
     FILE_TYPE = 'PARQUET',
     CREDENTIAL = (
         IDENTITY = 'SHARED ACCESS SIGNATURE',
-        SECRET = 'sv=2021-06-08&ss=bfqt&srt=co&sp=rl&se=2026-12-31T23:59:59Z&sig=...'
+        SECRET = '?sv=2021-06-08&ss=bfqt&srt=co&sp=rl&se=2026-12-31T23:59:59Z&sig=...'
     )
 );
 ```
@@ -261,7 +261,7 @@ WITH (
 
 ### 1. Optimal File Sizes
 
-The best loading performance comes from files sized between 256 MB and 1 GB. COPY INTO can read multiple files in parallel, so having 60+ files (matching the 60 distributions) maximizes parallelism.
+For Parquet and ORC, files should be at least 256 MB for best performance. For compressed CSV files, split the input into multiple files because the warehouse cannot automatically split compressed files. The recommended number of compressed CSV files depends on the DWU level.
 
 ```sql
 -- Loading from a directory with many well-sized files is fastest
@@ -277,8 +277,8 @@ WITH (FILE_TYPE = 'PARQUET', CREDENTIAL = (IDENTITY = 'Managed Identity'));
 -- Single directory wildcard
 FROM 'https://mydatalake.dfs.core.windows.net/data/sales/*.parquet'
 
--- Recursive wildcard
-FROM 'https://mydatalake.dfs.core.windows.net/data/sales/**/*.parquet'
+-- Folder paths are read recursively
+FROM 'https://mydatalake.dfs.core.windows.net/data/sales/'
 
 -- Multiple paths for parallel loading
 FROM
@@ -337,7 +337,7 @@ EXEC sp_addrolemember 'xlargerc', 'loading_user';
 
 ## Common Errors and Solutions
 
-**"File not found"**: Check the URL path. ADLS Gen2 uses `dfs.core.windows.net`, not `blob.core.windows.net`.
+**"File not found"**: Check the storage account, container, and path. ADLS Gen2 supports `dfs.core.windows.net`, and the `blob.core.windows.net` endpoint can also be used when your authentication method does not require the DFS endpoint.
 
 **"Access denied"**: The credential does not have permission to read the storage. Check RBAC assignments or SAS token permissions.
 
