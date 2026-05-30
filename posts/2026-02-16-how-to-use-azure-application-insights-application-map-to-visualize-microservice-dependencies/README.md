@@ -41,10 +41,7 @@ For a .NET application, set it in your startup configuration.
 // In Program.cs or Startup.cs - set the cloud role name
 // so the Application Map shows this service as a distinct node
 builder.Services.AddApplicationInsightsTelemetry();
-builder.Services.Configure<TelemetryConfiguration>(config =>
-{
-    config.TelemetryInitializers.Add(new CloudRoleNameInitializer());
-});
+builder.Services.AddSingleton<ITelemetryInitializer, CloudRoleNameInitializer>();
 
 // Custom telemetry initializer to set the cloud role name
 public class CloudRoleNameInitializer : ITelemetryInitializer
@@ -83,30 +80,28 @@ For a Java application using the Application Insights Java agent, set it in the 
 }
 ```
 
-For a Python application.
+For a Python application using the Azure Monitor OpenTelemetry distro.
 
 ```python
 # Configure Application Insights with a cloud role name
 
-from opencensus.ext.azure.trace_exporter import AzureExporter
-from opencensus.trace.tracer import Tracer
+import os
 
-# Set the cloud role name via the exporter
-exporter = AzureExporter(
-    connection_string="InstrumentationKey=<your-key>"
+from azure.monitor.opentelemetry import configure_azure_monitor
+
+# Set this before configuring Azure Monitor. It becomes ai.cloud.role.
+os.environ["OTEL_SERVICE_NAME"] = "notification-service"
+
+configure_azure_monitor(
+    connection_string="<connection-string>"
 )
-exporter.add_telemetry_processor(set_cloud_role)
-
-def set_cloud_role(envelope):
-    envelope.tags['ai.cloud.role'] = 'notification-service'
-    return True
 ```
 
 ## Enabling Distributed Tracing
 
-For the Application Map to draw accurate dependency lines between services, trace context must propagate across HTTP calls. Most modern Application Insights SDKs handle this automatically by injecting and reading W3C Trace Context headers (`traceparent` and `tracestate`) in HTTP requests.
+For the Application Map to draw accurate dependency lines between services, trace context must propagate across HTTP calls. Most modern Application Insights SDKs and OpenTelemetry instrumentation handle this automatically by injecting and reading W3C Trace Context headers (`traceparent` and `tracestate`) in HTTP requests.
 
-If you are using the .NET SDK, this works out of the box. For Node.js and Python, make sure you have the dependency auto-collection enabled. For Java, the agent handles it automatically.
+If you are using the .NET SDK, this works out of the box. For Node.js, make sure you have dependency auto-collection enabled if you are using the classic SDK. For Python with Azure Monitor OpenTelemetry, enable the distro early in application startup so the supported instrumentations can collect incoming and outgoing calls. For Java, the agent handles it automatically.
 
 If you are using service meshes or API gateways, verify that they propagate the trace headers. Some proxies strip unknown headers by default.
 
@@ -154,9 +149,7 @@ You can also filter by specific cloud role names if the map is too cluttered. Th
 
 ## Multi-Resource Application Maps
 
-If your microservices report to different Application Insights resources (which is common in large organizations), you can still get a unified Application Map by using a workspace-based Application Insights configuration where all resources point to the same Log Analytics workspace.
-
-Alternatively, you can use the **Composite Application Map** feature (available in some preview configurations) that aggregates data across multiple Application Insights resources.
+If your microservices report to different Application Insights resources (which is common in large organizations), Application Map can still show related components across resources, even across subscriptions, as long as you have access to those resources and the telemetry contains the correlated dependency calls.
 
 ## Troubleshooting Common Issues
 
@@ -166,7 +159,7 @@ Alternatively, you can use the **Composite Application Map** feature (available 
 
 **External dependencies not showing**: By default, HTTP calls to external services are tracked as dependencies. If they are not showing up, make sure dependency auto-collection is enabled in the SDK.
 
-**Map is too cluttered**: If you have many services, use the filter options or click on a specific node and select "Focus on this component" to see only its immediate dependencies.
+**Map is too cluttered**: If you have many services, use the filter options or click on a specific node and select "Filter on this node" to reduce the map to a smaller set of related components.
 
 **Stale data**: The map reflects data from the selected time range. If a service was recently deployed and the old version had errors, those might still show up in the map if you are looking at a wide time window.
 
