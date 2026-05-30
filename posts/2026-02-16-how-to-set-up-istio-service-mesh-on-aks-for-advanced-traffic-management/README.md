@@ -8,19 +8,19 @@ Description: Complete guide to installing and configuring Istio service mesh on 
 
 ---
 
-Once your AKS cluster grows beyond a handful of microservices, you start running into problems that Kubernetes alone does not solve well. How do you do canary deployments with fine-grained traffic splitting? How do you implement circuit breaking so one failing service does not cascade? How do you get detailed request-level metrics without modifying your application code? Istio answers all of these questions by injecting a proxy sidecar into every pod that intercepts and manages all network traffic.
+Once your AKS cluster grows beyond a handful of microservices, you start running into problems that Kubernetes alone does not solve well. How do you do canary deployments with fine-grained traffic splitting? How do you implement circuit breaking so one failing service does not cascade? How do you get detailed request-level metrics without modifying your application code? In sidecar mode, Istio answers all of these questions by injecting an Envoy proxy sidecar into each enrolled workload pod that intercepts and manages mesh traffic.
 
 Setting up Istio on AKS is not trivial, but the capabilities it unlocks are worth the effort. This guide covers installation, configuration, and practical use cases.
 
 ## Installing Istio on AKS
 
-There are several ways to install Istio. The recommended approach is using `istioctl`, the official CLI tool.
+There are several ways to install Istio. AKS offers a managed Istio-based service mesh add-on; for a self-managed open source Istio installation, use `istioctl`, the official CLI tool.
 
 ```bash
 # Download and install istioctl
 
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.21.0 sh -
-export PATH=$PWD/istio-1.21.0/bin:$PATH
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+export PATH=$PWD/istio-1.30.0/bin:$PATH
 
 # Verify the installation
 istioctl version
@@ -32,7 +32,7 @@ Before installing, check that your AKS cluster meets the requirements.
 # Run the pre-check
 istioctl x precheck
 
-# Verify your cluster has enough resources (Istio needs about 2 CPU and 4GB RAM)
+# Verify your cluster has enough capacity for the control plane, gateways, and sidecars
 kubectl top nodes
 ```
 
@@ -53,7 +53,7 @@ The default profile installs `istiod` (the control plane) and an ingress gateway
 
 ## Enabling Sidecar Injection
 
-Istio works by injecting an Envoy proxy sidecar into every pod. You enable this per namespace.
+Istio works by injecting an Envoy proxy sidecar into workload pods in enrolled namespaces. You enable this per namespace.
 
 ```bash
 # Enable automatic sidecar injection for a namespace
@@ -165,7 +165,7 @@ First, define the subsets (versions) of your service.
 ```yaml
 # destination-rule.yaml
 # Defines subsets of the backend service based on pod labels
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-destination
@@ -190,7 +190,7 @@ Now create a VirtualService that routes traffic between the versions.
 ```yaml
 # virtual-service.yaml
 # Route 90% of traffic to v1 and 10% to v2 (canary deployment)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-routing
@@ -228,7 +228,7 @@ Route specific users to the new version based on request headers. This is useful
 ```yaml
 # header-routing.yaml
 # Route internal testers to v2, everyone else to v1
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-routing
@@ -258,12 +258,12 @@ spec:
 Protect your services from cascading failures by configuring circuit breakers.
 
 ```yaml
-# circuit-breaker.yaml
-# Configure circuit breaking on the backend service
-apiVersion: networking.istio.io/v1beta1
+# destination-rule.yaml
+# Add circuit breaking to the same DestinationRule used for subsets
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: backend-circuit-breaker
+  name: backend-destination
   namespace: default
 spec:
   host: backend
@@ -281,6 +281,13 @@ spec:
       interval: 30s              # Check every 30 seconds
       baseEjectionTime: 60s     # Eject the failing instance for 60 seconds
       maxEjectionPercent: 50    # Never eject more than 50% of instances
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
 ```
 
 When a backend instance returns 3 consecutive 5xx errors, Istio removes it from the load balancer pool for 60 seconds. This prevents a failing instance from receiving more traffic while it recovers.
@@ -292,7 +299,7 @@ To expose services externally through Istio's ingress gateway.
 ```yaml
 # gateway.yaml
 # Istio Gateway resource for external traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: app-gateway
@@ -318,7 +325,7 @@ spec:
         - "app.example.com"
 ---
 # VirtualService that binds to the gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-external
@@ -351,10 +358,10 @@ Istio provides built-in integrations with observability tools. Install the Istio
 
 ```bash
 # Install observability add-ons
-kubectl apply -f istio-1.21.0/samples/addons/kiali.yaml
-kubectl apply -f istio-1.21.0/samples/addons/prometheus.yaml
-kubectl apply -f istio-1.21.0/samples/addons/grafana.yaml
-kubectl apply -f istio-1.21.0/samples/addons/jaeger.yaml
+kubectl apply -f istio-1.30.0/samples/addons/kiali.yaml
+kubectl apply -f istio-1.30.0/samples/addons/prometheus.yaml
+kubectl apply -f istio-1.30.0/samples/addons/grafana.yaml
+kubectl apply -f istio-1.30.0/samples/addons/jaeger.yaml
 
 # Access Kiali dashboard (service mesh visualization)
 istioctl dashboard kiali
@@ -370,11 +377,11 @@ Kiali provides a real-time visualization of your service mesh topology, showing 
 
 Resource Overhead Considerations
 
-Each Envoy sidecar consumes approximately 50-100MB of memory and a small amount of CPU. For a cluster with hundreds of pods, this adds up. Set resource limits on the sidecar proxy to prevent excessive consumption.
+Each Envoy sidecar consumes approximately 50-100MB of memory and a small amount of CPU. For a cluster with hundreds of pods, this adds up. Set resource limits on the sidecar proxy to prevent excessive consumption. Use this configuration with `istioctl install -f sidecar-resources.yaml` or `istioctl upgrade -f sidecar-resources.yaml`.
 
 ```yaml
 # sidecar-resources.yaml
-# Global sidecar resource configuration
+# Global sidecar resource configuration for istioctl install or upgrade
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
