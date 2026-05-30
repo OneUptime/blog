@@ -19,7 +19,7 @@ The hierarchy in Azure Batch is straightforward:
 - **Jobs** are submitted to a pool and contain tasks
 - **Tasks** are command-line operations that run on nodes
 
-A single job can contain thousands or even millions of tasks. Batch handles scheduling them across the available nodes in the pool.
+A single job can contain thousands, hundreds of thousands, or even more tasks. Batch handles scheduling them across the available nodes in the pool.
 
 ## Step 1: Create a Job
 
@@ -47,11 +47,11 @@ az batch job create \
   --id data-processing-job \
   --pool-id my-compute-pool \
   --priority 100 \
-  --max-task-retry-count 3 \
-  --max-wall-clock-time "PT24H"
+  --job-max-task-retry-count 3 \
+  --job-max-wall-clock-time "PT24H"
 ```
 
-The `--max-wall-clock-time` sets a maximum duration for the entire job. If the job exceeds 24 hours, it is automatically terminated.
+The `--job-max-wall-clock-time` sets a maximum duration for the entire job. If the job exceeds 24 hours, it is automatically terminated.
 
 ## Step 2: Submit a Simple Task
 
@@ -85,7 +85,7 @@ az storage blob upload-batch \
   --account-name batchstorageacct
 ```
 
-Then reference the files in the task.
+Then reference the files in the task. Blob URLs must be public or include a read SAS token.
 
 ```bash
 # Submit a task with resource files from blob storage
@@ -93,7 +93,7 @@ az batch task create \
   --job-id data-processing-job \
   --task-id process-001 \
   --command-line "/bin/bash -c 'python3 process.py --input input.csv --output output.csv'" \
-  --resource-files '[{"httpUrl": "https://batchstorageacct.blob.core.windows.net/input-data/input.csv", "filePath": "input.csv"}, {"httpUrl": "https://batchstorageacct.blob.core.windows.net/scripts/process.py", "filePath": "process.py"}]'
+  --resource-files input.csv=https://batchstorageacct.blob.core.windows.net/input-data/input.csv?sv=... process.py=https://batchstorageacct.blob.core.windows.net/scripts/process.py?sv=...
 ```
 
 ## Step 4: Submit Tasks in Bulk
@@ -107,7 +107,7 @@ For large numbers of tasks, use a JSON file to submit them in bulk. This is much
     "commandLine": "/bin/bash -c 'ffmpeg -i input.mp4 -vf \"select=eq(n\\,0)\" -vframes 1 frame-001.png'",
     "resourceFiles": [
       {
-        "httpUrl": "https://batchstorageacct.blob.core.windows.net/videos/input.mp4",
+        "httpUrl": "https://batchstorageacct.blob.core.windows.net/videos/input.mp4?sv=...",
         "filePath": "input.mp4"
       }
     ],
@@ -120,7 +120,7 @@ For large numbers of tasks, use a JSON file to submit them in bulk. This is much
           }
         },
         "uploadOptions": {
-          "uploadCondition": "taskCompletion"
+          "uploadCondition": "taskcompletion"
         }
       }
     ]
@@ -130,7 +130,7 @@ For large numbers of tasks, use a JSON file to submit them in bulk. This is much
     "commandLine": "/bin/bash -c 'ffmpeg -i input.mp4 -vf \"select=eq(n\\,30)\" -vframes 1 frame-002.png'",
     "resourceFiles": [
       {
-        "httpUrl": "https://batchstorageacct.blob.core.windows.net/videos/input.mp4",
+        "httpUrl": "https://batchstorageacct.blob.core.windows.net/videos/input.mp4?sv=...",
         "filePath": "input.mp4"
       }
     ]
@@ -163,7 +163,7 @@ Batch can automatically upload task output files to Azure Storage when the task 
         }
       },
       "uploadOptions": {
-        "uploadCondition": "taskSuccess"
+        "uploadCondition": "tasksuccess"
       }
     },
     {
@@ -175,14 +175,14 @@ Batch can automatically upload task output files to Azure Storage when the task 
         }
       },
       "uploadOptions": {
-        "uploadCondition": "taskFailure"
+        "uploadCondition": "taskfailure"
       }
     }
   ]
 }
 ```
 
-The `uploadCondition` can be `taskSuccess`, `taskFailure`, or `taskCompletion` (both).
+The `uploadCondition` can be `tasksuccess`, `taskfailure`, or `taskcompletion` (both).
 
 ## Step 6: Set Up Task Dependencies
 
@@ -193,7 +193,7 @@ Some tasks need to wait for others to complete. Batch supports task dependencies
 az batch job create \
   --id pipeline-job \
   --pool-id my-compute-pool \
-  --uses-task-dependencies true
+  --uses-task-dependencies
 ```
 
 Then submit tasks with dependency specifications.
@@ -332,7 +332,7 @@ When all tasks are done, terminate the job. Then delete it to free up resources.
 # Terminate a running job
 az batch job set \
   --job-id render-job-001 \
-  --on-all-tasks-complete "terminateJob"
+  --on-all-tasks-complete "terminatejob"
 
 # Or terminate immediately
 az batch job stop \
