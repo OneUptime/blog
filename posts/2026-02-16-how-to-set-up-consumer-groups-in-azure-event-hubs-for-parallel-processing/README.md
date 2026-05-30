@@ -10,7 +10,7 @@ Description: Learn how to configure and use consumer groups in Azure Event Hubs 
 
 When you have an event stream in Azure Event Hubs, you typically need multiple systems reading from it. Your real-time analytics pipeline needs the data. Your fraud detection system needs the same data. Your archival process needs it too. Each of these consumers needs to read the complete stream independently, at its own pace, without interfering with each other. That is exactly what consumer groups are for.
 
-A consumer group is a view of the entire Event Hub. Each consumer group maintains its own position (offset) in the stream, so multiple consumer groups can read the same events independently. Within a single consumer group, multiple consumer instances can share the work of reading from different partitions, giving you parallelism for a single workload.
+A consumer group is a view of the entire Event Hub. Consumers maintain their own positions (offsets) per partition within a consumer group, usually in a checkpoint store, so multiple consumer groups can read the same events independently. Within a single consumer group, multiple consumer instances can share the work of reading from different partitions, giving you parallelism for a single workload.
 
 In this post, we will set up consumer groups, configure parallel consumers within a group, and handle the common patterns and pitfalls.
 
@@ -84,13 +84,13 @@ If you need more consumer groups than your tier allows, consider upgrading your 
 
 Within a single consumer group, you can run multiple consumer instances that share the work of reading from partitions. The Event Hubs SDK handles partition assignment automatically through a process called "partition ownership."
 
-### Using the EventProcessorClient
+### Using the EventHubConsumerClient
 
-The `EventProcessorClient` (available in Python, Java, .NET, and JavaScript SDKs) handles partition distribution, checkpointing, and failover automatically:
+In Python, the `EventHubConsumerClient` handles partition distribution, checkpointing, and failover automatically when you configure a checkpoint store. In .NET and Java, the equivalent high-level client is `EventProcessorClient`:
 
 ```python
 from azure.eventhub import EventHubConsumerClient
-from azure.eventhub.extensions.checkpointstorageblob import BlobCheckpointStore
+from azure.eventhub.extensions.checkpointstoreblob import BlobCheckpointStore
 
 # Set up checkpoint storage in Azure Blob Storage
 # Checkpoints track each consumer's position in the stream
@@ -298,4 +298,4 @@ Compare the last enqueued sequence number with the checkpoint position to calcul
 
 ## Summary
 
-Consumer groups in Azure Event Hubs enable multiple independent applications to read the same event stream without interfering with each other. Create a dedicated consumer group for each logical consumer, use the EventProcessorClient SDK for automatic partition distribution and failover, and maintain checkpoint stores for reliable position tracking. The combination of consumer groups (for independent views) and partition-based parallelism within each group gives you the flexibility to scale your event processing both horizontally and across multiple use cases.
+Consumer groups in Azure Event Hubs enable multiple independent applications to read the same event stream without interfering with each other. Create a dedicated consumer group for each logical consumer, use the high-level Event Hubs SDK clients for automatic partition distribution and failover, and maintain checkpoint stores for reliable position tracking. The combination of consumer groups (for independent views) and partition-based parallelism within each group gives you the flexibility to scale your event processing both horizontally and across multiple use cases.
