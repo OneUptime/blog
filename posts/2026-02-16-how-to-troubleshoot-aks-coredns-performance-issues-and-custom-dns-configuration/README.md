@@ -16,7 +16,7 @@ On AKS, CoreDNS runs as a deployment in the `kube-system` namespace, typically w
 
 The first step is confirming that DNS is actually the bottleneck. Here are the symptoms that point to CoreDNS issues.
 
-- Pods take a long time to start (stuck in ContainerCreating while DNS resolves image registry names)
+- Applications or init containers take a long time to start because they are waiting on DNS lookups
 - Intermittent 5-second delays on HTTP requests (the classic DNS timeout + retry pattern)
 - Applications logging DNS resolution failures or NXDOMAIN errors
 - `nslookup` or `dig` commands from pods take more than 100ms
@@ -66,18 +66,22 @@ If you see lookups taking exactly 5000ms, you have the conntrack race condition.
 
 ## Enabling NodeLocal DNSCache
 
-NodeLocal DNSCache runs a DNS cache on every node, reducing the load on CoreDNS and eliminating the conntrack race condition by using TCP instead of UDP for upstream queries.
+NodeLocal DNSCache runs a DNS cache on every node, reducing the load on CoreDNS and reducing conntrack race conditions by avoiding kube-proxy DNAT and using TCP for cache misses sent upstream. On AKS, use the managed LocalDNS feature for supported node pools. The upstream Kubernetes NodeLocal DNSCache manifest can also be used, but it must be templated with your cluster DNS service IP, cluster domain, and chosen local listen address before you apply it.
 
 ```bash
-# Enable NodeLocal DNSCache on your AKS cluster
-# This is available through the AKS node configuration profile
+# Enable AKS LocalDNS on a node pool with a LocalDNS configuration file
+az aks nodepool update \
+  --name mynodepool \
+  --cluster-name myAKSCluster \
+  --resource-group myResourceGroup \
+  --localdns-config ./localdnsconfig.json
 
 # Check if it is already enabled
-kubectl get daemonset node-local-dns -n kube-system 2>/dev/null
+kubectl exec dns-test -- nslookup kubernetes.default
 
-# If not available as an AKS feature, deploy it manually
-# Download the NodeLocal DNS manifest
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
+# If you deploy upstream NodeLocal DNSCache manually, download the sample
+# manifest, replace the __PILLAR__ placeholders, then apply the rendered file
+kubectl apply -f nodelocaldns.yaml
 ```
 
 Alternatively, you can configure pods to use a local DNS cache by modifying the pod's dnsConfig.
@@ -93,7 +97,7 @@ spec:
   dnsPolicy: None
   dnsConfig:
     nameservers:
-      - 169.254.20.10  # NodeLocal DNSCache address
+      - 169.254.20.10  # Example upstream NodeLocal DNSCache address; AKS LocalDNS commonly uses 169.254.10.10 or 169.254.10.11
     searches:
       - default.svc.cluster.local
       - svc.cluster.local
@@ -108,18 +112,18 @@ spec:
       image: myapp:latest
 ```
 
-The `single-request-reopen` option is the key fix for the 5-second timeout. It forces each DNS query to use a separate socket, avoiding the conntrack race condition.
+The `single-request-reopen` option is a useful client-side workaround for glibc-based applications because it reopens the socket before sending the second DNS query. NodeLocal DNSCache or AKS LocalDNS is usually the cluster-level fix because the cache runs on the node and can send cache misses upstream over TCP without requiring application changes.
 
 ## Scaling CoreDNS
 
-The default 2 replicas of CoreDNS may not be enough for larger clusters. AKS has a CoreDNS autoscaler, but sometimes it needs adjustment.
+The default CoreDNS scaling may not be enough for larger clusters. AKS has a CoreDNS autoscaler, but sometimes it needs adjustment.
 
 ```bash
 # Check the current CoreDNS autoscaler configuration
 kubectl get configmap coredns-autoscaler -n kube-system -o yaml
 ```
 
-The autoscaler uses a linear scaling formula: replicas = max(ceil(cores * coresPerReplica), ceil(nodes * nodesPerReplica)). You can adjust these parameters.
+The autoscaler supports `linear` and `ladder` modes. If you configure the `linear` mode, it uses this formula: replicas = max(ceil(cores / coresPerReplica), ceil(nodes / nodesPerReplica)). You can adjust these parameters.
 
 ```yaml
 # coredns-autoscaler-config.yaml
@@ -253,8 +257,11 @@ The `fallthrough` directive is important - without it, CoreDNS stops processing 
 CoreDNS exposes Prometheus metrics that give you deep visibility into DNS performance.
 
 ```bash
-# Check if CoreDNS metrics endpoint is accessible
-kubectl exec dns-test -- wget -qO- http://10.0.0.10:9153/metrics | head -20
+# In one terminal, forward the CoreDNS metrics port
+kubectl port-forward -n kube-system deployment/coredns 9153:9153
+
+# In another terminal, check if the metrics endpoint is accessible
+curl http://127.0.0.1:9153/metrics | head -20
 ```
 
 Key metrics to watch.
