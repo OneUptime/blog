@@ -36,7 +36,8 @@ az signalr create \
   --resource-group signalr-demo-rg \
   --location eastus \
   --sku Free_F1 \
-  --service-mode Serverless
+  --service-mode Serverless \
+  --allowed-origins http://localhost:3000
 
 # Get the connection string
 az signalr key list \
@@ -57,7 +58,7 @@ npm init -y
 
 # Install dependencies
 npm install express @microsoft/signalr dotenv cors
-npm install --save-dev typescript @types/express @types/cors ts-node
+npm install --save-dev typescript @types/express @types/cors @types/node ts-node
 ```
 
 Create the `.env` file:
@@ -74,11 +75,11 @@ The server has three responsibilities: serving the frontend, negotiating SignalR
 
 ```typescript
 // server.ts - Node.js server for the real-time dashboard
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import crypto from 'crypto';
-import dotenv from 'dotenv';
+import express = require('express');
+import cors = require('cors');
+import path = require('path');
+import crypto = require('crypto');
+import dotenv = require('dotenv');
 
 dotenv.config();
 
@@ -104,9 +105,8 @@ const { endpoint, accessKey } = parseConnectionString(
 );
 const hubName = 'dashboard';
 
-// Generate a JWT token for client authentication
-function generateToken(userId: string): string {
-  const audience = `${endpoint}/client/?hub=${hubName}`;
+// Generate a JWT token for client or REST API authentication
+function generateToken(audience: string, userId?: string): string {
   const expiry = Math.floor(Date.now() / 1000) + 3600; // 1 hour
 
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -114,7 +114,7 @@ function generateToken(userId: string): string {
     aud: audience,
     iat: Math.floor(Date.now() / 1000),
     exp: expiry,
-    sub: userId,
+    ...(userId ? { nameid: userId } : {}),
   })).toString('base64url');
 
   const signature = crypto
@@ -128,18 +128,19 @@ function generateToken(userId: string): string {
 // Negotiate endpoint - clients call this to get connection info
 app.post('/api/negotiate', (req, res) => {
   const userId = `user-${Date.now()}`;
-  const token = generateToken(userId);
+  const clientUrl = `${endpoint}/client/?hub=${hubName}`;
+  const token = generateToken(clientUrl, userId);
 
   res.json({
-    url: `${endpoint}/client/?hub=${hubName}`,
+    url: clientUrl,
     accessToken: token,
   });
 });
 
 // Send a message to all connected clients through the SignalR REST API
 async function broadcastMessage(target: string, args: unknown[]) {
-  const url = `${endpoint}/api/v1/hubs/${hubName}/:send?api-version=2022-11-01`;
-  const token = generateToken('server');
+  const url = `${endpoint}/api/v1/hubs/${hubName}`;
+  const token = generateToken(url);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -352,8 +353,8 @@ If you have multiple dashboards for different teams, use groups to target update
 ```typescript
 // Send metrics only to clients in a specific group
 async function sendToGroup(groupName: string, target: string, args: unknown[]) {
-  const url = `${endpoint}/api/v1/hubs/${hubName}/groups/${groupName}/:send?api-version=2022-11-01`;
-  const token = generateToken('server');
+  const url = `${endpoint}/api/v1/hubs/${hubName}/groups/${groupName}`;
+  const token = generateToken(url);
 
   await fetch(url, {
     method: 'POST',
@@ -368,4 +369,4 @@ async function sendToGroup(groupName: string, target: string, args: unknown[]) {
 
 ## Wrapping Up
 
-Azure SignalR Service takes the hard part out of building real-time dashboards. You do not manage WebSocket connections, you do not worry about scaling connections across server instances, and you do not build your own message routing. Your Node.js server collects or receives data, calls the SignalR REST API, and the service pushes it to every connected browser. The serverless mode means you only pay for messages sent, not for idle connections. For monitoring dashboards, live scoreboards, or any application where users need to see changes the moment they happen, this architecture gets you to production quickly and scales cleanly.
+Azure SignalR Service takes the hard part out of building real-time dashboards. You do not manage WebSocket connections, you do not worry about scaling connections across server instances, and you do not build your own message routing. Your Node.js server collects or receives data, calls the SignalR REST API, and the service pushes it to every connected browser. The serverless mode means your Node.js app does not keep persistent server connections open to SignalR Service. For monitoring dashboards, live scoreboards, or any application where users need to see changes the moment they happen, this architecture gets you to production quickly and scales cleanly.
