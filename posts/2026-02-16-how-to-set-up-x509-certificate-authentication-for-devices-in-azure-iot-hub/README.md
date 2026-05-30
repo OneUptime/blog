@@ -41,7 +41,9 @@ openssl req -x509 -new -nodes \
   -key ca/root-ca.key \
   -sha256 -days 3650 \
   -out ca/root-ca.pem \
-  -subj "/CN=IoT Root CA/O=MyOrg/C=US"
+  -subj "/CN=IoT Root CA/O=MyOrg/C=US" \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Verify the certificate
 openssl x509 -in ca/root-ca.pem -text -noout | head -20
@@ -93,7 +95,8 @@ openssl x509 -req \
   -CAcreateserial \
   -out ca/verification.pem \
   -days 1 \
-  -sha256
+  -sha256 \
+  -extfile <(printf "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n")
 
 # Get the updated etag
 ETAG=$(az iot hub certificate show \
@@ -137,7 +140,8 @@ openssl x509 -req \
   -CAcreateserial \
   -out devices/${DEVICE_ID}.pem \
   -days 365 \
-  -sha256
+  -sha256 \
+  -extfile <(printf "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n")
 
 # Verify the device certificate was signed by the CA
 openssl verify -CAfile ca/root-ca.pem devices/${DEVICE_ID}.pem
@@ -180,9 +184,7 @@ const client = Client.fromConnectionString(connectionString, Mqtt);
 // Set the certificate options on the client
 client.setOptions({
   cert: deviceCert,
-  key: deviceKey,
-  // If using an intermediate CA, include the full chain
-  // ca: fs.readFileSync('/path/to/ca/root-ca.pem', 'utf8')
+  key: deviceKey
 });
 
 async function main() {
@@ -232,7 +234,7 @@ For automated certificate rotation, consider using the Azure Device Provisioning
 
 ## Intermediate CA Certificates
 
-In production, you typically do not sign device certificates directly with the root CA. Instead, you create an intermediate CA and sign device certificates with that. This adds a layer of protection - if the intermediate CA is compromised, you can revoke it without replacing the root CA on every device.
+In production, you typically do not sign device certificates directly with the root CA. Instead, you create an intermediate CA and sign device certificates with that. This adds a layer of protection - if you register the intermediate CA with IoT Hub or DPS and it is compromised, you can stop trusting that intermediate and issue device certificates from a new intermediate without exposing the root CA private key.
 
 ```bash
 # Generate intermediate CA key
@@ -252,13 +254,25 @@ openssl x509 -req \
   -CAcreateserial \
   -out ca/intermediate-ca.pem \
   -days 1825 \
-  -sha256
+  -sha256 \
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n")
 
-# Create the full chain file (intermediate + root)
-cat ca/intermediate-ca.pem ca/root-ca.pem > ca/chain.pem
+# Sign the device certificate with the intermediate CA
+openssl x509 -req \
+  -in devices/${DEVICE_ID}.csr \
+  -CA ca/intermediate-ca.pem \
+  -CAkey ca/intermediate-ca.key \
+  -CAcreateserial \
+  -out devices/${DEVICE_ID}.pem \
+  -days 365 \
+  -sha256 \
+  -extfile <(printf "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n")
+
+# Create the device certificate chain to present during TLS
+cat devices/${DEVICE_ID}.pem ca/intermediate-ca.pem > devices/${DEVICE_ID}-chain.pem
 ```
 
-When using an intermediate CA, upload the full chain to IoT Hub and set the `ca` option in your device code to include the full chain.
+When using an intermediate CA, upload and verify the root or intermediate CA certificate in IoT Hub. The device should present its leaf certificate followed by the intermediate certificates in its TLS client certificate chain, so set `cert` in the device code to `devices/${DEVICE_ID}-chain.pem`. Do not include the root CA in the client certificate chain.
 
 ## Security Best Practices
 
@@ -269,7 +283,8 @@ Here are the security practices that matter most for X.509 in IoT:
 - Set certificate validity periods based on your rotation capability. If you can rotate certificates automatically, 1 year is fine. If rotation is manual, consider longer periods but accept the higher risk.
 - Monitor certificate expiration dates proactively. Create alerts that fire 30, 14, and 7 days before expiration.
 - Keep the root CA private key offline, ideally in an air-gapped HSM. Only bring it online to sign intermediate CA certificates.
+- If a device certificate is compromised, disable the device identity in IoT Hub; IoT Hub does not check certificate revocation lists during certificate authentication.
 
 ## Wrapping Up
 
-X.509 certificate authentication is more work to set up than symmetric keys, but the security benefits are substantial. Each device has a unique cryptographic identity, private keys never need to leave the device, and the certificate chain model gives you flexible revocation and rotation options. For any production IoT deployment where security is a concern - and it should always be a concern - X.509 is the right choice. Start with the CA-signed approach and invest in a proper PKI infrastructure early, because retrofitting certificate management onto an existing fleet is far more painful than building it in from the start.
+X.509 certificate authentication is more work to set up than symmetric keys, but the security benefits are substantial. Each device has a unique cryptographic identity, private keys never need to leave the device, and the certificate chain model gives you flexible identity disablement and rotation options. For any production IoT deployment where security is a concern - and it should always be a concern - X.509 is the right choice. Start with the CA-signed approach and invest in a proper PKI infrastructure early, because retrofitting certificate management onto an existing fleet is far more painful than building it in from the start.
