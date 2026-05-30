@@ -30,7 +30,7 @@ az containerapp create \
   --image myregistry.azurecr.io/my-api:v1 \
   --target-port 8080 \
   --ingress external \
-  --revision-mode multiple
+  --revisions-mode multiple
 
 # Or update an existing app to multiple revision mode
 az containerapp revision set-mode \
@@ -54,7 +54,7 @@ az containerapp update \
   --revision-suffix v2
 ```
 
-This creates a new revision called `my-api--v2`. The previous revision (let's say `my-api--v1`) is still running.
+This creates a new revision called `my-api-v2`. The previous revision (let's say `my-api-v1`) is still running.
 
 ## Step 3: List Active Revisions
 
@@ -79,7 +79,7 @@ Now split traffic between the two revisions. Start by sending 90% to the stable 
 az containerapp ingress traffic set \
   --name my-api \
   --resource-group my-rg \
-  --revision-weight my-api--v1=90 my-api--v2=10
+  --revision-weight my-api-v1=90 my-api-v2=10
 ```
 
 The traffic weights must add up to 100. After running this command, approximately 10% of all incoming requests will be routed to the v2 revision.
@@ -93,7 +93,7 @@ If the new revision looks healthy (no errors, acceptable latency), increase the 
 az containerapp ingress traffic set \
   --name my-api \
   --resource-group my-rg \
-  --revision-weight my-api--v1=50 my-api--v2=50
+  --revision-weight my-api-v1=50 my-api-v2=50
 ```
 
 Then, when you are confident, send all traffic to v2.
@@ -103,31 +103,40 @@ Then, when you are confident, send all traffic to v2.
 az containerapp ingress traffic set \
   --name my-api \
   --resource-group my-rg \
-  --revision-weight my-api--v2=100
+  --revision-weight my-api-v2=100
 ```
 
-## Step 6: Use the Latest Revision Label
+## Step 6: Use the Latest Revision Target
 
-If you want to always send a percentage of traffic to whatever the latest revision is, use the `latest` label instead of a specific revision name.
+If you want to always send a percentage of traffic to whatever the latest revision is, use the `latest` target instead of a specific revision name.
 
 ```bash
 # Send 80% to a specific revision, 20% to latest
 az containerapp ingress traffic set \
   --name my-api \
   --resource-group my-rg \
-  --revision-weight my-api--v1=80 latest=20
+  --revision-weight my-api-v1=80 latest=20
 ```
 
-This is useful for continuous deployment pipelines where new revisions are created automatically. The `latest` label always points to the most recently deployed revision.
+This is useful for continuous deployment pipelines where new revisions are created automatically. The `latest` target always points to the most recently deployed revision.
 
 ## Step 7: Access Specific Revisions Directly
 
-Each revision gets its own unique URL, even if it receives 0% of the main traffic. This is useful for testing a revision before sending real traffic to it.
+You can assign a label to a revision to get a unique URL for that revision, even if it receives 0% of the main traffic. This is useful for testing a revision before sending real traffic to it.
 
-The revision-specific URL looks like this:
+```bash
+# Add a label for direct access to v2
+az containerapp revision label add \
+  --name my-api \
+  --resource-group my-rg \
+  --revision my-api-v2 \
+  --label v2
+```
+
+The label-specific URL looks like this:
 
 ```text
-https://my-api--v2.happyocean-abc123.eastus.azurecontainerapps.io
+https://my-api---v2.happyocean-abc123.eastus.azurecontainerapps.io
 ```
 
 You can use this URL to run smoke tests against the new revision without affecting production users.
@@ -150,7 +159,7 @@ graph TD
 
 Here is a deployment strategy I have used in production that works well.
 
-**Phase 1 - Deploy and test internally:** Deploy the new revision with 0% traffic. Use the revision-specific URL to run integration tests and manual verification.
+**Phase 1 - Deploy and test internally:** Deploy the new revision with 0% traffic. Use the label-specific URL to run integration tests and manual verification.
 
 **Phase 2 - Canary release:** Route 5% of traffic to the new revision. Monitor error rates, latency percentiles, and business metrics for at least 30 minutes.
 
@@ -163,7 +172,7 @@ Here is a deployment strategy I have used in production that works well.
 az containerapp revision deactivate \
   --name my-api \
   --resource-group my-rg \
-  --revision my-api--v1
+  --revision my-api-v1
 ```
 
 ## Implementing a Rollback
@@ -175,7 +184,7 @@ If the new revision has issues, rolling back is instant. Just shift all traffic 
 az containerapp ingress traffic set \
   --name my-api \
   --resource-group my-rg \
-  --revision-weight my-api--v1=100
+  --revision-weight my-api-v1=100
 ```
 
 This takes effect immediately because both revisions are still running. No new deployment is needed.
@@ -202,7 +211,7 @@ Keep these things in mind when using traffic splitting:
 
 2. **Database migrations require care.** Both revisions share the same backend resources. Make sure database schema changes are backward-compatible so both revisions can work with the same database.
 
-3. **Keep old revisions active during rollout.** Do not deactivate the old revision until you are fully committed to the new one. An active old revision costs nothing if it receives no traffic and scales to zero.
+3. **Keep old revisions active during rollout.** Do not deactivate the old revision until you are fully committed to the new one. An active old revision receiving no traffic can scale to zero if its scale settings allow it.
 
 4. **Automate with CI/CD.** Use GitHub Actions or Azure DevOps to automate the traffic shifting. You can build pipelines that deploy a new revision, wait for health checks, and then gradually shift traffic.
 
