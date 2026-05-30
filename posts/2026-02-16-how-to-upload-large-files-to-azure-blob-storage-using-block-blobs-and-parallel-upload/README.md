@@ -147,7 +147,6 @@ using System.Collections.Concurrent;
 public class LargeFileUploader
 {
     // Upload a file using parallel block staging
-    // Returns the committed blob URL
     public static async Task UploadLargeFileAsync(
         string accountUrl, string containerName, string blobName,
         string filePath, int blockSizeMb = 64, int maxParallelism = 8)
@@ -195,7 +194,7 @@ public class LargeFileUploader
                     using var fs = new FileStream(filePath, FileMode.Open,
                         FileAccess.Read, FileShare.Read);
                     fs.Seek(offset, SeekOrigin.Begin);
-                    await fs.ReadAsync(buffer, 0, length);
+                    await fs.ReadExactlyAsync(buffer.AsMemory(0, length));
 
                     // Stage the block
                     using var stream = new MemoryStream(buffer);
@@ -227,25 +226,26 @@ If you do not need the fine-grained control of manual block staging, the Azure S
 ### Python - Simple Parallel Upload
 
 ```python
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import BlobClient
 from azure.identity import DefaultAzureCredential
 
 credential = DefaultAzureCredential()
-blob_service = BlobServiceClient(
-    "https://mystorageaccount.blob.core.windows.net",
-    credential=credential
+blob_client = BlobClient(
+    account_url="https://mystorageaccount.blob.core.windows.net",
+    container_name="uploads",
+    blob_name="large-dataset.tar.gz",
+    credential=credential,
+    max_block_size=100 * 1024 * 1024,      # 100 MB blocks
+    max_single_put_size=100 * 1024 * 1024  # Single-request threshold
 )
 
-blob_client = blob_service.get_blob_client("uploads", "large-dataset.tar.gz")
-
 # The SDK automatically uses block upload for large files
-# max_block_size and max_concurrency control the behavior
+# max_block_size is configured on the client; max_concurrency is set per upload
 with open("/data/large-dataset.tar.gz", "rb") as f:
     blob_client.upload_blob(
         f,
         overwrite=True,
-        max_block_size=100 * 1024 * 1024,  # 100 MB blocks
-        max_concurrency=8                    # 8 parallel uploads
+        max_concurrency=8                  # 8 parallel uploads
     )
 ```
 
@@ -262,7 +262,7 @@ var options = new BlobUploadOptions
     {
         MaximumTransferSize = 100 * 1024 * 1024,     // 100 MB blocks
         MaximumConcurrency = 8,                        // 8 parallel
-        InitialTransferSize = 100 * 1024 * 1024        // Start chunking at 100 MB
+        InitialTransferSize = 100 * 1024 * 1024        // Single-request threshold / first transfer size
     }
 };
 
