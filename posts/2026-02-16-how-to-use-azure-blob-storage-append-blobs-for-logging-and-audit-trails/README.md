@@ -18,23 +18,24 @@ Azure Blob Storage has three blob types:
 
 - **Block blobs**: General-purpose storage for files, images, documents. Supports up to 190.7 TiB per blob.
 - **Page blobs**: Optimized for random read/write operations (used for VM disks). Supports up to 8 TiB.
-- **Append blobs**: Optimized for append-only operations. Supports up to ~195 GiB (50,000 blocks x 4 MiB per block).
+- **Append blobs**: Optimized for append-only operations. Supports up to 50,000 blocks per blob. With current service versions, each append block can be up to 100 MiB, for a maximum blob size of about 4.75 TiB; older service versions were limited to 4 MiB per append block, or about 195 GiB per blob.
 
 Append blobs have a key advantage for logging: the `AppendBlock` operation is atomic. Each append either succeeds completely or fails completely - there are no partial writes. This means you will never end up with half a log line in your file.
 
 The limitations to know:
 - Maximum 50,000 append operations per blob
-- Maximum 4 MiB per append operation
+- Maximum 100 MiB per append operation with current service versions (4 MiB with older service versions)
 - No support for modifying or deleting existing blocks
-- No access tier changes (always in Hot tier)
+- No explicit access tier changes with Set Blob Tier or lifecycle tiering
 
 ## Step 1: Create an Append Blob
 
 Create an append blob using the Azure SDK. Unlike block blobs, you create the blob first and then append to it:
 
 ```python
-from azure.storage.blob import BlobServiceClient, BlobType
-from datetime import datetime
+from azure.storage.blob import BlobServiceClient
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from datetime import datetime, timezone
 
 # Initialize the blob service client
 
@@ -44,15 +45,21 @@ blob_service = BlobServiceClient.from_connection_string(connection_string)
 container = blob_service.get_container_client("application-logs")
 
 # Create container if it does not exist
-container.create_container()
+try:
+    container.create_container()
+except ResourceExistsError:
+    pass
 
 # Create an append blob for today's logs
-today = datetime.utcnow().strftime("%Y-%m-%d")
+today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 blob_name = f"app-server-01/{today}.log"
 blob_client = container.get_blob_client(blob_name)
 
 # Create the empty append blob
-blob_client.create_append_blob()
+try:
+    blob_client.get_blob_properties()
+except ResourceNotFoundError:
+    blob_client.create_append_blob()
 print(f"Created append blob: {blob_name}")
 ```
 
@@ -62,7 +69,8 @@ Once the blob exists, append data to it. Each append operation adds a new block 
 
 ```python
 from azure.storage.blob import BlobServiceClient
-from datetime import datetime
+from azure.core.exceptions import ResourceNotFoundError
+from datetime import datetime, timezone
 import json
 
 connection_string = "DefaultEndpointsProtocol=https;AccountName=stlogs2026;..."
@@ -79,19 +87,19 @@ def append_log_entry(container_name, blob_name, log_entry):
     blob_client.append_block(log_line.encode("utf-8"))
 
 # Example usage - logging an API request
-today = datetime.utcnow().strftime("%Y-%m-%d")
+today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 blob_name = f"api-logs/{today}.jsonl"
 
 # Create the blob if it does not exist
 blob_client = blob_service.get_blob_client("application-logs", blob_name)
 try:
     blob_client.get_blob_properties()
-except Exception:
+except ResourceNotFoundError:
     blob_client.create_append_blob()
 
 # Append log entries
 append_log_entry("application-logs", blob_name, {
-    "timestamp": datetime.utcnow().isoformat(),
+    "timestamp": datetime.now(timezone.utc).isoformat(),
     "level": "INFO",
     "service": "api-gateway",
     "method": "GET",
@@ -102,7 +110,7 @@ append_log_entry("application-logs", blob_name, {
 })
 
 append_log_entry("application-logs", blob_name, {
-    "timestamp": datetime.utcnow().isoformat(),
+    "timestamp": datetime.now(timezone.utc).isoformat(),
     "level": "ERROR",
     "service": "api-gateway",
     "method": "POST",
@@ -119,7 +127,8 @@ Appending one log line at a time is inefficient for high-volume logging. Batch m
 
 ```python
 from azure.storage.blob import BlobServiceClient
-from datetime import datetime
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from datetime import datetime, timezone
 import json
 import threading
 import time
@@ -167,7 +176,7 @@ class BatchAppendLogger:
         batch_data = "".join(json.dumps(e) + "\n" for e in entries)
 
         # Determine the blob name based on current date
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         blob_name = f"batched-logs/{today}.jsonl"
 
         blob_client = self.blob_service.get_blob_client(
@@ -177,8 +186,11 @@ class BatchAppendLogger:
         # Create blob if needed, then append
         try:
             blob_client.append_block(batch_data.encode("utf-8"))
-        except Exception:
-            blob_client.create_append_blob()
+        except ResourceNotFoundError:
+            try:
+                blob_client.create_append_blob()
+            except ResourceExistsError:
+                pass
             blob_client.append_block(batch_data.encode("utf-8"))
 
         print(f"Flushed {len(entries)} entries to {blob_name}")
@@ -188,8 +200,8 @@ blob_service = BlobServiceClient.from_connection_string(connection_string)
 logger = BatchAppendLogger(blob_service, "application-logs")
 
 # Log entries are batched and flushed automatically
-logger.log({"timestamp": datetime.utcnow().isoformat(), "message": "User login", "user_id": "123"})
-logger.log({"timestamp": datetime.utcnow().isoformat(), "message": "Order placed", "order_id": "456"})
+logger.log({"timestamp": datetime.now(timezone.utc).isoformat(), "message": "User login", "user_id": "123"})
+logger.log({"timestamp": datetime.now(timezone.utc).isoformat(), "message": "Order placed", "order_id": "456"})
 ```
 
 ## Step 4: Handle Concurrent Writers
@@ -217,7 +229,8 @@ def safe_append(blob_client, data, max_retries=5):
             return True
 
         except HttpResponseError as e:
-            if "AppendPositionConditionNotMet" in str(e):
+            error_code = getattr(e, "error_code", "")
+            if error_code == "AppendPositionConditionNotMet" or "AppendPositionConditionNotMet" in str(error_code):
                 # Another writer beat us, retry
                 continue
             raise
@@ -234,15 +247,18 @@ Since append blobs have a 50,000-block limit, you need to rotate to new blobs be
 **Time-based rotation**: Create a new blob each hour or day.
 
 ```python
+from azure.core.exceptions import ResourceNotFoundError
+from datetime import datetime, timezone
+
 def get_current_log_blob(container_client, prefix):
     """Get or create the log blob for the current hour"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     blob_name = f"{prefix}/{now.strftime('%Y/%m/%d/%H')}.jsonl"
     blob_client = container_client.get_blob_client(blob_name)
 
     try:
         blob_client.get_blob_properties()
-    except Exception:
+    except ResourceNotFoundError:
         blob_client.create_append_blob()
 
     return blob_client
@@ -251,9 +267,12 @@ def get_current_log_blob(container_client, prefix):
 **Size-based rotation**: Create a new blob when the current one approaches the block limit.
 
 ```python
+from azure.core.exceptions import ResourceNotFoundError
+from datetime import datetime, timezone
+
 def get_log_blob_with_rotation(container_client, prefix):
     """Get the current log blob, rotating if near the block limit"""
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     sequence = 0
 
     while True:
@@ -262,12 +281,12 @@ def get_log_blob_with_rotation(container_client, prefix):
 
         try:
             props = blob_client.get_blob_properties()
-            block_count = props.content_length  # rough estimate
+            block_count = props.append_blob_committed_block_count or 0
             # If near 50K blocks, try next sequence
-            if block_count > 45000 * 100:  # Assume ~100 bytes per entry
+            if block_count > 45000:
                 sequence += 1
                 continue
-        except Exception:
+        except ResourceNotFoundError:
             blob_client.create_append_blob()
 
         return blob_client
@@ -303,12 +322,20 @@ For larger log files, use streaming to avoid loading everything into memory:
 ```python
 # Stream large log files line by line
 stream = blob_client.download_blob()
+partial_line = ""
 for chunk in stream.chunks():
-    text = chunk.decode("utf-8")
-    for line in text.split("\n"):
+    text = partial_line + chunk.decode("utf-8")
+    lines = text.split("\n")
+    partial_line = lines.pop()
+
+    for line in lines:
         if line.strip():
             entry = json.loads(line)
             # Process entry
+
+if partial_line.strip():
+    entry = json.loads(partial_line)
+    # Process entry
 ```
 
 ## Step 7: Set Up Lifecycle Management
