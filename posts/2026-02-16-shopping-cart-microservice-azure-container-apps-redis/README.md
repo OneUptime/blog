@@ -28,7 +28,7 @@ flowchart TD
     G --> I[Abandoned Cart Emails]
 ```
 
-Redis stores the cart state because it provides sub-millisecond read/write performance, built-in data structures (hashes work perfectly for carts), automatic expiration for abandoned carts, and atomic operations for concurrent updates.
+Redis stores the cart state because it provides very low-latency read/write performance, built-in data structures for cart data, automatic expiration for abandoned carts, and primitives such as WATCH/MULTI or Lua scripts for atomic updates when concurrent writes matter.
 
 ## Setting Up the Infrastructure
 
@@ -138,43 +138,36 @@ app.post('/api/carts/:cartId/items', async (req, res) => {
       return res.status(400).json({ error: 'productId, quantity, and price are required' });
     }
 
-    // Use Redis transaction for atomic update
-    const cartKey = `${CART_PREFIX}${req.params.cartId}`;
-    const cartData = await redis.get(cartKey);
+    const cart = await updateCart(req.params.cartId, (cart) => {
+      // Check if item already exists in cart
+      const existingIndex = cart.items.findIndex(
+        item => item.productId === productId
+      );
 
-    if (!cartData) {
+      if (existingIndex >= 0) {
+        // Update quantity for existing item
+        cart.items[existingIndex].quantity += quantity;
+        cart.items[existingIndex].updatedAt = new Date().toISOString();
+      } else {
+        // Add new item
+        cart.items.push({
+          id: uuidv4(),
+          productId,
+          name: name || '',
+          price,
+          quantity,
+          imageUrl: imageUrl || '',
+          addedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      return cart;
+    });
+
+    if (!cart) {
       return res.status(404).json({ error: 'Cart not found' });
     }
-
-    const cart = JSON.parse(cartData);
-
-    // Check if item already exists in cart
-    const existingIndex = cart.items.findIndex(
-      item => item.productId === productId
-    );
-
-    if (existingIndex >= 0) {
-      // Update quantity for existing item
-      cart.items[existingIndex].quantity += quantity;
-      cart.items[existingIndex].updatedAt = new Date().toISOString();
-    } else {
-      // Add new item
-      cart.items.push({
-        id: uuidv4(),
-        productId,
-        name: name || '',
-        price,
-        quantity,
-        imageUrl: imageUrl || '',
-        addedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-    }
-
-    cart.updatedAt = new Date().toISOString();
-
-    // Save updated cart and reset TTL
-    await redis.set(cartKey, JSON.stringify(cart), 'EX', CART_TTL);
 
     res.json(calculateCartTotals(cart));
   } catch (error) {
@@ -186,30 +179,36 @@ app.post('/api/carts/:cartId/items', async (req, res) => {
 app.put('/api/carts/:cartId/items/:itemId', async (req, res) => {
   try {
     const { quantity } = req.body;
-    const cartKey = `${CART_PREFIX}${req.params.cartId}`;
-    const cartData = await redis.get(cartKey);
+    let itemFound = false;
 
-    if (!cartData) {
+    const cart = await updateCart(req.params.cartId, (cart) => {
+      itemFound = false;
+      const item = cart.items.find(i => i.id === req.params.itemId);
+
+      if (!item) {
+        return cart;
+      }
+
+      itemFound = true;
+
+      if (quantity <= 0) {
+        // Remove item if quantity is zero or negative
+        cart.items = cart.items.filter(i => i.id !== req.params.itemId);
+      } else {
+        item.quantity = quantity;
+        item.updatedAt = new Date().toISOString();
+      }
+
+      return cart;
+    });
+
+    if (!cart) {
       return res.status(404).json({ error: 'Cart not found' });
     }
 
-    const cart = JSON.parse(cartData);
-    const item = cart.items.find(i => i.id === req.params.itemId);
-
-    if (!item) {
+    if (!itemFound) {
       return res.status(404).json({ error: 'Item not found in cart' });
     }
-
-    if (quantity <= 0) {
-      // Remove item if quantity is zero or negative
-      cart.items = cart.items.filter(i => i.id !== req.params.itemId);
-    } else {
-      item.quantity = quantity;
-      item.updatedAt = new Date().toISOString();
-    }
-
-    cart.updatedAt = new Date().toISOString();
-    await redis.set(cartKey, JSON.stringify(cart), 'EX', CART_TTL);
 
     res.json(calculateCartTotals(cart));
   } catch (error) {
@@ -220,18 +219,14 @@ app.put('/api/carts/:cartId/items/:itemId', async (req, res) => {
 // Remove an item from the cart
 app.delete('/api/carts/:cartId/items/:itemId', async (req, res) => {
   try {
-    const cartKey = `${CART_PREFIX}${req.params.cartId}`;
-    const cartData = await redis.get(cartKey);
+    const cart = await updateCart(req.params.cartId, (cart) => {
+      cart.items = cart.items.filter(i => i.id !== req.params.itemId);
+      return cart;
+    });
 
-    if (!cartData) {
+    if (!cart) {
       return res.status(404).json({ error: 'Cart not found' });
     }
-
-    const cart = JSON.parse(cartData);
-    cart.items = cart.items.filter(i => i.id !== req.params.itemId);
-    cart.updatedAt = new Date().toISOString();
-
-    await redis.set(cartKey, JSON.stringify(cart), 'EX', CART_TTL);
 
     res.json(calculateCartTotals(cart));
   } catch (error) {
@@ -272,6 +267,35 @@ async function getCart(cartId) {
 
   const cart = JSON.parse(cartData);
   return calculateCartTotals(cart);
+}
+
+// Helper to update a cart with optimistic locking
+async function updateCart(cartId, updater, retries = 5) {
+  const cartKey = `${CART_PREFIX}${cartId}`;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    await redis.watch(cartKey);
+
+    const cartData = await redis.get(cartKey);
+    if (!cartData) {
+      await redis.unwatch();
+      return null;
+    }
+
+    const cart = updater(JSON.parse(cartData));
+    cart.updatedAt = new Date().toISOString();
+
+    const result = await redis
+      .multi()
+      .set(cartKey, JSON.stringify(cart), 'EX', CART_TTL)
+      .exec();
+
+    if (result) {
+      return cart;
+    }
+  }
+
+  throw new Error('Cart was updated concurrently; retry the request');
 }
 
 const PORT = process.env.PORT || 3000;
@@ -327,12 +351,14 @@ az containerapp create \
   --environment cart-env \
   --image cartserviceacr.azurecr.io/cart-service:latest \
   --registry-server cartserviceacr.azurecr.io \
+  --registry-identity system \
   --target-port 3000 \
   --ingress external \
   --min-replicas 1 \
   --max-replicas 10 \
   --cpu 0.5 \
   --memory 1Gi \
+  --secrets redis-password=<your-redis-access-key> \
   --env-vars \
     REDIS_HOST=cart-redis.redis.cache.windows.net \
     REDIS_PORT=6380 \
