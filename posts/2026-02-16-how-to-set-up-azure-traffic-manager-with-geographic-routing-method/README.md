@@ -29,23 +29,23 @@ Traffic Manager resolves DNS queries based on the source IP of the DNS resolver 
 2. The DNS query reaches Traffic Manager
 3. Traffic Manager looks up the source IP of the DNS query
 4. It maps the IP to a geographic region (Germany -> Europe)
-5. It returns the IP of the endpoint assigned to Europe
+5. It returns a DNS response for the endpoint assigned to Europe
 
 ```mermaid
 graph TD
     A[User in Germany] -->|DNS Query| B[Traffic Manager]
-    B -->|Geo Lookup: Europe| C[Return EU Endpoint IP]
+    B -->|Geo Lookup: Europe| C[Return EU Endpoint DNS response]
     D[User in Japan] -->|DNS Query| B
-    B -->|Geo Lookup: Asia| E[Return Asia Endpoint IP]
+    B -->|Geo Lookup: Asia| E[Return Asia Endpoint DNS response]
     F[User in Brazil] -->|DNS Query| B
-    B -->|Geo Lookup: South America| G[Return Americas Endpoint IP]
+    B -->|Geo Lookup: South America| G[Return Americas Endpoint DNS response]
 ```
 
 ## Prerequisites
 
 You need:
 
-1. A Traffic Manager profile (DNS-based, works at layer 7)
+1. A Traffic Manager profile (DNS-based, not a proxy or gateway)
 2. Endpoints deployed in the regions you want to serve (these can be Azure App Services, Cloud Services, public IPs, or external endpoints)
 3. An understanding of which geographic regions map to which endpoints
 
@@ -124,7 +124,7 @@ You can also map specific countries using ISO 3166-1 alpha-2 codes.
 
 ## Step 3: Add a Catch-All Endpoint
 
-What happens when a user comes from a region you have not mapped? Their DNS query fails. To avoid this, always add a catch-all endpoint with the `WORLD` mapping:
+What happens when a user comes from a region you have not mapped? Traffic Manager returns a NODATA response. To avoid this, always add a catch-all endpoint with the `WORLD` mapping:
 
 ```bash
 # Add a catch-all endpoint for unmapped regions
@@ -170,7 +170,7 @@ az network traffic-manager endpoint create \
 
 ## Step 5: Configure Health Checks
 
-Traffic Manager continuously monitors endpoint health. If a geographic endpoint goes down, Traffic Manager will not reroute traffic to another geographic endpoint by default. Users will get a failed DNS response.
+Traffic Manager continuously monitors endpoint health. If a geographic endpoint is degraded, stopped, or disabled, Traffic Manager will not automatically reroute traffic to another geographic endpoint by default. Users can get a NODATA response.
 
 To handle failover, use nested profiles:
 
@@ -222,7 +222,7 @@ This gives you geographic routing at the top level and priority-based failover w
 Testing geographic routing is tricky because you need DNS queries from different geographic locations. Some approaches:
 
 ```bash
-# Use Traffic Manager's built-in test tool
+# List the configured endpoint mappings and status
 az network traffic-manager profile show \
   --resource-group myResourceGroup \
   --name myGeoProfile \
@@ -250,7 +250,7 @@ Enable diagnostic settings to send Traffic Manager logs to Log Analytics for dee
 
 ## Common Mistakes
 
-**Forgetting the WORLD catch-all.** Any geography not explicitly mapped will get no DNS response. Always add a WORLD endpoint.
+**Forgetting the WORLD catch-all.** Any geography not explicitly mapped will get a NODATA response. Always add a WORLD endpoint.
 
 **Overlapping mappings.** You cannot assign the same geography to two endpoints. If you try, the second assignment will fail.
 
