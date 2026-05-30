@@ -59,22 +59,12 @@ appInsights.setup("<connection-string>")
 
 ### Java
 
-For the Java agent, Live Metrics is enabled by default. No additional configuration is needed. If you need to disable it (for security reasons in some environments), you can set it in `applicationinsights.json`:
-
-```json
-{
-  "preview": {
-    "liveMetrics": {
-      "enabled": true
-    }
-  }
-}
-```
+For the Java agent, Live Metrics is enabled by default. No additional Live Metrics configuration is needed in `applicationinsights.json`. Configure the connection string and authentication settings the same way you configure the rest of the Java agent.
 
 ### Python
 
 ```python
-# Enable Live Metrics with the Azure Monitor OpenTelemetry exporter
+# Enable Live Metrics with the Azure Monitor OpenTelemetry Distro
 
 from azure.monitor.opentelemetry import configure_azure_monitor
 
@@ -201,13 +191,13 @@ Think of Live Metrics as your "is the building on fire right now?" tool and Log 
 
 ## Security Considerations
 
-Live Metrics uses a secure WebSocket connection between your application and the Azure portal. The connection is authenticated using your Application Insights connection string. However, be aware that:
+Live Metrics uses secure connections between your application, the Live Metrics endpoints, and the Azure portal. The connection string identifies the Application Insights resource, but authenticated live metrics ingestion now requires Microsoft Entra authentication; API keys for streaming live metrics telemetry were retired on September 30, 2025. However, be aware that:
 
 - Anyone with Reader access to the Application Insights resource can view Live Metrics.
 - The sample telemetry may contain sensitive data (URLs with query parameters, exception messages with stack traces).
 - In highly regulated environments, you may want to restrict access to the Application Insights resource using Azure RBAC.
 
-If your application runs in an environment that restricts outbound connections, Live Metrics needs access to the following endpoint: `live.applicationinsights.azure.com` on port 443.
+If your application runs in an environment that restricts outbound connections, Live Metrics needs access to the Azure Monitor Live Metrics endpoints on port 443, including `live.applicationinsights.azure.com` and the regional `{region}.livediagnostics.monitor.azure.com` endpoint used by your resource.
 
 ## Troubleshooting
 
@@ -221,4 +211,4 @@ If your application runs in an environment that restricts outbound connections, 
 
 ## Wrapping Up
 
-Live Metrics Stream is the fastest way to understand what your application is doing right now. It has zero storage cost, sub-second latency, and requires minimal setup. Make it the first thing you open when someone reports a production issue. Use the filters to cut through the noise, watch the server panel to identify instance-level problems, and then switch to Log Analytics for deeper investigation once you know what you are looking at. It is one of those features that, once you start using it, you wonder how you ever debugged production issues without it.
+Live Metrics Stream is the fastest way to understand what your application is doing right now. It has zero storage cost, 1-second latency, and requires minimal setup. Make it the first thing you open when someone reports a production issue. Use the filters to cut through the noise, watch the server panel to identify instance-level problems, and then switch to Log Analytics for deeper investigation once you know what you are looking at. It is one of those features that, once you start using it, you wonder how you ever debugged production issues without it.
