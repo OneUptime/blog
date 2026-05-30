@@ -77,18 +77,13 @@ Design your Workbook with parameterization in mind:
 
 ### Saving as a Template
 
-When you save, you can choose to save as a template instead of a regular Workbook. Templates are saved with the type `microsoft.insights/workbooktemplates` and appear in the Workbook gallery for your resource group or subscription.
+When you save, you can choose to save as a template instead of a regular Workbook. Templates are saved with the type `Microsoft.Insights/workbookTemplates` and appear in the Workbook gallery for your resource group or subscription.
 
 ```bash
-# Create a Workbook template using Azure CLI
-az monitor workbook create \
+# Deploy a Workbook template using Azure CLI and an ARM template
+az deployment group create \
     --resource-group "monitoring-rg" \
-    --name "my-template" \
-    --display-name "Infrastructure Health Template" \
-    --category "Infrastructure" \
-    --kind "shared" \
-    --source-id "/subscriptions/sub-id/resourceGroups/monitoring-rg" \
-    --serialized-data @workbook-template.json
+    --template-file "workbook-template-resource.json"
 ```
 
 ## Exporting Workbooks as ARM Templates
@@ -122,17 +117,15 @@ Wrap the Workbook JSON in an ARM template:
   },
   "resources": [
     {
-      // Workbook resource definition
-      "type": "microsoft.insights/workbooks",
-      "apiVersion": "2022-04-01",
+      "type": "Microsoft.Insights/workbooks",
+      "apiVersion": "2023-06-01",
       "name": "[guid(parameters('workbookName'))]",
       "location": "[parameters('location')]",
       "kind": "shared",
       "properties": {
         "displayName": "[parameters('workbookName')]",
         "category": "workbook",
-        "version": "1.0",
-        // Paste your serialized Workbook JSON here
+        "version": "Notebook/1.0",
         "serializedData": "{\"version\":\"Notebook/1.0\",\"items\":[{\"type\":1,\"content\":{\"json\":\"# Infrastructure Health\"},\"name\":\"title\"}],\"isLocked\":false}"
       }
     }
@@ -162,14 +155,14 @@ param location string = resourceGroup().location
 // Load the workbook content from a JSON file
 var workbookContent = loadTextContent('workbook-content.json')
 
-resource workbook 'microsoft.insights/workbooks@2022-04-01' = {
+resource workbook 'Microsoft.Insights/workbooks@2023-06-01' = {
   name: guid(workbookName, resourceGroup().id)
   location: location
   kind: 'shared'
   properties: {
     displayName: workbookName
     category: 'workbook'
-    version: '1.0'
+    version: 'Notebook/1.0'
     serializedData: workbookContent
   }
 }
@@ -202,16 +195,17 @@ Since Workbooks are JSON under the hood, they work well with version control:
 
 ```bash
 # Export a Workbook to a JSON file
-az monitor workbook show \
+az monitor app-insights workbook show \
     --resource-group "monitoring-rg" \
-    --name "workbook-resource-name" \
+    --name "00000000-0000-0000-0000-000000000000" \
+    --can-fetch-content true \
     --query "properties.serializedData" \
     --output tsv > workbooks/infra-health.json
 
 # Import/update a Workbook from a JSON file
-az monitor workbook update \
+az monitor app-insights workbook update \
     --resource-group "monitoring-rg" \
-    --name "workbook-resource-name" \
+    --name "00000000-0000-0000-0000-000000000000" \
     --serialized-data @workbooks/infra-health.json
 ```
 
