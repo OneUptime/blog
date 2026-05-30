@@ -89,7 +89,7 @@ az extension add --name azure-firewall
 az extension list --output table
 ```
 
-This shows the extension name, version, whether it is in preview, and whether an update is available.
+This shows the extension name, version, and preview or experimental status when that metadata is available.
 
 ### Updating Extensions
 
@@ -162,17 +162,21 @@ This gives you access to the latest AKS features before they are generally avail
 ```bash
 # Install the AKS preview extension
 az extension add --name aks-preview
+az extension update --name aks-preview
 
-# Register preview features (required for some preview features)
-az feature register --namespace Microsoft.ContainerService --name EnableWorkloadIdentityPreview
+# Register a preview feature (required for some preview features)
+az feature register --namespace Microsoft.ContainerService --name IdentityBindingPreview
 
-# Use preview features when creating or updating a cluster
-az aks create \
+# Verify registration, then refresh the provider
+az feature show --namespace Microsoft.ContainerService --name IdentityBindingPreview
+az provider register --namespace Microsoft.ContainerService
+
+# Use a preview command from the extension
+az aks identity-binding create \
   --resource-group "rg-aks" \
-  --name "aks-dev" \
-  --enable-oidc-issuer \
-  --enable-workload-identity \
-  --node-count 3
+  --cluster-name "aks-dev" \
+  --name "my-identity-binding" \
+  --managed-identity-resource-id "/subscriptions/<subscription-id>/resourceGroups/rg-aks/providers/Microsoft.ManagedIdentity/userAssignedIdentities/my-id"
 ```
 
 ### SSH Extension
@@ -261,7 +265,7 @@ Sometimes an extension requires a specific version of the Azure CLI core. If you
 az version --output table
 
 # Check extension compatibility
-az extension show --name aks-preview --query "[minCliCoreVersion, maxCliCoreVersion]"
+az extension show --name aks-preview --query "metadata.\"azext.minCliCoreVersion\""
 
 # Upgrade the CLI if needed
 az upgrade
