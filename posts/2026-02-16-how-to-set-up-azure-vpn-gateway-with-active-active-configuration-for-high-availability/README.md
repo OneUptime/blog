@@ -62,7 +62,7 @@ az network public-ip create \
   --sku Standard
 ```
 
-Standard SKU public IPs are required for VPN gateways with zone redundancy. If you do not need zone redundancy, Basic SKU works too.
+Active-active VPN gateways require two Standard SKU public IPs with static allocation.
 
 ## Step 2: Create the GatewaySubnet
 
@@ -93,15 +93,13 @@ az network vnet-gateway create \
   --vpn-type RouteBased \
   --sku VpnGw2 \
   --public-ip-addresses vpn-gw-pip1 vpn-gw-pip2 \
-  --asn 65515 \
-  --active-active true
+  --asn 65515
 ```
 
 Key parameters:
 
 - **public-ip-addresses**: Both PIPs are specified, which is what makes the gateway active-active
-- **asn 65515**: The BGP ASN for the Azure gateway. 65515 is the default, but you can use any private ASN
-- **active-active true**: Explicitly enables active-active mode
+- **asn 65515**: The BGP ASN for the Azure gateway. 65515 is the default, but you can use another supported public or private ASN as long as it differs from your on-premises ASN
 - **sku VpnGw2**: Use VpnGw2 or higher for production. VpnGw1 supports active-active but has lower throughput
 
 ## Step 4: Retrieve the BGP Peering Addresses
@@ -238,23 +236,23 @@ To verify that failover works, you can simulate an instance failure by disconnec
 3. Check the BGP peer status - one peer should show as disconnected
 4. Bring the tunnel back up and verify both peers reconnect
 
-During a real Azure maintenance event, one instance goes down while the other continues to handle traffic. The transition is seamless for established connections because the traffic was already flowing through both instances.
+During a real Azure maintenance event, one instance goes down while the other continues to handle traffic. The affected tunnel disconnects, and traffic switches to the remaining active tunnel as the corresponding routes are withdrawn.
 
 ## Throughput and Cost Considerations
 
-Active-active mode effectively doubles your aggregate throughput because both instances handle traffic simultaneously. However, there are cost implications:
+Active-active mode can improve aggregate throughput because both instances handle traffic simultaneously, but the primary goal is high availability and the exact gain depends on traffic patterns. There are also cost implications:
 
 - You pay for two public IP addresses instead of one
 - The gateway SKU cost remains the same (you are not paying for two gateways)
 - Data transfer costs are the same (you pay per GB transferred, not per tunnel)
 
-The throughput per gateway instance depends on the SKU:
+The aggregate throughput benchmark depends on the SKU:
 
-| SKU | Per-Instance Throughput | Active-Active Aggregate |
-|-----|----------------------|------------------------|
-| VpnGw1 | 650 Mbps | ~1.3 Gbps |
-| VpnGw2 | 1 Gbps | ~2 Gbps |
-| VpnGw3 | 1.25 Gbps | ~2.5 Gbps |
+| SKU | Aggregate Throughput Benchmark |
+|-----|-------------------------------|
+| VpnGw1 | 650 Mbps |
+| VpnGw2 | 1 Gbps |
+| VpnGw3 | 1.25 Gbps |
 
 ## Wrapping Up
 
