@@ -22,7 +22,7 @@ Azure Firewall has three types of rule collections, and they are processed in a 
 
 Within each type, rule collections are processed by priority (lower number = higher priority). Within a rule collection, individual rules are processed in order from top to bottom. The first matching rule wins.
 
-Here is the critical detail that catches people: if a network rule matches and allows traffic, application rules are never evaluated. If no network rule matches, the firewall then evaluates application rules. If nothing matches in any rule type, the traffic is denied by the built-in deny-all rule.
+Here is the critical detail that catches people: if a network rule matches and allows traffic, application rules are never evaluated. If no network rule matches, the firewall then evaluates application rules. If nothing matches in any rule type, Azure Firewall evaluates its built-in infrastructure rule collection before the final built-in deny-all rule.
 
 ```mermaid
 graph TD
@@ -106,13 +106,13 @@ The `msg_s` field contains detailed information about the traffic flow including
 
 ### Scenario 1: Application Rule Not Matching HTTPS Traffic
 
-Application rules work on FQDNs and require the firewall to inspect the TLS SNI (Server Name Indication) header. If the client does not send SNI or uses IP addresses directly instead of FQDNs, application rules cannot match and the traffic is denied.
+Application rules work on FQDNs. For HTTPS, Azure Firewall matches the TLS SNI (Server Name Indication) header unless TLS inspection is enabled, in which case it can also use the Host header and URL. If the client does not send a usable SNI or uses IP addresses directly instead of FQDNs, application rules cannot match and the traffic is denied.
 
 Fix: Either ensure clients use FQDNs, or create a network rule to allow the traffic by IP and port instead.
 
 ### Scenario 2: Non-HTTP/S Traffic Hitting Application Rules
 
-Application rules only work for HTTP (port 80), HTTPS (port 443), and MSSQL (port 1433) protocols. If you create an application rule for a service that uses a different port, it will not work.
+Application rules only evaluate HTTP, HTTPS, and MSSQL traffic. MSSQL FQDN filtering for Azure SQL is supported only in proxy mode on port 1433. If you create an application rule for a non-HTTP/S or non-MSSQL service, it will not work.
 
 Fix: Use network rules for non-HTTP/S traffic. Network rules work with any port and protocol combination.
 
@@ -134,15 +134,21 @@ az network firewall network-rule collection list \
 
 ### Scenario 4: FQDN Resolution Issues
 
-Application rules with FQDN targets require Azure Firewall DNS proxy to be enabled. Without it, the firewall cannot resolve FQDNs in network rules (application rules always resolve FQDNs).
+Network rules with FQDN targets require Azure Firewall DNS proxy to be enabled. Without it, the firewall cannot use FQDNs in network rules. Application rules always resolve FQDNs, but clients should still use the firewall DNS proxy when you depend on FQDN filtering so the client and firewall see consistent DNS answers.
 
 ```bash
 # Enable DNS proxy on Azure Firewall
 az network firewall update \
   --resource-group rg-networking \
   --name fw-production \
-  --dns-proxy true \
+  --enable-dns-proxy true \
   --dns-servers "168.63.129.16"
+
+# Configure the virtual network to send DNS queries to the firewall private IP
+az network vnet update \
+  --resource-group rg-networking \
+  --name vnet-production \
+  --dns-servers "<firewall-private-IP>"
 ```
 
 ### Scenario 5: Asymmetric Routing
@@ -174,7 +180,7 @@ az network firewall policy rule-collection-group list \
 
 ## Threat Intelligence and IDPS
 
-Azure Firewall Premium includes threat intelligence-based filtering and IDPS (Intrusion Detection and Prevention). These features can deny traffic independently of your rule collections.
+Azure Firewall includes threat intelligence-based filtering, and Azure Firewall Premium adds IDPS (Intrusion Detection and Prevention). These features can deny traffic in addition to your rule collections.
 
 If traffic is being denied and your rules look correct, check whether threat intelligence is blocking it.
 
