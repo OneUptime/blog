@@ -88,7 +88,7 @@ az mysql flexible-server parameter set \
 
 Controls the maximum number of simultaneous client connections.
 
-**Default**: Varies by SKU (e.g., 151 for small SKUs, higher for larger ones).
+**Default**: Varies by SKU (e.g., 85 for Standard_B1s, 171 for Standard_B1ms, higher for larger ones).
 
 **When to tune**: When your application hits "Too many connections" errors.
 
@@ -157,12 +157,14 @@ SHOW ENGINE INNODB STATUS\G
 -- and "Checkpoint at" sections
 ```
 
+In Azure Database for MySQL Flexible Server, this setting is exposed as `innodb_log_size` and can be set to 256 MB, 512 MB, 1 GB, or 2 GB.
+
 ```bash
-# Increase redo log file size to 1 GB (requires restart)
+# Increase redo log size to 1 GB (requires restart)
 az mysql flexible-server parameter set \
   --resource-group myResourceGroup \
   --server-name my-mysql-server \
-  --name innodb_log_file_size \
+  --name innodb_log_size \
   --value 1073741824
 ```
 
@@ -198,7 +200,7 @@ az mysql flexible-server parameter set \
   --value 67108864
 ```
 
-Both parameters must be set together since MySQL uses the smaller of the two.
+For internal temporary tables that use the `MEMORY` storage engine, MySQL uses the smaller of the two. In MySQL 8.0, the default `TempTable` engine is also controlled by `tmp_table_size`, but `max_heap_table_size` does not apply to `TempTable` internal temporary tables.
 
 ## join_buffer_size and sort_buffer_size
 
