@@ -33,7 +33,7 @@ az vm boot-diagnostics enable \
 Once enabled, you can view the boot screenshot and serial log from the Azure portal or CLI.
 
 ```bash
-# Get the boot diagnostics screenshot URL
+# Get the boot diagnostics screenshot and serial log SAS URIs
 az vm boot-diagnostics get-boot-log-uris \
   --resource-group myResourceGroup \
   --name myVM
@@ -139,13 +139,16 @@ shutdown /r /t 0
 If the VM shows a BitLocker recovery screen, the TPM state has changed (common after VM resize or move). You need the BitLocker recovery key.
 
 ```bash
-# Find BitLocker recovery keys in Azure
+# Check Azure Disk Encryption status
 az vm encryption show \
   --resource-group myResourceGroup \
   --name myVM
 
-# The recovery key is stored in Key Vault if you used ADE
-az keyvault secret list --vault-name myKeyVault --query "[?contains(name, 'bitlocker')]" -o table
+# The BEK is stored as a Key Vault secret if you used Azure Disk Encryption
+az keyvault secret list \
+  --vault-name myKeyVault \
+  --query "[?contentType=='BEK' || contentType=='Wrapped BEK'].[name,contentType,tags.MachineName,tags.VolumeLetter,tags.DiskEncryptionKeyFileName]" \
+  -o table
 ```
 
 ### Windows Update Stuck
@@ -171,7 +174,7 @@ Serial Console provides interactive access to a VM's serial port. For Linux, thi
 Prerequisites for Serial Console:
 - Boot diagnostics must be enabled
 - The VM must have a password-based user account (SSH key-only is not enough for Serial Console on Linux)
-- The VM must have the serial console agent installed (included by default in most marketplace images)
+- The guest OS must be configured for serial console access. Most endorsed Azure Linux images are configured by default, and newer Windows Server images have SAC enabled by default.
 
 ```bash
 # Connect to Serial Console via Azure CLI
@@ -209,17 +212,17 @@ az vm repair restore \
 
 ## Proactive Boot Diagnostics Monitoring
 
-Do not wait for a boot failure to look at boot diagnostics. Set up monitoring to alert you when a VM stops reporting heartbeat or when boot diagnostics shows error patterns.
+Do not wait for a boot failure to look at boot diagnostics. Set up monitoring to alert you when a VM becomes unavailable or when boot diagnostics shows error patterns.
 
-Azure Monitor can detect VM availability issues through the VM heartbeat signal. If the heartbeat stops, the VM is either deallocated or has a boot issue.
+Azure Monitor can detect VM availability issues through the VM availability metric. If you rely on Azure Monitor Agent heartbeat instead, remember that a missing heartbeat can also mean the agent, network path, or workspace connection is unhealthy.
 
 ```bash
-# Create an alert for missing VM heartbeat
+# Create an alert when the VM availability metric reports unavailable
 az monitor metrics alert create \
-  --name "vm-heartbeat-missing" \
+  --name "vm-availability-unavailable" \
   --resource-group myResourceGroup \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/myVM" \
-  --condition "count Heartbeat < 1" \
+  --condition "min VmAvailabilityMetric < 1" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --severity 1 \
