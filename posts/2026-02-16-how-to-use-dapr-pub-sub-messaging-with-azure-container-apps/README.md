@@ -18,7 +18,7 @@ Direct service-to-service calls create tight coupling. If the payment service is
 - At-least-once delivery guarantees
 - Automatic message envelope format with CloudEvents
 - Topic-based routing
-- Dead letter queues for failed messages
+- Dead letter topics for failed messages
 - Scoping to control which apps can publish and subscribe
 
 ## Step 1: Set Up Azure Service Bus
@@ -117,7 +117,7 @@ Subscriber services need to tell Dapr which topics they want to listen to. There
 ```javascript
 const express = require('express');
 const app = express();
-app.use(express.json());
+app.use(express.json({ type: ['application/json', 'application/*+json'] }));
 
 // Dapr calls this endpoint to discover subscriptions
 app.get('/dapr/subscribe', (req, res) => {
@@ -176,7 +176,7 @@ A service can subscribe to multiple topics. Here is a notification service that 
 ```javascript
 const express = require('express');
 const app = express();
-app.use(express.json());
+app.use(express.json({ type: ['application/json', 'application/*+json'] }));
 
 // Subscribe to both order and shipping topics
 app.get('/dapr/subscribe', (req, res) => {
@@ -227,29 +227,7 @@ graph LR
 
 ## Step 6: Configure Dead Letter Topics
 
-When a message fails processing after the maximum retry count, it should go to a dead letter topic instead of being lost.
-
-```yaml
-# dapr-pubsub.yaml with dead letter configuration
-componentType: pubsub.azure.servicebus.topics
-version: v1
-metadata:
-  - name: connectionString
-    secretRef: sb-connection
-  - name: maxDeliveryCount
-    value: "5"
-  - name: deadLetteringOnMessageExpiration
-    value: "true"
-secrets:
-  - name: sb-connection
-    value: "<your-connection-string>"
-scopes:
-  - order-service
-  - payment-service
-  - notification-service
-```
-
-You can also configure dead letter routing per subscription.
+When a message cannot be delivered to a subscriber, you can route it to a dead letter topic instead of retrying forever.
 
 ```yaml
 # subscription with dead letter topic
@@ -265,6 +243,28 @@ spec:
   deadLetterTopic: orders-deadletter
 scopes:
   - payment-service
+```
+
+By default, a message that fails delivery goes to the dead letter topic immediately. If you want Dapr to retry before forwarding the message, apply a retry resiliency policy to the pub/sub component.
+
+```yaml
+# resiliency.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: pubsub-retries
+spec:
+  policies:
+    retries:
+      pubsubRetry:
+        policy: constant
+        duration: 5s
+        maxRetries: 5
+  targets:
+    components:
+      pubsub:
+        inbound:
+          retry: pubsubRetry
 ```
 
 ## Step 7: Use CloudEvents Metadata
@@ -293,7 +293,7 @@ app.post('/handle-order', (req, res) => {
 
 **Duplicate message processing:** Dapr guarantees at-least-once delivery, not exactly-once. Your subscriber should be idempotent. Use the CloudEvent ID to detect and skip duplicate messages.
 
-**Messages stuck in dead letter:** Check the Service Bus dead letter queue in the Azure portal. The dead letter reason will tell you why processing failed (e.g., max delivery count exceeded).
+**Messages stuck in dead letter:** If you configured Dapr's `deadLetterTopic`, check the subscriber for that topic. If you rely on Azure Service Bus broker-level dead lettering, check the Service Bus dead letter queue in the Azure portal.
 
 **High latency on message delivery:** If using Service Bus, check the namespace metrics for throttling. Upgrade to a Premium tier if you need higher throughput.
 
