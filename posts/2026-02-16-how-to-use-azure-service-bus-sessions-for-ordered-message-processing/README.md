@@ -144,7 +144,7 @@ public class SessionProcessor
                 // Do not auto-complete - we want explicit control
                 AutoCompleteMessages = false,
 
-                // Maximum time to lock a session
+                // Maximum duration for automatic session lock renewal
                 MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(10)
             });
 
@@ -265,6 +265,8 @@ private async Task ProcessWithStateMachine(ProcessSessionMessageEventArgs args)
     }
 
     // Apply the transition
+    var previousState = state.CurrentState;
+
     state.CurrentState = evt.EventType switch
     {
         "OrderCreated" => "Created",
@@ -276,7 +278,7 @@ private async Task ProcessWithStateMachine(ProcessSessionMessageEventArgs args)
 
     state.TransitionHistory.Add(new StateTransition
     {
-        FromState = state.CurrentState,
+        FromState = previousState,
         Event = evt.EventType,
         Timestamp = DateTime.UtcNow
     });
@@ -338,12 +340,10 @@ Configure the concurrency settings in `host.json`.
   "version": "2.0",
   "extensions": {
     "serviceBus": {
-      "sessionHandlerOptions": {
-        "autoComplete": false,
-        "maxConcurrentSessions": 8,
-        "maxConcurrentCallsPerSession": 1,
-        "sessionIdleTimeout": "00:01:00"
-      }
+      "autoCompleteMessages": false,
+      "maxConcurrentSessions": 8,
+      "maxConcurrentCallsPerSession": 1,
+      "sessionIdleTimeout": "00:01:00"
     }
   }
 }
