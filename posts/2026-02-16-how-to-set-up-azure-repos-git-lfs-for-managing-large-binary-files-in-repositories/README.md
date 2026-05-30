@@ -29,7 +29,7 @@ oid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393
 size 12345678
 ```
 
-This means your repository stays small. Clones are fast because Git only downloads the pointer files initially. The actual large files are fetched on demand.
+This means your repository stays small. Git transfers pointer files through the normal Git object database, while Git LFS fetches the actual large files needed for the current checkout and can be configured to skip or defer those downloads when you do not need them.
 
 ```mermaid
 sequenceDiagram
@@ -43,8 +43,8 @@ sequenceDiagram
     LFS->>LFS: Creates pointer file
     LFS->>Git: Stages pointer file
     Dev->>Git: git push
-    Git->>Repo: Pushes pointer file
     LFS->>Repo: Uploads actual file to LFS storage
+    Git->>Repo: Pushes pointer file
 ```
 
 ## Installing Git LFS
@@ -133,9 +133,9 @@ git push
 
 Azure Repos supports Git LFS out of the box. There is no special server-side configuration needed. However, there are a few things to be aware of:
 
-**Storage limits**: Azure DevOps provides 1 GB of free LFS storage per organization, with additional storage available through the Azure DevOps pricing plans. You can check your usage in Organization Settings under Billing.
+**Storage and repository limits**: Azure Repos supports Git LFS for large files, and LFS objects do not count toward the normal Git push size limit. Standard Git blobs in Azure Repos should stay under 100 MB, so make sure `.gitattributes` is committed before adding large files.
 
-**Authentication**: Git LFS uses the same authentication as your Git operations. If you are using credential helpers or SSH keys with Azure Repos, LFS will work with the same credentials.
+**Authentication**: Git LFS uses the same HTTPS credential flow as your Git operations. Azure Repos currently does not support SSH for repositories with Git LFS tracked files, so use the HTTPS clone URL when working with LFS.
 
 **Bandwidth**: LFS files are downloaded over HTTPS. Large files and frequent downloads can add up, so be mindful of bandwidth usage in CI/CD pipelines.
 
@@ -187,9 +187,10 @@ git rev-list --objects --all | \
 # This rewrites Git history to replace file content with LFS pointers
 git lfs migrate import --include="*.psd,*.png,*.zip" --everything
 
-# Force push the rewritten history
-# WARNING: All team members will need to re-clone after this
-git push --force
+# Force push the rewritten branch and tag history
+# WARNING: All team members will need to re-clone or reset after this
+git push --force --all
+git push --force --tags
 ```
 
 The `--everything` flag processes all branches and tags. After migration, the repository size will be dramatically smaller because the binary content has been moved to LFS storage.
@@ -205,10 +206,10 @@ git lfs ls-files
 # Show which patterns are being tracked
 git lfs track
 
-# Check LFS storage usage information
+# Show Git LFS configuration and endpoint information
 git lfs env
 
-# Fetch LFS objects without checking out files (useful for pre-fetching)
+# Fetch every LFS object referenced by all refs (useful for backup or migration)
 git lfs fetch --all
 
 # Pull LFS files for the current branch only
@@ -257,13 +258,13 @@ You can also configure your repository to require locks for certain file types b
 
 **Set up LFS before adding large files.** It is much easier to configure tracking first than to migrate files after the fact.
 
-**Use shallow clones in CI/CD.** Set `fetchDepth: 1` in your pipeline checkout to avoid downloading LFS content for every commit in history.
+**Use shallow clones in CI/CD.** Set `fetchDepth: 1` in your pipeline checkout to limit Git history, and set `lfs: true` only when the job needs LFS file content.
 
 **Prune regularly.** Run `git lfs prune` periodically to clean up old LFS objects from your local cache.
 
-**Communicate before migrating.** If you need to run `git lfs migrate import`, coordinate with your team. History rewrites require everyone to re-clone.
+**Communicate before migrating.** If you need to run `git lfs migrate import`, coordinate with your team. History rewrites require everyone to re-clone or reset their local copies.
 
-**Monitor storage usage.** Keep an eye on your LFS storage consumption in Azure DevOps billing. Large teams with lots of binary assets can burn through storage quickly.
+**Monitor repository size.** Keep an eye on your Git repository size and make sure new large binary file types are covered by `.gitattributes` before they are committed.
 
 ## Wrapping Up
 
