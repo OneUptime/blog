@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Event Hub, Disaster Recovery, Geo-Replication, High Availability, Event Streaming, Business Continuity, Azure
 
-Description: Configure geo-disaster recovery for Azure Event Hubs to ensure business continuity with automatic failover across Azure regions.
+Description: Configure geo-disaster recovery for Azure Event Hubs to ensure business continuity with manual failover across Azure regions.
 
 ---
 
@@ -14,7 +14,7 @@ Azure Event Hubs provides two approaches to disaster recovery: Geo-Disaster Reco
 
 ## Understanding the DR Options
 
-**Geo-Disaster Recovery (Standard tier and above)**: Pairs a primary and secondary namespace. Metadata (event hub definitions, consumer groups, configurations) is replicated continuously. During failover, the secondary takes over the primary's connection string. Note: this does NOT replicate data, only metadata.
+**Geo-Disaster Recovery (Standard tier and above)**: Pairs a primary and secondary namespace. Metadata (event hub definitions, consumer groups, configurations) is replicated continuously. During failover, the alias is repointed to the secondary namespace. Note: this does NOT replicate data, only metadata.
 
 **Geo-Replication (Premium and Dedicated tiers)**: Replicates both metadata AND data across regions. This provides true data-level redundancy with configurable consistency.
 
@@ -37,8 +37,9 @@ graph TB
 ## Prerequisites
 
 - Two Azure Event Hubs namespaces in different regions
-- Both namespaces must be on the same tier (Standard-Standard, Premium-Premium, or Dedicated-Dedicated)
-- The secondary namespace must not have any existing event hubs (they will be created by the pairing)
+- Geo-DR namespace pairs must use a supported combination: Standard-Standard, Standard-Dedicated, Premium-Premium, or Dedicated-Dedicated
+- For Geo-DR, only a new secondary namespace can be added to the failover pairing
+- Geo-replication requires Premium or Dedicated and primary and secondary regions on the same tier
 - Azure CLI or Azure Portal access
 
 ## Approach 1: Geo-Disaster Recovery (Standard Tier)
@@ -73,14 +74,14 @@ az eventhubs eventhub create \
     --namespace-name evh-primary-eastus \
     --resource-group rg-evh-dr \
     --partition-count 8 \
-    --message-retention 7
+    --retention-time-in-hours 168
 
 az eventhubs eventhub create \
     --name transaction-events \
     --namespace-name evh-primary-eastus \
     --resource-group rg-evh-dr \
     --partition-count 16 \
-    --message-retention 7
+    --retention-time-in-hours 168
 
 # Create consumer groups
 az eventhubs eventhub consumer-group create \
@@ -114,7 +115,7 @@ az eventhubs georecovery-alias authorization-rule keys list \
     --name RootManageSharedAccessKey
 ```
 
-The alias connection string looks like a regular Event Hub connection string but points to whichever namespace is currently primary. After failover, it automatically points to the new primary without any application changes.
+The alias connection string looks like a regular Event Hub connection string but points to whichever namespace is currently primary. After failover, it resolves to the new primary without any application connection-string changes.
 
 ### Step 5: Configure Your Application to Use the Alias
 
@@ -123,7 +124,7 @@ The alias connection string looks like a regular Event Hub connection string but
 from azure.eventhub import EventHubProducerClient, EventData
 
 # Use the alias connection string instead of a namespace-specific one
-# This ensures automatic failover to the secondary during a DR event
+# This avoids application connection-string changes after a manual DR failover
 ALIAS_CONNECTION_STRING = "Endpoint=sb://evh-dr-alias.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=..."
 
 producer = EventHubProducerClient.from_connection_string(
@@ -156,10 +157,10 @@ az eventhubs georecovery-alias fail-over \
 After failover:
 - The secondary namespace becomes the new primary
 - The alias connection string now resolves to the former secondary
-- Applications using the alias connection string automatically connect to the new primary
+- Applications using the alias connection string reconnect to the new primary without changing the connection string
 - The pairing is broken - you need to re-pair after setting up a new secondary
 
-Important caveat: With Standard tier Geo-DR, only metadata is replicated. Any events in the primary that were not consumed before the outage are lost. If you need data replication, use the Premium tier approach below.
+Important caveat: With Standard tier Geo-DR, only metadata is replicated. Events in the primary that were not consumed before the outage are not available in the secondary namespace; they might be recoverable from the former primary after access is restored. If you need data replication, use the Premium tier approach below.
 
 ## Approach 2: Geo-Replication (Premium/Dedicated Tier)
 
@@ -178,14 +179,15 @@ az eventhubs namespace create \
 az eventhubs namespace replica add \
     --namespace-name evh-premium-primary \
     --resource-group rg-evh-dr \
-    --location westus2
+    --geo-data-replication-config role-type=Secondary location-name=westus2 \
+    --max-replication-lag-duration-in-seconds 300
 ```
 
 With Premium geo-replication:
 - Both metadata AND data are replicated
 - You can configure the replication consistency (synchronous or asynchronous)
-- Failover preserves in-flight events
-- Consumers can be configured to read from the closest replica for lower latency
+- Planned promotion waits for replication to catch up; forced promotion can still lose data that has not replicated
+- Producers and consumers use the namespace hostname, which points to the active primary region; secondary regions are not directly readable or writable until promoted
 
 ## Step 7: Monitor Replication Health
 
@@ -205,17 +207,13 @@ The output includes:
 - **role**: "Primary" or "Secondary"
 - **pendingReplicationOperationsCount**: Number of metadata operations pending replication (should be 0 or very low)
 
-Set up Azure Monitor alerts for replication lag:
+For geo-replication, monitor replication lag through Application Metrics logs:
 
-```bash
-# Create an alert for replication issues
-az monitor metrics alert create \
-    --name "evh-replication-lag" \
-    --resource-group rg-evh-dr \
-    --scopes "/subscriptions/{sub}/resourceGroups/rg-evh-dr/providers/Microsoft.EventHub/namespaces/evh-primary-eastus" \
-    --condition "avg EHAMSGS > 1000" \
-    --window-size 5m \
-    --action-group "/subscriptions/{sub}/resourceGroups/rg-evh-dr/providers/Microsoft.Insights/actionGroups/ops-team"
+```kusto
+AzureDiagnostics
+| where TimeGenerated > ago(1h)
+| where Category == "ApplicationMetricsLogs"
+| where ActivityName_s == "ReplicationLag"
 ```
 
 ## Testing Your DR Setup
@@ -306,4 +304,4 @@ class ResilientProducer:
 
 ## Summary
 
-Disaster recovery for Azure Event Hubs protects your event streaming infrastructure against regional outages. The Standard tier Geo-DR replicates metadata and provides an alias-based failover mechanism, while the Premium tier adds true data replication for zero data loss. In both cases, using the alias connection string in your applications ensures transparent failover without code changes. Regular DR testing is critical - do not wait for an actual outage to discover that your failover process does not work. Schedule quarterly tests, automate the verification, and document your runbook.
+Disaster recovery for Azure Event Hubs protects your event streaming infrastructure against regional outages. The Standard tier Geo-DR replicates metadata and provides an alias-based failover mechanism, while the Premium tier adds true data replication with synchronous or asynchronous consistency. In both cases, using the alias or namespace connection string in your applications avoids connection-string changes after failover or promotion. Regular DR testing is critical - do not wait for an actual outage to discover that your failover process does not work. Schedule quarterly tests, automate the verification, and document your runbook.
