@@ -16,8 +16,8 @@ Integrating SonarQube with Azure Pipelines means every build gets analyzed, ever
 
 You need the following before setting up the integration:
 
-- A SonarQube server (self-hosted or SonarQube Cloud). Community Edition is free.
-- The SonarQube extension installed in your Azure DevOps organization (available from the Visual Studio Marketplace)
+- A SonarQube Server instance. Community Build is free, but pull request analysis and PR decoration require Developer Edition or above. SonarQube Cloud uses a separate Azure DevOps extension and task names.
+- The SonarQube Server extension installed in your Azure DevOps organization (available from the Visual Studio Marketplace)
 - A SonarQube project created for your application
 - A SonarQube token for authentication
 
@@ -29,7 +29,7 @@ Navigate to Project Settings, then Service connections, then "New service connec
 
 ```text
 Service connection configuration:
-  Server URL: https://sonarqube.yourcompany.com (or https://sonarcloud.io for cloud)
+  Server URL: https://sonarqube.yourcompany.com
   Token: your-sonarqube-user-token
   Service connection name: SonarQube-Production
 ```
@@ -59,11 +59,11 @@ variables:
 
 steps:
   # Step 1: Prepare SonarQube analysis
-  - task: SonarQubePrepare@6
+  - task: SonarQubePrepare@8
     displayName: 'Prepare SonarQube Analysis'
     inputs:
       SonarQube: 'SonarQube-Production'  # Service connection name
-      scannerMode: 'MSBuild'
+      scannerMode: 'dotnet'
       projectKey: '$(sonarQubeProject)'
       projectName: 'My Application'
       projectVersion: '$(Build.BuildNumber)'
@@ -88,11 +88,11 @@ steps:
       arguments: '--configuration $(buildConfiguration) --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover'
 
   # Step 4: Run SonarQube analysis
-  - task: SonarQubeAnalyze@6
+  - task: SonarQubeAnalyze@8
     displayName: 'Run SonarQube Analysis'
 
   # Step 5: Publish quality gate result
-  - task: SonarQubePublish@6
+  - task: SonarQubePublish@8
     displayName: 'Publish Quality Gate Result'
     inputs:
       pollingTimeoutSec: '300'
@@ -101,6 +101,8 @@ steps:
 ## Pull Request Analysis
 
 SonarQube can analyze pull requests and post comments directly on the PR in Azure DevOps. This gives developers immediate feedback on quality issues in their changed code.
+
+Pull request analysis and decoration require SonarQube Server Developer Edition or above, or SonarQube Cloud with the SonarQube Cloud Azure DevOps extension. With Azure Pipelines, the SonarQube Server extension automatically detects pull request parameters, so you normally do not need to set them manually.
 
 ```yaml
 # PR-triggered pipeline for SonarQube analysis
@@ -117,18 +119,15 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  - task: SonarQubePrepare@6
+  - checkout: self
+    fetchDepth: 0
+
+  - task: SonarQubePrepare@8
     displayName: 'Prepare SonarQube PR Analysis'
     inputs:
       SonarQube: 'SonarQube-Production'
-      scannerMode: 'MSBuild'
+      scannerMode: 'dotnet'
       projectKey: 'my-application'
-      extraProperties: |
-        sonar.pullrequest.key=$(System.PullRequest.PullRequestId)
-        sonar.pullrequest.branch=$(System.PullRequest.SourceBranch)
-        sonar.pullrequest.base=$(System.PullRequest.TargetBranch)
-        sonar.pullrequest.provider=Azure DevOps
-        sonar.pullrequest.azuredevops.token=$(System.AccessToken)
 
   - task: DotNetCoreCLI@2
     displayName: 'Build'
@@ -143,10 +142,10 @@ steps:
       projects: '**/*Tests.csproj'
       arguments: '--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover'
 
-  - task: SonarQubeAnalyze@6
+  - task: SonarQubeAnalyze@8
     displayName: 'Analyze'
 
-  - task: SonarQubePublish@6
+  - task: SonarQubePublish@8
     displayName: 'Publish Results'
 ```
 
@@ -172,7 +171,7 @@ Configure the quality gate in SonarQube under Quality Gates, then reference it i
 steps:
   # ... (Prepare, Build, Analyze steps) ...
 
-  - task: SonarQubePublish@6
+  - task: SonarQubePublish@8
     displayName: 'Check Quality Gate'
     inputs:
       pollingTimeoutSec: '300'
@@ -201,7 +200,7 @@ steps:
 
 ## JavaScript and TypeScript Projects
 
-For JavaScript/TypeScript projects, use the CLI scanner instead of the MSBuild scanner.
+For JavaScript/TypeScript projects, use the CLI scanner instead of the .NET scanner.
 
 ```yaml
 # SonarQube analysis for a Node.js project
@@ -209,7 +208,7 @@ For JavaScript/TypeScript projects, use the CLI scanner instead of the MSBuild s
 steps:
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '24.x'
 
   - script: |
       npm ci
@@ -221,11 +220,11 @@ steps:
       npx jest --coverage --coverageReporters=lcov --coverageReporters=text
     displayName: 'Run tests with coverage'
 
-  - task: SonarQubePrepare@6
+  - task: SonarQubePrepare@8
     displayName: 'Prepare SonarQube'
     inputs:
       SonarQube: 'SonarQube-Production'
-      scannerMode: 'CLI'
+      scannerMode: 'cli'
       configMode: 'manual'
       cliProjectKey: 'my-frontend-app'
       cliProjectName: 'My Frontend Application'
@@ -234,12 +233,12 @@ steps:
         sonar.javascript.lcov.reportPaths=coverage/lcov.info
         sonar.exclusions=**/*.test.ts,**/*.spec.ts,**/node_modules/**,**/dist/**
         sonar.test.inclusions=**/*.test.ts,**/*.spec.ts
-        sonar.typescript.tsconfigPath=tsconfig.json
+        sonar.typescript.tsconfigPaths=tsconfig.json
 
-  - task: SonarQubeAnalyze@6
+  - task: SonarQubeAnalyze@8
     displayName: 'Analyze'
 
-  - task: SonarQubePublish@6
+  - task: SonarQubePublish@8
     displayName: 'Publish'
 ```
 
@@ -263,11 +262,11 @@ steps:
       pytest --cov=src --cov-report=xml:coverage.xml --junitxml=test-results.xml
     displayName: 'Run tests with coverage'
 
-  - task: SonarQubePrepare@6
+  - task: SonarQubePrepare@8
     displayName: 'Prepare SonarQube'
     inputs:
       SonarQube: 'SonarQube-Production'
-      scannerMode: 'CLI'
+      scannerMode: 'cli'
       configMode: 'manual'
       cliProjectKey: 'my-python-service'
       cliProjectName: 'My Python Service'
@@ -278,10 +277,10 @@ steps:
         sonar.exclusions=**/tests/**,**/migrations/**
         sonar.tests=tests
 
-  - task: SonarQubeAnalyze@6
+  - task: SonarQubeAnalyze@8
     displayName: 'Analyze'
 
-  - task: SonarQubePublish@6
+  - task: SonarQubePublish@8
     displayName: 'Publish'
 ```
 
@@ -292,10 +291,10 @@ For monorepos or multi-module projects, you can analyze multiple components in a
 ```yaml
 # Multi-module SonarQube analysis
 steps:
-  - task: SonarQubePrepare@6
+  - task: SonarQubePrepare@8
     inputs:
       SonarQube: 'SonarQube-Production'
-      scannerMode: 'CLI'
+      scannerMode: 'cli'
       configMode: 'file'
       configFile: 'sonar-project.properties'
 ```
@@ -303,32 +302,16 @@ steps:
 With the corresponding properties file.
 
 ```properties
-# sonar-project.properties - Multi-module configuration
+# sonar-project.properties - Monorepo configuration
 sonar.projectKey=my-monorepo
 sonar.projectName=My Monorepo
 sonar.projectVersion=1.0
 
-# Define modules
-sonar.modules=api,web,shared
-
-# API module configuration
-api.sonar.projectName=API Service
-api.sonar.sources=src
-api.sonar.tests=tests
-api.sonar.language=py
-api.sonar.python.coverage.reportPaths=api/coverage.xml
-
-# Web module configuration
-web.sonar.projectName=Web Frontend
-web.sonar.sources=src
-web.sonar.tests=src
-web.sonar.test.inclusions=**/*.test.ts
-web.sonar.javascript.lcov.reportPaths=web/coverage/lcov.info
-
-# Shared module configuration
-shared.sonar.projectName=Shared Library
-shared.sonar.sources=src
-shared.sonar.tests=tests
+sonar.sources=api/src,web/src,shared/src
+sonar.tests=api/tests,web/src,shared/tests
+sonar.test.inclusions=web/src/**/*.test.ts
+sonar.python.coverage.reportPaths=api/coverage.xml
+sonar.javascript.lcov.reportPaths=web/coverage/lcov.info
 ```
 
 ## Viewing Results in Azure DevOps
@@ -347,6 +330,6 @@ The most frequent issue is missing code coverage data. SonarQube reports 0% cove
 
 Another common issue is the analysis timing out. If your codebase is large, increase the `pollingTimeoutSec` in the Publish task. The default might not be enough for projects with hundreds of thousands of lines of code.
 
-If PR decoration is not working, verify that the SonarQube token has permissions to post comments on Azure DevOps PRs, and that the PR-specific properties (branch, key, base) are correctly set.
+If PR decoration is not working, verify that the Azure DevOps PAT configured in SonarQube has Code > Read & Write permissions for the repositories being analyzed, that the project is bound to its Azure DevOps repository, and that the pipeline is not using a shallow checkout.
 
 SonarQube integration turns code quality from something you think about occasionally into something you measure continuously. The quality gate becomes a contract between the team and the codebase - new code must meet the bar, and technical debt must not grow faster than it is repaid. Combined with Azure Pipelines, this contract is enforced automatically on every change.
