@@ -36,6 +36,13 @@ az servicebus queue create \
     --namespace-name my-servicebus-ns \
     --resource-group my-rg
 
+# Create a session-enabled queue for ordered workflows
+az servicebus queue create \
+    --name session-queue \
+    --namespace-name my-servicebus-ns \
+    --resource-group my-rg \
+    --enable-session true
+
 # Create a topic and subscription for pub/sub
 az servicebus topic create \
     --name notifications \
@@ -57,12 +64,12 @@ NAMESPACE_ID=$(az servicebus namespace show --name my-servicebus-ns --resource-g
 
 az role assignment create \
     --role "Azure Service Bus Data Sender" \
-    --assignee <your-principal-id> \
+    --assignee YOUR_PRINCIPAL_ID \
     --scope $NAMESPACE_ID
 
 az role assignment create \
     --role "Azure Service Bus Data Receiver" \
-    --assignee <your-principal-id> \
+    --assignee YOUR_PRINCIPAL_ID \
     --scope $NAMESPACE_ID
 ```
 
@@ -87,6 +94,7 @@ servicebus_client = ServiceBusClient(
 The most basic operation is sending a single message to a queue.
 
 ```python
+from azure.identity import DefaultAzureCredential
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
 credential = DefaultAzureCredential()
@@ -320,11 +328,11 @@ with ServiceBusClient(namespace, credential) as client:
         message = ServiceBusMessage("Reminder: follow up on order #12345")
         scheduled_time = datetime.now(timezone.utc) + timedelta(minutes=30)
 
-        sequence_number = sender.schedule_messages(message, scheduled_time)
-        print(f"Message scheduled, sequence number: {sequence_number}")
+        sequence_numbers = sender.schedule_messages(message, scheduled_time)
+        print(f"Message scheduled, sequence numbers: {sequence_numbers}")
 
         # You can cancel a scheduled message if needed
-        # sender.cancel_scheduled_messages(sequence_number)
+        # sender.cancel_scheduled_messages(sequence_numbers)
 ```
 
 ## Sessions
