@@ -84,7 +84,7 @@ ChangeFeedProcessor processor = monitoredContainer
         onChangesDelegate: HandleChangesAsync)
     .WithInstanceName("host-1")
     .WithLeaseContainer(leaseContainer)
-    .WithStartTime(DateTime.UtcNow) // Start from now, or use DateTime.MinValue for beginning
+    .WithStartTime(DateTime.UtcNow) // Start from now, or use DateTime.MinValue.ToUniversalTime() for beginning
     .Build();
 
 // Start processing
@@ -231,18 +231,17 @@ static async Task HandleChangesAsync(
 
 ## Using the Change Feed with All Versions and Deletes
 
-Starting with the newer SDK versions, you can process deletes as well:
+With the preview all versions and deletes mode in the .NET SDK, you can process deletes as well:
 
 ```csharp
 // Use the all versions and deletes mode to capture delete events
-// This requires the container to have continuous backup enabled
+// This requires the Azure Cosmos DB account to have continuous backup enabled
 ChangeFeedProcessor processor = monitoredContainer
-    .GetChangeFeedProcessorBuilder(
+    .GetChangeFeedProcessorBuilderWithAllVersionsAndDeletes<Order>(
         processorName: "fullChangeProcessor",
         onChangesDelegate: HandleFullChangesAsync)
     .WithInstanceName("host-1")
     .WithLeaseContainer(leaseContainer)
-    .WithAllVersionsAndDeletesMode()
     .Build();
 
 // The handler receives ChangeFeedItem objects with metadata
@@ -255,8 +254,8 @@ static async Task HandleFullChangesAsync(
     {
         if (change.Metadata.OperationType == ChangeFeedOperationType.Delete)
         {
-            Console.WriteLine($"Order deleted: {change.Previous.Id}");
-            await HandleDeletion(change.Previous);
+            Console.WriteLine($"Order deleted: {change.Metadata.Id}");
+            await HandleDeletion(change.Metadata.Id, change.Metadata.PartitionKey);
         }
         else
         {
@@ -302,7 +301,7 @@ while (estimatorIterator.HasMoreResults)
 
 3. **Use a separate Cosmos DB client for reading and writing**: The change feed processor creates its own connections, so use a separate client instance if you are also writing back to Cosmos DB.
 
-4. **Set the right start time**: Using DateTime.MinValue processes all historical changes, which can be a lot of data. Use DateTime.UtcNow for new processors that only need future changes.
+4. **Set the right start time**: In latest version mode, using DateTime.MinValue.ToUniversalTime() processes all historical changes, which can be a lot of data. Use DateTime.UtcNow for new processors that only need future changes. All versions and deletes mode starts from "now" or from an existing checkpoint within the continuous backup retention period.
 
 5. **Monitor the estimated lag**: If lag grows consistently, add more processor instances to scale out.
 
