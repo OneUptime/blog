@@ -49,6 +49,7 @@ az powerbi embedded-capacity create \
   --resource-group rg-analytics \
   --location eastus \
   --sku-name A1 \
+  --sku-tier PBIE_Azure \
   --administration-members admin@contoso.com
 ```
 
@@ -61,14 +62,7 @@ Create a service principal that your backend uses to authenticate with Power BI.
 ```bash
 # Register an Azure AD application
 az ad app create \
-  --display-name "Power BI Embedding App" \
-  --required-resource-accesses '[{
-    "resourceAppId": "00000009-0000-0000-c000-000000000000",
-    "resourceAccess": [
-      { "id": "7504609f-c495-4c64-8c65-1c1f5cc55a5c", "type": "Scope" },
-      { "id": "4ae1bf56-f562-4747-b7bc-2fa0874ed46f", "type": "Scope" }
-    ]
-  }]'
+  --display-name "Power BI Embedding App"
 
 # Create a client secret
 az ad app credential reset \
@@ -76,7 +70,7 @@ az ad app credential reset \
   --display-name "embedding-secret"
 ```
 
-In the Power BI admin portal, enable "Service principals can use Power BI APIs" under Admin settings.
+In the Power BI admin portal, enable "Embed content in apps" and "Service principals can use Power BI APIs" under Admin settings. Then add the service principal, or a security group that contains it, to the Power BI workspace as a Member or Admin. For service principal authentication, do not add delegated Power BI API permissions to the Microsoft Entra app; Power BI manages the app's access through the tenant settings and workspace role.
 
 ## Creating the Report with Row-Level Security
 
@@ -115,18 +109,38 @@ const msalConfig = {
 
 const cca = new msal.ConfidentialClientApplication(msalConfig);
 
+async function getAuthenticatedUserContext(request) {
+  // Example for Azure App Service Authentication / Easy Auth.
+  // If your SaaS uses its own tenant IDs, replace this with your server-side session lookup.
+  const principalHeader = request.headers.get('x-ms-client-principal');
+
+  if (!principalHeader) {
+    return null;
+  }
+
+  const principal = JSON.parse(Buffer.from(principalHeader, 'base64').toString('utf8'));
+  const claims = principal.claims || [];
+  const getClaim = (...types) => claims.find(claim => types.includes(claim.typ))?.val;
+
+  return {
+    tenantId: getClaim('tid', 'http://schemas.microsoft.com/identity/claims/tenantid'),
+    userId: getClaim('oid', 'http://schemas.microsoft.com/identity/claims/objectidentifier')
+  };
+}
+
 // Generate an embed token for a specific tenant
 app.http('get-embed-token', {
   methods: ['POST'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   handler: async (request, context) => {
-    // Get the tenant ID from the authenticated user's session
-    const tenantId = request.headers.get('x-tenant-id');
-    const userId = request.headers.get('x-user-id');
+    // Get the tenant ID from the authenticated user's server-side session
+    const authContext = await getAuthenticatedUserContext(request);
 
-    if (!tenantId) {
-      return { status: 401, body: 'Tenant ID required' };
+    if (!authContext?.tenantId) {
+      return { status: 401, body: 'Authenticated tenant context required' };
     }
+
+    const { tenantId, userId } = authContext;
 
     try {
       // Step 1: Get an Azure AD access token for Power BI
@@ -158,7 +172,8 @@ app.http('get-embed-token', {
             datasets: [datasetId]
           }
         ],
-        // Token lifetime in minutes (max 60)
+        // Token lifetime in minutes. This can shorten the token's expiration
+        // but cannot extend it beyond the Microsoft Entra token used to call Power BI.
         lifetimeInMinutes: 30
       };
 
@@ -224,15 +239,15 @@ Embed the Power BI report in your web application using the Power BI JavaScript 
   </div>
 
   <script>
+    const models = window['powerbi-client'].models;
+
     // Initialize the Power BI embed
     async function embedReport() {
       // Get the embed token from your backend
       const response = await fetch('/api/get-embed-token', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': getCurrentTenantId(),
-          'x-user-id': getCurrentUserId()
+          'Content-Type': 'application/json'
         }
       });
 
@@ -244,7 +259,7 @@ Embed the Power BI report in your web application using the Power BI JavaScript 
         id: embedConfig.reportId,
         embedUrl: embedConfig.embedUrl,
         accessToken: embedConfig.embedToken,
-        tokenType: pbi.models.TokenType.Embed,
+        tokenType: models.TokenType.Embed,
         settings: {
           // Customize the embedded experience
           panes: {
@@ -254,11 +269,11 @@ Embed the Power BI report in your web application using the Power BI JavaScript 
           bars: {
             statusBar: { visible: false }
           },
-          background: pbi.models.BackgroundType.Transparent,
+          background: models.BackgroundType.Transparent,
           // Enable responsive layout
-          layoutType: pbi.models.LayoutType.Custom,
+          layoutType: models.LayoutType.Custom,
           customLayout: {
-            displayOption: pbi.models.DisplayOption.FitToPage
+            displayOption: models.DisplayOption.FitToPage
           }
         }
       };
@@ -291,8 +306,7 @@ Embed the Power BI report in your web application using the Power BI JavaScript 
           const response = await fetch('/api/get-embed-token', {
             method: 'POST',
             headers: {
-              'x-tenant-id': getCurrentTenantId(),
-              'x-user-id': getCurrentUserId()
+              'Content-Type': 'application/json'
             }
           });
           const newConfig = await response.json();
@@ -300,16 +314,6 @@ Embed the Power BI report in your web application using the Power BI JavaScript 
           scheduleTokenRefresh(report, newConfig.tokenExpiry);
         }, refreshIn);
       }
-    }
-
-    // Helper functions
-    function getCurrentTenantId() {
-      // Get from your app's auth context
-      return document.cookie.match(/tenantId=([^;]+)/)?.[1] || '';
-    }
-
-    function getCurrentUserId() {
-      return document.cookie.match(/userId=([^;]+)/)?.[1] || '';
     }
 
     // Start embedding
@@ -371,7 +375,7 @@ az powerbi embedded-capacity show \
 
 Key metrics to watch include the number of embed token requests (indicates active users), render duration (how long reports take to load), and capacity utilization (whether you need to scale up or down).
 
-For cost optimization, use the auto-pause feature to stop the capacity during off-hours when no users are accessing reports. The A-SKU capacities can be paused and resumed via the Azure API.
+For cost optimization, schedule pause and start operations during off-hours when no users are accessing reports. The A-SKU capacities can be paused and started via Azure APIs or PowerShell.
 
 ## Wrapping Up
 
