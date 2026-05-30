@@ -10,7 +10,7 @@ Description: Set up automated CI/CD pipelines in Azure DevOps to validate, test,
 
 Publishing your first Azure Marketplace offer involves a lot of clicking around in Partner Center. That is fine for the initial release. But once your product is live and you are shipping updates regularly - bug fixes, new features, new pricing tiers - you need an automated pipeline. Manually packaging ARM templates, uploading ZIP files, and clicking through Partner Center for every release does not scale.
 
-Azure DevOps gives you the pipeline infrastructure to automate the entire process from code commit to Marketplace publication. In this guide, I will show you how to set up CI/CD pipelines that validate your ARM templates, run integration tests, package your managed application, and push updates through Partner Center's API.
+Azure DevOps gives you the pipeline infrastructure to automate the entire process from code commit to Marketplace publication. In this guide, I will show you how to set up CI/CD pipelines that validate your ARM templates, run integration tests, package your managed application, and push updates through the Microsoft Marketplace Product Ingestion API.
 
 ## Pipeline Architecture
 
@@ -30,7 +30,7 @@ graph LR
     J --> K[Live on Marketplace]
 ```
 
-The CI pipeline handles validation, testing, and packaging. The CD pipeline handles the actual Marketplace submission through the Partner Center API.
+The CI pipeline handles validation, testing, and packaging. The CD pipeline handles the actual Marketplace submission through the Microsoft Marketplace Product Ingestion API.
 
 ## Project Structure
 
@@ -68,7 +68,7 @@ trigger:
       - main
   paths:
     include:
-      - src/*
+      - src/**
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -104,12 +104,13 @@ stages:
                 # Import the test toolkit module
                 Import-Module ./arm-ttk/arm-ttk/arm-ttk.psd1
 
-                # Test the main template
-                $results = Test-AzTemplate -TemplatePath ./src/mainTemplate.json
-                $failures = $results | Where-Object { -not $_.Passed }
+                # Test the package folder so mainTemplate.json,
+                # createUiDefinition.json, and linked templates are checked
+                $results = @(Test-AzTemplate -TemplatePath ./src)
+                $failures = $results | Where-Object { $_.Errors }
 
                 if ($failures.Count -gt 0) {
-                    $failures | ForEach-Object { Write-Error $_.Message }
+                    $failures | ForEach-Object { Write-Error ($_.Errors -join "`n") }
                     exit 1
                 }
 
@@ -125,8 +126,8 @@ stages:
                 $uiDef = Get-Content ./src/createUiDefinition.json | ConvertFrom-Json
 
                 # Check required top-level properties
-                if (-not $uiDef.'$schema') { throw "Missing schema property" }
                 if (-not $uiDef.handler) { throw "Missing handler property" }
+                if (-not $uiDef.version) { throw "Missing version property" }
                 if (-not $uiDef.parameters.outputs) { throw "Missing outputs" }
 
                 # Verify outputs match mainTemplate parameters
@@ -135,6 +136,10 @@ stages:
                 $uiOutputs = $uiDef.parameters.outputs.PSObject.Properties.Name
 
                 foreach ($output in $uiOutputs) {
+                    if ($output -eq "applicationResourceName") {
+                        continue
+                    }
+
                     if ($output -notin $templateParams) {
                         throw "UI output '$output' not found in template parameters"
                     }
@@ -222,6 +227,7 @@ stages:
                   --name "$(offerName)/v${VERSION}/app.zip" \
                   --permissions r \
                   --expiry $EXPIRY \
+                  --as-user \
                   --auth-mode login \
                   --full-uri -o tsv)
 
@@ -230,7 +236,7 @@ stages:
 
 ## CD Pipeline - Publishing to Partner Center
 
-The CD pipeline uses the Partner Center API to update the Marketplace offer:
+The CD pipeline uses the Microsoft Marketplace Product Ingestion API to update the Marketplace offer:
 
 ```yaml
   - stage: Publish
@@ -250,17 +256,17 @@ The CD pipeline uses the Partner Center API to update the Marketplace offer:
                   inputs:
                     targetType: 'inline'
                     script: |
-                      # Authenticate with Partner Center API
+                      # Authenticate with the Microsoft Marketplace Product Ingestion API
                       $body = @{
                           grant_type    = "client_credentials"
                           client_id     = "$(PartnerCenterClientId)"
                           client_secret = "$(PartnerCenterClientSecret)"
-                          resource      = "https://api.partner.microsoft.com"
+                          scope         = "https://graph.microsoft.com/.default"
                       }
 
                       $tokenResponse = Invoke-RestMethod `
                           -Method Post `
-                          -Uri "https://login.microsoftonline.com/$(TenantId)/oauth2/token" `
+                          -Uri "https://login.microsoftonline.com/$(TenantId)/oauth2/v2.0/token" `
                           -Body $body
 
                       $token = $tokenResponse.access_token
@@ -271,11 +277,11 @@ The CD pipeline uses the Partner Center API to update the Marketplace offer:
 
                       # Get the current offer draft
                       $offerId = "$(PartnerCenterOfferId)"
-                      $offerUri = "https://api.partner.microsoft.com/v1.0/ingestion/products/$offerId"
+                      $offerUri = "https://graph.microsoft.com/rp/product-ingestion/resource-tree/product/$offerId?`$version=2022-03-01-preview5"
 
                       $offer = Invoke-RestMethod -Uri $offerUri -Headers $headers
 
-                      Write-Host "Current offer: $($offer.name)"
+                      Write-Host "Current offer resource tree: $($offer.root)"
                       Write-Host "Updating package to version $(PackageVersion)"
 
                       # The actual update process involves several API calls
@@ -283,7 +289,7 @@ The CD pipeline uses the Partner Center API to update the Marketplace offer:
                       # This is simplified for clarity
 
                       Write-Host "Offer update submitted to Partner Center"
-                      Write-Host "Certification review will begin automatically"
+                      Write-Host "Publish the updated draft to preview before pushing it live"
 ```
 
 ## Integration Testing Before Publish
