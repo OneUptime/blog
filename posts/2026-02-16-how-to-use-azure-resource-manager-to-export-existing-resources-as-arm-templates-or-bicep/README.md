@@ -16,7 +16,7 @@ Azure Resource Manager provides built-in export capabilities that let you genera
 
 The simplest way to export a template is through the portal. Navigate to the resource or resource group you want to export. In the left menu, look for "Export template" under the Automation section.
 
-When you click Export template, Azure generates a JSON ARM template that describes the current state of the resource. This includes all properties, configurations, and dependencies. You can download the template as a ZIP file or deploy it directly to a new environment.
+When you click Export template, Azure can generate an ARM JSON template or Bicep file that describes the current state of the resource. This includes the exportable properties, configurations, and dependencies. You can download the template as a ZIP file or deploy it directly to a new environment.
 
 There are two export options at the resource group level. You can export the entire resource group (all resources in it) or select specific resources. For a first pass, exporting the entire resource group is usually the right call.
 
@@ -34,8 +34,9 @@ az group export \
   --output json > exported-template.json
 
 # Export a specific resource by its resource ID
-az resource export \
-  --ids "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/my-rg/providers/Microsoft.Web/sites/my-web-app" \
+az group export \
+  --name "my-rg" \
+  --resource-ids "/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/my-rg/providers/Microsoft.Web/sites/my-web-app" \
   --output json > webapp-template.json
 ```
 
@@ -215,25 +216,21 @@ Start with non-critical resources. Export a dev or staging environment first, cl
 
 ## Handling Secrets and Sensitive Data
 
-Exported templates will not include actual secret values, but they will reference the properties where secrets are stored. You need to handle these with Key Vault references or pipeline secrets.
+Exported templates will not include actual secret values, but they will reference the properties where secrets are stored. You need to handle these with secure parameters populated from Key Vault or pipeline secrets.
 
 ```bicep
-// Reference secrets from Key Vault instead of hardcoding
+// Pass secrets as secure parameters instead of hardcoding
 // This keeps sensitive values out of your source control
 
-param keyVaultName string
+@secure()
+param sqlAdminPassword string
 
-resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' existing = {
-  name: keyVaultName
-}
-
-resource sqlServer 'Microsoft.Sql/servers@2023-05-01-preview' = {
+resource sqlServer 'Microsoft.Sql/servers@2024-05-01-preview' = {
   name: 'my-sql-server'
   location: resourceGroup().location
   properties: {
     administratorLogin: 'sqladmin'
-    // Pull the password from Key Vault at deployment time
-    administratorLoginPassword: keyVault.getSecret('sql-admin-password')
+    administratorLoginPassword: sqlAdminPassword
   }
 }
 ```
