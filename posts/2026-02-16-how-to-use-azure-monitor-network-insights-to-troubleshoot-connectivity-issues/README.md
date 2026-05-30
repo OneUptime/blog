@@ -64,20 +64,20 @@ az network watcher connection-monitor create \
   --test-config-name "TCP-3306" \
   --protocol Tcp \
   --tcp-port 3306 \
-  --test-frequency-sec 30
+  --frequency 30
 ```
 
 If the test shows failures, the next step is checking NSG rules.
 
 ## Scenario 2: Diagnosing NSG Rule Blocks
 
-NSG flow logs combined with Network Insights let you see exactly which rules are allowing or denying traffic.
+Flow logs combined with Network Insights and Traffic Analytics let you see traffic patterns and allowed or denied flows. Use IP flow verify when you need the exact NSG rule decision for a specific packet.
 
 In Network Insights, click on the NSG resource to see:
 
 - Effective security rules (the merged result of all NSG rules applied to a NIC or subnet)
-- Flow log data showing allowed and denied flows
-- Hit counts per rule
+- Traffic Analytics data showing allowed and denied flows
+- Rule evaluation details from Network Watcher tools
 
 To verify which rule is blocking traffic, use the **IP flow verify** feature:
 
@@ -109,14 +109,12 @@ A common issue is the health probe port not matching the application port, or th
 
 ```kql
 // Query to analyze load balancer health probe status over time
-AzureDiagnostics
-| where Category == "LoadBalancerProbeHealthStatus"
+AzureMetrics
+| where ResourceProvider == "MICROSOFT.NETWORK"
+| where MetricName == "DipAvailability"
 | where TimeGenerated > ago(1h)
-| extend BackendIP = tostring(split(backendIpAddress_s, ":")[0])
-| summarize
-    HealthyCount = countif(healthProbeStatus_s == "Up"),
-    UnhealthyCount = countif(healthProbeStatus_s == "Down")
-    by BackendIP, bin(TimeGenerated, 5m)
+| summarize AvgHealthProbeStatus = avg(Average)
+    by BackendIPAddress, bin(TimeGenerated, 5m)
 | order by TimeGenerated desc
 ```
 
@@ -140,11 +138,11 @@ For site-to-site VPN issues, check these common culprits:
 Use the VPN diagnostics tool to capture detailed logs:
 
 ```bash
-# Start VPN gateway diagnostics and save to a storage account
-az network vpn-gateway start-packet-capture \
+# Start packet capture on a virtual network gateway
+az network vnet-gateway packet-capture start \
   --resource-group myRG \
   --name myVPNGateway \
-  --filter-data '{"TracingFlags":11,"MaxPacketBufferSize":120,"MaxFileSize":200,"Filters":[{"SourceSubnets":["10.0.0.0/24"],"DestinationSubnets":["192.168.1.0/24"]}]}'
+  --filter '{"TracingFlags":11,"MaxPacketBufferSize":120,"MaxFileSize":200,"Filters":[{"SourceSubnets":["10.0.0.0/24"],"DestinationSubnets":["192.168.1.0/24"]}]}'
 ```
 
 ## Scenario 5: Application Gateway 502 Errors
@@ -166,11 +164,10 @@ The most common causes of 502 errors:
 
 ```kql
 // Analyze Application Gateway access logs for 502 errors
-AzureDiagnostics
-| where ResourceType == "APPLICATIONGATEWAYS"
-| where httpStatus_d == 502
+AGWAccessLogs
+| where HttpStatus == 502
 | where TimeGenerated > ago(1h)
-| summarize Count = count() by backendPoolName_s, backendSettingName_s, bin(TimeGenerated, 5m)
+| summarize Count = count() by BackendPoolName, BackendSettingName, bin(TimeGenerated, 5m)
 | render timechart
 ```
 
@@ -194,8 +191,8 @@ Combine Network Insights data with Azure Monitor alerts to get notified proactiv
 // Alert when VPN tunnel goes down
 AzureDiagnostics
 | where Category == "TunnelDiagnosticLog"
-| where status_s == "Disconnected"
-| project TimeGenerated, Resource, remoteIP_s, stateChangeReason_s
+| where OperationName == "TunnelDisconnected"
+| project TimeGenerated, Resource, remoteIP_s, instance_s
 ```
 
 You can also set metric alerts on network resources:
@@ -204,16 +201,17 @@ You can also set metric alerts on network resources:
 - **VPN Gateway**: Alert on tunnel bandwidth drops to zero
 - **Application Gateway**: Alert on unhealthy backend count greater than zero
 
-## Enabling NSG Flow Logs
+## Enabling Virtual Network Flow Logs
 
-NSG flow logs feed data into Network Insights and are essential for troubleshooting. If you have not enabled them yet:
+Virtual network flow logs feed data into Network Insights and are essential for troubleshooting. NSG flow logs are being retired and, after June 30, 2025, you can no longer create new NSG flow logs. Use virtual network flow logs for new deployments:
 
 ```bash
-# Enable NSG flow logs with traffic analytics
+# Enable virtual network flow logs with traffic analytics
 az network watcher flow-log create \
   --resource-group myRG \
-  --nsg myNSG \
-  --name myFlowLog \
+  --vnet myVNet \
+  --name myVNetFlowLog \
+  --location eastus \
   --storage-account myStorageAccount \
   --workspace myLogAnalyticsWorkspace \
   --enabled true \
@@ -232,4 +230,4 @@ Traffic Analytics processes the flow logs and provides visualizations in Network
 
 ## Summary
 
-Azure Monitor Network Insights brings together health monitoring, diagnostics, and topology visualization for your entire Azure network. Instead of jumping between individual resource blades, you get a single pane of glass that shows you what is healthy, what is degraded, and where to dig deeper. The key is making sure flow logs and diagnostic settings are enabled so that Network Insights has the data it needs to be useful.
+Azure Monitor Network Insights brings together health monitoring, diagnostics, and topology visualization for your entire Azure network. Instead of jumping between individual resource blades, you get a single pane of glass that shows you what is healthy, what is degraded, and where to dig deeper. The key is making sure virtual network flow logs and diagnostic settings are enabled so that Network Insights has the data it needs to be useful.
