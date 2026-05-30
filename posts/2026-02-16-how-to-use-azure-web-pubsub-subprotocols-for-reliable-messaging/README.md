@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Web PubSub, Subprotocols, Reliable Messaging, WebSocket, JSON, Protocol
 
-Description: Explore Azure Web PubSub subprotocols to enable reliable messaging, client-side group management, and acknowledgment-based delivery.
+Description: Explore Azure Web PubSub subprotocols to enable client-side group management, service acknowledgments, and structured messaging.
 
 ---
 
-When you connect a plain WebSocket client to Azure Web PubSub, you get basic message delivery. The server sends a message, the client receives it, and that is about it. But what if you need to know whether a message was actually delivered? What if you want the client to join and leave groups on its own without going through the server? That is where subprotocols come in.
+When you connect a plain WebSocket client to Azure Web PubSub, you get basic message delivery. The server sends a message, the client receives it, and client messages are handled by your server-side event handler. But what if you need to know whether the service accepted a client request? What if you want the client to join and leave groups on its own without going through the server? That is where subprotocols come in.
 
-Azure Web PubSub supports the `json.webpubsub.azure.v1` subprotocol, which adds a structured messaging layer on top of raw WebSocket communication. It gives you features like client-side group management, message acknowledgments, and typed message frames. In this post, I will explain how to use this subprotocol and why it matters for building reliable real-time applications.
+Azure Web PubSub supports the `json.webpubsub.azure.v1` subprotocol, which adds a structured messaging layer on top of raw WebSocket communication. It gives you features like client-side group management, request acknowledgments, and typed message frames. In this post, I will explain how to use this subprotocol and why it matters for building real-time applications.
 
 ## What the Subprotocol Gives You
 
-Without a subprotocol, your client is a passive receiver. It can only get messages pushed from the server. With the `json.webpubsub.azure.v1` subprotocol, your client can:
+Without a subprotocol, your client relies on the server-side event handler to process client messages and perform operations such as group management. With the `json.webpubsub.azure.v1` subprotocol, your client can:
 
 - Join and leave groups directly from the client side
 - Send messages to groups without going through your server
-- Receive acknowledgments for sent messages
+- Receive acknowledgments for client requests
 - Get structured event frames instead of raw text
 
-This means less round-tripping through your server for common operations, and more confidence that messages are being delivered.
+This means less round-tripping through your server for common operations, and a clear signal that the service accepted or rejected each acknowledged request.
 
 ## Connecting with the Subprotocol
 
@@ -37,7 +37,7 @@ const serviceClient = new WebPubSubServiceClient(connectionString, 'chat');
 async function getClientUrl(userId) {
   // The client needs joinLeaveGroup and sendToGroup roles
   // to use the subprotocol's group features
-  const token = await serviceClient.getClientAccessUrl({
+  const token = await serviceClient.getClientAccessToken({
     userId: userId,
     roles: ['webpubsub.joinLeaveGroup', 'webpubsub.sendToGroup']
   });
@@ -143,7 +143,7 @@ function sendToGroup(ws, group, data, ackId) {
     group: group,
     dataType: 'json', // Can be 'json', 'text', or 'binary'
     data: data,
-    ackId: ackId // Include for delivery confirmation
+    ackId: ackId // Include for service confirmation
   }));
 }
 
@@ -155,14 +155,14 @@ sendToGroup(ws, 'room-general', {
 }, 100);
 ```
 
-The `dataType` field determines how the data is serialized. Use `json` for structured data, `text` for strings, and `binary` for binary payloads.
+The `dataType` field determines how the data is interpreted. Use `json` for structured data, `text` for strings, and `binary` for base64-encoded binary payloads.
 
-## Building a Reliable Message Tracker
+## Building an Acknowledged Message Request Tracker
 
-The `ackId` mechanism is the foundation of reliable messaging. By tracking acknowledgments, you can know exactly which messages were delivered and retry those that were not.
+The `ackId` mechanism is the foundation of request tracking. By tracking acknowledgments, you can know which client requests were accepted or rejected by the service, and retry requests that time out or fail. For end-to-end recovery from intermittent client disconnects and message loss, use Azure Web PubSub's reliable subprotocol, `json.reliable.webpubsub.azure.v1`.
 
 ```javascript
-// message-tracker.js - Track message delivery with ackIds
+// message-tracker.js - Track message requests with ackIds
 class MessageTracker {
   constructor(ws) {
     this.ws = ws;
@@ -178,7 +178,7 @@ class MessageTracker {
     });
   }
 
-  // Send a message and return a promise that resolves on ack
+  // Send a message and return a promise that resolves when the service accepts it
   send(group, data, timeoutMs = 5000) {
     return new Promise((resolve, reject) => {
       const ackId = ++this.ackCounter;
@@ -186,7 +186,7 @@ class MessageTracker {
       // Set a timeout for the acknowledgment
       const timer = setTimeout(() => {
         this.pending.delete(ackId);
-        reject(new Error(`Message ${ackId} timed out after ${timeoutMs}ms`));
+        reject(new Error(`Request ${ackId} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
       this.pending.set(ackId, { resolve, reject, timer });
@@ -212,7 +212,7 @@ class MessageTracker {
     if (frame.success) {
       entry.resolve(frame);
     } else {
-      entry.reject(new Error(frame.error?.message || 'Message delivery failed'));
+      entry.reject(new Error(frame.error?.message || 'Message request failed'));
     }
   }
 }
@@ -221,14 +221,14 @@ class MessageTracker {
 You can use the tracker like this:
 
 ```javascript
-// Using the message tracker for reliable delivery
+// Using the message tracker for request tracking
 const tracker = new MessageTracker(ws);
 
 try {
   await tracker.send('room-general', { text: 'Important update' });
-  console.log('Message confirmed delivered');
+  console.log('Message request accepted by the service');
 } catch (err) {
-  console.error('Message delivery failed:', err.message);
+  console.error('Message request failed:', err.message);
   // Retry logic here
 }
 ```
@@ -315,7 +315,7 @@ Your server's event handler receives this as a user event with the event name yo
 
 Use the subprotocol when:
 - You want clients to manage their own group memberships
-- You need delivery confirmation for messages
+- You need service acknowledgments for client requests
 - You want peer-to-peer messaging through groups without server involvement
 - You need structured message framing
 
@@ -327,4 +327,4 @@ Stick with raw WebSocket when:
 
 ## Wrapping Up
 
-The `json.webpubsub.azure.v1` subprotocol transforms Azure Web PubSub from a server-push system into a full real-time messaging platform. Clients can manage their own group memberships, send messages directly to groups, and get delivery confirmations through the ack mechanism. This reduces the load on your server, decreases latency for common operations, and gives you the tools to build reliable messaging patterns. If you are building anything more than a simple broadcast application, the subprotocol is the way to go.
+The `json.webpubsub.azure.v1` subprotocol transforms Azure Web PubSub from a server-mediated system into a full real-time messaging platform. Clients can manage their own group memberships, send messages directly to groups, and get request confirmations through the ack mechanism. This reduces the load on your server, decreases latency for common operations, and gives you the tools to build stronger messaging patterns. If you are building anything more than a simple broadcast application, the subprotocol is the way to go.
