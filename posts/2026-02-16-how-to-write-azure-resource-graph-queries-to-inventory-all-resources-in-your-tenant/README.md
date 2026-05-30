@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Azure Resource Graph, KQL, Resource Inventory, Governance, Cloud Management, Querying
 
-Description: Learn how to write Azure Resource Graph queries using KQL to build a complete inventory of all resources across your Azure tenant for governance and reporting.
+Description: Learn how to write Azure Resource Graph queries using KQL to build a complete inventory of the Azure resources you can access for governance and reporting.
 
 ---
 
-Knowing what resources exist in your Azure environment seems like it should be simple. But when you have dozens of subscriptions, hundreds of resource groups, and thousands of resources, getting a complete picture requires more than just browsing the portal. Azure Resource Graph lets you query all your resources across all your subscriptions in a single, fast query using Kusto Query Language (KQL).
+Knowing what resources exist in your Azure environment seems like it should be simple. But when you have dozens of subscriptions, hundreds of resource groups, and thousands of resources, getting a complete picture requires more than just browsing the portal. Azure Resource Graph lets you query the resources you have permission to read across accessible subscriptions in a single, fast query using Kusto Query Language (KQL).
 
 In this guide, I will teach you how to write Resource Graph queries from scratch, starting with the basics and working up to complex inventory queries that you can use for governance, cost optimization, and compliance reporting.
 
 ## What Is Azure Resource Graph?
 
-Azure Resource Graph is a service that provides efficient and performant resource exploration. Unlike the standard Azure Resource Manager (ARM) API, which requires you to query each subscription individually and paginate through results, Resource Graph indexes your resources and lets you query across all subscriptions at once.
+Azure Resource Graph is a service that provides efficient and performant resource exploration. Unlike the standard Azure Resource Manager (ARM) API, which requires you to query each subscription individually and paginate through results, Resource Graph indexes your resources and lets you query across the subscriptions in scope at once.
 
 Resource Graph queries run against an index that is updated as resources change. The index is near real-time but not perfectly synchronized - there can be a short delay (usually seconds to minutes) between a resource change and the index update.
 
@@ -52,7 +52,7 @@ The `resources` table is where you will spend most of your time. Each row repres
 Here is a simple query to get started:
 
 ```kusto
-// Count all resources in your tenant
+// Count all resources you can access
 resources
 | summarize count()
 ```
@@ -125,6 +125,7 @@ resources
 | extend osType = tostring(properties.storageProfile.osDisk.osType)
 | extend osPublisher = tostring(properties.storageProfile.imageReference.publisher)
 | extend osSku = tostring(properties.storageProfile.imageReference.sku)
+| extend powerState = tostring(properties.extended.instanceView.powerState.code)
 | join kind=leftouter (
     resourcecontainers
     | where type == "microsoft.resources/subscriptions"
@@ -139,6 +140,7 @@ resources
     osType,
     osPublisher,
     osSku,
+    powerState,
     tags
 | sort by subscriptionName asc, name asc
 ```
@@ -150,7 +152,7 @@ resources
 resources
 | where type == "microsoft.storage/storageaccounts"
 | extend accessTier = tostring(properties.accessTier)
-| extend replication = tostring(properties.primaryEndpoints)
+| extend replication = tostring(sku.name)
 | extend kind = tostring(kind)
 | extend httpsOnly = tostring(properties.supportsHttpsTrafficOnly)
 | extend minimumTlsVersion = tostring(properties.minimumTlsVersion)
@@ -160,6 +162,7 @@ resources
     location,
     kind,
     accessTier,
+    replication,
     httpsOnly,
     minimumTlsVersion,
     subscriptionId
@@ -169,7 +172,7 @@ resources
 ### Network Security Group Rules Inventory
 
 ```kusto
-// List all NSG rules across the tenant
+// List all custom NSG rules across the tenant
 resources
 | where type == "microsoft.network/networksecuritygroups"
 | mv-expand rules = properties.securityRules
@@ -202,7 +205,7 @@ Tags are one of the most queried properties. Here are useful tag-related queries
 ```kusto
 // Find resources missing the 'Environment' tag
 resources
-| where isnull(tags['Environment']) or tags['Environment'] == ""
+| where isempty(tostring(tags['Environment']))
 | project name, type, resourceGroup, subscriptionId, tags
 | sort by type asc
 ```
@@ -223,7 +226,7 @@ Resources with No Tags at All
 ```kusto
 // Resources with zero tags
 resources
-| where tags == "{}" or isnull(tags)
+| where isnull(tags) or array_length(bag_keys(tags)) == 0
 | summarize count() by type
 | sort by count_ desc
 ```
@@ -254,6 +257,7 @@ You can join the resources table with resourcecontainers to get subscription and
 // Resources with their subscription and resource group details
 resources
 | take 100
+| extend rgId = tolower(strcat("/subscriptions/", subscriptionId, "/resourceGroups/", resourceGroup))
 | join kind=leftouter (
     resourcecontainers
     | where type == "microsoft.resources/subscriptions"
@@ -261,23 +265,23 @@ resources
 ) on subscriptionId
 | join kind=leftouter (
     resourcecontainers
-    | where type == "microsoft.resources/resourcegroups"
-    | project rgId = id, rgLocation = location, rgTags = tags
-) on $left.id startswith $right.rgId
+    | where type == "microsoft.resources/subscriptions/resourcegroups"
+    | project rgId = tolower(id), rgLocation = location, rgTags = tags
+) on rgId
 | project name, type, subscriptionName, resourceGroup, location
 ```
 
 ### Exporting Results
 
-For large inventory reports, export the results to CSV:
+For large inventory reports, export the results to TSV:
 
 ```bash
-# Export query results to a CSV file
+# Export query results to a TSV file
 az graph query -q "
     resources
     | project name, type, location, resourceGroup, subscriptionId, tags
     | sort by type asc
-" --first 5000 --output tsv > resource-inventory.tsv
+" --first 1000 --output tsv > resource-inventory.tsv
 ```
 
 For more than 1000 results, you need to use pagination:
@@ -309,6 +313,8 @@ You can automate inventory queries using Azure Automation or Logic Apps. Here is
 
 ```powershell
 # Azure Automation runbook for weekly inventory report
+Connect-AzAccount -Identity
+
 $query = @"
 resources
 | summarize count() by type, location
@@ -337,4 +343,4 @@ $csv = $results | ConvertTo-Csv -NoTypeInformation
 
 ## Summary
 
-Azure Resource Graph is an essential tool for anyone managing Azure resources at scale. By learning KQL and the Resource Graph schema, you can build comprehensive inventory reports, find misconfigurations, audit tag compliance, and answer governance questions across your entire tenant in seconds. Start with the basic queries in this guide, customize them for your environment, and save them for regular use.
+Azure Resource Graph is an essential tool for anyone managing Azure resources at scale. By learning KQL and the Resource Graph schema, you can build comprehensive inventory reports, find misconfigurations, audit tag compliance, and answer governance questions across accessible subscriptions in seconds. Start with the basic queries in this guide, customize them for your environment, and save them for regular use.
