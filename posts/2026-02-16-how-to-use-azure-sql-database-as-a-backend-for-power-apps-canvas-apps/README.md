@@ -26,20 +26,15 @@ That said, Dataverse has advantages like offline support, built-in security role
 Before connecting from Power Apps, make sure your Azure SQL Database is accessible. You need to configure the firewall to allow connections from Power Platform services.
 
 1. In the Azure portal, go to your SQL server resource.
-2. Under Security > Networking, add the IP ranges for Power Platform. Alternatively, toggle "Allow Azure services and resources to access this server" to Yes.
+2. Under Security > Networking, add the outbound IP ranges or service tags used by Power Platform managed connectors for your region. Alternatively, toggle "Allow Azure services and resources to access this server" to Yes, but be aware that this allows access from Azure resources more broadly.
 3. Make sure your database has a user account that Power Apps can use.
 
 Here is a T-SQL script to create a dedicated user for Power Apps:
 
 ```sql
--- Create a login at the server level
-CREATE LOGIN PowerAppsUser WITH PASSWORD = 'YourStrongPassword123!';
-
--- Switch to your target database
-USE YourDatabase;
-
--- Create a user mapped to the login
-CREATE USER PowerAppsUser FOR LOGIN PowerAppsUser;
+-- Connect directly to your target Azure SQL database before running this script.
+-- Create a contained database user for SQL authentication.
+CREATE USER PowerAppsUser WITH PASSWORD = 'YourStrongPassword123!';
 
 -- Grant read and write permissions
 ALTER ROLE db_datareader ADD MEMBER PowerAppsUser;
@@ -81,7 +76,7 @@ CREATE TABLE Orders (
 A few tips for table design:
 
 - Use `NVARCHAR` instead of `VARCHAR` so Unicode characters work correctly in Power Apps.
-- Use `IDENTITY` columns for primary keys since Power Apps expects auto-incrementing IDs.
+- Use `IDENTITY` columns for primary keys when you want SQL Server to generate numeric IDs automatically.
 - Add `CreatedDate` and `ModifiedDate` columns for auditing.
 - Keep column names simple and avoid spaces or special characters.
 
@@ -134,8 +129,13 @@ Add a Form control in Edit mode. Wire up the submit button:
 
 ```text
 // Submit the form changes back to Azure SQL
+SubmitForm(EditForm)
+```
+
+Then set the form's OnSuccess property:
+
+```text
 // After submission, navigate back to the browse screen
-SubmitForm(EditForm);
 Navigate(BrowseScreen, ScreenTransition.None)
 ```
 
@@ -168,7 +168,7 @@ For operations that go beyond simple CRUD, use stored procedures. Power Apps can
 ```sql
 -- Stored procedure to place a new order
 -- Power Apps can call this directly from a button action
-CREATE PROCEDURE sp_PlaceOrder
+CREATE PROCEDURE usp_PlaceOrder
     @CustomerId INT,
     @TotalAmount DECIMAL(18,2)
 AS
@@ -184,7 +184,7 @@ BEGIN
     WHERE Id = @CustomerId;
 
     -- Return the new order ID
-    SELECT SCOPE_IDENTITY() AS NewOrderId;
+    SELECT CAST(SCOPE_IDENTITY() AS INT) AS NewOrderId;
 END;
 ```
 
@@ -192,14 +192,14 @@ Call it from Power Apps like this:
 
 ```text
 // Execute the stored procedure and capture the result
-// The connector wraps the result in a table with one row
+// SQL stored procedure result sets are exposed under ResultSets.Table1
 Set(
     varNewOrderId,
     First(
-        'YourDB'.sp_PlaceOrder({
+        'YourDB'.dbousp_PlaceOrder({
             CustomerId: varSelectedCustomer.Id,
             TotalAmount: Value(txtAmount.Text)
-        })
+        }).ResultSets.Table1
     ).NewOrderId
 );
 ```
@@ -211,13 +211,14 @@ Delegation is how Power Apps pushes query operations to the data source instead 
 Delegable operations with SQL Server connector:
 - Filter with =, <>, <, >, <=, >=
 - StartsWith
+- EndsWith when the column is the first argument
+- LookUp
 - Sort
 - Search (on text columns)
 
 Non-delegable operations:
-- Lookup across tables
 - Complex nested filters
-- Certain string functions like EndsWith
+- Some formulas that apply functions in a way SQL Server cannot translate
 
 When you use a non-delegable operation, Power Apps only processes the first 500 (or up to 2000) rows. The app will show a blue warning line under the formula. Take these warnings seriously since they mean your app might silently miss data.
 
@@ -225,14 +226,13 @@ When you use a non-delegable operation, Power Apps only processes the first 500 
 
 Azure SQL is fast, but the roundtrip through the Power Apps connector adds latency. Here are some tips:
 
-**Reduce columns**: Use the `ShowColumns` function to fetch only the columns you need:
+**Reduce columns**: Use the `ShowColumns` function to shape the data passed to controls. For large SQL tables, prefer a SQL view when you need the server to return only selected columns:
 
 ```text
-// Only fetch the columns the gallery needs
-// This reduces the payload size significantly
+// Only keep the columns the gallery needs
 ShowColumns(
     '[dbo].[Customers]',
-    "Id", "FirstName", "LastName", "Email"
+    Id, FirstName, LastName, Email
 )
 ```
 
@@ -240,7 +240,7 @@ ShowColumns(
 
 ```text
 // Load multiple data sources in parallel
-// This cuts the total loading time roughly in half
+// This can reduce total loading time
 Concurrent(
     ClearCollect(colCustomers, '[dbo].[Customers]'),
     ClearCollect(colOrders, '[dbo].[Orders]')
@@ -259,13 +259,13 @@ CREATE INDEX IX_Orders_CustomerId ON Orders(CustomerId);
 
 ## Security Considerations
 
-The SQL Server connector in Power Apps uses a shared connection. Every user who opens the app uses the same SQL credentials. This means you cannot rely on SQL-level row security to restrict data per user.
+The SQL Server connector in Power Apps can use either explicit or implicit connections. With Microsoft Entra Integrated authentication, each user creates their own connection and SQL Server can evaluate that user's identity. With SQL Server authentication or a service principal, users share the credentials behind the app, so SQL Server sees the shared account instead of the individual app user.
 
 To implement per-user security:
 
-1. Add a UserEmail column to your tables.
-2. Filter data in Power Apps based on the current user: `Filter('[dbo].[Customers]', UserEmail = User().Email)`.
-3. Alternatively, implement Row-Level Security in Azure SQL using the `SESSION_CONTEXT` function and pass the user's email from Power Apps.
+1. Prefer Microsoft Entra Integrated authentication when SQL Server must enforce permissions or Row-Level Security per user.
+2. For shared SQL credentials, treat Power Apps filters such as `Filter('[dbo].[Customers]', UserEmail = User().Email)` as a user-experience filter, not a security boundary.
+3. Enforce sensitive filtering on the server with SQL permissions, Row-Level Security, views, stored procedures, or a trusted business layer.
 
 ## Wrapping Up
 
