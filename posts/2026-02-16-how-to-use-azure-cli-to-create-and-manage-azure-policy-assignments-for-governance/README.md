@@ -64,7 +64,7 @@ When built-in policies do not cover your requirement, create a custom one. Polic
 
 ```bash
 # Create a policy rule file
-# This policy denies the creation of public IP addresses
+# This policy denies the creation of static public IP addresses
 ```
 
 First, create the policy rule JSON file:
@@ -159,8 +159,8 @@ az policy definition create \
 Creating a definition is only half the job. You need to assign it to a scope for it to take effect:
 
 ```bash
-# Assign a built-in policy to a subscription
-# This example assigns "Require a tag on resources"
+# Assign the custom parameterized policy to a subscription
+# This example assigns "Require a specific tag on resources"
 az policy assignment create \
   --name "require-environment-tag" \
   --display-name "Require Environment tag on all resources" \
@@ -352,18 +352,18 @@ for rule_file in "$POLICY_DIR"/definitions/*/rule.json; do
 
     echo "Creating policy definition: $name"
 
-    cmd="az policy definition create --name $name --rules @$rule_file --mode Indexed"
+    cmd=(az policy definition create --name "$name" --rules "@$rule_file" --mode Indexed)
     if [ -f "$params_file" ]; then
-        cmd="$cmd --params @$params_file"
+        cmd+=(--params "@$params_file")
     fi
 
     # Read display name from metadata if it exists
     if [ -f "$dir/metadata.json" ]; then
         display_name=$(jq -r '.displayName' "$dir/metadata.json")
-        cmd="$cmd --display-name \"$display_name\""
+        cmd+=(--display-name "$display_name")
     fi
 
-    eval "$cmd" 2>/dev/null || echo "  (already exists, updating...)"
+    "${cmd[@]}" 2>/dev/null || echo "  (already exists; use az policy definition update for changes)"
 done
 
 # Deploy all policy assignments
@@ -371,10 +371,23 @@ for assignment_file in "$POLICY_DIR"/assignments/*.json; do
     name=$(basename "$assignment_file" .json)
     echo "Creating policy assignment: $name"
 
-    az policy assignment create \
-      --name "$name" \
-      --from-file "$assignment_file" \
-      2>/dev/null || echo "  (already exists, updating...)"
+    policy=$(jq -r '.policy' "$assignment_file")
+    scope=$(jq -r '.scope // empty' "$assignment_file")
+    display_name=$(jq -r '.displayName // empty' "$assignment_file")
+    params=$(jq -c '.params // empty' "$assignment_file")
+
+    cmd=(az policy assignment create --name "$name" --policy "$policy")
+    if [ -n "$scope" ]; then
+        cmd+=(--scope "$scope")
+    fi
+    if [ -n "$display_name" ]; then
+        cmd+=(--display-name "$display_name")
+    fi
+    if [ -n "$params" ]; then
+        cmd+=(--params "$params")
+    fi
+
+    "${cmd[@]}" 2>/dev/null || echo "  (already exists; use az policy assignment update for changes)"
 done
 
 echo "Policy deployment complete"
