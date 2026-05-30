@@ -29,7 +29,7 @@ param location string = resourceGroup().location
 // Create one storage account per environment using a for loop
 resource storageAccounts 'Microsoft.Storage/storageAccounts@2023-01-01' = [for env in environments: {
   // Storage account names must be globally unique, so we append a unique suffix
-  name: 'storage${env}${uniqueString(resourceGroup().id)}'
+  name: 'st${env}${uniqueString(resourceGroup().id)}'
   location: location
   kind: 'StorageV2'
   sku: {
@@ -99,6 +99,7 @@ If you need a specific number of identical resources, use the `range()` function
 param vmCount int = 3
 param location string = resourceGroup().location
 param adminUsername string = 'azureuser'
+param subnetId string
 
 @secure()
 param adminPassword string
@@ -191,7 +192,7 @@ param applications array = [
 resource appStorage 'Microsoft.Storage/storageAccounts@2023-01-01' = [for app in applications: if (app.needsStorage) {
   name: 'st${app.name}${uniqueString(resourceGroup().id)}'
   location: resourceGroup().location
-  kind: 'StorageV2'
+  kind: app.tier == 'Premium' ? 'BlockBlobStorage' : 'StorageV2'
   sku: {
     name: app.tier == 'Premium' ? 'Premium_LRS' : 'Standard_LRS'
   }
@@ -203,7 +204,7 @@ resource appStorage 'Microsoft.Storage/storageAccounts@2023-01-01' = [for app in
 
 ## Nested Loops
 
-Bicep supports nested loops through modules. You cannot directly nest `for` expressions in resource definitions, but you can call a module inside a loop, and that module can contain its own loop:
+Bicep supports nested loop patterns. When each outer iteration needs its own set of resources, a clean approach is to call a module inside a loop, and let that module contain its own loop:
 
 ```bicep
 // main.bicep - Outer loop iterates over environments
@@ -272,7 +273,7 @@ param roleNames array = [
 var roleDefinitions = [for (role, i) in roleNames: {
   name: role
   index: i
-  displayName: '${toUpper(role[0])}${substring(role, 1)}'  // Capitalize first letter
+  displayName: '${toUpper(substring(role, 0, 1))}${substring(role, 1)}'  // Capitalize first letter
 }]
 
 // Use the transformed variable elsewhere in the template
@@ -290,8 +291,8 @@ param locations array = [
   'southeastasia'
 ]
 
-resource storageAccounts 'Microsoft.Storage/storageAccounts@2023-01-01' = [for loc in locations: {
-  name: 'st${loc}${uniqueString(resourceGroup().id)}'
+resource storageAccounts 'Microsoft.Storage/storageAccounts@2023-01-01' = [for (loc, i) in locations: {
+  name: 'st${i}${uniqueString(resourceGroup().id, loc)}'
   location: loc
   kind: 'StorageV2'
   sku: {
@@ -312,14 +313,15 @@ output accountDetails array = [for (loc, i) in locations: {
 By default, Bicep deploys all loop iterations in parallel. If you need to limit parallelism (for example, to avoid hitting API rate limits), use the `@batchSize` decorator:
 
 ```bicep
-// Deploy VMs in batches of 2 to avoid overwhelming the Azure API
-// Without this, all VMs would be created simultaneously
+// Deploy storage accounts in batches of 2 to avoid overwhelming the Azure API
+// Without this, all storage accounts would be created simultaneously
 @batchSize(2)
-resource virtualMachines 'Microsoft.Compute/virtualMachines@2023-07-01' = [for i in range(0, 10): {
-  name: 'vm-${i}'
+resource storageAccounts 'Microsoft.Storage/storageAccounts@2023-01-01' = [for i in range(0, 10): {
+  name: 'st${i}${uniqueString(resourceGroup().id)}'
   location: resourceGroup().location
-  properties: {
-    // VM configuration
+  kind: 'StorageV2'
+  sku: {
+    name: 'Standard_LRS'
   }
 }]
 ```
@@ -347,6 +349,8 @@ param regions array = [
 
 param appName string = 'mywebapp'
 
+var appNameSuffix = uniqueString(resourceGroup().id)
+
 // Create an App Service Plan in each region
 resource appPlans 'Microsoft.Web/serverfarms@2023-01-01' = [for region in regions: {
   name: '${appName}-plan-${region.location}'
@@ -363,7 +367,7 @@ resource appPlans 'Microsoft.Web/serverfarms@2023-01-01' = [for region in region
 
 // Create a Web App in each region, linked to its regional plan
 resource webApps 'Microsoft.Web/sites@2023-01-01' = [for (region, i) in regions: {
-  name: '${appName}-${region.location}'
+  name: '${appName}-${region.location}-${appNameSuffix}'
   location: region.location
   properties: {
     serverFarmId: appPlans[i].id
