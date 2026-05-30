@@ -20,7 +20,7 @@ For reference, here is what a correct mount command looks like:
 sudo mount -t cifs \
   //stmyfiles.file.core.windows.net/myshare \
   /mnt/azure-files \
-  -o username=stmyfiles,password=<storage-account-key>,dir_mode=0755,file_mode=0644,serverino,nosharesock,actimeo=30,vers=3.1.1
+  -o username=stmyfiles,password='<storage-account-key>',dir_mode=0755,file_mode=0644,serverino,nosharesock,actimeo=30,vers=3.1.1
 ```
 
 Now let us go through what goes wrong and how to fix each issue.
@@ -63,9 +63,9 @@ sudo mount -t cifs \
   -o username=stmyfiles,password='AbCdEfG+hIjKlM/nOpQrStUvWxYz1234567890=='
 ```
 
-**Cause 2: Secure transfer required but using SMB 2.x**
+**Cause 2: SMB encryption is required but the client is using SMB 2.x or unencrypted SMB**
 
-If your storage account has "Secure transfer required" enabled (the default), you must use SMB 3.0 or higher with encryption. Older SMB versions will be rejected.
+If your storage account requires encryption in transit for SMB, you must use SMB 3.0 or higher with encryption. For new storage accounts created in the Azure portal, "Require Encryption in Transit for SMB" is enabled by default. For existing accounts, or accounts created through CLI, PowerShell, or FileREST, check both the per-protocol SMB setting and the storage account "Secure transfer required" setting. SMB 2.1 does not support SMB encryption and will be rejected when SMB encryption is required.
 
 ```bash
 # Force SMB 3.1.1 protocol version
@@ -101,9 +101,9 @@ az storage account network-rule add \
 mount error(115): Operation now in progress
 ```
 
-**Cause: Port 445 is blocked**
+**Cause: Port 445 is blocked or the Linux client does not support SMB 3.x encryption**
 
-Azure file shares use SMB over TCP port 445. Many ISPs and corporate firewalls block this port. Test connectivity:
+Azure file shares use SMB over TCP port 445. Many ISPs and corporate firewalls block this port. Microsoft also documents `mount error(115)` for Linux clients that try to mount Azure Files over SMB 3.x without the required SMB encryption support. Test connectivity first:
 
 ```bash
 # Test if port 445 is reachable
@@ -119,11 +119,11 @@ timeout 5 bash -c 'echo > /dev/tcp/stmyfiles.file.core.windows.net/445' && echo 
 If port 445 is blocked, your options are:
 
 1. **Use a VPN or ExpressRoute** to connect to Azure's private network
-2. **Use a Private Endpoint** to access the storage account over a private IP
+2. **Use a Private Endpoint** to access the storage account over a private IP from a connected virtual network
 3. **Use Azure File Sync** with a local server that syncs to the cloud
-4. **Switch to NFS** (which uses port 2049 and may not be blocked)
+4. **Switch to NFS** if your workload can use Azure Files NFS; NFS uses port 2049, requires a premium FileStorage account, and must be accessed through service endpoints or private endpoints
 
-Setting up a private endpoint to bypass port 445 issues:
+Setting up a private endpoint to keep SMB traffic on a private path:
 
 ```bash
 # Create a private endpoint for the file share
@@ -143,31 +143,22 @@ az network private-endpoint create \
 mount error(112): Host is down
 ```
 
-**Cause: SMB version mismatch**
+**Cause: Reconnection timeout or an older Linux kernel**
 
-This usually means the server requires a newer SMB version than your client is offering, or vice versa.
+Microsoft documents `mount error(112)` for Linux clients that have been idle for a long time, then fail to reconnect. It can also happen on older kernels that do not include recent CIFS reconnection fixes.
 
 ```bash
-# Check which SMB versions your kernel supports
-modinfo cifs | grep -i version
-
-# Check the kernel version (SMB 3.1.1 requires kernel 4.17+)
+# Check the kernel version
 uname -r
 
-# Try explicitly specifying SMB 3.0
+# Use a hard mount so the client waits for reconnection instead of failing quickly
 sudo mount -t cifs \
   //stmyfiles.file.core.windows.net/myshare \
   /mnt/azure-files \
-  -o username=stmyfiles,password='<key>',vers=3.0,dir_mode=0755,file_mode=0644
-
-# If that fails, try SMB 2.1 (only works if secure transfer is disabled)
-sudo mount -t cifs \
-  //stmyfiles.file.core.windows.net/myshare \
-  /mnt/azure-files \
-  -o username=stmyfiles,password='<key>',vers=2.1,dir_mode=0755,file_mode=0644
+  -o username=stmyfiles,password='<key>',vers=3.1.1,hard,dir_mode=0755,file_mode=0644
 ```
 
-If your kernel is too old for SMB 3.x, you need to upgrade your Linux distribution or kernel.
+If this happens repeatedly, upgrade your Linux distribution or kernel so the CIFS client includes the current reconnection fixes.
 
 ## Error: mount(2) system call failed - No such file or directory
 
@@ -222,8 +213,8 @@ dig stmyfiles.file.core.windows.net
 # If DNS fails, check /etc/resolv.conf
 cat /etc/resolv.conf
 
-# Try using a public DNS temporarily
-echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+# Try querying a public resolver directly
+dig @8.8.8.8 stmyfiles.file.core.windows.net
 
 # Retry the mount
 sudo mount -t cifs \
