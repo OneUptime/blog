@@ -59,16 +59,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # Install global npm tools
 RUN npm install -g typescript eslint prettier
 
-# Create a non-root user for security
-# Azure Pipelines requires the user to have a home directory
-RUN useradd -m -d /home/vsts -s /bin/bash vsts
-USER vsts
-WORKDIR /home/vsts
+# Azure Pipelines container initialization requires privileged user-management commands.
+# Keep the default root user for job containers unless your custom user is configured
+# to run groupadd and related commands without sudo.
+WORKDIR /workspace
 ```
 
 Build and push this image to a container registry:
@@ -126,7 +126,7 @@ resources:
         CI: true
       # Volume mounts for sharing data between host and container
       volumes:
-        - /var/run/docker.sock:/var/run/docker.sock  # Docker-in-Docker
+        - /tmp/build-cache:/cache
       # Networking options
       ports:
         - 8080:8080
@@ -249,42 +249,9 @@ jobs:
 
 The sidecar containers are accessible by their service name (the key in the `services` map). In this example, the PostgreSQL database is reachable at `postgres:5432` from inside the build container.
 
-## Docker-in-Docker for Building Images
+## Building Docker Images from a Container Job
 
-If your pipeline needs to build Docker images inside a container job, you need Docker-in-Docker (DinD):
-
-```yaml
-resources:
-  containers:
-    - container: dind
-      image: docker:24-dind
-      options: '--privileged'  # Required for Docker-in-Docker
-      env:
-        DOCKER_TLS_CERTDIR: ''
-
-pool:
-  vmImage: 'ubuntu-latest'
-
-jobs:
-  - job: BuildImages
-    container: dind
-    steps:
-      - script: |
-          # Wait for Docker daemon to be ready
-          while ! docker info > /dev/null 2>&1; do
-            echo "Waiting for Docker daemon..."
-            sleep 1
-          done
-          echo "Docker is ready"
-        displayName: 'Wait for Docker'
-
-      - script: |
-          docker build -t myapp:$(Build.BuildId) .
-          docker images
-        displayName: 'Build Docker image'
-```
-
-Alternatively, you can mount the host's Docker socket into the container (less isolated but simpler):
+If your pipeline needs to build Docker images inside a container job, use the host agent's Docker daemon by allowing Azure Pipelines to map the Docker socket into a container that has the Docker CLI installed:
 
 ```yaml
 resources:
@@ -292,17 +259,50 @@ resources:
     - container: builder
       image: myregistry.azurecr.io/build-images/node20:latest
       endpoint: acr-connection
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
+      mapDockerSocket: true
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+jobs:
+  - job: BuildImages
+    container: builder
+    steps:
+      - script: |
+          docker info
+        displayName: 'Check Docker access'
+
+      - script: |
+          # Uses the host's Docker daemon
+          docker build -t myapp:$(Build.BuildId) .
+          docker images
+        displayName: 'Build Docker image'
+```
+
+Azure Pipelines automatically maps the Docker socket for container jobs unless you disable it with `mapDockerSocket: false`. Setting `mapDockerSocket: true` makes the dependency clear, but it also means builds share the host daemon.
+
+If you use a separate builder image, make sure it satisfies the Azure Pipelines container job requirements and includes the Docker CLI:
+
+```yaml
+resources:
+  containers:
+    - container: builder
+      image: myregistry.azurecr.io/build-images/docker-cli:latest
+      endpoint: acr-connection
+      mapDockerSocket: true
 
 jobs:
   - job: Build
     container: builder
     steps:
       - script: |
+          docker info
+        displayName: 'Check Docker access'
+
+      - script: |
           # Uses the host's Docker daemon
           docker build -t myapp:latest .
-        displayName: 'Build image via host Docker'
+        displayName: 'Build Docker image'
 ```
 
 ## Building the Build Image in the Same Pipeline
@@ -356,17 +356,18 @@ container:
   image: myregistry.azurecr.io/build-images/node20:latest
   options: '--user 0:0'  # Run as root
 
-# Option 2: Match the container user to the agent user
-# In your Dockerfile, create a user with UID 1001 (common agent UID)
+# Option 2: Keep Azure's required root initialization behavior,
+# but create writable directories for build tools
 ```
 
 In your Dockerfile:
 
 ```dockerfile
-# Create a user that matches the Azure Pipelines agent UID
-RUN groupadd -g 1001 vsts && \
-    useradd -u 1001 -g 1001 -m vsts
-USER vsts
+# Create a home directory and workspace that tools can write to.
+# Leave USER unset so Azure Pipelines can run groupadd and related commands.
+RUN useradd -m -d /home/vsts -s /bin/bash vsts && \
+    mkdir -p /workspace && \
+    chown -R vsts:vsts /home/vsts /workspace
 ```
 
 ## Caching in Container Jobs
@@ -378,7 +379,7 @@ container:
   image: node:20-slim
 
 steps:
-  # Cache node_modules to speed up subsequent builds
+  # Cache npm's shared package cache to speed up subsequent builds
   - task: Cache@2
     inputs:
       key: 'npm | "$(Agent.OS)" | package-lock.json'
