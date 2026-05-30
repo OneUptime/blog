@@ -24,7 +24,7 @@ Before writing any code, you need to understand the two trigger mechanisms:
 | Scalability | Limited by polling frequency | Scales with Event Grid |
 | Reliability | Can miss events if high volume | More reliable at high volume |
 | Setup complexity | Simple (just a connection string) | Requires Event Grid subscription |
-| Blob path filtering | Prefix-based only | Full regex/suffix support |
+| Blob path filtering | Container and blob name patterns | Subject prefix/suffix filters and advanced filters |
 
 My recommendation: use the Event Grid trigger for new projects. The Blob trigger is simpler to set up, but the latency and reliability issues make it a poor choice for production workloads.
 
@@ -54,6 +54,11 @@ az functionapp create \
   --functions-version 4 \
   --storage-account funcappstorage2026 \
   --os-type Linux
+
+# Enable a managed identity for the function app
+az functionapp identity assign \
+  --name my-blob-processor \
+  --resource-group func-rg
 ```
 
 ### Step 2: Write the Function Code
@@ -64,14 +69,12 @@ Create a function that processes blobs when Event Grid delivers a BlobCreated ev
 # function_app.py
 import azure.functions as func
 import logging
-import json
 from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
 
 app = func.FunctionApp()
 
-# Event Grid trigger that fires on blob created events
-# The source filter limits events to a specific storage account
+# Event Grid trigger that fires when the event subscription delivers blob events
 @app.function_name(name="ProcessUploadedBlob")
 @app.event_grid_trigger(arg_name="event")
 def process_blob(event: func.EventGridEvent):
@@ -130,22 +133,39 @@ FUNCTION_ID=$(az functionapp show \
   --resource-group func-rg \
   --query "id" -o tsv)
 
+# Get the source storage account's resource ID
+STORAGE_ACCOUNT_ID=$(az storage account show \
+  --name mystorageaccount \
+  --resource-group myResourceGroup \
+  --query "id" -o tsv)
+
+# Give the function app's managed identity access to read, write, and delete blobs
+PRINCIPAL_ID=$(az functionapp identity show \
+  --name my-blob-processor \
+  --resource-group func-rg \
+  --query "principalId" -o tsv)
+
+az role assignment create \
+  --assignee "$PRINCIPAL_ID" \
+  --role "Storage Blob Data Contributor" \
+  --scope "$STORAGE_ACCOUNT_ID"
+
 # Create an Event Grid subscription on the storage account
 az eventgrid event-subscription create \
   --name blob-upload-subscription \
-  --source-resource-id "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Storage/storageAccounts/mystorageaccount" \
+  --source-resource-id "$STORAGE_ACCOUNT_ID" \
   --endpoint-type azurefunction \
   --endpoint "${FUNCTION_ID}/functions/ProcessUploadedBlob" \
   --included-event-types "Microsoft.Storage.BlobCreated" \
-  --subject-begins-with "/blobServices/default/containers/uploads" \
-  --subject-ends-with ".jpg" ".png" ".gif"
+  --subject-begins-with "/blobServices/default/containers/uploads/blobs/" \
+  --advanced-filter subject StringEndsWith .jpg .png .gif
 ```
 
 The filters are important:
 
 - **included-event-types**: Only trigger on blob creation (not deletion, tier changes, etc.)
 - **subject-begins-with**: Only trigger for blobs in the "uploads" container
-- **subject-ends-with**: Only trigger for image files
+- **advanced-filter**: Only trigger for image files by matching several allowed suffixes
 
 ## Setting Up a Classic Blob Trigger
 
@@ -267,7 +287,7 @@ You can test Event Grid triggers locally using the Azure Functions Core Tools an
 func start
 
 # Send a test event using curl
-curl -X POST http://localhost:7071/runtime/webhooks/EventGrid \
+curl -X POST "http://localhost:7071/runtime/webhooks/eventgrid?functionName=ProcessUploadedBlob" \
   -H "Content-Type: application/json" \
   -H "aeg-event-type: Notification" \
   -d '[{
