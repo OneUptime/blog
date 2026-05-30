@@ -8,9 +8,9 @@ Description: Learn how to configure Azure Front Door routing rules with URL redi
 
 ---
 
-URL redirection is one of those things that sounds trivial until you need to handle it at scale across multiple domains, paths, and protocols. Azure Front Door provides built-in URL redirect capabilities in its routing rules, letting you handle everything from simple HTTP-to-HTTPS redirects to complex path rewrites without touching your backend servers.
+URL redirection is one of those things that sounds trivial until you need to handle it at scale across multiple domains, paths, and protocols. Azure Front Door provides built-in URL redirect capabilities in its routing rules, letting you handle everything from simple HTTP-to-HTTPS redirects to complex path changes without touching your backend servers.
 
-In this post, I will cover how to set up Front Door routing rules with different types of URL redirects, including protocol redirects, domain swaps, path rewrites, and query string handling.
+In this post, I will cover how to set up Front Door routing rules with different types of URL redirects, including protocol redirects, domain swaps, path redirects, and query string handling.
 
 ## Why Handle Redirects at Front Door?
 
@@ -77,7 +77,8 @@ az afd rule create \
   --match-values HTTP \
   --action-name UrlRedirect \
   --redirect-protocol Https \
-  --redirect-type Moved
+  --redirect-type Moved \
+  --match-processing-behavior Stop
 ```
 
 This rule matches any request using HTTP and redirects it to the same URL with HTTPS, returning a 301 status code.
@@ -94,17 +95,17 @@ az afd rule create \
   --rule-set-name redirectRules \
   --rule-name domainRedirect \
   --order 2 \
-  --match-variable RequestHeader \
-  --selector Host \
+  --match-variable HostName \
   --operator Equal \
   --match-values "old-domain.com" \
   --action-name UrlRedirect \
   --redirect-type Moved \
   --redirect-protocol MatchRequest \
-  --custom-host "new-domain.com"
+  --custom-hostname "new-domain.com" \
+  --match-processing-behavior Stop
 ```
 
-The `--redirect-protocol MatchRequest` setting preserves whatever protocol the original request used. The `--custom-host` overrides just the hostname while keeping the path and query string intact.
+The `--redirect-protocol MatchRequest` setting preserves whatever protocol the original request used. The `--custom-hostname` overrides just the hostname while keeping the path and query string intact.
 
 ## Path-Based Redirects
 
@@ -120,14 +121,15 @@ az afd rule create \
   --order 3 \
   --match-variable UrlPath \
   --operator BeginsWith \
-  --match-values "/blog" \
+  --match-values "blog" \
   --action-name UrlRedirect \
   --redirect-type Moved \
   --redirect-protocol MatchRequest \
-  --custom-path "/articles"
+  --custom-path "/articles" \
+  --match-processing-behavior Stop
 ```
 
-One thing to note: this replaces the entire path with `/articles`. If the original request was `/blog/my-post`, the redirect goes to `/articles`, not `/articles/my-post`. For path prefix replacement, you need to use URL rewrite instead of redirect, or use a more specific set of rules.
+One thing to note: this replaces the entire path with `/articles`. If the original request was `/blog/my-post`, the redirect goes to `/articles`, not `/articles/my-post`. For path prefix replacement in a redirect, use Front Door server variables such as `{url_path:seg#}`, or use a more specific set of rules.
 
 ## Redirect with Query String Manipulation
 
@@ -143,12 +145,13 @@ az afd rule create \
   --order 4 \
   --match-variable UrlPath \
   --operator Equal \
-  --match-values "/search" \
+  --match-values "search" \
   --action-name UrlRedirect \
   --redirect-type Found \
   --redirect-protocol Https \
-  --custom-host "search.example.com" \
-  --custom-query-string "{query_string}"
+  --custom-hostname "search.example.com" \
+  --custom-querystring "{query_string}" \
+  --match-processing-behavior Stop
 
 # Redirect while adding a query parameter
 az afd rule create \
@@ -159,20 +162,21 @@ az afd rule create \
   --order 5 \
   --match-variable UrlPath \
   --operator Equal \
-  --match-values "/promo" \
+  --match-values "promo" \
   --action-name UrlRedirect \
   --redirect-type Found \
   --redirect-protocol Https \
   --custom-path "/landing" \
-  --custom-query-string "source=promo&{query_string}"
+  --custom-querystring "source=promo&{query_string}" \
+  --match-processing-behavior Stop
 ```
 
 ## Combining Conditions
 
-Rules can have multiple match conditions. All conditions must be true for the rule to trigger:
+Rules can have multiple match conditions. All conditions must be true for the rule to trigger. The Azure CLI can add additional conditions by updating the rule after creation; this example starts with a path condition:
 
 ```bash
-# Redirect only mobile users from a specific path
+# Redirect users from a specific path
 az afd rule create \
   --resource-group myResourceGroup \
   --profile-name myFrontDoor \
@@ -181,11 +185,12 @@ az afd rule create \
   --order 6 \
   --match-variable UrlPath \
   --operator BeginsWith \
-  --match-values "/app" \
+  --match-values "app" \
   --action-name UrlRedirect \
   --redirect-type Found \
   --redirect-protocol Https \
-  --custom-host "m.example.com"
+  --custom-hostname "m.example.com" \
+  --match-processing-behavior Stop
 ```
 
 ## Routing Rules Flow
@@ -208,7 +213,7 @@ flowchart TD
     I -->|Route Override| L[Forward to Different Origin]
 ```
 
-Rules are evaluated in the order specified by the `--order` parameter. The first matching rule wins, and no further rules are evaluated.
+Rules are evaluated in the order specified by the `--order` parameter. A rule with a lower order number is evaluated before a rule with a higher order number. The examples above use `--match-processing-behavior Stop` so that once a rule matches, no later rules are evaluated.
 
 ## Associating Rule Sets with Routes
 
@@ -224,7 +229,10 @@ az afd route create \
   --origin-group myOriginGroup \
   --rule-sets redirectRules \
   --supported-protocols Http Https \
-  --patterns-to-match "/*"
+  --patterns-to-match "/*" \
+  --link-to-default-domain Enabled \
+  --forwarding-protocol MatchRequest \
+  --https-redirect Disabled
 ```
 
 ## Testing Your Redirects
@@ -237,7 +245,7 @@ curl -I -H "Host: old-domain.com" https://myEndpoint.azurefd.net/blog
 
 # Expected output should include:
 # HTTP/2 301
-# location: https://new-domain.com/articles
+# location: https://new-domain.com/blog
 ```
 
 The `-I` flag fetches headers only, and you should see the redirect status code and Location header matching your configuration.
