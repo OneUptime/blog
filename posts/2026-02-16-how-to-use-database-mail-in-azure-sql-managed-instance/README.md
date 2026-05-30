@@ -78,28 +78,32 @@ Now create a profile and add the account to it:
 ```sql
 -- Create a mail profile
 EXEC msdb.dbo.sysmail_add_profile_sp
-    @profile_name = 'AlertsProfile',
+    @profile_name = 'AzureManagedInstance_dbmail_profile',
     @description = 'Profile for sending database alert emails';
 
 -- Add the account to the profile with sequence number 1
 -- Lower sequence numbers are tried first
 EXEC msdb.dbo.sysmail_add_profileaccount_sp
-    @profile_name = 'AlertsProfile',
+    @profile_name = 'AzureManagedInstance_dbmail_profile',
     @account_name = 'SendGridAccount',
     @sequence_number = 1;
 ```
 
 ## Step 3: Set the Default Profile
 
-Make the profile the default so any database user can send mail without specifying a profile name:
+On Azure SQL Managed Instance, SQL Agent job notifications look for a Database Mail profile named `AzureManagedInstance_dbmail_profile`. Make that profile public and default so users with permission to send Database Mail can send mail without specifying a profile name:
 
 ```sql
--- Grant access to the profile for the DatabaseMailUserRole
+-- Grant access to the profile for public
 -- Setting is_default to 1 makes it the default profile
 EXEC msdb.dbo.sysmail_add_principalprofile_sp
     @principal_id = 0,  -- 0 means public (all users)
-    @profile_name = 'AlertsProfile',
+    @profile_name = 'AzureManagedInstance_dbmail_profile',
     @is_default = 1;
+
+-- Users still need DatabaseMailUserRole in msdb to execute sp_send_dbmail
+USE msdb;
+ALTER ROLE DatabaseMailUserRole ADD MEMBER [your_user_name];
 ```
 
 ## Step 4: Send a Test Email
@@ -109,7 +113,7 @@ Let us verify everything works:
 ```sql
 -- Send a test email to verify the configuration
 EXEC msdb.dbo.sp_send_dbmail
-    @profile_name = 'AlertsProfile',
+    @profile_name = 'AzureManagedInstance_dbmail_profile',
     @recipients = 'your.email@company.com',
     @subject = 'Test Email from Managed Instance',
     @body = 'If you are reading this, Database Mail is working correctly.',
@@ -165,7 +169,7 @@ BEGIN
         'Time: ' + CONVERT(NVARCHAR(30), GETDATE(), 120);
 
     EXEC msdb.dbo.sp_send_dbmail
-        @profile_name = 'AlertsProfile',
+        @profile_name = 'AzureManagedInstance_dbmail_profile',
         @recipients = 'dba-team@company.com',
         @subject = @subject,
         @body = @body,
@@ -201,7 +205,7 @@ ORDER BY occurrence_count DESC;
 SET @tableHTML = @tableHTML + N'</table></body></html>';
 
 EXEC msdb.dbo.sp_send_dbmail
-    @profile_name = 'AlertsProfile',
+    @profile_name = 'AzureManagedInstance_dbmail_profile',
     @recipients = 'ops-team@company.com',
     @subject = 'Daily Error Report',
     @body = @tableHTML,
@@ -216,7 +220,7 @@ Database Mail can attach query results directly:
 -- Send query results as an attached CSV file
 -- The query runs at send time and results are attached
 EXEC msdb.dbo.sp_send_dbmail
-    @profile_name = 'AlertsProfile',
+    @profile_name = 'AzureManagedInstance_dbmail_profile',
     @recipients = 'finance@company.com',
     @subject = 'Monthly Revenue Report',
     @body = 'Please find the monthly revenue report attached.',
