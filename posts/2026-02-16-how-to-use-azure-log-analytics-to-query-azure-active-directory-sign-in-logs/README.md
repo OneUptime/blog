@@ -8,20 +8,20 @@ Description: Learn how to send Azure AD sign-in logs to Log Analytics and write 
 
 ---
 
-Azure Active Directory sign-in logs are one of the most valuable data sources for security monitoring. They tell you who is logging in, from where, using what devices, and whether multi-factor authentication was required. But viewing these logs in the Azure AD portal has limitations - the built-in views only go back 30 days, custom filtering is limited, and you cannot create complex queries or correlate sign-in data with other log sources.
+Azure Active Directory sign-in logs are one of the most valuable data sources for security monitoring. They tell you who is logging in, from where, using what devices, and whether multi-factor authentication was required. But viewing these logs in the Microsoft Entra admin center has limitations - the built-in retention is 7 or 30 days depending on your license, custom filtering is limited, and you cannot create complex queries or correlate sign-in data with other log sources.
 
-By routing sign-in logs to a Log Analytics workspace, you unlock the full power of KQL for querying, the ability to set up alerts, and long-term retention beyond the 30-day default.
+By routing sign-in logs to a Log Analytics workspace, you unlock the full power of KQL for querying, the ability to set up alerts, and long-term retention beyond the built-in Microsoft Entra retention period.
 
 ## Step 1: Route Sign-In Logs to Log Analytics
 
-First, configure Azure AD diagnostic settings to send sign-in logs to your workspace.
+First, configure Microsoft Entra diagnostic settings to send sign-in logs to your workspace.
 
 ```bash
-# Create a diagnostic setting to send Azure AD sign-in logs to Log Analytics
+# Create a diagnostic setting to send Microsoft Entra sign-in logs to Log Analytics
 
 az monitor diagnostic-settings create \
   --name aad-signin-logs \
-  --resource "/providers/Microsoft.AAD/domainServices" \
+  --resource "/providers/microsoft.aadiam" \
   --workspace /subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.OperationalInsights/workspaces/myWorkspace \
   --logs '[
     {"category": "SignInLogs", "enabled": true},
@@ -42,7 +42,7 @@ You can also do this through the Azure Portal:
 6. Select your workspace
 7. Save
 
-It takes 15-30 minutes for data to start flowing after you enable the diagnostic setting.
+It can take up to three days for data to start appearing in the destination after you enable the diagnostic setting.
 
 ## Step 2: Understand the Sign-In Log Tables
 
