@@ -16,7 +16,7 @@ Monitoring access level evaluations is not optional - it is a critical part of r
 
 Access level evaluations generate log entries in different places depending on what is enforcing them:
 
-- **VPC Service Controls**: Violations appear in audit logs as `PERMISSION_DENIED` errors with a `violationInfo` field
+- **VPC Service Controls**: Violations appear in Policy Denied audit logs as `PERMISSION_DENIED` errors with `VpcServiceControlAuditMetadata`
 - **Identity-Aware Proxy**: Denied access shows up in IAP request logs
 - **IAM Conditions**: Access level condition failures appear in policy troubleshooter output
 
@@ -24,7 +24,7 @@ Each of these has slightly different log formats, so you need to know where to l
 
 ## Step 1: Enable Data Access Audit Logs
 
-By default, GCP logs admin activity (creating/modifying resources) but not data access. For access level monitoring, you need data access logs enabled.
+By default, GCP logs admin activity (creating/modifying resources), system events, and policy denied events, but not data access. For access level monitoring beyond VPC Service Controls policy denied entries, enable data access logs for the services you need to investigate.
 
 Enable audit logging for the relevant services through the IAM audit config:
 
@@ -73,7 +73,7 @@ Query for VPC SC violations using Cloud Logging:
 # Find VPC Service Controls violations in the last 24 hours
 gcloud logging read '
   resource.type="audited_resource" AND
-  protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND
+  protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND
   protoPayload.metadata.violationReason!=""
 ' --project=PROJECT_ID \
   --freshness=1d \
@@ -83,10 +83,10 @@ gcloud logging read '
 The log entries contain useful fields:
 
 - `violationReason`: Why the request was denied (e.g., `NO_MATCHING_ACCESS_LEVEL`)
-- `resourceNames`: Which resource was being accessed
-- `callerIp`: The IP address of the requester
-- `principalEmail`: Who made the request
-- `accessLevels`: Which access levels were evaluated
+- `protoPayload.metadata.resourceNames`: Which resources were being accessed
+- `protoPayload.requestMetadata.callerIp`: The IP address of the requester
+- `protoPayload.authenticationInfo.principalEmail`: Who made the request
+- `protoPayload.metadata.accessLevels`: Which access levels were matched
 
 ## Step 3: Create a Log-Based Metric for Access Denials
 
@@ -99,26 +99,41 @@ gcloud logging metrics create vpc-sc-violations \
   --description="Count of VPC Service Controls access violations" \
   --log-filter='
     resource.type="audited_resource" AND
-    protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND
+    protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND
     protoPayload.metadata.violationReason!=""
   '
 ```
 
 You can also create more specific metrics that break down by violation reason:
 
+Create a metric definition file named `vpc-sc-violations-detailed.yaml`:
+
+```yaml
+description: VPC SC violations with reason and principal labels
+filter: |
+  resource.type="audited_resource" AND
+  protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND
+  protoPayload.metadata.violationReason!=""
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  labels:
+    - key: violation_reason
+      valueType: STRING
+      description: VPC Service Controls violation reason
+    - key: principal
+      valueType: STRING
+      description: Principal that made the request
+labelExtractors:
+  violation_reason: EXTRACT(protoPayload.metadata.violationReason)
+  principal: EXTRACT(protoPayload.authenticationInfo.principalEmail)
+```
+
 ```bash
 # Create a metric with labels for detailed breakdown
 gcloud logging metrics create vpc-sc-violations-detailed \
   --project=PROJECT_ID \
-  --description="VPC SC violations with reason and principal labels" \
-  --log-filter='
-    resource.type="audited_resource" AND
-    protoPayload.metadata.violationReason!=""
-  ' \
-  --label-extractors='
-    violation_reason=EXTRACT(protoPayload.metadata.violationReason),
-    principal=EXTRACT(protoPayload.authenticationInfo.principalEmail)
-  '
+  --config-from-file=vpc-sc-violations-detailed.yaml
 ```
 
 ## Step 4: Set Up Alerting
@@ -131,9 +146,8 @@ gcloud alpha monitoring policies create \
   --display-name="VPC SC Violation Spike" \
   --condition-display-name="High violation rate" \
   --condition-filter='metric.type="logging.googleapis.com/user/vpc-sc-violations" AND resource.type="audited_resource"' \
-  --condition-threshold-value=50 \
-  --condition-threshold-duration=300s \
-  --condition-threshold-comparison=COMPARISON_GT \
+  --if='> 50' \
+  --duration=300s \
   --notification-channels=CHANNEL_ID \
   --combiner=OR
 ```
@@ -210,11 +224,14 @@ Cloud Logging retains logs for a limited time (30 days by default for most log t
 # Create a log sink that exports access level evaluation logs to BigQuery
 gcloud logging sinks create access-level-audit-sink \
   bigquery.googleapis.com/projects/PROJECT_ID/datasets/access_audit_logs \
+  --project=PROJECT_ID \
   --log-filter='
-    protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" OR
-    resource.type="gce_backend_service" AND protoPayload.serviceName="iap.googleapis.com"
+    protoPayload.metadata."@type"="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" OR
+    protoPayload.serviceName="iap.googleapis.com"
   '
 ```
+
+After you create the sink, grant its writer identity permission to write to the BigQuery dataset if the command output tells you to do so.
 
 Once the logs are in BigQuery, you can run detailed queries:
 
@@ -227,7 +244,7 @@ FROM
   `project_id.access_audit_logs.cloudaudit_googleapis_com_policy_*`
 WHERE
   _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
-  AND protopayload_auditlog.metadata.violationReason IS NOT NULL
+  AND JSON_VALUE(protopayload_auditlog.metadataJson, '$.violationReason') IS NOT NULL
 GROUP BY principal
 ORDER BY denial_count DESC
 LIMIT 10;
@@ -242,7 +259,7 @@ FROM
   `project_id.access_audit_logs.cloudaudit_googleapis_com_policy_*`
 WHERE
   _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
-  AND protopayload_auditlog.metadata.violationReason IS NOT NULL
+  AND JSON_VALUE(protopayload_auditlog.metadataJson, '$.violationReason') IS NOT NULL
 GROUP BY hour_of_day
 ORDER BY hour_of_day;
 ```
