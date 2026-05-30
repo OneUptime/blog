@@ -61,54 +61,60 @@ gsutil lifecycle set lifecycle.json gs://my-project-cdc-events/
 gcloud datastream connection-profiles create gcs-avro-dest \
   --display-name="GCS Avro Destination" \
   --type=google-cloud-storage \
-  --gcs-bucket=my-project-cdc-events \
-  --gcs-root-path=/cdc/ \
+  --bucket=my-project-cdc-events \
+  --root-path=/cdc/ \
   --location=us-central1 \
   --project=my-project
 ```
 
-The `gcs-root-path` is the prefix under which all CDC files will be written.
+The `root-path` is the prefix under which all CDC files will be written.
 
 ## Step 3: Create the Stream with Avro Output
 
 Create the stream with Avro file format and configure the file rotation settings:
 
 ```bash
+cat > mysql_source_config.json << 'EOF'
+{
+  "includeObjects": {
+    "mysqlDatabases": [{
+      "database": "production",
+      "mysqlTables": [
+        {"table": "orders"},
+        {"table": "customers"},
+        {"table": "products"},
+        {"table": "order_items"}
+      ]
+    }]
+  }
+}
+EOF
+
+cat > gcs_destination_config.json << 'EOF'
+{
+  "path": "/cdc/",
+  "fileRotationInterval": "60s",
+  "fileRotationMb": 100,
+  "avroFileFormat": {}
+}
+EOF
+
 # Create the stream writing Avro to GCS
 gcloud datastream streams create mysql-to-gcs-avro \
   --display-name="MySQL CDC to GCS Avro" \
   --location=us-central1 \
   --source=mysql-source-profile \
-  --mysql-source-config='{
-    "includeObjects": {
-      "mysqlDatabases": [{
-        "database": "production",
-        "mysqlTables": [
-          {"table": "orders"},
-          {"table": "customers"},
-          {"table": "products"},
-          {"table": "order_items"}
-        ]
-      }]
-    }
-  }' \
+  --mysql-source-config=mysql_source_config.json \
   --destination=gcs-avro-dest \
-  --gcs-destination-config='{
-    "avroFileFormat": {},
-    "fileRotation": {
-      "intervalSeconds": "120",
-      "maxFileSizeBytes": "104857600"
-    },
-    "path": "/cdc/"
-  }' \
+  --gcs-destination-config=gcs_destination_config.json \
   --backfill-all \
   --project=my-project
 ```
 
-The `fileRotation` settings are important:
+The file rotation settings are important:
 
-- `intervalSeconds` - How often a new file is created, even if it is not full. Lower values mean lower latency but more files.
-- `maxFileSizeBytes` - Maximum file size before rotation. 100 MB (104857600 bytes) is a good default.
+- `fileRotationInterval` - How often a new file is created, even if it is not full. Datastream allows values from 15 to 60 seconds, so lower values mean lower latency but more files.
+- `fileRotationMb` - Maximum file size in MB before rotation. 100 MB is a good default.
 
 ## Step 4: Start the Stream
 
@@ -117,54 +123,59 @@ The `fileRotation` settings are important:
 gcloud datastream streams update mysql-to-gcs-avro \
   --location=us-central1 \
   --state=RUNNING \
+  --update-mask=state \
   --project=my-project
 ```
 
 ## Understanding the File Structure
 
-Datastream organizes files in GCS using a path structure that includes the database, schema, and table names:
+Datastream organizes files in GCS using a path structure that includes the object name and the event timestamp:
 
 ```text
 gs://my-project-cdc-events/cdc/
-  production/
-    orders/
-      2026/02/17/14/
+  production_orders/
+    2026/02/17/14/30/
         file_001.avro
         file_002.avro
-      2026/02/17/15/
+    2026/02/17/15/00/
         file_003.avro
-    customers/
-      2026/02/17/14/
+  production_customers/
+    2026/02/17/14/30/
         file_001.avro
 ```
 
-The path format is: `{root_path}/{database}/{table}/{year}/{month}/{day}/{hour}/`
+The path format is: `{root_path}/{object_name}/{year}/{month}/{day}/{hour}/{minute}/`, where the object name for database sources is typically the schema name followed by the table name, separated by an underscore.
 
-Each Avro file contains CDC events for a single table, with metadata fields included alongside the table data.
+Each Avro file contains CDC events, with generic metadata and source-specific metadata included alongside the event payload.
 
 ## Avro Schema Structure
 
-Each Avro file includes the full schema. Here is what a typical CDC event looks like when read from the Avro file:
+Each Avro file includes the schema. In Avro output, the event contains generic metadata, source-specific metadata, and the payload data. For MySQL, the source-specific metadata includes fields such as `database`, `table`, `change_type`, `is_deleted`, `primary_keys`, `log_file`, and `log_position`:
 
 ```json
 {
-  "order_id": 12345,
-  "customer_id": 678,
-  "total_amount": "99.99",
-  "order_status": "shipped",
-  "created_at": 1739750400000000,
-  "_metadata_stream": "projects/123/locations/us-central1/streams/mysql-to-gcs-avro",
-  "_metadata_timestamp": 1739750460,
-  "_metadata_read_timestamp": 1739750462,
-  "_metadata_read_method": "mysql-cdc",
-  "_metadata_source_type": "mysql",
-  "_metadata_deleted": false,
-  "_metadata_table": "orders",
-  "_metadata_change_type": "INSERT",
-  "_metadata_primary_keys": ["order_id"],
-  "_metadata_schema": "production",
-  "_metadata_log_file": "mysql-bin.000042",
-  "_metadata_log_position": 12345678
+  "stream_name": "projects/my-project/locations/us-central1/streams/mysql-to-gcs-avro",
+  "read_method": "mysql-cdc-binlog",
+  "object": "production.orders",
+  "uuid": "d7989206-380f-0e81-8056-240501101100",
+  "read_timestamp": 1739750462000,
+  "source_timestamp": 1739750460000,
+  "source_metadata": {
+    "database": "production",
+    "table": "orders",
+    "change_type": "INSERT",
+    "is_deleted": false,
+    "primary_keys": ["order_id"],
+    "log_file": "mysql-bin.000042",
+    "log_position": 12345678
+  },
+  "payload": {
+    "order_id": 12345,
+    "customer_id": 678,
+    "total_amount": "99.99",
+    "order_status": "shipped",
+    "created_at": 1739750400000
+  }
 }
 ```
 
@@ -196,9 +207,10 @@ def read_cdc_events(bucket_name, prefix):
             for record in reader:
                 events.append(record)
                 # Process each CDC event
-                print(f"Table: {record['_metadata_table']}, "
-                      f"Type: {record['_metadata_change_type']}, "
-                      f"Deleted: {record['_metadata_deleted']}")
+                metadata = record["source_metadata"]
+                print(f"Table: {metadata['table']}, "
+                      f"Type: {metadata['change_type']}, "
+                      f"Deleted: {metadata['is_deleted']}")
 
     return events
 
@@ -206,7 +218,7 @@ def read_cdc_events(bucket_name, prefix):
 import io
 events = read_cdc_events(
     "my-project-cdc-events",
-    "cdc/production/orders/2026/02/17/"
+    "cdc/production_orders/2026/02/17/"
 )
 ```
 
@@ -217,18 +229,18 @@ Using BigQuery external tables to query GCS Avro files directly:
 CREATE OR REPLACE EXTERNAL TABLE `my-project.staging.orders_cdc`
 OPTIONS (
   format = 'AVRO',
-  uris = ['gs://my-project-cdc-events/cdc/production/orders/*.avro']
+  uris = ['gs://my-project-cdc-events/cdc/production_orders/2026/02/17/14/30/*.avro']
 );
 
 -- Query the external table
 SELECT
-  order_id,
-  total_amount,
-  _metadata_change_type,
-  _metadata_timestamp
+  source_metadata.table,
+  source_metadata.change_type,
+  source_metadata.is_deleted,
+  source_timestamp
 FROM `my-project.staging.orders_cdc`
-WHERE _metadata_deleted = false
-ORDER BY _metadata_timestamp DESC
+WHERE source_metadata.is_deleted = false
+ORDER BY source_timestamp DESC
 LIMIT 100;
 ```
 
@@ -242,7 +254,7 @@ bq load \
   --source_format=AVRO \
   --use_avro_logical_types \
   my-project:analytics.orders_staging \
-  'gs://my-project-cdc-events/cdc/production/orders/2026/02/17/*.avro'
+  'gs://my-project-cdc-events/cdc/production_orders/2026/02/17/14/30/*.avro'
 ```
 
 For automated loading, use a Cloud Function triggered by GCS notifications:
@@ -265,8 +277,8 @@ def load_avro_to_bigquery(cloud_event):
 
     # Extract table name from the file path
     parts = file_name.split('/')
-    # Path format: cdc/{database}/{table}/{year}/{month}/{day}/{hour}/file.avro
-    table_name = parts[2] if len(parts) > 2 else 'unknown'
+    # Path format: cdc/{object_name}/{year}/{month}/{day}/{hour}/{minute}/file.avro
+    table_name = parts[1] if len(parts) > 1 else 'unknown'
 
     client = bigquery.Client()
 
@@ -309,7 +321,7 @@ Datastream also supports JSON output format. Here is how they compare:
 
 | Feature | Avro | JSON |
 |---------|------|------|
-| File size | Smaller (binary + compression) | Larger (text-based) |
+| File size | Smaller (binary encoding) | Larger (text-based) |
 | Schema included | Yes, embedded in file | No |
 | Read speed | Faster | Slower |
 | Human readable | No | Yes |

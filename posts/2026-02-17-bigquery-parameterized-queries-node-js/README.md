@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, BigQuery, Node.js, SQL, Google Cloud
 
-Description: A practical guide to running parameterized queries in BigQuery from Node.js using the google-cloud/bigquery library to prevent SQL injection and improve performance.
+Description: A practical guide to running parameterized queries in BigQuery from Node.js using the @google-cloud/bigquery library to prevent SQL injection and improve maintainability.
 
 ---
 
@@ -12,7 +12,7 @@ Running raw SQL queries with user-provided values is a recipe for SQL injection 
 
 ## Why Parameterized Queries Matter
 
-When you build SQL queries by concatenating strings, you open yourself up to injection attacks and also lose the benefit of query caching. BigQuery caches the results of identical queries, and parameterized queries with the same structure but different parameter values can still benefit from the query plan cache. Beyond security and performance, parameterized queries also handle type coercion correctly - you do not need to worry about formatting dates, escaping strings, or converting numbers yourself.
+When you build SQL queries by concatenating strings, you open yourself up to injection attacks and also make your queries harder to maintain. BigQuery can return cached results for duplicate queries when the query text and referenced data are unchanged and the normal query-cache rules apply. Beyond security and maintainability, parameterized queries also handle type coercion correctly - you do not need to worry about formatting dates, escaping strings, or converting numbers yourself.
 
 ## Setting Up
 
@@ -72,7 +72,7 @@ BigQuery infers the parameter types from the JavaScript values you pass. Strings
 
 ## Positional Parameters
 
-If you prefer positional parameters (using `?` placeholders), you can pass parameters as an array instead. Set the `params` option to an array and set `types` accordingly.
+If you prefer positional parameters (using `?` placeholders), you can pass parameters as an array instead. Set the `params` option to an array, and add `types` if BigQuery cannot infer the intended parameter types.
 
 ```javascript
 // Query with positional parameters - values are matched in order
@@ -342,4 +342,4 @@ async function safeQuery(userId) {
 }
 ```
 
-Parameterized queries in BigQuery are essential for building secure, maintainable Node.js applications. They protect against SQL injection, improve query plan caching, and handle type conversion automatically. Whether you are building an API that queries BigQuery based on user input or a backend service that processes data, always prefer parameterized queries over string concatenation.
+Parameterized queries in BigQuery are essential for building secure, maintainable Node.js applications. They protect against SQL injection, keep query text separate from user-provided values, and handle type conversion automatically. Whether you are building an API that queries BigQuery based on user input or a backend service that processes data, always prefer parameterized queries over string concatenation.
