@@ -45,6 +45,7 @@ You need:
 - Microsoft Sentinel workspace
 - Logic App Contributor role
 - Sentinel Responder or Sentinel Contributor role
+- Owner or equivalent permissions on the playbook resource group if you need to grant Sentinel permission to run playbooks from automation rules
 - Managed identity permissions for the target services (Entra ID, Firewall, etc.)
 
 ## Step 1: Create a Basic Notification Playbook
@@ -83,7 +84,7 @@ Description: @{triggerBody()?['object']?['properties']?['description']}
 Incident URL: @{triggerBody()?['object']?['properties']?['incidentUrl']}
 
 Entities:
-@{join(triggerBody()?['object']?['properties']?['relatedEntities'], ', ')}
+@{string(triggerBody()?['object']?['properties']?['relatedEntities'])}
 ```
 
 9. Save the Logic App.
@@ -134,26 +135,37 @@ The Logic App definition in code view:
             }
         },
         "actions": {
-            "Extract_Account_Entities": {
-                "type": "ParseJson",
+            "Entities_Get_Accounts": {
+                "type": "ApiConnection",
                 "inputs": {
-                    "content": "@triggerBody()?['object']?['properties']?['relatedEntities']"
+                    "body": "@triggerBody()?['object']?['properties']?['relatedEntities']",
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "path": "/entities/account"
                 }
             },
             "For_Each_Account": {
                 "type": "Foreach",
-                "foreach": "@body('Extract_Account_Entities')",
+                "foreach": "@body('Entities_Get_Accounts')?['Accounts']",
                 "actions": {
                     "Disable_User_Account": {
                         "type": "Http",
                         "inputs": {
                             "method": "PATCH",
-                            "uri": "https://graph.microsoft.com/v1.0/users/@{items('For_Each_Account')?['properties']?['aadUserId']}",
+                            "uri": "https://graph.microsoft.com/v1.0/users/@{items('For_Each_Account')?['AadUserId']}",
+                            "headers": {
+                                "Content-Type": "application/json"
+                            },
                             "body": {
                                 "accountEnabled": false
                             },
                             "authentication": {
-                                "type": "ManagedServiceIdentity"
+                                "type": "ManagedServiceIdentity",
+                                "audience": "https://graph.microsoft.com"
                             }
                         }
                     },
@@ -162,8 +174,15 @@ The Logic App definition in code view:
                         "inputs": {
                             "body": {
                                 "incidentArmId": "@triggerBody()?['object']?['id']",
-                                "message": "Automated action: Disabled user account @{items('For_Each_Account')?['properties']?['friendlyName']} due to compromised credential detection."
-                            }
+                                "message": "Automated action: Disabled user account @{items('For_Each_Account')?['Name']} due to compromised credential detection."
+                            },
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "path": "/incident-comments"
                         }
                     }
                 }
@@ -176,29 +195,32 @@ The Logic App definition in code view:
 To build this in the designer:
 
 1. Create a new playbook with an incident trigger.
-2. Add a "Parse JSON" action to extract entities from the incident.
-3. Add a "For each" loop over the account entities.
+2. Add the Microsoft Sentinel "Entities - Get Accounts" action and pass in the Entities dynamic content from the incident trigger.
+3. Add a "For each" loop over the Accounts output from that action.
 4. Inside the loop, add an HTTP action that calls Microsoft Graph to disable the user.
 5. Add an "Add comment to incident" action that documents what was done.
 
-The managed identity needs the User.ReadWrite.All permission on Microsoft Graph:
+The managed identity needs Microsoft Graph application permissions to disable user accounts. The least privileged combination for updating the `accountEnabled` property is User.EnableDisableAccount.All plus User.Read.All. In app-only scenarios, the service principal might also need an appropriate Microsoft Entra administrator role for the user types it updates:
 
 ```powershell
 # Grant the playbook permission to disable user accounts
 $graphApp = Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'"
 $playbookSP = Get-MgServicePrincipal -Filter "displayName eq 'Disable-Compromised-Account'"
 
-# Find the User.ReadWrite.All application permission
-$permission = $graphApp.AppRoles | Where-Object { $_.Value -eq "User.ReadWrite.All" }
+# Find the required application permissions
+$permissions = $graphApp.AppRoles | Where-Object {
+    $_.Value -in @("User.EnableDisableAccount.All", "User.Read.All")
+}
 
-# Grant the permission
-New-MgServicePrincipalAppRoleAssignment `
-    -ServicePrincipalId $playbookSP.Id `
-    -PrincipalId $playbookSP.Id `
-    -ResourceId $graphApp.Id `
-    -AppRoleId $permission.Id
+foreach ($permission in $permissions) {
+    New-MgServicePrincipalAppRoleAssignment `
+        -ServicePrincipalId $playbookSP.Id `
+        -PrincipalId $playbookSP.Id `
+        -ResourceId $graphApp.Id `
+        -AppRoleId $permission.Id
+}
 
-Write-Host "User.ReadWrite.All permission granted to playbook."
+Write-Host "Graph permissions granted to playbook."
 ```
 
 ## Step 4: Create an IP Blocking Playbook
@@ -263,7 +285,7 @@ else {
 In the Logic App designer, you would:
 
 1. Use the incident trigger.
-2. Extract IP entities from the incident.
+2. Use the Microsoft Sentinel "Entities - Get IPs" action to extract IP entities from the incident.
 3. For each IP, call the Azure Automation runbook with the IP address.
 4. Add a comment to the incident documenting the action.
 
@@ -272,7 +294,7 @@ In the Logic App designer, you would:
 This playbook enriches incidents with threat intelligence before an analyst reviews them:
 
 1. Create a playbook with an incident trigger.
-2. Extract IP entities from the incident.
+2. Use the Microsoft Sentinel "Entities - Get IPs" action to extract IP entities from the incident.
 3. For each IP, call a threat intelligence API (like VirusTotal, AbuseIPDB, or Microsoft's own TI):
 
 ```json
@@ -287,7 +309,7 @@ This playbook enriches incidents with threat intelligence before an analyst revi
                 "Accept": "application/json"
             },
             "queries": {
-                "ipAddress": "@{items('For_Each_IP')?['properties']?['address']}",
+                "ipAddress": "@{items('For_Each_IP')?['Address']}",
                 "maxAgeInDays": "90"
             }
         }
@@ -313,6 +335,8 @@ You can configure playbooks to run automatically when specific analytics rules f
      - Run playbook: "Notify-Teams-HighSeverity"
 4. Set the order (playbooks run in the specified order).
 5. Click Apply.
+
+If a playbook is unavailable in the Run playbook list, grant Microsoft Sentinel permission to the resource group that contains the playbook. Automation rules use the Microsoft Sentinel service account, not your signed-in user or the playbook's managed identity, to start playbook runs.
 
 ```powershell
 # You can also create automation rules via the API
