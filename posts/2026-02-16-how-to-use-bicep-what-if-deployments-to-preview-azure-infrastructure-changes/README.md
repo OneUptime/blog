@@ -19,7 +19,9 @@ When you run a what-if deployment, Azure Resource Manager compares your template
 - **Create** - The resource does not exist and will be created
 - **Delete** - The resource exists but is not in the template (only in Complete mode)
 - **Modify** - The resource exists and some properties will change
-- **NoChange** - The resource exists and matches the template exactly
+- **NoChange** - The resource exists and is defined in the template, but its properties will not change
+- **Deploy** - The resource exists and will be redeployed, but what-if does not have enough detail to determine property changes
+- **NoEffect** - A read-only property is included but will be ignored by the service
 - **Ignore** - The resource exists but is not managed by this template
 
 No actual changes are made during a what-if evaluation. It is purely a read-only preview.
@@ -148,12 +150,14 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const output = `### Bicep What-If Results
-            ```
-            ${{ steps.whatif.outputs.result }}
-            ```
-            `;
-            github.rest.issues.createComment({
+            const whatIfResult = ${{ toJSON(steps.whatif.outputs.result) }};
+            const output = [
+              '### Bicep What-If Results',
+              '~~~',
+              whatIfResult,
+              '~~~'
+            ].join('\n');
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -197,7 +201,7 @@ What-if is not perfect. There are some things to be aware of.
 
 Property changes might show up as modifications even when the effective result is the same. For example, if you set a property to its current default value, what-if might report it as a change because the template explicitly sets it while the current state relies on the default.
 
-What-if does not evaluate runtime behavior. If your template uses `listKeys()` or other functions that call Azure APIs, what-if will evaluate them, but the results might differ from what happens during actual deployment if the state changes between the what-if and the deploy.
+What-if does not evaluate runtime behavior. If your template uses `reference()`, `listKeys()`, or other resource functions that can only be resolved during deployment, what-if may show the expression as-is or report a change even when the final deployed value would not change.
 
 Some resource types have better what-if support than others. Most commonly used resource types work well, but newer or less common types might have incomplete change detection.
 
