@@ -37,8 +37,8 @@ Create a docs folder in your repository:
 # Create the documentation structure in your repo
 
 mkdir -p docs/architecture
-mkdir -p docs/runbooks
-mkdir -p docs/adr
+mkdir -p docs/architecture/runbooks
+mkdir -p docs/architecture/adr
 
 # Create the landing page
 touch docs/architecture/Home.md
@@ -74,7 +74,7 @@ docs/architecture/
 
 ## Using Mermaid Diagrams
 
-Azure DevOps wikis support Mermaid syntax natively. You write the diagram as a code block with the `mermaid` language tag, and it renders as a visual diagram.
+Azure DevOps wikis support Mermaid syntax natively. You write the diagram in a `::: mermaid` block, and it renders as a visual diagram.
 
 ### System Architecture Diagram
 
@@ -86,8 +86,8 @@ Here is a system overview diagram using Mermaid:
 Our platform consists of a React frontend, a .NET API layer,
 and several backing services.
 
-:::mermaid
-flowchart TB
+::: mermaid
+graph TB
     subgraph Client
         A[React SPA]
         B[Mobile App]
@@ -124,7 +124,7 @@ flowchart TB
 :::
 ```
 
-Note the syntax difference: in Azure DevOps wikis, you use `:::mermaid` instead of triple backtick fences. Both work, but `:::mermaid` is the officially documented approach for Azure DevOps.
+Note the syntax difference: in Azure DevOps wikis, you use `::: mermaid` instead of triple backtick fences. Azure DevOps also has limited Mermaid syntax support, so use `graph` for flow diagrams rather than the newer `flowchart` keyword.
 
 ### Sequence Diagrams for API Flows
 
@@ -135,7 +135,7 @@ Sequence diagrams are perfect for documenting API interactions:
 
 When a customer places an order, the following sequence occurs:
 
-:::mermaid
+::: mermaid
 sequenceDiagram
     participant C as Client
     participant GW as API Gateway
@@ -169,8 +169,8 @@ Use a flowchart to show your deployment topology:
 Each environment runs in its own Azure subscription with
 isolated networking.
 
-:::mermaid
-flowchart LR
+::: mermaid
+graph LR
     subgraph Development
         D1[AKS Dev Cluster]
         D2[(SQL Dev)]
@@ -206,7 +206,7 @@ State diagrams document business workflows:
 
 An order transitions through the following states:
 
-:::mermaid
+::: mermaid
 stateDiagram-v2
     [*] --> Pending
     Pending --> Confirmed: Payment received
@@ -229,7 +229,7 @@ Document your data model with ER diagrams:
 ```markdown
 ## Core Data Model
 
-:::mermaid
+::: mermaid
 erDiagram
     CUSTOMER ||--o{ ORDER : places
     CUSTOMER {
