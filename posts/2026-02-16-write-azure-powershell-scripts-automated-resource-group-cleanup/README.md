@@ -37,6 +37,9 @@ param(
     # If true, actually delete resources. If false, just report.
     [switch]$Execute,
 
+    # Use the Azure Automation account's managed identity when running as a runbook
+    [switch]$UseManagedIdentity,
+
     # Resource group name patterns to always exclude
     [string[]]$ExcludePatterns = @("rg-prod-*", "rg-shared-*", "rg-terraform-*")
 )
@@ -46,7 +49,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # Connect and set subscription context
-if ($SubscriptionId) {
+if ($UseManagedIdentity) {
+    Disable-AzContextAutosave -Scope Process | Out-Null
+    $azureContext = (Connect-AzAccount -Identity).Context
+
+    if ($SubscriptionId) {
+        Set-AzContext -SubscriptionId $SubscriptionId -DefaultProfile $azureContext | Out-Null
+    } else {
+        Set-AzContext -SubscriptionName $azureContext.Subscription -DefaultProfile $azureContext | Out-Null
+    }
+}
+elseif ($SubscriptionId) {
     Set-AzContext -SubscriptionId $SubscriptionId | Out-Null
 }
 
@@ -82,7 +95,7 @@ $candidates = $allGroups | Where-Object {
 
 Write-Host "`nFound $($candidates.Count) candidate resource groups out of $($allGroups.Count) total" -ForegroundColor Yellow
 
-# Check age of each candidate by looking at the earliest resource creation
+# Check age of each candidate by looking at resource group activity
 $staleGroups = @()
 foreach ($rg in $candidates) {
     # Get resources in the group
@@ -92,9 +105,10 @@ foreach ($rg in $candidates) {
         # Empty resource group - check creation time from activity log
         $creationLog = Get-AzActivityLog -ResourceGroupName $rg.ResourceGroupName `
             -StartTime (Get-Date).AddDays(-90) `
-            -MaxRecord 1 `
+            -MaxRecord 1000 `
             -WarningAction SilentlyContinue |
             Where-Object { $_.OperationName.Value -like "*resourceGroups/write" } |
+            Sort-Object EventTimestamp |
             Select-Object -First 1
 
         $age = if ($creationLog) {
@@ -106,8 +120,9 @@ foreach ($rg in $candidates) {
         # Check when the most recent resource was modified
         $latestActivity = Get-AzActivityLog -ResourceGroupName $rg.ResourceGroupName `
             -StartTime (Get-Date).AddDays(-$MaxAgeDays) `
-            -MaxRecord 1 `
-            -WarningAction SilentlyContinue
+            -MaxRecord 1000 `
+            -WarningAction SilentlyContinue |
+            Sort-Object EventTimestamp -Descending
 
         $age = if ($latestActivity) {
             ((Get-Date) - ($latestActivity | Select-Object -First 1).EventTimestamp).Days
@@ -170,6 +185,7 @@ A more sophisticated approach uses expiration date tags. Teams set a `delete-aft
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [switch]$Execute,
+    [switch]$UseManagedIdentity,
     [string]$TagName = "delete-after",
     [string]$SubscriptionId
 )
@@ -177,7 +193,17 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if ($SubscriptionId) {
+if ($UseManagedIdentity) {
+    Disable-AzContextAutosave -Scope Process | Out-Null
+    $azureContext = (Connect-AzAccount -Identity).Context
+
+    if ($SubscriptionId) {
+        Set-AzContext -SubscriptionId $SubscriptionId -DefaultProfile $azureContext | Out-Null
+    } else {
+        Set-AzContext -SubscriptionName $azureContext.Subscription -DefaultProfile $azureContext | Out-Null
+    }
+}
+elseif ($SubscriptionId) {
     Set-AzContext -SubscriptionId $SubscriptionId | Out-Null
 }
 
@@ -262,10 +288,21 @@ Sometimes you want to clean up based on cost rather than age. This script identi
 [CmdletBinding()]
 param(
     [decimal]$MinMonthlyCost = 50,
+    [switch]$UseManagedIdentity,
     [string]$SubscriptionId
 )
 
-if ($SubscriptionId) {
+if ($UseManagedIdentity) {
+    Disable-AzContextAutosave -Scope Process | Out-Null
+    $azureContext = (Connect-AzAccount -Identity).Context
+
+    if ($SubscriptionId) {
+        Set-AzContext -SubscriptionId $SubscriptionId -DefaultProfile $azureContext | Out-Null
+    } else {
+        Set-AzContext -SubscriptionName $azureContext.Subscription -DefaultProfile $azureContext | Out-Null
+    }
+}
+elseif ($SubscriptionId) {
     Set-AzContext -SubscriptionId $SubscriptionId | Out-Null
 }
 
@@ -322,7 +359,7 @@ Write-Host "Total potential monthly savings: `$$([Math]::Round($totalWaste, 2))"
 
 ## Scheduling Cleanup with Azure Automation
 
-Run these scripts automatically using Azure Automation runbooks.
+Run these scripts automatically using Azure Automation runbooks with a managed identity.
 
 ```powershell
 # Setup-AutomationSchedule.ps1
@@ -331,11 +368,23 @@ Run these scripts automatically using Azure Automation runbooks.
 $rgName = "rg-automation"
 $automationAccount = "aa-resource-cleanup"
 $location = "eastus"
+$subscriptionId = (Get-AzContext).Subscription.Id
 
-# Create automation account
-New-AzAutomationAccount -ResourceGroupName $rgName `
+# Create resource group for automation account if needed
+New-AzResourceGroup -Name $rgName `
+    -Location $location `
+    -Force
+
+# Create automation account with a system-assigned managed identity
+$account = New-AzAutomationAccount -ResourceGroupName $rgName `
     -Name $automationAccount `
-    -Location $location
+    -Location $location `
+    -AssignSystemIdentity
+
+# Grant the managed identity permission to delete resource groups in the subscription
+New-AzRoleAssignment -ObjectId $account.Identity.PrincipalId `
+    -RoleDefinitionName "Contributor" `
+    -Scope "/subscriptions/$subscriptionId"
 
 # Import the cleanup script as a runbook
 Import-AzAutomationRunbook -ResourceGroupName $rgName `
@@ -359,7 +408,7 @@ Register-AzAutomationScheduledRunbook -ResourceGroupName $rgName `
     -AutomationAccountName $automationAccount `
     -RunbookName "Clean-Expired-Resources" `
     -ScheduleName "Weekly-Cleanup" `
-    -Parameters @{ Execute = $true }
+    -Parameters @{ Execute = $true; UseManagedIdentity = $true }
 ```
 
 ## Best Practices
