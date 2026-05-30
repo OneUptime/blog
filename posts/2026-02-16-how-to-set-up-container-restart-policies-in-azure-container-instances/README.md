@@ -85,7 +85,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 2.0
+            memoryInGB: 2.0
         ports:
           - port: 8080
             protocol: TCP
@@ -102,16 +102,16 @@ type: Microsoft.ContainerInstance/containerGroups
 
 ## How Restart Policies Affect Billing
 
-This is important to understand because ACI charges per second of running containers:
+This is important to understand because ACI charges per second for the compute resources used while the container group is running:
 
-- **Always** - Containers are always running, so you are always being billed. Even when the container restarts, the group is considered active.
-- **OnFailure** - You are billed while the container is running and during restarts. Once the container exits successfully (code 0), the group stops and billing stops.
-- **Never** - You are billed while the container is running. Once it exits (for any reason), billing stops.
+- **Always** - Containers are always restarted, so the container group keeps running and you continue being billed. Even when a container restarts, the group is considered active.
+- **OnFailure** - You are billed while the container group is running and during restarts. Once the container group stops after successful completion (code 0), billing stops.
+- **Never** - You are billed while the container group is running. Once the container group stops, billing stops.
 
-The container group continues to exist after the containers stop (for OnFailure and Never policies), but you are not billed for a stopped group. You are only billed for the time the containers are actually running.
+The container group continues to exist after the containers stop (for OnFailure and Never policies), but you are not billed for a stopped group. Billing meters stop once the entire container group is stopped.
 
 ```bash
-# Check the current state and billing status
+# Check the current state
 az container show \
     --resource-group my-resource-group \
     --name my-container \
@@ -168,7 +168,7 @@ properties:
         resources:
           requests:
             cpu: 0.5
-            memoryInGb: 1.0
+            memoryInGB: 1.0
         ports:
           - port: 80
             protocol: TCP
@@ -201,7 +201,7 @@ properties:
         resources:
           requests:
             cpu: 2.0
-            memoryInGb: 4.0
+            memoryInGB: 4.0
         environmentVariables:
           - name: INPUT_BLOB
             value: 'https://storage.blob.core.windows.net/data/input.csv'
@@ -235,7 +235,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 2.0
+            memoryInGB: 2.0
         environmentVariables:
           - name: DB_CONNECTION
             secureValue: 'Server=mydb.database.windows.net;Database=prod;...'
@@ -275,7 +275,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 2.0
+            memoryInGB: 2.0
     # Sidecar that should always run
     - name: sidecar
       properties:
@@ -283,7 +283,7 @@ properties:
         resources:
           requests:
             cpu: 0.25
-            memoryInGb: 0.5
+            memoryInGB: 0.5
   osType: Linux
   restartPolicy: Always
 type: Microsoft.ContainerInstance/containerGroups
@@ -314,7 +314,7 @@ az container show \
 If you see a high restart count, investigate the container logs to find out why it keeps crashing:
 
 ```bash
-# View container logs (including previous instance logs if available)
+# View container logs
 az container logs \
     --resource-group my-resource-group \
     --name my-container \
@@ -323,9 +323,9 @@ az container logs \
 
 ## Backoff Behavior
 
-When a container keeps restarting (crash loop), ACI applies an exponential backoff. The first restart is immediate, but subsequent restarts are delayed with increasing wait times. This prevents a broken container from consuming resources in a tight restart loop.
+When a container keeps restarting (crash loop), ACI applies an exponential backoff. Subsequent restarts are delayed with increasing wait times. This prevents a broken container from consuming resources in a tight restart loop.
 
-The maximum backoff is around 5 minutes. If your container consistently crashes after starting, you will see it waiting longer between restart attempts.
+If your container consistently crashes after starting, you will see it waiting longer between restart attempts.
 
 ## Cleaning Up Stopped Containers
 
