@@ -14,7 +14,7 @@ This is the standard WAF experience. Every team goes through it. The WAF rules a
 
 ## Understanding WAF Rule Sets
 
-Azure Front Door WAF uses managed rule sets, primarily the Microsoft Default Rule Set (DRS) and the Bot Manager rule set. The DRS includes rules from the OWASP Core Rule Set (CRS) adapted for Azure.
+Azure Front Door WAF on Premium and classic tiers uses managed rule sets, primarily the Microsoft Default Rule Set (DRS) and the Bot Manager rule set. The DRS includes rules from the OWASP Core Rule Set (CRS) adapted for Azure.
 
 Rules are organized into groups:
 - **SQL Injection (SQLi)** - catches SQL injection patterns
@@ -46,11 +46,11 @@ Query the WAF logs to identify which rules are generating the most false positiv
 
 ```text
 // KQL query to find the most frequently triggered WAF rules
-// Focus on blocked requests (action == "Block")
+// Focus on blocked requests
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.CDN"
 | where Category == "FrontDoorWebApplicationFirewallLog"
-| where action_s == "Block"
+| where action_s in~ ("Block", "Blocked")
 | summarize count() by ruleName_s, ruleGroup_s, requestUri_s
 | order by count_ desc
 | take 20
@@ -63,7 +63,7 @@ This gives you a ranked list of rules causing blocks. Now look at the specific r
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.CDN"
 | where Category == "FrontDoorWebApplicationFirewallLog"
-| where action_s == "Block"
+| where action_s in~ ("Block", "Blocked")
 | where ruleName_s == "942130"
 | project TimeGenerated, clientIP_s, requestUri_s, details_matches_s, details_msg_s
 | take 50
@@ -98,17 +98,16 @@ The primary tool for fixing false positives is WAF exclusions. Exclusions tell t
 For example, if rule 942130 (SQL injection) is triggering on a form field called "description," you can exclude that field from that specific rule.
 
 ```bash
-# Create a WAF policy with an exclusion
 # This excludes the "description" field from SQL injection rule 942130
-az network front-door waf-policy managed-rule-set rule-group-override create \
+az network front-door waf-policy managed-rules exclusion add \
   --policy-name myWAFPolicy \
   --resource-group myRG \
   --type Microsoft_DefaultRuleSet \
-  --version 2.1 \
   --rule-group-id SQLI \
   --rule-id 942130 \
-  --action Log \
-  --exclusion "RequestBodyPostArgNames Equals description"
+  --match-variable RequestBodyPostArgNames \
+  --operator Equals \
+  --value description
 ```
 
 Be as specific as possible with exclusions. Instead of excluding an entire rule for all requests, exclude a specific field from a specific rule. This minimizes the security impact.
@@ -126,11 +125,10 @@ Instead of disabling a rule entirely, you can change its action from "Block" to 
 
 ```bash
 # Change rule 942130 from Block to Log (monitor only)
-az network front-door waf-policy managed-rule-set rule-group-override create \
+az network front-door waf-policy managed-rules override add \
   --policy-name myWAFPolicy \
   --resource-group myRG \
   --type Microsoft_DefaultRuleSet \
-  --version 2.1 \
   --rule-group-id SQLI \
   --rule-id 942130 \
   --action Log
@@ -145,14 +143,16 @@ For specific URI paths that are known to generate false positives (like admin pa
 ```bash
 # Custom rule that allows traffic to the /api/webhooks path
 # bypassing managed rule evaluation for this specific path
-az network front-door waf-policy custom-rule create \
+az network front-door waf-policy rule create \
   --policy-name myWAFPolicy \
   --resource-group myRG \
   --name AllowWebhooks \
   --priority 10 \
   --action Allow \
   --rule-type MatchRule \
-  --match-condition "RequestUri Contains /api/webhooks"
+  --match-variable RequestUri \
+  --operator Contains \
+  --values /api/webhooks
 ```
 
 Custom rules with "Allow" action are processed before managed rules. If a custom rule matches and allows the traffic, managed rules are not evaluated for that request.
@@ -166,9 +166,9 @@ Do not switch the entire WAF to prevention mode at once. Use a gradual approach:
 1. Start in detection mode (log everything, block nothing)
 2. Analyze logs for two weeks to identify false positive patterns
 3. Create exclusions and rule overrides for false positives
-4. Switch specific rule groups to prevention mode one at a time
-5. Monitor for new false positives after each rule group is enabled
-6. Repeat until all rule groups are in prevention mode
+4. Switch the policy to prevention mode after tuning
+5. Move specific rules or rule groups from Log to Block one at a time where you used overrides
+6. Monitor for new false positives after each change
 
 This takes longer than a big-bang switch, but it avoids the scenario where you deploy prevention mode and immediately break production.
 
