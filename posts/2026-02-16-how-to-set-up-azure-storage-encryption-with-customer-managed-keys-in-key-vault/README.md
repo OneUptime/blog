@@ -75,7 +75,7 @@ az keyvault key show \
   --query "{name:key.kid, type:key.kty, operations:key.keyOps}"
 ```
 
-If you need HSM-backed keys for compliance (FIPS 140-2 Level 2 or 3), use a Premium Key Vault or Key Vault Managed HSM.
+If you need HSM-backed keys for compliance, use a Premium Key Vault or Key Vault Managed HSM. Managed HSM uses FIPS 140-3 Level 3 validated hardware security modules.
 
 ```bash
 # Create an HSM-backed key (requires Premium SKU Key Vault)
@@ -207,14 +207,13 @@ resource "azurerm_key_vault_access_policy" "storage" {
 
 resource "azurerm_storage_account_customer_managed_key" "main" {
   storage_account_id = azurerm_storage_account.main.id
-  key_vault_id       = azurerm_key_vault.main.id
-  key_name           = azurerm_key_vault_key.storage_cmk.name
+  key_vault_key_id   = azurerm_key_vault_key.storage_cmk.resource_versionless_id
 }
 ```
 
 ## Key Rotation
 
-When you create a new version of the key in Key Vault, the storage account automatically picks it up if you configured it without specifying a key version.
+When you create a new version of the key in Key Vault, the storage account automatically picks it up within 24 hours if you configured it without specifying a key version.
 
 ```bash
 # Create a new version of the key (automatic rotation)
@@ -224,7 +223,7 @@ az keyvault key create \
   --kty RSA \
   --size 3072
 
-# The storage account will automatically detect and use the new version
+# The storage account will automatically detect and use the new version within 24 hours
 # Verify by checking the key version in use
 az storage account show \
   --name mystorageaccount \
@@ -265,7 +264,7 @@ az storage account encryption-scope create \
   --resource-group my-resource-group \
   --name marketing-scope \
   --key-source Microsoft.KeyVault \
-  --key-uri "https://my-storage-cmk-kv.vault.azure.net/keys/marketing-key"
+  --key-uri "https://my-storage-cmk-kv.vault.azure.net/keys/marketing-key/<key-version>"
 
 # Create a container that uses the encryption scope
 az storage container create \
@@ -286,7 +285,7 @@ az monitor diagnostic-settings create \
   --name kv-audit-logs \
   --resource "/subscriptions/<sub>/resourceGroups/my-resource-group/providers/Microsoft.KeyVault/vaults/my-storage-cmk-kv" \
   --workspace "/subscriptions/<sub>/resourceGroups/my-resource-group/providers/Microsoft.OperationalInsights/workspaces/my-workspace" \
-  --logs '[{"category":"AuditEvent","enabled":true,"retentionPolicy":{"enabled":true,"days":90}}]'
+  --logs '[{"category":"AuditEvent","enabled":true}]'
 ```
 
 ## What Happens If the Key Becomes Unavailable?
@@ -319,6 +318,6 @@ Monitor Key Vault health and set up alerts for access failures. If the storage a
 
 Use separate Key Vaults for different environments. A key issue in your dev vault should never affect production.
 
-Consider using Key Vault Managed HSM for the highest security level. It provides FIPS 140-2 Level 3 validated hardware security modules for key storage.
+Consider using Key Vault Managed HSM for the highest security level. It provides FIPS 140-3 Level 3 validated hardware security modules for key storage.
 
 Customer-managed keys for Azure Storage give you complete control over your encryption keys, which is essential for meeting compliance requirements and maintaining a strong security posture. The setup is straightforward, and the operational overhead is minimal once automatic key rotation is configured.
