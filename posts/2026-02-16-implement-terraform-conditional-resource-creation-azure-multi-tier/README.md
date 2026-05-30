@@ -60,8 +60,7 @@ Azure Firewall is expensive and typically only needed in production.
 # firewall.tf
 # Azure Firewall - only deployed in production
 
-# Firewall subnet (required even if we do not deploy the firewall,
-# some orgs pre-create it)
+# Firewall subnet (required when deploying Azure Firewall)
 resource "azurerm_subnet" "firewall" {
   count = local.deploy_firewall ? 1 : 0
 
@@ -135,21 +134,21 @@ locals {
       max_size_gb  = 500
       zone_redundant = true
       backup_retention_days = 35
-      geo_redundant_backup  = true
+      backup_storage_type   = "Geo"
     }
     staging = {
       sku_name     = "S2"
       max_size_gb  = 50
       zone_redundant = false
       backup_retention_days = 14
-      geo_redundant_backup  = false
+      backup_storage_type   = "Local"
     }
     development = {
       sku_name     = "Basic"
       max_size_gb  = 2
       zone_redundant = false
       backup_retention_days = 7
-      geo_redundant_backup  = false
+      backup_storage_type   = "Local"
     }
   }
 
@@ -165,6 +164,7 @@ resource "azurerm_mssql_database" "app" {
   sku_name  = local.current_db_config.sku_name
   max_size_gb = local.current_db_config.max_size_gb
   zone_redundant = local.current_db_config.zone_redundant
+  storage_account_type = local.current_db_config.backup_storage_type
 
   # Conditional backup configuration
   short_term_retention_policy {
@@ -224,6 +224,10 @@ locals {
         address_prefix = "10.0.3.0/24"
         service_endpoints = ["Microsoft.Sql"]
       }
+      "app_gateway" = {
+        address_prefix = "10.0.5.0/24"
+        service_endpoints = []
+      }
     } : {},
     # Only production gets a management subnet
     local.is_production ? {
@@ -233,6 +237,11 @@ locals {
       }
     } : {}
   )
+
+  nsg_subnets = {
+    for name, subnet in local.subnets : name => subnet
+    if name != "app_gateway"
+  }
 }
 
 resource "azurerm_subnet" "tiers" {
@@ -245,9 +254,9 @@ resource "azurerm_subnet" "tiers" {
   service_endpoints    = each.value.service_endpoints
 }
 
-# NSG per subnet
+# NSG per application subnet
 resource "azurerm_network_security_group" "tiers" {
-  for_each = local.subnets
+  for_each = local.nsg_subnets
 
   name                = "nsg-${each.key}-${var.environment}"
   location            = azurerm_resource_group.networking.location
@@ -255,7 +264,7 @@ resource "azurerm_network_security_group" "tiers" {
 }
 
 resource "azurerm_subnet_network_security_group_association" "tiers" {
-  for_each = local.subnets
+  for_each = local.nsg_subnets
 
   subnet_id                 = azurerm_subnet.tiers[each.key].id
   network_security_group_id = azurerm_network_security_group.tiers[each.key].id
@@ -269,6 +278,16 @@ The Web Application Firewall is another production-specific resource.
 ```hcl
 # waf.tf
 # Application Gateway with WAF - staging and production only
+
+resource "azurerm_public_ip" "app_gateway" {
+  count = local.deploy_waf ? 1 : 0
+
+  name                = "pip-agw-${var.environment}"
+  location            = azurerm_resource_group.networking.location
+  resource_group_name = azurerm_resource_group.networking.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
 
 resource "azurerm_application_gateway" "main" {
   count = local.deploy_waf ? 1 : 0
@@ -286,7 +305,7 @@ resource "azurerm_application_gateway" "main" {
 
   gateway_ip_configuration {
     name      = "gateway-ip"
-    subnet_id = azurerm_subnet.tiers["web"].id
+    subnet_id = azurerm_subnet.tiers["app_gateway"].id
   }
 
   frontend_port {
@@ -366,9 +385,9 @@ resource "azurerm_redis_cache" "main" {
   family   = local.is_production ? "P" : "C"
   sku_name = local.is_production ? "Premium" : "Standard"
 
-  enable_non_ssl_port           = false
+  non_ssl_port_enabled          = false
   minimum_tls_version           = "1.2"
-  public_network_access_enabled = local.is_development
+  public_network_access_enabled = local.is_staging
 
   redis_configuration {
     maxmemory_policy = "allkeys-lru"
