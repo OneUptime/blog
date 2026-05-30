@@ -27,25 +27,25 @@ Microsoft defines three built-in authentication strengths:
 
 **Passwordless MFA strength:** Methods that do not require a password:
 - Microsoft Authenticator (passwordless phone sign-in)
-- FIDO2 security key
-- Windows Hello for Business
+- Passkeys (FIDO2) and FIDO2 security keys
+- Windows Hello for Business or platform credential
 
 **Phishing-resistant MFA strength:** Methods that are resistant to phishing attacks:
-- FIDO2 security key
-- Windows Hello for Business
-- Certificate-based authentication (when configured with smart card or hardware-bound certificate)
+- Passkeys (FIDO2) and FIDO2 security keys
+- Windows Hello for Business or platform credential
+- Certificate-based authentication (multifactor)
 
 ```mermaid
 graph TD
     A[MFA Strength] --> B[SMS, Voice, Push, TOTP, FIDO2, WHfB, CBA]
-    C[Passwordless MFA] --> D[Authenticator Passwordless, FIDO2, WHfB]
-    E[Phishing-Resistant MFA] --> F[FIDO2, WHfB, CBA with hardware]
+    C[Passwordless MFA] --> D[Authenticator Passwordless, FIDO2, WHfB, Platform Credential]
+    E[Phishing-Resistant MFA] --> F[FIDO2, WHfB, Platform Credential, CBA multifactor]
     style E fill:#2d7d46,color:#fff
     style C fill:#2d6da3,color:#fff
     style A fill:#5f5f5f,color:#fff
 ```
 
-Phishing-resistant MFA is the strongest because these methods cannot be intercepted by a fake login page. The credential is bound to the specific site's origin (FIDO2, WHfB) or requires physical possession of a certificate on a smart card.
+Phishing-resistant MFA is the strongest because these methods cannot be intercepted by a fake login page. The credential is bound to the specific site's origin (FIDO2, WHfB, platform credentials) or uses certificate-based authentication as a phishing-resistant method.
 
 ## When to Use Each Strength Level
 
@@ -60,7 +60,7 @@ Before enforcing authentication strength, verify that your users have the requir
 ```powershell
 # Connect to Microsoft Graph
 
-Connect-MgGraph -Scopes "UserAuthenticationMethod.Read.All"
+Connect-MgGraph -Scopes "UserAuthenticationMethod.Read.All", "AuditLog.Read.All"
 
 # Check authentication methods registered for a specific user
 $methods = Get-MgUserAuthenticationMethod -UserId "admin@contoso.com"
@@ -72,12 +72,12 @@ foreach ($method in $methods) {
 # Get a broader view: count of users with each method type
 # Check how many users have FIDO2 keys registered
 $fido2Users = Get-MgReportAuthenticationMethodUserRegistrationDetail `
-    -Filter "methodsRegistered/any(m: m eq 'fido2')"
+    -Filter "methodsRegistered/any(m: m eq 'passKeyDeviceBound')"
 
 Write-Output "Users with FIDO2 keys: $($fido2Users.Count)"
 ```
 
-You can also check the Authentication Methods Activity report in the Entra admin center under Monitoring and Health.
+You can also check the Authentication Methods Activity report in the Entra admin center under Entra ID, then Authentication methods, then Activity.
 
 ## Step 2: Create a Custom Authentication Strength (Optional)
 
@@ -95,6 +95,8 @@ Using Microsoft Graph:
 
 ```powershell
 # Create a custom authentication strength
+Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess", "Policy.ReadWrite.AuthenticationMethod"
+
 $strengthParams = @{
     DisplayName = "FIDO2 Security Keys Only"
     Description = "Requires FIDO2 security key - no other MFA methods accepted"
@@ -112,6 +114,8 @@ You can also create a custom strength that allows specific combinations:
 
 ```powershell
 # Custom strength allowing FIDO2 or certificate-based authentication
+Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess", "Policy.ReadWrite.AuthenticationMethod"
+
 $strengthParams = @{
     DisplayName = "Hardware-Bound Phishing Resistant"
     Description = "Requires FIDO2 key or smart card certificate"
@@ -153,6 +157,8 @@ Here is the equivalent using Microsoft Graph:
 
 ```powershell
 # Create a Conditional Access policy requiring phishing-resistant MFA
+Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess", "Application.Read.All"
+
 $policyParams = @{
     DisplayName = "Require phishing-resistant MFA for admins"
     State = "enabledForReportingButNotEnforced"
@@ -170,6 +176,7 @@ $policyParams = @{
         Applications = @{
             IncludeApplications = @("All")
         }
+        ClientAppTypes = @("all")
     }
     GrantControls = @{
         Operator = "OR"
@@ -225,11 +232,12 @@ SigninLogs
 
 ## Step 6: Combine with Registration Policy
 
-You should also configure a registration policy to encourage or require users to register phishing-resistant methods:
+You should also configure method enablement and user communications for phishing-resistant methods. The Authentication Methods registration campaign can nudge users to register Microsoft Authenticator, but it does not require FIDO2 security key registration.
 
 ```powershell
-# Require admins to register a FIDO2 key when they next sign in
-# This uses the Authentication Methods Registration Campaign feature
+# Nudge admins to register Microsoft Authenticator when they next complete MFA
+# This does not register or require FIDO2 security keys
+Connect-MgGraph -Scopes "Policy.ReadWrite.AuthenticationMethod"
 
 $campaignParams = @{
     RegistrationEnforcement = @{
@@ -247,8 +255,10 @@ $campaignParams = @{
     }
 }
 
-# Note: The registration campaign currently supports Authenticator
-# For FIDO2, you need to communicate and guide users manually
+Update-MgPolicyAuthenticationMethodPolicy -BodyParameter $campaignParams
+
+# For FIDO2 security keys, enable the FIDO2 method in Authentication methods
+# and communicate enrollment instructions to affected users.
 ```
 
 ## Step 7: Monitor Authentication Strength Usage
