@@ -8,7 +8,7 @@ Description: Learn how to configure automated backups for Azure NetApp Files vol
 
 ---
 
-Azure NetApp Files provides a built-in backup feature that stores volume backups in Azure Storage, separate from the NetApp infrastructure. This gives you an additional layer of protection beyond snapshots. While snapshots are stored within the same volume and protect against accidental file deletion, backups protect against volume-level failures and regional disasters.
+Azure NetApp Files provides a built-in backup feature that stores volume backups in Azure Storage, separate from the NetApp infrastructure. This gives you an additional layer of protection beyond snapshots. While snapshots are stored within the same volume and protect against accidental file deletion, backups provide long-term recovery and can be restored to new Azure NetApp Files volumes in the same region.
 
 This guide covers how to configure backup policies, create manual and automated backups, and restore volumes from those backups.
 
@@ -26,7 +26,7 @@ Before diving into the setup, it is important to understand the difference betwe
 **Backups**:
 - Stored in Azure Storage, separate from the volume
 - Take longer to create (minutes to hours depending on data size)
-- Provide protection against volume or regional failure
+- Provide longer-term recovery and restore to a new volume in the same region
 - First backup is a full copy; subsequent backups are incremental
 - Can be used to restore to a new volume
 
@@ -37,29 +37,21 @@ For a complete data protection strategy, you should use both. Snapshots for quic
 To use Azure NetApp Files backup, you need:
 
 - An existing Azure NetApp Files account with at least one capacity pool and volume
-- The volume must have at least one snapshot (backups are created from snapshots)
-- Your subscription must be registered for the Azure NetApp Files backup feature
+- The Microsoft.NetApp resource provider registered in your subscription
 - A backup vault configured in the NetApp account
 
-## Step 1: Register for the Backup Feature
+## Step 1: Register the NetApp Resource Provider
 
-The backup feature requires explicit registration:
+Azure NetApp Files requires the Microsoft.NetApp resource provider to be registered:
 
 ```bash
-# Register for the Azure NetApp Files backup feature
+# Register the Azure NetApp Files resource provider
+az provider register --namespace Microsoft.NetApp --wait
 
-az feature register \
+# Verify registration status
+az provider show \
   --namespace Microsoft.NetApp \
-  --name ANFBackupPreview
-
-# Check registration status (wait for "Registered")
-az feature show \
-  --namespace Microsoft.NetApp \
-  --name ANFBackupPreview \
-  --query "properties.state"
-
-# Refresh the resource provider registration
-az provider register --namespace Microsoft.NetApp
+  --query "registrationState"
 ```
 
 Registration can take up to 30 minutes. Wait until the state shows "Registered" before proceeding.
@@ -70,10 +62,10 @@ Backup vaults are required to store and manage your backups. Create one within y
 
 ```bash
 # Create a backup vault in the NetApp account
-az netappfiles vault create \
+az netappfiles account backup-vault create \
   --resource-group rg-netapp \
   --account-name na-production \
-  --vault-name vault-backups \
+  --backup-vault-name vault-backups \
   --location eastus2
 ```
 
@@ -84,23 +76,22 @@ The backup vault is a logical construct. Your actual backup data is stored in Az
 Once the vault is created, enable backups on the volume you want to protect:
 
 ```bash
-# Enable backup on the volume
-az netappfiles volume backup update \
+# Assign the backup vault to the volume
+az netappfiles volume update \
   --resource-group rg-netapp \
   --account-name na-production \
   --pool-name pool-premium \
   --volume-name vol-appdata \
-  --vault-name vault-backups \
-  --backup-enabled true
+  --backup-vault-id "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/backupVaults/vault-backups"
 ```
 
 After enabling backups, the system does not immediately create a backup. You need to either create one manually or set up a backup policy.
 
 ## Step 4: Create a Manual Backup
 
-To create an on-demand backup, you first need a snapshot, and then you create a backup from that snapshot.
+To create an on-demand backup, create a manual backup under the backup vault. Azure NetApp Files automatically creates a point-in-time snapshot and transfers it to Azure storage.
 
-Create a snapshot first if one does not exist:
+If you want the backup to use an existing snapshot, create or identify that snapshot first:
 
 ```bash
 # Create a snapshot of the volume
@@ -113,17 +104,18 @@ az netappfiles snapshot create \
   --location eastus2
 ```
 
-Now create a backup from the snapshot:
+Now create a backup from the existing snapshot:
 
 ```bash
 # Create a backup from the snapshot
-az netappfiles volume backup create \
+az netappfiles account backup-vault backup create \
   --resource-group rg-netapp \
   --account-name na-production \
-  --pool-name pool-premium \
-  --volume-name vol-appdata \
+  --backup-vault-name vault-backups \
   --backup-name backup-manual-20260216 \
-  --location eastus2
+  --volume-resource-id "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/capacityPools/pool-premium/volumes/vol-appdata" \
+  --snapshot-name snap-manual-20260216 \
+  --use-existing-snapshot true
 ```
 
 The first backup takes the longest because it copies all data. Subsequent backups are incremental and only copy changed blocks.
@@ -160,8 +152,8 @@ az netappfiles volume update \
   --pool-name pool-premium \
   --volume-name vol-appdata \
   --backup-policy-id "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/backupPolicies/policy-standard" \
-  --backup-enabled true \
-  --vault-id "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/vaults/vault-backups"
+  --backup-vault-id "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/backupVaults/vault-backups" \
+  --policy-enforced true
 ```
 
 ## Step 6: Monitor Backup Status
@@ -170,27 +162,29 @@ Check the status of your backups to ensure they are completing successfully:
 
 ```bash
 # List all backups for a volume
-az netappfiles volume backup list \
+az netappfiles account backup-vault backup list \
   --resource-group rg-netapp \
   --account-name na-production \
-  --pool-name pool-premium \
-  --volume-name vol-appdata \
+  --backup-vault-name vault-backups \
+  --filter "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/capacityPools/pool-premium/volumes/vol-appdata" \
   --output table
 
 # Get details of a specific backup
-az netappfiles volume backup show \
+az netappfiles account backup-vault backup show \
+  --resource-group rg-netapp \
+  --account-name na-production \
+  --backup-vault-name vault-backups \
+  --backup-name backup-manual-20260216
+
+# Get the latest backup status for the volume
+az netappfiles volume latest-backup-status current show \
   --resource-group rg-netapp \
   --account-name na-production \
   --pool-name pool-premium \
-  --volume-name vol-appdata \
-  --backup-name backup-manual-20260216
+  --volume-name vol-appdata
 ```
 
-The backup status will show one of these states:
-- **Creating**: Backup is in progress
-- **Succeeded**: Backup completed successfully
-- **Failed**: Backup failed (check the error details)
-- **Deleting**: Backup is being removed
+For individual backup resources, check the provisioning state, such as **Creating**, **Succeeded**, **Failed**, or **Deleting**. For the latest backup status on a volume, check the `healthy`, `relationshipStatus`, and `errorMessage` fields returned by `latest-backup-status`.
 
 ## Step 7: Restore a Volume from Backup
 
@@ -210,10 +204,10 @@ az netappfiles volume create \
   --vnet vnet-production \
   --subnet snet-netapp \
   --protocol-types CIFS \
-  --backup-id "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/capacityPools/pool-premium/volumes/vol-appdata/backups/backup-manual-20260216"
+  --backup-id "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/backupVaults/vault-backups/backups/backup-manual-20260216"
 ```
 
-The restore operation creates a new volume and populates it with data from the backup. The time required depends on the backup size - expect roughly 1 GB per second for the data transfer.
+The restore operation creates a new volume and populates it with data from the backup. The time required depends on the backup size; volumes larger than 10 TiB can take multiple hours to transfer from the backup media.
 
 ## Step 8: Redirect Clients to the Restored Volume
 
@@ -252,9 +246,9 @@ az monitor action-group create \
 az monitor metrics alert create \
   --resource-group rg-netapp \
   --name alert-backup-failure \
-  --scopes "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production" \
-  --condition "count BackupHealth < 1" \
-  --action ag-netapp-alerts \
+  --scopes "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/capacityPools/pool-premium/volumes/vol-appdata" \
+  --condition "avg CbsVolumeOperationComplete < 1" \
+  --action "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.Insights/actionGroups/ag-netapp-alerts" \
   --description "Alert when Azure NetApp Files backup fails" \
   --severity 1
 ```
@@ -265,13 +259,13 @@ Here are some recommendations for backup retention:
 
 - **Production databases**: Daily backups kept for 30 days, weekly for 3 months, monthly for 1 year
 - **Development/test**: Daily backups kept for 7 days, no weekly or monthly
-- **Compliance data**: Align retention with your regulatory requirements. Use immutable backups if available.
+- **Compliance data**: Align retention with your regulatory requirements.
 
-Consider the cost implications as well. Backups are stored in Azure Storage and billed at standard storage rates. Longer retention means higher costs, so balance protection with budget.
+Consider the cost implications as well. Azure NetApp Files backup pricing is based on the total backup storage consumed, and backup restores are charged based on the restored backup capacity. Longer retention means higher costs, so balance protection with budget.
 
 ## Disaster Recovery Considerations
 
-Backups stored in Azure Storage are locally redundant by default. For cross-region protection, consider using Azure NetApp Files Cross-Region Replication (CRR) in addition to backups. CRR provides near-real-time replication to a secondary region, while backups provide point-in-time recovery.
+Backups can be restored to new Azure NetApp Files volumes within the same region. For cross-region protection, consider using Azure NetApp Files Cross-Region Replication (CRR) in addition to backups. CRR provides near-real-time replication to a secondary region, while backups provide point-in-time recovery.
 
 The ideal DR strategy for Azure NetApp Files combines:
 
