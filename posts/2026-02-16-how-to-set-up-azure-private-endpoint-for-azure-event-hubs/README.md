@@ -53,12 +53,12 @@ az eventhubs eventhub create \
   --namespace-name myEventHubNamespace \
   --resource-group myResourceGroup \
   --partition-count 4 \
-  --message-retention 7
+  --retention-time 168
 ```
 
 ## Step 2: Create the Private Endpoint Subnet
 
-Private endpoints need their own subnet (or a shared one with other private endpoints). The subnet must not have any delegation:
+Private endpoints can use a dedicated subnet (or a shared one with other private endpoints). The subnet must not have any delegation:
 
 ```bash
 # Create a subnet for private endpoints
@@ -67,10 +67,10 @@ az network vnet subnet create \
   --resource-group myResourceGroup \
   --vnet-name myVNet \
   --address-prefixes "10.0.5.0/24" \
-  --disable-private-endpoint-network-policies true
+  --private-endpoint-network-policies Disabled
 ```
 
-The `--disable-private-endpoint-network-policies` flag is important. By default, NSG rules do not apply to private endpoints. This flag allows the subnet to host private endpoints.
+The `--private-endpoint-network-policies Disabled` setting is the default and simplest configuration for hosting private endpoints. If you need NSG or user-defined route policies to apply to the private endpoint, enable private endpoint network policies deliberately after adding the required rules.
 
 ## Step 3: Create the Private Endpoint
 
@@ -257,7 +257,8 @@ az monitor diagnostic-settings create \
   --logs '[
     {"category": "ArchiveLogs", "enabled": true},
     {"category": "OperationalLogs", "enabled": true},
-    {"category": "AutoScaleLogs", "enabled": true}
+    {"category": "AutoScaleLogs", "enabled": true},
+    {"category": "EventHubVNetConnectionEvent", "enabled": true}
   ]' \
   --metrics '[{"category": "AllMetrics", "enabled": true}]'
 ```
