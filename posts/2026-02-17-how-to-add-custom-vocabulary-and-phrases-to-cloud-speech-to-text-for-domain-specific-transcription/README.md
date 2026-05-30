@@ -18,9 +18,9 @@ Cloud Speech-to-Text offers several adaptation mechanisms:
 
 **Phrase Hints**: A list of words or phrases that the model should favor during recognition. Think of it as telling the model "you are likely to hear these words."
 
-**Speech Adaptation with Custom Classes**: Predefined classes for common patterns like numbers, addresses, and dates, plus the ability to define your own custom classes.
+**Speech Adaptation with Class Tokens and Custom Classes**: Built-in class tokens for common patterns like numbers, addresses, and dates, plus the ability to define your own custom classes with SpeechAdaptation resources.
 
-**Model Adaptation (Custom Model)**: Training a custom model variant with your specific domain data. This is the most powerful but requires more setup.
+**Model Adaptation with Phrase Sets**: Creating reusable PhraseSet and CustomClass resources for your domain vocabulary. This is more structured than inline phrase hints and requires more setup.
 
 For most use cases, phrase hints and custom classes get you 90% of the way there.
 
@@ -198,15 +198,15 @@ def transcribe_multi_context(audio_path):
     return response
 ```
 
-## Using Built-in Custom Classes
+## Using Built-in Class Tokens
 
-Speech-to-Text provides built-in classes for common patterns. These help the model recognize structured data like numbers, addresses, and currency amounts:
+Speech-to-Text provides built-in class tokens for common patterns. These help the model recognize structured data like numbers, addresses, and currency amounts:
 
 ```python
 from google.cloud import speech
 
 def transcribe_with_classes(audio_path):
-    """Use built-in custom classes for structured data recognition."""
+    """Use built-in class tokens for structured data recognition."""
     client = speech.SpeechClient()
 
     with open(audio_path, "rb") as f:
@@ -368,7 +368,7 @@ Keep these constraints in mind:
 
 - You can provide up to 5,000 phrase hints per request.
 - Each phrase can be up to 100 characters long.
-- You can have up to 10 speech contexts per request.
+- SpeechAdaptation resources can include up to 20 PhraseSets and 20 CustomClasses per request.
 - Phrase hints work best for words and short phrases, not full sentences.
 - Start with a moderate boost (10-12) and increase only if needed.
 - Too many hints or too high a boost can actually decrease accuracy for words not in your list.
