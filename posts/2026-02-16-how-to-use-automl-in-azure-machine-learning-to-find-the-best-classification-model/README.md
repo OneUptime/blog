@@ -27,19 +27,20 @@ The whole process runs in parallel on your compute cluster, which makes it much 
 
 You need:
 - An Azure ML workspace
-- A compute cluster (AutoML runs on clusters, not compute instances)
+- A compute cluster or compute instance. Use a compute cluster if you want parallel trials.
 - A dataset registered in your workspace or a local file
 
 ```bash
 # Install the required packages
 
-pip install azure-ai-ml azure-identity
+pip install azure-ai-ml azure-identity azureml-mlflow mlflow
 ```
 
 ## Step 1: Connect to Your Workspace
 
 ```python
 from azure.ai.ml import MLClient, automl, Input
+from azure.ai.ml.automl import ClassificationModels
 from azure.ai.ml.constants import AssetTypes
 from azure.identity import DefaultAzureCredential
 
@@ -55,18 +56,30 @@ ml_client = MLClient(
 
 ## Step 2: Prepare Your Data
 
-AutoML works with tabular data in CSV, Parquet, or Azure ML dataset format. For this example, let us use a customer churn dataset where we want to predict whether a customer will leave.
+AutoML works with tabular data through MLTable inputs. An MLTable can reference CSV or Parquet files and tells Azure ML how to load them. For this example, let us use a customer churn dataset where we want to predict whether a customer will leave.
+
+Create a folder named `./data/customer_churn_mltable` that contains `customer_churn.csv` and an `MLTable` file like this:
+
+```yaml
+$schema: https://azuremlschemas.azureedge.net/latest/MLTable.schema.json
+paths:
+  - file: ./customer_churn.csv
+transformations:
+  - read_delimited:
+      delimiter: ','
+      encoding: utf8
+```
 
 ```python
 from azure.ai.ml.entities import Data
 
-# Register a local dataset with Azure ML
+# Register a local MLTable with Azure ML
 data_asset = Data(
     name="customer-churn-data",
     version="1",
     description="Customer churn dataset for classification",
-    path="./data/customer_churn.csv",  # Local path to your CSV
-    type=AssetTypes.URI_FILE
+    path="./data/customer_churn_mltable",  # Folder containing MLTable and CSV
+    type=AssetTypes.MLTABLE
 )
 
 # Upload and register the dataset
@@ -92,7 +105,7 @@ classification_job = automl.classification(
 
     # Training data configuration
     training_data=Input(
-        type=AssetTypes.URI_FILE,
+        type=AssetTypes.MLTABLE,
         path=f"azureml:{registered_data.name}:{registered_data.version}"
     ),
     target_column_name="churn",  # The column we want to predict
@@ -119,11 +132,11 @@ classification_job.set_limits(
 # Specify which algorithms to try (or let AutoML decide)
 classification_job.set_training(
     allowed_training_algorithms=[
-        "LogisticRegression",
-        "RandomForest",
-        "GradientBoosting",
-        "LightGBM",
-        "XGBoostClassifier"
+        ClassificationModels.LOGISTIC_REGRESSION,
+        ClassificationModels.RANDOM_FOREST,
+        ClassificationModels.GRADIENT_BOOSTING,
+        ClassificationModels.LIGHT_GBM,
+        ClassificationModels.XG_BOOST_CLASSIFIER
     ],
     enable_vote_ensemble=True,    # Create a voting ensemble of top models
     enable_stack_ensemble=True    # Create a stacking ensemble
@@ -159,28 +172,34 @@ The Studio URL takes you to a visual dashboard where you can watch the progress 
 Once the job completes, retrieve the results to see which model won.
 
 ```python
-# Get the best model from the AutoML run
-best_run = ml_client.jobs.get(submitted_job.name)
+import mlflow
+from mlflow.tracking.client import MlflowClient
 
-# List all child runs (individual model trials) sorted by metric
-from azure.ai.ml.entities import Job
+# Point MLflow at your Azure ML workspace
+mlflow_tracking_uri = ml_client.workspaces.get(
+    name=ml_client.workspace_name
+).mlflow_tracking_uri
+mlflow.set_tracking_uri(mlflow_tracking_uri)
+mlflow_client = MlflowClient()
 
-child_jobs = ml_client.jobs.list(parent_job_name=submitted_job.name)
-results = []
-for child in child_jobs:
-    if child.status == "Completed":
-        results.append({
-            "name": child.display_name,
-            "metric": child.properties.get("score", "N/A"),
-            "algorithm": child.properties.get("run_algorithm", "N/A")
-        })
+# Get the AutoML parent run and the best child run selected by AutoML
+parent_run = mlflow_client.get_run(submitted_job.name)
+best_child_run_id = parent_run.data.tags["automl_best_child_run_id"]
+best_run = mlflow_client.get_run(best_child_run_id)
 
-# Sort by metric (descending for AUC)
-results.sort(key=lambda x: float(x["metric"]) if x["metric"] != "N/A" else 0, reverse=True)
+# List child runs (individual model trials) sorted by the primary metric
+child_runs = mlflow_client.search_runs(
+    experiment_ids=[parent_run.info.experiment_id],
+    filter_string=f"tags.mlflow.parentRunId = '{submitted_job.name}'",
+    order_by=["metrics.AUC_weighted DESC"],
+    max_results=5,
+)
 
 print("Top 5 models:")
-for r in results[:5]:
-    print(f"  {r['algorithm']}: AUC = {r['metric']}")
+for run in child_runs:
+    algorithm = run.data.tags.get("automl_algorithm", run.info.run_name)
+    score = run.data.metrics.get("AUC_weighted", "N/A")
+    print(f"  {algorithm}: AUC = {score}")
 ```
 
 A typical output might look like:
@@ -212,7 +231,7 @@ This information is critical for building trust in the model and understanding w
 from azure.ai.ml.entities import Model
 
 best_model = Model(
-    path=f"azureml://jobs/{submitted_job.name}/outputs/best_model",
+    path=f"azureml://jobs/{best_run.info.run_id}/outputs/artifacts/outputs/mlflow-model",
     name="customer-churn-classifier",
     description="AutoML best model for customer churn prediction",
     type=AssetTypes.MLFLOW_MODEL  # AutoML outputs MLflow format
@@ -225,10 +244,13 @@ Since AutoML outputs models in MLflow format, you can deploy them directly as re
 
 ```python
 from azure.ai.ml.entities import ManagedOnlineEndpoint, ManagedOnlineDeployment
+import uuid
+
+endpoint_name = f"churn-prediction-{uuid.uuid4().hex[:8]}"
 
 # Create an endpoint
 endpoint = ManagedOnlineEndpoint(
-    name="churn-prediction-endpoint",
+    name=endpoint_name,
     description="Customer churn prediction service"
 )
 ml_client.online_endpoints.begin_create_or_update(endpoint).result()
@@ -236,12 +258,16 @@ ml_client.online_endpoints.begin_create_or_update(endpoint).result()
 # Deploy the model
 deployment = ManagedOnlineDeployment(
     name="automl-best",
-    endpoint_name="churn-prediction-endpoint",
+    endpoint_name=endpoint_name,
     model=registered_model.id,
     instance_type="Standard_DS3_v2",
     instance_count=1
 )
 ml_client.online_deployments.begin_create_or_update(deployment).result()
+
+# Send all endpoint traffic to this deployment
+endpoint.traffic = {"automl-best": 100}
+ml_client.online_endpoints.begin_create_or_update(endpoint).result()
 ```
 
 ## Tips for Getting Better AutoML Results
