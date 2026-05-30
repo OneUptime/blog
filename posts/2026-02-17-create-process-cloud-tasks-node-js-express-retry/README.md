@@ -37,7 +37,7 @@ Install the required packages.
 ```bash
 # Install Express and Cloud Tasks client
 
-npm install express @google-cloud/tasks
+npm install express @google-cloud/tasks google-auth-library
 ```
 
 Create a Cloud Tasks queue with retry configuration.
@@ -54,7 +54,7 @@ gcloud tasks queues create order-processing \
   --max-doublings=4
 ```
 
-This queue will retry failed tasks up to 5 times, starting with a 10-second delay and doubling the backoff each time up to 5 minutes.
+This queue will attempt each task up to 5 times total, starting retries with a 10-second delay and doubling the backoff each time up to 5 minutes.
 
 ## Creating Tasks from Your API
 
@@ -76,6 +76,7 @@ const PROJECT_ID = process.env.PROJECT_ID || 'your-project-id';
 const LOCATION = process.env.LOCATION || 'us-central1';
 const QUEUE_NAME = process.env.QUEUE_NAME || 'order-processing';
 const SERVICE_URL = process.env.SERVICE_URL || 'https://your-service-url.run.app';
+const TASK_SERVICE_ACCOUNT_EMAIL = process.env.TASK_SERVICE_ACCOUNT_EMAIL || 'cloud-tasks-invoker@your-project-id.iam.gserviceaccount.com';
 
 // Build the fully qualified queue path
 const queuePath = tasksClient.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
@@ -93,6 +94,10 @@ app.post('/orders', async (req, res) => {
         url: `${SERVICE_URL}/tasks/process-order`,
         headers: {
           'Content-Type': 'application/json',
+        },
+        oidcToken: {
+          serviceAccountEmail: TASK_SERVICE_ACCOUNT_EMAIL,
+          audience: SERVICE_URL,
         },
         // The body must be a base64-encoded string
         body: Buffer.from(
@@ -136,7 +141,7 @@ Now add the handler endpoint that Cloud Tasks will call.
 app.post('/tasks/process-order', async (req, res) => {
   const { orderId, customerId, items, shippingAddress } = req.body;
 
-  // Cloud Tasks includes these headers for verification
+  // Cloud Tasks includes these metadata headers
   const taskName = req.headers['x-cloudtasks-taskname'];
   const retryCount = parseInt(req.headers['x-cloudtasks-taskretrycount'] || '0');
   const executionCount = parseInt(req.headers['x-cloudtasks-taskexecutioncount'] || '0');
@@ -195,6 +200,10 @@ app.post('/orders/:orderId/follow-up', async (req, res) => {
       httpMethod: 'POST',
       url: `${SERVICE_URL}/tasks/send-follow-up`,
       headers: { 'Content-Type': 'application/json' },
+      oidcToken: {
+        serviceAccountEmail: TASK_SERVICE_ACCOUNT_EMAIL,
+        audience: SERVICE_URL,
+      },
       body: Buffer.from(JSON.stringify({ orderId })).toString('base64'),
     },
     // Schedule the task for future execution
@@ -222,7 +231,7 @@ Cloud Tasks supports task names for deduplication. If you try to create a task w
 ```javascript
 // Create a task with a specific name to prevent duplicates
 async function createDeduplicatedTask(orderId, action) {
-  // Task names must be unique for about 1 hour after deletion
+  // Task names are remembered for up to 24 hours after deletion
   const taskName = `${queuePath}/tasks/order-${orderId}-${action}`;
 
   const task = {
@@ -231,6 +240,10 @@ async function createDeduplicatedTask(orderId, action) {
       httpMethod: 'POST',
       url: `${SERVICE_URL}/tasks/${action}`,
       headers: { 'Content-Type': 'application/json' },
+      oidcToken: {
+        serviceAccountEmail: TASK_SERVICE_ACCOUNT_EMAIL,
+        audience: SERVICE_URL,
+      },
       body: Buffer.from(JSON.stringify({ orderId })).toString('base64'),
     },
   };
@@ -325,12 +338,14 @@ async function configureQueue() {
 
 ## Securing Task Handlers
 
-In production, you should verify that task requests actually come from Cloud Tasks, not from random clients.
+In production, you should verify that task requests actually come from Cloud Tasks, not from random clients. Do not use Cloud Tasks metadata headers as proof of identity; configure OIDC authentication on your tasks and verify the signed ID token.
 
 ```javascript
-// Middleware to verify Cloud Tasks requests
-function verifyCloudTasksRequest(req, res, next) {
-  // Cloud Tasks sets these headers on every request
+const { OAuth2Client } = require('google-auth-library');
+const authClient = new OAuth2Client();
+
+// Middleware to verify Cloud Tasks OIDC requests
+async function verifyCloudTasksRequest(req, res, next) {
   const taskName = req.headers['x-cloudtasks-taskname'];
   const queueName = req.headers['x-cloudtasks-queuename'];
 
@@ -339,16 +354,36 @@ function verifyCloudTasksRequest(req, res, next) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  // For stronger verification, use OIDC tokens
-  // Configure the task with an OIDC token and verify it here
-  next();
+  try {
+    const authHeader = req.headers.authorization || '';
+    const match = authHeader.match(/^Bearer (.+)$/);
+
+    if (!match) {
+      return res.status(403).json({ error: 'Missing authorization token' });
+    }
+
+    const ticket = await authClient.verifyIdToken({
+      idToken: match[1],
+      audience: SERVICE_URL,
+    });
+
+    const payload = ticket.getPayload();
+    if (payload.email !== TASK_SERVICE_ACCOUNT_EMAIL) {
+      return res.status(403).json({ error: 'Invalid service account' });
+    }
+
+    next();
+  } catch (error) {
+    console.warn('Invalid Cloud Tasks token:', error);
+    res.status(403).json({ error: 'Forbidden' });
+  }
 }
 
-// Apply to all task handler routes
+// Register this before defining your task handler routes
 app.use('/tasks', verifyCloudTasksRequest);
 ```
 
-For production, configure OIDC authentication on your tasks so Cloud Tasks includes a signed token that you can verify.
+For production, grant the task service account permission to invoke your handler, and grant the Cloud Tasks service agent permission to use that service account for OIDC token generation.
 
 ## Starting the Server
 
