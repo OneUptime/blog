@@ -4,27 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Repos, Git Hooks, Commit Messages, Conventional Commits, Code Quality, Azure DevOps, Git
 
-Description: Enforce commit message conventions in Azure Repos using client-side and server-side Git hooks for consistent project history.
+Description: Enforce commit message conventions in Azure Repos using client-side Git hooks and Azure DevOps validation for consistent project history.
 
 ---
 
 Commit messages are the most undervalued documentation in a project. A clean commit history tells you why a change was made, not just what changed. But without enforcement, commit messages degrade quickly. You get messages like "fix", "WIP", "stuff", or the classic "final final v2".
 
-Enforcing commit message conventions through Git hooks catches bad messages before they enter the repository. In this post, I will cover both client-side hooks (that run on the developer's machine) and server-side approaches (that run in Azure DevOps), along with the Conventional Commits standard that most teams adopt.
+Enforcing commit message conventions through Git hooks catches bad messages before they enter the repository. In this post, I will cover both client-side hooks (that run on the developer's machine) and server-side validation approaches (that run in Azure DevOps), along with the Conventional Commits standard that most teams adopt.
 
 ## What Are Conventional Commits?
 
 Conventional Commits is a specification for structuring commit messages. The format is:
 
 ```text
-<type>(<scope>): <description>
+<type>[optional scope]: <description>
 
 [optional body]
 
 [optional footer(s)]
 ```
 
-Where `type` is one of:
+Common `type` values include:
 
 - **feat**: A new feature
 - **fix**: A bug fix
@@ -70,14 +70,14 @@ COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
 
 # Define the pattern for Conventional Commits
 # Format: type(scope): description
-PATTERN="^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([a-z0-9-]+\))?: .{3,}"
+PATTERN="^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([a-z0-9-]+\))?!?: .{3,}"
 
 # Check if the commit message matches the pattern
 if ! echo "$COMMIT_MSG" | head -1 | grep -qE "$PATTERN"; then
   echo ""
   echo "ERROR: Commit message does not follow Conventional Commits format."
   echo ""
-  echo "Expected format: <type>(<scope>): <description>"
+  echo "Expected format: <type>[optional scope]: <description>"
   echo ""
   echo "Valid types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
   echo ""
@@ -192,19 +192,17 @@ Create a pipeline that validates commit messages on pull requests and report the
 
 ```yaml
 # azure-pipelines-commit-check.yml
-# Validates commit messages in pull requests
+# Validates commit messages in pull requests.
+# For Azure Repos, run this pipeline from a required branch policy build validation.
 trigger: none
-
-pr:
-  branches:
-    include:
-      - main
-      - release/*
 
 pool:
   vmImage: 'ubuntu-latest'
 
 steps:
+  - checkout: self
+    fetchDepth: 0
+
   # Validate all commit messages in the PR
   - task: Bash@3
     displayName: 'Validate commit messages'
@@ -212,10 +210,14 @@ steps:
       targetType: 'inline'
       script: |
         # Pattern for Conventional Commits
-        PATTERN="^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([a-z0-9-]+\))?: .{3,}"
+        PATTERN="^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([a-z0-9-]+\))?!?: .{3,}"
 
-        # Get the commit range for this PR
-        COMMITS=$(git log --format="%s" origin/main..HEAD)
+        # Get the commit range for this PR. Azure Repos branch policy
+        # validation runs on a merge commit, so exclude merge commits.
+        TARGET_REF="${SYSTEM_PULLREQUEST_TARGETBRANCH:-refs/heads/main}"
+        TARGET_BRANCH="${TARGET_REF#refs/heads/}"
+        git fetch origin "$TARGET_BRANCH"
+        COMMITS=$(git log --no-merges --format="%s" "origin/$TARGET_BRANCH"..HEAD)
 
         ERRORS=0
 
@@ -236,7 +238,7 @@ steps:
           echo ""
           echo "##vso[task.logissue type=error]$ERRORS commit message(s) do not follow Conventional Commits format"
           echo ""
-          echo "Expected format: <type>(<scope>): <description>"
+          echo "Expected format: <type>[optional scope]: <description>"
           echo "Valid types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
           exit 1
         fi
@@ -248,20 +250,20 @@ Add this pipeline as a required build policy on your protected branches. Now, ev
 
 ### Using Azure DevOps Service Hooks
 
-Azure DevOps service hooks can trigger external services on events like "code pushed." You can set up a webhook that calls a validation service when code is pushed, and that service can add a status to the commit.
+Azure DevOps service hooks can trigger external services on events like "code pushed." You can set up a webhook that calls a validation service when code is pushed, and that service can notify developers or post status to related pull requests through the PR Status API.
 
 This is more complex to set up but gives you real-time feedback on every push, not just on PRs.
 
 ## Automating Changelogs from Conventional Commits
 
-One of the biggest benefits of consistent commit messages is automated changelog generation. Tools like `conventional-changelog` or `standard-version` can parse your commit history and generate release notes.
+One of the biggest benefits of consistent commit messages is automated changelog generation. Tools like `conventional-changelog` or `commit-and-tag-version` can parse your commit history and generate release notes.
 
 ```bash
-# Install standard-version
-npm install --save-dev standard-version
+# Install commit-and-tag-version
+npm install --save-dev commit-and-tag-version
 
 # Generate a changelog and bump the version
-npx standard-version
+npx commit-and-tag-version
 ```
 
 This reads your commit messages and generates something like:
@@ -291,7 +293,7 @@ Create the template file in your repository.
 
 ```text
 # .gitmessage
-# <type>(<scope>): <description>
+# <type>[optional scope]: <description>
 #
 # [optional body]
 #
