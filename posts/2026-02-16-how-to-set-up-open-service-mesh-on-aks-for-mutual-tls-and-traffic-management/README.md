@@ -8,21 +8,23 @@ Description: Step-by-step guide to installing Open Service Mesh on AKS and confi
 
 ---
 
-Service meshes add a layer of infrastructure between your services that handles encryption, observability, and traffic control without changing your application code. Open Service Mesh (OSM) is a lightweight, Envoy-based service mesh that integrates natively with AKS. It provides mutual TLS (mTLS) for all service-to-service communication, traffic access policies, and observability features. In this guide, I will walk through installing OSM on AKS, onboarding your services, and configuring mTLS and traffic management policies.
+Service meshes add a layer of infrastructure between your services that handles encryption, observability, and traffic control without changing your application code. Open Service Mesh (OSM) is a lightweight, Envoy-based service mesh that integrates natively with AKS. It provides mutual TLS (mTLS) for meshed service-to-service communication, traffic access policies, and observability features. In this guide, I will walk through installing OSM on AKS, onboarding your services, and configuring mTLS and traffic management policies.
+
+Note: the upstream OSM project has been retired by the CNCF, and AKS support for the OSM add-on ends on September 30, 2027. For new production deployments, evaluate the AKS Istio-based service mesh add-on unless you specifically need to maintain an existing OSM setup.
 
 ## What Open Service Mesh Provides
 
 OSM injects an Envoy sidecar proxy into each pod. All traffic between services flows through these sidecars, which handle:
 
-- **Mutual TLS** - Every connection between services is encrypted and both sides verify each other's identity. No more plaintext traffic within the cluster.
-- **Traffic access control** - Define which services can communicate with each other. By default, all traffic is denied unless explicitly allowed.
+- **Mutual TLS** - Traffic between meshed services is encrypted and both sides verify each other's identity. No more plaintext traffic between workloads in the mesh.
+- **Traffic access control** - Define which services can communicate with each other. In SMI traffic policy mode, all traffic is denied unless explicitly allowed.
 - **Traffic splitting** - Route a percentage of traffic to different service versions for canary deployments.
-- **Observability** - Automatic metrics, traces, and access logs for all service-to-service calls.
-- **Retry policies** - Automatic retries for failed requests with configurable backoff.
+- **Observability** - Metrics from Envoy sidecars, with optional tracing integrations.
+- **Retry policies** - Configurable retries for failed requests with configurable backoff.
 
 ## Prerequisites
 
-You need an AKS cluster running Kubernetes 1.24 or later and the Azure CLI with the aks-preview extension. OSM is available as an AKS add-on, which means Microsoft manages the control plane for you.
+You need an AKS cluster running Kubernetes 1.24 or later and the Azure CLI. OSM is available as an AKS add-on, which provides a supported OSM installation integrated with AKS.
 
 ## Step 1: Enable the OSM Add-on
 
@@ -37,19 +39,29 @@ az aks enable-addons \
   --name myAKSCluster
 
 # Verify OSM is running
-kubectl get pods -n kube-system -l app=osm-controller
-kubectl get pods -n kube-system -l app=osm-injector
+az aks show --resource-group myResourceGroup --name myAKSCluster \
+  --query 'addonProfiles.openServiceMesh.enabled'
+kubectl get deployments,pods,services -n kube-system \
+  --selector app.kubernetes.io/name=openservicemesh.io
 ```
 
-You should see the osm-controller and osm-injector pods running in kube-system.
+The `az aks show` command should return `true`, and you should see the OSM deployments, pods, and services running in `kube-system`.
 
 Install the OSM CLI for easier management.
 
 ```bash
 # Install the OSM CLI
-OSM_VERSION=$(kubectl get deployment -n kube-system osm-controller -o jsonpath='{.spec.template.spec.containers[0].image}' | cut -d: -f2)
+OSM_VERSION=v1.2.0
 curl -sL "https://github.com/openservicemesh/osm/releases/download/${OSM_VERSION}/osm-${OSM_VERSION}-linux-amd64.tar.gz" | tar xz
-sudo mv ./linux-amd64/osm /usr/local/bin/
+sudo mv ./linux-amd64/osm /usr/local/bin/osm
+sudo chmod +x /usr/local/bin/osm
+mkdir -p "$HOME/.osm"
+cat > "$HOME/.osm/config.yaml" <<'EOF'
+install:
+  kind: managed
+  distribution: AKS
+  namespace: kube-system
+EOF
 ```
 
 ## Step 2: Onboard Namespaces to the Mesh
@@ -69,7 +81,7 @@ osm namespace add bookbuyer
 osm namespace list
 ```
 
-When you add a namespace, OSM adds the label `openservicemesh.io/monitored-by=osm` to it. Any new pods created in enrolled namespaces will automatically get the Envoy sidecar injected.
+When you add a namespace, OSM adds the label `openservicemesh.io/monitored-by=osm` and the annotation `openservicemesh.io/sidecar-injection=enabled` to it. Any new pods created in enrolled namespaces will automatically get the Envoy sidecar injected.
 
 ## Step 3: Deploy Sample Services
 
@@ -92,12 +104,25 @@ spec:
     metadata:
       labels:
         app: bookstore
+        version: v1
     spec:
+      serviceAccountName: bookstore
       containers:
         - name: bookstore
-          image: openservicemesh/bookstore:latest
+          image: openservicemesh/bookstore:latest-main
+          command: ["/bookstore"]
+          args: ["--port", "14001"]
+          env:
+            - name: IDENTITY
+              value: bookstore-v1
           ports:
             - containerPort: 14001
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bookstore
+  namespace: bookstore
 ---
 apiVersion: v1
 kind: Service
@@ -110,6 +135,21 @@ spec:
   ports:
     - port: 14001
       targetPort: 14001
+      name: bookstore-port
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bookstore-v1
+  namespace: bookstore
+spec:
+  selector:
+    app: bookstore
+    version: v1
+  ports:
+    - port: 14001
+      targetPort: 14001
+      name: bookstore-port
 ```
 
 ```yaml
@@ -129,12 +169,24 @@ spec:
     metadata:
       labels:
         app: bookbuyer
+        version: v1
     spec:
+      serviceAccountName: bookbuyer
       containers:
         - name: bookbuyer
-          image: openservicemesh/bookbuyer:latest
-          ports:
-            - containerPort: 14001
+          image: openservicemesh/bookbuyer:latest-main
+          command: ["/bookbuyer"]
+          env:
+            - name: BOOKSTORE_NAMESPACE
+              value: bookstore
+            - name: BOOKSTORE_SVC
+              value: bookstore
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bookbuyer
+  namespace: bookbuyer
 ---
 apiVersion: v1
 kind: Service
@@ -201,20 +253,20 @@ spec:
   # The service that is being accessed
   destination:
     kind: ServiceAccount
-    name: default
+    name: bookstore
     namespace: bookstore
   # The services that are allowed to access it
   sources:
     - kind: ServiceAccount
-      name: default
+      name: bookbuyer
       namespace: bookbuyer
   # The routes that are allowed
   rules:
     - kind: HTTPRouteGroup
       name: bookstore-routes
       matches:
-        - buy-books
-        - get-books
+        - buy-a-book
+        - books-bought
 ---
 # Define which HTTP routes are allowed
 apiVersion: specs.smi-spec.io/v1alpha4
@@ -224,12 +276,12 @@ metadata:
   namespace: bookstore
 spec:
   matches:
-    - name: buy-books
-      pathRegex: /buy
+    - name: buy-a-book
+      pathRegex: ".*a-book.*new"
       methods:
-        - POST
-    - name: get-books
-      pathRegex: /books
+        - GET
+    - name: books-bought
+      pathRegex: /books-bought
       methods:
         - GET
 ```
@@ -240,7 +292,7 @@ Apply the policy.
 kubectl apply -f traffic-access.yaml
 ```
 
-Now only the bookbuyer can call the bookstore's `/buy` (POST) and `/books` (GET) endpoints. All other traffic is blocked.
+Now only the `bookbuyer` service account can call the allowed bookstore routes. All other traffic is blocked.
 
 ## Step 6: Configure Traffic Splitting
 
@@ -256,7 +308,7 @@ metadata:
   namespace: bookstore
 spec:
   # The root service that receives traffic
-  service: bookstore
+  service: bookstore.bookstore.svc.cluster.local
   backends:
     # Send 80% of traffic to v1
     - service: bookstore-v1
@@ -272,6 +324,12 @@ This requires separate services for each version.
 # bookstore-v2.yaml
 # Version 2 of the bookstore service
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bookstore
+  namespace: bookstore
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: bookstore-v2
@@ -282,6 +340,37 @@ spec:
     version: v2
   ports:
     - port: 14001
+      targetPort: 14001
+      name: bookstore-port
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookstore-v2
+  namespace: bookstore
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bookstore
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: bookstore
+        version: v2
+    spec:
+      serviceAccountName: bookstore
+      containers:
+        - name: bookstore
+          image: openservicemesh/bookstore:latest-main
+          command: ["/bookstore"]
+          args: ["--port", "14001"]
+          env:
+            - name: IDENTITY
+              value: bookstore-v2
+          ports:
+            - containerPort: 14001
 ```
 
 ## The mTLS and Traffic Flow
@@ -301,7 +390,7 @@ sequenceDiagram
     BE1->>BE2: mTLS encrypted request
     BE2->>BE2: Verify client certificate
     BE2->>BE2: Check traffic target rules
-    Note over BE2: Route /books GET is allowed
+    Note over BE2: Route /books-bought GET is allowed
     BE2->>BS: HTTP request (plaintext)
     BS->>BE2: Response
     BE2->>BE1: mTLS encrypted response
@@ -310,9 +399,13 @@ sequenceDiagram
 
 ## Step 7: Observability
 
-OSM automatically collects metrics from the Envoy sidecars. Configure Prometheus and Grafana to visualize them.
+OSM can collect metrics from the Envoy sidecars. Enable metrics for the application namespaces and configure Prometheus and Grafana to visualize them.
 
 ```bash
+# Enable metrics for meshed namespaces
+osm metrics enable --namespace bookstore
+osm metrics enable --namespace bookbuyer
+
 # Check OSM metrics configuration
 kubectl get meshconfig osm-mesh-config -n kube-system \
   -o jsonpath='{.spec.observability}'
