@@ -17,7 +17,7 @@ This post walks through the full setup: provisioning the Azure database, configu
 Before you start, make sure you have the following ready:
 
 - An Azure account with an active subscription
-- Node.js 18 or later installed on your machine
+- Node.js 18 or later installed on your machine. This tutorial uses Prisma ORM 6; Prisma ORM 7 requires Node.js 20.19 or later and has a different client setup.
 - The Azure CLI installed and authenticated
 - Basic familiarity with TypeScript and PostgreSQL
 
@@ -38,11 +38,17 @@ az postgres flexible-server create \
   --name prisma-pg-server \
   --location eastus \
   --admin-user adminuser \
-  --admin-password YourSecurePassword123! \
+  --admin-password 'YourSecurePassword123!' \
   --sku-name Standard_B1ms \
   --tier Burstable \
   --storage-size 32 \
   --version 15
+
+# Create the application database
+az postgres flexible-server db create \
+  --resource-group prisma-demo-rg \
+  --server-name prisma-pg-server \
+  --database-name prisma_demo
 ```
 
 After the server is created, you need to allow your local IP through the firewall:
@@ -67,8 +73,8 @@ Create a new project and install the dependencies:
 # Initialize the project and install Prisma
 mkdir prisma-azure-demo && cd prisma-azure-demo
 npm init -y
-npm install prisma --save-dev
-npm install @prisma/client
+npm install prisma@6 --save-dev
+npm install @prisma/client@6
 npx prisma init
 ```
 
@@ -169,7 +175,7 @@ With the schema defined, generate and run the migration:
 npx prisma migrate dev --name init
 ```
 
-This command does three things: it generates the SQL migration files, applies them to your Azure PostgreSQL database, and regenerates the Prisma Client. You can inspect the generated SQL in the `prisma/migrations` directory to see exactly what Prisma is doing.
+In Prisma ORM 6, this command does three things: it generates the SQL migration files, applies them to your Azure PostgreSQL database, and regenerates the Prisma Client. You can inspect the generated SQL in the `prisma/migrations` directory to see exactly what Prisma is doing.
 
 ## Writing Queries
 
@@ -276,7 +282,7 @@ Every query is fully typed. If you try to pass an invalid field name or the wron
 
 ## Handling Connection Pooling
 
-Azure PostgreSQL has connection limits that depend on your tier. The Burstable B1ms tier supports around 50 connections. Prisma manages a connection pool internally, but you should configure it to avoid exhausting the limit:
+Azure PostgreSQL has connection limits that depend on your tier. The Burstable B1ms tier has a maximum of 50 connections, with 35 available for user connections after Azure reserves connections for service operations. Prisma ORM 6 manages a connection pool internally, but you should configure it to avoid exhausting the limit:
 
 ```env
 # Limit Prisma to 10 connections in the pool
@@ -298,11 +304,11 @@ This opens a web interface at `http://localhost:5555` where you can browse table
 
 ## SSL Configuration for Azure
 
-Azure enforces SSL on all PostgreSQL connections. If you run into certificate validation issues, you can download the Azure root certificate and reference it in your connection:
+Azure enforces SSL on all PostgreSQL connections. If you run into certificate validation issues, make sure your client trusts the current Azure root CAs. You can also reference a local root certificate bundle in your connection:
 
 ```env
-# Explicit SSL certificate path if needed
-DATABASE_URL="postgresql://adminuser:YourSecurePassword123!@prisma-pg-server.postgres.database.azure.com:5432/prisma_demo?sslmode=verify-full&sslcert=/path/to/DigiCertGlobalRootCA.crt.pem"
+# Explicit root certificate path if needed
+DATABASE_URL="postgresql://adminuser:YourSecurePassword123!@prisma-pg-server.postgres.database.azure.com:5432/prisma_demo?sslmode=verify-full&sslrootcert=/path/to/azure-root-ca-bundle.pem"
 ```
 
 Most of the time, `sslmode=require` is sufficient. The `verify-full` mode adds certificate validation, which is recommended for production workloads where you want to confirm you are actually talking to the Azure server and not a man-in-the-middle.
@@ -327,14 +333,17 @@ Second, use transactions for operations that need to be atomic:
 
 ```typescript
 // Atomic transaction for creating a project and its first task
-const [project, task] = await prisma.$transaction([
-  prisma.project.create({
+const { project, task } = await prisma.$transaction(async (tx) => {
+  const project = await tx.project.create({
     data: { title: 'New Project', ownerId: 1 },
-  }),
-  prisma.task.create({
-    data: { title: 'Initial setup', projectId: 1, priority: 'HIGH' },
-  }),
-]);
+  });
+
+  const task = await tx.task.create({
+    data: { title: 'Initial setup', projectId: project.id, priority: 'HIGH' },
+  });
+
+  return { project, task };
+});
 ```
 
 Third, add indexes to your schema for fields you query frequently:
@@ -352,4 +361,4 @@ model Task {
 
 Prisma and Azure Database for PostgreSQL make a solid combination for Node.js applications. The type-safe client catches bugs before they reach production, the migration system keeps your schema under version control, and Azure handles the operational burden of running PostgreSQL. The setup takes about thirty minutes from start to finish, and once it is running, you spend your time writing application logic instead of fighting your database layer.
 
-If you want to take this further, look into Prisma middleware for logging and soft deletes, or explore Azure Private Link to put your database connection on a private network. Both are worth the effort for production deployments.
+If you want to take this further, look into Prisma Client extensions for logging and soft deletes, or explore Azure Private Link to put your database connection on a private network. Both are worth the effort for production deployments.
