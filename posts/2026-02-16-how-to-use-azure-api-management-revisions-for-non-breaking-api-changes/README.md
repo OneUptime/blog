@@ -66,25 +66,16 @@ All of this is isolated to revision 2. Revision 1 is untouched.
 
 ## Testing a Revision Before Going Live
 
-You can test a revision by including the revision identifier in the API request. The revision identifier is passed via a header or a query parameter.
+You can test a revision by including the revision identifier in the API request URL. Append `;rev={revisionNumber}` at the end of the API URL path, before any query string.
 
-Using the query parameter approach:
+For example, if the API path is `orders`:
 
 ```bash
 # Test revision 2 of an API
 
-# The rev query parameter specifies which revision to use
+# The ;rev path segment specifies which revision to use
 curl -H "Ocp-Apim-Subscription-Key: YOUR_KEY" \
-     "https://yourapi.azure-api.net/orders?rev=2"
-```
-
-Using the header approach:
-
-```bash
-# Test revision 2 using the header approach
-curl -H "Ocp-Apim-Subscription-Key: YOUR_KEY" \
-     -H "Ocp-Apim-Revision: 2" \
-     "https://yourapi.azure-api.net/orders"
+     "https://yourapi.azure-api.net/orders;rev=2"
 ```
 
 The portal's built-in test console also lets you select which revision to test against.
@@ -136,7 +127,7 @@ Revisions fit naturally into a CI/CD pipeline. Here is a typical workflow:
 
 1. **Create revision**: Automated step that creates a new revision via the Azure CLI or REST API
 2. **Apply changes**: Import an updated OpenAPI spec or apply policy changes to the new revision
-3. **Run tests**: Execute integration tests against the new revision using the `rev=N` query parameter
+3. **Run tests**: Execute integration tests against the new revision using the `;rev=N` URL suffix
 4. **Promote**: If tests pass, make the new revision current
 5. **Rollback**: If tests fail, delete the revision
 
@@ -161,7 +152,7 @@ az apim api import \
     --specification-path ./openapi-v2.json
 
 # Step 3: Run tests against the new revision
-# (your test framework hits the API with ?rev=2)
+# (your test framework hits the API with ;rev=2 in the API path)
 
 # Step 4: Make the new revision current
 az apim api release create \
@@ -178,7 +169,7 @@ APIM keeps a history of all revisions, and you can have multiple non-current rev
 
 However, I recommend keeping the number of active revisions small. Each revision is a complete copy of the API definition, and having many revisions makes it confusing to track which changes are in which revision. Merge and promote revisions regularly.
 
-APIM supports up to 10 non-current revisions per API. If you need more, delete old ones that you no longer need.
+APIM counts API versions and revisions toward API-related resource limits, so delete old revisions that you no longer need.
 
 ## Changelog in the Developer Portal
 
