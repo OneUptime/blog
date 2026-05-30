@@ -27,8 +27,8 @@ graph LR
 
 Azure Digital Twins emits three categories of events:
 
-1. **Twin lifecycle events** - Created, updated, deleted
-2. **Relationship lifecycle events** - Created, deleted
+1. **Twin events** - Created, updated, deleted
+2. **Relationship events** - Created, updated, deleted
 3. **Telemetry events** - Data flowing through the twin graph
 
 Each event route can filter on these categories and on specific twin models, giving you fine-grained control over which events go where.
@@ -47,53 +47,22 @@ az eventgrid topic create \
   --input-schema eventgridschema
 ```
 
-## Step 2: Grant Azure Digital Twins Permission to Publish Events
+## Step 2: Confirm Endpoint Permissions
 
-Azure Digital Twins needs the "Event Grid Data Sender" role on the topic to publish events.
+Azure Digital Twins Event Grid endpoints use the Event Grid topic endpoint and access keys. Event Grid endpoints do not support identity-based endpoint integration, so you do not assign the Azure Digital Twins managed identity the "Event Grid Data Sender" role for this endpoint type.
 
-```bash
-# Get the Azure Digital Twins managed identity principal ID
-ADT_PRINCIPAL=$(az dt show \
-  --dt-name my-digital-twins \
-  --query identity.principalId -o tsv)
-
-# Get the Event Grid topic resource ID
-TOPIC_ID=$(az eventgrid topic show \
-  --name adt-events-topic \
-  --resource-group digital-twins-rg \
-  --query id -o tsv)
-
-# Assign the Event Grid Data Sender role
-az role assignment create \
-  --assignee "$ADT_PRINCIPAL" \
-  --role "EventGrid Data Sender" \
-  --scope "$TOPIC_ID"
-```
-
-If your Azure Digital Twins instance does not have a system-assigned managed identity, enable it first.
-
-```bash
-az dt create --dt-name my-digital-twins \
-  --resource-group digital-twins-rg \
-  --location eastus \
-  --assign-identity
-```
+Make sure the account or automation identity that creates the endpoint has permission to read the Event Grid topic keys and create endpoints on the Azure Digital Twins instance.
 
 ## Step 3: Create an Endpoint in Azure Digital Twins
 
 An endpoint connects Azure Digital Twins to an external service. Create an endpoint pointing to the Event Grid topic.
 
 ```bash
-# Get the Event Grid topic endpoint and key
-TOPIC_ENDPOINT=$(az eventgrid topic show \
+# Get the Event Grid topic resource ID for the subscription step later
+TOPIC_ID=$(az eventgrid topic show \
   --name adt-events-topic \
   --resource-group digital-twins-rg \
-  --query endpoint -o tsv)
-
-TOPIC_KEY=$(az eventgrid topic key list \
-  --name adt-events-topic \
-  --resource-group digital-twins-rg \
-  --query key1 -o tsv)
+  --query id -o tsv)
 
 # Create the endpoint in Azure Digital Twins
 az dt endpoint create eventgrid \
@@ -108,10 +77,10 @@ az dt endpoint create eventgrid \
 Now create routes that define which events flow to the endpoint. You can create multiple routes with different filters.
 
 ```bash
-# Route all twin lifecycle events
+# Route all twin create, update, and delete events
 az dt route create \
   --dt-name my-digital-twins \
-  --route-name twin-lifecycle-route \
+  --route-name twin-events-route \
   --endpoint-name event-grid-endpoint \
   --filter "type = 'Microsoft.DigitalTwins.Twin.Create' OR type = 'Microsoft.DigitalTwins.Twin.Update' OR type = 'Microsoft.DigitalTwins.Twin.Delete'"
 
@@ -120,14 +89,14 @@ az dt route create \
   --dt-name my-digital-twins \
   --route-name telemetry-route \
   --endpoint-name event-grid-endpoint \
-  --filter "type = 'Microsoft.DigitalTwins.Telemetry'"
+  --filter "type = 'microsoft.iot.telemetry'"
 
 # Route relationship events
 az dt route create \
   --dt-name my-digital-twins \
   --route-name relationship-route \
   --endpoint-name event-grid-endpoint \
-  --filter "type = 'Microsoft.DigitalTwins.Relationship.Create' OR type = 'Microsoft.DigitalTwins.Relationship.Delete'"
+  --filter "type = 'Microsoft.DigitalTwins.Relationship.Create' OR type = 'Microsoft.DigitalTwins.Relationship.Update' OR type = 'Microsoft.DigitalTwins.Relationship.Delete'"
 ```
 
 The filter syntax supports AND, OR, and comparison operators. You can also filter by specific data properties like the twin model.
@@ -166,24 +135,22 @@ def process_twin_update(event: func.EventGridEvent):
     event_type = event.event_type
 
     if event_type == "Microsoft.DigitalTwins.Twin.Update":
-        handle_twin_update(event_data)
-    elif event_type == "Microsoft.DigitalTwins.Telemetry":
+        handle_twin_update(event_data, event.subject)
+    elif event_type == "microsoft.iot.telemetry":
         handle_telemetry(event_data, event.subject)
 
-def handle_twin_update(event_data):
+def handle_twin_update(event_data, sensor_id):
     """When a sensor twin updates, propagate to parent room."""
     client = get_adt_client()
 
     # The patch contains what changed
     patch = event_data.get("data", {}).get("patch", [])
-    twin_id = event_data.get("data", {}).get("modelId", "")
 
     logging.info(f"Twin update - patches: {json.dumps(patch)}")
 
     # Check if this is a sensor update with a temperature reading
     for operation in patch:
         if operation.get("path") == "/reading":
-            sensor_id = event_data.get("data", {}).get("$dtId", "")
             new_value = operation.get("value")
 
             # Find the room that contains this sensor
@@ -222,15 +189,41 @@ def handle_telemetry(event_data, subject):
 Deploy the function to Azure and create an Event Grid subscription that connects the topic to the function.
 
 ```bash
+# Create the storage account used by the Function App
+STORAGE_ACCOUNT=adtfuncstorage$RANDOM
+
+az storage account create \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group digital-twins-rg \
+  --location eastus \
+  --sku Standard_LRS
+
 # Create the Function App
 az functionapp create \
   --name adt-event-processor \
   --resource-group digital-twins-rg \
-  --storage-account adtfuncstorage \
+  --storage-account "$STORAGE_ACCOUNT" \
   --consumption-plan-location eastus \
   --runtime python \
   --runtime-version 3.11 \
-  --functions-version 4
+  --functions-version 4 \
+  --os-type Linux \
+  --assign-identity "[system]"
+
+# Grant the Function App permission to query and update Azure Digital Twins
+FUNC_PRINCIPAL=$(az functionapp identity show \
+  --name adt-event-processor \
+  --resource-group digital-twins-rg \
+  --query principalId -o tsv)
+
+ADT_ID=$(az dt show \
+  --dt-name my-digital-twins \
+  --query id -o tsv)
+
+az role assignment create \
+  --assignee "$FUNC_PRINCIPAL" \
+  --role "Azure Digital Twins Data Owner" \
+  --scope "$ADT_ID"
 
 # Deploy the function code
 func azure functionapp publish adt-event-processor
@@ -253,14 +246,18 @@ Understanding the event payload is critical for writing correct handlers. Here i
   "subject": "building-hq",
   "eventType": "Microsoft.DigitalTwins.Twin.Update",
   "data": {
-    "modelId": "dtmi:com:example:Building;1",
-    "patch": [
-      {
-        "op": "replace",
-        "path": "/name",
-        "value": "New Headquarters"
-      }
-    ]
+    "data": {
+      "modelId": "dtmi:com:example:Building;1",
+      "patch": [
+        {
+          "op": "replace",
+          "path": "/name",
+          "value": "New Headquarters"
+        }
+      ]
+    },
+    "contenttype": "application/json",
+    "traceparent": "00-00000000000000000000000000000000-0000000000000000-00"
   },
   "dataVersion": "1.0",
   "metadataVersion": "1",
@@ -275,10 +272,15 @@ And a telemetry event:
 {
   "id": "unique-event-id",
   "subject": "sensor-temp-201",
-  "eventType": "Microsoft.DigitalTwins.Telemetry",
+  "eventType": "microsoft.iot.telemetry",
   "data": {
-    "temperature": 24.5,
-    "timestamp": "2026-02-16T10:30:00.000Z"
+    "data": {
+      "temperature": 24.5,
+      "timestamp": "2026-02-16T10:30:00.000Z"
+    },
+    "dataschema": "dtmi:com:example:Sensor;1",
+    "contenttype": "application/json",
+    "traceparent": "00-00000000000000000000000000000000-0000000000000000-00"
   },
   "dataVersion": "1.0",
   "eventTime": "2026-02-16T10:30:00.000Z"
@@ -318,7 +320,7 @@ az dt route create \
   --dt-name my-digital-twins \
   --route-name room-updates-only \
   --endpoint-name event-grid-endpoint \
-  --filter "type = 'Microsoft.DigitalTwins.Twin.Update' AND STARTS_WITH($body.$metadata.$model, 'dtmi:com:example:Room')"
+  --filter "type = 'Microsoft.DigitalTwins.Twin.Update' AND STARTS_WITH($body.modelId, 'dtmi:com:example:Room')"
 ```
 
 ## Monitoring Event Routes
@@ -332,7 +334,7 @@ az dt route list --dt-name my-digital-twins
 # Check metrics for failed event deliveries
 az monitor metrics list \
   --resource /subscriptions/{sub}/resourceGroups/digital-twins-rg/providers/Microsoft.DigitalTwins/digitalTwinsInstances/my-digital-twins \
-  --metric "RoutingDeliveries" \
+  --metric "RoutingFailureRate" \
   --interval PT5M
 ```
 
@@ -340,4 +342,4 @@ Also check the Event Grid topic metrics for delivery failures and the Azure Func
 
 ## Wrapping Up
 
-Event routes are what make Azure Digital Twins a live, reactive system rather than a static data store. By routing twin lifecycle events and telemetry to Azure Functions through Event Grid, you can build graph propagation logic, trigger alerts, feed analytics pipelines, and keep your digital twin graph in sync with the real world. The key is to design your routes with appropriate filters so you process only the events you care about, and to structure your functions for idempotency since Event Grid guarantees at-least-once delivery.
+Event routes are what make Azure Digital Twins a live, reactive system rather than a static data store. By routing twin events and telemetry to Azure Functions through Event Grid, you can build graph propagation logic, trigger alerts, feed analytics pipelines, and keep your digital twin graph in sync with the real world. The key is to design your routes with appropriate filters so you process only the events you care about, and to structure your functions for idempotency since Event Grid guarantees at-least-once delivery.
