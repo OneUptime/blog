@@ -16,7 +16,7 @@ Pester is the testing framework for PowerShell, and it pairs naturally with Azur
 
 Pester gives you a familiar testing syntax if you have worked with any xUnit-style framework. You write Describe blocks for test suites, It blocks for individual assertions, and Should for expectations. The difference is that instead of testing application code, you are testing Azure resource configurations.
 
-The big advantage over just relying on Azure Policy is timing. Azure Policy evaluates resources after they exist. Pester tests in a pipeline can validate templates before deployment and verify resource state immediately after deployment, giving you a faster feedback loop.
+The big advantage over just relying on Azure Policy compliance results is timing. Azure Policy can evaluate create and update requests, and its compliance state is updated through policy evaluation cycles. Pester tests in a pipeline can validate templates before deployment and verify resource state immediately after deployment, giving you a faster feedback loop.
 
 ## Setting Up the Pester Test Project
 
@@ -58,17 +58,13 @@ Describe "Tag Compliance for Resource Group: $ResourceGroupName" {
     }
 
     Context "Required Tags" {
-        foreach ($resource in $resources) {
-            It "Resource '$($resource.Name)' should have an 'Environment' tag" {
-                $resource.Tags.Keys | Should -Contain 'Environment'
-            }
+        It "All resources should have required tags" {
+            foreach ($resource in $resources) {
+                $tags = if ($null -eq $resource.Tags) { @{} } else { $resource.Tags }
 
-            It "Resource '$($resource.Name)' should have a 'CostCenter' tag" {
-                $resource.Tags.Keys | Should -Contain 'CostCenter'
-            }
-
-            It "Resource '$($resource.Name)' should have an 'Owner' tag" {
-                $resource.Tags.Keys | Should -Contain 'Owner'
+                $tags.Keys | Should -Contain 'Environment' -Because "resource '$($resource.Name)' must be tagged with Environment"
+                $tags.Keys | Should -Contain 'CostCenter' -Because "resource '$($resource.Name)' must be tagged with CostCenter"
+                $tags.Keys | Should -Contain 'Owner' -Because "resource '$($resource.Name)' must be tagged with Owner"
             }
         }
     }
@@ -76,14 +72,17 @@ Describe "Tag Compliance for Resource Group: $ResourceGroupName" {
     Context "Tag Values" {
         $validEnvironments = @('dev', 'staging', 'production')
 
-        foreach ($resource in $resources) {
-            It "Resource '$($resource.Name)' should have a valid Environment tag value" {
-                $resource.Tags['Environment'] | Should -BeIn $validEnvironments
+        It "All resources should have a valid Environment tag value" {
+            foreach ($resource in $resources) {
+                $tags = if ($null -eq $resource.Tags) { @{} } else { $resource.Tags }
+                $tags['Environment'] | Should -BeIn $validEnvironments -Because "resource '$($resource.Name)' must use an approved Environment tag value"
             }
         }
     }
 }
 ```
+
+Pester 5 discovers tests before `BeforeAll` runs, so the resource loop belongs inside an `It` block unless you supply discovery-time data with `BeforeDiscovery` or `-ForEach`.
 
 ## Network Security Compliance Tests
 
@@ -100,31 +99,75 @@ param(
 
 Describe "Network Security Compliance for: $ResourceGroupName" {
 
+    BeforeAll {
+        function Test-PortMatches {
+            param(
+                [string[]]$Ranges,
+                [int]$Port
+            )
+
+            foreach ($range in $Ranges) {
+                if ($range -eq '*') {
+                    return $true
+                }
+
+                if ($range -match '^\d+$' -and [int]$range -eq $Port) {
+                    return $true
+                }
+
+                if ($range -match '^(\d+)-(\d+)$' -and $Port -ge [int]$Matches[1] -and $Port -le [int]$Matches[2]) {
+                    return $true
+                }
+            }
+
+            return $false
+        }
+
+        function Test-InternetSource {
+            param([string[]]$Prefixes)
+
+            foreach ($prefix in $Prefixes) {
+                if ($prefix -in @('*', '0.0.0.0/0', 'Internet')) {
+                    return $true
+                }
+            }
+
+            return $false
+        }
+    }
+
     Context "Network Security Groups" {
         BeforeAll {
             $nsgs = Get-AzNetworkSecurityGroup -ResourceGroupName $ResourceGroupName
         }
 
-        foreach ($nsg in $nsgs) {
-            It "NSG '$($nsg.Name)' should not allow inbound SSH from any source" {
-                # Check that no rule allows SSH (port 22) from 0.0.0.0/0
+        It "NSGs should not allow inbound SSH from the internet" {
+            foreach ($nsg in $nsgs) {
                 $sshRules = $nsg.SecurityRules | Where-Object {
-                    $_.DestinationPortRange -eq '22' -and
-                    $_.SourceAddressPrefix -eq '*' -and
-                    $_.Access -eq 'Allow' -and
-                    $_.Direction -eq 'Inbound'
-                }
-                $sshRules | Should -BeNullOrEmpty
-            }
+                    $sourcePrefixes = @($_.SourceAddressPrefix) + @($_.SourceAddressPrefixes)
+                    $destinationPorts = @($_.DestinationPortRange) + @($_.DestinationPortRanges)
 
-            It "NSG '$($nsg.Name)' should not allow inbound RDP from any source" {
-                $rdpRules = $nsg.SecurityRules | Where-Object {
-                    $_.DestinationPortRange -eq '3389' -and
-                    $_.SourceAddressPrefix -eq '*' -and
+                    (Test-PortMatches -Ranges $destinationPorts -Port 22) -and
+                    (Test-InternetSource -Prefixes $sourcePrefixes) -and
                     $_.Access -eq 'Allow' -and
                     $_.Direction -eq 'Inbound'
                 }
-                $rdpRules | Should -BeNullOrEmpty
+                $sshRules | Should -BeNullOrEmpty -Because "NSG '$($nsg.Name)' must not expose SSH to the internet"
+            }
+        }
+
+        It "NSGs should not allow inbound RDP from the internet" {
+            foreach ($nsg in $nsgs) {
+                $rdpRules = $nsg.SecurityRules | Where-Object {
+                    $sourcePrefixes = @($_.SourceAddressPrefix) + @($_.SourceAddressPrefixes)
+                    $destinationPorts = @($_.DestinationPortRange) + @($_.DestinationPortRanges)
+
+                    (Test-PortMatches -Ranges $destinationPorts -Port 3389) -and
+                    (Test-InternetSource -Prefixes $sourcePrefixes) -and
+                    $_.Access -eq 'Allow' -and
+                    $_.Direction -eq 'Inbound'
+                }
+                $rdpRules | Should -BeNullOrEmpty -Because "NSG '$($nsg.Name)' must not expose RDP to the internet"
             }
         }
     }
@@ -134,17 +177,21 @@ Describe "Network Security Compliance for: $ResourceGroupName" {
             $storageAccounts = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName
         }
 
-        foreach ($sa in $storageAccounts) {
-            It "Storage account '$($sa.StorageAccountName)' should have public blob access disabled" {
-                $sa.AllowBlobPublicAccess | Should -BeFalse
+        It "Storage accounts should have public blob access disabled" {
+            foreach ($sa in $storageAccounts) {
+                $sa.AllowBlobPublicAccess | Should -BeFalse -Because "storage account '$($sa.StorageAccountName)' must disable public blob access"
             }
+        }
 
-            It "Storage account '$($sa.StorageAccountName)' should require HTTPS" {
-                $sa.EnableHttpsTrafficOnly | Should -BeTrue
+        It "Storage accounts should require HTTPS" {
+            foreach ($sa in $storageAccounts) {
+                $sa.EnableHttpsTrafficOnly | Should -BeTrue -Because "storage account '$($sa.StorageAccountName)' must require HTTPS"
             }
+        }
 
-            It "Storage account '$($sa.StorageAccountName)' should use TLS 1.2 minimum" {
-                $sa.MinimumTlsVersion | Should -Be 'TLS1_2'
+        It "Storage accounts should use TLS 1.2 minimum" {
+            foreach ($sa in $storageAccounts) {
+                $sa.MinimumTlsVersion | Should -BeIn @('TLS1_2', 'TLS1_3') -Because "storage account '$($sa.StorageAccountName)' must require TLS 1.2 or later"
             }
         }
     }
@@ -169,14 +216,18 @@ param(
 Describe "Azure Policy Compliance for: $ResourceGroupName" {
 
     BeforeAll {
-        # Get the resource group scope for policy compliance query
-        $rgScope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName"
+        $policyStateQuery = @{
+            ResourceGroupName = $ResourceGroupName
+            Filter = "ComplianceState eq 'NonCompliant'"
+            Top = 100
+        }
+
+        if ($SubscriptionId) {
+            $policyStateQuery.SubscriptionId = $SubscriptionId
+        }
 
         # Get all non-compliant policy states
-        $nonCompliant = Get-AzPolicyState `
-            -ResourceGroupName $ResourceGroupName `
-            -Filter "ComplianceState eq 'NonCompliant'" `
-            -Top 100
+        $nonCompliant = Get-AzPolicyState @policyStateQuery
     }
 
     It "Should have zero non-compliant resources" {
@@ -184,13 +235,11 @@ Describe "Azure Policy Compliance for: $ResourceGroupName" {
     }
 
     Context "Non-Compliant Details" {
-        if ($nonCompliant.Count -gt 0) {
+        It "Should report each non-compliant policy state" {
             foreach ($state in $nonCompliant) {
-                It "Resource '$($state.ResourceId)' violates policy '$($state.PolicyDefinitionName)'" {
-                    # This test is designed to fail and show the violation details
-                    $false | Should -BeTrue -Because `
-                        "Policy: $($state.PolicyDefinitionName), Effect: $($state.PolicyDefinitionAction)"
-                }
+                # This assertion is designed to fail and show the violation details.
+                $false | Should -BeTrue -Because `
+                    "Resource: $($state.ResourceId), Policy: $($state.PolicyDefinitionName), Effect: $($state.PolicyDefinitionAction)"
             }
         }
     }
@@ -254,7 +303,7 @@ stages:
               script: |
                 # Install the latest version of Pester
                 Install-Module -Name Pester -Force -Scope CurrentUser -MinimumVersion 5.0
-                Import-Module Pester
+                Import-Module Pester -MinimumVersion 5.0
 
           - task: AzurePowerShell@5
             displayName: 'Run Tag Compliance Tests'
@@ -263,10 +312,9 @@ stages:
               ScriptType: 'InlineScript'
               Inline: |
                 # Import Pester and run tag compliance tests
-                Import-Module Pester
+                Import-Module Pester -MinimumVersion 5.0
 
                 $config = New-PesterConfiguration
-                $config.Run.Path = "$(Build.SourcesDirectory)/infrastructure/tests/TagPolicy.Tests.ps1"
                 $config.Run.PassThru = $true
                 $config.TestResult.Enabled = $true
                 $config.TestResult.OutputPath = "$(Build.SourcesDirectory)/tag-results.xml"
