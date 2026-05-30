@@ -10,7 +10,7 @@ Description: Build real-time integrations between Salesforce and Dynamics 365 us
 
 Enterprises that use both Salesforce and Dynamics 365 - whether from an acquisition, departmental preferences, or a migration in progress - face a constant challenge: keeping data synchronized between the two systems. Sales teams work in Salesforce while operations and finance work in Dynamics 365, and nobody wants to manually copy records back and forth.
 
-Azure Logic Apps has native connectors for both Salesforce and Dynamics 365 that make it possible to build real-time, bidirectional integrations without writing custom middleware. In this post, I will walk through the connector setup, common integration patterns, and the gotchas you will encounter in production.
+Azure Logic Apps has native connectors for Salesforce and Microsoft Dataverse, which is the data platform behind Dynamics 365 Sales, Customer Service, Field Service, and related apps. These connectors make it possible to build real-time, bidirectional integrations without writing custom middleware. In this post, I will walk through the connector setup, common integration patterns, and the gotchas you will encounter in production.
 
 ## Setting Up the Connectors
 
@@ -26,21 +26,18 @@ To set up the connection in your Logic App:
 4. Sign in with a Salesforce user that has API access enabled
 5. Authorize the Azure Logic Apps connected app
 
-The connected app needs the following Salesforce permissions:
-- API Enabled
-- Access and manage your data (api)
-- Perform requests on your behalf at any time (refresh_token, offline_access)
+The Salesforce user profile or permission set needs API access enabled. The Logic Apps connection uses OAuth, so if your Salesforce org restricts connected apps, make sure the Microsoft connector is allowed to use the Salesforce API and refresh-token scopes.
 
 For production use, create a dedicated integration user in Salesforce rather than using a personal account. This avoids issues when someone changes their password or leaves the company.
 
-### Dynamics 365 Connector
+### Microsoft Dataverse Connector for Dynamics 365
 
-The Dynamics 365 connector authenticates using Azure AD. Setup is simpler if your Dynamics 365 instance is in the same Azure AD tenant:
+The older Dynamics 365 connector is deprecated for new Logic Apps. For Dynamics 365 Sales and other Dataverse-backed apps, use the Microsoft Dataverse connector, which authenticates using Microsoft Entra ID. Setup is simpler if your Dynamics 365 environment is in the same tenant:
 
-1. Add any Dynamics 365 action (e.g., "When a record is created")
+1. Add any Microsoft Dataverse action (e.g., "When a row is added, modified or deleted")
 2. Click "Sign in"
-3. Authenticate with your Azure AD credentials
-4. Select the Dynamics 365 organization/environment
+3. Authenticate with your Microsoft Entra credentials
+4. Select the Dataverse environment
 
 For automated scenarios, consider using a service principal or application user in Dynamics 365 instead of a personal account.
 
@@ -52,10 +49,10 @@ This is the most common starting point. When a new lead is created in Salesforce
 
 ```mermaid
 graph TD
-    A[Salesforce: When a record is created - Lead] --> B[Dynamics 365: Get records - Check for duplicate]
+    A[Salesforce: When a record is created - Lead] --> B[Dataverse: List rows - Check for duplicate]
     B --> C{Duplicate exists?}
-    C -->|No| D[Dynamics 365: Create a new record - Contact]
-    C -->|Yes| E[Dynamics 365: Update a record - Contact]
+    C -->|No| D[Dataverse: Add a new row - Contact]
+    C -->|Yes| E[Dataverse: Update a row - Contact]
     D --> F[Salesforce: Update record - Set sync status]
     E --> F
 ```
@@ -64,9 +61,9 @@ graph TD
 
 **Trigger: Salesforce - When a record is created**
 - Object type: Lead
-- Frequency: Check every 1 minute (or use webhook-based trigger for near real-time)
+- Frequency: Check every 1 minute, balancing latency against Salesforce API consumption
 
-**Action: Map fields and create in Dynamics 365**
+**Action: Map fields and create in Dataverse**
 
 The field mapping between Salesforce Leads and Dynamics 365 Contacts typically looks like this:
 
@@ -76,22 +73,22 @@ The field mapping between Salesforce Leads and Dynamics 365 Contacts typically l
 | LastName | lastname |
 | Email | emailaddress1 |
 | Phone | telephone1 |
-| Company | company |
+| Company | parentcustomerid (or a custom text column) |
 | Title | jobtitle |
 | Street | address1_line1 |
 | City | address1_city |
 | State | address1_stateorprovince |
 | PostalCode | address1_postalcode |
 | Country | address1_country |
-| LeadSource | leadsourcecode |
+| LeadSource | leadsourcecode (mapped to the Dataverse choice value) |
 
-In the Logic App designer, use the "Create a new record" action for Dynamics 365 and map each field using dynamic content from the Salesforce trigger output.
+In the Logic App designer, use the "Add a new row" action for Microsoft Dataverse and map each field using dynamic content from the Salesforce trigger output.
 
 ## Pattern 2: Sync Dynamics 365 Opportunities to Salesforce
 
 When an opportunity is created or updated in Dynamics 365, push it to Salesforce so the sales team sees it.
 
-**Trigger: Dynamics 365 - When a record is created or modified**
+**Trigger: Microsoft Dataverse - When a row is added, modified or deleted**
 - Table name: Opportunities
 - Scope: Organization (to capture all users' changes)
 
@@ -133,7 +130,7 @@ Keeping accounts synchronized between both systems requires handling creates, up
 
 ### The Infinite Loop Problem
 
-If Salesforce creates an account, your Logic App creates it in Dynamics 365. But if another Logic App is watching Dynamics 365 for new records, it sees the new record and tries to create it back in Salesforce. This loop continues forever.
+If Salesforce creates an account, your Logic App creates it in Dataverse. But if another Logic App is watching Dataverse for new rows, it sees the new row and tries to create it back in Salesforce. This loop continues forever.
 
 ### The Solution: Sync Flags
 
@@ -198,7 +195,7 @@ For complex mappings, store the mapping data in an Azure Table Storage table and
 
 ### Date Format Handling
 
-Salesforce uses ISO 8601 date format (YYYY-MM-DD) while Dynamics 365 also uses ISO 8601 but with full datetime precision. Use the `formatDateTime` function in Logic Apps to ensure consistency:
+Salesforce date fields use `YYYY-MM-DD`, while Salesforce datetime fields such as `CreatedDate` and Dataverse datetime columns use ISO 8601-style datetime values. Use the `formatDateTime` function in Logic Apps to ensure consistency:
 
 ```text
 @formatDateTime(triggerBody()?['CreatedDate'], 'yyyy-MM-ddTHH:mm:ssZ')
@@ -278,13 +275,13 @@ az monitor metrics alert create \
   --condition "total RunsFailed > 5" \
   --evaluation-frequency 15m \
   --window-size 1h \
-  --action-group "/subscriptions/<sub-id>/resourceGroups/rg-monitoring/providers/Microsoft.Insights/actionGroups/ag-integration-team"
+  --action "/subscriptions/<sub-id>/resourceGroups/rg-monitoring/providers/Microsoft.Insights/actionGroups/ag-integration-team"
 ```
 
 ## Performance Considerations
 
 - **Salesforce API limits** depend on your Salesforce edition. Enterprise Edition gets 100,000 API calls per 24-hour period. Monitor your usage in Salesforce Setup under "API Usage."
-- **Dynamics 365 API limits** are 6,000 requests per user per 5-minute window. Use a dedicated integration user and monitor with the Dataverse analytics.
+- **Dataverse service protection limits** include a default limit of 6,000 requests per user per 5-minute sliding window, plus execution-time and concurrency limits. Use a dedicated integration user and monitor with Dataverse analytics.
 - **Bulk operations**: For initial data loads, do not use Logic Apps. Use Salesforce Data Loader and Dynamics 365 Import Wizard instead. Logic Apps are best for ongoing, incremental sync.
 - **Polling frequency**: The Salesforce trigger polls for new records. More frequent polling means more API calls. Balance timeliness against API consumption.
 
