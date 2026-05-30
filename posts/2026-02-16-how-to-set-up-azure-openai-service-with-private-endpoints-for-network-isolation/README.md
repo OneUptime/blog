@@ -64,9 +64,9 @@ az network vnet subnet create \
     --address-prefix 10.0.1.0/24
 ```
 
-## Step 2: Disable Private Endpoint Network Policies on the Subnet
+## Step 2: Check Private Endpoint Network Policies on the Subnet
 
-Private endpoints require that network policies (like NSG rules) are disabled on the subnet. This is a prerequisite for creating the private endpoint.
+Private endpoint network policies are disabled by default on a subnet. If they were enabled and you do not need NSG or user-defined route support for private endpoint traffic, disable them before creating the private endpoint.
 
 ```bash
 # Disable private endpoint network policies on the subnet
@@ -166,7 +166,7 @@ nslookup your-openai-resource.openai.azure.com
 # Should return the private IP (10.0.1.x)
 
 # Test the API call from within the VNet
-curl -s https://your-openai-resource.openai.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2024-06-01 \
+curl -s https://your-openai-resource.openai.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2024-10-21 \
     -H "Content-Type: application/json" \
     -H "api-key: your-api-key" \
     -d '{"messages": [{"role": "user", "content": "Hello"}], "max_tokens": 50}'
@@ -187,7 +187,7 @@ from openai import AzureOpenAI
 client = AzureOpenAI(
     azure_endpoint="https://your-openai-resource.openai.azure.com/",
     api_key="your-api-key",
-    api_version="2024-06-01"
+    api_version="2024-10-21"
 )
 
 # This call routes through the private endpoint automatically
@@ -230,7 +230,7 @@ az cognitiveservices account network-rule add \
 
 ## Cross-Region and VNet Peering
 
-If your application and Azure OpenAI resource are in different regions, you can still use private endpoints. Set up VNet peering between the two VNets:
+Your Azure OpenAI resource does not need to be in the same region as the VNet. If your application VNet and the VNet that contains the private endpoint are different, set up VNet peering between the two VNets:
 
 ```bash
 # Peer the app VNet with the OpenAI VNet
@@ -271,7 +271,7 @@ az network private-endpoint show \
     --query "customDnsConfigs[0].ipAddresses[0]"
 ```
 
-Common issues include DNS not resolving to the private IP (check DNS zone links), NSG rules blocking traffic to the private endpoint subnet, and the private endpoint connection being in a "Pending" state (requires approval from the resource owner).
+Common issues include DNS not resolving to the private IP (check DNS zone links), NSG or route rules blocking private endpoint traffic if private endpoint network policies are enabled, and the private endpoint connection being in a "Pending" state (requires approval from the resource owner).
 
 ## Summary
 
