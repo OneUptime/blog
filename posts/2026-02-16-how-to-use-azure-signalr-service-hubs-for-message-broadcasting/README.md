@@ -278,7 +278,7 @@ In Serverless mode with Azure Functions, broadcasting works through output bindi
 
 ```typescript
 // Broadcast to all clients from an Azure Function
-import { app, output, InvocationContext } from "@azure/functions";
+import { app, output } from "@azure/functions";
 
 const signalROutput = output.generic({
     type: "signalR",
@@ -293,10 +293,10 @@ app.http("broadcastAll", {
     handler: async (request, context) => {
         const body = await request.json();
 
-        context.extraOutputs.set(signalROutput, [{
+        context.extraOutputs.set(signalROutput, {
             target: "notification",
             arguments: [body]
-        }]);
+        });
 
         return { status: 200 };
     }
@@ -309,11 +309,11 @@ app.http("sendToUser", {
     handler: async (request, context) => {
         const body = await request.json();
 
-        context.extraOutputs.set(signalROutput, [{
+        context.extraOutputs.set(signalROutput, {
             target: "personalNotification",
             userId: body.userId,
             arguments: [body.message]
-        }]);
+        });
 
         return { status: 200 };
     }
@@ -326,11 +326,11 @@ app.http("sendToGroup", {
     handler: async (request, context) => {
         const body = await request.json();
 
-        context.extraOutputs.set(signalROutput, [{
+        context.extraOutputs.set(signalROutput, {
             target: "groupMessage",
             groupName: body.groupName,
             arguments: [body.message]
-        }]);
+        });
 
         return { status: 200 };
     }
@@ -349,11 +349,11 @@ app.http("addToGroup", {
     handler: async (request, context) => {
         const body = await request.json();
 
-        context.extraOutputs.set(signalROutput, [{
-            actionName: "add",
+        context.extraOutputs.set(signalROutput, {
+            action: "add",
             userId: body.userId,
             groupName: body.groupName
-        }]);
+        });
 
         return { status: 200 };
     }
@@ -366,11 +366,11 @@ app.http("removeFromGroup", {
     handler: async (request, context) => {
         const body = await request.json();
 
-        context.extraOutputs.set(signalROutput, [{
-            actionName: "remove",
+        context.extraOutputs.set(signalROutput, {
+            action: "remove",
             userId: body.userId,
             groupName: body.groupName
-        }]);
+        });
 
         return { status: 200 };
     }
