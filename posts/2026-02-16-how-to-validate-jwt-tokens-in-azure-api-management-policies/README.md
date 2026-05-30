@@ -107,14 +107,14 @@ Sometimes a valid token is not enough. You might need the user to have a specifi
             <value>editor</value>
         </claim>
         <!-- Require the 'scp' (scope) claim to contain 'read' -->
-        <claim name="scp" match="all">
+        <claim name="scp" match="all" separator=" ">
             <value>read</value>
         </claim>
     </required-claims>
 </validate-jwt>
 ```
 
-The `match` attribute controls whether the claim must contain all of the listed values (`all`) or at least one (`any`).
+The `match` attribute controls whether the claim must contain all of the listed values (`all`) or at least one (`any`). For space-separated claims such as `scp`, include `separator=" "` so APIM checks the individual scope values.
 
 ## Extracting Claims for Backend Use
 
@@ -134,13 +134,13 @@ After validating the token, you often want to pass claim values to your backend 
 
 <!-- Extract claims from the validated token and pass them as headers -->
 <set-header name="X-User-Id" exists-action="override">
-    <value>@(((Jwt)context.Variables["jwt"]).Claims["oid"]?.FirstOrDefault() ?? "unknown")</value>
+    <value>@(((Jwt)context.Variables["jwt"]).Claims.GetValueOrDefault("oid", "unknown"))</value>
 </set-header>
 <set-header name="X-User-Email" exists-action="override">
-    <value>@(((Jwt)context.Variables["jwt"]).Claims["email"]?.FirstOrDefault() ?? "unknown")</value>
+    <value>@(((Jwt)context.Variables["jwt"]).Claims.GetValueOrDefault("email", "unknown"))</value>
 </set-header>
 <set-header name="X-User-Name" exists-action="override">
-    <value>@(((Jwt)context.Variables["jwt"]).Claims["name"]?.FirstOrDefault() ?? "unknown")</value>
+    <value>@(((Jwt)context.Variables["jwt"]).Claims.GetValueOrDefault("name", "unknown"))</value>
 </set-header>
 ```
 
@@ -156,7 +156,19 @@ If your API accepts tokens from multiple identity providers (for example, Azure 
     <base />
     <choose>
         <!-- Try Azure AD first -->
-        <when condition="@(context.Request.Headers.GetValueOrDefault("Authorization","").Contains("v2.0"))">
+        <when condition="@{
+            string[] authHeaders;
+            if (!context.Request.Headers.TryGetValue(&quot;Authorization&quot;, out authHeaders))
+            {
+                return false;
+            }
+
+            var token = authHeaders.FirstOrDefault()?.Split(' ').Last();
+            Jwt jwt;
+            return token != null
+                &amp;&amp; token.TryParseJwt(out jwt)
+                &amp;&amp; jwt.Issuer == &quot;https://login.microsoftonline.com/TENANT_A/v2.0&quot;;
+        }">
             <validate-jwt header-name="Authorization" require-scheme="Bearer">
                 <openid-config url="https://login.microsoftonline.com/TENANT_A/v2.0/.well-known/openid-configuration" />
                 <audiences>
@@ -166,7 +178,7 @@ If your API accepts tokens from multiple identity providers (for example, Azure 
         </when>
         <otherwise>
             <validate-jwt header-name="Authorization" require-scheme="Bearer">
-                <openid-config url="https://YOUR_B2C_TENANT.b2clogin.com/YOUR_B2C_TENANT.onmicrosoft.com/v2.0/.well-known/openid-configuration?p=B2C_1_signupsignin" />
+                <openid-config url="https://YOUR_B2C_TENANT.b2clogin.com/YOUR_B2C_TENANT.onmicrosoft.com/B2C_1_signupsignin/v2.0/.well-known/openid-configuration" />
                 <audiences>
                     <audience>api://client-b</audience>
                 </audiences>
@@ -176,7 +188,7 @@ If your API accepts tokens from multiple identity providers (for example, Azure 
 </inbound>
 ```
 
-A cleaner approach is to inspect the `iss` claim without fully validating, then route to the appropriate validator. But for most cases, two separate validation blocks with a condition work fine.
+This condition parses the untrusted token only to decide which validation policy should run. The selected `validate-jwt` policy still performs the actual signature, issuer, expiry, and audience validation.
 
 ## Using Signing Keys Directly
 
@@ -204,7 +216,7 @@ The downside is that you have to manually update the key when it rotates. Always
 
 When token validation fails, the error message APIM returns to the client is intentionally vague for security reasons. But you can get more details by enabling tracing.
 
-In the Azure Portal, go to the Test tab for your API, enable "Ocp-Apim-Trace" by checking the trace box, and send a request with the problematic token. The trace output will show exactly why validation failed - whether it is a signature mismatch, an expired token, a wrong audience, or a missing required claim.
+In the Azure Portal, go to the Test tab for your API, enable tracing, and send a request with the problematic token. For calls outside the portal test console, use API Management request tracing with a time-limited debug token and pass it in the `Apim-Debug-Authorization` header. APIM no longer supports enabling traces with the old `Ocp-Apim-Trace` header. The trace output will show exactly why validation failed - whether it is a signature mismatch, an expired token, a wrong audience, or a missing required claim.
 
 You can also add diagnostic logging to capture validation errors:
 
@@ -213,8 +225,8 @@ You can also add diagnostic logging to capture validation errors:
 <on-error>
     <base />
     <choose>
-        <when condition="@(context.Response.StatusCode == 401)">
-            <trace source="jwt-validation" severity="warning">
+        <when condition="@(context.LastError.Source == &quot;validate-jwt&quot;)">
+            <trace source="jwt-validation" severity="error">
                 <message>@($"JWT validation failed: {context.LastError.Message}")</message>
             </trace>
         </when>
@@ -224,7 +236,7 @@ You can also add diagnostic logging to capture validation errors:
 
 ## Performance Considerations
 
-The `validate-jwt` policy is fast because APIM caches the signing keys from the OpenID Connect discovery endpoint. It does not make an outbound call for every request. The keys are refreshed periodically (typically every few hours).
+The `validate-jwt` policy is fast because APIM caches the signing keys from the OpenID Connect discovery endpoint. It does not make an outbound call for every request. APIM currently pulls the OpenID configuration and JWKS about every hour, and if a token references a missing `kid`, it retries the endpoint at most once every five minutes.
 
 However, if your token includes a `nonce` or you are doing additional claim lookups against an external service, that adds latency. Keep your validation logic at the gateway simple and leave complex authorization decisions to your backend.
 
