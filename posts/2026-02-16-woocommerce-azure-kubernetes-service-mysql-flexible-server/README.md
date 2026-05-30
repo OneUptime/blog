@@ -10,7 +10,7 @@ Description: Deploy a scalable WooCommerce store on Azure Kubernetes Service wit
 
 WooCommerce is the most popular e-commerce platform in the world, powering over 5 million online stores. Running it on traditional shared hosting works for small shops, but once you start handling serious traffic - flash sales, holiday peaks, thousands of concurrent shoppers - you need infrastructure that can scale horizontally. Azure Kubernetes Service (AKS) gives you that. You can run multiple WooCommerce pods behind a load balancer, scale them up during traffic spikes, and scale them down during quiet periods.
 
-In this guide, I will deploy WooCommerce on AKS with Azure Database for MySQL Flexible Server as the database backend, complete with shared storage for media files and Redis for caching.
+In this guide, I will deploy WooCommerce on AKS with Azure Database for MySQL Flexible Server as the database backend, complete with shared storage for media files and Azure Managed Redis for caching.
 
 ## Architecture
 
@@ -28,16 +28,16 @@ flowchart TD
     C --> G[Azure Files - Shared Media]
     D --> G
     E --> G
-    C --> H[Azure Cache for Redis]
+    C --> H[Azure Managed Redis]
     D --> H
     E --> H
 ```
 
-Each WooCommerce pod runs Nginx + PHP-FPM. The database is a managed MySQL Flexible Server. Media files are on a shared Azure Files mount. Redis handles object caching and session storage.
+Each WooCommerce pod runs Nginx + PHP-FPM. The database is a managed MySQL Flexible Server. Media files are on a shared Azure Files mount. Redis handles WordPress object caching.
 
 ## Setting Up the AKS Cluster
 
-Create an AKS cluster with a system node pool and a user node pool for WooCommerce workloads.
+Create an AKS cluster with a system node pool and add a user node pool for WooCommerce workloads.
 
 ```bash
 # Create a resource group
@@ -54,6 +54,15 @@ az aks create \
   --generate-ssh-keys \
   --network-plugin azure \
   --enable-addons monitoring
+
+# Add a user node pool for WooCommerce workloads
+az aks nodepool add \
+  --resource-group rg-woocommerce \
+  --cluster-name aks-woocommerce \
+  --name woopool \
+  --node-count 2 \
+  --node-vm-size Standard_D4s_v3 \
+  --mode User
 
 # Get credentials for kubectl
 az aks get-credentials \
@@ -83,18 +92,25 @@ az mysql flexible-server db create \
   --database-name woocommerce
 ```
 
-## Setting Up Redis Cache
+## Setting Up Azure Managed Redis
 
-Redis handles PHP session storage (important for shopping carts) and WordPress object caching.
+Redis handles WordPress object caching.
 
 ```bash
-# Create Redis Cache
-az redis create \
+# Create Azure Managed Redis
+az redisenterprise create \
   --name woo-redis-cache \
   --resource-group rg-woocommerce \
   --location eastus \
-  --sku Standard \
-  --vm-size c1
+  --sku Balanced_B1 \
+  --access-keys-authentication Enabled
+
+# Get an access key for the Kubernetes secret
+az redisenterprise database list-keys \
+  --cluster-name woo-redis-cache \
+  --resource-group rg-woocommerce \
+  --query primaryKey \
+  --output tsv
 ```
 
 ## Creating the WooCommerce Docker Image
@@ -115,7 +131,8 @@ RUN apk add --no-cache \
     libjpeg-turbo-dev \
     freetype-dev \
     libzip-dev \
-    icu-dev
+    icu-dev \
+    $PHPIZE_DEPS
 
 # Install PHP extensions required by WordPress and WooCommerce
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -148,6 +165,9 @@ COPY php.ini /usr/local/etc/php/php.ini
 # Download WordPress
 RUN wp core download --path=/var/www/html --allow-root
 
+# Install plugins into the image so every replica has the same code
+RUN wp plugin install woocommerce redis-cache --path=/var/www/html --allow-root
+
 # Set working directory
 WORKDIR /var/www/html
 
@@ -172,15 +192,16 @@ define('DB_PASSWORD', getenv('DB_PASSWORD'));
 define('DB_HOST', getenv('DB_HOST'));
 define('DB_CHARSET', 'utf8mb4');
 define('DB_COLLATE', '');
+define('MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL);
 
 // Redis configuration for object caching
 define('WP_REDIS_HOST', getenv('REDIS_HOST'));
-define('WP_REDIS_PORT', getenv('REDIS_PORT') ?: 6380);
+define('WP_REDIS_PORT', getenv('REDIS_PORT') ?: 10000);
 define('WP_REDIS_PASSWORD', getenv('REDIS_PASSWORD'));
 define('WP_REDIS_SCHEME', 'tls');
 
-// Session handling via Redis
-define('WP_REDIS_DATABASE', 1);
+// Prefix cache keys for this WordPress site
+define('WP_REDIS_PREFIX', 'woocommerce:');
 
 // Force HTTPS behind load balancer
 if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) &&
@@ -204,7 +225,17 @@ define('WP_MAX_MEMORY_LIMIT', '512M');
 
 Create the Kubernetes resources for the WooCommerce deployment.
 
-First, store secrets.
+First, create the namespace.
+
+```yaml
+# namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: woocommerce
+```
+
+Next, store secrets.
 
 ```yaml
 # secrets.yaml
@@ -256,6 +287,8 @@ spec:
       labels:
         app: woocommerce
     spec:
+      nodeSelector:
+        kubernetes.azure.com/mode: user
       containers:
       - name: woocommerce
         image: your-acr.azurecr.io/woocommerce:latest
@@ -274,9 +307,9 @@ spec:
               name: woo-secrets
               key: db-password
         - name: REDIS_HOST
-          value: "woo-redis-cache.redis.cache.windows.net"
+          value: "woo-redis-cache.eastus.redis.azure.net"
         - name: REDIS_PORT
-          value: "6380"
+          value: "10000"
         - name: REDIS_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -338,10 +371,10 @@ metadata:
   name: woocommerce-ingress
   namespace: woocommerce
   annotations:
-    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/proxy-body-size: "64m"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - shop.yourdomain.com
@@ -412,17 +445,17 @@ wp core install \
   --admin_email=admin@yourdomain.com \
   --allow-root
 
-# Install and activate WooCommerce
-wp plugin install woocommerce --activate --allow-root
+# Activate WooCommerce
+wp plugin activate woocommerce --allow-root
 
-# Install Redis object cache plugin
-wp plugin install redis-cache --activate --allow-root
+# Activate Redis object cache plugin
+wp plugin activate redis-cache --allow-root
 wp redis enable --allow-root
 ```
 
 ## WooCommerce-Specific Optimizations
 
-WooCommerce has some specific needs in a Kubernetes environment. Shopping cart sessions need to persist across pods (handled by Redis). Cron jobs should run externally rather than on every page load.
+WooCommerce has some specific needs in a Kubernetes environment. Media uploads need to be shared across pods, and WordPress object cache entries should be available to every replica. Cron jobs should run externally rather than on every page load.
 
 ```php
 // Add to wp-config.php
@@ -456,4 +489,4 @@ spec:
 
 ## Wrapping Up
 
-Running WooCommerce on AKS gives you the scaling capabilities that shared hosting cannot provide. The combination of multiple pods behind an ingress controller, a managed MySQL database, Redis for session persistence, and horizontal pod autoscaling means your store can handle traffic spikes without manual intervention. The initial setup is more involved than a traditional hosting deployment, but the operational benefits - automated scaling, rolling updates, self-healing pods - make it worth it for stores that need to handle serious traffic volumes.
+Running WooCommerce on AKS gives you the scaling capabilities that shared hosting cannot provide. The combination of multiple pods behind an ingress controller, a managed MySQL database, Redis for object caching, and horizontal pod autoscaling means your store can handle traffic spikes without manual intervention. The initial setup is more involved than a traditional hosting deployment, but the operational benefits - automated scaling, rolling updates, self-healing pods - make it worth it for stores that need to handle serious traffic volumes.
