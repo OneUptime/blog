@@ -10,7 +10,7 @@ Description: Automate Azure resource group creation, management, and tagging wit
 
 Managing Azure resources manually through the portal works when you have a handful of resources, but it does not scale. When you have dozens of resource groups across multiple subscriptions, each needing consistent tags, naming conventions, and configurations, manual management becomes error-prone and time-consuming.
 
-The Azure CLI is the tool for automating these operations. It is available on every platform, works well in scripts and pipelines, and covers the full Azure API surface. In this post, I will walk through practical scripts for resource group management, tagging strategies, bulk operations, and pipeline integration.
+The Azure CLI is the tool for automating these operations. It is available on every platform, works well in scripts and pipelines, and covers a broad Azure management surface. In this post, I will walk through practical scripts for resource group management, tagging strategies, bulk operations, and pipeline integration.
 
 ## Azure CLI Basics
 
@@ -19,9 +19,9 @@ If you have not used the Azure CLI before, here is the quick setup.
 ```bash
 # Install Azure CLI (macOS)
 
-brew install azure-cli
+brew update && brew install azure-cli
 
-# Install Azure CLI (Linux)
+# Install Azure CLI (Debian/Ubuntu Linux)
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
 # Log in to Azure
@@ -144,17 +144,19 @@ fi
 echo "Resource group tags: $RG_TAGS"
 
 # Get all resource IDs in the group
-RESOURCE_IDS=$(az resource list \
+mapfile -t RESOURCE_IDS < <(az resource list \
   --resource-group "$RG_NAME" \
   --query "[].id" \
   -o tsv)
 
+mapfile -t TAG_ARGS < <(echo "$RG_TAGS" | jq -r 'to_entries | map("\(.key)=\(.value)") | .[]')
+
 # Counter for progress tracking
-TOTAL=$(echo "$RESOURCE_IDS" | wc -l)
+TOTAL=${#RESOURCE_IDS[@]}
 CURRENT=0
 
 # Apply tags to each resource
-while IFS= read -r RESOURCE_ID; do
+for RESOURCE_ID in "${RESOURCE_IDS[@]}"; do
   CURRENT=$((CURRENT + 1))
 
   if [ -z "$RESOURCE_ID" ]; then
@@ -167,11 +169,11 @@ while IFS= read -r RESOURCE_ID; do
   # Merge tags (preserve existing resource tags, add/update from RG)
   az resource tag \
     --ids "$RESOURCE_ID" \
-    --tags $(echo "$RG_TAGS" | jq -r 'to_entries | map("\(.key)=\(.value)") | .[]') \
+    --tags "${TAG_ARGS[@]}" \
     --is-incremental \
     --output none 2>/dev/null || echo "  Warning: Could not tag $RESOURCE_NAME"
 
-done <<< "$RESOURCE_IDS"
+done
 
 echo "Done. Tagged $TOTAL resources."
 ```
@@ -260,7 +262,7 @@ TODAY=$(date -u '+%Y-%m-%d')
 
 # Find resource groups with an expiry date that has passed
 EXPIRED_RGS=$(az group list \
-  --query "[?tags.expiryDate != null && tags.expiryDate < '$TODAY' && tags.environment != 'prod'].{name:name, expiry:tags.expiryDate, env:tags.environment}" \
+  --query "[?tags.expiryDate != null && tags.expiryDate < '$TODAY' && tags.environment != null && tags.environment != 'prod'].{name:name, expiry:tags.expiryDate, env:tags.environment}" \
   -o json)
 
 COUNT=$(echo "$EXPIRED_RGS" | jq 'length')
