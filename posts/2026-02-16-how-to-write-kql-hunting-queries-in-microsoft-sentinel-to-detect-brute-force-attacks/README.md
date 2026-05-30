@@ -128,10 +128,10 @@ let failedSignIns =
     SigninLogs
     | where TimeGenerated > ago(24h)
     | where ResultType == "50126"  // Failed password
-    | summarize
-        FailCount = count(),
-        FailIPs = make_set(IPAddress, 10)
-        by UserPrincipalName;
+    | project
+        UserPrincipalName,
+        FailureTime = TimeGenerated,
+        FailureIP = IPAddress;
 // Now find successful sign-ins from the same accounts
 let successfulSignIns =
     SigninLogs
@@ -144,13 +144,22 @@ let successfulSignIns =
         AppDisplayName,
         DeviceDetail;
 // Join to find accounts that had failures followed by success
-failedSignIns
-| join kind=inner successfulSignIns on UserPrincipalName
-| where FailCount > 5  // At least 5 failures before success
+successfulSignIns
+| join kind=inner failedSignIns on UserPrincipalName
+| where FailureTime < SuccessTime
+| summarize
+    FailedAttempts = count(),
+    FailedFromIPs = make_set(FailureIP, 10),
+    FirstFailure = min(FailureTime),
+    LastFailure = max(FailureTime)
+    by UserPrincipalName, SuccessTime, SuccessIP, AppDisplayName
+| where FailedAttempts > 5  // At least 5 failures before success
 | project
     UserPrincipalName,
-    FailedAttempts = FailCount,
-    FailedFromIPs = FailIPs,
+    FailedAttempts,
+    FailedFromIPs,
+    FirstFailure,
+    LastFailure,
     SuccessfulSignInTime = SuccessTime,
     SuccessfulFromIP = SuccessIP,
     Application = AppDisplayName
@@ -220,14 +229,16 @@ let bruteForceIPs =
     | summarize FailCount = count() by IPAddress
     | where FailCount > 10
     | project IPAddress;
-ThreatIntelligenceIndicator
+ThreatIntelIndicators
 | where TimeGenerated > ago(30d)
-| where NetworkIP in (bruteForceIPs) or NetworkSourceIP in (bruteForceIPs)
+| where IsActive == true and IsDeleted == false and Revoked == false
+| where ValidUntil > now()
+| where ObservableValue in (bruteForceIPs)
 | project
-    ThreatType,
-    MaliciousIP = coalesce(NetworkIP, NetworkSourceIP),
-    Description,
-    ConfidenceScore,
+    ThreatType = tostring(Data.indicator_types[0]),
+    MaliciousIP = ObservableValue,
+    Description = tostring(Data.description),
+    Confidence,
     Source = SourceSystem
 ```
 
