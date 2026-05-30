@@ -43,8 +43,8 @@ The performance improvement depends on your specific gateway SKU and traffic pat
 
 FastPath has specific requirements:
 
-- **Gateway SKU**: You must use either UltraPerformance or ErGw3AZ gateway SKU. FastPath is not supported on Standard or HighPerformance gateway SKUs.
-- **ExpressRoute circuit SKU**: Must be an ExpressRoute circuit (not ExpressRoute Local). Both Standard and Premium circuits support FastPath.
+- **Gateway SKU**: You must use UltraPerformance, ErGw3AZ, or ErGwScale with at least 10 scale units. FastPath is not supported on Standard or HighPerformance gateway SKUs.
+- **ExpressRoute circuit type**: FastPath supports ExpressRoute Direct circuits and ExpressRoute provider circuits. ExpressRoute Direct is required for FastPath features such as VNet peering, UDRs, and Private Link.
 - **Peering type**: Only private peering supports FastPath. Microsoft peering does not.
 
 ## Step 1: Verify Your Gateway SKU
@@ -60,18 +60,17 @@ az network vnet-gateway show \
   --query "sku.name" -o tsv
 ```
 
-If your gateway is not UltraPerformance or ErGw3AZ, you need to upgrade it:
+If your gateway is not UltraPerformance, ErGw3AZ, or ErGwScale with at least 10 scale units, you need to upgrade or migrate it. You can resize only within the same SKU family: use UltraPerformance for a non-availability-zone gateway, ErGw3AZ for an availability-zone-enabled gateway, or ErGwScale with at least 10 scale units for a scalable gateway.
 
 ```bash
-# Upgrade the gateway to ErGw3AZ (zone-redundant ultra performance)
-# WARNING: This causes a brief connectivity interruption
+# Example: upgrade an availability-zone-enabled gateway to ErGw3AZ
 az network vnet-gateway update \
   --name myExpressRouteGateway \
   --resource-group myResourceGroup \
   --sku ErGw3AZ
 ```
 
-Gateway SKU upgrades cause a short period of downtime (typically 30-60 seconds), so plan this during a maintenance window.
+Gateway SKU changes can cause brief connectivity interruptions. Switching between availability-zone and non-availability-zone SKU families requires a gateway migration or delete-and-recreate workflow, so plan these changes during a maintenance window.
 
 ## Step 2: Enable FastPath on the Connection
 
@@ -93,7 +92,7 @@ az network vpn-connection create \
   --vnet-gateway1 myExpressRouteGateway \
   --express-route-circuit2 $CIRCUIT_ID \
   --routing-weight 0 \
-  --enable-fastpath true
+  --express-route-gateway-bypass true
 ```
 
 For an existing connection:
@@ -103,7 +102,7 @@ For an existing connection:
 az network vpn-connection update \
   --name myExpressRouteConnection \
   --resource-group myResourceGroup \
-  --enable-fastpath true
+  --express-route-gateway-bypass true
 ```
 
 ## Step 3: Verify FastPath Is Active
@@ -132,7 +131,7 @@ az network vpn-connection show \
 
 To confirm FastPath is making a difference, measure latency and throughput before and after enabling it.
 
-**Latency test using ping or PSPing**: Run latency measurements from an on-premises machine to an Azure VM before and after enabling FastPath. You should see a reduction in round-trip time.
+**Latency test using ping or PSPing**: Run latency measurements from an on-premises machine to an Azure VM before and after enabling FastPath. You may see a reduction in round-trip time, depending on your circuit, gateway SKU, and traffic path.
 
 ```bash
 # From an on-premises Linux machine, measure latency to an Azure VM
@@ -158,7 +157,7 @@ Compare the throughput numbers with and without FastPath. The improvement is mos
 Monitor your ExpressRoute connection to detect any issues with FastPath:
 
 ```bash
-# Enable diagnostic logging for the ExpressRoute gateway
+# Create a diagnostic setting for exportable gateway metrics
 az monitor diagnostic-settings create \
   --name "expressroute-diagnostics" \
   --resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Network/virtualNetworkGateways/myExpressRouteGateway" \
@@ -178,19 +177,19 @@ When FastPath is working correctly, you should see the gateway throughput metric
 
 FastPath has several known limitations that you need to be aware of:
 
-**No support for VNet peering transit**: FastPath only works for VMs in the VNet directly connected to the ExpressRoute gateway. Traffic to peered VNets still goes through the gateway. If you have a hub-and-spoke topology, only the hub VNet benefits from FastPath.
+**VNet peering requires ExpressRoute Direct**: FastPath to peered spoke VNets is supported only with ExpressRoute Direct, and the hub and spoke VNets must be in the same Azure region. With ExpressRoute provider circuits, traffic to peered VNets still goes through the gateway.
 
-**No support for UDRs on the GatewaySubnet**: User-defined routes on the GatewaySubnet are not applied to FastPath traffic since the traffic bypasses the gateway. If you rely on UDRs for traffic steering, FastPath will skip them.
+**UDRs require ExpressRoute Direct**: User-defined routes with FastPath are supported only on ExpressRoute Direct circuits. If you rely on UDRs for traffic steering with an ExpressRoute provider circuit, that traffic does not use FastPath.
 
-**No support for Private Link**: Traffic destined for Private Link endpoints still goes through the gateway even with FastPath enabled. This is because Private Link uses a different forwarding mechanism.
+**Private Link requires ExpressRoute Direct enrollment**: Private Link over FastPath is available only for ExpressRoute Direct in limited general availability and requires enrollment. Traffic to unsupported Private Link scenarios flows through the gateway.
 
-**No support for Basic Load Balancer**: FastPath does not work with backends behind a Basic SKU internal load balancer. Use Standard Load Balancer instead.
+**Spoke load balancers and PaaS services are not supported**: FastPath does not support traffic to Azure internal load balancers or Azure PaaS services deployed in spoke VNets. Internal load balancers deployed in the hub VNet work with FastPath.
 
-**Limited NSG flow log support**: Since FastPath traffic does not go through the gateway, flow logs at the gateway level do not capture this traffic. You need NSG flow logs on the VM's subnet instead.
+**Limited gateway flow visibility**: Since FastPath traffic does not go through the gateway, flow logs at the gateway level do not capture this traffic. Use virtual network flow logs for subnet-level traffic visibility. NSG flow logs are being retired and new NSG flow logs can no longer be created.
 
 ## Hub-and-Spoke Considerations
 
-In a hub-and-spoke topology, FastPath only helps with traffic going to VMs in the hub VNet. For spoke VNets, traffic still traverses the gateway because VNet peering requires the gateway for route propagation.
+In a hub-and-spoke topology, FastPath helps with traffic going to VMs in the hub VNet. For spoke VNets, FastPath is supported only with ExpressRoute Direct, and the hub and spoke VNets must be in the same Azure region. With ExpressRoute provider circuits, spoke traffic still traverses the gateway.
 
 If you need FastPath performance for spoke VNets, consider these alternatives:
 
@@ -207,7 +206,7 @@ If FastPath causes unexpected behavior, you can disable it without downtime:
 az network vpn-connection update \
   --name myExpressRouteConnection \
   --resource-group myResourceGroup \
-  --enable-fastpath false
+  --express-route-gateway-bypass false
 ```
 
 Traffic will resume flowing through the gateway within a few seconds. This is a non-disruptive operation - existing connections are maintained, though there might be a brief increase in latency as traffic shifts back to the gateway path.
