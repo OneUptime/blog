@@ -8,7 +8,7 @@ Description: Implement graceful shutdown in a Node.js Cloud Run service to prope
 
 ---
 
-When Cloud Run decides to terminate one of your instances - due to scale-down, a new revision deployment, or resource pressure - it sends a SIGTERM signal to your container. You then have a limited window (10 seconds by default, configurable up to 60 seconds) to finish what you are doing before the process is killed. If your service has active Pub/Sub connections, open database transactions, or in-flight HTTP requests, failing to handle this signal properly can result in lost messages, incomplete operations, and data inconsistency.
+When Cloud Run decides to terminate one of your instances - due to scale-down, a new revision deployment, or resource pressure - it sends a SIGTERM signal to your container. You then have a limited window of 10 seconds to finish what you are doing before the process is killed. If your service has active Pub/Sub connections, open database transactions, or in-flight HTTP requests, failing to handle this signal properly can result in lost messages, incomplete operations, and data inconsistency.
 
 In this post, I will walk through implementing graceful shutdown for a Node.js service on Cloud Run that has active Pub/Sub pull subscriptions, HTTP request handling, and background tasks.
 
@@ -75,7 +75,7 @@ process.on('SIGTERM', async () => {
   const shutdownTimeout = setTimeout(() => {
     console.log('Shutdown timeout reached, forcing exit');
     process.exit(1);
-  }, 25000); // Cloud Run gives up to 10s by default
+  }, 9000); // Cloud Run sends SIGKILL after 10s
 
   // Wait for cleanup to finish
   try {
@@ -117,8 +117,8 @@ async function startConsumer(subscriptionName) {
       maxMessages: 10,
       allowExcessMessages: false,
     },
-    // Extend the ack deadline while processing
-    ackDeadline: 60,
+    // Set the maximum lease extension while processing
+    maxAckDeadline: { seconds: 60 },
   });
 
   // Handle incoming messages
@@ -166,10 +166,10 @@ async function stopConsumer() {
   console.log(`Active messages: ${activeMessages.size}`);
 
   // Close the subscription to stop pulling new messages
-  subscription.close();
+  await subscription.close();
 
   // Wait for active messages to finish processing
-  const maxWait = 20000; // 20 seconds
+  const maxWait = 8000; // Cloud Run sends SIGKILL after 10 seconds
   const startTime = Date.now();
 
   while (activeMessages.size > 0 && (Date.now() - startTime) < maxWait) {
@@ -200,15 +200,16 @@ let activeRequests = 0;
 function trackRequests(req, res, next) {
   activeRequests++;
 
-  // Decrement when the response finishes
-  res.on('finish', () => {
+  let done = false;
+  const decrement = () => {
+    if (done) return;
+    done = true;
     activeRequests--;
-  });
+  };
 
-  // Also handle premature close
-  res.on('close', () => {
-    activeRequests--;
-  });
+  // Decrement when the response finishes or the connection closes early
+  res.on('finish', decrement);
+  res.on('close', decrement);
 
   next();
 }
@@ -277,9 +278,8 @@ app.post('/api/process', async (req, res) => {
 
 const server = http.createServer(app);
 
-// Increase the shutdown timeout on Cloud Run
-// gcloud run deploy --timeout 30
-const SHUTDOWN_TIMEOUT = 25000;
+// Keep the shutdown timeout under Cloud Run's 10-second shutdown window
+const SHUTDOWN_TIMEOUT = 9000;
 
 process.on('SIGTERM', async () => {
   const shutdownStart = Date.now();
@@ -295,15 +295,20 @@ process.on('SIGTERM', async () => {
   try {
     // Step 1: Stop accepting new HTTP connections
     console.log('Closing HTTP server...');
-    await new Promise((resolve) => server.close(resolve));
+    const closeServer = new Promise((resolve, reject) => {
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
 
     // Step 2: Stop the Pub/Sub consumer
     console.log('Stopping Pub/Sub consumer...');
-    await stopConsumer();
+    const stopPubSub = stopConsumer();
 
-    // Step 3: Wait for in-flight HTTP requests
+    // Step 3: Wait for in-flight HTTP requests and Pub/Sub messages
     console.log('Waiting for in-flight requests...');
-    await waitForRequests(10000);
+    await Promise.all([closeServer, stopPubSub, waitForRequests(8000)]);
 
     // Step 4: Close any other resources
     console.log('Closing database connections...');
@@ -348,25 +353,24 @@ start().catch((error) => {
 });
 ```
 
-## Configuring Cloud Run for Graceful Shutdown
+## Configuring Cloud Run for Background Processing
 
-By default, Cloud Run gives your container 10 seconds after SIGTERM before killing it. For services with Pub/Sub connections, you should increase this.
+Cloud Run gives your container 10 seconds after SIGTERM before killing it. For services that process Pub/Sub messages in the background, configure CPU to remain allocated outside request handling.
 
 ```bash
-# Deploy with a longer termination grace period
+# Deploy with CPU allocated outside request handling
 
 gcloud run deploy my-service \
   --source . \
   --region us-central1 \
   --platform managed \
   --port 8080 \
-  --timeout 300 \
-  --cpu-throttling=false \
+  --no-cpu-throttling \
   --min-instances 1 \
   --set-env-vars "NODE_ENV=production"
 ```
 
-The `--cpu-throttling=false` flag is important - without it, Cloud Run throttles CPU during shutdown, making your cleanup code run slowly.
+The `--no-cpu-throttling` flag is important for this pattern - without it, Cloud Run only allocates CPU during request processing and during startup or shutdown, which can starve a pull subscriber that is doing background work between HTTP requests.
 
 ## Testing Graceful Shutdown Locally
 
@@ -395,7 +399,7 @@ A few things that can go wrong with graceful shutdown:
 - Using `process.exit(0)` in the SIGTERM handler without waiting for cleanup. This kills the process immediately.
 - Not handling the case where cleanup itself throws an error. Always use try-catch around your shutdown logic.
 - Setting up SIGTERM handlers but not testing them. The shutdown path is just as important as the happy path.
-- Forgetting that Cloud Run throttles CPU during shutdown by default. Your cleanup code will run much slower unless you disable CPU throttling.
+- Forgetting that Cloud Run can throttle CPU outside request processing. Background Pub/Sub consumers need CPU allocated even when the service is not handling HTTP requests.
 - Not setting a force-exit timeout. If your cleanup hangs, the container will be killed anyway, but without a clean exit code.
 
 Graceful shutdown is one of those things that seems simple but has real impact on reliability. When your Node.js service on Cloud Run handles SIGTERM properly - stopping new work, completing in-flight work, and cleaning up resources - you avoid message loss, data corruption, and mysterious errors that only happen during deployments or scale-down events.
