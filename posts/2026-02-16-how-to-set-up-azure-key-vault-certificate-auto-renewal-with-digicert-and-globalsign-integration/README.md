@@ -28,11 +28,11 @@ flowchart TD
     B --> C[CSR Submitted to DigiCert/GlobalSign]
     C --> D[CA Validates and Issues Certificate]
     D --> E[Key Vault Stores New Certificate]
-    E --> F[Applications Automatically Get Updated Certificate]
+    E --> F[Integrated Services Pick Up the Updated Certificate]
     F --> G[Old Certificate Version Retained for Rollback]
 ```
 
-The private key never leaves Key Vault. The CA only receives the CSR (which contains the public key), and the issued certificate is stored back in Key Vault. Applications that reference the certificate get the latest version automatically.
+The CA only receives the CSR (which contains the public key), and the issued certificate is stored back in Key Vault. If the certificate policy makes the key exportable, Azure services or callers with permission to read the certificate secret can retrieve the private key material as part of the PFX. Applications and Azure services should reference a versionless certificate or secret ID when they need to pick up the latest version automatically.
 
 ## Prerequisites
 
@@ -50,7 +50,7 @@ First, register your CA as a certificate issuer in Key Vault.
 
 ### DigiCert Integration
 
-You need your DigiCert API key and Organization ID from the CertCentral portal.
+You need your DigiCert account ID, API key, and Organization ID from the CertCentral portal. In the Azure CLI, the API key is passed as the issuer password.
 
 ```bash
 # Register DigiCert as a certificate issuer in Key Vault
@@ -60,13 +60,13 @@ az keyvault certificate issuer create \
   --issuer-name DigiCertIssuer \
   --provider-name DigiCert \
   --account-id "YOUR_DIGICERT_ACCOUNT_ID" \
-  --api-key "YOUR_DIGICERT_API_KEY" \
+  --password "YOUR_DIGICERT_API_KEY" \
   --organization-id "YOUR_ORG_ID"
 ```
 
 ### GlobalSign Integration
 
-For GlobalSign, you need your MSSL (Managed SSL) account credentials.
+For GlobalSign, you need your MSSL (Managed SSL) account credentials and administrator contact details.
 
 ```bash
 # Register GlobalSign as a certificate issuer in Key Vault
@@ -75,7 +75,15 @@ az keyvault certificate issuer create \
   --issuer-name GlobalSignIssuer \
   --provider-name GlobalSign \
   --account-id "YOUR_GLOBALSIGN_ACCOUNT_ID" \
-  --api-key "YOUR_GLOBALSIGN_API_KEY"
+  --password "YOUR_GLOBALSIGN_ACCOUNT_PASSWORD"
+
+az keyvault certificate issuer admin add \
+  --vault-name myKeyVault \
+  --issuer-name GlobalSignIssuer \
+  --email "admin@contoso.com" \
+  --first-name "Admin" \
+  --last-name "User" \
+  --phone "+1-555-0100"
 ```
 
 Verify the issuer is configured correctly.
@@ -205,7 +213,7 @@ The email notification triggers based on the `lifetimeActions` in the certificat
 
 ## Step 5: Integrate with Azure Services
 
-Many Azure services can pull certificates directly from Key Vault, which means they automatically pick up renewed certificates.
+Many Azure services can pull certificates directly from Key Vault, which means they can pick up renewed certificates when configured to use the latest Key Vault secret version.
 
 ### Azure App Service
 
@@ -218,7 +226,7 @@ az webapp config ssl import \
   --key-vault-certificate-name api-contoso-cert
 ```
 
-App Service periodically checks Key Vault for updated certificate versions and rotates automatically.
+App Service can automatically sync renewed Key Vault certificate versions to app bindings. If a binding still shows an older certificate, use the App Service certificate sync operation to force an immediate update.
 
 ### Azure Application Gateway
 
@@ -251,28 +259,18 @@ The `--use-latest-version true` flag ensures Front Door always uses the most rec
 
 Set up monitoring to catch renewal failures early.
 
-```bash
-# Create an Azure Monitor alert for certificate expiration
-az monitor metrics alert create \
-  --name "cert-expiry-alert" \
-  --resource-group myResourceGroup \
-  --scopes "/subscriptions/YOUR_SUB/resourceGroups/myResourceGroup/providers/Microsoft.KeyVault/vaults/myKeyVault" \
-  --condition "avg SaturationShoelace > 0" \
-  --description "Alert when Key Vault certificates are approaching expiration"
-```
-
-For more precise monitoring, use Azure Event Grid to subscribe to Key Vault certificate events.
+Use Azure Event Grid to subscribe to Key Vault certificate events.
 
 ```bash
 # Create an Event Grid subscription for certificate events
 az eventgrid event-subscription create \
   --name cert-renewal-events \
   --source-resource-id "/subscriptions/YOUR_SUB/resourceGroups/myResourceGroup/providers/Microsoft.KeyVault/vaults/myKeyVault" \
-  --included-event-types "Microsoft.KeyVault.CertificateNearExpiry" "Microsoft.KeyVault.CertificateExpired" \
+  --included-event-types "Microsoft.KeyVault.CertificateNewVersionCreated" "Microsoft.KeyVault.CertificateNearExpiry" "Microsoft.KeyVault.CertificateExpired" \
   --endpoint "https://your-webhook-endpoint.com/api/cert-events"
 ```
 
-This sends notifications to your webhook when certificates are near expiry or have expired, giving you real-time visibility into the renewal process.
+This sends notifications to your webhook when a new certificate version is created, when certificates are near expiry, or when certificates have expired, giving you real-time visibility into the renewal process.
 
 ## Handling Renewal Failures
 
@@ -312,10 +310,10 @@ az keyvault certificate create \
 
 4. **Test the full flow in a non-production vault first.** Create a test certificate with a short validity period and verify that auto-renewal works end-to-end before relying on it in production.
 
-5. **Monitor CA account credentials.** If your DigiCert or GlobalSign API key expires, all auto-renewals will fail silently until you update it.
+5. **Monitor CA account credentials.** If your DigiCert API key or GlobalSign account password expires, renewals will fail until you update the issuer credentials.
 
 6. **Keep certificate versions.** Key Vault retains previous versions of certificates. Do not purge old versions immediately - they are useful for rollback if the renewed certificate has issues.
 
 ## Wrapping Up
 
-Azure Key Vault certificate auto-renewal with DigiCert or GlobalSign integration takes the manual work out of certificate management. Once configured, certificates renew themselves before expiration, Azure services pick up the new certificates automatically, and your team gets notified if anything goes wrong. The initial setup requires CA credentials and a well-defined certificate policy, but after that the system runs itself. Just keep an eye on the monitoring alerts and CA account health, and you will never have a certificate-related outage again.
+Azure Key Vault certificate auto-renewal with DigiCert or GlobalSign integration takes the manual work out of certificate management. Once configured, certificates renew themselves before expiration, Azure services can pick up the new certificates when they are configured to use the latest Key Vault version, and your team gets notified if something goes wrong. The initial setup requires CA credentials and a well-defined certificate policy, but after that the system runs itself. Just keep an eye on the monitoring alerts and CA account health to reduce the risk of certificate-related outages.
