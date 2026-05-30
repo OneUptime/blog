@@ -10,15 +10,14 @@ Description: Learn how to use Azure Network Watcher IP Flow Verify to quickly di
 
 When a VM in Azure cannot reach a destination or receive incoming connections, the first suspect is usually a Network Security Group (NSG) rule. But Azure VMs can have NSGs at both the NIC level and the subnet level, and the effective rules are the intersection of both. Manually tracing through all the rules, their priorities, and their interactions is tedious and error-prone.
 
-Azure Network Watcher IP Flow Verify does this for you. You tell it "I want to send TCP traffic from this VM's IP on this port to that destination IP on that port" and it instantly tells you whether the traffic is allowed or denied, and which specific NSG rule is responsible.
+Azure Network Watcher IP Flow Verify does this for you. You tell it "I want to send TCP traffic from this VM's IP on this port to that destination IP on that port" and it instantly tells you whether the traffic is allowed or denied, and which specific security rule is responsible.
 
 ## What IP Flow Verify Does
 
-IP Flow Verify simulates a single packet and checks it against all applicable NSG rules (NIC-level and subnet-level) for a specific VM. It returns:
+IP Flow Verify simulates a single packet and checks it against all applicable NSG rules (NIC-level and subnet-level), and any Azure Virtual Network Manager security admin rules, for a specific VM. It returns:
 
 1. **Access:** Allow or Deny
-2. **Rule name:** The specific NSG rule that made the decision
-3. **Direction:** Whether it checked inbound or outbound rules
+2. **Rule name:** The specific security rule that made the decision
 
 It does not actually send traffic. It is a simulation against the current NSG configuration. This means you can test hypothetical scenarios without affecting live traffic.
 
@@ -50,7 +49,7 @@ The output looks like:
 ```json
 {
   "access": "Allow",
-  "ruleName": "AllowVnetOutbound"
+  "ruleName": "defaultSecurityRules/AllowVnetOutBound"
 }
 ```
 
@@ -59,7 +58,7 @@ Or if blocked:
 ```json
 {
   "access": "Deny",
-  "ruleName": "DenyAllOutbound"
+  "ruleName": "defaultSecurityRules/DenyAllOutBound"
 }
 ```
 
@@ -160,7 +159,7 @@ az network watcher test-ip-flow \
   --remote 8.8.8.8:*
 ```
 
-If denied, the output might show the rule name `DenyAllInBound` (the default deny rule). You need to add an explicit allow rule for port 80.
+If denied, the output might show the rule name `defaultSecurityRules/DenyAllInBound` (the default deny rule). You need to add an explicit allow rule for port 80.
 
 ### Scenario 2: Database VM Accessible Only from App Tier
 
@@ -209,15 +208,15 @@ If you have a restrictive NSG that denies internet-bound traffic, you will see w
 
 NSG rules are evaluated in priority order (lowest number first). The first matching rule determines the outcome. Here is how IP Flow Verify works through the rules:
 
-1. Gets all effective rules (NIC-level + subnet-level NSGs)
-2. Orders them by priority
-3. Checks each rule against the simulated packet
+1. Checks any matching Azure Virtual Network Manager security admin rules
+2. Gets the applicable NSG rules for the NIC-level and subnet-level NSGs
+3. Processes rules in priority order within each applicable NSG
 4. Returns the first matching rule
 
 Default rules have high priority numbers (65000+) and are evaluated last:
-- `AllowVnetInbound` (65000) - Allows intra-VNet traffic
-- `AllowAzureLoadBalancerInbound` (65001) - Allows health probes
-- `DenyAllInbound` (65500) - Denies everything else
+- `AllowVNetInBound` (65000) - Allows intra-VNet traffic
+- `AllowAzureLoadBalancerInBound` (65001) - Allows health probes
+- `DenyAllInBound` (65500) - Denies everything else
 
 Your custom rules (priority 100-4096) are evaluated before these defaults.
 
@@ -266,11 +265,11 @@ echo "All NSG rules validated successfully."
 
 ## Limitations
 
-- **NSG only.** IP Flow Verify checks NSG rules but not Azure Firewall, NVA rules, or route tables. It tells you about NSGs specifically.
-- **Single NIC check.** If your VM has multiple NICs, specify which one with `--nic` parameter.
+- **Security rules only.** IP Flow Verify checks NSG rules and Azure Virtual Network Manager security admin rules, but not Azure Firewall, NVA rules, or route tables.
+- **Single NIC check.** If your VM has multiple NICs and IP forwarding is enabled on any of them, specify which one with the `--nic` parameter.
 - **No FQDN support.** You must use IP addresses, not hostnames.
 - **VM must be running.** You cannot check NSG rules on a stopped VM.
-- **Does not check service endpoints or Private Endpoints.** These affect routing, not NSG evaluation.
+- **Does not test Private Endpoint resources directly.** IP Flow Verify tests rules applied to a VM's network interface. Use NSG diagnostics for supported non-VM targets and broader rule checks.
 
 ## Combining with Other Network Watcher Tools
 
@@ -278,7 +277,7 @@ IP Flow Verify works best when combined with other diagnostic tools:
 
 - **Next Hop:** Check if routing is correct (after confirming NSG is not the issue)
 - **Connection Troubleshoot:** End-to-end connectivity test that checks NSG, routes, and connectivity in one operation
-- **NSG Flow Logs:** Ongoing logging of all traffic decisions made by NSGs
+- **Virtual Network Flow Logs:** Ongoing flow logging for virtual networks; existing NSG Flow Logs are on a retirement path
 - **Packet Capture:** Inspect actual packets when you need deeper analysis
 
 ## Summary
