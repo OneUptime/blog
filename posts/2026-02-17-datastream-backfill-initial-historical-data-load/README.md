@@ -19,7 +19,7 @@ When you create a stream, Datastream can perform two operations in parallel:
 1. **CDC capture** - Reading changes from the source database's change log (binlog, WAL, or redo logs) in real time
 2. **Backfill** - Reading existing rows from the source tables via SELECT queries
 
-The backfill reads the current state of each table using consistent snapshots, so you get a point-in-time view of the data even while CDC changes are being applied. Datastream handles the deduplication between backfill rows and CDC events automatically.
+The backfill reads the existing rows from each table while CDC changes continue to stream. When BigQuery is the destination in merge mode, BigQuery applies the streamed changes by using the primary keys from the source table and Datastream event metadata.
 
 ```mermaid
 sequenceDiagram
@@ -33,7 +33,7 @@ sequenceDiagram
     Source-->>DS: New CDC events (streaming)
     DS->>BQ: Write backfill rows
     DS->>BQ: Write CDC events
-    Note over DS: Deduplicates overlapping<br/>backfill and CDC data
+    Note over DS,BQ: BigQuery applies changes<br/>by primary key and metadata
     DS->>BQ: Backfill complete, CDC continues
 ```
 
@@ -41,38 +41,46 @@ sequenceDiagram
 
 Datastream offers two backfill modes when creating a stream:
 
-**Automatic backfill** - Datastream backfills all included tables as soon as the stream starts. This is the default and the simplest option.
+**Automatic backfill** - Datastream backfills all included tables as soon as the stream starts. This is the simplest option.
 
 **Manual backfill** - You control which tables get backfilled and when. This gives you more control over timing and resource usage.
 
 Here is how to create a stream with automatic backfill:
 
 ```bash
-# Create a stream with automatic backfill (default behavior)
+# Create a stream with automatic backfill
+cat > mysql-source-config.json <<'JSON'
+{
+  "includeObjects": {
+    "mysqlDatabases": [{
+      "database": "production",
+      "mysqlTables": [
+        {"table": "orders"},
+        {"table": "customers"},
+        {"table": "products"}
+      ]
+    }]
+  }
+}
+JSON
+
+cat > bigquery-destination-config.json <<'JSON'
+{
+  "dataFreshness": "300s",
+  "singleTargetDataset": {
+    "datasetId": "my-project:replicated"
+  },
+  "merge": {}
+}
+JSON
 
 gcloud datastream streams create my-cdc-stream \
   --display-name="CDC with Auto Backfill" \
   --location=us-central1 \
   --source=mysql-source \
-  --mysql-source-config='{
-    "includeObjects": {
-      "mysqlDatabases": [{
-        "database": "production",
-        "mysqlTables": [
-          {"table": "orders"},
-          {"table": "customers"},
-          {"table": "products"}
-        ]
-      }]
-    }
-  }' \
+  --mysql-source-config=mysql-source-config.json \
   --destination=bq-dest \
-  --bigquery-destination-config='{
-    "dataFreshness": "300s",
-    "singleTargetDataset": {
-      "datasetId": "projects/my-project/datasets/replicated"
-    }
-  }' \
+  --bigquery-destination-config=bigquery-destination-config.json \
   --backfill-all \
   --project=my-project
 ```
@@ -80,12 +88,14 @@ gcloud datastream streams create my-cdc-stream \
 For manual backfill:
 
 ```bash
-# Create a stream with no automatic backfill
+# Create a stream with no automatic backfill, using the same config files
 gcloud datastream streams create my-cdc-stream \
   --display-name="CDC with Manual Backfill" \
   --location=us-central1 \
   --source=mysql-source \
+  --mysql-source-config=mysql-source-config.json \
   --destination=bq-dest \
+  --bigquery-destination-config=bigquery-destination-config.json \
   --backfill-none \
   --project=my-project
 ```
@@ -95,20 +105,23 @@ gcloud datastream streams create my-cdc-stream \
 With manual backfill mode, you trigger backfill per table when you are ready:
 
 ```bash
-# Start backfill for the orders table
-gcloud datastream streams objects start-backfill \
-  my-cdc-stream \
+# List objects first and use the object ID for the table you want to backfill
+gcloud datastream objects list \
+  --stream=my-cdc-stream \
   --location=us-central1 \
-  --mysql-database=production \
-  --mysql-table=orders \
+  --project=my-project \
+  --format="table(name, displayName, sourceObject, backfillJob.state)"
+
+# Start backfill for the orders table
+gcloud datastream objects start-backfill OBJECT_ID \
+  --stream=my-cdc-stream \
+  --location=us-central1 \
   --project=my-project
 
 # Start backfill for the customers table
-gcloud datastream streams objects start-backfill \
-  my-cdc-stream \
+gcloud datastream objects start-backfill OBJECT_ID \
+  --stream=my-cdc-stream \
   --location=us-central1 \
-  --mysql-database=production \
-  --mysql-table=customers \
   --project=my-project
 ```
 
@@ -116,11 +129,9 @@ You can also stop a backfill in progress:
 
 ```bash
 # Stop an ongoing backfill
-gcloud datastream streams objects stop-backfill \
-  my-cdc-stream \
+gcloud datastream objects stop-backfill OBJECT_ID \
+  --stream=my-cdc-stream \
   --location=us-central1 \
-  --mysql-database=production \
-  --mysql-table=orders \
   --project=my-project
 ```
 
@@ -130,20 +141,22 @@ Track how the backfill is progressing:
 
 ```bash
 # List stream objects and their backfill status
-gcloud datastream streams objects list \
-  my-cdc-stream \
+gcloud datastream objects list \
+  --stream=my-cdc-stream \
   --location=us-central1 \
   --project=my-project \
-  --format="table(name, sourceObject, backfillJob.state, backfillJob.lastStartTime)"
+  --format="table(name, displayName, sourceObject, backfillJob.state, backfillJob.lastStartTime)"
 ```
 
 The backfill state will be one of:
 
 - `NOT_STARTED` - Backfill has not begun
+- `PENDING` - Backfill is waiting for available resources
 - `ACTIVE` - Backfill is in progress
 - `STOPPED` - Backfill was manually stopped
-- `COMPLETED` - All existing rows have been loaded
 - `FAILED` - Backfill encountered an error
+- `COMPLETED` - All existing rows have been loaded
+- `UNSUPPORTED` - The table structure is unsupported for backfill
 
 ## Estimating Backfill Duration
 
@@ -161,7 +174,7 @@ WHERE TABLE_SCHEMA = 'production'
 ORDER BY DATA_LENGTH DESC;
 ```
 
-As a rule of thumb, Datastream can backfill about 1-5 GB per hour depending on the source database type and network configuration. A 100 GB table might take 20-100 hours to backfill.
+Actual throughput varies by source database type, row size, network configuration, and source load. For large tables, run a smaller backfill first and use the observed throughput to estimate the full table.
 
 ## Handling Large Table Backfills
 
@@ -175,7 +188,7 @@ Strategies for handling large tables:
 # Example: Use Cloud Scheduler to trigger backfill at 2 AM
 gcloud scheduler jobs create http trigger-backfill \
   --schedule="0 2 * * *" \
-  --uri="https://datastream.googleapis.com/v1/projects/my-project/locations/us-central1/streams/my-stream/objects:startBackfill" \
+  --uri="https://datastream.googleapis.com/v1/projects/my-project/locations/us-central1/streams/my-stream/objects/OBJECT_ID:startBackfillJob" \
   --http-method=POST \
   --oauth-service-account-email=scheduler-sa@my-project.iam.gserviceaccount.com
 ```
@@ -186,25 +199,17 @@ gcloud scheduler jobs create http trigger-backfill \
 
 ## Backfill and Data Consistency
 
-During backfill, both historical data and real-time CDC events flow to the destination simultaneously. Datastream uses source timestamps to maintain ordering, but there is a brief period where you might see duplicate rows for records that were modified during the backfill.
+During backfill, both historical data and real-time CDC events flow to the destination simultaneously. BigQuery uses event metadata and an internal change sequence number to apply events in the correct order, but there is a brief period where recently streamed changes may not yet be reflected because BigQuery applies changes according to the table staleness configuration.
 
-Datastream handles this by deduplicating based on primary keys and source timestamps. The most recent version of each record wins. However, if you query BigQuery during the backfill, you may see some inconsistencies.
+In BigQuery merge mode, BigQuery applies changes based on the source table primary keys. However, if you query BigQuery during the backfill, you may see some inconsistencies until the backfill and pending merges have caught up.
 
 To query safely during backfill:
 
 ```sql
--- Get the current state of each record, handling backfill duplicates
-SELECT * EXCEPT(row_num)
-FROM (
-  SELECT *,
-    ROW_NUMBER() OVER (
-      PARTITION BY order_id
-      ORDER BY datastream_metadata.source_timestamp DESC
-    ) AS row_num
-  FROM `my-project.replicated.orders`
-)
-WHERE row_num = 1
-  AND _metadata_deleted IS NOT TRUE
+-- Check the newest source event timestamp represented in the table
+SELECT
+  MAX(datastream_metadata.source_timestamp) AS latest_source_event_timestamp
+FROM `my-project.replicated.production_orders`
 ```
 
 ## Re-running Backfill
@@ -213,18 +218,16 @@ Sometimes you need to re-backfill a table. Maybe the initial backfill had errors
 
 ```bash
 # Stop the current backfill if running
-gcloud datastream streams objects stop-backfill \
-  my-cdc-stream \
+gcloud datastream objects stop-backfill OBJECT_ID \
+  --stream=my-cdc-stream \
   --location=us-central1 \
-  --mysql-database=production \
-  --mysql-table=orders
+  --project=my-project
 
 # Start a fresh backfill
-gcloud datastream streams objects start-backfill \
-  my-cdc-stream \
+gcloud datastream objects start-backfill OBJECT_ID \
+  --stream=my-cdc-stream \
   --location=us-central1 \
-  --mysql-database=production \
-  --mysql-table=orders
+  --project=my-project
 ```
 
 Note that re-running a backfill will re-read the entire table. There is no incremental backfill option. If the table is large, consider whether a targeted fix (like running a one-time query) would be faster than a full re-backfill.
@@ -235,33 +238,42 @@ Sometimes you want to backfill most tables but exclude a few. For example, you m
 
 ```bash
 # Create stream with backfill, excluding specific tables
+cat > mysql-source-config.json <<'JSON'
+{
+  "includeObjects": {
+    "mysqlDatabases": [{
+      "database": "production",
+      "mysqlTables": [
+        {"table": "orders"},
+        {"table": "customers"},
+        {"table": "products"},
+        {"table": "audit_log"}
+      ]
+    }]
+  }
+}
+JSON
+
+cat > mysql-backfill-excluded-objects.json <<'JSON'
+{
+  "mysqlDatabases": [{
+    "database": "production",
+    "mysqlTables": [
+      {"table": "audit_log"}
+    ]
+  }]
+}
+JSON
+
 gcloud datastream streams create selective-backfill-stream \
   --display-name="Selective Backfill" \
   --location=us-central1 \
   --source=mysql-source \
-  --mysql-source-config='{
-    "includeObjects": {
-      "mysqlDatabases": [{
-        "database": "production",
-        "mysqlTables": [
-          {"table": "orders"},
-          {"table": "customers"},
-          {"table": "products"},
-          {"table": "audit_log"}
-        ]
-      }]
-    },
-    "excludeObjects": {
-      "mysqlDatabases": [{
-        "database": "production",
-        "mysqlTables": [
-          {"table": "audit_log"}
-        ]
-      }]
-    }
-  }' \
+  --mysql-source-config=mysql-source-config.json \
   --destination=bq-dest \
+  --bigquery-destination-config=bigquery-destination-config.json \
   --backfill-all \
+  --mysql-excluded-objects=mysql-backfill-excluded-objects.json \
   --project=my-project
 ```
 
@@ -278,8 +290,7 @@ SELECT COUNT(*) FROM production.orders;
 
 -- Then compare with BigQuery
 SELECT COUNT(*)
-FROM `my-project.replicated.orders`
-WHERE _metadata_deleted IS NOT TRUE;
+FROM `my-project.replicated.production_orders`;
 ```
 
 Small differences are normal due to ongoing CDC changes. A large discrepancy indicates a backfill issue that needs investigation.
