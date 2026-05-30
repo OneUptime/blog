@@ -19,7 +19,7 @@ Before diving into the tool, you need to understand how Conditional Access evalu
 All applicable policies are evaluated simultaneously. There is no priority order. The result is determined by combining all matching policies:
 
 - If any matching policy blocks access, the result is **Block** (regardless of other policies)
-- If no policy blocks but at least one requires a grant control, all grant controls from all matching policies must be satisfied
+- If no policy blocks but at least one requires grant controls, the user must satisfy the grant logic for every matching policy
 - Policies with "Report-only" mode are logged but do not enforce
 
 The critical insight: **Block wins over everything.** If you have 10 policies that allow access and 1 policy that blocks, the user is blocked.
@@ -31,15 +31,15 @@ flowchart TD
     C -->|Yes| D[Access Blocked]
     C -->|No| E{Any policy with Grant controls matches?}
     E -->|No| F[Access Allowed - no policy applies]
-    E -->|Yes| G[Combine ALL grant controls from matching policies]
-    G --> H{User satisfies ALL required controls?}
+    E -->|Yes| G[Evaluate grant controls from all matching policies]
+    G --> H{User satisfies each policy's grant logic?}
     H -->|Yes| I[Access Granted]
     H -->|No| J[Access Blocked - missing requirement]
 ```
 
 ## Accessing the What If Tool
 
-Go to the Microsoft Entra admin center (entra.microsoft.com). Navigate to Protection, then Conditional Access. Click the "What If" button in the toolbar at the top.
+Go to the Microsoft Entra admin center (entra.microsoft.com). Navigate to Entra ID, then Conditional Access, then Policies. Click the "What If" button in the toolbar at the top.
 
 You will see a form where you can specify the simulation parameters:
 
@@ -69,11 +69,11 @@ Click "What If." The tool returns a list of policies organized into sections:
 
 ### Policies That Will Apply
 
-These policies match the conditions of your simulation and will enforce their controls. Look at each one:
+These policies match the conditions of your simulation and list the controls that must be satisfied. Look at each one:
 
 - **Policy name:** The name of the matching policy
 - **State:** Enabled or Report-only
-- **Result:** Grant (with conditions) or Block
+- **Controls:** Grant controls, session controls, or Block
 
 ### Policies That Will Not Apply
 
@@ -102,7 +102,7 @@ A user complains about being asked for MFA twice when accessing an application. 
 1. "Require MFA for all users" - Grant: Require MFA
 2. "Require MFA for risky sign-ins" - Grant: Require MFA
 
-Both match, but the user should only be prompted once. In practice, Entra ID combines grant controls from multiple policies. If both require MFA, the user only does MFA once. But if one requires MFA AND compliant device, while another requires MFA AND approved app, the user must satisfy all four controls.
+Both match, but the user should only be prompted once. In practice, Entra ID evaluates the grant controls from multiple policies together. If both require MFA, the user only does MFA once. But if one requires MFA and a compliant device, while another requires MFA and an approved app, the user must satisfy the requirements across both policies.
 
 Run What If with both policies and look at the combined grant controls.
 
@@ -171,17 +171,23 @@ For large policy sets, manually running What If in the portal for every scenario
 ```powershell
 # Evaluate Conditional Access policies for a specific scenario
 
-# This uses the Microsoft Graph API What If endpoint
-Connect-MgGraph -Scopes "Policy.Read.All", "Directory.Read.All"
+# This uses the Microsoft Graph What If evaluation endpoint
+Connect-MgGraph -Scopes "Policy.Read.ConditionalAccess"
 
 # Define the simulation parameters
 $whatIfParams = @{
     # The user to simulate
-    "conditionalAccessWhatIfSubject" = @{
+    "signInIdentity" = @{
+        "@odata.type" = "#microsoft.graph.userSignIn"
         "userId" = "user-object-id-here"
     }
+    # The target application
+    "signInContext" = @{
+        "@odata.type" = "#microsoft.graph.applicationContext"
+        "includeApplications" = @("00000003-0000-0000-c000-000000000000")
+    }
     # The conditions to simulate
-    "conditionalAccessWhatIfConditions" = @{
+    "signInConditions" = @{
         "clientAppType" = "browser"
         "country" = "US"
         "ipAddress" = "203.0.113.50"
@@ -189,22 +195,23 @@ $whatIfParams = @{
         "servicePrincipalRiskLevel" = "none"
         "signInRiskLevel" = "none"
         "userRiskLevel" = "none"
-        # The target application
-        "includeApplications" = @("00000003-0000-0000-c000-000000000000")
     }
+    # Return only policies that apply to this scenario
+    "appliedPoliciesOnly" = $true
 }
 
 # Make the What If API call
 $result = Invoke-MgGraphRequest `
     -Method POST `
-    -Uri "https://graph.microsoft.com/beta/identity/conditionalAccess/evaluate" `
+    -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/evaluate" `
     -Body ($whatIfParams | ConvertTo-Json -Depth 5)
 
 # Display results - which policies apply and their effect
-foreach ($policy in $result.appliedPolicies) {
+foreach ($policy in $result.value) {
     Write-Output "Policy: $($policy.displayName)"
-    Write-Output "  Result: $($policy.result)"
-    Write-Output "  Grant Controls: $($policy.enforcedGrantControls -join ', ')"
+    Write-Output "  State: $($policy.state)"
+    Write-Output "  Applies: $($policy.policyApplies)"
+    Write-Output "  Grant Controls: $($policy.grantControls.builtInControls -join ', ')"
     Write-Output ""
 }
 ```
