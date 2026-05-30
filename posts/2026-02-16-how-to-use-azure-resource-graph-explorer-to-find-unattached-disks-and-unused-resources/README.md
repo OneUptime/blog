@@ -34,7 +34,7 @@ Unattached managed disks are the most common source of waste. Each disk costs mo
 resources
 | where type == "microsoft.compute/disks"
 | where properties.diskState == "Unattached"
-| extend sizeGb = tostring(properties.diskSizeGB)
+| extend sizeGb = toint(properties.diskSizeGB)
 | extend sku = tostring(sku.name)
 | extend timeCreated = tostring(properties.timeCreated)
 | join kind=leftouter (
@@ -167,9 +167,16 @@ Load balancers without backend pools are not doing anything useful:
 // Find load balancers with empty backend pools
 resources
 | where type == "microsoft.network/loadbalancers"
-| where array_length(properties.backendAddressPools) == 0
-    or properties.backendAddressPools[0].properties.loadBalancerBackendAddresses == "[]"
-| project name, resourceGroup, subscriptionId, location, sku = tostring(sku.name)
+| extend backendPools = properties.backendAddressPools
+| extend backendPoolCount = array_length(backendPools)
+| mv-expand pool = iif(isnull(backendPoolCount) or backendPoolCount == 0, dynamic([{}]), backendPools) to typeof(dynamic)
+| extend backendIpConfigCount = coalesce(array_length(pool.properties.backendIPConfigurations), 0)
+| extend backendAddressCount = coalesce(array_length(pool.properties.loadBalancerBackendAddresses), 0)
+| summarize
+    backendPoolCount = max(backendPoolCount),
+    backendReferenceCount = sum(backendIpConfigCount + backendAddressCount)
+    by name, resourceGroup, subscriptionId, location, sku = tostring(sku.name)
+| where backendPoolCount == 0 or backendReferenceCount == 0
 ```
 
 ## Finding Unused Network Security Groups
@@ -190,10 +197,11 @@ resources
 VMs that have been stopped (deallocated) for a long time might be candidates for deletion. While deallocated VMs do not incur compute charges, they still consume storage for their disks:
 
 ```kusto
-// Find deallocated VMs (note: Resource Graph shows resource config, not runtime state)
-// This shows VMs that are still provisioned
+// Find deallocated VMs
 resources
 | where type == "microsoft.compute/virtualmachines"
+| extend powerState = tostring(properties.extended.instanceView.powerState.code)
+| where powerState == "PowerState/deallocated"
 | extend provisioningState = tostring(properties.provisioningState)
 | extend vmSize = tostring(properties.hardwareProfile.vmSize)
 | join kind=leftouter (
@@ -201,10 +209,10 @@ resources
     | where type == "microsoft.resources/subscriptions"
     | project subscriptionId, subscriptionName = name
 ) on subscriptionId
-| project name, subscriptionName, resourceGroup, vmSize, provisioningState, tags
+| project name, subscriptionName, resourceGroup, vmSize, powerState, provisioningState, tags
 ```
 
-For actual power state information, you need to combine Resource Graph with the VM instance view, as Resource Graph does not track runtime power state directly.
+Resource Graph exposes VM power state through extended instance view properties, so this query can identify deallocated VMs directly.
 
 ## Finding Empty Resource Groups
 
@@ -264,7 +272,7 @@ Set up a recurring report using Azure Automation or a Logic App that runs the ke
 $queries = @{
     "Unattached Disks" = "resources | where type == 'microsoft.compute/disks' | where properties.diskState == 'Unattached' | summarize count(), sum(toint(properties.diskSizeGB))"
     "Orphaned NICs" = "resources | where type == 'microsoft.network/networkinterfaces' | where isnull(properties.virtualMachine) | summarize count()"
-    "Unassociated PIPs" = "resources | where type == 'microsoft.network/publicipaddresses' | where isnull(properties.ipConfiguration) | summarize count()"
+    "Unassociated PIPs" = "resources | where type == 'microsoft.network/publicipaddresses' | where isnull(properties.ipConfiguration) and isnull(properties.natGateway) | summarize count()"
 }
 
 $report = "Weekly Waste Report`n==================`n"
