@@ -39,12 +39,12 @@ Click on "Health alerts" in the left menu, then click "+ Create service health a
 
 ### Step 3: Configure the Scope
 
-Choose which subscriptions, services, and regions you want to monitor. My recommendation is to start by selecting all services and all regions that your resources are deployed to. You can always narrow this down later.
+Choose which subscriptions, services, and regions you want to monitor. My recommendation is to start by selecting all services and all regions. Service Health only triggers alerts when an event affects resources in your subscriptions, so selecting everything does not create alerts for unused services or regions.
 
 The key selections are:
 - **Subscription(s)** - select the subscriptions you want coverage for
-- **Service(s)** - select the specific Azure services you use (Virtual Machines, App Service, SQL Database, etc.)
-- **Region(s)** - select only the regions where you have deployments
+- **Service(s)** - select all services, or the specific Azure services you use (Virtual Machines, App Service, SQL Database, etc.)
+- **Region(s)** - select all regions, or the regions where you have deployments
 
 ### Step 4: Choose Event Types
 
@@ -95,8 +95,9 @@ az monitor action-group create \
   --resource-group rg-monitoring \
   --name ag-service-health \
   --short-name svchealth \
-  --action email ops-team ops-team@yourcompany.com \
-  --action webhook incident-webhook https://your-incident-tool.com/webhook/azure
+  --location Global \
+  --action email ops-team ops-team@yourcompany.com usecommonalertschema \
+  --action webhook incident-webhook https://your-incident-tool.com/webhook/azure usecommonalertschema
 ```
 
 Now create the Service Health alert rule:
@@ -123,8 +124,7 @@ az monitor activity-log alert create \
   --resource-group rg-monitoring \
   --name "ServiceHealthAlert-Incidents" \
   --description "Alert on active Azure service issues only" \
-  --condition category=ServiceHealth \
-  --condition properties.incidentType=Incident \
+  --condition "category=ServiceHealth and properties.incidentType=Incident" \
   --action-group ag-service-health \
   --scope "/subscriptions/<your-subscription-id>"
 ```
@@ -186,7 +186,9 @@ For repeatable deployments, ARM templates are the way to go. Here is a template 
               "containsAny": [
                 "Incident",
                 "Maintenance",
+                "ActionRequired",
                 "Informational",
+                "Retirement",
                 "Security"
               ]
             }
@@ -210,9 +212,9 @@ For repeatable deployments, ARM templates are the way to go. Here is a template 
 Deploy this template with:
 
 ```bash
-# Deploy the ARM template to your subscription
-az deployment sub create \
-  --location eastus \
+# Deploy the ARM template to the monitoring resource group
+az deployment group create \
+  --resource-group rg-monitoring \
   --template-file service-health-alert.json \
   --parameters actionGroupEmail=ops@yourcompany.com
 ```
@@ -249,11 +251,11 @@ This sends a test notification through all configured actions so you can verify 
 
 ## Common Mistakes to Avoid
 
-**Not scoping to your actual regions.** If you select all regions, you will get noise from regions you do not use. Only select regions where you have deployed resources.
+**Scoping alerts too narrowly.** If you select only today's services and regions, you can miss future deployments unless you remember to update the alert. Selecting all services and regions is a good default because Service Health only alerts when events affect resources in your subscriptions.
 
 **Using a single action group for everything.** Different event types should trigger different responses. Use separate action groups for incidents versus advisories.
 
-**Forgetting to include all subscriptions.** If you have multiple subscriptions, each one needs its own alert rule (or use management group scope). A common gap is setting up alerts on your production subscription but forgetting dev/staging.
+**Forgetting to include all subscriptions.** If you have multiple subscriptions, each one needs its own alert rule, or you can deploy alert rules across subscriptions with Azure Policy at management group scope. A common gap is setting up alerts on your production subscription but forgetting dev/staging.
 
 **Not enabling the Common Alert Schema.** When configuring your action group, enable the Common Alert Schema. This standardizes the JSON payload sent to webhooks, making it easier to parse in downstream tools.
 
