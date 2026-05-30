@@ -12,7 +12,7 @@ Azure Synapse Analytics and Azure Data Lake Storage Gen2 form the backbone of ma
 
 ## How Synapse Connects to ADLS Gen2
 
-When you create a Synapse workspace, you specify a primary ADLS Gen2 account. This becomes the workspace's default storage location. Synapse uses managed identity authentication to access this primary account automatically, so there is no credential setup needed for the default storage.
+When you create a Synapse workspace, you specify a primary ADLS Gen2 account. This becomes the workspace's default storage location for Spark tables and Spark application logs. Synapse can use the workspace managed identity to access this storage account, but you still need to grant the managed identity the required storage RBAC permissions.
 
 For additional ADLS Gen2 accounts, you can configure linked services with various authentication methods.
 
@@ -230,7 +230,7 @@ Efficiently querying partitioned data in ADLS Gen2 is a common pattern. If your 
 
 ```sql
 -- Query partitioned Parquet data
--- Synapse reads the partition structure from the folder hierarchy
+-- filepath() exposes the values matched by the wildcards in the folder path
 SELECT
     r.filepath(1) AS year,
     r.filepath(2) AS month,
@@ -258,11 +258,17 @@ For production deployments, use managed identity authentication and restrict net
 
 ```bash
 # Enable managed private endpoints for secure connectivity
+cat > adls-private-endpoint.json <<'EOF'
+{
+  "privateLinkResourceId": "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/mydatalakeaccount",
+  "groupId": "dfs"
+}
+EOF
+
 az synapse managed-private-endpoints create \
   --workspace-name my-synapse-workspace \
   --pe-name adls-private-endpoint \
-  --resource-id "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/mydatalakeaccount" \
-  --group-id dfs
+  --file @adls-private-endpoint.json
 
 # Verify the managed identity has proper RBAC roles
 az role assignment list \
