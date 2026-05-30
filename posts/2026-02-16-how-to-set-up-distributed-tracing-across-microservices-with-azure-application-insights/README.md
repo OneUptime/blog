@@ -90,20 +90,19 @@ For Java services:
 ```bash
 # Download the Application Insights Java agent
 curl -L -o applicationinsights-agent.jar \
-  https://github.com/microsoft/ApplicationInsights-Java/releases/download/3.4.0/applicationinsights-agent-3.4.0.jar
+  https://github.com/microsoft/ApplicationInsights-Java/releases/download/3.7.5/applicationinsights-agent-3.7.5.jar
 ```
 
+Create an `applicationinsights.json` configuration file:
+
 ```json
-// applicationinsights.json configuration file
 {
   "connectionString": "<your-connection-string>",
   "role": {
     "name": "payment-service"
   },
-  "preview": {
-    "sampling": {
-      "percentage": 100
-    }
+  "sampling": {
+    "percentage": 100
   }
 }
 ```
@@ -150,7 +149,7 @@ appInsights.defaultClient.context.tags[
 
 ## Step 3: Use OpenTelemetry for Cross-Platform Tracing
 
-If your microservices use different languages and frameworks, OpenTelemetry provides a vendor-neutral way to instrument them all. Application Insights supports the OpenTelemetry Protocol (OTLP) for ingesting traces.
+If your microservices use different languages and frameworks, OpenTelemetry provides a vendor-neutral way to instrument them all. Application Insights supports OpenTelemetry through Azure Monitor OpenTelemetry distributions and exporters. Native OTLP ingestion is also available in Azure Monitor, but it is currently a preview feature.
 
 For a Python service using OpenTelemetry:
 
@@ -171,8 +170,8 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
 # Set up the tracer provider with Azure Monitor exporter
 tracer_provider = TracerProvider()
-exporter = AzureMonitorTraceExporter(
-    connection_string="<your-connection-string>"
+exporter = AzureMonitorTraceExporter.from_connection_string(
+    "<your-connection-string>"
 )
 tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(tracer_provider)
@@ -207,25 +206,31 @@ var message = new ServiceBusMessage(JsonSerializer.Serialize(order));
 if (activity != null)
 {
     message.ApplicationProperties["traceparent"] = activity.Id;
-    message.ApplicationProperties["tracestate"] = activity.TraceStateString;
+    if (!string.IsNullOrEmpty(activity.TraceStateString))
+    {
+        message.ApplicationProperties["tracestate"] = activity.TraceStateString;
+    }
 }
 
 await sender.SendMessageAsync(message);
 ```
 
 ```csharp
-// Consumer: Extract trace context from the message and create a linked span
-var traceparent = message.ApplicationProperties["traceparent"]?.ToString();
-if (traceparent != null)
+// Consumer: Extract trace context from the message and create a child activity
+if (message.ApplicationProperties.TryGetValue("traceparent", out var traceparentValue))
 {
-    var activity = new Activity("ProcessOrder");
-    activity.SetParentId(traceparent);
-    activity.Start();
+    var traceparent = traceparentValue?.ToString();
+    if (!string.IsNullOrEmpty(traceparent))
+    {
+        var activity = new Activity("ProcessOrder");
+        activity.SetParentId(traceparent);
+        activity.Start();
 
-    // Process the order within this trace context
-    ProcessOrder(message.Body);
+        // Process the order within this trace context
+        ProcessOrder(message.Body);
 
-    activity.Stop();
+        activity.Stop();
+    }
 }
 ```
 
@@ -264,8 +269,11 @@ requests
 ) on operation_Id
 | summarize TotalDuration = max(duration),
             Services = make_set(cloud_RoleName),
-            SlowestDependency = arg_max(DependencyDuration, DependencyName)
+            arg_max(DependencyDuration, DependencyName)
             by operation_Id
+| project operation_Id, TotalDuration, Services,
+          SlowestDependency = DependencyName,
+          SlowestDependencyDuration = DependencyDuration
 | order by TotalDuration desc
 | take 20
 ```
@@ -292,19 +300,30 @@ builder.Services.AddApplicationInsightsTelemetry(options =>
 {
     options.EnableAdaptiveSampling = true;
 });
+```
 
-// For more control, configure fixed-rate sampling
-builder.Services.Configure<TelemetryConfiguration>(config =>
+For more control, configure fixed-rate sampling:
+
+```csharp
+builder.Services.Configure<TelemetryConfiguration>(telemetryConfiguration =>
 {
-    var samplingProcessor = new FixedRateSamplingTelemetryProcessor(config.DefaultTelemetrySink.TelemetryProcessorChain)
-    {
-        IncludedTypes = "Request;Dependency;Trace",
-        SamplingPercentage = 25  // Keep 25% of traces
-    };
+    var telemetryProcessorChainBuilder =
+        telemetryConfiguration.DefaultTelemetrySink.TelemetryProcessorChainBuilder;
+
+    telemetryProcessorChainBuilder.UseSampling(
+        samplingPercentage: 25,
+        includedTypes: "Request;Dependency;Trace");
+
+    telemetryProcessorChainBuilder.Build();
+});
+
+builder.Services.AddApplicationInsightsTelemetry(new ApplicationInsightsServiceOptions
+{
+    EnableAdaptiveSampling = false
 });
 ```
 
-The critical thing is to use the same sampling decision across all services for a given trace. Application Insights handles this through the trace ID - if the first service decides to sample a trace, all downstream services respect that decision.
+The critical thing is to keep sampling decisions consistent across services for a given trace. Application Insights SDK sampling uses the operation ID to keep related telemetry together, but inconsistent sampling configuration across services can still break the end-to-end view.
 
 ## Common Pitfalls
 
