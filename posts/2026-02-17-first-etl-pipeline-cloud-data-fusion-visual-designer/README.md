@@ -24,13 +24,13 @@ gcloud services enable datafusion.googleapis.com --project=my-project
 # Create a basic instance (takes about 15-20 minutes)
 gcloud beta data-fusion instances create my-fusion-instance \
   --location=us-central1 \
-  --type=BASIC \
+  --edition=basic \
   --project=my-project
 ```
 
-Instance types:
-- **Basic** - Good for development and small workloads. Lower cost.
-- **Enterprise** - Adds features like replication, lineage, and more compute resources.
+Instance editions:
+- **Basic** - Good for production workloads with moderate needs. Lower cost than Enterprise.
+- **Enterprise** - Good for large-scale, mission-critical pipelines and features such as RBAC and streaming pipelines.
 
 After creation, get the instance URL:
 
@@ -39,7 +39,7 @@ After creation, get the instance URL:
 gcloud beta data-fusion instances describe my-fusion-instance \
   --location=us-central1 \
   --project=my-project \
-  --format="value(apiEndpoint)"
+  --format="value(serviceEndpoint)"
 ```
 
 Open this URL in your browser to access the Data Fusion UI.
@@ -71,7 +71,7 @@ Let me walk through a practical example. We will build a pipeline that reads CSV
 1. Open the Data Fusion UI
 2. Click "Studio" in the left navigation
 3. Click "+" to create a new pipeline
-4. Choose "Batch pipeline" (for scheduled runs) or "Realtime pipeline" (for streaming)
+4. Choose "Batch pipeline" (for scheduled runs). Realtime pipelines are for streaming and require an edition that supports streaming.
 5. Select "Batch pipeline" for this example
 
 ### Step 2: Add a GCS Source
@@ -84,7 +84,7 @@ Configure the source:
 - **Reference Name:** `raw_sales_csv`
 - **Path:** `gs://my-data-bucket/sales/*.csv`
 - **Format:** `csv`
-- **Skip Header:** `true`
+- **Use first row as header:** `true`
 - **Output Schema:** Define your columns
 
 Click "Get Schema" or manually define the output schema:
@@ -114,7 +114,8 @@ In the Wrangler editor, you can see a preview of your data and apply transformat
 
 **Parse dates:**
 ```text
-parse-as-date :date 'yyyy-MM-dd'
+parse-as-simple-date :date 'yyyy-MM-dd'
+set-column :date date.toLocalDate()
 ```
 
 **Convert numeric fields:**
@@ -136,7 +137,7 @@ uppercase :region
 
 **Filter out invalid rows:**
 ```text
-filter-rows-on condition-if-matched :quantity < 0
+filter-rows-on condition-true (quantity < 0)
 ```
 
 **Drop unnecessary columns:**
@@ -147,13 +148,14 @@ drop :_raw_column
 Each transformation is recorded as a directive. The full list of directives appears in the Wrangler configuration:
 
 ```text
-parse-as-date :date 'yyyy-MM-dd'
+parse-as-simple-date :date 'yyyy-MM-dd'
+set-column :date date.toLocalDate()
 set-type :quantity integer
 set-type :unit_price double
 set-column :total_amount quantity * unit_price
 trim :region
 uppercase :region
-filter-rows-on condition-if-matched :quantity < 0
+filter-rows-on condition-true (quantity < 0)
 ```
 
 ### Step 4: Add a BigQuery Sink
@@ -195,17 +197,18 @@ This preview step catches most configuration errors before you spend money on a 
 
 ## Adding Error Handling
 
-Real pipelines need error handling. Data Fusion supports error ports on most nodes:
+Real pipelines need error handling. Wrangler can send records that match an error condition to an error collector:
 
 1. Click on the Wrangler node
-2. In the configuration, look for "Error handling"
-3. Choose "Send to error port" for rows that fail transformation
+2. Add a "send to error" directive for rows that should be treated as invalid
+3. Apply the Wrangler recipe
 
 Add an error sink:
 
-1. Drag another GCS sink onto the canvas
-2. Connect the Wrangler's error port (the red dot) to this GCS sink
-3. Configure it to write to `gs://my-data-bucket/errors/`
+1. Drag an "Error Collector" plugin onto the canvas
+2. Connect the Wrangler to the Error Collector
+3. Connect the Error Collector to a GCS sink
+4. Configure the GCS sink to write to `gs://my-data-bucket/errors/`
 
 Now rows that fail transformation are written to the error bucket instead of crashing the pipeline.
 
@@ -213,7 +216,8 @@ Now rows that fail transformation are written to the error bucket instead of cra
 graph LR
     A[GCS Source] --> B[Wrangler Transform]
     B -->|Success| C[BigQuery Sink]
-    B -->|Error| D[GCS Error Sink]
+    B -->|Invalid rows| D[Error Collector]
+    D --> E[GCS Error Sink]
 ```
 
 ## Adding a Join
@@ -258,28 +262,40 @@ For a daily load at 6 AM:
 Cron expression: 0 6 * * *
 ```
 
-You can also configure the pipeline through the API:
+You can also configure the pipeline through the API. For `FUSION_INSTANCE_URL`, use the instance's `apiEndpoint` value:
 
 ```bash
 # Schedule a pipeline via the API
-curl -X POST "https://FUSION_INSTANCE_URL/v3/namespaces/default/apps/my-pipeline/schedules/daily-schedule" \
+curl -X PUT "FUSION_INSTANCE_URL/v3/namespaces/default/apps/my-pipeline/schedules/daily-schedule" \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "scheduleType": "TIME",
-    "schedule": {
+    "name": "daily-schedule",
+    "description": "Daily sales load",
+    "namespace": "default",
+    "application": "my-pipeline",
+    "program": {
+      "programName": "DataPipelineWorkflow",
+      "programType": "WORKFLOW"
+    },
+    "trigger": {
+      "type": "TIME",
       "cronExpression": "0 6 * * *"
     },
     "properties": {},
     "constraints": []
   }'
+
+# Enable the schedule after creating it
+curl -X POST "FUSION_INSTANCE_URL/v3/namespaces/default/apps/my-pipeline/schedules/daily-schedule/enable" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)"
 ```
 
 ## Common Transform Nodes
 
 Here is a reference of the transform nodes you will use most often:
 
-**Wrangler** - Interactive data preparation with 150+ directives. Your go-to transform.
+**Wrangler** - Interactive data preparation with 50+ directives. Your go-to transform.
 
 **JavaScript** - Write custom JavaScript for transformations too complex for Wrangler:
 
