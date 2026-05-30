@@ -8,7 +8,7 @@ Description: Learn how to build community connectors and custom visualizations i
 
 ---
 
-Looker Studio's built-in charts cover most use cases, but sometimes you need something specific - a funnel chart with custom stages, a heatmap calendar, a Sankey diagram, or a visualization that matches your brand's design system. Community visualizations and connectors let you build exactly what you need using web technologies you already know.
+Looker Studio's built-in charts cover most use cases, but sometimes you need something specific - a funnel chart with custom behavior, a heatmap calendar, a Sankey diagram, or a visualization that matches your brand's design system. Community visualizations and connectors let you build exactly what you need using web technologies you already know.
 
 This guide covers both community connectors (to bring data from custom sources) and community visualizations (to render data in custom ways).
 
@@ -46,18 +46,13 @@ function getConfig(request) {
 
   config.newInfo()
     .setId('instructions')
-    .setText('Enter the API endpoint and authentication details.');
+    .setText('Enter the API endpoint for the data source.');
 
   config.newTextInput()
     .setId('apiUrl')
     .setName('API URL')
     .setHelpText('The base URL of your API')
     .setPlaceholder('https://api.example.com/v1/metrics');
-
-  config.newTextInput()
-    .setId('apiKey')
-    .setName('API Key')
-    .setHelpText('Your API authentication key');
 
   config.setDateRangeRequired(true);
 
@@ -105,7 +100,6 @@ function getSchema(request) {
  */
 function getData(request) {
   var apiUrl = request.configParams.apiUrl;
-  var apiKey = request.configParams.apiKey;
 
   // Build the request URL with date range from Looker Studio
   var startDate = request.dateRange.startDate;
@@ -116,7 +110,6 @@ function getData(request) {
   var options = {
     'method': 'get',
     'headers': {
-      'Authorization': 'Bearer ' + apiKey,
       'Content-Type': 'application/json'
     },
     'muteHttpExceptions': true
@@ -161,7 +154,8 @@ function getData(request) {
 }
 
 /**
- * Returns authentication type. Can be NONE, KEY, USER_PASS, or OAUTH2.
+ * Returns authentication type. For credentials, use a supported AuthType
+ * such as KEY, USER_PASS, USER_TOKEN, PATH_KEY, PATH_USER_PASS, or OAUTH2.
  */
 function getAuthType() {
   return cc.newAuthTypeResponse()
@@ -177,10 +171,10 @@ function getFields() {
   var types = cc.FieldType;
   var aggregations = cc.AggregationType;
 
-  fields.newDimension().setId('date').setType(types.YEAR_MONTH_DAY);
-  fields.newDimension().setId('category').setType(types.TEXT);
-  fields.newMetric().setId('value').setType(types.NUMBER).setAggregation(aggregations.SUM);
-  fields.newMetric().setId('count').setType(types.NUMBER).setAggregation(aggregations.SUM);
+  fields.newDimension().setId('date').setName('Date').setType(types.YEAR_MONTH_DAY);
+  fields.newDimension().setId('category').setName('Category').setType(types.TEXT);
+  fields.newMetric().setId('value').setName('Value').setType(types.NUMBER).setAggregation(aggregations.SUM);
+  fields.newMetric().setId('count').setName('Count').setType(types.NUMBER).setAggregation(aggregations.SUM);
 
   return fields;
 }
@@ -188,10 +182,10 @@ function getFields() {
 
 ### Step 3: Deploy the Connector
 
-1. In the Apps Script editor, click "Deploy" then "New deployment"
-2. Select "Add-on" as the deployment type
-3. Fill in the description
-4. Click "Deploy"
+1. In the Apps Script editor, click "Deploy" then "Test deployments"
+2. Copy the Head Deployment ID while developing
+3. For a stable shared version, click "Deploy" then "New deployment"
+4. Select "Add-on" as the deployment type, fill in the description, and click "Deploy"
 5. Copy the deployment ID
 
 ### Step 4: Use in Looker Studio
@@ -204,7 +198,7 @@ function getFields() {
 
 ## Building a Community Visualization
 
-Community visualizations use the Looker Studio Visualization API with standard web technologies (HTML, CSS, JavaScript).
+Community visualizations use the Looker Studio Visualization API with standard web technologies (HTML, CSS, JavaScript). The feature is currently in Developer Preview.
 
 ### Project Structure
 
@@ -230,7 +224,7 @@ my-viz/
   "supportUrl": "https://example.com/support",
   "privacyPolicyUrl": "https://example.com/privacy",
   "termsOfServiceUrl": "https://example.com/tos",
-  "packageUrl": "gs://my-viz-bucket/funnel-chart",
+  "packageUrl": "https://example.com/funnel-chart",
   "devMode": true,
   "components": [
     {
@@ -239,9 +233,9 @@ my-viz/
       "description": "Displays data as a funnel with configurable stages",
       "iconUrl": "https://example.com/funnel-icon.png",
       "resource": {
-        "js": "funnel.js",
-        "config": "funnel.json",
-        "css": "funnel.css"
+        "js": "gs://my-viz-bucket/funnel-chart/funnel.js",
+        "config": "gs://my-viz-bucket/funnel-chart/funnel.json",
+        "css": "gs://my-viz-bucket/funnel-chart/funnel.css"
       }
     }
   ]
@@ -268,8 +262,6 @@ function drawViz(data) {
 
   // Get the data from Looker Studio
   const tables = data.tables.DEFAULT;
-  const dimensions = data.fields.dimID;
-  const metrics = data.fields.metricID;
 
   // Extract stage names and values
   const stages = tables.map(row => ({
@@ -280,11 +272,17 @@ function drawViz(data) {
   // Sort by value descending (widest funnel at top)
   stages.sort((a, b) => b.value - a.value);
 
+  if (!stages.length) {
+    return;
+  }
+
   // Get styling options from the config
   const style = data.style;
-  const funnelColor = style.funnelColor.value || '#4285f4';
-  const textColor = style.textColor.value || '#333333';
-  const showPercentage = style.showPercentage.value || true;
+  const funnelColorValue = (style.funnelColor && style.funnelColor.value) || '#4285f4';
+  const textColorValue = (style.textColor && style.textColor.value) || '#333333';
+  const funnelColor = funnelColorValue.color || funnelColorValue || '#4285f4';
+  const textColor = textColorValue.color || textColorValue || '#333333';
+  const showPercentage = !style.showPercentage || style.showPercentage.value !== false;
 
   // Set up dimensions
   const width = dscc.getWidth();
@@ -408,7 +406,7 @@ Define what options users can configure:
 1. Build your visualization files
 2. Upload to a GCS bucket
 3. Make the bucket publicly readable
-4. In Looker Studio, add the visualization using the GCS path from the manifest
+4. In Looker Studio, add the visualization using the manifest path
 
 ```bash
 # Upload visualization files to GCS
@@ -431,10 +429,10 @@ Before building your own, check the existing community visualization gallery. Th
 
 To use a community visualization:
 
-1. Click "Add a chart" in your report
-2. Scroll to the bottom and click "Explore more"
+1. Click "Community visualizations and components" in your report toolbar
+2. Click "Explore more"
 3. Browse the community gallery
-4. Click "Build your own" to add a custom one by URL
+4. Click "Build your own visualization" to add a custom one by manifest path
 
 ## Wrapping Up
 
