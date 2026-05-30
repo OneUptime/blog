@@ -8,44 +8,30 @@ Description: Configure pull request triggers and validation builds in Azure Repo
 
 ---
 
-The best time to catch a bug is before it merges into your main branch. Pull request validation builds make this automatic. When someone opens a PR or pushes new commits to an existing one, a build pipeline runs against the proposed changes. If the build fails, the PR cannot be merged.
+The best time to catch a bug is before it merges into your main branch. Pull request validation builds make this automatic. When someone opens a PR or pushes new commits to an existing one, a build pipeline runs against the proposed changes. If a required build validation policy fails, the PR cannot be merged unless someone has permission to bypass branch policies.
 
 This is one of those things that sounds simple in concept but has enough nuance in practice that it is worth covering properly. In this post, I will walk through setting up PR triggers, configuring build validation policies, handling the common edge cases, and tuning things for performance.
 
-## Two Ways to Trigger PR Builds
+## How Azure Repos Triggers PR Builds
 
-Azure DevOps gives you two mechanisms for running builds on pull requests, and they work differently:
+Azure DevOps supports YAML PR triggers for GitHub and Bitbucket Cloud repositories, but Azure Repos Git works differently:
 
-**PR triggers in YAML** (the `pr:` section) control when the pipeline runs in response to PR events. This is configured in the pipeline file itself.
+**Build validation policies** on branches trigger PR validation builds and control which pipelines are required to pass before a PR can complete. This is configured in branch policies.
 
-**Build validation policies** on branches control which pipelines are required to pass before a PR can complete. This is configured in branch policies.
+**Pipeline YAML** still defines what the validation build does. It can disable regular CI with `trigger: none`, but the PR trigger itself comes from the branch policy, not from a `pr:` block.
 
-You typically use both together: the YAML trigger controls when the build fires, and the branch policy controls whether the build is required for merging.
+For Azure Repos, do not rely on `pr:` in YAML. Configure build validation on the target branch instead.
 
-## Configuring PR Triggers in YAML
+## Configuring the Validation Pipeline YAML
 
-The `pr:` trigger in your YAML pipeline specifies which branches and paths should trigger a build when a PR targets them.
+The YAML pipeline specifies the build, test, and validation steps that Azure Repos runs when a branch policy queues the pipeline.
 
-The following configuration runs the pipeline when a PR targets the main or release branches, but only if the changed files are in the src directory.
+The following configuration defines a PR validation pipeline and disables normal CI runs so the pipeline is used only when a branch policy queues it.
 
 ```yaml
 # azure-pipelines.yml - PR trigger configuration
 
 trigger: none  # Disable CI trigger; this pipeline is PR-only
-
-# Run on PRs targeting main or release branches
-pr:
-  branches:
-    include:
-      - main
-      - release/*
-  paths:
-    include:
-      - src/**
-      - tests/**
-    exclude:
-      - docs/**
-      - '**/*.md'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -75,7 +61,7 @@ steps:
       testResultsFiles: '**/*.trx'
 ```
 
-The path filters are important for performance. If someone changes only documentation, there is no point in running a full build. The `exclude` pattern for markdown files is a simple optimization that saves your team time.
+The branch and path filters are configured on the build validation policy. Path filters are important for performance. If someone changes only documentation, there is no point in running a full build. A path filter such as `/src/*;/tests/*;!/docs/*;!*.md` is a simple optimization that saves your team time.
 
 ## Setting Up Build Validation Policies
 
@@ -86,9 +72,10 @@ Go to **Repos > Branches**, find your branch (e.g., `main`), click the three dot
 Configure these settings:
 
 - **Build pipeline**: Select your PR validation pipeline
+- **Path filter**: Optionally limit the policy to paths such as `/src/*;/tests/*;!/docs/*;!*.md`
 - **Trigger**: Automatic (runs on every PR update)
 - **Policy requirement**: Required
-- **Build expiration**: "Immediately when the source branch is updated" ensures stale builds do not count
+- **Build expiration**: "Immediately when the target branch is updated" ensures stale builds do not count after the protected branch changes
 - **Display name**: Something clear like "PR Build Validation"
 
 Once set, the PR merge button will be blocked until the build passes.
@@ -127,11 +114,6 @@ Each of these can be added as a separate build validation policy. All required p
 ```yaml
 # pr-backend.yml - Backend validation
 trigger: none
-pr:
-  branches:
-    include: [main]
-  paths:
-    include: [src/backend/**]
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -144,11 +126,6 @@ steps:
 ```yaml
 # pr-frontend.yml - Frontend validation
 trigger: none
-pr:
-  branches:
-    include: [main]
-  paths:
-    include: [src/frontend/**]
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -162,7 +139,7 @@ steps:
     displayName: 'Frontend lint and tests'
 ```
 
-With path-based triggers, each pipeline only runs when its relevant files change. A backend-only change does not trigger the frontend pipeline.
+With path filters on each build validation policy, each pipeline only runs when its relevant files change. For example, set the backend policy path filter to `/src/backend/*` and the frontend policy path filter to `/src/frontend/*`. A backend-only change does not trigger the frontend pipeline.
 
 ## Optional vs. Required Validation
 
@@ -173,7 +150,7 @@ When adding a build validation policy, set the **Policy requirement** to:
 - **Required**: Must pass to complete the PR (use for build, unit tests, linting)
 - **Optional**: Shows status but does not block (use for optional checks like code coverage thresholds or performance benchmarks)
 
-Optional checks show as yellow warnings in the PR, while required checks show as red blockers.
+Optional checks show status in the PR, while required checks block completion until they pass.
 
 ## Configuring Auto-Complete with Validation
 
@@ -200,30 +177,34 @@ PR builds that take too long erode the team's willingness to use them. Here are 
 
 ```yaml
 # Cache NuGet packages between pipeline runs
-- task: Cache@2
-  displayName: 'Cache NuGet packages'
-  inputs:
-    key: 'nuget | "$(Agent.OS)" | **/packages.lock.json'
-    restoreKeys: |
-      nuget | "$(Agent.OS)"
-    path: $(NUGET_PACKAGES)
+variables:
+  NUGET_PACKAGES: $(Pipeline.Workspace)/.nuget/packages
 
-- task: DotNetCoreCLI@2
-  displayName: 'Restore with cache'
-  inputs:
-    command: 'restore'
-    projects: '**/*.csproj'
+steps:
+  - task: Cache@2
+    displayName: 'Cache NuGet packages'
+    inputs:
+      key: 'nuget | "$(Agent.OS)" | **/packages.lock.json'
+      restoreKeys: |
+        nuget | "$(Agent.OS)"
+      path: $(NUGET_PACKAGES)
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore with cache'
+    inputs:
+      command: 'restore'
+      projects: '**/*.csproj'
 ```
 
 **Run tests in parallel.** Most test frameworks support parallel execution.
 
 ```yaml
-# Run tests with parallel execution
+# Run target frameworks in parallel for multi-targeted .NET test projects
 - task: DotNetCoreCLI@2
-  displayName: 'Run tests in parallel'
+  displayName: 'Run tests'
   inputs:
     command: 'test'
-    arguments: '--no-build --parallel'
+    arguments: '--no-build -p:TestTfmsInParallel=true'
 ```
 
 **Use a fast agent pool.** If your organization has self-hosted agents with more CPU and RAM, use those for PR validation. The faster feedback loop is worth it.
