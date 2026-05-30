@@ -36,7 +36,7 @@ To use Conditional Access with Key Vault, you need:
 
 - Microsoft Entra ID Premium P1 or P2 licenses (Conditional Access is a premium feature).
 - Key Vault configured to use Azure RBAC for access control (recommended) or access policies.
-- The "Microsoft Azure Management" cloud app registered in your Conditional Access policy targets (Key Vault falls under this umbrella), or you can target Key Vault specifically.
+- The Azure Key Vault cloud app registered in your Conditional Access policy targets for data-plane access to secrets, keys, and certificates. Target Azure management applications separately if you also want to protect Azure portal, Azure CLI, Azure PowerShell, or ARM management operations.
 
 ## Step 1: Switch Key Vault to RBAC Authorization
 
@@ -94,7 +94,7 @@ New-MgIdentityConditionalAccessNamedLocation -BodyParameter $officeLocation
 
 ## Step 3: Create the Conditional Access Policy for Key Vault
 
-Now create the Conditional Access policy that targets Key Vault access. You can target either "Microsoft Azure Management" (which covers all Azure management plane operations including Key Vault) or the specific Key Vault resource.
+Now create the Conditional Access policy that targets Key Vault access. For data-plane access to secrets, keys, and certificates, target the Azure Key Vault application. If you also need to protect management-plane operations, create a separate policy for the relevant Azure management applications.
 
 This PowerShell script creates a Conditional Access policy that requires MFA and a compliant device for Key Vault access from untrusted locations:
 
@@ -118,6 +118,7 @@ $policy = @{
             includeApplications = @("cfa8b339-82a2-471a-a3c9-0fc0be7a4093")
             # The above GUID is the Azure Key Vault service principal app ID
         }
+        clientAppTypes = @("all")
         # Only apply when NOT on trusted networks
         locations = @{
             includeLocations = @("All")
@@ -157,15 +158,15 @@ Navigate to Microsoft Entra admin center, then Protection, then Conditional Acce
 - Which users would have been affected
 - What conditions triggered the policy
 
-This is where you will catch things like service principals or automation accounts that access Key Vault and would be blocked by the MFA requirement. Service principals cannot do interactive MFA, so you need to exclude them from the policy or handle them differently.
+This is where you will catch things like automation that uses delegated user credentials and would be blocked by the MFA requirement. Application-only service principal sign-ins are handled separately with Conditional Access for workload identities.
 
 ## Step 5: Handle Service Principal Access
 
-Service principals and managed identities that access Key Vault programmatically cannot satisfy MFA or device compliance requirements. You have a few options:
+Service principals and managed identities that access Key Vault programmatically cannot satisfy MFA or device compliance requirements. For service principals, you have a few options:
 
-**Option 1: Exclude service principals from the policy.** This is the simplest approach but reduces your security coverage.
+**Option 1: Exclude specific service principals from the workload identity policy.** This is the simplest approach but reduces your security coverage.
 
-**Option 2: Use a separate policy for service principals.** Create a policy that targets workload identities and enforces different controls, like IP-based restrictions.
+**Option 2: Use a separate policy for service principals.** Create a policy that targets workload identities and enforces different controls, like IP-based restrictions. This requires Microsoft Entra Workload ID Premium licensing.
 
 This creates a separate policy that restricts service principal access to Key Vault based on IP address:
 
@@ -177,12 +178,13 @@ $workloadPolicy = @{
     conditions = @{
         # Target service principals using the workload identity filter
         clientApplications = @{
-            includeServicePrincipals = @("All")
+            includeServicePrincipals = @("ServicePrincipalsInMyTenant")
             excludeServicePrincipals = @()
         }
         applications = @{
             includeApplications = @("cfa8b339-82a2-471a-a3c9-0fc0be7a4093")
         }
+        clientAppTypes = @("all")
         # Block access from outside trusted networks
         locations = @{
             includeLocations = @("All")
@@ -197,6 +199,8 @@ $workloadPolicy = @{
 
 New-MgIdentityConditionalAccessPolicy -BodyParameter $workloadPolicy
 ```
+
+Managed identities are not covered by Conditional Access for workload identities, so use Key Vault firewall rules, private endpoints, RBAC scoping, and monitoring to reduce their exposure.
 
 ## Step 6: Enable the Policy
 
