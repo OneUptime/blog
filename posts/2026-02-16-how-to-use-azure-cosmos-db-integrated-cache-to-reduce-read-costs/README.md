@@ -35,7 +35,7 @@ The integrated cache requires:
 
 - A Cosmos DB dedicated gateway (this is the compute layer that runs the cache)
 - Your application must connect through the gateway endpoint (not the direct endpoint)
-- The account must use the SQL (Core) API
+- The account must use the API for NoSQL (formerly SQL/Core API)
 
 ## Setting Up the Dedicated Gateway
 
@@ -62,15 +62,15 @@ az cosmosdb service create \
     --size Cosmos.D4s
 ```
 
-Available SKUs and their cache sizes:
+Available SKUs and their approximate cache capacity:
 
-| SKU | vCores | RAM | Cache Size |
+| SKU | vCores | RAM | Approximate Cache Capacity |
 |-----|--------|-----|------------|
-| Cosmos.D4s | 4 | 16 GB | ~5 GB usable |
-| Cosmos.D8s | 8 | 32 GB | ~10 GB usable |
-| Cosmos.D16s | 16 | 64 GB | ~20 GB usable |
+| Cosmos.D4s | 4 | 16 GB | ~8 GB |
+| Cosmos.D8s | 8 | 32 GB | ~16 GB |
+| Cosmos.D16s | 16 | 64 GB | ~32 GB |
 
-Choose the SKU based on how much data you want to cache. If your hot data set is 8 GB, the D8s or D16s is appropriate.
+The integrated cache uses approximately 50% of the node memory; the remaining memory is used for metadata and request routing. Choose the SKU based on how much data you want to cache. If your hot data set is 8 GB, the D4s may be enough, while D8s or D16s gives more room for growth and query results.
 
 ## Connecting Through the Dedicated Gateway
 
@@ -164,16 +164,15 @@ For operations that must always read the latest data, bypass the cache:
 
 ```csharp
 // Bypass the cache for critical reads that need fresh data
-// Set MaxIntegratedCacheStaleness to zero
 ItemRequestOptions freshReadOptions = new ItemRequestOptions
 {
     DedicatedGatewayRequestOptions = new DedicatedGatewayRequestOptions
     {
-        MaxIntegratedCacheStaleness = TimeSpan.Zero
+        BypassIntegratedCache = true
     }
 };
 
-// This always reads from the backend, bypassing the cache
+// This reads from the backend and does not populate the integrated cache
 var freshResponse = await container.ReadItemAsync<MyDoc>(
     "doc-123",
     new PartitionKey("pk-1"),
@@ -215,7 +214,7 @@ Point reads (ReadItemAsync) are cached individually by their ID and partition ke
 
 ### Query Cache
 
-Query results are cached by the exact query text and parameters. If you run the same query with the same parameters, the cached result set is returned. Changing any parameter creates a new cache entry.
+Query results are cached by the exact query text, parameters, and request options that affect the results. If you run the same query with the same parameters and result-affecting options, the cached result set is returned. Changing a parameter creates a new cache entry.
 
 ```csharp
 // These two queries are cached separately because the parameter differs
@@ -233,6 +232,7 @@ Monitor cache hit rates and RU savings:
 // Track cache hits by monitoring RU charges
 // A cache hit results in 0 RU charge
 double totalRUs = 0;
+double totalMissRUs = 0;
 int cacheHits = 0;
 int cacheMisses = 0;
 
@@ -253,15 +253,21 @@ for (int i = 0; i < 100; i++)
     totalRUs += response.RequestCharge;
 
     if (response.RequestCharge == 0)
+    {
         cacheHits++;
+    }
     else
+    {
         cacheMisses++;
+        totalMissRUs += response.RequestCharge;
+    }
 }
 
 double hitRate = (double)cacheHits / (cacheHits + cacheMisses) * 100;
+double averageMissRUs = cacheMisses == 0 ? 0 : totalMissRUs / cacheMisses;
 Console.WriteLine($"Cache hit rate: {hitRate:F1}%");
 Console.WriteLine($"Total RUs consumed: {totalRUs}");
-Console.WriteLine($"RUs saved by cache: approximately {cacheMisses * 1.0 - totalRUs} RUs");
+Console.WriteLine($"RUs avoided by cache hits: approximately {cacheHits * averageMissRUs:F1} RUs");
 ```
 
 In Azure Monitor, check these metrics:
@@ -270,10 +276,11 @@ In Azure Monitor, check these metrics:
 # Monitor dedicated gateway metrics
 az monitor metrics list \
     --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/myCosmosAccount" \
-    --metric "DedicatedGatewayAverageCpuUsage" \
+    --metric "DedicatedGatewayAverageCPUUsage" \
     --interval PT5M
 
-# Also check: DedicatedGatewayMaxCpuUsage, DedicatedGatewayMemoryUsage
+# Also check: DedicatedGatewayMaximumCPUUsage, DedicatedGatewayMemoryUsage,
+# DedicatedGatewayRequests, IntegratedCacheItemHitRate, IntegratedCacheQueryHitRate
 ```
 
 ## Cache Eviction
@@ -284,22 +291,22 @@ If you need deterministic cache invalidation, the integrated cache might not be 
 
 ## Cost Analysis
 
-The dedicated gateway has a fixed hourly cost based on the SKU:
+The dedicated gateway has a fixed hourly cost based on the SKU and region. For example, in East US at 730 hours per month:
 
 | SKU | Approximate Monthly Cost |
 |-----|------------------------|
-| Cosmos.D4s (1 instance) | ~$300/month |
-| Cosmos.D8s (1 instance) | ~$600/month |
-| Cosmos.D16s (1 instance) | ~$1,200/month |
+| Cosmos.D4s (1 instance) | ~$277/month |
+| Cosmos.D8s (1 instance) | ~$554/month |
+| Cosmos.D16s (1 instance) | ~$1,110/month |
 
-For the cache to be cost-effective, the RU savings from cache hits must exceed the gateway cost. Calculate your breakeven:
+For the cache to be cost-effective, the money saved from lower RU usage must exceed the gateway cost. With serverless pricing, you can estimate breakeven from consumed RUs:
 
 ```text
 Monthly RU savings needed = Gateway cost / RU price per million
-Example: $300 / $0.25 per million RU = 1.2 billion RUs saved per month
+Example: $277 / $0.25 per million RU = 1.108 billion RUs saved per month
 ```
 
-This means you need to save at least 1.2 billion RUs per month to break even on a D4s gateway. For read-heavy workloads with repeated access patterns, this is very achievable.
+This means you need to save about 1.1 billion RUs per month to break even on a D4s gateway at those example prices. For provisioned throughput or autoscale accounts, translate cache hits into the lower RU/s capacity you can actually provision; reducing consumed RUs only lowers the bill if it lets you reduce provisioned or autoscale throughput.
 
 ## When to Use the Integrated Cache
 
@@ -312,7 +319,7 @@ The integrated cache works best for:
 
 It is less effective for:
 
-- Write-heavy workloads (the cache is read-only)
+- Write-heavy workloads
 - Unique reads where every request fetches a different document
 - Data that changes every few seconds (the cache just adds latency)
 
