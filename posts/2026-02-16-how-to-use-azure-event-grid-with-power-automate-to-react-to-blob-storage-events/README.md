@@ -48,11 +48,11 @@ Then verify your storage account supports Event Grid:
 2. Click Events in the left menu.
 3. If you see the Events blade, Event Grid is available.
 
-Storage accounts of kind "StorageV2 (general purpose v2)" and "BlobStorage" support Event Grid events. Classic storage accounts do not.
+Storage accounts of kind "StorageV2 (general purpose v2)", "BlockBlobStorage", and "BlobStorage" support Event Grid events. Storage (general purpose v1) accounts do not.
 
 ## Step 2: Create the Power Automate Flow
 
-Start with the Power Automate flow because you need its webhook URL to create the Event Grid subscription.
+Start with the Power Automate flow because the Azure Event Grid connector can create the Event Grid subscription for you.
 
 1. Go to Power Automate and create a new automated cloud flow.
 2. Search for the trigger "When a resource event occurs" from the Azure Event Grid connector.
@@ -77,7 +77,7 @@ If you prefer more control, create the subscription manually:
 5. Endpoint Type: Webhook.
 6. Endpoint: The HTTP POST URL from a Power Automate "When a HTTP request is received" trigger.
 
-The manual approach gives you access to advanced filtering options.
+The manual approach gives you access to advanced filtering options. If you use a generic HTTP trigger as the webhook endpoint, the flow must handle Event Grid's subscription validation event by returning the `validationCode` in a `validationResponse` response body, or you must complete the manual validation URL that Event Grid sends in the validation event within 10 minutes.
 
 ## Step 3: Filter Events
 
@@ -89,7 +89,7 @@ Event Grid lets you filter by the event subject, which for blob events is the bl
 
 In the Event Grid subscription (or the Power Automate trigger settings):
 
-- Subject Begins With: `/blobServices/default/containers/uploads/` (only events from the "uploads" container)
+- Subject Begins With: `/blobServices/default/containers/uploads/blobs/` (only events from the "uploads" container)
 - Subject Ends With: `.pdf` (only PDF files)
 
 ### Advanced Filtering
@@ -109,11 +109,10 @@ This filters for image files larger than 1 KB.
 You can also filter within the flow using a Condition action:
 
 ```text
-// Check if the blob is in the correct container and is a PDF
-// Subject format: /blobServices/default/containers/{container}/blobs/{blobpath}
-@contains(triggerBody()?['subject'], '/containers/uploads/')
-AND
-@endsWith(triggerBody()?['subject'], '.pdf')
+@and(
+  contains(triggerBody()?['subject'], '/containers/uploads/blobs/'),
+  endsWith(triggerBody()?['subject'], '.pdf')
+)
 ```
 
 However, filtering at the Event Grid level is more efficient since it prevents the flow from running at all for irrelevant events.
@@ -128,8 +127,11 @@ Add a "Parse JSON" action after the trigger with this schema:
 {
     "type": "object",
     "properties": {
+        "id": { "type": "string" },
+        "topic": { "type": "string" },
         "subject": { "type": "string" },
         "eventType": { "type": "string" },
+        "eventTime": { "type": "string" },
         "data": {
             "type": "object",
             "properties": {
@@ -144,7 +146,9 @@ Add a "Parse JSON" action after the trigger with this schema:
                 "sequencer": { "type": "string" },
                 "storageDiagnostics": { "type": "object" }
             }
-        }
+        },
+        "dataVersion": { "type": "string" },
+        "metadataVersion": { "type": "string" }
     }
 }
 ```
@@ -228,11 +232,13 @@ Each event has an `id` field. Store processed event IDs in a Dataverse table or 
 
 ### Event Grid Retry Policy
 
-If Power Automate fails to acknowledge the event (returns a non-2xx status), Event Grid retries with an exponential backoff:
+If Power Automate fails to acknowledge the event (for example, the endpoint times out or returns a retryable non-2xx status), Event Grid retries with an exponential backoff:
 
 - Retry interval starts at 10 seconds.
 - Maximum retry attempts: 30 over 24 hours.
 - After exhausting retries, the event is dead-lettered (if configured).
+
+Some webhook responses, such as 400, 401, 403, or 413, are treated as non-retryable for webhook endpoints and are dead-lettered or dropped depending on your dead-letter configuration.
 
 ### Configure Dead-Letter Destination
 
@@ -258,9 +264,9 @@ Inside the flow, wrap processing in a Scope with error handling:
 
 Monitor these metrics in the Azure portal:
 
-- **Publish Success Count**: Events successfully delivered to Event Grid.
-- **Delivery Success Count**: Events successfully delivered to the subscriber (Power Automate).
-- **Delivery Failed Count**: Events that failed delivery.
+- **Published Events** (`PublishSuccessCount`): Events successfully delivered to Event Grid.
+- **Delivered Events** (`DeliverySuccessCount`): Events successfully delivered to the subscriber (Power Automate).
+- **Delivery Failed Events** (`DeliveryAttemptFailCount`): Events that failed delivery.
 - **Dead-Lettered Events**: Events moved to the dead-letter container.
 
 ### Set Up Alerts
