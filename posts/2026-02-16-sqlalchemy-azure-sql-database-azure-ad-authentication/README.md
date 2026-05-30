@@ -19,7 +19,7 @@ The traditional approach uses a connection string with a username and password b
 - No passwords to rotate
 - Your app uses managed identity in production
 - Developers use their own Azure AD credentials locally
-- Access is controlled through Azure RBAC
+- Access is controlled through Azure AD identities and database roles
 - Audit logs show exactly which identity accessed the database
 
 ## Prerequisites
@@ -38,13 +38,14 @@ You also need the ODBC driver for SQL Server installed on your system.
 # macOS
 brew install unixodbc
 brew tap microsoft/mssql-release https://github.com/Microsoft/homebrew-mssql-release
-brew install msodbcsql18
+HOMEBREW_ACCEPT_EULA=Y brew install msodbcsql18
 
 # Ubuntu
-curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-sudo add-apt-repository "$(curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list)"
+curl -sSL -O https://packages.microsoft.com/config/ubuntu/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)/packages-microsoft-prod.deb
+sudo dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
 sudo apt-get update
-sudo apt-get install -y msodbcsql18
+sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
 ```
 
 ## Setting Up Azure SQL with Azure AD
@@ -112,7 +113,7 @@ from azure.identity import DefaultAzureCredential
 # Connection string WITHOUT password - we use token auth instead
 SERVER = "my-sql-server.database.windows.net"
 DATABASE = "mydb"
-DRIVER = "ODBC Driver 18 for SQL Server"
+DRIVER = "ODBC+Driver+18+for+SQL+Server"
 
 # Build the connection URL
 connection_string = (
@@ -188,17 +189,19 @@ db = SQLAlchemy(app)
 credential = DefaultAzureCredential()
 
 
-@event.listens_for(db.engine, "do_connect")
-def inject_azure_ad_token(dialect, conn_rec, cargs, cparams):
-    """Inject Azure AD token into each new database connection."""
-    token = credential.get_token("https://database.windows.net/.default")
-    token_bytes = token.token.encode("utf-16-le")
-    token_struct = struct.pack(
-        f"<I{len(token_bytes)}s",
-        len(token_bytes),
-        token_bytes
-    )
-    cparams["attrs_before"] = {1256: token_struct}
+with app.app_context():
+    @event.listens_for(db.engine, "do_connect")
+    def inject_azure_ad_token(dialect, conn_rec, cargs, cparams):
+        """Inject Azure AD token into each new database connection."""
+        cargs[0] = cargs[0].replace(";Trusted_Connection=Yes", "")
+        token = credential.get_token("https://database.windows.net/.default")
+        token_bytes = token.token.encode("utf-16-le")
+        token_struct = struct.pack(
+            f"<I{len(token_bytes)}s",
+            len(token_bytes),
+            token_bytes
+        )
+        cparams["attrs_before"] = {1256: token_struct}
 
 
 # Define a model
@@ -271,8 +274,11 @@ You might want password-based auth for local development and Azure AD auth for p
 
 ```python
 import os
+import struct
+from azure.identity import DefaultAzureCredential
+from sqlalchemy import event
 
-def configure_database(app):
+def configure_database(app, db):
     """Configure database connection based on environment."""
     use_azure_ad = os.environ.get("USE_AZURE_AD_AUTH", "false").lower() == "true"
 
@@ -287,17 +293,11 @@ def configure_database(app):
             f"?driver={driver}&Encrypt=yes&TrustServerCertificate=no"
         )
 
-        # Set up token injection
-        credential = DefaultAzureCredential()
-
-        @event.listens_for(db.engine, "do_connect")
-        def inject_token(dialect, conn_rec, cargs, cparams):
-            token = credential.get_token("https://database.windows.net/.default")
-            token_bytes = token.token.encode("utf-16-le")
-            token_struct = struct.pack(
-                f"<I{len(token_bytes)}s", len(token_bytes), token_bytes
-            )
-            cparams["attrs_before"] = {1256: token_struct}
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_size": 5,
+            "pool_recycle": 1800,
+            "pool_pre_ping": True
+        }
 
     else:
         # Local development: SQL authentication
@@ -305,6 +305,23 @@ def configure_database(app):
             "DATABASE_URL",
             "mssql+pyodbc://sa:Password123@localhost/testdb?driver=ODBC+Driver+18+for+SQL+Server"
         )
+
+    db.init_app(app)
+
+    if use_azure_ad:
+        # Set up token injection
+        credential = DefaultAzureCredential()
+
+        with app.app_context():
+            @event.listens_for(db.engine, "do_connect")
+            def inject_token(dialect, conn_rec, cargs, cparams):
+                cargs[0] = cargs[0].replace(";Trusted_Connection=Yes", "")
+                token = credential.get_token("https://database.windows.net/.default")
+                token_bytes = token.token.encode("utf-16-le")
+                token_struct = struct.pack(
+                    f"<I{len(token_bytes)}s", len(token_bytes), token_bytes
+                )
+                cparams["attrs_before"] = {1256: token_struct}
 ```
 
 ## Common Issues and Fixes
