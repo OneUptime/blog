@@ -8,7 +8,7 @@ Description: Learn how to use KEDA on AKS to automatically scale your workloads 
 
 ---
 
-The Horizontal Pod Autoscaler (HPA) scales based on CPU and memory, but what if your workload is driven by a queue? When messages pile up in Azure Queue Storage, you want more worker pods to process them. When the queue is empty, you want to scale down to zero and stop paying for idle compute. KEDA (Kubernetes Event-Driven Autoscaling) makes this possible. It monitors external event sources and scales your deployments based on the number of events waiting to be processed. In this guide, I will set up KEDA on AKS with the Azure Queue Storage scaler.
+The Horizontal Pod Autoscaler (HPA) is often used to scale based on CPU and memory, but what if your workload is driven by a queue? When messages pile up in Azure Queue Storage, you want more worker pods to process them. When the queue is empty, you want to scale down to zero and stop paying for idle compute. KEDA (Kubernetes Event-Driven Autoscaling) makes this possible. It monitors external event sources and scales your deployments based on the number of events waiting to be processed. In this guide, I will set up KEDA on AKS with the Azure Queue Storage scaler.
 
 ## What KEDA Does
 
@@ -18,7 +18,7 @@ KEDA supports over 60 scalers including Azure Queue Storage, Service Bus, Kafka,
 
 ## Prerequisites
 
-You need an AKS cluster running Kubernetes 1.24 or later, Helm 3, an Azure Storage account with a queue, and either a connection string or managed identity for authentication.
+You need an AKS cluster running a Kubernetes version supported by your KEDA release, Helm 3, an Azure Storage account with a queue, and either a connection string or managed identity for authentication. For example, KEDA 2.19 requires Kubernetes 1.30 or later.
 
 ## Step 1: Install KEDA on AKS
 
@@ -60,16 +60,16 @@ az storage account create \
   --location eastus \
   --sku Standard_LRS
 
-# Create a queue
-az storage queue create \
-  --name work-items \
-  --account-name mystorageaccount
-
 # Get the connection string
 STORAGE_CONNECTION=$(az storage account show-connection-string \
   --name mystorageaccount \
   --resource-group myResourceGroup \
   --query connectionString -o tsv)
+
+# Create a queue
+az storage queue create \
+  --name work-items \
+  --connection-string "$STORAGE_CONNECTION"
 ```
 
 ## Step 3: Store the Connection String as a Secret
@@ -189,7 +189,7 @@ spec:
         queueName: work-items
         # Scale up when there are more than 5 messages per replica
         queueLength: "5"
-        # Use the v2 storage SDK
+        # Required when using workload identity; also valid with connection string auth
         accountName: mystorageaccount
       authenticationRef:
         name: storage-auth
@@ -216,7 +216,7 @@ for i in $(seq 1 50); do
   az storage message put \
     --queue-name work-items \
     --content "Work item $i" \
-    --account-name mystorageaccount
+    --connection-string "$STORAGE_CONNECTION"
 done
 
 # Watch the deployment scale up
@@ -245,7 +245,7 @@ sequenceDiagram
 
     alt Deployment at 0 replicas
         KEDA->>Deploy: Scale to 1 (activation)
-        KEDA->>HPA: Set desired replicas to 10
+        KEDA->>HPA: Expose queue metric for 10 desired replicas
         HPA->>Deploy: Scale to 10
     else Deployment already active
         KEDA->>HPA: Update desired replicas
