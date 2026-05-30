@@ -26,20 +26,21 @@ The key events you can subscribe to include:
 
 ## Setting Up Slack Notifications
 
-### Method 1: Using the Azure DevOps Slack App
+### Method 1: Using the Azure DevOps Slack Apps
 
-The simplest approach is the official Azure DevOps app for Slack:
+The simplest approach is the official Azure DevOps apps for Slack. Azure Pipelines, Azure Repos, and Azure Boards each have their own Slack app and slash commands:
 
-1. In Slack, go to the App Directory and search for "Azure DevOps"
+1. In Slack, go to the App Directory and search for "Azure Pipelines", "Azure Repos", or "Azure Boards"
 2. Click "Add to Slack" and authorize the app
-3. In any Slack channel, type `/azdevops subscribe` followed by the repository or pipeline URL
+3. In any Slack channel, type the app's subscribe command followed by the repository, pipeline, or project URL
 4. The app will prompt you to sign in to your Azure DevOps account
 
 Once connected, you can subscribe to specific events:
 
 ```text
-/azdevops subscribe https://dev.azure.com/myorg/myproject/_git/my-repo
-/azdevops subscribe https://dev.azure.com/myorg/myproject/_build?definitionId=42
+/azrepos subscribe https://dev.azure.com/myorg/myproject/_git/my-repo
+/azpipelines subscribe https://dev.azure.com/myorg/myproject/_build?definitionId=42
+/azboards link https://dev.azure.com/myorg/myproject
 ```
 
 The app provides default subscriptions for common events, but you can customize them:
@@ -47,14 +48,14 @@ The app provides default subscriptions for common events, but you can customize 
 ```text
 # List current subscriptions
 
-/azdevops subscriptions
+/azpipelines subscriptions
 
 # Subscribe to specific events
-/azdevops subscribe https://dev.azure.com/myorg/myproject --event build.complete
-/azdevops subscribe https://dev.azure.com/myorg/myproject --event pullrequest.created
+/azpipelines subscribe https://dev.azure.com/myorg/myproject/_build?definitionId=42
+/azrepos subscribe https://dev.azure.com/myorg/myproject/_git/my-repo
 
-# Unsubscribe from noisy events
-/azdevops unsubscribe --id <subscription-id>
+# Remove or edit noisy subscriptions from the subscriptions list
+/azpipelines subscriptions
 ```
 
 ### Method 2: Using Incoming Webhooks
@@ -88,45 +89,47 @@ Action: Post a message to Slack
 
 ## Setting Up Microsoft Teams Notifications
 
-### Method 1: Using the Azure DevOps Teams App
+### Method 1: Using the Azure DevOps Teams Apps
 
-Similar to Slack, there is an official Azure DevOps app for Microsoft Teams:
+Similar to Slack, there are official Azure DevOps apps for Microsoft Teams. Azure Pipelines, Azure Repos, and Azure Boards each have their own Teams app and bot commands:
 
 1. In Teams, click on the Apps icon in the left sidebar
-2. Search for "Azure DevOps" and click "Add"
+2. Search for "Azure Pipelines", "Azure Repos", or "Azure Boards" and click "Add"
 3. Add the app to your desired team and channel
-4. In the channel, type `@Azure DevOps subscribe` followed by the project URL
+4. In the channel, type the app's subscribe command followed by the project, repository, or pipeline URL
 
 ```text
-@Azure DevOps subscribe https://dev.azure.com/myorg/myproject
-@Azure DevOps subscribe https://dev.azure.com/myorg/myproject/_build?definitionId=42
+@azure pipelines subscribe https://dev.azure.com/myorg/myproject/_build?definitionId=42
+@azure repos subscribe https://dev.azure.com/myorg/myproject/_git/my-repo
+@azure boards link https://dev.azure.com/myorg/myproject
 ```
 
 You can manage subscriptions with:
 
 ```text
-@Azure DevOps subscriptions
-@Azure DevOps unsubscribe --id <subscription-id>
+@azure pipelines subscriptions
+@azure repos subscriptions
+@azure boards subscriptions
 ```
 
 ### Method 2: Using Incoming Webhooks (Workflows)
 
-For customized notifications, use Teams incoming webhooks via Power Automate workflows (the new approach replacing the deprecated Office 365 connectors):
+For customized notifications, use Teams incoming webhooks via Power Automate workflows. Microsoft is retiring Office 365 connectors, so the current replacement is a workflow that starts with the "When a Teams webhook request is received" trigger:
 
-1. In Teams, right-click the channel and select "Manage channel"
-2. Go to Connectors and create an Incoming Webhook
+1. In Teams, open Workflows and create a workflow from the webhook trigger
+2. Choose the team and channel where the workflow should post
 3. Copy the webhook URL
 
-Then configure the service hook in Azure DevOps:
+Then configure the service hook in Azure DevOps to call a small router such as an Azure Function or Power Automate flow that transforms the Azure DevOps payload into the Teams message format:
 
 1. Go to Project Settings, then Service hooks
 2. Click "Create subscription"
 3. Select "Web Hooks" as the service
 4. Choose the event trigger
-5. Set the URL to your Teams webhook
+5. Set the URL to your router endpoint
 6. Choose JSON as the format
 
-You will need to format the message as an Adaptive Card for it to render nicely in Teams. Here is an example of the payload you might send via an Azure Function intermediary:
+You will need to format the message as an Adaptive Card for it to render nicely in Teams. Here is an example of the payload your router might send to the Teams workflow webhook:
 
 ```json
 {
@@ -250,8 +253,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
     # Determine the target channel based on event type
     if "build.complete" in event_type:
-        status = payload["resource"]["status"]
-        if status == "failed":
+        result = payload["resource"].get("result")
+        if result == "failed":
             channel = CHANNELS["build-failures"]
             message = format_build_failure(payload)
         else:
@@ -278,17 +281,61 @@ def format_build_failure(payload):
     resource = payload["resource"]
     return {
         "text": f"Build Failed: {resource['definition']['name']} #{resource['buildNumber']}",
-        "attachments": [{
-            "color": "danger",
-            "fields": [
-                {"title": "Branch", "value": resource.get("sourceBranch", "N/A"), "short": True},
-                {"title": "Requested by", "value": resource.get("requestedFor", {}).get("displayName", "N/A"), "short": True},
-            ],
-            "actions": [{
-                "type": "button",
-                "text": "View Build",
-                "url": resource["_links"]["web"]["href"]
-            }]
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Build Failed:* {resource['definition']['name']} #{resource['buildNumber']}"
+                }
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*Branch:*\n{resource.get('sourceBranch', 'N/A')}"},
+                    {"type": "mrkdwn", "text": f"*Requested by:*\n{resource.get('requestedFor', {}).get('displayName', 'N/A')}"}
+                ]
+            },
+            {
+                "type": "actions",
+                "elements": [{
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "View Build"},
+                    "url": resource["_links"]["web"]["href"]
+                }]
+            }
+        ]
+    }
+
+
+def format_deployment(payload):
+    """Format a release deployment notification for Slack."""
+    resource = payload["resource"]
+    deployment = resource.get("deployment", {})
+    release = resource.get("release", {})
+    return {
+        "text": f"Deployment update: {release.get('name', 'release')}",
+        "blocks": [{
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Deployment update:* {release.get('name', 'release')} - {deployment.get('deploymentStatus', 'unknown')}"
+            }
+        }]
+    }
+
+
+def format_pull_request(payload):
+    """Format a pull request notification for Slack."""
+    resource = payload["resource"]
+    return {
+        "text": f"Pull request update: {resource.get('title', 'pull request')}",
+        "blocks": [{
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Pull request update:* {resource.get('title', 'pull request')}"
+            }
         }]
     }
 ```
