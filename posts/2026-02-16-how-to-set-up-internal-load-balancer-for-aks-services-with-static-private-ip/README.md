@@ -78,11 +78,10 @@ AKS_SUBNET_ID=$(az aks show \
   --query "agentPoolProfiles[0].vnetSubnetId" \
   --output tsv)
 
-# Check available IPs in the subnet (the IP you pick must be free)
-az network vnet subnet show \
+# List available IPs in the subnet (the IP you pick must be free)
+az network vnet subnet list-available-ips \
   --ids "$AKS_SUBNET_ID" \
-  --query "{addressPrefix: addressPrefix, availableIps: ipConfigurations | length(@)}" \
-  --output json
+  --output table
 ```
 
 Now create the service with a specific private IP.
@@ -98,10 +97,10 @@ metadata:
   annotations:
     # Create an internal load balancer
     service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+    # Specify the exact private IP you want
+    service.beta.kubernetes.io/azure-load-balancer-ipv4: "10.240.0.100"
 spec:
   type: LoadBalancer
-  # Specify the exact private IP you want
-  loadBalancerIP: 10.240.0.100
   ports:
   - port: 80
     targetPort: 8080
@@ -110,7 +109,7 @@ spec:
     app: internal-api
 ```
 
-The `loadBalancerIP` field requests that specific IP address. If the IP is already in use by another resource, the service will remain in Pending state.
+The `azure-load-balancer-ipv4` annotation requests that specific IP address. If the IP is already in use by another resource, the service will remain in Pending state.
 
 ```bash
 # Apply and verify the static IP was assigned
@@ -136,9 +135,9 @@ metadata:
     service.beta.kubernetes.io/azure-load-balancer-internal: "true"
     # Place the load balancer in a specific subnet
     service.beta.kubernetes.io/azure-load-balancer-internal-subnet: "lb-subnet"
+    service.beta.kubernetes.io/azure-load-balancer-ipv4: "10.240.1.50"
 spec:
   type: LoadBalancer
-  loadBalancerIP: 10.240.1.50
   ports:
   - port: 80
     targetPort: 8080
@@ -163,6 +162,7 @@ metadata:
   namespace: default
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+    service.beta.kubernetes.io/azure-load-balancer-ipv4: "10.240.0.100"
     # Use HTTP health probe instead of TCP
     service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/health"
     # Probe interval in seconds
@@ -171,16 +171,16 @@ metadata:
     service.beta.kubernetes.io/azure-load-balancer-health-probe-num-of-probe: "2"
 spec:
   type: LoadBalancer
-  loadBalancerIP: 10.240.0.100
   ports:
   - port: 80
     targetPort: 8080
     protocol: TCP
+    appProtocol: http
   selector:
     app: internal-api
 ```
 
-HTTP health probes are more reliable than TCP probes because they verify that the application is actually responding, not just that the port is open.
+The `appProtocol: http` value tells AKS to use an HTTP health probe, and the request path verifies that the application is actually responding, not just that the port is open.
 
 ## Step 5: Deploy a Sample Backend
 
@@ -237,7 +237,7 @@ The internal load balancer is only reachable from within the VNet. Test it from 
 
 ```bash
 # Run a temporary pod to test connectivity
-kubectl run test-curl --rm -it --image=curlimages/curl -- \
+kubectl run test-curl --rm -it --restart=Never --image=curlimages/curl --command -- \
   curl -v http://10.240.0.100/health
 
 # Or test from a jump box VM in the same VNet
@@ -284,9 +284,9 @@ metadata:
   name: service-a
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+    service.beta.kubernetes.io/azure-load-balancer-ipv4: "10.240.0.101"
 spec:
   type: LoadBalancer
-  loadBalancerIP: 10.240.0.101
   ports:
   - port: 80
     targetPort: 8080
@@ -299,9 +299,9 @@ metadata:
   name: service-b
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+    service.beta.kubernetes.io/azure-load-balancer-ipv4: "10.240.0.102"
 spec:
   type: LoadBalancer
-  loadBalancerIP: 10.240.0.102
   ports:
   - port: 443
     targetPort: 8443
