@@ -24,7 +24,7 @@ graph LR
     E[Live Data] --> B
 ```
 
-The predictions run when users query the Explore, so they are always based on the latest data. There is no separate batch prediction step.
+Without persistence, the predictions run when users query the Explore, so they are based on the latest data. If you persist the derived table as a PDT, Looker caches the predictions and rebuilds them according to the datagroup you configure. There is no separate batch prediction pipeline to maintain.
 
 ## Step 1: Create a BigQuery ML Model
 
@@ -78,9 +78,9 @@ view: churn_predictions {
   derived_table: {
     sql: SELECT
       customer_id,
-      predicted_churned,
+      CAST(predicted_churned AS INT64) AS predicted_churned,
       -- Extract the probability of churning (class = 1)
-      (SELECT prob FROM UNNEST(predicted_churned_probs) WHERE label = 1) AS churn_probability
+      (SELECT prob FROM UNNEST(predicted_churned_probs) WHERE CAST(label AS STRING) = '1') AS churn_probability
     FROM ML.PREDICT(
       MODEL `my-project.ml_models.churn_predictor`,
       (
@@ -95,7 +95,7 @@ view: churn_predictions {
       )
     ) ;;
 
-    # Cache predictions for 12 hours to avoid re-running the model on every query
+    # Cache predictions using a datagroup defined in your model file
     datagroup_trigger: twelve_hour_datagroup
   }
 
@@ -178,7 +178,7 @@ Now business users can see churn predictions alongside all other customer data. 
 
 ## Using Other BQML Model Types
 
-The same pattern works for any BigQuery ML model type.
+The same pattern works for many BigQuery ML model types, with the prediction or inference function adjusted for the model.
 
 ### Forecasting with ARIMA_PLUS
 
@@ -187,7 +187,7 @@ The same pattern works for any BigQuery ML model type.
 view: revenue_forecast {
   derived_table: {
     sql: SELECT
-      forecast_timestamp AS forecast_date,
+      DATE(forecast_timestamp) AS forecast_date,
       forecast_value AS predicted_revenue,
       prediction_interval_lower_bound AS lower_bound,
       prediction_interval_upper_bound AS upper_bound
@@ -234,8 +234,8 @@ view: customer_segments {
   derived_table: {
     sql: SELECT
       customer_id,
-      CENTROID_ID AS segment_id,
-      NEAREST_CENTROIDS_DISTANCE[OFFSET(0)].DISTANCE AS distance_to_centroid
+      centroid_id AS segment_id,
+      nearest_centroids_distance[OFFSET(0)].distance AS distance_to_centroid
     FROM ML.PREDICT(
       MODEL `my-project.ml_models.customer_clusters`,
       (
@@ -330,6 +330,7 @@ Create a dashboard that combines predictions with actual data:
   filters:
   - name: Region
     type: field_filter
+    model: analytics
     explore: customers
     field: customers.region
 ```
@@ -341,14 +342,19 @@ ML.PREDICT queries can be expensive, especially on large datasets. Use PDTs to c
 ```lookml
 view: churn_predictions {
   derived_table: {
-    sql: ... ;;
+    sql: SELECT
+      CURRENT_DATE() AS prediction_date,
+      customer_id,
+      predicted_churned,
+      churn_probability
+    FROM ... ;;
 
     # Persist predictions as a BigQuery table
     datagroup_trigger: daily_datagroup
 
     # Partition and cluster for query performance
-    partition_keys: ["forecast_date"]
-    cluster_keys: ["churn_risk_tier"]
+    partition_keys: ["prediction_date"]
+    cluster_keys: ["customer_id"]
   }
 }
 ```
