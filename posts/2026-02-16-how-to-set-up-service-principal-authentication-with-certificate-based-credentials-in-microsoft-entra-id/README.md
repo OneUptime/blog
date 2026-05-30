@@ -59,13 +59,17 @@ openssl pkcs12 -export \
   -inkey service-principal.key \
   -in service-principal.crt \
   -passout pass:YourPfxPassword
+
+# Create a PEM file that contains both the private key and certificate
+# Azure CLI and some SDKs require the combined PEM format
+cat service-principal.key service-principal.crt > service-principal.pem
 ```
 
 Alternatively, you can generate the certificate using PowerShell on Windows.
 
 ```powershell
 # Generate a self-signed certificate using PowerShell
-# Stores it in the local machine certificate store
+# Stores it in the current user certificate store
 $cert = New-SelfSignedCertificate `
   -Subject "CN=contoso-automation-sp" `
   -CertStoreLocation "Cert:\CurrentUser\My" `
@@ -97,15 +101,17 @@ Write-Host "Thumbprint: $($cert.Thumbprint)"
 Create an app registration in Entra ID and associate the certificate.
 
 ```bash
-# Create the app registration with the certificate
-az ad app create \
+# Create the app registration
+APP_ID=$(az ad app create \
   --display-name "contoso-automation-sp" \
-  --key-type AsymmetricX509Cert \
-  --key-usage Verify \
-  --key-value "$(cat service-principal.crt | grep -v '-----' | tr -d '\n')"
+  --query appId \
+  -o tsv)
 
-# Get the app ID from the output
-APP_ID=$(az ad app list --display-name "contoso-automation-sp" --query '[0].appId' -o tsv)
+# Upload the public certificate to the app registration
+az ad app credential reset \
+  --id $APP_ID \
+  --cert @service-principal.crt \
+  --append
 
 # Create the service principal for the app registration
 az ad sp create --id $APP_ID
@@ -198,13 +204,19 @@ For .NET applications, the `Azure.Identity` package provides the same functional
 // .NET authentication using certificate-based credentials
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
+using System.Security.Cryptography.X509Certificates;
 
 // Load the certificate from the file system
+var certificate = X509CertificateLoader.LoadPkcs12FromFile(
+    "/path/to/service-principal.pfx",
+    "YourPfxPassword"
+);
+
 var credential = new ClientCertificateCredential(
     tenantId: "your-tenant-id",
     clientId: "your-app-client-id",
-    clientCertificatePath: "/path/to/service-principal.pfx",
-    new ClientCertificateCredentialOptions
+    clientCertificate: certificate,
+    options: new ClientCertificateCredentialOptions
     {
         // Send the certificate chain for better compatibility
         SendCertificateChain = true
@@ -240,7 +252,7 @@ store.Close();
 var credential = new ClientCertificateCredential(
     tenantId: "your-tenant-id",
     clientId: "your-app-client-id",
-    certificate: certs[0]
+    clientCertificate: certs[0]
 );
 ```
 
@@ -253,13 +265,13 @@ The Azure CLI also supports certificate-based service principal authentication.
 az login --service-principal \
   --username "your-app-client-id" \
   --tenant "your-tenant-id" \
-  --password /path/to/service-principal.pem
+  --certificate /path/to/service-principal.pem
 
 # Verify the login
 az account show --query '{subscription: name, user: user.name}'
 ```
 
-Note that the `--password` parameter is confusingly named here - it takes the path to the PEM file, not a password string.
+The PEM file must contain the private key followed by the certificate.
 
 ## Step 7: Rotate Certificates Before Expiration
 
@@ -282,7 +294,7 @@ az ad app credential reset \
 az ad app credential list --id $APP_ID --cert --query '[].{keyId: keyId, endDate: endDateTime}'
 
 # Remove the old certificate after successful rotation
-az ad app credential delete --id $APP_ID --key-id "old-key-id"
+az ad app credential delete --id $APP_ID --key-id "old-key-id" --cert
 ```
 
 ## Storing the Private Key Securely
