@@ -8,9 +8,9 @@ Description: Learn how to use Terraform provider aliases to deploy Azure resourc
 
 ---
 
-When you deploy infrastructure to a single Azure region, you configure one `azurerm` provider and you are done. But production workloads often span multiple regions for disaster recovery, data residency, or latency optimization. That is where Terraform provider aliases come in. They let you configure multiple instances of the same provider, each targeting a different region or even a different subscription, within a single Terraform configuration.
+When you deploy infrastructure to a single Azure region, you configure one `azurerm` provider and you are done. But production workloads often span multiple regions for disaster recovery, data residency, or latency optimization. That is where Terraform provider aliases come in. They let you configure multiple instances of the same provider, each representing a different deployment context or even a different subscription, within a single Terraform configuration.
 
-This post covers how to set up provider aliases for multi-region Azure deployments, pass them to modules, and handle the common patterns you will encounter in real-world scenarios.
+This post covers how to set up provider aliases for multi-region and multi-subscription Azure deployments, pass them to modules, and handle the common patterns you will encounter in real-world scenarios.
 
 ## The Basic Concept
 
@@ -34,11 +34,11 @@ provider "azurerm" {
 
 Both providers use the same subscription, but you can configure them differently. The alias is just a label - it does not affect what region resources deploy to. You control the region through the `location` attribute on each resource.
 
-So why do you need aliases? Because some operations - like setting up VNet peering across regions, or creating resources in different subscriptions - require Terraform to authenticate and interact with different Azure contexts. Each provider instance can have its own credentials, subscription, and feature flags.
+So why do you need aliases? Because some operations - like setting up VNet peering across subscriptions, or creating resources in different subscriptions - require Terraform to authenticate and interact with different Azure contexts. Each provider instance can have its own credentials, subscription, and feature flags.
 
 ## Multi-Region Deployment Pattern
 
-Here is a practical example: deploying a primary database in East US and a replica in West US.
+Here is a practical example: deploying storage accounts in East US and West US.
 
 ```hcl
 # variables.tf
@@ -66,7 +66,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.85"
+      version = "~> 4.0"
     }
   }
 }
@@ -209,10 +209,16 @@ data "azurerm_virtual_network" "hub" {
   resource_group_name = "rg-networking"
 }
 
+# Create a resource group in the workload subscription
+resource "azurerm_resource_group" "workload" {
+  name     = "rg-workload"
+  location = "eastus"
+}
+
 # Create a spoke VNet in the workload subscription
 resource "azurerm_virtual_network" "spoke" {
   name                = "vnet-spoke-workload"
-  location            = "eastus"
+  location            = azurerm_resource_group.workload.location
   resource_group_name = azurerm_resource_group.workload.name
   address_space       = ["10.1.0.0/16"]
 }
@@ -263,7 +269,7 @@ provider "azurerm" {
   subscription_id = var.subscription_id
 }
 
-# Map of regions to their provider aliases
+# Map of regions to display names
 locals {
   regions = {
     eastus     = "East US"
