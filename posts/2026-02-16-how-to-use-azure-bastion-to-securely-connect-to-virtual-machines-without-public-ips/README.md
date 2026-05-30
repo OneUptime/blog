@@ -8,13 +8,13 @@ Description: Learn how to deploy Azure Bastion to securely connect to Azure VMs 
 
 ---
 
-Exposing SSH port 22 or RDP port 3389 to the internet is a security risk, even with strong passwords and NSG rules. Bots constantly scan for open management ports, and one misconfigured rule can expose your entire infrastructure. Azure Bastion eliminates this attack surface entirely by providing a managed PaaS service that lets you connect to VMs through the Azure portal - no public IPs, no NSG rules for management ports, and no VPN clients required.
+Exposing SSH port 22 or RDP port 3389 to the internet is a security risk, even with strong passwords and NSG rules. Bots constantly scan for open management ports, and one misconfigured rule can expose your entire infrastructure. Azure Bastion eliminates this internet-facing attack surface by providing a managed PaaS service that lets you connect to VMs through the Azure portal - no public IPs on the VMs, no internet-sourced NSG rules for management ports, and no VPN clients required.
 
 In this guide, I will show you how to deploy Azure Bastion, connect to your VMs, and understand the different SKUs and features available.
 
 ## How Azure Bastion Works
 
-Azure Bastion sits in a dedicated subnet within your virtual network. When you want to connect to a VM, you open the Azure portal (or use the CLI), and Bastion establishes an SSH or RDP session through a TLS-encrypted connection in your browser. The traffic flows over Azure's backbone network, never touching the public internet.
+Azure Bastion usually sits in a dedicated subnet within your virtual network. When you want to connect to a VM, you open the Azure portal (or use the CLI), and Bastion establishes an SSH or RDP session through a TLS-encrypted connection in your browser or through a native client. The traffic between Bastion and the VM uses the VM's private IP address.
 
 ```mermaid
 flowchart LR
@@ -28,27 +28,29 @@ flowchart LR
 Key points:
 - VMs do not need public IP addresses.
 - No SSH or RDP ports are exposed to the internet.
-- Connection happens through the browser - no local SSH/RDP client needed.
+- Browser-based connections do not need a local SSH/RDP client.
 - All traffic is encrypted with TLS.
-- Bastion authenticates against Azure AD, adding another security layer.
+- Azure RBAC controls access to the Bastion resource and target VM metadata. VM sign-in still uses the authentication method configured for the VM, such as local credentials, SSH keys, or Microsoft Entra ID where supported.
 
 ## Bastion SKUs
 
-Azure Bastion comes in three SKUs:
+Azure Bastion comes in four SKUs:
 
-**Basic**: Supports up to 25 concurrent connections. Provides portal-based SSH/RDP. Good for small environments.
+**Basic**: Provides a dedicated deployment with two fixed instances. It supports portal-based SSH/RDP and concurrent connections, but not advanced features like native client access, shareable links, custom ports, or file transfer. Good for smaller production environments.
 
-**Standard**: Supports up to 50 concurrent connections (scalable with host scaling). Adds native client support (az ssh), file transfer, and shareable links.
+**Standard**: Supports host scaling from 2 to 50 instances. Adds native client support (`az network bastion ssh`, `az network bastion rdp`, and `az network bastion tunnel`), file transfer through native clients, IP-based connections, custom ports, and shareable links.
 
-**Developer** (Preview): Single-connection, low-cost option for individual developers. No dedicated subnet required.
+**Premium**: Includes Standard features plus session recording and private-only deployment.
 
-For most teams, the Standard SKU is the right choice because it supports native CLI access and file transfers.
+**Developer**: Free, single-VM-at-a-time option for individual development and test scenarios in supported regions. No dedicated subnet or public IP is required, but it is not suitable for production workloads.
+
+For most teams, the Standard SKU is a good starting point because it supports native CLI access and file transfers. Teams that need session recording or private-only Bastion should use Premium.
 
 ## Prerequisites
 
-Azure Bastion requires a dedicated subnet named `AzureBastionSubnet` in your virtual network. This is not optional - the name must be exactly `AzureBastionSubnet`.
+Azure Bastion dedicated deployments require a subnet named `AzureBastionSubnet` in your virtual network. This is not optional for Basic, Standard, or Premium - the name must be exactly `AzureBastionSubnet`.
 
-The subnet must be at least /26 (64 addresses) for the Basic and Standard SKUs.
+The subnet must be at least /26 (64 addresses) for the Basic, Standard, and Premium SKUs. The Developer SKU uses shared infrastructure and does not require this subnet.
 
 ## Deploying Azure Bastion
 
@@ -90,6 +92,9 @@ az network bastion create \
   --public-ip-address bastionPublicIP \
   --vnet-name myVNet \
   --sku Standard \
+  --enable-tunneling true \
+  --file-copy true \
+  --shareable-link true \
   --location eastus
 ```
 
@@ -111,13 +116,23 @@ A new browser tab opens with the SSH or RDP session. The session runs entirely i
 
 ## Connecting via the Azure CLI (Standard SKU)
 
-With the Standard SKU, you can use the native SSH client through the `az ssh` command:
+With the Standard SKU and native client support enabled, you can use the native SSH client through the `az network bastion ssh` command:
 
 ```bash
 # Connect using the native SSH client through Bastion
-az ssh vm \
+VM_ID=$(az vm show \
   --resource-group myResourceGroup \
-  --name myLinuxVM
+  --name myLinuxVM \
+  --query id \
+  --output tsv)
+
+az network bastion ssh \
+  --resource-group myResourceGroup \
+  --name myBastion \
+  --target-resource-id "$VM_ID" \
+  --auth-type ssh-key \
+  --username azureuser \
+  --ssh-key ~/.ssh/id_rsa
 ```
 
 Or use a tunnel for tools that need direct SSH access:
@@ -164,17 +179,13 @@ az network bastion tunnel \
   --port 33389
 ```
 
-Then connect with your RDP client to `localhost:33389`.
+Then connect with your RDP client to `localhost:33389`. On Windows clients, you can also use `az network bastion rdp` to open the native RDP client directly.
 
 ## File Transfer (Standard SKU)
 
-The Standard SKU supports file upload and download through the browser session:
+The Standard SKU supports file upload and download through native clients. Azure Bastion does not support file upload or download through the Azure portal session.
 
-**Upload**: In the Bastion SSH session toolbar, click the upload icon. Select a file from your local machine. The file is uploaded to the user's home directory.
-
-**Download**: In the Bastion SSH session, click the download icon. Enter the full path to the file on the VM. The file downloads to your local machine.
-
-File transfer through the portal is convenient for small files. For large transfers, use the tunnel approach with SCP:
+For SSH file transfers, use the tunnel approach with SCP:
 
 ```bash
 # Transfer a file through the Bastion tunnel
@@ -188,10 +199,9 @@ Shareable links let you give someone access to a VM through Bastion without them
 1. In the Bastion resource, go to "Shareable links."
 2. Click "Add."
 3. Select the target VM.
-4. Set an expiration time.
-5. Generate the link.
+4. Generate the link.
 
-The recipient opens the link in their browser, enters the VM credentials, and gets connected. This is useful for granting temporary access to contractors or support teams.
+The recipient opens the link in their browser, enters the VM credentials, and gets connected. The link does not contain credentials, and it remains usable until it is deleted or the target resource is no longer available.
 
 ## Removing Public IPs from VMs
 
@@ -231,17 +241,17 @@ az network nsg rule delete \
 
 Azure Bastion pricing has two components:
 
-- **Hourly rate**: Charged per hour while the Bastion host is deployed (roughly $0.19/hour for Basic, $0.29/hour for Standard).
+- **Hourly rate**: Charged per hour while the Bastion host is deployed, based on SKU and instance count.
 - **Data transfer**: Outbound data transfer charges apply.
 
-Monthly estimate: ~$140 for Basic, ~$210 for Standard (running 24/7).
+Monthly cost depends on the SKU, number of instances, region, and outbound data transfer. Check the Azure Bastion pricing page for current rates before estimating production costs.
 
-For dev/test environments where cost is a concern, you can deploy Bastion only when needed and delete it afterward. Or use the Developer SKU (preview) which has a lower cost.
+For dev/test environments where cost is a concern, you can deploy Bastion only when needed and delete it afterward. Or use the Developer SKU, which is free for supported development and test scenarios.
 
 ## Best Practices
 
-1. **Use Bastion as your only management access path.** Remove all public IPs and close management ports in NSGs.
-2. **Enable Azure AD integration.** Use Azure AD authentication for SSH to eliminate shared passwords and SSH keys.
+1. **Use Bastion as your only management access path.** Remove all public IPs and close internet-sourced management ports in NSGs.
+2. **Use Microsoft Entra ID where supported.** Use Microsoft Entra authentication for SSH or RDP when your VM and client scenario support it to reduce reliance on shared passwords and SSH keys.
 3. **Use the Standard SKU for teams.** The native client support and file transfer capabilities are worth the extra cost.
 4. **Monitor Bastion access.** Azure Bastion integrates with Azure Monitor. Review connection logs to track who accessed which VM and when.
 5. **Pair with Just-In-Time access.** For an additional layer, combine Bastion with JIT VM access in Defender for Cloud.
