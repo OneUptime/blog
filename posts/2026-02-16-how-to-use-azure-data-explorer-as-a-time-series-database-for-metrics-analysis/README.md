@@ -25,6 +25,7 @@ Compared to other time series databases, ADX offers:
 ## Prerequisites
 
 - An Azure subscription
+- Azure CLI with the Kusto extension installed (`az extension add -n kusto`)
 - An Azure Data Explorer cluster (Dev/Test SKU for learning, production SKUs for real workloads)
 - The Kusto.Explorer desktop tool or the ADX web UI for querying
 - Python 3.9+ for programmatic ingestion
@@ -38,6 +39,7 @@ az kusto cluster create \
     --name adx-metrics-cluster \
     --resource-group rg-monitoring \
     --location eastus \
+    --enable-streaming-ingest true \
     --sku name="Dev(No SLA)_Standard_E2a_v4" tier="Basic" capacity=1
 
 # Create a database for metrics
@@ -45,8 +47,7 @@ az kusto database create \
     --cluster-name adx-metrics-cluster \
     --database-name MetricsDB \
     --resource-group rg-monitoring \
-    --soft-delete-period P365D \
-    --hot-cache-period P31D
+    --read-write-database location="eastus" soft-delete-period="P365D" hot-cache-period="P31D"
 ```
 
 The `soft-delete-period` defines how long data is retained. The `hot-cache-period` defines how long data stays in the fast SSD cache (queries on cached data are significantly faster).
@@ -80,12 +81,10 @@ Connect to your ADX database using the web UI (https://dataexplorer.azure.com) o
 )
 
 // Configure streaming ingestion for near-real-time data
-.alter table ServerMetrics policy streamingingestion enable
+.alter table ServerMetrics policy streamingingestion '{"IsEnabled": true}'
 
 // Configure the ingestion batching policy for higher throughput
 .alter table ServerMetrics policy ingestionbatching
-```
-```text
 @'{"MaximumBatchingTimeSpan":"00:00:30", "MaximumNumberOfItems": 10000, "MaximumRawDataSizeMB": 100}'
 ```
 
@@ -103,7 +102,7 @@ from azure.kusto.ingest import (
     ReportLevel
 )
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 
 # Build the connection string using Azure AD authentication
@@ -135,7 +134,7 @@ def generate_metrics(num_points: int) -> list:
     regions = ["eastus", "westus2", "westeurope"]
 
     data = []
-    base_time = datetime.utcnow()
+    base_time = datetime.now(timezone.utc)
 
     for i in range(num_points):
         timestamp = base_time - timedelta(seconds=i * 10)
@@ -288,7 +287,7 @@ ServerMetrics
 | where Timestamp > $__timeFrom and Timestamp < $__timeTo
 | where ServerName == "$server"
 | where MetricName == "$metric"
-| summarize Value = avg(MetricValue) by bin(Timestamp, $__interval)
+| summarize Value = avg(MetricValue) by bin(Timestamp, $__timeInterval)
 | order by Timestamp asc
 ```
 
@@ -301,7 +300,7 @@ ADX has tiered storage to manage costs for long-term metric retention:
 .alter database MetricsDB policy caching hot = 30d
 
 // Configure retention for 730 days (2 years)
-.alter table ServerMetrics policy retention softdelete = 730d recoverability = disabled
+.alter-merge table ServerMetrics policy retention softdelete = 730d recoverability = disabled
 
 // Check current data size
 .show table ServerMetrics extents
