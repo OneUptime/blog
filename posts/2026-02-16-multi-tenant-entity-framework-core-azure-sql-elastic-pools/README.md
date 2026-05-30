@@ -69,12 +69,13 @@ az sql db create \
 ## Project Setup
 
 ```bash
-dotnet new webapi -n MultiTenantApp
+dotnet new webapi -n MultiTenantApp --use-controllers
 cd MultiTenantApp
 
 dotnet add package Microsoft.EntityFrameworkCore.SqlServer
 dotnet add package Microsoft.EntityFrameworkCore.Design
 dotnet add package Microsoft.EntityFrameworkCore.Tools
+dotnet add package Microsoft.Data.SqlClient
 ```
 
 ## Tenant Catalog
@@ -134,7 +135,7 @@ public class TenantDbContext : DbContext
     public TenantDbContext(DbContextOptions<TenantDbContext> options) : base(options) { }
 
     public DbSet<Project> Projects => Set<Project>();
-    public DbSet<Task> Tasks => Set<Task>();
+    public DbSet<ProjectTask> Tasks => Set<ProjectTask>();
     public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -146,7 +147,7 @@ public class TenantDbContext : DbContext
             entity.HasMany(e => e.Tasks).WithOne(t => t.Project).HasForeignKey(t => t.ProjectId);
         });
 
-        modelBuilder.Entity<Task>(entity =>
+        modelBuilder.Entity<ProjectTask>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(300);
@@ -168,10 +169,10 @@ public class Project
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public List<Task> Tasks { get; set; } = new();
+    public List<ProjectTask> Tasks { get; set; } = new();
 }
 
-public class Task
+public class ProjectTask
 {
     public int Id { get; set; }
     public string Title { get; set; } = string.Empty;
@@ -195,6 +196,8 @@ Build middleware that identifies the tenant from the request:
 
 ```csharp
 // Middleware/TenantMiddleware.cs - Resolve tenant from request
+using MultiTenantApp.Services;
+
 namespace MultiTenantApp.Middleware;
 
 public class TenantMiddleware
@@ -241,6 +244,7 @@ The tenant service manages tenant lifecycle, including provisioning new database
 
 ```csharp
 // Services/TenantService.cs - Tenant management
+using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using MultiTenantApp.Data;
@@ -258,16 +262,13 @@ public class TenantService : ITenantService
 {
     private readonly CatalogDbContext _catalogDb;
     private readonly IConfiguration _configuration;
-    private readonly IServiceProvider _serviceProvider;
 
     public TenantService(
         CatalogDbContext catalogDb,
-        IConfiguration configuration,
-        IServiceProvider serviceProvider)
+        IConfiguration configuration)
     {
         _catalogDb = catalogDb;
         _configuration = configuration;
-        _serviceProvider = serviceProvider;
     }
 
     // Look up a tenant by their identifier
@@ -280,20 +281,31 @@ public class TenantService : ITenantService
     // Provision a new tenant with their own database
     public async System.Threading.Tasks.Task<Tenant> ProvisionTenantAsync(string name, string identifier)
     {
-        var serverName = _configuration["AzureSql:ServerName"];
+        if (!Regex.IsMatch(identifier, "^[a-z0-9-]+$", RegexOptions.IgnoreCase))
+            throw new ArgumentException("Tenant identifier can only contain letters, numbers, and hyphens.", nameof(identifier));
+
         var elasticPool = _configuration["AzureSql:ElasticPoolName"];
+        if (string.IsNullOrWhiteSpace(elasticPool))
+            throw new InvalidOperationException("AzureSql:ElasticPoolName is not configured.");
+
         var dbName = $"tenant_{identifier}";
 
         // Create the database in the elastic pool
         var masterConnectionString = _configuration.GetConnectionString("MasterConnection");
+        if (string.IsNullOrWhiteSpace(masterConnectionString))
+            throw new InvalidOperationException("ConnectionStrings:MasterConnection is not configured.");
+
         using (var connection = new SqlConnection(masterConnectionString))
         {
             await connection.OpenAsync();
 
+            var escapedDbName = EscapeSqlIdentifier(dbName);
+            var escapedElasticPool = EscapeSqlIdentifier(elasticPool);
+
             // Create a new database within the elastic pool
             var createDbSql = $@"
-                CREATE DATABASE [{dbName}]
-                ( SERVICE_OBJECTIVE = ELASTIC_POOL ( name = [{elasticPool}] ) )";
+                CREATE DATABASE [{escapedDbName}]
+                ( SERVICE_OBJECTIVE = ELASTIC_POOL ( name = [{escapedElasticPool}] ) )";
 
             using var command = new SqlCommand(createDbSql, connection);
             command.CommandTimeout = 120; // Database creation can take a while
@@ -307,7 +319,7 @@ public class TenantService : ITenantService
         }.ConnectionString;
 
         // Apply migrations to the new tenant database
-        var tenantContext = GetTenantContext(tenantConnectionString);
+        await using var tenantContext = GetTenantContext(tenantConnectionString);
         await tenantContext.Database.MigrateAsync();
 
         // Register the tenant in the catalog
@@ -337,6 +349,11 @@ public class TenantService : ITenantService
             .Options;
 
         return new TenantDbContext(options);
+    }
+
+    private static string EscapeSqlIdentifier(string value)
+    {
+        return value.Replace("]", "]]");
     }
 }
 ```
