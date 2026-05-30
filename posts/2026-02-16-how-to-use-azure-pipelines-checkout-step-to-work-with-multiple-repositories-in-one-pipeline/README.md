@@ -14,7 +14,7 @@ Azure Pipelines supports multi-repo checkout, letting you clone multiple reposit
 
 ## The Default Checkout Behavior
 
-By default, Azure Pipelines checks out the repository that contains the pipeline YAML file. The code lands in a directory called `$(Build.SourcesDirectory)` or its alias `$(Pipeline.Workspace)/s`. If you do not include any checkout step, this happens automatically.
+By default, Azure Pipelines checks out the repository that contains the pipeline YAML file for normal jobs. The code lands in `$(Build.SourcesDirectory)`, which is usually `$(Pipeline.Workspace)/s` for the default single-repo checkout. If you do not include any checkout step in a normal job, this happens automatically. Deployment jobs default to `checkout: none`.
 
 If you explicitly include a checkout step, you must also include `checkout: self` if you still want the pipeline's own repository:
 
@@ -165,9 +165,10 @@ steps:
     path: 'infra'
     fetchDepth: 1        # Shallow clone (only latest commit)
     fetchFilter: 'blob:none'  # Don't download file content until needed
+    sparseCheckoutDirectories: terraform
 ```
 
-Note that Azure Pipelines does not have a built-in sparse checkout option in the YAML schema. However, you can achieve it with a custom script:
+Azure Pipelines also supports `sparseCheckoutPatterns` for non-cone-mode pattern matching. These sparse checkout options require agent version 3.253.0/4.253.0 or newer and Git 2.25 or newer. If you need lower-level control, you can still use a custom script:
 
 ```yaml
 steps:
@@ -177,8 +178,9 @@ steps:
   # Manual sparse checkout for fine-grained control
   - script: |
       # Clone only the directory structure (no file content yet)
-      git clone --filter=blob:none --sparse \
-        https://$(System.AccessToken)@dev.azure.com/myorg/myproject/_git/large-repo \
+      git -c http.extraheader="AUTHORIZATION: bearer $(System.AccessToken)" \
+        clone --filter=blob:none --sparse \
+        https://dev.azure.com/myorg/myproject/_git/large-repo \
         $(Pipeline.Workspace)/large-repo
 
       cd $(Pipeline.Workspace)/large-repo
