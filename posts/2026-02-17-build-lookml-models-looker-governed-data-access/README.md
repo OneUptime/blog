@@ -79,6 +79,12 @@ view: orders {
     hidden: yes  # Hide from Explore since it is a join key
   }
 
+  dimension: product_id {
+    type: number
+    sql: ${TABLE}.product_id ;;
+    hidden: yes  # Hide from Explore since it is a join key
+  }
+
   dimension: order_total {
     type: number
     sql: ${TABLE}.total_amount ;;
@@ -143,7 +149,7 @@ view: customers {
   dimension: email {
     type: string
     sql: ${TABLE}.email ;;
-    # Mark as PII so it can be controlled via access grants
+    # Tag as PII metadata; enforce access with required_access_grants below
     tags: ["pii", "email"]
   }
 
@@ -187,6 +193,11 @@ connection: "my-bigquery-connection"
 # Include all view files
 include: "/views/*.view.lkml"
 
+# Define a daily datagroup for persisted derived tables
+datagroup: daily_datagroup {
+  interval_trigger: "24 hours"
+}
+
 # Define the primary explore for order analysis
 explore: orders {
   label: "Order Analysis"
@@ -211,7 +222,7 @@ explore: orders {
     filters: [orders.status: "completed"]
   }
 
-  # Only show the last 2 years by default to prevent expensive queries
+  # Restrict all queries to the last 2 years to prevent expensive queries
   sql_always_where: ${orders.created_date} >= DATE_SUB(CURRENT_DATE(), INTERVAL 2 YEAR) ;;
 }
 ```
@@ -324,7 +335,7 @@ view: customer_lifetime_stats {
       MAX(created_at) AS last_order_date,
       COUNT(DISTINCT order_id) AS lifetime_orders,
       SUM(total_amount) AS lifetime_value,
-      DATE_DIFF(MAX(created_at), MIN(created_at), DAY) AS customer_tenure_days
+      DATE_DIFF(DATE(MAX(created_at)), DATE(MIN(created_at)), DAY) AS customer_tenure_days
     FROM `my-project.analytics.orders`
     WHERE order_status = 'completed'
     GROUP BY customer_id ;;
