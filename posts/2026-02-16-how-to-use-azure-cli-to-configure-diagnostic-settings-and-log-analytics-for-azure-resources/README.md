@@ -16,11 +16,12 @@ The Azure CLI is the fastest way to configure diagnostic settings across many re
 
 A diagnostic setting is a configuration on an Azure resource that tells it where to send its diagnostic data. Each resource can have multiple diagnostic settings, and each setting can route data to different destinations.
 
-The three possible destinations are:
+The four possible destinations are:
 
 - Log Analytics workspace - for querying and alerting
 - Storage account - for long-term archival
 - Event Hub - for streaming to external systems like Splunk or Datadog
+- Azure Monitor partner solution - for supported partner integrations
 
 Most teams use Log Analytics as their primary destination because it supports Kusto Query Language (KQL), which is powerful for ad-hoc analysis and alerting.
 
@@ -30,6 +31,7 @@ graph LR
     B --> C[Log Analytics Workspace]
     B --> D[Storage Account]
     B --> E[Event Hub]
+    B --> I[Azure Monitor Partner Solution]
     C --> F[KQL Queries]
     C --> G[Alerts]
     C --> H[Dashboards]
@@ -47,15 +49,15 @@ az group create \
   --location "eastus"
 
 # Create a Log Analytics workspace
-# The --retention-in-days flag sets how long data is kept (30-730 days)
+# The --retention-time flag sets how long data is kept
 az monitor log-analytics workspace create \
   --resource-group "rg-monitoring" \
   --workspace-name "law-central-monitoring" \
   --location "eastus" \
-  --retention-in-days 90 \
+  --retention-time 90 \
   --sku "PerGB2018"
 
-# Get the workspace ID (you will need this for diagnostic settings)
+# Get the workspace resource ID (you will need this for diagnostic settings)
 WORKSPACE_ID=$(az monitor log-analytics workspace show \
   --resource-group "rg-monitoring" \
   --workspace-name "law-central-monitoring" \
@@ -63,6 +65,15 @@ WORKSPACE_ID=$(az monitor log-analytics workspace show \
   --output tsv)
 
 echo "Workspace ID: $WORKSPACE_ID"
+
+# Get the workspace customer ID (GUID), which is used for Log Analytics queries
+WORKSPACE_CUSTOMER_ID=$(az monitor log-analytics workspace show \
+  --resource-group "rg-monitoring" \
+  --workspace-name "law-central-monitoring" \
+  --query customerId \
+  --output tsv)
+
+echo "Workspace customer ID: $WORKSPACE_CUSTOMER_ID"
 ```
 
 ## Checking Available Diagnostic Categories
@@ -99,30 +110,25 @@ az monitor diagnostic-settings create \
   --logs '[
     {
       "category": "AppServiceHTTPLogs",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     },
     {
       "category": "AppServiceConsoleLogs",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     },
     {
       "category": "AppServiceAppLogs",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     },
     {
       "category": "AppServicePlatformLogs",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     }
   ]' \
   --metrics '[
     {
       "category": "AllMetrics",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     }
   ]'
 ```
@@ -142,43 +148,38 @@ az monitor diagnostic-settings create \
   --logs '[
     {
       "category": "SQLInsights",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     },
     {
       "category": "AutomaticTuning",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     },
     {
       "category": "QueryStoreRuntimeStatistics",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     },
     {
       "category": "Errors",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     },
     {
       "category": "SQLSecurityAuditEvents",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     }
   ]' \
   --metrics '[
     {
       "category": "Basic",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     },
     {
       "category": "InstanceAndAppAdvanced",
-      "enabled": true,
-      "retentionPolicy": { "enabled": false, "days": 0 }
+      "enabled": true
     }
   ]'
 ```
+
+Enabling `SQLSecurityAuditEvents` in diagnostic settings does not enable database auditing by itself. Enable auditing on the database or server first if you need audit events.
 
 ## Bulk Configuration Across All Resources
 
@@ -250,7 +251,7 @@ To verify data is actually arriving in Log Analytics, run a KQL query.
 # Query Log Analytics to verify data is flowing
 # This checks for recent App Service HTTP logs
 az monitor log-analytics query \
-  --workspace "$WORKSPACE_ID" \
+  --workspace "$WORKSPACE_CUSTOMER_ID" \
   --analytics-query "AppServiceHTTPLogs | take 10 | project TimeGenerated, CsMethod, CsUriStem, ScStatus" \
   --timespan "PT1H" \
   --output table
@@ -291,8 +292,8 @@ az monitor scheduled-query create \
   --name "high-error-rate" \
   --resource-group "rg-monitoring" \
   --scopes "$WORKSPACE_ID" \
-  --condition "count 'AppServiceHTTPLogs | where ScStatus >= 500' > 50" \
-  --condition-query "AppServiceHTTPLogs | where ScStatus >= 500 | summarize ErrorCount=count() by bin(TimeGenerated, 5m)" \
+  --condition "total ErrorCount from 'ErrorCountQuery' > 50" \
+  --condition-query ErrorCountQuery="AppServiceHTTPLogs | where ScStatus >= 500 | summarize ErrorCount=count() by bin(TimeGenerated, 5m)" \
   --evaluation-frequency "5m" \
   --window-size "5m" \
   --severity 2 \
