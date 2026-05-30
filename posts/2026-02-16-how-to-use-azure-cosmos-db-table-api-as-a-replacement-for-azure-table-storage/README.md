@@ -8,7 +8,7 @@ Description: Migrate from Azure Table Storage to Cosmos DB Table API for better 
 
 ---
 
-Azure Table Storage has been around since the early days of Azure. It is cheap, simple, and works fine for basic key-value lookups. But it has real limitations - no SLA on latency, limited querying capabilities, no global distribution, and throughput that depends on partition heat. Azure Cosmos DB Table API is a drop-in replacement that uses the same Table Storage SDK and data model but runs on the Cosmos DB engine. This gives you guaranteed single-digit millisecond latency, global distribution, and automatic indexing while keeping your existing code mostly unchanged.
+Azure Table Storage has been around since the early days of Azure. It is cheap, simple, and works fine for basic key-value lookups. But it has real limitations - no SLA on latency, limited querying capabilities, limited global distribution, and throughput that depends on partition heat. Azure Cosmos DB Table API is a compatible replacement that uses the same Azure Tables SDK and data model but runs on the Cosmos DB engine. This gives you guaranteed single-digit millisecond latency, global distribution, and automatic indexing while keeping your existing code mostly unchanged.
 
 ## Why Switch from Table Storage?
 
@@ -17,11 +17,11 @@ Here is a practical comparison:
 | Feature | Azure Table Storage | Cosmos DB Table API |
 |---------|-------------------|---------------------|
 | Latency SLA | None | < 10ms reads, < 15ms writes (99th percentile) |
-| Throughput | 20,000 ops/s per partition | Configurable, autoscale up to millions |
-| Global distribution | Geo-redundant storage only | Active multi-region replication |
+| Throughput | 20,000 ops/s per storage account, 2,000 entities/s per partition | Configurable, autoscale up to millions |
+| Global distribution | Single primary region with an optional readable secondary region | Active multi-region replication |
 | Indexing | Primary key only | Automatic indexing on all properties |
-| Consistency | Eventual (across regions) | 5 configurable levels |
-| SLA availability | 99.9% | Up to 99.999% |
+| Consistency | Strong in the primary region, eventual in the secondary region | 5 configurable levels |
+| SLA availability | 99.99% | Up to 99.999% read availability |
 | Querying | PartitionKey + RowKey efficient, everything else is a scan | All properties indexed, efficient filtering |
 
 The biggest wins are guaranteed latency and the automatic secondary indexing. With Table Storage, querying on any property other than PartitionKey and RowKey means a full table scan. With Cosmos DB Table API, every property is indexed by default.
@@ -32,7 +32,7 @@ The biggest wins are guaranteed latency and the automatic secondary indexing. Wi
 # Create a Cosmos DB account with Table API
 
 az cosmosdb create \
-    --name myTableAccount \
+    --name mytableaccount \
     --resource-group myResourceGroup \
     --capabilities EnableTable \
     --locations regionName=eastus failoverPriority=0 \
@@ -40,7 +40,7 @@ az cosmosdb create \
 
 # Create a table
 az cosmosdb table create \
-    --account-name myTableAccount \
+    --account-name mytableaccount \
     --name customers \
     --throughput 4000 \
     --resource-group myResourceGroup
@@ -53,7 +53,7 @@ The migration starts with changing the connection string. Your existing Table St
 ```bash
 # Get the Cosmos DB Table API connection string
 az cosmosdb keys list \
-    --name myTableAccount \
+    --name mytableaccount \
     --resource-group myResourceGroup \
     --type connection-strings \
     --query "connectionStrings[?contains(description, 'Table')].connectionString" -o tsv
@@ -68,7 +68,7 @@ DefaultEndpointsProtocol=https;AccountName=mystorageaccount;AccountKey=xxx;Endpo
 To:
 
 ```text
-DefaultEndpointsProtocol=https;AccountName=myTableAccount;AccountKey=xxx;TableEndpoint=https://myTableAccount.table.cosmos.azure.com:443/
+DefaultEndpointsProtocol=https;AccountName=mytableaccount;AccountKey=xxx;TableEndpoint=https://mytableaccount.table.cosmos.azure.com:443/
 ```
 
 ## Using the Azure.Data.Tables SDK (.NET)
@@ -76,6 +76,7 @@ DefaultEndpointsProtocol=https;AccountName=myTableAccount;AccountKey=xxx;TableEn
 The newer `Azure.Data.Tables` SDK works with both Table Storage and Cosmos DB Table API:
 
 ```csharp
+using Azure;
 using Azure.Data.Tables;
 
 // Create a table client - just change the connection string
@@ -104,7 +105,7 @@ var customer = new TableEntity("US", "cust-001")
     { "TotalSpent", 2499.99 }
 };
 
-// Insert or replace the entity
+// Insert or merge the entity
 await tableClient.UpsertEntityAsync(customer);
 Console.WriteLine("Entity inserted");
 ```
@@ -222,28 +223,28 @@ for entity in entities:
 
 To move data from Table Storage to Cosmos DB Table API, you have several options:
 
-### Option 1: AzCopy
+### Option 1: Azure Cosmos DB Data Migration Tool
 
 ```bash
-# Export from Table Storage to JSON
-azcopy copy \
-    "https://mystorageaccount.table.core.windows.net/customers?sv=..." \
-    "/tmp/customers/" \
-    --include-pattern "*"
+# Pull the Data Migration Tool container
+docker pull mcr.microsoft.com/azurecosmosdb/linux/azure-cosmos-dmt:latest
 
-# Import into Cosmos DB Table API
-# Note: AzCopy direct table-to-table copy may have limitations
-# Consider using the Data Migration Tool instead
+# Run it with your migration settings file
+docker run \
+    -v $(pwd)/config:/config \
+    -v $(pwd)/data:/data \
+    mcr.microsoft.com/azurecosmosdb/linux/azure-cosmos-dmt:latest \
+    run --settings /config/migrationsettings.json
 ```
 
 ### Option 2: Azure Data Factory
 
 Create a pipeline in Azure Data Factory with:
 - Source: Azure Table Storage linked service
-- Sink: Azure Cosmos DB Table API linked service
-- Map the columns and run the pipeline
+- Sink: Azure Blob Storage or Azure Data Lake Storage as JSON or CSV files
+- Load the exported files into Cosmos DB Table API with the Data Migration Tool or a custom script
 
-This is the easiest approach for large tables because ADF handles batching, retrying, and parallelism.
+This is useful for large tables because ADF handles extracting, batching, retrying, and parallelism.
 
 ### Option 3: Custom Migration Script
 
@@ -294,14 +295,16 @@ Start with autoscale throughput so the system adjusts to your actual load.
 
 ## Key Differences to Watch For
 
-1. **Entity size limit**: Table Storage allows 1 MB entities. Cosmos DB Table API allows 2 MB.
+1. **Entity size limit**: Table Storage allows 1 MB entities. Cosmos DB Table API allows 2 MB, though some encoded property types can hit practical limits earlier.
 
-2. **Batch operations**: Both support batch operations within a single partition. Cosmos DB has a 100-operation batch limit.
+2. **Batch operations**: Both support batch operations within a single partition. Table Storage supports up to 100 operations and a 4 MB payload per entity group transaction. Cosmos DB Table API batches can be up to 2 MB.
 
-3. **Continuation tokens**: The format differs between Table Storage and Cosmos DB. If your code stores continuation tokens, they are not interchangeable.
+3. **Continuation tokens and ordering**: The format differs between Table Storage and Cosmos DB. If your code stores continuation tokens, they are not interchangeable. Cosmos DB Table API query results are also not guaranteed to be returned in PartitionKey and RowKey order.
 
-4. **Throughput model**: Table Storage scales automatically (within limits). Cosmos DB requires you to provision or configure autoscale throughput.
+4. **RowKey and table names**: Cosmos DB Table API limits RowKey values to 255 bytes. Table names are case-insensitive in Table Storage but case-sensitive in Cosmos DB Table API.
 
-5. **Cost structure**: For high-volume, read-heavy workloads, Cosmos DB may cost more. For workloads that need low latency guarantees, the premium is justified.
+5. **Throughput model**: Table Storage scales automatically (within limits). Cosmos DB requires you to use serverless capacity or provision/configure throughput.
+
+6. **Cost structure**: For high-volume, read-heavy workloads, Cosmos DB may cost more. For workloads that need low latency guarantees, the premium is justified.
 
 Switching from Azure Table Storage to Cosmos DB Table API is one of the smoothest migration paths in Azure. The SDK is compatible, the data model is the same, and you get dramatically better performance and features. The main consideration is cost - run the numbers for your specific workload to make sure the improved latency and indexing justify the higher price per operation.
