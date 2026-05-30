@@ -25,7 +25,7 @@ EXPLAIN ANALYZE
 SELECT * FROM orders WHERE customer_id = 12345;
 ```
 
-For SELECT queries, EXPLAIN ANALYZE is safe. For INSERT, UPDATE, or DELETE, wrap it in a transaction and roll back:
+For ordinary read-only SELECT queries, EXPLAIN ANALYZE is safe. Be careful with SELECT statements that call functions with side effects, because EXPLAIN ANALYZE still executes the statement. For INSERT, UPDATE, DELETE, MERGE, or other data-changing statements, wrap it in a transaction and roll back:
 
 ```sql
 -- Safe way to EXPLAIN ANALYZE a write query
@@ -59,7 +59,7 @@ Breaking this down:
 - **cost=0.43..8.45**: Estimated startup cost and total cost (in abstract units)
 - **rows=5**: Estimated number of rows
 - **width=128**: Estimated average row width in bytes
-- **actual time=0.025..0.031**: Real time in milliseconds (startup..total)
+- **actual time=0.025..0.031**: Real time in milliseconds (startup..total). If loops is greater than 1, these times are averages per execution
 - **rows=3**: Actual number of rows returned
 - **loops=1**: Number of times this step was executed
 - **Planning Time**: Time spent planning the query
@@ -80,7 +80,7 @@ ORDER BY o.total DESC
 LIMIT 10;
 ```
 
-The BUFFERS option is particularly valuable - it shows how many disk blocks were read:
+The BUFFERS option is particularly valuable - it shows PostgreSQL buffer usage, including blocks found in cache and blocks read into shared buffers:
 
 ```text
 Limit  (cost=1234.56..1234.58 rows=10 width=64) (actual time=15.234..15.240 rows=10 loops=1)
@@ -92,9 +92,9 @@ Limit  (cost=1234.56..1234.58 rows=10 width=64) (actual time=15.234..15.240 rows
 ```
 
 - **shared hit=423**: 423 blocks were found in the buffer cache (fast)
-- **read=156**: 156 blocks were read from disk (slow)
+- **read=156**: 156 blocks were not already in PostgreSQL's shared buffer cache and had to be read into it
 
-A high read-to-hit ratio suggests your shared_buffers might be too small or the data is not cached.
+A high read-to-hit ratio suggests the data was not cached or the working set does not fit well in PostgreSQL's buffer cache.
 
 ## Common Plan Node Types
 
@@ -127,7 +127,7 @@ Index Only Scan using idx_orders_date_total on orders  (cost=0.43..432.10 rows=2
   Heap Fetches: 0
 ```
 
-Even better than Index Scan - the index contains all the columns needed, so the table does not need to be accessed at all. Heap Fetches: 0 means the index provided everything.
+Even better than Index Scan - the index contains all the columns needed, and PostgreSQL can avoid heap access when the visibility map confirms the rows are visible. Heap Fetches: 0 means this run did not need to visit the table heap.
 
 ### Nested Loop Join
 
@@ -210,11 +210,11 @@ ANALYZE products;
 Here is how I approach a slow query:
 
 1. Run EXPLAIN (ANALYZE, BUFFERS) to get the full picture
-2. Look at actual time - find the node that takes the longest
+2. Look at actual time - find the node that takes the longest, multiplying by loops when loops is greater than 1
 3. Check for sequential scans on large tables - add indexes if needed
 4. Look for disk sorts - increase work_mem or add an index that provides ordering
 5. Check row estimates vs actuals - run ANALYZE if they are way off
-6. Look at buffer stats - high read counts mean cold cache or insufficient shared_buffers
+6. Look at buffer stats - high read counts mean cold cache or buffer cache pressure
 
 ```sql
 -- Full diagnostic query
@@ -233,7 +233,7 @@ LIMIT 20;
 
 ## Using pg_stat_statements for Broader Analysis
 
-While EXPLAIN ANALYZE looks at one query, pg_stat_statements shows statistics for all queries:
+While EXPLAIN ANALYZE looks at one query, pg_stat_statements shows statistics for all queries after the extension is enabled in the database:
 
 ```sql
 -- Find the slowest queries by total time
