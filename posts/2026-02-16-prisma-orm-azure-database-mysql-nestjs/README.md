@@ -16,7 +16,7 @@ This guide walks through the full integration - from provisioning the Azure MySQ
 
 You will need:
 
-- Node.js 18 or later
+- Node.js 20.19 or later
 - The NestJS CLI installed globally (`npm i -g @nestjs/cli`)
 - An Azure account with an active subscription
 - The Azure CLI installed and logged in
@@ -37,10 +37,10 @@ az mysql flexible-server create \
   --name nestjs-mysql-server \
   --location eastus \
   --admin-user adminuser \
-  --admin-password SecurePass123! \
+  --admin-password 'SecurePass123!' \
   --sku-name Standard_B1ms \
   --tier Burstable \
-  --storage-size 20 \
+  --storage-size 32 \
   --version 8.0.21
 
 # Open the firewall for development access
@@ -73,17 +73,34 @@ cd nestjs-prisma-azure
 
 # Install Prisma dependencies
 npm install prisma --save-dev
-npm install @prisma/client
+npm install @prisma/client @prisma/adapter-mariadb dotenv
 
 # Initialize Prisma with MySQL as the provider
-npx prisma init --datasource-provider mysql
+npx prisma init --datasource-provider mysql --output ../src/generated/prisma
 ```
 
 Update the `.env` file with your Azure MySQL connection string:
 
 ```env
 # Azure MySQL connection string with SSL enabled
-DATABASE_URL="mysql://adminuser:SecurePass123!@nestjs-mysql-server.mysql.database.azure.com:3306/nestjs_app?sslaccept=strict"
+DATABASE_URL="mysql://adminuser:SecurePass123%21@nestjs-mysql-server.mysql.database.azure.com:3306/nestjs_app?sslaccept=strict"
+```
+
+The generated `prisma.config.ts` file should keep Prisma wired to that environment variable:
+
+```typescript
+import 'dotenv/config';
+import { defineConfig, env } from 'prisma/config';
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: {
+    path: 'prisma/migrations',
+  },
+  datasource: {
+    url: env('DATABASE_URL'),
+  },
+});
 ```
 
 ## Defining the Prisma Schema
@@ -93,12 +110,13 @@ Open `prisma/schema.prisma` and define your models. This example builds an e-com
 ```prisma
 // Prisma schema for a product catalog API
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
 }
 
 // Product categories for organizing the catalog
@@ -170,7 +188,8 @@ Here is the Prisma service that extends PrismaClient and hooks into the NestJS l
 ```typescript
 // src/prisma/prisma.service.ts
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
+import { PrismaClient } from '../generated/prisma/client';
 
 @Injectable()
 export class PrismaService
@@ -178,7 +197,23 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL is not set');
+    }
+
+    const databaseUrl = new URL(process.env.DATABASE_URL);
+    const adapter = new PrismaMariaDb({
+      host: databaseUrl.hostname,
+      port: Number(databaseUrl.port || 3306),
+      user: decodeURIComponent(databaseUrl.username),
+      password: decodeURIComponent(databaseUrl.password),
+      database: databaseUrl.pathname.slice(1),
+      ssl: true,
+      connectionLimit: Number(process.env.DB_POOL_LIMIT ?? 10),
+    });
+
     super({
+      adapter,
       // Configure logging for development
       log: process.env.NODE_ENV === 'development'
         ? ['query', 'info', 'warn', 'error']
@@ -225,6 +260,26 @@ nest generate controller products
 nest generate service products
 ```
 
+Install the validation packages and enable NestJS validation globally:
+
+```bash
+npm install class-validator class-transformer
+```
+
+```typescript
+// src/main.ts
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  await app.listen(process.env.PORT ?? 3000);
+}
+bootstrap();
+```
+
 Define DTOs for input validation:
 
 ```typescript
@@ -262,7 +317,7 @@ The products service handles all database operations through Prisma:
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../generated/prisma/client';
 
 @Injectable()
 export class ProductsService {
@@ -373,11 +428,15 @@ export class ProductsController {
     @Query('skip') skip?: string,
     @Query('take') take?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('minPrice') minPrice?: string,
+    @Query('maxPrice') maxPrice?: string,
   ) {
     return this.productsService.findAll({
       skip: skip ? parseInt(skip) : undefined,
       take: take ? parseInt(take) : undefined,
       categoryId: categoryId ? parseInt(categoryId) : undefined,
+      minPrice: minPrice ? parseFloat(minPrice) : undefined,
+      maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
     });
   }
 
@@ -424,11 +483,11 @@ async createWithReview(dto: CreateProductDto, review: { rating: number; comment:
 
 ## Connection Pooling Considerations
 
-Azure MySQL flexible servers have connection limits tied to the compute tier. The Burstable B1ms tier allows around 150 connections. Since NestJS typically runs as a long-lived process, you want to set the pool size appropriately:
+Azure MySQL flexible servers have connection limits tied to the compute tier. The Burstable B1ms tier defaults to 171 connections. Since NestJS typically runs as a long-lived process, you want to set the pool size appropriately:
 
 ```env
 # Limit the connection pool to 10 connections
-DATABASE_URL="mysql://adminuser:SecurePass123!@nestjs-mysql-server.mysql.database.azure.com:3306/nestjs_app?sslaccept=strict&connection_limit=10"
+DB_POOL_LIMIT=10
 ```
 
 ## Testing with Prisma
