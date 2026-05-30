@@ -10,7 +10,7 @@ Description: Learn how to configure linked servers in Azure SQL Managed Instance
 
 Linked servers are a SQL Server feature that lets you query data from remote database servers as if it were local. You can write queries that join tables across different servers, execute remote stored procedures, and integrate data from multiple sources. Azure SQL Managed Instance supports linked servers, making it possible to maintain these patterns when migrating from on-premises SQL Server.
 
-In this post, I will cover how to set up linked servers in Managed Instance, including connections to other Managed Instances, on-premises SQL Servers, and other data sources.
+In this post, I will cover how to set up linked servers in Managed Instance, including connections to other Managed Instances, on-premises SQL Servers, and Azure SQL Databases.
 
 ## What Are Linked Servers?
 
@@ -28,7 +28,6 @@ graph LR
     A[Managed Instance A] -->|Linked Server| B[Managed Instance B]
     A -->|Linked Server| C[On-Premises SQL Server]
     A -->|Linked Server| D[Azure SQL Database]
-    A -->|Linked Server| E[Other ODBC Source]
 ```
 
 ## Setting Up a Linked Server to Another Managed Instance
@@ -47,12 +46,13 @@ Connect to the Managed Instance where you want to create the linked server and r
 
 ```sql
 -- Create a linked server to another Managed Instance
--- This defines the remote server connection using the SQL Native Client provider
+-- This defines the remote server connection using the Microsoft OLE DB Driver for SQL Server
 EXEC sp_addlinkedserver
     @server = N'RemoteMI',
     @srvproduct = N'',
-    @provider = N'SQLNCLI',
-    @datasrc = N'remote-mi.abc123.database.windows.net';
+    @provider = N'MSOLEDBSQL',
+    @datasrc = N'remote-mi.abc123.database.windows.net',
+    @provstr = N'encrypt=mandatory';
 
 -- Configure the login mapping for the linked server
 -- This specifies which credentials to use when connecting to the remote server
@@ -136,8 +136,9 @@ Connecting from Managed Instance to an on-premises SQL Server requires VPN or Ex
 EXEC sp_addlinkedserver
     @server = N'OnPremServer',
     @srvproduct = N'',
-    @provider = N'SQLNCLI',
-    @datasrc = N'10.100.1.50,1433';
+    @provider = N'MSOLEDBSQL',
+    @datasrc = N'10.100.1.50,1433',
+    @provstr = N'encrypt=optional';
 
 -- Configure login mapping
 EXEC sp_addlinkedsrvlogin
@@ -170,9 +171,10 @@ You can also create a linked server from Managed Instance to a regular Azure SQL
 EXEC sp_addlinkedserver
     @server = N'AzureSQLDB',
     @srvproduct = N'',
-    @provider = N'SQLNCLI',
+    @provider = N'MSOLEDBSQL',
     @datasrc = N'myserver.database.windows.net',
-    @catalog = N'mydb';
+    @catalog = N'mydb',
+    @provstr = N'encrypt=mandatory';
 
 -- Configure login mapping
 EXEC sp_addlinkedsrvlogin
@@ -183,7 +185,7 @@ EXEC sp_addlinkedsrvlogin
     @rmtpassword = N'YourPassword123!';
 ```
 
-Note: Azure SQL Database requires TLS encryption, so make sure the connection uses the encrypted protocol (the default SQLNCLI provider handles this automatically).
+Note: Azure SQL Database requires TLS encryption, so make sure the linked server connection uses encryption. The examples use the recommended Microsoft OLE DB Driver for SQL Server (`MSOLEDBSQL`) instead of the deprecated SQL Server Native Client provider (`SQLNCLI`).
 
 ## Configuring Linked Server Options
 
@@ -242,8 +244,9 @@ EXEC sp_dropserver @server = N'RemoteMI', @droplogins = 'droplogins';
 EXEC sp_addlinkedserver
     @server = N'RemoteMI',
     @srvproduct = N'',
-    @provider = N'SQLNCLI',
-    @datasrc = N'new-remote-mi.abc456.database.windows.net';
+    @provider = N'MSOLEDBSQL',
+    @datasrc = N'new-remote-mi.abc456.database.windows.net',
+    @provstr = N'encrypt=mandatory';
 ```
 
 ### Dropping a Linked Server
@@ -291,9 +294,9 @@ SELECT * FROM OPENQUERY(RemoteMI,
 
 While Managed Instance supports most linked server functionality, there are some limitations:
 
-- Only the SQLNCLI and MSOLEDBSQL providers are available (no custom OLE DB providers)
-- Distributed transactions (MSDTC) are supported between Managed Instances but may require additional configuration
-- Linked servers to non-SQL sources (Oracle, MySQL, etc.) are limited to available providers
+- Azure SQL Managed Instance currently supports only SQL Server, Azure SQL Database, and other SQL managed instances as remote data sources for linked servers
+- SQL Server Native Client (`SQLNCLI`) is deprecated and not recommended for new linked server definitions; use Microsoft OLE DB Driver for SQL Server (`MSOLEDBSQL`)
+- Distributed transactions are supported for SQL Server-based participants but require the appropriate distributed transaction configuration; distributed transactions to Azure SQL Database are not supported with DTC
 
 ## Summary
 
