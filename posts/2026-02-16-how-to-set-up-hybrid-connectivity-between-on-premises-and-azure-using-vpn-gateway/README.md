@@ -20,13 +20,13 @@ Before you start deploying resources, you need to settle a few things:
 
 **Choose the right VPN Gateway SKU.** The SKU determines throughput, number of tunnels, and whether you get active-active support:
 
-| SKU | Throughput | S2S Tunnels | P2S Connections |
-|-----|-----------|-------------|-----------------|
-| VpnGw1 | 650 Mbps | 30 | 250 |
-| VpnGw2 | 1 Gbps | 30 | 500 |
-| VpnGw3 | 1.25 Gbps | 30 | 1000 |
-| VpnGw4 | 5 Gbps | 100 | 5000 |
-| VpnGw5 | 10 Gbps | 100 | 10000 |
+| Generation | SKU | Throughput | S2S Tunnels | P2S IKEv2/OpenVPN Connections |
+|------------|-----|------------|-------------|-------------------------------|
+| Generation1 | VpnGw1 | 650 Mbps | 30 | 250 |
+| Generation2 | VpnGw2 | 1.25 Gbps | 30 | 500 |
+| Generation2 | VpnGw3 | 2.5 Gbps | 30 | 1000 |
+| Generation2 | VpnGw4 | 5 Gbps | 100 | 5000 |
+| Generation2 | VpnGw5 | 10 Gbps | 100 | 10000 |
 
 For most production workloads, VpnGw2 or VpnGw3 provides sufficient throughput. If you need more, consider ExpressRoute.
 
@@ -60,7 +60,7 @@ az network vnet subnet create \
   --address-prefix 10.0.255.0/24
 
 # Step 3: Create a public IP for the VPN gateway
-# Must be Standard SKU for VpnGw2+
+# New VPN gateways must use a Standard SKU public IP
 az network public-ip create \
   --resource-group vpn-rg \
   --name vpn-gateway-pip \
@@ -77,7 +77,7 @@ az network vnet-gateway create \
   --gateway-type Vpn \
   --vpn-type RouteBased \
   --sku VpnGw2 \
-  --generation Generation2 \
+  --vpn-gateway-generation Generation2 \
   --no-wait
 
 echo "VPN Gateway creation started - this will take 30-45 minutes"
@@ -114,13 +114,13 @@ Once the VPN Gateway is provisioned and the Local Network Gateway is configured,
 ```bash
 # Create the Site-to-Site VPN connection
 # The shared key must match what you configure on your on-premises device
+# IKEv2 is used by default where applicable
 az network vpn-connection create \
   --resource-group vpn-rg \
   --name azure-to-onprem \
   --vnet-gateway1 hub-vpn-gateway \
   --local-gateway2 onprem-local-gateway \
   --shared-key "YourSharedKey123!" \
-  --connection-protocol IKEv2 \
   --enable-bgp false
 
 # For enhanced security, configure a custom IPSec policy
@@ -135,7 +135,7 @@ az network vpn-connection ipsec-policy add \
   --ipsec-integrity GCMAES256 \
   --pfs-group PFS14 \
   --sa-lifetime 28800 \
-  --sa-max-size 1024
+  --sa-max-size 102400000
 ```
 
 ## Configuring the On-Premises VPN Device
@@ -169,13 +169,13 @@ az network vpn-connection show-device-config-script \
   --resource-group vpn-rg \
   --connection-name azure-to-onprem \
   --vendor "Cisco" \
-  --device-family "ASA" \
-  --firmware-version "9.x"
+  --device-family "Cisco-ISR(IOS)" \
+  --firmware-version "Cisco-ISR-15.x-- IKEv2+BGP"
 ```
 
 ## Setting Up Active-Active for High Availability
 
-A single VPN gateway instance creates a single point of failure. For production workloads, configure active-active mode with two gateway instances:
+Azure VPN gateways use two instances in active-standby mode by default. For production workloads that need fewer failover interruptions and better path availability, configure active-active mode so both gateway instances establish tunnels:
 
 ```bash
 # Create a second public IP for the active-active configuration
@@ -194,7 +194,6 @@ az network vnet-gateway create \
   --gateway-type Vpn \
   --vpn-type RouteBased \
   --sku VpnGw2 \
-  --generation Generation2 \
   --vpn-gateway-generation Generation2 \
   --no-wait
 ```
@@ -232,7 +231,7 @@ When the tunnel does not come up, these are the most common causes:
 
 **Shared key mismatch.** The most frequent issue. The pre-shared key must be identical on both sides, including capitalization.
 
-**IKE version mismatch.** Azure uses IKEv2 by default. If your on-premises device is configured for IKEv1, either reconfigure it for IKEv2 or change the Azure connection protocol.
+**IKE version mismatch.** Azure uses IKEv2 by default where applicable. If your on-premises device is configured for IKEv1, reconfigure it for IKEv2 or delete and recreate the connection with the required protocol type using a supported Azure tool.
 
 **NAT traversal issues.** If your on-premises VPN device is behind a NAT, make sure UDP ports 500 and 4500 are forwarded.
 
@@ -241,6 +240,11 @@ When the tunnel does not come up, these are the most common causes:
 To get detailed diagnostics:
 
 ```bash
+# Create a Log Analytics workspace for the VPN Gateway logs
+az monitor log-analytics workspace create \
+  --resource-group vpn-rg \
+  --workspace-name vpn-logs
+
 # Enable VPN Gateway diagnostics
 az monitor diagnostic-settings create \
   --resource $(az network vnet-gateway show \
@@ -280,14 +284,14 @@ Set up alerts for VPN connection health:
 az monitor metrics alert create \
   --resource-group vpn-rg \
   --name "vpn-tunnel-down" \
-  --scopes $(az network vpn-connection show \
+  --scopes $(az network vnet-gateway show \
     --resource-group vpn-rg \
-    --name azure-to-onprem \
+    --name hub-vpn-gateway \
     --query id --output tsv) \
   --condition "avg TunnelAverageBandwidth < 1" \
   --window-size 5m \
   --evaluation-frequency 1m \
-  --action-group ops-team \
+  --action ops-team \
   --description "VPN tunnel bandwidth dropped to zero - tunnel may be down"
 ```
 
