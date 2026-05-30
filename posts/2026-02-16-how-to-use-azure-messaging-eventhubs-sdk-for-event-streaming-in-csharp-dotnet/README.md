@@ -85,7 +85,7 @@ az eventhubs eventhub create \
   --namespace-name my-eventhub-ns \
   --resource-group eventhub-demo-rg \
   --partition-count 4 \
-  --message-retention 1
+  --retention-time 24
 
 # Create a storage account for checkpointing
 az storage account create \
@@ -145,13 +145,10 @@ for (int i = 0; i < 100; i++)
         eventData.Properties["source"] = "temperature-monitor";
         eventData.Properties["priority"] = sensorReading.Temperature > 30 ? "high" : "normal";
 
-        // TryAdd returns false if the batch is full
+        // TryAdd returns false if the event would exceed the batch size limit
         if (!eventBatch.TryAdd(eventData))
         {
-            // Batch is full - send what we have and create a new batch
-            await producerClient.SendAsync(eventBatch);
-            Console.WriteLine($"Sent batch of {eventBatch.Count} events");
-            break;
+            throw new InvalidOperationException("The event is too large for the batch and cannot be sent.");
         }
     }
 
@@ -194,6 +191,7 @@ using Azure.Messaging.EventHubs.Consumer;
 using Azure.Messaging.EventHubs.Processor;
 using Azure.Storage.Blobs;
 using System.Text;
+using System.Threading;
 
 string eventHubConnectionString = "Endpoint=sb://my-eventhub-ns.servicebus.windows.net/;...";
 string eventHubName = "sensor-data";
@@ -229,14 +227,14 @@ processor.ProcessEventAsync += async (ProcessEventArgs args) =>
         Console.WriteLine($"Partition: {args.Partition.PartitionId} | " +
                           $"Priority: {priority} | Data: {body}");
 
-        eventsProcessed++;
+        int eventNumber = Interlocked.Increment(ref eventsProcessed);
 
         // Checkpoint every 50 events to track our progress
         // Checkpointing too often adds overhead, too rarely risks reprocessing
-        if (eventsProcessed % 50 == 0)
+        if (eventNumber % 50 == 0)
         {
             await args.UpdateCheckpointAsync();
-            Console.WriteLine($"Checkpoint updated after {eventsProcessed} events");
+            Console.WriteLine($"Checkpoint updated after {eventNumber} events");
         }
     }
 };
@@ -306,7 +304,7 @@ _ = Task.Run(async () =>
 
 ## Production Considerations
 
-When running Event Hubs in production, keep these things in mind. First, partition count is set at creation time and cannot be increased later (in Standard tier). Plan for your expected peak throughput. Each partition supports up to 1 MB/s ingress and 2 MB/s egress.
+When running Event Hubs in production, keep these things in mind. First, partition count is set at creation time and cannot be increased later (in Standard tier). Plan for your expected peak throughput. In Standard tier, use roughly 1 MB/s ingress and 2 MB/s egress per partition as a planning baseline, but total throughput is still capped by the throughput units configured for the namespace.
 
 Second, use managed identities instead of connection strings for authentication. The `Azure.Identity` package makes this easy.
 
