@@ -125,6 +125,8 @@ az afd route create \
   --origin-group audio-origin-group \
   --supported-protocols Https \
   --patterns-to-match "/audio-high/*" "/audio-medium/*" "/audio-low/*" "/artwork/*" \
+  --link-to-default-domain Enabled \
+  --enable-caching true \
   --forwarding-protocol HttpsOnly
 ```
 
@@ -150,8 +152,9 @@ az afd rule create \
   --operator Contains \
   --match-values "mp3" "m4a" "ogg" "flac" "aac" \
   --action-name RouteConfigurationOverride \
+  --enable-caching true \
   --cache-behavior OverrideAlways \
-  --cache-duration "30.00:00:00"
+  --cache-duration "720:00:00"
 
 # Cache artwork for 7 days
 az afd rule create \
@@ -164,8 +167,17 @@ az afd rule create \
   --operator Contains \
   --match-values "jpg" "jpeg" "png" "webp" \
   --action-name RouteConfigurationOverride \
+  --enable-caching true \
   --cache-behavior OverrideAlways \
-  --cache-duration "7.00:00:00"
+  --cache-duration "168:00:00"
+
+# Attach the rule set to the audio route
+az afd route update \
+  --route-name audio-route \
+  --endpoint-name music-stream \
+  --profile-name music-front-door \
+  --resource-group rg-music \
+  --rule-sets AudioCaching
 ```
 
 ## Audio Processing Pipeline
@@ -392,12 +404,17 @@ No special configuration is needed for this - it works out of the box with both 
 
 ## Cost Optimization
 
-Audio files are smaller than video files, so storage costs are modest. A typical 4-minute MP3 at 320 kbps is about 10 MB. A library of 100,000 tracks at three quality levels is about 4.5 TB of storage, which costs roughly $80/month on Hot tier.
+Audio files are smaller than video files, so storage costs are modest. A typical 4-minute MP3 at 320 kbps is about 10 MB. With 320 kbps, 192 kbps, and 96 kbps renditions, a library of 100,000 four-minute tracks is about 1.9 TB before artwork and metadata. The monthly storage cost depends on the region, redundancy option, operations, and egress, so use the Azure Pricing Calculator for the current estimate.
 
 For rarely played tracks, use a lifecycle policy to move them to the Cool tier automatically.
 
 ```bash
 # Move tracks not accessed for 90 days to Cool tier
+az storage account blob-service-properties update \
+  --account-name musicstreamstore \
+  --resource-group rg-music \
+  --enable-last-access-tracking true
+
 az storage account management-policy create \
   --account-name musicstreamstore \
   --resource-group rg-music \
