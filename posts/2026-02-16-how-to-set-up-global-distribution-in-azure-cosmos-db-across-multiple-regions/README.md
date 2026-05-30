@@ -8,7 +8,7 @@ Description: Configure Azure Cosmos DB for global distribution across multiple A
 
 ---
 
-Azure Cosmos DB was built from the ground up for global distribution. Adding a new region is literally a button click or a single CLI command - no sharding, no replication setup, no complex failover configuration. Your data gets replicated transparently, and clients automatically route to the nearest region. This guide covers how to set it up, configure multi-region writes, handle failover, and optimize your application for a globally distributed database.
+Azure Cosmos DB was built from the ground up for global distribution. Adding a new region is literally a button click or a single CLI command - no sharding, no replication setup, no complex failover configuration. Your data gets replicated transparently, and properly configured clients automatically route to the nearest region. This guide covers how to set it up, configure multi-region writes, handle failover, and optimize your application for a globally distributed database.
 
 ## Why Go Multi-Region?
 
@@ -131,6 +131,7 @@ from azure.cosmos import CosmosClient
 client = CosmosClient(
     url=endpoint,
     credential=key,
+    multiple_write_locations=True,
     preferred_locations=["East US", "West Europe", "Southeast Asia"]
 )
 ```
@@ -150,7 +151,7 @@ az cosmosdb update \
 With automatic failover enabled:
 
 - Read regions: If a read region goes down, the SDK automatically redirects reads to the next closest available region. This happens transparently.
-- Write region: If the write region goes down, Cosmos DB promotes the next region in the failover priority list to be the new write region. This takes 1-2 minutes.
+- Write region: If the write region goes down, Cosmos DB promotes the next region in the failover priority list to be the new write region. For service-managed failover, the timing depends on the outage and can take up to an hour or more; use a forced failover for controlled disaster recovery drills.
 
 You can also trigger a manual failover for testing:
 
@@ -165,7 +166,7 @@ az cosmosdb failover-priority-change \
 
 ## Conflict Resolution for Multi-Region Writes
 
-When multi-region writes are enabled, two users in different regions might update the same document simultaneously. Cosmos DB provides three conflict resolution strategies:
+When multi-region writes are enabled, two users in different regions might update the same document simultaneously. Cosmos DB provides two conflict resolution policies, plus a conflict feed for manual resolution when a custom resolver is not configured or fails:
 
 ### Last Writer Wins (Default)
 
@@ -179,8 +180,7 @@ az cosmosdb sql container create \
     --database-name mydb \
     --name mycontainer \
     --partition-key-path "/partitionKey" \
-    --conflict-resolution-policy-mode "LastWriterWins" \
-    --conflict-resolution-policy-path "/_ts" \
+    --conflict-resolution-policy '{"mode":"LastWriterWins","conflictResolutionPath":"/_ts"}' \
     --resource-group myResourceGroup
 ```
 
@@ -199,44 +199,61 @@ For complex conflict resolution logic, use a stored procedure:
 
 ```javascript
 // Custom conflict resolution stored procedure
-// This procedure merges conflicting documents instead of picking a winner
+// This procedure keeps the item with the lowest conflictPriority value
 function resolveConflict(incomingItem, existingItem, isTombstone, conflictingItems) {
     var context = getContext();
     var collection = context.getCollection();
 
-    if (isTombstone) {
-        // The existing item was deleted - accept the incoming item
-        collection.replaceDocument(
-            existingItem._self,
-            incomingItem,
-            function(err) { if (err) throw err; }
-        );
-    } else {
-        // Merge strategy: keep the higher value for numeric fields
-        var merged = existingItem;
-        merged.viewCount = Math.max(
-            incomingItem.viewCount || 0,
-            existingItem.viewCount || 0
-        );
-        merged.lastUpdated = new Date().toISOString();
+    if (!incomingItem || isTombstone) {
+        // Deletes win over inserts or replaces.
+        return;
+    }
 
-        collection.replaceDocument(
-            existingItem._self,
-            merged,
-            function(err) { if (err) throw err; }
-        );
+    if (existingItem && incomingItem.conflictPriority > existingItem.conflictPriority) {
+        return;
+    }
+
+    for (var i = 0; i < conflictingItems.length; i++) {
+        if (incomingItem.conflictPriority > conflictingItems[i].conflictPriority) {
+            return;
+        }
+    }
+
+    clearConflicts(conflictingItems, function() {
+        if (existingItem) {
+            collection.replaceDocument(existingItem._self, incomingItem, throwIfError);
+        } else {
+            collection.createDocument(collection.getSelfLink(), incomingItem, throwIfError);
+        }
+    });
+
+    function clearConflicts(documents, callback) {
+        if (documents.length === 0) {
+            callback();
+            return;
+        }
+
+        collection.deleteDocument(documents[0]._self, {}, function(err) {
+            if (err) throw err;
+            documents.shift();
+            clearConflicts(documents, callback);
+        });
+    }
+
+    function throwIfError(err) {
+        if (err) throw err;
     }
 }
 ```
 
-### Custom Conflict Feed
+### Manual Conflict Feed
 
-Store all conflicting versions in a conflict feed and resolve them in your application:
+Use a custom conflict resolution policy without a stored procedure to store conflicts in the conflict feed and resolve them in your application:
 
 ```csharp
 // Read conflicts from the conflict feed and resolve them in application code
 FeedIterator<ConflictProperties> conflictIterator =
-    container.Conflicts.GetConflictQueryIterator<ConflictProperties>();
+    container.Conflicts.GetConflictQueryIterator();
 
 while (conflictIterator.HasMoreResults)
 {
@@ -244,14 +261,17 @@ while (conflictIterator.HasMoreResults)
     foreach (ConflictProperties conflict in conflicts)
     {
         // Read the conflicting document
-        dynamic conflictDoc = await container.Conflicts.ReadCurrentAsync<dynamic>(
-            conflict, new PartitionKey(conflict.PartitionKeyValue));
+        MyItem conflictDoc = container.Conflicts.ReadConflictContent<MyItem>(conflict);
+        MyItem currentDoc = await container.Conflicts.ReadCurrentAsync<MyItem>(
+            conflict, new PartitionKey(conflictDoc.PartitionKey));
 
         // Apply your custom resolution logic
-        await ResolveConflict(conflictDoc, conflict);
+        MyItem resolvedDoc = ResolveConflict(conflictDoc, currentDoc);
+        await container.ReplaceItemAsync(
+            resolvedDoc, resolvedDoc.Id, new PartitionKey(resolvedDoc.PartitionKey));
 
         // Delete the conflict after resolution
-        await container.Conflicts.DeleteAsync(conflict, new PartitionKey(conflict.PartitionKeyValue));
+        await container.Conflicts.DeleteAsync(conflict, new PartitionKey(conflictDoc.PartitionKey));
     }
 }
 ```
@@ -274,7 +294,7 @@ In the Azure Portal, go to Metrics and select:
 - Aggregation: Average
 - Split by: Target Region
 
-Typical replication latency between regions is 5-50ms depending on the geographic distance.
+Replication latency depends on the source and target regions, consistency level, and current workload.
 
 ## Cost Implications
 
@@ -285,9 +305,9 @@ Each additional region roughly doubles your costs because the data and throughpu
 | 1 region | 1x |
 | 2 regions (single write) | 2x |
 | 3 regions (single write) | 3x |
-| 2 regions (multi-write) | 2x (writes cost 2x more per write) |
+| 2 regions (multi-write) | 2x for provisioned throughput, plus multi-region write pricing |
 
-Multi-region writes also increase write RU costs because each write is replicated synchronously to a quorum of regions.
+Multi-region writes can also increase write RU consumption because writes are replicated to additional regions and Cosmos DB does extra coordination for conflict handling.
 
 ## Removing a Region
 
