@@ -14,7 +14,7 @@ This guide covers two aspects: using Terraform to manage blob storage infrastruc
 
 ## Setting Up Terraform with Azure
 
-Before writing any Terraform configuration, set up authentication. The recommended approach for CI/CD is a service principal:
+Before writing any Terraform configuration, set up authentication. A common approach for CI/CD is a service principal. Where your CI/CD platform supports it, prefer OpenID Connect or workload identity federation so you do not have to manage a long-lived client secret:
 
 ```bash
 # Create a service principal for Terraform
@@ -36,7 +36,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.90"
+      version = "~> 4.0"
     }
   }
 }
@@ -73,6 +73,12 @@ variable "location" {
   default     = "eastus2"
 }
 
+variable "replication" {
+  type        = string
+  description = "Replication type for the storage account (LRS, GRS, RAGRS, ZRS, GZRS, or RAGZRS)"
+  default     = "GRS"
+}
+
 # main.tf
 # Resource group for storage resources
 resource "azurerm_resource_group" "storage" {
@@ -91,7 +97,7 @@ resource "azurerm_storage_account" "main" {
   resource_group_name      = azurerm_resource_group.storage.name
   location                 = azurerm_resource_group.storage.location
   account_tier             = "Standard"
-  account_replication_type = "GRS"
+  account_replication_type = var.replication
   account_kind             = "StorageV2"
 
   # Security settings
@@ -127,19 +133,19 @@ Define blob containers and configure access policies:
 # Blob containers
 resource "azurerm_storage_container" "app_data" {
   name                  = "app-data"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "backups" {
   name                  = "backups"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "logs" {
   name                  = "application-logs"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 ```
@@ -173,7 +179,7 @@ resource "azurerm_storage_management_policy" "lifecycle" {
         delete_after_days_since_creation_greater_than = 90
       }
       version {
-        delete_after_days_since_creation = 90
+        delete_after_days_since_creation_greater_than = 90
       }
     }
   }
@@ -227,6 +233,7 @@ resource "azurerm_storage_account_network_rules" "main" {
   default_action = "Deny"
 
   # Allow specific subnets
+  # These subnets must have the Microsoft.Storage service endpoint enabled.
   virtual_network_subnet_ids = [
     azurerm_subnet.app_subnet.id,
     azurerm_subnet.data_subnet.id,
