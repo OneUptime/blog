@@ -49,7 +49,7 @@ public class ScheduledCleanup
 
 ## CRON Expression Syntax
 
-Azure Functions uses six-field CRON expressions (not the standard five-field Linux cron format). The fields are:
+Azure Functions supports NCRONTAB expressions in both five-field and six-field formats. The six-field format adds a seconds field at the beginning:
 
 ```text
 {second} {minute} {hour} {day} {month} {day-of-week}
@@ -82,46 +82,31 @@ Here are the most common schedules you will use.
 // Every 30 seconds
 [TimerTrigger("*/30 * * * * *")]
 
-// Every 15 minutes during business hours (8 AM - 6 PM UTC, weekdays)
+// Every 15 minutes during business hours (8:00 AM - 5:45 PM UTC, weekdays)
 [TimerTrigger("0 */15 8-17 * * 1-5")]
 ```
 
 ## Timezone Configuration
 
-By default, CRON expressions are evaluated in UTC. If you need your schedule to respect a specific timezone (for example, "run at 9 AM Eastern time"), you can configure it in `host.json`.
-
-```json
-{
-  "version": "2.0",
-  "extensions": {
-    "timers": {
-      "schedule": {
-        "adjustForDST": true
-      }
-    }
-  }
-}
-```
-
-You can also specify the timezone directly in the CRON expression by using the `%` syntax with an app setting, or by using the `scheduleStatus` approach. The cleanest way is to set the `WEBSITE_TIME_ZONE` app setting.
+By default, CRON expressions are evaluated in UTC. If you need your schedule to respect a specific timezone (for example, "run at 9 AM Eastern time"), set the `WEBSITE_TIME_ZONE` app setting for the function app.
 
 ```bash
 # Set the timezone for the entire function app
 
-# Use Windows timezone names on Windows, IANA names on Linux
+# Use Windows timezone names on Windows function apps
 az functionapp config appsettings set \
   --name my-function-app \
   --resource-group my-resource-group \
   --settings "WEBSITE_TIME_ZONE=Eastern Standard Time"
 
-# For Linux function apps, use IANA timezone names
+# For Linux function apps on Premium or Dedicated plans, use IANA timezone names
 az functionapp config appsettings set \
   --name my-function-app \
   --resource-group my-resource-group \
   --settings "WEBSITE_TIME_ZONE=America/New_York"
 ```
 
-With this setting, `0 0 9 * * *` means 9:00 AM Eastern time, and it will automatically adjust for daylight saving time.
+With this setting, `0 0 9 * * *` means 9:00 AM Eastern time, and it will automatically adjust for daylight saving time. `WEBSITE_TIME_ZONE` and `TZ` are not supported for Linux function apps on the Consumption or Flex Consumption plans.
 
 ## Using the TimerInfo Object
 
@@ -153,11 +138,11 @@ public void Run([TimerTrigger("0 */5 * * * *")] TimerInfo timerInfo)
 
 ## Preventing Overlapping Executions
 
-If your scheduled task takes longer than the interval between triggers, you might get overlapping executions. For example, if your task runs every 5 minutes but sometimes takes 7 minutes to complete, the next execution will start before the previous one finishes.
+If your scheduled task takes longer than the interval between triggers, the timer trigger will not start a new invocation while the previous invocation is still running.
 
-The timer trigger has built-in protection against this on a single instance - it will not trigger again until the previous execution completes. However, if your function app scales to multiple instances, each instance maintains its own timer, so you could still get concurrent executions.
+The timer trigger also uses a storage lock so only one instance of a timer-triggered function runs when the function app scales out. If multiple function apps or manually triggered jobs can update the same resource, use your own distributed lock around the shared work.
 
-To prevent this across instances, use a distributed lock.
+Here is an example using a blob lease as a distributed lock.
 
 ```csharp
 using Azure.Storage.Blobs;
@@ -183,17 +168,22 @@ public class SafeScheduledTask
 
         var lockBlob = container.GetBlobClient("daily-report-lock");
 
-        // Create the blob if it does not exist
-        if (!await lockBlob.ExistsAsync())
+        // Create the blob if it does not exist. If another instance creates it first,
+        // ignore the conflict and continue to the lease attempt.
+        try
         {
             await lockBlob.UploadAsync(new BinaryData("lock"));
+        }
+        catch (Azure.RequestFailedException ex) when (ex.Status == 409)
+        {
+            // Blob already exists.
         }
 
         // Try to acquire a lease (distributed lock)
         var leaseClient = lockBlob.GetBlobLeaseClient();
         try
         {
-            var lease = await leaseClient.AcquireAsync(TimeSpan.FromMinutes(5));
+            var lease = await leaseClient.AcquireAsync(TimeSpan.FromSeconds(60));
             _logger.LogInformation("Acquired lock, generating daily report");
 
             try
@@ -220,6 +210,8 @@ public class SafeScheduledTask
     }
 }
 ```
+
+For work that can run longer than 60 seconds, renew the blob lease while the work is running or use an infinite lease with a separate stale-lock recovery strategy.
 
 ## Practical Example: Daily Data Sync
 
@@ -321,20 +313,22 @@ az functionapp config appsettings set \
 
 ## Monitoring and Alerting
 
-Set up alerts for your timer functions to catch failures early. A timer function that silently fails can go unnoticed for days.
+Set up alerts for your timer functions to catch failures early. A timer function that silently fails can go unnoticed for days. For non-HTTP timer triggers, use Application Insights or Log Analytics telemetry rather than HTTP status code metrics.
 
 ```bash
-# Create an alert rule that fires when the function fails
-az monitor metrics alert create \
+# Create a scheduled query alert that fires when the function logs exceptions
+az monitor scheduled-query create \
   --name "DailySync-Failures" \
   --resource-group my-resource-group \
-  --scopes /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Web/sites/<APP> \
-  --condition "count requests/failed > 0" \
+  --location eastus \
+  --scopes /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Insights/components/<APPINSIGHTS> \
+  --condition "count 'Failures' > 0" \
+  --condition-query Failures="exceptions | where cloud_RoleName == 'my-function-app' | where operation_Name == 'DailyDataSync'" \
   --window-size 1h \
   --evaluation-frequency 15m \
-  --action-group my-alert-group
+  --action-groups /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.Insights/actionGroups/my-alert-group
 ```
 
 ## Summary
 
-Timer triggers are the serverless equivalent of cron jobs. They are simpler to set up, automatically managed by the platform, and integrate well with Azure monitoring. Use six-field CRON expressions to define your schedule, configure timezone settings if you need local time scheduling, use distributed locks if your task must not run concurrently across instances, and always monitor for failures. For most scheduled task scenarios, timer triggers are the simplest and most cost-effective option in the Azure ecosystem.
+Timer triggers are the serverless equivalent of cron jobs. They are simpler to set up, automatically managed by the platform, and integrate well with Azure monitoring. Use NCRONTAB expressions to define your schedule, configure timezone settings if you need local time scheduling, use distributed locks if other apps or jobs must not update the same resource concurrently, and always monitor for failures. For most scheduled task scenarios, timer triggers are the simplest and most cost-effective option in the Azure ecosystem.
