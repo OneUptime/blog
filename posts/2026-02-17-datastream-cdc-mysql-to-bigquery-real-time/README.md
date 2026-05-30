@@ -45,7 +45,12 @@ server-id = 1
 log_bin = mysql-bin
 binlog_format = ROW
 binlog_row_image = FULL
-expire_logs_days = 3
+# For MySQL versions 8.0 and later.
+binlog_row_value_options = ''
+# For MySQL versions earlier than 8.0.26, use log_slave_updates = 1 instead.
+log_replica_updates = 1
+# For MySQL versions earlier than 8.0.3, use expire_logs_days = 7 instead.
+binlog_expire_logs_seconds = 604800
 ```
 
 After changing the configuration, restart MySQL and verify:
@@ -55,9 +60,12 @@ After changing the configuration, restart MySQL and verify:
 SHOW VARIABLES LIKE 'log_bin';
 SHOW VARIABLES LIKE 'binlog_format';
 SHOW VARIABLES LIKE 'binlog_row_image';
+SHOW VARIABLES LIKE 'binlog_expire_logs_seconds';
+-- For MySQL versions earlier than 8.0.3, use:
+SHOW VARIABLES LIKE 'expire_logs_days';
 ```
 
-All three should return `ON`, `ROW`, and `FULL` respectively.
+These should return `ON`, `ROW`, `FULL`, and a retention value of at least `604800` seconds or `7` days respectively.
 
 ## Step 2: Create a Datastream User
 
@@ -83,7 +91,7 @@ The `REPLICATION SLAVE` permission allows Datastream to read the binary log. The
 
 Datastream needs to reach your MySQL instance. The approach depends on where MySQL is running.
 
-For Cloud SQL, the simplest option is to use the Cloud SQL proxy through a private connection profile:
+For Cloud SQL with private IP, the simplest option is to use a Datastream private connectivity configuration:
 
 ```bash
 # Create a private connectivity configuration
@@ -110,6 +118,7 @@ gcloud datastream connection-profiles create mysql-source-profile \
   --mysql-port=3306 \
   --mysql-username=datastream_user \
   --mysql-password=strong-password-here \
+  --private-connection=my-private-conn \
   --location=us-central1 \
   --project=my-project
 ```
@@ -130,35 +139,33 @@ gcloud datastream connection-profiles create bq-destination-profile \
 Now create the actual stream that connects MySQL to BigQuery:
 
 ```bash
-# Create the stream configuration file
-cat > stream-config.json << 'EOF'
+# Create the MySQL source configuration file
+cat > mysql-source-config.json << 'EOF'
 {
-  "sourceConfig": {
-    "sourceConnectionProfile": "projects/my-project/locations/us-central1/connectionProfiles/mysql-source-profile",
-    "mysqlSourceConfig": {
-      "includeObjects": {
-        "mysqlDatabases": [
-          {
-            "database": "my_database",
-            "mysqlTables": [
-              {"table": "orders"},
-              {"table": "customers"},
-              {"table": "products"}
-            ]
-          }
+  "includeObjects": {
+    "mysqlDatabases": [
+      {
+        "database": "my_database",
+        "mysqlTables": [
+          {"table": "orders"},
+          {"table": "customers"},
+          {"table": "products"}
         ]
       }
-    }
+    ]
   },
-  "destinationConfig": {
-    "destinationConnectionProfile": "projects/my-project/locations/us-central1/connectionProfiles/bq-destination-profile",
-    "bigqueryDestinationConfig": {
-      "dataFreshness": "300s",
-      "singleTargetDataset": {
-        "datasetId": "projects/my-project/datasets/replicated_data"
-      }
-    }
-  }
+  "binaryLogPosition": {}
+}
+EOF
+
+# Create the BigQuery destination configuration file
+cat > bigquery-destination-config.json << 'EOF'
+{
+  "dataFreshness": "300s",
+  "singleTargetDataset": {
+    "datasetId": "my-project:replicated_data"
+  },
+  "appendOnly": {}
 }
 EOF
 
@@ -168,33 +175,36 @@ gcloud datastream streams create mysql-to-bq-stream \
   --location=us-central1 \
   --source=mysql-source-profile \
   --destination=bq-destination-profile \
-  --source-config=stream-config.json \
-  --destination-config=stream-config.json \
+  --mysql-source-config=mysql-source-config.json \
+  --bigquery-destination-config=bigquery-destination-config.json \
+  --backfill-all \
   --project=my-project
 ```
 
 ## Step 6: Start the Stream
 
-Streams are created in a paused state. Start it when you are ready:
+Streams are created but not started. Start it when you are ready:
 
 ```bash
 # Start the stream
 gcloud datastream streams update mysql-to-bq-stream \
   --location=us-central1 \
   --state=RUNNING \
+  --update-mask=state \
   --project=my-project
 ```
 
 ## Understanding the BigQuery Output
 
-Datastream creates tables in BigQuery that mirror your MySQL tables, with a few additional metadata columns:
+With the single-dataset destination option, Datastream creates tables in BigQuery named with the source database and table, such as `my_database_orders`. In append-only mode, each row includes a `datastream_metadata` struct with metadata fields:
 
-- `datastream_metadata.uuid` - Unique identifier for each CDC event
-- `datastream_metadata.source_timestamp` - When the change happened in MySQL
-- `_metadata_deleted` - Boolean flag for soft deletes
-- `_metadata_change_type` - INSERT, UPDATE, or DELETE
+- `datastream_metadata.UUID` - Unique identifier for each CDC event
+- `datastream_metadata.SOURCE_TIMESTAMP` - When the change happened in MySQL, as an epoch timestamp in milliseconds
+- `datastream_metadata.CHANGE_SEQUENCE_NUMBER` - Internal sequence number for each change event
+- `datastream_metadata.CHANGE_TYPE` - INSERT, UPDATE-INSERT, UPDATE-DELETE, or DELETE
+- `datastream_metadata.SORT_KEYS` - Values you can use to sort change events
 
-When a row is updated in MySQL, Datastream writes the new version of the full row to BigQuery. Deletes are handled as soft deletes by default - the row remains in BigQuery with `_metadata_deleted` set to true.
+When a row is updated in MySQL, Datastream writes the new version of the full row to BigQuery. Deletes are written as `DELETE` change events in append-only mode.
 
 ## Querying Replicated Data
 
@@ -207,11 +217,14 @@ SELECT
   customer_id,
   total_amount,
   order_status,
-  datastream_metadata.source_timestamp AS last_updated
+  TIMESTAMP_MILLIS(datastream_metadata.SOURCE_TIMESTAMP) AS last_updated
 FROM
-  `my-project.replicated_data.orders`
-WHERE
-  _metadata_deleted IS NOT TRUE
+  `my-project.replicated_data.my_database_orders`
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY order_id
+  ORDER BY datastream_metadata.SOURCE_TIMESTAMP DESC, datastream_metadata.CHANGE_SEQUENCE_NUMBER DESC
+) = 1
+AND datastream_metadata.CHANGE_TYPE != 'DELETE'
 ```
 
 If you need point-in-time queries, you can use the source timestamp to see what the data looked like at any moment:
@@ -219,12 +232,13 @@ If you need point-in-time queries, you can use the source timestamp to see what 
 ```sql
 -- Get orders as they existed at a specific point in time
 SELECT *
-FROM `my-project.replicated_data.orders`
-WHERE datastream_metadata.source_timestamp <= TIMESTAMP('2026-02-17 10:00:00 UTC')
+FROM `my-project.replicated_data.my_database_orders`
+WHERE datastream_metadata.SOURCE_TIMESTAMP <= UNIX_MILLIS(TIMESTAMP('2026-02-17 10:00:00 UTC'))
 QUALIFY ROW_NUMBER() OVER (
   PARTITION BY order_id
-  ORDER BY datastream_metadata.source_timestamp DESC
+  ORDER BY datastream_metadata.SOURCE_TIMESTAMP DESC, datastream_metadata.CHANGE_SEQUENCE_NUMBER DESC
 ) = 1
+AND datastream_metadata.CHANGE_TYPE != 'DELETE'
 ```
 
 ## Monitoring the Stream
@@ -248,7 +262,7 @@ You should also set up Cloud Monitoring alerts for replication lag. A healthy st
 
 ## Common Pitfalls
 
-There are a few things that caught me off guard during setup. Binary log retention is the most common issue. If your binlog expires before Datastream can read it, you will get gaps in replication. Set `expire_logs_days` to at least 3 days.
+There are a few things that caught me off guard during setup. Binary log retention is the most common issue. If your binlog expires before Datastream can read it, you will get gaps in replication. Set `binlog_expire_logs_seconds` to at least 7 days, or `expire_logs_days` to at least 7 on older MySQL versions.
 
 Large transactions can cause temporary lag spikes. If your application does bulk inserts of millions of rows in a single transaction, Datastream needs to process the entire transaction before it can commit to BigQuery.
 
