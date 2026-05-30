@@ -8,7 +8,7 @@ Description: Learn how to use Azure Bicep user-defined types and type validation
 
 ---
 
-Infrastructure as code templates have a reliability problem. You write a template, pass in parameters, and hope that the values are correct. If someone passes the wrong type of value or forgets a required property, you do not find out until deployment time - sometimes after resources have already been partially created. Bicep user-defined types change this by letting you define strict type contracts that get validated at compile time, long before anything touches Azure.
+Infrastructure as code templates have a reliability problem. You write a template, pass in parameters, and hope that the values are correct. If someone passes the wrong type of value or forgets a required property, you do not find out until deployment time - sometimes after resources have already been partially created. Bicep user-defined types change this by letting you define type contracts that Bicep can validate while authoring and compiling templates and `.bicepparam` files, long before anything touches Azure.
 
 User-defined types were introduced as a feature in Bicep and they bring the kind of type safety you would expect in a programming language to your infrastructure templates. In this post, I will walk through defining custom types, using them in parameters and variables, and building type-safe templates that catch errors early.
 
@@ -40,7 +40,7 @@ type vmConfiguration = {
 param vmConfig vmConfiguration
 ```
 
-Now anyone using this template knows exactly what to provide. The Bicep compiler validates the input, and incorrect values are caught before deployment.
+Now anyone using this template knows exactly what to provide. The Bicep compiler validates values provided in Bicep expressions and `.bicepparam` files, and incorrect values are caught before deployment.
 
 ## Defining Basic User-Defined Types
 
@@ -234,12 +234,16 @@ type databaseConfig = sqlDatabaseConfig | cosmosDatabaseConfig
 // Usage in a parameter
 param database databaseConfig
 
+@secure()
+param sqlAdminPassword string
+
 // You can switch on the discriminator to handle each case
 resource sqlServer 'Microsoft.Sql/servers@2023-05-01-preview' = if (database.type == 'sql') {
   name: database.type == 'sql' ? database.serverName : 'unused'
   location: resourceGroup().location
   properties: {
     administratorLogin: 'adminuser'
+    administratorLoginPassword: sqlAdminPassword
   }
 }
 ```
@@ -339,6 +343,9 @@ import { appDeploymentConfig } from 'types.bicep'
 
 param config appDeploymentConfig
 
+@secure()
+param sqlAdminPassword string
+
 // The compiler ensures all properties match the expected types
 // Passing an invalid SKU or environment name is a compile-time error
 
@@ -373,6 +380,7 @@ resource sqlServer 'Microsoft.Sql/servers@2023-05-01-preview' = {
   location: config.region
   properties: {
     administratorLogin: 'appadmin'
+    administratorLoginPassword: sqlAdminPassword
   }
 }
 
@@ -389,39 +397,37 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-05-01-preview' = {
 }
 ```
 
-Deploy with a properly typed parameter file:
+Deploy with a properly typed Bicep parameter file:
 
-```json
-{
-  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
-  "contentVersion": "1.0.0.0",
-  "parameters": {
-    "config": {
-      "value": {
-        "environment": "staging",
-        "region": "eastus",
-        "app": {
-          "name": "mywebapp",
-          "runtime": "node20",
-          "planSku": "P1v3",
-          "scaling": {
-            "minInstances": 2,
-            "maxInstances": 5
-          }
-        },
-        "database": {
-          "sku": "S1",
-          "maxSizeGb": 10,
-          "backupRetentionDays": 14
-        },
-        "monitoring": {
-          "enabled": true,
-          "alertEmails": ["ops@company.com"]
-        }
-      }
+```bicep
+using './main.bicep'
+
+param config = {
+  environment: 'staging'
+  region: 'eastus'
+  app: {
+    name: 'mywebapp'
+    runtime: 'node20'
+    planSku: 'P1v3'
+    scaling: {
+      minInstances: 2
+      maxInstances: 5
     }
   }
+  database: {
+    sku: 'S1'
+    maxSizeGb: 10
+    backupRetentionDays: 14
+  }
+  monitoring: {
+    enabled: true
+    alertEmails: [
+      'ops@company.com'
+    ]
+  }
 }
+
+param sqlAdminPassword = getSecret('00000000-0000-0000-0000-000000000000', 'shared-secrets-rg', 'deployment-secrets-kv', 'sqlAdminPassword')
 ```
 
 ## Wrapping Up
