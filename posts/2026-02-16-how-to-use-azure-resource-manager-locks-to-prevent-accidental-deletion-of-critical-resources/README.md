@@ -49,7 +49,7 @@ Fill in:
 For automation and consistency, use the CLI:
 
 ```bash
-# Apply a delete lock to a production SQL database
+# Apply a delete lock to a production SQL server
 
 az lock create \
   --name "prevent-deletion" \
@@ -57,7 +57,7 @@ az lock create \
   --resource-name "sql-prod-001" \
   --resource-type "Microsoft.Sql/servers" \
   --lock-type CanNotDelete \
-  --notes "Production database - removal requires change approval"
+  --notes "Production SQL server - removal requires change approval"
 ```
 
 For a resource group-level lock that protects everything inside it:
@@ -134,7 +134,7 @@ resource rgLock 'Microsoft.Authorization/locks@2020-05-01' = {
 New-AzResourceLock `
   -LockName "prevent-deletion" `
   -LockLevel CanNotDelete `
-  -LockNotes "Production database - do not delete" `
+  -LockNotes "Production SQL server - do not delete" `
   -ResourceGroupName "rg-production" `
   -ResourceName "sql-prod-001" `
   -ResourceType "Microsoft.Sql/servers"
@@ -267,7 +267,7 @@ There are two approaches to handle this:
 
 ## Using Azure Policy to Enforce Locks
 
-You can create an Azure Policy that automatically applies locks to resources matching certain criteria:
+You can create an Azure Policy that automatically applies locks to resources matching certain criteria. A `deployIfNotExists` policy assignment also needs a managed identity with permissions to create the lock:
 
 ```json
 {
@@ -286,10 +286,45 @@ You can create an Azure Policy that automatically applies locks to resources mat
     "then": {
         "effect": "deployIfNotExists",
         "details": {
-            "type": "Microsoft.Authorization/locks",
+            "type": "Microsoft.Sql/servers/providers/locks",
+            "name": "[concat(field('name'), '/Microsoft.Authorization/auto-protect')]",
+            "roleDefinitionIds": [
+                "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c",
+                "/providers/Microsoft.Authorization/roleDefinitions/28bf596f-4eb7-45ce-b5bc-6cf482fec137"
+            ],
             "existenceCondition": {
                 "field": "Microsoft.Authorization/locks/level",
                 "equals": "CanNotDelete"
+            },
+            "deployment": {
+                "properties": {
+                    "mode": "incremental",
+                    "template": {
+                        "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                        "contentVersion": "1.0.0.0",
+                        "parameters": {
+                            "serverName": {
+                                "type": "string"
+                            }
+                        },
+                        "resources": [
+                            {
+                                "type": "Microsoft.Sql/servers/providers/locks",
+                                "apiVersion": "2020-05-01",
+                                "name": "[concat(parameters('serverName'), '/Microsoft.Authorization/auto-protect')]",
+                                "properties": {
+                                    "level": "CanNotDelete",
+                                    "notes": "Auto-applied protection for production SQL server"
+                                }
+                            }
+                        ]
+                    },
+                    "parameters": {
+                        "serverName": {
+                            "value": "[field('name')]"
+                        }
+                    }
+                }
             }
         }
     }
