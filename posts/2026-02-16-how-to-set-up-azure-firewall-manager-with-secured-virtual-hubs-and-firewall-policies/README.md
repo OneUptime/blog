@@ -92,6 +92,11 @@ do {
 Create a base (parent) policy with rules that should apply to all locations:
 
 ```powershell
+# Create the DNS settings object for the policy
+$dnsSettings = New-AzFirewallPolicyDnsSetting `
+    -EnableProxy `
+    -Server "168.63.129.16"  # Azure DNS
+
 # Create the base firewall policy
 # This contains global rules inherited by all child policies
 $basePolicy = New-AzFirewallPolicy `
@@ -99,10 +104,7 @@ $basePolicy = New-AzFirewallPolicy `
     -Name "base-firewall-policy" `
     -Location "eastus" `
     -ThreatIntelMode "Deny" `
-    -DnsSetting @{
-        EnableProxy = $true
-        Servers = @("168.63.129.16")  # Azure DNS
-    }
+    -DnsSetting $dnsSettings
 
 Write-Host "Base firewall policy created: $($basePolicy.Name)"
 ```
@@ -131,7 +133,7 @@ $infraRule2 = New-AzFirewallPolicyNetworkRule `
     -Name "AllowNTP" `
     -Protocol "UDP" `
     -SourceAddress "*" `
-    -DestinationAddress "time.windows.com" `
+    -DestinationFqdn "time.windows.com" `
     -DestinationPort "123" `
     -Description "Allow NTP time synchronization"
 
@@ -144,7 +146,7 @@ $networkRuleCollection = New-AzFirewallPolicyFilterRuleCollection `
 # Define an application rule collection for global web access
 $webRule = New-AzFirewallPolicyApplicationRule `
     -Name "AllowMicrosoftUpdates" `
-    -Protocol @{Port = 443; ProtocolType = "Https"} `
+    -Protocol "https:443" `
     -SourceAddress "*" `
     -TargetFqdn "*.microsoft.com", "*.windowsupdate.com", "*.windows.com" `
     -Description "Allow Windows Update and Microsoft services"
@@ -184,7 +186,7 @@ Write-Host "Child policy created for East US, inheriting from base policy."
 # Add region-specific rules to the child policy
 $eastRule = New-AzFirewallPolicyApplicationRule `
     -Name "AllowEastUSApps" `
-    -Protocol @{Port = 443; ProtocolType = "Https"} `
+    -Protocol "https:443" `
     -SourceAddress "10.1.0.0/16" `
     -TargetFqdn "eastus-app.contoso.com", "eastus-api.contoso.com" `
     -Description "Allow access to East US regional applications"
@@ -218,7 +220,8 @@ $firewall = New-AzFirewall `
     -Location "eastus" `
     -VirtualHubId $hub.Id `
     -FirewallPolicyId $childPolicyEast.Id `
-    -Sku "AZFW_Hub"  # SKU for Virtual WAN hub deployment
+    -SkuName "AZFW_Hub" `
+    -SkuTier "Standard"
 
 Write-Host "Azure Firewall deployed to hub-eastus."
 Write-Host "Firewall provisioning can take 10-15 minutes."
@@ -247,12 +250,7 @@ New-AzVirtualHubVnetConnection `
     -ParentResourceName "hub-eastus" `
     -Name "conn-app-vnet" `
     -RemoteVirtualNetwork $spokeVnet `
-    -RoutingConfiguration @{
-        # Route all traffic through the secured hub firewall
-        AssociatedRouteTable = @{
-            Id = "/subscriptions/SUB_ID/resourceGroups/wan-rg/providers/Microsoft.Network/virtualHubs/hub-eastus/hubRouteTables/defaultRouteTable"
-        }
-    }
+    -EnableInternetSecurityFlag $true
 
 Write-Host "Spoke VNet connected to secured hub."
 ```
@@ -275,28 +273,29 @@ If you deployed Azure Firewall Premium, you can enable IDPS (Intrusion Detection
 ```powershell
 # Update the base policy with IDPS settings
 # This applies to all child policies
-$idpsSettings = @{
-    Mode = "Alert"  # Use "Deny" for prevention mode
-    # Optionally configure signature overrides
-    SignatureOverrides = @(
-        @{
-            Id = "2024897"
-            Mode = "Deny"  # Block specific signatures even in alert mode
-        }
-    )
-}
+$signatureOverride = New-AzFirewallPolicyIntrusionDetectionSignatureOverride `
+    -Id "2024897" `
+    -Mode "Deny"  # Block specific signatures even in alert mode
 
-# Enable TLS inspection (requires a certificate)
-$tlsSettings = @{
-    CertificateAuthority = @{
-        KeyVaultSecretId = "https://firewall-keyvault.vault.azure.net/secrets/tls-cert"
-        Name = "firewall-tls-cert"
-    }
-}
+$intrusionDetection = New-AzFirewallPolicyIntrusionDetection `
+    -Mode "Alert" `
+    -SignatureOverride $signatureOverride
 
-Write-Host "IDPS and TLS inspection settings are configured through the firewall policy in the portal."
-Write-Host "Navigate to the policy, then IDPS to configure detection and prevention rules."
-Write-Host "Navigate to TLS Inspection to configure certificate-based inspection."
+# Enable TLS inspection (requires a certificate and a managed identity
+# with access to the Key Vault secret)
+$userAssignedIdentityId = "/subscriptions/SUB_ID/resourceGroups/wan-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/firewall-policy-identity"
+
+Set-AzFirewallPolicy `
+    -Name "base-firewall-policy" `
+    -ResourceGroupName "wan-rg" `
+    -Location "eastus" `
+    -SkuTier "Premium" `
+    -IntrusionDetection $intrusionDetection `
+    -TransportSecurityName "firewall-tls-cert" `
+    -TransportSecurityKeyVaultSecretId "https://firewall-keyvault.vault.azure.net/secrets/tls-cert" `
+    -UserAssignedIdentityId $userAssignedIdentityId
+
+Write-Host "IDPS and TLS inspection settings added to the base firewall policy."
 ```
 
 ## Step 9: Monitor with Firewall Manager
@@ -341,7 +340,7 @@ The secured virtual hub architecture involves several cost components:
 
 - Azure Virtual WAN hub: Per-hour charge plus data processing
 - Azure Firewall: Per-hour charge plus data processing per GB
-- Firewall Policy: Free for the first policy, additional policies have a small charge
+- Firewall Policy: Policies with zero or one firewall association are free; policies with multiple firewall associations are billed at a fixed rate
 - Bandwidth: Standard Azure bandwidth charges for internet egress
 
 For a two-region deployment with Standard tier firewalls, expect costs in the range of $3,000-5,000 per month before bandwidth charges. Premium tier with IDPS and TLS inspection increases the per-hour firewall cost.
