@@ -22,7 +22,7 @@ Under the hood, the trigger uses one of two mechanisms to detect changes. The fi
 graph LR
     A[File Upload] --> B[Blob Storage Container]
     B --> C{Detection Method}
-    C --> D[Polling - checks every few seconds]
+    C --> D[Polling - higher latency]
     C --> E[Event Grid - near real-time]
     D --> F[Azure Function Triggered]
     E --> F
@@ -138,9 +138,9 @@ public class ImageThumbnailGenerator
 
 ## Using Event Grid for Faster Detection
 
-The default blob trigger polling mechanism can have delays of up to 60 seconds before detecting a new blob. For near real-time processing, use Event Grid as the source.
+The default blob trigger polling mechanism can have delays of several minutes, and up to 10 minutes on the Consumption plan if the function app has gone idle. For near real-time processing, use Event Grid as the source.
 
-First, update your `host.json` to use the Event Grid blob trigger source.
+If you are using Storage extension 5.x or later, you can also tune blob trigger concurrency in `host.json`. The Event Grid source itself is configured on the trigger attribute.
 
 ```json
 {
@@ -264,7 +264,7 @@ If you must write to the same container, use a naming convention or subfolder pa
 
 ## Handling Failures and Poison Blobs
 
-When a blob trigger function fails, the runtime retries it up to 5 times by default. After all retries are exhausted, the blob is considered a "poison blob." Unlike queue triggers, there is no automatic dead-letter mechanism for blob triggers. You need to handle this yourself.
+When a blob trigger function fails, the runtime retries it up to 5 times by default. After all retries are exhausted, the blob is considered a "poison blob." Azure Functions adds a message to a Storage queue named `webjobs-blobtrigger-poison`, which you can monitor or process with a separate queue-triggered function. You can also copy failed blobs to an error container when you want a reviewable copy with custom metadata.
 
 ```csharp
 // Wrap processing in try/catch to handle and log failures
