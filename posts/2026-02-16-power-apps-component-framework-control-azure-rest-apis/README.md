@@ -10,11 +10,11 @@ Description: Build a custom Power Apps Component Framework (PCF) control that in
 
 Power Apps is a low-code platform, but sometimes you hit a wall where the built-in controls cannot do what you need. Maybe you want to display live Azure resource metrics, show real-time data from an Azure API, or build a custom visualization that does not exist in the gallery of standard controls. The Power Apps Component Framework (PCF) lets you build custom controls using TypeScript and React that integrate seamlessly into Power Apps. These controls can make HTTP calls to Azure REST APIs, giving you the full power of Azure services inside a low-code app.
 
-In this guide, I will build a PCF control that calls an Azure REST API, displays the data in a custom visualization, and handles authentication through the Power Platform connector infrastructure.
+In this guide, I will build a PCF control that calls an Azure REST API through an Azure Functions proxy, displays the data in a custom visualization, and keeps Azure authentication on the server side.
 
 ## What is PCF
 
-The Power Apps Component Framework allows developers to create reusable UI components using web technologies (TypeScript, HTML, CSS, React). These components can be used in both canvas apps and model-driven apps. They have access to the Power Apps context, including the authenticated user, environment variables, and the Web API.
+The Power Apps Component Framework allows developers to create reusable UI components using web technologies (TypeScript, HTML, CSS, React). These components can be used in both canvas apps and model-driven apps. They have access to the Power Apps context, including configured parameters, app metadata, and supported platform APIs such as the Dataverse Web API.
 
 PCF controls run in the browser alongside the Power App. They can make HTTP calls, render custom UI, and bind to Power Apps data sources.
 
@@ -23,9 +23,9 @@ PCF controls run in the browser alongside the Power App. They can make HTTP call
 Install the PCF development tools.
 
 ```bash
-# Install the Power Apps CLI
+# Install the Power Platform CLI as a .NET tool
 
-npm install -g pac
+dotnet tool install --global Microsoft.PowerApps.CLI.Tool
 
 # Create a new PCF project
 pac pcf init \
@@ -46,7 +46,6 @@ The `--framework react` flag generates a React-based control. You can also use t
 The manifest defines the control's properties, including inputs that Power Apps makers can configure.
 
 ```xml
-<!-- ControlManifest.Input.xml -->
 <?xml version="1.0" encoding="utf-8"?>
 <manifest>
   <control namespace="Contoso.Controls"
@@ -59,7 +58,7 @@ The manifest defines the control's properties, including inputs that Power Apps 
     <!-- Input properties configurable by the app maker -->
     <property name="apiEndpoint"
               display-name-key="API Endpoint"
-              description-key="The Azure API endpoint to call"
+              description-key="The Azure Functions proxy endpoint to call"
               of-type="SingleLine.URL"
               usage="input"
               required="true" />
@@ -85,10 +84,14 @@ The manifest defines the control's properties, including inputs that Power Apps 
               usage="input"
               required="true" />
 
+    <external-service-usage enabled="true">
+      <domain>contoso-monitor-proxy.azurewebsites.net</domain>
+    </external-service-usage>
+
     <!-- Resources -->
     <resources>
       <code path="index.ts" order="1" />
-      <platform-library name="React" version="18.2.0" />
+      <platform-library name="React" version="16.14.0" />
       <platform-library name="Fluent" version="9.46.2" />
     </resources>
   </control>
@@ -110,7 +113,7 @@ interface MetricChartProps {
   resourceId: string;
   metricName: string;
   refreshInterval: number;
-  // Function to make authenticated API calls through Power Platform
+  // Function to call the Azure Functions proxy
   fetchData: (url: string) => Promise<any>;
 }
 
@@ -137,26 +140,30 @@ const MetricChart: React.FC<MetricChartProps> = ({
     try {
       setLoading(true);
 
-      // Build the Azure Monitor metrics API URL
+      // Build the Azure Functions proxy URL. The proxy calls Azure Monitor.
       const endTime = new Date().toISOString();
       const startTime = new Date(Date.now() - 3600000).toISOString(); // Last hour
-      const url = `${apiEndpoint}/${resourceId}/providers/Microsoft.Insights/metrics` +
-        `?api-version=2023-10-01` +
-        `&metricnames=${metricName}` +
-        `&timespan=${startTime}/${endTime}` +
+      const url = `${apiEndpoint}` +
+        `?resourceUri=${encodeURIComponent(resourceId)}` +
+        `&metricnames=${encodeURIComponent(metricName)}` +
+        `&timespan=${encodeURIComponent(`${startTime}/${endTime}`)}` +
+        `&aggregation=average,maximum,total` +
         `&interval=PT1M`;
 
-      // Use the authenticated fetch function
+      // Use the proxy fetch function
       const data = await fetchData(url);
 
-      if (data && data.value && data.value.length > 0) {
-        const timeseries = data.value[0].timeseries[0].data;
+      if (data?.value?.length > 0 && data.value[0].timeseries?.length > 0) {
+        const timeseries = data.value[0].timeseries[0].data || [];
         const points: MetricDataPoint[] = timeseries.map((point: any) => ({
           timestamp: point.timeStamp,
-          value: point.average || point.total || point.maximum || 0
+          value: point.average ?? point.total ?? point.maximum ?? 0
         }));
         setMetrics(points);
         setError(null);
+      } else {
+        setMetrics([]);
+        setError('No metric data returned');
       }
 
       setLastUpdated(new Date());
@@ -352,7 +359,7 @@ import MetricChart from './components/MetricChart';
 export class AzureResourceMonitor
   implements ComponentFramework.ReactControl<IInputs, IOutputs>
 {
-  private context: ComponentFramework.Context<IInputs>;
+  private context!: ComponentFramework.Context<IInputs>;
 
   constructor() {}
 
@@ -371,15 +378,14 @@ export class AzureResourceMonitor
   ): React.ReactElement {
     this.context = context;
 
-    // Create an authenticated fetch function using the Power Platform Web API
-    const authenticatedFetch = async (url: string): Promise<any> => {
-      // Use the Power Platform's built-in HTTP request capability
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${await this.getAccessToken()}`,
-          'Content-Type': 'application/json'
-        }
-      });
+    // Create a fetch function for the Azure Functions proxy
+    const proxyFetch = async (url: string): Promise<any> => {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
       return response.json();
     };
 
@@ -388,17 +394,8 @@ export class AzureResourceMonitor
       resourceId: context.parameters.resourceId.raw || '',
       metricName: context.parameters.metricName.raw || 'CpuPercentage',
       refreshInterval: context.parameters.refreshInterval.raw || 30,
-      fetchData: authenticatedFetch
+      fetchData: proxyFetch
     });
-  }
-
-  // Get an access token for Azure APIs
-  private async getAccessToken(): Promise<string> {
-    // In a real implementation, you would use MSAL or
-    // a custom connector to get an Azure AD token
-    // This is a simplified example
-    const tokenEndpoint = this.context.parameters.apiEndpoint.raw || '';
-    return '';  // Token handling via custom connector
   }
 
   public getOutputs(): IOutputs {
@@ -421,12 +418,15 @@ npm run build
 npm start watch
 
 # Create a solution project for deployment
+mkdir AzureResourceMonitorSolution
+cd AzureResourceMonitorSolution
+
 pac solution init \
   --publisher-name Contoso \
   --publisher-prefix contoso
 
 # Add the PCF control to the solution
-pac solution add-reference --path ./
+pac solution add-reference --path ../
 
 # Build the solution ZIP
 msbuild /t:build /restore /p:configuration=Release
@@ -444,7 +444,8 @@ Set the properties from Power Apps formulas.
 
 ```text
 // In the Power Apps formula bar
-AzureResourceMonitor.apiEndpoint: "https://management.azure.com/subscriptions/YOUR-SUB-ID/resourceGroups/YOUR-RG/providers/Microsoft.Web/sites/YOUR-APP"
+AzureResourceMonitor.apiEndpoint: "https://contoso-monitor-proxy.azurewebsites.net/api/metrics"
+AzureResourceMonitor.resourceId: "/subscriptions/YOUR-SUB-ID/resourceGroups/YOUR-RG/providers/Microsoft.Web/sites/YOUR-APP"
 AzureResourceMonitor.metricName: "CpuPercentage"
 AzureResourceMonitor.refreshInterval: 30
 ```
@@ -453,9 +454,9 @@ AzureResourceMonitor.refreshInterval: 30
 
 The trickiest part of calling Azure APIs from PCF is authentication. You have several options.
 
-First, use a custom connector. Create a custom connector in Power Platform that authenticates with Azure AD. The connector handles token acquisition and refresh. Your PCF control calls the connector through the Power Apps context.
+First, use a custom connector from the app. Create a custom connector in Power Platform that authenticates with Microsoft Entra ID. The connector handles token acquisition and refresh, and the app passes the connector result into the control as data.
 
-Second, use Azure Functions as a proxy. Create an Azure Function with a managed identity that calls the Azure REST API. Your PCF control calls the function, which handles authentication server-side. This is the most secure approach because no tokens are exposed to the client.
+Second, use Azure Functions as a proxy. Create an Azure Function with a managed identity that calls the Azure REST API. Your PCF control calls the function, which handles authentication server-side. This is the most secure approach because no Azure Management tokens are exposed to the client.
 
 ```javascript
 // Azure Function proxy that calls Azure Monitor API
@@ -463,15 +464,38 @@ module.exports = async function (context, req) {
     const { DefaultAzureCredential } = require('@azure/identity');
     const credential = new DefaultAzureCredential();
 
+    const resourceUri = req.query.resourceUri;
+    if (!resourceUri || !resourceUri.startsWith('/subscriptions/')) {
+        context.res = { status: 400, body: { error: 'Invalid resourceUri' } };
+        return;
+    }
+
+    if (!req.query.metricnames || !req.query.timespan) {
+        context.res = { status: 400, body: { error: 'metricnames and timespan are required' } };
+        return;
+    }
+
     // Get token for Azure Management API
     const token = await credential.getToken('https://management.azure.com/.default');
 
-    // Forward the request to Azure
-    const response = await fetch(req.query.url, {
-        headers: { 'Authorization': `Bearer ${token.token}` }
+    const params = new URLSearchParams({
+        'api-version': '2023-10-01',
+        metricnames: req.query.metricnames,
+        timespan: req.query.timespan,
+        interval: req.query.interval || 'PT1M',
+        aggregation: req.query.aggregation || 'average'
     });
 
+    // Forward the request to Azure Monitor
+    const response = await fetch(
+        `https://management.azure.com${resourceUri}/providers/Microsoft.Insights/metrics?${params}`,
+        {
+            headers: { 'Authorization': `Bearer ${token.token}` }
+        }
+    );
+
     context.res = {
+        status: response.status,
         body: await response.json()
     };
 };
