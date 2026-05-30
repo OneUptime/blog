@@ -20,7 +20,7 @@ Key points:
 
 - Reservations cover the compute cost only (not OS licensing, storage, or networking).
 - The discount applies automatically - you do not need to tag or assign VMs.
-- You pay upfront (all upfront, monthly, or with no upfront payment) for the commitment period.
+- You pay upfront or monthly for the commitment period.
 - If you do not use the reservation, you still pay for it. There is no refund for unused hours (with some exceptions).
 
 ## Step 1: Analyze Your Current VM Usage
@@ -54,7 +54,7 @@ for (size, loc), count in counts.most_common():
 
 ## Step 2: Use Azure Advisor RI Recommendations
 
-Azure Advisor analyzes your usage over the past 30 days and recommends reservations that would save you the most money:
+Azure Advisor provides single-subscription reservation recommendations based on recent usage. The reservation recommendation engine evaluates usage over 7, 30, and 60-day lookback periods:
 
 ```bash
 # Get reservation purchase recommendations from Azure Advisor
@@ -64,7 +64,7 @@ az advisor recommendation list \
   --output table
 ```
 
-Advisor recommendations are a good starting point, but they are based on the last 30 days. If your workload is seasonal or you are planning changes, factor that in.
+Advisor recommendations are a good starting point, but they are based on recent historical usage. If your workload is seasonal or you are planning changes, factor that in.
 
 ## Step 3: Use the Azure Reservation Purchase Experience
 
@@ -116,11 +116,10 @@ az reservations catalog show \
 
 **Payment options**:
 
-- **All upfront**: Highest discount. You pay the full amount immediately.
-- **Monthly payments**: Slightly lower discount. Pay in monthly installments over the term. No upfront cost.
-- **No upfront**: Lowest discount of the three options, but no initial cash outlay.
+- **All upfront**: You pay the full amount immediately.
+- **Monthly payments**: Pay in monthly installments over the term. The total reservation cost is the same as upfront, with no extra fee for choosing monthly payments.
 
-For most organizations, monthly payments strike the right balance. The discount difference between all-upfront and monthly is usually small (1-3%).
+For most organizations, monthly payments strike the right balance because they avoid a large initial cash outlay without changing the total reservation cost.
 
 ## Step 6: Purchase the Reservation
 
@@ -132,9 +131,12 @@ az reservations reservation-order purchase \
   --location eastus \
   --quantity 5 \
   --term P1Y \
+  --reserved-resource-type VirtualMachines \
+  --billing-plan Monthly \
   --billing-scope /subscriptions/<sub-id> \
   --display-name "Production D4s_v5 East US" \
-  --applied-scope-type Shared
+  --applied-scope-type Shared \
+  --instance-flexibility On
 ```
 
 I recommend starting with **Shared scope** unless you have a specific reason to restrict the reservation to a single subscription. Shared scope maximizes utilization because the discount can apply to any matching VM across all subscriptions in your enrollment.
@@ -145,7 +147,7 @@ After purchasing, monitor your reservation utilization to make sure you are gett
 
 ```bash
 # Check reservation utilization
-az consumption reservation-summary list \
+az consumption reservation summary list \
   --reservation-order-id <order-id> \
   --grain daily \
   --start-date 2026-01-01 \
@@ -153,11 +155,11 @@ az consumption reservation-summary list \
   --output table
 ```
 
-In the Azure portal, go to **Reservations** and click on your reservation to see a utilization chart. Azure also sends email notifications when utilization drops below 80%.
+In the Azure portal, go to **Reservations** and click on your reservation to see a utilization chart. You can also create reservation utilization alerts in Cost Management to send email notifications when utilization falls below a target percentage.
 
 If utilization is consistently low, you have a few options:
 
-- **Exchange**: Swap the reservation for a different size or region (within the same or lesser value).
+- **Exchange**: Swap the reservation for a different size or region where exchange is supported. The new reservation must have a total lifetime commitment equal to or greater than the remaining commitment of the reservation you return.
 - **Refund**: Return the reservation for a prorated refund. There is a $50,000 rolling 12-month refund limit.
 - **Modify scope**: Change from single subscription to shared scope to increase the pool of VMs that can use the discount.
 
