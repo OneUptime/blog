@@ -72,8 +72,9 @@ If you are using the newer `InsightsMetrics` table (from VM Insights), the query
 // Memory usage from InsightsMetrics for the past 24 hours
 InsightsMetrics
 | where TimeGenerated > ago(24h)
+| where Origin == "vm.azm.ms"
 | where Namespace == "Memory" and Name == "AvailableMB"
-| extend TotalMB = toint(parse_json(Tags)["vm.azm.ms/totalMemoryMB"])
+| extend TotalMB = toreal(todynamic(Tags)["vm.azm.ms/memorySizeMB"])
 | extend UsedPercent = 100.0 - (Val / TotalMB * 100.0)
 | summarize AvgUsed = avg(UsedPercent) by bin(TimeGenerated, 15m), Computer
 | render timechart
