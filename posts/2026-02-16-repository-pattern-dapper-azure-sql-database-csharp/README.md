@@ -26,7 +26,6 @@ cd DapperDemo
 
 dotnet add package Dapper
 dotnet add package Microsoft.Data.SqlClient
-dotnet add package Azure.Identity
 ```
 
 ## Defining the Models
@@ -180,7 +179,7 @@ public class ProductRepository : IProductRepository
         product.CreatedAt = DateTime.UtcNow;
 
         using var connection = CreateConnection();
-        // ExecuteScalar returns the new ID from SCOPE_IDENTITY()
+        // QuerySingle reads the new ID returned by SCOPE_IDENTITY()
         return await connection.QuerySingleAsync<int>(sql, product);
     }
 
@@ -438,10 +437,11 @@ public async Task<bool> TransferStockAsync(int fromProductId, int toProductId, i
 
 ## Connection Resilience with Azure SQL
 
-Azure SQL has transient errors. Unlike EF Core which has built-in retry, with Dapper you need to handle retries yourself.
+Azure SQL has transient errors. Dapper does not add EF Core-style execution strategies, so use SqlClient retry settings or wrap operations in retry logic yourself. If you retry after a command failure, create a fresh connection for the retry.
 
 ```csharp
 using Microsoft.Data.SqlClient;
+using System.Linq;
 
 public static class RetryHelper
 {
@@ -451,7 +451,7 @@ public static class RetryHelper
     public static async Task<T> ExecuteWithRetryAsync<T>(
         Func<Task<T>> operation,
         int maxRetries = 3,
-        int delayMs = 1000)
+        int delayMs = 5000)
     {
         for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
@@ -472,7 +472,7 @@ public static class RetryHelper
     {
         // Common transient Azure SQL error numbers
         int[] transientErrors = { 40197, 40501, 40613, 49918, 49919, 49920, 4060, 40143 };
-        return transientErrors.Contains(ex.Number);
+        return ex.Errors.Cast<SqlError>().Any(error => transientErrors.Contains(error.Number));
     }
 }
 ```
