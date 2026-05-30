@@ -42,7 +42,7 @@ az vm list --query "[?location=='eastus'].name" --output tsv
 # Find VMs that are currently running
 az vm list -d --query "[?powerState=='VM running'].{Name:name, Size:hardwareProfile.vmSize}" --output table
 
-# Find storage accounts larger than a specific size
+# Find storage accounts that use the Premium tier
 az storage account list --query "[?sku.tier=='Premium'].{Name:name, SKU:sku.name, Kind:kind}" --output table
 ```
 
@@ -176,7 +176,7 @@ done
 ### Combining Multiple Filters
 
 ```bash
-# Find VMs that are running AND in eastus AND have more than 4 cores
+# Find VMs that are running AND in eastus AND are not a specific size
 az vm list -d \
   --query "[?powerState=='VM running' && location=='eastus' && hardwareProfile.vmSize!='Standard_B2s'].{Name:name, Size:hardwareProfile.vmSize}" \
   --output table
@@ -187,10 +187,10 @@ az storage account list \
   --output table
 ```
 
-### Flattening Nested Arrays
+### Projecting Nested Arrays
 
 ```bash
-# Get all NSG rules across all NSGs (flatten the nested arrays)
+# Get NSG rules grouped by NSG
 az network nsg list \
   --query "[].{NSG:name, Rules:securityRules[].{Rule:name, Priority:priority, Access:access, Direction:direction}}" \
   --output json
@@ -214,7 +214,7 @@ az vm list \
   --output table
 echo ""
 
-# Check 2: Unencrypted storage accounts
+# Check 2: Storage accounts without infrastructure encryption
 echo "--- Storage Accounts Without Infrastructure Encryption ---"
 az storage account list \
   --query "[?encryption.requireInfrastructureEncryption!=\`true\`].{Name:name, RG:resourceGroup}" \
@@ -251,7 +251,7 @@ Use `--output none` for write operations where you do not need the response body
 
 Use `--no-wait` for long-running operations (VM start/stop, disk creation, etc.) to fire them all in parallel instead of sequentially.
 
-Use `--query` to reduce the response payload. Fetching only the fields you need is faster than fetching everything and filtering locally.
+Use `--query` to reduce displayed output and avoid extra local parsing. Queries are applied client-side after the Azure CLI receives the command result, so use command-specific filters like `--resource-group`, `--location`, or `--subscription` when you need to reduce the data requested from Azure.
 
 Consider using `az rest` for operations that the CLI does not support natively. It lets you call any Azure REST API endpoint directly.
 
