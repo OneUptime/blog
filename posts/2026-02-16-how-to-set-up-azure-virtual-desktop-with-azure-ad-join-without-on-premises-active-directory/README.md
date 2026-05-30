@@ -100,11 +100,12 @@ az network vnet subnet update \
 
 ## Step 2: Create the Host Pool
 
-Create an AVD host pool configured for Azure AD join:
+Create an AVD host pool that will contain only Azure AD-joined session hosts:
 
 ```bash
 # Create the host pool
-# The key setting is --preferred-app-group-type Desktop
+REGISTRATION_EXPIRATION=$(date -u -d '+24 hours' '+%Y-%m-%dT%H:%M:%SZ')
+
 az desktopvirtualization hostpool create \
     --name hp-cloud-desktop \
     --resource-group $RESOURCE_GROUP \
@@ -113,13 +114,14 @@ az desktopvirtualization hostpool create \
     --load-balancer-type BreadthFirst \
     --max-session-limit 10 \
     --preferred-app-group-type Desktop \
-    --registration-info expiration-time="2026-02-17T00:00:00Z" registration-token-operation=Update
+    --custom-rdp-property "targetisaadjoined:i:1" \
+    --registration-info expiration-time="$REGISTRATION_EXPIRATION" registration-token-operation=Update
 
 # Get the registration token (needed when creating session hosts)
-REG_TOKEN=$(az desktopvirtualization hostpool show \
+REG_TOKEN=$(az desktopvirtualization hostpool retrieve-registration-token \
     --name hp-cloud-desktop \
     --resource-group $RESOURCE_GROUP \
-    --query "registrationInfo.token" -o tsv)
+    --query token -o tsv)
 ```
 
 ## Step 3: Create an Application Group and Workspace
@@ -170,7 +172,6 @@ This is where the Azure AD join configuration happens. When creating the VMs, yo
 
 ```bash
 # Create session host VMs with Azure AD join
-# Using an ARM template for the full configuration
 SESSION_HOST_COUNT=2
 VM_SIZE="Standard_D4s_v5"
 IMAGE="MicrosoftWindowsDesktop:windows-11:win11-23h2-avd:latest"
@@ -191,6 +192,7 @@ for i in $(seq 1 $SESSION_HOST_COUNT); do
         --admin-password "$(openssl rand -base64 24)" \
         --public-ip-address "" \
         --nsg "" \
+        --assign-identity \
         --license-type Windows_Client
 
     # Join the VM to Azure AD using the AADLoginForWindows extension
@@ -198,33 +200,41 @@ for i in $(seq 1 $SESSION_HOST_COUNT); do
         --vm-name $VM_NAME \
         --resource-group $RESOURCE_GROUP \
         --name AADLoginForWindows \
-        --publisher Microsoft.Azure.ActiveDirectory \
-        --version 2.0
+        --publisher Microsoft.Azure.ActiveDirectory
 
-    # Install the AVD agent and register with the host pool
-    az vm extension set \
+    # Install the AVD agent and boot loader, then register with the host pool
+    az vm run-command invoke \
         --vm-name $VM_NAME \
         --resource-group $RESOURCE_GROUP \
-        --name DSC \
-        --publisher Microsoft.Powershell \
-        --version 2.77 \
-        --settings "{
-            \"modulesUrl\": \"https://wvdportalstorageblob.blob.core.windows.net/galleryartifacts/Configuration.zip\",
-            \"configurationFunction\": \"Configuration.ps1\\\\AddSessionHost\",
-            \"properties\": {
-                \"hostPoolName\": \"hp-cloud-desktop\",
-                \"registrationInfoToken\": \"$REG_TOKEN\",
-                \"aadJoin\": true
+        --command-id RunPowerShellScript \
+        --scripts '
+            param([string]$registrationToken)
+            $uris = @(
+                "https://go.microsoft.com/fwlink/?linkid=2310011",
+                "https://go.microsoft.com/fwlink/?linkid=2311028"
+            )
+            $installers = @()
+            foreach ($uri in $uris) {
+                $expandedUri = (Invoke-WebRequest -MaximumRedirection 0 -Uri $uri -ErrorAction SilentlyContinue).Headers.Location
+                $fileName = ($expandedUri).Split("/")[-1]
+                $outFile = Join-Path $env:TEMP $fileName
+                Invoke-WebRequest -Uri $expandedUri -UseBasicParsing -OutFile $outFile
+                Unblock-File -Path $outFile
+                $installers += $outFile
             }
-        }"
+            Start-Process msiexec.exe -ArgumentList @("/i", $installers[0], "/quiet", "REGISTRATIONTOKEN=$registrationToken") -Wait
+            Start-Process msiexec.exe -ArgumentList @("/i", $installers[1], "/quiet") -Wait
+        ' \
+        --parameters "registrationToken=$REG_TOKEN"
 
     echo "Session host $VM_NAME created and configured"
 done
 ```
 
 The key elements for Azure AD join are:
-1. The `AADLoginForWindows` VM extension - this handles the Azure AD join
-2. The `aadJoin: true` property in the DSC configuration - this tells the AVD agent to use Azure AD join
+1. The system-assigned managed identity on the VM - this is required by the Entra sign-in extension
+2. The `AADLoginForWindows` VM extension - this handles the Azure AD join
+3. The AVD agent and boot loader installers - these register the VM as a session host in the host pool
 
 ## Step 6: Configure RBAC for Session Host Login
 
@@ -251,13 +261,12 @@ Without Group Policy, you use Intune to manage session host configuration:
 
 ```bash
 # Enroll the session hosts in Intune automatically
-# This is configured through Azure AD device settings
+# This is configured through Intune automatic enrollment settings
 
-# In Azure AD portal:
-# 1. Go to Devices > Device settings
-# 2. Set "Users may join devices to Azure AD" to "All" or select specific groups
-# 3. Set MDM scope to "All" or select specific groups
-# 4. Set MDM Authority URL to https://enrollment.manage.microsoft.com
+# In the Microsoft Intune admin center:
+# 1. Go to Devices > Enrollment > Automatic Enrollment
+# 2. Set the MDM user scope to "All" or select specific groups
+# 3. Make sure the MDM discovery URL is https://enrollment.manage.microsoft.com/enrollmentserver/discovery.svc
 ```
 
 Common Intune policies for AVD session hosts include:
@@ -273,11 +282,12 @@ Without a domain, FSLogix profile containers need to use Azure Files with Azure 
 ```bash
 # Create an Azure Files share for user profiles
 STORAGE_ACCOUNT="avdprofiles01"
+STORAGE_LOCATION="southindia" # Cloud-only Entra Kerberos RBAC support is region-limited
 
 az storage account create \
     --name $STORAGE_ACCOUNT \
     --resource-group $RESOURCE_GROUP \
-    --location $LOCATION \
+    --location $STORAGE_LOCATION \
     --sku Premium_LRS \
     --kind FileStorage
 
@@ -296,7 +306,7 @@ az storage account update \
     --enable-files-aadkerb true
 ```
 
-Configure FSLogix on the session hosts through Intune with a custom configuration profile that sets the following registry values:
+After enabling Azure AD Kerberos, grant admin consent to the storage account's generated Microsoft Entra application, enable cloud-only group support on that application, assign share-level permissions to the users or group, and enable cloud Kerberos ticket retrieval on the session hosts. Then configure FSLogix on the session hosts through Intune with a custom configuration profile that sets the following registry values:
 
 ```text
 HKLM\Software\FSLogix\Profiles
