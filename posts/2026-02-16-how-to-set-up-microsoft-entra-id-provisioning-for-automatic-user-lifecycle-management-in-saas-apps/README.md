@@ -27,7 +27,7 @@ flowchart LR
     B -->|Sync status| A
 ```
 
-The provisioning service runs on a cycle (every 20-40 minutes by default) and:
+The provisioning service runs on a cycle (approximately every 40 minutes by default) and:
 
 1. Checks Entra ID for users and groups assigned to the application
 2. Compares them with the users in the target application
@@ -38,7 +38,7 @@ The provisioning service runs on a cycle (every 20-40 minutes by default) and:
 
 - Microsoft Entra ID P1 or P2 license
 - Application Administrator or Cloud Application Administrator role
-- The target SaaS application must support SCIM 2.0 (most major SaaS apps do)
+- For a SCIM-based setup, the target SaaS application must support SCIM 2.0. Some gallery applications use app-specific provisioning APIs instead.
 - Admin credentials for the target application to set up the SCIM connection
 
 ## Step 1: Add the SaaS Application from the Gallery
@@ -74,15 +74,17 @@ After adding the application, go to its Provisioning page. Set the provisioning 
 
 Under Admin Credentials, you need to provide:
 
-- **Tenant URL:** The SCIM endpoint URL of the target application. For Salesforce, this is something like `https://yourinstance.salesforce.com/services/scim/v2`
-- **Secret Token:** An API token or OAuth token that authorizes Entra ID to manage users in the target application
+- **Tenant URL:** The SCIM endpoint URL of the target application. For a SCIM app, this is something like `https://api.example.com/scim/v2`
+- **Secret Token:** An API token or OAuth bearer token that authorizes Entra ID to manage users in the target application
 
-Each application has its own way of generating these credentials. For Salesforce:
+Each application has its own way of generating these credentials. For a generic SCIM-based application:
 
-1. Log into Salesforce as an admin
-2. Go to Setup, then search for "Connected Apps"
-3. Create or find the connected app for Entra ID provisioning
-4. Generate the OAuth token
+1. Log into the application as an admin
+2. Open the application's SCIM or user provisioning settings
+3. Copy the SCIM base URL
+4. Generate or copy the bearer token for Entra ID provisioning
+
+For gallery applications such as Salesforce, follow the app-specific Microsoft Entra tutorial instead of assuming a SCIM URL. Salesforce provisioning uses a Salesforce admin username, password, security token, and an optional tenant URL for Salesforce Government Cloud.
 
 Click "Test Connection" to verify that Entra ID can reach the application's SCIM endpoint. If the test fails, the most common issues are:
 
@@ -125,7 +127,7 @@ Here is an expression example that constructs a username from first and last nam
 ```text
 // Expression to create a username from given name and surname
 // Converts to lowercase and removes spaces
-ToLower(Join(".", [givenName], [surname]))
+ToLower(StripSpaces(Join(".", [givenName], [surname])))
 ```
 
 ## Step 4: Configure Scoping Filters
@@ -163,7 +165,6 @@ $groupId = "sales-team-group-id"
 New-MgServicePrincipalAppRoleAssignment `
     -ServicePrincipalId $servicePrincipalId `
     -PrincipalId $groupId `
-    -PrincipalType "Group" `
     -AppRoleId "00000000-0000-0000-0000-000000000000" `
     -ResourceId $servicePrincipalId
 ```
@@ -178,7 +179,7 @@ After configuring credentials, mappings, and assignments, start the provisioning
 2. Set the Provisioning Status to "On"
 3. Click "Save"
 
-The first cycle is an "initial cycle" that processes all assigned users. This can take anywhere from 20 minutes to several hours depending on the number of users. Subsequent incremental cycles process only changes and run every 20-40 minutes.
+The first cycle is an "initial cycle" that processes all assigned users. This can take anywhere from 20 minutes to several hours depending on the number of users. Subsequent incremental cycles process only changes and run approximately every 40 minutes.
 
 ```powershell
 # Start provisioning using Microsoft Graph
@@ -228,12 +229,12 @@ foreach ($log in $logs) {
 
 ## Handling Deprovisioning
 
-When a user is unassigned from the application (or disabled in Entra ID, or removed from the assigned group), the provisioning service needs to handle their account in the target application. You have two options:
+When a user is unassigned from the application (or disabled in Entra ID, or removed from the assigned group), the provisioning service needs to handle their account in the target application. For SCIM applications, the default behavior is usually to disable or soft-delete the account by setting the `active` attribute to false. A hard delete is normally sent when a user is permanently deleted in Entra ID and the Delete target object action is enabled, or for specific gallery applications whose connector requires delete behavior.
 
 - **Disable the account:** Set the `active` attribute to false. The user cannot sign in but their data is preserved.
 - **Delete the account:** Remove the user entirely from the target application.
 
-Most organizations choose "Disable" to preserve audit trails and data. Configure this in the provisioning settings under "Actions."
+Most organizations choose "Disable" to preserve audit trails and data. Configure this with the `active` or `isSoftDeleted` attribute mapping and, where applicable, the target object actions in the mapping settings.
 
 ## On-Demand Provisioning
 
