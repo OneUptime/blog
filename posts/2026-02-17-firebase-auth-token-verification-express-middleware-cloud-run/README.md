@@ -8,7 +8,7 @@ Description: Implement Firebase Auth token verification as Express.js middleware
 
 ---
 
-Firebase Authentication provides a complete identity solution that supports email/password, social login, phone authentication, and more. When building backend APIs with Express.js on Cloud Run, you need a way to verify that incoming requests come from authenticated users. Firebase Auth uses JWT tokens (ID tokens) that your backend can verify without making any network calls to Firebase on every request.
+Firebase Authentication provides a complete identity solution that supports email/password, social login, phone authentication, and more. When building backend APIs with Express.js on Cloud Run, you need a way to verify that incoming requests come from authenticated users. Firebase Auth uses JWT tokens (ID tokens) that your backend can verify without making any network calls to Firebase on every request, unless you also enable revocation checks.
 
 In this guide, I will show you how to build an Express middleware that verifies Firebase Auth tokens, extracts user information, and protects your API routes.
 
@@ -74,6 +74,7 @@ async function authenticateToken(req, res, next) {
   try {
     // Verify the ID token with Firebase Admin
     // This checks the signature, expiration, audience, and issuer
+    // Pass true as the second argument if you also need revocation checks
     const decodedToken = await admin.auth().verifyIdToken(idToken);
 
     // Attach the decoded token to the request object
@@ -93,6 +94,7 @@ async function authenticateToken(req, res, next) {
     console.error('Token verification failed:', error.code);
 
     // Handle specific error types
+    // auth/id-token-revoked is returned only when revocation checks are enabled
     switch (error.code) {
       case 'auth/id-token-expired':
         return res.status(401).json({
@@ -246,8 +248,7 @@ router.post(
       await admin.auth().setCustomUserClaims(uid, { role });
 
       // The user will get the new claims next time their token refreshes
-      // Force token refresh by revoking current tokens
-      await admin.auth().revokeRefreshTokens(uid);
+      // or when the client explicitly refreshes the ID token.
 
       res.json({ message: `Role set to ${role} for user ${uid}` });
     } catch (error) {
@@ -265,6 +266,7 @@ module.exports = router;
 ```javascript
 // app.js - Express application with Firebase Auth
 const express = require('express');
+const admin = require('./firebase');
 const { authenticateToken, optionalAuth } = require('./middleware/auth');
 const { requireRole } = require('./middleware/authorize');
 
@@ -354,15 +356,21 @@ The Firebase Admin SDK already caches the Google public keys used to verify toke
 
 ```javascript
 // Simple in-memory token cache with short TTL
+const crypto = require('crypto');
+
 const tokenCache = new Map();
 const CACHE_TTL = 60 * 1000; // 1 minute
 
 async function verifyTokenWithCache(idToken) {
   // Use a hash of the token as the cache key
-  const cacheKey = idToken.substring(idToken.length - 20);
+  const cacheKey = crypto.createHash('sha256').update(idToken).digest('hex');
 
   const cached = tokenCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+  if (
+    cached &&
+    Date.now() - cached.timestamp < CACHE_TTL &&
+    cached.decoded.exp * 1000 > Date.now()
+  ) {
     return cached.decoded;
   }
 
