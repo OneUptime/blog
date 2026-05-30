@@ -10,20 +10,22 @@ Description: Learn how to use parameters and dynamic content in Azure Workbooks 
 
 The real power of Azure Workbooks lies in their parameter system. Parameters turn static dashboards into interactive tools where users can filter, drill down, and explore their data without editing a single query. Done well, a parametrized Workbook can replace custom web applications that would take weeks to build.
 
-In this post, I will cover every parameter type available in Azure Workbooks, show you how to chain parameters together for cascading filters, and demonstrate advanced techniques like query-based parameters and conditional sections.
+In this post, I will cover the parameter types available in Azure Workbooks, show you how to chain parameters together for cascading filters, and demonstrate advanced techniques like query-based parameters and conditional sections.
 
 ## Parameter Types Overview
 
 Azure Workbooks supports several parameter types:
 
-1. **Text** - Free-form text input
+1. **Time** - Date/time range picker
 2. **Drop down** - Single or multi-select dropdown
-3. **Time range** - Date/time range picker
-4. **Resource picker** - Azure resource selector
-5. **Subscription picker** - Subscription selector
-6. **Resource type picker** - Selects resource types
-7. **Resource group picker** - Selects resource groups
-8. **Multi-value** - Allows selecting multiple values
+3. **Options group** - Select one value from a known set
+4. **Text** - Free-form text input
+5. **Criteria** - Dynamic value based on previously specified parameters
+6. **Resource picker** - Azure resource selector
+7. **Subscription picker** - Subscription selector
+8. **Multi-value** - Allows selecting multiple arbitrary text values
+9. **Resource type picker** - Selects resource types
+10. **Location** - Selects Azure locations
 
 Each type serves a different purpose, and you can combine them to create sophisticated filtering experiences.
 
@@ -55,12 +57,14 @@ Resource Group Parameter
 
 ```text
 Parameter name: ResourceGroup
-Parameter type: Resource group picker
+Parameter type: Drop down
+Get data from: Query
+Query type: Azure Resource Graph
 Subscriptions: {Subscription}
 Allow multiple selection: Yes
 ```
 
-Notice how the resource group picker references the Subscription parameter. This creates a cascading filter where the resource group dropdown only shows groups from the selected subscriptions.
+Use an Azure Resource Graph query such as `ResourceContainers | where type =~ "microsoft.resources/subscriptions/resourcegroups" | project value = name, label = name | sort by label asc`. Notice how the resource group dropdown references the Subscription parameter. This creates a cascading filter where the resource group dropdown only shows groups from the selected subscriptions.
 
 ## Query-Based Parameters
 
@@ -165,23 +169,23 @@ Cascading parameters create a hierarchy where selecting a value in one parameter
 
 ```kusto
 // Resource groups in the selected subscription
-resourcecontainers
-| where type == "microsoft.resources/subscriptions/resourcegroups"
+ResourceContainers
+| where type =~ "microsoft.resources/subscriptions/resourcegroups"
 | where subscriptionId == "{Subscription}"
-| project name
-| sort by name asc
+| project value = name, label = name
+| sort by label asc
 ```
 
 **Parameter 3: VMName** (Query-based dropdown)
 
 ```kusto
 // VMs in the selected resource group
-resources
-| where type == "microsoft.compute/virtualmachines"
+Resources
+| where type =~ "microsoft.compute/virtualmachines"
 | where subscriptionId == "{Subscription}"
 | where resourceGroup == "{ResourceGroup}"
-| project name
-| sort by name asc
+| project value = name, label = name
+| sort by label asc
 ```
 
 Now when the user selects a subscription, only the resource groups in that subscription appear. When they select a resource group, only the VMs in that group appear.
@@ -226,12 +230,12 @@ Event
 | where EventLevelName == "Error"
 | summarize ErrorCount = count() by Computer
 | top 1 by ErrorCount desc
-| project Computer
+| project value = Computer, label = Computer, selected = true
 ```
 
-### JSON-Formatted Parameters
+### Value and Label Columns
 
-For complex scenarios, parameters can carry JSON data:
+For complex scenarios, parameters can use separate values and labels:
 
 ```kusto
 // Return structured data for the parameter
@@ -249,11 +253,10 @@ Set the value column to "value" and the label column to "label." Users see the f
 
 ### Tab Parameters
 
-You can create tab navigation in Workbooks using a parameter with radio button style:
+You can create tab navigation in Workbooks using an options group parameter:
 
 - **Parameter name:** Tab
-- **Parameter type:** Drop down
-- **Style:** Radio buttons
+- **Parameter type:** Options group
 - **Values:** Overview, Performance, Errors, Security
 
 Then create sections that are conditionally visible based on the Tab parameter value. This creates a tabbed interface within a single Workbook.
@@ -274,9 +277,7 @@ This enables multi-page Workbook experiences where a summary page links to detai
 
 **Limit dropdown query results.** If your Computer dropdown could return 10,000 entries, add a `| take 100` or filter to a specific scope. Huge dropdowns are unusable anyway.
 
-**Cache parameter queries.** Set the "Cache duration" on parameter queries that do not change frequently, like lists of resource groups.
-
-**Use "lazy" parameter evaluation.** In the parameter settings, set "Run query when" to "Parameter changes" instead of "Always." This prevents unnecessary queries when other parameters change.
+**Keep parameter queries scoped.** Query-based parameters can rerun when upstream parameters change, so keep them filtered to the selected subscription, resource group, resource type, or time range.
 
 ## Real-World Example: Incident Investigation Workbook
 
