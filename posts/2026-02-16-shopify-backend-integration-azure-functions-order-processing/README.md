@@ -44,25 +44,27 @@ flowchart TD
 Create a Function App with the necessary configuration.
 
 ```bash
+suffix=$RANDOM
+
 # Create a resource group
 
 az group create --name rg-shopify-integration --location eastus
 
 # Create a storage account for the function
 az storage account create \
-  --name shopifyfuncstorage \
+  --name shopifyfunc${suffix} \
   --resource-group rg-shopify-integration \
   --location eastus \
   --sku Standard_LRS
 
 # Create the Function App
 az functionapp create \
-  --name shopify-order-functions \
+  --name shopify-order-functions-${suffix} \
   --resource-group rg-shopify-integration \
-  --storage-account shopifyfuncstorage \
+  --storage-account shopifyfunc${suffix} \
   --consumption-plan-location eastus \
   --runtime node \
-  --runtime-version 20 \
+  --runtime-version 22 \
   --functions-version 4 \
   --os-type Linux
 ```
@@ -75,33 +77,60 @@ Shopify sends webhooks when events occur in your store. Register the webhooks yo
 // scripts/register-webhooks.js
 // Run this once to set up webhook subscriptions
 
-const Shopify = require('@shopify/shopify-api');
+const axios = require('axios');
 
 const WEBHOOKS = [
-  { topic: 'orders/create', address: 'https://shopify-order-functions.azurewebsites.net/api/order-created' },
-  { topic: 'orders/paid', address: 'https://shopify-order-functions.azurewebsites.net/api/order-paid' },
-  { topic: 'orders/fulfilled', address: 'https://shopify-order-functions.azurewebsites.net/api/order-fulfilled' },
-  { topic: 'orders/cancelled', address: 'https://shopify-order-functions.azurewebsites.net/api/order-cancelled' },
-  { topic: 'inventory_levels/update', address: 'https://shopify-order-functions.azurewebsites.net/api/inventory-updated' }
+  { topic: 'ORDERS_CREATE', uri: 'https://shopify-order-functions.azurewebsites.net/api/order-created' },
+  { topic: 'ORDERS_PAID', uri: 'https://shopify-order-functions.azurewebsites.net/api/order-paid' },
+  { topic: 'ORDERS_FULFILLED', uri: 'https://shopify-order-functions.azurewebsites.net/api/order-fulfilled' },
+  { topic: 'ORDERS_CANCELLED', uri: 'https://shopify-order-functions.azurewebsites.net/api/order-cancelled' },
+  { topic: 'INVENTORY_LEVELS_UPDATE', uri: 'https://shopify-order-functions.azurewebsites.net/api/inventory-updated' }
 ];
 
 async function registerWebhooks() {
-  const client = new Shopify.Clients.Rest(
-    process.env.SHOPIFY_STORE_URL,
-    process.env.SHOPIFY_ACCESS_TOKEN
-  );
-
-  for (const webhook of WEBHOOKS) {
-    const response = await client.post({
-      path: 'webhooks',
-      data: {
-        webhook: {
-          topic: webhook.topic,
-          address: webhook.address,
-          format: 'json'
+  const shopifyUrl = `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2026-04/graphql.json`;
+  const mutation = `
+    mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
+      webhookSubscriptionCreate(topic: $topic, webhookSubscription: $webhookSubscription) {
+        webhookSubscription {
+          id
+          topic
+          uri
+        }
+        userErrors {
+          field
+          message
         }
       }
-    });
+    }
+  `;
+
+  for (const webhook of WEBHOOKS) {
+    const response = await axios.post(
+      shopifyUrl,
+      {
+        query: mutation,
+        variables: {
+          topic: webhook.topic,
+          webhookSubscription: {
+            uri: webhook.uri,
+            format: 'JSON'
+          }
+        }
+      },
+      {
+        headers: {
+          'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const errors = response.data.data.webhookSubscriptionCreate.userErrors;
+    if (errors.length > 0) {
+      throw new Error(`Failed to register ${webhook.topic}: ${errors.map(error => error.message).join(', ')}`);
+    }
+
     console.log(`Registered webhook: ${webhook.topic}`);
   }
 }
@@ -121,17 +150,25 @@ const crypto = require('crypto');
 function verifyShopifyWebhook(rawBody, hmacHeader) {
   const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
 
+  if (!secret || !hmacHeader) {
+    return false;
+  }
+
   // Calculate the HMAC using the shared secret
   const calculatedHmac = crypto
     .createHmac('sha256', secret)
     .update(rawBody, 'utf8')
     .digest('base64');
 
+  const calculatedBuffer = Buffer.from(calculatedHmac, 'base64');
+  const headerBuffer = Buffer.from(hmacHeader, 'base64');
+
+  if (calculatedBuffer.length !== headerBuffer.length) {
+    return false;
+  }
+
   // Compare using timing-safe comparison
-  return crypto.timingSafeEqual(
-    Buffer.from(calculatedHmac),
-    Buffer.from(hmacHeader)
-  );
+  return crypto.timingSafeEqual(calculatedBuffer, headerBuffer);
 }
 
 module.exports = { verifyShopifyWebhook };
@@ -256,6 +293,11 @@ async function queueForFulfillment(order, route) {
   await sender.close();
   await sbClient.close();
 }
+
+async function notifyInternalSystems(order) {
+  // Send a message to your ERP, CRM, or notification service here.
+  return Promise.resolve(order.id);
+}
 ```
 
 ## Fulfillment Router
@@ -332,6 +374,8 @@ When the warehouse ships the order, it calls back to another Azure Function that
 const { app } = require('@azure/functions');
 const axios = require('axios');
 
+const SHOPIFY_API_VERSION = '2026-04';
+
 app.http('fulfillment-callback', {
   methods: ['POST'],
   authLevel: 'function',
@@ -341,30 +385,90 @@ app.http('fulfillment-callback', {
 
     context.log(`Fulfillment update for order ${externalOrderId}`);
 
-    // Update Shopify with fulfillment details
-    const shopifyUrl = `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2024-01/orders/${externalOrderId}/fulfillments.json`;
+    // Find the fulfillment orders that Shopify created for this order
+    const fulfillmentOrderIds = await getFulfillmentOrderIds(externalOrderId);
 
-    const fulfillmentData = {
+    if (fulfillmentOrderIds.length === 0) {
+      return { status: 404, body: 'No open fulfillment orders found' };
+    }
+
+    // Create a fulfillment with tracking details
+    const mutation = `
+      mutation fulfillmentCreate($fulfillment: FulfillmentInput!) {
+        fulfillmentCreate(fulfillment: $fulfillment) {
+          fulfillment {
+            id
+            status
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const variables = {
       fulfillment: {
-        tracking_info: {
+        lineItemsByFulfillmentOrder: fulfillmentOrderIds.map(id => ({
+          fulfillmentOrderId: id
+        })),
+        trackingInfo: {
           number: trackingNumber,
           company: carrier,
           url: trackingUrl
         },
-        notify_customer: true
+        notifyCustomer: true
       }
     };
 
-    await axios.post(shopifyUrl, fulfillmentData, {
-      headers: {
-        'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
-        'Content-Type': 'application/json'
-      }
-    });
+    const response = await shopifyGraphQL(mutation, variables);
+    const errors = response.data.data.fulfillmentCreate.userErrors;
+
+    if (errors.length > 0) {
+      context.log.error(`Shopify fulfillment failed: ${errors.map(error => error.message).join(', ')}`);
+      return { status: 400, body: 'Fulfillment update failed' };
+    }
 
     return { status: 200, body: 'Fulfillment updated' };
   }
 });
+
+async function getFulfillmentOrderIds(orderId) {
+  const query = `
+    query getOrderFulfillmentOrders($id: ID!) {
+      order(id: $id) {
+        fulfillmentOrders(first: 10, displayable: true) {
+          nodes {
+            id
+            status
+          }
+        }
+      }
+    }
+  `;
+
+  const response = await shopifyGraphQL(query, {
+    id: `gid://shopify/Order/${orderId}`
+  });
+
+  return response.data.data.order.fulfillmentOrders.nodes
+    .filter(fulfillmentOrder => ['OPEN', 'SCHEDULED'].includes(fulfillmentOrder.status))
+    .map(fulfillmentOrder => fulfillmentOrder.id);
+}
+
+async function shopifyGraphQL(query, variables) {
+  return axios.post(
+    `https://${process.env.SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+    { query, variables },
+    {
+      headers: {
+        'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+}
 ```
 
 ## Inventory Sync
@@ -375,6 +479,8 @@ Keep Shopify inventory in sync with warehouse inventory levels.
 // src/functions/inventory-sync.js
 const { app } = require('@azure/functions');
 const axios = require('axios');
+
+const SHOPIFY_API_VERSION = '2026-04';
 
 // Run every hour to sync inventory
 app.timer('inventory-sync', {
@@ -399,27 +505,74 @@ app.timer('inventory-sync', {
 });
 
 async function updateShopifyInventory(sku, quantity) {
-  const shopifyUrl = `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2024-01`;
+  const variantQuery = `
+    query getVariantBySku($query: String!) {
+      productVariants(first: 1, query: $query) {
+        nodes {
+          inventoryItem {
+            id
+          }
+        }
+      }
+    }
+  `;
 
-  // First, find the inventory item ID by SKU
-  const variantResponse = await axios.get(
-    `${shopifyUrl}/variants.json?fields=id,inventory_item_id&sku=${sku}`,
-    { headers: { 'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN } }
-  );
+  const variantResponse = await shopifyGraphQL(variantQuery, {
+    query: `sku:${sku}`
+  });
 
-  if (variantResponse.data.variants.length === 0) return;
-
-  const inventoryItemId = variantResponse.data.variants[0].inventory_item_id;
+  const variant = variantResponse.data.data.productVariants.nodes[0];
+  if (!variant) return;
 
   // Set the inventory level
-  await axios.post(
-    `${shopifyUrl}/inventory_levels/set.json`,
+  const mutation = `
+    mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
+      inventorySetQuantities(input: $input) {
+        inventoryAdjustmentGroup {
+          createdAt
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const response = await shopifyGraphQL(mutation, {
+    input: {
+      name: 'available',
+      reason: 'correction',
+      ignoreCompareQuantity: true,
+      quantities: [
+        {
+          inventoryItemId: variant.inventoryItem.id,
+          locationId: `gid://shopify/Location/${process.env.SHOPIFY_LOCATION_ID}`,
+          quantity: quantity
+        }
+      ]
+    }
+  });
+
+  const errors = response.data.data.inventorySetQuantities.userErrors;
+  if (errors.length > 0) {
+    throw new Error(errors.map(error => error.message).join(', '));
+  }
+}
+
+async function shopifyGraphQL(query, variables) {
+  return axios.post(
+    `https://${process.env.SHOPIFY_STORE_URL}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
     {
-      location_id: process.env.SHOPIFY_LOCATION_ID,
-      inventory_item_id: inventoryItemId,
-      available: quantity
+      query,
+      variables
     },
-    { headers: { 'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN } }
+    {
+      headers: {
+        'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    }
   );
 }
 ```
