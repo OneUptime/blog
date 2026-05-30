@@ -8,7 +8,7 @@ Description: A step-by-step guide to configuring named locations and using them 
 
 ---
 
-Not all sign-in locations carry the same risk. A user signing in from your corporate office is far less suspicious than the same user signing in from a country your organization has never operated in. Microsoft Entra Conditional Access lets you define named locations based on IP ranges, countries, or GPS coordinates, and then use those locations as conditions in your access policies.
+Not all sign-in locations carry the same risk. A user signing in from your corporate office is far less suspicious than the same user signing in from a country your organization has never operated in. Microsoft Entra Conditional Access lets you define named locations based on IP ranges or countries/regions, with country/region lookup based on either IP address or GPS coordinates, and then use those locations as conditions in your access policies.
 
 This is one of the most practical Conditional Access features because it directly addresses real-world scenarios: blocking access from high-risk countries, reducing MFA friction for office-based users, and alerting on sign-ins from unexpected networks. This guide walks through the full setup.
 
@@ -29,24 +29,24 @@ flowchart TD
 
 ## Types of Named Locations
 
-Microsoft Entra ID supports three types of named locations:
+Microsoft Entra ID supports two types of named locations:
 
 1. **IP ranges**: Specific IPv4 or IPv6 CIDR blocks. Use this for corporate offices, VPN gateways, and known partner networks.
 
-2. **Countries/Regions**: Geographic locations based on the IP-to-country mapping. Use this for blocking access from countries where your organization does not operate.
+2. **Countries/Regions**: Geographic locations based on IP-to-country mapping or GPS coordinates. Use this for blocking access from countries where your organization does not operate. GPS-based lookup requires the Microsoft Authenticator app to report the device's GPS location and is intended for sensitive scenarios where hourly location prompts are acceptable.
 
-3. **GPS-based (Compliant Network)**: Requires the Microsoft Authenticator app to report the device's GPS location. More precise than IP-based, but requires specific device configurations.
+Organizations using Microsoft Entra Global Secure Access might also see **All Compliant Network locations** as a built-in network option in Conditional Access, but that is separate from GPS-based country lookup.
 
 ## Step 1: Create IP-Based Named Locations
 
-Start by defining your corporate network locations. Navigate to Microsoft Entra admin center > Protection > Conditional Access > Named locations.
+Start by defining your corporate network locations. Navigate to Microsoft Entra admin center > Entra ID > Conditional Access > Named locations.
 
 ### Corporate Office Locations
 
 ```powershell
 # Connect to Microsoft Graph
 
-Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess"
+Connect-MgGraph -Scopes "Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"
 
 # Create a named location for your main office
 $mainOffice = @{
@@ -80,7 +80,7 @@ az rest --method POST \
     "isTrusted": true,
     "ipRanges": [
       {"@odata.type": "#microsoft.graph.iPv4CidrRange", "cidrAddress": "192.0.2.0/24"},
-      {"@odata.type": "#microsoft.graph.iPv4CidrRange", "cidrAddress": "10.0.0.0/8"}
+      {"@odata.type": "#microsoft.graph.iPv4CidrRange", "cidrAddress": "203.0.113.128/25"}
     ]
   }'
 ```
@@ -157,6 +157,7 @@ $skipMfaPolicy = @{
         Applications = @{
             IncludeApplications = @("All")
         }
+        ClientAppTypes = @("all")
         Locations = @{
             IncludeLocations = @("AllTrusted")  # All named locations marked as trusted
             ExcludeLocations = @()
@@ -192,6 +193,7 @@ $blockPolicy = @{
         Applications = @{
             IncludeApplications = @("All")
         }
+        ClientAppTypes = @("all")
         Locations = @{
             IncludeLocations = @($blockedLocationId)
         }
@@ -222,6 +224,7 @@ $mfaPolicy = @{
         Applications = @{
             IncludeApplications = @("All")
         }
+        ClientAppTypes = @("all")
         Locations = @{
             IncludeLocations = @("All")
             ExcludeLocations = @("AllTrusted")  # Exclude trusted named locations
@@ -233,7 +236,7 @@ $mfaPolicy = @{
     }
 }
 
-New-MgIdentityConditionalAccessPolicy -BodyParameter $mfaPolicy
+$createdMfaPolicy = New-MgIdentityConditionalAccessPolicy -BodyParameter $mfaPolicy
 ```
 
 ## Step 4: Test Policies in Report-Only Mode
@@ -243,7 +246,7 @@ Before enforcing new policies, run them in report-only mode to understand the im
 ```powershell
 # Update a policy to report-only mode for testing
 Update-MgIdentityConditionalAccessPolicy `
-    -ConditionalAccessPolicyId $mfaPolicy.Id `
+    -ConditionalAccessPolicyId $createdMfaPolicy.Id `
     -State "enabledForReportingButNotEnforced"
 ```
 
@@ -257,7 +260,8 @@ SigninLogs
 | mv-expand CAPolicy = parse_json(ConditionalAccessPolicies)
 | where CAPolicy.displayName == "Require MFA Outside Trusted Locations"
 | summarize
-    WouldRequireMFA = countif(CAPolicy.result == "reportOnlyFailure"),
+    WouldPromptForMFA = countif(CAPolicy.result == "reportOnlyInterrupted"),
+    WouldFailNonInteractiveControls = countif(CAPolicy.result == "reportOnlyFailure"),
     WouldAllow = countif(CAPolicy.result == "reportOnlySuccess" or CAPolicy.result == "reportOnlyNotApplied")
     by bin(TimeGenerated, 1d)
 | render columnchart
@@ -287,6 +291,7 @@ $authStrengthPolicy = @{
     Conditions = @{
         Users = @{ IncludeUsers = @("All"); ExcludeUsers = @("break-glass-id") }
         Applications = @{ IncludeApplications = @("All") }
+        ClientAppTypes = @("all")
         Locations = @{
             IncludeLocations = @("All")
             ExcludeLocations = @("AllTrusted")
@@ -299,6 +304,8 @@ $authStrengthPolicy = @{
         }
     }
 }
+
+New-MgIdentityConditionalAccessPolicy -BodyParameter $authStrengthPolicy
 ```
 
 ## Step 6: Monitor Location-Based Sign-In Patterns
@@ -310,14 +317,16 @@ Set up monitoring to detect when users sign in from unexpected locations.
 let historical_countries = SigninLogs
     | where TimeGenerated between (ago(90d) .. ago(7d))
     | where ResultType == 0
-    | distinct UserPrincipalName, Location;
+    | extend Country = tostring(LocationDetails.countryOrRegion)
+    | where isnotempty(Country)
+    | distinct UserPrincipalName, Country;
 SigninLogs
 | where TimeGenerated > ago(7d)
 | where ResultType == 0
-| where Location !in (
-    (historical_countries | where UserPrincipalName == UserPrincipalName | project Location)
-)
-| summarize NewLocationSignIns = count() by UserPrincipalName, Location, IPAddress
+| extend Country = tostring(LocationDetails.countryOrRegion)
+| where isnotempty(Country)
+| join kind=leftanti historical_countries on UserPrincipalName, Country
+| summarize NewLocationSignIns = count() by UserPrincipalName, Country, IPAddress
 | order by NewLocationSignIns desc
 ```
 
@@ -371,7 +380,7 @@ Set a calendar reminder to review named locations quarterly. Stale IP ranges can
 
 3. **Mark VPN gateways as trusted, not individual user IPs.** VPN traffic exits through a small number of gateway IPs, making them reliable trust anchors.
 
-4. **Combine location policies with device compliance.** Location alone is not a strong security signal because VPNs and IP spoofing exist. Adding device compliance provides a much stronger assurance.
+4. **Combine location policies with device compliance.** Location alone is not a strong security signal because traffic can come through VPNs, proxies, or other shared egress points. Adding device compliance provides a much stronger assurance.
 
 5. **Use country blocking cautiously.** Blocking entire countries can impact legitimate travelers. Consider requiring strong MFA from blocked countries instead of outright blocking, unless regulatory requirements demand it.
 
