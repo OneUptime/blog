@@ -55,7 +55,7 @@ WORKDIR /app
 
 # Copy package files for dependency installation
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Stage 2: Build the application
 FROM node:20-alpine AS builder
@@ -77,6 +77,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 # Cloud Run sets PORT automatically, default to 8080
 ENV PORT=8080
+# Bind to all interfaces so Cloud Run can route traffic to the container
+ENV HOSTNAME=0.0.0.0
 # Disable Next.js telemetry in production
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -164,7 +166,6 @@ You can deploy directly from source using `gcloud run deploy`, which builds the 
 gcloud run deploy nextjs-app \
   --source . \
   --region us-central1 \
-  --platform managed \
   --allow-unauthenticated \
   --port 8080 \
   --memory 512Mi \
@@ -190,7 +191,6 @@ gcloud builds submit \
 gcloud run deploy nextjs-app \
   --image us-central1-docker.pkg.dev/your-project/nextjs-repo/nextjs-app:latest \
   --region us-central1 \
-  --platform managed \
   --allow-unauthenticated \
   --port 8080 \
   --set-env-vars "HOSTNAME=0.0.0.0"
@@ -198,10 +198,10 @@ gcloud run deploy nextjs-app \
 
 ## Handling Environment Variables
 
-For App Router applications, there are two categories of environment variables:
+For App Router applications, environment variables generally fall into two categories:
 
-1. Build-time variables (prefixed with `NEXT_PUBLIC_`) - baked into the client bundle
-2. Runtime variables - available only on the server
+1. Public variables (prefixed with `NEXT_PUBLIC_`) - inlined into the client bundle at build time
+2. Server variables - available only on the server and read at runtime when the route or component is dynamically rendered
 
 ```bash
 # Set runtime environment variables on Cloud Run
@@ -236,7 +236,6 @@ gcloud run services update nextjs-app \
   --region us-central1 \
   --concurrency 80 \
   --cpu-boost \
-  --startup-cpu-boost \
   --min-instances 1 \
   --timeout 60
 ```
@@ -274,8 +273,6 @@ steps:
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/nextjs-repo/nextjs-app:$COMMIT_SHA'
       - '--region'
       - 'us-central1'
-      - '--platform'
-      - 'managed'
 
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/nextjs-repo/nextjs-app:$COMMIT_SHA'
