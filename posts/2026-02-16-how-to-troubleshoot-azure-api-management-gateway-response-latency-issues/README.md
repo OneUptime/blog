@@ -36,9 +36,9 @@ Now query the logs to break down where time is spent.
 // Shows client latency vs backend latency vs APIM processing time
 ApiManagementGatewayLogs
 | where TimeGenerated > ago(1h)
-| extend totalTime = ResponseTime
+| extend totalTime = TotalTime
 | extend backendTime = BackendTime
-| extend apimOverhead = ResponseTime - BackendTime
+| extend apimOverhead = TotalTime - BackendTime
 | summarize
     avgTotal = avg(totalTime),
     avgBackend = avg(backendTime),
@@ -84,20 +84,30 @@ APIM policies execute in the request pipeline and can add significant latency if
 
 ### Enable Request Tracing
 
-For debugging individual requests, enable tracing to see exactly how long each policy takes.
+For debugging individual requests, use the Azure portal test console's **Trace** action, or enable tracing with a time-limited debug token from the API Management REST API. APIM no longer supports the old `Ocp-Apim-Trace` request header.
 
 ```bash
-# Enable tracing for a specific request by adding the trace header
-curl -H "Ocp-Apim-Trace: true" \
+# Get a time-limited tracing token for an API
+az rest --method post \
+  --uri "https://management.azure.com/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.ApiManagement/service/myAPIM/gateways/managed/listDebugCredentials?api-version=2023-05-01-preview" \
+  --body '{"credentialsExpireAfter":"PT1H","apiId":"/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.ApiManagement/service/myAPIM/apis/{api-id}","purposes":["tracing"]}'
+
+# Call the API with the returned token
+curl -i -H "Apim-Debug-Authorization: {debug-token}" \
      -H "Ocp-Apim-Subscription-Key: your-key" \
      "https://myapim.azure-api.net/api/myendpoint"
+
+# Retrieve the trace using the Apim-Trace-Id response header
+az rest --method post \
+  --uri "https://management.azure.com/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.ApiManagement/service/myAPIM/gateways/managed/listTrace?api-version=2023-05-01-preview" \
+  --body '{"traceId":"{trace-id}"}'
 ```
 
-The trace URL in the response header shows a detailed breakdown of policy execution times.
+The trace output shows a detailed breakdown of policy execution times.
 
 ### Common Policy Performance Problems
 
-**validate-jwt policy with remote JWKS.** If your JWT validation policy fetches keys from a remote JWKS endpoint, every request incurs a network call. APIM caches JWKS keys, but if the cache is cold or the JWKS endpoint is slow, validation adds latency.
+**validate-jwt policy with remote JWKS.** If your JWT validation policy uses an OpenID configuration endpoint, APIM caches the configuration and JWKS keys. It normally does not fetch keys on every request, but if the cache is cold, the hourly refresh runs, or a token references a missing `kid`, a slow identity provider endpoint can add latency.
 
 ```xml
 <!-- Slow: Fetches JWKS on every cache miss -->
@@ -123,10 +133,10 @@ Fix: Cache authorization results using the cache-lookup-value and cache-store-va
 
 ```xml
 <!-- Cache authorization results to avoid repeated outbound calls -->
-<cache-lookup-value key="@("auth-" + context.Request.Headers.GetValueOrDefault("Authorization",""))"
+<cache-lookup-value key='@("auth-" + context.Request.Headers.GetValueOrDefault("Authorization",""))'
                     variable-name="cachedAuth" />
 <choose>
-    <when condition="@(context.Variables.ContainsKey("cachedAuth"))">
+    <when condition='@(context.Variables.ContainsKey("cachedAuth"))'>
         <!-- Use cached result - no outbound call needed -->
     </when>
     <otherwise>
@@ -135,8 +145,8 @@ Fix: Cache authorization results using the cache-lookup-value and cache-store-va
             <set-method>POST</set-method>
         </send-request>
         <!-- Cache the result for 5 minutes -->
-        <cache-store-value key="@("auth-" + context.Request.Headers.GetValueOrDefault("Authorization",""))"
-                          value="@(((IResponse)context.Variables["authResponse"]).Body.As<string>())"
+        <cache-store-value key='@("auth-" + context.Request.Headers.GetValueOrDefault("Authorization",""))'
+                          value='@(((IResponse)context.Variables["authResponse"]).Body.As<string>())'
                           duration="300" />
     </otherwise>
 </choose>
@@ -172,29 +182,36 @@ Response caching can reduce p95 latency dramatically for read-heavy APIs. Monito
 
 If overall latency is high across all APIs and the APIM overhead component is significant, the APIM instance might be under-resourced.
 
-Check capacity metrics in Azure Monitor. The Capacity metric shows the percentage of the instance's compute resources being used. If capacity consistently exceeds 70%, add more units or scale to a higher SKU.
+Check capacity metrics in Azure Monitor. In the classic Developer, Basic, Standard, and Premium tiers, the Capacity metric shows load on the instance. If average capacity consistently exceeds 60% to 70% for a sustained period, add more units or scale to a higher SKU. In the v2 tiers, use the CPU Percentage of Gateway and Memory Percentage of Gateway metrics instead.
 
 ```bash
-# Check APIM capacity metric
+# Check APIM capacity metric for classic tiers
 az monitor metrics list \
   --resource "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.ApiManagement/service/myAPIM" \
   --metric "Capacity" \
   --interval PT5M \
   --aggregation Average \
   -o table
+
+# Check APIM gateway CPU and memory metrics for v2 tiers
+az monitor metrics list \
+  --resource "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.ApiManagement/service/myAPIM" \
+  --metric "CpuPercent_Gateway,MemoryPercent_Gateway" \
+  --interval PT5M \
+  --aggregation Average \
+  -o table
 ```
 
 APIM SKU options and their performance characteristics:
-- **Developer**: Single unit, no SLA, for dev/test only
-- **Basic**: Up to 2 units, limited performance
-- **Standard**: Up to 4 units, good for most production workloads
-- **Premium**: Up to 12 units per region, multi-region, VNet integration
+- **Developer**: Single classic unit, no SLA, for dev/test only
+- **Basic / Standard / Premium**: Classic production tiers with scaling units; Premium supports multi-region deployment and full VNet injection
+- **Basic v2 / Standard v2 / Premium v2**: Newer v2 tiers with faster provisioning and scaling; Basic v2 and Standard v2 scale up to 10 units, and Premium v2 scales up to 30 units
 
 ## Network Path Optimization
 
 If your APIM instance and backend are in different regions, the network round-trip between them adds unavoidable latency. Deploy APIM units in the same region as your backend services.
 
-For multi-region deployments, use APIM's multi-region feature (Premium tier) to deploy gateway instances in multiple regions. Each regional gateway connects to the nearest backend, minimizing network latency.
+For multi-region deployments, use APIM's multi-region feature in the classic Premium tier to deploy gateway instances in multiple regions. Each regional gateway can connect to the nearest backend, minimizing network latency.
 
 Also verify that if APIM is VNet-integrated, the DNS resolution and routing to backend services are optimal. VNet peering hops and firewall inspection can add latency that does not exist in non-VNet configurations.
 
@@ -203,7 +220,7 @@ Also verify that if APIM is VNet-integrated, the DNS resolution and routing to b
 Set up alerts for latency degradation so you catch issues before users report them.
 
 ```bash
-# Alert when p95 response time exceeds 2 seconds
+# Alert when average gateway duration exceeds 2 seconds
 az monitor metrics alert create \
   --name "apim-high-latency" \
   --resource-group myRG \
