@@ -29,14 +29,14 @@ kubectl describe service my-service
 # - "Subnet is full"
 ```
 
-If the events section is empty, the cloud controller manager has not even attempted to create the load balancer yet, which usually means it is overloaded or there is a more fundamental problem.
+If the events section is empty, the service may not have been reconciled yet, the relevant events may have expired, or there may be a more fundamental control plane problem.
 
 ## Cause 1: Azure Resource Quota Exceeded
 
 Azure subscriptions have limits on how many public IP addresses and load balancers you can create. If you hit these limits, the load balancer creation fails silently in some cases.
 
 ```bash
-# Check your current public IP usage in the region
+# Count public IP resources in the AKS node resource group
 az network public-ip list --resource-group MC_myRG_myAKS_eastus --query "length(@)"
 
 # Check subscription-level quota for public IPs
@@ -50,7 +50,7 @@ If you are near the limit, either delete unused public IPs or request a quota in
 
 ## Cause 2: Subnet Address Exhaustion
 
-When you use an internal load balancer or your cluster is in a custom VNet, the load balancer needs a free IP in the subnet. If the subnet is full, the IP allocation fails.
+When you use an internal load balancer, the load balancer needs a free private IP in the subnet. If the subnet is full, the IP allocation fails.
 
 ```bash
 # Check how many IPs are available in the AKS subnet
@@ -77,10 +77,10 @@ For a /24 subnet, you have 251 usable addresses. If your node pool uses 200 of t
 
 ## Cause 3: Missing RBAC Permissions on the Cluster Identity
 
-The AKS cluster identity (either the managed identity or the service principal) needs permissions to create resources in the node resource group (the `MC_` resource group). If someone has modified the role assignments, load balancer creation fails.
+The AKS cluster identity needs permissions to create or update network resources. If you use a managed identity, check the cluster identity. If you use an older service principal based cluster, check the service principal instead. If someone has modified the role assignments, load balancer creation fails.
 
 ```bash
-# Find the cluster identity
+# Find the cluster identity for a managed identity based cluster
 IDENTITY=$(az aks show \
   --resource-group myRG \
   --name myAKS \
@@ -95,7 +95,7 @@ az role assignment list \
   -o table
 ```
 
-The cluster identity needs at least the "Network Contributor" role on the node resource group. If it is missing, add it back.
+For public IPs in the node resource group, the cluster identity needs at least the "Network Contributor" role on that resource group. For a custom VNet, subnet, route table, or public IP in another resource group, assign the role on that resource group or on the specific network resource.
 
 ```bash
 # Reassign the Network Contributor role
@@ -107,7 +107,7 @@ az role assignment create \
 
 ## Cause 4: Azure Load Balancer SKU Mismatch
 
-AKS clusters use the Standard SKU load balancer by default. If you are trying to use a Basic SKU public IP with a Standard load balancer (or vice versa), the allocation fails.
+AKS clusters use the Standard SKU load balancer by default, and Basic Load Balancer is no longer supported by AKS as of September 30, 2025. If you are troubleshooting an older unsupported Basic load balancer configuration, or a public IP with the wrong SKU for the cluster load balancer, allocation fails.
 
 ```bash
 # Check the load balancer SKU on your cluster
@@ -129,7 +129,7 @@ az network public-ip show \
 
 ## Cause 5: Static IP in Wrong Resource Group
 
-If your service annotation specifies a static IP that lives in a different resource group, you need to tell AKS about it.
+If your service uses a static public IP that lives in a different resource group, you need to tell AKS about it.
 
 ```yaml
 # service-with-static-ip.yaml
@@ -141,10 +141,11 @@ metadata:
   annotations:
     # Specify the resource group where the public IP exists
     service.beta.kubernetes.io/azure-load-balancer-resource-group: my-ip-resource-group
+    # The static public IP must exist in the specified resource group
+    # Prefer azure-pip-name over spec.loadBalancerIP, which is deprecated upstream.
+    service.beta.kubernetes.io/azure-pip-name: my-static-ip
 spec:
   type: LoadBalancer
-  # The static IP must exist in the specified resource group
-  loadBalancerIP: 20.50.100.200
   ports:
     - port: 80
       targetPort: 8080
@@ -152,11 +153,11 @@ spec:
     app: my-app
 ```
 
-Without the `azure-load-balancer-resource-group` annotation, AKS only looks in the node resource group (the `MC_` group).
+Without the `azure-load-balancer-resource-group` annotation, AKS only looks in the node resource group (the `MC_` group). Make sure the cluster identity also has permission to read and update the public IP in the specified resource group.
 
-## Cause 6: Network Security Group Blocking
+## Cause 6: Network Security Group Blocking Health Probes
 
-If you have a custom NSG on your AKS subnet, it might be blocking the Azure load balancer health probes or the service traffic itself.
+If you have a custom NSG on your AKS subnet, it might be blocking the Azure load balancer health probes or the service traffic itself. This usually causes traffic failures after the external IP is assigned rather than keeping the IP in `<pending>`, but it is still worth checking when the service looks broken.
 
 ```bash
 # List NSG rules on the AKS subnet
@@ -171,23 +172,22 @@ az network nsg rule list \
 
 You need to allow inbound traffic from `168.63.129.16` (Azure's health probe source) and the service port.
 
-## Cause 7: Cloud Controller Manager Not Running
+## Cause 7: Cloud Controller Manager or Control Plane Reconciliation Problems
 
 The cloud controller manager is responsible for creating Azure resources when you create a LoadBalancer service. If it is not running or is crashing, nothing happens.
 
 ```bash
-# Check if the cloud controller manager pods are healthy
-kubectl get pods -n kube-system -l component=cloud-controller-manager
-
-# Check for any crash loops
-kubectl get pods -n kube-system | grep cloud-controller
+# On AKS, the cloud controller manager runs on the managed control plane,
+# so you cannot normally inspect or restart its pods directly.
+# Check service events and Azure activity logs instead.
+kubectl describe service my-service
 ```
 
-On AKS, the cloud controller manager runs on the control plane, which you cannot directly access. If these pods are unhealthy, the fix is usually to restart the cluster or contact Azure support.
+On AKS, the cloud controller manager runs on the control plane, which you cannot directly access. If services stop reconciling and the Azure activity log does not show the expected load balancer operations, open an Azure support case.
 
 ## Cause 8: Too Many Load Balancer Rules
 
-Azure Standard Load Balancer has a limit of 300 load balancing rules per load balancer. By default, all AKS LoadBalancer services share a single Azure load balancer. If you have more than 300 services, new ones will fail.
+AKS normally provisions one Standard Load Balancer for LoadBalancer services in a cluster, and each node NIC is limited to 300 inbound load-balancing rules. If you have many LoadBalancer services or services with many ports, new services can fail when AKS would exceed that limit.
 
 ```bash
 # Count current load balancer rules
@@ -199,18 +199,17 @@ az network lb rule list \
   --query "length(@)" -o tsv
 ```
 
-If you are close to the limit, you can split services across multiple load balancers by using annotations.
+If you are close to the limit, you can use the multiple Standard Load Balancers preview feature to create additional load balancer configurations and place services on them.
 
 ```yaml
 # service-with-separate-lb.yaml
-# Force this service to use a separate load balancer
+# Place this service on a configured load balancer in a multiple-SLB cluster
 apiVersion: v1
 kind: Service
 metadata:
   name: my-service
   annotations:
-    # Use a different public IP to create a new load balancer frontend
-    service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+    service.beta.kubernetes.io/azure-load-balancer-configurations: "team1-lb"
 spec:
   type: LoadBalancer
   ports:
@@ -253,7 +252,8 @@ When you hit a pending external IP, run through this checklist.
 kubectl describe svc my-service | tail -20
 
 # 2. Check cloud controller manager logs (if accessible)
-kubectl logs -n kube-system -l component=cloud-controller-manager --tail=100
+# On AKS this is managed by the control plane and is not normally accessible.
+# Use service events and Azure activity logs instead.
 
 # 3. Check Azure activity log for failures
 az monitor activity-log list \
