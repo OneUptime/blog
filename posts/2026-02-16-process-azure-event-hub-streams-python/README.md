@@ -57,7 +57,7 @@ az eventhubs eventhub create \
     --namespace-name my-eventhub-ns \
     --resource-group my-rg \
     --partition-count 4 \
-    --message-retention 1
+    --retention-time 24
 ```
 
 Assign permissions.
@@ -234,7 +234,7 @@ from azure.eventhub.extensions.checkpointstoreblobaio import BlobCheckpointStore
 from azure.identity.aio import DefaultAzureCredential
 
 async def process_with_checkpointing():
-    """Process events with automatic checkpointing to Blob Storage."""
+    """Process events with checkpointing to Blob Storage."""
 
     credential = DefaultAzureCredential()
 
@@ -295,13 +295,26 @@ async def on_event_batch(partition_context, events):
 
 async def consume_batches():
     """Consume events in batches for higher throughput."""
+    credential = DefaultAzureCredential()
+
+    checkpoint_store = BlobCheckpointStore.from_connection_string(
+        "DefaultEndpointsProtocol=https;AccountName=mystorageacct;...",
+        container_name="event-checkpoints"
+    )
+
     consumer = EventHubConsumerClient(
         fully_qualified_namespace="my-eventhub-ns.servicebus.windows.net",
         eventhub_name="sensor-data",
         consumer_group="$Default",
-        credential=DefaultAzureCredential(),
+        credential=credential,
         checkpoint_store=checkpoint_store
     )
+
+    async def on_error(partition_context, error):
+        if partition_context:
+            print(f"Error on partition {partition_context.partition_id}: {error}")
+        else:
+            print(f"Error: {error}")
 
     async with consumer:
         await consumer.receive_batch(
@@ -378,7 +391,7 @@ async def anomaly_detection_pipeline(partition_context, events):
 
 ## Best Practices
 
-1. **Choose partition count wisely.** More partitions means more parallelism, but you cannot increase them after creation.
+1. **Choose partition count wisely.** More partitions means more parallelism, but in Basic and Standard tiers you cannot increase them after creation.
 2. **Use partition keys for ordering.** If events from the same source must be processed in order, use a consistent partition key.
 3. **Checkpoint periodically, not every event.** Checkpointing every 100 events or every 30 seconds is usually good enough.
 4. **Use consumer groups.** Each independent application should have its own consumer group.
@@ -386,4 +399,4 @@ async def anomaly_detection_pipeline(partition_context, events):
 
 ## Wrapping Up
 
-Azure Event Hubs with the azure-eventhub SDK gives you a solid foundation for stream processing in Python. The producer side is straightforward - batch events and send them. The consumer side requires more thought around checkpointing and partition management, but the SDK handles the heavy lifting. For production workloads, always use checkpointing with Blob Storage so you never reprocess events unnecessarily.
+Azure Event Hubs with the azure-eventhub SDK gives you a solid foundation for stream processing in Python. The producer side is straightforward - batch events and send them. The consumer side requires more thought around checkpointing and partition management, but the SDK handles the heavy lifting. For production workloads, always use checkpointing with Blob Storage to reduce unnecessary reprocessing after restarts.
