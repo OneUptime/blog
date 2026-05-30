@@ -17,7 +17,7 @@ Understanding the DNS resolution path helps narrow down where the problem is:
 1. A pod makes a DNS query (e.g., resolving `my-service.default.svc.cluster.local`).
 2. The query goes to the pod's DNS server, configured in `/etc/resolv.conf`.
 3. In AKS, this points to the CoreDNS service IP (usually `10.0.0.10`).
-4. CoreDNS handles the query. For cluster-internal names, it returns the Service ClusterIP. For external names, it forwards to the upstream DNS server.
+4. CoreDNS handles the query. For cluster-internal names, it returns the Service ClusterIP for normal Services or the selected Pod IPs for headless Services. For external names, it forwards to the upstream DNS server.
 5. The upstream DNS server is typically Azure DNS (`168.63.129.16`) or a custom DNS server.
 
 ```mermaid
@@ -77,7 +77,7 @@ Common CoreDNS issues in the logs:
 - **"i/o timeout"**: CoreDNS cannot reach upstream DNS servers. Network problem.
 - **"SERVFAIL"**: Upstream DNS server returned an error.
 - **"plugin/forward: no healthy upstreams"**: All configured upstream DNS servers are unreachable.
-- **OOMKilled in events**: CoreDNS ran out of memory. Increase its resource limits.
+- **OOMKilled in pod status**: CoreDNS ran out of memory. Increase its resource limits or adjust CoreDNS autoscaling.
 
 ## Step 3: Check CoreDNS Resource Usage
 
@@ -88,7 +88,7 @@ If your cluster has many pods or services, CoreDNS might be resource-starved.
 kubectl top pods -n kube-system -l k8s-app=kube-dns
 
 # Check if CoreDNS has been OOM killed recently
-kubectl get events -n kube-system --field-selector reason=OOMKilling
+kubectl describe pods -n kube-system -l k8s-app=kube-dns | grep -A5 -E "Last State|Reason: OOMKilled"
 
 # View CoreDNS resource limits
 kubectl get deployment coredns -n kube-system -o jsonpath='{.spec.template.spec.containers[0].resources}'
@@ -100,13 +100,12 @@ If CoreDNS is using close to its memory limit, scale it up.
 # Increase CoreDNS replicas for more capacity
 kubectl scale deployment coredns -n kube-system --replicas=3
 
-# Or increase memory limits through the CoreDNS ConfigMap addon
-# This is managed by AKS, so use the customization path
+# Or adjust CoreDNS autoscaling and resource requests/limits using the AKS managed add-on customization path
 ```
 
 ## Step 4: Check the CoreDNS ConfigMap
 
-CoreDNS configuration is stored in a ConfigMap. Incorrect configuration is a common cause of DNS failures.
+CoreDNS configuration is stored in a ConfigMap. In AKS, the main CoreDNS Corefile is managed by Azure, so view it for troubleshooting and use the `coredns-custom` ConfigMap for supported customizations. Incorrect custom configuration is a common cause of DNS failures.
 
 ```bash
 # View the CoreDNS ConfigMap
@@ -132,7 +131,7 @@ The default Corefile looks something like this:
 }
 ```
 
-If you have custom CoreDNS configurations, check for syntax errors. A common mistake is incorrect forward directives.
+If you have custom CoreDNS configurations, check the `coredns-custom` ConfigMap for syntax errors. A common mistake is incorrect forward directives.
 
 ## Step 5: Check for Network Policy Interference
 
@@ -220,14 +219,14 @@ kubectl rollout restart deployment coredns -n kube-system
 kubectl rollout status deployment coredns -n kube-system
 ```
 
-For applications that need fresher DNS, consider adding a local DNS cache per node using NodeLocal DNSCache.
+For applications that need faster or more resilient DNS, consider adding a local DNS cache per node. On AKS clusters that meet the prerequisites, use AKS LocalDNS; otherwise, upstream Kubernetes NodeLocal DNSCache is another option.
 
 ```bash
-# Check if NodeLocal DNSCache is running
+# Check if Kubernetes NodeLocal DNSCache is running
 kubectl get daemonset node-local-dns -n kube-system
 ```
 
-NodeLocal DNSCache runs a DNS caching agent on each node, reducing latency and load on CoreDNS.
+AKS LocalDNS and Kubernetes NodeLocal DNSCache run a DNS caching agent on each node, reducing latency and load on CoreDNS.
 
 ## Step 8: Check Node-Level DNS
 
