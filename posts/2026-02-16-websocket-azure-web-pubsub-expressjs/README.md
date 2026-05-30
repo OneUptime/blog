@@ -28,6 +28,9 @@ Traditional WebSocket servers run into problems when you scale horizontally. If 
 Create the service through the Azure CLI:
 
 ```bash
+# Install or update the Azure Web PubSub CLI extension
+az extension add --upgrade --name webpubsub
+
 # Create a resource group
 
 az group create --name pubsub-demo-rg --location eastus
@@ -60,7 +63,7 @@ npm init -y
 
 # Install the required packages
 npm install express @azure/web-pubsub @azure/web-pubsub-express dotenv
-npm install --save-dev typescript @types/express ts-node
+npm install --save-dev typescript @types/express @types/node ts-node
 ```
 
 Create a `.env` file with your connection string:
@@ -89,7 +92,7 @@ sequenceDiagram
     Client->>PubSub: Connect via WebSocket
     Client->>PubSub: Send message
     PubSub->>Server: Forward event (webhook)
-    Server->>PubSub: Broadcast to group
+    Server->>PubSub: Broadcast to clients
     PubSub->>Client: Deliver message
 ```
 
@@ -256,7 +259,7 @@ Create a simple HTML client that connects to the Web PubSub service:
     // Connect to Web PubSub through the negotiate endpoint
     async function connect() {
       const userId = prompt('Enter your name:') || 'anonymous';
-      const res = await fetch(`/negotiate?userId=${userId}`);
+      const res = await fetch(`/negotiate?userId=${encodeURIComponent(userId)}`);
       const data = await res.json();
 
       // Open the WebSocket connection to Azure Web PubSub
@@ -269,10 +272,14 @@ Create a simple HTML client that connects to the Web PubSub service:
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         if (msg.type === 'system') {
-          addMessage(msg.message, 'system');
-        } else if (msg.data) {
+          addMessage(msg.message || msg.event, 'system');
+        } else if (msg.type === 'message' && msg.data) {
           const payload = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
-          addMessage(`${payload.from}: ${payload.message}`, 'message');
+          if (payload.type === 'system') {
+            addMessage(payload.message, 'system');
+          } else {
+            addMessage(`${payload.from}: ${payload.message}`, 'message');
+          }
         }
       };
 
@@ -337,7 +344,7 @@ az webpubsub hub create \
 
 Azure Web PubSub handles the scaling of WebSocket connections for you. The Free tier supports 20 concurrent connections, which is fine for development. The Standard tier scales to thousands. Your Express.js server only handles HTTP requests for negotiation and webhook events, so it scales like any normal web application.
 
-One thing to keep in mind is that the event handler webhooks are delivered at least once. If your handler performs side effects like writing to a database, you should make those operations idempotent.
+One thing to keep in mind is that event handler webhooks are ordinary HTTP requests from the Web PubSub service. If a synchronous event handler returns a nonsuccessful response, the service can reject the client operation, and asynchronous event handler failures are logged. If your handler performs side effects like writing to a database, design those operations to be idempotent so client retries or repeated submissions do not create duplicate records.
 
 ## Error Handling and Reconnection
 
@@ -345,12 +352,12 @@ In production, clients should handle disconnections gracefully:
 
 ```javascript
 // Reconnection logic for the client
-function connectWithRetry(maxRetries = 5) {
+function connectWithRetry(userId, maxRetries = 5) {
   let retries = 0;
 
   async function attempt() {
     try {
-      const res = await fetch(`/negotiate?userId=${userId}`);
+      const res = await fetch(`/negotiate?userId=${encodeURIComponent(userId)}`);
       const data = await res.json();
       ws = new WebSocket(data.url, 'json.webpubsub.azure.v1');
 
