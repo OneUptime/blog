@@ -41,7 +41,6 @@ The foundation of PCI compliance on Google Cloud is isolating your Cardholder Da
 # Create a dedicated project for the PCI CDE
 
 gcloud projects create pci-cde-project \
-  --organization=123456789 \
   --folder=PCI_FOLDER_ID
 
 # Create an isolated VPC for the CDE
@@ -127,11 +126,46 @@ Encrypt all stored cardholder data using CMEK for key control.
 
 ```bash
 # Create KMS key for cardholder data encryption
+gcloud kms keyrings create pci-keyring \
+  --location=us-central1 \
+  --project=pci-cde-project
+
 gcloud kms keys create cde-data-key \
   --keyring=pci-keyring \
   --location=us-central1 \
   --purpose=encryption \
   --rotation-period=7776000s \
+  --project=pci-cde-project
+
+# Allow Cloud SQL to use the CMEK
+gcloud beta services identity create \
+  --service=sqladmin.googleapis.com \
+  --project=pci-cde-project
+
+PROJECT_NUMBER=$(gcloud projects describe pci-cde-project --format='value(projectNumber)')
+
+gcloud kms keys add-iam-policy-binding cde-data-key \
+  --keyring=pci-keyring \
+  --location=us-central1 \
+  --member=serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-cloud-sql.iam.gserviceaccount.com \
+  --role=roles/cloudkms.cryptoKeyEncrypterDecrypter \
+  --project=pci-cde-project
+
+# Configure private services access for Cloud SQL private IP
+gcloud services enable servicenetworking.googleapis.com \
+  --project=pci-cde-project
+
+gcloud compute addresses create google-managed-services-cde-vpc \
+  --global \
+  --purpose=VPC_PEERING \
+  --prefix-length=16 \
+  --network=projects/pci-cde-project/global/networks/cde-vpc \
+  --project=pci-cde-project
+
+gcloud services vpc-peerings connect \
+  --service=servicenetworking.googleapis.com \
+  --ranges=google-managed-services-cde-vpc \
+  --network=cde-vpc \
   --project=pci-cde-project
 
 # Create Cloud SQL with CMEK encryption
@@ -142,7 +176,7 @@ gcloud sql instances create cde-database \
   --network=projects/pci-cde-project/global/networks/cde-vpc \
   --no-assign-ip \
   --disk-encryption-key=projects/pci-cde-project/locations/us-central1/keyRings/pci-keyring/cryptoKeys/cde-data-key \
-  --enable-bin-log \
+  --enable-point-in-time-recovery \
   --backup-start-time=02:00 \
   --project=pci-cde-project
 ```
@@ -190,9 +224,9 @@ class CardDataEncryptor:
 All communication involving cardholder data must use strong encryption.
 
 ```bash
-# Configure Cloud SQL to require SSL connections
+# Configure Cloud SQL to require SSL/TLS connections
 gcloud sql instances patch cde-database \
-  --require-ssl \
+  --ssl-mode=TRUSTED_CLIENT_CERTIFICATE_REQUIRED \
   --project=pci-cde-project
 
 # Create a managed SSL certificate for the load balancer
@@ -218,8 +252,8 @@ gcloud projects add-iam-policy-binding pci-cde-project \
   --role="roles/cloudsql.admin" \
   --condition="expression=request.time.getHours('America/New_York') >= 9 && request.time.getHours('America/New_York') <= 17,title=business-hours,description=Restrict access to business hours"
 
-# Deny all other users access to the CDE project
-# Use organization policy to restrict project access
+# Restrict which IAM principals can be granted access to the CDE project
+# Use organization policy constraints such as iam.allowedPolicyMemberDomains
 gcloud resource-manager org-policies set-policy \
   --project=pci-cde-project \
   iam-restrict-policy.yaml
@@ -237,7 +271,6 @@ gcloud projects set-iam-policy pci-cde-project audit-policy.json
 gcloud logging sinks create pci-audit-sink \
   bigquery.googleapis.com/projects/pci-audit-project/datasets/pci_audit_logs \
   --project=pci-cde-project \
-  --include-children \
   --log-filter='resource.type=("gce_instance" OR "cloudsql_database" OR "k8s_container")'
 
 # Enable VPC Flow Logs for network monitoring
@@ -255,17 +288,16 @@ Regular vulnerability scanning is required for all CDE systems.
 
 ```bash
 # Enable Security Command Center for vulnerability detection
-gcloud scc settings services enable \
+gcloud alpha scc settings services enable \
   --project=pci-cde-project \
-  --service=WEB_SECURITY_SCANNER
+  --service=web-security-scanner
 
 # Enable Container Analysis for image scanning
 gcloud services enable containeranalysis.googleapis.com \
   --project=pci-cde-project
 
-# Enable OS vulnerability scanning
-gcloud compute instances update cde-app-server \
-  --zone=us-central1-a \
+# Enable the OS Config API for VM inventory and patch management
+gcloud services enable osconfig.googleapis.com \
   --project=pci-cde-project
 ```
 
@@ -278,7 +310,6 @@ Here is the core Terraform configuration for a PCI-compliant setup.
 resource "google_project" "cde" {
   name            = "PCI CDE"
   project_id      = "pci-cde-project"
-  org_id          = var.org_id
   folder_id       = var.pci_folder_id
   billing_account = var.billing_account
 }
