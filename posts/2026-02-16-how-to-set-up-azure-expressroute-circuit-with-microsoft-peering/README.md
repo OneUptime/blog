@@ -10,7 +10,7 @@ Description: A comprehensive guide to setting up an Azure ExpressRoute circuit w
 
 When a VPN tunnel over the public internet is not enough - whether due to bandwidth requirements, latency sensitivity, or compliance constraints - Azure ExpressRoute provides a private, dedicated connection between your on-premises infrastructure and Azure. Unlike VPN, ExpressRoute traffic does not traverse the public internet. It goes through a connectivity provider's private network directly into Microsoft's backbone.
 
-Microsoft peering on an ExpressRoute circuit gives you access to Microsoft 365, Dynamics 365, Azure PaaS services (like Azure Storage and SQL Database) via their public endpoints, and other Microsoft online services - all through the private connection. This guide walks through the setup process.
+Microsoft peering on an ExpressRoute circuit gives you access to Microsoft cloud services such as Dynamics 365, Azure PaaS services (like Azure Storage and SQL Database) via their public endpoints, and Microsoft 365 when your organization is authorized for Microsoft 365 over ExpressRoute - all through the private connection. This guide walks through the setup process.
 
 ## ExpressRoute Peering Types
 
@@ -46,7 +46,8 @@ graph LR
 
 - An Azure subscription
 - A contract with an ExpressRoute connectivity provider (like Equinix, AT&T, Megaport)
-- Public IP address ranges for Microsoft peering (/29 or larger, must be public IPs you own or are authorized to use)
+- Public IP addresses for Microsoft peering BGP sessions (a unique /29 or two /30 subnets, using public IPs you own or are authorized to use)
+- Public prefixes to advertise to Microsoft for return traffic (these are separate from the BGP session subnets)
 - An ASN (Autonomous System Number) for BGP peering
 - Azure CLI installed
 
@@ -74,7 +75,7 @@ Key parameters:
 - `--provider`: Your connectivity provider's name (must match Azure's list exactly)
 - `--peering-location`: The physical meet-me location (data center where your provider connects to Microsoft)
 - `--bandwidth`: Circuit bandwidth in Mbps (50, 100, 200, 500, 1000, 2000, 5000, 10000)
-- `--sku-tier`: Standard (single geo) or Premium (global reach)
+- `--sku-tier`: Standard (same geopolitical region) or Premium (global connectivity)
 - `--sku-family`: MeteredData (pay per GB) or UnlimitedData (flat rate)
 
 ## Step 2: Get the Service Key
@@ -107,7 +108,7 @@ This should eventually change from `NotProvisioned` to `Provisioned`. This proce
 
 ## Step 4: Configure Microsoft Peering
 
-Once the circuit is provisioned, set up Microsoft peering. You need public IP addresses for the BGP session - these are typically /30 subnets.
+Once the circuit is provisioned, set up Microsoft peering. You need public IP addresses for the BGP session - these are typically two /30 subnets, or a /29 that you split into two /30 subnets. The example addresses below use documentation ranges; replace them with public IP prefixes assigned or authorized for your organization.
 
 ```bash
 # Configure Microsoft peering on the circuit
@@ -128,7 +129,7 @@ Let me break down these parameters:
 - `--primary-peer-subnet`: A /30 subnet for the primary BGP session (you use .1, Microsoft uses .2)
 - `--secondary-peer-subnet`: A /30 subnet for the secondary (redundant) BGP session
 - `--vlan-id`: The VLAN tag for this peering (coordinate with your provider)
-- `--advertised-public-prefixes`: The public IP prefixes you are advertising to Microsoft (must be registered to you in an RIR)
+- `--advertised-public-prefixes`: The public IP prefixes you are advertising to Microsoft for return traffic (must be registered to you in an RIR or IRR, or manually validated)
 
 ## Step 5: Validate Prefix Ownership
 
@@ -156,21 +157,13 @@ az network route-filter create \
   --name rf-microsoft-peering \
   --location eastus
 
-# Add a rule to allow Azure East US service routes
+# Add a rule to allow Azure East US and Exchange Online service routes
 az network route-filter rule create \
   --resource-group rg-expressroute-demo \
   --filter-name rf-microsoft-peering \
-  --name allow-azure-eastus \
+  --name allow-selected-services \
   --access Allow \
-  --communities "12076:51004"
-
-# Add a rule for Microsoft 365 Exchange Online
-az network route-filter rule create \
-  --resource-group rg-expressroute-demo \
-  --filter-name rf-microsoft-peering \
-  --name allow-exchange-online \
-  --access Allow \
-  --communities "12076:5010"
+  --communities "12076:51004" "12076:5010"
 ```
 
 Common BGP community values:
@@ -230,14 +223,7 @@ ExpressRoute circuits come with two connections (primary and secondary) for redu
 - **Monitoring both BGP sessions** and alerting if one goes down
 - **BFD (Bidirectional Forwarding Detection)** for faster failover
 
-```bash
-# Enable BFD on the peering
-az network express-route peering update \
-  --resource-group rg-expressroute-demo \
-  --circuit-name er-circuit-demo \
-  --name MicrosoftPeering \
-  --bfd-enabled true
-```
+BFD is configured by default on newly created ExpressRoute private and Microsoft peering interfaces on Microsoft's edge. To use it, configure BFD on your primary and secondary edge routers and bind it to the BGP sessions. For older Microsoft peerings created before January 10, 2020, reset the peering to enable BFD on the Microsoft side.
 
 ## Monitoring
 
