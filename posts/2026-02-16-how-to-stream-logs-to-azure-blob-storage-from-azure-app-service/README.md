@@ -8,7 +8,7 @@ Description: Learn how to configure Azure App Service to stream application and 
 
 ---
 
-Azure App Service generates several types of logs - application logs, web server logs, detailed error pages, and request tracing. By default, these logs are stored on the App Service instance's local file system, which has limited space and gets wiped when the instance restarts. Streaming logs to Azure Blob Storage solves this by providing durable, cost-effective, long-term log storage that persists regardless of what happens to your App Service instances.
+Azure App Service generates several types of logs - application logs, web server logs, detailed error pages, and request tracing. By default, many of these logs are stored on the App Service file system, where they are subject to quota and retention limits. Streaming logs to Azure Blob Storage solves this by providing durable, cost-effective, long-term log storage that persists regardless of what happens to your App Service instances.
 
 This guide covers configuring all the log types, setting up blob storage as the destination, and querying the stored logs.
 
@@ -22,7 +22,7 @@ Azure App Service produces several log categories:
 - **Failed Request Tracing**: Detailed XML traces for failed requests
 - **Deployment Logging**: Logs from deployment operations
 
-Application logging and web server logging can be directed to blob storage. The other types are stored on the file system only.
+Application logging and web server logging can be directed to blob storage for Windows apps. The built-in Application Logging (Blob) option is primarily for .NET application logs; for Node.js, Python, Java, Linux, and container apps, use Azure Monitor diagnostic settings or write directly to external logging from your application. The other built-in App Service log types are stored on the file system only.
 
 ## Step 1: Create a Storage Account for Logs
 
@@ -60,19 +60,28 @@ az storage container create \
 
 ## Step 2: Generate a SAS URL for Log Storage
 
-App Service needs a SAS URL to write logs to blob storage. Generate one with write and list permissions:
+App Service needs a SAS URL to write logs to blob storage. Generate one with write and list permissions. This example uses a service SAS signed with the storage account key so the token can have a long expiry:
 
 ```bash
 # Generate a SAS token valid for 1 year
 # Set a long expiry since App Service will use this continuously
 EXPIRY=$(date -u -d "+365 days" '+%Y-%m-%dT%H:%MZ')
 
+# Get a storage account key for signing the service SAS
+ACCOUNT_KEY=$(az storage account keys list \
+  --account-name stappservicelogs2026 \
+  --resource-group rg-logging \
+  --query "[0].value" \
+  --output tsv)
+
 # SAS URL for application logs container
 APP_LOG_SAS=$(az storage container generate-sas \
   --account-name stappservicelogs2026 \
   --name app-logs \
   --permissions rwdl \
+  --https-only \
   --expiry "$EXPIRY" \
+  --account-key "$ACCOUNT_KEY" \
   --output tsv)
 
 APP_LOG_URL="https://stappservicelogs2026.blob.core.windows.net/app-logs?${APP_LOG_SAS}"
@@ -82,7 +91,9 @@ WEB_LOG_SAS=$(az storage container generate-sas \
   --account-name stappservicelogs2026 \
   --name web-server-logs \
   --permissions rwdl \
+  --https-only \
   --expiry "$EXPIRY" \
+  --account-key "$ACCOUNT_KEY" \
   --output tsv)
 
 WEB_LOG_URL="https://stappservicelogs2026.blob.core.windows.net/web-server-logs?${WEB_LOG_SAS}"
@@ -124,24 +135,26 @@ Alternatively, configure through the Azure portal under **App Service > Monitori
 Web server logging captures HTTP request details in W3C format:
 
 ```bash
-# Enable web server logging to blob storage
+# Enable web server logging
 az webapp log config \
   --resource-group rg-app \
   --name mywebapp-2026 \
-  --web-server-logging azureblobstorage
+  --web-server-logging filesystem
 ```
 
 Set the blob storage URL for web server logs:
 
 ```bash
 # Configure web server log blob storage destination
-az resource update \
+az webapp config appsettings set \
   --resource-group rg-app \
   --name mywebapp-2026 \
-  --resource-type Microsoft.Web/sites \
-  --set properties.siteConfig.httpLoggingEnabled=true \
-  --set properties.siteConfig.logsDirectorySizeLimit=100
+  --settings \
+    WEBSITE_HTTPLOGGING_CONTAINER_URL="$WEB_LOG_URL" \
+    WEBSITE_HTTPLOGGING_RETENTION_DAYS=90
 ```
+
+The Azure CLI currently uses `filesystem` or `off` for `--web-server-logging`; when `WEBSITE_HTTPLOGGING_CONTAINER_URL` is set for a Windows app, App Service writes the web server logs to the configured blob container instead of the default file system location.
 
 ## Step 5: Configure Log Levels
 
@@ -227,11 +240,11 @@ az storage account management-policy create \
 
 Make sure your application code is producing structured logs that are useful for analysis.
 
-For a Node.js application:
+For a Node.js application, this console output can be collected by Azure Monitor diagnostic settings through `AppServiceConsoleLogs`. The built-in Application Logging (Blob) setting does not send Node.js console logs to blob storage without additional application-side logging:
 
 ```javascript
 // logger.js
-// Configure structured logging that App Service captures and sends to blob storage
+// Configure structured logging that App Service captures from stdout/stderr
 const winston = require('winston');
 
 const logger = winston.createLogger({
@@ -270,15 +283,16 @@ logger.error('Database connection failed', {
 module.exports = logger;
 ```
 
-For a .NET application:
+For a .NET application with the `Microsoft.Extensions.Logging.AzureAppServices` package referenced, the built-in Azure App Service logging provider can send application logs to the App Service diagnostics pipeline:
 
 ```csharp
 // Program.cs
-// Configure logging to output to console, which App Service captures
+// Configure logging for the App Service diagnostics pipeline
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
+builder.Logging.AddAzureWebAppDiagnostics();
 
 // Set minimum log level from configuration
 builder.Logging.SetMinimumLevel(
@@ -306,7 +320,7 @@ az storage blob download-batch \
   --destination ./downloaded-logs/
 ```
 
-The blob naming convention is: `{app-name}/{year}/{month}/{day}/{hour}/{instance-id}_applicationLog.txt`
+Built-in App Service blob logging stores logs under folders for the app and timestamp. Azure Monitor diagnostic settings use a different storage layout, with folders such as `insights-logs-appservicehttplogs` and resource ID partitions.
 
 For more advanced analysis, connect the blob storage to Azure Data Explorer or Log Analytics:
 
@@ -315,7 +329,7 @@ For more advanced analysis, connect the blob storage to Azure Data Explorer or L
 az monitor diagnostic-settings create \
   --resource "/subscriptions/<sub-id>/resourceGroups/rg-app/providers/Microsoft.Web/sites/mywebapp-2026" \
   --name diag-to-loganalytics \
-  --workspace law-app-monitoring \
+  --workspace "/subscriptions/<sub-id>/resourceGroups/rg-app/providers/Microsoft.OperationalInsights/workspaces/law-app-monitoring" \
   --logs '[{"category":"AppServiceHTTPLogs","enabled":true},{"category":"AppServiceConsoleLogs","enabled":true},{"category":"AppServiceAppLogs","enabled":true}]'
 ```
 
@@ -328,8 +342,8 @@ Azure Diagnostic Settings offer a more modern approach than the built-in App Ser
 az monitor diagnostic-settings create \
   --resource "/subscriptions/<sub-id>/resourceGroups/rg-app/providers/Microsoft.Web/sites/mywebapp-2026" \
   --name diag-to-blob \
-  --storage-account stappservicelogs2026 \
-  --logs '[{"category":"AppServiceHTTPLogs","enabled":true,"retentionPolicy":{"enabled":true,"days":90}},{"category":"AppServiceConsoleLogs","enabled":true,"retentionPolicy":{"enabled":true,"days":90}},{"category":"AppServiceAppLogs","enabled":true,"retentionPolicy":{"enabled":true,"days":90}}]'
+  --storage-account "/subscriptions/<sub-id>/resourceGroups/rg-logging/providers/Microsoft.Storage/storageAccounts/stappservicelogs2026" \
+  --logs '[{"category":"AppServiceHTTPLogs","enabled":true},{"category":"AppServiceConsoleLogs","enabled":true},{"category":"AppServiceAppLogs","enabled":true}]'
 ```
 
 This approach is preferred for new deployments because it integrates with Azure Monitor and does not require manual SAS token management.
