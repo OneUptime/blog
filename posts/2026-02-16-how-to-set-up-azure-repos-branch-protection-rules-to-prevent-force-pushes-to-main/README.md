@@ -16,13 +16,13 @@ This guide walks through setting up branch protection rules in Azure Repos, from
 
 Azure Repos uses a "branch policies" system rather than the "branch protection rules" terminology you might know from GitHub. The concepts are similar, but the implementation and configuration options differ.
 
-When you enable any policy on a branch, Azure Repos automatically:
+When you enable a required policy on a branch, Azure Repos automatically:
 
 - Blocks direct pushes to the branch (including force pushes)
 - Requires all changes to go through pull requests
 - Enforces whatever specific policies you configure
 
-This is a key point. In Azure Repos, you do not need a separate setting to block force pushes. Simply enabling any branch policy on a branch blocks direct pushes entirely.
+This is a key point. In Azure Repos, you do not need a separate policy setting to block force pushes. Enabling at least one required branch policy blocks direct pushes entirely unless the user has permission to bypass branch policies.
 
 ## Step 1: Navigate to Branch Policies
 
@@ -67,18 +67,13 @@ Build expiration: 12 hours (or never, depending on your needs)
 Display name: CI Build Validation
 ```
 
-Here is what this looks like in a pipeline YAML that is designed to work as a build validation policy:
+Here is what this looks like in a pipeline YAML that is designed to work as a build validation policy. For Azure Repos, do not add a YAML `pr:` trigger; the build validation branch policy is what queues the PR validation run.
 
 ```yaml
 # azure-pipelines-validation.yml
 
-# This pipeline runs as a build validation policy on PRs to main
+# This pipeline is queued by the build validation policy on PRs to main
 trigger: none  # Do not trigger on direct pushes
-
-pr:
-  branches:
-    include:
-      - main
 
 pool:
   vmImage: 'ubuntu-latest'
