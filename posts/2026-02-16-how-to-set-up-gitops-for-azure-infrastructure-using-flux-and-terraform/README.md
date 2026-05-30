@@ -61,42 +61,44 @@ This installs the Flux controllers and creates the initial repository structure.
 The tf-controller extends Flux to manage Terraform resources. Install it as a Flux HelmRelease:
 
 ```yaml
-# clusters/production/tf-controller/namespace.yaml
+# clusters/production/tofu-controller/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: flux-system
 ---
-# clusters/production/tf-controller/helmrepository.yaml
+# clusters/production/tofu-controller/helmrepository.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: tf-controller
+  name: tofu-controller
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://flux-iac.github.io/tofu-controller/
+  url: https://flux-iac.github.io/tofu-controller
 ---
-# clusters/production/tf-controller/helmrelease.yaml
+# clusters/production/tofu-controller/helmrelease.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: tf-controller
+  name: tofu-controller
   namespace: flux-system
 spec:
   interval: 1h
   chart:
     spec:
-      chart: tf-controller
-      version: ">=0.15.0"
+      chart: tofu-controller
+      version: ">=0.16.3"
       sourceRef:
         kind: HelmRepository
-        name: tf-controller
+        name: tofu-controller
+      interval: 1h
   values:
+    image:
+      tag: v0.16.3
     runner:
       image:
-        repository: ghcr.io/flux-iac/tf-runner
-        tag: v0.15.1
+        tag: v0.16.3
     # Resource limits for the controller
     resources:
       limits:
@@ -132,7 +134,7 @@ Create your Terraform configurations in the repository. The tf-controller will w
 azure-infrastructure/
   clusters/
     production/
-      tf-controller/       # Controller installation
+      tofu-controller/     # Controller installation
       terraform/           # Terraform resource definitions
   terraform/
     modules/               # Reusable Terraform modules
@@ -146,19 +148,13 @@ azure-infrastructure/
           variables.tf
 ```
 
-Here is a Terraform configuration for a resource group and storage account:
+Here is a Terraform configuration for a resource group, virtual network, and subnet:
 
 ```hcl
 # terraform/environments/production/networking/main.tf
 
 terraform {
   required_version = ">= 1.5.0"
-
-  # Backend is managed by the tf-controller
-  backend "kubernetes" {
-    secret_suffix = "networking-prod"
-    namespace     = "flux-system"
-  }
 
   required_providers {
     azurerm = {
@@ -193,6 +189,10 @@ resource "azurerm_subnet" "aks" {
   resource_group_name  = azurerm_resource_group.networking.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.0.0/20"]
+}
+
+output "subnet_id" {
+  value = azurerm_subnet.aks.id
 }
 ```
 
@@ -229,11 +229,17 @@ spec:
   # Auto-approve and apply changes
   approvePlan: auto
 
-  # Force a plan if no changes detected in 1 hour (drift detection)
+  # Retry a failed reconciliation after 1 hour
   retryInterval: 1h
 
   # Store plan output for auditing
   storeReadablePlan: human
+
+  # Write selected outputs for dependent Terraform objects
+  writeOutputsToSecret:
+    name: networking-prod-outputs
+    outputs:
+      - subnet_id
 
   # Destroy resources if this CR is deleted (optional)
   destroyResourcesOnDeletion: true
@@ -246,17 +252,14 @@ The `approvePlan: auto` setting means any changes detected by `terraform plan` a
   approvePlan: ""  # Empty string means manual approval required
 ```
 
-With manual approval, the controller runs `terraform plan` and stores the result. You approve the plan by annotating the resource:
+With manual approval, the controller runs `terraform plan` and stores the pending plan name in the resource status. You approve the plan by updating `spec.approvePlan` to that plan name in Git and letting Flux reconcile the change:
 
 ```bash
 # View the pending plan
 kubectl get terraform networking-prod -n flux-system -o yaml
-
-# Approve the plan
-kubectl annotate terraform networking-prod \
-  -n flux-system \
-  "infra.contrib.fluxcd.io/approve=true"
 ```
+
+For example, if the status message says to set `approvePlan: "plan-main-abc123"`, commit that value to the `Terraform` custom resource.
 
 ## Step 6: Multi-Component Setup
 
@@ -286,9 +289,9 @@ spec:
   dependsOn:
     - name: networking-prod
 
-  # Read outputs from the networking Terraform
+  # Make outputs from the networking Terraform available to this object
   readInputsFromSecrets:
-    - name: tfstate-default-networking-prod  # State secret from networking
+    - name: networking-prod-outputs
       as: networking
 ```
 
@@ -300,9 +303,6 @@ The tf-controller automatically detects drift by running `terraform plan` at the
 spec:
   # Check for drift every 10 minutes
   interval: 10m
-
-  # Force reconciliation to detect drift even when Git has not changed
-  retryInterval: 30m
 
   # When drift is detected, automatically apply the correct state
   approvePlan: auto
@@ -325,7 +325,7 @@ kubectl describe terraform networking-prod -n flux-system
 flux get sources git
 
 # View controller logs for debugging
-kubectl logs -n flux-system deployment/tf-controller -f
+kubectl logs -n flux-system deployment/tofu-controller -f
 ```
 
 Set up alerts for failed reconciliations:
