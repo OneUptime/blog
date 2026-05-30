@@ -14,9 +14,9 @@ This guide covers how to set up authentication on both sides, run the transfer, 
 
 ## How AzCopy S3-to-Blob Transfer Works
 
-When AzCopy copies from S3 to Azure Blob Storage, the data flows from S3 through the machine running AzCopy and then up to Azure. AzCopy does not use server-to-server copy for cross-cloud transfers - it acts as a proxy. This means the bandwidth of the machine running AzCopy is a bottleneck.
+When AzCopy copies from S3 to Azure Blob Storage, it uses Azure Storage service-to-service copy with pre-signed S3 URLs. The data is copied directly between AWS S3 and Azure Storage servers, so the transfer does not use the network bandwidth of the machine running AzCopy.
 
-For large transfers, run AzCopy on an Azure VM in the same region as the destination storage account to minimize egress costs and maximize upload bandwidth.
+For large transfers, run AzCopy from a stable machine or VM that can keep the job running and store AzCopy's log and plan files. The machine is still responsible for enumeration, job tracking, and retry orchestration.
 
 ## Prerequisites
 
@@ -24,8 +24,8 @@ You will need:
 
 - AzCopy v10.x installed (download from Microsoft's website)
 - AWS IAM credentials (Access Key ID and Secret Access Key) with read access to the source bucket
-- An Azure Storage account with appropriate access (SAS token, Azure AD, or storage account key)
-- Sufficient bandwidth on the machine running AzCopy
+- An Azure Storage account with appropriate access (SAS token or Microsoft Entra ID; a storage account key can be used to generate the SAS)
+- A stable machine to run AzCopy and store its log and plan files
 
 ## Step 1: Install AzCopy
 
@@ -57,8 +57,7 @@ AzCopy reads AWS credentials from environment variables. Set them before running
 export AWS_ACCESS_KEY_ID="AKIAIOSFODNN7EXAMPLE"
 export AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
-# If your S3 bucket is in a non-default region, set it
-export AWS_DEFAULT_REGION="us-west-2"
+# For buckets outside us-east-1, use a region-specific S3 endpoint in the AzCopy URL
 ```
 
 For production use, create a dedicated IAM user with minimal permissions. Here is the IAM policy you need:
@@ -90,7 +89,11 @@ Create a SAS token for the destination storage account with write permissions:
 ```bash
 # Generate a SAS token valid for 7 days with write permissions
 # Adjust expiry based on expected transfer duration
+# GNU date (Linux)
 EXPIRY=$(date -u -d "+7 days" '+%Y-%m-%dT%H:%MZ')
+
+# macOS
+# EXPIRY=$(date -u -v+7d '+%Y-%m-%dT%H:%MZ')
 
 SAS_TOKEN=$(az storage account generate-sas \
   --account-name stdestination2026 \
@@ -127,7 +130,7 @@ For buckets in specific regions, use the regional endpoint:
 ```bash
 # Copy from an S3 bucket in us-west-2
 azcopy copy \
-  "https://s3-us-west-2.amazonaws.com/source-bucket-name/data/" \
+  "https://s3.us-west-2.amazonaws.com/source-bucket-name/data/" \
   "https://stdestination2026.blob.core.windows.net/migrated-data/data/?${SAS_TOKEN}" \
   --recursive
 ```
@@ -167,10 +170,6 @@ AzCopy has several settings that affect performance. Tuning these can make a big
 # More connections = more parallel transfers
 export AZCOPY_CONCURRENCY_VALUE=128
 
-# Set the buffer size for each transfer
-# Larger buffers reduce overhead for big files
-export AZCOPY_BUFFER_GB=4
-
 # Set the log level to WARNING to reduce I/O overhead
 export AZCOPY_LOG_LOCATION="/tmp/azcopy-logs"
 azcopy copy \
@@ -183,11 +182,11 @@ azcopy copy \
 
 The `--cap-mbps 0` means no bandwidth cap. Set this to a specific value if you need to throttle to avoid impacting other workloads.
 
-**VM sizing for large transfers**: For multi-terabyte transfers, use an Azure VM with:
-- At least 8 cores (more cores = more concurrent connections)
-- 32 GB RAM (for buffer space)
-- Accelerated networking enabled
-- In the same region as the destination storage account
+**VM sizing for large transfers**: For multi-terabyte transfers, use a machine or VM with:
+- Enough CPU to manage enumeration and concurrent copy requests
+- Enough disk space for AzCopy log and plan files
+- A reliable network connection for control-plane requests
+- Long enough runtime for the full transfer and any retries
 
 ## Step 7: Monitor Transfer Progress
 
@@ -241,34 +240,34 @@ az storage blob list \
   --output tsv
 ```
 
-For a more thorough verification, compare file sizes or checksums. AzCopy preserves the content-MD5 hash when available, which Azure stores as a blob property.
+For a more thorough verification, compare file sizes or independently generated checksums. Do not rely on S3 ETags as MD5 checksums for multipart-uploaded or SSE-KMS-encrypted objects.
 
 ## Handling Common Issues
 
-**S3 bucket with requester-pays enabled**: Add the `--s2s-preserve-access-tier=false` flag and ensure your AWS credentials have the `s3:GetBucketRequestPayment` permission.
+**S3 bucket with requester-pays enabled**: Requester Pays access requires `x-amz-request-payer=requester` in S3 requests or pre-signed URLs. AzCopy's documented S3-to-Blob flow does not expose a requester-pays flag, so use bucket-owner credentials or a different migration workflow that can add that request parameter.
 
-**Large files (over 5 GB)**: AzCopy automatically handles multipart downloads from S3 and uploads to Azure. No special configuration needed.
+**Large files (over 5 GB)**: AzCopy automatically splits large service-to-service copies into blocks when writing to Azure Blob Storage. No special configuration needed.
 
-**S3 bucket with SSE-KMS encryption**: AzCopy can read SSE-S3 and SSE-KMS encrypted objects as long as the IAM credentials have `kms:Decrypt` permission for the relevant KMS key.
+**S3 bucket with SSE-KMS encryption**: AzCopy can read SSE-S3 and SSE-KMS encrypted objects as long as the IAM credentials and KMS key policy allow the required S3 read and KMS decrypt operations.
 
-**Throttling from S3**: If you hit S3 request rate limits (3,500 GET requests per second per prefix), reduce concurrency:
+**Throttling from S3**: If you hit S3 request rate limits (at least 5,500 GET/HEAD requests per second per prefix), reduce concurrency:
 
 ```bash
 export AZCOPY_CONCURRENCY_VALUE=32
 ```
 
-**Connection timeouts**: For unstable networks, AzCopy retries automatically. You can adjust retry behavior:
+**Connection timeouts**: For transient failures, AzCopy retries automatically. For slow individual requests, you can increase the per-request timeout:
 
 ```bash
-# Increase retry wait time for flaky connections
-export AZCOPY_RETRY_DELAY=120
+# Increase request timeout to 120 minutes
+export AZCOPY_REQUEST_TRY_TIMEOUT=120
 ```
 
 ## Cost Considerations
 
 The main costs to consider:
 
-- **S3 egress**: AWS charges for data leaving S3. As of early 2026, this is around $0.09/GB for data transferred to the internet. Running AzCopy on an AWS EC2 instance in the same region can avoid this cost (data stays within AWS until the final transfer to Azure).
+- **S3 egress**: AWS charges for data leaving S3. As of early 2026, this is around $0.09/GB for the first 10 TB per month in many regions when data is transferred to the internet or another cloud. Running AzCopy on an AWS EC2 instance does not avoid this cross-cloud egress charge because the data still leaves AWS for Azure Storage.
 - **Azure ingress**: Azure does not charge for inbound data transfers.
 - **Compute**: If you use a VM to run AzCopy, factor in the VM cost for the duration of the transfer.
 
@@ -276,4 +275,4 @@ For very large transfers (100+ TB), consider using AWS DataSync to S3, then AzCo
 
 ## Wrapping Up
 
-AzCopy makes S3-to-Azure transfers straightforward and reliable. Set up your AWS credentials, generate an Azure SAS token, and run the copy command. For large transfers, optimize by running on a properly sized Azure VM in the same region as the destination, increasing concurrency, and monitoring the job status. Always verify the transfer afterward and clean up temporary credentials when you are done.
+AzCopy makes S3-to-Azure transfers straightforward and reliable. Set up your AWS credentials, generate an Azure SAS token, and run the copy command. For large transfers, optimize by running on a stable machine, increasing concurrency when appropriate, and monitoring the job status. Always verify the transfer afterward and clean up temporary credentials when you are done.
