@@ -32,7 +32,10 @@ This PowerShell script checks all SAML-configured applications and reports certi
 Connect-MgGraph -Scopes "Application.Read.All"
 
 # Get all service principals with SAML SSO configured
-$samlApps = Get-MgServicePrincipal -All -Filter "preferredSingleSignOnMode eq 'saml'"
+$samlApps = Get-MgServicePrincipal `
+    -All `
+    -Filter "preferredSingleSignOnMode eq 'saml'" `
+    -Property "id,appId,displayName,keyCredentials"
 
 $expiringCerts = @()
 
@@ -42,10 +45,12 @@ foreach ($app in $samlApps) {
         $daysUntilExpiry = ($cert.EndDateTime - (Get-Date)).Days
 
         if ($daysUntilExpiry -lt 90) {
+            $thumbprint = ($cert.CustomKeyIdentifier | ForEach-Object { $_.ToString("X2") }) -join ""
+
             $expiringCerts += [PSCustomObject]@{
                 AppName        = $app.DisplayName
                 AppId          = $app.AppId
-                CertThumbprint = $cert.CustomKeyIdentifier
+                CertThumbprint = $thumbprint
                 ExpiryDate     = $cert.EndDateTime
                 DaysRemaining  = $daysUntilExpiry
                 Status         = if ($daysUntilExpiry -lt 0) { "EXPIRED" }
@@ -74,6 +79,8 @@ Using PowerShell, you can also create a new certificate programmatically. This c
 # Generate a new SAML signing certificate for the application
 $appObjectId = "<service-principal-object-id>"
 
+Connect-MgGraph -Scopes "Application.ReadWrite.All"
+
 # Add a new token signing certificate
 # This does not activate it - it creates it in an inactive state
 $params = @{
@@ -98,7 +105,7 @@ Before activating the new certificate in Entra ID, you need to give the service 
 https://login.microsoftonline.com/<tenant-id>/federationmetadata/2007-06/federationmetadata.xml?appid=<app-id>
 ```
 
-However, this metadata only includes the active certificate, so you need to activate the new one first. This is why Option A is safer - you can prepare the service provider before activation.
+The federation metadata can include more than one signing certificate during rollover, but the service provider has to support metadata refresh and multiple signing certificates for this to prevent downtime. Option A is safer when the service provider only supports one configured certificate or does not refresh metadata reliably.
 
 **Option C: Use the metadata XML.** Download the federation metadata from Entra ID and upload it to the service provider. This includes all the necessary information.
 
@@ -121,15 +128,25 @@ Using PowerShell:
 
 ```powershell
 # List all certificates on the service principal to find the new one
-$sp = Get-MgServicePrincipal -ServicePrincipalId $appObjectId
-$sp.KeyCredentials | Select-Object DisplayName, EndDateTime, KeyId
+$sp = Get-MgServicePrincipal `
+    -ServicePrincipalId $appObjectId `
+    -Property "id,displayName,keyCredentials,preferredTokenSigningKeyThumbprint"
 
-# Set the preferred token signing key to the new certificate
-$newCertKeyId = "<new-certificate-key-id>"
+$sp.KeyCredentials | Select-Object DisplayName, EndDateTime, KeyId, @{
+    Name       = "Thumbprint"
+    Expression = { ($_.CustomKeyIdentifier | ForEach-Object { $_.ToString("X2") }) -join "" }
+}
+
+# Set the preferred token signing key to the new certificate thumbprint
+$newCertThumbprint = "<new-certificate-thumbprint>"
+
+$params = @{
+    preferredTokenSigningKeyThumbprint = $newCertThumbprint
+}
 
 Update-MgServicePrincipal `
     -ServicePrincipalId $appObjectId `
-    -PreferredTokenSigningKeyThumbprint $newCertKeyId
+    -BodyParameter $params
 ```
 
 ## Step 5: Test SSO After Renewal
@@ -159,7 +176,10 @@ Create a Logic App that runs on a schedule and checks certificate expiration dat
 
 Connect-MgGraph -Identity  # Use managed identity in Automation
 
-$samlApps = Get-MgServicePrincipal -All -Filter "preferredSingleSignOnMode eq 'saml'"
+$samlApps = Get-MgServicePrincipal `
+    -All `
+    -Filter "preferredSingleSignOnMode eq 'saml'" `
+    -Property "id,displayName,keyCredentials"
 $warningThresholdDays = 60
 $alertRecipient = "security-team@yourcompany.com"
 
