@@ -39,8 +39,8 @@ sudo mv azcopy_linux_*/azcopy /usr/local/bin/
 
 ```bash
 # Download and extract AzCopy for macOS
-wget -O azcopy_darwin.tar.gz https://aka.ms/downloadazcopy-v10-mac
-tar -xzf azcopy_darwin.tar.gz
+wget -O azcopy_darwin.zip https://aka.ms/downloadazcopy-v10-mac
+unzip azcopy_darwin.zip
 sudo mv azcopy_darwin_*/azcopy /usr/local/bin/
 ```
 
@@ -55,10 +55,10 @@ azcopy --version
 
 AzCopy supports several authentication methods:
 
-### Azure AD Login (Recommended)
+### Microsoft Entra ID Login (Recommended)
 
 ```bash
-# Log in with Azure AD credentials
+# Log in with Microsoft Entra ID credentials
 azcopy login
 ```
 
@@ -82,13 +82,14 @@ For quick one-off transfers, you can append a SAS token directly to the blob URL
 azcopy copy "localfile.txt" "https://mystorageaccount.blob.core.windows.net/mycontainer/localfile.txt?sv=2024-08-04&ss=b&srt=sco&sp=rwdlacup&se=2026-02-17&sig=..."
 ```
 
-### Storage Account Key
+### Azure CLI Session
 
-You can also use the storage account key via environment variable:
+You can also reuse the OAuth token from an active Azure CLI session:
 
 ```bash
-# Set the storage account key for authentication
+# Reuse an Azure CLI login for authentication
 export AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+export AZCOPY_TENANT_ID="your-tenant-id"
 ```
 
 ## Uploading a Single File
@@ -184,7 +185,7 @@ export AZCOPY_CONCURRENCY_VALUE=32
 For large files, adjusting the block size can improve throughput:
 
 ```bash
-# Set block size to 8 MB (default is 8 MB for most scenarios)
+# Set block size to 8 MiB (the default is automatically calculated)
 azcopy copy "./large-file.vhd" \
   "https://mystorageaccount.blob.core.windows.net/mycontainer/large-file.vhd" \
   --block-size-mb 8
@@ -214,6 +215,9 @@ azcopy jobs list
 
 # Resume a failed or interrupted job
 azcopy jobs resume <job-id>
+
+# If the original transfer used SAS tokens, provide fresh SAS tokens when resuming
+azcopy jobs resume <job-id> --source-sas="<sas-token>" --destination-sas="<sas-token>"
 ```
 
 The job plan files are stored in `~/.azcopy/` on Linux/macOS and `%USERPROFILE%\.azcopy\` on Windows.
@@ -282,11 +286,11 @@ azcopy copy "./logs/today/*.log" \
 
 ## Benchmarking
 
-AzCopy includes a built-in benchmark command for testing throughput:
+AzCopy includes a built-in bench command for testing throughput:
 
 ```bash
 # Run a benchmark to test upload speed to a container
-azcopy benchmark "https://mystorageaccount.blob.core.windows.net/benchmark-container" \
+azcopy bench "https://mystorageaccount.blob.core.windows.net/benchmark-container" \
   --file-count 100 \
   --size-per-file 100M
 ```
