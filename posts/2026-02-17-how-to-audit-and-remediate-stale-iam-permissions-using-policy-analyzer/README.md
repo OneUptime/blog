@@ -10,7 +10,7 @@ Description: Learn how to use Google Cloud Policy Analyzer to audit and remediat
 
 IAM permissions accumulate over time like dust. People join the team and get access. They move to a different project but keep their old permissions. Temporary access for a specific task never gets revoked. Before you know it, you have dozens of stale permissions scattered across your organization - access that nobody needs but everyone has forgotten about.
 
-Google Cloud Policy Analyzer helps you find these stale permissions by analyzing who has access to what and when they last used it. Combined with activity data, you can make informed decisions about which permissions to remove without breaking anything.
+Google Cloud Policy Analyzer helps you find these stale permissions by analyzing who has access to what. Combined with Activity Analyzer, IAM Recommender, and audit log data, you can make informed decisions about which permissions to remove without breaking anything.
 
 ## What Policy Analyzer Does
 
@@ -18,27 +18,34 @@ Policy Analyzer answers questions like:
 
 - Who can access this specific resource?
 - What resources can this user access?
-- When was a particular permission last used?
-- Which permissions have never been used?
+- Which role bindings grant access through inherited policies?
 
-It works by combining IAM policy data with Cloud Audit Logs to show both the configured access and the actual usage patterns.
+Policy Analyzer for IAM allow policies uses Cloud Asset Inventory data to show configured access. Activity Analyzer can show when service accounts or keys were recently authenticated, and IAM Recommender provides usage signals that help you decide whether access is stale.
 
 ## Prerequisites
 
 - The Cloud Asset API enabled
 - The Policy Analyzer API enabled
 - The `roles/cloudasset.viewer` role
+- The `roles/serviceusage.serviceUsageConsumer` role for Cloud Asset Inventory calls
+- The `roles/recommender.iamViewer` role for IAM Recommender recommendations
 - Access to Cloud Audit Logs
 
 ## Step 1: Enable Required APIs
 
 ```bash
-# Enable the APIs needed for Policy Analyzer
+# Enable the APIs used in this guide
 
 gcloud services enable cloudasset.googleapis.com \
     --project=my-project
 
 gcloud services enable policyanalyzer.googleapis.com \
+    --project=my-project
+
+gcloud services enable recommender.googleapis.com \
+    --project=my-project
+
+gcloud services enable cloudfunctions.googleapis.com cloudscheduler.googleapis.com pubsub.googleapis.com monitoring.googleapis.com \
     --project=my-project
 ```
 
@@ -50,8 +57,8 @@ Start by understanding who has access to your most sensitive resources:
 # Find all principals with access to a specific Cloud SQL instance
 gcloud asset analyze-iam-policy \
     --project=my-project \
-    --full-resource-name="//cloudsql.googleapis.com/projects/my-project/instances/prod-database" \
-    --format="table(analysisResults.identityList.identities,analysisResults.accessControlList.accesses.role)"
+    --full-resource-name="//sqladmin.googleapis.com/projects/my-project/instances/prod-database" \
+    --format="table(analysisResults.identityList.identities.name,analysisResults.accessControlLists.accesses.role)"
 ```
 
 For a broader view across the project:
@@ -61,26 +68,27 @@ For a broader view across the project:
 gcloud asset analyze-iam-policy \
     --project=my-project \
     --permissions="resourcemanager.projects.setIamPolicy,compute.instances.delete,storage.objects.delete" \
-    --format="table(analysisResults.identityList.identities,analysisResults.accessControlList.accesses)"
+    --format="table(analysisResults.identityList.identities.name,analysisResults.accessControlLists.accesses)"
 ```
 
-## Step 3: Find Stale Permissions Using Activity Analysis
+## Step 3: Find Stale Permissions Using Activity Signals
 
-Use the Policy Analyzer activity analysis to find permissions that have not been used:
+Use Activity Analyzer to check recent service account and service account key authentication. This does not show last use for every IAM permission, but it is useful when reviewing stale service account access:
 
 ```bash
 # Analyze access activity for a specific project
-# This shows when permissions were last exercised
+# This shows when service accounts last authenticated
 gcloud policy-intelligence query-activity \
     --project=my-project \
-    --activity-type=serviceAccountLastAuthentication
+    --activity-type=serviceAccountLastAuthentication \
+    --limit=unlimited
 ```
 
 For a more detailed analysis, use the API directly with a script:
 
 ```python
 # find_stale_permissions.py
-# Identifies IAM permissions that haven't been used in the specified period
+# Identifies IAM bindings whose principals have no recent audit log activity
 
 from google.cloud import asset_v1
 from google.cloud import logging_v2
@@ -89,7 +97,7 @@ import json
 
 # Configuration
 PROJECT_ID = "my-project"
-STALE_THRESHOLD_DAYS = 90  # Permissions unused for 90+ days are considered stale
+STALE_THRESHOLD_DAYS = 90  # Bindings with no activity for 90+ days are considered stale candidates
 
 def get_all_iam_bindings(project_id):
     """Get all IAM bindings for the project."""
@@ -119,7 +127,13 @@ def get_all_iam_bindings(project_id):
 
     return bindings
 
-def check_recent_activity(project_id, principal, days):
+def member_to_principal_email(member):
+    """Convert IAM member strings to the principalEmail format used in audit logs."""
+    if member.startswith("user:") or member.startswith("serviceAccount:"):
+        return member.split(":", 1)[1]
+    return None
+
+def check_recent_activity(project_id, principal_email, days):
     """Check if a principal has had any activity in the specified period."""
     client = logging_v2.Client(project=project_id)
 
@@ -128,7 +142,7 @@ def check_recent_activity(project_id, principal, days):
     cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     filter_str = (
-        f'protoPayload.authenticationInfo.principalEmail="{principal}" '
+        f'protoPayload.authenticationInfo.principalEmail="{principal_email}" '
         f'AND timestamp>="{cutoff_str}"'
     )
 
@@ -149,9 +163,9 @@ def find_stale_bindings(project_id, threshold_days):
     for binding in bindings:
         principal = binding["principal"]
 
-        # Skip Google-managed service accounts
-        if principal.endswith(".gserviceaccount.com") and \
-           principal.startswith("service-"):
+        # Skip Google-managed service agents
+        if principal.startswith("serviceAccount:service-") and \
+           principal.endswith(".gserviceaccount.com"):
             continue
 
         # Skip allUsers and allAuthenticatedUsers
@@ -160,8 +174,16 @@ def find_stale_bindings(project_id, threshold_days):
             stale.append({**binding, "reason": "public access"})
             continue
 
+        principal_email = member_to_principal_email(principal)
+        if principal_email is None:
+            stale.append({
+                **binding,
+                "reason": "manual review required; audit logs record the calling user or service account, not this IAM member type"
+            })
+            continue
+
         has_activity = check_recent_activity(
-            project_id, principal, threshold_days
+            project_id, principal_email, threshold_days
         )
 
         if has_activity:
@@ -222,7 +244,7 @@ gcloud recommender recommendations list \
     --format="table(name,description,primaryImpact.category)"
 ```
 
-Recommendations from the Recommender are generally safe because they are based on 90 days of actual usage data. But it is still good practice to validate them before applying.
+Recommendations from the Recommender are a safer starting point because they are based on up to 90 days of actual permission usage data. But it is still good practice to validate them before applying.
 
 ## Step 5: Safely Remediate Stale Permissions
 
@@ -273,9 +295,14 @@ echo "$(date),REMOVED,${PROJECT},${PRINCIPAL},${ROLE}" >> /var/log/iam_remediati
 Set up automated weekly audits that generate reports and notify your security team:
 
 ```bash
+# Create the Pub/Sub topic used by Cloud Scheduler and Cloud Functions
+gcloud pubsub topics create iam-audit-trigger \
+    --project=my-project
+
 # Create a Cloud Function that runs the audit
 gcloud functions deploy iam-stale-audit \
     --project=my-project \
+    --region=us-central1 \
     --runtime=python311 \
     --trigger-topic=iam-audit-trigger \
     --entry-point=run_audit \
@@ -286,6 +313,7 @@ gcloud functions deploy iam-stale-audit \
 # Schedule weekly execution
 gcloud scheduler jobs create pubsub weekly-iam-audit \
     --project=my-project \
+    --location=us-central1 \
     --schedule="0 8 * * 1" \
     --topic=iam-audit-trigger \
     --message-body='{"threshold_days": 90}' \
@@ -298,12 +326,17 @@ Track your stale permission remediation progress over time:
 
 ```bash
 # Create a custom metric for stale permission count
-gcloud monitoring metrics-descriptors create \
-    custom.googleapis.com/iam/stale_permission_count \
-    --project=my-project \
-    --description="Number of stale IAM permissions detected" \
-    --metric-kind=GAUGE \
-    --value-type=INT64
+curl -X POST \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "Content-Type: application/json" \
+    "https://monitoring.googleapis.com/v3/projects/my-project/metricDescriptors" \
+    -d '{
+      "type": "custom.googleapis.com/iam/stale_permission_count",
+      "metricKind": "GAUGE",
+      "valueType": "INT64",
+      "description": "Number of stale IAM permissions detected",
+      "displayName": "Stale IAM Permission Count"
+    }'
 ```
 
 Push the stale permission count after each audit run. Over time, you should see this number trending downward as you remediate findings.
