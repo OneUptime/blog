@@ -37,6 +37,8 @@ You will need:
 
 RediSearch is only available on the Enterprise and Enterprise Flash tiers. You cannot use it on Basic, Standard, or Premium.
 
+As of April 1, 2026, Microsoft blocks creation of new Azure Cache for Redis Enterprise and Enterprise Flash caches because Azure Cache for Redis is being retired in favor of Azure Managed Redis. The commands below are useful for understanding the Azure Cache for Redis Enterprise configuration and for environments where you already have an Enterprise cache to work with; for new deployments, use Azure Managed Redis with the same Redis Search module concepts.
+
 ```bash
 # Create a resource group
 
@@ -74,10 +76,11 @@ After the cache is provisioned (which can take 10-15 minutes), retrieve the conn
 
 ```bash
 # Get the endpoint hostname
-az redisenterprise database show \
-  --cluster-name redis-search-demo \
+az redisenterprise show \
+  --name redis-search-demo \
   --resource-group rg-redis-search \
-  --query "resourceState"
+  --query "hostName" \
+  --output tsv
 
 # Get the access keys
 az redisenterprise database list-keys \
@@ -92,16 +95,17 @@ Now the interesting part. Let us create a search index over Redis hashes. Suppos
 First, install the Python Redis client with search support:
 
 ```bash
-# Install redis-py with the search extras
-pip install redis[hiredis]
+# Install redis-py with the optional hiredis parser
+pip install "redis[hiredis]"
 ```
 
 Now create the index and add some data:
 
 ```python
 import redis
+import redis.exceptions
 from redis.commands.search.field import TextField, NumericField, TagField
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.index_definition import IndexDefinition, IndexType
 
 # Connect to the Enterprise cache
 r = redis.Redis(
@@ -133,7 +137,7 @@ index_def = IndexDefinition(
 # Create the index (drop it first if it already exists)
 try:
     r.ft("idx:products").dropindex(delete_documents=False)
-except:
+except redis.exceptions.ResponseError:
     pass
 
 r.ft("idx:products").create_index(schema, definition=index_def)
@@ -272,7 +276,7 @@ RediSearch on Enterprise tier is fast out of the box, but there are ways to sque
 
 **Set field weights wisely**: The `weight` parameter on TextField controls relevance scoring. Give higher weights to fields that are more important for search relevance (like product names vs. descriptions).
 
-**Batch your writes**: When loading large amounts of data, use Redis pipelines to batch hash writes. The indexing happens asynchronously, so bulk loading is efficient.
+**Batch your writes**: When loading large amounts of data, use Redis pipelines to batch hash writes. Search index updates add CPU work to writes, so reducing client round trips is important for bulk loading.
 
 ```python
 # Use a pipeline for batch loading - much faster than individual writes
