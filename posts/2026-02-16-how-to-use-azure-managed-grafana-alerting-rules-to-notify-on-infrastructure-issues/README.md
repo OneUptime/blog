@@ -23,7 +23,7 @@ az grafana create \
   --name myGrafana \
   --resource-group myRG \
   --location eastus \
-  --sku Standard
+  --sku-tier Standard
 ```
 
 Grant access to Azure Monitor data:
@@ -38,7 +38,7 @@ az role assignment create \
   --scope "/subscriptions/<sub-id>"
 ```
 
-Azure Monitor is pre-configured as a data source in Azure Managed Grafana. You can also add Prometheus, Log Analytics, and Application Insights as additional data sources.
+Azure Monitor is pre-configured as a data source in Azure Managed Grafana. You can also add Prometheus and other supported data sources.
 
 ## Understanding Grafana Alerting Components
 
@@ -128,14 +128,14 @@ Navigate to Alerting > Alert rules > New alert rule.
 5. Labels: Add `severity: warning`, `team: infrastructure`
 6. Annotations: Add summary and description
 
-**Example: Alert on low disk space**
+**Example: Alert on high OS disk I/O usage**
 
-1. Name: "Low Disk Space - VMs"
+1. Name: "High OS Disk IOPS - VMs"
 2. Query: Azure Monitor
    - Resource type: Microsoft.Compute/virtualMachines
-   - Metric: OS Disk Used Percentage
-   - Aggregation: Maximum
-3. Expression: When max of query > 85
+   - Metric: OS Disk IOPS Consumed Percentage
+   - Aggregation: Average
+3. Expression: When average of query > 85
 4. Evaluation: Every 15 minutes, for 15 minutes
 5. Labels: `severity: critical`, `team: infrastructure`
 
@@ -146,7 +146,7 @@ Grafana allows you to combine multiple queries in a single alert rule. This is u
 **Alert on high CPU only when memory is also under pressure**:
 
 1. Create Query A: Percentage CPU > 90
-2. Create Query B: Available Memory MB < 512
+2. Create Query B: Available Memory Bytes < 536870912
 3. Add a Math expression: `$A && $B` (both conditions must be true)
 4. Set the threshold on the combined expression
 
@@ -154,10 +154,10 @@ This prevents alerting on a CPU spike during a planned batch job that does not a
 
 ## Step 4: Create Alert Rules for Log Analytics Data
 
-Add Log Analytics as a data source in Grafana, then create alert rules using KQL queries.
+Use the Azure Monitor data source's Logs query type, then create alert rules using KQL queries.
 
-1. Go to Configuration > Data sources > Add data source > Azure Log Analytics
-2. Enter your Log Analytics workspace details
+1. Select Azure Monitor as the data source
+2. Select Logs as the service and choose your Log Analytics workspace
 
 Create an alert rule:
 
@@ -203,17 +203,17 @@ curl -X PUT "$GRAFANA_URL/api/v1/provisioning/policies" \
     "routes": [
       {
         "receiver": "pagerduty-critical",
-        "matchers": ["severity=critical", "team=infrastructure"],
+        "object_matchers": [["severity", "=", "critical"], ["team", "=", "infrastructure"]],
         "continue": false
       },
       {
         "receiver": "slack-ops",
-        "matchers": ["severity=warning", "team=infrastructure"],
+        "object_matchers": [["severity", "=", "warning"], ["team", "=", "infrastructure"]],
         "continue": false
       },
       {
         "receiver": "slack-devs",
-        "matchers": ["team=application"],
+        "object_matchers": [["team", "=", "application"]],
         "continue": false
       }
     ]
@@ -225,12 +225,11 @@ curl -X PUT "$GRAFANA_URL/api/v1/provisioning/policies" \
 If you already have dashboards with panels showing the metrics you want to alert on, you can create alert rules directly from those panels.
 
 1. Open a dashboard panel showing a metric (e.g., a CPU usage chart)
-2. Click the panel title > Edit
-3. Go to the Alert tab
-4. Click "Create alert rule from this panel"
-5. The query is pre-populated from the panel
-6. Add your threshold and evaluation settings
-7. Save
+2. Hover over the panel and open the panel menu in the top-right corner
+3. Select More > New alert rule
+4. The query is pre-populated from the panel
+5. Add your threshold and evaluation settings
+6. Save
 
 This is the fastest way to add alerting to existing dashboards.
 
@@ -245,10 +244,10 @@ During planned maintenance, silence alerts to avoid noise:
 5. Add a comment explaining the maintenance
 6. Create
 
-You can also create silences via the API for automation:
+You can also create recurring mute timings via the provisioning API for automation, then attach them to notification policies:
 
 ```bash
-# Create a 2-hour silence for infrastructure alerts
+# Create a recurring 2-hour Saturday maintenance window
 curl -X POST "$GRAFANA_URL/api/v1/provisioning/mute-timings" \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
