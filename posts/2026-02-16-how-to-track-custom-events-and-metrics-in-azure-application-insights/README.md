@@ -26,6 +26,8 @@ Use events when you want to count occurrences and analyze properties. Use metric
 
 Here is how to track a custom event in an ASP.NET Core application.
 
+This example uses the classic Application Insights .NET SDK. For new .NET applications, Microsoft recommends the Azure Monitor OpenTelemetry Distro, but `TelemetryClient` remains common in existing applications.
+
 ```csharp
 // Inject TelemetryClient via dependency injection
 public class OrderController : ControllerBase
@@ -133,53 +135,60 @@ function trackQueueDepth(queueName, depth) {
 ## Tracking in Python
 
 ```python
-# Track custom telemetry using the OpenCensus Azure exporter
+# Track custom telemetry using the Azure Monitor OpenTelemetry distro
 
-from opencensus.ext.azure import metrics_exporter
-from opencensus.stats import aggregation, measure, stats, view
+from typing import Iterable
 
-# Create a custom metric for tracking queue depth
-queue_depth_measure = measure.MeasureInt(
-    "queue_depth",
-    "Current depth of the processing queue",
-    "items"
+from azure.monitor.opentelemetry import configure_azure_monitor
+from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
+
+configure_azure_monitor(connection_string="<connection-string>")
+
+meter = metrics.get_meter_provider().get_meter("checkout-service")
+queue_depth_by_name = {"orders": 42}
+
+
+def observe_queue_depth(options: CallbackOptions) -> Iterable[Observation]:
+    for queue_name, depth in queue_depth_by_name.items():
+        yield Observation(depth, {"queueName": queue_name})
+
+
+# Create an observable gauge for tracking current queue depth
+meter.create_observable_gauge(
+    "QueueDepth",
+    [observe_queue_depth],
+    unit="items",
+    description="Current depth of the processing queue"
 )
-
-# Create a view to aggregate the metric
-queue_depth_view = view.View(
-    "queue_depth_view",
-    "Queue depth over time",
-    [],
-    queue_depth_measure,
-    aggregation.LastValueAggregation()
-)
-
-# Register the view
-stats.stats.view_manager.register_view(queue_depth_view)
-
-# Record a measurement
-mmap = stats.stats.stats_recorder.new_measurement_map()
-mmap.measure_int_put(queue_depth_measure, 42)
-mmap.record()
 ```
 
-For custom events in Python, use the Application Insights SDK directly.
+For custom events in Python, use the Azure Monitor OpenTelemetry distro and emit a log record with the custom event attribute.
 
 ```python
-# Track custom events with the Application Insights SDK
-from applicationinsights import TelemetryClient
+# Track custom events with the Azure Monitor OpenTelemetry distro
+import logging
 
-tc = TelemetryClient("<instrumentation-key>")
+from azure.monitor.opentelemetry import configure_azure_monitor
 
-# Track a custom event
-tc.track_event(
-    "OrderPlaced",
-    properties={"orderId": "12345", "region": "US-East"},
-    measurements={"itemCount": 3, "orderTotal": 85.50}
+configure_azure_monitor(
+    connection_string="<connection-string>",
+    logger_name="checkout"
 )
 
-# Make sure to flush before the process exits
-tc.flush()
+logger = logging.getLogger("checkout")
+
+# Track a custom event
+logger.warning(
+    "Order placed",
+    extra={
+        "microsoft.custom_event.name": "OrderPlaced",
+        "orderId": "12345",
+        "region": "US-East",
+        "itemCount": 3,
+        "orderTotal": 85.50
+    }
+)
 ```
 
 ## Tracking in Java
@@ -279,8 +288,8 @@ Custom telemetry is lightweight, but there are a few things to keep in mind:
 
 - **Batch your sends**: The SDK batches telemetry automatically, but if you are in a tight loop tracking thousands of events per second, make sure you are using `GetMetric` for numeric values.
 - **Watch your property cardinality**: If a property has millions of unique values, it can slow down queries and increase storage costs. Keep properties to dimensions you actually want to aggregate by.
-- **Sampling still applies**: Custom events and metrics are subject to sampling unless you explicitly exclude them. Exclude critical business events from sampling.
-- **Flush on exit**: If your application is short-lived (like a batch job or Azure Function), call `Flush()` before the process exits to make sure buffered telemetry gets sent.
+- **Sampling still applies to events**: Custom events are subject to sampling unless you explicitly exclude them. Metrics sent through the Application Insights metric APIs are not sampled, but sampling can still affect log and trace telemetry. Exclude critical business events from sampling.
+- **Flush on exit**: If your application is short-lived (like a batch job or Azure Function), flush or shut down the telemetry pipeline before the process exits to make sure buffered telemetry gets sent.
 
 ## Wrapping Up
 
