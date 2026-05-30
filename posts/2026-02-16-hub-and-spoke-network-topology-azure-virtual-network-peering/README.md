@@ -105,26 +105,22 @@ Peering in Azure is a two-way setup. You create a peering connection from the hu
 
 ```bash
 # Peer hub to spoke-1
-# AllowGatewayTransit lets spoke-1 use the hub's VPN gateway
 az network vnet peering create \
   --resource-group rg-hub-spoke \
   --name hub-to-spoke1 \
   --vnet-name vnet-hub \
   --remote-vnet vnet-spoke-1 \
   --allow-vnet-access \
-  --allow-forwarded-traffic \
-  --allow-gateway-transit
+  --allow-forwarded-traffic
 
 # Peer spoke-1 back to hub
-# UseRemoteGateways lets this spoke use the hub's VPN gateway
 az network vnet peering create \
   --resource-group rg-hub-spoke \
   --name spoke1-to-hub \
   --vnet-name vnet-spoke-1 \
   --remote-vnet vnet-hub \
   --allow-vnet-access \
-  --allow-forwarded-traffic \
-  --use-remote-gateways
+  --allow-forwarded-traffic
 
 # Repeat for spoke-2
 az network vnet peering create \
@@ -133,8 +129,7 @@ az network vnet peering create \
   --vnet-name vnet-hub \
   --remote-vnet vnet-spoke-2 \
   --allow-vnet-access \
-  --allow-forwarded-traffic \
-  --allow-gateway-transit
+  --allow-forwarded-traffic
 
 az network vnet peering create \
   --resource-group rg-hub-spoke \
@@ -142,11 +137,10 @@ az network vnet peering create \
   --vnet-name vnet-spoke-2 \
   --remote-vnet vnet-hub \
   --allow-vnet-access \
-  --allow-forwarded-traffic \
-  --use-remote-gateways
+  --allow-forwarded-traffic
 ```
 
-The key flags here are `--allow-gateway-transit` on the hub side and `--use-remote-gateways` on the spoke side. This lets spoke VNets use a VPN or ExpressRoute gateway deployed in the hub. If you do not have a gateway deployed yet, skip the `--use-remote-gateways` flag on the spoke side and the `--allow-gateway-transit` on the hub side - you can add them later.
+The key flag here is `--allow-forwarded-traffic`, which allows traffic forwarded by the firewall or NVA in the hub to cross the peering. If you deploy a VPN or ExpressRoute gateway in the hub later, you can also enable `--allow-gateway-transit` on the hub-to-spoke peering and `--use-remote-gateways` on the spoke-to-hub peering so the spoke can use the hub gateway.
 
 ## Step 4: Enable Spoke-to-Spoke Communication
 
@@ -166,20 +160,30 @@ az network public-ip create \
 az network firewall create \
   --resource-group rg-hub-spoke \
   --name fw-hub \
-  --location eastus \
+  --location eastus
+
+# Add the firewall IP configuration
+az network firewall ip-config create \
+  --resource-group rg-hub-spoke \
+  --firewall-name fw-hub \
+  --name fw-config \
   --vnet-name vnet-hub \
-  --public-ip pip-azfw
+  --public-ip-address pip-azfw
+
+az network firewall update \
+  --resource-group rg-hub-spoke \
+  --name fw-hub
 ```
 
 Get the firewall's private IP address - you will need it for the route tables.
 
 ```bash
 # Retrieve the firewall's private IP for use in route tables
-az network firewall show \
+FW_PRIVATE_IP=$(az network firewall ip-config list \
   --resource-group rg-hub-spoke \
-  --name fw-hub \
-  --query "ipConfigurations[0].privateIPAddress" \
-  --output tsv
+  --firewall-name fw-hub \
+  --query "[?name=='fw-config'].privateIpAddress" \
+  --output tsv)
 ```
 
 Now create route tables for each spoke that direct inter-spoke traffic to the firewall.
@@ -197,7 +201,7 @@ az network route-table route create \
   --name to-spoke2 \
   --address-prefix 10.2.0.0/16 \
   --next-hop-type VirtualAppliance \
-  --next-hop-ip-address 10.0.2.4
+  --next-hop-ip-address $FW_PRIVATE_IP
 
 # Associate the route table with spoke-1's workload subnet
 az network vnet subnet update \
