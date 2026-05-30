@@ -16,17 +16,17 @@ This guide walks through setting up Event Grid subscriptions on Key Vault, routi
 
 Azure Key Vault publishes several event types to Event Grid:
 
-- **Microsoft.KeyVault.SecretNearExpiry:** Fired 30 days before a secret expires (configurable)
+- **Microsoft.KeyVault.SecretNearExpiry:** Fired 30 days before a secret expires
 - **Microsoft.KeyVault.SecretExpired:** Fired when a secret actually expires
 - **Microsoft.KeyVault.SecretNewVersionCreated:** Fired when a new version of a secret is created
-- **Microsoft.KeyVault.KeyNearExpiry:** Same as above, for keys
+- **Microsoft.KeyVault.KeyNearExpiry:** Fired when a key is about to expire; the event time can be configured using the key rotation policy
 - **Microsoft.KeyVault.KeyExpired:** Key expiration
 - **Microsoft.KeyVault.KeyNewVersionCreated:** New key version
 - **Microsoft.KeyVault.CertificateNearExpiry:** Certificate approaching expiration
 - **Microsoft.KeyVault.CertificateExpired:** Certificate expired
 - **Microsoft.KeyVault.VaultAccessPolicyChanged:** Access policy modification
 
-The "NearExpiry" events are the most useful for proactive alerting. By default, they fire 30 days before expiration, giving your team time to rotate the secret.
+The "NearExpiry" events are the most useful for proactive alerting. Secret and certificate near-expiry events fire 30 days before expiration, giving your team time to rotate the secret or certificate.
 
 ## Prerequisites
 
@@ -116,53 +116,55 @@ The Logic App workflow should have this structure:
 3. **Condition:** Check if the event type is NearExpiry or Expired
 4. **Send Email:** Use the Office 365 or SendGrid connector to send a notification
 
-Here is the Logic App definition in JSON:
+For production, create the Event Grid trigger and email action in the Logic Apps designer so Azure can create the required API connection resources. The workflow definition that gets deployed by `az logic workflow create --definition @logic-app-definition.json` must be valid JSON. It should look like this structure after the Event Grid and email connector connections have been configured:
 
 ```json
 {
-  // Logic App definition for Key Vault expiry notifications
-  "definition": {
-    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-    "triggers": {
-      "When_a_resource_event_occurs": {
-        "type": "ApiConnectionWebhook",
-        "inputs": {
-          "host": {
-            "connection": {
-              "name": "@parameters('$connections')['azureeventgrid']['connectionId']"
-            }
-          },
-          "body": {
-            "properties": {
-              // Subscribe to the Key Vault resource
-              "topic": "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.KeyVault/vaults/myKeyVault",
-              "filter": {
-                "includedEventTypes": [
-                  "Microsoft.KeyVault.SecretNearExpiry",
-                  "Microsoft.KeyVault.SecretExpired"
-                ]
-              }
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "type": "Object",
+      "defaultValue": {}
+    }
+  },
+  "triggers": {
+    "When_a_resource_event_occurs": {
+      "type": "ApiConnectionWebhook",
+      "inputs": {
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['azureeventgrid']['connectionId']"
+          }
+        },
+        "body": {
+          "properties": {
+            "topic": "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.KeyVault/vaults/myKeyVault",
+            "filter": {
+              "includedEventTypes": [
+                "Microsoft.KeyVault.SecretNearExpiry",
+                "Microsoft.KeyVault.SecretExpired"
+              ]
             }
           }
         }
       }
-    },
-    "actions": {
-      "Send_email": {
-        "type": "ApiConnection",
-        "inputs": {
-          "host": {
-            "connection": {
-              "name": "@parameters('$connections')['office365']['connectionId']"
-            }
-          },
-          "method": "post",
-          "body": {
-            // Email body with event details
-            "To": "security-team@contoso.com",
-            "Subject": "Key Vault Secret Expiry Alert: @{triggerBody()?['subject']}",
-            "Body": "Event: @{triggerBody()?['eventType']}\nSecret: @{triggerBody()?['subject']}\nVault: @{triggerBody()?['topic']}\nTime: @{triggerBody()?['eventTime']}"
+    }
+  },
+  "actions": {
+    "Send_email": {
+      "type": "ApiConnection",
+      "inputs": {
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['office365']['connectionId']"
           }
+        },
+        "method": "post",
+        "body": {
+          "To": "security-team@contoso.com",
+          "Subject": "Key Vault Secret Expiry Alert: @{triggerBody()?['subject']}",
+          "Body": "Event: @{triggerBody()?['eventType']}\nSecret: @{triggerBody()?['subject']}\nVault: @{triggerBody()?['topic']}\nTime: @{triggerBody()?['eventTime']}"
         }
       }
     }
@@ -170,21 +172,24 @@ Here is the Logic App definition in JSON:
 }
 ```
 
-Then create the Event Grid subscription pointing to the Logic App:
+When you save a Logic App workflow that uses the Event Grid trigger, Azure creates and manages the Event Grid subscription for that trigger. Do not create a second subscription with `--endpoint-type azurefunction`; that endpoint type is only for Azure Function destinations. If you use a Logic App HTTP Request trigger instead of the Event Grid trigger, create the Event Grid subscription as a webhook destination and use the trigger's callback URL as the endpoint:
 
 ```bash
-# Get the Logic App's resource ID
-LOGIC_APP_ID=$(az logic workflow show \
+# Get the Logic App HTTP Request trigger callback URL
+LOGIC_APP_CALLBACK_URL=$(az rest \
+  --method post \
+  --uri "$(az logic workflow show \
   --name "keyvault-expiry-notifier" \
   --resource-group "rg-keyvault-alerts" \
-  --query "id" --output tsv)
+  --query "id" --output tsv)/triggers/manual/listCallbackUrl?api-version=2016-06-01" \
+  --query "value" --output tsv)
 
-# Create the Event Grid subscription targeting the Logic App
+# Create the Event Grid subscription targeting the Logic App HTTP endpoint
 az eventgrid event-subscription create \
   --name "secret-expiry-to-logic-app" \
   --source-resource-id "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.KeyVault/vaults/myKeyVault" \
-  --endpoint-type "azurefunction" \
-  --endpoint "$LOGIC_APP_ID/triggers/When_a_resource_event_occurs/run" \
+  --endpoint-type "webhook" \
+  --endpoint "$LOGIC_APP_CALLBACK_URL" \
   --included-event-types \
     "Microsoft.KeyVault.SecretNearExpiry" \
     "Microsoft.KeyVault.SecretExpired"
@@ -198,11 +203,10 @@ Here is a Python Azure Function that handles the event:
 
 ```python
 import azure.functions as func
-import json
 import logging
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # This function handles Key Vault SecretNearExpiry events
 # It reads the expiring secret and creates a new version with extended expiry
@@ -228,7 +232,7 @@ def main(event: func.EventGridEvent):
     new_value = rotate_secret_value(secret_name, current_secret.value)
 
     # Set the new secret with a new expiration date (90 days from now)
-    new_expiry = datetime.utcnow() + timedelta(days=90)
+    new_expiry = datetime.now(timezone.utc) + timedelta(days=90)
     client.set_secret(
         secret_name,
         new_value,
@@ -242,7 +246,7 @@ def rotate_secret_value(name, current_value):
     # Implement your rotation logic here
     # This is where you would call the service API to generate a new credential
     # For example, regenerate a storage account key or database password
-    pass
+    raise NotImplementedError("Replace this with service-specific rotation logic")
 ```
 
 ## Step 6: Monitor Event Delivery
@@ -298,7 +302,7 @@ You do not want to wait 30 days to see if your near-expiry notification works. C
 # Create a secret that expires very soon (for testing)
 # NearExpiry fires 30 days before expiration by default
 # So set expiration to ~29 days from now to trigger it quickly
-EXPIRY_DATE=$(date -u -v+29d +"%Y-%m-%dT%H:%M:%SZ")
+EXPIRY_DATE=$(date -u -d "+29 days" +"%Y-%m-%dT%H:%M:%SZ")
 
 az keyvault secret set \
   --vault-name myKeyVault \
