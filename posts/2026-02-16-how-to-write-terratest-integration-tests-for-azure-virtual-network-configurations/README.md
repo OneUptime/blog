@@ -56,6 +56,7 @@ go mod init github.com/your-org/terraform-azure-vnet/test
 go get github.com/gruntwork-io/terratest/modules/terraform
 go get github.com/gruntwork-io/terratest/modules/azure
 go get github.com/stretchr/testify/assert
+go get github.com/stretchr/testify/require
 
 # Tidy up dependencies
 go mod tidy
@@ -63,7 +64,7 @@ go mod tidy
 
 ## The Terraform Configuration Under Test
 
-Here is the Terraform module we will be testing. It creates a virtual network with subnets, NSGs, and a route table.
+Here is the Terraform module we will be testing. It creates a resource group, virtual network, and subnets.
 
 ```hcl
 # main.tf - The Terraform module under test
@@ -92,11 +93,17 @@ variable "subnets" {
   }))
 }
 
+# Resource Group
+resource "azurerm_resource_group" "test" {
+  name     = var.resource_group_name
+  location = var.location
+}
+
 # Virtual Network
 resource "azurerm_virtual_network" "main" {
   name                = var.vnet_name
-  location            = var.location
-  resource_group_name = var.resource_group_name
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
   address_space       = var.address_space
 }
 
@@ -104,7 +111,7 @@ resource "azurerm_virtual_network" "main" {
 resource "azurerm_subnet" "main" {
   for_each             = var.subnets
   name                 = each.key
-  resource_group_name  = var.resource_group_name
+  resource_group_name  = azurerm_resource_group.test.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = [each.value.address_prefix]
   service_endpoints    = each.value.service_endpoints
@@ -126,14 +133,16 @@ output "subnet_ids" {
 
 ## Basic Integration Test
 
-The first test validates that the VNet is created with the correct address space and that subnets exist with the right prefixes.
+The first test validates that the VNet is created with the correct address space and that the expected number of subnets exists.
 
 ```go
 // vnet_test.go - Integration tests for the Azure VNet module
 package test
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/gruntwork-io/terratest/modules/azure"
@@ -151,7 +160,9 @@ func TestBasicVnetCreation(t *testing.T) {
 	uniqueID := random.UniqueId()
 	rgName := fmt.Sprintf("rg-terratest-vnet-%s", uniqueID)
 	vnetName := fmt.Sprintf("vnet-test-%s", uniqueID)
-	subscriptionID := azure.GetTargetAzureSubscription(t)
+	subscriptionID := os.Getenv("ARM_SUBSCRIPTION_ID")
+	require.NotEmpty(t, subscriptionID, "ARM_SUBSCRIPTION_ID must be set")
+	ctx := context.Background()
 
 	// Configure Terraform options pointing to our module
 	terraformOptions := &terraform.Options{
@@ -195,15 +206,23 @@ func TestBasicVnetCreation(t *testing.T) {
 	assert.Equal(t, vnetName, actualVnetName)
 
 	// Use the Azure SDK to verify VNet properties directly
-	vnet, err := azure.GetVirtualNetworkE(t, vnetName, rgName, subscriptionID)
+	vnet, err := azure.GetVirtualNetworkContextE(ctx, vnetName, rgName, subscriptionID)
 	require.NoError(t, err, "Failed to get VNet from Azure")
+	require.NotNil(t, vnet.Properties)
+	require.NotNil(t, vnet.Properties.AddressSpace)
 
 	// Check address space
-	assert.Contains(t, *vnet.AddressSpace.AddressPrefixes, "10.0.0.0/16",
+	var addressPrefixes []string
+	for _, prefix := range vnet.Properties.AddressSpace.AddressPrefixes {
+		if prefix != nil {
+			addressPrefixes = append(addressPrefixes, *prefix)
+		}
+	}
+	assert.Contains(t, addressPrefixes, "10.0.0.0/16",
 		"VNet should have the expected address space")
 
 	// Verify subnet count
-	subnets := azure.GetSubnetsForVirtualNetwork(t, vnetName, rgName, subscriptionID)
+	subnets := azure.GetVirtualNetworkSubnetsContext(t, ctx, vnetName, rgName, subscriptionID)
 	assert.Equal(t, 3, len(subnets), "VNet should have exactly 3 subnets")
 }
 ```
@@ -220,7 +239,9 @@ func TestSubnetConfiguration(t *testing.T) {
 	uniqueID := random.UniqueId()
 	rgName := fmt.Sprintf("rg-terratest-subnet-%s", uniqueID)
 	vnetName := fmt.Sprintf("vnet-subnet-test-%s", uniqueID)
-	subscriptionID := azure.GetTargetAzureSubscription(t)
+	subscriptionID := os.Getenv("ARM_SUBSCRIPTION_ID")
+	require.NotEmpty(t, subscriptionID, "ARM_SUBSCRIPTION_ID must be set")
+	ctx := context.Background()
 
 	terraformOptions := &terraform.Options{
 		TerraformDir: "../",
@@ -246,20 +267,25 @@ func TestSubnetConfiguration(t *testing.T) {
 	terraform.InitAndApply(t, terraformOptions)
 
 	// Test frontend subnet
-	frontendSubnet, err := azure.GetSubnetE(t, "frontend", vnetName, rgName, subscriptionID)
+	frontendSubnet, err := azure.GetSubnetContextE(ctx, "frontend", vnetName, rgName, subscriptionID)
 	require.NoError(t, err)
-	assert.Equal(t, "10.0.10.0/24", (*frontendSubnet.AddressPrefix),
+	require.NotNil(t, frontendSubnet.Properties)
+	require.NotNil(t, frontendSubnet.Properties.AddressPrefix)
+	assert.Equal(t, "10.0.10.0/24", (*frontendSubnet.Properties.AddressPrefix),
 		"Frontend subnet should have the correct address prefix")
 
 	// Test backend subnet has service endpoints
-	backendSubnet, err := azure.GetSubnetE(t, "backend", vnetName, rgName, subscriptionID)
+	backendSubnet, err := azure.GetSubnetContextE(ctx, "backend", vnetName, rgName, subscriptionID)
 	require.NoError(t, err)
+	require.NotNil(t, backendSubnet.Properties)
 
 	// Collect service endpoint names for comparison
 	var endpointServices []string
-	if backendSubnet.ServiceEndpoints != nil {
-		for _, ep := range *backendSubnet.ServiceEndpoints {
-			endpointServices = append(endpointServices, *ep.Service)
+	if backendSubnet.Properties.ServiceEndpoints != nil {
+		for _, ep := range backendSubnet.Properties.ServiceEndpoints {
+			if ep != nil && ep.Service != nil {
+				endpointServices = append(endpointServices, *ep.Service)
+			}
 		}
 	}
 
@@ -281,6 +307,9 @@ func TestNSGRulesAreCorrect(t *testing.T) {
 
 	uniqueID := random.UniqueId()
 	rgName := fmt.Sprintf("rg-terratest-nsg-%s", uniqueID)
+	subscriptionID := os.Getenv("ARM_SUBSCRIPTION_ID")
+	require.NotEmpty(t, subscriptionID, "ARM_SUBSCRIPTION_ID must be set")
+	ctx := context.Background()
 
 	// This test uses a separate fixture that includes NSG configuration
 	terraformOptions := &terraform.Options{
@@ -297,31 +326,28 @@ func TestNSGRulesAreCorrect(t *testing.T) {
 
 	// Get the NSG name from outputs
 	nsgName := terraform.Output(t, terraformOptions, "nsg_name")
-	subscriptionID := azure.GetTargetAzureSubscription(t)
 
 	// Query the NSG rules
-	nsg, err := azure.GetNetworkSecurityGroupE(t, nsgName, rgName, subscriptionID)
+	rules, err := azure.GetAllNSGRulesContextE(ctx, rgName, nsgName, subscriptionID)
 	require.NoError(t, err)
 
 	// Build a map of rule names for easier assertions
 	ruleNames := make(map[string]bool)
-	if nsg.SecurityRules != nil {
-		for _, rule := range *nsg.SecurityRules {
-			ruleNames[*rule.Name] = true
+	for _, rule := range rules.SummarizedRules {
+		ruleNames[rule.Name] = true
 
-			// Check that HTTPS inbound rule exists with correct port
-			if *rule.Name == "AllowHTTPS" {
-				assert.Equal(t, "443", *rule.DestinationPortRange)
-				assert.Equal(t, "Allow", string(rule.Access))
-				assert.Equal(t, "Inbound", string(rule.Direction))
-			}
+		// Check that HTTPS inbound rule exists with correct port
+		if rule.Name == "AllowHTTPS" {
+			assert.Equal(t, "443", rule.DestinationPortRange)
+			assert.Equal(t, "Allow", rule.Access)
+			assert.Equal(t, "Inbound", rule.Direction)
+		}
 
-			// Verify SSH is restricted to a specific IP range
-			if *rule.Name == "AllowSSH" {
-				assert.Equal(t, "22", *rule.DestinationPortRange)
-				assert.NotEqual(t, "*", *rule.SourceAddressPrefix,
-					"SSH should not be open to the world")
-			}
+		// Verify SSH is restricted to a specific IP range
+		if rule.Name == "AllowSSH" {
+			assert.Equal(t, "22", rule.DestinationPortRange)
+			assert.NotEqual(t, "*", rule.SourceAddressPrefix,
+				"SSH should not be open to the world")
 		}
 	}
 
@@ -343,6 +369,7 @@ package test
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/gruntwork-io/terratest/modules/random"
 	"github.com/gruntwork-io/terratest/modules/terraform"
@@ -367,7 +394,7 @@ func defaultTerraformOptions(t *testing.T, dir string, vars map[string]interface
 			"StatusCode=429":          "Rate limited, retrying",
 		},
 		MaxRetries:         3,
-		TimeBetweenRetries: 10,
+		TimeBetweenRetries: 10 * time.Second,
 	}
 }
 ```
