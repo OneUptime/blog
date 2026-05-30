@@ -16,17 +16,16 @@ This is not a black-box monitoring solution. It is actual Prometheus under the h
 
 Before starting, make sure you have the following in place.
 
-- An AKS cluster running Kubernetes 1.25 or later
+- An AKS cluster that uses managed identity authentication
 - Azure CLI version 2.49 or newer
-- The `aks-preview` CLI extension (for some features)
+- The `amg` and `alertsmanagement` CLI extensions, which Azure CLI installs automatically when you run `az grafana` and `az alerts-management` commands
 - An Azure Monitor workspace (we will create one below)
 
 ```bash
-# Install or update the aks-preview extension
-
-az extension add --name aks-preview --upgrade
-
 # Register the required resource providers
+az provider register --namespace Microsoft.ContainerService
+az provider register --namespace Microsoft.Insights
+az provider register --namespace Microsoft.AlertsManagement
 az provider register --namespace Microsoft.Monitor
 az provider register --namespace Microsoft.Dashboard
 ```
@@ -53,7 +52,7 @@ echo "Workspace ID: $MONITOR_WORKSPACE_ID"
 
 ## Enabling Prometheus Metrics Collection on AKS
 
-With the workspace created, enable the Prometheus metrics add-on on your AKS cluster. This deploys a metrics collection agent (based on the OpenTelemetry Collector) on each node in your cluster.
+With the workspace created, enable the Prometheus metrics add-on on your AKS cluster. This deploys a containerized Azure Monitor agent that scrapes Prometheus metrics from your cluster.
 
 ```bash
 # Enable Prometheus metrics collection on the AKS cluster
@@ -64,18 +63,21 @@ az aks update \
   --azure-monitor-workspace-resource-id "$MONITOR_WORKSPACE_ID"
 ```
 
-This command does several things behind the scenes. It deploys a DaemonSet called `ama-metrics` in the `kube-system` namespace that runs on every node. It configures the agent to scrape the default Kubernetes metrics endpoints. And it sets up remote-write to push those metrics into your Azure Monitor workspace.
+This command does several things behind the scenes. It deploys `ama-metrics` pods in the `kube-system` namespace, including node-level collector pods and replica pods for cluster-level metrics. It configures the agent to scrape the default Kubernetes metrics endpoints and send those metrics into your Azure Monitor workspace.
 
 You can verify the deployment is healthy.
 
 ```bash
 # Check that the metrics agent pods are running
-kubectl get pods -n kube-system -l rsName=ama-metrics
+kubectl get pods -n kube-system -l rsName=ama-metrics-node
 
 # Check the DaemonSet status
-kubectl get daemonset ama-metrics -n kube-system
+kubectl get daemonset ama-metrics-node -n kube-system
 
 # Verify the replica set agent is running (handles cluster-level metrics)
+kubectl get pods -n kube-system -l rsName=ama-metrics
+
+# Verify kube-state-metrics is running
 kubectl get pods -n kube-system -l rsName=ama-metrics-ksm
 ```
 
@@ -87,6 +89,7 @@ Out of the box, the managed Prometheus agent scrapes a standard set of targets.
 - **cAdvisor**: Container-level resource usage.
 - **kube-state-metrics**: Kubernetes object states (deployments, pods, nodes).
 - **Node exporter**: Hardware and OS metrics from each node.
+- **Network observability Retina**: Network observability metrics when available.
 
 This covers the fundamentals, but you will likely want to scrape your own application metrics as well.
 
@@ -217,11 +220,12 @@ For frequently used or expensive queries, set up recording rules to pre-compute 
 
 ```bash
 # Create a Prometheus rule group for recording rules
-az monitor account rule-group create \
+az alerts-management prometheus-rule-group create \
   --name "aks-recording-rules" \
   --resource-group monitoring-rg \
   --location eastus \
-  --azure-monitor-workspace-ids "$MONITOR_WORKSPACE_ID" \
+  --scopes "$MONITOR_WORKSPACE_ID" \
+  --cluster-name "myAKS" \
   --rules '[
     {
       "record": "namespace:container_cpu_usage:sum_rate5m",
@@ -235,7 +239,7 @@ az monitor account rule-group create \
     }
   ]' \
   --interval "PT1M" \
-  --scope-cluster-id "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.ContainerService/managedClusters/myAKS"
+  --enabled true
 ```
 
 ## Setting Up Alerting Rules
@@ -244,11 +248,12 @@ You can also create Prometheus-native alerting rules that trigger Azure Monitor 
 
 ```bash
 # Create an alert rule group
-az monitor account rule-group create \
+az alerts-management prometheus-rule-group create \
   --name "aks-alert-rules" \
   --resource-group monitoring-rg \
   --location eastus \
-  --azure-monitor-workspace-ids "$MONITOR_WORKSPACE_ID" \
+  --scopes "$MONITOR_WORKSPACE_ID" \
+  --cluster-name "myAKS" \
   --rules '[
     {
       "alert": "HighPodRestartRate",
@@ -262,7 +267,7 @@ az monitor account rule-group create \
     }
   ]' \
   --interval "PT1M" \
-  --scope-cluster-id "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.ContainerService/managedClusters/myAKS"
+  --enabled true
 ```
 
 ## Controlling Costs with Metric Filtering
@@ -278,18 +283,24 @@ metadata:
   name: ama-metrics-settings-configmap
   namespace: kube-system
 data:
+  schema-version: v2
+  config-version: ver1
   # Disable collection of specific default targets
-  default-scrape-settings-enabled: |-
-    kubelet = true
-    coredns = true
-    cadvisor = true
-    kubeproxy = false
-    apiserver = false
-    kubestate = true
-    nodeexporter = true
-  # Keep only specific metrics from cadvisor to reduce cardinality
-  default-targets-metrics-keep-list: |-
-    cadvisor = container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_network_receive_bytes_total|container_network_transmit_bytes_total
+  cluster-metrics: |-
+    default-targets-scrape-enabled: |-
+      kubelet = true
+      coredns = true
+      cadvisor = true
+      kubeproxy = false
+      apiserver = false
+      kubestate = true
+      nodeexporter = true
+      networkobservabilityRetina = true
+    # Keep only specific metrics from cadvisor to reduce cardinality
+    default-targets-metrics-keep-list: |-
+      cadvisor = "container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_network_receive_bytes_total|container_network_transmit_bytes_total"
+    minimal-ingestion-profile: |-
+      enabled = true
 ```
 
 ## Wrapping Up
