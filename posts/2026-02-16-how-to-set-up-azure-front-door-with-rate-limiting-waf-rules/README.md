@@ -8,27 +8,27 @@ Description: Learn how to configure rate limiting rules in Azure Front Door WAF 
 
 ---
 
-Rate limiting is one of the most effective defenses against brute force attacks, API abuse, and application-layer DDoS. Azure Front Door includes a Web Application Firewall (WAF) that supports custom rate limiting rules, letting you throttle requests based on client IP, request attributes, or geographic location. The nice thing about implementing rate limiting at the Front Door layer is that abusive traffic gets blocked at the edge before it ever reaches your backend servers.
+Rate limiting is one of the most effective defenses against brute force attacks, API abuse, and application-layer DDoS. Azure Front Door includes a Web Application Firewall (WAF) that supports custom rate limiting rules, letting you throttle requests from each source IP when they match request attributes, paths, or geographic conditions. The nice thing about implementing rate limiting at the Front Door layer is that abusive traffic gets blocked at the edge before it ever reaches your backend servers.
 
 In this guide, we will set up Azure Front Door with WAF rate limiting rules, covering everything from basic IP-based throttling to more sophisticated rules that target specific endpoints.
 
 ## How Rate Limiting Works in Azure Front Door WAF
 
-Rate limiting in Azure Front Door WAF evaluates the number of requests from a specific source over a defined time window. When the request count exceeds your threshold, the WAF takes an action - typically blocking further requests from that source for the remainder of the window.
+Rate limiting in Azure Front Door WAF evaluates the number of requests from a specific source IP address over a defined time window. When the request count exceeds your threshold, the WAF takes an action - typically blocking further matching requests from that source IP address for the remainder of the window.
 
 Key concepts:
 
 - **Rate limit threshold**: The maximum number of requests allowed in the time window
 - **Rate limit duration**: The time window for counting requests (1 minute or 5 minutes)
-- **Group by**: How requests are grouped for counting (typically by client IP, but you can use other variables)
-- **Match conditions**: Optional filters that narrow which requests are counted (URL path, headers, query parameters, etc.)
+- **Source IP**: Rate limits are counted per source IP address
+- **Match conditions**: Required filters that define which requests are counted (URL path, headers, query parameters, geographic matches, etc.)
 
 ## Prerequisites
 
 - An Azure subscription
 - An existing Azure Front Door Standard or Premium profile (rate limiting requires Standard or Premium tier)
 - At least one origin group configured in your Front Door
-- Azure CLI installed locally
+- Azure CLI installed locally with the `front-door` extension available
 
 ## Step 1: Create a WAF Policy
 
@@ -50,21 +50,30 @@ az network front-door waf-policy create \
 Start with a simple rule that limits requests per IP address across all endpoints:
 
 ```bash
-# Create a rate limiting rule that allows 100 requests per minute per IP
-# Requests exceeding this limit receive a 429 (Too Many Requests) response
+# Create a rate limiting rule that allows 100 requests per minute per source IP
 az network front-door waf-policy rule create \
   --name RateLimitPerIP \
   --policy-name myWafPolicy \
   --resource-group myResourceGroup \
   --rule-type RateLimitRule \
   --rate-limit-threshold 100 \
-  --rate-limit-duration-in-minutes 1 \
+  --rate-limit-duration 1 \
   --action Block \
   --priority 100 \
   --defer
+
+# Rate-limit rules require at least one match condition.
+# This condition matches all requests with a non-empty Host header.
+az network front-door waf-policy rule match-condition add \
+  --name RateLimitPerIP \
+  --policy-name myWafPolicy \
+  --resource-group myResourceGroup \
+  --match-variable RequestHeader.Host \
+  --operator GreaterThan \
+  --values 0
 ```
 
-This rule counts all requests from each unique client IP and blocks the IP for the remainder of the one-minute window once it exceeds 100 requests.
+This rule counts all requests from each unique source IP address and blocks further matching requests from that source IP address for the remainder of the one-minute window once it exceeds 100 requests.
 
 ## Step 3: Add Path-Specific Rate Limiting
 
@@ -78,7 +87,7 @@ az network front-door waf-policy rule create \
   --resource-group myResourceGroup \
   --rule-type RateLimitRule \
   --rate-limit-threshold 10 \
-  --rate-limit-duration-in-minutes 1 \
+  --rate-limit-duration 1 \
   --action Block \
   --priority 50 \
   --defer
@@ -103,7 +112,7 @@ az network front-door waf-policy rule create \
   --resource-group myResourceGroup \
   --rule-type RateLimitRule \
   --rate-limit-threshold 60 \
-  --rate-limit-duration-in-minutes 1 \
+  --rate-limit-duration 1 \
   --action Block \
   --priority 75 \
   --defer
@@ -120,7 +129,7 @@ az network front-door waf-policy rule match-condition add \
 
 ## Step 4: Configure Rate Limiting by Geographic Region
 
-If you notice abusive traffic coming disproportionately from certain regions, you can apply stricter rate limits geographically:
+If you notice abusive traffic coming disproportionately from certain regions, you can apply stricter per-source-IP rate limits for traffic from those regions:
 
 ```bash
 # Apply a stricter rate limit for traffic from specific countries
@@ -130,7 +139,7 @@ az network front-door waf-policy rule create \
   --resource-group myResourceGroup \
   --rule-type RateLimitRule \
   --rate-limit-threshold 30 \
-  --rate-limit-duration-in-minutes 1 \
+  --rate-limit-duration 1 \
   --action Block \
   --priority 60 \
   --defer
@@ -147,7 +156,7 @@ az network front-door waf-policy rule match-condition add \
 
 ## Step 5: Use Custom Response for Rate-Limited Requests
 
-Instead of sending a generic 403, you can configure a custom response that tells clients they have been rate-limited:
+Instead of sending a generic block response, you can configure a custom response that tells clients they have been rate-limited:
 
 ```bash
 # Update the WAF policy to use a custom response for blocked requests
@@ -173,7 +182,7 @@ Link the WAF policy to your Front Door security policy:
 ```bash
 # Associate the WAF policy with a Front Door endpoint
 az afd security-policy create \
-  --name mySecurityPolicy \
+  --security-policy-name mySecurityPolicy \
   --profile-name myFrontDoor \
   --resource-group myResourceGroup \
   --waf-policy "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Network/frontDoorWebApplicationFirewallPolicies/myWafPolicy" \
@@ -225,7 +234,7 @@ Then query the logs to see which rules are triggering:
 ```text
 // KQL query to see rate-limited requests
 AzureDiagnostics
-| where ResourceType == "PROFILES" and Category == "FrontDoorWebApplicationFirewallLog"
+| where ResourceProvider == "MICROSOFT.CDN" and Category == "FrontDoorWebApplicationFirewallLog"
 | where action_s == "Block" and ruleName_s contains "RateLimit"
 | summarize BlockedRequests = count() by bin(TimeGenerated, 5m), ruleName_s, clientIP_s
 | order by BlockedRequests desc
@@ -247,7 +256,7 @@ Choosing rate limit thresholds requires understanding your normal traffic patter
 
 **Shared IP addresses**: Corporate networks and mobile carriers can have thousands of users behind a single IP. Overly aggressive rate limits will block legitimate users. Consider combining IP-based rate limiting with session-based checks at the application layer.
 
-**CDN caching interactions**: If Front Door is caching responses, cached requests do not hit the WAF. Your actual backend traffic might be lower than the rate limit suggests. Make sure your rate limits account for cache hit rates.
+**CDN caching interactions**: Front Door evaluates WAF rules before serving cached responses. Your actual backend traffic might still be lower than the rate limit suggests because cache hits do not reach your origin, but those requests can still be counted by WAF rate limiting.
 
 **Health check traffic**: If you have monitoring tools hitting your endpoints, make sure they do not trigger rate limits. Either whitelist their IPs or set thresholds high enough to accommodate health check frequency.
 
