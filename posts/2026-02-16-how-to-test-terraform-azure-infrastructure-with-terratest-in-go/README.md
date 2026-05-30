@@ -43,6 +43,7 @@ go mod init github.com/yourorg/terraform-azure-modules/test
 # Install Terratest and Azure SDK dependencies
 go get github.com/gruntwork-io/terratest/modules/terraform
 go get github.com/gruntwork-io/terratest/modules/azure
+go get github.com/gruntwork-io/terratest/modules/random
 go get github.com/stretchr/testify/assert
 ```
 
@@ -121,21 +122,21 @@ Here is a complete Terratest test for the resource group module:
 package test
 
 import (
+	"context"
 	"fmt"
-	"testing"
 	"strings"
-	"math/rand"
-	"time"
+	"testing"
 
 	"github.com/gruntwork-io/terratest/modules/azure"
+	"github.com/gruntwork-io/terratest/modules/random"
 	"github.com/gruntwork-io/terratest/modules/terraform"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // generateUniqueName creates a random name to avoid conflicts between test runs
 func generateUniqueName(prefix string) string {
-	rand.Seed(time.Now().UnixNano())
-	return fmt.Sprintf("%s-%d", prefix, rand.Intn(99999))
+	return fmt.Sprintf("%s-%s", prefix, strings.ToLower(random.UniqueID()))
 }
 
 func TestResourceGroupModule(t *testing.T) {
@@ -145,6 +146,7 @@ func TestResourceGroupModule(t *testing.T) {
 	// Generate a unique name to avoid collisions with other test runs
 	rgName := generateUniqueName("rg-test")
 	expectedLocation := "eastus2"
+	ctx := context.Background()
 
 	// Configure the Terraform options
 	terraformOptions := &terraform.Options{
@@ -182,15 +184,18 @@ func TestResourceGroupModule(t *testing.T) {
 	assert.True(t, strings.HasPrefix(outputId, "/subscriptions/"), "ID should be a valid Azure resource ID")
 
 	// Verify the resource group actually exists in Azure using the Azure SDK
-	exists := azure.ResourceGroupExists(t, rgName, "")
+	exists := azure.ResourceGroupExistsContext(t, ctx, rgName, "")
 	assert.True(t, exists, "Resource group should exist in Azure")
 
 	// Verify tags were applied correctly using the Azure API
-	rg, err := azure.GetAResourceGroupE(rgName, "")
+	rg, err := azure.GetAResourceGroupContextE(ctx, rgName, "")
 	assert.NoError(t, err)
-	assert.Equal(t, "Test", rg.Tags["Environment"], "Environment tag should be set")
-	assert.Equal(t, "Terratest", rg.Tags["Project"], "Project tag should be set")
-	assert.Equal(t, "Terraform", rg.Tags["ManagedBy"], "ManagedBy tag should be auto-added")
+	require.Contains(t, rg.Tags, "Environment")
+	require.Contains(t, rg.Tags, "Project")
+	require.Contains(t, rg.Tags, "ManagedBy")
+	assert.Equal(t, "Test", *rg.Tags["Environment"], "Environment tag should be set")
+	assert.Equal(t, "Terratest", *rg.Tags["Project"], "Project tag should be set")
+	assert.Equal(t, "Terraform", *rg.Tags["ManagedBy"], "ManagedBy tag should be auto-added")
 }
 ```
 
@@ -262,6 +267,7 @@ And the test:
 package test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/gruntwork-io/terratest/modules/azure"
@@ -277,6 +283,7 @@ func TestVirtualNetworkModule(t *testing.T) {
 	rgName := generateUniqueName("rg-vnet-test")
 	vnetName := generateUniqueName("vnet-test")
 	subscriptionID := ""  // Empty string uses the default subscription
+	ctx := context.Background()
 
 	// First, create a resource group for the test
 	rgOptions := &terraform.Options{
@@ -317,22 +324,18 @@ func TestVirtualNetworkModule(t *testing.T) {
 	defer terraform.Destroy(t, vnetOptions)
 	terraform.InitAndApply(t, vnetOptions)
 
-	// Verify the VNet exists and has correct address space
-	vnetExists := azure.VirtualNetworkExists(t, vnetName, rgName, subscriptionID)
+	// Verify the VNet exists
+	vnetExists := azure.VirtualNetworkExistsContext(t, ctx, vnetName, rgName, subscriptionID)
 	assert.True(t, vnetExists, "Virtual network should exist")
 
 	// Check that all subnets were created
-	actualSubnets := azure.GetVirtualNetworkSubnets(t, vnetName, rgName, subscriptionID)
+	actualSubnets := azure.GetVirtualNetworkSubnetsContext(t, ctx, vnetName, rgName, subscriptionID)
 	require.Len(t, actualSubnets, 3, "Should have exactly 3 subnets")
 
 	// Verify each subnet exists with the correct address prefix
-	subnetNames := make([]string, 0, len(actualSubnets))
-	for name := range actualSubnets {
-		subnetNames = append(subnetNames, name)
-	}
-	assert.Contains(t, subnetNames, "web", "Should have a web subnet")
-	assert.Contains(t, subnetNames, "app", "Should have an app subnet")
-	assert.Contains(t, subnetNames, "db", "Should have a db subnet")
+	assert.Equal(t, "10.0.1.0/24", actualSubnets["web"], "Should have a web subnet")
+	assert.Equal(t, "10.0.2.0/24", actualSubnets["app"], "Should have an app subnet")
+	assert.Equal(t, "10.0.3.0/24", actualSubnets["db"], "Should have a db subnet")
 
 	// Verify the Terraform outputs
 	vnetId := terraform.Output(t, vnetOptions, "vnet_id")
@@ -370,7 +373,7 @@ After writing hundreds of infrastructure tests, here are the practices that matt
 
 **Use a dedicated subscription for testing.** You do not want test resources appearing in production subscriptions. A dedicated test subscription with budget alerts prevents unexpected costs.
 
-**Test the plan output too.** Sometimes you want to verify what Terraform will do without actually deploying. Terratest has `terraform.InitAndPlan` for this:
+**Test the plan output too.** Sometimes you want to verify what Terraform will do without actually deploying. Terratest has `terraform.InitAndPlanWithExitCode` for this:
 
 ```go
 // Test that the plan produces expected changes
