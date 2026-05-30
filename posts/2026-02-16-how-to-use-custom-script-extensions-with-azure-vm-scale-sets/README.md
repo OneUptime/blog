@@ -164,12 +164,13 @@ A typical Windows setup script:
 
 # Log output
 Start-Transcript -Path C:\setup-script.log
+New-Item -ItemType Directory -Force -Path C:\temp | Out-Null
 
 # Install IIS
 Install-WindowsFeature -Name Web-Server -IncludeManagementTools
 
 # Install .NET hosting bundle
-$dotnetUrl = "https://download.visualstudio.microsoft.com/download/pr/hosting-bundle.exe"
+$dotnetUrl = "https://dotnet.microsoft.com/permalink/dotnetcore-current-windows-runtime-bundle-installer"
 Invoke-WebRequest -Uri $dotnetUrl -OutFile C:\temp\hosting-bundle.exe
 Start-Process -FilePath C:\temp\hosting-bundle.exe -ArgumentList "/install /quiet" -Wait
 
@@ -233,14 +234,11 @@ If you have multiple extensions (for example, Custom Script plus a monitoring ag
 az vmss extension set \
   --resource-group myResourceGroup \
   --vmss-name myScaleSet \
-  --name CustomScript \
-  --publisher Microsoft.Azure.Extensions \
-  --version 2.1 \
-  --provision-after-extensions "DependencyAgentLinux" \
-  --settings '{
-    "fileUris": ["https://mystorageaccount.blob.core.windows.net/scripts/setup.sh"],
-    "commandToExecute": "./setup.sh"
-  }'
+  --name DependencyAgentLinux \
+  --publisher Microsoft.Azure.Monitoring.DependencyAgent \
+  --version 9.10 \
+  --provision-after-extensions "CustomScript" \
+  --settings '{"enableAMA": "true"}'
 ```
 
 This ensures your application is set up before the monitoring agent starts, so the agent can immediately begin collecting application-specific metrics.
