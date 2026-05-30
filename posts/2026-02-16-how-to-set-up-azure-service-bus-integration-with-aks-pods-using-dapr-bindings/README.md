@@ -8,21 +8,21 @@ Description: Complete guide to integrating Azure Service Bus with AKS pods using
 
 ---
 
-Connecting your Kubernetes services to Azure Service Bus usually means pulling in an SDK, managing connection strings, handling retries, and writing boilerplate for message serialization. DAPR bindings simplify this dramatically. With a DAPR binding component, your application just makes HTTP calls to receive messages from or send messages to Service Bus. No SDK, no connection string management in your code, and DAPR handles all the retry logic and error handling. In this post, I will walk through setting up both input bindings (receiving messages) and output bindings (sending messages) with Azure Service Bus on AKS.
+Connecting your Kubernetes services to Azure Service Bus usually means pulling in an SDK, managing connection strings, handling retries, and writing boilerplate for message serialization. DAPR bindings simplify this dramatically. With a DAPR binding component, your application just makes HTTP calls to receive messages from or send messages to Service Bus queues. No SDK, no connection string management in your code, and DAPR handles the binding integration with Service Bus. In this post, I will walk through setting up both input bindings (receiving messages) and output bindings (sending messages) with Azure Service Bus on AKS.
 
 ## Input Bindings vs Output Bindings
 
 DAPR bindings come in two flavors:
 
-**Input bindings** trigger your application when an event occurs. For Service Bus, this means DAPR reads messages from a queue or topic subscription and sends them to your app via an HTTP POST request. Your app just needs to expose an endpoint.
+**Input bindings** trigger your application when an event occurs. For Service Bus queues, this means DAPR reads messages from a queue and sends them to your app via an HTTP POST request. Your app just needs to expose an endpoint.
 
-**Output bindings** let your application send messages to Service Bus by making an HTTP POST to the DAPR sidecar. DAPR handles the connection, authentication, and delivery.
+**Output bindings** let your application send messages to Service Bus queues by making an HTTP POST to the DAPR sidecar. DAPR handles the connection, authentication, and delivery.
 
 You can use both at the same time. For example, a service could receive orders from an input binding and publish notifications through an output binding.
 
 ## Prerequisites
 
-You need an AKS cluster with DAPR installed, an Azure Service Bus namespace with a queue and/or topic, and a way to authenticate. I will use workload identity for authentication in this guide, but you can also use connection strings.
+You need an AKS cluster with DAPR installed, an Azure Service Bus namespace with queues, and a way to authenticate. I will start with connection strings in this guide, then show the workload identity component configuration.
 
 If you do not have DAPR installed yet, install it with Helm.
 
@@ -36,7 +36,7 @@ helm install dapr dapr/dapr --namespace dapr-system --create-namespace --wait
 
 ## Step 1: Create Azure Service Bus Resources
 
-Set up a Service Bus namespace with a queue for direct messaging and a topic for pub/sub messaging.
+Set up a Service Bus namespace with a queue for order processing and a queue for notifications.
 
 ```bash
 # Create a Service Bus namespace
@@ -52,18 +52,11 @@ az servicebus queue create \
   --namespace-name myservicebus \
   --name orders
 
-# Create a topic for notifications
-az servicebus topic create \
+# Create a queue for notifications
+az servicebus queue create \
   --resource-group myResourceGroup \
   --namespace-name myservicebus \
   --name notifications
-
-# Create a subscription for the notification topic
-az servicebus topic subscription create \
-  --resource-group myResourceGroup \
-  --namespace-name myservicebus \
-  --topic-name notifications \
-  --name email-sub
 ```
 
 ## Step 2: Store the Connection String
@@ -110,13 +103,14 @@ spec:
     # Maximum number of concurrent messages to process
     - name: maxConcurrentHandlers
       value: "10"
-    # Maximum number of active messages to prefetch
-    - name: prefetchCount
+    # Maximum number of messages being processed or buffered at once
+    - name: maxActiveMessages
       value: "5"
-    # How long to wait for a message before timing out
+    # Timeout for calls to the Azure Service Bus endpoint
     - name: timeoutInSec
       value: "60"
-    # Maximum number of delivery attempts before dead-lettering
+    # Maximum number of delivery attempts before dead-lettering.
+    # This is used when DAPR creates the queue; it does not update an existing queue.
     - name: maxDeliveryCount
       value: "5"
 ```
@@ -129,26 +123,26 @@ kubectl apply -f input-binding.yaml
 
 ## Step 4: Create the Output Binding Component
 
-This component lets your application send messages to the notifications topic.
+This component lets your application send messages to the notifications queue.
 
 ```yaml
 # output-binding.yaml
-# DAPR output binding - sends messages to Service Bus topic
+# DAPR output binding - sends messages to Service Bus queue
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
   name: notifications-output
   namespace: default
 spec:
-  type: bindings.azure.servicebustopics
+  type: bindings.azure.servicebusqueues
   version: v1
   metadata:
     - name: connectionString
       secretKeyRef:
         name: servicebus-secret
         key: connectionString
-    # The topic to send messages to
-    - name: topicName
+    # The queue to send messages to
+    - name: queueName
       value: "notifications"
 ```
 
@@ -291,8 +285,8 @@ sequenceDiagram
     participant SB as Service Bus Queue
     participant DAPR as DAPR Sidecar
     participant App as Order Processor
-    participant Topic as Service Bus Topic
-    participant Sub as Subscriber
+    participant NotifyQ as Notifications Queue
+    participant Consumer as Notification Consumer
 
     Producer->>SB: Send order message
     DAPR->>SB: Poll for messages
@@ -300,15 +294,15 @@ sequenceDiagram
     DAPR->>App: POST /orders-input
     App->>App: Process order
     App->>DAPR: POST /v1.0/bindings/notifications-output
-    DAPR->>Topic: Send notification
-    Topic->>Sub: Deliver to subscribers
+    DAPR->>NotifyQ: Send notification
+    NotifyQ->>Consumer: Deliver to consumer
     App->>DAPR: Return 200 (acknowledge)
     DAPR->>SB: Complete message
 ```
 
 ## Step 7: Use Workload Identity Instead of Connection Strings
 
-For production, replace the connection string with workload identity authentication.
+For production, replace the connection string with Microsoft Entra authentication. On AKS, configure Azure workload identity federation for the DAPR sidecar and use the Service Bus namespace name in the component.
 
 ```yaml
 # input-binding-wi.yaml
@@ -327,9 +321,6 @@ spec:
       value: "myservicebus.servicebus.windows.net"
     - name: queueName
       value: "orders"
-    # Tell DAPR to use Azure AD authentication
-    - name: azureClientId
-      value: "<managed-identity-client-id>"
     - name: maxConcurrentHandlers
       value: "10"
 ```
@@ -338,15 +329,22 @@ Make sure the managed identity has the Azure Service Bus Data Receiver role for 
 
 ## Step 8: Test the Integration
 
-Send a test message to the Service Bus queue and verify your application processes it.
+Send a test message to the Service Bus queue through the DAPR sidecar and verify your application processes it.
 
 ```bash
-# Send a test message using Azure CLI
-az servicebus queue send \
-  --resource-group myResourceGroup \
-  --namespace-name myservicebus \
-  --name orders \
-  --body '{"id": "test-001", "items": 3, "total": 59.99}'
+# Forward the DAPR HTTP API from one order-processor pod
+kubectl port-forward deploy/order-processor 3500:3500
+```
+
+In another terminal, invoke the orders binding with the `create` operation.
+
+```bash
+curl -X POST http://localhost:3500/v1.0/bindings/orders-input \
+  -H "Content-Type: application/json" \
+  -d '{
+        "operation": "create",
+        "data": {"id": "test-001", "items": 3, "total": 59.99}
+      }'
 
 # Check the application logs
 kubectl logs -l app=order-processor -c order-processor --tail=20
@@ -374,7 +372,7 @@ az servicebus queue show \
 
 **Scale consumers with KEDA.** Instead of running a fixed number of replicas, use KEDA to scale based on the Service Bus queue length. When the queue is empty, scale to zero. When messages arrive, scale up.
 
-**Set appropriate prefetch counts.** A higher prefetch count improves throughput but increases memory usage and can cause message lock expiration if processing is slow. Start with 5-10 and tune based on your processing speed.
+**Set appropriate concurrency and buffering.** Higher `maxConcurrentHandlers` and `maxActiveMessages` values can improve throughput but increase memory usage and can cause message lock expiration if processing is slow. Start with 5-10 and tune based on your processing speed.
 
 **Monitor message age.** Track how long messages sit in the queue before being processed. If the average age is increasing, you need more consumers.
 
