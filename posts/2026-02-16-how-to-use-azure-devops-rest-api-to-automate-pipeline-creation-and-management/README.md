@@ -10,7 +10,7 @@ Description: Learn how to use the Azure DevOps REST API to programmatically crea
 
 If you have worked with Azure DevOps for any length of time, you know that clicking through the UI to create and configure pipelines gets old fast. When you have dozens of projects or need to set up standardized pipelines across teams, doing things manually is not just tedious - it becomes a real bottleneck. That is where the Azure DevOps REST API comes in.
 
-The REST API lets you do everything the portal does, but programmatically. You can create pipelines, trigger builds, update configurations, and pull status reports - all from scripts or custom applications. In this post, I will walk through the practical side of using this API to automate pipeline creation and management.
+The REST API lets you do many of the things the portal does, but programmatically. You can create pipelines, trigger builds, update configurations, and pull status reports - all from scripts or custom applications. In this post, I will walk through the practical side of using this API to automate pipeline creation and management.
 
 ## Understanding the Azure DevOps REST API Structure
 
@@ -20,13 +20,13 @@ The Azure DevOps REST API follows a consistent URL pattern. Most endpoints look 
 https://dev.azure.com/{organization}/{project}/_apis/{area}/{resource}?api-version=7.1
 ```
 
-The API is versioned, so you always need to specify the `api-version` parameter. As of this writing, version 7.1 is the latest stable release. The API covers almost every aspect of Azure DevOps, including work items, repos, pipelines, test plans, and artifacts.
+The API is versioned, so you always need to specify the `api-version` parameter. The examples in this post use version 7.1, which is a stable release supported by Azure DevOps Services and Azure DevOps Server 2022.1. The API covers almost every aspect of Azure DevOps, including work items, repos, pipelines, test plans, and artifacts.
 
 For pipeline operations specifically, you will be working with two main API areas: the Build API (for YAML pipelines and classic build definitions) and the Release API (for classic release pipelines, hosted on `vsrm.dev.azure.com`).
 
 ## Setting Up Authentication
 
-Before making any API calls, you need a Personal Access Token (PAT). Head to your Azure DevOps organization, click on User Settings, and generate a new token with the appropriate scopes. For pipeline management, you will need at least Build (Read & Execute) and Release (Read, Write, & Execute) permissions.
+Before making any API calls, you need a Personal Access Token (PAT). Head to your Azure DevOps organization, click on User Settings, and generate a new token with the appropriate scopes. For the examples below, you will need at least Build (Read & Execute), Code (Read), and, if you manage classic releases, Release (Read, Write, & Execute) permissions.
 
 Here is how to set up authentication in a script. The API uses Basic authentication with the PAT as the password:
 
@@ -266,12 +266,12 @@ response = requests.get(
 )
 definition = response.json()
 
-# Add or update variables on the definition
-definition["variables"] = {
+# Add or update variables on the definition without removing existing ones
+definition.setdefault("variables", {}).update({
     "DOCKER_REGISTRY": {"value": "myregistry.azurecr.io", "isSecret": False},
     "IMAGE_TAG": {"value": "$(Build.BuildId)", "isSecret": False},
-    "REGISTRY_PASSWORD": {"value": None, "isSecret": True}  # Secret variables
-}
+    "REGISTRY_PASSWORD": {"value": "new-password-from-secret-store", "isSecret": True}
+})
 
 # Push the updated definition back
 update_resp = requests.put(
