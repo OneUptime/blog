@@ -48,7 +48,7 @@ Before setting up gates with Azure Monitor, you need:
 
 ## Creating Azure Monitor Alert Rules
 
-First, make sure you have relevant alert rules in Azure Monitor. Here is how to create one using Azure CLI that monitors the error rate of an App Service:
+First, make sure you have relevant alert rules in Azure Monitor. Here is how to create one using Azure CLI that monitors the HTTP 5xx error count of an App Service:
 
 ```bash
 # Create a metric alert that fires when HTTP 5xx errors exceed 10 in 5 minutes
@@ -103,12 +103,12 @@ Click "Add" under gates and select "Query Azure Monitor alerts." Configure it wi
 
 - **Azure subscription**: Select your service connection
 - **Resource group**: The resource group to check for alerts
-- **Resource type**: Leave as "All" to check all resources, or select a specific type
-- **Alert severity**: Select the severity levels that should block deployment (typically Sev 0 and Sev 1)
-- **Alert state**: Monitor state should be "Fired" (active alerts)
-- **Filter condition**: "Greater than" with threshold "0"
+- **Filter type**: Use "None" to check all configured alert rules in the resource group, or filter by a specific resource or alert rule
+- **Severity**: Select the severity levels that should block deployment (typically Sev 0 and Sev 1)
+- **Alert state**: Use "New" and "Acknowledged" for active alert instances
+- **Monitor condition**: Use "Fired" for alerts whose underlying conditions have crossed the defined thresholds
 
-This means: if there are any fired alerts of severity 0 or 1 in the specified resource group, the gate fails and deployment is blocked.
+The Azure Monitor gate succeeds when none of the matching alert rules are activated at the time of sampling. If there are any matching fired alerts of severity 0 or 1 in the specified resource group, the gate fails and deployment is blocked.
 
 ## Setting Up Post-Deployment Health Validation
 
@@ -133,6 +133,17 @@ Here is an Azure Function that checks multiple health indicators:
 import azure.functions as func
 import requests
 import json
+
+
+def get_error_rate_from_app_insights():
+    # Query Application Insights here and return the error rate percentage.
+    # This placeholder keeps the gate logic focused on how Azure Pipelines evaluates the response.
+    return 0.0
+
+
+def get_p95_latency_from_app_insights():
+    # Query Application Insights here and return p95 latency in milliseconds.
+    return 0
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     """
@@ -185,7 +196,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-To use this as a gate, add the "Invoke REST API" gate type and point it at your Azure Function URL. Configure it to expect a 200 status code for success.
+To use this as a gate, add the "Invoke Azure Function" gate type and point it at your Azure Function URL. Configure it to expect a 200 status code for success.
 
 ## Gate Evaluation Flow
 
