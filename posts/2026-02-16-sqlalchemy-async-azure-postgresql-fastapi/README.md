@@ -8,7 +8,7 @@ Description: Use SQLAlchemy async engine with Azure Database for PostgreSQL in a
 
 ---
 
-FastAPI is async by nature. If your database access is synchronous, you are blocking the event loop and throwing away the concurrency advantage that made you choose FastAPI in the first place. SQLAlchemy 2.0 introduced a proper async engine that works with asyncpg (a fast async PostgreSQL driver), giving you non-blocking database access that plays nicely with FastAPI's async request handling. Pair this with Azure Database for PostgreSQL and you have a production-ready async Python API.
+FastAPI is async by nature. If your database access is synchronous, you are blocking the event loop and throwing away the concurrency advantage that made you choose FastAPI in the first place. SQLAlchemy provides a proper async engine that works with asyncpg (a fast async PostgreSQL driver), giving you non-blocking database access that plays nicely with FastAPI's async request handling. Pair this with Azure Database for PostgreSQL and you have a production-ready async Python API.
 
 This guide walks through setting up SQLAlchemy's async engine with Azure Database for PostgreSQL in a FastAPI application.
 
@@ -37,11 +37,10 @@ az postgres flexible-server create \
   --tier Burstable \
   --version 15
 
-# Allow access from your IP
+# Allow access from all IPv4 addresses for a quick demo
 az postgres flexible-server firewall-rule create \
   --resource-group fastapi-demo-rg \
   --name fastapi-pg-server \
-  --rule-name dev-access \
   --start-ip-address 0.0.0.0 \
   --end-ip-address 255.255.255.255
 
@@ -146,8 +145,8 @@ class Article(Base):
     author_id = Column(Integer, ForeignKey("authors.id"), nullable=False)
     published = Column(Boolean, default=False, index=True)
     view_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     author = relationship("Author", back_populates="articles")
@@ -162,7 +161,7 @@ class Author(Base):
     name = Column(String(200), nullable=False)
     email = Column(String(200), nullable=False, unique=True)
     bio = Column(Text)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     articles = relationship("Article", back_populates="author")
@@ -253,6 +252,7 @@ class ArticleList(BaseModel):
 
 ```python
 # app/main.py - FastAPI application with async SQLAlchemy
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -264,20 +264,16 @@ from app.schemas import (
     AuthorCreate, AuthorResponse,
 )
 
-app = FastAPI(title="Blog API")
 
-
-# Create tables on startup
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-
-# Shutdown: dispose the engine connection pool
-@app.on_event("shutdown")
-async def shutdown():
+    yield
     await engine.dispose()
+
+
+app = FastAPI(title="Blog API", lifespan=lifespan)
 
 
 # --- Author endpoints ---
