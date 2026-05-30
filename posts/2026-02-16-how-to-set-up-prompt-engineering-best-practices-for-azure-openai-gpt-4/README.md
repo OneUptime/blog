@@ -12,9 +12,9 @@ Prompt engineering is the art and science of crafting inputs to language models 
 
 ## The Anatomy of a GPT-4 Prompt
 
-Every Azure OpenAI chat completion request consists of an array of messages with three roles:
+A typical Azure OpenAI chat completion request includes an array of messages with roles such as:
 
-- **System**: Sets the model's behavior, personality, and constraints. This is processed once and applies to the entire conversation.
+- **System**: Sets the model's behavior, personality, and constraints. Include it with each API request where you want those instructions to apply.
 - **User**: The end user's input or question.
 - **Assistant**: Previous model responses (used for multi-turn conversations).
 
@@ -58,6 +58,8 @@ Return only valid JSON with no additional text.
 Here is how this looks in code:
 
 ```python
+import json
+
 def analyze_feedback(client, feedback_text):
     """
     Analyze customer feedback and return structured data.
@@ -79,7 +81,8 @@ Return only valid JSON. No markdown formatting, no code blocks, just raw JSON.""
             {"role": "user", "content": feedback_text}
         ],
         temperature=0.1,  # Low temperature for consistent structured output
-        max_tokens=300
+        max_tokens=300,
+        response_format={"type": "json_object"}
     )
 
     return json.loads(response.choices[0].message.content)
@@ -137,7 +140,7 @@ system_prompt = """You are a cloud architecture advisor. When answering question
 Always show your reasoning before giving the final recommendation."""
 ```
 
-This technique works because it forces the model to generate intermediate reasoning tokens, which improves the quality of the final answer. Without chain-of-thought, the model might jump to a conclusion that misses important considerations.
+This technique can work because it asks the model to break the task into intermediate steps before giving the final answer. Without explicit step-by-step structure, the model might jump to a conclusion that misses important considerations.
 
 ## Technique 4: Set Boundaries and Constraints
 
@@ -165,11 +168,11 @@ Azure OpenAI GPT-4 has several parameters that affect output quality:
 response = client.chat.completions.create(
     model="gpt4-production",
     messages=messages,
-    temperature=0.3,     # 0 = deterministic, 1 = creative. Use low for factual tasks.
+    temperature=0.3,     # Lower values make output more focused and more deterministic.
     max_tokens=500,      # Limit response length
-    top_p=0.95,          # Nucleus sampling - usually leave at default
-    frequency_penalty=0, # Penalize repetition (0-2)
-    presence_penalty=0   # Encourage new topics (0-2)
+    top_p=1,             # Nucleus sampling - usually leave at the default when tuning temperature
+    frequency_penalty=0, # Penalize repetition (-2 to 2)
+    presence_penalty=0   # Encourage new topics (-2 to 2)
 )
 ```
 
