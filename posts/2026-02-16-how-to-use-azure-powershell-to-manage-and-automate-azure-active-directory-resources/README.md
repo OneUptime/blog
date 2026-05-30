@@ -27,10 +27,10 @@ Install-Module Microsoft.Graph.Applications -Scope CurrentUser -Force
 Install-Module Microsoft.Graph.Identity.DirectoryManagement -Scope CurrentUser -Force
 ```
 
-If you are working in an environment where the legacy `AzureAD` module is still in use, you can install it alongside the Graph modules. They do not conflict:
+If you are maintaining older scripts that still depend on the legacy `AzureAD` module, you may need to install it alongside the Graph modules. Do not use it for new automation:
 
 ```powershell
-# Legacy module - still works but being phased out
+# Legacy module - deprecated; install only for maintaining old scripts
 Install-Module AzureAD -Scope CurrentUser -Force
 ```
 
@@ -42,7 +42,7 @@ For interactive use:
 
 ```powershell
 # Connect interactively - a browser window will open for sign-in
-Connect-MgGraph -Scopes "User.ReadWrite.All", "Group.ReadWrite.All", "Application.ReadWrite.All"
+Connect-MgGraph -Scopes "User.ReadWrite.All", "Group.ReadWrite.All", "Application.ReadWrite.All", "AuditLog.Read.All"
 ```
 
 For automation scenarios (service principals, CI/CD pipelines):
@@ -130,14 +130,14 @@ Finding and filtering users is something you will do constantly:
 
 ```powershell
 # Get all users in the Engineering department
-$engineers = Get-MgUser -Filter "department eq 'Engineering'" -All
+$engineers = Get-MgUser -Filter "department eq 'Engineering'" -Property Id,DisplayName,UserPrincipalName,Department -All
 
 # Get a specific user by UPN
 $user = Get-MgUser -UserId "jane.smith@contoso.com"
 
-# Get users who have not signed in for 90 days
-$cutoffDate = (Get-Date).AddDays(-90).ToString("yyyy-MM-ddTHH:mm:ssZ")
-$inactiveUsers = Get-MgUser -Filter "signInActivity/lastSignInDateTime le $cutoffDate" -All `
+# Get users who have not had a successful sign-in for 90 days
+$cutoffDate = (Get-Date).ToUniversalTime().AddDays(-90).ToString("yyyy-MM-ddTHH:mm:ssZ")
+$inactiveUsers = Get-MgUser -Filter "signInActivity/lastSuccessfulSignInDateTime le $cutoffDate" -All `
     -Property DisplayName,UserPrincipalName,SignInActivity
 ```
 
@@ -181,7 +181,7 @@ foreach ($group in $groups) {
 
     foreach ($member in $members) {
         # Get the full user object for each member
-        $user = Get-MgUser -UserId $member.Id -ErrorAction SilentlyContinue
+        $user = Get-MgUser -UserId $member.Id -Property Id,DisplayName,UserPrincipalName,Department -ErrorAction SilentlyContinue
 
         if ($user) {
             $report += [PSCustomObject]@{
@@ -207,7 +207,7 @@ App registrations are critical for service-to-service authentication, and managi
 
 ```powershell
 # Find all app registrations with secrets expiring in the next 30 days
-$apps = Get-MgApplication -All
+$apps = Get-MgApplication -Property Id,AppId,DisplayName,PasswordCredentials -All
 $expirationThreshold = (Get-Date).AddDays(30)
 $expiringApps = @()
 
@@ -233,10 +233,10 @@ $expiringApps | Sort-Object ExpiryDate | Format-Table -AutoSize
 
 ```powershell
 # Rotate a secret for an app registration
-$appId = "your-app-object-id"
+$appObjectId = "your-app-object-id"
 
 # Create a new secret with a 6-month validity
-$newSecret = Add-MgApplicationPassword -ApplicationId $appId -PasswordCredential @{
+$newSecret = Add-MgApplicationPassword -ApplicationId $appObjectId -PasswordCredential @{
     DisplayName = "Rotated-$(Get-Date -Format 'yyyy-MM-dd')"
     EndDateTime = (Get-Date).AddMonths(6)
 }
@@ -245,12 +245,12 @@ Write-Output "New secret created. Value: $($newSecret.SecretText)"
 Write-Output "Store this value securely - it cannot be retrieved again."
 
 # Optionally remove the old secret after updating your applications
-# Remove-MgApplicationPassword -ApplicationId $appId -KeyId "old-key-id"
+# Remove-MgApplicationPassword -ApplicationId $appObjectId -KeyId "old-key-id"
 ```
 
 ## Automating with Azure Pipelines
 
-You can run these scripts in Azure Pipelines using a service connection. Here is a pipeline step that runs a user audit:
+You can run these scripts in Azure Pipelines. The script still needs to install or import the Microsoft Graph modules and call `Connect-MgGraph`; the Azure service connection configures the Azure PowerShell context, not the Microsoft Graph PowerShell session by itself. Here is a pipeline step that runs a user audit:
 
 ```yaml
 # Azure Pipeline step to run an AD audit script
