@@ -27,20 +27,20 @@ Azure ships with several built-in regulatory compliance initiatives tailored to 
 Navigate to the Azure Portal, open Policy, and go to Definitions. Filter by type "Initiative" and search for the regulatory standard you need. Common ones include:
 
 - CIS Microsoft Azure Foundations Benchmark
-- PCI DSS 3.2.1
-- SOC 2 Type II
+- PCI DSS v4.0.1
+- SOC 2 2023
 - NIST SP 800-53 Rev 5
-- ISO 27001:2013
+- ISO/IEC 27001:2022
 
 To assign an initiative using the Azure CLI, run the following command. This assigns the PCI DSS initiative to your subscription scope.
 
 ```bash
-# Assign the PCI DSS 3.2.1 built-in initiative to the target subscription
+# Assign the PCI DSS v4.0.1 built-in initiative to the target subscription
 
 az policy assignment create \
   --name "pci-dss-audit" \
-  --display-name "PCI DSS 3.2.1 Compliance Audit" \
-  --policy-set-definition "496eeda9-8f2f-4d5e-8dfd-204f0a92ed41" \
+  --display-name "PCI DSS v4.0.1 Compliance Audit" \
+  --policy-set-definition "a06d5deb-24aa-4991-9d58-fa7563154e31" \
   --scope "/subscriptions/<your-subscription-id>" \
   --enforcement-mode Default
 ```
@@ -55,29 +55,41 @@ Here is a custom policy definition that ensures all SQL databases have Transpare
 
 ```json
 {
-  "mode": "Indexed",
-  "policyRule": {
-    "if": {
-      "allOf": [
-        {
-          "field": "type",
-          "equals": "Microsoft.Sql/servers/databases"
-        },
-        {
-          "field": "Microsoft.Sql/servers/databases/transparentDataEncryption.status",
-          "notEquals": "Enabled"
-        }
-      ]
-    },
-    "then": {
-      "effect": "audit"
-    }
+  "if": {
+    "allOf": [
+      {
+        "field": "type",
+        "equals": "Microsoft.Sql/servers/databases"
+      },
+      {
+        "field": "name",
+        "notEquals": "master"
+      }
+    ]
   },
-  "parameters": {}
+  "then": {
+    "effect": "AuditIfNotExists",
+    "details": {
+      "type": "Microsoft.Sql/servers/databases/transparentDataEncryption",
+      "name": "current",
+      "existenceCondition": {
+        "anyOf": [
+          {
+            "field": "Microsoft.Sql/transparentDataEncryption.status",
+            "equals": "enabled"
+          },
+          {
+            "field": "Microsoft.Sql/servers/databases/transparentDataEncryption/state",
+            "equals": "enabled"
+          }
+        ]
+      }
+    }
+  }
 }
 ```
 
-You can deploy this custom definition with the CLI.
+Save this rule as `tde-policy-rule.json`, then deploy the custom definition with the CLI.
 
 ```bash
 # Create a custom policy definition for SQL TDE enforcement
@@ -88,6 +100,8 @@ az policy definition create \
   --rules ./tde-policy-rule.json \
   --mode Indexed
 ```
+
+If you prefer to store the full policy definition in source control, wrap the same rule in a complete Azure Policy definition file with `mode`, `policyRule`, and `parameters` properties.
 
 ## Step 3 - Enforce Data Residency Requirements
 
@@ -114,29 +128,30 @@ Regulators want evidence that you are monitoring your environment. Azure Policy 
 az policy assignment create \
   --name "diag-settings-keyvault" \
   --display-name "Require Diagnostic Settings on Key Vaults" \
-  --policy "cf820ca0-f99e-4f3e-84fb-66e913812d21" \
-  --params "{\"logAnalyticsWorkspaceId\": {\"value\": \"/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.OperationalInsights/workspaces/<workspace>\"}}" \
+  --policy "bef3f64c-5290-43b7-85b0-9b254eef4c47" \
+  --params "{\"logAnalytics\": {\"value\": \"/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.OperationalInsights/workspaces/<workspace>\"}}" \
   --scope "/subscriptions/<your-subscription-id>" \
   --identity-scope "/subscriptions/<your-subscription-id>" \
+  --role "Monitoring Contributor" \
   --location "eastus" \
   --mi-system-assigned
 ```
 
-Notice the `--mi-system-assigned` flag. Policies that create or modify resources (DeployIfNotExists effect) need a managed identity to perform those actions.
+Notice the `--mi-system-assigned` flag. Policies that create or modify resources (DeployIfNotExists effect) need a managed identity with RBAC permissions to perform those actions. If the Log Analytics workspace is outside the assignment scope, grant the assignment identity permissions on that workspace too.
 
 ## Step 5 - Set Up Remediation Tasks
 
-Some policies audit existing resources that were deployed before the policy existed. Remediation tasks fix those pre-existing violations. For example, if you have storage accounts without encryption that predate your policy, a remediation task will enable encryption on them.
+Some policies audit existing resources that were deployed before the policy existed. Remediation tasks fix those pre-existing violations when the assigned policy uses a DeployIfNotExists or Modify effect. For example, if you have Key Vaults without diagnostic settings that predate your policy assignment, a remediation task can deploy those settings.
 
 ```bash
 # Create a remediation task for non-compliant resources
 az policy remediation create \
-  --name "remediate-storage-encryption" \
-  --policy-assignment "storage-encryption-policy" \
+  --name "remediate-keyvault-diagnostics" \
+  --policy-assignment "diag-settings-keyvault" \
   --resource-group "finance-prod-rg"
 ```
 
-Always test remediation in a non-production environment first. Some remediations can cause brief service interruptions, like restarting a database to enable TDE.
+Always test remediation in a non-production environment first. Some remediations can change resource configuration or trigger deployments that you should validate before using them in production.
 
 ## Step 6 - Build Compliance Reports
 
@@ -148,8 +163,8 @@ You can query compliance state using the Azure Resource Graph.
 # Query non-compliant resources across all policy assignments
 az graph query -q "
   PolicyResources
-  | where type == 'microsoft.policyinsights/policystates'
-  | where properties.complianceState == 'NonCompliant'
+  | where type =~ 'microsoft.policyinsights/policystates'
+  | where tostring(properties.complianceState) == 'NonCompliant'
   | project
       resourceId = properties.resourceId,
       policyAssignment = properties.policyAssignmentName,
