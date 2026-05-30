@@ -8,7 +8,7 @@ Description: Learn how to plan and execute a migration from on-premises Team Fou
 
 ---
 
-Migrating from on-premises Team Foundation Server (TFS) to Azure DevOps Services is one of those projects that teams put off for years. The existing TFS installation works, everyone knows how to use it, and migration sounds risky. But TFS is end-of-life, it does not get new features, and maintaining the on-premises infrastructure is an ongoing cost. The migration is inevitable, and the longer you wait, the more data you accumulate and the harder it gets.
+Migrating from on-premises Team Foundation Server (TFS) to Azure DevOps Services is one of those projects that teams put off for years. The existing TFS installation works, everyone knows how to use it, and migration sounds risky. But older TFS versions are out of mainstream support, they do not get new features, and maintaining the on-premises infrastructure is an ongoing cost. The migration is inevitable for many teams, and the longer you wait, the more data you accumulate and the harder it gets.
 
 The good news is that Microsoft provides a well-documented migration path with dedicated tools. The process preserves your work items, source code, build history, and project structure. It is not trivial, but it is a known quantity with predictable steps.
 
@@ -20,7 +20,7 @@ There are two main approaches to migrating from TFS to Azure DevOps Services.
 
 This is the official Microsoft approach. It uses the Azure DevOps Data Migration Tool to move your entire TFS collection to Azure DevOps Services with full fidelity. Work item IDs are preserved, changeset history is intact, and the migration is atomic.
 
-This approach is best when you need to preserve every detail - work item IDs, links, attachments, changeset numbers, and complete history. It requires your TFS instance to be on a supported version (TFS 2018 Update 2 or later).
+This approach is best when you need to preserve every detail - work item IDs, links, attachments, changeset numbers, and complete history. It requires your server to be on a version supported by the Azure DevOps Data Migration Tool, which generally means one of the latest supported Azure DevOps Server releases.
 
 ### Selective Migration
 
@@ -57,43 +57,32 @@ Document what you have:
 
 ### Check TFS Version Compatibility
 
-The Data Migration Tool requires TFS 2018 Update 2 or later. If you are on an older version, you need to upgrade TFS before migrating.
+The Azure DevOps Data Migration Tool supports the two latest Azure DevOps Server releases at a given time. If you are on an older TFS or Azure DevOps Server version, you need to upgrade before migrating.
 
 ```text
-Supported source versions:
-  TFS 2018 Update 2+
-  TFS 2018 Update 3+
-  Azure DevOps Server 2019
-  Azure DevOps Server 2020
-  Azure DevOps Server 2022
+Check the current Microsoft migration prerequisites before you plan the cutover.
+At the time of writing, the supported Azure DevOps Server versions are:
+  Azure DevOps Server 2022.2
+  Azure DevOps Server 2020.1.2
 ```
 
-If you are on TFS 2015 or earlier, the upgrade path is: upgrade to TFS 2018 or later first, then migrate to Azure DevOps Services.
+If you are on TFS 2018 or earlier, the upgrade path is: upgrade to a currently supported Azure DevOps Server version first, then migrate to Azure DevOps Services.
 
 ### Clean Up Before Migration
 
 Migration is a chance to clean house. Delete old test projects, remove large binaries from version control (if moving from TFVC), archive projects that are no longer active, and resolve any data integrity issues.
 
-```sql
--- Check for common data issues before migration (run on TFS database)
--- Find work items with broken links
-SELECT wi.System_Id, wi.System_Title
-FROM dbo.WorkItemsLatestUsed wi
-LEFT JOIN dbo.LinksLatestUsed l ON wi.System_Id = l.SourceID
-WHERE l.SourceID IS NULL AND wi.System_WorkItemType = 'Bug'
-
--- Find oversized attachments (over 100MB)
-SELECT a.AttachmentId, a.Length / 1048576.0 AS SizeMB, a.OriginalName
-FROM dbo.tbl_Attachment a
-WHERE a.Length > 104857600
-ORDER BY a.Length DESC
+```powershell
+# Let the Data Migration Tool identify collection issues instead of querying
+# unsupported Azure DevOps Server database tables directly.
+Migrator.exe validate /collection:http://tfs-server:8080/tfs/DefaultCollection /tenantDomainName:yourtenant.onmicrosoft.com /region:CUS
 ```
 
 ## Performing the High-Fidelity Migration
 
 ### Step 1: Upgrade TFS to a Supported Version
 
-If your TFS is below 2018 Update 2, upgrade it first. Follow the standard TFS upgrade process - backup, run the installer, and configure.
+If your TFS or Azure DevOps Server version is not supported by the Data Migration Tool, upgrade it first. Follow the standard upgrade process - backup, run the installer, and configure.
 
 ### Step 2: Download and Configure the Migration Tool
 
@@ -104,66 +93,53 @@ Download the Azure DevOps Data Migration Tool from the Microsoft website. It inc
 # Run the preparation step to analyze your collection
 
 # First, prepare the collection for migration
-Migrator.exe prepare /collection:http://tfs-server:8080/tfs/DefaultCollection /tenantdomainname:yourtenant.onmicrosoft.com /region:CUS
+Migrator.exe prepare /collection:http://tfs-server:8080/tfs/DefaultCollection /tenantDomainName:yourtenant.onmicrosoft.com /region:CUS
 ```
 
-The prepare step validates your collection and generates a migration specification file. Review this file carefully - it lists any issues that need to be resolved before migration.
+The prepare step validates your collection and generates the migration files, including `migration.json` and `IdentityMapLog.csv`. Review these files carefully - they list migration settings and identity matches that need to be checked before migration.
 
 ### Step 3: Validate the Collection
 
 ```powershell
 # Run validation to check for migration blockers
-Migrator.exe validate /collection:http://tfs-server:8080/tfs/DefaultCollection
+Migrator.exe validate /collection:http://tfs-server:8080/tfs/DefaultCollection /tenantDomainName:yourtenant.onmicrosoft.com /region:CUS
 
 # Common validation issues:
 # - Process template customizations not supported in cloud
 # - Large binary files exceeding size limits
-# - Identity mapping issues (on-prem AD to Azure AD)
+# - Identity mapping issues (on-prem AD to Microsoft Entra ID)
 ```
 
 Validation produces a log file that categorizes issues as errors (must fix before migration) or warnings (can proceed but should review).
 
 ### Step 4: Identity Mapping
 
-Map your on-premises Active Directory identities to Azure AD identities. This is often the most time-consuming part of the migration.
+Map your on-premises Active Directory identities to Microsoft Entra ID identities. This is often the most time-consuming part of the migration.
 
-Create an identity map file that maps each TFS user to their Azure AD equivalent.
+The Data Migration Tool generates `IdentityMapLog.csv` during the prepare step. Review the generated file with your Microsoft Entra administrator and fix directory synchronization issues before migration.
 
-```json
-{
-  "identityMappings": [
-    {
-      "source": "DOMAIN\\jsmith",
-      "target": "jsmith@yourcompany.com"
-    },
-    {
-      "source": "DOMAIN\\mjones",
-      "target": "mjones@yourcompany.com"
-    },
-    {
-      "source": "DOMAIN\\BuildService",
-      "target": "build-service@yourcompany.com"
-    }
-  ]
-}
+```csv
+Active Directory: User (Azure DevOps Server),Active Directory: Security Identifier,Microsoft Entra ID: Expected Import User (Azure DevOps Services),Expected Import Status,Validation Date
+Jane Smith,S-1-5-21-0000000000-0000000000-0000000000-1001,jsmith@yourcompany.com,Active,2026-05-30
+Former User,S-1-5-21-0000000000-0000000000-0000000000-1002,No Match Found (Check Microsoft Entra ID Sync),Historical,2026-05-30
 ```
 
-For users who have left the organization, you can map them to a placeholder identity or leave them unmapped (they will show as "Previous user" in Azure DevOps).
+For users who have left the organization, leave them as historical identities. Historical identities preserve searchable history, but they cannot sign in and cannot be converted to active identities after import.
 
 ### Step 5: Perform the Migration
 
-Schedule the migration during a maintenance window. The collection is read-only during migration, so communicate downtime to all users.
+Schedule the migration during a maintenance window. You detach the collection and keep it offline while preparing the final backup, so communicate downtime to all users.
 
 ```powershell
-# Import the collection to Azure DevOps Services
-Migrator.exe import /collection:http://tfs-server:8080/tfs/DefaultCollection /tenantdomainname:yourtenant.onmicrosoft.com /region:CUS
+# Queue the import to Azure DevOps Services using the completed migration specification
+Migrator.exe import /importFile:C:\DataMigrationToolFiles\migration.json
 
-# The import process:
-# 1. Detaches the collection from TFS
-# 2. Creates a backup
-# 3. Uploads to Azure DevOps Services
-# 4. Restores in the cloud environment
-# 5. Runs data transformations
+# Before running the import command:
+# 1. Detach the collection from Azure DevOps Server
+# 2. Generate a DACPAC, or use the SQL Azure VM method for large collections
+# 3. Upload the DACPAC and migration files to Azure Storage
+# 4. Generate a container-level SAS token with Read and List permissions
+# 5. Complete migration.json, including the ImportType
 ```
 
 Migration time depends on data size. Small collections (under 10 GB) might complete in a few hours. Large collections (100+ GB) can take a day or more.
