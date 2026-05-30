@@ -8,7 +8,7 @@ Description: Learn how to configure Azure Backup policies with long-term retenti
 
 ---
 
-Many organizations need to keep backups for years, not just days or weeks. Regulatory requirements like HIPAA (6 years), SOX (7 years), PCI DSS (1 year minimum), and various industry-specific mandates dictate how long data must be retained. Azure Backup supports long-term retention (LTR) with configurable daily, weekly, monthly, and yearly retention settings that can extend to 99 years.
+Many organizations need to keep backups for years, not just days or weeks. Regulatory requirements like HIPAA documentation retention (6 years), SOX audit record retention (7 years), PCI DSS audit trail retention (1 year minimum), and various industry-specific mandates dictate how long data must be retained. Azure Backup supports long-term retention (LTR) with configurable daily, weekly, monthly, and yearly retention settings that can extend to 99 years.
 
 This guide covers how to design and implement backup policies with long-term retention, manage the associated costs, and leverage Azure's archive tier for significant savings.
 
@@ -43,7 +43,7 @@ Before configuring anything, map your business and regulatory requirements to re
 
 ### Example: Healthcare Organization (HIPAA)
 
-HIPAA requires retaining medical records for 6 years from the date of creation or last use. A backup policy for HIPAA-regulated systems might look like:
+HIPAA requires retaining required compliance documentation for 6 years from the date of creation or the date it was last in effect, whichever is later; medical-record retention is governed by other federal or state requirements. A backup policy for HIPAA-regulated systems might look like:
 
 | Tier | Retention | Recovery Points Kept |
 |------|-----------|---------------------|
@@ -91,10 +91,13 @@ az backup policy create \
     --name policy-ltr-compliance-7yr \
     --backup-management-type AzureIaasVM \
     --policy '{
+        "properties": {
+        "backupManagementType": "AzureIaasVM",
         "schedulePolicy": {
             "schedulePolicyType": "SimpleSchedulePolicy",
             "scheduleRunFrequency": "Daily",
-            "scheduleRunTimes": ["2026-02-16T01:00:00Z"]
+            "scheduleRunTimes": ["2026-02-16T01:00:00Z"],
+            "scheduleWeeklyFrequency": 0
         },
         "retentionPolicy": {
             "retentionPolicyType": "LongTermRetentionPolicy",
@@ -140,7 +143,9 @@ az backup policy create \
             }
         },
         "instantRpRetentionRangeInDays": 2,
+        "protectedItemsCount": 0,
         "timeZone": "UTC"
+        }
     }'
 ```
 
@@ -151,42 +156,50 @@ az backup policy create \
 # Configure each retention tier individually
 
 $vault = Get-AzRecoveryServicesVault -Name "rsv-backup-eastus2-001" -ResourceGroupName "rg-backup-eastus2"
+Set-AzRecoveryServicesVaultContext -Vault $vault
+
+$schedulePolicy = Get-AzRecoveryServicesBackupSchedulePolicyObject -WorkloadType AzureVM
+$schedulePolicy.ScheduleRunTimes.Clear()
+$schedulePolicy.ScheduleRunTimes.Add((Get-Date "2026-02-16T01:00:00Z").ToUniversalTime())
 
 # Define daily retention: 90 days
-$dailyRetention = New-AzRecoveryServicesBackupRetentionPolicyObject -RetentionType Daily
-$dailyRetention.DailySchedule.DurationCountInDays = 90
+$retentionPolicy = Get-AzRecoveryServicesBackupRetentionPolicyObject -WorkloadType AzureVM
+$retentionPolicy.DailySchedule.DurationCountInDays = 90
 
 # Define weekly retention: 52 weeks, keep Sunday backup
-$weeklyRetention = New-AzRecoveryServicesBackupRetentionPolicyObject -RetentionType Weekly
-$weeklyRetention.WeeklySchedule.DaysOfTheWeek = "Sunday"
-$weeklyRetention.WeeklySchedule.DurationCountInWeeks = 52
+$retentionPolicy.WeeklySchedule.DaysOfTheWeek = "Sunday"
+$retentionPolicy.WeeklySchedule.DurationCountInWeeks = 52
 
 # Define monthly retention: 84 months (7 years), first Sunday
-$monthlyRetention = New-AzRecoveryServicesBackupRetentionPolicyObject -RetentionType Monthly
-$monthlyRetention.MonthlySchedule.RetentionScheduleFormatType = "Weekly"
-$monthlyRetention.MonthlySchedule.RetentionScheduleWeekly.DaysOfTheWeek = "Sunday"
-$monthlyRetention.MonthlySchedule.RetentionScheduleWeekly.WeeksOfTheMonth = "First"
-$monthlyRetention.MonthlySchedule.DurationCountInMonths = 84
+$retentionPolicy.MonthlySchedule.RetentionScheduleFormatType = "Weekly"
+$retentionPolicy.MonthlySchedule.RetentionScheduleWeekly.DaysOfTheWeek = "Sunday"
+$retentionPolicy.MonthlySchedule.RetentionScheduleWeekly.WeeksOfTheMonth = "First"
+$retentionPolicy.MonthlySchedule.DurationCountInMonths = 84
 
 # Define yearly retention: 10 years, first Sunday of January
-$yearlyRetention = New-AzRecoveryServicesBackupRetentionPolicyObject -RetentionType Yearly
-$yearlyRetention.YearlySchedule.RetentionScheduleFormatType = "Weekly"
-$yearlyRetention.YearlySchedule.MonthsOfYear = "January"
-$yearlyRetention.YearlySchedule.RetentionScheduleWeekly.DaysOfTheWeek = "Sunday"
-$yearlyRetention.YearlySchedule.RetentionScheduleWeekly.WeeksOfTheMonth = "First"
-$yearlyRetention.YearlySchedule.DurationCountInYears = 10
+$retentionPolicy.YearlySchedule.RetentionScheduleFormatType = "Weekly"
+$retentionPolicy.YearlySchedule.MonthsOfYear = "January"
+$retentionPolicy.YearlySchedule.RetentionScheduleWeekly.DaysOfTheWeek = "Sunday"
+$retentionPolicy.YearlySchedule.RetentionScheduleWeekly.WeeksOfTheMonth = "First"
+$retentionPolicy.YearlySchedule.DurationCountInYears = 10
 
-Write-Output "Long-term retention policy objects created"
+New-AzRecoveryServicesBackupProtectionPolicy `
+    -Name "policy-ltr-compliance-7yr" `
+    -WorkloadType AzureVM `
+    -RetentionPolicy $retentionPolicy `
+    -SchedulePolicy $schedulePolicy `
+    -VaultId $vault.ID
 ```
 
 ## Step 2: Leverage the Archive Tier for Cost Savings
 
-Azure Backup offers a vault-archive tier for long-term recovery points. Moving older recovery points to the archive tier can reduce storage costs by up to 50%.
+Azure Backup offers a vault-archive tier for long-term recovery points. Moving older recovery points to the archive tier can reduce storage costs, though the savings depend on the workload and churn pattern.
 
 The archive tier is suitable for:
-- Recovery points older than 6 months
+- Azure VM monthly and yearly recovery points that have been in the Vault-Standard tier for at least 3 months
+- SQL Server and SAP HANA full recovery points that have been in the Vault-Standard tier for at least 45 days
+- Recovery points with at least 6 months of retention remaining
 - Recovery points that are rarely accessed
-- Monthly and yearly retention points
 
 ### Enabling Archive Tier
 
@@ -200,6 +213,7 @@ az backup recoverypoint list \
     --vault-name rsv-backup-eastus2-001 \
     --container-name "IaasVMContainer;V2;rg-production;vm-db-01" \
     --item-name "VM;iaasvmcontainerv2;rg-production;vm-db-01" \
+    --backup-management-type AzureIaasVM \
     --is-ready-for-move true \
     --target-tier VaultArchive \
     --output table
@@ -210,12 +224,13 @@ az backup recoverypoint move \
     --vault-name rsv-backup-eastus2-001 \
     --container-name "IaasVMContainer;V2;rg-production;vm-db-01" \
     --item-name "VM;iaasvmcontainerv2;rg-production;vm-db-01" \
-    --rp-name "recovery-point-id" \
+    --backup-management-type AzureIaasVM \
+    --name "recovery-point-id" \
     --source-tier VaultStandard \
     --destination-tier VaultArchive
 ```
 
-Keep in mind that restoring from the archive tier takes longer (up to 24 hours) and incurs rehydration costs. This is acceptable for long-term compliance backups that you rarely need to restore.
+Keep in mind that restoring from the archive tier takes longer because recovery points must be rehydrated first, and rehydration incurs costs. This is acceptable for long-term compliance backups that you rarely need to restore.
 
 ## Step 3: Configure Policy for SQL Server LTR
 
@@ -232,9 +247,13 @@ az backup policy create \
     --backup-management-type AzureWorkload \
     --workload-type SQLDataBase \
     --policy '{
+        "properties": {
+        "backupManagementType": "AzureWorkload",
+        "workLoadType": "SQLDataBase",
         "settings": {
             "timeZone": "UTC",
-            "issqlcompression": true
+            "issqlcompression": true,
+            "isCompression": true
         },
         "subProtectionPolicy": [
             {
@@ -243,7 +262,8 @@ az backup policy create \
                     "schedulePolicyType": "SimpleSchedulePolicy",
                     "scheduleRunFrequency": "Weekly",
                     "scheduleRunDays": ["Sunday"],
-                    "scheduleRunTimes": ["2026-02-16T02:00:00Z"]
+                    "scheduleRunTimes": ["2026-02-16T02:00:00Z"],
+                    "scheduleWeeklyFrequency": 0
                 },
                 "retentionPolicy": {
                     "retentionPolicyType": "LongTermRetentionPolicy",
@@ -288,7 +308,8 @@ az backup policy create \
                     "schedulePolicyType": "SimpleSchedulePolicy",
                     "scheduleRunFrequency": "Weekly",
                     "scheduleRunDays": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],
-                    "scheduleRunTimes": ["2026-02-16T14:00:00Z"]
+                    "scheduleRunTimes": ["2026-02-16T14:00:00Z"],
+                    "scheduleWeeklyFrequency": 0
                 },
                 "retentionPolicy": {
                     "retentionPolicyType": "SimpleRetentionPolicy",
@@ -312,7 +333,9 @@ az backup policy create \
                     }
                 }
             }
-        ]
+        ],
+        "protectedItemsCount": 0
+        }
     }'
 ```
 
@@ -320,11 +343,11 @@ az backup policy create \
 
 Long-term retention can accumulate significant storage costs. Here are strategies to manage them:
 
-**Use the archive tier aggressively.** Move monthly and yearly recovery points to the archive tier as soon as they are eligible (typically after 3-6 months in the standard tier).
+**Use the archive tier selectively.** Move eligible or recommended monthly and yearly recovery points to the archive tier when the expected savings justify the longer restore time.
 
 **Right-size your retention.** If your compliance requirement is 7 years, do not set it to 10 "just in case." Every year of additional retention adds cost.
 
-**Use incremental backups.** Azure Backup uses incremental snapshots by default, so each additional recovery point only stores changed data. This keeps LTR storage growth manageable.
+**Use incremental backups.** Azure VM backups use incremental snapshots by default, so each additional recovery point only stores changed data. This keeps LTR storage growth manageable for VM workloads.
 
 **Monitor storage consumption.** Use Azure Cost Management to track backup storage costs by vault, policy, and protected item. Set up budgets and alerts.
 
@@ -333,7 +356,7 @@ Long-term retention can accumulate significant storage costs. Here are strategie
 az backup vault show \
     --resource-group rg-backup-eastus2 \
     --name rsv-backup-eastus2-001 \
-    --query "properties.storageModelType"
+    --query "{redundancy: properties.redundancySettings.standardTierStorageRedundancy, storageType: properties.storageType}"
 ```
 
 **Consider separate vaults for LTR.** If you have different compliance requirements for different workloads, use separate vaults with different storage redundancy settings. LTR-only vaults can use LRS instead of GRS to reduce costs if cross-region protection is not required for archived data.
