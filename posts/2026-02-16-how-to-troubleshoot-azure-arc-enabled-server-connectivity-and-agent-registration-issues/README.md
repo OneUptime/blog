@@ -19,7 +19,7 @@ When you install the Connected Machine agent on a server, the registration proce
 1. The agent authenticates to Azure using a service principal or interactive login
 2. It registers the machine as an Azure resource (Microsoft.HybridCompute/machines)
 3. A managed identity is created for the machine
-4. The agent establishes a persistent connection to Azure through the Guest Configuration service
+4. The agent establishes ongoing communication with Azure Arc services, including HIMDS, Guest Configuration, and extension management
 5. The machine appears in the Azure portal and can be managed like any other Azure resource
 
 If any step fails, the machine either does not register or registers but shows as disconnected.
@@ -62,15 +62,16 @@ If the agent status shows "Disconnected," the machine cannot reach Azure. If it 
 The Arc agent needs outbound HTTPS (port 443) connectivity to several Azure endpoints. If your network blocks any of these, registration or ongoing connectivity fails.
 
 Required endpoints:
+- `download.microsoft.com` - Windows agent installation package
+- `packages.microsoft.com` - Linux agent installation package
 - `management.azure.com` - Azure Resource Manager
-- `login.microsoftonline.com` - Azure AD authentication
-- `login.windows.net` - Azure AD authentication
-- `pas.windows.net` - Azure AD authentication
+- `login.microsoftonline.com` - Microsoft Entra ID authentication
+- `*.login.microsoft.com` - Microsoft Entra ID authentication
+- `pas.windows.net` - Microsoft Entra ID authentication
 - `*.his.arc.azure.com` - Hybrid Identity Service
 - `*.guestconfiguration.azure.com` - Guest Configuration
-- `guestnotificationservice.azure.com` - Notification service
-- `*.servicebus.windows.net` - Extension management
-- `*.blob.core.windows.net` - Extension downloads
+- `guestnotificationservice.azure.com` and `*.guestnotificationservice.azure.com` - Notification service
+- `azgn*.servicebus.windows.net` or `*.servicebus.windows.net` - Notification service for extension and connectivity scenarios
 
 Test connectivity to these endpoints.
 
@@ -97,9 +98,6 @@ If your servers use a proxy for outbound internet access, the Arc agent needs to
 # Configure proxy for the Arc agent on Linux
 sudo azcmagent config set proxy.url "http://proxy.mycompany.com:8080"
 
-# If the proxy requires authentication
-sudo azcmagent config set proxy.url "http://username:password@proxy.mycompany.com:8080"
-
 # Verify proxy configuration
 azcmagent config list
 ```
@@ -114,7 +112,7 @@ On Windows:
 Common proxy issues:
 - The proxy blocks or does not support WebSocket connections (required for some Arc features)
 - TLS inspection on the proxy interferes with certificate validation
-- The proxy requires NTLM authentication which the agent does not support
+- The proxy requires authentication, which the agent does not support
 
 For TLS inspection issues, you may need to add the Azure endpoints to the proxy's bypass list or import the proxy's CA certificate into the agent's trust store.
 
@@ -129,14 +127,15 @@ az login --service-principal \
   --password "your-client-secret" \
   --tenant "your-tenant-id"
 
-# The service principal needs these role assignments:
-# Azure Connected Machine Onboarding role on the target resource group or subscription
+# The service principal needs the Azure Connected Machine Onboarding or Contributor role
+# on the target resource group or subscription. Prefer Azure Connected Machine Onboarding
+# for least privilege during at-scale onboarding.
 az role assignment list --assignee "your-app-id" -o table
 ```
 
 If the service principal works for `az login` but agent registration still fails, check:
 - The registration command uses the correct tenant ID and subscription ID
-- The service principal has the "Azure Connected Machine Onboarding" role (not just Contributor)
+- The service principal has the "Azure Connected Machine Onboarding" role or Contributor role on the target scope
 - The client secret has not expired
 
 ```bash
@@ -156,7 +155,10 @@ If you are reinstalling or re-registering a machine, the agent may fail because 
 
 ```bash
 # Disconnect the agent cleanly (requires connectivity)
-azcmagent disconnect --service-principal-id "your-app-id" --service-principal-secret "your-secret"
+azcmagent disconnect \
+  --service-principal-id "your-app-id" \
+  --service-principal-secret "your-secret" \
+  --tenant-id "your-tenant-id"
 
 # If the machine cannot connect to Azure, force disconnect locally
 azcmagent disconnect --force-local-only
