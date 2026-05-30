@@ -106,7 +106,7 @@ var message = new ServiceBusMessage(JsonSerializer.Serialize(order))
 {
     ContentType = "application/json",
     Subject = "new-order",
-    MessageId = order.OrderId,  // Deduplication key
+    MessageId = order.OrderId,  // Useful as a deduplication key when duplicate detection is enabled
     ApplicationProperties =
     {
         { "priority", "high" },
@@ -125,7 +125,7 @@ Batching improves throughput by sending multiple messages in a single network ca
 
 ```csharp
 // Create a batch - the SDK manages the size limit
-using ServiceBusMessageBatch batch = await sender.CreateMessageBatchAsync();
+ServiceBusMessageBatch batch = await sender.CreateMessageBatchAsync();
 
 var orders = new List<Order>
 {
@@ -134,29 +134,36 @@ var orders = new List<Order>
     new("ORD-003", "CUST-3", new List<OrderItem>(), 89.50m, DateTime.UtcNow)
 };
 
-foreach (var order in orders)
+try
 {
-    var message = new ServiceBusMessage(JsonSerializer.Serialize(order));
-
-    // TryAddMessage returns false if the batch is full
-    if (!batch.TryAddMessage(message))
+    foreach (var order in orders)
     {
-        // Send the current batch and start a new one
-        await sender.SendMessagesAsync(batch);
-        batch.Dispose();
+        var message = new ServiceBusMessage(JsonSerializer.Serialize(order));
 
-        var newBatch = await sender.CreateMessageBatchAsync();
-        if (!newBatch.TryAddMessage(message))
+        // TryAddMessage returns false if the batch is full
+        if (!batch.TryAddMessage(message))
         {
-            throw new Exception($"Message too large for an empty batch");
+            // Send the current batch and start a new one
+            await sender.SendMessagesAsync(batch);
+            batch.Dispose();
+
+            batch = await sender.CreateMessageBatchAsync();
+            if (!batch.TryAddMessage(message))
+            {
+                throw new Exception($"Message too large for an empty batch");
+            }
         }
     }
-}
 
-// Send any remaining messages
-if (batch.Count > 0)
+    // Send any remaining messages
+    if (batch.Count > 0)
+    {
+        await sender.SendMessagesAsync(batch);
+    }
+}
+finally
 {
-    await sender.SendMessagesAsync(batch);
+    batch.Dispose();
 }
 
 Console.WriteLine($"Batch of {orders.Count} orders sent");
@@ -170,8 +177,8 @@ The receiver picks up messages from a queue. Service Bus uses peek-lock by defau
 // Create a receiver for the "orders" queue
 ServiceBusReceiver receiver = client.CreateReceiver("orders");
 
-// Receive a single message (waits up to 30 seconds by default)
-ServiceBusReceivedMessage message = await receiver.ReceiveMessageAsync(
+// Receive a single message (waits up to 10 seconds)
+ServiceBusReceivedMessage? message = await receiver.ReceiveMessageAsync(
     maxWaitTime: TimeSpan.FromSeconds(10)
 );
 
