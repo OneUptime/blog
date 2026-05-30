@@ -25,7 +25,7 @@ flowchart LR
     D[Internet] -.->|Blocked| C
 ```
 
-The key benefit is that the SQL Database becomes unreachable from the internet. Even if an attacker knows the server name, DNS resolution from outside your VNet returns the private IP, which is not routable from the internet.
+The key benefit is that the SQL Database becomes unreachable from the internet after public network access is disabled. Even if an attacker knows the server name, public endpoint connections are denied, while clients in linked VNets resolve the same server name to the private endpoint IP.
 
 ## Prerequisites
 
@@ -33,12 +33,12 @@ Before starting, make sure you have:
 
 - An Azure SQL Database server with at least one database
 - A virtual network with a subnet that has at least one available IP address
-- The subnet must not have a service endpoint for `Microsoft.Sql` enabled (Private Link and service endpoints should not be used together for the same service)
+- If you previously used service endpoints for `Microsoft.Sql`, plan the migration carefully so clients are resolving and using the private endpoint before you disable public access
 - Contributor permissions on both the VNet and the SQL server
 
 ## Step 1: Create the Private Endpoint
 
-Start by creating the private endpoint in the same region as your SQL Database.
+Start by creating the private endpoint in the same region as your virtual network.
 
 ```bash
 # Create a private endpoint for Azure SQL Database
@@ -63,11 +63,11 @@ Verify the endpoint was created and is in the `Approved` state.
 az network private-endpoint show \
   --name sql-private-endpoint \
   --resource-group myResourceGroup \
-  --query '{name: name, provisioningState: provisioningState, ip: customDnsConfigs[0].ipAddresses[0]}' \
+  --query '{name: name, provisioningState: provisioningState, connectionStatus: privateLinkServiceConnections[0].privateLinkServiceConnectionState.status, ip: customDnsConfigs[0].ipAddresses[0]}' \
   --output json
 ```
 
-The output should show a private IP address from your subnet's address range.
+The output should show an `Approved` connection status and a private IP address from your subnet's address range.
 
 ## Step 2: Configure Private DNS Zone
 
@@ -157,7 +157,7 @@ There are several approaches:
 
 **Option 1: Conditional DNS forwarder**
 
-Configure your on-premises DNS server to forward queries for `privatelink.database.windows.net` to the Azure DNS resolver at 168.63.129.16 (accessible through a VPN or ExpressRoute connection).
+Configure your on-premises DNS server to forward queries for `privatelink.database.windows.net` to a DNS forwarder running in Azure. That forwarder should be in a linked VNet and forward Azure private DNS queries to the Azure DNS resolver at 168.63.129.16.
 
 **Option 2: Azure DNS Private Resolver**
 
@@ -203,14 +203,14 @@ Set up monitoring to catch connectivity issues early.
 az monitor metrics alert create \
   --name "sql-private-endpoint-failures" \
   --resource-group myResourceGroup \
-  --scopes "/subscriptions/YOUR_SUB/resourceGroups/myResourceGroup/providers/Microsoft.Sql/servers/myserver" \
-  --condition "avg connection_failed > 0" \
+  --scopes "/subscriptions/YOUR_SUB/resourceGroups/myResourceGroup/providers/Microsoft.Sql/servers/myserver/databases/myDatabase" \
+  --condition "total connection_failed > 0" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --action "/subscriptions/YOUR_SUB/resourceGroups/myResourceGroup/providers/microsoft.insights/actionGroups/ops-team"
 ```
 
-Also enable Azure SQL Database auditing to track which connections are coming through the private endpoint versus the public endpoint (if you left public access enabled).
+Also enable Azure SQL Database auditing to track connection activity and source IPs, especially if you left public access enabled during a migration.
 
 ## Terraform Configuration
 
