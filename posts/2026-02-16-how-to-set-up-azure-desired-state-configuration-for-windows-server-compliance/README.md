@@ -8,9 +8,9 @@ Description: Configure Azure Automation Desired State Configuration to enforce a
 
 ---
 
-Desired State Configuration (DSC) is PowerShell's built-in configuration management framework. It lets you declare what a Windows Server should look like - which features are installed, which services are running, which registry keys are set - and then enforces that state continuously. Azure Automation DSC extends this by providing a cloud-based pull server that your VMs register with, so you can manage configurations centrally without running your own infrastructure.
+Desired State Configuration (DSC) is PowerShell's built-in configuration management framework. It lets you declare what a Windows Server should look like - which features are installed, which services are running, which registry keys are set - and then enforces that state continuously. Azure Automation State Configuration extends this by providing a cloud-based pull server that your VMs register with, so you can manage configurations centrally without running your own infrastructure.
 
-This post covers setting up Azure Automation DSC from scratch: writing configurations, compiling them, onboarding VMs, and monitoring compliance.
+This post covers setting up Azure Automation State Configuration from scratch: writing configurations, compiling them, onboarding VMs, and monitoring compliance. Azure Automation State Configuration is scheduled to retire on September 30, 2027; plan new long-term deployments around Azure Machine Configuration.
 
 ## How Azure Automation DSC Works
 
@@ -81,15 +81,15 @@ Configuration WebServerBaseline {
             DependsOn = '[WindowsFeature]IIS'
         }
 
-        # Ensure ASP.NET 4.8 is installed
+        # Ensure ASP.NET 4.x support is installed
         WindowsFeature ASPNET {
             Ensure    = 'Present'
             Name      = 'Web-Asp-Net45'
             DependsOn = '[WindowsFeature]IIS'
         }
 
-        # Ensure the default IIS site is removed
-        File RemoveDefaultSite {
+        # Ensure the default IIS welcome page is removed
+        File RemoveDefaultWelcomePage {
             Ensure          = 'Absent'
             DestinationPath = 'C:\inetpub\wwwroot\iisstart.htm'
             Type            = 'File'
@@ -286,11 +286,12 @@ foreach ($node in $nodes) {
 }
 ```
 
-Nodes report one of three statuses:
+Nodes commonly report these compliance statuses:
 
 - **Compliant**: The node matches its assigned configuration
-- **Not Compliant**: The node has drifted from its configuration
+- **NotCompliant**: The node has drifted from its configuration
 - **Unresponsive**: The node has not checked in recently
+- **Failed**, **Pending**, or **Received**: The node is in another reporting state
 
 ## Creating a Compliance Report
 
@@ -305,13 +306,18 @@ $nodes = Get-AzAutomationDscNode `
 $compliant = ($nodes | Where-Object { $_.Status -eq "Compliant" }).Count
 $nonCompliant = ($nodes | Where-Object { $_.Status -eq "NotCompliant" }).Count
 $unresponsive = ($nodes | Where-Object { $_.Status -eq "Unresponsive" }).Count
+$complianceRate = if ($nodes.Count -gt 0) {
+    [math]::Round(($compliant / $nodes.Count) * 100, 1)
+} else {
+    0
+}
 
 Write-Output "=== DSC Compliance Report ==="
 Write-Output "Total Nodes: $($nodes.Count)"
 Write-Output "Compliant: $compliant"
 Write-Output "Non-Compliant: $nonCompliant"
 Write-Output "Unresponsive: $unresponsive"
-Write-Output "Compliance Rate: $([math]::Round(($compliant / $nodes.Count) * 100, 1))%"
+Write-Output "Compliance Rate: $complianceRate%"
 ```
 
 ## Configuration Data for Different Roles
@@ -356,4 +362,4 @@ Version your DSC configurations in Git just like any other code. Track changes, 
 
 ## Conclusion
 
-Azure Automation DSC provides a centralized, scalable way to enforce Windows Server compliance across your Azure VM fleet. By declaring your desired state in PowerShell configurations, compiling them in Azure Automation, and onboarding VMs with the appropriate LCM settings, you get continuous compliance monitoring and optional auto-remediation. For organizations with Windows Server workloads in Azure, DSC is a mature and effective tool for maintaining consistent, secure server configurations.
+Azure Automation State Configuration provides a centralized, scalable way to enforce Windows Server compliance across your Azure VM fleet until the service retirement date. By declaring your desired state in PowerShell configurations, compiling them in Azure Automation, and onboarding VMs with the appropriate LCM settings, you get continuous compliance monitoring and optional auto-remediation. For organizations with Windows Server workloads in Azure, DSC remains an effective tool for maintaining consistent, secure server configurations while planning a migration to Azure Machine Configuration.
