@@ -86,6 +86,8 @@ public class NotificationService
     // Main notification method - tries SignalR first, falls back to push
     public async Task NotifyUserAsync(string userId, NotificationPayload payload)
     {
+        payload.NotificationId ??= Guid.NewGuid().ToString();
+
         // Check if the user has an active SignalR connection
         bool isOnline = await _connectionTracker.IsUserConnectedAsync(userId);
 
@@ -106,6 +108,7 @@ public class NotificationService
         // Send to all connections for this user
         await _hubContext.Clients.User(userId).SendAsync("ReceiveNotification", new
         {
+            payload.NotificationId,
             payload.Title,
             payload.Message,
             payload.Type,
@@ -119,6 +122,7 @@ public class NotificationService
         // Use template notifications for cross-platform delivery
         var properties = new Dictionary<string, string>
         {
+            { "notificationId", payload.NotificationId },
             { "title", payload.Title },
             { "message", payload.Message },
             { "type", payload.Type },
@@ -185,6 +189,11 @@ public class SignalRController : ControllerBase
 {
     private readonly ServiceHubContext _hubContext;
 
+    public SignalRController(ServiceHubContext hubContext)
+    {
+        _hubContext = hubContext;
+    }
+
     [HttpPost("negotiate")]
     [Authorize]
     public async Task<IActionResult> Negotiate()
@@ -233,7 +242,7 @@ class NotificationManager {
   // Set up the SignalR connection for in-app notifications
   async setupSignalR() {
     this.connection = new HubConnectionBuilder()
-      .withUrl(`${this.apiBaseUrl}/api/signalr/negotiate`, {
+      .withUrl(`${this.apiBaseUrl}/api/signalr`, {
         accessTokenFactory: () => this.authToken
       })
       .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
@@ -325,12 +334,8 @@ public async Task NotifyUserReliableAsync(string userId, NotificationPayload pay
     // Always try SignalR (it is a no-op if not connected)
     tasks.Add(SendViaSignalR(userId, payload));
 
-    // Check connection state for push decision
-    bool isOnline = await _connectionTracker.IsUserConnectedAsync(userId);
-    if (!isOnline)
-    {
-        tasks.Add(SendViaPush(userId, payload));
-    }
+    // Also send push so background-transition races are covered
+    tasks.Add(SendViaPush(userId, payload));
 
     await Task.WhenAll(tasks);
 }
@@ -342,7 +347,7 @@ Azure SignalR Service handles connection management and scaling for you. A singl
 
 For the notification routing logic, consider using Azure Functions with SignalR bindings if you want a serverless approach. This eliminates the need to manage the ASP.NET Core backend yourself.
 
-The Redis connection tracker can be replaced with Azure SignalR's built-in presence features if you are using the Management SDK, which tracks connections internally.
+If you are using a recent Azure SignalR Management SDK, the Redis connection tracker can also be replaced with the SDK's user and connection existence checks, depending on your latency and consistency requirements.
 
 ## Wrapping Up
 
