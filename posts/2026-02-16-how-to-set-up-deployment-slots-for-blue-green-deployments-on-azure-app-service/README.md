@@ -100,10 +100,9 @@ az webapp config appsettings set \
   --resource-group myAppRG \
   --name myapp \
   --slot staging \
-  --settings \
+  --slot-settings \
     DATABASE_URL="postgresql://staging-db:5432/myapp" \
-    SLOT_NAME="staging" \
-  --slot-settings DATABASE_URL SLOT_NAME
+    SLOT_NAME="staging"
 ```
 
 ### Non-Sticky Settings
@@ -123,7 +122,10 @@ az webapp config appsettings set \
   --resource-group myAppRG \
   --name myapp \
   --slot staging \
-  --slot-settings DATABASE_URL REDIS_URL SLOT_NAME
+  --slot-settings \
+    DATABASE_URL="postgresql://staging-db:5432/myapp" \
+    REDIS_URL="redis://staging-cache:6379" \
+    SLOT_NAME="staging"
 ```
 
 ## Performing a Swap
@@ -245,32 +247,29 @@ For non-critical environments (dev, test), you can configure auto-swap. When a d
 
 ```bash
 # Enable auto-swap on the staging slot
-az webapp config set \
+az webapp deployment slot auto-swap \
   --resource-group myAppRG \
   --name myapp \
   --slot staging \
-  --auto-swap-slot-name production
+  --auto-swap-slot production
 ```
 
 I would not recommend auto-swap for production environments. The whole point of the staging slot is to verify before swapping, and auto-swap bypasses that verification step.
 
 ## Slot Warm-Up
 
-When a slot swap happens, instances need to be warmed up before receiving traffic. Configure warm-up in your web.config (Windows) or through application initialization:
+When a slot swap happens, instances need to be warmed up before receiving traffic. Configure warm-up in your web.config (Windows) through application initialization:
 
-```json
-{
-  "applicationInitialization": {
-    "remapManagedRequestsTo": "/loading.html",
-    "customInitializationActions": [
-      { "initializationPage": "/health" },
-      { "initializationPage": "/api/warmup" }
-    ]
-  }
-}
+```xml
+<system.webServer>
+  <applicationInitialization remapManagedRequestsTo="/loading.html">
+    <add initializationPage="/health" />
+    <add initializationPage="/api/warmup" />
+  </applicationInitialization>
+</system.webServer>
 ```
 
-For Linux App Service, your application should handle warm-up during startup. Azure sends a GET request to the root path and waits for a response before directing traffic to the instance.
+For Linux App Service, your application should handle warm-up during startup. Azure uses `/` as the default swap warm-up path, and you can override it with the `WEBSITE_SWAP_WARMUP_PING_PATH` app setting.
 
 ## CI/CD Pipeline with Slots
 
