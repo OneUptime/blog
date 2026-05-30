@@ -243,8 +243,8 @@ stringData:
       repeat_interval: 4h
       receiver: 'slack-notifications'
       routes:
-      - match:
-          severity: critical
+      - matchers:
+        - severity = "critical"
         receiver: 'slack-critical'
         repeat_interval: 1h
     receivers:
@@ -262,7 +262,7 @@ stringData:
         send_resolved: true
 ```
 
-You can also configure this through the Helm values file under `alertmanager.config`.
+To use this Secret with the chart, set `alertmanager.alertmanagerSpec.useExistingSecret: true` and `alertmanager.alertmanagerSpec.configSecret: alertmanager-config` in your Helm values. You can also configure the same routing directly through the Helm values file under `alertmanager.config`.
 
 ## Step 7: Add Custom Alert Rules
 
@@ -364,21 +364,22 @@ metadata:
 data:
   my-app.json: |
     {
-      "dashboard": {
-        "title": "My Application",
-        "panels": [
-          {
-            "title": "Request Rate",
-            "type": "graph",
-            "targets": [
-              {
-                "expr": "rate(http_requests_total{app=\"my-app\"}[5m])",
-                "legendFormat": "{{method}} {{status}}"
-              }
-            ]
-          }
-        ]
-      }
+      "title": "My Application",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "id": 1,
+          "title": "Request Rate",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "targets": [
+            {
+              "expr": "rate(http_requests_total{app=\"my-app\"}[5m])",
+              "legendFormat": "{{method}} {{status}}"
+            }
+          ]
+        }
+      ]
     }
 ```
 
