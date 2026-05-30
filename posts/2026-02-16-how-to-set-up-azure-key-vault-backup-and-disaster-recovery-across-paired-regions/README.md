@@ -8,7 +8,7 @@ Description: A comprehensive guide to backing up Azure Key Vault secrets, keys, 
 
 ---
 
-Azure Key Vault is built with high availability in mind. It replicates data within the same region and to a paired region automatically. During a regional outage, Microsoft can fail over the vault to the paired region, and your applications continue to work with read-only access. But there are scenarios where the built-in replication is not enough, where you need explicit backups, cross-region restore capabilities, or protection against accidental deletion.
+Azure Key Vault is built with high availability in mind. It replicates data within the same region and, for most paired regions, to a paired region automatically. During a prolonged regional outage, Microsoft can fail over the vault to the paired region, and your applications continue to work with limited read-only access after failover completes. But there are scenarios where the built-in replication is not enough, where you need explicit backups, cross-region restore capabilities, or protection against accidental deletion.
 
 This guide covers Key Vault's built-in resilience, how to create explicit backups, and how to design a disaster recovery strategy that handles the scenarios Azure's automatic replication does not cover.
 
@@ -17,13 +17,14 @@ This guide covers Key Vault's built-in resilience, how to create explicit backup
 Azure Key Vault automatically replicates your data in two ways:
 
 1. **Within the region**: Data is replicated across multiple availability zones (in regions that support them) or across fault domains
-2. **Across paired regions**: Data is asynchronously replicated to the Azure paired region
+2. **Across paired regions**: In most paired regions, data is asynchronously replicated to the Azure paired region
 
-When a regional outage occurs, Microsoft automatically fails over the vault to the secondary region. During this failover:
-- The vault is available in **read-only mode**
+When a regional outage occurs, Microsoft might initiate failover of the vault to the secondary region. During and after this process:
+- The vault can be unavailable before failover completes
+- After failover, the vault is available in **read-only mode**
 - You cannot create, update, or delete secrets, keys, or certificates
 - Existing data is accessible for your applications
-- DNS TTL ensures the failover happens within minutes
+- The vault might be unavailable for several hours before Microsoft initiates failover, and failover itself can take a few minutes
 
 ```mermaid
 flowchart LR
@@ -48,8 +49,8 @@ This automatic replication covers most disaster scenarios, but it has limitation
 
 You need explicit backups for these scenarios:
 
-- **Accidental deletion**: Soft delete helps (and is now enabled by default), but purge protection has a retention window. If someone purges a secret after the soft-delete retention period, it is gone from both regions.
-- **Cross-tenant recovery**: You cannot restore a backup from one tenant to another, but you can restore across subscriptions within the same tenant.
+- **Accidental deletion**: Soft delete helps (and is now enabled by default), but deleted objects are only retained for the configured retention period. If an object is purged or ages out of retention, it is gone from both regions.
+- **Cross-vault recovery**: You can restore a backup to another vault, but the target vault must be in the same Azure subscription and geography as the source.
 - **Compliance requirements**: Some regulatory frameworks require you to maintain independent backup copies of cryptographic material.
 - **Migration**: Moving secrets from one vault to another, such as during a subscription migration.
 
@@ -74,7 +75,7 @@ Purge protection is a one-way setting. Once enabled, it cannot be disabled. This
 
 ## Step 2: Back Up Individual Secrets, Keys, and Certificates
 
-Azure Key Vault supports backing up individual objects. The backup is encrypted and can only be restored to a vault in the same Azure tenant and geography.
+Azure Key Vault supports backing up individual objects. The backup is encrypted and can only be restored to a vault in the same Azure subscription and geography.
 
 ```bash
 # Back up a secret
@@ -96,7 +97,7 @@ az keyvault certificate backup \
   --file ./backups/api-certificate.backup
 ```
 
-The backup files are encrypted blobs. They contain all versions of the object, not just the current version. You cannot read the contents of a backup file - you can only restore it to an Azure Key Vault.
+The backup files are encrypted blobs. They contain all versions of the object, not just the current version, although objects with more than 500 past versions are not supported for backup. You cannot read the contents of a backup file - you can only restore it to an Azure Key Vault.
 
 ## Step 3: Automate Full Vault Backup
 
@@ -177,11 +178,19 @@ az storage container create \
   --account-name backupstorage \
   --auth-mode login
 
-# Set an immutability policy to prevent deletion for 90 days
-az storage container immutability-policy create \
+# Set an immutability policy for 90 days
+ETAG=$(az storage container immutability-policy create \
   --account-name backupstorage \
   --container-name kv-backups \
-  --period 90
+  --period 90 \
+  --query etag \
+  -o tsv)
+
+# Lock the policy so it cannot be deleted or shortened
+az storage container immutability-policy lock \
+  --account-name backupstorage \
+  --container-name kv-backups \
+  --if-match "$ETAG"
 
 # Upload the backup files
 az storage blob upload-batch \
@@ -191,7 +200,7 @@ az storage blob upload-batch \
   --auth-mode login
 ```
 
-Using immutable storage for Key Vault backups prevents anyone from deleting the backups, even with administrative access to the storage account. This protects against ransomware scenarios where an attacker might try to destroy both the vault and its backups.
+Using a locked immutable storage policy for Key Vault backups prevents anyone from deleting the backups during the retention interval, even with administrative access to the storage account. This protects against ransomware scenarios where an attacker might try to destroy both the vault and its backups.
 
 ## Step 5: Restore to a Vault in the Paired Region
 
@@ -225,7 +234,7 @@ az keyvault certificate restore \
 
 Important constraints for restore operations:
 - The target vault must be in the same Azure geography (e.g., both in US or both in Europe)
-- The target vault must be in the same Azure tenant
+- The target vault must be in the same Azure subscription
 - The target vault must not already have an object with the same name
 - All versions of the object are restored, not just the latest
 
