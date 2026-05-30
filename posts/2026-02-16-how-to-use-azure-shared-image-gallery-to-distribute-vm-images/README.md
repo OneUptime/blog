@@ -109,7 +109,7 @@ az sig image-version create \
   --gallery-name myImageGallery \
   --gallery-image-definition ubuntu-appserver \
   --gallery-image-version 1.0.0 \
-  --managed-image $SOURCE_VM_ID \
+  --virtual-machine $SOURCE_VM_ID \
   --target-regions "eastus=2" "westus2=1" "westeurope=1" \
   --replica-count 1
 ```
@@ -171,7 +171,7 @@ az sig image-version update \
   --gallery-name myImageGallery \
   --gallery-image-definition ubuntu-appserver \
   --gallery-image-version 1.0.0 \
-  --end-of-life-date 2026-06-01
+  --set publishingProfile.endOfLifeDate=2026-06-01T00:00:00+00:00
 
 # Delete an old version
 az sig image-version delete \
@@ -202,14 +202,20 @@ az role assignment create \
 For broader sharing, you can publish your gallery as a community gallery. This makes images available to anyone with the gallery's public name, without needing RBAC assignments.
 
 ```bash
-# Enable community gallery sharing
-az sig share enable-community \
+# Configure the gallery as a community gallery
+az sig update \
   --resource-group imageGalleryRG \
   --gallery-name myImageGallery \
+  --permissions Community \
   --publisher-uri "https://myorg.com" \
   --publisher-email "images@myorg.com" \
   --eula "https://myorg.com/eula" \
   --public-name-prefix "myorg"
+
+# Enable community gallery sharing
+az sig share enable-community \
+  --resource-group imageGalleryRG \
+  --gallery-name myImageGallery
 ```
 
 ## Automating Image Builds
@@ -247,7 +253,23 @@ Here is a simplified Image Builder template that builds and publishes to a galle
         "type": "SharedImage",
         "galleryImageId": "/subscriptions/<sub-id>/resourceGroups/imageGalleryRG/providers/Microsoft.Compute/galleries/myImageGallery/images/ubuntu-appserver",
         "runOutputName": "ubuntu-appserver",
-        "replicationRegions": ["eastus", "westus2", "westeurope"]
+        "targetRegions": [
+          {
+            "name": "eastus",
+            "replicaCount": 1,
+            "storageAccountType": "Standard_LRS"
+          },
+          {
+            "name": "westus2",
+            "replicaCount": 1,
+            "storageAccountType": "Standard_LRS"
+          },
+          {
+            "name": "westeurope",
+            "replicaCount": 1,
+            "storageAccountType": "Standard_LRS"
+          }
+        ]
       }
     ]
   }
@@ -268,7 +290,7 @@ This makes it easy to communicate what changed between versions and helps teams 
 
 Shared Image Gallery charges for storage of each replica in each region. If you have 10 image versions, each replicated to 5 regions with 2 replicas each, that is 100 copies of your image stored. Old versions add up. Set end-of-life dates and clean up versions you no longer need.
 
-The replication itself is free - you only pay for storage. But the storage costs for managed disk snapshots can be meaningful at scale.
+There is no extra charge for the Azure Compute Gallery service itself, but you pay storage costs for each replica and network egress charges when the first copy is replicated from the source region to other regions. The storage costs for managed disk snapshots can be meaningful at scale.
 
 ## Monitoring Image Deployments
 
