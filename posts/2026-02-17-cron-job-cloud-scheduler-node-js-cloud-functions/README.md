@@ -82,7 +82,7 @@ exports.cleanupExpiredSessions = async (req, res) => {
 
 gcloud functions deploy cleanup-sessions \
   --gen2 \
-  --runtime nodejs20 \
+  --runtime nodejs22 \
   --trigger-http \
   --region us-central1 \
   --memory 256MB \
@@ -97,6 +97,16 @@ The `--no-allow-unauthenticated` flag is important. Only Cloud Scheduler should 
 ## Creating the Scheduler Job
 
 ```bash
+# Service account Cloud Scheduler will use to call the function
+SCHEDULER_SERVICE_ACCOUNT=your-sa@your-project.iam.gserviceaccount.com
+
+# Grant the service account permission to invoke the Gen2 function
+gcloud functions add-iam-policy-binding cleanup-sessions \
+  --region=us-central1 \
+  --gen2 \
+  --member="serviceAccount:${SCHEDULER_SERVICE_ACCOUNT}" \
+  --role="roles/run.invoker"
+
 # Get the function URL
 FUNCTION_URL=$(gcloud functions describe cleanup-sessions --gen2 --region us-central1 --format='value(serviceConfig.uri)')
 
@@ -106,17 +116,17 @@ gcloud scheduler jobs create http cleanup-sessions-job \
   --uri="${FUNCTION_URL}" \
   --http-method=POST \
   --location=us-central1 \
-  --oidc-service-account-email=your-sa@your-project.iam.gserviceaccount.com \
+  --oidc-service-account-email="${SCHEDULER_SERVICE_ACCOUNT}" \
   --oidc-token-audience="${FUNCTION_URL}" \
   --attempt-deadline=540s \
   --max-retry-attempts=3 \
-  --min-backoff-duration=30s \
-  --max-backoff-duration=300s \
+  --min-backoff=30s \
+  --max-backoff=300s \
   --time-zone="America/New_York" \
   --description="Clean up expired user sessions every hour"
 ```
 
-The OIDC token configuration ensures only Cloud Scheduler can trigger the function.
+The IAM binding and OIDC token configuration ensure Cloud Scheduler can trigger the function without making it public.
 
 ## Common Cron Schedules
 
@@ -272,7 +282,7 @@ functions.cloudEvent('processScheduledTask', async (cloudEvent) => {
 # Deploy with Pub/Sub trigger
 gcloud functions deploy scheduled-task \
   --gen2 \
-  --runtime nodejs20 \
+  --runtime nodejs22 \
   --trigger-topic=scheduled-tasks \
   --region us-central1 \
   --entry-point processScheduledTask
@@ -288,7 +298,7 @@ gcloud scheduler jobs create pubsub daily-task \
 
 ## Handling Long-Running Jobs
 
-Cloud Functions have a maximum timeout of 9 minutes (540 seconds) for Gen2. For jobs that take longer, break them into smaller chunks.
+This example deploys the HTTP function with a 540-second timeout. Gen2 Cloud Functions have higher maximum timeouts depending on the trigger type, but for jobs that exceed your configured timeout, break them into smaller chunks.
 
 ```javascript
 // Process large datasets in chunks across multiple invocations
