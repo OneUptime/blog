@@ -77,11 +77,12 @@ az monitor diagnostic-settings create \
   --name "kv-to-law" \
   --resource "$KEYVAULT_ID" \
   --workspace "$WORKSPACE_ID" \
-  --logs '[{"category":"AuditEvent","enabled":true},{"categoryGroup":"allLogs","enabled":true}]' \
+  --export-to-resource-specific true \
+  --logs '[{"categoryGroup":"allLogs","enabled":true}]' \
   --metrics '[{"category":"AllMetrics","enabled":true}]'
 ```
 
-The `--logs` parameter accepts a JSON array of log categories or category groups. Using `allLogs` as a category group is a convenient shorthand that captures every log category the resource supports.
+The `--logs` parameter accepts a JSON array of log categories or category groups. Using `allLogs` as a category group is a convenient shorthand that captures every log category the resource supports. If you use a category group, do not also select individual categories in the same diagnostic setting.
 
 ## Step 4: Configure with an ARM Template
 
@@ -95,6 +96,7 @@ For repeatable infrastructure deployments, ARM templates or Bicep are the way to
   "name": "storage-diag",
   "properties": {
     "workspaceId": "[parameters('workspaceResourceId')]",
+    "logAnalyticsDestinationType": "Dedicated",
     "logs": [
       {
         "categoryGroup": "allLogs",
@@ -111,11 +113,11 @@ For repeatable infrastructure deployments, ARM templates or Bicep are the way to
 }
 ```
 
-The key thing to notice is the `scope` property. Diagnostic settings are child resources of the resource being monitored, so the scope must reference the parent resource.
+The key thing to notice is the `scope` property. Diagnostic settings are extension resources scoped to the resource being monitored, so the scope must reference that resource. The `logAnalyticsDestinationType` value of `Dedicated` sends supported logs to resource-specific tables instead of the default `AzureDiagnostics` table.
 
 ## Step 5: Verify Logs Are Flowing
 
-After setting up diagnostic settings, give it 5 to 10 minutes for data to appear. Then open your Log Analytics workspace and run a simple query.
+After setting up diagnostic settings, give the pipeline time to deliver data. Logs often appear within a few minutes, but Azure Monitor documents that data should start flowing to selected destinations within 90 minutes. Then open your Log Analytics workspace and run a simple query.
 
 ```text
 // Check which tables have received data recently
@@ -129,7 +131,7 @@ You should see tables corresponding to the log categories you enabled. For examp
 
 Resource-Specific vs. Azure Diagnostics Mode
 
-This is a detail that trips people up. Older Azure resources send all their logs to a single `AzureDiagnostics` table. Newer resources support resource-specific mode, where each log category gets its own dedicated table.
+This is a detail that trips people up. The default collection mode sends logs to a single `AzureDiagnostics` table. Supported resources can use resource-specific mode, where each log category gets its own dedicated table.
 
 Resource-specific mode is better because:
 
@@ -157,11 +159,27 @@ az policy assignment create \
   --policy "$POLICY_DEF" \
   --scope "/subscriptions/<your-subscription-id>" \
   --params "{\"logAnalytics\": {\"value\": \"$WORKSPACE_ID\"}}" \
-  --assign-identity \
+  --mi-system-assigned \
   --location eastus
+
+# Grant the policy assignment identity the permissions it needs for remediation
+PRINCIPAL_ID=$(az policy assignment show \
+  --name "kv-diag-policy" \
+  --scope "/subscriptions/<your-subscription-id>" \
+  --query identity.principalId -o tsv)
+
+az role assignment create \
+  --assignee "$PRINCIPAL_ID" \
+  --role "Monitoring Contributor" \
+  --scope "/subscriptions/<your-subscription-id>"
+
+az role assignment create \
+  --assignee "$PRINCIPAL_ID" \
+  --role "Log Analytics Contributor" \
+  --scope "$WORKSPACE_ID"
 ```
 
-The `--assign-identity` flag creates a managed identity for the policy so it can create diagnostic settings on your behalf using a remediation task.
+The `--mi-system-assigned` flag creates a managed identity for the policy assignment. The role assignments grant that identity the permissions it needs to create diagnostic settings on your behalf using a remediation task.
 
 ## Common Pitfalls
 
@@ -169,7 +187,7 @@ The `--assign-identity` flag creates a managed identity for the policy so it can
 
 **Log categories not available**: Not every resource type supports every log category. Check the Azure documentation for your specific resource to see which categories exist.
 
-**Data latency**: Platform logs are not real-time. Expect a delay of 2 to 15 minutes depending on the resource type and the volume of data.
+**Data latency**: Platform logs are not real-time. Logs often arrive within a few minutes, but Azure Monitor says data should start flowing to selected destinations within 90 minutes.
 
 **Duplicate data**: If you create multiple diagnostic settings on the same resource pointing to the same workspace with overlapping log categories, you will get duplicate records. Each diagnostic setting should have a unique set of categories or point to a different destination.
 
