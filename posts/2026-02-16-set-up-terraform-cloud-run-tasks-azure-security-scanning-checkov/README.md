@@ -43,12 +43,14 @@ For a self-hosted approach, deploy a small service that accepts the Terraform Cl
 # A simple Flask service that receives Terraform Cloud run task callbacks
 # and scans the plan with Checkov
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 import json
 import tempfile
 import subprocess
 import requests
 import os
+import hmac
+import hashlib
 
 app = Flask(__name__)
 
@@ -62,6 +64,15 @@ def scan():
     downloads the plan JSON, scans it with Checkov,
     and sends the results back.
     """
+    signature = request.headers.get("X-TFC-Task-Signature", "")
+    expected_signature = hmac.new(
+        HMAC_KEY.encode("utf-8"),
+        request.get_data(),
+        hashlib.sha512
+    ).hexdigest()
+    if not hmac.compare_digest(signature, expected_signature):
+        abort(401)
+
     payload = request.json
 
     # Extract the plan JSON URL and callback URL from the payload
@@ -92,8 +103,6 @@ def scan():
             "--framework", "terraform_plan",
             "--output", "json",
             "--compact",
-            # Only check Azure-related policies
-            "--check", "CKV_AZURE_1,CKV_AZURE_2,CKV_AZURE_3",
         ],
         capture_output=True,
         text=True
@@ -119,7 +128,10 @@ def scan():
     requests.patch(
         callback_url,
         json=callback_payload,
-        headers={"Content-Type": "application/vnd.api+json"}
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/vnd.api+json"
+        }
     )
 
     return jsonify({"status": "ok"}), 200
@@ -163,7 +175,7 @@ terraform {
   required_providers {
     tfe = {
       source  = "hashicorp/tfe"
-      version = "~> 0.50"
+      version = "~> 0.77"
     }
   }
 }
@@ -187,7 +199,7 @@ resource "tfe_workspace_run_task" "checkov_azure_infra" {
   workspace_id      = tfe_workspace.azure_infra.id
   task_id           = tfe_organization_run_task.checkov.id
   enforcement_level = "mandatory"  # Blocks apply on failure
-  stage             = "post_plan"  # Run after plan completes
+  stages            = ["post_plan"]  # Run after plan completes
 }
 
 # The Azure infrastructure workspace
@@ -211,22 +223,38 @@ The `enforcement_level` is important. `advisory` shows results but does not bloc
 
 The built-in Checkov policies cover a lot, but you often need custom policies for organizational requirements.
 
+Create `custom_checks/__init__.py` so Checkov can import the external policies.
+
+```python
+# custom_checks/__init__.py
+
+from os.path import basename, dirname, isfile, join
+import glob
+
+modules = glob.glob(join(dirname(__file__), "*.py"))
+__all__ = [
+    basename(f)[:-3]
+    for f in modules
+    if isfile(f) and not f.endswith("__init__.py")
+]
+```
+
 ```python
 # custom_checks/azure_storage_encryption.py
-# Custom Checkov check: ensure Azure storage accounts use customer-managed keys
+# Custom Checkov check: ensure Azure storage accounts use infrastructure encryption
 
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 from checkov.common.models.enums import CheckResult, CheckCategories
 
 
-class AzureStorageCMK(BaseResourceCheck):
+class AzureStorageInfrastructureEncryption(BaseResourceCheck):
     """
     Ensures Azure Storage accounts are configured with
-    customer-managed encryption keys instead of platform keys.
+    infrastructure encryption.
     """
 
     def __init__(self):
-        name = "Ensure Azure Storage uses customer-managed encryption keys"
+        name = "Ensure Azure Storage uses infrastructure encryption"
         id = "CKV_AZURE_CUSTOM_1"
         supported_resources = ["azurerm_storage_account"]
         categories = [CheckCategories.ENCRYPTION]
@@ -250,7 +278,7 @@ class AzureStorageCMK(BaseResourceCheck):
 
 
 # Register the custom check
-check = AzureStorageCMK()
+check = AzureStorageInfrastructureEncryption()
 ```
 
 ```python
@@ -308,7 +336,7 @@ resource "azurerm_storage_account" "data" {
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   min_tls_version                 = "TLS1_2"
-  enable_https_traffic_only       = true
+  https_traffic_only_enabled      = true
   allow_nested_items_to_be_public = false
   infrastructure_encryption_enabled = true
 }
