@@ -38,9 +38,9 @@ These tools are surprisingly good. They often pinpoint the exact issue without y
 
 If CPU is the problem, you need to figure out what code is consuming it. There are several approaches.
 
-### Auto-Heal CPU Profiling
+### Proactive CPU Monitoring
 
-Azure can automatically capture a profiling trace when CPU exceeds a threshold. Go to "Diagnose and solve problems" > "Diagnostic Tools" > "Auto-Heal" and configure a rule to collect a memory dump or profiling trace when CPU stays above 80% for more than 60 seconds.
+Azure can automatically capture diagnostic data when CPU exceeds a threshold. Go to "Diagnose and solve problems" > "Diagnostic Tools" > "Proactive CPU Monitoring" and configure a rule to collect memory dumps when CPU stays above a threshold for a set period.
 
 ### Process Explorer
 
@@ -76,7 +76,7 @@ To investigate, look at the Memory Analysis in the diagnostic tools. For .NET ap
 
 # Then use the "Collect Memory Dump" option for your w3wp process
 # Or use the API directly:
-curl -X POST https://your-app.scm.azurewebsites.net/api/processes/0/dump?dumpType=2
+curl https://your-app.scm.azurewebsites.net/api/diagnostics/processes/<process-id>/dump?dumpType=2
 ```
 
 For Node.js applications, check for common memory leak patterns:
@@ -156,7 +156,7 @@ az appservice plan update \
 
 ## Check for Noisy Neighbors
 
-On shared App Service plans (Free, Shared, Basic), your app shares resources with other tenants. This can cause unpredictable performance. The fix is to move to a Standard or Premium tier where you get dedicated compute.
+On shared App Service plans (Free and Shared), your app shares virtual machines with other tenants. This can cause unpredictable performance. The fix is to move to a Basic, Standard, or Premium tier where the plan size and instance count define your dedicated compute resources.
 
 ## Application-Level Optimizations
 
@@ -164,7 +164,7 @@ Once you have identified the bottleneck, here are common application-level fixes
 
 - **Enable response compression** - Reduces the amount of data sent over the network.
 - **Use async/await properly** - Blocking threads kills performance under load.
-- **Add caching** - Use Azure Redis Cache for frequently accessed data.
+- **Add caching** - Use Azure Managed Redis for frequently accessed data.
 - **Optimize static file serving** - Use a CDN for static assets instead of serving them from your App Service.
 - **Reduce payload sizes** - Return only the fields the client needs.
 
