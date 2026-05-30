@@ -29,9 +29,9 @@ Before creating a Managed Lustre cluster, you need:
 
 1. An Azure subscription with the ability to create resources
 2. A virtual network with a dedicated subnet for the Lustre cluster
-3. The subnet must have at least a /24 CIDR block (256 addresses) available
-4. No NSG (Network Security Group) or service endpoints on the Lustre subnet
-5. The Azure HPC resource provider registered in your subscription
+3. A subnet large enough for the file system capacity and enabled features; for this example, a /24 CIDR block is a conservative choice
+4. Network security rules that allow the Lustre protocol and required Azure service traffic
+5. The Azure Managed Lustre resource provider registered in your subscription
 
 Register the resource provider if you have not already:
 
@@ -62,7 +62,6 @@ az network vnet create \
   --location eastus
 
 # Create a dedicated subnet for the Lustre cluster
-# This subnet should not have any NSGs attached
 az network vnet subnet create \
   --resource-group hpc-resources \
   --vnet-name hpc-vnet \
@@ -70,7 +69,15 @@ az network vnet subnet create \
   --address-prefix 10.0.1.0/24
 ```
 
-The Lustre subnet needs to be isolated from other workloads in terms of network configuration. Do not attach NSGs or route tables with restrictive rules to this subnet, as it can interfere with the Lustre protocol.
+The Lustre subnet needs enough IP addresses for the storage nodes and any data-movement services used by features such as blob integration. You can check the required subnet size for a specific SKU and capacity with:
+
+```bash
+az amlfs get-subnets-size \
+  --sku AMLFS-Durable-Premium-250 \
+  --storage-capacity 48
+```
+
+If you attach an NSG or route table, make sure it allows the required Azure Managed Lustre traffic, including TCP ports 988 and 1019-1023 between clients and the Lustre subnet.
 
 ## Deploying the Managed Lustre Cluster
 
@@ -85,14 +92,14 @@ az amlfs create \
   --location eastus \
   --sku "AMLFS-Durable-Premium-250" \
   --storage-capacity 48 \
-  --zones 1 \
+  --zones "[1]" \
   --filesystem-subnet "/subscriptions/{sub-id}/resourceGroups/hpc-resources/providers/Microsoft.Network/virtualNetworks/hpc-vnet/subnets/lustre-subnet"
 ```
 
 Let's break down the key parameters:
 
 - **sku**: Determines the performance tier. `AMLFS-Durable-Premium-250` provides 250 MB/s throughput per TiB of storage. Other SKUs include `AMLFS-Durable-Premium-125` for lower throughput at lower cost.
-- **storage-capacity**: The total capacity in TiB. Must be a multiple of the SKU's increment (usually 4 TiB for Premium-250).
+- **storage-capacity**: The total capacity in TiB. Must be a valid size for the SKU. For Premium-250, the minimum is 8 TiB and the increment is 8 TiB.
 - **zones**: The availability zone within the region.
 - **filesystem-subnet**: The full resource ID of the subnet where the Lustre endpoints will be created.
 
@@ -117,7 +124,7 @@ First, get the mount information:
 az amlfs show \
   --resource-group hpc-resources \
   --name hpc-lustre-cluster \
-  --query "{mgsAddress: mgsAddress, mountCommand: mountCommand}"
+  --query "{mgsAddress: clientInfo.mgsAddress, mountCommand: clientInfo.mountCommand}"
 ```
 
 On each compute node, install the Lustre client and mount the file system:
@@ -126,7 +133,12 @@ On each compute node, install the Lustre client and mount the file system:
 # Install Lustre client packages on Ubuntu 22.04
 # These packages provide the kernel modules needed to mount Lustre
 sudo apt-get update
-sudo apt-get install -y lustre-client-modules-$(uname -r) lustre-client-utils
+sudo apt-get install -y ca-certificates curl apt-transport-https lsb-release gnupg
+source /etc/lsb-release
+echo "deb [arch=amd64] https://packages.microsoft.com/repos/amlfs-${DISTRIB_CODENAME}/ ${DISTRIB_CODENAME} main" | sudo tee /etc/apt/sources.list.d/amlfs.list
+curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
+sudo apt-get update
+sudo apt-get install -y amlfs-lustre-client-2.15.8-34-gc0f2040=$(uname -r)
 
 # Load the Lustre kernel module
 sudo modprobe lustre
@@ -136,7 +148,7 @@ sudo mkdir -p /lustre
 
 # Mount the Lustre file system
 # Replace the MGS address with the one from the az amlfs show output
-sudo mount -t lustre 10.0.1.4@tcp:/lustrefs /lustre
+sudo mount -t lustre -o noatime,flock 10.0.1.4@tcp:/lustrefs /lustre
 
 # Verify the mount
 df -h /lustre
@@ -146,8 +158,8 @@ For production deployments, add the mount to `/etc/fstab` so it persists across 
 
 ```bash
 # Add Lustre mount to fstab for persistence
-# The 'noauto,_netdev' options prevent mount issues during boot
-echo "10.0.1.4@tcp:/lustrefs /lustre lustre defaults,noauto,_netdev 0 0" | sudo tee -a /etc/fstab
+# The '_netdev' and systemd options prevent mount issues during boot
+echo "10.0.1.4@tcp:/lustrefs /lustre lustre defaults,noatime,flock,_netdev,x-systemd.automount,x-systemd.requires=network.service 0 0" | sudo tee -a /etc/fstab
 ```
 
 ## Integrating with Azure Blob Storage
@@ -156,21 +168,35 @@ One of the most powerful features of Azure Managed Lustre is its ability to impo
 
 ### Setting Up the Blob Integration
 
-You can configure a blob container as a data source during or after cluster creation:
+You can configure a blob container as a data source during cluster creation by passing HSM settings. The data and logging containers must be separate containers in the same storage account, and the Azure Managed Lustre resource provider must have the required Storage Account Contributor and Storage Blob Data Contributor roles on the storage account:
 
 ```bash
-# Create an import job to pull data from blob storage into Lustre
-az amlfs archive create \
+# Create an Azure Managed Lustre file system with blob integration enabled
+az amlfs create \
   --resource-group hpc-resources \
-  --amlfs-name hpc-lustre-cluster \
-  --archive-name "training-data" \
-  --filesystem-path "/data/training" \
-  --storage-account-url "https://mystorageaccount.blob.core.windows.net" \
-  --container-name "training-datasets" \
-  --logging-container-name "lustre-logs"
+  --name hpc-lustre-cluster \
+  --location eastus \
+  --sku "AMLFS-Durable-Premium-250" \
+  --storage-capacity 48 \
+  --zones "[1]" \
+  --filesystem-subnet "/subscriptions/{sub-id}/resourceGroups/hpc-resources/providers/Microsoft.Network/virtualNetworks/hpc-vnet/subnets/lustre-subnet" \
+  --hsm-settings '{"settings":{"container":"/subscriptions/{sub-id}/resourceGroups/hpc-resources/providers/Microsoft.Storage/storageAccounts/mystorageaccount/blobServices/default/containers/training-datasets","loggingContainer":"/subscriptions/{sub-id}/resourceGroups/hpc-resources/providers/Microsoft.Storage/storageAccounts/mystorageaccount/blobServices/default/containers/lustre-logs","importPrefixesInitial":["/data/training"]}}'
 ```
 
-This creates a link between the Lustre path `/data/training` and the blob container. Data is lazy-loaded - when a compute node accesses a file, it is fetched from blob storage on first access and then served from Lustre's high-speed cache for subsequent reads.
+This imports blob names under the `/data/training` prefix into the Lustre namespace. Data is lazy-loaded - when a compute node accesses a file, it is fetched from blob storage on first access and then served from Lustre's high-speed cache for subsequent reads.
+
+After blob integration is configured, you can create additional import jobs:
+
+```bash
+# Create an import job to make more blob paths available in Lustre
+az amlfs import create \
+  --resource-group hpc-resources \
+  --aml-filesystem-name hpc-lustre-cluster \
+  --import-job-name training-data-import \
+  --import-prefixes "[/data/training]" \
+  --conflict-resolution-mode Skip \
+  --maximum-errors 0
+```
 
 ### Exporting Results Back to Blob Storage
 
@@ -178,7 +204,10 @@ After your computation completes, export the results back to blob storage:
 
 ```bash
 # Archive data from Lustre back to blob storage
-az amlfs archive --resource-group hpc-resources --amlfs-name hpc-lustre-cluster
+az amlfs archive \
+  --resource-group hpc-resources \
+  --amlfs-name hpc-lustre-cluster \
+  --filesystem-path "/"
 ```
 
 ## Performance Tuning
