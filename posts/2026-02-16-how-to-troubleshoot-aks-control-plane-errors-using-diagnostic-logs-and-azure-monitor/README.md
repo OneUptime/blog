@@ -36,11 +36,17 @@ az monitor log-analytics workspace create \
   --workspace-name myAKSLogs \
   --location eastus
 
-# Get the workspace ID
-WORKSPACE_ID=$(az monitor log-analytics workspace show \
+# Get the workspace resource ID for diagnostic settings and alerts
+WORKSPACE_RESOURCE_ID=$(az monitor log-analytics workspace show \
   --resource-group myResourceGroup \
   --workspace-name myAKSLogs \
   --query id -o tsv)
+
+# Get the workspace GUID for Log Analytics queries
+WORKSPACE_CUSTOMER_ID=$(az monitor log-analytics workspace show \
+  --resource-group myResourceGroup \
+  --workspace-name myAKSLogs \
+  --query customerId -o tsv)
 
 # Get the AKS cluster resource ID
 AKS_ID=$(az aks show \
@@ -52,7 +58,7 @@ AKS_ID=$(az aks show \
 az monitor diagnostic-settings create \
   --name aks-diagnostics \
   --resource $AKS_ID \
-  --workspace $WORKSPACE_ID \
+  --workspace $WORKSPACE_RESOURCE_ID \
   --logs '[
     {"category": "kube-apiserver", "enabled": true},
     {"category": "kube-controller-manager", "enabled": true},
@@ -73,7 +79,7 @@ It takes 5-15 minutes for logs to start appearing in the Log Analytics workspace
 ```bash
 # Query to check if logs are arriving
 az monitor log-analytics query \
-  --workspace $WORKSPACE_ID \
+  --workspace $WORKSPACE_CUSTOMER_ID \
   --analytics-query "AzureDiagnostics | where Category == 'kube-apiserver' | count" \
   --timespan PT1H
 ```
@@ -88,7 +94,7 @@ API server issues manifest as slow kubectl commands, timeouts, or HTTP 5xx error
 // Query: Find all API server 5xx errors in the last hour
 AzureDiagnostics
 | where Category == "kube-apiserver"
-| where log_s contains "\" 5"
+| where log_s contains "resp=5" or log_s contains "\"code\":5"
 | project TimeGenerated, log_s
 | order by TimeGenerated desc
 | take 50
@@ -100,10 +106,12 @@ AzureDiagnostics
 // Query: Find API requests that took longer than 5 seconds
 AzureDiagnostics
 | where Category == "kube-apiserver"
-| extend duration = extract("Duration: ([0-9.]+)", 1, log_s)
-| where todouble(duration) > 5000
-| project TimeGenerated, log_s, duration
-| order by todouble(duration) desc
+| extend latencyValue = todouble(extract("latency=\"([0-9.]+)", 1, log_s))
+| extend latencyUnit = extract("latency=\"[0-9.]+([a-z]+)", 1, log_s)
+| extend durationMs = case(latencyUnit == "s", latencyValue * 1000.0, latencyUnit == "ms", latencyValue, real(null))
+| where durationMs > 5000
+| project TimeGenerated, log_s, durationMs
+| order by durationMs desc
 | take 20
 ```
 
@@ -113,7 +121,7 @@ AzureDiagnostics
 // Query: Find API throttling events (429 responses)
 AzureDiagnostics
 | where Category == "kube-apiserver"
-| where log_s contains "429"
+| where log_s contains "resp=429" or log_s contains "\"code\":429"
 | summarize count() by bin(TimeGenerated, 5m)
 | order by TimeGenerated desc
 ```
@@ -238,22 +246,22 @@ Do not wait for users to report issues. Set up proactive alerts for control plan
 az monitor scheduled-query create \
   --resource-group myResourceGroup \
   --name "AKS-APIServer-Errors" \
-  --scopes $WORKSPACE_ID \
-  --condition "count > 10" \
-  --condition-query "AzureDiagnostics | where Category == 'kube-apiserver' | where log_s contains '\" 5'" \
-  --window-size 5 \
-  --evaluation-frequency 5 \
+  --scopes $WORKSPACE_RESOURCE_ID \
+  --condition "count 'ApiServerErrors' > 10" \
+  --condition-query ApiServerErrors="AzureDiagnostics | where Category == 'kube-apiserver' | where log_s contains 'resp=5' or log_s contains '\"code\":5'" \
+  --window-size 5m \
+  --evaluation-frequency 5m \
   --severity 2
 
 # Alert for scheduling failures
 az monitor scheduled-query create \
   --resource-group myResourceGroup \
   --name "AKS-Scheduling-Failures" \
-  --scopes $WORKSPACE_ID \
-  --condition "count > 5" \
-  --condition-query "AzureDiagnostics | where Category == 'kube-scheduler' | where log_s contains 'FailedScheduling'" \
-  --window-size 10 \
-  --evaluation-frequency 5 \
+  --scopes $WORKSPACE_RESOURCE_ID \
+  --condition "count 'SchedulingFailures' > 5" \
+  --condition-query SchedulingFailures="AzureDiagnostics | where Category == 'kube-scheduler' | where log_s contains 'FailedScheduling'" \
+  --window-size 10m \
+  --evaluation-frequency 5m \
   --severity 3
 ```
 
