@@ -32,19 +32,14 @@ az containerapp env show \
   --query "properties.appLogsConfiguration"
 ```
 
-If logging is not configured, you can update the environment.
+If logging is not configured, create or update the environment with Log Analytics as the logs destination.
 
 ```bash
 # Get the Log Analytics workspace details
 WORKSPACE_ID=$(az monitor log-analytics workspace show \
   --workspace-name my-workspace \
   --resource-group my-rg \
-  --query "customerId" -o tsv)
-
-WORKSPACE_KEY=$(az monitor log-analytics workspace get-shared-keys \
-  --workspace-name my-workspace \
-  --resource-group my-rg \
-  --query "primarySharedKey" -o tsv)
+  --query "id" -o tsv)
 
 # Note: Logging is typically configured during environment creation
 # For new environments:
@@ -52,8 +47,15 @@ az containerapp env create \
   --name my-env \
   --resource-group my-rg \
   --location eastus \
-  --logs-workspace-id $WORKSPACE_ID \
-  --logs-workspace-key $WORKSPACE_KEY
+  --logs-destination log-analytics \
+  --logs-workspace-id $WORKSPACE_ID
+
+# For existing environments:
+az containerapp env update \
+  --name my-env \
+  --resource-group my-rg \
+  --logs-destination log-analytics \
+  --logs-workspace-id $WORKSPACE_ID
 ```
 
 ## Step 2: View Logs with the CLI
@@ -221,8 +223,8 @@ az monitor scheduled-query create \
   --name "high-error-rate" \
   --resource-group my-rg \
   --scopes "/subscriptions/{sub-id}/resourceGroups/my-rg/providers/Microsoft.OperationalInsights/workspaces/my-workspace" \
-  --condition "count > 50" \
-  --condition-query "ContainerAppConsoleLogs_CL | where Log_s contains 'error' | where TimeGenerated > ago(5m)" \
+  --condition "count 'ContainerAppErrors' > 50" \
+  --condition-query ContainerAppErrors="ContainerAppConsoleLogs_CL | where Log_s contains 'error' | where TimeGenerated > ago(5m)" \
   --evaluation-frequency 5m \
   --window-size 5m \
   --severity 2 \
@@ -231,7 +233,7 @@ az monitor scheduled-query create \
 
 ## Step 7: Export Logs for Long-Term Storage
 
-Log Analytics has a retention limit (default 30 days, configurable up to 730 days). For compliance or analysis, export logs to cheaper storage.
+Log Analytics has a default analytics retention period of 30 days, which you can extend up to 730 days. You can also configure longer total retention, but for compliance or external analysis you may still want to export logs to cheaper storage.
 
 ```bash
 # Create a data export rule to Azure Storage
@@ -239,8 +241,9 @@ az monitor log-analytics workspace data-export create \
   --resource-group my-rg \
   --workspace-name my-workspace \
   --name export-container-logs \
-  --table-names ContainerAppConsoleLogs_CL ContainerAppSystemLogs_CL \
-  --destination "/subscriptions/{sub-id}/resourceGroups/my-rg/providers/Microsoft.Storage/storageAccounts/mylogstorage"
+  --tables ContainerAppConsoleLogs_CL ContainerAppSystemLogs_CL \
+  --destination "/subscriptions/{sub-id}/resourceGroups/my-rg/providers/Microsoft.Storage/storageAccounts/mylogstorage" \
+  --enable true
 ```
 
 ## Structured Logging for Better Queries
@@ -279,7 +282,7 @@ ContainerAppConsoleLogs_CL
 
 ## Tips for Effective Log Querying
 
-1. **Always filter by time first.** KQL processes data chronologically, and a time filter dramatically reduces the data scanned.
+1. **Always filter by time first.** A time filter dramatically reduces the data scanned.
 
 2. **Use `contains` for case-insensitive substring search** and `has` for whole-word matching. `has` is faster because it uses the index.
 
