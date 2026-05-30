@@ -18,7 +18,7 @@ Before diving into complex debugging, verify the fundamentals.
 
 ### Is the Instrumentation Key or Connection String Correct?
 
-Application Insights identifies your resource using either an instrumentation key (legacy) or a connection string (recommended). If this value is wrong, your telemetry goes nowhere or to someone else's resource.
+Application Insights identifies your resource using either an instrumentation key (legacy and no longer supported for ingestion updates) or a connection string (recommended). If this value is wrong, your telemetry goes nowhere or to someone else's resource.
 
 ```bash
 # Get the connection string for your Application Insights resource
@@ -83,7 +83,7 @@ java -javaagent:/path/to/applicationinsights-agent-3.x.x.jar -jar myapp.jar
 
 ## Telemetry Is Being Sampled
 
-Application Insights uses adaptive sampling by default to reduce telemetry volume and cost. This means not every request, trace, or dependency is sent. If you are looking for a specific request and it is not there, sampling might have dropped it.
+Many Application Insights SDK integrations, including the classic ASP.NET Core SDK and Azure Functions host, use sampling by default to reduce telemetry volume and cost. This means not every request, trace, or dependency is sent. If you are looking for a specific request and it is not there, sampling might have dropped it.
 
 ### Check If Sampling Is Active
 
@@ -135,14 +135,14 @@ builder.Services.Configure<TelemetryConfiguration>(config =>
 
 Even if your application sends telemetry correctly, it might not make it to Application Insights.
 
-### Check for Ingestion Errors
+### Check Whether Telemetry Is Arriving
 
 ```bash
-# Check if there are any ingestion issues
-az monitor app-insights metrics show \
+# Check whether request telemetry is arriving
+az monitor app-insights query \
   --app my-app-insights \
   --resource-group my-rg \
-  --metrics "exceptions/count" \
+  --analytics-query "requests | where timestamp > ago(1h) | summarize count()" \
   --output table
 ```
 
@@ -154,7 +154,8 @@ The endpoints your application needs to reach:
 
 - `dc.applicationinsights.azure.com` (or regional endpoints like `eastus-1.in.applicationinsights.azure.com`)
 - `live.applicationinsights.azure.com` (for Live Metrics)
-- `rt.applicationinsights.azure.com` (for profiler and snapshot debugger)
+- `profiler.monitor.azure.com` (for Application Insights Profiler)
+- `snapshot.monitor.azure.com` (for Snapshot Debugger)
 
 ```bash
 # Test connectivity from your application's environment
@@ -174,10 +175,11 @@ Application Insights has a daily data volume cap. Once hit, ingestion stops unti
 In the portal, go to Application Insights, then Usage and estimated costs. Look at the daily cap setting and current daily volume.
 
 ```bash
-# Check the billing features including daily cap
-az monitor app-insights component billing show \
-  --app my-app-insights \
-  --resource-group my-rg
+# Check the daily cap quota status
+az monitor app-insights component quotastatus show \
+  --resource-name my-app-insights \
+  --resource-group my-rg \
+  --output table
 ```
 
 If the daily cap is hit regularly, either increase it or tune your telemetry to reduce volume.
@@ -193,8 +195,8 @@ dotnet list package | grep -i "applicationinsights"
 # For Node.js
 npm list applicationinsights
 
-# For Python
-pip show opencensus-ext-azure
+# For Python OpenTelemetry
+pip show azure-monitor-opentelemetry
 ```
 
 Update to the latest stable version:
@@ -206,8 +208,8 @@ dotnet add package Microsoft.ApplicationInsights.AspNetCore
 # Node.js
 npm install applicationinsights@latest
 
-# Python
-pip install opencensus-ext-azure --upgrade
+# Python OpenTelemetry
+pip install azure-monitor-opentelemetry --upgrade
 ```
 
 ## Missing Specific Telemetry Types
@@ -218,10 +220,10 @@ Sometimes you see requests but not dependencies, or exceptions but not traces. T
 
 Dependency tracking (SQL queries, HTTP calls, Redis calls) requires the appropriate auto-collection modules.
 
-For .NET, dependency tracking is included by default when you call `AddApplicationInsightsTelemetry()`. But some dependency types require additional NuGet packages:
+For ASP.NET Core, dependency tracking is included by default when you call `AddApplicationInsightsTelemetry()`. For non-ASP.NET Core applications that use the classic SDK, make sure the dependency collector package is installed:
 
 ```bash
-# For SQL dependency tracking with Entity Framework Core
+# For dependency tracking in non-ASP.NET Core applications
 dotnet add package Microsoft.ApplicationInsights.DependencyCollector
 ```
 
@@ -296,13 +298,14 @@ Application Insights has built-in diagnostic tools that can help identify issues
 - **Search**: Use the Transaction Search to find specific telemetry items.
 - **Failures**: The Failures blade aggregates exceptions and failed requests.
 
-Also check the SDK's internal diagnostic logs. For .NET, enable self-diagnostics:
+Also check the SDK's internal diagnostic logs. For the .NET SDK, create an `ApplicationInsightsDiagnostics.json` file in the application's current working directory:
 
-```xml
-<!-- Add to your applicationinsights.config or enable in code -->
-<TelemetryModules>
-  <Add Type="Microsoft.ApplicationInsights.Extensibility.Implementation.Tracing.DiagnosticsTelemetryModule, Microsoft.ApplicationInsights"/>
-</TelemetryModules>
+```json
+{
+  "LogDirectory": ".",
+  "FileSize": 5120,
+  "LogLevel": "Verbose"
+}
 ```
 
 Missing telemetry is rarely a mystery once you follow a systematic approach. Check the connection string, verify SDK initialization, look at sampling, test network connectivity, and review the SDK version. Most issues fall into one of these categories, and the fix is usually a configuration change rather than a code rewrite.
