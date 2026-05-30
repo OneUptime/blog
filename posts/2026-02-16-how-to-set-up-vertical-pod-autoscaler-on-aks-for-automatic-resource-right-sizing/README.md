@@ -17,11 +17,14 @@ VPA differs from the Horizontal Pod Autoscaler (HPA) in a fundamental way. HPA s
 - **HPA**: "I need more pods to handle increased load."
 - **VPA**: "Each pod needs more (or less) CPU and memory than currently configured."
 
-VPA has three modes:
+VPA has several update modes:
 
 - **Off**: VPA calculates recommendations but does not apply them. Good for getting suggestions.
 - **Initial**: VPA sets resource requests only when pods are created. No changes to running pods.
-- **Auto**: VPA evicts and recreates pods with updated resource requests. Most powerful but can cause brief disruption.
+- **Recreate**: VPA evicts and recreates pods with updated resource requests. Most powerful but can cause brief disruption.
+- **InPlaceOrRecreate**: On AKS 1.34 and later, VPA tries to update pod resources in place and falls back to recreation when needed.
+
+The older **Auto** mode is deprecated in VPA 1.4.0 and later. It currently behaves like **Recreate**, so use explicit modes such as `Recreate` or `InPlaceOrRecreate`.
 
 ```mermaid
 graph LR
@@ -29,53 +32,45 @@ graph LR
     A -->|Generate| C[Resource Recommendations]
     C -->|Mode: Off| D[Display Only]
     C -->|Mode: Initial| E[Apply on Pod Creation]
-    C -->|Mode: Auto| F[Evict and Recreate Pods]
+    C -->|Mode: Recreate| F[Evict and Recreate Pods]
+    C -->|Mode: InPlaceOrRecreate| G[Resize In Place or Recreate]
 ```
 
 ## Prerequisites
 
 - An AKS cluster running Kubernetes 1.24+
 - Metrics Server installed (enabled by default on AKS)
-- kubectl and Helm configured for your cluster
+- Azure CLI 2.52.0 or later
+- kubectl configured for your cluster
 
 ## Step 1: Install VPA on AKS
 
-VPA is not installed by default on AKS. Install it using the official manifests or Helm.
+VPA is not installed by default on AKS. Enable the AKS-managed VPA add-on when you create the cluster or update an existing cluster.
 
 ```bash
-# Clone the VPA repository
+# Enable VPA on a new AKS cluster
+az aks create \
+  --name <cluster-name> \
+  --resource-group <resource-group-name> \
+  --enable-vpa \
+  --generate-ssh-keys
 
-git clone https://github.com/kubernetes/autoscaler.git
-cd autoscaler/vertical-pod-autoscaler
-
-# Install VPA components
-./hack/vpa-up.sh
-```
-
-Or install with Helm using a community chart.
-
-```bash
-# Add the Fairwinds Helm repo (maintains a VPA chart)
-helm repo add fairwinds-stable https://charts.fairwinds.com/stable
-helm repo update
-
-# Install VPA
-helm install vpa fairwinds-stable/vpa \
-  --namespace vpa \
-  --create-namespace \
-  --set recommender.resources.requests.cpu=50m \
-  --set recommender.resources.requests.memory=500Mi
+# Or enable VPA on an existing AKS cluster
+az aks update \
+  --name <cluster-name> \
+  --resource-group <resource-group-name> \
+  --enable-vpa
 ```
 
 Verify the installation.
 
 ```bash
 # Check VPA components are running
-kubectl get pods -n vpa
+kubectl get pods -n kube-system | grep vpa
 
 # You should see:
 # vpa-recommender - analyzes usage and generates recommendations
-# vpa-updater - evicts pods that need resource updates (Auto mode)
+# vpa-updater - evicts pods that need resource updates (Recreate mode)
 # vpa-admission-controller - mutates pod requests on creation
 ```
 
@@ -182,13 +177,13 @@ Recommendation:
 
 This tells you that the nginx container actually needs about 25m CPU and 52 Mi memory - far less than the 500m CPU and 512 Mi we requested. VPA would save significant resources here.
 
-## Step 4: Switch to Auto Mode
+## Step 4: Switch to Recreate Mode
 
-Once you are comfortable with the recommendations, switch to auto mode. VPA will evict pods and recreate them with the recommended resources.
+Once you are comfortable with the recommendations, switch to `Recreate` mode. VPA will evict pods and recreate them with the recommended resources.
 
 ```yaml
-# vpa-auto.yaml
-# VPA in auto mode - actively adjusts pod resources
+# vpa-recreate.yaml
+# VPA in Recreate mode - actively adjusts pod resources
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -200,8 +195,8 @@ spec:
     kind: Deployment
     name: resource-test
   updatePolicy:
-    # Auto mode: evict and recreate pods with updated resources
-    updateMode: "Auto"
+    # Recreate mode: evict and recreate pods with updated resources
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: app
@@ -219,7 +214,7 @@ spec:
 Apply the updated VPA.
 
 ```bash
-kubectl apply -f vpa-auto.yaml
+kubectl apply -f vpa-recreate.yaml
 
 # Watch pods get evicted and recreated with new resource values
 kubectl get pods -l app=resource-test --watch
@@ -271,7 +266,7 @@ spec:
     kind: Deployment
     name: my-app-with-sidecars
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     # Main application container
@@ -314,7 +309,7 @@ spec:
     kind: Deployment
     name: my-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: my-app
@@ -358,14 +353,14 @@ kubectl get vpa --all-namespaces
 kubectl describe vpa my-app-vpa -n default
 
 # View VPA-related events (evictions and recreations)
-kubectl get events --field-selector reason=EvictedByVPA --all-namespaces
+kubectl get events --field-selector reason=EvictedPod --all-namespaces
 ```
 
 ## Best Practices
 
-**Start with Off mode**: Always start in recommendation mode to understand what VPA would do before enabling auto mode. Run in Off mode for at least a week to capture different traffic patterns.
+**Start with Off mode**: Always start in recommendation mode to understand what VPA would do before enabling automatic updates. Run in Off mode for at least a week to capture different traffic patterns.
 
-**Use Pod Disruption Budgets**: In Auto mode, VPA evicts pods to apply new resources. PDBs ensure not all replicas are evicted simultaneously.
+**Use Pod Disruption Budgets**: In Recreate mode, VPA evicts pods to apply new resources. PDBs ensure not all replicas are evicted simultaneously.
 
 ```yaml
 apiVersion: policy/v1
@@ -383,8 +378,8 @@ spec:
 
 **Avoid using VPA with JVM applications without tuning**: Java applications have their own memory management (heap, metaspace). VPA adjusting container memory without corresponding JVM flag changes can cause issues. Set memory bounds that account for JVM overhead.
 
-**Watch for eviction storms**: If many VPA objects are in Auto mode and recommendations change frequently, you might see a lot of pod churn. Set appropriate resource bounds to reduce oscillation.
+**Watch for eviction storms**: If many VPA objects are in Recreate mode and recommendations change frequently, you might see a lot of pod churn. Set appropriate resource bounds to reduce oscillation.
 
 ## Summary
 
-The Vertical Pod Autoscaler removes the guesswork from pod resource configuration. Start in recommendation mode to get data-driven insights into what your pods actually need, then switch to auto mode for continuous right-sizing. VPA is especially valuable for workloads with variable resource needs and for catching over-provisioned pods that waste cluster capacity. Combined with HPA for horizontal scaling, VPA ensures your AKS cluster is both responsive to load changes and efficient with resources.
+The Vertical Pod Autoscaler removes the guesswork from pod resource configuration. Start in recommendation mode to get data-driven insights into what your pods actually need, then switch to `Recreate` or `InPlaceOrRecreate` mode for continuous right-sizing. VPA is especially valuable for workloads with variable resource needs and for catching over-provisioned pods that waste cluster capacity. Combined with HPA for horizontal scaling, VPA ensures your AKS cluster is both responsive to load changes and efficient with resources.
