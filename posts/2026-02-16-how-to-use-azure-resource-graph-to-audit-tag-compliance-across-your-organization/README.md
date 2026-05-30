@@ -49,10 +49,10 @@ Resources Missing Any Required Tags
 // Check multiple required tags at once
 resources
 | extend
-    hasEnvironment = isnotnull(tags['Environment']),
-    hasOwner = isnotnull(tags['Owner']),
-    hasCostCenter = isnotnull(tags['CostCenter']),
-    hasApplication = isnotnull(tags['Application'])
+    hasEnvironment = isnotempty(tostring(tags['Environment'])),
+    hasOwner = isnotempty(tostring(tags['Owner'])),
+    hasCostCenter = isnotempty(tostring(tags['CostCenter'])),
+    hasApplication = isnotempty(tostring(tags['Application']))
 | extend missingTags = strcat(
     iff(not(hasEnvironment), "Environment ", ""),
     iff(not(hasOwner), "Owner ", ""),
@@ -71,10 +71,10 @@ resources
 resources
 | summarize
     Total = count(),
-    WithEnvironment = countif(isnotnull(tags['Environment'])),
-    WithOwner = countif(isnotnull(tags['Owner'])),
-    WithCostCenter = countif(isnotnull(tags['CostCenter'])),
-    WithApplication = countif(isnotnull(tags['Application']))
+    WithEnvironment = countif(isnotempty(tostring(tags['Environment']))),
+    WithOwner = countif(isnotempty(tostring(tags['Owner']))),
+    WithCostCenter = countif(isnotempty(tostring(tags['CostCenter']))),
+    WithApplication = countif(isnotempty(tostring(tags['Application'])))
 | extend
     EnvironmentPct = round(100.0 * WithEnvironment / Total, 1),
     OwnerPct = round(100.0 * WithOwner / Total, 1),
@@ -97,8 +97,8 @@ resources
 ) on subscriptionId
 | summarize
     Total = count(),
-    WithEnvironment = countif(isnotnull(tags['Environment'])),
-    WithOwner = countif(isnotnull(tags['Owner']))
+    WithEnvironment = countif(isnotempty(tostring(tags['Environment']))),
+    WithOwner = countif(isnotempty(tostring(tags['Owner'])))
     by subscriptionName
 | extend
     EnvironmentPct = round(100.0 * WithEnvironment / Total, 1),
@@ -116,7 +116,7 @@ Some resource types tend to have worse tag compliance than others. Child resourc
 resources
 | summarize
     Total = count(),
-    Tagged = countif(isnotnull(tags['Environment']))
+    Tagged = countif(isnotempty(tostring(tags['Environment'])))
     by type
 | extend CompliancePct = round(100.0 * Tagged / Total, 1)
 | where Total > 5
@@ -134,7 +134,7 @@ Having a tag is not enough - it also needs to have a valid value. Here are queri
 // Find resources with non-standard Environment tag values
 let validEnvironments = dynamic(["Production", "Staging", "Development", "Testing", "Sandbox"]);
 resources
-| where isnotnull(tags['Environment'])
+| where isnotempty(tostring(tags['Environment']))
 | extend environment = tostring(tags['Environment'])
 | where environment !in (validEnvironments)
 | summarize count() by environment
@@ -146,7 +146,7 @@ resources
 ```kusto
 // Find case variations of the Environment tag
 resources
-| where isnotnull(tags['Environment'])
+| where isnotempty(tostring(tags['Environment']))
 | extend environment = tostring(tags['Environment'])
 | summarize count() by environment
 | sort by count_ desc
@@ -175,20 +175,20 @@ resources
 | summarize
     TotalResources = count(),
     FullyCompliant = countif(
-        isnotnull(tags['Environment']) and
-        isnotnull(tags['Owner']) and
-        isnotnull(tags['CostCenter'])
+        isnotempty(tostring(tags['Environment'])) and
+        isnotempty(tostring(tags['Owner'])) and
+        isnotempty(tostring(tags['CostCenter']))
     ),
-    MissingEnvironment = countif(isnull(tags['Environment'])),
-    MissingOwner = countif(isnull(tags['Owner'])),
-    MissingCostCenter = countif(isnull(tags['CostCenter'])),
-    NoTagsAtAll = countif(tags == "{}" or isnull(tags))
+    MissingEnvironment = countif(isempty(tostring(tags['Environment']))),
+    MissingOwner = countif(isempty(tostring(tags['Owner']))),
+    MissingCostCenter = countif(isempty(tostring(tags['CostCenter']))),
+    NoTagsAtAll = countif(isempty(tags))
 | extend ComplianceRate = round(100.0 * FullyCompliant / TotalResources, 1)
 ```
 
 ## Tracking Compliance Over Time
 
-Resource Graph does not store historical compliance data, so you need to capture snapshots yourself. Here is a PowerShell script that saves daily compliance data:
+Resource Graph queries the current state of your resources. If you want historical tag compliance trends, you need to capture snapshots yourself. Here is a PowerShell script that saves daily compliance data:
 
 ```powershell
 # Daily compliance snapshot script for Azure Automation
@@ -199,9 +199,9 @@ $complianceQuery = @"
 resources
 | summarize
     Total = count(),
-    WithEnvironment = countif(isnotnull(tags['Environment'])),
-    WithOwner = countif(isnotnull(tags['Owner'])),
-    WithCostCenter = countif(isnotnull(tags['CostCenter']))
+    WithEnvironment = countif(isnotempty(tostring(tags['Environment']))),
+    WithOwner = countif(isnotempty(tostring(tags['Owner']))),
+    WithCostCenter = countif(isnotempty(tostring(tags['CostCenter'])))
 "@
 
 $result = Search-AzGraph -Query $complianceQuery
@@ -235,16 +235,16 @@ For resources that should be tagged but are not, you can build automated remedia
 # Find resources missing the Environment tag
 RESOURCES=$(az graph query -q "
     resources
-    | where isnull(tags['Environment'])
-    | project id, resourceGroup
+    | where isempty(tostring(tags['Environment']))
+    | project id, subscriptionId, resourceGroup
     | take 100
-" --output json | jq -r '.data[] | "\(.id)|\(.resourceGroup)"')
+" --output json | jq -r '.data[] | "\(.id)|\(.subscriptionId)|\(.resourceGroup)"')
 
-echo "$RESOURCES" | while IFS='|' read -r RESOURCE_ID RG; do
+echo "$RESOURCES" | while IFS='|' read -r RESOURCE_ID SUBSCRIPTION_ID RG; do
     if [ -z "$RESOURCE_ID" ]; then continue; fi
 
     # Try to inherit the Environment tag from the resource group
-    RG_ENV=$(az tag list --resource-id "/subscriptions/.../resourceGroups/$RG" \
+    RG_ENV=$(az tag list --resource-id "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG" \
         --query "properties.tags.Environment" --output tsv 2>/dev/null)
 
     if [ -n "$RG_ENV" ]; then
@@ -265,7 +265,7 @@ While Resource Graph is great for auditing, Azure Policy is what you use for enf
 az policy assignment create \
     --name "require-environment-tag" \
     --display-name "Require Environment tag" \
-    --policy "871b6d14-10aa-478d-b466-ef391786494f" \
+    --policy "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b590-94f262ecfa99" \
     --scope "/subscriptions/your-sub-id" \
     --params '{"tagName": {"value": "Environment"}}'
 
@@ -273,7 +273,7 @@ az policy assignment create \
 az policy assignment create \
     --name "inherit-environment-from-rg" \
     --display-name "Inherit Environment tag from resource group" \
-    --policy "cd3aa116-8754-49c9-a813-ad46512ece54" \
+    --policy "/providers/Microsoft.Authorization/policyDefinitions/ea3f2387-9b95-492a-a190-fcdc54f7b070" \
     --scope "/subscriptions/your-sub-id" \
     --params '{"tagName": {"value": "Environment"}}' \
     --mi-system-assigned \
@@ -294,9 +294,9 @@ resources
 | summarize
     Total = count(),
     FullyCompliant = countif(
-        isnotnull(tags['Environment']) and
-        isnotnull(tags['Owner']) and
-        isnotnull(tags['CostCenter']))
+        isnotempty(tostring(tags['Environment'])) and
+        isnotempty(tostring(tags['Owner'])) and
+        isnotempty(tostring(tags['CostCenter'])))
 | extend ComplianceRate = round(100.0 * FullyCompliant / Total, 1)
 "@
 
@@ -309,7 +309,7 @@ resources
 ) on subscriptionId
 | summarize
     Total = count(),
-    Compliant = countif(isnotnull(tags['Environment']) and isnotnull(tags['Owner']))
+    Compliant = countif(isnotempty(tostring(tags['Environment'])) and isnotempty(tostring(tags['Owner'])))
     by subscriptionName
 | extend Rate = round(100.0 * Compliant / Total, 1)
 | sort by Rate asc
@@ -318,7 +318,7 @@ resources
 # Worst offending resource types
 $report["ByType"] = Search-AzGraph -Query @"
 resources
-| where isnull(tags['Environment'])
+| where isempty(tostring(tags['Environment']))
 | summarize NonCompliant = count() by type
 | sort by NonCompliant desc
 | take 10
