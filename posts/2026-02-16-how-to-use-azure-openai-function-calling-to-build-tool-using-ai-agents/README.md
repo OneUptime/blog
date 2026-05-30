@@ -353,20 +353,21 @@ import asyncio
 
 async def execute_tools_parallel(tool_calls):
     """Execute multiple tool calls concurrently."""
+    loop = asyncio.get_running_loop()
     tasks = []
     for tool_call in tool_calls:
         fn_name = tool_call.function.name
         args = json.loads(tool_call.function.arguments)
         # Wrap synchronous functions in the event loop executor
-        task = asyncio.get_event_loop().run_in_executor(
+        task = loop.run_in_executor(
             None, lambda n=fn_name, a=args: TOOL_MAP[n](**a)
         )
         tasks.append((tool_call.id, task))
 
     # Wait for all tools to finish
+    tool_results = await asyncio.gather(*(task for _, task in tasks))
     results = []
-    for tool_call_id, task in tasks:
-        result = await task
+    for (tool_call_id, _), result in zip(tasks, tool_results):
         results.append({
             "role": "tool",
             "tool_call_id": tool_call_id,
@@ -387,7 +388,7 @@ Writing good tool definitions makes a significant difference in how reliably the
 
 4. **Include examples in descriptions**: For parameters with specific formats, include an example like "The server ID, e.g., 'prod-web-01'."
 
-5. **Keep the tool count reasonable**: Models work best with 10-20 tools. If you have more, consider grouping related operations into a single tool with a subcommand parameter.
+5. **Keep the tool count reasonable**: Aim for fewer than 20 tools at one time. If you have more, consider grouping related operations into a single tool with a subcommand parameter.
 
 ## Error Handling
 
