@@ -22,7 +22,7 @@ Container Insights collects data at multiple levels of the Kubernetes stack:
 **Workload level** - Deployment replica counts, DaemonSet coverage, StatefulSet status
 **Cluster level** - Overall resource utilization, scheduling capacity, kube-system health
 
-The data is collected by a containerized agent (the Azure Monitor agent or the legacy OMS agent) that runs as a DaemonSet on every node. The agent sends data to a Log Analytics workspace where it can be queried with KQL and visualized in the Azure Portal.
+The data is collected by a containerized agent (the Azure Monitor agent or the legacy OMS agent). The node agent runs as a DaemonSet on every node, with additional cluster-level collection components. The agent sends data to a Log Analytics workspace where it can be queried with KQL and visualized in the Azure Portal.
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ Before enabling Container Insights, you need:
 
 1. An AKS cluster (any tier)
 2. A Log Analytics workspace (an existing one or a new one will be created)
-3. The Azure CLI with the aks-preview extension (optional, for advanced features)
+3. The Azure CLI
 4. Sufficient permissions - Contributor on the AKS cluster and Log Analytics workspace
 
 ## Method 1: Enable During AKS Cluster Creation
@@ -70,7 +70,7 @@ az aks enable-addons \
 After enabling, verify that the monitoring agents are running:
 
 ```bash
-# Check that the omsagent pods are running
+# Check that the Azure Monitor Agent pods are running
 kubectl get pods -n kube-system | grep ama-
 
 # You should see pods like:
@@ -80,9 +80,9 @@ kubectl get pods -n kube-system | grep ama-
 
 The `ama-logs` DaemonSet runs on every node and collects container logs and performance data. The `ama-logs-rs` ReplicaSet collects cluster-level data.
 
-## Method 3: Enable with Azure Monitor Agent (Recommended)
+## Method 3: Enable with Managed Identity Authentication (Recommended)
 
-The newer approach uses the Azure Monitor Agent (AMA) with Data Collection Rules (DCR), which gives you more control over what data is collected:
+The recommended approach uses the Azure Monitor Agent (AMA) with managed identity authentication. The `--enable-msi-auth-for-monitoring` option is enabled by default for supported AKS versions, but you can specify it explicitly:
 
 ```bash
 # Enable monitoring with Azure Monitor Agent
@@ -96,7 +96,7 @@ az aks enable-addons \
 
 ## Configuring Data Collection
 
-By default, Container Insights collects a lot of data, which can get expensive for large clusters. You can customize what is collected using a ConfigMap.
+By default, Container Insights collects a lot of data, which can get expensive for large clusters. You can customize agent collection settings using a ConfigMap.
 
 ### Creating a Data Collection ConfigMap
 
@@ -125,13 +125,14 @@ data:
       [log_collection_settings.env_var]
         enabled = true
 
-      # Collect enrich container logs with Kubernetes metadata
+      # Enrich container logs with Kubernetes metadata
       [log_collection_settings.enrich_container_logs]
         enabled = true
 
   prometheus-data-collection-settings: |-
     [prometheus_data_collection_settings.cluster]
-      # Scrape Prometheus metrics from annotated pods
+      # Scrape Prometheus metrics from annotated pods into Log Analytics.
+      # For production Prometheus monitoring, use Azure Monitor managed service for Prometheus.
       monitor_kubernetes_pods = true
       monitor_kubernetes_pods_namespaces = ["default","app-namespace"]
 
@@ -228,18 +229,10 @@ KubePodInventory
 | sort by MaxRestarts desc
 ```
 
-### Container Memory Pressure
+### Container Memory Usage
 
 ```kusto
-// Containers approaching memory limits
-let memoryLimits = KubePodInventory
-| where TimeGenerated > ago(15m)
-| distinct ContainerName, ContainerID
-| join kind=inner (
-    ContainerInventory
-    | where TimeGenerated > ago(15m)
-    | project ContainerID, MemoryLimit = EnvironmentVar
-) on ContainerID;
+// Container memory usage over time
 Perf
 | where TimeGenerated > ago(15m)
 | where ObjectName == "K8SContainer"
@@ -283,8 +276,8 @@ az monitor scheduled-query create \
     --name "AKS-Node-NotReady" \
     --resource-group "monitoring-rg" \
     --scopes "/subscriptions/sub-id/resourceGroups/monitoring-rg/providers/Microsoft.OperationalInsights/workspaces/my-workspace" \
-    --condition "count > 0" \
-    --condition-query "KubeNodeInventory | where Status == 'NotReady' | where TimeGenerated > ago(5m) | distinct Computer" \
+    --condition "count 'NodeNotReady' > 0" \
+    --condition-query NodeNotReady="KubeNodeInventory | where TimeGenerated > ago(5m) | summarize arg_max(TimeGenerated, Status) by Computer | where Status !contains 'Ready' | project Computer" \
     --evaluation-frequency "5m" \
     --window-size "5m" \
     --severity 1 \
@@ -299,8 +292,8 @@ az monitor scheduled-query create \
     --name "AKS-Pod-Restarts" \
     --resource-group "monitoring-rg" \
     --scopes "/subscriptions/sub-id/resourceGroups/monitoring-rg/providers/Microsoft.OperationalInsights/workspaces/my-workspace" \
-    --condition "count > 0" \
-    --condition-query "KubePodInventory | where TimeGenerated > ago(10m) | where PodRestartCount > 5 | distinct Name, Namespace" \
+    --condition "count 'PodRestarts' > 0" \
+    --condition-query PodRestarts="KubePodInventory | where TimeGenerated > ago(10m) | summarize MaxRestarts = max(PodRestartCount) by Name, Namespace | where MaxRestarts > 5" \
     --evaluation-frequency "5m" \
     --window-size "10m" \
     --severity 2 \
@@ -315,7 +308,7 @@ az monitor metrics alert create \
     --name "AKS-High-CPU" \
     --resource-group "aks-rg" \
     --scopes "/subscriptions/sub-id/resourceGroups/aks-rg/providers/Microsoft.ContainerService/managedClusters/my-aks-cluster" \
-    --condition "avg node cpu utilization percentage > 85" \
+    --condition "avg node_cpu_usage_percentage > 85" \
     --window-size 10m \
     --evaluation-frequency 5m \
     --severity 2 \
@@ -340,7 +333,7 @@ az monitor log-analytics workspace table update \
     --resource-group "monitoring-rg" \
     --workspace-name "my-workspace" \
     --name "ContainerLogV2" \
-    --retention-in-days 30
+    --retention-time 30
 ```
 
 ## Recommended Workbook
