@@ -58,14 +58,14 @@ Add the Azure Blob Storage SDK and Spring Boot web starter to your project.
     <dependency>
         <groupId>com.azure</groupId>
         <artifactId>azure-storage-blob</artifactId>
-        <version>12.25.0</version>
+        <version>12.34.0</version>
     </dependency>
 
     <!-- Azure Identity for token-based auth (optional but recommended) -->
     <dependency>
         <groupId>com.azure</groupId>
         <artifactId>azure-identity</artifactId>
-        <version>1.11.1</version>
+        <version>1.18.3</version>
     </dependency>
 </dependencies>
 ```
@@ -391,7 +391,7 @@ curl http://localhost:8080/api/files/list?folder=invoices
 curl -o downloaded.pdf http://localhost:8080/api/files/download?blob=invoices/abc-document.pdf
 
 # Generate a temporary share URL
-curl http://localhost:8080/api/files/share?blob=invoices/abc-document.pdf&expiry=120
+curl "http://localhost:8080/api/files/share?blob=invoices/abc-document.pdf&expiry=120"
 
 # Delete a file
 curl -X DELETE http://localhost:8080/api/files?blob=invoices/abc-document.pdf
@@ -403,19 +403,19 @@ For files larger than a few megabytes, use block uploads to upload in chunks. Th
 
 ```java
 // Upload a large file in blocks
-public void uploadLargeFile(String blobName, java.io.InputStream inputStream, long fileSize) {
+public void uploadLargeFile(String blobName, java.io.InputStream inputStream) {
     BlobClient blobClient = containerClient.getBlobClient(blobName);
 
     // The SDK automatically uses block uploads for large files
     // Configure the parallel transfer options for better throughput
-    com.azure.storage.blob.models.ParallelTransferOptions transferOptions =
-        new com.azure.storage.blob.models.ParallelTransferOptions()
+    com.azure.storage.common.ParallelTransferOptions transferOptions =
+        new com.azure.storage.common.ParallelTransferOptions()
             .setBlockSizeLong(4 * 1024 * 1024L)    // 4 MB blocks
             .setMaxConcurrency(4)                     // 4 parallel uploads
             .setMaxSingleUploadSizeLong(8 * 1024 * 1024L);  // Single upload up to 8 MB
 
     blobClient.uploadWithResponse(
-        new com.azure.storage.blob.options.BlobParallelUploadOptions(inputStream, fileSize)
+        new com.azure.storage.blob.options.BlobParallelUploadOptions(inputStream)
             .setParallelTransferOptions(transferOptions),
         null,  // timeout
         com.azure.core.util.Context.NONE);
@@ -424,7 +424,7 @@ public void uploadLargeFile(String blobName, java.io.InputStream inputStream, lo
 
 ## Storage Tiers and Lifecycle Management
 
-Azure Blob Storage has three access tiers: Hot, Cool, and Archive. Choose based on how often you access the data.
+Azure Blob Storage has four main access tiers: Hot, Cool, Cold, and Archive. Choose based on how often you access the data.
 
 ```bash
 # Set a blob to cool tier (less frequently accessed)
