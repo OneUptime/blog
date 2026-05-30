@@ -20,7 +20,7 @@ This sits between your deployment completing and the release being available for
 
 ## Enabling Verification on a Pipeline Stage
 
-Verification is a boolean flag on the strategy configuration of a pipeline stage.
+When you use a Skaffold `verify` configuration, verification is enabled with a boolean flag on the strategy configuration of a pipeline stage.
 
 ```yaml
 # pipeline.yaml - Pipeline with verification enabled on staging and prod
@@ -55,7 +55,7 @@ I typically skip verification on dev since developers need fast feedback loops. 
 
 ## Defining the Verification Container in Skaffold
 
-The verification logic lives in your Skaffold configuration under the `verify` section. Each verify entry specifies a container to run.
+When you use `verify: true` in the delivery pipeline, the verification logic lives in your Skaffold configuration under the `verify` section. Each verify entry specifies a container to run. By default, Cloud Deploy runs verification in the Cloud Deploy execution environment. For tests that need Kubernetes cluster DNS, configure the verification container to run on the application cluster.
 
 ```yaml
 # skaffold.yaml - Skaffold configuration with verification
@@ -78,10 +78,12 @@ verify:
     env:
     - name: TEST_TIMEOUT
       value: "120"
-  timeout: 600s
+  executionMode:
+    kubernetesCluster: {}
+  timeout: 600
 ```
 
-The `timeout` field sets how long Cloud Deploy waits for the verification container to complete. If the container does not finish in time, verification fails.
+The `timeout` field is in seconds and sets how long Skaffold lets the verification container run. If the container does not finish in time, verification fails.
 
 ## Writing Effective Verification Tests
 
@@ -172,7 +174,7 @@ docker push us-central1-docker.pkg.dev/my-project/my-repo/integration-tests:late
 
 ## Running Multiple Verification Containers
 
-You can define multiple verification steps. Cloud Deploy runs them sequentially. If any step fails, the entire verification fails.
+You can define multiple verification steps in Skaffold. Skaffold can run them in parallel, and they must all succeed for verification to succeed.
 
 ```yaml
 # skaffold.yaml - Multiple verification steps
@@ -182,19 +184,25 @@ verify:
     name: smoke-tests
     image: us-central1-docker.pkg.dev/my-project/my-repo/smoke-tests:latest
     command: ["sh", "-c", "/smoke-tests.sh"]
-  timeout: 120s
+  executionMode:
+    kubernetesCluster: {}
+  timeout: 120
 - name: integration-tests
   container:
     name: integration-tests
     image: us-central1-docker.pkg.dev/my-project/my-repo/integration-tests:latest
     command: ["sh", "-c", "/integration-tests.sh"]
-  timeout: 300s
+  executionMode:
+    kubernetesCluster: {}
+  timeout: 300
 - name: security-scan
   container:
     name: security-scan
     image: us-central1-docker.pkg.dev/my-project/my-repo/security-scanner:latest
     command: ["sh", "-c", "/scan.sh"]
-  timeout: 180s
+  executionMode:
+    kubernetesCluster: {}
+  timeout: 180
 ```
 
 ## Using Environment Variables in Verification
@@ -233,25 +241,20 @@ gcloud deploy rollouts describe my-release-to-staging-0001 \
   --region=us-central1
 ```
 
-The rollout will show phases like DEPLOYING, DEPLOYED, VERIFYING, and then either SUCCEEDED or FAILED depending on the verification result.
+The rollout details show the phase, deploy job, and verify job states. A rollout or job run can move through states such as `IN_PROGRESS`, `SUCCEEDED`, or `FAILED` depending on the verification result.
 
 ## Viewing Verification Logs
 
-When verification fails, you need to see what went wrong. The verification container logs are accessible through Cloud Build, since Cloud Deploy uses Cloud Build to run verification jobs.
+When verification fails, you need to see what went wrong. The verification container logs are available from the rollout details page in the Google Cloud console. You can also use Cloud Build commands if you have the build ID for the verification job.
 
 ```bash
-# List recent Cloud Build operations for verification jobs
-gcloud builds list \
-  --filter="tags='clouddeploy' AND tags='verify'" \
-  --limit=5
-
 # View logs for a specific build
 gcloud builds log BUILD_ID
 ```
 
 ## Verification with Canary Deployments
 
-When combined with canary deployments, verification runs at each canary phase. This means you validate the deployment before increasing the traffic percentage.
+When combined with canary deployments, verification runs at each canary phase. This means you validate the deployment before advancing the canary percentage.
 
 ```yaml
 # Canary with per-phase verification
@@ -269,7 +272,7 @@ strategy:
       verify: true
 ```
 
-At the 10% phase, verification runs against the canary pods. If it passes, you can advance to 50%. If it fails, you roll back while only 10% of traffic was affected.
+At the 10% phase, verification runs before you advance to 50%. If it passes, you can advance to the next phase. If it fails, you can roll back while the deployment is still limited to that canary phase. For GKE service networking, Cloud Deploy approximates the canary percentage by adjusting pod counts; use Gateway API if you need traffic-based splitting.
 
 ## Tips for Writing Good Verification Tests
 
@@ -283,4 +286,4 @@ Keep these principles in mind when designing your verification suite:
 
 ## Summary
 
-Verification in Cloud Deploy is a powerful quality gate that catches bad deployments automatically. By defining verification containers in your Skaffold configuration and enabling verification on your pipeline stages, you ensure every deployment is validated before it is considered successful. Combined with automated rollbacks, verification gives you a deployment pipeline that heals itself when things go wrong.
+Verification in Cloud Deploy is a powerful quality gate that catches bad deployments automatically. By defining verification containers in your Skaffold configuration and enabling verification on your pipeline stages, you ensure every deployment is validated before it is considered successful. Combined with rollout repair or rollback automation, verification gives you a deployment pipeline that can respond automatically when things go wrong.
