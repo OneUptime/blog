@@ -10,13 +10,13 @@ Description: A complete guide to implementing URL path versioning in Azure API M
 
 API versioning is one of those things that is easy to put off and painful to retrofit. The moment you have external consumers depending on your API, every breaking change becomes a negotiation. Azure API Management provides built-in versioning support that lets you run multiple versions of an API side by side, each with its own operations and policies, while keeping everything organized under a single umbrella.
 
-In this post, I will focus on URL path versioning, the most common and most visible approach, where the version number appears in the URL like `/v1/orders` or `/v2/orders`.
+In this post, I will focus on URL path versioning, the most common and most visible approach, where the version number appears in the URL path. In APIM, the version segment is added after the API path, like `/orders/v1` or `/orders/v2`.
 
 ## Why URL Path Versioning
 
 There are three main versioning schemes that APIM supports:
 
-1. **URL path**: `/v1/orders` vs `/v2/orders`
+1. **URL path**: `/orders/v1` vs `/orders/v2`
 2. **Query string**: `/orders?api-version=v1` vs `/orders?api-version=v2`
 3. **Header**: Same URL, but with a custom header like `Api-Version: v1`
 
@@ -38,7 +38,7 @@ Fill in the version set details:
 - **Versioning scheme**: URL path
 - **Version identifier**: `v1`
 
-APIM creates the version set and moves your existing API into it as version v1. The API is now accessible at its original URL suffix plus `/v1`. For example, if your API URL suffix was `orders`, the full gateway URL becomes `https://yourapi.azure-api.net/orders/v1/`.
+APIM creates the version set and keeps your existing API as the `Original` version at the old base URL, so existing callers are not broken. It also creates the new versioned API, which is accessible at its original URL suffix plus `/v1`. For example, if your API URL suffix was `orders`, the versioned gateway URL becomes `https://yourapi.azure-api.net/orders/v1/`.
 
 ## Adding a New Version
 
@@ -49,7 +49,7 @@ Go to the version set, click "Add version," and specify:
 - **Version identifier**: `v2`
 - **Full API version set**: Select the existing version set
 
-APIM creates a new API entry for v2. It is a blank slate - no operations, no policies. If you want to start from the v1 definition and modify it, you can clone the v1 API instead:
+APIM creates a new API entry for v2 based on an existing API or revision. If you want to start from the v1 definition and modify it explicitly, you can clone or copy from the v1 API:
 
 1. Go to the v1 API
 2. Click the three-dot menu and select "Clone"
@@ -72,10 +72,10 @@ You can also use a policy to dynamically route based on the version:
 <inbound>
     <base />
     <choose>
-        <when condition="@(context.Api.Version == "v1")">
+        <when condition='@(context.Api.Version == "v1")'>
             <set-backend-service base-url="https://my-orders-v1.azurewebsites.net" />
         </when>
-        <when condition="@(context.Api.Version == "v2")">
+        <when condition='@(context.Api.Version == "v2")'>
             <set-backend-service base-url="https://my-orders-v2.azurewebsites.net" />
         </when>
     </choose>
@@ -150,7 +150,7 @@ The gentle approach (options 1-3) is always better for your developer relationsh
 
 When you enable versioning, you might want to handle requests to the base URL without a version segment. For example, what happens when someone calls `/orders/` instead of `/orders/v1/`?
 
-By default, APIM returns a 404 because there is no matching API at the base path. You have a few options:
+If you created a versioned API from scratch, APIM returns a 404 by default because there is no matching API at the base path. If you added versioning to an existing unversioned API, the `Original` version continues to respond at the base path unless you remove or change it. You have a few options:
 
 - **Redirect to the latest version**: Create a standalone API at the base path with a policy that redirects:
 
