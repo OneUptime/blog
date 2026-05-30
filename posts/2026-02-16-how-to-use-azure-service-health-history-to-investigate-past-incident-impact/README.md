@@ -33,7 +33,7 @@ For programmatic access, use the Resource Health Events API:
 
 # The filter uses OData syntax to narrow down results
 az rest --method get \
-  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.ResourceHealth/events?api-version=2022-10-01&\$filter=eventType eq 'ServiceIssue' and properties.impactStartTime ge 2026-01-17" \
+  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.ResourceHealth/events?api-version=2025-05-01&\$filter=properties/eventType eq 'ServiceIssue'&queryStartTime=2026-01-17" \
   --query "value[].{title:properties.title, status:properties.status, start:properties.impactStartTime, end:properties.impactMitigationTime, services:properties.impact[].impactedService}"
 ```
 
@@ -97,7 +97,7 @@ Beyond service-level incidents, check Resource Health for the specific resources
 ```bash
 # Check resource health events for a specific VM
 az rest --method get \
-  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Compute/virtualMachines/<vm-name>/providers/Microsoft.ResourceHealth/availabilityStatuses?api-version=2023-07-01-preview&\$expand=recommendedactions" \
+  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Compute/virtualMachines/<vm-name>/providers/Microsoft.ResourceHealth/availabilityStatuses?api-version=2025-05-01&\$expand=recommendedactions" \
   --query "value[].{status:properties.availabilityState, summary:properties.summary, time:properties.occuredTime}"
 ```
 
@@ -174,7 +174,7 @@ Some compliance frameworks require you to maintain records of infrastructure inc
 # Export service health events to a JSON file for archival
 # This captures all events for the past 90 days
 az rest --method get \
-  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.ResourceHealth/events?api-version=2022-10-01" \
+  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.ResourceHealth/events?api-version=2025-05-01" \
   --output json > service-health-history-$(date +%Y%m%d).json
 ```
 
