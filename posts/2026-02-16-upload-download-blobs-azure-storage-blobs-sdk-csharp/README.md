@@ -25,6 +25,7 @@ There are two ways to connect: connection string or DefaultAzureCredential. For 
 
 ```csharp
 using Azure.Identity;
+using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 
@@ -197,12 +198,14 @@ BlobClient destination = blobService
     .GetBlobContainerClient("archive")
     .GetBlobClient("2026/q1-report.pdf");
 
-// Start the copy operation
-await destination.StartCopyFromUriAsync(source.Uri);
-Console.WriteLine("Copy started");
+// Start the copy operation and wait for it to complete
+CopyFromUriOperation copyOperation = await destination.StartCopyFromUriAsync(source.Uri);
+await copyOperation.WaitForCompletionAsync();
+Console.WriteLine("Copy completed");
 
 // Move = copy + delete
-await destination.StartCopyFromUriAsync(source.Uri);
+copyOperation = await destination.StartCopyFromUriAsync(source.Uri);
+await copyOperation.WaitForCompletionAsync();
 await source.DeleteIfExistsAsync();
 Console.WriteLine("Blob moved");
 ```
@@ -289,7 +292,8 @@ app.MapPost("/api/upload", async (
         return Results.BadRequest("File too large");
 
     // Generate a unique blob name
-    var blobName = $"uploads/{Guid.NewGuid()}/{file.FileName}";
+    var safeFileName = Path.GetFileName(file.FileName);
+    var blobName = $"uploads/{Guid.NewGuid()}/{safeFileName}";
     var container = blobService.GetBlobContainerClient("user-uploads");
     await container.CreateIfNotExistsAsync();
 
