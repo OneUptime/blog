@@ -41,8 +41,8 @@ The asynchronous nature means your reads might be slightly behind the primary. F
 
 Before creating read replicas:
 
-- The source server must be a Flexible Server (not Single Server).
-- The `binlog_expire_logs_seconds` parameter should be set appropriately (default is fine for most cases).
+- The source server must be a Flexible Server (not Single Server) in the General Purpose or Memory-Optimized pricing tier.
+- The `binlog_expire_logs_seconds` parameter should be set appropriately if you need to retain binary logs longer than Azure's managed read replica workflow requires. The default is fine for most read replica scenarios.
 - You need sufficient quota in your subscription for the additional compute resources.
 - For cross-region replicas, both regions must support Flexible Server.
 
@@ -55,7 +55,7 @@ Here is how to create a read replica in the same region:
 
 az mysql flexible-server replica create \
   --resource-group myResourceGroup \
-  --name my-mysql-replica-1 \
+  --replica-name my-mysql-replica-1 \
   --source-server my-mysql-primary \
   --zone 2
 ```
@@ -68,7 +68,7 @@ For a cross-region replica:
 # Create a cross-region read replica for disaster recovery
 az mysql flexible-server replica create \
   --resource-group myResourceGroup \
-  --name my-mysql-replica-westus \
+  --replica-name my-mysql-replica-westus \
   --source-server my-mysql-primary \
   --location westus2
 ```
@@ -117,7 +117,7 @@ az monitor metrics alert create \
   --name mysql-replica-lag-alert \
   --resource-group myResourceGroup \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.DBforMySQL/flexibleServers/my-mysql-replica-1" \
-  --condition "avg ReplicationLag > 30" \
+  --condition "avg replication_lag > 30" \
   --description "Replication lag exceeded 30 seconds" \
   --action-group myActionGroup
 ```
@@ -173,7 +173,7 @@ def execute_read(query, params=None):
 
 ### Load Balancing Across Multiple Replicas
 
-If you have multiple replicas, distribute reads across them. You can use a simple round-robin approach:
+If you have multiple replicas, distribute reads across them. You can use a simple random selection approach:
 
 ```python
 import random
@@ -207,6 +207,8 @@ az mysql flexible-server update \
 
 This is useful when your replicas handle lighter workloads than the primary. No need to pay for the same compute tier on every replica.
 
+If you scale the source up, update replica sizing first or keep replicas at equal or greater capacity so they can keep up with changes from the source.
+
 ## Promoting a Replica
 
 If you need to promote a replica to a standalone server (for example, during a disaster recovery scenario), you can stop replication:
@@ -229,7 +231,7 @@ For disaster recovery, the plan is simple:
 1. Maintain a cross-region replica in your DR region.
 2. If the primary region goes down, promote the replica.
 3. Update your application to point to the new server.
-4. Once the original region recovers, set up replication in the other direction.
+4. Once the original region recovers, create a new replica in that region from the promoted server or rebuild the old primary as needed.
 
 For geo-distributed reads, place replicas close to your users:
 
@@ -237,14 +239,14 @@ For geo-distributed reads, place replicas close to your users:
 # Replica in Europe for European users
 az mysql flexible-server replica create \
   --resource-group myResourceGroup \
-  --name my-mysql-replica-europe \
+  --replica-name my-mysql-replica-europe \
   --source-server my-mysql-primary \
   --location northeurope
 
 # Replica in Asia for Asian users
 az mysql flexible-server replica create \
   --resource-group myResourceGroup \
-  --name my-mysql-replica-asia \
+  --replica-name my-mysql-replica-asia \
   --source-server my-mysql-primary \
   --location southeastasia
 ```
@@ -264,10 +266,10 @@ A few things to keep in mind:
 
 There are some limitations to be aware of:
 
-- Read replicas do not support high availability (zone-redundant HA). Only the primary can have HA.
+- Read replicas do not provide automatic high availability or automated failover.
 - You cannot create a replica of a replica (cascading replication is not supported).
 - If the primary server is deleted, all replicas are promoted to standalone servers.
-- Replicas must be in the same subscription as the source server.
+- If you create a replica from a source in a different resource group or subscription, pass the source server resource ID to `--source-server`.
 - Server parameters that affect binlog format should not be changed on replicas.
 
 ## Monitoring and Alerts
