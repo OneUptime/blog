@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Pipelines, Azure Function, Deployment Slots, Staging, Swap Deployment, CI/CD, Serverless
 
-Description: Learn how to configure Azure Pipelines to deploy Azure Functions to staging slots and use swap deployment for zero-downtime production releases.
+Description: Learn how to configure Azure Pipelines to deploy Azure Functions to staging slots and use swap deployment for low-downtime production releases.
 
 ---
 
-Deploying directly to production is a recipe for downtime. Even with thorough testing in your pipeline, there is always a risk that the new code behaves differently in the production environment. Azure Functions deployment slots let you deploy to a staging slot first, verify everything works, and then swap it into production with zero downtime. If something goes wrong after the swap, you can swap back instantly.
+Deploying directly to production is a recipe for downtime. Even with thorough testing in your pipeline, there is always a risk that the new code behaves differently in the production environment. Azure Functions deployment slots let you deploy to a staging slot first, verify everything works, and then swap it into production without dropping new HTTP requests during the swap. If something goes wrong after the swap, you can swap back quickly.
 
 This approach, commonly called blue-green deployment, separates deployment from release. Your new code is deployed and warmed up in the staging slot while the production slot continues serving traffic. The swap operation simply changes which slot receives traffic, making the cutover nearly instantaneous.
 
@@ -21,7 +21,8 @@ Key properties of deployment slots:
 - Each slot has its own URL (e.g., `myfunction-staging.azurewebsites.net`)
 - Slots can have different application settings (connection strings, feature flags)
 - Some settings "stick" to the slot (slot settings) while others travel with the code during swaps
-- Slots share the same App Service Plan, so there is no additional compute cost (but they do use resources from the plan)
+- Slots share the same hosting plan, so there is no additional plan cost (but they do use resources from the plan)
+- Slot availability depends on the hosting option; for example, Flex Consumption does not currently support deployment slots
 
 ```mermaid
 graph LR
@@ -57,14 +58,7 @@ az functionapp deployment slot list \
 Some settings should be different between staging and production. For example, you might want staging to connect to a test database while production connects to the real one. Mark these as "slot settings" so they stay with the slot during swaps.
 
 ```bash
-# Set a connection string on the staging slot
-az functionapp config appsettings set \
-  --name "my-function-app" \
-  --resource-group "my-rg" \
-  --slot "staging" \
-  --settings "DatabaseConnection=Server=test-db.database.windows.net;..."
-
-# Mark settings as slot-specific (they stay with the slot, not the code)
+# Set a slot-specific app setting on the staging slot
 az functionapp config appsettings set \
   --name "my-function-app" \
   --resource-group "my-rg" \
@@ -96,6 +90,7 @@ pool:
 
 variables:
   functionAppName: 'my-function-app'
+  functionProject: 'src/MyFunctionApp/MyFunctionApp.csproj'
   resourceGroupName: 'my-rg'
   azureSubscription: 'Azure-Production-Connection'
 
@@ -110,14 +105,16 @@ stages:
             displayName: 'Restore dependencies'
             inputs:
               command: 'restore'
-              projects: '**/*.csproj'
+              projects: '$(functionProject)'
 
           - task: DotNetCoreCLI@2
-            displayName: 'Build project'
+            displayName: 'Publish project'
             inputs:
-              command: 'build'
-              projects: '**/*.csproj'
-              arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)'
+              command: 'publish'
+              projects: '$(functionProject)'
+              arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)/publish'
+              zipAfterPublish: false
+              modifyOutputPath: false
 
           - task: DotNetCoreCLI@2
             displayName: 'Run unit tests'
@@ -129,7 +126,7 @@ stages:
           - task: ArchiveFiles@2
             displayName: 'Create deployment package'
             inputs:
-              rootFolderOrFile: '$(Build.ArtifactStagingDirectory)'
+              rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/publish'
               includeRootFolder: false
               archiveFile: '$(Build.ArtifactStagingDirectory)/function-app.zip'
 
@@ -152,7 +149,10 @@ stages:
               steps:
                 - task: DownloadBuildArtifacts@1
                   inputs:
+                    buildType: 'current'
+                    downloadType: 'single'
                     artifactName: 'function-package'
+                    downloadPath: '$(Pipeline.Workspace)'
 
                 - task: AzureFunctionApp@2
                   displayName: 'Deploy to staging slot'
@@ -206,10 +206,10 @@ stages:
                   displayName: 'Swap staging to production'
                   inputs:
                     azureSubscription: $(azureSubscription)
-                    action: 'Swap Slots'
-                    webAppName: $(functionAppName)
-                    resourceGroupName: $(resourceGroupName)
-                    sourceSlot: 'staging'
+                    Action: 'Swap Slots'
+                    WebAppName: $(functionAppName)
+                    ResourceGroupName: $(resourceGroupName)
+                    SourceSlot: 'staging'
 ```
 
 ## Adding Auto-Rollback
@@ -264,10 +264,10 @@ If production starts throwing errors after the swap, you want to swap back autom
                   displayName: 'Swap back to previous version'
                   inputs:
                     azureSubscription: $(azureSubscription)
-                    action: 'Swap Slots'
-                    webAppName: $(functionAppName)
-                    resourceGroupName: $(resourceGroupName)
-                    sourceSlot: 'staging'
+                    Action: 'Swap Slots'
+                    WebAppName: $(functionAppName)
+                    ResourceGroupName: $(resourceGroupName)
+                    SourceSlot: 'staging'
 
                 - script: |
                     echo "##vso[task.logissue type=warning]Production rollback executed!"
@@ -313,7 +313,7 @@ The pattern works the same for non-.NET function apps. Here is the build stage f
       steps:
         - task: NodeTool@0
           inputs:
-            versionSpec: '18.x'
+            versionSpec: '22.x'
 
         - script: |
             npm ci
@@ -336,17 +336,17 @@ The pattern works the same for non-.NET function apps. Here is the build stage f
 
 ## Traffic Routing for Canary Testing
 
-Instead of a binary swap, you can route a percentage of traffic to the staging slot for canary testing.
+Instead of a binary swap, you can route a percentage of HTTP traffic to the staging slot for canary testing.
 
 ```bash
-# Route 10% of production traffic to the staging slot
-az functionapp traffic-routing set \
+# Route 10% of production HTTP traffic to the staging slot
+az webapp traffic-routing set \
   --name "my-function-app" \
   --resource-group "my-rg" \
   --distribution staging=10
 
 # After validation, increase to 50%
-az functionapp traffic-routing set \
+az webapp traffic-routing set \
   --name "my-function-app" \
   --resource-group "my-rg" \
   --distribution staging=50
@@ -358,9 +358,9 @@ az functionapp deployment slot swap \
   --slot "staging"
 
 # Or reset traffic routing if there is a problem
-az functionapp traffic-routing clear \
+az webapp traffic-routing clear \
   --name "my-function-app" \
   --resource-group "my-rg"
 ```
 
-Deployment slots turn Azure Functions deployments from a risky operation into a safe, reversible one. The staging slot gives you a production-identical environment to validate against, the swap operation ensures zero downtime, and the ability to swap back provides an instant rollback mechanism. For any Function App that serves production traffic, slot-based deployment should be the default approach.
+Deployment slots turn Azure Functions deployments from a risky operation into a safe, reversible one. The staging slot gives you a production-like environment to validate against, the swap operation avoids dropped HTTP requests during cutover, and the ability to swap back provides a quick rollback mechanism. For supported Function Apps that serve production traffic, slot-based deployment should be the default approach.
