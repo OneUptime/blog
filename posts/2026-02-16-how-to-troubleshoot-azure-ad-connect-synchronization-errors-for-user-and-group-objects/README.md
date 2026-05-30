@@ -48,7 +48,8 @@ To see the results of the last sync cycle, use this command.
 
 ```powershell
 # Get the most recent sync run history with status and error counts
-Get-ADSyncRunProfileResult -ConnectorName "yourdomain.com" -NumberRequested 5
+$connector = Get-ADSyncConnector -Name "yourdomain.com"
+Get-ADSyncRunProfileResult -ConnectorId $connector.Identifier -NumberRequested 5
 ```
 
 This shows you whether the last runs succeeded, how many objects were processed, and how many had errors.
@@ -118,13 +119,13 @@ Once you find the conflicting object, either remove the duplicate address from o
 
 ## Error 3: LargeObject - Exceeding Attribute Size Limits
 
-Entra ID has limits on multi-valued attributes. For example, a user can have a maximum of around 100 proxy addresses, and a group can have up to 50,000 members (but the sync engine has its own limits).
+Entra ID has limits on attribute size, length, and count. For example, Microsoft Entra ID has a hard limit of 15 values for the `userCertificate` attribute, and the practical maximum number of proxy addresses for a user depends on the size of the whole object. Microsoft Entra Connect v2 can sync groups with up to 250,000 members.
 
 **Symptoms:** Export error with `LargeObject` code, typically on groups with thousands of members or users with many proxy addresses.
 
 **How to fix it:**
 
-For groups that exceed the member limit, the cleanest solution is to convert them to cloud-managed groups or use group writeback v2.
+For groups that exceed the member limit, reduce the group's membership, split the group, or exclude it from sync if it does not need to exist in Entra ID.
 
 For proxy address bloat, audit the affected user and clean up unnecessary entries.
 
@@ -137,11 +138,11 @@ Get-ADUser -Identity "john.smith" -Properties proxyAddresses |
 
 Remove any stale or unnecessary addresses directly in on-premises AD, then run a delta sync.
 
-## Error 4: DataValidationFailed - Invalid Characters or Format
+## Error 4: IdentityDataValidationFailed - Invalid Characters or Format
 
 Entra ID is stricter about attribute formatting than on-premises AD. Characters that are perfectly valid in on-premises attributes might get rejected during export to the cloud.
 
-**Symptoms:** Export error with `DataValidationFailed`, usually pointing to a specific attribute like `mailNickname` or `displayName`.
+**Symptoms:** Export error with `IdentityDataValidationFailed`, usually pointing to a specific attribute like `userPrincipalName`.
 
 Common causes include:
 - Leading or trailing spaces in the display name
@@ -177,10 +178,9 @@ Group sync errors are their own category of pain. The most common issues are:
 **How to diagnose:**
 
 ```powershell
-# Check for groups that have sync errors in the connector space
+# Check recent export runs for group-related errors
 $connector = Get-ADSyncConnector -Name "yourdomain.com"
-$errors = Get-ADSyncConnectorStatistics -ConnectorIdentifier $connector.Identifier
-Write-Host "Export errors: $($errors.ExportErrors)"
+Get-ADSyncRunProfileResult -ConnectorId $connector.Identifier -NumberRequested 10 -RunStepDetails
 ```
 
 For groups with out-of-scope members, you either need to bring those members into sync scope or configure the sync rules to handle missing references gracefully.
@@ -210,7 +210,7 @@ Azure AD Connect Health provides a dashboard in the Azure portal that shows sync
 
 ```powershell
 # Check the Azure AD Connect Health agent status
-Get-Service -Name "Azure AD Connect Health Sync Insights Service" |
+Get-Service -DisplayName "Microsoft Entra Connect Health Sync Insights Service" |
     Select-Object Name, Status, StartType
 ```
 
