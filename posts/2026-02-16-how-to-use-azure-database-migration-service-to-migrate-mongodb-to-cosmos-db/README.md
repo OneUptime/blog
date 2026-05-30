@@ -24,15 +24,15 @@ The tradeoff is cost and some feature limitations. Not every MongoDB feature is 
 
 ## Prerequisites
 
-- A source MongoDB instance (3.4 or later, standalone or replica set)
+- A source MongoDB instance (3.2 or later, standalone or replica set)
 - An Azure Cosmos DB for MongoDB account
 - Azure Database Migration Service (Premium tier for online migration)
 - Network connectivity between the source MongoDB and Azure
-- The source MongoDB must be a replica set (even for standalone, you need to convert it)
+- For online migration, the source MongoDB must be a replica set (even for standalone, you need to convert it)
 
 ## Step 1: Prepare the Source MongoDB
 
-DMS requires the source MongoDB to be configured as a replica set. This is because DMS reads the oplog (operation log) for change tracking during online migration. If your MongoDB is standalone, you need to convert it to a single-node replica set.
+DMS requires the source MongoDB to be configured as a replica set for online migration. This is because DMS reads the oplog (operation log) for change tracking during online migration. If your MongoDB is standalone, you need to convert it to a single-node replica set.
 
 ```bash
 # If running standalone MongoDB, convert to a replica set
@@ -106,11 +106,11 @@ az cosmosdb mongodb collection create \
   --throughput 10000
 ```
 
-**Important**: Pre-create collections with shard keys before migration. DMS can create collections automatically, but it will not set shard keys, which means your data will be on a single partition - terrible for performance at scale.
+**Important**: Pre-create collections with shard keys before migration, or specify the shard key in the DMS collection settings when DMS creates the target collection. If you skip the shard key, the collection will not be partitioned effectively, which is terrible for performance at scale.
 
 ## Step 3: Plan Your Shard Keys
 
-Choosing the right shard key is probably the most important decision in this migration. In self-managed MongoDB, you might have been running without sharding. In Cosmos DB, every collection is distributed, and the shard key determines how data is partitioned.
+Choosing the right shard key is probably the most important decision in this migration. In self-managed MongoDB, you might have been running without sharding. In Cosmos DB, the shard key determines how data is partitioned for scalable collections.
 
 Good shard keys have:
 - High cardinality (many unique values)
@@ -211,7 +211,7 @@ Watch for these during migration:
 
 ## Step 8: Handle Index Migration
 
-DMS can migrate indexes, but not all MongoDB index types are supported in Cosmos DB. Check and plan for these differences:
+Not all MongoDB index types and index properties are supported in Cosmos DB. Check and plan for these differences:
 
 **Supported in Cosmos DB**:
 - Single field indexes
@@ -244,9 +244,9 @@ db.users.createIndex(
     { unique: true, name: "idx_unique_email" }
 )
 
-// Create a TTL index for session data (auto-expire after 24 hours)
+// Create a TTL index for session data based on Cosmos DB's _ts timestamp
 db.sessions.createIndex(
-    { createdAt: 1 },
+    { _ts: 1 },
     { expireAfterSeconds: 86400, name: "idx_session_ttl" }
 )
 ```
@@ -297,7 +297,7 @@ az cosmosdb mongodb collection throughput migrate \
 Test your application thoroughly. Pay attention to:
 - Query performance (some queries may behave differently with Cosmos DB's distributed architecture)
 - Aggregation pipeline compatibility (some stages may not be supported)
-- Write patterns (Cosmos DB has a 2 MB document size limit vs. MongoDB's 16 MB)
+- Write patterns and document size requirements (current Cosmos DB for MongoDB API versions support up to 16 MB documents, but older accounts or collections may still have 2 MB limits)
 
 ## Wrapping Up
 
