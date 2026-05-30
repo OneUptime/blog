@@ -57,10 +57,12 @@ Before working with blobs, you need a container. Containers are like top-level d
 container_client = blob_service.create_container("my-data")
 
 # Create a container if it does not already exist
+from azure.core.exceptions import ResourceExistsError
+
 container_client = blob_service.get_container_client("my-data")
 try:
     container_client.create_container()
-except Exception:
+except ResourceExistsError:
     pass  # Container already exists
 
 # List all containers in the storage account
@@ -82,14 +84,14 @@ from azure.storage.blob import ContentSettings
 
 container_client = blob_service.get_container_client("my-data")
 
-# Upload a file with automatic content type detection
+# Upload a file with an explicit content type
 def upload_file(local_path, blob_name, content_type=None):
     """Upload a local file to blob storage.
 
     Args:
         local_path: Path to the local file
         blob_name: Name for the blob in storage
-        content_type: Optional MIME type (auto-detected if not provided)
+        content_type: Optional MIME type to set on the blob
     """
     blob_client = container_client.get_blob_client(blob_name)
 
@@ -141,34 +143,27 @@ blob_client.upload_blob(
 ```python
 import os
 
-def upload_with_progress(local_path, blob_name, block_size=4*1024*1024):
+def upload_with_progress(local_path, blob_name):
     """Upload a large file with progress reporting.
 
     Args:
         local_path: Path to the local file
         blob_name: Destination blob name
-        block_size: Size of each upload chunk (default 4 MB)
     """
     file_size = os.path.getsize(local_path)
-    uploaded = 0
 
-    def progress_callback(response):
-        nonlocal uploaded
-        # Each callback represents a completed chunk
-        current = response.context.get("upload_stream_current", 0)
-        if current > uploaded:
-            uploaded = current
-            pct = (uploaded / file_size) * 100
-            print(f"Progress: {pct:.1f}% ({uploaded / (1024*1024):.1f} MB / {file_size / (1024*1024):.1f} MB)")
+    def progress_callback(current, total):
+        total = total or file_size
+        pct = (current / total) * 100
+        print(f"Progress: {pct:.1f}% ({current / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB)")
 
     blob_client = container_client.get_blob_client(blob_name)
     with open(local_path, "rb") as data:
         blob_client.upload_blob(
             data,
             overwrite=True,
-            max_block_size=block_size,
             max_concurrency=4,
-            raw_response_hook=progress_callback
+            progress_hook=progress_callback
         )
 
     print(f"Upload complete: {blob_name}")
@@ -220,12 +215,11 @@ print(f"Settings: {settings}")
 For large blobs that do not fit in memory:
 
 ```python
-def process_blob_in_chunks(blob_name, chunk_size=8*1024*1024):
+def process_blob_in_chunks(blob_name):
     """Process a large blob by reading it in chunks.
 
     Args:
         blob_name: Name of the blob
-        chunk_size: Size of each chunk to read (default 8 MB)
     """
     blob_client = container_client.get_blob_client(blob_name)
     download = blob_client.download_blob()
