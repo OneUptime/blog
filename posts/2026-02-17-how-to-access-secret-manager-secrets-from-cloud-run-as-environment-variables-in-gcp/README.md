@@ -10,17 +10,17 @@ Description: Learn how to securely inject Secret Manager secrets into Cloud Run 
 
 Hardcoding secrets in environment variables at deployment time is a common antipattern. The secret value ends up in your CI/CD logs, your deployment manifests, and your Cloud Run revision metadata. Anyone with `run.services.get` permission can read every environment variable on the service, including your database passwords.
 
-Cloud Run has built-in integration with Secret Manager that solves this cleanly. Instead of passing the secret value directly, you tell Cloud Run to pull the value from Secret Manager at startup. The secret is fetched at container boot time and injected as an environment variable or mounted as a file. The actual value never appears in your deployment configuration.
+Cloud Run has built-in integration with Secret Manager that solves this cleanly. Instead of passing the secret value directly, you tell Cloud Run to pull the value from Secret Manager. Environment variable secrets are fetched at instance startup, and mounted secrets are fetched when the mounted file is read. The actual value never appears in your deployment configuration.
 
 ## How the Integration Works
 
-When you deploy a Cloud Run service with a Secret Manager reference, Cloud Run does the following at startup:
+When you deploy a Cloud Run service with a Secret Manager reference, Cloud Run does the following:
 
-1. The Cloud Run instance's service account calls Secret Manager to fetch the secret version
-2. The secret value is injected into the container as an environment variable or a file mount
+1. The Cloud Run instance's service account is used to access the secret version
+2. The secret value is injected into the container as an environment variable at instance startup, or made available through a mounted file
 3. Your application code reads it like any normal environment variable or file
 
-The secret is only fetched when new instances start. If you rotate a secret, existing instances keep the old value until they are replaced (either by a new deployment or by autoscaling).
+Environment variable secrets are resolved when new instances start. If you rotate a secret used as an environment variable, existing instances keep the old value until they are replaced (either by a new deployment or by autoscaling). Mounted secret volumes are fetched when read, which makes them better suited for secret rotation.
 
 ## Prerequisites
 
@@ -201,11 +201,23 @@ resource "google_secret_manager_secret_iam_member" "db_password_access" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.cloud_run_sa.email}"
 }
+
+resource "google_secret_manager_secret_iam_member" "stripe_key_access" {
+  secret_id = google_secret_manager_secret.stripe_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "tls_cert_access" {
+  secret_id = google_secret_manager_secret.tls_cert.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
 ```
 
 ## Updating Secrets After Deployment
 
-When you add a new version to a secret in Secret Manager, existing Cloud Run instances do not automatically pick it up. You need to trigger a new revision:
+When you add a new version to a secret in Secret Manager, existing Cloud Run instances do not automatically pick it up if the secret is exposed as an environment variable. You need to deploy a new revision:
 
 ```bash
 # Add a new version to the secret
@@ -215,8 +227,10 @@ echo -n "new-password-456" | gcloud secrets versions add db-password \
 
 # Deploy a new revision to pick up the updated secret
 # If using "latest", just redeploy with the same config
-gcloud run services update my-service \
+gcloud run deploy my-service \
+  --image=us-docker.pkg.dev/my-project-id/my-repo/my-app:latest \
   --region=us-central1 \
+  --set-secrets="DB_PASSWORD=db-password:latest,STRIPE_API_KEY=stripe-api-key:latest" \
   --project=my-project-id
 ```
 
@@ -243,7 +257,7 @@ gcloud run deploy my-service \
   --project=my-project-id
 ```
 
-The downside is that you need to update the deployment every time a secret rotates. For automated rotation, `latest` is usually the better choice, paired with automated redeployment after rotation.
+The downside is that you need to update the deployment every time a secret rotates. For automated rotation with environment variables, pair rotation with automated redeployment after rotation. If your application can consume the secret as a file, mounted volumes with `latest` work better for rotation because Cloud Run fetches mounted secrets when they are read.
 
 ## Common Pitfalls
 
