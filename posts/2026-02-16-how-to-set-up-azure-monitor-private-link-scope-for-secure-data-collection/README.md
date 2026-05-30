@@ -10,7 +10,7 @@ Description: Step-by-step guide to configuring Azure Monitor Private Link Scope 
 
 By default, Azure Monitor agents and SDKs send telemetry data over the public internet. The data is encrypted with TLS, so it is secure in transit, but the traffic still traverses public networks. For organizations with strict security requirements - government workloads, financial services, healthcare, or anyone with a "no public internet" policy - this is not acceptable.
 
-Azure Monitor Private Link Scope (AMPLS) solves this by routing all monitoring data through Azure Private Link. Your agents connect to private endpoints in your VNet, and the traffic stays entirely within the Microsoft backbone network. No data leaves the private network.
+Azure Monitor Private Link Scope (AMPLS) solves this by routing supported monitoring traffic through Azure Private Link. Your agents connect to private endpoints in your VNet, and the traffic stays on the Microsoft backbone network instead of traversing the public internet.
 
 ## What AMPLS Covers
 
@@ -19,9 +19,9 @@ AMPLS secures the data path for multiple Azure Monitor services:
 - **Log Analytics workspaces**: Log ingestion and query data
 - **Application Insights**: Telemetry ingestion and live metrics
 - **Data Collection Endpoints**: Custom log ingestion through DCR-based collection
-- **Azure Monitor metrics**: Custom metrics ingestion
+- **Azure Monitor metrics**: Prometheus metrics ingestion through Azure Monitor workspace and DCE scenarios. Custom metrics sent from Azure Monitor Agent are not currently configurable over private link.
 
-Each AMPLS resource can be associated with up to 50 Azure Monitor resources (workspaces, Application Insights resources, etc.) and up to 10 private endpoints.
+Each AMPLS resource can be associated with up to 3,000 Log Analytics workspaces, up to 10,000 Application Insights components, and up to 10 private endpoints. A virtual network can connect to only one AMPLS.
 
 ## How It Works
 
@@ -49,8 +49,7 @@ graph LR
 
 az monitor private-link-scope create \
   --name myAMPLS \
-  --resource-group myRG \
-  --location global
+  --resource-group myRG
 ```
 
 AMPLS is a global resource, meaning it does not have a specific region. However, the private endpoints you connect to it are regional.
@@ -103,7 +102,7 @@ az network private-endpoint create \
   --location eastus
 ```
 
-The private endpoint gets a private IP address from the subnet you specify. All traffic to Azure Monitor will be routed through this IP.
+The private endpoint gets a private IP address from the subnet you specify. Traffic to the supported Azure Monitor endpoints that are resolved through private DNS will be routed through this private endpoint.
 
 ## Step 4: Configure Private DNS Zones
 
@@ -155,22 +154,51 @@ done
 Create DNS records for the private endpoint:
 
 ```bash
-# Create DNS zone group to auto-register DNS records
+# Create DNS zone group to auto-register DNS records for the first zone
 az network private-endpoint dns-zone-group create \
   --resource-group myRG \
   --endpoint-name ampls-private-endpoint \
   --name default \
   --private-dns-zone "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Network/privateDnsZones/privatelink.monitor.azure.com" \
   --zone-name monitor
+
+# Add the remaining Azure Monitor private DNS zones to the same group
+az network private-endpoint dns-zone-group add \
+  --resource-group myRG \
+  --endpoint-name ampls-private-endpoint \
+  --name default \
+  --private-dns-zone "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Network/privateDnsZones/privatelink.oms.opinsights.azure.com" \
+  --zone-name oms
+
+az network private-endpoint dns-zone-group add \
+  --resource-group myRG \
+  --endpoint-name ampls-private-endpoint \
+  --name default \
+  --private-dns-zone "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Network/privateDnsZones/privatelink.ods.opinsights.azure.com" \
+  --zone-name ods
+
+az network private-endpoint dns-zone-group add \
+  --resource-group myRG \
+  --endpoint-name ampls-private-endpoint \
+  --name default \
+  --private-dns-zone "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Network/privateDnsZones/privatelink.agentsvc.azure-automation.net" \
+  --zone-name agentsvc
+
+az network private-endpoint dns-zone-group add \
+  --resource-group myRG \
+  --endpoint-name ampls-private-endpoint \
+  --name default \
+  --private-dns-zone "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net" \
+  --zone-name blob
 ```
 
 ## Step 5: Configure the Access Mode
 
 AMPLS supports two access modes that control how resources handle public traffic:
 
-**Private Only**: Azure Monitor resources linked to this AMPLS only accept traffic from private link connections. All public ingestion and queries are blocked.
+**Private Only**: Networks connected to this AMPLS can reach only Azure Monitor resources in the AMPLS through private link. To block public ingestion and queries to the resources themselves, also configure the linked Azure Monitor resources to deny public network access.
 
-**Open**: Azure Monitor resources accept both private link and public traffic. This is the default and is easier to roll out incrementally.
+**Open**: Networks connected to the AMPLS can reach Azure Monitor resources in the AMPLS through private link and can still reach resources outside the AMPLS if those resources allow public network access. This is the default and is easier to roll out incrementally.
 
 ```bash
 # Set the access mode to Private Only for maximum security
@@ -181,7 +209,7 @@ az monitor private-link-scope update \
   --set accessModeSettings.queryAccessMode=PrivateOnly
 ```
 
-Be careful with Private Only mode - if you have agents outside the VNet (e.g., on-premises servers without VPN), they will lose the ability to send data. Switch to Private Only only after confirming all agents have network connectivity through the private endpoint.
+Be careful with Private Only mode - it can block access to Azure Monitor resources that are not in the AMPLS for any network sharing the same DNS. Switch to Private Only only after confirming all required Azure Monitor resources are in the AMPLS and all agents have network connectivity through the private endpoint.
 
 ## Step 6: Configure Agents to Use the Private Endpoint
 
@@ -238,7 +266,7 @@ Heartbeat
 
 ## Step 8: Handle Multi-Region Deployments
 
-If you have VNets in multiple Azure regions, you need a private endpoint in each region that connects to the same AMPLS.
+If you have isolated VNets in multiple Azure regions, create a private endpoint in each network that needs private access to the AMPLS. In hub-and-spoke or peered networks that share DNS and routing, a single private endpoint in the hub is typically preferred to avoid DNS record conflicts.
 
 ```bash
 # Create a private endpoint in a second region
@@ -259,18 +287,18 @@ Set up the same DNS zones and links for the west US VNet.
 
 **Agent cannot send data after enabling Private Only mode**: The agent is trying to reach Azure Monitor through a public endpoint, but public access is now blocked. Check DNS resolution from the agent's machine.
 
-**Queries fail in the portal**: If you set query access to Private Only, you can only run queries from within the VNet. The Azure Portal runs queries from Microsoft's infrastructure, which is outside your VNet. Consider keeping query access mode as Open, or use Azure Bastion to access the portal from within the VNet.
+**Queries fail in the portal**: If you set query access to Private Only, the browser or client running the query must be on a network that can resolve and reach the private endpoint. Some Azure portal experiences and Resource Manager API-based queries cannot use Azure Monitor private links and require the target resource to allow public queries. Consider keeping query access mode as Open until you confirm the portal experiences you need still work.
 
 **Private DNS zones not resolving correctly**: Ensure the VNet link is created for each DNS zone. Also verify there are no custom DNS settings on the VNet that override the private DNS zones.
 
-**Reaching the 50-resource limit**: A single AMPLS supports up to 50 associated resources. For large deployments, create multiple AMPLS resources, each with its own private endpoint.
+**Reaching AMPLS limits**: A single AMPLS supports up to 3,000 Log Analytics workspaces, up to 10,000 Application Insights components, and up to 10 private endpoints. For large or isolated deployments, create multiple AMPLS resources and keep DNS boundaries separate to avoid endpoint record conflicts.
 
 ## Security Benefits
 
 With AMPLS configured, your monitoring data flow has these security properties:
 
-- All data stays on the Microsoft backbone network
-- No monitoring traffic traverses the public internet
+- Supported Azure Monitor traffic stays on the Microsoft backbone network
+- Supported monitoring traffic does not traverse the public internet
 - You can use NSG rules to control which subnets can reach the private endpoint
 - Network flow logs show all monitoring traffic through the private endpoint
 - Compliant with regulatory requirements for private data handling
@@ -286,4 +314,4 @@ For most monitoring workloads, the additional cost is minimal compared to the se
 
 ## Summary
 
-Azure Monitor Private Link Scope lets you keep all monitoring data on private networks, meeting strict security and compliance requirements. The setup involves creating an AMPLS resource, associating your Azure Monitor resources, deploying a private endpoint in your VNet, and configuring DNS. Start with Open access mode for a gradual rollout, validate that agents are routing through the private endpoint, and switch to Private Only mode when you are confident everything is working. The result is monitoring with the same functionality but without any data touching the public internet.
+Azure Monitor Private Link Scope lets you keep supported monitoring traffic on private network paths, meeting strict security and compliance requirements. The setup involves creating an AMPLS resource, associating your Azure Monitor resources, deploying a private endpoint in your VNet, and configuring DNS. Start with Open access mode for a gradual rollout, validate that agents are routing through the private endpoint, and switch to Private Only mode when you are confident everything is working. The result is monitoring with the same functionality but without supported monitoring traffic touching the public internet.
