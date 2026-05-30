@@ -42,17 +42,28 @@ UEBA is not enabled by default. You need to turn it on and configure which data 
 
 In the Azure portal, navigate to Microsoft Sentinel, then go to Settings, then click on "Settings" again under the Configuration section. Find "Entity behavior analytics" and click "Set UEBA."
 
-You can also enable it through the API. This command enables UEBA on your Sentinel workspace:
+You can also enable it through the API. UEBA configuration is split between entity provider synchronization and the UEBA data sources to analyze. These commands enable both settings on your Sentinel workspace:
 
 ```bash
-# Enable UEBA through the REST API
+# Enable UEBA entity provider synchronization through the REST API
 
 az rest --method PUT \
-  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/rg-sentinel/providers/Microsoft.OperationalInsights/workspaces/law-sentinel-prod/providers/Microsoft.SecurityInsights/settings/EntityAnalytics?api-version=2023-02-01" \
+  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/rg-sentinel/providers/Microsoft.OperationalInsights/workspaces/law-sentinel-prod/providers/Microsoft.SecurityInsights/settings/EntityAnalytics?api-version=2025-07-01-preview" \
   --body '{
     "kind": "EntityAnalytics",
     "properties": {
       "entityProviders": ["AzureActiveDirectory", "ActiveDirectory"]
+    }
+  }'
+
+# Enable UEBA data sources
+
+az rest --method PUT \
+  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/rg-sentinel/providers/Microsoft.OperationalInsights/workspaces/law-sentinel-prod/providers/Microsoft.SecurityInsights/settings/Ueba?api-version=2025-07-01-preview" \
+  --body '{
+    "kind": "Ueba",
+    "properties": {
+      "dataSources": ["SigninLogs", "AuditLogs", "AzureActivity", "SecurityEvent"]
     }
   }'
 ```
@@ -83,7 +94,7 @@ In the UEBA settings, select all available data sources. The configuration page 
 
 ## Step 3: Wait for Baseline Learning
 
-After enabling UEBA, Sentinel needs time to build behavioral baselines. The learning period is typically 14-21 days. During this time, UEBA is analyzing historical data and establishing what "normal" looks like for each entity.
+After enabling UEBA, Sentinel needs time to build behavioral baselines. You can start looking for UEBA insights after about a week, but baseline windows vary by enrichment and anomaly model. Many models use roughly 7-21 days of steady telemetry, and some enrichments use longer lookback windows. During this time, UEBA is analyzing historical data and establishing what "normal" looks like for each entity.
 
 You will start seeing anomaly data after the learning period, but the accuracy improves over time as UEBA collects more data. Do not expect immediate results - this is a system that gets better the longer it runs.
 
@@ -95,9 +106,11 @@ UEBA populates several tables in your Log Analytics workspace that you can query
 
 **IdentityInfo** - User identity information enriched from Entra ID and Active Directory.
 
-**UserAccessAnalytics** - Tracks which resources users access and identifies unusual access patterns.
-
 **UserPeerAnalytics** - Identifies peer groups (users with similar roles and activity patterns) and flags when someone behaves differently from their peers.
+
+**Anomalies** - Stores anomaly detections from Microsoft Sentinel's built-in anomaly models, including UEBA-related anomalies, with an anomaly score from 0 to 1.
+
+**SentinelBehaviorInfo** and **SentinelBehaviorEntities** - Stores behavior summaries and related entity profiles if you enable the separate UEBA behaviors layer.
 
 Here is a query to explore UEBA anomalies. This finds the top anomalies detected in the past week ranked by investigation priority:
 
@@ -105,7 +118,7 @@ Here is a query to explore UEBA anomalies. This finds the top anomalies detected
 // Find the most significant UEBA anomalies from the past 7 days
 BehaviorAnalytics
 | where TimeGenerated > ago(7d)
-| where ActivityInsights has "True"
+| where InvestigationPriority > 0
 | summarize
     AnomalyCount = count(),
     MaxScore = max(InvestigationPriority),
@@ -126,7 +139,7 @@ When you open an incident and see a user entity, click on the user to open their
 
 - **Activity timeline** - A chronological view of the user's activities.
 - **Anomalies** - Activities that deviate from the user's baseline.
-- **Investigation priority score** - A composite score indicating how suspicious the user's recent behavior is.
+- **Investigation priority score** - A score indicating how unusual a UEBA-enriched event is.
 - **Peer comparison** - How the user's behavior compares to their peers.
 
 This KQL query provides a detailed behavioral profile for a specific user during an investigation:
@@ -144,7 +157,7 @@ BehaviorAnalytics
     ActionType,
     SourceIPAddress,
     SourceIPLocation,
-    DevicesInsight,
+    DevicesInsights,
     ActivityInsights,
     InvestigationPriority,
     UsersInsights
@@ -156,18 +169,22 @@ For a more comprehensive investigation, combine UEBA data with raw log data:
 ```kusto
 // Correlate UEBA anomalies with actual sign-in events
 let targetUser = "suspicious.user@company.com";
-let anomalyTimes = BehaviorAnalytics
+let anomalies = BehaviorAnalytics
 | where TimeGenerated > ago(7d)
 | where UserPrincipalName == targetUser
 | where InvestigationPriority > 3
-| project AnomalyTime = TimeGenerated;
+| project AnomalyTime = TimeGenerated, UserPrincipalName, InvestigationPriority, ActivityType;
 // Join with sign-in logs to get the full picture
 SigninLogs
 | where TimeGenerated > ago(7d)
 | where UserPrincipalName == targetUser
-| join kind=inner (anomalyTimes) on $left.TimeGenerated == $right.AnomalyTime
+| join kind=inner (anomalies) on UserPrincipalName
+| where TimeGenerated between ((AnomalyTime - 15m) .. (AnomalyTime + 15m))
 | project
+    AnomalyTime,
     TimeGenerated,
+    ActivityType,
+    InvestigationPriority,
     AppDisplayName,
     IPAddress,
     Location,
@@ -206,9 +223,9 @@ Save this as a Scheduled analytics rule in Sentinel with a 1-hour lookback windo
 
 ## Step 7: Integrate UEBA with Investigation Bookmarks
 
-During an investigation, you can save UEBA findings as bookmarks that become part of the incident evidence. This is valuable for documenting what anomalies you found and building a timeline of the attack.
+During an investigation, you can save relevant UEBA query results as bookmarks that become part of the incident evidence. This is valuable for documenting what anomalies you found and building a timeline of the attack.
 
-In the Sentinel investigation graph, when you expand an entity and see UEBA anomalies, you can bookmark specific anomalies. These bookmarks appear in the incident timeline and can be included in incident reports.
+From the Hunting or Logs experience, create bookmarks from the UEBA rows that matter, map the related entities, and add the bookmarks to a new or existing incident. These bookmarks appear in the incident timeline and can be included in incident reports.
 
 ## Understanding Investigation Priority Scores
 
