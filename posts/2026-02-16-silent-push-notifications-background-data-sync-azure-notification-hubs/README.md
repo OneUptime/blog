@@ -42,6 +42,7 @@ For iOS, the payload must include `content-available: 1` and should not include 
 
 ```csharp
 using Microsoft.Azure.NotificationHubs;
+using System.Collections.Generic;
 
 var hub = NotificationHubClient.CreateClientFromConnectionString(
     connectionString, hubName);
@@ -57,30 +58,43 @@ var iosSilentPayload = @"{
     ""conversationId"": ""conv_789""
 }";
 
+var apnsHeaders = new Dictionary<string, string>
+{
+    ["apns-push-type"] = "background",
+    ["apns-priority"] = "5"
+};
+
 // Send to a specific user's iOS devices
-await hub.SendAppleNativeNotificationAsync(iosSilentPayload, "user:123");
+await hub.SendNotificationAsync(
+    new AppleNotification(iosSilentPayload, apnsHeaders), "user:123");
 ```
 
 You can include custom data fields alongside the `aps` dictionary. These fields tell the app what kind of sync to perform and provide context so it can fetch only the relevant data.
 
 ### Android Silent Push Payload
 
-For Android, omit the `notification` object entirely and only include the `data` object.
+For Android with FCM v1, omit the `notification` object entirely and only include the `data` object under the Android message.
 
 ```csharp
 // Android silent push payload
 // No "notification" key means Android won't display anything
 var androidSilentPayload = @"{
-    ""data"": {
-        ""syncType"": ""messages"",
-        ""lastSyncTimestamp"": ""2026-02-16T10:30:00Z"",
-        ""conversationId"": ""conv_789"",
-        ""silent"": ""true""
+    ""message"": {
+        ""android"": {
+            ""data"": {
+                ""syncType"": ""messages"",
+                ""lastSyncTimestamp"": ""2026-02-16T10:30:00Z"",
+                ""conversationId"": ""conv_789"",
+                ""silent"": ""true""
+            },
+            ""priority"": ""normal""
+        }
     }
 }";
 
 // Send to a specific user's Android devices
-await hub.SendFcmNativeNotificationAsync(androidSilentPayload, "user:123");
+await hub.SendNotificationAsync(
+    new FcmV1Notification(androidSilentPayload), "user:123");
 ```
 
 ### Cross-Platform Send Method
@@ -88,6 +102,10 @@ await hub.SendFcmNativeNotificationAsync(androidSilentPayload, "user:123");
 Here is a helper that sends to both platforms.
 
 ```csharp
+using Microsoft.Azure.NotificationHubs;
+using System.Collections.Generic;
+using System.Text.Json;
+
 public class SilentPushService
 {
     private readonly NotificationHubClient _hub;
@@ -104,32 +122,54 @@ public class SilentPushService
         var timestamp = DateTimeOffset.UtcNow.ToString("o");
 
         // Build the iOS payload with content-available
-        var iosPayload = new
+        var iosPayload = new Dictionary<string, object>
         {
-            aps = new { content_available = 1 },
-            syncType = syncType,
-            timestamp = timestamp,
-            metadata = metadata
+            ["aps"] = new Dictionary<string, object>
+            {
+                ["content-available"] = 1
+            },
+            ["syncType"] = syncType,
+            ["timestamp"] = timestamp
         };
 
-        // Build the Android data-only payload
+        foreach (var item in metadata)
+        {
+            iosPayload[item.Key] = item.Value;
+        }
+
+        var apnsHeaders = new Dictionary<string, string>
+        {
+            ["apns-push-type"] = "background",
+            ["apns-priority"] = "5"
+        };
+
+        // Build the Android FCM v1 data-only payload
         var androidPayload = new
         {
-            data = new Dictionary<string, string>(metadata)
+            message = new
             {
-                ["syncType"] = syncType,
-                ["timestamp"] = timestamp,
-                ["silent"] = "true"
+                android = new
+                {
+                    data = new Dictionary<string, string>(metadata)
+                    {
+                        ["syncType"] = syncType,
+                        ["timestamp"] = timestamp,
+                        ["silent"] = "true"
+                    },
+                    priority = "normal"
+                }
             }
         };
 
         // Send to both platforms in parallel
         var tasks = new[]
         {
-            _hub.SendAppleNativeNotificationAsync(
-                JsonSerializer.Serialize(iosPayload), $"user:{userId}"),
-            _hub.SendFcmNativeNotificationAsync(
-                JsonSerializer.Serialize(androidPayload), $"user:{userId}")
+            _hub.SendNotificationAsync(
+                new AppleNotification(JsonSerializer.Serialize(iosPayload), apnsHeaders),
+                $"user:{userId}"),
+            _hub.SendNotificationAsync(
+                new FcmV1Notification(JsonSerializer.Serialize(androidPayload)),
+                $"user:{userId}")
         };
 
         await Task.WhenAll(tasks);
@@ -148,15 +188,12 @@ import UserNotifications
 
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
-    // Enable background fetch capability
+    // Register for the remote notifications background mode
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
 
         // Register for remote notifications
         application.registerForRemoteNotifications()
-
-        // Set minimum background fetch interval
-        application.setMinimumBackgroundFetchInterval(UIApplication.backgroundFetchIntervalMinimum)
 
         return true
     }
@@ -208,7 +245,7 @@ class BackgroundSyncManager {
                                completion: @escaping (Result<Bool, Error>) -> Void) {
 
         let conversationId = metadata["conversationId"] as? String ?? ""
-        let lastSync = metadata["lastSyncTimestamp"] as? String ?? ""
+        let lastSync = (metadata["lastSyncTimestamp"] as? String) ?? (metadata["timestamp"] as? String) ?? ""
 
         // Fetch new messages from the API
         APIClient.shared.getMessages(
@@ -232,7 +269,7 @@ Make sure you have the "Background Modes" capability enabled in your Xcode proje
 
 ## Handling Silent Pushes on Android
 
-On Android, data-only messages are always delivered to your `FirebaseMessagingService`, even when the app is in the background.
+On Android, data-only messages are delivered to your `FirebaseMessagingService` when FCM delivers them, even when the app is in the background.
 
 ```java
 // SilentSyncService.java
@@ -265,7 +302,7 @@ public class SilentSyncService extends FirebaseMessagingService {
         Log.d(TAG, "Silent sync triggered: " + syncType);
 
         // Use WorkManager for reliable background processing
-        // This ensures the sync completes even if the process is killed
+        // This lets Android reschedule the sync if the process is killed
         androidx.work.Data inputData = new androidx.work.Data.Builder()
             .putString("syncType", syncType)
             .putString("timestamp", timestamp)
@@ -291,6 +328,10 @@ public class SilentSyncService extends FirebaseMessagingService {
                 syncWork
             );
     }
+
+    private void handleRegularNotification(RemoteMessage remoteMessage) {
+        // Display or route visible notifications here.
+    }
 }
 ```
 
@@ -301,6 +342,7 @@ The `SyncWorker` does the actual data fetching.
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 import android.content.Context;
+import java.util.List;
 
 public class SyncWorker extends Worker {
 
