@@ -8,9 +8,9 @@ Description: Use the BigQuery Storage Write API from Node.js for high-throughput
 
 ---
 
-The BigQuery Storage Write API is the modern way to stream data into BigQuery. It replaces the older streaming insert API (tabledata.insertAll) with a protocol-buffer-based interface that offers better performance, exactly-once semantics, and lower costs. If you are ingesting large volumes of data from a Node.js application - event logs, IoT telemetry, clickstream data, or real-time analytics - the Storage Write API is what you should be using.
+The BigQuery Storage Write API is the modern way to stream data into BigQuery. It is the recommended alternative to the older streaming insert API (tabledata.insertAll), with a protocol-buffer-based interface that offers better performance, exactly-once semantics when you use stream offsets, and lower costs. If you are ingesting large volumes of data from a Node.js application - event logs, IoT telemetry, clickstream data, or real-time analytics - the Storage Write API is what you should be using.
 
-In this post, I will walk through setting up the BigQuery Storage Write API in a Node.js application, covering both the default stream (for simple use cases) and committed streams (for exactly-once delivery).
+In this post, I will walk through setting up the BigQuery Storage Write API in a Node.js application, covering both the default stream (for simple use cases) and committed streams with offsets (for exactly-once delivery).
 
 ## Why the Storage Write API Over Streaming Inserts
 
@@ -18,22 +18,22 @@ The older streaming insert API (used via `table.insert()`) has several limitatio
 
 - It charges per-row pricing for streaming inserts
 - It uses a best-effort deduplication that is not reliable for exactly-once
-- Rows have a 1MB size limit and you can only send 10,000 rows per request
-- Data may take up to 90 minutes to become available for querying
+- Rows have a 10MB size limit, the HTTP request size limit is 10MB, and each request can contain up to 50,000 rows
+- Recently streamed rows are queryable immediately after BigQuery acknowledges the request, but can remain in the streaming buffer for copy/export and partition metadata operations
 
 The Storage Write API fixes all of these:
 
-- Free if you stay under the monthly quota (first 2TB free)
-- Supports exactly-once semantics with committed streams
+- Free if you stay under the monthly quota (first 2TiB free)
+- Supports exactly-once semantics with application-created streams when you provide stream offsets
 - Uses protocol buffers for efficient serialization
-- Data is available for querying within seconds
+- Data written to the default stream or committed streams is available for querying as soon as BigQuery acknowledges the write
 
 ## Installing Dependencies
 
 ```bash
 # Install the BigQuery Storage client
 
-npm install @google-cloud/bigquery-storage @google-cloud/bigquery protobufjs
+npm install @google-cloud/bigquery-storage @google-cloud/bigquery express
 ```
 
 ## Setting Up the Table
@@ -85,76 +85,146 @@ The default stream is the simplest way to write data. It provides at-least-once 
 ```javascript
 // writer.js - Write data using the default stream
 const {
-  BigQueryWriteClient,
   adapt,
+  managedwriter,
 } = require('@google-cloud/bigquery-storage');
-const { BigQuery } = require('@google-cloud/bigquery');
+const { WriterClient, JSONWriter } = managedwriter;
 
 const PROJECT_ID = 'your-project-id';
 const DATASET_ID = 'events_dataset';
 const TABLE_ID = 'raw_events';
 
-const writeClient = new BigQueryWriteClient();
-const bigquery = new BigQuery({ projectId: PROJECT_ID });
+const writeClient = new WriterClient({ projectId: PROJECT_ID });
+let writerPromise;
+
+async function getWriter() {
+  if (writerPromise) return writerPromise;
+
+  writerPromise = (async () => {
+    const destinationTable = `projects/${PROJECT_ID}/datasets/${DATASET_ID}/tables/${TABLE_ID}`;
+
+    // Get the table schema to generate the protobuf descriptor
+    const writeStream = await writeClient.getWriteStream({
+      streamId: `${destinationTable}/streams/_default`,
+      view: 'FULL',
+    });
+
+    const protoDescriptor = adapt.convertStorageSchemaToProto2Descriptor(
+      writeStream.tableSchema,
+      'EventRow'
+    );
+
+    const connection = await writeClient.createStreamConnection({
+      streamId: managedwriter.DefaultStream,
+      destinationTable,
+    });
+
+    return new JSONWriter({
+      streamId: connection.getStreamId(),
+      connection,
+      protoDescriptor,
+    });
+  })();
+
+  return writerPromise;
+}
 
 async function writeEvents(events) {
-  const tablePath = `projects/${PROJECT_ID}/datasets/${DATASET_ID}/tables/${TABLE_ID}`;
+  const writer = await getWriter();
 
-  // Get the table schema to generate the protobuf descriptor
-  const [metadata] = await bigquery
-    .dataset(DATASET_ID)
-    .table(TABLE_ID)
-    .getMetadata();
-
-  const storageSchema = adapt.convertBigQuerySchemaToStorageTableSchema(
-    metadata.schema
-  );
-  const protoDescriptor = adapt.convertStorageSchemaToProto2Descriptor(
-    storageSchema,
-    'EventRow'
-  );
-
-  // Create the write stream reference for the default stream
-  const parent = `${tablePath}/streams/_default`;
-
-  // Serialize the rows using the protobuf descriptor
-  const protoRows = {
-    writerSchema: {
-      protoDescriptor: protoDescriptor,
-    },
-    rows: {
-      serializedRows: events.map((event) => {
-        const row = adapt.convertObjectToProto(
-          {
-            event_id: event.eventId,
-            event_type: event.eventType,
-            user_id: event.userId || '',
-            payload: event.payload ? JSON.stringify(event.payload) : null,
-            timestamp: event.timestamp || new Date().toISOString(),
-            source: event.source || 'node-app',
-          },
-          protoDescriptor
-        );
-        return row;
-      }),
-    },
-  };
+  const rows = events.map((event) => ({
+    event_id: event.eventId,
+    event_type: event.eventType,
+    user_id: event.userId || '',
+    payload: event.payload ? JSON.stringify(event.payload) : null,
+    timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
+    source: event.source || 'node-app',
+  }));
 
   // Append rows to the default stream
-  const [response] = await writeClient.appendRows({
-    writeStream: parent,
-    protoRows,
-  });
-
-  if (response.error) {
-    throw new Error(`Write failed: ${response.error.message}`);
-  }
+  const pendingWrite = writer.appendRows(rows);
+  const response = await pendingWrite.getResult();
 
   console.log(`Wrote ${events.length} rows, offset: ${response.appendResult.offset}`);
   return response;
 }
 
-module.exports = { writeEvents };
+async function closeWriter() {
+  if (writerPromise) {
+    const writer = await writerPromise;
+    writer.close();
+  }
+  writeClient.close();
+}
+
+module.exports = { writeEvents, closeWriter };
+```
+
+For committed streams, the same `JSONWriter` pattern applies after creating an application-created committed stream. Pass an offset as the second argument to `writer.appendRows(rows, offset)` so retries cannot write the same offset twice.
+
+```javascript
+// committed-writer.js - Write one batch with an application-created committed stream
+const {
+  adapt,
+  managedwriter,
+} = require('@google-cloud/bigquery-storage');
+const { WriterClient, JSONWriter } = managedwriter;
+
+const PROJECT_ID = 'your-project-id';
+const DATASET_ID = 'events_dataset';
+const TABLE_ID = 'raw_events';
+
+async function writeCommittedBatch(rows, offset = 0) {
+  const destinationTable = `projects/${PROJECT_ID}/datasets/${DATASET_ID}/tables/${TABLE_ID}`;
+  const writeClient = new WriterClient({ projectId: PROJECT_ID });
+
+  try {
+    const writeStream = await writeClient.createWriteStreamFullResponse({
+      streamType: managedwriter.CommittedStream,
+      destinationTable,
+    });
+
+    const protoDescriptor = adapt.convertStorageSchemaToProto2Descriptor(
+      writeStream.tableSchema,
+      'EventRow'
+    );
+
+    const connection = await writeClient.createStreamConnection({
+      streamId: writeStream.name,
+    });
+
+    const writer = new JSONWriter({
+      streamId: writeStream.name,
+      connection,
+      protoDescriptor,
+    });
+
+    const pendingWrite = writer.appendRows(rows, offset);
+    const response = await pendingWrite.getResult();
+
+    await connection.finalize();
+    writer.close();
+
+    return response;
+  } finally {
+    writeClient.close();
+  }
+}
+
+module.exports = { writeCommittedBatch };
+```
+
+When writing to a `TIMESTAMP` column through `JSONWriter`, pass a JavaScript `Date` object so the client can encode it as microseconds since the Unix epoch.
+
+```javascript
+const eventRow = {
+  event_id: 'evt-123',
+  event_type: 'signup',
+  user_id: 'user-456',
+  payload: JSON.stringify({ plan: 'pro' }),
+  timestamp: new Date(),
+  source: 'node-app',
+};
 ```
 
 ## Batching Writes for Throughput
@@ -163,7 +233,7 @@ For high-throughput scenarios, batch your writes instead of sending one row at a
 
 ```javascript
 // batched-writer.js - Batch events and write periodically
-const { writeEvents } = require('./writer');
+const { writeEvents, closeWriter } = require('./writer');
 
 class BatchedWriter {
   constructor(options = {}) {
@@ -211,6 +281,7 @@ class BatchedWriter {
   async close() {
     clearInterval(this.flushTimer);
     await this.flush();
+    await closeWriter();
   }
 }
 
@@ -313,12 +384,17 @@ async function writeWithRetry(events, maxRetries = 3) {
     try {
       return await writeEvents(events);
     } catch (error) {
-      const isRetryable = [
+      const retryableCodes = [
         'UNAVAILABLE',
         'DEADLINE_EXCEEDED',
         'RESOURCE_EXHAUSTED',
         'INTERNAL',
-      ].includes(error.code);
+        14, // UNAVAILABLE
+        4,  // DEADLINE_EXCEEDED
+        8,  // RESOURCE_EXHAUSTED
+        13, // INTERNAL
+      ];
+      const isRetryable = retryableCodes.includes(error.code);
 
       if (!isRetryable || attempt === maxRetries - 1) {
         console.error('Non-retryable write error:', error);
@@ -369,4 +445,4 @@ app.get('/metrics', (req, res) => {
 });
 ```
 
-The BigQuery Storage Write API is the recommended path for high-throughput data ingestion from Node.js applications. The default stream handles most use cases with at-least-once delivery, while committed streams provide exactly-once guarantees when you need them. Combined with batching and proper error handling, you can reliably ingest millions of events per day from a few Cloud Run instances.
+The BigQuery Storage Write API is the recommended path for high-throughput data ingestion from Node.js applications. The default stream handles most use cases with at-least-once delivery, while committed streams provide exactly-once guarantees when you use stream offsets. Combined with batching and proper error handling, you can reliably ingest millions of events per day from a few Cloud Run instances.
