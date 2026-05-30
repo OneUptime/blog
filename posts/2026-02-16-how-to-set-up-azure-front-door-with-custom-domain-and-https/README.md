@@ -8,13 +8,13 @@ Description: Step-by-step guide to setting up Azure Front Door with a custom dom
 
 ---
 
-Azure Front Door is a global load balancer and CDN that sits at the edge of Microsoft's network. It routes traffic to the closest or healthiest backend, provides SSL offloading, and can cache static content at edge locations worldwide. If you are running a web application that needs to serve users across multiple regions with low latency, Front Door is one of the best tools Azure offers.
+Azure Front Door is a global load balancer and CDN that sits at the edge of Microsoft's network. It routes traffic to healthy backends based on priority, latency, and weight, provides SSL offloading, and can cache static content at edge locations worldwide. If you are running a web application that needs to serve users across multiple regions with low latency, Front Door is one of the best tools Azure offers.
 
 In this guide, we will set up a Front Door profile, add a custom domain, enable HTTPS with a managed certificate, and route traffic to a backend origin.
 
 ## Why Azure Front Door
 
-Front Door operates at Layer 7 (HTTP/HTTPS) and has points of presence in over 100 edge locations globally. When a user in Tokyo makes a request, that request hits a Front Door edge node in Japan, which then routes it to the nearest healthy backend. The TLS handshake happens at the edge, not at your origin server, which dramatically reduces the perceived latency.
+Front Door operates at Layer 7 (HTTP/HTTPS) and has points of presence in over 100 edge locations globally. When a user in Tokyo makes a request, that request hits a nearby Front Door edge node, which then routes it to a healthy backend based on your routing configuration and measured latency. The TLS handshake happens at the edge, not at your origin server, which dramatically reduces the perceived latency.
 
 Key features include:
 
@@ -61,7 +61,18 @@ az afd endpoint create \
   --enabled-state Enabled
 ```
 
-This creates a hostname like `myapp-endpoint.z01.azurefd.net`. You can use this for testing before setting up your custom domain.
+This creates a hostname in the form `myapp-endpoint-<hash>.z01.azurefd.net`. You can get the exact hostname with:
+
+```bash
+az afd endpoint show \
+  --resource-group rg-frontdoor-demo \
+  --profile-name fd-myapp \
+  --endpoint-name myapp-endpoint \
+  --query "hostName" \
+  --output tsv
+```
+
+You can use this hostname for testing before setting up your custom domain.
 
 ## Step 3: Create an Origin Group and Origin
 
@@ -166,7 +177,7 @@ At your DNS provider, add:
 
 - **Record type:** CNAME
 - **Name:** `www`
-- **Value:** `myapp-endpoint.z01.azurefd.net`
+- **Value:** The exact endpoint hostname from Step 2, such as `myapp-endpoint-<hash>.z01.azurefd.net`
 
 ## Step 8: Associate the Custom Domain with the Route
 
