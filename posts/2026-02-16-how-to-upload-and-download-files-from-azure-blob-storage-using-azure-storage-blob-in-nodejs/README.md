@@ -23,14 +23,16 @@ npm init -y
 
 # Install dependencies
 
-npm install express multer @azure/storage-blob @azure/identity dotenv
+npm install express multer busboy @azure/storage-blob @azure/identity dotenv uuid
 ```
 
 - `express` - web framework
 - `multer` - middleware for handling file uploads
+- `busboy` - streaming multipart form parser for large uploads
 - `@azure/storage-blob` - Blob Storage SDK
 - `@azure/identity` - authentication (optional, for managed identity)
 - `dotenv` - environment variable management
+- `uuid` - unique blob name generation
 
 ## Configuration
 
@@ -212,7 +214,7 @@ async function listFiles(prefix = "") {
     const files = [];
 
     // List blobs with the given prefix
-    for await (const blob of containerClient.listBlobsFlat({ prefix })) {
+    for await (const blob of containerClient.listBlobsFlat({ prefix, includeMetadata: true })) {
         files.push({
             name: blob.name,
             size: blob.properties.contentLength,
@@ -269,7 +271,7 @@ Tie everything together with Express routes.
 const express = require("express");
 const multer = require("multer");
 const { initializeContainer } = require("./storage");
-const { uploadFile } = require("./upload");
+const { uploadFile, uploadLargeFile } = require("./upload");
 const { downloadFile, streamFile } = require("./download");
 const { listFiles, deleteFile, generateSasUrl } = require("./manage");
 
