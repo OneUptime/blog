@@ -26,12 +26,12 @@ What it cannot do:
 
 - Make HTTP calls (use the HTTP action instead)
 - Access the file system
-- Import npm packages (only built-in Node.js modules)
-- Run for more than a few seconds (there is an execution time limit)
+- Import npm packages or use `require()`
+- Run for more than a few seconds (Consumption workflows have a 5-second limit; Standard workflows have a 15-second limit)
 
 ## Prerequisites
 
-Inline code actions require an Integration Account linked to your Logic App. Even the free tier Integration Account works for inline code.
+For Consumption workflows, inline code actions require an Integration Account linked to your Logic App. Even the free tier Integration Account works for inline code. Standard workflows do not require an Integration Account for inline code.
 
 ```bash
 # Create a free-tier Integration Account
@@ -42,10 +42,12 @@ az logic integration-account create \
   --location eastus \
   --sku Free
 
-# Link it to your Logic App
-az logic workflow update \
+# Link it when you create or update a Consumption Logic App workflow from a definition file
+az logic workflow create \
   --resource-group myRG \
   --name myLogicApp \
+  --location eastus \
+  --definition workflow.json \
   --integration-account "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Logic/integrationAccounts/myIntegrationAccount"
 ```
 
@@ -95,7 +97,8 @@ var source = workflowContext.actions.Parse_Source_Data.outputs.body;
 // Parse the shipping address
 var addressParts = source.ship_to_address.split(', ');
 var streetCity = addressParts[0] || '';
-var stateZip = (addressParts[1] || '').split(' ');
+var city = addressParts.length >= 3 ? addressParts[addressParts.length - 2] : '';
+var stateZip = (addressParts[addressParts.length - 1] || '').split(' ');
 
 // Transform line items and calculate totals
 var lineItems = source.order_items.map(function(item) {
@@ -117,8 +120,8 @@ var result = {
     customerName: source.customer_first_name + ' ' + source.customer_last_name,
     lineItems: lineItems,
     shippingAddress: {
-        street: addressParts.length >= 2 ? addressParts.slice(0, -1).join(', ').replace(/, [A-Z]{2} \d{5}$/, '') : streetCity,
-        city: addressParts.length >= 2 ? addressParts[addressParts.length - 2] : '',
+        street: addressParts.length >= 3 ? addressParts.slice(0, -2).join(', ') : streetCity,
+        city: city,
         state: stateZip.length >= 2 ? stateZip[stateZip.length - 2] : '',
         zip: stateZip.length >= 1 ? stateZip[stateZip.length - 1] : ''
     },
@@ -163,7 +166,7 @@ if (order.items) {
 
 // Validate order total does not exceed limit
 var calculatedTotal = (order.items || []).reduce(function(sum, item) {
-    return sum + (item.quantity * item.price);
+    return sum + ((Number(item.quantity) || 0) * (Number(item.price) || 0));
 }, 0);
 
 if (calculatedTotal > 100000) {
@@ -316,7 +319,7 @@ The key to inline code is accessing data from previous actions through `workflow
 ```javascript
 // Different ways to access previous action data
 var httpResponse = workflowContext.actions.HTTP_Action.outputs.body;
-var triggerBody = workflowContext.trigger().outputs.body;
+var triggerBody = workflowContext.trigger.outputs.body;
 var parsedJson = workflowContext.actions.Parse_JSON.outputs.body;
 
 // Access specific properties
@@ -328,9 +331,9 @@ The action names must match exactly what they are called in your workflow (with 
 
 ## Limitations and Workarounds
 
-- **Execution time limit**: Inline code has a timeout (usually around 5 seconds). For complex processing, break it into multiple inline code actions.
+- **Execution time limit**: Inline code has a timeout: 5 seconds for Consumption workflows and 15 seconds for Standard workflows. For complex processing, break it into multiple inline code actions.
 - **No external calls**: Use separate HTTP actions for API calls and pass the results to inline code.
-- **No npm packages**: Stick to built-in JavaScript. For complex needs, use Azure Functions instead and call them from Logic Apps.
+- **No npm packages or `require()`**: Stick to built-in JavaScript. For complex needs, use Azure Functions instead and call them from Logic Apps.
 - **Memory limit**: Large datasets may hit memory limits. Process data in chunks if needed.
 
 ## When to Use Azure Functions Instead
