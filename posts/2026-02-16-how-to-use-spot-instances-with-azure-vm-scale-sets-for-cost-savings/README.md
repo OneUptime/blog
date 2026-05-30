@@ -75,12 +75,12 @@ az vmss create \
 Before choosing a VM size and region, check the current spot pricing:
 
 ```bash
-# Check spot pricing history for a VM size in a region
-az vm list-skus \
-  --location eastus \
-  --size Standard_D4s_v5 \
-  --query "[].{Name:name, Location:locationInfo[0].location, Restrictions:restrictions}" \
-  -o table
+# Check the current retail Spot price for a VM size in a region
+curl -sG "https://prices.azure.com/api/retail/prices" \
+  --data-urlencode "api-version=2023-01-01-preview" \
+  --data-urlencode "currencyCode=USD" \
+  --data-urlencode "\$filter=serviceName eq 'Virtual Machines' and armRegionName eq 'eastus' and armSkuName eq 'Standard_D4s_v5' and priceType eq 'Consumption' and contains(meterName, 'Spot')" \
+  | jq -r '.Items[] | [.armSkuName, .meterName, .armRegionName, .retailPrice, .unitOfMeasure] | @tsv'
 ```
 
 The Azure portal has a dedicated Spot pricing page that shows current and historical prices for each VM size and region. Look for VM sizes with consistently low spot prices and low eviction rates.
@@ -98,13 +98,19 @@ Your application should poll the metadata service and react when eviction is sch
 # eviction-monitor.sh - Monitor for scheduled evictions
 # Run this as a systemd service on each instance
 
+VM_NAME=$(curl -s -H "Metadata: true" \
+  "http://169.254.169.254/metadata/instance/compute/name?api-version=2021-02-01&format=text")
+
 while true; do
   # Query the scheduled events endpoint
   RESPONSE=$(curl -s -H "Metadata: true" \
     "http://169.254.169.254/metadata/scheduledevents?api-version=2020-07-01")
 
-  # Check if an eviction event is scheduled
-  if echo "$RESPONSE" | grep -q "Preempt"; then
+  # Check if an eviction event is scheduled for this VM
+  EVENT_ID=$(echo "$RESPONSE" | jq -r --arg vm "$VM_NAME" \
+    '.Events[] | select(.EventType == "Preempt" and (.Resources | index($vm))) | .EventId' | head -n 1)
+
+  if [ -n "$EVENT_ID" ]; then
     echo "Eviction detected at $(date)" >> /var/log/eviction.log
 
     # Gracefully stop the application
@@ -119,7 +125,7 @@ while true; do
 
     # Acknowledge the event so Azure can proceed
     curl -s -H "Metadata: true" -X POST \
-      -d '{"StartRequests": [{"EventId": "'"$(echo $RESPONSE | jq -r '.Events[0].EventId')"'"}]}' \
+      -d '{"StartRequests": [{"EventId": "'"$EVENT_ID"'"}]}' \
       "http://169.254.169.254/metadata/scheduledevents?api-version=2020-07-01"
 
     break
@@ -254,9 +260,20 @@ Azure may not have spot capacity for one specific VM size, but similar sizes mig
 ```json
 {
   "type": "Microsoft.Compute/virtualMachineScaleSets",
+  "sku": {
+    "name": "Mix",
+    "capacity": 5
+  },
   "properties": {
     "orchestrationMode": "Flexible",
     "platformFaultDomainCount": 1,
+    "skuProfile": {
+      "vmSizes": [
+        { "name": "Standard_D4s_v5" },
+        { "name": "Standard_D4as_v5" }
+      ],
+      "allocationStrategy": "lowestPrice"
+    },
     "virtualMachineProfile": {
       "priority": "Spot",
       "evictionPolicy": "Delete",
@@ -279,14 +296,14 @@ For batch processing, save checkpoints to external storage frequently. When an i
 ### Set Up Eviction Alerts
 
 ```bash
-# Create a metric alert for eviction events
+# Create a metric alert for VM availability drops
 az monitor metrics alert create \
   --resource-group myResourceGroup \
   --name "spot-eviction-alert" \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachineScaleSets/mySpotScaleSet" \
-  --condition "count VmAvailabilityMetric < 1" \
-  --description "Spot VM evictions detected" \
-  --action-group myActionGroup
+  --condition "min VmAvailabilityMetric < 1" \
+  --description "Spot VM availability dropped" \
+  --action myActionGroup
 ```
 
 ## Cost Analysis
