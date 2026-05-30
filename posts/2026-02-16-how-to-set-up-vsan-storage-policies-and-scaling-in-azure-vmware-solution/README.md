@@ -8,13 +8,13 @@ Description: Learn how to configure vSAN storage policies and scale storage in A
 
 ---
 
-Storage in Azure VMware Solution runs on VMware vSAN, a software-defined storage platform that aggregates local NVMe drives across all ESXi hosts into a shared datastore. How you configure storage policies directly affects performance, availability, and usable capacity. Getting these settings right matters because changing storage policies after VMs are running triggers a full data migration within the vSAN cluster.
+Storage in Azure VMware Solution runs on VMware vSAN, a software-defined storage platform that aggregates local storage devices across all ESXi hosts into a shared datastore. How you configure storage policies directly affects performance, availability, and usable capacity. Getting these settings right matters because changing storage policies after VMs are running triggers a data resync within the vSAN cluster.
 
 This guide covers vSAN storage policy configuration, capacity planning, and scaling options in Azure VMware Solution.
 
 ## How vSAN Works in AVS
 
-Each ESXi host in your AVS cluster contributes NVMe flash drives to the vSAN datastore. The AV36 host type provides approximately 15.2 TB of raw NVMe capacity per host. With a 3-host cluster, you get around 45.6 TB raw capacity, but usable capacity depends on your storage policy settings.
+Each ESXi host in your AVS cluster contributes local cache and capacity devices to the vSAN datastore. The AV36 host type provides approximately 15.2 TB of raw SSD capacity per host, with NVMe used for the cache tier. With a 3-host cluster, you get around 45.6 TB raw capacity, but usable capacity depends on your storage policy settings.
 
 vSAN distributes data across hosts according to storage policies. These policies control:
 
@@ -24,10 +24,10 @@ vSAN distributes data across hosts according to storage policies. These policies
 
 ```mermaid
 graph TD
-    A[vSAN Datastore] --> B[Host 1 - NVMe Drives]
-    A --> C[Host 2 - NVMe Drives]
-    A --> D[Host 3 - NVMe Drives]
-    A --> E[Host 4 - NVMe Drives]
+    A[vSAN Datastore] --> B[Host 1 - Local Storage Devices]
+    A --> C[Host 2 - Local Storage Devices]
+    A --> D[Host 3 - Local Storage Devices]
+    A --> E[Host 4 - Local Storage Devices]
 
     F[Storage Policy] --> G{FTT Setting}
     G -->|FTT=1 RAID-1| H[Data mirrored to 2 hosts]
@@ -75,26 +75,36 @@ To create a custom storage policy, log in to vCenter as `cloudadmin@vsphere.loca
    - **Force provisioning**: No
 6. Review compatible datastores and click Finish.
 
-You can also do this through PowerCLI for automation.
+For automation in Azure VMware Solution, use the Microsoft.AVS.Management Run command package.
 
-```powershell
-# Connect to the AVS vCenter
+```bash
+# Get the resource ID for the New-AVSStoragePolicy Run command.
+# Use the current Microsoft.AVS.Management package version available in your private cloud.
+PACKAGE_NAME=$(az vmware script-package list \
+  --resource-group myResourceGroup \
+  --private-cloud myAVSPrivateCloud \
+  --query "[?starts_with(name, 'Microsoft.AVS.Management@')].name | [-1]" -o tsv)
 
-Connect-VIServer -Server vcenter-ip -User 'cloudadmin@vsphere.local' -Password 'your-password'
+CMDLET_ID=$(az vmware script-cmdlet show \
+  --resource-group myResourceGroup \
+  --private-cloud myAVSPrivateCloud \
+  --script-package "$PACKAGE_NAME" \
+  --script-cmdlet-name New-AVSStoragePolicy \
+  --query id -o tsv)
 
 # Create a new vSAN storage policy with RAID-5 erasure coding
-$rule = New-SpbmRule -Capability (Get-SpbmCapability -Name 'VSAN.hostFailuresToTolerate') -Value 1
-$ruleSet = New-SpbmRuleSet -Name "RAID5-Rules" -AllOfRules $rule
-
-# Add the erasure coding rule
-$ecRule = New-SpbmRule -Capability (Get-SpbmCapability -Name 'VSAN.replicaPreference') -Value 'RAID-5/6 (Erasure Coding) - Capacity'
-$ruleSet = New-SpbmRuleSet -Name "RAID5-Rules" -AllOfRules @($rule, $ecRule)
-
-# Create the policy
-New-SpbmStoragePolicy -Name "RAID-5-FTT1" -Description "RAID-5 erasure coding with FTT=1" -AnyOfRuleSets $ruleSet
-
-# Verify the policy was created
-Get-SpbmStoragePolicy -Name "RAID-5-FTT1"
+az vmware script-execution create \
+  --resource-group myResourceGroup \
+  --private-cloud myAVSPrivateCloud \
+  --name create-raid5-ftt1-policy \
+  --script-cmdlet-id "$CMDLET_ID" \
+  --timeout P0Y0M0DT0H30M0S \
+  --retention P0Y0M7DT0H0M0S \
+  --parameter name=Name type=Value value=RAID-5-FTT1 \
+  --parameter name=Description type=Value "value=RAID-5 erasure coding with FTT=1" \
+  --parameter name=vSANFailuresToTolerate type=Value value=R5FTT1 \
+  --parameter name=vSANObjectSpaceReservation type=Value value=0 \
+  --parameter name=vSANDiskStripesPerObject type=Value value=1
 ```
 
 ## Step 3: Apply the Storage Policy to VMs
@@ -134,17 +144,7 @@ In vCenter, navigate to the cluster and select the Monitor tab. Under vSAN, you 
 ```powershell
 # Check vSAN capacity using PowerCLI
 $cluster = Get-Cluster -Name "Cluster-1"
-$vsanView = Get-VsanView -Id "VsanVcClusterHealthSystem-vsan-cluster-health-system"
-
-# Get the space usage summary
-$spaceUsage = $vsanView.VsanQuerySpaceUsage(
-    $cluster.ExtensionData.MoRef,
-    $null
-)
-
-Write-Host "Total Capacity: $([math]::Round($spaceUsage.TotalCapacityB / 1TB, 2)) TB"
-Write-Host "Free Capacity: $([math]::Round($spaceUsage.FreeCapacityB / 1TB, 2)) TB"
-Write-Host "Used: $([math]::Round(($spaceUsage.TotalCapacityB - $spaceUsage.FreeCapacityB) / 1TB, 2)) TB"
+Get-VsanSpaceUsage -Cluster $cluster | Format-List
 ```
 
 Set up alerts for:
@@ -154,18 +154,17 @@ Set up alerts for:
 
 ## Step 5: Scale Storage by Adding Hosts
 
-The simplest way to increase vSAN capacity is to add more hosts to the cluster. Each host brings additional NVMe capacity.
+The simplest way to increase vSAN capacity is to add more hosts to the cluster. Each host brings additional local storage capacity.
 
 ```bash
-# Scale the cluster from 3 to 4 hosts
-az vmware cluster update \
+# Scale the default management cluster from 3 to 4 hosts
+az vmware private-cloud update \
   --resource-group myResourceGroup \
-  --private-cloud myAVSPrivateCloud \
-  --name Cluster-1 \
-  --size 4
+  --name myAVSPrivateCloud \
+  --cluster-size 4
 ```
 
-Adding a host takes about 30 minutes. Once added, vSAN automatically rebalances data across all hosts to optimize capacity and performance distribution.
+Adding a host can take about 30 minutes. Once added, vSAN can rebalance data across hosts to optimize capacity and performance distribution.
 
 After scaling to 4 hosts, you can switch from RAID-1 to RAID-5, which increases usable capacity from roughly 50% to 75% of raw capacity. This is often a more cost-effective approach than adding more hosts just for capacity.
 
@@ -194,11 +193,14 @@ az netappfiles volume create \
   --account-name myNetAppAccount \
   --pool-name avs-pool \
   --name avs-datastore \
+  --location eastus \
   --file-path avsdata \
   --usage-threshold 4096 \
   --vnet hub-vnet \
   --subnet anf-subnet \
-  --protocol-types NFSv3
+  --protocol-types NFSv3 \
+  --network-features Standard \
+  --avs-data-store Enabled
 ```
 
 After creating the volume, attach it as a datastore in AVS.
@@ -208,23 +210,24 @@ After creating the volume, attach it as a datastore in AVS.
 az vmware datastore netapp-volume create \
   --resource-group myResourceGroup \
   --private-cloud myAVSPrivateCloud \
-  --cluster-name Cluster-1 \
+  --cluster Cluster-1 \
   --name anf-datastore \
-  --volume-id "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.NetApp/netAppAccounts/myNetAppAccount/capacityPools/avs-pool/volumes/avs-datastore"
+  --net-app-volume "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.NetApp/netAppAccounts/myNetAppAccount/capacityPools/avs-pool/volumes/avs-datastore"
 ```
 
-## Step 7: Enable Deduplication and Compression
+## Step 7: Configure Deduplication and Compression
 
-vSAN supports space-saving features that reduce the physical storage consumed.
+vSAN supports space-saving features that reduce the physical storage consumed. Azure VMware Solution enables deduplication and compression by default on OSA-based clusters.
 
-In vCenter, navigate to Cluster > Configure > vSAN > Services. Enable:
+To change the space-efficiency setting in AVS, use the Microsoft.AVS.Management Run command package:
 
-- **Deduplication**: Eliminates duplicate data blocks.
-- **Compression**: Compresses data blocks after deduplication.
+- **Deduplication and compression**: Enables both features together.
+- **Compression only**: Keeps compression enabled without deduplication.
+- **Disabled**: Turns off both space-efficiency features.
 
-These features are applied together (you cannot enable one without the other in vSAN). Typical space savings range from 1.5x to 3x depending on the workload. Virtual desktops see the highest savings because many VMs share identical OS files. Database workloads see less benefit because the data is already unique.
+When deduplication is enabled, vSAN enables both deduplication and compression. Compression can also be enabled without deduplication. Typical space savings range from 1.5x to 3x depending on the workload. Virtual desktops see the highest savings because many VMs share identical OS files. Database workloads see less benefit because the data is already unique.
 
-Note that enabling deduplication and compression triggers a full data rewrite, which can take hours on large datastores. Plan this operation for a maintenance window.
+Note that changing the space-efficiency setting causes vSAN resync and performance degradation while disks are reformatted. Microsoft recommends at least 25% available space before making this change, so plan this operation for a maintenance window.
 
 ## Summary
 
