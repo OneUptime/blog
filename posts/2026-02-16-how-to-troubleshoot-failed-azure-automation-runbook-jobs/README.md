@@ -24,7 +24,7 @@ Every runbook job produces several output streams:
 - **Error** - errors captured by `Write-Error` or thrown exceptions
 - **Warning** - warnings from `Write-Warning`
 - **Verbose** - verbose output from `Write-Verbose` (only if verbose logging is enabled)
-- **Progress** - progress bar data
+- **Progress** - progress records (only if progress logging is enabled)
 
 In the portal, go to your Automation account, click "Jobs" under Process Automation, click on the failed job, and then check each stream tab.
 
@@ -91,7 +91,7 @@ az role assignment list \
 
 ### Fixes
 
-- If the identity is missing, enable it: `az automation account update --resource-group rg-automation --name aa-operations --assign-identity`
+- If the identity is missing, enable it with PowerShell: `Set-AzAutomationAccount -ResourceGroupName "rg-automation" -Name "aa-operations" -AssignSystemIdentity`
 - If the identity exists but lacks permissions, add the appropriate role assignment
 - If you recently enabled the identity, wait a few minutes for Azure AD propagation
 - Make sure the runbook is using `Connect-AzAccount -Identity`, not the deprecated `AzureRunAsConnection`
@@ -125,17 +125,18 @@ az automation module list \
 
 Import the missing module:
 
-```bash
+```powershell
 # Import the Az.Compute module from the PowerShell Gallery
-az automation module create \
-  --resource-group rg-automation \
-  --automation-account-name aa-operations \
-  --name Az.Compute \
-  --content-link "https://www.powershellgallery.com/api/v2/package/Az.Compute"
+New-AzAutomationModule `
+  -ResourceGroupName "rg-automation" `
+  -AutomationAccountName "aa-operations" `
+  -Name "Az.Compute" `
+  -ContentLinkUri "https://www.powershellgallery.com/api/v2/package/Az.Compute/<version>"
 ```
 
 Important notes:
-- Modules have dependencies. Az.Compute depends on Az.Accounts, so install Az.Accounts first.
+- Modules have dependencies. Az.Compute depends on Az.Accounts, so install or update Az.Accounts first, or use the portal's **Update Az modules** option to handle Az module dependencies.
+- Replace `<version>` with the module version you want from the PowerShell Gallery.
 - Module installation takes a few minutes. Check the provisioning state before running your runbook.
 - If you are using PowerShell 7.2 runtime, make sure the modules are compatible with that version.
 
@@ -143,7 +144,7 @@ Important notes:
 
 ### Symptom
 
-The job status shows "Suspended" or the job ran for the maximum duration (3 hours by default) and was terminated.
+The job status shows "Suspended" or the job ran for the Azure sandbox fair-share limit of 3 hours and was stopped or failed, depending on the runbook type.
 
 ### Diagnosis
 
@@ -161,7 +162,7 @@ Remove-AzResourceGroup -Name "old-rg"
 Remove-AzResourceGroup -Name "old-rg" -Force
 ```
 
-- **Long-running operations:** If your script legitimately needs more than 3 hours, use child runbooks to break the work into smaller pieces. Each child runbook gets its own 3-hour window.
+- **Long-running operations:** If your script legitimately needs more than 3 hours, use a Hybrid Runbook Worker or use child runbooks to break the work into smaller pieces that can run in separate jobs.
 
 - **Infinite loops:** Add timeout logic to any loop that waits for a condition:
 
@@ -192,16 +193,16 @@ while ($status -ne "Ready") {
 The job fails with a message about exceeding the fair share limit, or you see:
 
 ```text
-The job was evicted and subsequently resumed. This is common for long-running jobs.
+The job was evicted and subsequently reached a Stopped state. The job cannot continue running.
 ```
 
 ### Diagnosis
 
-Azure Automation enforces a "fair share" policy where jobs in the Azure sandbox are paused after 3 hours and may be reassigned to a different sandbox. This can cause issues with jobs that maintain state in memory.
+Azure Automation enforces a "fair share" policy where jobs in the Azure sandbox are stopped after 3 hours. PowerShell and Python runbooks are set to a Stopped status, while PowerShell Workflow runbooks are set to Failed.
 
 ### Fixes
 
-- **Use checkpoints:** For long-running workflows, use PowerShell Workflow runbooks with `Checkpoint-Workflow` to save state periodically.
+- **Use checkpoints carefully:** For PowerShell Workflow runbooks, checkpoints can reduce memory pressure and help with workflow state, but they do not remove the 3-hour Azure sandbox fair-share limit.
 
 - **Use Hybrid Workers:** Jobs running on Hybrid Runbook Workers are not subject to the fair share limit.
 
@@ -332,9 +333,9 @@ az monitor metrics alert create \
   --resource-group rg-automation \
   --name "RunbookJobFailure" \
   --scopes "/subscriptions/<sub-id>/resourceGroups/rg-automation/providers/Microsoft.Automation/automationAccounts/aa-operations" \
-  --condition "total TotalJob > 0" \
+  --condition "total TotalJob > 0 where Status includes Failed" \
   --description "Alert when automation jobs fail" \
-  --action-group "/subscriptions/<sub-id>/resourceGroups/rg-monitoring/providers/Microsoft.Insights/actionGroups/ag-ops-team" \
+  --action "/subscriptions/<sub-id>/resourceGroups/rg-monitoring/providers/Microsoft.Insights/actionGroups/ag-ops-team" \
   --evaluation-frequency 5m \
   --window-size 5m
 ```
