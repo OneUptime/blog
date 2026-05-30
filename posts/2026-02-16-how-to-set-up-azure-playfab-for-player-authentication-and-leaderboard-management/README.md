@@ -31,6 +31,7 @@ PlayFab supports multiple authentication methods. The simplest for getting start
 Here is a Unity C# example for basic authentication.
 
 ```csharp
+using System.Collections.Generic;
 using PlayFab;
 using PlayFab.ClientModels;
 using UnityEngine;
@@ -39,6 +40,8 @@ public class PlayFabAuth : MonoBehaviour
 {
     // Your PlayFab Title ID - set this in the editor or config
     private string titleId = "YOUR_TITLE_ID";
+    private string currentPlayerId;
+    private string sessionTicket;
 
     void Start()
     {
@@ -75,8 +78,9 @@ public class PlayFabAuth : MonoBehaviour
         Debug.Log($"Login successful! Player ID: {result.PlayFabId}");
         Debug.Log($"New account: {result.NewlyCreated}");
 
-        // Store the session ticket for subsequent API calls
-        string sessionTicket = result.SessionTicket;
+        // Store the player ID and session ticket for subsequent API calls
+        currentPlayerId = result.PlayFabId;
+        sessionTicket = result.SessionTicket;
 
         // If the player has a display name, show it
         if (result.InfoResultPayload?.PlayerProfile != null)
@@ -195,13 +199,14 @@ In the PlayFab portal, go to Leaderboards and create a new leaderboard. Or use t
 // Server-side code to create a leaderboard definition
 public void CreateLeaderboard()
 {
-    var request = new CreatePlayerStatisticDefinitionRequest
+    var request = new PlayFab.AdminModels.CreatePlayerStatisticDefinitionRequest
     {
         StatisticName = "HighScore",
-        VersionChangeInterval = StatisticResetIntervalOption.Week  // Weekly reset for seasons
+        AggregationMethod = PlayFab.AdminModels.StatisticAggregationMethod.Max,
+        VersionChangeInterval = PlayFab.AdminModels.StatisticResetIntervalOption.Week  // Weekly reset for seasons
     };
 
-    PlayFabServerAPI.CreatePlayerStatisticDefinition(
+    PlayFabAdminAPI.CreatePlayerStatisticDefinition(
         request,
         result => Debug.Log("Leaderboard created"),
         error => Debug.LogError($"Failed: {error.ErrorMessage}")
@@ -209,7 +214,7 @@ public void CreateLeaderboard()
 }
 ```
 
-To submit a score from the game client, use the UpdatePlayerStatistics API.
+For a quick prototype, you can submit a score from the game client with the UpdatePlayerStatistics API after enabling "Allow client to post player statistics" in Game Manager. For competitive leaderboards, keep this disabled and submit scores from trusted server-side code after validation.
 
 ```csharp
 public void SubmitScore(int score)
@@ -235,7 +240,7 @@ public void SubmitScore(int score)
 }
 ```
 
-By default, PlayFab keeps the maximum value. If a player submits a score of 500 and later submits 300, their leaderboard entry stays at 500. You can change this behavior in the leaderboard settings to keep the most recent value instead.
+The `AggregationMethod = Max` setting keeps the maximum value. If a player submits a score of 500 and later submits 300, their leaderboard entry stays at 500. You can change this behavior in the leaderboard settings to keep the most recent value instead.
 
 ## Step 5 - Retrieve Leaderboard Data
 
@@ -335,17 +340,18 @@ handlers.ValidateAndSubmitScore = function (args, context) {
     var submittedScore = args.score;
     var gameSessionId = args.sessionId;
 
-    // Retrieve the game session data to verify the score is plausible
-    var sessionData = server.GetUserData({
+    // Retrieve server-written game session data to verify the score is plausible
+    var sessionKey = "session_" + gameSessionId;
+    var sessionData = server.GetUserInternalData({
         PlayFabId: playerId,
-        Keys: ["session_" + gameSessionId]
+        Keys: [sessionKey]
     });
 
-    if (!sessionData.Data["session_" + gameSessionId]) {
+    if (!sessionData.Data.hasOwnProperty(sessionKey)) {
         return { success: false, error: "Invalid session" };
     }
 
-    var session = JSON.parse(sessionData.Data["session_" + gameSessionId].Value);
+    var session = JSON.parse(sessionData.Data[sessionKey].Value);
 
     // Basic validation checks
     var sessionDuration = (Date.now() - session.startTime) / 1000;  // seconds
