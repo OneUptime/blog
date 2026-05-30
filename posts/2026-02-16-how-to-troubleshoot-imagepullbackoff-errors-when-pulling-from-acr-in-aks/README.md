@@ -91,10 +91,10 @@ az acr repository list --name myregistry --output table
 az acr repository show-tags --name myregistry --repository my-app --output table
 
 # Check if a specific tag exists
-az acr repository show-manifests \
+az acr repository show-tags \
   --name myregistry \
   --repository my-app \
-  --query "[?tags[?contains(@, '1.0.0')]]"
+  --query "[?@=='1.0.0']"
 ```
 
 ## Cause 3: ACR Admin Account Disabled and No Service Principal
@@ -126,7 +126,7 @@ kubectl create secret docker-registry acr-secret \
   --docker-server=myregistry.azurecr.io \
   --docker-username="$ACR_USERNAME" \
   --docker-password="$ACR_PASSWORD" \
-  --namespace default
+  --namespace <namespace>
 ```
 
 Then reference it in your pod spec.
@@ -179,13 +179,13 @@ az acr network-rule add \
 # From inside a pod, check if the ACR DNS resolves to a private IP
 kubectl run dns-test --rm -it --image=busybox -- nslookup myregistry.azurecr.io
 
-# The result should show a private IP (10.x.x.x or 172.x.x.x)
+# The result should show a private IP (10.x.x.x, 172.16.x.x-172.31.x.x, or 192.168.x.x)
 # If it shows a public IP, the private DNS zone is not linked to the AKS VNet
 ```
 
 ## Cause 5: Image Platform Mismatch
 
-If your AKS nodes run Linux but the image was built for Windows (or the other way around), the pull will fail with a cryptic "manifest unknown" error.
+If your AKS nodes run Linux but the image was built for Windows (or the other way around), the pull can fail with a cryptic "no matching manifest" error.
 
 ```bash
 # Check the image's platform/architecture
@@ -207,16 +207,17 @@ spec:
 
 ## Cause 6: ACR Throttling
 
-ACR has rate limits based on the SKU tier. Basic allows 1,000 read operations per minute, Standard allows 10,000, and Premium allows 50,000. If you deploy many pods simultaneously, you might hit these limits.
+ACR has throughput and throttling limits based on the SKU tier. If you deploy many pods simultaneously, you might hit these limits.
 
 **Check for throttling errors.**
 
 ```bash
-# View ACR diagnostic logs for throttled requests
-az monitor activity-log list \
-  --resource-group myResourceGroup \
-  --resource-id "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.ContainerRegistry/registries/myregistry" \
-  --query "[?contains(operationName.value, 'Pull')]" \
+# Query ACR repository events for failed or throttled pull requests
+# Requires ACR diagnostic settings to send repository events to Log Analytics
+az monitor log-analytics query \
+  --workspace <workspace-id> \
+  --analytics-query "ContainerRegistryRepositoryEvents | where OperationName has 'Pull' | where ResultType !~ 'Succeeded' or ResultDescription has '429' | project TimeGenerated, Repository, Tag, ResultType, ResultDescription" \
+  --timespan PT1H \
   --output table
 ```
 
