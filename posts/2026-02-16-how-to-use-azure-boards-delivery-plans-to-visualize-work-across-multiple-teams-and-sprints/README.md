@@ -47,7 +47,7 @@ To create a Delivery Plan, navigate to your Azure DevOps project and click on Bo
 1. **Name**: Give it a descriptive name like "Q1 2026 Feature Delivery" or "Platform Team Roadmap"
 2. **Description**: Explain what this plan covers and who should use it
 
-After creating the plan, you need to add teams and configure the timeline.
+As you create the plan, specify the team backlogs you want to include. You can also add or remove teams later from the plan settings.
 
 ## Adding Teams to the Plan
 
@@ -81,7 +81,7 @@ Each work item appears as a card on the timeline. You can interact with these ca
 
 **Drag and drop**: Move a card from one sprint to another to reschedule it. This updates the iteration path on the work item.
 
-**Expand cards**: Click on a card to see more details without leaving the plan view. You can see the description, assigned team member, state, and child items.
+**Open and expand cards**: Select the title on a card to open and edit the work item. Use the expand/collapse cards control to switch between title-only cards and cards that show the fields configured for the plan.
 
 **Card fields**: Configure which fields appear on the card. Go to plan settings and customize the card fields. Common choices include:
 - Title (always shown)
@@ -132,23 +132,23 @@ This visual dependency tracking is incredibly useful during planning meetings. I
 
 ## Plan Views and Zoom Levels
 
-Delivery Plans support different zoom levels to show different amounts of detail:
+Delivery Plans include zoom controls to show different amounts of detail:
 
-- **Sprint view**: Shows individual sprints, best for near-term planning
-- **Month view**: Shows work grouped by month, good for quarterly planning
-- **Quarter view**: Shows work at a quarter level, suitable for roadmap discussions
+- **Zoom in**: Shows more detail on cards, best for near-term planning
+- **Zoom out**: Shows more iterations and teams, good for quarterly planning and roadmap discussions
+- **Collapsed cards**: Shows only card titles when you need a denser view
 
 You can scroll the timeline horizontally to look at past or future sprints. The current date is highlighted so you can see where you are relative to planned work.
 
 ## Sharing Plans with Stakeholders
 
-Not everyone who needs to see the plan has an Azure DevOps account. There are a few ways to share:
+People need access to the Azure DevOps project to view the plan directly, but there are a few ways to share the information:
 
 **Plan links**: Anyone with access to the project can view the plan directly. Share the URL.
 
 **Screenshots and exports**: Use the browser's print function or a screenshot tool to capture the plan for presentations.
 
-**Dashboards**: Add a Delivery Plan widget to an Azure DevOps dashboard. This gives stakeholders a glanceable view without navigating to the full plan.
+**Dashboards**: Add related dashboard widgets, such as Query Results or charts, or add a Markdown link to the plan. Use the Delivery Plan itself when stakeholders need the full timeline and dependency view.
 
 ## Best Practices for Delivery Plans
 
