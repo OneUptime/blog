@@ -128,7 +128,7 @@ kubectl top nodes
 
 ### Cause 3: Failed Health Checks
 
-Liveness and readiness probes can cause CrashLoopBackOff if they are configured incorrectly. A liveness probe failure causes Kubernetes to restart the container.
+Liveness probes can cause CrashLoopBackOff if they are configured incorrectly. A liveness probe failure causes Kubernetes to restart the container. Readiness probe failures do not restart the container, but they can keep the pod out of service while you debug the startup path.
 
 ```bash
 # Check if probes are configured and what they are checking
@@ -137,7 +137,7 @@ kubectl get deployment <deployment-name> -n <namespace> -o yaml | grep -A 10 "li
 
 Common probe issues:
 
-- The probe path returns a non-200 status code
+- The probe path returns a status code outside the 200-399 success range
 - The initial delay is too short, and the application has not started yet
 - The timeout is too short for the application's response time
 
@@ -155,11 +155,11 @@ livenessProbe:
 
 ### Cause 4: Image Pull Failures in AKS
 
-If the container image cannot be pulled from Azure Container Registry, the pod will fail. This can look like CrashLoopBackOff if the image pulls intermittently.
+If the container image cannot be pulled from Azure Container Registry, the pod will fail before the container starts. This shows up as `ImagePullBackOff` or `ErrImagePull`, not `CrashLoopBackOff`, but it is easy to confuse during startup troubleshooting.
 
 ```bash
 # Check if AKS is authorized to pull from your ACR
-az aks check-acr --resource-group <rg> --name <aks-cluster> --acr <acr-name>
+az aks check-acr --resource-group <rg> --name <aks-cluster> --acr <acr-name>.azurecr.io
 
 # Attach ACR to AKS if not already done
 az aks update --resource-group <rg> --name <aks-cluster> --attach-acr <acr-name>
@@ -216,8 +216,8 @@ If the container crashes too fast to get useful logs, override the entrypoint to
 # Create a debug pod with the same image but an infinite sleep command
 kubectl run debug-pod \
   --image=myregistry.azurecr.io/my-app:latest \
-  --command -- sleep infinity \
-  -n <namespace>
+  -n <namespace> \
+  --command -- sleep infinity
 
 # Exec into it to investigate
 kubectl exec -it debug-pod -n <namespace> -- /bin/sh
