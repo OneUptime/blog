@@ -103,11 +103,11 @@ class Config:
 The `.env` file for local development.
 
 ```text
-DATABASE_URL=postgresql://pgadmin:YourStr0ngP@ss!@my-pg-server.postgres.database.azure.com:5432/flaskapp?sslmode=require
+DATABASE_URL=postgresql://pgadmin:YourStr0ngP%40ss!@my-pg-server.postgres.database.azure.com:5432/flaskapp?sslmode=require
 SECRET_KEY=your-random-secret-key
 ```
 
-The `sslmode=require` parameter is important. Azure Database for PostgreSQL requires SSL connections by default.
+The `sslmode=require` parameter is important. Azure Database for PostgreSQL requires SSL connections by default. The `@` in the sample password is URL-encoded as `%40` because special characters in SQLAlchemy database URLs must be escaped.
 
 ## Application Factory
 
@@ -156,7 +156,7 @@ class Author(db.Model):
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(200), unique=True, nullable=False)
     bio = db.Column(db.Text, default="")
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationship to posts
     posts = db.relationship("Post", backref="author", lazy="dynamic")
@@ -182,8 +182,8 @@ class Post(db.Model):
     slug = db.Column(db.String(200), unique=True, nullable=False)
     content = db.Column(db.Text, nullable=False)
     published = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, onupdate=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), onupdate=lambda: datetime.now(timezone.utc))
 
     # Foreign key to author
     author_id = db.Column(db.Integer, db.ForeignKey("authors.id"), nullable=False)
@@ -241,7 +241,7 @@ def list_authors():
 @api_bp.route("/authors", methods=["POST"])
 def create_author():
     """Create a new author."""
-    data = request.get_json()
+    data = request.get_json(silent=True)
 
     if not data or "name" not in data or "email" not in data:
         return jsonify({"error": "name and email are required"}), 400
@@ -279,10 +279,10 @@ def list_posts():
 @api_bp.route("/posts", methods=["POST"])
 def create_post():
     """Create a new blog post."""
-    data = request.get_json()
+    data = request.get_json(silent=True)
 
     required = ["title", "slug", "content", "author_id"]
-    if not all(field in data for field in required):
+    if not data or not all(field in data for field in required):
         return jsonify({"error": f"Required fields: {required}"}), 400
 
     # Handle tags
@@ -311,7 +311,10 @@ def create_post():
 def update_post(post_id):
     """Update an existing post."""
     post = Post.query.get_or_404(post_id)
-    data = request.get_json()
+    data = request.get_json(silent=True)
+
+    if not data:
+        return jsonify({"error": "Request body must be JSON"}), 400
 
     if "title" in data:
         post.title = data["title"]
