@@ -14,6 +14,8 @@ In this post, we will build a complete Express.js application that uses the Cosm
 
 ## Project Setup
 
+Use Node.js 20 or newer for current `@azure/cosmos` releases.
+
 ```bash
 # Initialize the project
 
@@ -21,7 +23,7 @@ mkdir express-cosmos && cd express-cosmos
 npm init -y
 
 # Install dependencies
-npm install express @azure/cosmos dotenv uuid
+npm install express @azure/cosmos dotenv
 
 # Install dev dependencies
 npm install -D nodemon
@@ -132,7 +134,7 @@ Build the task management routes with full CRUD support.
 // src/routes/tasks.js
 // Express routes for task CRUD operations
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { container } = require('../cosmos');
 
 const router = express.Router();
@@ -148,7 +150,7 @@ router.post('/', async (req, res, next) => {
     }
 
     const task = {
-      id: uuidv4(),
+      id: randomUUID(),
       title,
       description: description || '',
       userId,        // This is our partition key
