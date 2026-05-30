@@ -10,21 +10,23 @@ Description: A hands-on guide to setting up and running exploratory testing sess
 
 Scripted test cases have their place, but they only cover scenarios someone thought to write down. Exploratory testing fills the gaps - it is about poking around the application with curiosity, finding bugs that nobody predicted, and understanding how the software actually behaves in ways that formal test plans miss.
 
-Azure Test Plans provides built-in support for exploratory testing through the Test and Feedback browser extension. This extension lets testers capture bugs, take screenshots, record screen sessions, and create work items - all without leaving the application they are testing. Everything feeds back into Azure DevOps automatically. In this post, I will walk through setting up the extension, running effective exploratory testing sessions, and getting the most out of the feedback loop.
+Azure Test Plans provides built-in support for exploratory testing through the Test and Feedback browser extension. This extension lets testers capture bugs, take screenshots, record screen sessions, and create work items - all without leaving the application they are testing. In connected mode, everything feeds back into Azure DevOps automatically. In this post, I will walk through setting up the extension, running effective exploratory testing sessions, and getting the most out of the feedback loop.
 
 ## Installing the Test and Feedback Extension
 
-The Test and Feedback extension is available for Chrome and Edge (Chromium-based). Here is how to set it up:
+The Test and Feedback extension is available for Chrome and Edge (Chromium-based), with Firefox support retiring. Here is how to set it up:
 
-1. Open the Chrome Web Store and search for "Test & Feedback" by Microsoft DevLabs
-2. Click "Add to Chrome" and confirm the installation
+1. Open the Visual Studio Marketplace listing for "Test & Feedback" by Microsoft
+2. Click "Install" and follow the marketplace instructions for your browser
 3. The extension icon appears in your browser toolbar
 
-After installation, click the extension icon and sign in with your Azure DevOps credentials. You will need to:
+After installation, click the extension icon and choose Connected mode if you want Azure DevOps integration. You will need to:
 
 - Enter your Azure DevOps organization URL (e.g., `https://dev.azure.com/myorg`)
 - Select the project you want to test against
 - Choose a team (this determines which area path and iteration the created bugs go into)
+
+Standalone mode does not require signing in to Azure DevOps.
 
 ## Understanding the Extension Interface
 
@@ -33,16 +35,15 @@ When you click the extension icon and start a session, you get a floating toolba
 - **Capture screenshot**: Takes a screenshot of the current page with annotation tools
 - **Record screen**: Records a video of your testing session
 - **Create bug**: Opens a bug creation form pre-populated with your session data
-- **Create task**: Creates a task work item
+- **Create task**: Creates a task work item in connected mode
 - **Add note**: Adds a text note to the session timeline
 - **Timer**: Shows how long the current session has been running
 
 The extension also automatically captures:
 
-- Browser console logs
-- Network requests and responses
-- Page URLs and navigation history
-- System information (browser version, OS, screen resolution)
+- User actions as an image action log
+- Page load data, such as resource timings and navigation timelines
+- System information (browser version, OS, screen resolution, memory, and related browser details)
 
 All of this context gets attached to any bugs you file, making it much easier for developers to reproduce issues.
 
@@ -54,22 +55,22 @@ There are two ways to start a session: connected and standalone.
 
 Connected mode links your session to a specific work item, like a user story or feature. This gives you traceability - you can see which stories have been explored and which have not.
 
-1. In Azure Test Plans, go to the "Execute" tab
-2. Select a work item (user story, requirement, or test case)
-3. Click "Run with options" and choose "Test & Feedback extension"
-4. The extension opens in your browser, pre-linked to that work item
+1. Open the work item from Azure Boards and choose "Do exploratory testing" from the work item menu, or open the Explore work item page in the extension and search for the item
+2. Select the work item you want to explore
+3. Start a session in the extension
+4. The session is associated with that work item
 
-Any bugs or issues you find during the session are automatically linked to the parent work item.
+Any bugs, tasks, or test cases you create during the session are automatically linked to the associated work item.
 
 ### Standalone Mode
 
 If you just want to explore without linking to a specific story:
 
 1. Click the extension icon in the browser toolbar
-2. Click "Start session"
+2. Choose Standalone mode and start a session
 3. Start testing - you are free to explore anything
 
-Bugs created in standalone mode still go into Azure DevOps but are not linked to a parent work item.
+Bugs created in standalone mode are stored in a local session report that you can export and share; they are not created in Azure DevOps unless you use connected mode.
 
 ## Running an Effective Session
 
@@ -104,26 +105,26 @@ When you spot something that might be a bug, capture it immediately:
 1. Click "Capture screenshot" - the page is captured with the current state
 2. Use the annotation tools to draw arrows, circles, or highlights on the screenshot
 3. Add a description of what you expected vs. what happened
-4. Click "Create bug" to file it directly to Azure DevOps
+4. Click "Create bug" to file it directly to Azure DevOps in connected mode, or to add it to the local session report in standalone mode
 
-The bug work item is created with:
+In connected mode, the bug work item is created with:
 
 - Your annotated screenshot
-- Browser console logs from the session
-- Network requests that happened during the interaction
+- The image action log from the session
+- Page load data from the interaction
 - Your notes from the session
 - System information
 - A link to the parent work item (if in connected mode)
 
 ## Screen Recording for Complex Bugs
 
-Some bugs are hard to describe in a screenshot. The screen recording feature captures a video of your session that you can trim and attach to the bug:
+Some bugs are hard to describe in a screenshot. The screen recording feature captures a video of your session that you can attach to the bug:
 
 1. Click the record button when you are about to reproduce a tricky scenario
 2. Perform the steps that trigger the bug
 3. Stop the recording
-4. Trim the video to just the relevant portion
-5. The recording is attached to the next bug you create
+4. Create the bug from the captured information
+5. The recording is included with the bug details
 
 Video recordings are especially valuable for:
 
@@ -134,13 +135,13 @@ Video recordings are especially valuable for:
 
 ## Reviewing Session Results
 
-After you end a testing session, review the results in Azure Test Plans:
+After you end a connected-mode testing session, review the results in Azure Test Plans:
 
-1. Go to Test Plans, then "Runs"
+1. Go to Test Plans, then "Runs" > "Recent exploratory sessions"
 2. Find your exploratory testing session
 3. Click into it to see the session timeline
 
-The timeline shows everything that happened during the session in chronological order: notes, screenshots, bugs created, and pages visited. This is valuable for:
+The timeline shows the captured findings from the session in chronological order: notes, screenshots, recordings, and work items created. This is valuable for:
 
 - Understanding test coverage (which areas were explored)
 - Reviewing the session with team members
@@ -179,16 +180,15 @@ A bug bash is a time-boxed event where the whole team does exploratory testing t
 
 ### Session Handoff
 
-When one tester finishes a session, they can hand off their findings to another tester. The session notes and timeline in Azure Test Plans provide the context the next tester needs to continue the exploration from where it left off.
+When one tester finishes a session, they can hand off their findings to another tester. In connected mode, the session notes and timeline in Azure Test Plans provide the context the next tester needs to continue the exploration from where it left off.
 
 ## Configuring Extension Settings
 
 The extension has several configurable settings worth knowing:
 
-- **Image format**: Choose between PNG (lossless, larger) and JPEG (smaller, lossy) for screenshots
-- **Screen recording quality**: Adjust based on your bandwidth and storage needs
-- **Auto-capture**: Enable to automatically capture screenshots and console logs at regular intervals
-- **Connected services**: Configure which Azure DevOps project and team to use
+- **Connected mode**: Configure the Azure DevOps organization, project, and team to use
+- **Standalone mode**: Work without Azure DevOps integration and export the session report for sharing
+- **Capture options**: Decide whether to include captured data such as the image action log and page load data when you create a bug or task
 
 ## Best Practices
 
