@@ -16,7 +16,7 @@ The fix is straightforward: shut down VMs when nobody is using them and start th
 
 Before automating anything, it is important to understand the difference between stopping and deallocating a VM:
 
-- **Stopped (StoppedDeallocated)**: The VM is shut down and the compute resources are released. You are not charged for compute (only for storage and any static IPs). This is what you want.
+- **Stopped (deallocated)**: The VM is shut down and the compute resources are released. You are not charged for compute (only for storage and any static IPs). This is what you want.
 - **Stopped (from inside the OS)**: The VM's OS is shut down, but the compute allocation is still held. You are still charged for compute. This is not what you want.
 
 Always use `Stop-AzVM` to deallocate VMs properly, not just shutting down the OS from inside the VM.
@@ -41,8 +41,11 @@ param(
     [string]$TagValue = "true"
 )
 
-# Connect to Azure (needed for interactive use, not in Azure Automation)
-# Connect-AzAccount
+# Authenticate using the Automation Account's managed identity
+# For interactive use, replace these three lines with Connect-AzAccount
+$null = Disable-AzContextAutosave -Scope Process
+$AzureContext = (Connect-AzAccount -Identity).Context
+Set-AzContext -SubscriptionName $AzureContext.Subscription -DefaultProfile $AzureContext
 
 Write-Output "Looking for VMs to stop in resource group: $ResourceGroupName"
 
@@ -89,6 +92,12 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$TagValue = "true"
 )
+
+# Authenticate using the Automation Account's managed identity
+# For interactive use, replace these three lines with Connect-AzAccount
+$null = Disable-AzContextAutosave -Scope Process
+$AzureContext = (Connect-AzAccount -Identity).Context
+Set-AzContext -SubscriptionName $AzureContext.Subscription -DefaultProfile $AzureContext
 
 Write-Output "Looking for VMs to start in resource group: $ResourceGroupName"
 
@@ -138,7 +147,11 @@ foreach ($vmName in $vmsToManage) {
     $vm = Get-AzVM -ResourceGroupName "dev-rg" -Name $vmName
 
     # Add the AutoShutdown tag
-    $tags = $vm.Tags
+    $tags = @{}
+    if ($vm.Tags) {
+        $tags = $vm.Tags
+    }
+
     $tags["AutoShutdown"] = "true"
     $tags["ShutdownTime"] = "19:00"  # Optional: custom shutdown time
     $tags["StartupTime"] = "07:00"   # Optional: custom startup time
@@ -193,7 +206,7 @@ $stopRunbookParams = @{
     ResourceGroupName  = "automation-rg"
     AutomationAccountName = "vm-scheduler"
     Name              = "Stop-DevVMs"
-    Type              = "PowerShell"
+    Type              = "PowerShell72"
     Description       = "Stops development VMs to save costs during off-hours"
 }
 
@@ -206,7 +219,7 @@ Import-AzAutomationRunbook `
     -AutomationAccountName "vm-scheduler" `
     -Name "Stop-DevVMs" `
     -Path "./scripts/stop-vms.ps1" `
-    -Type PowerShell `
+    -Type PowerShell72 `
     -Force
 
 # Publish the runbook (makes it available for scheduling)
@@ -223,7 +236,7 @@ New-AzAutomationRunbook `
     -ResourceGroupName "automation-rg" `
     -AutomationAccountName "vm-scheduler" `
     -Name "Start-DevVMs" `
-    -Type "PowerShell" `
+    -Type "PowerShell72" `
     -Description "Starts development VMs before business hours"
 
 Import-AzAutomationRunbook `
@@ -231,7 +244,7 @@ Import-AzAutomationRunbook `
     -AutomationAccountName "vm-scheduler" `
     -Name "Start-DevVMs" `
     -Path "./scripts/start-vms.ps1" `
-    -Type PowerShell `
+    -Type PowerShell72 `
     -Force
 
 Publish-AzAutomationRunbook `
@@ -446,6 +459,7 @@ $vm = Get-AzVM -ResourceGroupName "dev-rg" -Name "dev-web-server"
 New-AzResource `
     -ResourceId "/subscriptions/SUB_ID/resourceGroups/dev-rg/providers/Microsoft.DevTestLab/schedules/shutdown-computevm-dev-web-server" `
     -Location "eastus" `
+    -ApiVersion "2018-09-15" `
     -Properties @{
         status           = "Enabled"
         taskType         = "ComputeVmShutdownTask"
