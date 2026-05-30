@@ -16,8 +16,8 @@ Azure Storage enforces scalability targets at both the storage account level and
 
 The key scalability targets to keep in mind are:
 
-- **Storage account level**: Up to 20,000 requests per second for standard general-purpose v2 accounts.
-- **Single blob**: Up to 500 requests per second.
+- **Storage account level**: Up to 40,000 requests per second for standard general-purpose v2 accounts in many regions, and up to 20,000 requests per second in other regions.
+- **Single block blob**: Up to 3,000 requests per second. Single page blobs have a target of up to 500 requests per second.
 - **Single table partition**: Up to 2,000 entities per second.
 - **Single queue**: Up to 2,000 messages per second.
 
@@ -39,7 +39,7 @@ If you see a clear correlation between high transaction counts and 503 responses
 
 ### Check Storage Analytics Logs
 
-If you have diagnostic logging enabled, you can query the $logs container for entries with HTTP status 503. Here is an example using Azure CLI to download and filter the logs:
+If you have classic Storage Analytics logging enabled, you can query the $logs container for entries with HTTP status 503. Here is an example using Azure CLI to download and filter the logs:
 
 ```bash
 # Download the storage analytics logs for a specific date
@@ -68,11 +68,11 @@ This happens when your total requests per second across all services (blob, tabl
 
 This is the most common form. Azure Storage distributes data across partitions, and each partition has its own throughput limit. If your access pattern creates a hot partition, that partition gets throttled while others are fine.
 
-For Blob Storage, the partition key is the blob name. For Table Storage, it is the PartitionKey property. For Queue Storage, each queue is its own partition.
+For Blob Storage, the partition key is based on the account name, container name, and blob name. For Table Storage, it is the PartitionKey property. For Queue Storage, each queue is effectively a single partition for throughput planning.
 
 ### Per-Blob Throttling
 
-Individual blobs have a request rate limit of about 500 requests per second. If you have a single popular blob that many clients read simultaneously, you will hit this limit.
+Individual block blobs have a request rate target of up to 3,000 requests per second, while page blobs have a target of up to 500 requests per second. If you have a single popular blob that many clients read simultaneously, you can still hit the per-blob or account-level targets.
 
 ## Step 3: Implement Retry Logic with Exponential Backoff
 
@@ -119,7 +119,7 @@ If partition-level throttling is the problem, you need to distribute your reques
 
 ### For Blob Storage
 
-Avoid naming patterns that cause sequential keys. For example, if you name blobs with timestamps like `2026-02-16-log-001.txt`, all blobs for the same date land on the same partition. Instead, prefix blob names with a hash or random characters.
+Avoid naming patterns that cause sequential keys. For example, if you name blobs with timestamps like `2026-02-16-log-001.txt`, traffic for a time range can concentrate on a small set of partition ranges. Instead, prefix blob names with a hash or random characters.
 
 ```python
 import hashlib
@@ -182,9 +182,9 @@ A few things that catch people off guard:
 
 **Client-side timeouts vs. server-side throttling**: If your client timeout is too short, you might see timeout errors that look like throttling but are actually caused by the client giving up too early. Check your client timeout settings before assuming the server is throttling you.
 
-**Throttling during storage account creation**: New storage accounts go through a warm-up period. If you deploy a new account and immediately hammer it with requests, you will see more throttling than expected. Ramp up gradually over the first few hours.
+**Throttling during sudden traffic bursts**: Azure Storage load balances as traffic increases, but if you immediately hammer an account or partition during load tests or a deployment, you might see throttling or timeouts while the service load balances. Ramp up gradually when possible.
 
-**Geo-replication lag**: If you are using RA-GRS (Read-Access Geo-Redundant Storage) and reading from the secondary endpoint, keep in mind that the secondary has lower throughput limits than the primary.
+**Geo-replication lag**: If you are using RA-GRS (Read-Access Geo-Redundant Storage) and reading from the secondary endpoint, keep in mind that data is replicated asynchronously, so the secondary can lag behind the primary.
 
 **Batch operations counting as multiple requests**: A batch of 100 table operations still counts as 100 transactions against your scalability targets, even though it is sent as a single HTTP request.
 
