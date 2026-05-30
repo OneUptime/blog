@@ -41,7 +41,7 @@ The pod events section in `kubectl describe pod` is the most informative source.
 
 ### Issue 1: Multi-Attach Error
 
-Azure Disks are ReadWriteOnce by default, meaning only one node can mount them at a time. If a pod is rescheduled to a different node while the disk is still attached to the old node, you get a multi-attach error.
+Azure Disks are ReadWriteOnce by default, meaning only one node can mount them at a time. Multiple pods can use the same ReadWriteOnce volume only when they run on that same node. If a pod is rescheduled to a different node while the disk is still attached to the old node, you get a multi-attach error.
 
 ```text
 Warning  FailedAttachVolume  Multi-Attach error for volume "pvc-xyz":
@@ -61,11 +61,11 @@ kubectl delete volumeattachment <attachment-name>
 kubectl get pod <pod-name> -w
 ```
 
-A better long-term fix is to set the `maxShares` parameter on your storage class for workloads that need multi-node access.
+A better long-term fix is to use Azure Files for general ReadWriteMany file-system access. Azure shared disks with the `maxShares` parameter are only appropriate for applications that are designed for shared block storage and coordinate writes safely, such as clustered databases or applications using a cluster-aware file system.
 
 ```yaml
 # shared-disk-storageclass.yaml
-# Storage class for Azure shared disks (allows multi-attach)
+# Storage class for Azure shared disks (allows multi-attach for shared-disk-aware workloads)
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -99,7 +99,7 @@ kubectl logs -n kube-system -l app=csi-azuredisk-controller --tail=100
 kubectl logs -n kube-system -l component=cloud-controller-manager --tail=50 | grep -i throttl
 ```
 
-The fix depends on the cause. For throttling, reduce the number of simultaneous PVC creations. For slow APIs, increase the attach timeout in the storage class.
+The fix depends on the cause. For throttling, reduce the number of simultaneous PVC creations. For transient Azure API slowness, retry the rollout or stagger pod creation so the CSI controller is not trying to attach many disks at once.
 
 ### Issue 3: Disk Size Mismatch
 
@@ -229,17 +229,27 @@ spec:
 
 ### Issue 7: Azure Files NFS Mount Failure
 
-If you are using NFS protocol for Azure Files (required for large file workloads), the storage account needs specific configuration.
+If you are using NFS protocol for Azure Files, the storage account needs specific configuration. NFS is a good fit for Linux workloads that need POSIX semantics and random access with in-place updates.
 
 ```bash
 # Create a storage account that supports NFS
 az storage account create \
   --name mynfsstorageaccount \
   --resource-group myRG \
+  --location eastus \
   --kind FileStorage \
   --sku Premium_LRS \
-  --enable-large-file-share \
-  --https-only false  # NFS requires this to be false
+  --https-only false \
+  --default-action Deny \
+  --bypass AzureServices
+
+# Allow the AKS subnet to reach the NFS-enabled storage account
+SUBNET_ID=$(az aks show --resource-group myRG --name myAKS --query "agentPoolProfiles[0].vnetSubnetId" -o tsv)
+
+az storage account network-rule add \
+  --account-name mynfsstorageaccount \
+  --resource-group myRG \
+  --subnet $SUBNET_ID
 ```
 
 ```yaml
@@ -253,11 +263,16 @@ provisioner: file.csi.azure.com
 parameters:
   protocol: nfs
   skuName: Premium_LRS
+  resourceGroup: myRG
+  storageAccount: mynfsstorageaccount
+  server: mynfsstorageaccount.file.core.windows.net
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
 mountOptions:
   - nconnect=4
+  - noresvport
+  - actimeo=30
 ```
 
 ## Common Issues Affecting Both
