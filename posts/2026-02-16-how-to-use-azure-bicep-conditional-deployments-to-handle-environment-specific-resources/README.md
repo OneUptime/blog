@@ -37,7 +37,7 @@ resource redisCache 'Microsoft.Cache/redis@2023-08-01' = if (environmentName == 
 }
 ```
 
-When `environmentName` is `'dev'`, the Redis cache is not deployed at all. Bicep does not generate any ARM template resources for it, so there is no cost and no resource in Azure.
+When `environmentName` is `'dev'`, the Redis cache is not deployed at all. The compiled ARM template includes the condition, and Azure Resource Manager skips the resource when the condition is false, so there is no cost and no resource in Azure.
 
 ## Conditional Properties with Ternary Expressions
 
@@ -62,7 +62,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   properties: {
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
-    // Enable soft delete only in production (protects against accidental deletion)
+    // Block anonymous blob public access
     allowBlobPublicAccess: false
   }
 }
@@ -128,7 +128,7 @@ resource webApp 'Microsoft.Web/sites@2023-01-01' = {
         enableAppInsights ? [
           {
             name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-            value: appInsights.properties.ConnectionString
+            value: appInsights!.properties.ConnectionString
           }
           {
             name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
@@ -139,7 +139,7 @@ resource webApp 'Microsoft.Web/sites@2023-01-01' = {
         enableRedis ? [
           {
             name: 'REDIS_CONNECTION_STRING'
-            value: redisCache.properties.hostName
+            value: redisCache!.properties.hostName
           }
         ] : []
       )
@@ -244,9 +244,9 @@ Outputs can also be conditional. Use the conditional resource's properties in an
 
 ```bicep
 // Conditional outputs that depend on whether resources were deployed
-output redisHostName string = enableRedis ? redisCache.properties.hostName : 'not-deployed'
-output cdnEndpoint string = enableCdn ? cdnProfile.name : 'not-deployed'
-output appInsightsKey string = enableAppInsights ? appInsights.properties.InstrumentationKey : 'not-deployed'
+output redisHostName string = enableRedis ? redisCache!.properties.hostName : 'not-deployed'
+output cdnEndpoint string = enableCdn ? cdnProfile!.name : 'not-deployed'
+output appInsightsConnectionString string = enableAppInsights ? appInsights!.properties.ConnectionString : 'not-deployed'
 ```
 
 ## Pattern: Environment Configuration Map
@@ -349,10 +349,13 @@ param logCategories array = [
   'AppServiceAppLogs'
 ]
 
-resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01' = [for category in logCategories: if (enableDiagnostics) {
+param logAnalyticsWorkspaceId string
+
+resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = [for category in logCategories: if (enableDiagnostics) {
   name: 'diag-${category}'
   scope: webApp
   properties: {
+    workspaceId: logAnalyticsWorkspaceId
     logs: [
       {
         category: category
@@ -404,7 +407,7 @@ stages:
 
 1. **Referencing conditional resource properties.** If you reference a property of a conditional resource in another resource, make sure that other resource also has the same condition or handles the case where the conditional resource does not exist.
 
-2. **Existing resource references.** You cannot use `existing` references to resources that might not exist. If you need to reference a resource that may or may not be deployed, pass its properties as parameters instead.
+2. **Existing resource references.** You can use `existing` with a condition, but the resource must exist when that condition is true. If you reference an existing resource that may not exist, guard the reference with the same condition or pass its properties as parameters instead.
 
 3. **Nested conditions.** Bicep does not support `if` inside resource property blocks. Use ternary expressions for property-level conditions and `if` for resource-level conditions.
 
