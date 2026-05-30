@@ -10,7 +10,7 @@ Description: Learn how to configure VPC Service Controls to allow Cloud Function
 
 Cloud Functions are one of the trickiest services to get working with VPC Service Controls. The challenge is that Cloud Functions run on Google-managed infrastructure outside your VPC. When a function tries to access a resource inside a VPC Service Perimeter, VPC SC sees it as an external request and blocks it.
 
-This is a common headache. You have a Cloud Function that needs to read from a Cloud Storage bucket or query BigQuery, and both of those are protected by a perimeter. The function has the right IAM permissions, but VPC SC does not care about IAM - it cares about the network boundary.
+This is a common headache. You have a Cloud Function that needs to read from a Cloud Storage bucket or query BigQuery, and both of those are protected by a perimeter. The function has the right IAM permissions, but VPC SC also evaluates the request context, including identity and network origin.
 
 Let me walk you through the different approaches to solve this.
 
@@ -49,7 +49,7 @@ This works, but it has a catch: now the Cloud Functions API itself is restricted
 ```yaml
 # ingress-for-deployment.yaml - Allow deploying functions from your dev machine
 - ingressFrom:
-    identityType: ANY_USER_ACCOUNT
+    identityType: ANY_IDENTITY
     sources:
       - accessLevel: accessPolicies/POLICY_ID/accessLevels/corporate-network
   ingressTo:
@@ -92,7 +92,7 @@ gcloud functions deploy my-function \
   --project=my-project-id
 ```
 
-The `--egress-settings=all` flag routes all outbound traffic through the VPC connector, not just traffic to internal IPs. This is important for VPC SC because it ensures API calls go through the VPC.
+The `--egress-settings=all` flag routes all outbound traffic through the VPC connector, not just traffic to internal IPs. For Google API calls protected by VPC SC, also configure Private Google Access and DNS so `*.googleapis.com` resolves to `restricted.googleapis.com`; the connector alone does not make public Google API endpoints count as private VPC access.
 
 Step 3: Make sure the project is in the perimeter.
 
@@ -111,7 +111,7 @@ If you cannot add the function's project to the perimeter, use ingress rules to 
 # function-ingress.yaml - Allow Cloud Function to access perimeter resources
 - ingressFrom:
     identities:
-      - serviceAccount:my-project-id@appspot.gserviceaccount.com
+      - serviceAccount:FUNCTIONS_PROJECT_NUMBER-compute@developer.gserviceaccount.com
     sources:
       - resource: projects/FUNCTIONS_PROJECT_NUMBER
   ingressTo:
@@ -147,12 +147,12 @@ gcloud functions deploy my-function-v2 \
   --trigger-http \
   --network=my-vpc \
   --subnet=my-subnet \
-  --egress-settings=all \
+  --direct-vpc-egress=all \
   --region=us-central1 \
   --project=my-project-id
 ```
 
-With direct VPC egress, the function's traffic flows through your VPC network directly, so it appears as internal traffic to VPC Service Controls.
+With direct VPC egress, the function's traffic flows through your VPC network directly. For calls to Google APIs inside a VPC Service Controls perimeter, configure Private Google Access and `restricted.googleapis.com` DNS in the VPC network so those API calls use the restricted VIP.
 
 ## Example: Cloud Function Accessing Protected Cloud Storage
 
@@ -226,7 +226,7 @@ If your function is still blocked after configuration:
 ```bash
 # Check for VPC SC violations from the function's service account
 gcloud logging read \
-  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.authenticationInfo.principalEmail:"appspot.gserviceaccount.com"' \
+  'protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata" AND protoPayload.authenticationInfo.principalEmail:"developer.gserviceaccount.com"' \
   --limit=10 \
   --format="table(timestamp, protoPayload.methodName, protoPayload.metadata.violationReason)" \
   --project=my-project-id
@@ -234,9 +234,9 @@ gcloud logging read \
 
 Common issues:
 
-1. **VPC connector not routing all traffic**: Make sure `--egress-settings=all` is set. The default `private-ranges-only` does not route Google API traffic through the VPC.
+1. **VPC connector not routing all traffic**: Make sure `--egress-settings=all` is set. The default `private-ranges-only` does not route Google API traffic through the VPC. Also make sure the VPC network uses Private Google Access with DNS for `restricted.googleapis.com`.
 
-2. **Wrong service account in ingress rules**: Cloud Functions use the App Engine default service account by default (`PROJECT_ID@appspot.gserviceaccount.com`). If you specified a custom service account, use that in your rules.
+2. **Wrong service account in ingress rules**: Cloud Run functions use the Compute Engine default service account by default (`PROJECT_NUMBER-compute@developer.gserviceaccount.com`). If you specified a custom service account, use that in your rules.
 
 3. **Missing restricted services**: The Cloud Functions API itself might need to be in the restricted services list if the project is in the perimeter.
 
@@ -257,9 +257,9 @@ Make sure the state is `READY` and the connector has enough capacity for your fu
 
 1. Always use a VPC connector or direct VPC egress for functions that access perimeter-protected resources. Ingress rules alone are less secure.
 
-2. Use dedicated service accounts for your functions rather than the default App Engine service account. This makes ingress/egress rules more precise.
+2. Use dedicated service accounts for your functions rather than the default Compute Engine service account. This makes ingress/egress rules more precise.
 
-3. Set `--egress-settings=all` to ensure all traffic (including Google API calls) routes through the VPC.
+3. Set `--egress-settings=all` for Serverless VPC Access connectors, or `--direct-vpc-egress=all` for Direct VPC egress, and route Google API calls to `restricted.googleapis.com`.
 
 4. Monitor VPC connector throughput. If you have high-volume functions, the connector might become a bottleneck.
 
@@ -267,4 +267,4 @@ Make sure the state is `READY` and the connector has enough capacity for your fu
 
 ## Conclusion
 
-Getting Cloud Functions to work with VPC Service Controls requires understanding that functions run outside your VPC by default. The VPC connector is the recommended solution because it routes function traffic through your network, making it appear as internal traffic to VPC SC. Combined with proper perimeter configuration and service restrictions, you can run serverless workloads that securely access protected resources without compromising your perimeter's integrity.
+Getting Cloud Functions to work with VPC Service Controls requires understanding that functions run outside your VPC by default. The VPC connector is the recommended solution because it routes function traffic through your network, and Private Google Access with `restricted.googleapis.com` keeps Google API calls on the restricted VIP for VPC SC. Combined with proper perimeter configuration and service restrictions, you can run serverless workloads that securely access protected resources without compromising your perimeter's integrity.
