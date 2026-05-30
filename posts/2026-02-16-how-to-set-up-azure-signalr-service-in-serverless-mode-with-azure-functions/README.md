@@ -8,7 +8,7 @@ Description: A hands-on guide to setting up Azure SignalR Service in serverless 
 
 ---
 
-Azure SignalR Service in serverless mode is one of the cleanest ways to add real-time capabilities to an application without running a persistent server. Instead of hosting an ASP.NET Core app that maintains WebSocket connections, you let Azure SignalR Service handle all the connections while Azure Functions handle the business logic. When something happens (a database change, a timer, an HTTP request), your function sends a message through SignalR, and all connected clients receive it instantly.
+Azure SignalR Service in serverless mode is one of the cleanest ways to add real-time capabilities to an application without running a persistent server. Instead of hosting an ASP.NET Core app that maintains client connections, you let Azure SignalR Service handle all the connections while Azure Functions handle the business logic. When something happens (a database change, a timer, an HTTP request), your function sends a message through SignalR, and all connected clients receive it instantly.
 
 In this post, I will walk through the complete setup: creating the SignalR Service, writing Azure Functions with SignalR bindings, connecting clients, and handling the patterns you will need in production.
 
@@ -16,8 +16,8 @@ In this post, I will walk through the complete setup: creating the SignalR Servi
 
 In serverless mode, the architecture has three components:
 
-1. **Clients** (browsers, mobile apps): Connect to Azure SignalR Service directly via WebSockets
-2. **Azure SignalR Service**: Manages all WebSocket connections, handles message routing
+1. **Clients** (browsers, mobile apps): Connect to Azure SignalR Service directly, typically via WebSockets with supported fallbacks
+2. **Azure SignalR Service**: Manages client connections, handles message routing
 3. **Azure Functions**: Handle business logic and send messages through SignalR
 
 The flow for sending a message looks like this:
@@ -30,10 +30,10 @@ sequenceDiagram
 
     Client->>Function: HTTP request (negotiate)
     Function-->>Client: SignalR connection info
-    Client->>SignalR: WebSocket connection
+    Client->>SignalR: SignalR client connection
     Note over Function: Something triggers the function
     Function->>SignalR: Send message
-    SignalR->>Client: Push message via WebSocket
+    SignalR->>Client: Push message over the SignalR connection
 ```
 
 The key insight is that the Azure Function does not maintain any persistent connections. It just sends messages to SignalR Service, which handles delivery to the right clients.
@@ -58,11 +58,11 @@ Create a new Azure Functions project. I will use JavaScript/TypeScript, but C# a
 ```bash
 # Create a new Azure Functions project
 
-func init signalr-demo --typescript
+func init signalr-demo --worker-runtime typescript --model V4
 cd signalr-demo
 
-# Install the SignalR extension
-func extensions install --package Microsoft.Azure.WebJobs.Extensions.SignalRService --version 1.13.0
+# The TypeScript template uses extension bundles. Make sure host.json includes:
+# "extensionBundle": { "id": "Microsoft.Azure.Functions.ExtensionBundle", "version": "[4.0.0, 5.0.0)" }
 ```
 
 Add the SignalR connection string to your `local.settings.json`:
@@ -110,7 +110,7 @@ app.http("negotiate", {
 });
 ```
 
-The `signalRConnectionInfo` input binding does the heavy lifting. It generates a JWT token scoped to the specified hub and returns the SignalR Service URL. The client uses this information to establish a WebSocket connection.
+The `signalRConnectionInfo` input binding does the heavy lifting. It generates a JWT token scoped to the specified hub and returns the SignalR Service URL. The client uses this information to establish a SignalR connection.
 
 ## Step 4: Create a Function That Sends Messages
 
@@ -226,7 +226,7 @@ connection.onclose(() => {
 });
 ```
 
-The client calls your negotiate function to get the SignalR Service URL and token, then connects directly to SignalR Service via WebSocket. Your Azure Functions are not involved in the persistent connection at all.
+The client calls your negotiate function to get the SignalR Service URL and token, then connects directly to SignalR Service using the SignalR transport negotiation. Your Azure Functions are not involved in the persistent connection at all.
 
 ## Sending to Specific Users
 
@@ -250,7 +250,7 @@ Groups let you segment your connected clients:
 ```typescript
 // Add a user to a group
 context.extraOutputs.set(signalROutput, [{
-    actionName: "add",
+    action: "add",
     userId: "user123",
     groupName: "premium-users"
 }]);
@@ -293,4 +293,4 @@ Azure Functions in the Consumption plan scale automatically based on trigger vol
 
 ## Summary
 
-Azure SignalR Service in serverless mode with Azure Functions gives you real-time messaging without any persistent infrastructure to manage. The negotiate function provides connection info, SignalR Service manages the WebSocket connections, and your functions send messages through output bindings. This architecture scales from zero to thousands of connections automatically and you only pay for what you use. Start with the negotiate and broadcast pattern, then add user-targeted and group messaging as your application grows.
+Azure SignalR Service in serverless mode with Azure Functions gives you real-time messaging without any persistent infrastructure to manage. The negotiate function provides connection info, SignalR Service manages the client connections, and your functions send messages through output bindings. This architecture scales from zero to thousands of connections automatically and you only pay for what you use. Start with the negotiate and broadcast pattern, then add user-targeted and group messaging as your application grows.
