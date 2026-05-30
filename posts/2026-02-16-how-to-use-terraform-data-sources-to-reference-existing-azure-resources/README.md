@@ -10,11 +10,11 @@ Description: Learn how to use Terraform data sources to reference and query exis
 
 When you start managing Azure infrastructure with Terraform, you quickly run into a common problem: not everything in your environment was created by Terraform. Maybe your networking team set up the VNet manually, or your security team created a Key Vault through the portal. You still need to reference those resources in your Terraform code, and that is exactly what data sources solve.
 
-Data sources let you read information about existing resources without managing them. You get their attributes - IDs, names, properties - and use those values in your own resource definitions. No state file bloat, no risk of accidentally destroying something your team depends on.
+Data sources let you read information about existing resources without managing them. You get their attributes - IDs, names, properties - and use those values in your own resource definitions. Terraform still records the data source results in state, but it does not take lifecycle ownership of the existing resource, so there is no risk of Terraform destroying something your team depends on.
 
 ## What Are Terraform Data Sources?
 
-A data source in Terraform is a read-only query against a provider's API. When you declare a `data` block, Terraform calls the Azure Resource Manager API during the plan phase to fetch the current state of that resource. The result is available as an attribute you can reference elsewhere in your configuration.
+A data source in Terraform is a read-only query against a provider's API. When you declare a `data` block, Terraform usually calls the Azure Resource Manager API during refresh and planning to fetch the current state of that resource. If the data source depends on values that are not known until apply, Terraform can defer the read until the apply phase. The result is available as an attribute you can reference elsewhere in your configuration.
 
 The key difference between a `resource` block and a `data` block is ownership. A `resource` block means Terraform creates, updates, and destroys that resource. A `data` block means Terraform only reads it.
 
@@ -39,7 +39,7 @@ resource "azurerm_storage_account" "logs" {
 }
 ```
 
-Notice how we reference `data.azurerm_resource_group.existing.location` instead of hardcoding a region. If the resource group moves or if you want the storage account to always match the resource group's location, this keeps things consistent automatically.
+Notice how we reference `data.azurerm_resource_group.existing.location` instead of hardcoding a region. If you reuse this configuration across environments, or if you want the storage account to always match the resource group's location, this keeps things consistent automatically.
 
 ## Looking Up Virtual Networks and Subnets
 
@@ -92,12 +92,18 @@ data "azurerm_key_vault_secret" "db_password" {
   key_vault_id = data.azurerm_key_vault.main.id
 }
 
+# Reference the existing App Service plan
+data "azurerm_service_plan" "main" {
+  name                = "asp-api-prod"
+  resource_group_name = "rg-applications"
+}
+
 # Use the secret value in an App Service configuration
 resource "azurerm_linux_web_app" "api" {
   name                = "app-api-prod"
   resource_group_name = "rg-applications"
   location            = "eastus"
-  service_plan_id     = azurerm_service_plan.main.id
+  service_plan_id     = data.azurerm_service_plan.main.id
 
   site_config {}
 
@@ -167,6 +173,9 @@ data "azurerm_log_analytics_workspace" "central" {
   resource_group_name = "rg-monitoring"
 }
 
+# Get the current Azure tenant ID for the Key Vault
+data "azurerm_client_config" "current" {}
+
 # Find the existing storage account for long-term archival
 data "azurerm_storage_account" "archive" {
   name                = "starchiveprod"
@@ -192,7 +201,7 @@ resource "azurerm_monitor_diagnostic_setting" "kv_diagnostics" {
     category = "AuditEvent"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
   }
 }
@@ -222,7 +231,7 @@ output "prod_sql_servers" {
 
 There are a few things that catch people off guard with data sources.
 
-First, data sources fail if the resource does not exist. Unlike a resource block where Terraform will create it, a data source expects the thing to already be there. If it is missing, you get an error during plan. You can work around this with `try()` or conditional logic, but it is better to make sure your dependencies are deployed first.
+First, data sources fail if the resource does not exist. Unlike a resource block where Terraform will create it, a data source expects the thing to already be there. If it is missing, you get an error during plan. Conditional logic can skip declaring a data source when you already know it should not be read, but functions like `try()` cannot catch a provider read failure from a missing Azure resource. It is usually better to make sure your dependencies are deployed first.
 
 Second, data sources are evaluated during every plan. If the upstream resource changes between plans, your plan output will reflect those changes. This is usually what you want, but it can surprise you if someone modifies a shared resource unexpectedly.
 
