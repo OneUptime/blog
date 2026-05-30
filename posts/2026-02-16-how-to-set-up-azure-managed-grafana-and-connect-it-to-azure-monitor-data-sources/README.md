@@ -8,7 +8,7 @@ Description: Step-by-step guide to setting up Azure Managed Grafana and connecti
 
 ---
 
-Grafana is one of the most popular open-source platforms for monitoring and observability. Azure Managed Grafana gives you a fully managed Grafana instance that is integrated with Azure Active Directory, automatically connected to Azure Monitor data sources, and maintained by Microsoft so you do not have to worry about infrastructure or upgrades.
+Grafana is one of the most popular open-source platforms for monitoring and observability. Azure Managed Grafana gives you a fully managed Grafana instance that is integrated with Microsoft Entra ID, automatically connected to Azure Monitor data sources, and maintained by Microsoft so you do not have to worry about infrastructure or upgrades.
 
 In this post, I will walk you through creating an Azure Managed Grafana workspace, connecting it to your Azure data sources, and building your first dashboards.
 
@@ -16,7 +16,7 @@ In this post, I will walk you through creating an Azure Managed Grafana workspac
 
 You might wonder why you would use Managed Grafana instead of just installing Grafana on a VM or running it in a container. There are several practical reasons:
 
-**Azure AD integration.** Users sign in with their Azure AD credentials. No separate Grafana user management needed.
+**Microsoft Entra ID integration.** Users sign in with their Microsoft Entra credentials. No separate Grafana user management needed.
 
 **Automatic data source provisioning.** Azure Monitor data sources (metrics, logs, Azure Resource Graph) are pre-configured. You do not need to set up service accounts or API keys.
 
@@ -42,10 +42,11 @@ az grafana create \
     --name "my-grafana-workspace" \
     --resource-group "grafana-rg" \
     --location "eastus" \
-    --sku-tier "Standard"
+    --sku-tier "Standard" \
+    --zone-redundancy "Enabled"
 ```
 
-The Standard tier gives you zone redundancy and higher availability. There is also an Essential tier for development and testing at lower cost.
+The Standard tier supports zone redundancy and higher availability. The older Essential preview tier is being replaced, so use Standard for new Azure Managed Grafana workspaces.
 
 ### Using the Azure Portal
 
@@ -54,7 +55,7 @@ Navigate to the Azure Marketplace and search for "Azure Managed Grafana." Click 
 - **Subscription and resource group** - Where the Grafana resource will live
 - **Instance name** - A unique name for your workspace
 - **Region** - Choose a region close to your users
-- **Pricing tier** - Standard for production, Essential for dev/test
+- **Pricing tier** - Standard for new Azure Managed Grafana workspaces
 
 The creation takes a few minutes. Once complete, you can access the Grafana UI through the endpoint URL shown in the resource overview.
 
@@ -109,11 +110,11 @@ az role assignment create \
     --role "Monitoring Reader" \
     --scope "/subscriptions/your-subscription-id"
 
-# If you want to query Log Analytics, also add Log Analytics Reader
+# If you assign access at the Log Analytics workspace scope, use Log Analytics Reader
 az role assignment create \
     --assignee "$GRAFANA_PRINCIPAL_ID" \
     --role "Log Analytics Reader" \
-    --scope "/subscriptions/your-subscription-id"
+    --scope "/subscriptions/your-subscription-id/resourceGroups/your-resource-group/providers/Microsoft.OperationalInsights/workspaces/your-workspace-name"
 ```
 
 For multi-subscription monitoring, repeat the role assignment for each subscription.
@@ -122,11 +123,12 @@ For multi-subscription monitoring, repeat the role assignment for each subscript
 
 Open the Grafana UI (the URL is in the Azure Portal resource overview). Navigate to Configuration and then Data sources. You should see "Azure Monitor" already listed. Click on it to verify the connection.
 
-The Azure Monitor data source in Managed Grafana supports three query types:
+The Azure Monitor data source in Managed Grafana supports four query types:
 
 1. **Metrics** - Azure resource metrics (CPU, memory, network, etc.)
 2. **Logs** - KQL queries against Log Analytics workspaces
-3. **Azure Resource Graph** - Resource inventory queries
+3. **Traces** - Application Insights traces
+4. **Azure Resource Graph** - Resource inventory queries
 
 ## Adding Additional Data Sources
 
