@@ -19,7 +19,7 @@ A cold start happens when Azure needs to allocate infrastructure for your functi
 3. Loading your application code
 4. Initializing your application's dependencies (database connections, HTTP clients, etc.)
 
-Each step adds latency. On the Consumption plan, all four steps happen on the first request after a period of inactivity. On the Premium plan, only steps 3 and 4 apply because pre-warmed instances are already running.
+Each step adds latency. On the Consumption plan, the app can scale to zero when idle, so the first request after a period of inactivity can include host and language worker startup. On the Premium plan, always-ready instances keep your app running on one or more instances, and prewarmed instances help reduce latency during HTTP scale-out.
 
 ## Measuring Cold Start Time
 
@@ -37,24 +37,37 @@ requests
 
 The difference between P50 and P99 latency often reveals cold start impact. If your P50 is 200ms but your P99 is 8000ms, those P99 outliers are likely cold starts.
 
-You can also track cold starts explicitly by logging at application startup:
+You can also track cold starts explicitly by logging the first invocation handled by each host instance. This example uses the current .NET isolated worker model:
 
 ```csharp
-// Track when the function host initializes
-public class Startup : FunctionsStartup
-{
-    // This runs once per cold start
-    public override void Configure(IFunctionsHostBuilder builder)
-    {
-        var telemetry = new TelemetryClient();
-        telemetry.TrackEvent("ColdStart", new Dictionary<string, string>
-        {
-            { "timestamp", DateTime.UtcNow.ToString("o") }
-        });
+using System.Net;
+using System.Threading;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Logging;
 
-        // Register services
-        builder.Services.AddHttpClient();
-        builder.Services.AddSingleton<MyService>();
+public class ColdStartTelemetry
+{
+    private static int _coldStart = 1;
+    private readonly ILogger<ColdStartTelemetry> _logger;
+
+    public ColdStartTelemetry(ILogger<ColdStartTelemetry> logger)
+    {
+        _logger = logger;
+    }
+
+    [Function("ColdStartTelemetry")]
+    public async Task<HttpResponseData> Run(
+        [HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
+    {
+        if (Interlocked.Exchange(ref _coldStart, 0) == 1)
+        {
+            _logger.LogInformation("ColdStart at {Timestamp}", DateTimeOffset.UtcNow);
+        }
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteStringAsync("OK");
+        return response;
     }
 }
 ```
@@ -63,18 +76,26 @@ public class Startup : FunctionsStartup
 
 The hosting plan has the biggest impact on cold start behavior.
 
-**Consumption Plan**: Full cold starts happen after ~20 minutes of inactivity. Cold start time depends on the runtime language and application size. Cheapest option but worst cold start behavior.
+**Consumption Plan**: Apps can scale to zero when idle, so cold start time depends on the runtime language, application size, and dependencies. This is now a legacy hosting plan; for new serverless function apps, evaluate the Flex Consumption plan first.
 
-**Premium Plan (EP1, EP2, EP3)**: Pre-warmed instances eliminate infrastructure allocation time. You still pay for always-on instances, but cold starts are reduced to just loading your code and initializing dependencies. This is the best balance of cost and performance for latency-sensitive workloads.
+**Flex Consumption Plan**: Improved cold start behavior compared with the legacy Consumption plan, with support for always-ready instances when you need to reduce cold start delay while keeping serverless scaling.
 
-**Dedicated (App Service) Plan**: Functions run on always-on VMs. No cold starts at all, but you pay for the VM whether the function is running or not.
+**Premium Plan (EP1, EP2, EP3)**: Always-ready instances keep your app running to avoid cold starts, and prewarmed instances provide a buffer during HTTP scale-out. You still pay for always-ready instances, but this is often the best balance of cost and performance for latency-sensitive workloads.
+
+**Dedicated (App Service) Plan**: Functions run on dedicated App Service plan VMs. Enable Always On so the Functions runtime does not go idle after inactivity. You pay for the VM whether the function is running or not.
 
 ```bash
-# Check your current hosting plan
-
+# Check which App Service plan your function app uses
 az functionapp show \
   --resource-group my-rg \
   --name my-function-app \
+  --query "serverFarmId" \
+  --output json
+
+# Inspect the plan SKU
+az functionapp plan show \
+  --resource-group my-rg \
+  --name my-current-plan \
   --query "sku" \
   --output json
 
@@ -117,7 +138,7 @@ For Node.js functions:
 du -sh node_modules/
 
 # Use production-only dependencies
-npm install --production
+npm ci --omit=dev
 
 # Consider bundling with webpack or esbuild to reduce cold start time
 npm install --save-dev esbuild
@@ -135,9 +156,7 @@ esbuild.build({
     platform: 'node',
     target: 'node18',
     outdir: 'dist',
-    minify: true,
-    // Exclude Azure Functions SDK - it is provided by the runtime
-    external: ['@azure/functions']
+    minify: true
 });
 ```
 
@@ -184,51 +203,61 @@ az functionapp plan update \
   --name my-premium-plan \
   --min-instances 1
 
-# Or set it on the function app level
-az resource update \
+# Or set always-ready instances on the function app level
+az functionapp update \
   --resource-group my-rg \
-  --name my-function-app/config/web \
-  --resource-type Microsoft.Web/sites/config \
-  --set properties.minimumElasticInstanceCount=1
+  --name my-function-app \
+  --set siteConfig.minimumElasticInstanceCount=1
 ```
 
 You can also configure pre-warmed instance count:
 
 ```bash
 # Set the number of pre-warmed instances
-az resource update \
+az functionapp update \
   --resource-group my-rg \
-  --name my-function-app/config/web \
-  --resource-type Microsoft.Web/sites/config \
-  --set properties.preWarmedInstanceCount=2
+  --name my-function-app \
+  --set siteConfig.preWarmedInstanceCount=2
 ```
 
 ## Optimization Strategy 5: Choose the Right Runtime Language
 
-Cold start times vary significantly by language:
+Cold start times vary significantly by language, runtime version, hosting plan, package size, and dependencies:
 
-- **.NET (in-process)**: Fastest cold start among compiled languages, typically 1-3 seconds on Consumption
+- **.NET (in-process)**: Low startup overhead, but support for the in-process model ends on November 10, 2026
 - **.NET (isolated process)**: Slightly slower than in-process due to inter-process communication setup
-- **Java**: Slowest cold starts, 5-15+ seconds on Consumption due to JVM startup
-- **Node.js**: Moderate, 2-5 seconds on Consumption
-- **Python**: Moderate to slow, 3-8 seconds on Consumption depending on dependencies
-- **PowerShell**: Slow, 5-10 seconds on Consumption
+- **Java**: Often slower to start because of JVM startup and dependency loading
+- **Node.js**: Sensitive to dependency tree size and file count
+- **Python**: Sensitive to dependency size and import-time work
+- **PowerShell**: Often slower to start because of module loading
 
-If cold starts are critical and you are on the Consumption plan, .NET in-process functions have the lowest overhead.
+If cold starts are critical and you are on a serverless plan, use a currently supported runtime, keep startup work small, and consider Flex Consumption always-ready instances or Premium always-ready instances.
 
-For Java, consider using GraalVM native image compilation or the Azure Functions Java worker's faster startup options.
+For Java, focus on reducing startup-time dependency loading and initialization work. GraalVM native image is not a drop-in replacement for a standard Azure Functions Java worker app.
 
 ## Optimization Strategy 6: Keep Functions Warm
 
 On the Consumption plan, you can use a timer-triggered function to keep your app warm.
 
 ```csharp
-// A timer trigger that runs every 5 minutes to prevent cold starts
-[Function("KeepWarm")]
-public void KeepWarm([TimerTrigger("0 */5 * * * *")] TimerInfo timer, ILogger log)
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
+
+public class KeepWarmFunction
 {
-    // This function fires every 5 minutes to keep the host warm
-    log.LogInformation("Warmup ping at {time}", DateTime.UtcNow);
+    private readonly ILogger<KeepWarmFunction> _logger;
+
+    public KeepWarmFunction(ILogger<KeepWarmFunction> logger)
+    {
+        _logger = logger;
+    }
+
+    // A timer trigger that runs every 5 minutes to reduce idle periods
+    [Function("KeepWarm")]
+    public void KeepWarm([TimerTrigger("0 */5 * * * *")] TimerInfo timer)
+    {
+        _logger.LogInformation("Warmup ping at {Time}", DateTimeOffset.UtcNow);
+    }
 }
 ```
 
@@ -242,10 +271,11 @@ For .NET, use `ReadyToRun` compilation to reduce JIT compilation time during col
 <!-- In your .csproj file, enable ReadyToRun compilation -->
 <PropertyGroup>
   <PublishReadyToRun>true</PublishReadyToRun>
+  <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
 </PropertyGroup>
 ```
 
-This precompiles your code to native code for the target platform, which eliminates JIT compilation overhead at startup. The tradeoff is a larger deployment package.
+This precompiles assemblies for the target runtime identifier and can reduce JIT compilation overhead at startup. The tradeoff is a larger deployment package.
 
 ## Monitoring Cold Start Frequency
 
@@ -260,15 +290,15 @@ requests
 | render timechart
 ```
 
-If cold starts are happening frequently during business hours, your traffic pattern might benefit from the Premium plan with pre-warmed instances. If they only happen overnight when nobody cares, the Consumption plan might be fine.
+If cold starts are happening frequently during business hours, your traffic pattern might benefit from Flex Consumption or Premium with always-ready instances. If they only happen overnight when nobody cares, the Consumption plan might be fine.
 
 ## The Decision Framework
 
 Choosing the right cold start mitigation depends on your requirements:
 
 - **Latency tolerance > 5 seconds**: Consumption plan with optimized packages is fine
-- **Latency tolerance 1-3 seconds**: Premium plan with 1 pre-warmed instance
-- **Latency tolerance < 1 second**: Dedicated plan or Premium with multiple pre-warmed instances
+- **Latency tolerance 1-3 seconds**: Flex Consumption or Premium plan with always-ready instances
+- **Latency tolerance < 1 second**: Dedicated plan with Always On, or Premium with enough always-ready instances for your steady-state load
 - **Highly variable load**: Premium plan with elastic scale-out
 
 Cold starts are a fundamental tradeoff in serverless computing. You trade always-on infrastructure costs for pay-per-execution pricing, and cold starts are the cost. Understanding your options and measuring the actual impact lets you make an informed decision rather than just complaining about latency.
