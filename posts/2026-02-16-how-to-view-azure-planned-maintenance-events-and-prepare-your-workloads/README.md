@@ -40,8 +40,8 @@ You can also pull planned maintenance events programmatically:
 
 # The eventType filter narrows results to maintenance events only
 az rest --method get \
-  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.ResourceHealth/events?api-version=2022-10-01&\$filter=eventType eq 'PlannedMaintenance'" \
-  --query "value[].{name:name, title:properties.title, status:properties.status, impact:properties.impact[0].impactedService}"
+  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.ResourceHealth/events?api-version=2025-05-01" \
+  --query "value[?properties.eventType=='PlannedMaintenance'].{name:name, title:properties.title, status:properties.status, impact:properties.impact[0].impactedService}"
 ```
 
 ### Azure Monitor Activity Log
@@ -83,7 +83,7 @@ Knowing about maintenance is only half the battle. Here is how to make your work
 
 ### Use Availability Zones
 
-The single most effective thing you can do is deploy across availability zones. When Azure performs maintenance, it operates on one zone at a time. If your application runs in at least two zones with a load balancer in front, your users should see zero downtime during maintenance.
+The single most effective thing you can do is deploy across availability zones. For each region, Microsoft aims to deploy updates to Azure services within a single availability zone at a time. If your application runs in at least two zones with a load balancer in front, your users should see minimal or no downtime during maintenance.
 
 ```mermaid
 graph TB
@@ -151,24 +151,28 @@ For OS-level patches inside your VMs (not the host maintenance), enable automati
 az vm update \
   --resource-group myResourceGroup \
   --name myVM \
-  --set osProfile.windowsConfiguration.patchSettings.patchMode=AutomaticByPlatform
+  --set osProfile.windowsConfiguration.enableAutomaticUpdates=true \
+        osProfile.windowsConfiguration.patchSettings.patchMode=AutomaticByPlatform
 ```
 
 ### Use Maintenance Configurations
 
-Azure Maintenance Configurations let you control when platform maintenance happens on your resources. You can define a maintenance window that aligns with your low-traffic periods:
+Azure Maintenance Configurations let you control supported maintenance scopes, such as guest patching for VMs and host updates for isolated VMs or dedicated hosts. For a regular VM, you can define a guest patching window that aligns with your low-traffic periods:
 
 ```bash
 # Create a maintenance configuration with a weekly window
-# This tells Azure to perform maintenance during your preferred time
+# This tells Azure to install guest OS patches during your preferred time
 az maintenance configuration create \
   --resource-group rg-monitoring \
   --name mc-weekend-window \
-  --maintenance-scope Host \
+  --location eastus \
+  --maintenance-scope InGuestPatch \
   --recur-every "Week Saturday" \
-  --start-date-time "2026-02-21 02:00" \
-  --duration "05:00" \
-  --time-zone "Eastern Standard Time"
+  --start-date-time "2026-06-06 02:00" \
+  --duration "02:00" \
+  --time-zone "Eastern Standard Time" \
+  --reboot-setting IfRequired \
+  --extension-properties InGuestPatchMode=User
 
 # Assign the maintenance configuration to a VM
 az maintenance assignment create \
