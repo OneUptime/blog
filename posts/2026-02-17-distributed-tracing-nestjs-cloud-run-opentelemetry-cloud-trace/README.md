@@ -37,11 +37,12 @@ cd tracing-demo
 npm install @opentelemetry/sdk-node \
   @opentelemetry/sdk-trace-node \
   @opentelemetry/auto-instrumentations-node \
-  @opentelemetry/exporter-trace-otlp-grpc \
   @google-cloud/opentelemetry-cloud-trace-exporter \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions \
-  @opentelemetry/api
+  @opentelemetry/api \
+  @nestjs/axios \
+  axios
 ```
 
 ## Configuring OpenTelemetry
@@ -53,7 +54,7 @@ The OpenTelemetry SDK must be initialized before any other code runs. Create a t
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { TraceExporter } = require('@google-cloud/opentelemetry-cloud-trace-exporter');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Create the Cloud Trace exporter
@@ -64,7 +65,7 @@ const traceExporter = new TraceExporter({
 
 // Configure the OpenTelemetry SDK
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: process.env.K_SERVICE || 'tracing-demo',
     [ATTR_SERVICE_VERSION]: process.env.K_REVISION || '1.0.0',
   }),
@@ -122,7 +123,7 @@ bootstrap();
 
 ## Adding Custom Spans
 
-Auto-instrumentation captures HTTP requests and database queries automatically. For custom business logic, add manual spans.
+Auto-instrumentation captures HTTP requests and supported database clients automatically. For custom business logic, add manual spans.
 
 ```typescript
 // src/orders/orders.service.ts - Service with custom tracing
@@ -231,8 +232,8 @@ import {
   ExecutionContext,
   CallHandler,
 } from '@nestjs/common';
-import { Observable, tap } from 'rxjs';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { Observable, finalize, tap } from 'rxjs';
+import { context as otelContext, trace, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('nestjs-interceptor');
 
@@ -256,22 +257,29 @@ export class TracingInterceptor implements NestInterceptor {
       span.setAttribute('resource.id', request.params.id);
     }
 
-    return next.handle().pipe(
-      tap({
-        next: () => {
-          span.setStatus({ code: SpanStatusCode.OK });
-          span.end();
-        },
-        error: (error) => {
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: error.message,
-          });
-          span.recordException(error);
-          span.end();
-        },
-      }),
-    );
+    const spanContext = trace.setSpan(otelContext.active(), span);
+
+    return new Observable((subscriber) => {
+      const subscription = otelContext.with(spanContext, () =>
+        next.handle().pipe(
+          tap({
+            next: () => {
+              span.setStatus({ code: SpanStatusCode.OK });
+            },
+            error: (error) => {
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: error.message,
+              });
+              span.recordException(error);
+            },
+          }),
+          finalize(() => span.end()),
+        ).subscribe(subscriber),
+      );
+
+      return () => subscription.unsubscribe();
+    });
   }
 }
 ```
