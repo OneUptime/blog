@@ -61,11 +61,11 @@ Fix the startup error. Common culprits include:
 
 ### 2. Application Timeout
 
-Azure App Service has a default request timeout of 230 seconds. If your application takes longer than that to respond, the proxy returns a 502.
+Azure App Service has a request timeout of about 230 seconds on Windows apps and about 240 seconds on Linux apps. If your application takes longer than that to respond, the platform can return a timeout or gateway error.
 
 **How to diagnose:**
 
-Look at the timing of 502 errors. If they consistently appear after about 230 seconds, you have a timeout issue.
+Look at the timing of 502 errors. If they consistently appear after about 230 seconds on Windows or 240 seconds on Linux, you have a timeout issue.
 
 Check Application Insights for long-running requests:
 
@@ -80,7 +80,7 @@ requests
 
 **How to fix:**
 
-The 230-second timeout is not configurable. If you have requests that genuinely need more time, you need to change your approach:
+The request timeout is not configurable. If you have requests that genuinely need more time, you need to change your approach:
 
 - Move long-running work to a background process (WebJob or Azure Function)
 - Use async patterns where the client submits a request and polls for results
@@ -88,7 +88,7 @@ The 230-second timeout is not configurable. If you have requests that genuinely 
 
 ### 3. Port Mismatch (Linux/Container)
 
-On Linux and container-based App Services, a very common cause of 502 errors is that the application is listening on the wrong port. Azure App Service expects your app to listen on a specific port.
+On Linux and container-based App Services, a very common cause of 502 errors is that the application is listening on the wrong port. Azure App Service needs to know which port to forward requests to.
 
 **How to diagnose:**
 
@@ -112,7 +112,7 @@ az webapp config appsettings list \
 
 **How to fix:**
 
-Make sure your application listens on port 8080 (the default) or set the `WEBSITES_PORT` app setting to match your application's port:
+For built-in Linux containers, make sure your application listens on the `PORT` environment variable. For custom containers, App Service can automatically detect ports 80 and 8080; if your container listens on a different port, set the `WEBSITES_PORT` app setting to match your container's port:
 
 ```bash
 # Tell App Service what port your container listens on
@@ -124,7 +124,7 @@ az webapp config appsettings set \
 
 ### 4. Container Start Timeout
 
-For container-based apps, Azure waits for the container to start and respond to HTTP requests. The default timeout is 230 seconds. If your container takes longer to start (pulling a large image, running migrations, warming caches), you get a 502.
+For container-based apps, Azure waits for the container to start and respond to HTTP requests. The default startup time limit for App Service on Linux is 230 seconds. If your container takes longer to start (pulling a large image, running migrations, warming caches), the startup attempt can fail and users may see gateway or service unavailable errors.
 
 **How to diagnose:**
 
@@ -187,12 +187,12 @@ If your App Service plan is running out of CPU or memory, the worker process can
 
 **How to diagnose:**
 
-Check the metrics for your App Service:
+Check the metrics for your App Service plan:
 
 ```bash
 # Check CPU and memory metrics
 az monitor metrics list \
-    --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/sites/{name}" \
+    --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/serverfarms/{plan}" \
     --metric "CpuPercentage,MemoryPercentage" \
     --interval PT1M \
     --output table
