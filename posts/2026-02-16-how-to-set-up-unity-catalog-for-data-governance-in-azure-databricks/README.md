@@ -30,7 +30,7 @@ flowchart TD
     F --> I[Table: campaigns]
 ```
 
-- **Metastore** - the top-level container, one per region. It holds all catalogs and the governance metadata.
+- **Metastore** - the top-level container, one per region. It registers catalogs, securable objects, and the permissions that govern access to them.
 - **Catalog** - a logical grouping, typically by environment (production, staging) or business domain.
 - **Schema** - a grouping within a catalog, similar to a database schema. Typically organized by subject area.
 - **Table/View/Function** - the actual data objects.
@@ -42,12 +42,12 @@ Before setting up Unity Catalog, you need:
 1. An Azure Databricks account (premium tier)
 2. An Azure Databricks account admin role
 3. An Azure Data Lake Storage Gen2 account for the metastore storage
-4. An Azure Active Directory tenant for identity management
+4. A Microsoft Entra ID tenant for identity management
 5. A Databricks Access Connector for Azure (managed identity)
 
 ## Step 1: Create the Metastore Storage
 
-Unity Catalog needs a storage location for managed tables and the metastore metadata.
+Unity Catalog can use a storage location for managed tables and managed volumes.
 
 1. Create an Azure Data Lake Storage Gen2 account (or use an existing one)
 2. Create a container named `unity-catalog` (or any name you prefer)
@@ -64,13 +64,14 @@ Unity Catalog needs a storage location for managed tables and the metastore meta
 az role assignment create \
   --role "Storage Blob Data Contributor" \
   --assignee-object-id "<access-connector-managed-identity-id>" \
+  --assignee-principal-type ServicePrincipal \
   --scope "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<storage-account>"
 ```
 
 ## Step 2: Create the Metastore
 
 1. Log into the Databricks account console (accounts.azuredatabricks.net)
-2. Go to **Data** > **Create metastore**
+2. Go to **Catalog** > **Create metastore**
 3. Fill in:
    - **Name**: `main-metastore` (or your preferred name)
    - **Region**: must match your Databricks workspace region
@@ -83,7 +84,7 @@ az role assignment create \
 
 A metastore can be shared across multiple Databricks workspaces in the same region.
 
-1. In the account console, go to **Data** > your metastore
+1. In the account console, go to **Catalog** > your metastore
 2. Click **Workspaces** > **Assign to workspace**
 3. Select the workspace(s) you want to connect
 
@@ -123,18 +124,19 @@ USE SCHEMA sales;
 
 ## Step 5: Configure External Locations
 
-External locations define where data physically resides in cloud storage. They are a security boundary - only users with access to the external location can create external tables pointing to that storage path.
+External locations define where data physically resides in cloud storage. They are a security boundary - only users with the required privileges on the external location can create external tables pointing to that storage path.
+
+First, create a storage credential in Catalog Explorer:
+
+1. Go to **Catalog** > **Create credential**
+2. Select **Storage credential**
+3. Choose **Azure Managed Identity**
+4. Enter `main_storage_credential` as the name
+5. Enter the Access Connector ID for your Databricks Access Connector
+
+Then create the external location in a Databricks notebook or SQL editor:
 
 ```sql
--- Create a storage credential (references the access connector)
-CREATE STORAGE CREDENTIAL IF NOT EXISTS main_storage_credential
-WITH (
-    AZURE_MANAGED_IDENTITY = (
-        ACCESS_CONNECTOR_ID = '/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Databricks/accessConnectors/<connector-name>'
-    )
-)
-COMMENT 'Main storage credential for data lake access';
-
 -- Create an external location
 CREATE EXTERNAL LOCATION IF NOT EXISTS raw_data_location
 URL 'abfss://raw@mystorageaccount.dfs.core.windows.net/'
@@ -181,7 +183,7 @@ GRANT SELECT ON SCHEMA production.sales TO `report-readers@company.com`;
 
 ### Manage Groups
 
-Use Azure AD groups for access management rather than individual users. This scales much better.
+Use Microsoft Entra ID groups for access management rather than individual users. This scales much better.
 
 ```sql
 -- Show current grants on a table
@@ -223,7 +225,7 @@ COMMENT 'Raw order data from source systems';
 
 ## Step 8: Enable Data Lineage
 
-Unity Catalog automatically tracks data lineage - the flow of data from source tables to downstream tables. This is enabled by default for Delta tables.
+Unity Catalog automatically tracks data lineage - the flow of data from source tables to downstream tables - for supported queries run on Azure Databricks against tables registered in Unity Catalog.
 
 To view lineage:
 1. Open the Databricks workspace
@@ -255,7 +257,7 @@ ALTER COLUMN email SET TAGS ('pii' = 'true', 'classification' = 'confidential');
 
 Based on production experience, here are the practices that work well:
 
-1. **Use Azure AD groups for all permissions** - never grant access to individual users. When someone changes roles, you just update their group membership.
+1. **Use Microsoft Entra ID groups for all permissions** - never grant access to individual users. When someone changes roles, you just update their group membership.
 2. **Follow the principle of least privilege** - grant the minimum access needed. Start with USE CATALOG and SELECT, then add write permissions as needed.
 3. **Separate environments with catalogs** - use different catalogs for production, staging, and sandbox. This prevents accidental writes to production data.
 4. **Tag sensitive data consistently** - establish a tagging taxonomy and enforce it. PII, confidential, and public classifications help teams understand what they are working with.
