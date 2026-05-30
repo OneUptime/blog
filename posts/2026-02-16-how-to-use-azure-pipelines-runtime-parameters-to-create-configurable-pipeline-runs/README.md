@@ -17,7 +17,7 @@ This guide covers parameter types, practical patterns, and the techniques that m
 Runtime parameters are defined in the `parameters` section of your YAML pipeline. When someone manually triggers the pipeline, Azure DevOps shows a form with input fields for each parameter. The user fills in their choices, clicks Run, and the pipeline uses those values throughout execution.
 
 Unlike variables, parameters are:
-- Typed (string, number, boolean, object, step, stepList, job, jobList, deployment, deploymentList, stage, stageList)
+- Typed (string, stringList, number, boolean, object, step, stepList, job, jobList, deployment, deploymentList, stage, stageList)
 - Validated at pipeline parse time
 - Available at template expansion time (before the pipeline actually runs)
 - Immutable during the pipeline run
@@ -185,15 +185,19 @@ stages:
                     displayName: 'Deploy to ${{ region.name }}'
 ```
 
-## Multi-Select Using Object Parameters
+## Multi-Select Using String List Parameters
 
-Azure Pipelines does not have a native multi-select parameter type, but you can simulate one with an object parameter:
+Azure Pipelines supports a `stringList` parameter type for multi-select input in pipeline files. If you are writing a template, use an `object` parameter instead because `stringList` is not available in templates:
 
 ```yaml
 parameters:
   - name: services
     displayName: 'Services to Deploy'
-    type: object
+    type: stringList
+    values:
+      - api
+      - web
+      - worker
     default:
       - api
       - web
@@ -303,6 +307,8 @@ stages:
     dependsOn:
       - ${{ if eq(parameters.deployDatabase, true) }}:
         - Database
+      - ${{ if and(eq(parameters.deployDatabase, false), eq(parameters.maintenanceWindow, true)) }}:
+        - PreDeploy
     jobs:
       - deployment: DeployApiService
         environment: '${{ parameters.environment }}'
@@ -319,6 +325,10 @@ stages:
     dependsOn:
       - ${{ if eq(parameters.deployApi, true) }}:
         - DeployAPI
+      - ${{ if and(eq(parameters.deployApi, false), eq(parameters.deployDatabase, true)) }}:
+        - Database
+      - ${{ if and(eq(parameters.deployApi, false), eq(parameters.deployDatabase, false), eq(parameters.maintenanceWindow, true)) }}:
+        - PreDeploy
     jobs:
       - deployment: DeployFrontendApp
         environment: '${{ parameters.environment }}'
@@ -333,10 +343,14 @@ stages:
   - stage: PostDeploy
     condition: eq('${{ parameters.maintenanceWindow }}', 'true')
     dependsOn:
-      - ${{ if eq(parameters.deployApi, true) }}:
-        - DeployAPI
       - ${{ if eq(parameters.deployFrontend, true) }}:
         - DeployFrontend
+      - ${{ if and(eq(parameters.deployFrontend, false), eq(parameters.deployApi, true)) }}:
+        - DeployAPI
+      - ${{ if and(eq(parameters.deployFrontend, false), eq(parameters.deployApi, false), eq(parameters.deployDatabase, true)) }}:
+        - Database
+      - ${{ if and(eq(parameters.deployFrontend, false), eq(parameters.deployApi, false), eq(parameters.deployDatabase, false)) }}:
+        - PreDeploy
     jobs:
       - job: DisableMaintenance
         pool:
@@ -372,7 +386,7 @@ Use parameters when you need user input, type validation, or compile-time templa
 
 ## Tips and Gotchas
 
-1. **Parameters with `values` render as dropdowns.** This is the best UX for constrained choices. Always use `values` when you have a known set of options.
+1. **Parameters with `values` render as constrained choices.** String parameters with `values` render as dropdowns, and `stringList` parameters render as multi-select lists. Always use `values` when you have a known set of options.
 
 2. **Default values matter.** If someone triggers the pipeline via the API or a scheduled trigger, parameters use their defaults. Make sure the defaults are safe and sensible.
 
