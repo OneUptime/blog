@@ -39,6 +39,7 @@ You need:
 - An AKS cluster running in the same region as the Lustre file system
 - A virtual network with a dedicated subnet for Lustre (at least /24)
 - The AKS cluster's VNet must be peered with (or the same as) the Lustre VNet
+- AKS node pools that use the Ubuntu Linux OS SKU for workloads that mount Lustre
 - Kubernetes CSI driver for Lustre installed in the cluster
 
 ## Step 1: Register the Resource Provider
@@ -65,7 +66,8 @@ az network vnet create \
   --location eastus2
 
 # Create a dedicated subnet for Lustre
-# Must be at least /24 and not have any NSGs attached
+# Must be at least /24. If you attach an NSG, configure the
+# Managed Lustre inbound and outbound rules documented by Microsoft.
 az network vnet subnet create \
   --resource-group rg-hpc \
   --vnet-name vnet-lustre \
@@ -99,10 +101,11 @@ az amlfs create \
   --resource-group rg-hpc \
   --name amlfs-hpc-cluster \
   --location eastus2 \
-  --sku-name AMLFS-Durable-Premium-250 \
+  --sku AMLFS-Durable-Premium-250 \
   --storage-capacity 16 \
   --filesystem-subnet "/subscriptions/<sub-id>/resourceGroups/rg-hpc/providers/Microsoft.Network/virtualNetworks/vnet-lustre/subnets/snet-lustre" \
-  --maintenance-window '{"dayOfWeek": "Sunday", "timeOfDay": "02:00"}'
+  --hsm-settings "{container:'/subscriptions/<sub-id>/resourceGroups/rg-hpc/providers/Microsoft.Storage/storageAccounts/hpcstaging/blobServices/default/containers/datasets',loggingContainer:'/subscriptions/<sub-id>/resourceGroups/rg-hpc/providers/Microsoft.Storage/storageAccounts/hpcstaging/blobServices/default/containers/amlfs-logs',importPrefixesInitial:['/']}" \
+  --maintenance-window "{dayOfWeek:Sunday,timeOfDayUtc:'02:00'}"
 ```
 
 Available SKUs and their characteristics:
@@ -114,7 +117,7 @@ Available SKUs and their characteristics:
 | AMLFS-Durable-Premium-250 | 250 MiB/s | High-performance HPC |
 | AMLFS-Durable-Premium-500 | 500 MiB/s | Maximum performance |
 
-The `--storage-capacity` is in TiB. Minimum is 16 TiB for most SKUs. With the Premium-250 SKU and 16 TiB, you get 4 GiB/s aggregate throughput.
+The `--storage-capacity` is in TiB. Minimum capacity and increments depend on the SKU; for Premium-250, the minimum is 8 TiB and the increment is 8 TiB. With the Premium-250 SKU and 16 TiB, you get about 4,000 MiB/s aggregate throughput.
 
 Deployment takes 15-30 minutes. Check the status:
 
@@ -123,65 +126,51 @@ Deployment takes 15-30 minutes. Check the status:
 az amlfs show \
   --resource-group rg-hpc \
   --name amlfs-hpc-cluster \
-  --query "{name:name, provisioningState:provisioningState, mgsAddress:mgsAddress}" \
+  --query "{name:name, provisioningState:provisioningState, mgsAddress:clientInfo.mgsAddress}" \
   --output json
 ```
 
-Note the `mgsAddress` - this is the MGS (Management Service) IP address you will use to mount the file system.
+Note the `clientInfo.mgsAddress` value - this is the MGS (Management Service) IP address you will use to mount the file system.
 
 ## Step 4: Install the Lustre CSI Driver in AKS
 
 The Lustre CSI driver allows Kubernetes pods to mount Lustre file systems as persistent volumes.
 
 ```bash
-# Add the Azure Managed Lustre CSI driver Helm repository
-helm repo add azurelustre-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azurelustre-csi-driver/main/charts
-
-helm repo update
-
 # Install the CSI driver into the AKS cluster
-helm install azurelustre-csi-driver \
-  azurelustre-csi-driver/azurelustre-csi-driver \
-  --namespace kube-system \
-  --set node.supportedNodeOS=linux
+curl -skSL https://raw.githubusercontent.com/kubernetes-sigs/azurelustre-csi-driver/main/deploy/install-driver.sh | bash
 
 # Verify the driver pods are running
-kubectl get pods -n kube-system -l app=azurelustre-csi-driver
+kubectl get pods -n kube-system -l app=csi-azurelustre-node
 ```
 
-## Step 5: Create a Persistent Volume and Persistent Volume Claim
+## Step 5: Create a StorageClass and Persistent Volume Claim
 
 Create Kubernetes resources that reference the Lustre file system:
 
 ```yaml
-# lustre-pv.yaml
-# Persistent Volume pointing to the Azure Managed Lustre file system
-apiVersion: v1
-kind: PersistentVolume
+# lustre-storageclass.yaml
+# StorageClass pointing to the Azure Managed Lustre file system
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
 metadata:
-  name: lustre-pv
-spec:
-  capacity:
-    storage: 16Ti
-  accessModes:
-    - ReadWriteMany  # Lustre supports many readers and writers
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: ""
-  csi:
-    driver: azurelustre.csi.azure.com
-    readOnly: false
-    # The volume handle must be unique
-    volumeHandle: amlfs-hpc-cluster-vol1
-    volumeAttributes:
-      # MGS address from the Lustre deployment
-      mgs-ip-address: "10.1.0.4"
-      # File system name (default is "lustrefs")
-      fs-name: "lustrefs"
+  name: sc.azurelustre.csi.azure.com
+provisioner: azurelustre.csi.azure.com
+parameters:
+  # MGS address from the Lustre deployment
+  mgs-ip-address: "10.1.0.4"
+  # Internal file system name (usually "lustrefs")
+  fs-name: "lustrefs"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+mountOptions:
+  - noatime
+  - flock
 ```
 
 ```yaml
 # lustre-pvc.yaml
-# Persistent Volume Claim that binds to the Lustre PV
+# Persistent Volume Claim that uses the Lustre StorageClass
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -193,8 +182,7 @@ spec:
   resources:
     requests:
       storage: 16Ti
-  storageClassName: ""
-  volumeName: lustre-pv
+  storageClassName: sc.azurelustre.csi.azure.com
 ```
 
 Apply these resources:
@@ -203,8 +191,8 @@ Apply these resources:
 # Create the namespace for HPC workloads
 kubectl create namespace hpc-workloads
 
-# Apply the PV and PVC
-kubectl apply -f lustre-pv.yaml
+# Apply the StorageClass and PVC
+kubectl apply -f lustre-storageclass.yaml
 kubectl apply -f lustre-pvc.yaml
 
 # Verify the PVC is bound
@@ -282,29 +270,29 @@ Azure Managed Lustre can import data from Azure Blob Storage, which is useful fo
 
 ```bash
 # Create an import job to load data from blob storage into Lustre
-az amlfs import-job create \
+az amlfs import create \
   --resource-group rg-hpc \
-  --amlfs-name amlfs-hpc-cluster \
+  --aml-filesystem-name amlfs-hpc-cluster \
   --import-job-name import-training-data \
   --import-prefixes '["training-dataset/"]' \
-  --maximum-bandwidth 500 \
   --conflict-resolution-mode "OverwriteAlways"
 ```
 
-This imports the `training-dataset/` prefix from the linked blob container into the Lustre file system. Once imported, the data is accessible at Lustre speeds from all mounted clients.
+This imports the `training-dataset/` prefix from the linked blob container into the Lustre file system. Import jobs require Azure Blob Storage integration to be configured for the file system. Once imported, the data is accessible at Lustre speeds from all mounted clients.
 
 ## Step 8: Export Results Back to Blob Storage
 
 After your workload completes, export results from Lustre to blob storage for long-term retention:
 
 ```bash
-# Create an export job to save results to blob storage
-az amlfs export-job create \
+# Archive modified results to blob storage
+az amlfs archive \
   --resource-group rg-hpc \
   --amlfs-name amlfs-hpc-cluster \
-  --export-job-name export-model-output \
-  --export-prefixes '["model-output/"]'
+  --filesystem-path "model-output/"
 ```
+
+Archive jobs require Azure Blob Storage integration to be configured for the file system.
 
 ## Step 9: Monitor Performance
 
@@ -314,7 +302,7 @@ Monitor the Lustre file system performance through Azure Monitor:
 # View Lustre metrics
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/rg-hpc/providers/Microsoft.StorageCache/amlFilesystems/amlfs-hpc-cluster" \
-  --metric "ClientReadThroughput" "ClientWriteThroughput" "ClientIOPS" \
+  --metric "ClientReadThroughput" "ClientWriteThroughput" "ClientReadOps" "ClientWriteOps" \
   --interval PT5M \
   --output table
 ```
@@ -336,20 +324,20 @@ When scaling your AKS workload, keep these points in mind:
 - **Lustre handles many concurrent clients well** - hundreds or thousands of pods can mount the same file system
 - **Throughput scales with capacity** - if you need more throughput, increase the file system size
 - **AKS node pools should be in the same region** as the Lustre file system for lowest latency
-- **Use node pools with accelerated networking** for best network performance to Lustre
+- **Use VM sizes that support accelerated networking** for best network performance to Lustre
 
 ```bash
-# Create a GPU node pool with accelerated networking for HPC workloads
+# Create a GPU node pool for HPC workloads
 az aks nodepool add \
   --resource-group rg-aks \
   --cluster-name aks-hpc \
   --name gpunodes \
   --node-count 4 \
+  --os-sku Ubuntu \
   --node-vm-size Standard_NC24ads_A100_v4 \
-  --enable-accelerated-networking \
   --max-pods 30
 ```
 
 ## Wrapping Up
 
-Integrating Azure Managed Lustre with AKS gives your containerized workloads access to a high-performance parallel file system without managing the underlying infrastructure. The setup involves deploying the Lustre file system, installing the CSI driver in your AKS cluster, and creating PVs and PVCs that reference the Lustre MGS address. From there, any pod can mount the file system and access data at full Lustre speeds. This is the go-to solution for AI training, HPC, and other workloads that need throughput measured in gigabytes per second across many concurrent clients.
+Integrating Azure Managed Lustre with AKS gives your containerized workloads access to a high-performance parallel file system without managing the underlying infrastructure. The setup involves deploying the Lustre file system, installing the CSI driver in your AKS cluster, and creating a StorageClass and PVC that reference the Lustre MGS address. From there, any pod can mount the file system and access data at full Lustre speeds. This is the go-to solution for AI training, HPC, and other workloads that need throughput measured in gigabytes per second across many concurrent clients.
