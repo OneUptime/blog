@@ -8,7 +8,7 @@ Description: A practical guide to using Azure Data Box for transferring terabyte
 
 ---
 
-When you need to move tens or hundreds of terabytes of data to Azure, uploading over the network is not always practical. Even with a 10 Gbps connection, transferring 100 TB takes over 11 days of continuous upload - and that assumes perfect throughput with zero interruptions. Azure Data Box solves this by letting you physically ship your data to an Azure datacenter on a ruggedized storage appliance.
+When you need to move tens or hundreds of terabytes of data to Azure, uploading over the network is not always practical. Even with a 1 Gbps connection, transferring 100 TB can take well over 11 days of continuous upload once real-world throughput and interruptions are included. Azure Data Box solves this by letting you physically ship your data to an Azure datacenter on a ruggedized storage appliance.
 
 This guide covers the end-to-end process of ordering, configuring, loading, and shipping an Azure Data Box device.
 
@@ -18,9 +18,9 @@ Azure offers several Data Box options depending on how much data you need to mov
 
 - **Data Box Disk**: Up to 35 TB across 5 encrypted SSDs. Good for smaller migrations.
 - **Data Box**: 80 TB usable capacity in a single rugged device. The most common choice for mid-size migrations.
-- **Data Box Heavy**: Up to 1 PB of capacity. Designed for massive data center migrations.
+- **Data Box Next Gen**: 120 TB or 525 TB usable capacity, depending on the device model. Designed for larger data center migrations.
 
-For this guide, we will focus on the standard Data Box (80 TB), which covers most use cases.
+For this guide, we will focus on the standard Data Box (80 TB), which covers many mid-size use cases. Microsoft is expanding next-generation Data Box devices across regions, so check regional availability before you order.
 
 ## Step 1: Order the Data Box
 
@@ -41,15 +41,17 @@ az databox job create \
   --name databox-order-2026q1 \
   --location eastus2 \
   --sku DataBox \
+  --transfer-type ImportToAzure \
   --contact-name "IT Operations Team" \
   --email-list ops@company.com \
   --phone "555-0123" \
-  --street-address-1 "100 Main Street" \
+  --street-address1 "100 Main Street" \
   --city "Seattle" \
   --state-or-province "WA" \
   --country "US" \
   --postal-code "98101" \
-  --storage-account "/subscriptions/<sub-id>/resourceGroups/rg-databox-migration/providers/Microsoft.Storage/storageAccounts/stdestination2026"
+  --company-name "Contoso" \
+  --storage-account stdestination2026
 ```
 
 After ordering, Microsoft prepares and ships the device. Delivery typically takes 5-10 business days depending on your location and device availability.
@@ -81,22 +83,22 @@ A quick note on performance: always use the 10 GbE ports for data copy. The mana
 
 ## Step 4: Connect to Data Box Shares
 
-The Data Box exposes SMB and NFS shares that map to your destination storage account. Each share corresponds to a container or file share type in your storage account.
+The Data Box exposes SMB and NFS shares that map to your destination storage account. Each share corresponds to a storage type, such as block blobs, page blobs, or Azure Files.
 
-For block blob data, connect to the block blob share. For page blobs or Azure Files, use the corresponding shares.
+For block blob data, connect to the block blob share and copy data into the appropriate access tier folder, such as `Hot`, `Cool`, `Cold`, or `Archive`, then into a folder that will become the container. For page blobs or Azure Files, use the corresponding shares.
 
 On Windows, the following commands map the SMB share:
 
 ```powershell
 # Map the block blob share on Windows
 # Replace the IP with your Data Box data interface IP
-net use Z: \\10.10.10.1\mystorageaccount_BlockBlob /user:mystorageaccount
+net use Z: \\10.10.10.1\mystorageaccount_BlockBlob /user:10.10.10.1\<share-username>
 
-# When prompted, enter the password from the Azure portal
-# You can find this under Data Box order > Device credentials
+# When prompted, enter the SMB share password from the local web UI
+# You can find this under Connect and copy > SMB
 ```
 
-On Linux, mount the NFS share instead:
+On Linux, first allow the Linux host's IP address under **Connect and copy** > **NFS client access** in the local web UI, then mount the NFS share:
 
 ```bash
 # Create mount point
@@ -122,7 +124,7 @@ On Windows, use Robocopy with multithreading to maximize throughput:
 # /R:3 retries 3 times on failure
 # /W:5 waits 5 seconds between retries
 # /LOG creates a log file for tracking
-robocopy D:\SourceData Z:\migration-container /MT:16 /R:3 /W:5 /E /LOG:C:\Logs\databox-copy.log
+robocopy D:\SourceData Z:\Hot\migration-container /MT:16 /R:3 /W:5 /E /LOG:C:\Logs\databox-copy.log
 ```
 
 On Linux, use rsync with appropriate flags:
@@ -134,7 +136,7 @@ On Linux, use rsync with appropriate flags:
 # --partial: keep partially transferred files for resume
 rsync -avh --progress --partial \
   /data/source/ \
-  /mnt/databox/migration-container/
+  /mnt/databox/Hot/migration-container/
 ```
 
 ## Performance Tips for Data Copy
@@ -211,12 +213,12 @@ The logs include file-level status, checksums, and any errors encountered during
 
 ## Security Considerations
 
-Data Box devices use AES 256-bit encryption. The unlock password is stored in Azure and never travels with the device. After your data is uploaded, Microsoft performs a NIST 800-88 data wipe on the device, overwriting all data multiple times.
+Data Box devices use AES 256-bit encryption. The unlock password is stored in Azure and never travels with the device. After your data is uploaded, Microsoft securely erases the device in accordance with NIST SP 800-88 Revision 1 guidelines.
 
 If you need additional security, you can encrypt your data before copying it to the device. The device itself does not decrypt your data - it simply stores the encrypted blobs as-is.
 
 ## Wrapping Up
 
-Azure Data Box is a practical solution when network transfers are impractical due to bandwidth limitations, costs, or time constraints. The process is straightforward: order the device, load your data, ship it back, and verify the upload. For most organizations, the 80 TB Data Box handles medium to large migrations with ease. For truly massive datasets, consider the Data Box Heavy or multiple standard Data Box devices shipped in parallel.
+Azure Data Box is a practical solution when network transfers are impractical due to bandwidth limitations, costs, or time constraints. The process is straightforward: order the device, load your data, ship it back, and verify the upload. For many organizations, the 80 TB Data Box handles medium to large migrations with ease. For truly massive datasets, consider Data Box Next Gen or multiple Data Box devices shipped in parallel.
 
 Plan your copy strategy ahead of time, use 10 GbE connections where possible, and always validate your data after the upload completes. This avoids surprises and ensures a smooth migration.
