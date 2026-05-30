@@ -44,7 +44,7 @@ You need the following before starting:
 
 - An Azure AD tenant with Global Administrator or equivalent permissions
 - At least one Azure subscription for management resources
-- Terraform 1.3 or later
+- Terraform 1.3.1 or later
 - Azure CLI authenticated with sufficient privileges
 
 Permissions are the trickiest part. The module creates management groups and assigns policies at the tenant level, so you need elevated access. Run this to grant yourself the required role:
@@ -64,7 +64,7 @@ Start with a minimal configuration. Create your Terraform project:
 # main.tf - Deploy Azure landing zones using the Enterprise Scale module
 
 terraform {
-  required_version = ">= 1.3.0"
+  required_version = ">= 1.3.1"
 
   required_providers {
     azurerm = {
@@ -87,6 +87,12 @@ module "enterprise_scale" {
   version = "~> 5.0"
 
   # Use a custom prefix for your organization
+  providers = {
+    azurerm              = azurerm
+    azurerm.connectivity = azurerm
+    azurerm.management   = azurerm
+  }
+
   root_parent_id = data.azurerm_client_config.current.tenant_id
   root_id        = "contoso"      # Short identifier for your org
   root_name      = "Contoso"      # Display name
@@ -96,7 +102,7 @@ module "enterprise_scale" {
 }
 ```
 
-This alone creates the full management group hierarchy with default policy assignments. Run `terraform plan` and you will see dozens of resources being created.
+This alone creates the core management group hierarchy with default policy assignments. Run `terraform plan` and you will see dozens of resources being created.
 
 ## Step 2: Configure Management Resources
 
@@ -113,6 +119,12 @@ module "enterprise_scale" {
   root_id        = "contoso"
   root_name      = "Contoso"
   default_location = "eastus2"
+
+  providers = {
+    azurerm              = azurerm
+    azurerm.connectivity = azurerm
+    azurerm.management   = azurerm
+  }
 
   # Enable deployment of management resources
   deploy_management_resources    = true
@@ -159,9 +171,9 @@ locals {
       }
     }
     # Use default tags and location
-    location = null
-    tags     = null
-    advanced = null
+    location = ""
+    tags     = {}
+    advanced = {}
   }
 }
 ```
@@ -180,7 +192,7 @@ module "enterprise_scale" {
 
   # Enable connectivity resources (hub network, firewall, DNS)
   deploy_connectivity_resources    = true
-  subscription_id_connectivity     = "ffffffff-gggg-hhhh-iiii-jjjjjjjjjjjj"
+  subscription_id_connectivity     = "ffffffff-aaaa-bbbb-cccc-dddddddddddd"
 
   configure_connectivity_resources = local.configure_connectivity_resources
 }
@@ -228,7 +240,7 @@ locals {
       dns = {
         enabled = true
         config = {
-          location = null
+          location = ""
           enable_private_link_by_service = {
             azure_api_management                 = true
             azure_app_configuration_stores       = true
@@ -244,8 +256,8 @@ locals {
             azure_key_vault                      = true
             azure_monitor                        = true
             azure_sql_database_sqlserver         = true
-            azure_storage_blob                   = true
-            azure_web_sites_sites                = true
+            storage_account_blob                 = true
+            azure_web_apps_sites                 = true
           }
           private_link_locations = ["eastus2"]
           public_dns_zones       = []
@@ -253,9 +265,9 @@ locals {
         }
       }
     }
-    location = null
-    tags     = null
-    advanced = null
+    location = ""
+    tags     = {}
+    advanced = {}
   }
 }
 ```
@@ -336,4 +348,4 @@ Policy assignments can take up to 30 minutes to evaluate on existing resources. 
 
 If you have existing management groups, the module can adopt them, but the names must match exactly. Plan your naming convention before deploying.
 
-The Enterprise Scale module is the fastest path to a production-ready Azure environment. It encodes years of Microsoft's best practices into a single Terraform module call. Start with the defaults, customize where needed, and build from there.
+The Enterprise Scale module remains a practical path for existing deployments and teams that have standardized on it, while Microsoft now recommends Azure Verified Modules for new platform landing zone deployments. It encodes years of Microsoft's best practices into a single Terraform module call. Start with the defaults, customize where needed, and build from there.
