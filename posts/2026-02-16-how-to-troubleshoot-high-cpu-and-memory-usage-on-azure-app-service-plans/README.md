@@ -42,9 +42,9 @@ This is the fastest way to get initial insights without connecting any external 
 
 For CPU issues specifically, you want to capture a CPU profile to see which methods in your application are consuming the most processing time.
 
-In the **Diagnose and solve problems** blade, look for **Diagnostic Tools** and then **Collect .NET Profiler Trace** (for .NET apps) or **Auto-Heal** for other runtimes.
+In the **Diagnose and solve problems** blade, look for **Diagnostic Tools** and then **Collect .NET Profiler Trace** for supported .NET apps. For other runtimes, use the runtime-specific diagnostic tools available in the same blade, and use **Auto-Heal** as a mitigation while you investigate the root cause.
 
-For .NET applications, here is how to enable Application Insights Profiler, which continuously samples your application:
+For .NET applications, add the `Microsoft.ApplicationInsights.Profiler.AspNetCore` package and enable Application Insights Profiler, which periodically samples your application:
 
 ```csharp
 // In your Startup.cs or Program.cs
@@ -87,7 +87,7 @@ ps aux | grep dotnet
 
 # Generate a memory dump using createdump
 # The -f flag specifies the output file path
-createdump -f /home/LogFiles/dump.dmp <PID>
+createdump <PID> -f /home/LogFiles/dump.%d.dmp
 ```
 
 Download the dump file and analyze it with Visual Studio, WinDbg, or dotnet-dump. Look for objects that are consuming the most memory and check if their count is growing unexpectedly.
@@ -98,7 +98,7 @@ Let me walk through the most frequent root causes I have encountered.
 
 ### 1. Synchronous Blocking Calls
 
-This is the most common cause of high CPU on ASP.NET applications. When you call `.Result` or `.Wait()` on async operations, you block a thread pool thread. Under load, this causes thread pool starvation, which makes the CPU spike as the runtime tries to create more threads.
+This is a common cause of performance problems on ASP.NET applications. When you call `.Result` or `.Wait()` on async operations, you block a thread pool thread. Under load, this can cause thread pool starvation, which increases latency and can add CPU overhead as the runtime injects more worker threads.
 
 The fix is straightforward - make your code properly async:
 
@@ -148,7 +148,7 @@ Applications that cache data in memory without size limits will eventually consu
 // SizeLimit prevents unbounded growth
 builder.Services.AddMemoryCache(options =>
 {
-    options.SizeLimit = 1024; // maximum number of cache entries
+    options.SizeLimit = 1024; // arbitrary size units; with Size = 1, this allows up to 1024 entries
 });
 
 // When adding items, specify their size
@@ -232,6 +232,7 @@ If your application genuinely needs more resources, you have two options:
 # Scale out to 3 instances with autoscale
 az monitor autoscale create \
   --resource-group myResourceGroup \
+  --name myAppServicePlanAutoscale \
   --resource myAppServicePlan \
   --resource-type Microsoft.Web/serverfarms \
   --min-count 2 \
@@ -241,7 +242,7 @@ az monitor autoscale create \
 # Add a CPU-based scale rule
 az monitor autoscale rule create \
   --resource-group myResourceGroup \
-  --autoscale-name myAutoscaleRule \
+  --autoscale-name myAppServicePlanAutoscale \
   --scale out 1 \
   --condition "CpuPercentage > 70 avg 5m"
 ```
