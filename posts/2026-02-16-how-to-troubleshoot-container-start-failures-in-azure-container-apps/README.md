@@ -107,6 +107,24 @@ For a better approach, use managed identity instead of passwords.
 
 ```bash
 # Configure managed identity for ACR pull
+ACR_ID=$(az acr show \
+  --name myregistry \
+  --resource-group my-rg \
+  --query id \
+  --output tsv)
+
+PRINCIPAL_ID=$(az containerapp identity assign \
+  --name my-app \
+  --resource-group my-rg \
+  --system-assigned \
+  --query principalId \
+  --output tsv)
+
+az role assignment create \
+  --assignee "$PRINCIPAL_ID" \
+  --role AcrPull \
+  --scope "$ACR_ID"
+
 az containerapp registry set \
   --name my-app \
   --resource-group my-rg \
@@ -170,10 +188,14 @@ az containerapp update \
   --set-env-vars "DATABASE_URL=postgresql://user:pass@host:5432/db" "NODE_ENV=production"
 
 # For sensitive values, use secrets
+az containerapp secret set \
+  --name my-app \
+  --resource-group my-rg \
+  --secrets "db-url=postgresql://user:pass@host:5432/db"
+
 az containerapp update \
   --name my-app \
   --resource-group my-rg \
-  --secrets "db-url=postgresql://user:pass@host:5432/db" \
   --set-env-vars "DATABASE_URL=secretref:db-url"
 ```
 
@@ -215,6 +237,16 @@ Keep in mind the valid CPU and memory combinations in Azure Container Apps:
 | 1.5 | 3.0Gi |
 | 1.75 | 3.5Gi |
 | 2.0 | 4.0Gi |
+| 2.25 | 4.5Gi |
+| 2.5 | 5.0Gi |
+| 2.75 | 5.5Gi |
+| 3.0 | 6.0Gi |
+| 3.25 | 6.5Gi |
+| 3.5 | 7.0Gi |
+| 3.75 | 7.5Gi |
+| 4.0 | 8.0Gi |
+
+Apps using the Consumption plan in a Consumption-only environment are limited to a maximum of 2 cores and 4Gi of memory.
 
 ## Common Failure #5: Health Probe Misconfiguration
 
@@ -228,7 +260,7 @@ Health probes check if your container is running correctly. If misconfigured, th
 **Fix:** Check that the health probe path returns a 200 response and that the initial delay gives your app enough time to start.
 
 ```bash
-# Disable custom probes temporarily to confirm the app works
+# Apply updated custom probes with generous timeouts
 az containerapp update \
   --name my-app \
   --resource-group my-rg \
@@ -242,14 +274,14 @@ properties:
     containers:
       - name: my-app
         probes:
-          - type: liveness
+          - type: Liveness
             httpGet:
               path: /health
               port: 3000
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 5
-          - type: readiness
+          - type: Readiness
             httpGet:
               path: /ready
               port: 3000
@@ -269,9 +301,8 @@ You built your container image on a Mac with Apple Silicon (ARM64) and deployed 
 **Fix:** Build for the correct architecture.
 
 ```bash
-# Build for AMD64 architecture explicitly
-docker buildx build --platform linux/amd64 -t myregistry.azurecr.io/my-app:v1 .
-docker push myregistry.azurecr.io/my-app:v1
+# Build for AMD64 architecture explicitly and push it to the registry
+docker buildx build --platform linux/amd64 -t myregistry.azurecr.io/my-app:v1 --push .
 ```
 
 ## Debugging Flowchart
