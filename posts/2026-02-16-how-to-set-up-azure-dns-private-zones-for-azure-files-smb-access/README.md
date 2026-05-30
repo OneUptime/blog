@@ -117,10 +117,10 @@ az network private-dns record-set a add-record \
   --ipv4-address $PE_IP
 ```
 
-Alternatively, if you enable the automatic DNS integration when creating the private endpoint, Azure creates both the DNS zone and the A record for you:
+Alternatively, if you want Azure to manage the private DNS records for this private endpoint, attach the private DNS zone to the endpoint with a DNS zone group:
 
 ```bash
-# Create private endpoint with automatic DNS zone integration
+# Attach the private DNS zone to the private endpoint
 az network private-endpoint dns-zone-group create \
   --endpoint-name mystorageaccount-file-pe \
   --resource-group myResourceGroup \
@@ -182,10 +182,10 @@ sudo mount -t cifs \
 
 ## Step 7: Restrict Public Access to the Storage Account
 
-Now that private endpoint access is working, disable public access to the storage account to ensure all traffic goes through the private endpoint:
+Now that private endpoint access is working, restrict the storage account's public endpoint so SMB traffic uses the private endpoint:
 
 ```bash
-# Disable public network access to the storage account
+# Deny public endpoint access by default, except trusted Azure services
 az storage account update \
   --name mystorageaccount \
   --resource-group myResourceGroup \
@@ -199,16 +199,16 @@ az storage account show \
   --query "networkRuleSet.defaultAction" -o tsv
 ```
 
-After disabling public access, only clients that can resolve the storage account to the private endpoint IP will be able to connect.
+After denying public endpoint access by default, clients need to resolve the storage account to the private endpoint IP and connect from a network path that can reach that private endpoint. The `--bypass AzureServices` setting still allows trusted Azure services through the public endpoint.
 
 ## Handling On-Premises Clients
 
-If you have on-premises clients that need to mount Azure File shares through the private endpoint, you need DNS forwarding configured. On-premises DNS servers must forward queries for `privatelink.file.core.windows.net` to a DNS resolver in Azure that can query the private DNS zone.
+If you have on-premises clients that need to mount Azure File shares through the private endpoint, you need DNS forwarding configured. On-premises DNS servers should forward queries for the storage endpoint suffix, such as `core.windows.net` in Azure public regions or at least `file.core.windows.net`, to a DNS resolver in Azure that can query the private DNS zone.
 
 The approach is the same as for any private endpoint DNS integration with on-premises DNS:
 
 1. Deploy an Azure DNS Private Resolver with an inbound endpoint
-2. Add a conditional forwarder on your on-premises DNS for `privatelink.file.core.windows.net`
+2. Add a conditional forwarder on your on-premises DNS for `core.windows.net` or `file.core.windows.net`
 3. Point the forwarder to the DNS Private Resolver's inbound endpoint IP
 
 With this in place, on-premises clients can mount the Azure File share using the FQDN, and DNS resolution will route through Azure to get the private IP.
@@ -217,7 +217,7 @@ With this in place, on-premises clients can mount the Azure File share using the
 
 **SMB port 445 blocked**: Many ISPs and corporate networks block TCP port 445. If you are connecting from on-premises, verify that port 445 is open on the path between your client and the private endpoint.
 
-```bash
+```powershell
 # Test port 445 connectivity
 Test-NetConnection -ComputerName mystorageaccount.file.core.windows.net -Port 445
 ```
