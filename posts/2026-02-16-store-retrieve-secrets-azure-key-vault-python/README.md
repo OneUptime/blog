@@ -14,12 +14,12 @@ In this post, I will walk through setting up Key Vault, storing secrets, retriev
 
 ## Prerequisites
 
-You need an Azure subscription and the Azure CLI installed. Let me also mention upfront that you need the right RBAC permissions on the Key Vault to read and write secrets.
+You need an Azure subscription, Python 3.9 or later, and the Azure CLI installed. Let me also mention upfront that you need the right RBAC permissions on the Key Vault to read and write secrets.
 
 ```bash
 # Install the Python packages
 
-pip install azure-identity azure-keyvault-secrets
+pip install azure-identity azure-keyvault-secrets aiohttp
 ```
 
 ## Creating a Key Vault
