@@ -10,9 +10,9 @@ New Relic was one of the first APM tools most developers ever used. It made appl
 
 If you are evaluating alternatives, it is probably because of one of these reasons:
 
-**Pricing complexity.** New Relic moved to usage-based pricing with per-user and per-GB data ingest costs. The free tier is generous, but costs can escalate quickly once you exceed it. Full platform access requires Core or Full Platform user seats at $49-$99+ per user per month.
+**Pricing complexity.** New Relic moved to usage-based pricing with per-user and per-GB data ingest costs. The free tier is generous, but costs can escalate quickly once you exceed it. Paid user access is split between Core and Full Platform user seats at $49-$99+ per user per month.
 
-**Data ingest costs.** At $0.30/GB for data beyond the free 100GB/month, teams with high log or trace volumes can face significant bills.
+**Data ingest costs.** At $0.40/GB for data beyond the free 100GB/month on the original data option, teams with high log or trace volumes can face significant bills.
 
 **Feature sprawl.** New Relic has grown into a massive platform. If you only need APM or infrastructure monitoring, paying for the full suite feels wasteful.
 
@@ -62,7 +62,7 @@ Here are 10 alternatives worth considering.
 
 **Best for:** Teams with strong DevOps skills who want full control over their monitoring stack.
 
-**Pricing:** Free and open source for self-hosted. Grafana Cloud has a generous free tier, paid plans start at $29/month.
+**Pricing:** Free and open source for self-hosted. Grafana Cloud has a generous free tier, paid plans start at $19/month plus usage.
 
 **Why consider it:**
 - Industry standard for Kubernetes monitoring
@@ -81,7 +81,7 @@ Here are 10 alternatives worth considering.
 
 **Best for:** Large enterprises with complex environments who value automated instrumentation.
 
-**Pricing:** Starts at $0.08/hour per host for full-stack monitoring. Usage-based pricing for DEM and log monitoring.
+**Pricing:** Starts at around $0.08/hour for an 8 GiB host for full-stack monitoring under Dynatrace's usage-based model. Usage-based pricing also applies for DEM and log monitoring.
 
 **Why consider it:**
 - Excellent automatic instrumentation (OneAgent)
@@ -100,7 +100,7 @@ Here are 10 alternatives worth considering.
 
 **Best for:** Teams already invested in the ELK ecosystem who want to add APM without another vendor.
 
-**Pricing:** Free and open source for self-hosted (with some features requiring a paid license). Elastic Cloud starts at $95/month.
+**Pricing:** Free to self-host for the core stack, with some features requiring a paid license. Elastic Cloud pricing depends on deployment size and subscription tier.
 
 **Why consider it:**
 - Native integration with Elasticsearch for powerful log search
@@ -111,7 +111,7 @@ Here are 10 alternatives worth considering.
 **Trade-offs:**
 - Elasticsearch clusters require significant resources and expertise to run
 - APM capabilities are less mature than dedicated APM tools
-- Recent license changes (SSPL) have concerned some open source users
+- Elastic's license history, including its 2021 move to SSPL/Elastic License and later AGPL option, has concerned some open source users
 
 ## 6. Splunk (including SignalFx)
 
@@ -178,7 +178,7 @@ Here are 10 alternatives worth considering.
 
 **Best for:** Teams that want an open source, OpenTelemetry-native alternative with a clean UI.
 
-**Pricing:** Free and open source for self-hosted. Cloud plans start at $199/month.
+**Pricing:** Free and open source for self-hosted. Cloud plans start at $49/month.
 
 **Why consider it:**
 - Built from the ground up on OpenTelemetry
