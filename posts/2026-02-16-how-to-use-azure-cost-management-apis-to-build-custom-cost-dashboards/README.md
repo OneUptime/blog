@@ -64,7 +64,7 @@ The Query API lets you retrieve cost data with flexible grouping and filtering. 
 
 ```bash
 # Query monthly costs grouped by service name
-curl -X POST "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.CostManagement/query?api-version=2023-03-01" \
+curl -X POST "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.CostManagement/query?api-version=2025-03-01" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -154,7 +154,9 @@ The Forecast API predicts future costs based on historical spending patterns:
 
 ```python
 # Query for cost forecast
-from azure.mgmt.costmanagement.models import ForecastDefinition, ForecastDataset
+from azure.mgmt.costmanagement.models import (
+    ForecastAggregation, ForecastDefinition, ForecastDataset
+)
 
 forecast_query = ForecastDefinition(
     type="ActualCost",
@@ -162,7 +164,7 @@ forecast_query = ForecastDefinition(
     dataset=ForecastDataset(
         granularity="Daily",
         aggregation={
-            "totalCost": QueryAggregation(
+            "totalCost": ForecastAggregation(
                 name="Cost",
                 function="Sum"
             )
@@ -212,7 +214,7 @@ def get_department_costs():
         type="ActualCost",
         timeframe="MonthToDate",
         dataset=QueryDataset(
-            granularity="None",
+            granularity=None,
             aggregation={
                 "totalCost": QueryAggregation(name="Cost", function="Sum")
             },
@@ -232,7 +234,7 @@ def get_service_costs():
         type="ActualCost",
         timeframe="MonthToDate",
         dataset=QueryDataset(
-            granularity="None",
+            granularity=None,
             aggregation={
                 "totalCost": QueryAggregation(name="Cost", function="Sum")
             },
@@ -304,7 +306,7 @@ cost_cache = CostCache(ttl_seconds=3600)  # Cache for 1 hour
 def get_department_costs_cached():
     """Fetch department costs with caching."""
     cached = cost_cache.get('department_costs')
-    if cached:
+    if cached is not None:
         return cached
 
     data = get_department_costs()
@@ -314,26 +316,39 @@ def get_department_costs_cached():
 
 ## Step 7: Handle Pagination and Large Datasets
 
-The Query API returns up to 1000 rows per request. For large datasets, you need to handle pagination:
+The Query API can return paged responses. For large datasets, you need to handle the `nextLink` value returned in the response:
 
 ```python
-def query_all_costs(scope, query_definition):
+import requests
+
+
+def query_all_costs(subscription_id, token, query_definition):
     """Handle pagination for large cost queries."""
     all_rows = []
-    result = cost_client.query.usage(scope=scope, parameters=query_definition)
+    url = (
+        "https://management.azure.com/subscriptions/"
+        f"{subscription_id}/providers/Microsoft.CostManagement/query"
+        "?api-version=2025-03-01"
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
 
-    columns = [col.name for col in result.columns]
-    all_rows.extend(result.rows)
+    response = requests.post(url, headers=headers, json=query_definition)
+    response.raise_for_status()
+    result = response.json()["properties"]
+
+    columns = [col["name"] for col in result["columns"]]
+    all_rows.extend(result["rows"])
 
     # Handle pagination with nextLink
-    while result.next_link:
+    while result.get("nextLink"):
         # The next_link contains the full URL for the next page
-        result = cost_client.query.usage_by_external_cloud_provider_type(
-            external_cloud_provider_type="externalSubscriptions",
-            external_cloud_provider_id=scope,
-            parameters=query_definition
-        )
-        all_rows.extend(result.rows)
+        response = requests.post(result["nextLink"], headers=headers)
+        response.raise_for_status()
+        result = response.json()["properties"]
+        all_rows.extend(result["rows"])
 
     return columns, all_rows
 ```
@@ -373,11 +388,11 @@ def build_comprehensive_report():
 
 ## Rate Limits and Best Practices
 
-The Cost Management APIs have rate limits:
+The Cost Management APIs have rate limits, and the Query API also uses query processing unit (QPU) quotas:
 
-- **Query API**: 30 requests per minute per scope
-- **Exports API**: 20 requests per minute
-- **Read operations**: 100 requests per minute
+- **Query API**: QPU quotas are enforced per tenant
+- **Current QPU quotas**: 12 QPU per 10 seconds, 60 QPU per minute, and 600 QPU per hour
+- **429 responses**: Back off for the time specified in the Cost Management rate-limit or retry response headers
 
 Best practices:
 
