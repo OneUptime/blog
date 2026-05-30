@@ -24,12 +24,7 @@ Microsoft provides a free Power BI app for Azure Cost Management that comes pre-
 4. Install the app
 5. Enter your EA enrollment number when prompted
 
-### For Microsoft Customer Agreement (MCA) Customers
-
-1. Open Power BI
-2. Go to **Apps > Get apps**
-3. Search for "Azure Cost Management" for Microsoft Customer Agreement
-4. Install and enter your billing profile ID
+The Cost Management Power BI template app only supports Enterprise Agreement customers. If you use a Microsoft Customer Agreement (MCA), use the Power BI Desktop connector described in the next section instead.
 
 The pre-built app includes these reports:
 
@@ -47,14 +42,14 @@ For custom reports, use the Power BI connector to pull raw cost data and build y
 2. Click **Get Data > Azure > Azure Cost Management**
 3. Choose your scope:
    - **Enrollment Number** (for EA)
-   - **Billing Profile ID** (for MCA)
-   - **Subscription ID** (for individual subscriptions)
+   - **Manually Input Scope** with a billing account or billing profile resource ID (for MCA)
 4. Select the data tables you want:
    - **Usage Details**: Line-item cost data for every resource
-   - **Marketplaces**: Third-party marketplace charges
+   - **Charges**: Month-level Azure usage, Marketplace, and separately billed charges for MCA billing profiles
    - **Price Sheets**: Current pricing for your agreement
-   - **Reservation Recommendations**: RI purchase recommendations
-   - **Reservation Details**: Current reservation utilization
+   - **RI Recommendations (shared)** and **RI Recommendations (single)**: Reservation purchase recommendations
+   - **RI Usage Details** and **RI Usage Summary**: Current reservation utilization
+   - **RI Transactions**: Reservation purchase and transaction history
 
 The Usage Details table is the most important. Each row represents a charge line item with columns for:
 
@@ -105,15 +100,17 @@ This gives you both a detailed table and a visual representation of where money 
 
 If you tag your resources (and you should), you can build cost allocation reports by team, project, environment, or application.
 
-In Power BI, tags are typically stored as a JSON string in the `Tags` column. You need to parse them:
+In Power BI, tags are stored in the `Tags` column. The Cost Management connector can return the tag data as a string without the outer JSON braces, so normalize it before parsing:
 
 ```text
 // Power Query M code to extract a specific tag value
 // Add this as a custom column in Power Query Editor
 
 let
-    // Parse the JSON tags column
-    TagsJson = Json.Document([Tags]),
+    // Normalize the tags column to valid JSON before parsing
+    TagsRaw = if [Tags] = null then "" else Text.From([Tags]),
+    TagsText = if Text.Trim(TagsRaw) = "" then "{}" else if Text.StartsWith(Text.Trim(TagsRaw), "{") then TagsRaw else "{" & TagsRaw & "}",
+    TagsJson = Json.Document(TagsText),
     // Extract the "CostCenter" tag value, or return "Untagged" if missing
     CostCenter = try TagsJson[CostCenter] otherwise "Untagged"
 in
@@ -133,21 +130,21 @@ Now you can create visualizations grouped by CostCenter, Team, Environment, or a
 
 Combine cost data with utilization metrics to find wasted spending:
 
-1. Connect to Azure Monitor metrics in Power BI (separate data source)
-2. Join the cost data with CPU utilization data on resource name
+1. Connect to Azure Monitor metrics through Azure Monitor Logs or the Azure Monitor REST API
+2. Join the cost data with CPU utilization data on resource ID
 3. Create a scatter chart:
    - X-axis: Average CPU utilization
    - Y-axis: Monthly cost
    - Size: vCPU count
    - Color: Resource group
 
-VMs in the lower-right quadrant (high cost, low utilization) are your biggest right-sizing opportunities.
+VMs in the upper-left quadrant (high cost, low utilization) are your biggest right-sizing opportunities.
 
 ## Step 5: Build a Reservation Utilization Dashboard
 
 Track whether your Reserved Instances are being fully utilized:
 
-1. Connect to the **Reservation Details** and **Reservation Transactions** tables
+1. Connect to the **RI Usage Details**, **RI Usage Summary**, and **RI Transactions** tables
 2. Create a card showing overall utilization percentage
 3. Create a table showing each reservation with its utilization
 4. Add a line chart showing utilization trends over time
@@ -164,7 +161,7 @@ Power BI reports are only useful if the data is current. Set up automatic refres
 4. Set the refresh frequency (daily is recommended for cost data)
 5. Configure credentials for the Azure Cost Management data source
 
-Azure cost data typically updates with a 24-48 hour delay, so daily refresh is sufficient.
+Azure cost and usage data is typically available within 8-24 hours, so daily refresh is sufficient.
 
 ## Step 7: Share Reports with Stakeholders
 
@@ -203,7 +200,7 @@ Power BI allows you to set alerts on dashboard tiles. For cost management:
 3. Set a threshold (for example, alert when month-to-date exceeds $10,000)
 4. Choose notification frequency (at most once a day, once an hour, etc.)
 
-This provides an additional layer of cost monitoring on top of the Azure Cost Management alerts.
+This provides an additional layer of cost monitoring on top of Azure Cost Management alerts.
 
 ## Example DAX Measures for Cost Reports
 
@@ -263,4 +260,4 @@ flowchart LR
 
 ## Summary
 
-Azure Cost Management with Power BI gives you the flexibility to build detailed, visual spending reports that go far beyond what the Azure portal offers. Use the pre-built app for quick insights, then build custom reports with the connector for tag-based allocation, trend analysis, and idle resource identification. Set up scheduled refresh and email subscriptions so the right people see cost data regularly. The combination of Azure Cost Management alerts (for real-time notifications) and Power BI reports (for deep analysis) gives you comprehensive cost visibility.
+Azure Cost Management with Power BI gives you the flexibility to build detailed, visual spending reports that go far beyond what the Azure portal offers. Use the pre-built app for quick insights if you have an Enterprise Agreement, then build custom reports with the connector for tag-based allocation, trend analysis, and idle resource identification. Set up scheduled refresh and email subscriptions so the right people see cost data regularly. The combination of Azure Cost Management alerts (for threshold-based notifications) and Power BI reports (for deep analysis) gives you comprehensive cost visibility.
