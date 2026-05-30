@@ -20,17 +20,17 @@ Every AKS node has a kubelet process that communicates with the Kubernetes API s
 
 **Serving certificate**: Used by the kubelet to serve its HTTPS endpoint (for metrics, health checks, and log retrieval).
 
-Both certificates are issued by the cluster's certificate authority and have a limited lifetime. On AKS, client certificates typically expire after about one year, but the kubelet is supposed to rotate them well before expiration.
+Client certificates are issued by the cluster's certificate authority and have a limited lifetime. Serving certificates are cluster-signed when kubelet serving certificate bootstrap is enabled; otherwise the kubelet can use a locally generated serving certificate. On AKS, client certificates typically expire after about one year, but the kubelet is supposed to rotate them well before expiration.
 
 ## How Certificate Rotation Works
 
 Kubernetes has a built-in certificate rotation mechanism. Here is the normal flow.
 
-1. The kubelet detects that its certificate is approaching expiration (typically at 70-80% of the certificate lifetime).
+1. The kubelet detects that its certificate is approaching expiration (at any point between 30% and 10% of the certificate lifetime remaining).
 2. It generates a new private key and creates a Certificate Signing Request (CSR).
 3. It sends the CSR to the API server.
-4. The API server's certificate controller approves the CSR.
-5. The new certificate is issued and the kubelet starts using it.
+4. The kube-controller-manager's certificate approver approves the CSR if it meets the built-in criteria.
+5. The certificate signer attaches the new certificate to the CSR and the kubelet starts using it.
 6. The process repeats before the next expiration.
 
 When any step in this chain fails, the certificate expires and the node goes dark.
@@ -39,15 +39,16 @@ When any step in this chain fails, the certificate expires and the node goes dar
 sequenceDiagram
     participant Kubelet
     participant APIServer as API Server
-    participant CertController as Certificate Controller
+    participant CertController as kube-controller-manager
 
     Kubelet->>Kubelet: Detect cert nearing expiry
     Kubelet->>Kubelet: Generate new key pair
     Kubelet->>APIServer: Submit CSR
-    APIServer->>CertController: Route CSR for approval
+    APIServer->>CertController: Expose CSR for approval
     CertController->>CertController: Validate CSR
     CertController->>APIServer: Approve CSR
-    APIServer->>Kubelet: Return signed certificate
+    CertController->>APIServer: Attach signed certificate
+    Kubelet->>APIServer: Retrieve signed certificate
     Kubelet->>Kubelet: Install new certificate
     Note over Kubelet: Continue with new cert
 ```
@@ -73,8 +74,8 @@ kubectl get nodes -o json | jq '.items[] | select(.status.conditions[] | select(
 You need to access the node directly to see kubelet logs. On AKS, you can use node debugging.
 
 ```bash
-# Create a debug pod on the affected node
-kubectl debug node/<node-name> -it --image=mcr.microsoft.com/cbl-mariner/busybox:2.0
+# Create a privileged debug pod on the affected node
+kubectl debug node/<node-name> -it --image=mcr.microsoft.com/cbl-mariner/busybox:2.0 --profile=sysadmin
 
 # Inside the debug pod, check kubelet logs
 chroot /host
@@ -109,7 +110,7 @@ If the node's system clock is significantly off (more than a few minutes), certi
 
 ```bash
 # Check the node's time (from a debug pod)
-kubectl debug node/<node-name> -it --image=mcr.microsoft.com/cbl-mariner/busybox:2.0 -- date
+kubectl debug node/<node-name> -it --image=mcr.microsoft.com/cbl-mariner/busybox:2.0 --profile=sysadmin -- date
 
 # Compare with the API server time
 kubectl run time-check --image=busybox --restart=Never -- date
@@ -127,7 +128,7 @@ systemctl status chronyd
 # or
 systemctl status systemd-timesyncd
 
-# Force NTP sync
+# Force NTP sync if chrony is installed and running
 chronyc makestep
 ```
 
@@ -219,8 +220,8 @@ If you cannot fix the certificate issue on a specific node, the safest approach 
 ```bash
 # Step 1: Identify the affected node's VMSS instance
 NODE_NAME="aks-nodepool1-12345678-vmss000003"
-VMSS_NAME=$(echo $NODE_NAME | sed 's/-[0-9]*$//')
-INSTANCE_ID=$(echo $NODE_NAME | grep -oP '\d+$')
+VMSS_NAME=$(echo "$NODE_NAME" | sed -E 's/[0-9]+$//')
+INSTANCE_ID=$(echo "$NODE_NAME" | grep -oE '[0-9]+$' | sed 's/^0*//;s/^$/0/')
 
 # Step 2: Cordon and drain the node
 kubectl cordon $NODE_NAME
@@ -231,7 +232,7 @@ VMSS_RG=$(az aks show --resource-group myRG --name myAKS --query nodeResourceGro
 
 az vmss delete-instances \
   --resource-group $VMSS_RG \
-  --name <vmss-name> \
+  --name $VMSS_NAME \
   --instance-ids $INSTANCE_ID
 
 # Step 4: Wait for the replacement node to join
@@ -248,11 +249,11 @@ Set up monitoring to alert before certificates expire.
 
 ```promql
 # If using Prometheus, check the kubelet certificate expiration
-# This metric reports the time until the certificate expires in seconds
-kubelet_certificate_manager_client_expiration_seconds - time()
+# This metric reports the client certificate TTL in seconds
+kubelet_certificate_manager_client_ttl_seconds
 
 # Alert when certificate expires in less than 30 days
-kubelet_certificate_manager_client_expiration_seconds - time() < 2592000
+kubelet_certificate_manager_client_ttl_seconds < 2592000
 ```
 
 ### Keep Clusters Updated
@@ -282,7 +283,7 @@ Check NTP synchronization as part of your cluster health monitoring.
 # Quick check across all nodes
 for node in $(kubectl get nodes -o name); do
   echo "Checking $node..."
-  kubectl debug $node -it --image=busybox -- date
+  kubectl debug $node -it --image=busybox --profile=sysadmin -- date
 done
 ```
 
@@ -298,11 +299,13 @@ chroot /host
 openssl x509 -in /var/lib/kubelet/pki/kubelet-client-current.pem -noout -dates
 
 # Check kubelet serving certificate expiration
+openssl x509 -in /var/lib/kubelet/pki/kubelet-server-current.pem -noout -dates
+# or, if the node uses a local serving certificate instead of server TLS bootstrap:
 openssl x509 -in /var/lib/kubelet/pki/kubelet.crt -noout -dates
 
 # Check both certificates at once
 echo "Client cert:" && openssl x509 -in /var/lib/kubelet/pki/kubelet-client-current.pem -noout -enddate
-echo "Server cert:" && openssl x509 -in /var/lib/kubelet/pki/kubelet.crt -noout -enddate
+echo "Server cert:" && openssl x509 -in /var/lib/kubelet/pki/kubelet-server-current.pem -noout -enddate
 ```
 
 ## Wrapping Up
