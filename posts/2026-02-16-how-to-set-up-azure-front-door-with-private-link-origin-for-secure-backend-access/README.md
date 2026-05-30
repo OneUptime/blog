@@ -8,13 +8,13 @@ Description: Configure Azure Front Door Premium with Private Link origins to con
 
 ---
 
-Azure Front Door accelerates and secures web traffic at the edge, but it has traditionally required your backend services to be publicly accessible. Even with access restrictions, having a public IP on your backend creates a surface that attackers can target directly, bypassing Front Door entirely. Private Link origins eliminate this by connecting Front Door to your backend through a private endpoint. Your backend has no public IP at all, and the only way to reach it is through Front Door.
+Azure Front Door accelerates and secures web traffic at the edge, but it has traditionally required your backend services to be publicly accessible. Even with access restrictions, allowing public access on your backend creates a surface that attackers can target directly, bypassing Front Door entirely. Private Link origins eliminate this by connecting Front Door to your backend through a private endpoint. Your backend does not need to accept public traffic, and the only way to reach it is through Front Door.
 
 This guide covers how to set up Front Door Premium with Private Link origins for different backend types, including App Service, Storage, and custom backends behind a Load Balancer.
 
 ## How Private Link Origins Work
 
-In a standard Front Door configuration, Front Door connects to your backend's public endpoint. With Private Link origins, Front Door establishes a private connection through Azure Private Link to a private endpoint on your backend resource. The traffic never leaves the Microsoft backbone network.
+In a standard Front Door configuration, Front Door connects to your backend's public endpoint. With Private Link origins, Front Door establishes a private connection through Azure Private Link by creating a private endpoint in an Azure Front Door managed regional private network and connecting it to your backend resource or Private Link Service. The traffic never leaves the Microsoft backbone network.
 
 ```mermaid
 graph LR
@@ -24,8 +24,10 @@ graph LR
     subgraph Azure Front Door
         FD[Front Door Premium<br/>Edge POP]
     end
+    subgraph Azure Front Door Managed Private Network
+        PE[Managed Private Endpoint]
+    end
     subgraph Your VNet
-        PE[Private Endpoint<br/>10.0.1.5]
         BE[Backend Service<br/>No Public IP]
     end
     User -->|HTTPS| FD
@@ -33,7 +35,7 @@ graph LR
     PE --> BE
 ```
 
-The backend resource does not need a public IP. Front Door's Private Link connection reaches it through the private endpoint, and you can completely disable public access on the backend.
+The backend resource does not need to accept public traffic. Front Door's Private Link connection reaches it through the managed private endpoint, and you can completely disable public access on the backend.
 
 ## Prerequisites
 
@@ -95,6 +97,7 @@ az afd origin create \
   --weight 1000 \
   --enable-private-link true \
   --private-link-resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Web/sites/mywebapp" \
+  --private-link-sub-resource-type sites \
   --private-link-location eastus \
   --private-link-request-message "Front Door Premium Private Link"
 ```
@@ -104,19 +107,17 @@ az afd origin create \
 When Front Door creates a Private Link origin, it generates a private endpoint connection request on the backend resource. You need to approve this request:
 
 ```bash
-# List pending private endpoint connections on the App Service
-az webapp show \
+# List private endpoint connections on the App Service
+az network private-endpoint-connection list \
   --name mywebapp \
   --resource-group myResourceGroup \
-  --query "privateEndpointConnections[?properties.privateLinkServiceConnectionState.status=='Pending']" \
+  --type Microsoft.Web/sites \
   -o table
 
 # Approve the connection
 # Get the connection ID from the previous command
-az webapp update \
-  --name mywebapp \
-  --resource-group myResourceGroup \
-  --set "privateEndpointConnections[0].properties.privateLinkServiceConnectionState.status=Approved"
+az network private-endpoint-connection approve \
+  --id "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Web/sites/mywebapp/privateEndpointConnections/{connection-name}"
 ```
 
 Alternatively, approve through the portal by navigating to the App Service > Networking > Private endpoints, where you will see the pending connection from Front Door.
@@ -136,6 +137,7 @@ az afd route create \
   --supported-protocols Https \
   --patterns-to-match "/*" \
   --forwarding-protocol HttpsOnly \
+  --link-to-default-domain Enabled \
   --https-redirect Enabled
 ```
 
@@ -201,8 +203,7 @@ az network private-link-service create \
   --vnet-name myVNet \
   --subnet mySubnet \
   --lb-name myInternalLB \
-  --lb-frontend-ip-configs myFrontendIP \
-  --auto-approval ""
+  --lb-frontend-ip-configs myFrontendIP
 
 # Then create the Front Door origin pointing to the Private Link Service
 az afd origin create \
