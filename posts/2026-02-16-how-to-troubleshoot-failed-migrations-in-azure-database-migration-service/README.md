@@ -12,7 +12,7 @@ Database migrations fail. It is not a question of if, but when and how. Azure Da
 
 ## Getting Diagnostic Information
 
-Before troubleshooting, you need to know what actually went wrong. DMS provides several layers of diagnostic information.
+Before troubleshooting, you need to know what actually went wrong. DMS provides several layers of diagnostic information. The Azure CLI examples in this guide use the DMS classic command group.
 
 ### Check the Migration Activity Status
 
@@ -42,13 +42,13 @@ In the Azure Portal:
 ### Check DMS Metrics
 
 ```bash
-# Check DMS metrics for errors during the migration period
-az monitor metrics list \
+# Check which Azure Monitor metrics are exposed for this DMS resource
+az monitor metrics list-definitions \
   --resource "/subscriptions/<sub-id>/resourceGroups/rg-migration/providers/Microsoft.DataMigration/services/my-dms-instance" \
-  --metric "FailedMigrations" \
-  --interval PT1H \
   --output table
 ```
+
+Not every DMS resource exposes a dedicated `FailedMigrations` platform metric. Use the metric definitions for the resource to identify available metrics, and use the migration monitoring page or task output for per-migration failure details.
 
 ## Problem 1: Connection Failures to Source Database
 
@@ -64,7 +64,7 @@ az network vnet subnet show \
   --name snet-dms \
   --vnet-name vnet-migration \
   --resource-group rg-migration \
-  --query "addressPrefix" -o tsv
+  --query "addressPrefixes[]" -o tsv
 ```
 
 Add this IP range to your source database's firewall rules.
@@ -104,7 +104,7 @@ az sql server vnet-rule create \
 
 **Wrong credentials**: Double-check the username and password. For Azure SQL, the username format is just `sqladmin`, not `sqladmin@servername` (the latter format was required in older tools but is not needed with DMS).
 
-**Database does not exist**: DMS does not create the target database. You must create it before starting the migration.
+**Database does not exist**: For Azure SQL Database migrations, create the target database before starting the migration.
 
 ## Problem 3: Schema Mismatch Errors
 
@@ -134,11 +134,11 @@ Common schema mismatches:
 
 **Resolution**: Re-export the schema from the source and re-apply it to the target, or manually fix the specific columns that differ.
 
-## Problem 4: Primary Key Requirement for Online Migration
+## Problem 4: Primary Key Requirement for Replication-Based Online Migration
 
 **Symptoms**: "Table does not have a primary key" or "CDC is not supported for tables without primary keys."
 
-Online migration uses change data capture, which requires primary keys on all tables to track changes.
+Some online migration modes use row-level change tracking or change data capture, and those modes can require primary keys on the tables being replicated. SQL Server online migrations to SQL Server on Azure VMs and Azure SQL Managed Instance use backup and transaction-log restore instead, so check the requirements for your specific source and target pair.
 
 **Fix**:
 
@@ -169,18 +169,18 @@ ADD CONSTRAINT PK_ImportedData PRIMARY KEY (RowId);
 
 **Common causes**:
 
-**Recovery model is Simple**: Online migration requires Full recovery model.
+**Recovery model is Simple**: Backup-based online migrations for SQL Server require the Full recovery model so transaction log backups can be restored.
 
 ```sql
 -- Check and fix recovery model
 SELECT name, recovery_model_desc FROM sys.databases WHERE name = 'MyAppDB';
 -- If Simple, change to Full:
 ALTER DATABASE MyAppDB SET RECOVERY FULL;
--- Then take a full backup to initialize the log chain:
-BACKUP DATABASE MyAppDB TO DISK = 'NUL';
+-- Then take a full backup to a valid backup destination to initialize the log chain:
+BACKUP DATABASE MyAppDB TO DISK = 'C:\Backups\MyAppDB_Full.bak';
 ```
 
-**Transaction log full**: The log grows during online migration because DMS needs to read uncommitted portions.
+**Transaction log full**: The log can grow during online migration if log backups are not being taken and made available to the migration process.
 
 ```sql
 -- Check log space usage
@@ -190,7 +190,7 @@ DBCC SQLPERF(LOGSPACE);
 BACKUP LOG MyAppDB TO DISK = 'C:\Backups\MyAppDB_Log.trn';
 ```
 
-**Log truncation**: If a log backup job truncates the log before DMS reads it, CDC will lose track of changes.
+**Broken log backup chain**: If a log backup job writes backups to a location DMS cannot access, or if a required log backup is missing, DMS cannot continue restoring changes.
 
 ```sql
 -- Check when the last log backup occurred
@@ -206,14 +206,11 @@ ORDER BY backup_start_date DESC;
 
 **Fixes**:
 
-**Increase DMS vCores**: If the DMS instance is bottlenecked on CPU, scale up.
+**Increase DMS vCores**: If the DMS instance is bottlenecked on CPU, create or use a larger DMS instance. Check the SKUs available in your region first.
 
 ```bash
-# Scale up the DMS instance
-az dms update \
-  --name my-dms-instance \
-  --resource-group rg-migration \
-  --sku-name Premium_4vCores
+# List DMS SKUs available for your subscription
+az dms list-skus --output table
 ```
 
 **Reduce parallel table loads**: DMS migrates tables in parallel by default. If your source or target cannot handle the load, reduce parallelism in the migration settings.
@@ -235,10 +232,10 @@ Consider:
 
 ```sql
 -- Find oversized data that would be truncated
--- If target column is NVARCHAR(100) but source has longer values:
-SELECT COLUMN_NAME, MAX(LEN(ColumnName)) AS MaxLength
-FROM SourceTable
-GROUP BY COLUMN_NAME;
+-- If target column CustomerName is NVARCHAR(100) but source has longer values:
+SELECT MAX(LEN(CustomerName)) AS MaxLength
+FROM dbo.SourceTable
+WHERE CustomerName IS NOT NULL;
 
 -- Fix by increasing the target column size or trimming the source data
 ALTER TABLE dbo.Customers
@@ -294,12 +291,12 @@ When a migration fails, run through this checklist:
 1. Can DMS reach the source? (Network, firewall, VPN)
 2. Can DMS reach the target? (Firewall rules, credentials)
 3. Does the target schema match the source? (Tables, columns, types)
-4. Do all tables have primary keys? (Required for online migration)
-5. Is the source in Full recovery model? (Required for online migration)
+4. Do all tables have primary keys? (Required for some replication-based online migrations)
+5. Is the source in Full recovery model? (Required for SQL Server backup-based online migrations)
 6. Is there enough disk space on the source for log growth?
 7. Is the DMS instance sized appropriately? (vCores, network bandwidth)
 8. Are there any data values that would fail type conversion?
 
 ## Wrapping Up
 
-DMS migration failures almost always fall into one of a few categories: connectivity issues, schema mismatches, CDC requirements not met, or performance bottlenecks. The key to efficient troubleshooting is getting the error details from the migration task output, identifying which category the failure falls into, and applying the targeted fix. When in doubt, check the basics first - connectivity and credentials resolve most initial failures. For ongoing issues during online migration, focus on the transaction log and source server load.
+DMS migration failures almost always fall into one of a few categories: connectivity issues, schema mismatches, online migration prerequisites not met, or performance bottlenecks. The key to efficient troubleshooting is getting the error details from the migration task output, identifying which category the failure falls into, and applying the targeted fix. When in doubt, check the basics first - connectivity and credentials resolve most initial failures. For ongoing issues during SQL Server online migrations, focus on the transaction log backup chain and source server load.
