@@ -124,12 +124,11 @@ IDENTITY_ID=$(az identity show --name fw-identity \
   --resource-group myResourceGroup \
   --query id -o tsv)
 
-# Grant the managed identity access to Key Vault secrets and certificates
+# Grant the managed identity access to Key Vault secrets
 az keyvault set-policy \
   --name myFirewallKV \
   --object-id $IDENTITY_PRINCIPAL \
-  --secret-permissions get list \
-  --certificate-permissions get list
+  --secret-permissions get list
 
 # Get the Key Vault certificate secret ID
 CERT_SECRET_ID=$(az keyvault certificate show \
@@ -143,10 +142,9 @@ az network firewall policy create \
   --resource-group myResourceGroup \
   --location eastus \
   --sku Premium \
-  --identity-type UserAssigned \
-  --user-assigned-identity $IDENTITY_ID \
-  --transport-security-certificate-authority-name intermediate-ca \
-  --transport-security-certificate-authority-key-vault-secret-id $CERT_SECRET_ID
+  --identity $IDENTITY_ID \
+  --cert-name intermediate-ca \
+  --key-vault-secret-id $CERT_SECRET_ID
 ```
 
 ## Step 4: Create Application Rules with TLS Inspection Enabled
@@ -222,22 +220,22 @@ One of the main benefits of TLS inspection is that it enables the Intrusion Dete
 az network firewall policy intrusion-detection add \
   --policy-name myFwPolicy \
   --resource-group myResourceGroup \
-  --mode "Alert"
+  --idps-mode "Deny"
 
 # You can override specific signature rules
 # For example, set a specific signature to deny mode
 az network firewall policy intrusion-detection add \
   --policy-name myFwPolicy \
   --resource-group myResourceGroup \
-  --mode "Deny" \
-  --signature-overrides id=2024897 mode=Deny
+  --signature-id 2024897 \
+  --mode "Deny"
 ```
 
 ## Troubleshooting Common Issues
 
 **Certificate chain errors**: The most frequent problem is an incomplete certificate chain. Make sure the PFX file you import into Key Vault includes the full chain from the intermediate CA up to the root CA.
 
-**Performance impact**: TLS inspection adds latency because the firewall has to decrypt and re-encrypt every inspected connection. Plan your firewall sizing accordingly. Azure Firewall Premium can handle up to 250 Mbps of TLS inspection throughput per instance.
+**Performance impact**: TLS inspection adds latency because the firewall has to decrypt and re-encrypt every inspected connection. Plan your firewall sizing accordingly. Current Azure Firewall Premium performance guidance lists up to 100 Gbps for HTTP/S traffic with TLS inspection enabled and IDPS disabled, and up to 10 Gbps when TLS inspection is enabled with IDPS in Deny mode, before autoscale.
 
 **Certificate pinning**: Some applications use certificate pinning, which means they only accept specific certificates. These applications will break with TLS inspection. You need to create bypass rules for these destinations.
 
