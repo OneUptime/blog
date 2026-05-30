@@ -229,16 +229,16 @@ ContainerAppSystemLogs_CL
 | take 100
 ```
 
-Also monitor the queue depth and replica count together to see how well the scaling responds.
+Also monitor replica scheduling and activation events to see how the app responds to queue changes.
 
 ```kusto
-// Compare queue depth against replica count over time
+// View replica-related system events
 ContainerAppSystemLogs_CL
 | where ContainerAppName_s == "job-worker"
-| where Log_s contains "replica"
-| extend ReplicaCount = extract("replicas: (\\d+)", 1, Log_s)
-| project TimeGenerated, ReplicaCount
-| render timechart
+| where Log_s contains "replica" or Reason_s contains "Replica"
+| project TimeGenerated, Reason_s, Log_s, ReplicaName_s
+| order by TimeGenerated desc
+| take 100
 ```
 
 ## Common Pitfalls
