@@ -18,13 +18,13 @@ Log Analytics costs come from two main components:
 
 **Data ingestion**: You pay for every GB of data written to the workspace. This is the biggest cost for most organizations. The pay-as-you-go rate is around $2.76 per GB (varies by region). Commitment tiers offer discounts: 100 GB/day starts at about $1.96 per GB effective.
 
-**Data retention**: The first 31 days of retention are free (included in the ingestion cost). After that, you pay approximately $0.10 per GB per month for interactive retention. Archived data costs about $0.02 per GB per month.
+**Data retention**: For Analytics Logs, the first 31 days of retention are free (included in the ingestion cost). Basic and Auxiliary Logs include 30 days, and Microsoft Sentinel or Application Insights data can have different included retention. After that, you pay approximately $0.10 per GB per month for interactive retention. Archived data costs about $0.02 per GB per month.
 
 The key insight is that you pay a premium for data that is immediately queryable (interactive retention) but much less for data that is archived (searchable but with slower query performance).
 
 ## Workspace-Level Retention
 
-The workspace-level retention setting applies to all tables by default. You can set it between 30 and 730 days.
+The workspace-level retention setting applies to Analytics tables by default. You can set it between 30 and 730 days.
 
 ```bash
 # Set workspace-level retention to 90 days
@@ -124,7 +124,7 @@ az monitor log-analytics workspace table restore create \
   --name "SecurityEvent_RST" \
   --start-restore-time "2025-06-15T00:00:00Z" \
   --end-restore-time "2025-06-16T00:00:00Z" \
-  --table "SecurityEvent"
+  --restore-source-table "SecurityEvent"
 ```
 
 Restore operations are also billed per GB. They are best for situations where you need full interactive query capabilities on a specific time range of archived data.
@@ -141,7 +141,7 @@ Let us work through an example. Suppose you ingest 100 GB per day across these t
 | AzureDiagnostics | 15 GB | 90 days | 30 days |
 | Other | 10 GB | 90 days | 90 days |
 
-With a flat 90-day retention on everything, you are storing about 9,000 GB at the interactive rate (100 GB x 90 days). The retention cost beyond the free 31 days is roughly 100 GB x 59 days x $0.10/30 = about $19,667 per month.
+With a flat 90-day retention on everything, you are storing about 9,000 GB at the interactive rate (100 GB x 90 days). The retention cost beyond the free 31 days is roughly 100 GB x 59 days x $0.10 = about $590 per month.
 
 By adjusting retention:
 
@@ -184,7 +184,7 @@ source
 
 **Review diagnostic settings**: Do you really need all log categories enabled on every resource? Disable categories you are not actively using.
 
-**Deduplicate**: Some data sources send redundant information. Use transformations to deduplicate before ingestion.
+**Avoid duplicate collection**: Some data sources send redundant information. Review agents, diagnostic settings, and data connectors so you do not collect the same events through multiple paths.
 
 ## Commitment Tiers
 
@@ -207,7 +207,7 @@ az monitor log-analytics workspace update \
   --capacity-reservation-level 100
 ```
 
-Commitment tiers require a 31-day minimum commitment. If your daily volume fluctuates, size the tier for your average, not your peak - you pay per-GB at the pay-as-you-go rate for any overage above the commitment.
+Commitment tiers require a 31-day minimum commitment. If your daily volume fluctuates, size the tier for your average, not your peak - overage above the commitment is billed at the same effective per-GB rate as the selected commitment tier.
 
 ## Monitoring Your Costs
 
