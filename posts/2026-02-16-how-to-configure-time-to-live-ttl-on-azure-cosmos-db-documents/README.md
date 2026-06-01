@@ -8,7 +8,7 @@ Description: Set up Time-to-Live on Azure Cosmos DB containers and documents to 
 
 ---
 
-Time-to-Live (TTL) in Azure Cosmos DB automatically deletes documents after a specified number of seconds. This is perfect for session data, temporary caches, event logs, audit trails with retention periods, and any data that has a natural expiration. Instead of building your own cleanup jobs, you configure TTL and Cosmos DB handles the deletion in the background without consuming your provisioned throughput.
+Time-to-Live (TTL) in Azure Cosmos DB automatically deletes documents after a specified number of seconds. This is perfect for session data, temporary caches, event logs, audit trails with retention periods, and any data that has a natural expiration. Instead of building your own cleanup jobs, you configure TTL and Cosmos DB handles the deletion in the background. In provisioned throughput accounts, TTL deletion uses leftover request units (RUs) that were not consumed by user requests; in serverless accounts, TTL deletion is charged in RUs like delete operations.
 
 ## How TTL Works
 
@@ -28,8 +28,8 @@ graph TD
 
 Important details:
 
-- Deletion happens in the background and does not consume your provisioned RU/s
-- There may be a short delay between expiration and actual deletion (usually seconds, but can be longer under heavy load)
+- Deletion happens in the background and, for provisioned throughput accounts, uses leftover RUs that were not consumed by user requests
+- There may be a delay between expiration and actual deletion, especially if the container does not have enough available RUs for the deletion
 - Expired documents are not returned by queries, even before they are physically deleted
 - TTL deletions appear in the change feed (as deletes, if using all versions and deletes mode)
 
@@ -48,7 +48,7 @@ az cosmosdb sql container create \
     --database-name mydb \
     --name sessions \
     --partition-key-path "/userId" \
-    --default-ttl 3600 \
+    --ttl 3600 \
     --resource-group myResourceGroup
 ```
 
@@ -63,7 +63,7 @@ az cosmosdb sql container update \
     --account-name myCosmosAccount \
     --database-name mydb \
     --name events \
-    --default-ttl -1 \
+    --ttl -1 \
     --resource-group myResourceGroup
 ```
 
@@ -225,9 +225,16 @@ var notification = new
 await container.CreateItemAsync(notification, new PartitionKey("user-42"));
 
 // When user reads the notification, shorten the TTL
-notification.read = true;
-notification.ttl = 86400; // Delete after 1 more day
-await container.ReplaceItemAsync(notification, notification.id, new PartitionKey("user-42"));
+var readNotification = new
+{
+    notification.id,
+    notification.userId,
+    notification.message,
+    read = true,
+    notification.createdAt,
+    ttl = 86400 // Delete after 1 more day
+};
+await container.ReplaceItemAsync(readNotification, notification.id, new PartitionKey("user-42"));
 ```
 
 ## Disabling TTL
@@ -251,7 +258,8 @@ To stop a specific document from expiring, set its TTL to -1:
 
 ```csharp
 // Make a document permanent by setting ttl to -1
-dynamic doc = await container.ReadItemAsync<dynamic>("doc-123", new PartitionKey("pk-1"));
+ItemResponse<dynamic> response = await container.ReadItemAsync<dynamic>("doc-123", new PartitionKey("pk-1"));
+dynamic doc = response.Resource;
 doc.ttl = -1;
 await container.ReplaceItemAsync(doc, "doc-123", new PartitionKey("pk-1"));
 ```
@@ -271,10 +279,10 @@ Here is how the TTL hierarchy works:
 
 ## Monitoring TTL Deletions
 
-Track how much data TTL is cleaning up:
+Track whether TTL is cleaning up data by watching the total document count:
 
 ```bash
-# Check TTL-deleted document count in Azure Monitor
+# Check total document count in Azure Monitor
 az monitor metrics list \
     --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/myCosmosAccount" \
     --metric "DocumentCount" \
@@ -289,7 +297,7 @@ In the Azure Portal under Metrics, watch the Document Count metric over time. A 
 
 2. Updating a document resets the `_ts` timestamp, which restarts the TTL countdown. If you want the TTL to count from the original creation time, store the creation time separately and calculate the remaining TTL when updating.
 
-3. TTL deletions do not consume your provisioned RU/s, making them essentially free. This is a major advantage over running cleanup queries.
+3. In provisioned throughput accounts, TTL deletions use leftover RUs that were not consumed by user requests. In serverless accounts, they are charged in RUs at the same rate as delete operations.
 
 4. There may be a delay between when a document becomes eligible for deletion and when it is actually deleted. Do not design your application to depend on split-second TTL accuracy.
 
