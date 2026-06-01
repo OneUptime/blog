@@ -23,14 +23,14 @@ graph TD
     C --> D[Tenant Resolution Middleware]
     D --> E[Application Logic]
     E --> F[Azure SQL Database]
-    C --> G[Azure Key Vault - TLS Certs]
+    C --> G[App Service Managed Certificates]
 ```
 
-Each tenant gets a custom domain that points to your Azure App Service. The application uses middleware to resolve which tenant is making the request based on the incoming hostname. All tenants share the same App Service instance (or scale set), keeping costs manageable.
+Each tenant gets a custom domain that points to your Azure App Service. The application uses middleware to resolve which tenant is making the request based on the incoming hostname. All tenants share the same App Service app and its scaled-out instances, keeping costs manageable.
 
 ## Setting Up the Base App Service
 
-Start by creating an App Service plan and web app. For multi-tenant SaaS, you want at least a Standard tier plan because custom domains with TLS require it:
+Start by creating an App Service plan and web app. For multi-tenant SaaS, you want at least a Basic tier plan for custom domains with SNI TLS, and Standard is a common starting point when you also want features such as autoscale and deployment slots:
 
 ```bash
 # Create a resource group for the SaaS application
@@ -49,7 +49,7 @@ az webapp create \
   --name my-saas-app \
   --resource-group rg-saas-app \
   --plan plan-saas-app \
-  --runtime "DOTNET|8.0"
+  --runtime "DOTNETCORE:8.0"
 ```
 
 ## Tenant Resolution Middleware
@@ -161,12 +161,13 @@ public class TenantDomainController : ControllerBase
         if (tenant == null) return NotFound();
 
         // Step 1: Verify DNS ownership via TXT record
-        var verified = await VerifyDnsOwnership(request.Domain, tenantId);
+        var verificationId = await _appServiceManager.GetCustomDomainVerificationIdAsync();
+        var verified = await VerifyDnsOwnership(request.Domain, verificationId);
         if (!verified)
         {
             return BadRequest(new {
                 error = "DNS verification failed",
-                instruction = $"Add a TXT record: _verify.{request.Domain} -> {tenantId}"
+                instruction = $"Add a TXT record: asuid.{request.Domain} -> {verificationId}"
             });
         }
 
@@ -188,15 +189,16 @@ public class TenantDomainController : ControllerBase
         return Ok(new { message = "Custom domain configured successfully" });
     }
 
-    private async Task<bool> VerifyDnsOwnership(string domain, Guid tenantId)
+    private async Task<bool> VerifyDnsOwnership(string domain, string verificationId)
     {
-        // Check for a TXT record that proves domain ownership
+        // Check for the App Service TXT record that proves domain ownership
         var resolver = new LookupClient();
-        var result = await resolver.QueryAsync($"_verify.{domain}", QueryType.TXT);
+        var result = await resolver.QueryAsync($"asuid.{domain}", QueryType.TXT);
 
         return result.Answers
             .OfType<TxtRecord>()
-            .Any(txt => txt.Text.Contains(tenantId.ToString()));
+            .Any(txt => txt.Text.Any(value =>
+                string.Equals(value, verificationId, StringComparison.OrdinalIgnoreCase)));
     }
 }
 ```
@@ -223,6 +225,7 @@ public class AzureCertificateManager : ICertificateManager
     public async Task<string> ProvisionCertificateAsync(string domain)
     {
         var subscription = await _armClient.GetDefaultSubscriptionAsync();
+        var subscriptionId = subscription.Data.SubscriptionId;
         var resourceGroup = await subscription
             .GetResourceGroupAsync(_resourceGroupName);
 
@@ -234,7 +237,7 @@ public class AzureCertificateManager : ICertificateManager
             CanonicalName = domain,
             HostNames = { domain },
             ServerFarmId = new ResourceIdentifier(
-                $"/subscriptions/{subscription.Id}/resourceGroups/{_resourceGroupName}" +
+                $"/subscriptions/{subscriptionId}/resourceGroups/{_resourceGroupName}" +
                 $"/providers/Microsoft.Web/serverfarms/plan-saas-app"
             )
         };
@@ -251,8 +254,8 @@ public class AzureCertificateManager : ICertificateManager
 
 When a tenant wants to use a custom domain, they need to configure two DNS records. Your application should display clear instructions:
 
-1. A CNAME record pointing their domain to your App Service default hostname
-2. A TXT record for domain ownership verification
+1. A CNAME record pointing their subdomain to your App Service default hostname, or an A/ALIAS record for an apex domain
+2. The `asuid` TXT record that contains your App Service custom domain verification ID
 
 Here is what the instruction flow looks like:
 
@@ -265,7 +268,7 @@ sequenceDiagram
 
     Tenant->>SaaS App: Request custom domain setup
     SaaS App->>Tenant: Return DNS instructions
-    Tenant->>DNS Provider: Add CNAME and TXT records
+    Tenant->>DNS Provider: Add CNAME/A and asuid TXT records
     Tenant->>SaaS App: Confirm DNS configured
     SaaS App->>DNS Provider: Verify TXT record
     SaaS App->>Azure App Service: Add custom domain
@@ -275,7 +278,7 @@ sequenceDiagram
 
 ## Handling Scale with Azure Front Door
 
-If you have hundreds or thousands of tenants with custom domains, Azure App Service alone has a limit on custom domains per app (typically 500 for Standard tier). For larger scale, put Azure Front Door in front of your App Service:
+If you have hundreds of tenants with custom domains, Azure App Service alone has a limit on custom domains per app (500 for Standard tier). For larger scale and edge TLS termination, put Azure Front Door in front of your App Service:
 
 ```bash
 # Create an Azure Front Door profile for handling many custom domains
@@ -296,14 +299,15 @@ az afd custom-domain create \
   --profile-name fd-saas-app \
   --resource-group rg-saas-app \
   --host-name app.acmecorp.com \
+  --minimum-tls-version TLS12 \
   --certificate-type ManagedCertificate
 ```
 
-Azure Front Door supports thousands of custom domains, handles TLS termination, provides a CDN layer, and gives you WAF capabilities. It is more expensive than App Service alone, but for a SaaS product at scale, the investment pays off.
+Azure Front Door Premium supports up to 500 custom domains per profile, handles TLS termination, provides a CDN layer, and gives you WAF capabilities. It is more expensive than App Service alone, but for a SaaS product at scale, the investment pays off.
 
 ## Wildcard Subdomains as the Default
 
-For tenants who do not need custom domains, wildcard subdomains are the simplest approach. Configure a wildcard DNS record (`*.yoursaas.com`) and a wildcard TLS certificate:
+For tenants who do not need custom domains, wildcard subdomains are the simplest approach. Configure a wildcard DNS record (`*.yoursaas.com`) and a wildcard TLS certificate that you upload, import from Key Vault, or purchase as an App Service Certificate. Free App Service managed certificates do not support wildcard certificates:
 
 ```bash
 # Add a wildcard custom domain to App Service
