@@ -16,9 +16,9 @@ Azure NAT Gateway gives you a fixed set of outbound IP addresses that never chan
 
 When AKS uses the default load balancer outbound type, it assigns public IPs to the load balancer frontend. The number of IPs depends on your configuration, and they can change during:
 
-- Cluster upgrades
-- Node pool scaling operations
-- Load balancer reconfigurations
+- Changes to the managed outbound IP count
+- Switching outbound IP options
+- Manual load balancer changes that AKS removes during reconciliation
 - Cluster reconciliation events
 
 If a partner has allowlisted a specific IP and AKS changes it, your integrations break. You find out when the partner's API starts rejecting your requests, and you scramble to figure out which IP to give them now.
@@ -91,10 +91,12 @@ Create a NAT Gateway resource and attach your static IPs to it.
 az network nat gateway create \
   --resource-group myNATRG \
   --name aks-nat-gateway \
-  --public-ip-addresses aks-outbound-ip-1 aks-outbound-ip-2 \
+  --public-ip-addresses aks-outbound-ip-1 \
   --idle-timeout 10 \
   --location eastus
 ```
+
+If you created more than one public IP, include all of them in `--public-ip-addresses`.
 
 ## Step 3: Create the VNet and Subnet
 
@@ -159,7 +161,7 @@ for i in $(seq 1 5); do
 done
 ```
 
-Every run should return the same IP address. With the default load balancer outbound type, you might see different IPs depending on which frontend IP was selected.
+Every run should return one of the public IPs attached to the NAT Gateway. If you attached a single IP, every run should return that same IP address. With multiple IPs, NAT Gateway may use any IP from the configured set, so partners should allowlist the full set.
 
 ## Step 6: Document and Share the IPs
 
@@ -188,7 +190,7 @@ Share these IPs with:
 
 ## Working with Multiple Subnets
 
-If your AKS cluster uses multiple node pools on different subnets, each subnet needs its own NAT Gateway or must share one via VNet peering.
+If your AKS cluster uses multiple node pools on different subnets, each subnet needs a NAT Gateway association. A single NAT Gateway can be associated with multiple subnets, but those subnets must be in the same VNet.
 
 ```bash
 # Create a second subnet for a GPU node pool
@@ -234,28 +236,29 @@ az monitor metrics list \
   --aggregation Total \
   --output table
 
-# Check dropped connections (indicates SNAT exhaustion)
+# Check failed SNAT connection attempts (can indicate SNAT exhaustion)
 az monitor metrics list \
   --resource $NAT_GW_ID \
-  --metric "DroppedConnectionCount" \
+  --metric "SNATConnectionCount" \
   --interval PT5M \
   --aggregation Total \
+  --filter "ConnectionState eq 'Failed'" \
   --output table
 ```
 
-Set up alerts for dropped connections:
+Set up alerts for failed SNAT connection attempts:
 
 ```bash
-# Create an alert for dropped SNAT connections
+# Create an alert for failed SNAT connection attempts
 az monitor metrics alert create \
   --resource-group myNATRG \
-  --name "NAT-SNAT-Dropped" \
+  --name "NAT-SNAT-Failed" \
   --scopes $NAT_GW_ID \
-  --condition "total DroppedConnectionCount > 100" \
+  --condition "total SNATConnectionCount > 100 where ConnectionState includes Failed" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --severity 2 \
-  --description "NAT Gateway is dropping connections - possible SNAT exhaustion"
+  --description "NAT Gateway has failed SNAT connection attempts - possible SNAT exhaustion"
 ```
 
 ## Handling IP Changes Gracefully
