@@ -37,7 +37,7 @@ sequenceDiagram
     SCIM->>AAD: 200 OK
 ```
 
-Azure AD polls your SCIM endpoint periodically (about every 40 minutes) and whenever an admin makes a change. It sends standard HTTP requests to create, read, update, and delete users and groups.
+Azure AD runs provisioning cycles periodically (about every 40 minutes after the initial cycle). It sends standard HTTP requests to create, read, update, and delete users and groups that are in scope for provisioning.
 
 ## Step 1 - Understand the SCIM Protocol
 
@@ -51,6 +51,8 @@ SCIM uses REST with JSON payloads. The key endpoints are:
 - `GET /Groups` - List groups
 - `POST /Groups` - Create a group
 - `PATCH /Groups/{id}` - Update group membership
+- `GET /ServiceProviderConfig` - Describe supported SCIM features
+- `GET /Schemas` - Describe supported resource schemas
 
 A SCIM user resource looks like this:
 
@@ -83,15 +85,15 @@ A SCIM user resource looks like this:
 
 ## Step 2 - Build the SCIM Endpoint with Azure Functions
 
-Here is the SCIM endpoint implemented as an Azure Functions HTTP trigger. This handles all the operations Azure AD needs.
+Here is the SCIM endpoint implemented as an Azure Functions HTTP trigger. This handles the core user operations Azure AD needs.
 
 ```python
 import azure.functions as func
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-app = func.FunctionApp()
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 # In production, use a real database. This is simplified for clarity.
 
@@ -142,8 +144,8 @@ def create_user(req: func.HttpRequest) -> func.HttpResponse:
         "email": extract_primary_email(body.get("emails", [])),
         "active": body.get("active", True),
         "tenantId": get_tenant_from_token(req),
-        "createdAt": datetime.utcnow().isoformat(),
-        "updatedAt": datetime.utcnow().isoformat()
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "updatedAt": datetime.now(timezone.utc).isoformat()
     }
 
     # Check if user already exists (by externalId or userName)
@@ -153,7 +155,7 @@ def create_user(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({
                 "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
                 "detail": "User already exists",
-                "status": 409
+                "status": "409"
             }),
             status_code=409,
             mimetype="application/scim+json"
@@ -183,7 +185,7 @@ def get_user(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({
                 "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
                 "detail": "User not found",
-                "status": 404
+                "status": "404"
             }),
             status_code=404,
             mimetype="application/scim+json"
@@ -220,7 +222,7 @@ def update_user(req: func.HttpRequest) -> func.HttpResponse:
         elif operation == "remove":
             apply_remove_operation(user, path)
 
-    user["updatedAt"] = datetime.utcnow().isoformat()
+    user["updatedAt"] = datetime.now(timezone.utc).isoformat()
     save_user(user)
 
     return func.HttpResponse(
@@ -239,7 +241,7 @@ def delete_user(req: func.HttpRequest) -> func.HttpResponse:
     user = find_user_by_id(user_id, tenant_id)
     if user:
         user["active"] = False
-        user["updatedAt"] = datetime.utcnow().isoformat()
+        user["updatedAt"] = datetime.now(timezone.utc).isoformat()
         save_user(user)
 
     return func.HttpResponse(status_code=204)
@@ -260,12 +262,12 @@ def apply_scim_filter(filter_string: str) -> list:
     # displayName co "Jane"
 
     # Parse the filter using regex
-    match = re.match(r'(\w+)\s+(eq|co|sw)\s+"(.+)"', filter_string)
+    match = re.match(r'([\w.]+)\s+(eq|co|sw)\s+"([^"]*)"$', filter_string, re.IGNORECASE)
     if not match:
         return []
 
     attribute = match.group(1)
-    operator = match.group(2)
+    operator = match.group(2).lower()
     value = match.group(3)
 
     # Map SCIM attributes to database columns
@@ -341,6 +343,8 @@ def apply_replace_operation(user: dict, path: str, value):
 Azure AD authenticates to your SCIM endpoint using a bearer token. You configure this token when setting up the provisioning in Azure AD.
 
 ```python
+import os
+
 def get_tenant_from_token(req: func.HttpRequest) -> str:
     """Validate the bearer token and extract the tenant ID."""
     auth_header = req.headers.get("Authorization", "")
@@ -361,7 +365,7 @@ def get_tenant_from_token(req: func.HttpRequest) -> str:
     return decoded.get("tid", "unknown")
 ```
 
-For production, use OAuth 2.0 token validation. Configure your SCIM endpoint as an API in Azure AD, and Azure AD will authenticate using client credentials.
+For production, use OAuth 2.0 token validation. For Microsoft Entra application gallery integrations, configure OAuth 2.0 client credentials so each customer supplies their own client ID and client secret.
 
 ## Step 5 - Configure Azure AD Provisioning
 
