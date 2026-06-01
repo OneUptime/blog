@@ -24,19 +24,21 @@ Azure SQL Database is great for single-database workloads, but it has deliberate
 
 ## Assess Your Current Environment
 
-Before starting the migration, you need to understand what you are working with. Use the Azure Database Migration Service (DMS) assessment tool or Data Migration Assistant (DMA) to scan your Azure SQL Database for compatibility issues.
+Before starting the migration, you need to understand what you are working with. Azure Database Migration Service does not provide an online Azure SQL Database to SQL Managed Instance migration path, so review your Azure SQL Database for compatibility issues before moving to Managed Instance.
 
-Here is how to run a DMA assessment from the command line:
+Here is a basic inventory query you can run against the source database:
 
-```bash
-# Run the DMA command-line assessment tool
-
-# This checks your source database for any features not supported in Managed Instance
-DmaCmd.exe /AssessmentName="MigrationAssessment" \
-  /AssessmentSourcePlatform="SqlOnAzure" \
-  /AssessmentTargetPlatform="ManagedSqlServer" \
-  /AssessmentDatabases="Server=myserver.database.windows.net;Database=mydb;User=admin;Password=secret" \
-  /AssessmentResultJson="C:\assessment\result.json"
+```sql
+-- Inventory programmability objects that may need review before migration
+SELECT
+    o.name AS ObjectName,
+    o.type_desc AS ObjectType,
+    m.definition
+FROM sys.sql_modules m
+JOIN sys.objects o ON m.object_id = o.object_id
+WHERE m.definition LIKE '%sys.dm_db_resource_stats%'
+   OR m.definition LIKE '%elastic%'
+   OR m.definition LIKE '%EXTERNAL DATA SOURCE%';
 ```
 
 Pay attention to:
@@ -57,21 +59,20 @@ This is the simplest method but requires downtime. You export your Azure SQL Dat
 ```sql
 -- Step 1: Export from Azure SQL Database
 -- Use the Azure Portal or SqlPackage.exe
--- This creates a .bacpac file in Azure Blob Storage
+-- The portal can export to Azure Blob Storage; SqlPackage writes to a filesystem path
 
 -- Step 2: Import into Managed Instance using SqlPackage
 -- Replace placeholders with your actual values
 ```
 
 ```bash
-# Export the database to a BACPAC file in blob storage
+# Export the database to a local BACPAC file
 SqlPackage.exe /Action:Export \
   /SourceServerName:myserver.database.windows.net \
   /SourceDatabaseName:mydb \
   /SourceUser:admin \
   /SourcePassword:YourPassword123 \
-  /TargetFile:"https://mystorage.blob.core.windows.net/backups/mydb.bacpac" \
-  /StorageKey:YourStorageAccountKey
+  /TargetFile:"C:\backups\mydb.bacpac"
 
 # Import the BACPAC into Managed Instance
 SqlPackage.exe /Action:Import \
@@ -79,38 +80,38 @@ SqlPackage.exe /Action:Import \
   /TargetDatabaseName:mydb \
   /TargetUser:admin \
   /TargetPassword:YourPassword123 \
-  /SourceFile:"https://mystorage.blob.core.windows.net/backups/mydb.bacpac" \
-  /StorageKey:YourStorageAccountKey
+  /SourceFile:"C:\backups\mydb.bacpac"
 ```
 
-This approach works well for databases under 200 GB and when you can afford a maintenance window.
+This approach works well for databases under 200 GB and when you can afford a maintenance window. If you need to stage the BACPAC in Azure Storage, upload and download the file separately, because SqlPackage import and export use filesystem paths for BACPAC files.
 
-### Option 2: Azure Database Migration Service (Online)
+### Option 2: Data Copy with Azure Data Factory or BCP
 
-For near-zero downtime migration, use Azure DMS in online mode. This sets up continuous data sync between your source and target until you are ready to cut over.
+For larger databases where a BACPAC export is not practical, use Azure Data Factory or BCP to copy table data from Azure SQL Database to SQL Managed Instance. Azure Database Migration Service online migrations to SQL Managed Instance are designed for SQL Server sources, not Azure SQL Database sources.
 
 The general flow looks like this:
 
 ```mermaid
 graph LR
-    A[Azure SQL Database] -->|Initial Full Copy| B[Azure DMS]
-    B -->|Continuous Sync| C[SQL Managed Instance]
-    C -->|Cutover| D[Application Points to MI]
+    A[Azure SQL Database] -->|Schema Deployment| B[SQL Managed Instance]
+    A -->|Table Data Copy| C[Azure Data Factory or BCP]
+    C -->|Load Data| B
+    B -->|Cutover| D[Application Points to MI]
 ```
 
-Steps to set up DMS online migration:
+Steps to set up this style of migration:
 
-1. Create an Azure Database Migration Service instance in the portal
-2. Create a new migration project, selecting Azure SQL Database as the source and SQL Managed Instance as the target
+1. Deploy the schema to SQL Managed Instance using SqlPackage, SSDT, or your normal deployment pipeline
+2. Create an Azure Data Factory pipeline or BCP scripts for the tables you need to copy
 3. Configure the source connection to your Azure SQL Database
 4. Configure the target connection to your Managed Instance
-5. Select the databases to migrate
-6. Start the migration and monitor progress
-7. When the sync is caught up, perform the cutover
+5. Run an initial data load and validate row counts
+6. Pause writes during the final cutover window
+7. Run a final incremental load if your process supports it, then point the application to MI
 
 ### Option 3: Transactional Replication
 
-If your database uses features compatible with transactional replication, you can set up Azure SQL Database as the publisher and SQL Managed Instance as the subscriber. This gives you fine-grained control over the migration.
+Transactional replication is not a direct migration path from Azure SQL Database to SQL Managed Instance. Azure SQL Database can be a push subscriber for transactional replication, but it cannot be the publisher. SQL Managed Instance can act as a publisher, distributor, or subscriber.
 
 ## Prepare the Target Managed Instance
 
@@ -176,7 +177,7 @@ JOIN sys.partitions p ON t.object_id = p.object_id
 WHERE p.index_id IN (0, 1)
 ORDER BY t.name;
 
--- Verify that all stored procedures compiled successfully
+-- List routines to review or refresh after migration
 SELECT
     name,
     type_desc
@@ -186,11 +187,13 @@ ORDER BY name;
 
 -- Check for any broken dependencies
 SELECT
-    referencing_entity_name,
-    referenced_entity_name,
-    referenced_minor_name
-FROM sys.dm_sql_referencing_entities('dbo', 'OBJECT')
-WHERE is_caller_dependent = 0;
+    OBJECT_SCHEMA_NAME(referencing_id) AS ReferencingSchema,
+    OBJECT_NAME(referencing_id) AS ReferencingObject,
+    referenced_schema_name,
+    referenced_entity_name
+FROM sys.sql_expression_dependencies
+WHERE referenced_id IS NULL
+  AND referenced_entity_name IS NOT NULL;
 ```
 
 ## Update Application Connection Strings
@@ -202,10 +205,10 @@ The connection string format for Managed Instance is slightly different from Azu
 Server=myserver.database.windows.net;Database=mydb;User=admin;Password=secret;
 
 -- SQL Managed Instance connection string
-Server=myinstance.abc123.database.windows.net,3342;Database=mydb;User=admin;Password=secret;
+Server=myinstance.public.abc123.database.windows.net,3342;Database=mydb;User=admin;Password=secret;
 ```
 
-Note the port number 3342 for the public endpoint, or use the default port 1433 for private endpoint connections through the VNet.
+Note the port number 3342 and the `.public.` host name label for the public endpoint, or use the VNet-local endpoint on port 1433 for private connectivity through the VNet.
 
 ## Performance Baseline Comparison
 
