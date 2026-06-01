@@ -27,7 +27,7 @@ graph TD
 
 The Guest Configuration agent runs inside the VM and periodically evaluates the machine against the assigned configuration. It reports the results back to Azure, where they show up in the policy compliance dashboard just like any other policy result.
 
-The agent is part of the Azure Connected Machine agent (for Arc-enabled servers) or the Guest Configuration VM extension (for Azure VMs). When you assign a Guest Configuration policy, Azure automatically deploys the extension if it is not already present - this is handled by prerequisite policies that you need to have in place.
+The agent is part of the Azure Connected Machine agent (for Arc-enabled servers) or the Guest Configuration VM extension (for Azure VMs). When the machine configuration prerequisites are assigned, Azure can deploy the extension if it is not already present.
 
 ## Prerequisites
 
@@ -36,15 +36,17 @@ Before you can use Guest Configuration, make sure these are in place:
 1. **System-assigned managed identity** on the VM. Guest Configuration requires this to authenticate with Azure.
 2. **Guest Configuration extension** installed on the VM. The built-in prerequisite policies can deploy this automatically.
 3. **Network connectivity** for the agent to communicate with Azure. The VM needs outbound HTTPS access to specific Azure endpoints.
+4. **Microsoft.GuestConfiguration resource provider** registered in the subscription. The Azure portal or Microsoft Defender for Cloud can register it automatically, or you can register it with Azure CLI.
 
 Let us deploy the prerequisite policies first. These policies ensure that every VM gets the Guest Configuration extension and a managed identity.
 
 This assigns the built-in prerequisite policies at the subscription level:
 
 ```bash
+az provider register --namespace Microsoft.GuestConfiguration
+
 # Assign the prerequisite policy that deploys the Guest Configuration extension
 
-# This handles both Windows and Linux VMs
 az policy assignment create \
   --name "deploy-gc-extension-windows" \
   --display-name "Deploy Guest Configuration extension on Windows VMs" \
@@ -61,11 +63,19 @@ az policy assignment create \
   --mi-system-assigned \
   --location eastus
 
-# Assign the prerequisite policy that adds system-assigned managed identity
+# Assign the prerequisite policies that add system-assigned managed identity
 az policy assignment create \
   --name "add-system-identity-to-vms" \
-  --display-name "Add system-assigned managed identity to VMs" \
+  --display-name "Add system-assigned managed identity to VMs with no identities" \
   --policy "/providers/Microsoft.Authorization/policyDefinitions/3cf2ab00-13f1-4d0c-8971-2ac904541a7e" \
+  --scope "/subscriptions/$(az account show --query id -o tsv)" \
+  --mi-system-assigned \
+  --location eastus
+
+az policy assignment create \
+  --name "add-system-identity-to-vms-with-uami" \
+  --display-name "Add system-assigned managed identity to VMs with a user-assigned identity" \
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/497dff13-db2a-4c0f-8603-28fa3b331ab6" \
   --scope "/subscriptions/$(az account show --query id -o tsv)" \
   --mi-system-assigned \
   --location eastus
@@ -107,14 +117,16 @@ az policy assignment create \
 
 The built-in policies cover many scenarios, but you will probably need custom checks too. Creating a custom Guest Configuration policy involves three steps: author the configuration, package it, and create a policy definition.
 
-Guest Configuration uses PowerShell Desired State Configuration (DSC) for Windows and Chef InSpec for Linux. I will show the Windows DSC approach.
+Guest Configuration uses PowerShell Desired State Configuration (DSC) for both Windows and Linux custom packages. I will show the Windows DSC approach.
 
 First, install the required PowerShell modules:
 
 ```powershell
+# Run these commands in PowerShell 7
 # Install the Guest Configuration module for authoring custom packages
 Install-Module -Name GuestConfiguration -Force
-Install-Module -Name PSDesiredStateConfiguration -Force -AllowPrerelease
+Install-Module -Name PSDesiredStateConfiguration -RequiredVersion 2.0.7 -Force
+Import-Module -Name PSDesiredStateConfiguration
 ```
 
 Now, create a DSC configuration that checks a specific setting. This example audits whether TLS 1.0 is disabled on Windows VMs:
@@ -152,6 +164,7 @@ Configuration AuditTLS10Disabled
 
 # Compile the configuration into a MOF file
 AuditTLS10Disabled -OutputPath ./AuditTLS10Disabled
+Rename-Item -Path ./AuditTLS10Disabled/localhost.mof -NewName AuditTLS10Disabled.mof -Force
 ```
 
 ## Step 3: Package and Publish the Configuration
@@ -165,24 +178,32 @@ This script creates the package and publishes it to a storage account:
 # The Type parameter of "Audit" means this will only report - not remediate
 New-GuestConfigurationPackage `
     -Name "AuditTLS10Disabled" `
-    -Configuration "./AuditTLS10Disabled/localhost.mof" `
+    -Configuration "./AuditTLS10Disabled/AuditTLS10Disabled.mof" `
     -Type Audit `
-    -Path "./package"
+    -Path "./package" `
+    -Force
 
 # Test the package locally before publishing (optional but recommended)
 $testResult = Test-GuestConfigurationPackage `
     -Path "./package/AuditTLS10Disabled.zip"
 Write-Output "Local test result: $($testResult.complianceStatus)"
 
-# Publish the package to Azure storage
-# This uploads the zip file and returns a SAS URI
-$publishResult = Publish-GuestConfigurationPackage `
-    -Path "./package/AuditTLS10Disabled.zip" `
-    -ResourceGroupName "rg-guest-config" `
-    -StorageAccountName "stguestconfigs"
+# Publish the package to Azure storage and create a read-only SAS URI
+$connectionString = "<storage-account-connection-string>"
+$context = New-AzStorageContext -ConnectionString $connectionString
+$blob = Set-AzStorageBlobContent `
+    -Container "machine-configuration" `
+    -File "./package/AuditTLS10Disabled.zip" `
+    -Context $context `
+    -Force
 
-# Save the content URI - you need this for the policy definition
-$contentUri = $publishResult.ContentUri
+$contentUri = New-AzStorageBlobSASToken `
+    -Container "machine-configuration" `
+    -Blob $blob.Name `
+    -Permission r `
+    -ExpiryTime (Get-Date).AddYears(3) `
+    -Context $context `
+    -FullUri
 Write-Output "Package published at: $contentUri"
 ```
 
@@ -195,17 +216,22 @@ This creates a policy definition from the published package:
 ```powershell
 # Generate the policy definition from the Guest Configuration package
 # This creates the JSON files needed for the policy
-New-GuestConfigurationPolicy `
-    -ContentUri $contentUri `
-    -DisplayName "Audit Windows VMs where TLS 1.0 is not disabled" `
-    -Description "Checks that TLS 1.0 is disabled on Windows virtual machines" `
-    -Path "./policy" `
-    -Platform Windows `
-    -Mode Audit `
-    -Version "1.0.0"
+$policyConfig = @{
+    PolicyId      = (New-Guid).Guid
+    ContentUri    = $contentUri
+    DisplayName   = "Audit Windows VMs where TLS 1.0 is not disabled"
+    Description   = "Checks that TLS 1.0 is disabled on Windows virtual machines"
+    Path          = "./policy/auditIfNotExists.json"
+    Platform      = "Windows"
+    PolicyVersion = "1.0.0"
+    Mode          = "Audit"
+}
+New-GuestConfigurationPolicy @policyConfig
 
 # Publish the policy definition to Azure
-Publish-GuestConfigurationPolicy -Path "./policy"
+New-AzPolicyDefinition `
+    -Name "audit-tls10-disabled" `
+    -Policy "./policy/auditIfNotExists.json"
 ```
 
 ## Step 5: Assign the Custom Policy
@@ -245,7 +271,7 @@ For more detailed per-resource compliance information, including which specific 
 
 ```bash
 # Get detailed Guest Configuration assignment results for a specific VM
-az vm guest-configuration assignment list \
+az guestconfig guest-configuration-assignment list \
   --resource-group rg-production \
   --vm-name vm-web-01 \
   --query "[].{name:name, complianceStatus:properties.complianceStatus, lastChecked:properties.latestReportId}" \
@@ -254,12 +280,13 @@ az vm guest-configuration assignment list \
 
 ## Audit vs. Apply and Monitor
 
-Guest Configuration supports two modes:
+Guest Configuration supports three assignment types:
 
 - **Audit** - Reports on whether settings are compliant without making changes. This is the safer option and what I recommend starting with.
-- **Apply and Monitor** - Actually changes non-compliant settings to make them compliant, then continues monitoring. This is powerful but carries risk since it modifies VM configurations.
+- **Apply and Monitor** - Applies the configuration once, then monitors for drift without automatically correcting it again unless remediation is triggered.
+- **Apply and AutoCorrect** - Applies the configuration and automatically corrects drift during later evaluations. This is powerful but carries risk since it modifies VM configurations.
 
-For the Apply and Monitor mode, change the `Type` parameter to `ApplyAndMonitor` when creating the package and use the `DeployIfNotExists` effect in the policy instead of `AuditIfNotExists`.
+For remediation modes, change the package `Type` parameter to `AuditAndSet` when creating the package and use a `DeployIfNotExists` policy definition. Then set the policy definition `Mode` to `ApplyAndMonitor` to apply once and monitor, or `ApplyAndAutoCorrect` to continuously correct drift.
 
 ## Troubleshooting
 
