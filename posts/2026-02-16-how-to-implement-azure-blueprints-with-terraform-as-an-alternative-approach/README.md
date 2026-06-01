@@ -10,7 +10,7 @@ Description: Learn how to replicate Azure Blueprints functionality using Terrafo
 
 Azure Blueprints was designed to let organizations define repeatable sets of Azure resources, policies, and role assignments that comply with organizational standards. You would package resource groups, ARM templates, policy assignments, and RBAC assignments into a blueprint, then assign it to subscriptions to enforce governance.
 
-However, Microsoft has signaled that Azure Blueprints is being superseded by other approaches - specifically, template specs, deployment stacks, and Terraform-based landing zone implementations. If you are starting fresh or looking to migrate from Blueprints, Terraform provides a more flexible, widely-adopted alternative that gives you the same governance guardrails with better version control and cross-platform support.
+However, Microsoft has announced that Azure Blueprints (Preview) will be deprecated on July 11, 2026, and recommends migrating existing blueprint definitions and assignments to Template Specs and Deployment Stacks. If you are starting fresh or looking to move from Blueprints, Terraform-based landing zone implementations provide a flexible, widely-adopted alternative that gives you similar governance guardrails with better version control and cross-platform support.
 
 ## What Azure Blueprints Does
 
@@ -77,7 +77,11 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
+    }
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 2.0"
     }
   }
   # Store state in Azure Storage for team collaboration
@@ -93,6 +97,8 @@ provider "azurerm" {
   features {}
   subscription_id = var.subscription_id
 }
+
+provider "azapi" {}
 
 # Create standardized resource groups
 module "resource_groups" {
@@ -212,7 +218,7 @@ output "monitoring_rg_name" {
 # modules/policies/main.tf
 # Applies Azure Policy assignments (replaces Blueprint policy artifacts)
 
-# Require specific tags on all resources
+# Require specific tags on resource groups
 resource "azurerm_subscription_policy_assignment" "require_tags" {
   for_each = toset(var.required_tags)
 
@@ -220,7 +226,7 @@ resource "azurerm_subscription_policy_assignment" "require_tags" {
   subscription_id      = "/subscriptions/${var.subscription_id}"
   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025"
   display_name         = "Require ${each.key} tag on resource groups"
-  enforcement_mode     = var.environment == "production" ? "Default" : "DoNotEnforce"
+  enforce              = var.environment == "production"
 
   parameters = jsonencode({
     tagName = { value = each.key }
@@ -239,22 +245,28 @@ resource "azurerm_subscription_policy_assignment" "allowed_locations" {
   })
 }
 
-# Deny public IP addresses in production
+# Deny public IP address resources in production
 resource "azurerm_subscription_policy_assignment" "deny_public_ip" {
   count = var.environment == "production" ? 1 : 0
 
   name                 = "deny-public-ip"
   subscription_id      = "/subscriptions/${var.subscription_id}"
   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/6c112d4e-5bc7-47ae-a041-ea2d9dccd749"
-  display_name         = "Deny public IP addresses"
+  display_name         = "Deny public IP address resources"
+
+  parameters = jsonencode({
+    listOfResourceTypesNotAllowed = {
+      value = ["Microsoft.Network/publicIPAddresses"]
+    }
+  })
 }
 
-# Enable Azure Defender for all resource types
-resource "azurerm_subscription_policy_assignment" "enable_defender" {
-  name                 = "enable-defender"
+# Assign Microsoft cloud security benchmark
+resource "azurerm_subscription_policy_assignment" "security_benchmark" {
+  name                 = "mcsb"
   subscription_id      = "/subscriptions/${var.subscription_id}"
   policy_definition_id = "/providers/Microsoft.Authorization/policySetDefinitions/1f3afdf9-d0c9-4c3d-847f-89da613e70a8"
-  display_name         = "Enable Azure Defender"
+  display_name         = "Microsoft cloud security benchmark"
   identity {
     type = "SystemAssigned"
   }
@@ -319,7 +331,7 @@ department      = "Engineering"
 allowed_locations = ["eastus", "westus2"]
 required_tags     = ["CostCenter", "Department", "Environment", "Owner"]
 
-# RBAC group object IDs from Azure AD
+# RBAC group object IDs from Microsoft Entra ID
 admin_group_id     = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 developer_group_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 reader_group_id    = "cccccccc-cccc-cccc-cccc-cccccccccccc"
@@ -334,6 +346,9 @@ subnets = {
 }
 
 alert_email = "ops-team@contoso.com"
+
+landing_zone_version    = "2.0.0"
+landing_zone_applied_at = "2026-02-16T00:00:00Z"
 ```
 
 ## Step 7: Implement Assignment Tracking
@@ -341,17 +356,20 @@ alert_email = "ops-team@contoso.com"
 One feature of Blueprints is assignment tracking - knowing which subscriptions have which version. Replicate this with Terraform state and tagging:
 
 ```hcl
-# Track the landing zone version via a tag on the subscription
-resource "azurerm_subscription_tag" "landing_zone_version" {
-  subscription_id = var.subscription_id
-  tag_name        = "LandingZoneVersion"
-  tag_value       = var.landing_zone_version
-}
+# Track the landing zone version via tags on the subscription
+resource "azapi_resource" "subscription_tags" {
+  type      = "Microsoft.Resources/tags@2024-07-01"
+  name      = "default"
+  parent_id = "/subscriptions/${var.subscription_id}"
 
-resource "azurerm_subscription_tag" "landing_zone_applied" {
-  subscription_id = var.subscription_id
-  tag_name        = "LandingZoneApplied"
-  tag_value       = timestamp()
+  body = {
+    properties = {
+      tags = {
+        LandingZoneVersion = var.landing_zone_version
+        LandingZoneApplied = var.landing_zone_applied_at
+      }
+    }
+  }
 }
 ```
 
@@ -386,11 +404,16 @@ jobs:
 
       - name: Terraform Init
         run: terraform init
-        working-directory: azure-landing-zone/environments/production
+        working-directory: azure-landing-zone
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Terraform Plan
-        run: terraform plan -out=tfplan
-        working-directory: azure-landing-zone/environments/production
+        run: terraform plan -var-file=environments/production/terraform.tfvars -out=tfplan
+        working-directory: azure-landing-zone
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -401,7 +424,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
-          path: azure-landing-zone/environments/production/tfplan
+          path: azure-landing-zone/tfplan
 
   apply:
     needs: plan
@@ -415,11 +438,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan
-          path: azure-landing-zone/environments/production
+          path: azure-landing-zone
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: azure-landing-zone
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Terraform Apply
         run: terraform apply tfplan
-        working-directory: azure-landing-zone/environments/production
+        working-directory: azure-landing-zone
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
