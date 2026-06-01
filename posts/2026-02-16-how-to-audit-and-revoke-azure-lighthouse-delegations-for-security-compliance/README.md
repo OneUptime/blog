@@ -69,17 +69,17 @@ foreach ($sub in $subscriptions) {
     $assignments = Get-AzManagedServicesAssignment
 
     foreach ($assignment in $assignments) {
-        $defId = $assignment.Properties.RegistrationDefinitionId
+        $defId = $assignment.RegistrationDefinitionId
         $def = $definitions | Where-Object { $_.Id -eq $defId }
 
         # Build a delegation record for the audit report
         $record = [PSCustomObject]@{
             SubscriptionName  = $sub.Name
             SubscriptionId    = $sub.Id
-            ManagingTenantId  = $def.Properties.ManagedByTenantId
-            OfferName         = $def.Properties.RegistrationDefinitionName
+            ManagingTenantId  = $def.ManagedByTenantId
+            OfferName         = $def.Name
             Scope             = $assignment.Id
-            Authorizations    = ($def.Properties.Authorizations |
+            Authorizations    = ($def.Authorization |
                 ConvertTo-Json -Compress)
         }
         $allDelegations += $record
@@ -124,11 +124,18 @@ Azure Resource Graph is a great tool for querying delegation information across 
 
 ```kusto
 // Query all Lighthouse registration assignments across the tenant
-servicehealthresources
-| where type == "microsoft.managedservices/registrationassignments"
-| extend managingTenantId = properties.registrationDefinition.properties.managedByTenantId
-| extend offerName = properties.registrationDefinition.properties.registrationDefinitionName
-| project subscriptionId, managingTenantId, offerName, properties
+managedserviceresources
+| where type =~ "microsoft.managedservices/registrationassignments"
+| extend registrationDefinitionId = tostring(properties.registrationDefinitionId)
+| join kind=leftouter (
+    managedserviceresources
+    | where type =~ "microsoft.managedservices/registrationdefinitions"
+    | project registrationDefinitionId = id,
+        managingTenantId = tostring(properties.managedByTenantId),
+        offerName = name,
+        authorizations = properties.authorizations
+) on registrationDefinitionId
+| project subscriptionId, assignmentId = id, managingTenantId, offerName, authorizations
 ```
 
 If the managed services resource type is not available in Resource Graph for your tenant, you can use the REST API directly:
@@ -136,7 +143,7 @@ If the managed services resource type is not available in Resource Graph for you
 ```bash
 # Query the management services API directly
 az rest --method get \
-  --url "https://management.azure.com/subscriptions/{sub-id}/providers/Microsoft.ManagedServices/registrationAssignments?api-version=2020-02-01-preview&\$expandRegistrationDefinition=true"
+  --url "https://management.azure.com/subscriptions/{sub-id}/providers/Microsoft.ManagedServices/registrationAssignments?\$expandRegistrationDefinition=true&api-version=2022-10-01"
 ```
 
 ## Setting Up Alerts for Delegation Changes
@@ -149,8 +156,7 @@ az monitor action-group create \
   --name "LighthouseAlerts" \
   --resource-group "monitoring-rg" \
   --short-name "LHAlerts" \
-  --email-receiver name="SecurityTeam" \
-    email-address="security@contoso.com"
+  --action email SecurityTeam security@contoso.com
 
 # Create an activity log alert for new delegation assignments
 az monitor activity-log alert create \
@@ -211,13 +217,16 @@ foreach ($sub in $subscriptions) {
     $assignments = Get-AzManagedServicesAssignment
 
     foreach ($assignment in $assignments) {
-        $defId = $assignment.Properties.RegistrationDefinitionId
+        $defId = $assignment.RegistrationDefinitionId
         $def = $definitions | Where-Object { $_.Id -eq $defId }
 
-        if ($def.Properties.ManagedByTenantId -eq $targetTenantId) {
+        if ($def.ManagedByTenantId -eq $targetTenantId) {
             # Remove this delegation
             Write-Output "Removing delegation in $($sub.Name)..."
-            Remove-AzManagedServicesAssignment -Id $assignment.Id
+            Remove-AzManagedServicesAssignment `
+                -Name $assignment.Name `
+                -Scope "/subscriptions/$($sub.Id)" `
+                -Confirm:$false
         }
     }
 }
