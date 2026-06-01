@@ -28,7 +28,7 @@ Before you start moving data, spend time on assessment. This step catches issues
 
 ### Check MySQL Version Compatibility
 
-Azure Database for MySQL Flexible Server supports MySQL 5.7 and 8.0. If your on-premises server runs an older version, you will need to upgrade first.
+Azure Database for MySQL Flexible Server supports MySQL 5.7, 8.0, and 8.4 as generally available versions. If your on-premises server runs an older version, you will need to upgrade first.
 
 ```bash
 # Check your current MySQL version
@@ -107,7 +107,7 @@ az mysql flexible-server create \
   --admin-password 'StrongPassword123!' \
   --sku-name Standard_D4ds_v4 \
   --tier GeneralPurpose \
-  --version 8.0.21 \
+  --version 8.0 \
   --storage-size 256
 ```
 
@@ -142,12 +142,8 @@ az mysql flexible-server parameter set \
   --name max_allowed_packet \
   --value 1073741824
 
-# Disable foreign key checks and unique checks for faster import
-az mysql flexible-server parameter set \
-  --resource-group myResourceGroup \
-  --server-name my-azure-mysql \
-  --name foreign_key_checks \
-  --value OFF
+# foreign_key_checks and unique_checks are session variables.
+# Set them on the import session rather than as Azure server parameters.
 ```
 
 ### Step 4: Restore to Azure
@@ -159,23 +155,17 @@ mysql \
   --user=azureadmin \
   --password='StrongPassword123!' \
   --ssl-mode=REQUIRED \
+  --init-command="SET SESSION foreign_key_checks=0, unique_checks=0;" \
   < myapp_dump.sql
 ```
 
 ### Step 5: Re-enable Safety Settings
 
-```bash
-# Re-enable foreign key checks
-az mysql flexible-server parameter set \
-  --resource-group myResourceGroup \
-  --server-name my-azure-mysql \
-  --name foreign_key_checks \
-  --value ON
-```
+No global safety settings were disabled in the previous step. The `foreign_key_checks` and `unique_checks` changes apply only to the import session and go away when the connection closes.
 
 ## Method 2: Azure Database Migration Service (DMS)
 
-For larger databases or when you need minimal downtime, use DMS. It supports online migration, which means it migrates the data while your source database continues serving traffic, then performs a final cutover when you are ready.
+For larger databases or when you need minimal downtime, use DMS. It supports online migration, which means it migrates the data while your source database continues serving traffic, then performs a final cutover when you are ready. For DMS specifically, check target version support before you start; current online migration documentation lists MySQL 5.7 and 8.0 targets.
 
 ### Step 1: Set Up DMS
 
@@ -183,7 +173,7 @@ Create a DMS instance in the Azure portal:
 
 1. Search for "Azure Database Migration Service" in the portal.
 2. Click "Create."
-3. Select the pricing tier (Standard for offline, Premium for online migrations).
+3. Select the Premium pricing tier for MySQL migrations.
 4. Place it in a VNet that can reach both your source and target servers.
 
 ### Step 2: Configure Source Connectivity
@@ -205,8 +195,10 @@ log-bin = mysql-bin
 binlog_format = ROW
 # Set a unique server ID
 server-id = 1
-# Keep binlogs for at least 5 days
+# Keep binlogs for at least 5 days on MySQL 5.7
 expire_logs_days = 5
+# For MySQL 8.0 and later, use this instead:
+# binlog_expire_logs_seconds = 432000
 ```
 
 Restart MySQL after changing these settings.
@@ -272,7 +264,7 @@ The parallel threads make a huge difference for large databases. A 100 GB databa
 After migration, validate thoroughly:
 
 ```sql
--- Compare row counts between source and target for each table
+-- Get approximate row counts from source and target for each table
 SELECT table_name, table_rows
 FROM information_schema.tables
 WHERE table_schema = 'myapp'
@@ -289,7 +281,7 @@ FROM information_schema.views
 WHERE table_schema = 'myapp';
 ```
 
-Run your application's test suite against the new database. Check that queries return the expected results and that performance is acceptable.
+For exact validation, run `COUNT(*)` on critical tables on both source and target. Run your application's test suite against the new database. Check that queries return the expected results and that performance is acceptable.
 
 ## Application Cutover
 
@@ -297,7 +289,7 @@ The final step is switching your application to the new database:
 
 1. Put your application in maintenance mode.
 2. Take a final backup of the source.
-3. If using DMS, complete the cutover. If using dump/restore, do a final incremental sync.
+3. If using DMS, complete the cutover. If using dump/restore, repeat the dump and restore after writes are stopped.
 4. Update connection strings in your application configuration.
 5. Deploy the updated configuration.
 6. Test critical application flows.
@@ -312,7 +304,7 @@ Keep the source database running for at least a week after cutover. If something
 
 **Timezone differences**: Set the timezone on the Azure server to match your source if your application depends on server time.
 
-**Missing users**: Create application users on the Azure server before cutover. Remember that user accounts are not migrated automatically.
+**Missing users**: Create application users on the Azure server before cutover, or explicitly enable DMS login migration if it fits your migration path.
 
 **Performance differences**: The first few hours after migration might show different query performance. Give the InnoDB buffer pool time to warm up.
 
