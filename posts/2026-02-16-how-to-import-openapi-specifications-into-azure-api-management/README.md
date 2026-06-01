@@ -26,8 +26,8 @@ When you import an OpenAPI specification, APIM creates:
 What does NOT get imported:
 
 - **Security schemes**: The spec might define OAuth2 flows, but APIM does not automatically configure JWT validation policies. You still need to add those manually.
-- **Server URLs**: APIM uses its own gateway URL. The server URLs in the spec are only used to set the initial backend URL.
-- **Custom extensions** (x- properties): These are ignored during import.
+- **Server URLs**: APIM uses its own gateway URL. Server URLs in the spec are only used to set the initial backend URL; if multiple OpenAPI 3.x servers are listed, APIM uses the first HTTPS URL it finds.
+- **Most custom extensions** (x- properties): APIM supports `x-ms-paths` and `x-servers`, but other custom extensions are ignored during import.
 
 ## Importing from the Azure Portal
 
@@ -81,7 +81,7 @@ az apim api import \
     --display-name "Order Service API"
 ```
 
-Use `OpenApiJson` for JSON format and `OpenApi` for YAML. For Swagger 2.0 specs, use `Swagger` as the format.
+Use `OpenApiJson` for OpenAPI JSON and `OpenApi` for OpenAPI YAML. For Swagger 2.0 specs, use `Swagger` as the format.
 
 ## Importing with ARM Templates or Bicep
 
@@ -103,7 +103,7 @@ For infrastructure-as-code deployments, you can include the API import in your A
 }
 ```
 
-You can either inline the spec content in the template (for small specs) or reference a URL.
+You can either inline the spec content in the template (for small specs) or reference a URL by using a link format such as `openapi+json-link`.
 
 ## Handling Import Errors
 
@@ -116,17 +116,17 @@ Imports do not always go smoothly. Here are the most common issues and how to fi
 - Complex parameter serialization styles
 - Callback URLs
 
-**Wrong backend URL**: APIM picks the first server URL from the spec as the backend URL. If your spec lists multiple servers or uses variables in the URL, you might need to manually set the correct backend URL after import.
+**Wrong backend URL**: APIM picks the first HTTPS server URL from the spec as the backend URL. If your spec lists multiple servers, only lists non-HTTPS servers, or uses variables in the URL, you might need to manually set the correct backend URL after import.
 
-**Duplicate operation IDs**: If your spec has duplicate operationId values, APIM will fail to import. Each operationId must be unique across all operations.
+**Duplicate operation IDs**: Duplicate `operationId` values are invalid in OpenAPI and make APIM updates unpredictable. Each `operationId` must be unique across all operations.
 
 ## Keeping the Spec in Sync
 
 APIs evolve. When your backend team updates the OpenAPI spec, you need to update APIM. There are a few approaches.
 
-**Manual re-import**: Go to the API in APIM, click the three-dot menu, and select "Import." Choose your updated spec. APIM will add new operations, update existing ones, and optionally remove operations that are no longer in the spec.
+**Manual re-import**: Go to the API in APIM, click the three-dot menu, and select "Import." Choose your updated spec. APIM will add new operations, update existing ones, and remove operations that are no longer in the spec.
 
-Be careful with the re-import behavior. By default, APIM merges the new spec with the existing API definition. Operations that exist in APIM but not in the new spec are preserved. If you want a strict sync (removing operations not in the spec), check the "Delete operations not present in the spec" option.
+Be careful with the re-import behavior. APIM matches existing operations by comparing the OpenAPI `operationId` value with the existing operation's Azure resource name. Operations that exist in APIM but not in the new spec are deleted, so test the import in a dev instance first if you have portal-only operations or policies to preserve.
 
 **CI/CD pipeline**: The best approach for teams. Include the APIM import as a step in your deployment pipeline:
 
@@ -156,7 +156,7 @@ Be careful with the re-import behavior. By default, APIM merges the new spec wit
 APIM supports both OpenAPI 2.0 (Swagger) and OpenAPI 3.0, but there are differences in how they are handled.
 
 OpenAPI 3.0 features that APIM supports well:
-- Multiple server URLs (first one is used as backend)
+- Multiple server URLs (first HTTPS URL is used as backend)
 - Request body definitions with `content` media types
 - Component schemas with `$ref`
 - Path and query parameters
@@ -179,7 +179,7 @@ az apim api export \
     --resource-group my-rg \
     --service-name my-apim \
     --api-id order-service \
-    --export-format openapi+json-link
+    --export-format OpenApiJsonUrl
 ```
 
 The exported spec includes all operations, schemas, and descriptions. You can then use tools like Swagger Codegen or OpenAPI Generator to create client SDKs in any language.
