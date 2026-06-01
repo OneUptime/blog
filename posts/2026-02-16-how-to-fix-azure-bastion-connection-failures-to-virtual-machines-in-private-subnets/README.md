@@ -34,9 +34,9 @@ Failures can occur at any of these hops. Let me cover the most common ones.
 
 ## Prerequisite: Subnet Configuration
 
-Azure Bastion requires a dedicated subnet named exactly `AzureBastionSubnet`. The name is not flexible. If the subnet has any other name, Bastion deployment fails.
+Azure Bastion requires a dedicated subnet named exactly `AzureBastionSubnet` for Basic, Standard, and Premium deployments. The name is not flexible. If the subnet has any other name, Bastion deployment fails.
 
-The subnet must be at least /26 (64 addresses) for the Basic SKU and /26 for the Standard SKU. Smaller subnets do not work.
+The subnet must be at least /26 (64 addresses) for Basic, Standard, and Premium deployments. Smaller subnets do not work for new deployments.
 
 ```bash
 # Check if AzureBastionSubnet exists in your VNet
@@ -68,11 +68,14 @@ The Bastion subnet NSG needs to allow:
 **Inbound:**
 - Port 443 from the Internet (for user connections)
 - Port 443 from the GatewayManager service tag (for Bastion management)
+- Ports 8080 and 5701 from the VirtualNetwork service tag to the VirtualNetwork service tag (for internal Bastion host communication)
 - Port 443 from the AzureLoadBalancer service tag (for health probes)
 
 **Outbound:**
 - Port 3389 and 22 to the VirtualNetwork service tag (to reach VMs)
 - Port 443 to the AzureCloud service tag (for Bastion management)
+- Ports 8080 and 5701 from the VirtualNetwork service tag to the VirtualNetwork service tag (for internal Bastion host communication)
+- Port 80 to the Internet service tag (for session validation and certificate validation)
 
 ```bash
 # Create NSG for AzureBastionSubnet with required rules
@@ -96,6 +99,13 @@ az network nsg rule create --resource-group myRG --nsg-name nsg-bastion \
   --access Allow --protocol Tcp --source-address-prefixes AzureLoadBalancer \
   --source-port-ranges '*' --destination-port-ranges 443
 
+# Inbound: Allow internal Bastion host communication
+az network nsg rule create --resource-group myRG --nsg-name nsg-bastion \
+  --name AllowBastionHostCommunication --priority 130 --direction Inbound \
+  --access Allow --protocol '*' --source-address-prefixes VirtualNetwork \
+  --source-port-ranges '*' --destination-address-prefixes VirtualNetwork \
+  --destination-port-ranges 8080 5701
+
 # Outbound: Allow SSH and RDP to VNet
 az network nsg rule create --resource-group myRG --nsg-name nsg-bastion \
   --name AllowSshRdpOutbound --priority 100 --direction Outbound \
@@ -109,6 +119,20 @@ az network nsg rule create --resource-group myRG --nsg-name nsg-bastion \
   --access Allow --protocol Tcp --source-address-prefixes '*' \
   --source-port-ranges '*' --destination-address-prefixes AzureCloud \
   --destination-port-ranges 443
+
+# Outbound: Allow internal Bastion host communication
+az network nsg rule create --resource-group myRG --nsg-name nsg-bastion \
+  --name AllowBastionCommunication --priority 120 --direction Outbound \
+  --access Allow --protocol '*' --source-address-prefixes VirtualNetwork \
+  --source-port-ranges '*' --destination-address-prefixes VirtualNetwork \
+  --destination-port-ranges 8080 5701
+
+# Outbound: Allow HTTP to Internet for validation traffic
+az network nsg rule create --resource-group myRG --nsg-name nsg-bastion \
+  --name AllowHttpOutbound --priority 130 --direction Outbound \
+  --access Allow --protocol '*' --source-address-prefixes '*' \
+  --source-port-ranges '*' --destination-address-prefixes Internet \
+  --destination-port-ranges 80
 
 # Associate NSG with AzureBastionSubnet
 az network vnet subnet update \
@@ -140,7 +164,7 @@ Bastion cannot connect to a VM that is stopped (deallocated) or has a failed pro
 az vm get-instance-view \
   --resource-group myResourceGroup \
   --name myVM \
-  --query "instanceView.statuses[1].displayStatus" -o tsv
+  --query "instanceView.statuses[?starts_with(code, 'PowerState/')].displayStatus | [0]" -o tsv
 ```
 
 The output should be "VM running". Any other state means Bastion cannot reach it.
@@ -149,12 +173,12 @@ Also check if the RDP or SSH service is actually running inside the VM. A runnin
 
 ## Problem: VNet Peering and Cross-VNet Access
 
-Azure Bastion can connect to VMs in peered VNets, but only with the Standard or Premium SKU. The Basic SKU only supports VMs in the same VNet.
+Azure Bastion can connect to VMs in peered VNets with the Basic, Standard, or Premium SKU. The Developer SKU only supports VMs in the same VNet.
 
-If you are using the Standard SKU and peered VNets, verify:
+If you are using peered VNets, verify:
 
 1. VNet peering is established and in the "Connected" state
-2. "Allow forwarded traffic" is enabled on both peering connections
+2. You have read access to the target VM, its NIC, the Bastion resource, and the peered VNet
 3. The VM subnet NSG allows traffic from the Bastion subnet (using the Bastion VNet address space)
 4. No route tables are redirecting traffic between the VNets
 
@@ -163,17 +187,16 @@ If you are using the Standard SKU and peered VNets, verify:
 az network vnet peering list \
   --resource-group myRG \
   --vnet-name myVNet \
-  --query "[].{name:name, peeringState:peeringState, allowForwardedTraffic:allowForwardedTraffic}" \
+  --query "[].{name:name, peeringState:peeringState, allowVirtualNetworkAccess:allowVirtualNetworkAccess}" \
   -o table
 ```
 
 ## Problem: Bastion SKU Limitations
 
 The Basic SKU has several limitations that can cause unexpected connection failures:
-- Cannot connect to VMs in peered VNets
 - Does not support native client connections (only browser-based)
 - No IP-based connection (must use VM resource)
-- Limited concurrent connections
+- Fixed capacity with two instances
 
 If you are hitting these limitations, upgrade to the Standard SKU.
 
@@ -188,7 +211,10 @@ az network bastion show \
 az network bastion update \
   --resource-group myRG \
   --name myBastion \
-  --sku Standard
+  --location eastus \
+  --sku name=Standard \
+  --enable-tunneling true \
+  --enable-ip-connect true
 ```
 
 ## Problem: Browser or Client Issues
@@ -201,16 +227,16 @@ Fixes:
 - Try a different browser (Edge and Chrome work best with Bastion)
 - Disable browser extensions that might interfere with WebSocket connections
 - If behind a corporate proxy, verify WebSocket (wss://) traffic is allowed
-- Use the native client connection instead of browser-based (Standard SKU only)
+- Use the native client connection instead of browser-based (Standard or Premium SKU with native client support enabled)
 
 ```bash
-# Use native RDP client via Bastion (Standard SKU required)
+# Use native RDP client via Bastion (Standard or Premium SKU with native client support enabled)
 az network bastion rdp \
   --name myBastion \
   --resource-group myRG \
   --target-resource-id "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.Compute/virtualMachines/myVM"
 
-# Use native SSH via Bastion
+# Use native SSH via Bastion (Standard or Premium SKU with native client support enabled)
 az network bastion ssh \
   --name myBastion \
   --resource-group myRG \
