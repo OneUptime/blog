@@ -43,11 +43,11 @@ Start by creating a Firebase project if you do not have one already.
 3. Follow the setup wizard (you can skip Google Analytics for now)
 4. Once created, click the gear icon next to "Project Overview" and select "Project settings"
 
-You need two things from Firebase: the Server Key (or better, a service account JSON for FCM v1) and the google-services.json file for your Android app.
+You need two things from Firebase: a service account JSON file for FCM v1 and the google-services.json file for your Android app.
 
 ### Getting FCM Credentials
 
-Firebase has moved from legacy FCM to FCM v1 API. Azure Notification Hubs now supports both, but I recommend using FCM v1 as Google will eventually deprecate the legacy API.
+Firebase has moved from legacy FCM to the FCM v1 API. Google retired the legacy FCM APIs in June 2024, so use FCM v1 for new Azure Notification Hubs integrations.
 
 For FCM v1, you need a service account JSON file:
 
@@ -56,11 +56,11 @@ For FCM v1, you need a service account JSON file:
 3. Click "Generate new private key"
 4. Download and save the JSON file securely
 
-For the legacy API (still supported but not recommended for new projects):
+For older hubs that still show legacy FCM settings:
 
 1. In Firebase Console, go to Project Settings
 2. Navigate to the "Cloud Messaging" tab
-3. Copy the Server Key
+3. Copy the Server Key only if you are maintaining a legacy configuration during migration
 
 ## Configuring Azure Notification Hubs
 
@@ -70,14 +70,14 @@ Now link Firebase to your Azure Notification Hub. You can do this through the Az
 
 1. Navigate to your Notification Hub in the Azure portal
 2. Under "Settings", click "Google (GCM/FCM)"
-3. For FCM v1, select "FCM v1" and paste the contents of your service account JSON
-4. For legacy, paste the Server Key in the API Key field
+3. For FCM v1, go to "Google (FCM v1)" and enter the Project ID, Private Key, and Client Email values from your service account JSON
+4. For legacy migration scenarios, paste the Server Key in the API Key field under "Google (GCM/FCM)"
 5. Click Save
 
 ### Using the Azure CLI
 
 ```bash
-# For legacy FCM (GCM) - using the server key
+# For legacy FCM (GCM) migration scenarios - using the server key
 
 az notification-hub credential gcm update \
   --resource-group rg-notifications \
@@ -86,7 +86,7 @@ az notification-hub credential gcm update \
   --google-api-key "YOUR_FCM_SERVER_KEY"
 ```
 
-For FCM v1 configuration, the portal is currently the easier option as CLI support for v1 credentials is still maturing.
+For FCM v1 configuration, the portal, REST API, or management SDKs are the current options.
 
 ## Setting Up the Android App
 
@@ -101,13 +101,14 @@ plugins {
 
 dependencies {
     // Firebase Cloud Messaging
-    implementation 'com.google.firebase:firebase-messaging:23.4.0'
+    implementation platform('com.google.firebase:firebase-bom:34.14.0')
+    implementation 'com.google.firebase:firebase-messaging'
 
     // Azure Notification Hubs SDK for Android
     implementation 'com.microsoft.azure:notification-hubs-android-sdk:2.0.0'
 
-    // Required for hub registration
-    implementation 'com.google.firebase:firebase-core:21.1.1'
+    // Required for NotificationCompat in the example below
+    implementation 'androidx.core:core:1.16.0'
 }
 ```
 
@@ -117,7 +118,7 @@ Also add the Google services plugin to your project-level `build.gradle`.
 // project-level build.gradle
 buildscript {
     dependencies {
-        classpath 'com.google.gms:google-services:4.4.0'
+        classpath 'com.google.gms:google-services:4.4.4'
     }
 }
 ```
@@ -166,6 +167,15 @@ public void onUserLoggedIn(String userId) {
     // Set the user ID for installation-based targeting
     NotificationHub.setUserId(userId);
 }
+```
+
+Make sure your application class is registered in AndroidManifest.xml so this initialization runs when the app starts.
+
+```xml
+<application
+    android:name=".MyApplication">
+    ...
+</application>
 ```
 
 ## Handling Incoming Notifications
@@ -270,6 +280,8 @@ Register the service in your AndroidManifest.xml.
 
 ```xml
 <!-- AndroidManifest.xml -->
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
 <application>
     <service
         android:name=".MyFirebaseService"
@@ -281,6 +293,8 @@ Register the service in your AndroidManifest.xml.
 </application>
 ```
 
+On Android 13 and above, also request the `POST_NOTIFICATIONS` permission at runtime before showing notifications.
+
 ## Sending Notifications from Your Backend
 
 With everything configured, you can send notifications from your backend. Here is a .NET example that sends a notification specifically formatted for FCM.
@@ -289,28 +303,32 @@ With everything configured, you can send notifications from your backend. Here i
 var hub = NotificationHubClient.CreateClientFromConnectionString(
     connectionString, hubName);
 
-// Send an FCM notification payload
+// Send an FCM v1 notification payload
 var fcmPayload = @"{
-    ""notification"": {
-        ""title"": ""New Order"",
-        ""body"": ""You have a new order #12345""
-    },
-    ""data"": {
-        ""type"": ""order_update"",
-        ""orderId"": ""12345"",
-        ""status"": ""new""
+    ""message"": {
+        ""notification"": {
+            ""title"": ""New Order"",
+            ""body"": ""You have a new order #12345""
+        },
+        ""android"": {
+            ""data"": {
+                ""type"": ""order_update"",
+                ""orderId"": ""12345"",
+                ""status"": ""new""
+            }
+        }
     }
 }";
 
 // Send to a specific user's Android devices
-await hub.SendFcmNativeNotificationAsync(fcmPayload, "user:789");
+await hub.SendNotificationAsync(new FcmV1Notification(fcmPayload), "user:789");
 ```
 
 ## Testing the Setup
 
-The Azure portal provides a Test Send feature that is perfect for verifying your configuration. Go to your Notification Hub, click "Test Send", select Google (GCM) as the platform, and paste your FCM payload. If everything is configured correctly, you should see the notification arrive on your Android device within seconds.
+The Azure portal provides a Test Send feature that is perfect for verifying your configuration. Go to your Notification Hub, click "Test Send", select Android or FCM v1 as the platform, and paste your FCM v1 payload. If everything is configured correctly, you should see the notification arrive on your Android device within seconds.
 
-Common issues to watch for include incorrect google-services.json placement, using the wrong connection string (use the Listen policy for the client, Full for the backend), and missing the notification channel setup on Android 8.0 and above.
+Common issues to watch for include incorrect google-services.json placement, using the wrong connection string (use the Listen policy for the client, Send or Full for the backend), missing the notification channel setup on Android 8.0 and above, and not requesting notification permission on Android 13 and above.
 
 ## Wrapping Up
 
