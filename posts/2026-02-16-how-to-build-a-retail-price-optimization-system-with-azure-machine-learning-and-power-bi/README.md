@@ -106,26 +106,24 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import mlflow
 
+FEATURE_COLS = [
+    "price", "is_promotion", "day_of_week", "month",
+    "is_weekend", "price_vs_avg", "competitor_price_ratio",
+    "category_encoded", "brand_encoded", "season_encoded"
+]
+
 def train_demand_model(data: pd.DataFrame):
     """Train a demand forecasting model for price optimization."""
     mlflow.lightgbm.autolog()
-
-    # Features that influence demand
-    feature_cols = [
-        "price", "is_promotion", "day_of_week", "month",
-        "is_weekend", "price_vs_avg", "competitor_price_ratio",
-        "category_encoded", "brand_encoded"
-    ]
 
     # Encode categorical variables
     from sklearn.preprocessing import LabelEncoder
     for col in ["category", "brand", "season"]:
         le = LabelEncoder()
         data[f"{col}_encoded"] = le.fit_transform(data[col])
-        if f"{col}_encoded" not in feature_cols:
-            feature_cols.append(f"{col}_encoded")
 
-    X = data[feature_cols]
+    data = data.sort_values("date").reset_index(drop=True)
+    X = data[FEATURE_COLS]
     y = data["quantity"]
 
     # Use time series cross-validation to prevent data leakage
@@ -168,7 +166,7 @@ def train_demand_model(data: pd.DataFrame):
 
     # Log feature importance
     importance = pd.DataFrame({
-        "feature": feature_cols,
+        "feature": FEATURE_COLS,
         "importance": model.feature_importances_
     }).sort_values("importance", ascending=False)
 
@@ -189,7 +187,7 @@ Price elasticity tells you how sensitive demand is to price changes. An elastici
 def calculate_elasticity(model, product_data: pd.DataFrame, price_range: tuple) -> dict:
     """Calculate price elasticity for a product across a price range."""
     base_price = product_data["price"].mean()
-    base_features = product_data[feature_cols].median().to_frame().T
+    base_features = product_data[FEATURE_COLS].median().to_frame().T
 
     # Simulate demand at different price points
     price_points = np.linspace(price_range[0], price_range[1], 50)
@@ -239,7 +237,7 @@ from scipy.optimize import minimize_scalar
 
 def optimize_price(model, product_data: pd.DataFrame, cost: float, constraints: dict) -> dict:
     """Find the optimal price for a product given constraints."""
-    base_features = product_data[feature_cols].median().to_frame().T
+    base_features = product_data[FEATURE_COLS].median().to_frame().T
     current_price = product_data["price"].mean()
 
     # Define constraints
