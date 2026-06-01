@@ -14,7 +14,7 @@ The real power of Secure Score is not the number itself but the actionable recom
 
 ## What Is Secure Score
 
-Secure Score is calculated based on the ratio of healthy resources to total resources across various security controls. Microsoft groups recommendations into security controls like "Enable MFA," "Apply system updates," and "Encrypt data in transit." Each control has a maximum score, and your actual score depends on how many of the recommendations within that control you have addressed.
+In the Azure portal, the classic Secure Score is calculated based on the ratio of healthy resources to total resources across various security controls. Microsoft groups recommendations into security controls like "Enable MFA," "Apply system updates," and "Encrypt data in transit." Each control has a maximum score, and your actual score depends on how many of the recommendations within that control you have addressed.
 
 ```mermaid
 graph TD
@@ -29,7 +29,7 @@ graph TD
     F --> J[Recommendation: Resolve agent health issues]
 ```
 
-The score is not a simple percentage of resolved recommendations. Controls are weighted based on their security impact, so addressing high-impact controls improves your score more than low-impact ones.
+The score is not a simple percentage of resolved recommendations. Controls are weighted based on their security impact, so addressing high-impact controls improves your score more than low-impact ones. Microsoft also has a newer risk-based Cloud Secure Score experience in the Microsoft Defender portal, which uses a different calculation from the classic Azure portal score.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ If you have not already enabled Defender for Cloud:
 
 1. Navigate to the Azure portal at portal.azure.com.
 2. Search for "Microsoft Defender for Cloud" and open it.
-3. If this is your first visit, the free Cloud Security Posture Management (CSPM) plan is enabled by default for all subscriptions.
+3. If this is your first visit, the free Foundational Cloud Security Posture Management (CSPM) plan is enabled by default for onboarded subscriptions.
 4. To enable enhanced security features, go to Environment settings.
 5. Select your subscription.
 6. Under Defender plans, you will see various workload protections. For Secure Score recommendations, the free CSPM is sufficient, but enabling Defender CSPM (paid) provides additional capabilities like attack path analysis and governance rules.
@@ -122,8 +122,11 @@ $nsgs = Get-AzNetworkSecurityGroup
 
 foreach ($nsg in $nsgs) {
     $riskyRules = $nsg.SecurityRules | Where-Object {
-        $_.DestinationPortRange -in @("22", "3389", "*") -and
-        $_.SourceAddressPrefix -eq "*" -and
+        $destinationPorts = @($_.DestinationPortRange) + @($_.DestinationPortRanges)
+        $sourcePrefixes = @($_.SourceAddressPrefix) + @($_.SourceAddressPrefixes)
+
+        ($destinationPorts | Where-Object { $_ -in @("22", "3389", "*") }) -and
+        ($sourcePrefixes | Where-Object { $_ -in @("*", "0.0.0.0/0", "::/0", "Internet") }) -and
         $_.Access -eq "Allow" -and
         $_.Direction -eq "Inbound"
     }
@@ -139,18 +142,17 @@ foreach ($nsg in $nsgs) {
 
 Fix this by restricting the source IP addresses to known administrator IPs, or better yet, use Azure Bastion for VM access instead of exposing management ports.
 
-### Enable Encryption at Rest for Storage Accounts
+### Review Encryption Key Configuration for Storage Accounts
 
-Most modern storage accounts have encryption at rest enabled by default, but older accounts or accounts created with specific configurations might not:
+Azure Storage encryption at rest is enabled for all storage accounts and cannot be disabled. What you might still need to review is whether an account uses Microsoft-managed keys or customer-managed keys, especially if your organization has compliance requirements for customer-managed keys:
 
 ```powershell
-# Check all storage accounts for encryption status
-# Identify any that need encryption enabled
+# Check all storage accounts for their encryption key source
+# Identify any that need to move from Microsoft-managed keys to customer-managed keys
 $storageAccounts = Get-AzStorageAccount
 
 foreach ($sa in $storageAccounts) {
-    $encryption = $sa.Encryption
-    Write-Host "$($sa.StorageAccountName): Encryption enabled = $($encryption.Services.Blob.Enabled)"
+    Write-Host "$($sa.StorageAccountName): Key source = $($sa.Encryption.KeySource)"
 }
 ```
 
@@ -191,17 +193,42 @@ Exemptions are auditable, so you maintain a record of why certain recommendation
 Export your Secure Score and recommendation data to other systems for reporting and alerting:
 
 ```powershell
-# Create a continuous export configuration to a Log Analytics workspace
+# Create a continuous export configuration to a Log Analytics workspace with the Defender for Cloud automations API
 # This enables long-term tracking and custom alerting
-$exportConfig = @{
-    Name = "SecureScoreExport"
-    Location = "eastus"
-    ResourceGroupName = "security-rg"
-    WorkspaceResourceId = "/subscriptions/SUB_ID/resourceGroups/security-rg/providers/Microsoft.OperationalInsights/workspaces/security-workspace"
-    # Export Secure Score, recommendations, and alerts
-    ExportDataTypes = @("SecureScore", "Recommendations", "Alerts")
-    IsEnabled = $true
+$subscriptionId = "SUB_ID"
+$resourceGroupName = "security-rg"
+$automationName = "SecureScoreExport"
+$workspaceResourceId = "/subscriptions/SUB_ID/resourceGroups/security-rg/providers/Microsoft.OperationalInsights/workspaces/security-workspace"
+$scopePath = "/subscriptions/SUB_ID"
+
+$body = @{
+    location = "eastus"
+    properties = @{
+        description = "Export Secure Score, recommendations, and alerts to Log Analytics"
+        isEnabled = $true
+        scopes = @(
+            @{
+                description = "Subscription scope"
+                scopePath = $scopePath
+            }
+        )
+        sources = @(
+            @{ eventSource = "SecureScores" },
+            @{ eventSource = "SecureScoreControls" },
+            @{ eventSource = "Assessments" },
+            @{ eventSource = "Alerts" }
+        )
+        actions = @(
+            @{
+                actionType = "Workspace"
+                workspaceResourceId = $workspaceResourceId
+            }
+        )
+    }
 }
+
+$uri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.Security/automations/$automationName?api-version=2023-12-01-preview"
+Invoke-AzRestMethod -Method PUT -Uri $uri -Payload ($body | ConvertTo-Json -Depth 10)
 
 # Use the Defender for Cloud continuous export feature in the portal
 # Navigate to Environment settings > Continuous export
@@ -210,10 +237,10 @@ $exportConfig = @{
 Once exported to Log Analytics, you can create custom queries:
 
 ```kusto
-// Track Secure Score over time to visualize improvement trends
-SecureScore
+// Track exported Defender for Cloud recommendations over time
+SecurityRecommendation
 | where TimeGenerated > ago(90d)
-| summarize Score = avg(PercentageScore) by bin(TimeGenerated, 1d)
+| summarize UnhealthyRecommendations = countif(RecommendationState == "Unhealthy") by bin(TimeGenerated, 1d)
 | render timechart
 ```
 
