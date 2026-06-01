@@ -31,9 +31,9 @@ dotnet new webapi -n MigrationDemo
 cd MigrationDemo
 
 # Add EF Core packages
-dotnet add package Microsoft.EntityFrameworkCore.SqlServer
-dotnet add package Microsoft.EntityFrameworkCore.Design
-dotnet add package Microsoft.EntityFrameworkCore.Tools
+dotnet add package Microsoft.EntityFrameworkCore.SqlServer --version "8.*"
+dotnet add package Microsoft.EntityFrameworkCore.Design --version "8.*"
+dotnet add package Microsoft.EntityFrameworkCore.Tools --version "8.*"
 ```
 
 Define your data model:
@@ -188,7 +188,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Install EF Core tools
-        run: dotnet tool install --global dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version "8.*"
 
       - name: Restore dependencies
         run: dotnet restore
@@ -232,6 +232,7 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: migration-demo-app
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: ./publish
 ```
 
@@ -274,7 +275,7 @@ stages:
 
           # Create the migration bundle artifact
           - script: |
-              dotnet tool install --global dotnet-ef
+              dotnet tool install --global dotnet-ef --version "8.*"
               dotnet ef migrations bundle --self-contained --target-runtime linux-x64 --configuration $(buildConfiguration) -o $(Build.ArtifactStagingDirectory)/efbundle
               chmod +x $(Build.ArtifactStagingDirectory)/efbundle
             displayName: 'Create migration bundle'
@@ -327,7 +328,7 @@ For breaking changes like renaming columns, use a multi-step approach: first add
 
 ## Rollback Strategy
 
-EF Core does not have a built-in rollback mechanism for production, but you can create one:
+EF Core can generate rollback scripts, but production rollback is not automatic. Create and review the rollback script as part of your deployment plan:
 
 ```bash
 # Generate a script to revert to a specific migration
