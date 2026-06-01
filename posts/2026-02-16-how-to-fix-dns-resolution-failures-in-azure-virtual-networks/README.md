@@ -62,7 +62,7 @@ nslookup myservice.database.windows.net
 nslookup myservice.database.windows.net 168.63.129.16
 
 # Use dig for more detailed output including timing
-dig myservice.database.windows.net +trace
+dig myservice.database.windows.net
 
 # Check which DNS server the VM is actually configured to use
 cat /etc/resolv.conf
@@ -257,7 +257,7 @@ az network private-dns link vnet create \
   --registration-enabled false
 ```
 
-Note: Only one VNet can have `registration-enabled` set to true per zone. That VNet will automatically register VM hostnames in the DNS zone.
+Note: A VNet can have `registration-enabled` set to true for only one Private DNS zone. A Private DNS zone can have multiple registration VNets, and those VNets will automatically register VM hostnames in the DNS zone.
 
 ## Diagnostic Flowchart
 
