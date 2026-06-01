@@ -55,7 +55,7 @@ When launching an instance:
 
 1. In the "Advanced details" section, scroll down to "User data"
 2. Paste your script in the text box
-3. Make sure the script starts with `#!/bin/bash` (or `#!/bin/python3`, etc.)
+3. Make sure the script starts with `#!/bin/bash` (or `#!/usr/bin/python3`, etc.)
 4. Launch the instance
 
 ## Adding User Data via the CLI
@@ -70,7 +70,7 @@ aws ec2 run-instances \
     --user-data file://setup-script.sh
 ```
 
-Or inline (base64 encoded):
+Or inline (automatically base64 encoded by the AWS CLI):
 
 ```bash
 # Launch with inline user data (automatically base64 encoded)
@@ -172,7 +172,7 @@ cat > /opt/aws/amazon-cloudwatch-agent/etc/config.json << 'EOF'
     "metrics": {
         "metrics_collected": {
             "mem": {
-                "measurement": ["mem_used_percent"]
+                "measurement": ["used_percent"]
             },
             "disk": {
                 "measurement": ["used_percent"],
@@ -289,7 +289,10 @@ Verify the user data was received correctly:
 
 ```bash
 # From inside the instance, check the user data
-curl http://169.254.169.254/latest/user-data
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/user-data
 ```
 
 For more on instance metadata, see our guide on [accessing EC2 instance metadata](https://oneuptime.com/blog/post/2026-02-12-access-ec2-instance-metadata-from-within-instance/view).
