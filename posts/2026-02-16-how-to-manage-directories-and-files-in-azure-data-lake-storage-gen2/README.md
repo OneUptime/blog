@@ -59,7 +59,7 @@ print("Subdirectory 'clickstream' created under 'events'")
 There are several ways to upload files to ADLS Gen2.
 
 ```python
-# Upload a small file from a string
+# Upload a small file from bytes
 file_client = fs_client.get_file_client("events/2026/02/16/event-001.json")
 file_client.create_file()
 
@@ -152,12 +152,12 @@ Renaming in ADLS Gen2 is an atomic metadata operation, which is one of the major
 ```python
 # Rename a file
 file_client = fs_client.get_file_client("events/temp-data.csv")
-file_client.rename_file("events/processed-data.csv")
+file_client.rename_file(f"{file_client.file_system_name}/events/processed-data.csv")
 print("File renamed")
 
 # Rename a directory - this is atomic regardless of how many files it contains
 dir_client = fs_client.get_directory_client("events/2026/02/16")
-dir_client.rename_directory("events/2026/02/16-processed")
+dir_client.rename_directory(f"{dir_client.file_system_name}/events/2026/02/16-processed")
 print("Directory renamed atomically")
 ```
 
@@ -167,13 +167,13 @@ Moving files is done through the rename operation - you simply rename the file t
 
 ```python
 # Move a file from one directory to another
-file_client = fs_client.get_file_client("raw-data/report.csv")
-file_client.rename_file("processed-data/report.csv")
+file_client = fs_client.get_file_client("staging/report.csv")
+file_client.rename_file(f"{file_client.file_system_name}/processed-data/report.csv")
 print("File moved to processed-data directory")
 
 # Move an entire directory
 dir_client = fs_client.get_directory_client("staging/batch-001")
-dir_client.rename_directory("archive/batch-001")
+dir_client.rename_directory(f"{dir_client.file_system_name}/archive/batch-001")
 print("Directory moved to archive")
 ```
 
@@ -191,7 +191,6 @@ dir_client.delete_directory()
 print("Empty directory deleted")
 
 # Delete a directory and all its contents recursively
-# This is a single atomic operation
 dir_client = fs_client.get_directory_client("events/2025")
 dir_client.delete_directory()
 print("Directory and all contents deleted")
