@@ -28,7 +28,7 @@ aws compute-optimizer update-enrollment-status \
   --include-member-accounts
 ```
 
-After enabling, Compute Optimizer needs at least 30 hours of metric data to generate its first recommendations. For meaningful recommendations, it works best with 14 days or more of data.
+After enabling, Compute Optimizer needs enough resource data to generate its first recommendations. EC2 instances and Auto Scaling groups need at least 30 hours of CloudWatch metric data in the past 14 days, EBS volumes must be attached to a running instance for at least 30 consecutive hours, Lambda functions need at least 50 invocations in the last 14 days, and ECS services on Fargate need at least 24 hours of utilization metrics in the past 14 days.
 
 Check the enrollment status.
 
@@ -71,11 +71,6 @@ def get_ec2_recommendations():
                 instance_type = opt["instanceType"]
                 rank = opt["rank"]
 
-                # Calculate savings
-                for proj in opt.get("projectedUtilizationMetrics", []):
-                    if proj["name"] == "CPU":
-                        projected_cpu = proj["value"]
-
                 savings = opt.get("savingsOpportunity", {})
                 savings_pct = savings.get("savingsOpportunityPercentage", 0)
                 monthly = savings.get("estimatedMonthlySavings", {}).get("value", 0)
@@ -88,10 +83,9 @@ get_ec2_recommendations()
 
 The findings fall into these categories:
 
-- **OVER_PROVISIONED**: Instance is larger than needed. Downsize it.
-- **UNDER_PROVISIONED**: Instance is too small. It might be struggling.
-- **OPTIMIZED**: Current configuration is appropriate.
-- **NOT_OPTIMIZED**: The instance type family may not be ideal for the workload.
+- **Overprovisioned**: Instance is larger than needed. Downsize it.
+- **Underprovisioned**: Instance is too small. It might be struggling.
+- **Optimized**: Current configuration is appropriate.
 
 ## Getting Lambda Recommendations
 
@@ -173,7 +167,7 @@ get_ebs_recommendations()
 
 ## Getting ECS Service Recommendations
 
-For containerized workloads on ECS, Compute Optimizer recommends optimal CPU and memory configurations.
+For containerized workloads on ECS services running on Fargate, Compute Optimizer recommends optimal CPU and memory configurations.
 
 ```python
 import boto3
@@ -192,17 +186,18 @@ def get_ecs_recommendations():
         if finding == "Optimized":
             continue
 
-        current = rec["currentServiceConfiguration"]["taskDefinition"]
+        current = rec["currentServiceConfiguration"]
         print(f"\nECS Service: {service_name}")
         print(f"  Current: CPU {current.get('cpu', 'N/A')} / "
               f"Memory {current.get('memory', 'N/A')}")
         print(f"  Finding: {finding}")
 
         for opt in rec.get("serviceRecommendationOptions", [])[:2]:
-            task = opt.get("projectedUtilizationMetrics", [])
             savings = opt.get("savingsOpportunity", {})
             monthly = savings.get("estimatedMonthlySavings", {}).get("value", 0)
-            print(f"  Saving opportunity: ~${monthly:.2f}/mo")
+            print(f"  Recommended: CPU {opt.get('cpu', 'N/A')} / "
+                  f"Memory {opt.get('memory', 'N/A')} "
+                  f"(save ~${monthly:.2f}/mo)")
 
 get_ecs_recommendations()
 ```
@@ -238,11 +233,11 @@ def generate_full_report():
         report["summary"]["resources_analyzed"] += 1
         finding = rec["finding"]
 
-        if finding == "OVER_PROVISIONED":
+        if finding in ("OVER_PROVISIONED", "Overprovisioned"):
             report["summary"]["over_provisioned"] += 1
-        elif finding == "UNDER_PROVISIONED":
+        elif finding in ("UNDER_PROVISIONED", "Underprovisioned"):
             report["summary"]["under_provisioned"] += 1
-        elif finding == "Optimized":
+        elif finding in ("OPTIMIZED", "Optimized"):
             report["summary"]["optimized"] += 1
 
         if rec.get("recommendationOptions"):
@@ -251,7 +246,7 @@ def generate_full_report():
             monthly = savings.get("estimatedMonthlySavings", {}).get("value", 0)
             report["summary"]["total_monthly_savings"] += monthly
 
-            if finding != "Optimized":
+            if finding not in ("OPTIMIZED", "Optimized"):
                 report["recommendations"].append({
                     "type": "EC2",
                     "resource": rec["instanceArn"].split("/")[-1],
@@ -288,7 +283,7 @@ generate_full_report()
 
 ## Enhanced Recommendations
 
-Compute Optimizer offers enhanced recommendations (at a small cost per resource) that use up to 93 days of historical data and consider infrastructure metrics at a 1-minute granularity instead of 5 minutes.
+Compute Optimizer offers enhanced infrastructure metrics (at a small cost per resource) that use up to 93 days of historical data instead of the default 14-day lookback period for supported resource types.
 
 ```bash
 # Enable enhanced infrastructure metrics
