@@ -136,7 +136,7 @@ if __name__ == "__main__":
 
 By default, EMR Serverless provisions resources on demand when a job starts. This can add a few minutes of startup time. If you need faster job starts, configure pre-initialized capacity.
 
-This updates the application to keep some workers warm and ready.
+This updates the application to keep some workers warm and ready. Run this while the application is in the CREATED or STOPPED state.
 
 ```bash
 aws emr-serverless update-application \
@@ -176,7 +176,7 @@ aws emr-serverless update-application \
 
 EMR Serverless also supports Hive. Here's how to submit a Hive query.
 
-This submits a Hive job that runs a query script from S3.
+This submits a Hive job that runs a query script from S3. Use the application ID for an application created with `--type HIVE`.
 
 ```bash
 aws emr-serverless start-job-run \
@@ -236,12 +236,19 @@ This IAM policy covers the common permissions needed for Spark jobs on EMR Serve
     {
       "Effect": "Allow",
       "Action": [
+        "logs:DescribeLogGroups"
+      ],
+      "Resource": "arn:aws:logs:*:*:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:PutLogEvents",
         "logs:DescribeLogStreams"
       ],
-      "Resource": "arn:aws:logs:*:*:log-group:/emr-serverless/*"
+      "Resource": "arn:aws:logs:*:*:log-group:/emr-serverless/*:*"
     }
   ]
 }
