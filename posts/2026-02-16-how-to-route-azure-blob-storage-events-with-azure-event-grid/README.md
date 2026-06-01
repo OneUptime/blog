@@ -8,7 +8,7 @@ Description: Set up event-driven file processing by routing Azure Blob Storage e
 
 ---
 
-Polling a storage container to check for new files is wasteful and slow. Azure Event Grid eliminates that pattern entirely by pushing events to your handlers the moment a blob is created, modified, or deleted. This guide covers everything from basic setup to advanced routing scenarios with filters.
+Polling a storage container to check for new files is wasteful and slow. Azure Event Grid eliminates that pattern entirely by pushing events to your handlers the moment a blob is created, replaced, or deleted. This guide covers everything from basic setup to advanced routing scenarios with filters.
 
 ## What Blob Storage Events Are Available?
 
@@ -23,8 +23,9 @@ Azure Blob Storage emits several event types through Event Grid:
 - **Microsoft.Storage.BlobTierChanged** - the blob access tier changed
 - **Microsoft.Storage.AsyncOperationInitiated** - an async operation started (like copying a blob)
 - **Microsoft.Storage.BlobInventoryPolicyCompleted** - an inventory policy run completed
+- **Microsoft.Storage.LifecyclePolicyCompleted** - lifecycle management policy actions completed
 
-The most commonly used events are BlobCreated and BlobDeleted. These fire for both block blobs and page blobs, and for any API that creates a blob (PutBlob, PutBlockList, CopyBlob, etc.).
+The most commonly used events are BlobCreated and BlobDeleted. These fire for both block blobs and page blobs, and for Blob REST operations that create or replace a blob, such as PutBlob, PutBlockList, and CopyBlob.
 
 ## Basic Setup: Blob Created Events to a Function
 
@@ -115,6 +116,7 @@ Here is the Azure Function that receives and processes blob created events.
 
 ```csharp
 using Azure.Messaging.EventGrid;
+using Azure.Messaging.EventGrid.SystemEvents;
 using Azure.Storage.Blobs;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
@@ -136,7 +138,7 @@ public class BlobEventProcessor
         _logger.LogInformation("Processing blob event: {EventType}", eventGridEvent.EventType);
 
         // Parse the event data
-        var blobData = eventGridEvent.Data.ToObjectFromJson<BlobCreatedEventData>();
+        var blobData = eventGridEvent.Data.ToObjectFromJson<StorageBlobCreatedEventData>();
 
         _logger.LogInformation("Blob URL: {Url}", blobData.Url);
         _logger.LogInformation("Content Type: {ContentType}", blobData.ContentType);
@@ -179,6 +181,7 @@ public class BlobEventProcessor
     {
         _logger.LogInformation("Processing PDF: {FileName} ({Size} bytes)", fileName, content.Length);
         // Your PDF processing logic here
+        await Task.CompletedTask;
     }
 
     private async Task ProcessCsv(string content, string fileName)
@@ -186,31 +189,20 @@ public class BlobEventProcessor
         var lineCount = content.Split('\n').Length;
         _logger.LogInformation("Processing CSV: {FileName} ({Lines} lines)", fileName, lineCount);
         // Your CSV processing logic here
+        await Task.CompletedTask;
     }
-}
-
-// Event data model for BlobCreated events
-public class BlobCreatedEventData
-{
-    public string Api { get; set; }
-    public string ClientRequestId { get; set; }
-    public string RequestId { get; set; }
-    public string ETag { get; set; }
-    public string ContentType { get; set; }
-    public long ContentLength { get; set; }
-    public string BlobType { get; set; }
-    public string Url { get; set; }
-    public string Sequencer { get; set; }
 }
 ```
 
 ## Bicep Template for the Full Setup
 
-Here is a complete Bicep template that sets up a storage account, system topic, and filtered subscriptions.
+Here is a complete Bicep template that sets up a storage account, system topic, and filtered subscriptions. It assumes the destination Function App and Service Bus queue already exist.
 
 ```bicep
 // Complete setup for blob event routing
 param location string = resourceGroup().location
+param functionAppName string
+param serviceBusQueueResourceId string
 
 // Storage account
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
@@ -223,6 +215,11 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 // Create the uploads container
 resource uploadsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
   name: '${storageAccount.name}/default/uploads'
+}
+
+// Existing Function App destination
+resource functionApp 'Microsoft.Web/sites@2023-01-01' existing = {
+  name: functionAppName
 }
 
 // System topic for blob events
@@ -262,7 +259,7 @@ resource csvSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@20
     destination: {
       endpointType: 'ServiceBusQueue'
       properties: {
-        resourceId: '${serviceBusNamespace.id}/queues/csv-imports'
+        resourceId: serviceBusQueueResourceId
       }
     }
     filter: {
@@ -276,7 +273,7 @@ resource csvSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@20
 
 ## Handling Duplicate Events
 
-Blob Storage events can occasionally be delivered more than once, especially if the blob creation involves multiple API calls (like PutBlockList after multiple PutBlock calls). Make your handlers idempotent by using the event's `id` field as a deduplication key.
+Blob Storage events can occasionally be delivered more than once because Event Grid uses at-least-once delivery. Make your handlers idempotent by using the event's `id` field as a deduplication key. If your handler processes events from multiple sources, use the source or topic together with the `id`.
 
 ```csharp
 // Simple idempotency check using a cache or database
