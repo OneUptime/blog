@@ -8,7 +8,7 @@ Description: A practical guide to deploying and managing virtual machines on Azu
 
 ---
 
-Azure Stack Hub brings the Azure portal experience to your on-premises data center. If you know how to create a VM in Azure, you already know most of what you need for Azure Stack Hub. The user portal looks nearly identical, the APIs are compatible, and ARM templates work across both environments. The difference is that everything runs on hardware physically located in your building, which matters for latency-sensitive workloads, data sovereignty requirements, and disconnected scenarios.
+Azure Stack Hub brings the Azure portal experience to your on-premises data center. If you know how to create a VM in Azure, you already know most of what you need for Azure Stack Hub. The user portal looks nearly identical, the APIs are Azure-consistent, and ARM templates can work across both environments when they use API versions supported by Azure Stack Hub. The difference is that everything runs on hardware physically located in your building, which matters for latency-sensitive workloads, data sovereignty requirements, and disconnected scenarios.
 
 This guide covers creating and managing VMs through the Azure Stack Hub user portal, from selecting images to configuring networking and storage.
 
@@ -67,7 +67,7 @@ VMs need a virtual network. If one does not already exist, create it first.
    - **Subnet address range**: 10.20.1.0/24
 4. Click "Create."
 
-You can also use Azure Resource Manager templates, which work identically on Azure Stack Hub and public Azure.
+You can also use Azure Resource Manager templates, as long as the resource types and API versions are supported by Azure Stack Hub.
 
 ```json
 {
@@ -201,7 +201,7 @@ echo '/dev/sdc1 /data ext4 defaults 0 2' | sudo tee -a /etc/fstab
 
 ## Step 6: Use Azure CLI with Azure Stack Hub
 
-The Azure CLI works with Azure Stack Hub by configuring the correct cloud environment.
+The Azure CLI works with Azure Stack Hub by configuring the correct cloud environment. Use Azure CLI 2.66.x (LTS) for Azure Stack Hub compatibility; newer Azure CLI versions removed the Azure Stack Hub API profiles.
 
 ```bash
 # Register the Azure Stack Hub cloud environment
@@ -214,11 +214,17 @@ az cloud register \
 # Set the active cloud
 az cloud set --name AzureStackHub
 
+# Use the Azure Stack Hub API profile
+az cloud update --profile 2020-09-01-hybrid
+
 # Login to Azure Stack Hub
 az login --tenant your-tenant-id
 
 # Now use standard Azure CLI commands
 az vm list --resource-group myResourceGroup --output table
+
+# List images available in this Azure Stack Hub environment
+az vm image list --all --output table
 ```
 
 Create a VM through the CLI.
@@ -228,7 +234,7 @@ Create a VM through the CLI.
 az vm create \
   --resource-group myResourceGroup \
   --name app-server-01 \
-  --image "Ubuntu2204" \
+  --image "<publisher>:<offer>:<sku>:<version>" \
   --size Standard_DS2_v2 \
   --vnet-name workload-vnet \
   --subnet default \
@@ -243,17 +249,37 @@ Azure Stack Hub includes basic monitoring capabilities through the portal.
 
 1. Navigate to your VM.
 2. Click "Metrics" in the left menu.
-3. Select metrics like CPU percentage, disk IOPS, network bytes, and memory percentage.
+3. Select supported platform metrics such as Percentage CPU.
 4. Set the time range and aggregation type.
 
-For more advanced monitoring, deploy the Azure Monitor Agent if your Azure Stack Hub operator has enabled the diagnostic extension.
+For more advanced guest OS monitoring, deploy the Azure Diagnostics extension if your Azure Stack Hub operator has made it available.
 
 ```bash
-# Enable diagnostics on a Linux VM
+# Enable default diagnostics on a Linux VM
+my_resource_group=myResourceGroup
+my_linux_vm=web-server-01
+my_diagnostic_storage_account=mystorageaccount
+
+my_vm_resource_id=$(az vm show -g $my_resource_group -n $my_linux_vm --query "id" -o tsv)
+default_config=$(az vm diagnostics get-default-config \
+  | sed "s#__DIAGNOSTIC_STORAGE_ACCOUNT__#$my_diagnostic_storage_account#g" \
+  | sed "s#__VM_OR_VMSS_RESOURCE_ID__#$my_vm_resource_id#g")
+
+storage_sastoken=$(az storage account generate-sas \
+  --account-name $my_diagnostic_storage_account \
+  --expiry 2037-12-31T23:59:00Z \
+  --permissions wlacu \
+  --resource-types co \
+  --services bt \
+  -o tsv)
+
+protected_settings="{'storageAccountName': '$my_diagnostic_storage_account', 'storageAccountSasToken': '$storage_sastoken'}"
+
 az vm diagnostics set \
-  --resource-group myResourceGroup \
-  --vm-name web-server-01 \
-  --settings '{"ladCfg": {"diagnosticMonitorConfiguration": {"performanceCounters": {"performanceCounterConfiguration": []}}}}'
+  --settings "$default_config" \
+  --protected-settings "$protected_settings" \
+  --resource-group $my_resource_group \
+  --vm-name $my_linux_vm
 ```
 
 ## Working with VM Extensions
@@ -276,7 +302,7 @@ Common extensions available on Azure Stack Hub:
 
 - **CustomScript** - Run arbitrary scripts during or after deployment.
 - **DSC (Desired State Configuration)** - Apply PowerShell DSC configurations to Windows VMs.
-- **Docker** - Install and configure Docker on Linux VMs.
+- **Azure Diagnostics** - Collect diagnostics data for monitoring.
 
 Not all Azure extensions are available on Stack Hub. Check with your operator for the supported extension list.
 
@@ -288,7 +314,7 @@ Not all Azure extensions are available on Stack Hub. Check with your operator fo
 
 **Quota limits**: Each subscription has quotas for vCPUs, memory, storage, and network resources. Check your quotas before planning large deployments.
 
-**Backup**: Azure Stack Hub supports Azure Backup for VMs if the operator has enabled it. Configure backup policies early since recovering from a VM loss without backup is not fun.
+**Backup**: Azure Stack Hub workloads can be protected with Microsoft Azure Backup Server or supported third-party backup solutions. The Azure Stack Hub infrastructure backup service does not back up tenant VMs or their data, so plan workload backup separately.
 
 ## Summary
 
