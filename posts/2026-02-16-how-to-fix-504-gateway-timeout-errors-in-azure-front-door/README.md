@@ -46,13 +46,11 @@ If the slow response time is expected (for example, a report generation endpoint
 For Azure Front Door Standard/Premium:
 
 ```bash
-# Update the origin response timeout for a Front Door route
+# Update the origin response timeout for a Front Door profile
 # Maximum allowed value is 240 seconds
-az afd route update \
+az afd profile update \
   --resource-group myResourceGroup \
   --profile-name myFrontDoor \
-  --endpoint-name myEndpoint \
-  --route-name myRoute \
   --origin-response-timeout-seconds 120
 ```
 
@@ -72,10 +70,10 @@ Keep in mind that increasing the timeout means clients wait longer for a respons
 
 Front Door uses health probes to determine if backends are available. If health probes are failing or if the backend is being marked unhealthy, Front Door might route traffic to a less optimal backend that is further away or overloaded, increasing response times and causing timeouts.
 
-Check the backend health status:
+Check the backend pool configuration tied to your health probe:
 
 ```bash
-# View the health probe results for your backend pool
+# View the backend pool configuration
 az network front-door backend-pool show \
   --resource-group myResourceGroup \
   --front-door-name myFrontDoor \
@@ -135,7 +133,7 @@ For IIS or Kestrel backends, configure similar keep-alive settings.
 
 ## Step 6: Analyze Front Door Diagnostics Logs
 
-Front Door diagnostics logs give you detailed information about every request, including the backend response time, the origin it selected, and error details.
+Front Door diagnostics logs give you detailed information about every request, including the origin it selected, total request duration, and error details.
 
 Enable diagnostics:
 
@@ -154,20 +152,22 @@ Query for 504 errors:
 // Find 504 errors with backend timing details
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.CDN"
-| where httpStatusCode_d == 504
-| project TimeGenerated, requestUri_s, originName_s, originResponseTime_s, routeName_s, clientIp_s
+| where Category == "FrontDoorAccessLog"
+| extend StatusCode = toint(iff(isnotempty(tostring(column_ifexists("httpStatusCode_s", ""))), tostring(column_ifexists("httpStatusCode_s", "")), tostring(column_ifexists("httpStatusCode_d", ""))))
+| where StatusCode == 504
+| project TimeGenerated, requestUri_s, originName_s, timeTaken_s, errorInfo_s, routeName_s, clientIp_s
 | order by TimeGenerated desc
 | take 100
 ```
 
-The `originResponseTime_s` field tells you how long Front Door waited for the backend. If this is close to your timeout setting, the backend is genuinely slow.
+The `timeTaken_s` field tells you the total duration from when Front Door received the client request until it sent the last byte of the response. If this is close to your timeout setting and `errorInfo_s` is `OriginTimeout`, the backend is likely too slow. Use the Origin Latency metric when you need origin-specific timing.
 
 ## Step 7: Check for Large Request or Response Bodies
 
-Large request payloads (like file uploads) or large response bodies (like big API responses) can cause timeouts if the transfer takes too long. Front Door has limits on request body size:
+Large request payloads (like file uploads) or large response bodies (like big API responses) can cause timeouts if the transfer takes too long. Front Door has limits on upload size:
 
-- Standard/Premium: 2 GB maximum
-- Classic: Request body is not buffered, but the transfer must complete within the timeout
+- Without HTTP chunking: uploads cannot be larger than 2 GB
+- With chunked transfer encoding: there is no overall upload limit as long as each CTE upload is less than 2 GB
 
 If you are dealing with large file uploads, consider using direct-to-storage upload patterns (generate a SAS token and let the client upload directly to Azure Blob Storage) instead of routing through Front Door.
 
