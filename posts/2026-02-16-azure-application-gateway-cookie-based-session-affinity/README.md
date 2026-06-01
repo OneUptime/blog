@@ -16,7 +16,7 @@ In this guide, I will cover how Application Gateway implements cookie-based affi
 
 ## How It Works
 
-Azure Application Gateway uses a managed cookie called `ApplicationGatewayAffinity` (for v1) or `ApplicationGatewayAffinityCORS` (for v2 with CORS support). The flow looks like this:
+Azure Application Gateway uses a managed cookie called `ARRAffinity` for v1 gateways and `ApplicationGatewayAffinity` for v2 gateways. For CORS scenarios, Application Gateway also injects a second cookie with a `CORS` suffix, such as `ApplicationGatewayAffinityCORS`. The flow looks like this:
 
 ```mermaid
 sequenceDiagram
@@ -137,7 +137,7 @@ After enabling affinity, test it by making requests and examining the cookies.
 curl -v http://<gateway-ip>/ 2>&1 | grep -i "set-cookie"
 
 # Expected output (something like):
-# Set-Cookie: ApplicationGatewayAffinity=xxxxxxxxxxxx; Path=/; HttpOnly
+# Set-Cookie: ApplicationGatewayAffinity=xxxxxxxxxxxx; Path=/
 ```
 
 Now send subsequent requests with the cookie and verify they hit the same backend. If your backend servers return their hostname or IP in a custom header, you can verify affinity easily.
@@ -208,10 +208,10 @@ This gives you affinity for web traffic (where sessions matter) and no affinity 
 
 The affinity cookie set by Application Gateway has specific properties:
 
-- **HttpOnly**: Yes. The cookie cannot be accessed by JavaScript, reducing XSS attack surface.
-- **Secure**: Set when the frontend uses HTTPS.
+- **HttpOnly**: Not set by default on the gateway-managed affinity cookie. If you need this flag, configure a response header rewrite rule.
+- **Secure**: Not set by default on the regular affinity cookie. The CORS affinity cookie includes `Secure` together with `SameSite=None`.
 - **Path**: Set to `/` by default, meaning it applies to all paths.
-- **SameSite**: Follows browser defaults (usually Lax in modern browsers).
+- **SameSite**: The regular affinity cookie does not include a SameSite attribute, so modern browsers treat it as `Lax`. The CORS affinity cookie includes `SameSite=None; Secure`.
 - **Expiry**: Session cookie (no explicit expiry). It lasts until the browser is closed.
 
 Since the cookie is a session cookie, closing the browser clears it. The next time the user visits, they might be routed to a different backend. If your application needs persistent affinity across browser sessions, you will need to implement that at the application level.
@@ -295,13 +295,12 @@ While session affinity solves immediate problems, it creates others. Uneven load
 The recommended long-term approach is to externalize session state to a shared store like Redis.
 
 ```bash
-# Create an Azure Cache for Redis for externalized session state
-az redis create \
+# Create an Azure Managed Redis cache for externalized session state
+az redisenterprise create \
   --resource-group rg-appgw-affinity \
   --name redis-sessions \
   --location eastus \
-  --sku Standard \
-  --vm-size C1
+  --sku Balanced_B1
 ```
 
 With externalized sessions, you can disable affinity and let the gateway distribute load evenly. But that is a bigger change. Cookie-based affinity is the practical solution when you need something working today.
