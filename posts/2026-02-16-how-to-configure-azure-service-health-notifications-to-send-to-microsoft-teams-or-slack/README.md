@@ -28,10 +28,10 @@ graph LR
 
 There are two main approaches:
 
-1. **Direct webhook** - send the alert payload directly to a Teams or Slack incoming webhook. Simple but the message formatting is basic.
+1. **Direct webhook** - send the alert payload directly to a webhook endpoint that can accept the Azure Monitor alert schema. This is simple, but the message formatting is basic.
 2. **Logic App intermediary** - route the alert through a Logic App that formats the message nicely before sending it. More work to set up but produces much better-looking notifications.
 
-I will cover both approaches for each platform.
+I will cover the direct workflow option for Teams and the Logic App approach for both Teams and Slack.
 
 ## Sending to Microsoft Teams
 
@@ -90,19 +90,17 @@ az logic workflow create \
   --name la-service-health-teams \
   --location eastus \
   --definition '{
-    "definition": {
-      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-      "triggers": {
-        "manual": {
-          "type": "Request",
-          "kind": "Http",
-          "inputs": {
-            "schema": {}
-          }
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "triggers": {
+      "manual": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "schema": {}
         }
-      },
-      "actions": {}
-    }
+      }
+    },
+    "actions": {}
   }'
 ```
 
@@ -172,25 +170,31 @@ Here is an example Adaptive Card body you can use in the Compose action:
 
 **Step 3: Connect the alert to the Logic App**
 
-Get the Logic App trigger URL and add it as a webhook in your action group:
+Get the Logic App resource ID and signed Request trigger callback URL, then add it as a Logic App action in your action group:
 
 ```bash
-# Get the Logic App trigger URL
-CALLBACK_URL=$(az logic workflow show \
+# Get the Logic App resource ID
+LOGIC_APP_ID=$(az logic workflow show \
   --resource-group rg-monitoring \
   --name la-service-health-teams \
-  --query "accessEndpoint" -o tsv)
+  --query "id" -o tsv)
 
-# Update the action group to use the Logic App
+# Get the signed callback URL for the Request trigger named "manual"
+CALLBACK_URL=$(az rest \
+  --method post \
+  --url "https://management.azure.com${LOGIC_APP_ID}/triggers/manual/listCallbackUrl?api-version=2016-06-01" \
+  --query "value" -o tsv)
+
+# Update the action group to use the Logic App action type
 az monitor action-group update \
   --resource-group rg-monitoring \
   --name ag-teams-service-health \
-  --add-action webhook teams-logicapp "$CALLBACK_URL"
+  --add-action logicapp teams-logicapp "$LOGIC_APP_ID" "$CALLBACK_URL"
 ```
 
 ## Sending to Slack
 
-### Approach 1: Direct Webhook
+### Approach 1: Direct Webhook Limitation
 
 **Step 1: Create a Slack Incoming Webhook**
 
@@ -200,32 +204,7 @@ az monitor action-group update \
 4. Select the channel where you want notifications
 5. Copy the webhook URL
 
-**Step 2: Create an Action Group with the Slack webhook**
-
-```bash
-# Create an action group that posts to Slack
-# The webhook URL is from your Slack app configuration
-az monitor action-group create \
-  --resource-group rg-monitoring \
-  --name ag-slack-service-health \
-  --short-name slackSH \
-  --action webhook slack-channel "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
-```
-
-**Step 3: Create the alert rule**
-
-```bash
-# Create the Service Health alert for Slack
-az monitor activity-log alert create \
-  --resource-group rg-monitoring \
-  --name "ServiceHealth-Slack" \
-  --description "Send Service Health alerts to Slack" \
-  --condition category=ServiceHealth \
-  --action-group ag-slack-service-health \
-  --scope "/subscriptions/<your-subscription-id>"
-```
-
-Note that the direct webhook sends the raw Azure alert JSON to Slack, which will display as a plain text block. It is functional but not pretty.
+Slack incoming webhooks expect a Slack message payload with fields such as `text` or `blocks`. Azure Monitor sends the Service Health alert payload in its own schema, so pointing an action group webhook directly at the Slack webhook URL is not reliable. Use the Logic App approach below to transform the Azure alert payload into a Slack Block Kit message.
 
 ### Approach 2: Logic App with Slack Block Kit Formatting
 
