@@ -176,12 +176,10 @@ processors:
 
   # Filter out noisy, low-value spans
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        span_names:
-          - "health_check"
-          - "readiness_probe"
+    error_mode: ignore
+    trace_conditions:
+      - 'IsMatch(span.name, "health_check")'
+      - 'IsMatch(span.name, "readiness_probe")'
 
 exporters:
   otlp:
@@ -212,7 +210,7 @@ service:
       exporters: [otlp]
 ```
 
-The `memory_limiter` processor is critical for production. It monitors the Collector's memory usage and drops data when approaching the limit, preventing OOM kills.
+The `memory_limiter` processor is critical for production. It monitors the Collector's memory usage and starts refusing data when approaching the limit, preventing OOM kills. Upstream receivers are expected to retry refused data; data may still be dropped if the preceding component cannot retry.
 
 ## Retry and Circuit Breaking
 
