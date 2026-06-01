@@ -31,7 +31,7 @@ Instead of N Lambda instances creating N database connections, RDS Proxy funnels
 You'll need:
 - An RDS or Aurora database running in a VPC
 - Lambda functions configured for VPC access (see [connecting Lambda to a VPC](https://oneuptime.com/blog/post/2026-02-12-connect-lambda-functions-to-a-vpc/view))
-- Database credentials stored in AWS Secrets Manager (RDS Proxy requires this)
+- Database credentials stored in AWS Secrets Manager for the password-based setup shown here
 - An IAM role for the proxy to access the secret
 
 ## Step 1: Store Credentials in Secrets Manager
@@ -249,7 +249,7 @@ The key change: you're pointing `host` to the RDS Proxy endpoint instead of the 
 
 ## Using IAM Authentication with RDS Proxy
 
-For even better security, you can use IAM authentication instead of database passwords. This means Lambda authenticates to the proxy using its IAM role - no password needed.
+For even better security, you can use IAM authentication instead of storing database passwords in Lambda. This means Lambda authenticates to the proxy using its IAM role. In the standard IAM authentication setup shown here, RDS Proxy still uses the Secrets Manager secret to authenticate to the database.
 
 First, enable IAM auth on the proxy:
 
@@ -264,22 +264,32 @@ aws rds modify-db-proxy \
   }]'
 ```
 
+Make sure the Lambda execution role can connect to the proxy as the database user:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "rds-db:connect",
+  "Resource": "arn:aws:rds-db:us-east-1:123456789012:dbuser:prx-ABCDEFGHIJKL01234/app_user"
+}
+```
+
 Then in your Lambda function, generate an authentication token:
 
 ```javascript
-// Using IAM auth with RDS Proxy - no password stored anywhere
-const { RDS } = require('@aws-sdk/client-rds');
+// Using IAM auth with RDS Proxy - no database password stored in Lambda
+const { Signer } = require('@aws-sdk/rds-signer');
 const { Client } = require('pg');
-
-const rds = new RDS({ region: 'us-east-1' });
 
 async function getConnection() {
   // Generate a temporary auth token using IAM credentials
-  const token = await rds.generateAuthenticationToken({
+  const signer = new Signer({
     hostname: process.env.RDS_PROXY_ENDPOINT,
     port: 5432,
     username: 'app_user',
+    region: 'us-east-1',
   });
+  const token = await signer.getAuthToken();
 
   const client = new Client({
     host: process.env.RDS_PROXY_ENDPOINT,
