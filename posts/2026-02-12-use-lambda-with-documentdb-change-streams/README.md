@@ -8,7 +8,7 @@ Description: Learn how to trigger AWS Lambda functions from Amazon DocumentDB ch
 
 ---
 
-Amazon DocumentDB is AWS's managed document database service compatible with MongoDB. One of its most powerful features is change streams, which let you react to database changes in real time. Combine this with AWS Lambda, and you get a fully serverless, event-driven pipeline that fires whenever documents are inserted, updated, or deleted.
+Amazon DocumentDB is AWS's managed document database service compatible with MongoDB. One of its most powerful features is change streams, which let you react to database changes in real time. Combine this with AWS Lambda, and you get a managed, event-driven pipeline that fires whenever documents are inserted, updated, or deleted.
 
 This pattern is incredibly useful. You can build audit logs, trigger notifications, synchronize data to other systems, or maintain materialized views - all without polling the database.
 
@@ -16,7 +16,7 @@ In this guide, you will set up Lambda to consume DocumentDB change streams, hand
 
 ## How Change Streams Work
 
-DocumentDB change streams use the database's operation log (oplog) to track changes. When you open a change stream, DocumentDB sends you a continuous feed of change events for a collection, database, or the entire cluster.
+DocumentDB change streams use an internal change stream log to track changes. When you open a change stream, DocumentDB sends you a continuous feed of change events for a collection, database, or the entire cluster.
 
 ```mermaid
 flowchart LR
@@ -35,16 +35,41 @@ Lambda uses an event source mapping to poll the change stream, similar to how it
 Before you start, you need:
 
 - An Amazon DocumentDB cluster running in a VPC
-- Change streams enabled on the cluster (enabled by default on DocumentDB 4.0+)
-- A Lambda function with VPC access to the DocumentDB cluster
-- IAM permissions and network connectivity between Lambda and DocumentDB
+- Change streams explicitly enabled on the collection, database, or cluster
+- TLS enabled on the DocumentDB cluster
+- A Lambda function with an execution role that can describe the DocumentDB cluster, manage the required network interfaces, decrypt the secret if needed, and read the Secrets Manager secret
+- Network connectivity for the Lambda event source mapping to reach DocumentDB and required AWS services
 
 ## Step 1: Enable Change Streams on DocumentDB
 
-Change streams are enabled by default on DocumentDB 4.0 and later. If you are running an older version or need to verify, check the cluster parameter group.
+Change streams are disabled by default in Amazon DocumentDB. Enable them explicitly for the collection, database, or cluster you want to consume.
+
+```javascript
+// Enable change streams for the "orders" collection in the "myapp" database
+db.adminCommand({
+  modifyChangeStreams: 1,
+  database: "myapp",
+  collection: "orders",
+  enable: true
+});
+```
+
+You can list enabled change streams with the `$listChangeStreams` aggregation stage.
+
+```javascript
+cursor = new DBCommandCursor(db,
+  db.runCommand({
+    aggregate: 1,
+    pipeline: [{ $listChangeStreams: 1 }],
+    cursor: {}
+  })
+);
+```
+
+To verify the retention setting, check the cluster parameter group.
 
 ```bash
-# Verify change streams are enabled
+# Verify the change stream retention setting
 
 aws docdb describe-db-cluster-parameters \
   --db-cluster-parameter-group-name default.docdb4.0 \
@@ -84,29 +109,39 @@ db.createUser({
 });
 ```
 
-## Step 3: Configure Lambda VPC and Security Groups
+## Step 3: Configure VPC Endpoints and Security Groups
 
-Lambda needs network access to both DocumentDB and Secrets Manager.
-
-```bash
-# Update Lambda to run in the DocumentDB VPC
-aws lambda update-function-configuration \
-  --function-name docdb-stream-processor \
-  --vpc-config SubnetIds=subnet-abc123,subnet-def456,SecurityGroupIds=sg-lambda-docdb
-```
-
-Make sure the security group rules allow:
-
-- Lambda security group to reach DocumentDB on port 27017
-- Lambda security group to reach Secrets Manager (either via VPC endpoint or NAT Gateway)
-
-Setting up a VPC endpoint for Secrets Manager avoids the need for a NAT Gateway, which saves cost.
+The Lambda event source mapping needs network access to DocumentDB and to the AWS services it uses. Your function's VPC configuration does not determine how the event source mapping connects to DocumentDB.
 
 ```bash
 # Create a VPC endpoint for Secrets Manager
 aws ec2 create-vpc-endpoint \
   --vpc-id vpc-abc123 \
   --service-name com.amazonaws.us-east-1.secretsmanager \
+  --vpc-endpoint-type Interface \
+  --subnet-ids subnet-abc123 subnet-def456 \
+  --security-group-ids sg-vpc-endpoint
+```
+
+Make sure the security group rules allow:
+
+- The event source mapping network interfaces to reach DocumentDB on port 27017
+- The VPC endpoint security group to allow inbound HTTPS traffic from the DocumentDB cluster VPC resources that Lambda uses for the mapping
+
+For event source mappings that use the default on-demand poller mode, AWS PrivateLink VPC endpoints are required for Lambda, AWS STS, and Secrets Manager when credentials are stored there. Alternatively, configure NAT access in the VPC.
+
+```bash
+# Create additional VPC endpoints used by the event source mapping
+aws ec2 create-vpc-endpoint \
+  --vpc-id vpc-abc123 \
+  --service-name com.amazonaws.us-east-1.lambda \
+  --vpc-endpoint-type Interface \
+  --subnet-ids subnet-abc123 subnet-def456 \
+  --security-group-ids sg-vpc-endpoint
+
+aws ec2 create-vpc-endpoint \
+  --vpc-id vpc-abc123 \
+  --service-name com.amazonaws.us-east-1.sts \
   --vpc-endpoint-type Interface \
   --subnet-ids subnet-abc123 subnet-def456 \
   --security-group-ids sg-vpc-endpoint
@@ -123,7 +158,7 @@ import json
 def lambda_handler(event, context):
     """Process DocumentDB change stream events."""
 
-    failed_items = []
+    failed_count = 0
 
     for i, record in enumerate(event.get('events', [])):
         try:
@@ -150,9 +185,12 @@ def lambda_handler(event, context):
 
         except Exception as e:
             print(f"Error processing event {i}: {str(e)}")
-            failed_items.append({"itemIdentifier": str(i)})
+            failed_count += 1
 
-    return {"batchItemFailures": failed_items}
+    if failed_count:
+        raise RuntimeError(f"Failed to process {failed_count} change stream event(s)")
+
+    return {"status": "ok", "processed": len(event.get('events', []))}
 
 
 def handle_insert(event):
@@ -223,8 +261,7 @@ aws lambda create-event-source-mapping \
   }' \
   --starting-position LATEST \
   --batch-size 100 \
-  --maximum-batching-window-in-seconds 10 \
-  --function-response-types "ReportBatchItemFailures"
+  --maximum-batching-window-in-seconds 10
 ```
 
 Key configuration options:
@@ -243,6 +280,7 @@ One of the most common uses is creating an immutable audit trail. Every change t
 ```python
 # Write change events to an audit log in DynamoDB
 import boto3
+import json
 import time
 
 dynamodb = boto3.resource('dynamodb')
@@ -266,7 +304,7 @@ Another popular pattern is keeping a search index in sync with your primary data
 
 ## Handling Failures and Retries
 
-When Lambda fails to process a batch, it retries from the last successfully committed resume token. This means idempotency matters. If your function partially processes a batch before failing, some records may be processed twice on retry.
+When Lambda fails to process a batch, it retries from the last successfully committed resume token. This means idempotency matters. If your function partially processes a batch before failing, the batch can be retried and some records may be processed twice.
 
 Design your downstream operations to handle duplicates. Use conditional writes, upserts, or deduplication keys to make your processing idempotent.
 
@@ -276,10 +314,10 @@ Monitor these metrics to keep your pipeline healthy:
 
 - Lambda invocation errors and duration
 - DocumentDB cluster CPU and connections
-- Change stream lag (how far behind the consumer is)
+- Lambda `IteratorAge`, which shows how far behind the consumer is
 
 Set up CloudWatch alarms on Lambda errors and duration to catch problems early.
 
 ## Wrapping Up
 
-Lambda with DocumentDB change streams gives you a reactive, serverless pipeline that responds to database changes in near real time. The setup involves some VPC networking configuration, but once connected, it runs hands-free. Lambda manages the change stream cursor, handles retries, and scales based on the volume of changes. Focus your effort on the processing logic, and let AWS handle the infrastructure.
+Lambda with DocumentDB change streams gives you a reactive, managed pipeline that responds to database changes in near real time. The setup involves some VPC networking configuration, but once connected, it runs hands-free. Lambda manages the change stream cursor and handles retries. Focus your effort on the processing logic, and let AWS handle the infrastructure.
