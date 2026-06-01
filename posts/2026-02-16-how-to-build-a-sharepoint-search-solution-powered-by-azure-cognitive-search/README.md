@@ -8,9 +8,9 @@ Description: Build a custom SharePoint search experience powered by Azure Cognit
 
 ---
 
-SharePoint's built-in search works reasonably well for basic document discovery, but it falls short when you need advanced features like custom relevance tuning, faceted navigation, AI-powered enrichment, or the ability to search across SharePoint and non-SharePoint content in a unified experience. Azure Cognitive Search fills these gaps.
+SharePoint's built-in search works reasonably well for basic document discovery, but it falls short when you need advanced features like custom relevance tuning, faceted navigation, AI-powered enrichment, or the ability to search across SharePoint and non-SharePoint content in a unified experience. Azure AI Search, formerly Azure Cognitive Search, fills these gaps.
 
-In this guide, I will build a custom search solution that indexes SharePoint content into Azure Cognitive Search, enriches it with AI skills, and surfaces it through a SharePoint Framework (SPFx) web part with faceted filtering and highlighted search results.
+In this guide, I will build a custom search solution that indexes SharePoint content into Azure AI Search, can enrich it with AI skills, and surfaces it through a SharePoint Framework (SPFx) web part with faceted filtering and highlighted search results.
 
 ## Architecture
 
@@ -19,14 +19,13 @@ graph TD
     A[SharePoint Document Libraries] --> B[Azure Function - Indexer]
     B --> C[Microsoft Graph API]
     C --> B
-    B --> D[Azure Cognitive Search]
-    D --> E[AI Enrichment Pipeline]
-    E --> F[Search Index]
+    B --> E[Optional AI Enrichment]
+    E --> F[Azure AI Search Index]
     G[SPFx Search Web Part] --> F
     F --> G
 ```
 
-An Azure Function periodically crawls SharePoint using Microsoft Graph, extracts documents and metadata, and pushes them into Azure Cognitive Search. The search index includes an AI enrichment pipeline that extracts key phrases, entities, and content from documents. The SPFx web part queries the search index and displays results.
+An Azure Function periodically crawls SharePoint using Microsoft Graph, extracts documents and metadata, enriches them before upload, and pushes them into Azure AI Search. If you use an Azure AI Search indexer instead of the push model shown below, the indexer can run a skillset that extracts key phrases, entities, and content from documents. The SPFx web part queries the search index and displays results.
 
 ## Setting Up Azure Cognitive Search
 
@@ -61,7 +60,10 @@ Define the search index schema:
         { "name": "url", "type": "Edm.String" },
         { "name": "fileSize", "type": "Edm.Int64", "filterable": true, "sortable": true },
         { "name": "keyPhrases", "type": "Collection(Edm.String)", "searchable": true, "filterable": true, "facetable": true },
-        { "name": "entities", "type": "Collection(Edm.String)", "searchable": true, "filterable": true },
+        { "name": "persons", "type": "Collection(Edm.String)", "searchable": true, "filterable": true, "facetable": true },
+        { "name": "organizations", "type": "Collection(Edm.String)", "searchable": true, "filterable": true, "facetable": true },
+        { "name": "locations", "type": "Collection(Edm.String)", "searchable": true, "filterable": true, "facetable": true },
+        { "name": "products", "type": "Collection(Edm.String)", "searchable": true, "filterable": true, "facetable": true },
         { "name": "language", "type": "Edm.String", "filterable": true, "facetable": true },
         { "name": "sentiment", "type": "Edm.Double", "filterable": true }
     ],
@@ -164,12 +166,12 @@ public class SharePointIndexer
         var documents = new List<SearchDocument>();
 
         // Get all document libraries in the site
-        var lists = await _graphClient.Sites[site.Id].Lists.GetAsync(config =>
-        {
-            config.QueryParameters.Filter = "list/template eq 'documentLibrary'";
-        });
+        var allLists = await _graphClient.Sites[site.Id].Lists.GetAsync();
+        var lists = allLists?.Value?
+            .Where(list => list.List?.Template == "documentLibrary")
+            .ToList() ?? new List<Microsoft.Graph.Models.List>();
 
-        foreach (var list in lists.Value)
+        foreach (var list in lists)
         {
             // Get items modified in the last indexing window (4 hours + buffer)
             var cutoff = DateTime.UtcNow.AddHours(-5).ToString("o");
@@ -188,7 +190,7 @@ public class SharePointIndexer
 
                 var doc = new SearchDocument
                 {
-                    ["id"] = $"{site.Id}_{list.Id}_{item.Id}",
+                    ["id"] = CreateSearchKey(site.Id, list.Id, item.Id),
                     ["title"] = item.DriveItem.Name,
                     ["author"] = item.CreatedBy?.User?.DisplayName ?? "Unknown",
                     ["created"] = item.CreatedDateTime,
@@ -201,7 +203,9 @@ public class SharePointIndexer
                 };
 
                 // Try to get the file content for text extraction
-                var content = await ExtractContentAsync(site.Id, item.DriveItem.Id);
+                var content = await ExtractContentAsync(
+                    item.DriveItem.ParentReference?.DriveId,
+                    item.DriveItem.Id);
                 if (content != null)
                 {
                     doc["content"] = content;
@@ -214,13 +218,18 @@ public class SharePointIndexer
         return documents;
     }
 
-    private async Task<string> ExtractContentAsync(string siteId, string driveItemId)
+    private async Task<string> ExtractContentAsync(string driveId, string driveItemId)
     {
+        if (string.IsNullOrEmpty(driveId) || string.IsNullOrEmpty(driveItemId))
+        {
+            return null;
+        }
+
         try
         {
             // Use Graph to get the content stream
-            var stream = await _graphClient.Sites[siteId]
-                .Drive.Items[driveItemId].Content.GetAsync();
+            var stream = await _graphClient.Drives[driveId]
+                .Items[driveItemId].Content.GetAsync();
 
             if (stream == null) return null;
 
@@ -259,12 +268,21 @@ public class SharePointIndexer
         var ext = Path.GetExtension(fileName)?.TrimStart('.').ToLower();
         return ext ?? "unknown";
     }
+
+    private string CreateSearchKey(params string[] parts)
+    {
+        var rawKey = string.Join("_", parts.Where(part => !string.IsNullOrEmpty(part)));
+        return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(rawKey))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
 }
 ```
 
 ## AI Enrichment with Skillsets
 
-Set up a cognitive skillset that enriches the indexed content:
+Skillsets are attached to Azure AI Search indexers and run during indexer execution. If you choose indexer-based ingestion instead of the Azure Function push model above, set up a skillset like this to enrich the indexed content:
 
 ```json
 {
@@ -283,7 +301,7 @@ Set up a cognitive skillset that enriches the indexed content:
             ]
         },
         {
-            "@odata.type": "#Microsoft.Skills.Text.EntityRecognitionSkill",
+            "@odata.type": "#Microsoft.Skills.Text.V3.EntityRecognitionSkill",
             "name": "extract-entities",
             "context": "/document",
             "categories": ["Organization", "Person", "Location", "Product"],
@@ -291,7 +309,10 @@ Set up a cognitive skillset that enriches the indexed content:
                 { "name": "text", "source": "/document/content" }
             ],
             "outputs": [
-                { "name": "entities", "targetName": "entities" }
+                { "name": "persons", "targetName": "persons" },
+                { "name": "organizations", "targetName": "organizations" },
+                { "name": "locations", "targetName": "locations" },
+                { "name": "products", "targetName": "products" }
             ]
         },
         {
@@ -317,7 +338,7 @@ Create an SPFx web part that provides a rich search experience with facets and h
 // src/components/SearchWebPart.tsx - SPFx search component
 import * as React from 'react';
 import { useState, useCallback } from 'react';
-import { SearchBox, DetailsList, IColumn, Checkbox, Spinner } from '@fluentui/react';
+import { SearchBox, Checkbox, Spinner } from '@fluentui/react';
 import { AadHttpClient } from '@microsoft/sp-http';
 
 interface SearchResult {
@@ -348,8 +369,8 @@ interface SearchState {
     loading: boolean;
 }
 
-const SearchWebPart: React.FC<{ searchEndpoint: string; apiKey: string }> = ({
-    searchEndpoint, apiKey
+const SearchWebPart: React.FC<{ searchEndpoint: string; aadClient: AadHttpClient }> = ({
+    searchEndpoint, aadClient
 }) => {
     const [query, setQuery] = useState('');
     const [state, setState] = useState<SearchState>({
@@ -369,7 +390,9 @@ const SearchWebPart: React.FC<{ searchEndpoint: string; apiKey: string }> = ({
         const filterParts: string[] = [];
         for (const [field, values] of Object.entries(activeFilters)) {
             if (values.length > 0) {
-                const conditions = values.map(v => `${field} eq '${v}'`).join(' or ');
+                const conditions = values
+                    .map(v => `${field} eq '${escapeODataString(v)}'`)
+                    .join(' or ');
                 filterParts.push(`(${conditions})`);
             }
         }
@@ -388,13 +411,12 @@ const SearchWebPart: React.FC<{ searchEndpoint: string; apiKey: string }> = ({
         };
 
         try {
-            const response = await fetch(
+            const response = await aadClient.post(
                 `${searchEndpoint}/indexes/sharepoint-content/docs/search?api-version=2023-11-01`,
+                AadHttpClient.configurations.v1,
                 {
-                    method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'api-key': apiKey
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(searchBody)
                 }
@@ -419,7 +441,7 @@ const SearchWebPart: React.FC<{ searchEndpoint: string; apiKey: string }> = ({
             console.error('Search failed:', error);
             setState(prev => ({ ...prev, loading: false }));
         }
-    }, [searchEndpoint, apiKey]);
+    }, [searchEndpoint, aadClient]);
 
     const handleSearch = (searchText: string) => {
         setQuery(searchText);
@@ -495,6 +517,8 @@ const SearchWebPart: React.FC<{ searchEndpoint: string; apiKey: string }> = ({
     );
 };
 
+const escapeODataString = (value: string): string => value.replace(/'/g, "''");
+
 // Reusable facet panel component
 const FacetPanel: React.FC<{
     title: string; facets: FacetValue[];
@@ -520,4 +544,4 @@ export default SearchWebPart;
 
 ## Wrapping Up
 
-Building a custom SharePoint search solution with Azure Cognitive Search gives you capabilities that go far beyond what SharePoint's built-in search offers. AI enrichment automatically extracts key phrases and entities from your documents. Faceted navigation lets users drill down by file type, author, or site. Custom scoring profiles boost recent content to the top. And because the search index is in Azure Cognitive Search, you can include non-SharePoint content in the same search experience, giving users a single place to find everything they need.
+Building a custom SharePoint search solution with Azure AI Search gives you capabilities that go far beyond what SharePoint's built-in search offers. AI enrichment can extract key phrases and entities from your documents when you run it through an indexer skillset or add equivalent enrichment before pushing documents. Faceted navigation lets users drill down by file type, author, or site. Custom scoring profiles boost recent content to the top. And because the search index is in Azure AI Search, you can include non-SharePoint content in the same search experience, giving users a single place to find everything they need.
