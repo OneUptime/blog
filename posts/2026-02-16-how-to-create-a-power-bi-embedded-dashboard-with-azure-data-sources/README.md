@@ -10,7 +10,7 @@ Description: Learn how to build and embed Power BI dashboards that connect to Az
 
 Power BI Embedded lets you integrate interactive reports and dashboards directly into your own applications. Instead of asking users to open a separate Power BI portal, they get analytics right inside the tools they already use. When your data lives in Azure, the integration becomes even more seamless because everything sits within the same ecosystem.
 
-In this guide, I will walk through the full process of creating a Power BI Embedded dashboard that pulls data from Azure data sources, registering an application in Azure AD, configuring the embed, and rendering the dashboard in a web application.
+In this guide, I will walk through the full process of creating a Power BI Embedded report that pulls data from Azure data sources, registering an application in Microsoft Entra ID, configuring the embed, and rendering the report in a web application.
 
 ## Prerequisites
 
@@ -36,21 +36,15 @@ From Power BI Desktop, click "Publish" and select a workspace in the Power BI se
 
 After publishing, open the Power BI portal and navigate to the workspace. You should see your report and its underlying dataset listed there. Note the workspace ID and report ID from the URL - you will need them later.
 
-## Step 3: Register an Application in Azure AD
+## Step 3: Register an Application in Microsoft Entra ID
 
-To embed Power BI content, you need an Azure AD application registration that grants your app permissions to access the Power BI API.
+To embed Power BI content with a service principal, you need a Microsoft Entra application registration that your backend can use to access the Power BI API.
 
-Go to the Azure portal, navigate to Azure Active Directory, and select "App registrations." Click "New registration" and give it a name like "PowerBI-Embed-App." Set the redirect URI to your application's URL (for local development, use `http://localhost:3000`).
+Go to the Azure portal, navigate to Microsoft Entra ID, and select "App registrations." Click "New registration" and give it a name like "PowerBI-Embed-App." The redirect URI is optional for a service-principal backend, but you can set it to your application's URL if you also need an interactive sign-in flow for local development.
 
 After registration, note the Application (client) ID and Directory (tenant) ID. Then go to "Certificates & secrets" and create a new client secret. Save this value securely.
 
-Next, configure API permissions. Add the following Power BI Service permissions:
-
-- Dataset.Read.All
-- Report.Read.All
-- Workspace.Read.All
-
-Grant admin consent for these permissions.
+Next, ask a Power BI admin to enable "Embed content in apps" and "Allow service principals to use Power BI APIs" in the Power BI Admin portal. Add the service principal, or a security group that contains it, to the Power BI workspace as a Member or Admin. For this service-principal flow, Microsoft recommends avoiding delegated or application API permissions in the Azure portal because they are not used by Power BI Embedded service-principal authentication.
 
 ## Step 4: Configure the Power BI Embedded Capacity
 
@@ -64,15 +58,16 @@ Since the report pulls from Azure SQL Database, you need to configure the data s
 
 In the Power BI portal, go to the dataset settings, expand "Data source credentials," and enter the Azure SQL Database connection details. Use either SQL authentication or OAuth2 depending on your setup.
 
-Here is how to configure credentials programmatically using the Power BI REST API:
+Here is how to retrieve the data source IDs and update SQL credentials programmatically using the Power BI REST API:
 
 ```python
 # Script to update data source credentials using the Power BI REST API
 
+import json
 import requests
 
 # Get an access token using client credentials flow
-token_url = "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+token_url = "https://login.microsoftonline.com/your-tenant-id/oauth2/v2.0/token"
 token_payload = {
     "client_id": "your-client-id",
     "client_secret": "your-client-secret",
@@ -97,7 +92,30 @@ datasources_url = f"https://api.powerbi.com/v1.0/myorg/groups/{group_id}/dataset
 
 # Fetch data sources associated with the dataset
 datasources = requests.get(datasources_url, headers=headers).json()
-print(datasources)
+datasource = datasources["value"][0]
+gateway_id = datasource["gatewayId"]
+datasource_id = datasource["datasourceId"]
+
+# Update SQL authentication credentials for a cloud data source
+update_url = f"https://api.powerbi.com/v1.0/myorg/gateways/{gateway_id}/datasources/{datasource_id}"
+credential_details = {
+    "credentialDetails": {
+        "credentialType": "Basic",
+        "credentials": json.dumps({
+            "credentialData": [
+                {"name": "username", "value": "your-sql-username"},
+                {"name": "password", "value": "your-sql-password"}
+            ]
+        }),
+        "encryptedConnection": "Encrypted",
+        "encryptionAlgorithm": "None",
+        "privacyLevel": "Organizational",
+        "useEndUserOAuth2Credentials": False
+    }
+}
+
+response = requests.patch(update_url, headers=headers, json=credential_details)
+response.raise_for_status()
 ```
 
 ## Step 6: Generate an Embed Token
@@ -118,10 +136,11 @@ const config = {
     clientSecret: process.env.PBI_CLIENT_SECRET,
     tenantId: process.env.PBI_TENANT_ID,
     workspaceId: process.env.PBI_WORKSPACE_ID,
-    reportId: process.env.PBI_REPORT_ID
+    reportId: process.env.PBI_REPORT_ID,
+    datasetId: process.env.PBI_DATASET_ID
 };
 
-// Function to acquire an Azure AD access token
+// Function to acquire a Microsoft Entra access token
 async function getAccessToken() {
     const url = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
     const params = new URLSearchParams({
@@ -231,7 +250,7 @@ const embedResponse = await axios.post(embedUrl, {
     identities: [{
         username: 'user@company.com',
         roles: ['SalesRegion'],
-        datasets: [datasetId]
+        datasets: [config.datasetId]
     }]
 }, { headers: { Authorization: `Bearer ${accessToken}` } });
 ```
@@ -240,9 +259,9 @@ const embedResponse = await axios.post(embedUrl, {
 
 Once your embedded dashboard is live, keep an eye on a few things. The Power BI Embedded capacity metrics app (available in the Power BI portal) shows CPU usage, memory consumption, and query performance. If you see throttling, consider scaling up your capacity SKU.
 
-Common issues include embed token expiration (tokens last about an hour by default), data source credential failures after password rotations, and CORS errors if your frontend domain is not whitelisted.
+Common issues include embed token expiration (tokens last about an hour by default), data source credential failures after password rotations, and CORS errors if your frontend calls your backend from a different origin without CORS configured.
 
-For production deployments, implement token refresh logic on the frontend. The Power BI JavaScript SDK provides events that fire before a token expires, giving you time to fetch a new one from your backend.
+For production deployments, implement token refresh logic on the frontend. For embed-for-your-customers scenarios that use embed tokens, fetch a new token from your backend before expiration and call `report.setAccessToken(newToken)`. The SDK's automatic `accessTokenProvider` hook is only supported for embed-for-your-organization scenarios that use Microsoft Entra access tokens.
 
 ## Summary
 
