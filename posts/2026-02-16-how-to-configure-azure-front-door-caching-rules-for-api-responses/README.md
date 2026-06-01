@@ -100,13 +100,22 @@ az afd rule-set create \
   --profile-name myFrontDoor \
   --rule-set-name apiCacheRules
 
+# Attach the rule set to the API route
+az afd route update \
+  --resource-group myResourceGroup \
+  --profile-name myFrontDoor \
+  --endpoint-name myEndpoint \
+  --route-name apiRoute \
+  --rule-sets apiCacheRules
+
 # Cache the product catalog for 10 minutes
 az afd rule create \
   --resource-group myResourceGroup \
   --profile-name myFrontDoor \
   --rule-set-name apiCacheRules \
   --rule-name cacheProductCatalog \
-  --order 1 \
+  --order 2 \
+  --match-processing-behavior Stop \
   --match-variable UrlPath \
   --operator BeginsWith \
   --match-values "/api/products" \
@@ -120,7 +129,8 @@ az afd rule create \
   --profile-name myFrontDoor \
   --rule-set-name apiCacheRules \
   --rule-name cacheReferenceData \
-  --order 2 \
+  --order 3 \
+  --match-processing-behavior Stop \
   --match-variable UrlPath \
   --operator BeginsWith \
   --match-values "/api/reference" \
@@ -140,7 +150,8 @@ az afd rule create \
   --profile-name myFrontDoor \
   --rule-set-name apiCacheRules \
   --rule-name noCacheUserData \
-  --order 0 \
+  --order 1 \
+  --match-processing-behavior Stop \
   --match-variable UrlPath \
   --operator BeginsWith \
   --match-values "/api/user" "/api/account" "/api/auth" \
@@ -148,7 +159,7 @@ az afd rule create \
   --cache-behavior BypassCache
 ```
 
-Setting this rule with order 0 ensures it is evaluated first. Any request to user-related endpoints bypasses the cache entirely.
+Setting this rule with the lowest nonzero order ensures it is evaluated before the other endpoint-specific rules. Any request to user-related endpoints bypasses the cache entirely.
 
 ## Honoring Origin Cache-Control Headers
 
@@ -165,7 +176,8 @@ az afd rule create \
   --match-variable UrlPath \
   --operator BeginsWith \
   --match-values "/api/" \
-  --action-name CacheExpiration \
+  --action-name RouteConfigurationOverride \
+  --enable-caching true \
   --cache-behavior HonorOrigin
 ```
 
@@ -182,24 +194,25 @@ Cache-Control: s-maxage=300            -> Cached for 5 minutes (s-maxage takes p
 
 ## Cache Key Customization
 
-By default, the cache key includes the URL path and selected query parameters. For APIs, you might need to vary the cache based on request headers:
+By default, the cache key includes the URL path and selected query parameters. For APIs, you might need to vary the cache based on query parameters:
 
 ```bash
-# Vary cache by Accept-Language header for localized APIs
+# Vary cache by a language query parameter for localized APIs
 az afd rule create \
   --resource-group myResourceGroup \
   --profile-name myFrontDoor \
   --rule-set-name apiCacheRules \
   --rule-name cacheByLanguage \
-  --order 3 \
+  --order 4 \
   --match-variable UrlPath \
   --operator BeginsWith \
   --match-values "/api/content" \
   --action-name CacheKeyQueryString \
-  --query-string-behavior IncludeAll
+  --query-string-behavior Include \
+  --query-parameters "language"
 ```
 
-For more complex cache key variations (like by `Accept` header for content negotiation), you may need to configure at the route level or use the Rules Engine.
+For more complex variations, prefer making the variant explicit in the URL path or query string so Front Door can include it in the cache key.
 
 ## Cache Purging
 
