@@ -179,19 +179,19 @@ For sprint planning, I always create these charts:
 
 If the visual query builder cannot express what you need, you can write queries directly in WIQL (Work Item Query Language). WIQL is a SQL-like language specific to Azure DevOps.
 
-The following WIQL query finds all user stories that were completed in the last two sprints and have linked bugs.
+The following WIQL query finds all closed user stories under a specific sprint path that have related bugs.
 
 ```sql
 SELECT [System.Id], [System.Title], [System.State]
 FROM WorkItemLinks
 WHERE
-  (Source.[System.WorkItemType] = 'User Story'
-  AND Source.[System.State] = 'Closed'
-  AND Source.[System.IterationPath] UNDER 'MyProject\Sprint 10')
-  AND ([System.Links.LinkType] = 'Related')
-  AND (Target.[System.WorkItemType] = 'Bug')
+  ([Source].[System.WorkItemType] = 'User Story'
+  AND [Source].[System.State] = 'Closed'
+  AND [Source].[System.IterationPath] UNDER 'MyProject\Sprint 10')
+  AND ([System.Links.LinkType] = 'System.LinkTypes.Related')
+  AND ([Target].[System.WorkItemType] = 'Bug')
 ORDER BY [System.Id]
-MODE (MayContain)
+MODE (MustContain)
 ```
 
 You can enter WIQL mode by toggling the query editor. It is not something you need every day, but it is invaluable for complex reporting queries.
@@ -200,17 +200,28 @@ You can enter WIQL mode by toggling the query editor. It is not something you ne
 
 You can also access queries through the Azure DevOps REST API, which opens up automation possibilities.
 
-This script queries for unfinished items from the last sprint and outputs them as a table you can discuss in planning.
+This script queries for unfinished items from a previous sprint and outputs them as a table you can discuss in planning. When you call WIQL directly through the REST API, use an explicit iteration path instead of the `@CurrentIteration` web query macro.
 
 ```bash
 # Fetch unfinished items from the previous sprint using the REST API
 
-curl -s -u ":$PAT" \
-  "https://dev.azure.com/myorg/myproject/_apis/wit/wiql?api-version=7.0" \
+ORG="myorg"
+PROJECT="myproject"
+PREVIOUS_ITERATION="MyProject\\Sprint 10"
+wiql=$(jq -rn --arg iteration "$PREVIOUS_ITERATION" \
+  '"SELECT [System.Id] FROM WorkItems WHERE [System.IterationPath] = \"" + $iteration + "\" AND [System.State] NOT IN (\"Done\", \"Closed\", \"Removed\") AND [System.WorkItemType] IN (\"User Story\", \"Bug\") ORDER BY [Microsoft.VSTS.Common.Priority]"')
+
+ids=$(curl -s -u ":$PAT" \
+  "https://dev.azure.com/$ORG/$PROJECT/_apis/wit/wiql?api-version=7.1" \
   -H "Content-Type: application/json" \
-  -d '{
-    "query": "SELECT [System.Id], [System.Title], [System.State], [Microsoft.VSTS.Scheduling.StoryPoints] FROM WorkItems WHERE [System.IterationPath] = @CurrentIteration - 1 AND [System.State] <> \"Done\" AND [System.WorkItemType] IN (\"User Story\", \"Bug\") ORDER BY [Microsoft.VSTS.Common.Priority]"
-  }' | jq '.workItems[].id'
+  -d "$(jq -n --arg query "$wiql" '{query: $query}')" |
+  jq -r '[.workItems[].id] | join(",")')
+
+if [ -n "$ids" ]; then
+  curl -s -u ":$PAT" \
+    "https://dev.azure.com/$ORG/$PROJECT/_apis/wit/workitems?ids=$ids&fields=System.Id,System.Title,System.State,Microsoft.VSTS.Scheduling.StoryPoints&api-version=7.1" |
+    jq -r '.value[] | [.id, .fields["System.Title"], .fields["System.State"], (.fields["Microsoft.VSTS.Scheduling.StoryPoints"] // "")] | @tsv'
+fi
 ```
 
 ## Tips for Effective Sprint Planning Queries
@@ -223,7 +234,7 @@ curl -s -u ":$PAT" \
 
 **Use column options wisely.** You can customize which columns appear in query results. For sprint planning, include State, Assigned To, Story Points, Priority, and Tags. Remove columns like Created Date or Changed By that are not relevant during planning.
 
-**Set up query-based alerts.** Azure DevOps can notify you when new items match a saved query. This is useful for queries like "Bugs assigned to me" or "High priority unassigned items."
+**Set up notification subscriptions.** Azure DevOps can notify you when work item events match filters you define. This is useful for scenarios like "Bugs assigned to me" or "High priority unassigned items."
 
 ## Wrapping Up
 
