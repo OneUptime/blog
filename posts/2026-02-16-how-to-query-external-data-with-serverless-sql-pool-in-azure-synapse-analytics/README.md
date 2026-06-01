@@ -12,7 +12,7 @@ Azure Synapse serverless SQL pool lets you run T-SQL queries directly against fi
 
 ## How Serverless SQL Pool Works
 
-When you submit a query to the serverless SQL pool, the engine reads files from Azure Storage (Data Lake Gen2, Blob Storage, or Cosmos DB analytical store), processes them in a distributed manner, and returns the results. You never create or manage compute resources - Azure handles all of that behind the scenes.
+When you submit a query to the serverless SQL pool, the engine reads external data from Azure Storage (Data Lake Gen2 or Blob Storage) or Cosmos DB analytical store, processes it in a distributed manner, and returns the results. You never create or manage compute resources - Azure handles all of that behind the scenes.
 
 The entry point for querying external data is either the `OPENROWSET` function or external tables. Both let you define the file location, format, and schema, and then query the data using standard T-SQL.
 
@@ -73,7 +73,7 @@ SELECT
     SUM(TotalAmount) AS Revenue,
     AVG(TotalAmount) AS AvgOrderValue
 FROM OPENROWSET(
-    BULK 'https://synapsedatalake2026.dfs.core.windows.net/data/sales/**/*.parquet',
+    BULK 'https://synapsedatalake2026.dfs.core.windows.net/data/sales/**',
     FORMAT = 'PARQUET'
 ) AS sales
 WHERE OrderDate >= '2025-01-01' AND OrderDate < '2026-01-01'
@@ -81,7 +81,7 @@ GROUP BY ProductCategory
 ORDER BY Revenue DESC;
 ```
 
-The `**` wildcard pattern recursively matches files in subdirectories. The `*` pattern matches files in a single directory.
+The `/**` wildcard pattern at the end of a path recursively matches files in subdirectories. The `*` pattern matches files in a single directory.
 
 ### Querying CSV Files
 
@@ -133,9 +133,21 @@ The serverless SQL pool needs permission to read files from storage. There are s
 ```sql
 -- Use the workspace managed identity to access storage
 -- The managed identity must have Storage Blob Data Reader role
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = '<StrongPassword123!>';
+
+CREATE DATABASE SCOPED CREDENTIAL WorkspaceIdentity
+WITH IDENTITY = 'Managed Identity';
+
+CREATE EXTERNAL DATA SOURCE SalesDataLake
+WITH (
+    LOCATION = 'https://synapsedatalake2026.dfs.core.windows.net/data',
+    CREDENTIAL = WorkspaceIdentity
+);
+
 SELECT *
 FROM OPENROWSET(
-    BULK 'https://synapsedatalake2026.dfs.core.windows.net/data/sales/*.parquet',
+    BULK 'sales/*.parquet',
+    DATA_SOURCE = 'SalesDataLake',
     FORMAT = 'PARQUET'
 ) AS sales;
 ```
@@ -165,6 +177,9 @@ az role assignment create \
 ### SAS Token
 
 ```sql
+-- Create a master key first if the database does not already have one
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = '<StrongPassword123!>';
+
 -- Create a database-scoped credential with a SAS token
 CREATE DATABASE SCOPED CREDENTIAL SalesDataCredential
 WITH IDENTITY = 'SHARED ACCESS SIGNATURE',
@@ -201,10 +216,15 @@ GO
 -- Create a master key (required for credentials)
 CREATE MASTER KEY ENCRYPTION BY PASSWORD = '<StrongPassword123!>';
 
+-- Use the Synapse workspace managed identity for storage access
+CREATE DATABASE SCOPED CREDENTIAL WorkspaceIdentity
+WITH IDENTITY = 'Managed Identity';
+
 -- Create the external data source
 CREATE EXTERNAL DATA SOURCE DataLake
 WITH (
-    LOCATION = 'https://synapsedatalake2026.dfs.core.windows.net/data'
+    LOCATION = 'https://synapsedatalake2026.dfs.core.windows.net/data',
+    CREDENTIAL = WorkspaceIdentity
 );
 
 -- Create an external file format for Parquet
@@ -225,7 +245,7 @@ CREATE EXTERNAL TABLE dbo.Sales (
     ProductCategory VARCHAR(100)
 )
 WITH (
-    LOCATION = 'sales/**/*.parquet',
+    LOCATION = 'sales/**',
     DATA_SOURCE = DataLake,
     FILE_FORMAT = ParquetFormat
 );
@@ -255,7 +275,7 @@ SELECT
     SUM(s.TotalAmount) AS Revenue,
     COUNT(*) AS OrderCount
 FROM OPENROWSET(
-    BULK 'sales/**/*.parquet',
+    BULK 'sales/**',
     DATA_SOURCE = 'DataLake',
     FORMAT = 'PARQUET'
 ) AS s
@@ -280,17 +300,21 @@ Serverless SQL pool charges based on data processed. Here are ways to minimize c
 
 **Use Parquet format**: Parquet is columnar and compressed. When you SELECT specific columns, the engine only reads those columns from the file. A query that selects 3 out of 50 columns might process 90% less data than with CSV.
 
-**Partition your data**: Organize files into partition folders (e.g., `/year=2025/month=01/`) and filter on partition columns. The engine skips entire folders that do not match your filter.
+**Partition your data**: Organize files into partition folders (e.g., `/year=2025/month=01/`) and target those folders in your path, or use `filepath()` filters with `OPENROWSET` wildcard paths. The engine can skip files that do not match your path or metadata filter.
 
 ```sql
--- Query with partition pruning
--- The engine only reads files in the year=2025 folder
-SELECT *
+-- Query with filepath filters
+-- The engine can target only files that match year=2025
+SELECT
+    ProductCategory,
+    SUM(TotalAmount) AS Revenue
 FROM OPENROWSET(
-    BULK 'sales/year=2025/month=*/day=*/*.parquet',
+    BULK 'sales/year=*/month=*/day=*/*.parquet',
     DATA_SOURCE = 'DataLake',
     FORMAT = 'PARQUET'
-) AS sales;
+) AS sales
+WHERE sales.filepath(1) = '2025'
+GROUP BY ProductCategory;
 ```
 
 **Select only needed columns**: Never use `SELECT *` in production queries. Specify the columns you need.
