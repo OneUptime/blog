@@ -10,6 +10,8 @@ Description: Learn how to create and configure CodeCatalyst Workflows for contin
 
 CodeCatalyst Workflows are the CI/CD engine of AWS CodeCatalyst. If you have used GitHub Actions, GitLab CI, or Jenkins pipelines, the concept is familiar: you define your build, test, and deploy steps in a YAML file, and the system executes them automatically when triggered. But CodeCatalyst Workflows have some unique features, including native AWS service integration, managed compute environments, and built-in support for CDK and CloudFormation deployments.
 
+As of November 7, 2025, Amazon CodeCatalyst is no longer open to new customers. Existing customers can continue to use the service as normal, but AWS does not plan to introduce new features beyond security, availability, and performance enhancements.
+
 This guide dives deep into creating workflows, configuring triggers, chaining actions, managing secrets, and deploying to multiple environments.
 
 ## Workflow Basics
@@ -29,7 +31,7 @@ Name: SimpleBuild
 SchemaVersion: "1.0"
 
 Triggers:
-  - Type: Push
+  - Type: PUSH
     Branches:
       - main
 
@@ -55,13 +57,13 @@ Runs when code is pushed to specified branches:
 
 ```yaml
 Triggers:
-  - Type: Push
+  - Type: PUSH
     Branches:
       - main
-      - "release/*"
+      - 'release\/.*'
     FilesChanged:
-      - "src/**"
-      - "package.json"
+      - 'src\/.*'
+      - 'package\.json'
 ```
 
 ### Pull Request Trigger
@@ -70,7 +72,7 @@ Runs when a pull request is opened or updated:
 
 ```yaml
 Triggers:
-  - Type: PullRequest
+  - Type: PULLREQUEST
     Branches:
       - main
     Events:
@@ -84,8 +86,8 @@ Runs on a cron schedule:
 
 ```yaml
 Triggers:
-  - Type: Schedule
-    Expression: "cron(0 6 * * ? *)"
+  - Type: SCHEDULE
+    Expression: "0 6 * * ? *"
 ```
 
 ### Manual Trigger
@@ -93,8 +95,7 @@ Triggers:
 Allows manual execution from the console:
 
 ```yaml
-Triggers:
-  - Type: Manual
+# Omit the Triggers section to require manual execution from the console.
 ```
 
 ## Building a Complete CI/CD Pipeline
@@ -107,7 +108,7 @@ Name: FullPipeline
 SchemaVersion: "1.0"
 
 Triggers:
-  - Type: Push
+  - Type: PUSH
     Branches:
       - main
 
@@ -167,7 +168,7 @@ Actions:
             cp -r dist/ deploy-package/
             cp package.json deploy-package/
             cp package-lock.json deploy-package/
-            cd deploy-package && npm ci --production
+            cd deploy-package && npm ci --omit=dev
     Outputs:
       Artifacts:
         - Name: DeployPackage
@@ -201,15 +202,13 @@ Actions:
 
   # Step 5: Deploy to staging
   DeployStaging:
-    Identifier: aws/cdk-deploy@v1
+    Identifier: aws/cdk-deploy@v2
     DependsOn:
       - Build
       - DockerBuild
     Inputs:
       Sources:
         - WorkflowSource
-      Artifacts:
-        - DeployPackage
     Environment:
       Name: staging
       Connections:
@@ -243,14 +242,12 @@ Actions:
 
   # Step 7: Deploy to production
   DeployProduction:
-    Identifier: aws/cdk-deploy@v1
+    Identifier: aws/cdk-deploy@v2
     DependsOn:
       - IntegrationTests
     Inputs:
       Sources:
         - WorkflowSource
-      Artifacts:
-        - DeployPackage
     Environment:
       Name: production
       Connections:
@@ -290,7 +287,7 @@ Actions:
     Configuration:
       Steps:
         - Run: |
-            # Secrets are available as environment variables
+            # Secret references are resolved by CodeCatalyst at runtime
             echo "Deploying with API key..."
             curl -X POST https://api.example.com/deploy \
               -H "Authorization: Bearer ${Secrets.API_KEY}"
@@ -311,6 +308,8 @@ Actions:
     Environment:
       Name: staging
     Inputs:
+      Sources:
+        - WorkflowSource
       Variables:
         - Name: NODE_ENV
           Value: production
@@ -339,10 +338,9 @@ Actions:
 ```
 
 Available fleet sizes:
-- `Linux.x86-64.Small` - 2 vCPU, 3 GB RAM
-- `Linux.x86-64.Medium` - 4 vCPU, 7 GB RAM
-- `Linux.x86-64.Large` - 8 vCPU, 15 GB RAM
-- `Linux.x86-64.2XLarge` - 16 vCPU, 32 GB RAM
+- `Linux.x86-64.Large` - 2 vCPU, 4 GiB RAM
+- `Linux.x86-64.XLarge` - 4 vCPU, 8 GiB RAM
+- `Linux.x86-64.2XLarge` - 8 vCPU, 16 GiB RAM
 
 ## Passing Artifacts Between Actions
 
@@ -374,7 +372,7 @@ Actions:
         - BuildArtifact
     Configuration:
       Steps:
-        - Run: ls -la  # BuildArtifact contents are in the working directory
+        - Run: ls -la  # BuildArtifact contents are the primary input
         - Run: ./deploy.sh
 ```
 
@@ -388,7 +386,7 @@ Name: PRValidation
 SchemaVersion: "1.0"
 
 Triggers:
-  - Type: PullRequest
+  - Type: PULLREQUEST
     Branches:
       - main
     Events:
@@ -446,7 +444,7 @@ Actions:
 
 5. **Separate PR and deployment workflows.** Keep validation workflows (triggered by PRs) separate from deployment workflows (triggered by pushes to main).
 
-6. **Test your workflows.** Use the manual trigger to test new workflows without pushing to main.
+6. **Test your workflows.** Start workflows manually from the console to test new workflows without pushing to main.
 
 ## Wrapping Up
 
