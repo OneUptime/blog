@@ -76,7 +76,7 @@ Console.WriteLine($"Inserted {documentCount} documents");
 
 ## Bulk Insert with Error Handling
 
-The basic pattern above will throw an AggregateException if any operation fails. For production code, handle errors per operation:
+The basic pattern above will fault the `Task.WhenAll` task if any operation fails. For production code, handle errors per operation:
 
 ```csharp
 // Bulk insert with per-operation error handling
@@ -218,13 +218,12 @@ List<(string id, PartitionKey pk)> keysToRead = new List<(string, PartitionKey)>
     // ... potentially thousands of keys
 };
 
-List<Task<ItemResponse<dynamic>>> readTasks = keysToRead
-    .Select(key => container.ReadItemAsync<dynamic>(key.id, key.pk))
-    .ToList();
+FeedResponse<dynamic> results = await container.ReadManyItemsAsync<dynamic>(
+    items: keysToRead
+);
 
-var results = await Task.WhenAll(readTasks);
-Console.WriteLine($"Read {results.Length} documents");
-Console.WriteLine($"Total RUs: {results.Sum(r => r.RequestCharge)}");
+Console.WriteLine($"Read {results.Count} documents");
+Console.WriteLine($"Total RUs: {results.RequestCharge}");
 ```
 
 ## Streaming Bulk Operations
