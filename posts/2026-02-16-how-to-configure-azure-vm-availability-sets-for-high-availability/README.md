@@ -197,8 +197,8 @@ Azure also offers availability zones, which provide a higher level of protection
 | Protection level | Rack-level (fault domains) | Datacenter-level (separate buildings) |
 | SLA | 99.95% | 99.99% |
 | Fault isolation | Same datacenter, different racks | Different datacenters in same region |
-| Network latency | Sub-millisecond between VMs | Low, typically 1-2ms between zones |
-| Cost | No extra cost | No extra cost for VMs, but cross-zone traffic has costs |
+| Network latency | Sub-millisecond between VMs | Low; Microsoft targets less than about 2ms round-trip latency between zones |
+| Cost | No extra cost | No extra cost for VMs or inter-zone data transfer |
 
 Use availability zones when you need the highest level of protection against datacenter failures. Use availability sets when your region does not support zones or when you need the VMs to be very close together for latency-sensitive communication.
 
@@ -242,13 +242,14 @@ This preserves your data but requires downtime. Plan accordingly.
 
 ## Monitoring Availability Set Health
 
-You can monitor the health of your availability set through Azure Monitor:
+You can check the runtime status of the VMs in the availability set from the CLI:
 
 ```bash
 # Check the status of all VMs in the availability set
-az vm list \
+az vm get-instance-view \
   --resource-group myResourceGroup \
-  --query "[?availabilitySet!=null].{Name:name, Status:provisioningState}" \
+  --ids $(az vm list --resource-group myResourceGroup --query "[?availabilitySet!=null].id" --output tsv) \
+  --query "[].{Name:name, PowerState:instanceView.statuses[?starts_with(code, 'PowerState/')].displayStatus | [0]}" \
   --output table
 ```
 
