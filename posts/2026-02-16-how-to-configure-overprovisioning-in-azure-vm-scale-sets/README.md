@@ -8,9 +8,9 @@ Description: Understand how overprovisioning works in Azure VM Scale Sets and wh
 
 ---
 
-When you tell an Azure VM Scale Set to create 10 instances, it might actually create 12 or 13 behind the scenes. This is overprovisioning - Azure creates more instances than requested, waits for the required number to provision successfully, and then deletes the extras. It sounds wasteful, but it dramatically improves provisioning reliability and speed. You do not get charged for the extra instances because they are deleted within seconds of the target count being reached.
+When you tell a Uniform orchestration Azure VM Scale Set to create 10 instances, it might actually create more than 10 behind the scenes. This is overprovisioning - Azure creates more instances than requested, waits for the required number to provision successfully, and then deletes the extras. It sounds wasteful, but it dramatically improves provisioning reliability and speed. You do not get charged for the extra instances because they are deleted once the target count is successfully provisioned.
 
-Overprovisioning is enabled by default on scale sets, and most of the time you should leave it that way. But there are situations where it causes problems, and understanding how it works helps you make the right choice for your workload.
+Overprovisioning is supported for Uniform orchestration scale sets and is enabled by default there, and most of the time you should leave it that way. It is not supported for Flexible orchestration scale sets. But there are situations where it causes problems, and understanding how it works helps you make the right choice for your workload.
 
 ## Why Overprovisioning Exists
 
@@ -29,8 +29,8 @@ The benefits:
 When overprovisioning is enabled:
 
 1. You request N instances (say, 10).
-2. Azure creates N + buffer instances (say, 12). The buffer is typically 10-20% extra, adjusted dynamically by Azure.
-3. Azure waits for N instances to reach a "Creating" or "Succeeded" state.
+2. Azure creates N + buffer instances (say, 12). Azure determines the buffer internally.
+3. Azure waits for N instances to provision successfully.
 4. The excess instances are immediately deleted.
 5. Your scale set ends up with exactly N healthy instances.
 
@@ -47,7 +47,7 @@ az vmss show \
   --query "overprovision" -o tsv
 ```
 
-The default is `true` for scale sets created through the CLI, ARM templates, and the portal.
+For Uniform orchestration scale sets, the default `overprovision` value is `true`.
 
 ## Disabling Overprovisioning
 
@@ -71,6 +71,7 @@ az vmss create \
   --image Ubuntu2204 \
   --vm-sku Standard_D2s_v5 \
   --instance-count 5 \
+  --orchestration-mode Uniform \
   --disable-overprovision \
   --admin-username azureuser \
   --generate-ssh-keys
@@ -78,11 +79,11 @@ az vmss create \
 
 ### Scenario 2: Custom Script Extensions with Side Effects
 
-If your Custom Script Extension does something that should only happen once per "real" instance (like registering with a license server, creating DNS records, or sending notifications), overprovisioning can trigger those side effects for instances that are immediately deleted.
+If your Custom Script Extension does something that should only happen once per "real" instance (like registering with a license server, creating DNS records, or sending notifications), make sure the scale set uses `doNotRunExtensionsOnOverprovisionedVMs` so extensions run only on the requested VMs that are kept, or disable overprovisioning.
 
-### Scenario 3: Limited Quota
+### Scenario 3: Limited Capacity-Sensitive Dependencies
 
-If your subscription has tight vCPU quota, overprovisioning might push you over the limit. For example, if you have quota for exactly 20 vCPUs and request a scale set with 10 instances of 2-vCPU VMs (20 vCPUs), overprovisioning will try to create 12 instances (24 vCPUs) and fail.
+Overprovisioned VMs do not count toward your quota limits, but they can still briefly create extra dependent resources such as network interfaces and IP configurations. If your deployment has tightly constrained dependencies, overprovisioning can expose those constraints during scale-out.
 
 ### Scenario 4: Static IP Assignment
 
@@ -118,7 +119,7 @@ During a rolling upgrade, overprovisioning is not used for the upgrade batches t
 
 ## Overprovisioning and Load Balancers
 
-When overprovisioning is enabled with a load balancer, the extra instances are briefly added to the load balancer's backend pool. However, because they are deleted so quickly (usually within seconds), they rarely receive any actual traffic.
+When overprovisioning is enabled with a load balancer, the extra instances are briefly added to the load balancer's backend pool. However, because they are deleted after the requested VMs are successfully provisioned, they rarely receive any actual traffic.
 
 If your load balancer uses connection draining with a long timeout, the extra instances might hold connections open during deletion. This is usually not an issue in practice, but it is worth knowing.
 
@@ -133,6 +134,7 @@ Here is how to configure overprovisioning in an ARM template:
   "name": "myScaleSet",
   "location": "eastus",
   "properties": {
+    "orchestrationMode": "Uniform",
     "overprovision": true,
     "upgradePolicy": {
       "mode": "Rolling"
@@ -193,6 +195,7 @@ az vmss create \
   --image Ubuntu2204 \
   --vm-sku Standard_D2s_v5 \
   --instance-count 10 \
+  --orchestration-mode Uniform \
   --priority Spot \
   --eviction-policy Deallocate \
   --max-price -1 \
@@ -202,11 +205,11 @@ az vmss create \
 
 ## Common Misconceptions
 
-**"Overprovisioning costs money."** It does not. Extra instances exist for seconds and are not billed.
+**"Overprovisioning costs money."** It does not. Extra instances are deleted after the requested VMs are successfully provisioned and are not billed.
 
 **"Overprovisioning creates more instances than I asked for."** It creates more temporarily during provisioning, but your scale set always ends up with exactly the count you specified.
 
-**"Overprovisioning doubles my instances."** The overprovision buffer is typically 10-20%, not 100%.
+**"Overprovisioning doubles my instances."** Azure creates extra instances temporarily; it is not intended to double the final capacity of your scale set.
 
 **"I should always enable overprovisioning."** Almost always, but not if your instances have side effects during creation that should only happen for permanent instances.
 
@@ -229,4 +232,4 @@ Using OneUptime to track scale-out duration and instance count over time helps y
 
 ## Wrapping Up
 
-Overprovisioning is a simple but effective optimization for VM Scale Sets. It improves provisioning speed and reliability at no extra cost, and it is enabled by default for good reason. Disable it only when your instances have creation side effects that should not happen for temporary instances, when you have tight quota constraints, or when you need deterministic instance identity assignment. For the vast majority of stateless, scale-out workloads, leave it on and enjoy faster, more reliable scaling.
+Overprovisioning is a simple but effective optimization for Uniform orchestration VM Scale Sets. It improves provisioning speed and reliability at no extra cost, and it is enabled by default for good reason. Disable it only when your instances have creation side effects that should not happen for temporary instances, when you have tightly constrained deployment dependencies, or when you need deterministic instance identity assignment. For the vast majority of stateless, scale-out workloads on Uniform orchestration, leave it on and enjoy faster, more reliable scaling.
