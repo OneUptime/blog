@@ -18,10 +18,10 @@ When you enable health checks, Azure pings the specified path on each instance e
 
 1. Azure sends an HTTP GET request to the health check path on each instance
 2. If an instance returns a status code between 200 and 299, it is considered healthy
-3. If an instance fails to respond (or returns a non-2xx code) for 10 consecutive checks, it is marked as unhealthy
-4. Unhealthy instances are removed from the load balancer rotation (traffic stops being sent to them)
-5. Azure continues pinging the unhealthy instance. If it starts returning 200 again, it goes back into rotation
-6. If an instance stays unhealthy for one hour, it is replaced with a new instance
+3. If an instance fails to respond (or returns a non-2xx code) for 10 consecutive checks by default, it is marked as unhealthy
+4. Unhealthy instances are removed from the load balancer rotation, up to the configured unhealthy-instance percentage limit
+5. Azure continues pinging the unhealthy instance. If it starts returning a 200-299 status code again, it goes back into rotation
+6. If an instance stays unhealthy for one hour, it can be replaced with a new instance, subject to App Service plan limits
 
 This is fundamentally different from a simple uptime check. It works at the instance level and automatically takes corrective action.
 
@@ -95,17 +95,14 @@ This checks that the application can actually do its job by testing critical dep
 [Route("health")]
 public class HealthController : ControllerBase
 {
-    private readonly IDbConnection _database;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly DbConnection _database;
     private readonly IConfiguration _config;
 
     public HealthController(
-        IDbConnection database,
-        IHttpClientFactory httpClientFactory,
+        DbConnection database,
         IConfiguration config)
     {
         _database = database;
-        _httpClientFactory = httpClientFactory;
         _config = config;
     }
 
@@ -118,6 +115,11 @@ public class HealthController : ControllerBase
         // Check database connectivity
         try
         {
+            if (_database.State != ConnectionState.Open)
+            {
+                await _database.OpenAsync();
+            }
+
             using var cmd = _database.CreateCommand();
             cmd.CommandText = "SELECT 1";
             await cmd.ExecuteScalarAsync();
@@ -133,7 +135,11 @@ public class HealthController : ControllerBase
         try
         {
             var cacheHost = _config["REDIS_HOST"];
-            // Quick connectivity test
+            if (string.IsNullOrWhiteSpace(cacheHost))
+            {
+                throw new InvalidOperationException("REDIS_HOST is not configured");
+            }
+
             checks["cache"] = "ok";
         }
         catch (Exception ex)
@@ -201,7 +207,7 @@ module.exports = router;
 
 ## Using ASP.NET Core Health Checks Framework
 
-ASP.NET Core has a built-in health checks framework that integrates nicely with Azure App Service:
+ASP.NET Core has a built-in health checks framework that integrates nicely with Azure App Service. The SQL Server, Redis, and URL checks shown here are extension methods from health check provider packages such as `AspNetCore.HealthChecks.SqlServer`, `AspNetCore.HealthChecks.Redis`, and `AspNetCore.HealthChecks.Uris`:
 
 ```csharp
 // Program.cs - Configure health checks using the built-in framework
@@ -250,7 +256,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 
 ### Keep It Fast
 
-The health check should complete quickly. Azure times out health check requests after a few seconds. If your health check calls a slow external API, the entire check might time out, and Azure will mark the instance as unhealthy even though the app itself is fine.
+The health check should complete quickly. Azure considers the health check ping unhealthy if the path does not return a response within one minute. If your health check calls a slow external API, the entire check might time out, and Azure will mark the instance as unhealthy even though the app itself is fine.
 
 Set timeouts on all dependency checks:
 
@@ -265,11 +271,11 @@ Set timeouts on all dependency checks:
 
 ### Do Not Check Optional Dependencies
 
-Only check dependencies that are truly critical. If your app can function without the cache (just slower), do not mark the instance as unhealthy when the cache is down. Otherwise, all your instances get pulled from rotation when the cache has a blip.
+Only check dependencies that are truly critical. If your app can function without the cache (just slower), do not mark the instance as unhealthy when the cache is down. Otherwise, a shared cache issue can make every instance report unhealthy, and App Service will keep routing to unhealthy instances when all instances are unhealthy.
 
 ### Avoid Authentication on the Health Endpoint
 
-The Azure health check feature sends a plain GET request without authentication headers. Make sure your health endpoint does not require authentication:
+Health check integrates with App Service authentication and authorization. If you use your own authentication system, make sure your health endpoint allows anonymous access or validates App Service's `x-ms-auth-internal-token` header:
 
 ```csharp
 // Make sure the health endpoint allows anonymous access
@@ -307,10 +313,10 @@ az monitor metrics alert create \
 When an instance is marked unhealthy:
 
 1. The load balancer stops sending new requests to it
-2. Existing connections are allowed to complete
+2. If the configured unhealthy-instance percentage limit has been reached, App Service may keep routing to some unhealthy instances
 3. Azure continues pinging the health endpoint
 4. If the instance recovers, it goes back into rotation
-5. If it stays unhealthy for 1 hour, Azure replaces it
+5. If it stays unhealthy for 1 hour, Azure can replace it, subject to App Service plan limits
 
 If all instances are unhealthy, Azure does NOT remove them all. It keeps routing traffic to all instances to avoid a complete outage. This prevents a scenario where a shared dependency failure (like a database outage) takes down all instances.
 
