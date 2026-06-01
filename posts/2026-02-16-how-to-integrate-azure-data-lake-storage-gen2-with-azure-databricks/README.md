@@ -14,20 +14,20 @@ Azure Databricks and Azure Data Lake Storage Gen2 are a natural pairing for big 
 
 There are several ways Databricks can authenticate to ADLS Gen2.
 
-**Service Principal with OAuth 2.0** is the recommended approach for production. You create an Azure AD application, give it access to the storage account, and configure Databricks to use its credentials.
+**Service Principal with OAuth 2.0** is a common approach for production direct ABFS access. You create a Microsoft Entra ID application, give it access to the storage account, and configure Databricks to use its credentials. For new Unity Catalog-enabled workspaces, Databricks recommends using Unity Catalog storage credentials and external locations to govern cloud storage access.
 
 **Account Key** is the simplest method but the least secure. The account key gives full access to everything in the storage account.
 
-**Azure AD Passthrough** uses the identity of the user running the notebook. Good for interactive exploration, but not suitable for scheduled jobs.
+**Microsoft Entra ID credential passthrough** uses the identity of the user running the notebook. Good for interactive exploration, but not suitable for scheduled jobs.
 
-**Managed Identity** is available when Databricks is deployed with a system-assigned managed identity. This avoids managing credentials entirely.
+**Managed Identity** is available through Unity Catalog storage credentials backed by an Azure Databricks access connector. This avoids managing credentials entirely.
 
 ## Setting Up a Service Principal
 
-First, create a service principal in Azure AD.
+First, create a service principal in Microsoft Entra ID.
 
 ```bash
-# Create an Azure AD app registration
+# Create a Microsoft Entra ID app registration
 
 az ad app create --display-name "databricks-adls-access"
 
@@ -48,7 +48,8 @@ Then grant the service principal access to your ADLS Gen2 account.
 # Assign "Storage Blob Data Contributor" role to the service principal
 # This allows read, write, and delete operations on blobs
 az role assignment create \
-  --assignee <service-principal-object-id> \
+  --assignee-object-id <service-principal-object-id> \
+  --assignee-principal-type ServicePrincipal \
   --role "Storage Blob Data Contributor" \
   --scope "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<account-name>"
 ```
@@ -115,10 +116,15 @@ Never hardcode credentials in notebooks. Use Databricks secret scopes backed by 
 # Create a Databricks secret scope backed by Azure Key Vault
 # Run this using the Databricks CLI
 databricks secrets create-scope \
-  --scope adls-secrets \
-  --scope-backend-type AZURE_KEYVAULT \
-  --resource-id "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<vault-name>" \
-  --dns-name "https://<vault-name>.vault.azure.net/"
+  --json '{
+    "scope": "adls-secrets",
+    "scope_backend_type": "AZURE_KEYVAULT",
+    "backend_azure_keyvault": {
+      "resource_id": "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<vault-name>",
+      "tenant_id": "<tenant-id>",
+      "dns_name": "https://<vault-name>.vault.azure.net/"
+    }
+  }'
 ```
 
 Then store your service principal credentials in Key Vault.
@@ -132,7 +138,7 @@ az keyvault secret set --vault-name my-keyvault --name tenant-id --value "<tenan
 
 ## Mounting ADLS Gen2 as a Databricks Mount Point
 
-Mount points make it easier to reference storage paths. Instead of typing the full abfss:// URI every time, you mount the storage to a path like /mnt/datalake.
+Mount points make it easier to reference storage paths. Instead of typing the full abfss:// URI every time, you mount the storage to a path like /mnt/datalake. DBFS mounts are deprecated and not recommended for new Unity Catalog-enabled workspaces, so use Unity Catalog volumes or external locations for new production deployments. If you are maintaining a legacy workspace, the mount pattern looks like this.
 
 ```python
 # Mount ADLS Gen2 file system to a Databricks mount point
