@@ -16,7 +16,7 @@ In this guide, I will cover how to connect threat intelligence feeds to Sentinel
 
 Sentinel supports two types of threat intelligence data:
 
-**Indicators of Compromise (IOCs)**: Individual data points like IP addresses, domain names, URLs, file hashes, and email addresses that are associated with known threats. These are stored in the `ThreatIntelligenceIndicator` table.
+**Indicators of Compromise (IOCs)**: Individual data points like IP addresses, domain names, URLs, file hashes, and email addresses that are associated with known threats. These are stored in the `ThreatIntelIndicators` table.
 
 **Threat Intelligence Platforms (TIPs)**: External platforms that aggregate and curate threat intelligence from multiple sources. Sentinel can pull indicators from these platforms via APIs.
 
@@ -24,7 +24,7 @@ The matching workflow looks like this:
 
 ```mermaid
 flowchart LR
-    A[TI Feeds] -->|Ingest| B[ThreatIntelligenceIndicator Table]
+    A[TI Feeds] -->|Ingest| B[ThreatIntelIndicators Table]
     C[Security Logs] --> D{Analytics Rules}
     B --> D
     D -->|Match Found| E[Security Alert]
@@ -42,12 +42,20 @@ This is the simplest connector - it pulls indicators from Microsoft's own threat
 ```bash
 # Enable the Microsoft Defender Threat Intelligence connector
 
-az sentinel data-connector create \
-  --resource-group sentinel-rg \
-  --workspace-name sentinel-workspace \
-  --data-connector-id "MicrosoftDefenderThreatIntelligence" \
-  --kind "MicrosoftThreatIntelligence" \
-  --properties '{"dataTypes":{"microsoftEmergingThreatFeed":{"lookbackPeriod":"1970-01-01T00:00:00Z","state":"Enabled"}}}'
+az rest --method PUT \
+  --url "https://management.azure.com/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/sentinel-rg/providers/Microsoft.OperationalInsights/workspaces/sentinel-workspace/providers/Microsoft.SecurityInsights/dataConnectors/MicrosoftDefenderThreatIntelligence?api-version=2025-04-01-preview" \
+  --body '{
+    "kind": "MicrosoftThreatIntelligence",
+    "properties": {
+      "tenantId": "YOUR_TENANT_ID",
+      "dataTypes": {
+        "microsoftEmergingThreatFeed": {
+          "lookbackPeriod": "1970-01-01T00:00:00Z",
+          "state": "Enabled"
+        }
+      }
+    }
+  }'
 ```
 
 ### Connector 2: TAXII Server
@@ -68,23 +76,23 @@ Here is an example using the popular Anomali Limo free feed.
 
 ```bash
 # Configure a TAXII feed connector (example with Anomali Limo)
-az sentinel data-connector create \
-  --resource-group sentinel-rg \
-  --workspace-name sentinel-workspace \
-  --data-connector-id "TaxiiAnomali" \
-  --kind "ThreatIntelligenceTaxii" \
-  --properties '{
-    "tenantId": "YOUR_TENANT_ID",
-    "workspaceId": "YOUR_WORKSPACE_ID",
-    "friendlyName": "Anomali Limo Free Feed",
-    "taxiiServer": "https://limo.anomali.com/api/v1/taxii2/taxii/",
-    "collectionId": "YOUR_COLLECTION_ID",
-    "userName": "guest",
-    "password": "guest",
-    "pollingFrequency": "OnceAnHour",
-    "dataTypes": {
-      "taxiiClient": {
-        "state": "Enabled"
+az rest --method PUT \
+  --url "https://management.azure.com/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/sentinel-rg/providers/Microsoft.OperationalInsights/workspaces/sentinel-workspace/providers/Microsoft.SecurityInsights/dataConnectors/TaxiiAnomali?api-version=2025-04-01-preview" \
+  --body '{
+    "kind": "ThreatIntelligenceTaxii",
+    "properties": {
+      "tenantId": "YOUR_TENANT_ID",
+      "workspaceId": "YOUR_WORKSPACE_ID",
+      "friendlyName": "Anomali Limo Free Feed",
+      "taxiiServer": "https://limo.anomali.com/api/v1/taxii2/taxii/",
+      "collectionId": "YOUR_COLLECTION_ID",
+      "userName": "guest",
+      "password": "guest",
+      "pollingFrequency": "OnceAnHour",
+      "dataTypes": {
+        "taxiiClient": {
+          "state": "Enabled"
+        }
       }
     }
   }'
@@ -92,13 +100,12 @@ az sentinel data-connector create \
 
 ### Connector 3: Threat Intelligence Upload API
 
-For custom feeds or indicators from your own research, use the Upload Indicators API to push indicators directly to Sentinel.
+For custom feeds or indicators from your own research, use the STIX objects upload API to push indicators directly to Sentinel.
 
 ```python
 # Python script to upload custom threat indicators to Sentinel
 import requests
-import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Azure authentication (use your preferred method)
 headers = {
@@ -106,34 +113,36 @@ headers = {
     "Content-Type": "application/json"
 }
 
+now = datetime.now(timezone.utc)
+
 # Define a malicious IP indicator in STIX format
-indicator = {
+payload = {
     "sourcesystem": "CustomThreatFeed",
-    "indicators": [
+    "stixobjects": [
         {
             "type": "indicator",
             "spec_version": "2.1",
-            "id": "indicator--custom-001",
-            "created": datetime.utcnow().isoformat() + "Z",
-            "modified": datetime.utcnow().isoformat() + "Z",
+            "id": "indicator--2f669986-b40b-4423-b720-4396ca5689fb",
+            "created": now.isoformat().replace("+00:00", "Z"),
+            "modified": now.isoformat().replace("+00:00", "Z"),
             "name": "Malicious C2 Server",
             "description": "Command and control server identified by internal research",
             "pattern": "[ipv4-addr:value = '203.0.113.50']",
             "pattern_type": "stix",
-            "valid_from": datetime.utcnow().isoformat() + "Z",
-            "valid_until": (datetime.utcnow() + timedelta(days=90)).isoformat() + "Z",
+            "valid_from": now.isoformat().replace("+00:00", "Z"),
+            "valid_until": (now + timedelta(days=90)).isoformat().replace("+00:00", "Z"),
             "confidence": 85,
             "labels": ["malicious-activity", "c2"],
-            "threat_types": ["malware"]
+            "indicator_types": ["malicious-activity"]
         }
     ]
 }
 
 # Upload the indicator to Sentinel
 response = requests.post(
-    f"https://sentinelus.azure-api.net/workspaces/{workspace_id}/threatintelligenceindicators:upload?api-version=2024-01-01-preview",
+    f"https://api.ti.sentinel.azure.com/workspaces/{workspace_id}/threat-intelligence-stix-objects:upload?api-version=2024-02-01-preview",
     headers=headers,
-    json=indicator
+    json=payload
 )
 
 print(f"Upload status: {response.status_code}")
@@ -141,7 +150,7 @@ print(f"Upload status: {response.status_code}")
 
 ## Step 2: Verify Indicator Ingestion
 
-After configuring the connectors, verify that indicators are flowing into the `ThreatIntelligenceIndicator` table.
+After configuring the connectors, verify that indicators are flowing into the `ThreatIntelIndicators` table.
 
 Navigate to Microsoft Sentinel > Threat Intelligence to see the indicator management blade. You can filter by source, type, and confidence level.
 
@@ -149,19 +158,28 @@ Or run a KQL query to check the data.
 
 ```kql
 // Check the volume and types of threat intelligence indicators
-ThreatIntelligenceIndicator
+ThreatIntelIndicators
 | where TimeGenerated > ago(24h)
-| summarize Count = count() by IndicatorType = tostring(parse_json(AdditionalInformation).IndicatorProvider), ThreatType
+| summarize arg_max(TimeGenerated, *) by Id
+| where IsDeleted == false
+| summarize Count = count() by IndicatorType = ObservableKey, ThreatType = tostring(Data.indicator_types[0])
 | order by Count desc
 ```
 
 ```kql
 // View the most recent indicators with their details
-ThreatIntelligenceIndicator
+ThreatIntelIndicators
 | where TimeGenerated > ago(1h)
-| where Active == true
+| summarize arg_max(TimeGenerated, *) by Id
+| where IsDeleted == false and IsActive == true
+| extend NetworkIP = iff(ObservableKey == "ipv4-addr:value", ObservableValue, ""),
+         DomainName = iff(ObservableKey == "domain-name:value", ObservableValue, ""),
+         Url = iff(ObservableKey == "url:value", ObservableValue, ""),
+         FileHashValue = iff(ObservableKey has "file:hashes", ObservableValue, ""),
+         ThreatType = tostring(Data.indicator_types[0]),
+         Source = base64_decode_tostring(tostring(split(Id, "---")[0]))
 | project TimeGenerated, IndicatorType = ThreatType, NetworkIP, DomainName, Url, FileHashValue,
-    Confidence = ConfidenceScore, Source = SourceSystem, ExpirationDateTime
+    Confidence, Source, ValidUntil
 | take 20
 ```
 
@@ -180,9 +198,15 @@ This rule matches malicious IP indicators against network connection logs.
 let dt_lookBack = 1h;
 let ioc_lookBack = 14d;
 // Get active IP indicators
-let IP_Indicators = ThreatIntelligenceIndicator
+let IP_Indicators = ThreatIntelIndicators
     | where TimeGenerated >= ago(ioc_lookBack)
-    | where Active == true
+    | summarize arg_max(TimeGenerated, *) by Id
+    | where IsDeleted == false and IsActive == true
+    | where isempty(ValidUntil) or ValidUntil > now()
+    | extend NetworkIP = iff(ObservableKey == "ipv4-addr:value", ObservableValue, ""),
+             NetworkSourceIP = iff(ObservableKey == "network-traffic:src_ref.value", ObservableValue, ""),
+             NetworkDestinationIP = iff(ObservableKey == "network-traffic:dst_ref.value", ObservableValue, ""),
+             Description = tostring(Data.description)
     | where isnotempty(NetworkIP) or isnotempty(NetworkSourceIP) or isnotempty(NetworkDestinationIP)
     | extend TI_IP = coalesce(NetworkIP, NetworkSourceIP, NetworkDestinationIP)
     | summarize LatestIndicatorTime = arg_max(TimeGenerated, *) by TI_IP;
@@ -194,7 +218,7 @@ IP_Indicators
     | where isnotempty(DestinationIP)
     | extend CSL_IP = DestinationIP
 ) on $left.TI_IP == $right.CSL_IP
-| project AlertTime = TimeGenerated1, ThreatIP = TI_IP, Description, Confidence = ConfidenceScore,
+| project AlertTime = TimeGenerated1, ThreatIP = TI_IP, Description, Confidence,
     SourceDevice = DeviceName, DestinationIP, Activity, LogSource = DeviceVendor
 ```
 
@@ -208,9 +232,13 @@ This rule matches malicious domain indicators against DNS query logs.
 // Match threat intelligence domains against DNS query logs
 let dt_lookBack = 1h;
 let ioc_lookBack = 14d;
-let Domain_Indicators = ThreatIntelligenceIndicator
+let Domain_Indicators = ThreatIntelIndicators
     | where TimeGenerated >= ago(ioc_lookBack)
-    | where Active == true
+    | summarize arg_max(TimeGenerated, *) by Id
+    | where IsDeleted == false and IsActive == true
+    | where isempty(ValidUntil) or ValidUntil > now()
+    | extend DomainName = iff(ObservableKey == "domain-name:value", ObservableValue, ""),
+             Description = tostring(Data.description)
     | where isnotempty(DomainName)
     | summarize LatestIndicatorTime = arg_max(TimeGenerated, *) by DomainName;
 Domain_Indicators
@@ -220,7 +248,7 @@ Domain_Indicators
     | where isnotempty(Name)
 ) on $left.DomainName == $right.Name
 | project AlertTime = TimeGenerated1, MaliciousDomain = DomainName, Description,
-    Confidence = ConfidenceScore, ClientIP, QueryType = QueryType
+    Confidence, ClientIP, QueryType = QueryType
 ```
 
 ### Rule: TI Map File Hash to Security Events
@@ -231,9 +259,13 @@ This rule matches file hash indicators against endpoint security logs.
 // Match threat intelligence file hashes against endpoint logs
 let dt_lookBack = 1h;
 let ioc_lookBack = 14d;
-let Hash_Indicators = ThreatIntelligenceIndicator
+let Hash_Indicators = ThreatIntelIndicators
     | where TimeGenerated >= ago(ioc_lookBack)
-    | where Active == true
+    | summarize arg_max(TimeGenerated, *) by Id
+    | where IsDeleted == false and IsActive == true
+    | where isempty(ValidUntil) or ValidUntil > now()
+    | extend FileHashValue = iff(ObservableKey has "file:hashes", ObservableValue, ""),
+             Description = tostring(Data.description)
     | where isnotempty(FileHashValue)
     | summarize LatestIndicatorTime = arg_max(TimeGenerated, *) by FileHashValue;
 Hash_Indicators
@@ -244,7 +276,7 @@ Hash_Indicators
     | extend FileHash = SHA256
 ) on $left.FileHashValue == $right.FileHash
 | project AlertTime = TimeGenerated1, MaliciousHash = FileHashValue, FileName,
-    DeviceName, Description, Confidence = ConfidenceScore
+    DeviceName, Description, Confidence
 ```
 
 ## Step 4: Configure Alert Grouping and Incident Creation
@@ -262,19 +294,38 @@ Threat indicators have a shelf life. An IP address used for a phishing campaign 
 
 ```kql
 // Find indicators that have expired but are still marked as active
-ThreatIntelligenceIndicator
-| where Active == true
-| where ExpirationDateTime < now()
+ThreatIntelIndicators
+| summarize arg_max(TimeGenerated, *) by Id
+| where IsDeleted == false and IsActive == true
+| where ValidUntil < now()
 | summarize Count = count() by SourceSystem
 ```
 
 Expired indicators should be deactivated. Most connectors handle this automatically, but custom-uploaded indicators may need manual cleanup.
 
 ```bash
-# Deactivate an expired indicator using the API
-az rest --method PATCH \
-  --url "https://management.azure.com/subscriptions/YOUR_SUB/resourceGroups/sentinel-rg/providers/Microsoft.OperationalInsights/workspaces/sentinel-workspace/providers/Microsoft.SecurityInsights/threatIntelligence/main/indicators/indicator-id?api-version=2024-01-01-preview" \
-  --body '{"properties":{"active":false}}'
+# Mark an indicator as revoked by uploading an updated STIX object with the same id
+curl -X POST \
+  "https://api.ti.sentinel.azure.com/workspaces/YOUR_WORKSPACE_ID/threat-intelligence-stix-objects:upload?api-version=2024-02-01-preview" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sourcesystem": "CustomThreatFeed",
+    "stixobjects": [
+      {
+        "type": "indicator",
+        "spec_version": "2.1",
+        "id": "indicator--2f669986-b40b-4423-b720-4396ca5689fb",
+        "created": "2026-01-01T00:00:00Z",
+        "modified": "2026-02-01T00:00:00Z",
+        "revoked": true,
+        "pattern": "[ipv4-addr:value = '\''203.0.113.50'\'']",
+        "pattern_type": "stix",
+        "valid_from": "2026-01-01T00:00:00Z",
+        "valid_until": "2026-02-01T00:00:00Z"
+      }
+    ]
+  }'
 ```
 
 ## Wrapping Up
