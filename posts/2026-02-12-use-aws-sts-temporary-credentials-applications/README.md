@@ -63,7 +63,7 @@ First, create a role with a trust policy that allows your application to assume 
 }
 ```
 
-The `ExternalId` is a shared secret that prevents the "confused deputy" problem. Always use it for cross-account roles.
+The `ExternalId` is a unique identifier that helps prevent the "confused deputy" problem. Use it when a third party assumes roles across customer accounts.
 
 ### Using AssumeRole in Python
 
@@ -79,7 +79,7 @@ def get_assumed_credentials(role_arn, session_name, external_id=None):
     params = {
         "RoleArn": role_arn,
         "RoleSessionName": session_name,
-        "DurationSeconds": 3600  # 1 hour (max 12 hours for user-assumed roles)
+        "DurationSeconds": 3600  # 1 hour (up to the role's max session duration)
     }
 
     if external_id:
@@ -170,6 +170,7 @@ import (
     "fmt"
     "log"
 
+    "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/config"
     "github.com/aws/aws-sdk-go-v2/credentials/stscreds"
     "github.com/aws/aws-sdk-go-v2/service/s3"
@@ -193,7 +194,7 @@ func main() {
         o.RoleSessionName = "my-app-session"
     })
 
-    cfg.Credentials = provider
+    cfg.Credentials = aws.NewCredentialsCache(provider)
 
     // Use the assumed-role credentials for S3
     s3Client := s3.NewFromConfig(cfg)
@@ -214,17 +215,15 @@ Temporary credentials expire. Your application needs to handle renewal. The AWS 
 
 ```python
 import boto3
-from botocore.credentials import RefreshableCredentials, DeferredRefreshableCredentials
 
-# The simplest approach: use the SDK's built-in role assumption
-# boto3 automatically refreshes credentials when they're about to expire
+# Calling assume_role directly returns one set of temporary credentials.
+# Those credentials do not auto-refresh by themselves.
 session = boto3.Session()
 sts = session.client("sts")
 
-# This creates a session that auto-refreshes
 assumed_role = sts.assume_role(
     RoleArn="arn:aws:iam::987654321098:role/MyRole",
-    RoleSessionName="auto-refresh"
+    RoleSessionName="manual-refresh"
 )
 
 # Better approach: use a credential provider in your AWS config
@@ -278,7 +277,7 @@ response = sts.assume_role_with_web_identity(
     DurationSeconds=3600
 )
 
-# In practice, the EKS SDK handles this automatically
+# In practice, the AWS SDK handles this automatically
 # Just configure the service account annotation:
 # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/EKSPodRole
 ```
@@ -322,7 +321,7 @@ verify_identity()
 
 1. **Prefer roles over access keys** - Use EC2 instance profiles, ECS task roles, Lambda execution roles
 2. **Keep session durations short** - 1 hour is the default and usually sufficient
-3. **Use ExternalId for cross-account roles** - Prevents confused deputy attacks
+3. **Use ExternalId for third-party cross-account roles** - Prevents confused deputy attacks
 4. **Log role assumption** - CloudTrail records all `AssumeRole` calls
 5. **Scope role permissions tightly** - Temporary doesn't mean unlimited
 6. **Handle credential expiration gracefully** - Use SDK credential providers that auto-refresh
