@@ -16,44 +16,49 @@ You can close this gap by automating notifications from Azure DevOps to Teams. S
 
 There are three ways to connect Azure DevOps with Teams:
 
-1. **Azure DevOps app for Teams** - The official app that provides basic notifications and commands
-2. **Service hooks with incoming webhooks** - Custom notifications triggered by DevOps events
+1. **Azure DevOps apps for Teams** - The official Azure Boards, Azure Repos, and Azure Pipelines apps that provide basic notifications and commands
+2. **Service hooks with an Azure Function receiver** - Custom notifications triggered by DevOps events
 3. **Azure Functions with Logic Apps** - Complex workflows with custom formatting and logic
 
 I will cover all three, starting from the simplest.
 
 ## Step 1 - Install the Azure DevOps App for Teams
 
-The official app gives you basic integration without any code.
+The official apps give you basic integration without any code.
 
-In Microsoft Teams, go to Apps, search for "Azure DevOps", and install it. Then add it to your development channel.
+In Microsoft Teams, go to Apps and install the Azure Boards, Azure Repos, or Azure Pipelines app depending on the events you want. Then add the app to your development channel.
 
-Once installed, use these commands in the Teams channel:
+Once installed, sign in and subscribe from the Teams channel:
 
 ```text
-@Azure DevOps subscribe https://dev.azure.com/yourorg/yourproject
+@azure boards signin
+@azure boards link https://dev.azure.com/yourorg/yourproject
+@azure repos signin
+@azure repos subscribe https://dev.azure.com/yourorg/yourproject/_git/yourrepo
+@Azure Pipelines signin
+@Azure Pipelines subscribe https://dev.azure.com/yourorg/yourproject
 ```
 
-This subscribes the channel to notifications from that project. You can filter what events to receive:
+The apps create default subscriptions. To filter what events you receive, open the subscription management view for the app and add a filtered subscription:
 
 ```text
-@Azure DevOps subscribe https://dev.azure.com/yourorg/yourproject --area-path "TeamProject\Sprint1"
-@Azure DevOps subscribe https://dev.azure.com/yourorg/yourproject --event pullrequest.created
-@Azure DevOps subscribe https://dev.azure.com/yourorg/yourproject --event build.complete
+@azure boards subscriptions
+@azure repos subscriptions
+@Azure Pipelines subscriptions
 ```
 
 The app handles common events well, but the formatting is generic and you cannot customize the message content. For tailored notifications, use service hooks.
 
 ## Step 2 - Set Up Custom Sprint Notifications with Service Hooks
 
-Service hooks trigger on Azure DevOps events and can post to a Teams incoming webhook. This gives you control over what triggers a notification and what the message looks like.
+Service hooks trigger on Azure DevOps events and can post event payloads to an HTTPS endpoint. Use an Azure Function as the receiver, then have the function format the message and post it to Teams. This gives you control over what triggers a notification and what the message looks like.
 
-First, create an incoming webhook in your Teams channel.
+First, create a Teams webhook URL. In current Teams tenants, the recommended path is to use the Workflows app.
 
-1. In Teams, right-click the channel and select "Manage channel"
-2. Go to Connectors
-3. Find "Incoming Webhook" and click Configure
-4. Name it "Sprint Notifications" and save the webhook URL
+1. In Teams, open the channel menu and select "Workflows"
+2. Choose a webhook template such as "Send webhook alerts to a channel"
+3. Configure the workflow for your channel
+4. Save the workflow and copy the webhook URL
 
 Now configure Azure DevOps service hooks. Here is how to create one using the Azure DevOps REST API.
 
@@ -63,11 +68,11 @@ import json
 
 DEVOPS_ORG = "https://dev.azure.com/yourorg"
 DEVOPS_PAT = "your-personal-access-token"
-TEAMS_WEBHOOK_URL = "https://yourteam.webhook.office.com/webhookb2/..."
+FUNCTION_WEBHOOK_URL = "https://your-function-app.azurewebsites.net/api/hooks/workitem"
 
 def create_work_item_hook():
-    """Create a service hook that notifies Teams when work items are updated."""
-    url = f"{DEVOPS_ORG}/_apis/hooks/subscriptions?api-version=7.0"
+    """Create a service hook that sends work item updates to an Azure Function."""
+    url = f"{DEVOPS_ORG}/_apis/hooks/subscriptions?api-version=7.1"
 
     headers = {
         "Content-Type": "application/json"
@@ -79,6 +84,7 @@ def create_work_item_hook():
     payload = {
         "publisherId": "tfs",
         "eventType": "workitem.updated",
+        "resourceVersion": "1.0",
         "consumerId": "webHooks",
         "consumerActionId": "httpRequest",
         "publisherInputs": {
@@ -87,7 +93,7 @@ def create_work_item_hook():
             "workItemType": "Bug"
         },
         "consumerInputs": {
-            "url": TEAMS_WEBHOOK_URL
+            "url": FUNCTION_WEBHOOK_URL
         }
     }
 
@@ -106,7 +112,8 @@ import azure.functions as func
 import json
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+from urllib.parse import quote
 
 app = func.FunctionApp()
 
@@ -115,7 +122,7 @@ DEVOPS_PAT = os.environ["DEVOPS_PAT"]
 TEAMS_WEBHOOK = os.environ["TEAMS_WEBHOOK_URL"]
 PROJECT = os.environ["DEVOPS_PROJECT"]
 
-@app.timer_trigger(schedule="0 0 9 * * 1-5", arg_name="timer")  # 9 AM Mon-Fri
+@app.timer_trigger(schedule="0 0 9 * * 1-5", arg_name="timer")  # 9 AM UTC Mon-Fri unless WEBSITE_TIME_ZONE is set
 def daily_sprint_summary(timer: func.TimerRequest):
     """Generate and post a daily sprint summary to Teams."""
     # Get the current sprint iteration
@@ -155,7 +162,7 @@ def daily_sprint_summary(timer: func.TimerRequest):
                         },
                         {
                             "type": "TextBlock",
-                            "text": f"Date: {datetime.utcnow().strftime('%B %d, %Y')}",
+                            "text": f"Date: {datetime.now(timezone.utc).strftime('%B %d, %Y')}",
                             "isSubtle": True
                         },
                         {
@@ -199,7 +206,7 @@ def daily_sprint_summary(timer: func.TimerRequest):
 
 def get_current_iteration():
     """Get the current sprint iteration from Azure DevOps."""
-    url = f"{DEVOPS_ORG}/{PROJECT}/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.0"
+    url = f"{DEVOPS_ORG}/{PROJECT}/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.1"
     response = requests.get(url, auth=("", DEVOPS_PAT))
     iterations = response.json().get("value", [])
     return iterations[0] if iterations else None
@@ -207,7 +214,7 @@ def get_current_iteration():
 def get_sprint_work_items(iteration_path: str):
     """Get all work items in the specified sprint."""
     # Use WIQL to query work items in the iteration
-    wiql_url = f"{DEVOPS_ORG}/{PROJECT}/_apis/wit/wiql?api-version=7.0"
+    wiql_url = f"{DEVOPS_ORG}/{PROJECT}/_apis/wit/wiql?api-version=7.1"
     query = {
         "query": f"""
             SELECT [System.Id], [System.Title], [System.State],
@@ -227,7 +234,7 @@ def get_sprint_work_items(iteration_path: str):
 
     # Fetch full details for each work item
     ids = ",".join([str(ref["id"]) for ref in item_refs[:200]])
-    details_url = f"{DEVOPS_ORG}/{PROJECT}/_apis/wit/workitems?ids={ids}&api-version=7.0"
+    details_url = f"{DEVOPS_ORG}/{PROJECT}/_apis/wit/workitems?ids={ids}&api-version=7.1"
     details = requests.get(details_url, auth=("", DEVOPS_PAT))
 
     return details.json().get("value", [])
@@ -238,7 +245,7 @@ def build_metric_column(label: str, value: int, style: str) -> dict:
         "type": "Column",
         "width": "stretch",
         "items": [
-            {"type": "TextBlock", "text": str(value), "size": "ExtraLarge",
+            {"type": "TextBlock", "text": str(value), "size": "ExtraLarge", "color": style,
              "weight": "Bolder", "horizontalAlignment": "Center"},
             {"type": "TextBlock", "text": label, "size": "Small",
              "horizontalAlignment": "Center", "isSubtle": True}
@@ -271,7 +278,7 @@ def pr_notification(req: func.HttpRequest) -> func.HttpResponse:
             title=f"New PR: {pr['title']}",
             author=pr["createdBy"]["displayName"],
             description=pr.get("description", "No description"),
-            url=pr["url"].replace("_apis/git/repositories", "_git").replace("/pullRequests/", "/pullrequest/"),
+            url=f"{DEVOPS_ORG}/{PROJECT}/_git/{quote(pr['repository']['name'], safe='')}/pullrequest/{pr['pullRequestId']}",
             reviewers=[r["displayName"] for r in pr.get("reviewers", [])],
             status="New"
         )
@@ -327,7 +334,6 @@ def build_notification(req: func.HttpRequest) -> func.HttpResponse:
 
     # Only post failures and partially succeeded builds
     if result in ["failed", "partiallySucceeded"]:
-        emoji = "X" if result == "failed" else "!"
         card = {
             "text": f"**Build {result.upper()}**: {build.get('definition', {}).get('name', 'Unknown')} "
                     f"#{build.get('buildNumber', '')} - "
