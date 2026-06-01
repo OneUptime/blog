@@ -10,11 +10,11 @@ Description: Implement single sign-on for educational platforms using Azure AD B
 
 Educational platforms serve diverse user populations. Students might log in with their school Google accounts. Teachers use their institutional Microsoft accounts. Parents might only have personal email addresses. Expecting everyone to create yet another username and password is a recipe for support tickets and frustrated users.
 
-Azure AD B2C provides a single sign-on solution that handles multiple identity providers through one configuration. Students and teachers sign in with their existing accounts, and your platform gets a unified user identity regardless of which provider they used. In this guide, I will set up Azure AD B2C for an educational platform with support for the most common login methods.
+Azure AD B2C provides a single sign-on solution that handles multiple identity providers through one configuration. Students and teachers sign in with their existing accounts, and your platform gets a unified user identity regardless of which provider they used. As of May 1, 2025, Azure AD B2C is no longer available to purchase for new customers, so use Microsoft Entra External ID for new deployments. In this guide, I will set up Azure AD B2C for an existing B2C tenant with support for the most common login methods.
 
 ## Why Azure AD B2C for Education
 
-Azure AD B2C is designed for consumer-facing applications (the "B2C" stands for business-to-consumer). Unlike regular Azure AD which manages employees within an organization, B2C lets external users authenticate against your application using their own identity providers.
+Azure AD B2C is designed for consumer-facing applications (the "B2C" stands for business-to-consumer). Unlike a workforce Microsoft Entra ID tenant, which manages employees within an organization, B2C lets external users authenticate against your application using their own identity providers.
 
 For education, this means:
 - Students sign in with their school Google Workspace accounts
@@ -33,12 +33,12 @@ graph LR
 
 ## Step 1 - Create the Azure AD B2C Tenant
 
-B2C uses a separate tenant from your regular Azure AD. Create one specifically for your educational platform.
+B2C uses a separate tenant from your workforce Microsoft Entra ID tenant. Existing Azure AD B2C customers can create one specifically for an educational platform.
 
 ```bash
 # Create a new Azure AD B2C tenant
 
-# Note: This must be done through the Azure portal initially
+# Note: For existing Azure AD B2C customers, this is done through the Azure portal initially
 # Navigate to: Azure Portal > Create a resource > Azure Active Directory B2C
 
 # After creation, register the CLI to manage it
@@ -56,7 +56,7 @@ az ad app create \
   --sign-in-audience AzureADandPersonalMicrosoftAccount
 ```
 
-Note the Application (client) ID and create a client secret. You will need both for the OIDC configuration.
+Note the Application (client) ID and create a client secret. You will need both for the OIDC configuration. For a confidential web app using the authorization code flow, the ID token implicit grant is not required, but enabling it is harmless if you also test the user flow from the portal.
 
 ## Step 2 - Configure Identity Providers
 
@@ -77,7 +77,7 @@ Then configure it in B2C through the Azure portal:
 
 ### Microsoft Account Provider
 
-For users with personal Microsoft accounts or school Office 365 accounts.
+For users with personal Microsoft accounts. School Office 365 and Microsoft Entra ID accounts are organizational accounts, so add those school tenants as OpenID Connect identity providers as shown in Step 5.
 
 1. Go to Identity Providers > Microsoft Account
 2. Enter the Application ID and Secret from an Azure AD app registration
@@ -93,7 +93,7 @@ This is enabled by default in B2C user flows. No additional configuration needed
 
 User flows define the authentication experience - what happens when someone signs up, signs in, or resets their password.
 
-Create a sign-up and sign-in user flow that combines all your identity providers.
+Create a sign-up and sign-in user flow that combines all your identity providers. In the Azure portal, create custom user attributes named `role` and `schoolName`, select them under User attributes, and select them again under Application claims so they are emitted in the ID token. The following JSON shows the settings you are aiming for; it is not a file you upload directly to Azure AD B2C.
 
 ```json
 {
@@ -237,9 +237,10 @@ app.get('/auth/callback', async (req, res) => {
 
 // Logout route
 app.get('/auth/logout', (req, res) => {
-    req.session.destroy();
     const logoutUri = `https://${process.env.B2C_TENANT_NAME}.b2clogin.com/${process.env.B2C_TENANT_NAME}.onmicrosoft.com/${process.env.B2C_SIGNIN_POLICY}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(process.env.LOGOUT_REDIRECT_URI)}`;
-    res.redirect(logoutUri);
+    req.session.destroy(() => {
+        res.redirect(logoutUri);
+    });
 });
 
 // Middleware to protect routes
@@ -267,11 +268,11 @@ app.get('/dashboard/teacher', requireAuth('Teacher'), (req, res) => {
 app.listen(3000);
 ```
 
-## Step 5 - Add Federation with School Azure AD
+## Step 5 - Add Federation with School Microsoft Entra ID
 
-Many schools have their own Azure AD or Google Workspace tenant. Instead of individual accounts, you can federate with the school's identity provider so their entire organization can sign in.
+Many schools have their own Microsoft Entra ID or Google Workspace tenant. Instead of individual accounts, you can federate with the school's identity provider so their entire organization can sign in.
 
-For Azure AD federation, add the school's tenant as an identity provider in your B2C configuration.
+For Microsoft Entra ID federation, add the school's tenant as a new OpenID Connect identity provider in your B2C configuration. The values map to the provider fields in the Azure portal.
 
 ```json
 {
@@ -294,7 +295,7 @@ For Azure AD federation, add the school's tenant as an identity provider in your
 }
 ```
 
-This way, every teacher and student in the Springfield School District can sign in using their existing school credentials. No separate registration needed. The school's IT department controls who has access, and when someone leaves the school, their access to your platform is automatically revoked when their school account is disabled.
+This way, every teacher and student in the Springfield School District can sign in using their existing school credentials. No separate password is needed in your platform. The school's IT department controls who can authenticate with that school account, and when someone leaves the school, future federated sign-ins fail after their school account is disabled. Your application should still expire its own sessions and check authorization on each request.
 
 ## Step 6 - Customize the Sign-In Experience
 
@@ -353,10 +354,10 @@ Upload this template and configure B2C to use it in the user flow's page layout 
 
 For educational platforms that handle student data, there are additional compliance requirements like FERPA (in the US) and COPPA (for children under 13).
 
-Configure B2C to require parental consent for accounts belonging to minors. Use age-gating in your sign-up flow to determine whether a user needs parental consent. Store the minimum necessary personal information and ensure your B2C tenant is configured with the correct data residency settings for your region.
+Use age-gating in your sign-up flow to determine whether a user is a minor, but treat the built-in age-gating feature as a preview feature and avoid relying on it by itself for production compliance. Azure AD B2C can return minor and consent-related claims or block access, but the application or another service still needs to implement the parental consent experience and any adult verification that your policy requires. Store the minimum necessary personal information and ensure your B2C tenant is configured with the correct data residency settings for your region.
 
 Enable MFA for administrator and teacher accounts. Students can use a simpler flow, but staff accounts that access student data should have an additional authentication factor.
 
 ## Wrapping Up
 
-Azure AD B2C gives educational platforms a flexible authentication system that works with the diverse identity landscape of schools. Students use their school Google or Microsoft accounts. Teachers use their institutional credentials. Parents use whatever they have. B2C unifies all of these into a consistent user profile for your application. The federation capability is especially valuable for working with school districts since it gives you zero-friction onboarding for entire organizations. Customize the sign-in experience to match your brand, add role-based access control, and layer on compliance measures for student data protection.
+Azure AD B2C gives existing B2C deployments a flexible authentication system that works with the diverse identity landscape of schools. Students use their school Google or federated Microsoft Entra ID accounts. Teachers use their institutional credentials. Parents use whatever they have. B2C unifies all of these into a consistent user profile for your application. The federation capability is especially valuable for working with school districts since it gives you low-friction onboarding for entire organizations. Customize the sign-in experience to match your brand, add role-based access control, and layer on compliance measures for student data protection.
