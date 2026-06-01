@@ -8,7 +8,7 @@ Description: Configure Azure Front Door origin groups with priority-based routin
 
 ---
 
-Active-passive failover is the simplest and most predictable high availability pattern. You have a primary origin that handles all traffic, and a secondary origin that sits idle until the primary fails. When the primary goes down, traffic automatically shifts to the secondary. No split-brain issues, no data consistency problems, no complicated conflict resolution.
+Active-passive failover is the simplest and most predictable high availability pattern. You have a primary origin that handles all traffic, and a secondary origin that sits idle until the primary fails. When the primary goes down, traffic automatically shifts to the secondary. Fewer split-brain risks, fewer data consistency problems when your data layer is designed for failover, and less complicated conflict resolution.
 
 Azure Front Door makes implementing this pattern straightforward through origin groups with priority-based routing. In this post, I will walk through the setup, including health probe configuration, failover behavior, and how to handle failback when the primary recovers.
 
@@ -19,7 +19,7 @@ An origin group in Azure Front Door is a collection of backend origins (servers,
 - **Priority**: Lower numbers are preferred. Origins with the same priority share traffic. Origins with higher priority numbers only receive traffic when all lower-priority origins are unhealthy.
 - **Weight**: When origins share the same priority, weight determines the traffic distribution ratio.
 
-For active-passive failover, you set the primary origin to priority 1 and the secondary origin to priority 2. Under normal conditions, 100% of traffic goes to priority 1. When priority 1 fails all health checks, traffic shifts to priority 2.
+For active-passive failover, you set the primary origin to priority 1 and the secondary origin to priority 2. Under normal conditions, 100% of traffic goes to priority 1. When priority 1 is marked unhealthy, traffic shifts to priority 2.
 
 ```mermaid
 flowchart TD
@@ -82,9 +82,9 @@ Let me explain the health probe parameters:
 - `--probe-interval-in-seconds 10`: Probes every 10 seconds. Lower values detect failures faster but generate more probe traffic.
 - `--sample-size 4`: Uses the last 4 probe results to make a health decision.
 - `--successful-samples-required 2`: At least 2 out of 4 probes must succeed for the origin to be considered healthy.
-- `--additional-latency-in-milliseconds 0`: No additional latency tolerance. Set this higher if you want to avoid failing over due to minor latency differences.
+- `--additional-latency-in-milliseconds 0`: No additional latency tolerance when Front Door chooses between healthy origins at the same priority. This setting does not control priority-based failover between the primary and secondary origins.
 
-With these settings, if the primary origin starts failing health checks, it takes approximately 20-40 seconds for Front Door to detect the failure and shift traffic to the secondary.
+With these settings, if the primary origin starts failing health checks, it typically takes roughly 30-40 seconds for Front Door edge locations that are actively probing the origin to mark it unhealthy and shift traffic to the secondary. The exact timing depends on the previous probe samples and which edge locations are receiving traffic.
 
 ## Step 4: Add Origins with Priority Settings
 
@@ -188,11 +188,11 @@ az afd origin update \
   --enabled-state Disabled
 ```
 
-Monitor the traffic shift by checking the Front Door access logs or by sending requests and noting which origin responds.
+Monitor the traffic shift by checking the Front Door access logs or by sending requests and noting which origin responds. The most reliable request-based test is to have each origin return a distinct header or response value, such as `X-Origin-Region`.
 
 ```bash
 # Verify which origin is handling traffic
-curl -sI https://myapp-xxxx.z01.azurefd.net/ | grep -i "x-azure-ref\|x-fd-healthprobe"
+curl -sI https://myapp-xxxx.z01.azurefd.net/ | grep -i "x-origin-region\|x-azure-ref"
 ```
 
 Re-enable the primary origin after testing.
@@ -240,8 +240,8 @@ Query the health probe logs to see origin health status changes.
 AzureDiagnostics
 | where Category == "FrontDoorHealthProbeLog"
 | where TimeGenerated > ago(24h)
-| project TimeGenerated, originName_s, healthProbeResult_s, httpStatusCode_d
-| where healthProbeResult_s != "Healthy"
+| project TimeGenerated, originName_s, result_s, httpStatusCode_s, pop_s
+| where result_s != "Passed"
 | order by TimeGenerated desc
 ```
 
