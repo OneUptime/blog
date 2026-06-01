@@ -8,7 +8,9 @@ Description: Set up and run SMS campaigns with Amazon Pinpoint, including number
 
 ---
 
-SMS has open rates above 90% - far higher than email. That makes it incredibly effective for time-sensitive messages like alerts, appointment reminders, verification codes, and promotional offers. Amazon Pinpoint handles SMS delivery to over 200 countries, managing the complexity of carrier regulations and number formatting for you.
+SMS has open rates above 90% - far higher than email. That makes it incredibly effective for time-sensitive messages like alerts, appointment reminders, verification codes, and promotional offers. Amazon Pinpoint handles SMS delivery to supported countries and regions, managing the complexity of carrier regulations and number formatting for you.
+
+Note: Amazon Pinpoint no longer accepts new customers as of May 20, 2025, and AWS will end support for Amazon Pinpoint engagement features on October 30, 2026. Existing customers can still use Pinpoint campaigns until then, and the underlying SMS APIs continue under AWS End User Messaging SMS.
 
 But SMS comes with more regulatory requirements than email. You need to get the compliance right before sending a single message.
 
@@ -33,9 +35,9 @@ You need an originating phone number to send SMS. Pinpoint supports several type
 - **Long codes** - standard 10-digit numbers. Good for conversational messaging. Lower throughput.
 - **Short codes** - 5 or 6-digit numbers. High throughput. Take weeks to provision and cost more.
 - **Toll-free numbers** - Good for transactional messaging in the US and Canada.
-- **10DLC** (10-Digit Long Code) - registered long codes for A2P messaging in the US. Required since 2023.
+- **10DLC** (10-Digit Long Code) - registered long codes for A2P messaging in the US.
 
-For US messaging, you'll likely need a 10DLC registration.
+For US long-code A2P messaging, you'll need 10DLC registration. Toll-free numbers and short codes have their own registration processes.
 
 ```bash
 # Request a toll-free number through the console
@@ -165,8 +167,8 @@ def create_sms_campaign(app_id, name, segment_id, message,
     if schedule_time:
         schedule = {
             'StartTime': schedule_time,
-            'Timezone': 'America/New_York',
-            'IsLocalTime': True  # Send at the specified time in each user's timezone
+            'Timezone': 'UTC-05',
+            'IsLocalTime': True  # Uses each endpoint's Demographic.Timezone when available
         }
 
     response = pinpoint.create_campaign(
@@ -205,12 +207,12 @@ create_sms_campaign(
 
 ## Handling Opt-Outs
 
-When someone replies STOP, AWS automatically handles the opt-out at the carrier level. But you should also update your own records.
+When someone replies STOP, AWS End User Messaging SMS automatically adds the recipient to the opt-out list unless you enable self-managed opt-outs. But you should also update your own records.
 
 ```python
 def setup_sms_opt_out_handler():
     """Process opt-out events from Pinpoint."""
-    # Pinpoint publishes events to Kinesis or CloudWatch
+    # Pinpoint publishes event streams to Kinesis Data Streams or Data Firehose
     # Set up event streaming first
 
     pinpoint.put_event_stream(
@@ -290,7 +292,7 @@ AWS has spending limits on SMS to prevent runaway costs. Check and adjust yours.
 # Check current spending limit
 aws pinpoint-sms-voice-v2 describe-spend-limits
 
-# Check current month's spending
+# Check account attributes such as sandbox or production tier
 aws pinpoint-sms-voice-v2 describe-account-attributes
 ```
 
@@ -315,7 +317,7 @@ Track your SMS campaign results.
 def get_sms_metrics(app_id):
     """Get SMS delivery and engagement metrics."""
     metrics = [
-        'sms-success-rate',
+        'successful-delivery-rate',
         'sms-spend'
     ]
 
