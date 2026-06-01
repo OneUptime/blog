@@ -8,19 +8,19 @@ Description: A step-by-step guide to publishing a managed application to the Azu
 
 ---
 
-If you have built a solution on Azure and want to distribute it to other organizations, the Azure Marketplace is the most direct path. Managed applications are a specific offer type that lets you deploy infrastructure into a customer's Azure subscription while retaining management access. The customer gets your solution running in their environment, and you get ongoing access to manage, update, and support it.
+If you have built a solution on Azure and want to distribute it to other organizations, the Azure Marketplace is the most direct path. Managed applications are a specific offer type that lets you deploy infrastructure into a customer's Azure subscription while optionally retaining management access. The customer gets your solution running in their environment, and when publisher management is enabled, you get ongoing access to manage, update, and support it.
 
-The core of a managed application is a pair of ARM templates: one that defines the UI the customer sees during deployment, and another that defines the actual Azure resources. In this guide, I will walk through the entire process of building, packaging, and publishing a managed application to the Azure Marketplace.
+The core of a managed application is a pair of deployment artifacts: a `createUiDefinition.json` file that defines the UI the customer sees during deployment, and a `mainTemplate.json` ARM template that defines the actual Azure resources. In this guide, I will walk through the entire process of building, packaging, and publishing a managed application to the Azure Marketplace.
 
 ## Understanding Managed Applications
 
 Before diving into the templates, it is worth understanding what makes managed applications different from other Marketplace offers:
 
 - **Solution templates** deploy resources into the customer's subscription with no ongoing management access. Once deployed, the customer owns everything.
-- **Managed applications** also deploy into the customer's subscription, but into a managed resource group that you (the publisher) retain access to. The customer can see the resources but cannot modify them directly.
+- **Managed applications** also deploy into the customer's subscription, but into a managed resource group that can be managed by you (the publisher) when publisher management is enabled. By default, the customer can see the resources but cannot modify them directly unless you configure customer access or allowed customer actions.
 - **SaaS offers** are hosted entirely in your infrastructure, with the customer just getting access to your service.
 
-Managed applications sit in the middle. The customer's data stays in their subscription (important for compliance), but you maintain the ability to push updates, troubleshoot issues, and manage the infrastructure.
+Managed applications sit in the middle. The customer's data stays in their subscription (important for compliance), and depending on the permission scenario you configure, you can maintain the ability to push updates, troubleshoot issues, and manage the infrastructure.
 
 ## Creating the ARM Deployment Template
 
@@ -91,7 +91,7 @@ The `mainTemplate.json` file defines what Azure resources get deployed. Here is 
         },
         {
             "type": "Microsoft.Sql/servers",
-            "apiVersion": "2022-05-01-preview",
+            "apiVersion": "2023-08-01",
             "name": "[variables('sqlServerName')]",
             "location": "[variables('location')]",
             "properties": {
@@ -101,7 +101,7 @@ The `mainTemplate.json` file defines what Azure resources get deployed. Here is 
             "resources": [
                 {
                     "type": "databases",
-                    "apiVersion": "2022-05-01-preview",
+                    "apiVersion": "2023-08-01",
                     "name": "[variables('sqlDatabaseName')]",
                     "location": "[variables('location')]",
                     "dependsOn": [
@@ -143,8 +143,12 @@ The `createUiDefinition.json` file controls the deployment wizard that customers
                 "toolTip": "Name for the web application. Must be globally unique.",
                 "constraints": {
                     "required": true,
-                    "regex": "^[a-z0-9-]{3,24}$",
-                    "validationMessage": "Must be 3-24 lowercase letters, numbers, or hyphens."
+                    "validations": [
+                        {
+                            "regex": "^[a-z0-9](?:[a-z0-9-]{1,22}[a-z0-9])$",
+                            "message": "Must be 3-24 lowercase letters, numbers, or hyphens, and must start and end with a letter or number."
+                        }
+                    ]
                 }
             }
         ],
@@ -212,7 +216,7 @@ cd /path/to/your/templates
 az deployment group validate \
   --resource-group rg-test \
   --template-file mainTemplate.json \
-  --parameters appName=testapp sqlAdminPassword=TestP@ssw0rd123
+  --parameters appName="testapp$RANDOM" sqlAdminPassword=TestP@ssw0rd123
 
 # Package the templates into a ZIP file
 zip app.zip mainTemplate.json createUiDefinition.json
@@ -231,13 +235,11 @@ az storage blob upload \
 Before submitting to the Marketplace, test the UI definition using the Azure portal sandbox:
 
 ```bash
-# Generate a URL to test the createUiDefinition.json in the portal
-ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote(open('createUiDefinition.json').read()))")
-
-echo "https://portal.azure.com/#blade/Microsoft_Azure_CreateUIDef/SandboxBlade/content/$ENCODED"
+# Open the Create UI Definition Sandbox, paste createUiDefinition.json, and select Preview
+echo "https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/SandboxBlade"
 ```
 
-Open this URL in your browser to see the deployment wizard exactly as customers will experience it. Verify that all fields, validation rules, and steps work correctly.
+Open this URL in your browser, paste the contents of `createUiDefinition.json`, and select Preview to see the deployment wizard. Verify that all fields, validation rules, and steps work correctly.
 
 ## Setting Up Partner Center
 
@@ -266,17 +268,17 @@ Plan name: Standard
 Plan ID: standard-plan
 Version: 1.0.0
 Package file: app.zip (uploaded earlier)
-Publisher tenant ID: your Azure AD tenant ID
+Publisher tenant ID: your Microsoft Entra tenant ID
 Authorizations:
-  - Principal ID: your management group or user object ID
-  - Role: Contributor (or a custom role with limited permissions)
+  - Principal ID: your Microsoft Entra user, group, or application object ID
+  - Role: Contributor
 ```
 
 The authorization section is critical. It defines who in your organization can access the managed resource group in the customer's subscription. Follow the principle of least privilege - do not use Owner unless absolutely necessary.
 
 ## Defining Publisher Access
 
-You can create a custom role definition that gives you exactly the permissions you need:
+For Azure Marketplace managed application plans, Partner Center lets you assign built-in roles such as Contributor or Owner to the principals that manage the customer's managed resource group. If you are creating a managed application definition directly, such as for a service catalog app, you can use a custom role definition that gives you exactly the permissions you need:
 
 ```json
 {
@@ -299,7 +301,7 @@ You can create a custom role definition that gives you exactly the permissions y
 }
 ```
 
-This role lets you read app configuration, restart the web app, manage diagnostics, and deploy updates - but not delete resources or access the SQL admin password.
+This role lets you read app configuration, restart the web app, manage diagnostics, and deploy updates - but not delete resources or access the SQL admin password. For a Marketplace plan, use Contributor rather than Owner unless your management workflow requires Owner permissions.
 
 ## Publishing and Certification
 
