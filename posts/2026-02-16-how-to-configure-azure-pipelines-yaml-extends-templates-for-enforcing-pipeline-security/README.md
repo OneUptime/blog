@@ -10,13 +10,13 @@ Description: Learn how to use Azure Pipelines YAML extends templates to enforce 
 
 In a large organization, every team defines their own pipelines. That flexibility is great for productivity, but it creates a security problem. How do you ensure every pipeline follows security best practices? How do you guarantee that credential scanning runs on every build, that deployments go through approval gates, and that nobody skips the required steps?
 
-Azure Pipelines YAML extends templates solve this problem. Instead of letting teams write pipelines from scratch, you define a base template that enforces security requirements. Teams then extend that template, adding their own stages and steps within the guardrails you set. Think of it as a pipeline policy that cannot be bypassed.
+Azure Pipelines YAML extends templates solve this problem. Instead of letting teams write pipelines from scratch, you define a base template that enforces security requirements. Teams then extend that template, adding their own stages and steps within the guardrails you set. Think of it as a pipeline policy that is managed outside the team's YAML file.
 
 ## The Problem with Shared Templates
 
 Before extends templates, organizations used `include` templates - shared YAML files that teams were expected to reference in their pipelines. The issue is that includes are optional. A team could simply not include the security scanning template and nobody would know until an audit.
 
-Extends templates flip this model. Instead of "here is a template you should include," it becomes "your pipeline must extend this template to run at all." The template author controls what happens before and after the team's custom code runs.
+Extends templates flip this model. Instead of "here is a template you should include," it becomes "your pipeline must extend this template to use a protected resource." The template author controls what happens before and after the team's custom code runs.
 
 ## How Extends Templates Work
 
@@ -75,14 +75,15 @@ stages:
         displayName: 'Credential Scanning'
         steps:
           # Scan the repository for accidentally committed secrets
-          - task: CredScan@3
-            inputs:
-              toolMajorVersion: 'V2'
-            displayName: 'Run credential scanner'
+          # For Azure Repos, enable GitHub Secret Protection for Azure DevOps
+          # to scan repositories and block newly pushed secrets.
+          - script: |
+              echo "Verifying that secret scanning is enabled..."
+              # Integration with your chosen secret scanning CLI or policy check
+            displayName: 'Verify secret scanning'
 
-          # Publish security scan results
-          - task: PublishSecurityAnalysisLogs@3
-            displayName: 'Publish security logs'
+          # Optional team-provided pre-steps
+          - ${{ parameters.additionalPreSteps }}
 
       - job: DependencyScan
         displayName: 'Dependency Vulnerability Scan'
@@ -95,8 +96,15 @@ stages:
 
   # Insert the team's custom stages here
   # The ${{ each }} expression iterates over the stages parameter
+  # and forces each custom stage to depend on SecurityScan.
   - ${{ each stage in parameters.stages }}:
-    - ${{ stage }}
+    - ${{ each pair in stage }}:
+        ${{ if ne(pair.key, 'dependsOn') }}:
+          ${{ pair.key }}: ${{ pair.value }}
+      dependsOn:
+        - SecurityScan
+        - ${{ if stage.dependsOn }}:
+          - ${{ stage.dependsOn }}
 
   # Post-deployment compliance stage that runs after all custom stages
   - stage: ComplianceAudit
@@ -187,18 +195,16 @@ When this pipeline runs, the execution order is:
 
 ## Enforcing Template Usage with Required Templates
 
-Creating a template is only half the battle. You need to make it mandatory. Azure DevOps supports "Required YAML templates" at the environment or pipeline level.
+Creating a template is only half the battle. You need to make it mandatory. Azure DevOps supports "Required YAML templates" as an approval check on protected resources such as environments, service connections, agent pools, variable groups, and secure files.
 
 To enforce a required template:
 
-1. Go to your Azure DevOps project settings
-2. Navigate to Pipelines and then Environments
-3. Select an environment (e.g., "production")
-4. Click on Approvals and Checks
-5. Add a "Required template" check
-6. Specify the template repository and file path
+1. Go to the Azure DevOps resource you want to protect, such as an environment or service connection
+2. Open Approvals and Checks
+3. Add a "Required template" check
+4. Specify the repository type, repository, ref, and path to the required template
 
-With this check in place, any pipeline that deploys to the "production" environment must extend the specified template. If it does not, the deployment will be blocked.
+With this check in place, any pipeline stage that uses the protected resource must extend the specified template. If it does not, the stage will be blocked.
 
 ## Template Expressions for Conditional Enforcement
 
@@ -223,9 +229,15 @@ stages:
           - script: echo "Running basic security scan"
             displayName: 'Basic scan'
 
-  # Insert team stages
+  # Insert team stages and force them to depend on SecurityScan
   - ${{ each stage in parameters.stages }}:
-    - ${{ stage }}
+    - ${{ each pair in stage }}:
+        ${{ if ne(pair.key, 'dependsOn') }}:
+          ${{ pair.key }}: ${{ pair.value }}
+      dependsOn:
+        - SecurityScan
+        - ${{ if stage.dependsOn }}:
+          - ${{ stage.dependsOn }}
 
   # Only run extended compliance for production deployments
   - ${{ if eq(parameters.deploysToProd, true) }}:
@@ -243,28 +255,34 @@ stages:
 
 ## Restricting What Teams Can Do
 
-Extends templates can restrict which tasks and resources teams are allowed to use. This prevents teams from running arbitrary scripts that could compromise security:
+Extends templates can restrict which tasks and resources teams are allowed to use. This can prevent teams from passing arbitrary script steps through template parameters:
 
 ```yaml
 # templates/restricted-pipeline.yml
 # This template restricts which tasks can be used in team steps
 
 parameters:
-  - name: stages
-    type: stageList
+  - name: buildSteps
+    type: stepList
     default: []
 
-# Use template expressions to validate the stages
 stages:
-  - ${{ each stage in parameters.stages }}:
-    - ${{ each job in stage.jobs }}:
-      - ${{ each step in job.steps }}:
-        # Block usage of PowerShell tasks in non-Windows pipelines
-        - ${{ if eq(step.task, 'PowerShell@2') }}:
-          - script: echo "PowerShell task is not allowed in this template"
-            displayName: 'BLOCKED - PowerShell not permitted'
-        - ${{ else }}:
-          - ${{ step }}
+  - stage: SecureBuild
+    jobs:
+      - job: Build
+        steps:
+          - script: echo "Security-controlled pre-build step"
+
+          # Use template expressions to validate the submitted steps.
+          - ${{ each step in parameters.buildSteps }}:
+            - ${{ each pair in step }}:
+                ${{ if and(ne(pair.value, 'CmdLine@2'), ne(pair.value, 'PowerShell@2')) }}:
+                  ${{ pair.key }}: ${{ pair.value }}
+                ${{ if or(eq(pair.value, 'CmdLine@2'), eq(pair.value, 'PowerShell@2')) }}:
+                  # Raise a YAML syntax error for blocked tasks.
+                  '${{ pair.value }}': error
+
+          - script: echo "Security-controlled post-build step"
 ```
 
 A more practical approach is to use the "Restricted" agent pool combined with template checks. This way, you can control both what code runs and where it runs.
@@ -283,24 +301,23 @@ parameters:
 jobs:
   - ${{ each job in parameters.jobs }}:
     - ${{ each pair in job }}:
-        ${{ if eq(pair.key, 'steps') }}:
-          steps:
-            # Injected pre-step: set up security context
-            - script: |
-                echo "Setting up security context..."
-                echo "Configuring audit logging..."
-              displayName: '[Security] Pre-step setup'
-
-            # The team's actual steps
-            - ${{ pair.value }}
-
-            # Injected post-step: cleanup and reporting
-            - script: |
-                echo "Uploading security telemetry..."
-              displayName: '[Security] Post-step cleanup'
-              condition: always()
-        ${{ else }}:
+        ${{ if ne(pair.key, 'steps') }}:
           ${{ pair.key }}: ${{ pair.value }}
+      steps:
+        # Injected pre-step: set up security context
+        - script: |
+            echo "Setting up security context..."
+            echo "Configuring audit logging..."
+          displayName: '[Security] Pre-step setup'
+
+        # The team's actual steps
+        - ${{ job.steps }}
+
+        # Injected post-step: cleanup and reporting
+        - script: |
+            echo "Uploading security telemetry..."
+          displayName: '[Security] Post-step cleanup'
+          condition: always()
 ```
 
 ## Versioning Templates
@@ -316,7 +333,7 @@ resources:
       ref: refs/tags/v2.1.0  # Pin to a specific version
 ```
 
-When you release a new version of the security template, teams can migrate at their own pace by updating the ref. For critical security fixes, you can update the tag to point to the new commit, and all pipelines using that tag will pick up the change on their next run.
+When you release a new version of the security template, teams can migrate at their own pace by updating the ref. For critical security fixes, publish a new patched tag and use required template checks or branch policies to require teams to move to the patched version.
 
 ## Testing Template Changes
 
@@ -344,4 +361,4 @@ extends:
 
 ## Wrapping Up
 
-Extends templates are the right tool for enforcing pipeline security at scale. They give you a mechanism to mandate security scanning, compliance checks, and audit logging across every pipeline in the organization without relying on teams to remember to include them. Combined with required template checks on environments, you get a security model that is both enforceable and flexible enough for teams to build their own workflows within the guardrails you define. Start with a simple template that injects a few critical security steps, and expand it as your security requirements evolve.
+Extends templates are the right tool for enforcing pipeline security at scale. They give you a mechanism to mandate security scanning, compliance checks, and audit logging across pipelines without relying on teams to remember to include them. Combined with required template checks on protected resources, you get a security model that is both enforceable and flexible enough for teams to build their own workflows within the guardrails you define. Start with a simple template that injects a few critical security steps, and expand it as your security requirements evolve.
