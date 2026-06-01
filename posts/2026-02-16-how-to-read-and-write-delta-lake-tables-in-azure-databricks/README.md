@@ -84,7 +84,7 @@ WHERE is_active = true;
 
 ### Create with Partitioning
 
-For large tables, partition by a column used frequently in WHERE clauses.
+If you use partitioning for large tables, choose a low-cardinality column used frequently in WHERE clauses. For new Delta tables on recent Databricks runtimes, Databricks generally recommends liquid clustering instead of static partitioning.
 
 ```python
 # Write a partitioned Delta table
@@ -271,7 +271,7 @@ bonus_df.write \
 
 ## Optimizing Delta Tables
 
-Over time, Delta tables accumulate many small files from append and merge operations. This hurts read performance.
+Over time, Delta tables can accumulate many small files from append and merge operations. This hurts read performance.
 
 ### OPTIMIZE
 
@@ -285,7 +285,7 @@ OPTIMIZE silver.employees;
 OPTIMIZE silver.employees ZORDER BY (department, employee_id);
 ```
 
-Z-ordering co-locates related data in the same files, which dramatically improves query performance when filtering on those columns.
+Z-ordering co-locates related data in the same files, which can improve query performance when filtering on those columns. For new Delta tables, Databricks recommends liquid clustering instead of Z-ordering.
 
 ### VACUUM
 
@@ -295,22 +295,24 @@ Remove old data files that are no longer referenced by the transaction log.
 -- Remove files older than 7 days (default retention)
 VACUUM silver.employees;
 
--- Remove files older than 24 hours (be careful - this limits time travel)
-VACUUM silver.employees RETAIN 24 HOURS;
+-- Retain files for 30 days to support a longer time travel window
+ALTER TABLE silver.employees
+SET TBLPROPERTIES ('delta.deletedFileRetentionDuration' = '30 days');
+VACUUM silver.employees;
 ```
 
-Note: VACUUM deletes old versions, which means time travel queries for those versions will fail. Set the retention period based on how far back you need to query.
+Note: VACUUM deletes old files, which means time travel queries for versions that depend on those files will fail. Set the retention period based on how far back you need to query. Databricks recommends a retention interval of at least 7 days.
 
-### Auto-Optimization
+### Optimized Writes and Auto Compaction
 
-Enable automatic optimization at the table or cluster level.
+Enable optimized writes and auto compaction at the table or Spark session level. Databricks also provides predictive optimization for Unity Catalog managed tables.
 
 ```sql
--- Enable auto-optimize on a specific table
+-- Enable optimized writes and auto compaction on a specific table
 ALTER TABLE silver.employees
 SET TBLPROPERTIES (
     'delta.autoOptimize.optimizeWrite' = 'true',
-    'delta.autoOptimize.autoCompact' = 'true'
+    'delta.autoOptimize.autoCompact' = 'auto'
 );
 ```
 
