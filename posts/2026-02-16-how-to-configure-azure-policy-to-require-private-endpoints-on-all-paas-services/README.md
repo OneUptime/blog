@@ -10,7 +10,7 @@ Description: Step-by-step guide to creating and assigning Azure Policy definitio
 
 Platform-as-a-Service resources in Azure are, by default, accessible over the public internet. Your Azure SQL database, Key Vault, Storage account, and Cosmos DB instance all have public endpoints that anyone can try to connect to. Private endpoints solve this by giving your PaaS resources a private IP address inside your virtual network, effectively removing them from the public internet.
 
-But enabling private endpoints is an opt-in configuration. If a developer creates a new storage account and forgets to configure a private endpoint, that account is publicly accessible. Azure Policy lets you enforce private endpoint usage across your organization so this oversight cannot happen.
+But enabling private endpoints is an opt-in configuration. If a developer creates a new storage account and forgets to configure a private endpoint, that account can remain publicly reachable unless public network access is also disabled. Azure Policy lets you audit private endpoint usage and deny public network access across your organization so this oversight cannot happen.
 
 ## The Problem with Public PaaS Endpoints
 
@@ -29,7 +29,7 @@ Rolling out private endpoint enforcement requires a phased approach:
 
 1. **Audit phase:** Deploy policies in Audit mode to discover all non-compliant resources
 2. **Remediation phase:** Work with teams to add private endpoints to existing resources
-3. **Enforcement phase:** Switch policies to Deny mode to prevent new non-compliant resources
+3. **Enforcement phase:** Use Deny policies for public network access and keep private endpoint checks in their supported audit or deploy modes
 
 Jumping straight to Deny will break deployments and create friction with development teams.
 
@@ -40,7 +40,7 @@ Microsoft provides built-in policies for most PaaS services. Here are the key on
 | Service | Policy Name | Definition ID |
 |---|---|---|
 | Storage Account | Storage accounts should use private link | 6edd7eda-6dd8-40f7-810d-67160c639cd9 |
-| SQL Database | Azure SQL Database should have private endpoint | 7698e800-9299-47a6-b3b6-5a0fee576ead |
+| SQL Database | Private endpoint connections on Azure SQL Database should be enabled | 7698e800-9299-47a6-b3b6-5a0fee576ead |
 | Key Vault | Azure Key Vault should use private link | a6abeaec-4d90-4a02-805f-6b26c4d3fbe9 |
 | Cosmos DB | CosmosDB should use private link | 58440f8a-10c5-4151-bdce-dfbaad4a20b6 |
 | Azure Cache for Redis | Azure Cache for Redis should use private link | 7803067c-7d34-46e3-8c79-0ca68fc4036d |
@@ -61,12 +61,12 @@ az policy assignment create \
   --policy "6edd7eda-6dd8-40f7-810d-67160c639cd9" \
   --scope "/subscriptions/{sub-id}" \
   --enforcement-mode "Default" \
-  --params '{"effect": {"value": "Audit"}}'
+  --params '{"effect": {"value": "AuditIfNotExists"}}'
 
 # Assign the SQL Database private endpoint policy
 az policy assignment create \
   --name "audit-sql-private-endpoint" \
-  --display-name "Audit: SQL Database should have private endpoint" \
+  --display-name "Audit: Private endpoint connections on Azure SQL Database should be enabled" \
   --policy "7698e800-9299-47a6-b3b6-5a0fee576ead" \
   --scope "/subscriptions/{sub-id}" \
   --enforcement-mode "Default" \
@@ -79,7 +79,7 @@ az policy assignment create \
   --policy "a6abeaec-4d90-4a02-805f-6b26c4d3fbe9" \
   --scope "/subscriptions/{sub-id}" \
   --enforcement-mode "Default" \
-  --params '{"effect": {"value": "Audit"}}'
+  --params '{"audit_effect": {"value": "Audit"}}'
 ```
 
 ## Step 2: Create a Policy Initiative
@@ -97,36 +97,66 @@ az policy set-definition create \
       "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/6edd7eda-6dd8-40f7-810d-67160c639cd9",
       "policyDefinitionReferenceId": "storagePrivateLink",
       "parameters": {
-        "effect": {"value": "[parameters('"'"'effect'"'"')]"}
+        "effect": {"value": "[parameters('"'"'storageEffect'"'"')]"}
       }
     },
     {
       "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/7698e800-9299-47a6-b3b6-5a0fee576ead",
       "policyDefinitionReferenceId": "sqlPrivateEndpoint",
       "parameters": {
-        "effect": {"value": "[parameters('"'"'effect'"'"')]"}
+        "effect": {"value": "[parameters('"'"'sqlEffect'"'"')]"}
       }
     },
     {
       "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/a6abeaec-4d90-4a02-805f-6b26c4d3fbe9",
       "policyDefinitionReferenceId": "keyVaultPrivateLink",
       "parameters": {
-        "effect": {"value": "[parameters('"'"'effect'"'"')]"}
+        "audit_effect": {"value": "[parameters('"'"'keyVaultEffect'"'"')]"}
       }
     }
   ]' \
   --params '{
-    "effect": {
+    "storageEffect": {
       "type": "String",
       "metadata": {
-        "displayName": "Effect",
-        "description": "Audit or Deny"
+        "displayName": "Storage effect",
+        "description": "AuditIfNotExists or Disabled"
       },
-      "allowedValues": ["Audit", "Deny", "Disabled"],
+      "allowedValues": ["AuditIfNotExists", "Disabled"],
+      "defaultValue": "AuditIfNotExists"
+    },
+    "sqlEffect": {
+      "type": "String",
+      "metadata": {
+        "displayName": "SQL effect",
+        "description": "Audit or Disabled"
+      },
+      "allowedValues": ["Audit", "Disabled"],
+      "defaultValue": "Audit"
+    },
+    "keyVaultEffect": {
+      "type": "String",
+      "metadata": {
+        "displayName": "Key Vault effect",
+        "description": "Audit or Disabled"
+      },
+      "allowedValues": ["Audit", "Disabled"],
       "defaultValue": "Audit"
     }
   }' \
   --subscription "{sub-id}"
+
+# Assign the initiative in audit mode
+az policy assignment create \
+  --name "require-private-endpoints-assignment" \
+  --display-name "Require Private Endpoints on PaaS Services" \
+  --policy-set-definition "require-private-endpoints" \
+  --scope "/subscriptions/{sub-id}" \
+  --params '{
+    "storageEffect": {"value": "AuditIfNotExists"},
+    "sqlEffect": {"value": "Audit"},
+    "keyVaultEffect": {"value": "Audit"}
+  }'
 ```
 
 ## Step 3: Create a Custom Policy for Services Without Built-In Policies
@@ -135,8 +165,6 @@ Some PaaS services may not have a built-in private link policy. You can create c
 
 ```json
 {
-  // Custom policy to audit resources without private endpoint connections
-  // This checks the privateEndpointConnections property
   "mode": "All",
   "policyRule": {
     "if": {
@@ -146,7 +174,6 @@ Some PaaS services may not have a built-in private link policy. You can create c
           "equals": "Microsoft.SignalRService/SignalR"
         },
         {
-          // Check if no approved private endpoint connections exist
           "count": {
             "field": "Microsoft.SignalRService/SignalR/privateEndpointConnections[*]",
             "where": {
@@ -165,14 +192,14 @@ Some PaaS services may not have a built-in private link policy. You can create c
   "parameters": {
     "effect": {
       "type": "String",
-      "allowedValues": ["Audit", "Deny", "Disabled"],
+      "allowedValues": ["Audit", "Disabled"],
       "defaultValue": "Audit"
     }
   }
 }
 ```
 
-The pattern is the same for most resource types - you check the `privateEndpointConnections` array for at least one approved connection.
+The pattern is similar for many resource types - you check the `privateEndpointConnections` array for at least one approved connection. Use Audit for this kind of custom existence check; use Deny on the service's public network access property to block publicly reachable resources at deployment time.
 
 ## Step 4: Add a Policy to Disable Public Network Access
 
@@ -192,7 +219,6 @@ Here is a custom policy that ensures public network access is disabled on SQL se
 
 ```json
 {
-  // Deny SQL servers with public network access enabled
   "mode": "All",
   "policyRule": {
     "if": {
@@ -202,7 +228,6 @@ Here is a custom policy that ensures public network access is disabled on SQL se
           "equals": "Microsoft.Sql/servers"
         },
         {
-          // Public network access should be Disabled
           "field": "Microsoft.Sql/servers/publicNetworkAccess",
           "notEquals": "Disabled"
         }
@@ -278,18 +303,18 @@ az network private-endpoint dns-zone-group create \
   --zone-name "blob"
 ```
 
-## Step 7: Switch to Deny Mode
+## Step 7: Switch Public Network Access Policies to Deny
 
-Once you have remediated existing resources and communicated the policy to development teams, switch the policies to Deny:
+Once you have remediated existing resources and communicated the policy to development teams, switch the public network access policies to Deny:
 
 ```bash
-# Update the initiative assignment to Deny mode
+# Update a public network access assignment to Deny mode
 az policy assignment update \
-  --name "require-private-endpoints-assignment" \
+  --name "deny-storage-public-access" \
   --params '{"effect": {"value": "Deny"}}'
 ```
 
-After switching to Deny, any attempt to create a PaaS resource without a private endpoint will be blocked at deployment time. The user sees a policy violation error in the portal or their deployment tool.
+After switching public network access policies to Deny, attempts to create or update PaaS resources with public network access enabled will be blocked at deployment time. The private endpoint policies continue to report resources that still need approved private endpoint connections.
 
 ## Handling Exceptions
 
@@ -310,7 +335,7 @@ Always set an expiration and document the reason. Review exemptions quarterly.
 
 ## Infrastructure as Code Integration
 
-If your teams use Bicep or Terraform, the Deny policy will catch non-compliant deployments at deployment time. Make sure your IaC templates include private endpoint configuration:
+If your teams use Bicep or Terraform, the public network access Deny policy will catch non-compliant deployments at deployment time. Make sure your IaC templates include private endpoint configuration:
 
 ```bicep
 // Bicep example: Storage account with private endpoint
@@ -351,4 +376,4 @@ resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' = {
 
 ## Summary
 
-Azure Policy is the right tool for enforcing private endpoints across your organization. Start with the built-in policies in Audit mode, create an initiative that covers all your PaaS service types, remediate existing resources, and then switch to Deny mode for enforcement. Do not forget to also enforce disabling public network access - having a private endpoint does not help if the public endpoint is still open. Combine this with exemptions for legitimate exceptions and you have a comprehensive network isolation strategy for your PaaS resources.
+Azure Policy is the right tool for governing private endpoints across your organization. Start with the built-in policies in Audit mode, create an initiative that covers all your PaaS service types, remediate existing resources, and then use Deny mode for public network access enforcement. Do not forget to also enforce disabling public network access - having a private endpoint does not help if the public endpoint is still open. Combine this with exemptions for legitimate exceptions and you have a comprehensive network isolation strategy for your PaaS resources.
