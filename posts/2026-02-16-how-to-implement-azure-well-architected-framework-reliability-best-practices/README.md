@@ -26,7 +26,7 @@ Let us turn each of these into specific Azure implementations.
 
 ## Define Your Reliability Targets
 
-Before building anything, define your targets. The two most important metrics are:
+Before building anything, define your targets. The three most important metrics are:
 
 - **SLO (Service Level Objective)**: The availability target for your service (e.g., 99.95%)
 - **RTO (Recovery Time Objective)**: Maximum acceptable downtime during a disaster
@@ -203,6 +203,19 @@ az afd origin create \
   --host-name myapp-westus.azurewebsites.net \
   --priority 2 \
   --weight 1000
+
+# Map the endpoint to the origin group with a route
+az afd route create \
+  --resource-group prod-rg \
+  --profile-name my-front-door \
+  --endpoint-name myapp \
+  --route-name default-route \
+  --origin-group backend-pool \
+  --supported-protocols Http Https \
+  --patterns-to-match "/*" \
+  --forwarding-protocol MatchRequest \
+  --https-redirect Enabled \
+  --link-to-default-domain Enabled
 ```
 
 Azure Front Door automatically routes traffic to the primary region and fails over to the secondary if health probes fail.
@@ -291,12 +304,9 @@ Backups are worthless if you have never tested restoring them. Schedule quarterl
 ```bash
 # Practice restoring a database to verify backups work
 az sql db restore \
-  --resource-group dr-test-rg \
-  --server dr-test-server \
-  --name restored-db \
   --resource-group prod-rg \
   --server my-sql-server \
-  --source-database my-database \
+  --name my-database \
   --dest-name recovery-test-db \
   --time "2026-02-15T12:00:00Z"
 ```
@@ -340,16 +350,7 @@ Use Application Insights Application Map to visualize dependencies between servi
 
 Once you have built resilience into your system, test it. Azure Chaos Studio lets you inject faults into your Azure resources to validate that your application handles failures correctly.
 
-```bash
-# Create a Chaos Studio experiment that stops a VM
-# This tests whether your load balancer correctly routes traffic
-# to remaining healthy instances
-az chaos experiment create \
-  --resource-group prod-rg \
-  --name vm-stop-experiment \
-  --location eastus \
-  --identity-type SystemAssigned
-```
+Create the experiment in the Azure portal or with the Chaos Studio ARM/REST APIs. An experiment definition must include the target resource, selectors, steps, branches, and the specific fault action. After you create the experiment, grant the experiment's managed identity the required permissions on the target resource before you run it.
 
 Start small: test a single VM failure. Then progress to zone failures, dependency outages, and eventually full region failover.
 
