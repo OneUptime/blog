@@ -14,7 +14,7 @@ This guide covers the entire process from initial setup through final cutover, i
 
 ## How the Hyper-V Migration Works
 
-Azure Migrate uses a software-based replication provider that you install on each Hyper-V host. This provider captures changes at the disk level and replicates them to Azure Storage. Unlike VMware migration, there is no separate appliance VM required for Hyper-V. The provider runs directly on the host.
+Azure Migrate uses a software-based replication provider that you install on each Hyper-V host. This provider works with the Recovery Services agent to capture changes at the disk level and replicate them to Azure Storage. Unlike VMware migration, there is no separate migration appliance VM required for Hyper-V migration. The provider runs directly on the host.
 
 The high-level flow looks like this:
 
@@ -39,7 +39,7 @@ You will need:
 - An Azure Migrate project already created in the portal
 - A target virtual network and subnet in Azure
 
-The Hyper-V hosts should have enough free disk space for a local cache during replication. Plan for about 600 MB per VM being replicated.
+The Hyper-V hosts should have enough free disk space for the snapshot and Hyper-V Replica log files created during replication. The space required depends on VM size, data change rate, and how long initial replication runs.
 
 ## Step 1: Set Up the Azure Migrate Project
 
@@ -74,9 +74,9 @@ New-NetFirewallRule -DisplayName "Azure Migrate Outbound HTTPS" `
     -Action Allow `
     -Profile Any
 
-# Check .NET Framework version (4.7.2 or later required)
+# Check .NET Framework version (4.7 or later required)
 (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full").Release
-# Value should be 461808 or higher for .NET 4.7.2+
+# Value should be 460798 or higher for .NET 4.7+
 ```
 
 Make sure the system clock is synchronized. Replication will fail if there is significant time drift between the host and Azure.
@@ -84,9 +84,10 @@ Make sure the system clock is synchronized. Replication will fail if there is si
 ## Step 3: Register Hyper-V Hosts with Azure Migrate
 
 1. In the Azure Migrate project, go to "Migration and modernization"
-2. Click "Discover" and select "Hyper-V" as the virtualization type
-3. Download the registration key file
-4. Download the Azure Site Recovery Provider installer
+2. Click "Discover" and select "Azure VM" as the migration target and "Hyper-V" as the virtualization type
+3. Select the target Azure region and create the required resources
+4. Download the registration key file
+5. Download the Azure Site Recovery Provider installer
 
 Copy both files to each Hyper-V host and run the installer:
 
@@ -96,7 +97,7 @@ Copy both files to each Hyper-V host and run the installer:
 4. Select the proxy settings if applicable
 5. Complete the installation
 
-The provider registers the Hyper-V host with your Azure Migrate project. After registration, the host and its VMs appear in the portal within 15-30 minutes.
+After installing the provider on the hosts, return to the Azure portal and click "Finalize registration." The provider registers the Hyper-V host with your Azure Migrate project. After registration, the host and its VMs appear in the portal after discovery completes.
 
 ## Step 4: Configure Target Azure Environment
 
@@ -120,16 +121,19 @@ az group create \
 az network vnet create \
     --resource-group rg-migrated-workloads \
     --name vnet-migration \
-    --address-prefix 10.1.0.0/16 \
+    --address-prefixes 10.1.0.0/16 \
     --subnet-name subnet-default \
-    --subnet-prefix 10.1.0.0/24
+    --subnet-prefixes 10.1.0.0/24
 
 # Create a cache storage account (standard LRS is fine for cache)
 az storage account create \
     --resource-group rg-migrated-workloads \
     --name stmigrationcache2026 \
     --sku Standard_LRS \
-    --location eastus2
+    --kind StorageV2 \
+    --location eastus2 \
+    --min-tls-version TLS1_2 \
+    --allow-blob-public-access false
 ```
 
 ## Step 5: Start Replication
@@ -155,7 +159,7 @@ Monitor replication status in the portal. Each VM shows its replication health a
 
 Never skip this step. A test migration creates a copy of the VM in Azure without affecting the source VM or ongoing replication.
 
-1. Wait for replication status to show "Protected" (initial replication complete)
+1. Wait for initial replication to finish and delta replication to begin
 2. Click on a replicating VM
 3. Select "Test migration"
 4. Choose a test virtual network (use a separate one to avoid IP conflicts)
@@ -194,7 +198,7 @@ After the Azure VM is running, there are several things to take care of:
 
 **Verify backups.** Set up Azure Backup for the newly migrated VMs immediately. Do not leave them unprotected.
 
-**Remove replication.** Once you have confirmed everything works, stop replication and clean up the Azure Migrate resources. This removes the cache storage and replication metadata.
+**Remove replication.** Once you have confirmed everything works, stop replication and clean up the Azure Migrate resources. This stops replication for the on-premises machine and removes replication state metadata. If the cache storage account is no longer used by any migrations, remove it separately.
 
 **Decommission on-premises VMs.** Keep the source VMs turned off (but not deleted) for a rollback period, typically one to two weeks. After that, you can safely remove them.
 
@@ -207,15 +211,15 @@ For environments with dozens or hundreds of VMs, you will want to batch your mig
 3. Test migrate the group together
 4. Schedule cutover windows per group, starting with lower-risk applications
 
-Azure Migrate supports replicating up to 300 VMs simultaneously per project. For larger environments, use multiple projects or stagger your replication waves.
+Azure Migrate lets you select up to 10 Hyper-V VMs at a time for replication. For larger environments, start replication in batches of 10 and stagger your waves based on bandwidth, storage, and application dependencies.
 
 ## Troubleshooting Common Issues
 
 **Replication stuck at a percentage.** Check network bandwidth between the Hyper-V host and Azure. Also verify the cache storage account is not throttled. Large VMs with high change rates may need a faster connection.
 
-**Provider registration fails.** This is almost always a connectivity issue. Verify the Hyper-V host can reach `*.hypervrecoverymanager.windowsazure.com` and `*.blob.core.windows.net` on port 443.
+**Provider registration fails.** This is often a connectivity issue. Verify the Hyper-V host can reach the required Azure Migrate endpoints on port 443, including `login.microsoftonline.com`, `backup.windowsazure.com`, `*.hypervrecoverymanager.windowsazure.com`, `*.blob.core.windows.net`, `dc.services.visualstudio.com`, and `time.windows.com`.
 
-**VM fails to boot after migration.** Check that the VM generation (Gen1 vs Gen2) is supported by the target Azure VM size. Also verify that the boot disk is not larger than the Azure VM size supports.
+**VM fails to boot after migration.** Check that the VM generation and firmware settings are supported in Azure. Also verify that the OS disk is within Azure Migrate limits and that the target Azure VM size supports the VM's disk count and storage requirements.
 
 ## Wrapping Up
 
