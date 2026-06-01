@@ -14,7 +14,7 @@ In this post, I will cover the full process of resizing an Azure VM, what to wat
 
 ## How VM Resizing Works
 
-When you resize a VM in Azure, the platform deallocates the virtual machine, changes the underlying hardware allocation, and then starts it back up. Your OS disk and data disks remain attached. The public IP address stays the same if you are using a static IP. If you are using a dynamic IP, it may change after the restart.
+When you resize a VM in Azure, the platform changes the underlying hardware allocation and restarts the virtual machine. In some cases, you must deallocate the VM first. Your OS disk and data disks remain attached. The public IP address stays the same if you are using a static IP. If you are using a dynamic IP, it may change after deallocation.
 
 The key thing to understand is that not all VM sizes are available on every hardware cluster. If the new size you want is not available on the current cluster, Azure needs to move the VM to a different cluster. This still preserves your data, but the operation takes longer.
 
@@ -99,47 +99,48 @@ When you deallocate, the VM stops and Azure releases the compute resources. You 
 If you prefer the portal, the process is straightforward:
 
 1. Navigate to your virtual machine in the Azure portal.
-2. Click on "Size" under the Settings section in the left menu.
-3. Browse the available sizes. The portal shows which sizes are available without deallocation and which require it.
+2. Click on "Size" under the Availability + scale section in the left menu.
+3. Browse the available sizes. If the VM is running and the size you want is not listed, stopping the VM may reveal more sizes.
 4. Select the new size and click "Resize."
-5. If deallocation is required, the portal will prompt you.
+5. If the size is still unavailable, stop and deallocate the VM before trying the resize again.
 
 The portal gives you a nice comparison view showing CPU, memory, and pricing for each size, which helps when you are deciding what to move to.
 
 ## Resizing VMs in an Availability Set
 
-If your VM is part of an availability set, the resize process has an extra wrinkle. All VMs in the availability set must support the target size, or you need to deallocate all of them before resizing.
+If your VM is part of an availability set, the resize process has an extra wrinkle. If the target size is not available on the hardware cluster currently hosting the availability set, you need to deallocate all VMs in the availability set before resizing.
 
 ```bash
-# Deallocate all VMs in the availability set
-az vm deallocate --ids $(az vm list \
+AVAILABILITY_SET_ID=$(az vm availability-set show \
   --resource-group myResourceGroup \
-  --query "[?availabilitySet].id" \
+  --name myAvailabilitySet \
+  --query id \
   --output tsv)
 
-# Resize each VM individually
-az vm resize \
+VM_IDS=$(az vm list \
   --resource-group myResourceGroup \
-  --name myVM1 \
-  --size Standard_D4s_v5
+  --query "[?availabilitySet.id=='$AVAILABILITY_SET_ID'].id" \
+  --output tsv)
 
+# Deallocate all VMs in the availability set
+az vm deallocate --ids $VM_IDS
+
+# Resize all VMs in the availability set
 az vm resize \
-  --resource-group myResourceGroup \
-  --name myVM2 \
+  --ids $VM_IDS \
   --size Standard_D4s_v5
 
 # Start all VMs back up
-az vm start --resource-group myResourceGroup --name myVM1
-az vm start --resource-group myResourceGroup --name myVM2
+az vm start --ids $VM_IDS
 ```
 
-This is one of those situations where having a load balancer in front of your VMs pays off. You can resize them one at a time by draining connections to each VM before deallocating it.
+This is one of those situations where having a load balancer in front of your VMs pays off. When the target size is available on the current cluster, you can resize VMs one at a time by draining connections to each VM before resizing it.
 
 ## Things That Can Go Wrong
 
 There are a few scenarios to watch out for:
 
-**Temporary disk loss**: Some VM sizes come with a local temporary disk (the D: drive on Windows or /dev/sdb on Linux). If you move to a size that has a different temporary disk configuration, the data on that disk is lost. Never store anything important on the temporary disk.
+**Temporary disk loss**: Some VM sizes come with a local temporary disk (often the D: drive on Windows or /dev/sdb on Linux). Temporary disks are not persistent, and data on them can be lost when the VM moves to another host, including during a stop/deallocate or resize operation. Never store anything important on the temporary disk.
 
 **IP address changes**: If you are using a dynamic public IP, it may change after deallocation. Switch to a static IP before resizing if you cannot afford an IP change.
 
