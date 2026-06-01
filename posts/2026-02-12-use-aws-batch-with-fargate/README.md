@@ -22,7 +22,7 @@ Fargate makes sense when:
 EC2 is still better when:
 - You need GPU instances
 - Jobs need more than 16 vCPUs or 120 GB memory
-- You want to use Spot instances for cost savings
+- You want to use EC2 Spot Instances or more control over Spot capacity for cost savings
 - You need custom AMIs with specific software pre-installed
 
 ## Setting Up the IAM Role
@@ -147,6 +147,10 @@ aws batch create-job-queue \
 Fargate job definitions require a few extra fields compared to EC2 ones. You must specify the execution role and use Fargate-compatible resource configurations.
 
 ```bash
+# Create the CloudWatch Logs log group if it doesn't already exist
+aws logs create-log-group \
+  --log-group-name /aws/batch/fargate-processor
+
 # Register a Fargate job definition
 aws batch register-job-definition \
   --job-definition-name fargate-processor \
@@ -189,15 +193,15 @@ Important differences from EC2 job definitions:
 
 Fargate has specific valid CPU and memory combinations. Here are the common ones.
 
-| vCPU | Memory Range |
-|------|-------------|
-| 0.25 | 512 MB - 2 GB |
-| 0.5  | 1 GB - 4 GB |
-| 1    | 2 GB - 8 GB |
-| 2    | 4 GB - 16 GB |
-| 4    | 8 GB - 30 GB |
-| 8    | 16 GB - 60 GB |
-| 16   | 32 GB - 120 GB |
+| vCPU | Memory Values |
+|------|---------------|
+| 0.25 | 512 MB, 1 GB, or 2 GB |
+| 0.5  | 1 GB - 4 GB in 1 GB increments |
+| 1    | 2 GB - 8 GB in 1 GB increments |
+| 2    | 4 GB - 16 GB in 1 GB increments |
+| 4    | 8 GB - 30 GB in 1 GB increments |
+| 8    | 16 GB - 60 GB in 4 GB increments |
+| 16   | 32 GB - 120 GB in 8 GB increments |
 
 If you specify an invalid combination, the job will fail to launch.
 
@@ -244,7 +248,7 @@ aws batch submit-job \
 
 ## Using Ephemeral Storage
 
-Fargate tasks get 20 GB of ephemeral storage by default. You can increase it up to 200 GB.
+Fargate tasks get 20 GiB of ephemeral storage by default. You can configure increased ephemeral storage from 21 GiB up to 200 GiB.
 
 ```bash
 # Job definition with increased ephemeral storage
@@ -300,7 +304,14 @@ Fargate tasks need network access to pull container images and potentially reach
 For accessing AWS services privately, use VPC endpoints.
 
 ```bash
-# Create VPC endpoints for ECR and S3 (so Fargate doesn't need internet access)
+# Create VPC endpoints for ECR, S3, and CloudWatch Logs (so Fargate doesn't need internet access)
+aws ec2 create-vpc-endpoint \
+  --vpc-id vpc-abc123 \
+  --service-name com.amazonaws.us-east-1.ecr.api \
+  --vpc-endpoint-type Interface \
+  --subnet-ids subnet-abc123 \
+  --security-group-ids sg-abc123
+
 aws ec2 create-vpc-endpoint \
   --vpc-id vpc-abc123 \
   --service-name com.amazonaws.us-east-1.ecr.dkr \
@@ -313,6 +324,13 @@ aws ec2 create-vpc-endpoint \
   --service-name com.amazonaws.us-east-1.s3 \
   --vpc-endpoint-type Gateway \
   --route-table-ids rtb-abc123
+
+aws ec2 create-vpc-endpoint \
+  --vpc-id vpc-abc123 \
+  --service-name com.amazonaws.us-east-1.logs \
+  --vpc-endpoint-type Interface \
+  --subnet-ids subnet-abc123 \
+  --security-group-ids sg-abc123
 ```
 
 ## Troubleshooting Checklist
