@@ -85,7 +85,7 @@ SigninLogs
 | summarize
     TotalSignIns = count(),
     FailedSignIns = countif(ResultType != "0")
-| extend FailureRate = round(todouble(FailedSignIns) / todouble(TotalSignIns) * 100, 1)
+| extend FailureRate = iff(TotalSignIns == 0, 0.0, round(todouble(FailedSignIns) / todouble(TotalSignIns) * 100, 1))
 | project FailedSignIns, FailureRate
 ```
 
@@ -257,14 +257,15 @@ To share the workbook with your team, you have several options:
 - **Templates:** Export the workbook as a Gallery Template that others can instantiate
 - **ARM template:** Export as JSON for deployment through CI/CD
 
-To export as an ARM template:
+To retrieve the workbook resource JSON with Azure CLI:
 
 ```bash
-# Export a workbook as an ARM template
+# Retrieve a workbook resource as JSON
 
-az monitor workbook show \
+az monitor app-insights workbook show \
   --name "your-workbook-id" \
   --resource-group myResourceGroup \
+  --can-fetch-content true \
   --output json > workbook-template.json
 ```
 
@@ -291,9 +292,14 @@ SigninLogs
 // Identify users with the highest risk indicators
 SigninLogs
 | where TimeGenerated {TimeRange}
+| order by UserPrincipalName asc, TimeGenerated asc
+| serialize
+    PreviousUser = prev(UserPrincipalName),
+    PreviousResultType = prev(ResultType)
+| extend SuccessAfterFailureFlag = iff(ResultType == "0" and PreviousUser == UserPrincipalName and PreviousResultType != "0", 1, 0)
 | summarize
     FailedAttempts = countif(ResultType != "0"),
-    SuccessAfterFailure = countif(ResultType == "0" and prev(ResultType) != "0"),
+    SuccessAfterFailure = sum(SuccessAfterFailureFlag),
     UniqueIPs = dcount(IPAddress),
     UniqueCountries = dcount(LocationDetails.countryOrRegion),
     RiskySignIns = countif(RiskLevelDuringSignIn in ("high", "medium"))
