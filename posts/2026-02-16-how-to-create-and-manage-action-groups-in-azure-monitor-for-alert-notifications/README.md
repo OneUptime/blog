@@ -129,8 +129,8 @@ az monitor action-group create \
   --resource-group rg-monitoring \
   --name "ops-team" \
   --short-name "OpsTeam" \
-  --action email on-call-email ops@example.com \
-  --action webhook pagerduty-hook "https://events.pagerduty.com/integration/<key>/enqueue"
+  --action email on-call-email ops@example.com usecommonalertschema \
+  --action webhook pagerduty-hook "https://events.pagerduty.com/integration/<key>/enqueue" usecommonalertschema
 ```
 
 To add an SMS action, use this syntax.
@@ -197,17 +197,17 @@ In practice, you will want multiple action groups for different situations. Here
 
 Azure enforces rate limits on action groups to prevent notification storms:
 
-- **Email**: No more than 100 emails per hour per action group.
+- **Email**: No more than 100 emails per hour for each email address per region.
 - **SMS**: No more than 1 SMS per 5 minutes per phone number.
 - **Voice**: No more than 1 voice call per 5 minutes per phone number.
-- **Webhook**: 10 webhook calls per action group per minute, with automatic retry on failure.
-- **Azure Function/Logic App**: Subject to the function/logic app's own scaling limits.
+- **Webhook**: Up to 10 webhook actions per action group, with a maximum of 1500 webhook calls per minute per subscription. Failed calls are retried for retryable failures.
+- **Azure Function/Logic App**: Up to 10 actions of each type per action group, and subject to the function/logic app's own scaling limits.
 
 If your alerts fire frequently, these limits can cause missed notifications. To mitigate this, make sure your alert rules have appropriate evaluation frequencies and use the "number of violations" setting to avoid firing on every single data point.
 
 ## Testing Action Groups
 
-You can test an action group without waiting for a real alert to fire. In the portal, go to the action group, click **Test action group** at the top, select a sample alert type, and click **Test**. This sends a test notification through all configured actions so you can verify everything is wired up correctly.
+You can test an action group without waiting for a real alert to fire. In the portal, go to the action group, click **Test** at the top, select a sample alert type and the notification and action types you want to test, and click **Test**. This sends a test notification through the selected actions so you can verify everything is wired up correctly.
 
 From the CLI, you can test like this.
 
@@ -215,9 +215,9 @@ From the CLI, you can test like this.
 # Test an action group
 az monitor action-group test-notifications create \
   --resource-group rg-monitoring \
-  --action-group-name "ops-team" \
+  --action-group "ops-team" \
   --alert-type metricstaticthreshold \
-  --add-action email on-call-email ops@example.com
+  --add-action email on-call-email ops@example.com usecommonalertschema
 ```
 
 ## Managing Action Groups Across Subscriptions
@@ -237,9 +237,9 @@ az monitor alert-processing-rule create \
   --resource-group rg-monitoring \
   --scopes "/subscriptions/<sub-id>/resourceGroups/rg-prod" \
   --rule-type RemoveAllActionGroups \
-  --schedule-recurrence-type Daily \
   --schedule-start-datetime "2026-02-17 02:00:00" \
-  --schedule-end-datetime "2026-02-17 04:00:00"
+  --schedule-end-datetime "2026-02-17 04:00:00" \
+  --schedule-time-zone "UTC"
 ```
 
 ## Wrapping Up
