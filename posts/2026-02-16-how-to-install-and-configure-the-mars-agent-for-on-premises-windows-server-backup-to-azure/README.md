@@ -16,20 +16,22 @@ This guide covers the full setup, from installing the agent to configuring backu
 
 The MARS agent handles:
 
-- **Files and folders** - Any file on any local or mounted volume
+- **Files and folders** - Files on supported local NTFS volumes
 - **System state** - Windows registry, boot files, COM+ class registration, Active Directory (on domain controllers), SYSVOL, and more
-- **Bare metal recovery** - Full server restore (when combined with Windows Server Backup)
+- **Volume-level backup** - Full local volumes, with volume restore available through the MARS recovery workflow
 
 What it cannot do:
 
 - Back up application-level workloads (SQL Server, Exchange, SharePoint) - use Azure Backup Server or DPM for those
 - Back up Linux servers - it is Windows-only
 - Back up network shares directly - the agent must be installed on the server hosting the data
+- Back up Windows Server Core SKUs
 
 ## Prerequisites
 
 - Windows Server 2012 R2 or later (also works on Windows 10/11 for client scenarios)
-- .NET Framework 4.7.2 or later
+- .NET Framework 4.8
+- Windows PowerShell 5.0
 - Outbound HTTPS (port 443) connectivity to Azure
 - A Recovery Services vault in Azure
 - At least 5-10% free space on the volume where the cache folder is located
@@ -112,17 +114,15 @@ The encryption passphrase is critical. It encrypts your backup data before it le
 
 $VaultCredPath = "C:\temp\vault-credentials.VaultCredentials"
 $Passphrase = "YourSuperSecurePassphrase2026!"
+$SecurityPIN = "123456"  # Generate this in the vault: Settings > Properties > Security PIN
 
 # Import the MARS agent PowerShell module
 Import-Module "C:\Program Files\Microsoft Azure Recovery Services Agent\bin\Modules\MSOnlineBackup"
 
-# Set vault credentials
-$vaultCred = Get-OBMachineSetting
-Start-OBRegistration -VaultCredentials $VaultCredPath
-
-# Set the encryption passphrase
+# Register with the vault and set the encryption passphrase
+Start-OBRegistration -VaultCredentials $VaultCredPath -Confirm:$false
 $passSecure = ConvertTo-SecureString -String $Passphrase -AsPlainText -Force
-Set-OBMachineSetting -EncryptionPassphrase $passSecure
+Set-OBMachineSetting -EncryptionPassphrase $passSecure -SecurityPIN $SecurityPIN
 
 Write-Output "Server registered with vault successfully"
 ```
@@ -194,18 +194,18 @@ If you do not want backup traffic consuming all your bandwidth during business h
 1. In the MARS agent console, click "Change Properties"
 2. Go to the "Throttling" tab
 3. Enable internet bandwidth throttling
-4. Set work hours bandwidth (e.g., 5 Mbps) and non-work hours bandwidth (e.g., unlimited)
+4. Set work hours bandwidth (e.g., 5 MB/s) and non-work hours bandwidth (e.g., 20 MB/s)
 5. Define work hours (e.g., 8 AM to 6 PM, Monday through Friday)
 
 ```powershell
 # Configure bandwidth throttling via PowerShell
-# Limit to 5 Mbps during work hours, unlimited after hours
+# Limit to 5 MB/s during work hours and 20 MB/s after hours
 
 Set-OBMachineSetting -WorkDay Monday,Tuesday,Wednesday,Thursday,Friday `
     -StartWorkHour "08:00:00" `
     -EndWorkHour "18:00:00" `
-    -WorkHourBandwidth 5242880 `
-    -NonWorkHourBandwidth 0  # 0 means unlimited
+    -WorkHourBandwidth (5 * 1024 * 1024) `
+    -NonWorkHourBandwidth (20 * 1024 * 1024)
 ```
 
 ## Step 7: Run the First Backup
