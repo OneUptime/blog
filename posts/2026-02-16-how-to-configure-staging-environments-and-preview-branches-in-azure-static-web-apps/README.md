@@ -17,7 +17,7 @@ This workflow eliminates the "it works on my machine" problem and removes the ne
 When you push a commit or open a pull request against the production branch, the GitHub Actions workflow runs. For PR events, instead of deploying to production, Azure creates an isolated environment with a unique URL pattern:
 
 ```text
-https://happy-river-0a1b2c3d4-<PR_NUMBER>.azurestaticapps.net
+https://happy-river-0a1b2c3d4-<PR_NUMBER>.<LOCATION>.azurestaticapps.net
 ```
 
 Each pull request gets its own environment. Multiple open PRs each get separate environments running simultaneously. The staging environment receives the exact same build as production would, including any API functions.
@@ -63,7 +63,7 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
         with:
           submodules: true
       - name: Build And Deploy
@@ -113,7 +113,7 @@ Once the workflow completes, look for a comment on the pull request from the Azu
 
 The comment looks something like:
 
-> Azure Static Web Apps: Your stage site is ready! Visit it here: https://happy-river-0a1b2c3d4-2.azurestaticapps.net
+> Azure Static Web Apps: Your stage site is ready! Visit it here: https://happy-river-0a1b2c3d4-2.1.azurestaticapps.net
 
 Click the link to see your changes live in the staging environment.
 
@@ -163,60 +163,67 @@ function StagingBanner() {
 
 ## Step 4: Manage Staging Environment Secrets
 
-Application settings in Azure Static Web Apps apply to all environments (production and staging) by default. This means your staging environments use the same database connection strings and API keys as production.
+Application settings in Azure Static Web Apps are available to backend API functions and are copied to production and staging environments. You can also configure variables per environment in the Azure portal or by using the CLI's `--environment-name` option.
 
-For sensitive operations, you might want staging to use separate credentials. One approach is to use different settings based on the environment type in your API functions.
+For sensitive operations, you might want staging to use separate credentials. One approach is to set the same setting names with different values for each environment, and then read those settings in your API functions.
 
 ```javascript
 // api/shared/config.js
-// Select the appropriate configuration based on environment
 function getConfig() {
-  const isProduction = process.env.AZURE_STATIC_WEB_APPS_ENVIRONMENT === 'production';
-
   return {
-    databaseUrl: isProduction
-      ? process.env.PROD_DATABASE_URL
-      : process.env.STAGING_DATABASE_URL,
-    apiKey: isProduction
-      ? process.env.PROD_API_KEY
-      : process.env.STAGING_API_KEY
+    databaseUrl: process.env.DATABASE_URL,
+    apiKey: process.env.API_KEY
   };
 }
 
 module.exports = { getConfig };
 ```
 
-Then set both production and staging values in the application settings.
+Then set production values in the default environment and staging values in the specific preview environment.
 
 ```bash
-# Set both production and staging configuration values
+# Set production configuration values
 az staticwebapp appsettings set \
   --name my-static-app \
   --resource-group myResourceGroup \
   --setting-names \
-    "PROD_DATABASE_URL=mongodb://prod-server/mydb" \
-    "STAGING_DATABASE_URL=mongodb://staging-server/mydb" \
-    "PROD_API_KEY=prod-key-here" \
-    "STAGING_API_KEY=staging-key-here"
+    "DATABASE_URL=mongodb://prod-server/mydb" \
+    "API_KEY=prod-key-here"
+
+# Set staging configuration values for preview environment 2
+az staticwebapp appsettings set \
+  --name my-static-app \
+  --resource-group myResourceGroup \
+  --environment-name "2" \
+  --setting-names \
+    "DATABASE_URL=mongodb://staging-server/mydb" \
+    "API_KEY=staging-key-here"
 ```
 
 ## Step 5: Protect Staging Environments
 
-By default, anyone with the URL can access a staging environment. For private projects, you can restrict access using password protection in the configuration.
+By default, anyone with the URL can access a staging environment. For private projects on the Standard plan, you can restrict access using password protection in the Azure portal.
 
-Add this to your `staticwebapp.config.json`.
+In the Static Web App resource, go to **Configuration**, open the **General settings** tab, and choose **Protect staging environments only** under password protection.
+
+Alternatively, you can require authentication for the whole app with route rules in `staticwebapp.config.json`.
 
 ```json
 {
-  "forwardingGateway": {
-    "requiredHeaders": {
-      "X-Azure-FDID": "your-front-door-id"
+  "routes": [
+    {
+      "route": "/*",
+      "allowedRoles": ["authenticated"]
+    }
+  ],
+  "responseOverrides": {
+    "401": {
+      "statusCode": 302,
+      "redirect": "/.auth/login/aad"
     }
   }
 }
 ```
-
-Alternatively, you can require authentication for the staging environment by using route rules that apply only to staging URLs.
 
 A simpler approach is to keep the staging URLs unlisted. They are not indexed by search engines and are only shared through the PR comment. For most teams, obscurity combined with the temporary nature of staging environments is sufficient.
 
@@ -224,12 +231,16 @@ A simpler approach is to keep the staging URLs unlisted. They are not indexed by
 
 Beyond PR-based staging environments, you can create named environments for persistent staging or QA purposes. These are environments that are not tied to a specific pull request.
 
-```bash
-# Deploy to a named environment from a specific branch
-az staticwebapp environment create \
-  --name my-static-app \
-  --resource-group myResourceGroup \
-  --environment-name "qa"
+```yaml
+- name: Build And Deploy QA
+  uses: Azure/static-web-apps-deploy@v1
+  with:
+    azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+    repo_token: ${{ secrets.GITHUB_TOKEN }}
+    action: "upload"
+    app_location: "/"
+    output_location: "build"
+    deployment_environment: "qa"
 ```
 
 Named environments persist until you explicitly delete them, making them useful for dedicated QA testing, demo environments, or integration testing with external services.
