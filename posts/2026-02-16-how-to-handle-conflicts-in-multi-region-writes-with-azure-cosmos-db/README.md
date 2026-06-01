@@ -8,7 +8,7 @@ Description: Learn how to detect, resolve, and prevent write conflicts in Azure 
 
 ---
 
-Multi-region writes in Azure Cosmos DB let any region accept write operations. This gives you the lowest possible write latency for globally distributed users. But there is a catch - when two users in different regions update the same document at the same time, you get a conflict. Cosmos DB detects these conflicts automatically, but you need to decide how they get resolved. This guide covers the three conflict resolution strategies, how to implement each one, and how to design your data model to minimize conflicts in the first place.
+Multi-region writes in Azure Cosmos DB let any region accept write operations. This gives you the lowest possible write latency for globally distributed users. But there is a catch - when two users in different regions update the same document at the same time, you get a conflict. Cosmos DB detects these conflicts automatically, but you need to decide how they get resolved. This guide covers the main conflict resolution strategies, how to implement each one, and how to design your data model to minimize conflicts in the first place.
 
 ## When Do Conflicts Happen?
 
@@ -31,7 +31,7 @@ sequenceDiagram
     Note over US,EU: Conflict detected!<br/>v2a vs v2b - which wins?
 ```
 
-The replication lag between regions is typically 5-50 milliseconds. So conflicts happen when two writes to the same document occur within that window. For high-traffic documents, this is more common than you might think.
+The replication lag between regions depends on the regions, network path, and current workload. Conflicts happen when two writes to the same document occur before replication and conflict resolution have converged. For high-traffic documents, this is more common than you might think.
 
 ## Conflict Resolution Strategy 1: Last Writer Wins (LWW)
 
@@ -47,8 +47,7 @@ az cosmosdb sql container create \
     --database-name mydb \
     --name orders \
     --partition-key-path "/customerId" \
-    --conflict-resolution-policy-mode "LastWriterWins" \
-    --conflict-resolution-policy-path "/_ts" \
+    --conflict-resolution-policy '{"mode":"lastWriterWins","conflictResolutionPath":"/_ts"}' \
     --resource-group myResourceGroup
 ```
 
@@ -64,8 +63,7 @@ az cosmosdb sql container create \
     --database-name mydb \
     --name tasks \
     --partition-key-path "/projectId" \
-    --conflict-resolution-policy-mode "LastWriterWins" \
-    --conflict-resolution-policy-path "/priority" \
+    --conflict-resolution-policy '{"mode":"lastWriterWins","conflictResolutionPath":"/priority"}' \
     --resource-group myResourceGroup
 ```
 
@@ -95,11 +93,11 @@ var task2 = new
 
 ### Using a Version Counter
 
-A common pattern is using a monotonically increasing version number:
+A common pattern is using a version value that is globally comparable across regions:
 
 ```csharp
 // Use a version counter for LWW resolution
-// Each update increments the version - highest version wins
+// Each update assigns a globally comparable version - highest version wins
 public class VersionedDocument
 {
     [JsonProperty("id")]
@@ -115,15 +113,15 @@ public class VersionedDocument
     public string Data { get; set; }
 }
 
-// When updating, increment the version
+// When updating, assign the next version from your application
 async Task UpdateWithVersion(Container container, string id, string pk, string newData)
 {
     // Read the current document
     var response = await container.ReadItemAsync<VersionedDocument>(id, new PartitionKey(pk));
     var doc = response.Resource;
 
-    // Increment version and update data
-    doc.Version++;
+    // Assign a version that is comparable across all writers and update data
+    doc.Version = GetNextGlobalVersion();
     doc.Data = newData;
 
     // Write back - in case of conflict, higher version wins
@@ -144,8 +142,7 @@ az cosmosdb sql container create \
     --database-name mydb \
     --name inventoryItems \
     --partition-key-path "/warehouseId" \
-    --conflict-resolution-policy-mode "Custom" \
-    --conflict-resolution-policy-procedure "dbs/mydb/colls/inventoryItems/sprocs/resolveConflict" \
+    --conflict-resolution-policy '{"mode":"custom","conflictResolutionProcedure":"dbs/mydb/colls/inventoryItems/sprocs/resolveConflict"}' \
     --resource-group myResourceGroup
 ```
 
@@ -158,17 +155,39 @@ function resolveConflict(incomingItem, existingItem, isTombstone, conflictingIte
     var context = getContext();
     var collection = context.getCollection();
 
-    // If the existing document was deleted
+    // If the incoming item conflicts with a previously deleted item
     if (isTombstone) {
-        // Accept the incoming item (undelete)
-        var accepted = collection.replaceDocument(
-            existingItem._self,
+        // Delete wins for tombstone conflicts
+        return;
+    }
+
+    if (!incomingItem) {
+        if (existingItem) {
+            var deleteAccepted = collection.deleteDocument(
+                existingItem._self,
+                {},
+                function(err) {
+                    if (err) throw new Error("Failed to apply delete conflict: " + err.message);
+                }
+            );
+            if (!deleteAccepted) throw new Error("Delete not accepted");
+        }
+        return;
+    }
+
+    if (!existingItem && conflictingItems && conflictingItems.length > 0) {
+        existingItem = conflictingItems[0];
+    }
+
+    if (!existingItem) {
+        var createAccepted = collection.createDocument(
+            collection.getSelfLink(),
             incomingItem,
             function(err) {
-                if (err) throw new Error("Failed to resolve tombstone conflict: " + err.message);
+                if (err) throw new Error("Failed to create merged document: " + err.message);
             }
         );
-        if (!accepted) throw new Error("Replace not accepted");
+        if (!createAccepted) throw new Error("Create not accepted");
         return;
     }
 
@@ -227,7 +246,7 @@ az cosmosdb sql container create \
     --database-name mydb \
     --name documents \
     --partition-key-path "/ownerId" \
-    --conflict-resolution-policy-mode "Custom" \
+    --conflict-resolution-policy '{"mode":"custom"}' \
     --resource-group myResourceGroup
 ```
 
@@ -253,21 +272,21 @@ while (conflictIterator.HasMoreResults)
         Console.WriteLine($"Operation: {conflict.OperationType}");
         Console.WriteLine($"Resource Type: {conflict.ResourceType}");
 
-        // Read the conflicting document
-        dynamic conflictDoc = await container.Conflicts.ReadCurrentAsync<dynamic>(
+        // Read the conflicting document and the currently committed document
+        dynamic conflictDoc = container.Conflicts.ReadConflictContent<dynamic>(conflict);
+        PartitionKey partitionKey = new PartitionKey((string)conflictDoc.ownerId);
+        dynamic currentDoc = await container.Conflicts.ReadCurrentAsync<dynamic>(
             conflict,
-            new PartitionKey(conflict.PartitionKeyValue));
+            partitionKey);
 
         // Your resolution logic here
-        dynamic resolvedDoc = ResolveBasedOnBusinessRules(conflictDoc);
+        dynamic resolvedDoc = ResolveBasedOnBusinessRules(conflictDoc, currentDoc);
 
         // Write the resolved document
-        await container.UpsertItemAsync(resolvedDoc,
-            new PartitionKey((string)resolvedDoc.ownerId));
+        await container.UpsertItemAsync(resolvedDoc, partitionKey);
 
         // Delete the conflict after resolution
-        await container.Conflicts.DeleteAsync(conflict,
-            new PartitionKey(conflict.PartitionKeyValue));
+        await container.Conflicts.DeleteAsync(conflict, partitionKey);
 
         Console.WriteLine($"Conflict resolved and deleted");
     }
@@ -415,6 +434,6 @@ az monitor metrics list \
     --interval PT1H
 ```
 
-In the Azure Portal under Metrics, monitor the conflict feed size and resolution rate. A growing conflict feed indicates your resolution process is falling behind.
+For manual conflict resolution, also track how many conflicts your worker reads from the conflict feed and how long each conflict remains unresolved. A growing backlog indicates your resolution process is falling behind.
 
 Handling conflicts in multi-region writes is fundamentally about understanding your data's semantics. For most applications, Last Writer Wins with a timestamp is sufficient. For data where merging makes more sense than overwriting (like counters or collaborative documents), use a custom stored procedure or the conflict feed. And whenever possible, design your data model to avoid conflicts altogether by using append-only patterns or region-aware routing.
