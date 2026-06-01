@@ -16,7 +16,7 @@ In this post, I will cover how to design and implement a management group hierar
 
 Management Groups are containers above subscriptions in the Azure resource hierarchy. The hierarchy goes: Tenant Root Group > Management Groups > Subscriptions > Resource Groups > Resources.
 
-Anything you assign at a management group level - policies, RBAC roles, budgets - automatically inherits down to all subscriptions and resources underneath. This is what makes management groups powerful: you define a policy once at the top, and it applies everywhere beneath it.
+Policies and RBAC roles that you assign at a management group level automatically inherit down to all subscriptions and resources underneath. Cost Management budgets can also be scoped to a management group to track aggregate costs. This is what makes management groups powerful: you define a policy once at the top, and it applies everywhere beneath it.
 
 ```mermaid
 graph TD
@@ -56,7 +56,7 @@ Contains subscriptions for shared infrastructure managed by the platform team:
 
 - **Management** - central logging (Log Analytics), monitoring (Azure Monitor), automation
 - **Connectivity** - hub networking, firewalls, DNS, VPN/ExpressRoute gateways
-- **Identity** - Active Directory domain controllers, Azure AD Connect servers
+- **Identity** - Active Directory domain controllers, Microsoft Entra Connect Sync servers
 
 ### Landing Zones Management Group
 
@@ -148,24 +148,26 @@ az policy assignment create \
   --params '{"listOfAllowedLocations": {"value": ["eastus", "westus", "westeurope"]}}'
 
 # Apply at the landing zones level - applies to all workload subscriptions
-# Require diagnostic settings for all resources
+# Audit diagnostic settings for selected resource types
 az policy assignment create \
   --name "require-diagnostics" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso-landing-zones" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/7f89b1eb-583c-429a-8828-af049802c1d9"
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/7f89b1eb-583c-429a-8828-af049802c1d9" \
+  --params '{"listOfResourceTypes": {"value": ["Microsoft.Storage/storageAccounts", "Microsoft.KeyVault/vaults", "Microsoft.Network/networkSecurityGroups"]}}'
 
 # Apply only to Corp landing zones
 # Deny public IP addresses for internal-only workloads
 az policy assignment create \
   --name "deny-public-ip-corp" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso-corp" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/6c112d4e-5bc7-47ae-a041-ea2d9dccd749"
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/6c112d4e-5bc7-47ae-a041-ea2d9dccd749" \
+  --params '{"listOfResourceTypesNotAllowed": {"value": ["Microsoft.Network/publicIPAddresses"]}}'
 
 # Apply to Sandbox - deny VNet peering to prevent connecting to corporate networks
 az policy assignment create \
   --name "deny-vnet-peering" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso-sandbox" \
-  --policy-definition "deny-vnet-peering-custom"
+  --policy "deny-vnet-peering-custom"
 ```
 
 ## RBAC at the Management Group Level
@@ -207,7 +209,7 @@ Here is a recommended policy matrix showing what to enforce at each level:
 
 - Allowed locations
 - Require resource tags (Environment, Owner, CostCenter)
-- Enable Azure Defender for all subscriptions
+- Enable Microsoft Defender for Cloud plans for all subscriptions
 - Deploy diagnostic settings to central Log Analytics
 - Deny certain resource types (Classic VMs, Classic Storage)
 
@@ -221,7 +223,7 @@ Here is a recommended policy matrix showing what to enforce at each level:
 - Require NSGs on all subnets
 - Audit public-facing resources
 - Enforce TLS 1.2 minimum
-- Deploy vulnerability assessment agents
+- Enforce vulnerability assessment coverage
 
 ### Corp Landing Zones
 
@@ -232,13 +234,13 @@ Here is a recommended policy matrix showing what to enforce at each level:
 ### Online Landing Zones
 
 - Allow public IPs with WAF protection
-- Require DDoS Protection Standard
+- Require Azure DDoS Network Protection
 
 ### Sandbox Level
 
 - Set spending limits with budgets
 - Deny VNet peering to corporate networks
-- Auto-delete resources older than 30 days
+- Configure automation to delete resources older than 30 days
 
 ## Moving Subscriptions Between Management Groups
 
@@ -256,7 +258,7 @@ az account management-group subscription add \
   --subscription "retiring-subscription-name"
 ```
 
-When you move a subscription, it inherits the new management group's policies and loses the old ones. Test this in a non-production subscription first to make sure the new policies do not break existing resources.
+When you move a subscription, it inherits the new management group's policies and no longer inherits policies from the old parent management group. Test this in a non-production subscription first to make sure the new policies do not break existing resources.
 
 ## Monitoring the Hierarchy
 
@@ -282,7 +284,7 @@ Keep these limits in mind:
 - Maximum depth of 6 levels (not counting the tenant root group)
 - Maximum of 10,000 management groups per tenant
 - Each management group can have many children but only one parent
-- Moving a subscription between management groups requires write permission on both the source and destination
+- Moving a subscription between management groups requires the required write permissions on the subscription, the current parent management group, and the target parent management group
 
 ## Summary
 
