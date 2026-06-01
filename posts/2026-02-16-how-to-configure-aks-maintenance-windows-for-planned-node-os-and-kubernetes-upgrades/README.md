@@ -14,23 +14,21 @@ AKS clusters need regular updates - node OS security patches, Kubernetes version
 
 AKS has three distinct types of maintenance, each controllable with separate maintenance windows:
 
-1. **Node OS security patches (nodeOSUpgrade)**: Linux kernel updates, security patches, and package updates applied to the underlying node OS. These are frequent and usually require a node reboot.
+1. **Node OS security patches (aksManagedNodeOSUpgradeSchedule)**: Linux kernel updates, security patches, and package updates applied to the underlying node OS. These are frequent and can require a node reboot or reimage.
 
-2. **AKS-managed updates (aksManagedAutoUpgradeSchedule)**: Kubernetes version upgrades, node image upgrades, and runtime updates managed by AKS auto-upgrade channels.
+2. **AKS-managed updates (aksManagedAutoUpgradeSchedule)**: Kubernetes version upgrades scheduled by AKS cluster auto-upgrade channels.
 
-3. **Weekly node image updates (default)**: The default maintenance configuration that applies when no specific window is configured.
+3. **AKS weekly releases (default)**: The default maintenance configuration controls AKS weekly releases for control plane components and system add-ons.
 
 ## Prerequisites
 
-- An AKS cluster running Kubernetes 1.24+
-- Azure CLI 2.40+ with the aks-preview extension
+- An existing AKS cluster
+- The latest Azure CLI
 - Owner or Contributor role on the AKS cluster
 
 ```bash
-# Install or update the aks-preview extension
-
-az extension add --name aks-preview
-az extension update --name aks-preview
+# Update the Azure CLI
+az upgrade
 ```
 
 ## Step 1: View Current Maintenance Configuration
@@ -60,6 +58,7 @@ az aks maintenanceconfiguration add \
   --name aksManagedNodeOSUpgradeSchedule \
   --schedule-type Weekly \
   --day-of-week Sunday \
+  --interval-weeks 1 \
   --start-time 01:00 \
   --duration 4 \
   --utc-offset +00:00
@@ -68,8 +67,9 @@ az aks maintenanceconfiguration add \
 The parameters break down as:
 
 - **name**: Must be `aksManagedNodeOSUpgradeSchedule` for node OS updates.
-- **schedule-type**: `Weekly` or `AbsoluteMonthly` or `RelativeMonthly`.
+- **schedule-type**: `Daily`, `Weekly`, `AbsoluteMonthly`, or `RelativeMonthly`.
 - **day-of-week**: Which day the window opens.
+- **interval-weeks**: How often the weekly schedule repeats.
 - **start-time**: When the window opens (24-hour format).
 - **duration**: How many hours the window stays open (minimum 4 hours).
 - **utc-offset**: Timezone offset from UTC.
@@ -88,26 +88,28 @@ az aks maintenanceconfiguration add \
   --schedule-type RelativeMonthly \
   --day-of-week Sunday \
   --week-index First \
+  --interval-months 1 \
   --start-time 02:00 \
   --duration 6 \
   --utc-offset +00:00
 ```
 
-The `RelativeMonthly` schedule type with `--week-index First` means the first Sunday of every month.
+The `RelativeMonthly` schedule type with `--week-index First` and `--interval-months 1` means the first Sunday of every month.
 
 ## Step 4: Configure the Default Maintenance Window
 
-The default maintenance window applies to operations not covered by the specific windows above.
+The default maintenance window applies to AKS weekly releases for control plane components and system add-ons.
 
 ```bash
 # Create a default maintenance window
-# This covers general maintenance tasks
+# This covers AKS weekly releases
 az aks maintenanceconfiguration add \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
   --name default \
   --schedule-type Weekly \
   --day-of-week Saturday \
+  --interval-weeks 1 \
   --start-time 00:00 \
   --duration 8 \
   --utc-offset +00:00
@@ -118,19 +120,37 @@ az aks maintenanceconfiguration add \
 Block maintenance during critical business periods like Black Friday, end-of-quarter processing, or planned events.
 
 ```bash
-# Add date exclusions to the node OS upgrade window
+# Create a node OS upgrade window config file with date exclusions
 # Block maintenance during holiday season
+cat > node-os-maintenance.json <<'EOF'
+{
+  "properties": {
+    "maintenanceWindow": {
+      "schedule": {
+        "weekly": {
+          "intervalWeeks": 1,
+          "dayOfWeek": "Sunday"
+        }
+      },
+      "durationHours": 4,
+      "utcOffset": "+00:00",
+      "startTime": "01:00",
+      "notAllowedDates": [
+        {
+          "start": "2026-11-25",
+          "end": "2026-12-02"
+        }
+      ]
+    }
+  }
+}
+EOF
+
 az aks maintenanceconfiguration update \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
   --name aksManagedNodeOSUpgradeSchedule \
-  --schedule-type Weekly \
-  --day-of-week Sunday \
-  --start-time 01:00 \
-  --duration 4 \
-  --utc-offset +00:00 \
-  --start-date "2026-11-25T00:00:00Z" \
-  --end-date "2026-12-02T00:00:00Z"
+  --config-file ./node-os-maintenance.json
 ```
 
 ## Step 6: Configure Auto-Upgrade Channel
@@ -139,7 +159,7 @@ Maintenance windows control when upgrades happen, but the auto-upgrade channel c
 
 ```bash
 # Set the auto-upgrade channel
-# Options: none, patch, stable, rapid, node-image
+# Options: none, patch, stable, rapid, node-image (legacy)
 az aks update \
   --resource-group myResourceGroup \
   --name myAKSCluster \
@@ -152,7 +172,7 @@ Channel descriptions:
 - **patch**: Automatically upgrades to the latest patch version within the current minor version (e.g., 1.28.1 to 1.28.5).
 - **stable**: Upgrades to the latest patch of the N-1 minor version (where N is the latest supported version).
 - **rapid**: Upgrades to the latest supported patch of the latest supported minor version.
-- **node-image**: Only upgrades the node image, not the Kubernetes version.
+- **node-image**: Legacy channel that only upgrades the node image, not the Kubernetes version.
 
 For production, `patch` or `stable` are the safest choices. They keep you current with security fixes without jumping to bleeding-edge Kubernetes versions.
 
@@ -172,11 +192,11 @@ az aks update \
 Channel descriptions:
 
 - **None**: No automatic node OS updates.
-- **Unmanaged**: OS updates follow the node image, applied through node image upgrades.
+- **Unmanaged**: OS updates use the operating system's built-in patching infrastructure. AKS doesn't control the cadence and you must manage any required reboots.
 - **NodeImage**: Nodes are updated to the latest node image on each maintenance window.
-- **SecurityPatch**: Only security patches are applied, without a full node image update. This is faster and less disruptive.
+- **SecurityPatch**: AKS-tested security patches are applied with safe deployment practices. AKS can live patch when possible, but it can also reimage nodes when required for certain patches.
 
-`SecurityPatch` is recommended for production because it applies critical fixes quickly without the overhead of a full node image replacement.
+`SecurityPatch` is useful for applying critical security fixes quickly with fewer reimages than `NodeImage`, but it isn't supported on Windows node pools.
 
 ## Step 8: Monitor Maintenance Events
 
@@ -208,8 +228,7 @@ az monitor activity-log alert create \
   --resource-group myResourceGroup \
   --name "AKS Maintenance Alert" \
   --scope "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.ContainerService/managedClusters/myAKSCluster" \
-  --condition category=Administrative \
-  --condition operationName="Microsoft.ContainerService/managedClusters/write" \
+  --condition "category=Administrative and operationName=Microsoft.ContainerService/managedClusters/write" \
   --action-group myActionGroup
 ```
 
@@ -221,7 +240,7 @@ Here is a strategy that works for most production environments:
 |---|---|---|---|
 | Node OS Security | Every Sunday 1-5 AM | 4 hours | Weekly patches, minimal impact |
 | Kubernetes Upgrade | First Sunday monthly 2-8 AM | 6 hours | Monthly cadence, longer for rolling updates |
-| Default | Saturday midnight-8 AM | 8 hours | Catch-all for other operations |
+| Default | Saturday midnight-8 AM | 8 hours | AKS weekly releases for control plane components and system add-ons |
 
 Adjust the times based on your traffic patterns. If your peak traffic is on weekends, shift maintenance to Tuesday or Wednesday nights instead.
 
