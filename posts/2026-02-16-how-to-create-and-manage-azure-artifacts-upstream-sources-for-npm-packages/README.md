@@ -18,19 +18,22 @@ In this post, I will walk through setting up upstream sources, configuring your 
 
 When your feed has upstream sources configured, the package resolution follows this order:
 
-1. Check the local feed for the package
-2. If not found locally, check each upstream source in order
-3. If found upstream, cache the package locally and serve it
-4. If not found anywhere, return a 404
+1. Check packages published directly to the feed
+2. Check packages that were already saved from an upstream source
+3. If not found locally, check each upstream source in order
+4. If found upstream, cache the package locally and serve it
+5. If not found anywhere, return a 404
 
 ```mermaid
 graph TD
-    A[npm install request] --> B{Package in local feed?}
+    A[npm install request] --> B{Package published to feed?}
     B -->|Yes| C[Serve from feed]
-    B -->|No| D{Package in upstream?}
-    D -->|Yes| E[Cache in feed]
-    E --> F[Serve cached version]
-    D -->|No| G[Return 404]
+    B -->|No| D{Package already saved from upstream?}
+    D -->|Yes| E[Serve saved version]
+    D -->|No| F{Package in upstream?}
+    F -->|Yes| G[Cache in feed]
+    G --> H[Serve cached version]
+    F -->|No| I[Return 404]
 ```
 
 The caching behavior is important. Once a package version is cached from an upstream source, it is stored in your feed permanently (subject to retention policies). This means your builds do not break if npmjs.com has an outage, because you have a local copy of every version you have used.
@@ -44,7 +47,7 @@ Go to **Artifacts** in your Azure DevOps project and click **Create Feed**.
 Configure it as follows:
 
 - **Name**: Something like `npm-packages` or your team name
-- **Visibility**: Organization-scoped if you want to share across projects
+- **Scope**: Organization-scoped if you want to share across projects
 - **Include packages from common public sources**: Check this box
 
 If you checked the public sources box, Azure Artifacts automatically adds upstream sources for npmjs.com and other common registries. If you did not, or you want to add them manually, continue to the next step.
@@ -55,22 +58,11 @@ Go to your feed settings (gear icon), then **Upstream sources**. Click **Add Ups
 
 For npm, configure:
 
-- **Type**: Public registry
+- **Type**: Public source
 - **Upstream source**: npmjs
 - **Name**: npmjs (or whatever you prefer)
 
 You can also add other Azure Artifacts feeds as upstream sources. This is useful if you have a shared feed in another project that publishes common packages.
-
-```bash
-# You can also configure upstream sources via the Azure CLI
-
-az artifacts universal upstream add \
-  --feed npm-packages \
-  --name npmjs \
-  --type npmjs \
-  --organization https://dev.azure.com/myorg \
-  --project myproject
-```
 
 ### Upstream Source Priority
 
@@ -95,14 +87,12 @@ always-auth=true
 For authentication, developers need to run a one-time setup.
 
 ```bash
-# Install the Azure Artifacts credential provider
-npx vsts-npm-auth -config .npmrc
-
-# Or use the Azure CLI approach
-az artifacts npm login --feed npm-packages --scope myorg
+# Windows: install the Azure Artifacts credential provider, then authenticate
+npm install -g vsts-npm-auth --registry https://registry.npmjs.com --always-auth false
+vsts-npm-auth -config .npmrc
 ```
 
-The credential provider stores authentication tokens that npm uses when communicating with the feed.
+On macOS and Linux, create a Personal Access Token with Packaging read and write scope, then follow the **Connect to feed** instructions in Azure Artifacts to add the generated credentials to your user-level `.npmrc`.
 
 ### For Azure Pipelines
 
@@ -132,7 +122,7 @@ steps:
     displayName: 'Run tests'
 ```
 
-The `npmAuthenticate` task modifies the `.npmrc` file in place, adding the authentication token for the pipeline run. After the pipeline finishes, the token expires.
+The `npmAuthenticate` task modifies the `.npmrc` file in place, adding authentication details for the pipeline run. Azure Pipelines reverts the file to its original state at the end of the run.
 
 ## Publishing Internal Packages
 
@@ -156,14 +146,11 @@ First, make sure your `package.json` has the correct metadata.
   },
   "files": [
     "dist/**/*"
-  ],
-  "publishConfig": {
-    "registry": "https://pkgs.dev.azure.com/myorg/myproject/_packaging/npm-packages/npm/registry/"
-  }
+  ]
 }
 ```
 
-The `publishConfig.registry` ensures that `npm publish` sends the package to your Azure Artifacts feed, not to the public npmjs registry.
+The project-level `.npmrc` ensures that `npm publish` sends the package to your Azure Artifacts feed, not to the public npmjs registry.
 
 ### Publishing from a Pipeline
 
@@ -263,8 +250,8 @@ Go to your feed settings and configure:
 
 In the Azure Artifacts UI, you can filter packages by source:
 
-- **This feed**: Packages published directly to your feed
-- **Upstream sources**: Packages cached from upstream registries
+- **Local**: Packages published directly to your feed
+- **npmjs**: Packages cached from the npm registry upstream
 
 This helps you understand what is in your feed and where it came from.
 
@@ -293,7 +280,7 @@ Azure Artifacts mitigates this by:
 
 1. Checking the local feed first before upstream sources
 2. Supporting upstream source priority ordering
-3. Allowing you to block specific packages from upstream sources
+3. Letting you choose which upstream sources are configured and in what order
 
 The best protection is to use scoped packages (`@mycompany/my-utils`) for all internal packages. Scoped packages are namespaced and cannot conflict with unscoped public packages.
 
@@ -303,7 +290,7 @@ The best protection is to use scoped packages (`@mycompany/my-utils`) for all in
 
 **Authentication failures in pipelines**: Make sure the `npmAuthenticate` task runs before any npm commands and that the `.npmrc` file path is correct.
 
-**Version conflicts between local and upstream**: If the same package name exists in both your feed and an upstream source, the local version always wins. This is by design and protects against dependency confusion.
+**Version conflicts between local and upstream**: If the same package name exists both as a package published directly to your feed and in an upstream source, the package published directly to your feed wins. This is by design and protects against dependency confusion.
 
 **Slow package restores**: The first time a package is fetched from an upstream source, it might be slow because Azure Artifacts is fetching and caching it. Subsequent installs are fast since they serve from the cache.
 
