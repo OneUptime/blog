@@ -140,11 +140,10 @@ Configuration:
 
 You can also create dashboards programmatically. This is useful for deploying consistent dashboards across multiple accounts.
 
-This Python script creates a QuickSight dashboard template.
+This Python script creates an analysis and dashboard from an existing QuickSight template.
 
 ```python
 import boto3
-import json
 
 quicksight = boto3.client("quicksight")
 account_id = "123456789012"
@@ -221,17 +220,17 @@ QuickSight supports calculated fields that add derived metrics to your dashboard
 
 **Daily Average**:
 ```text
-total_cost / distinctCountOver(usage_date, [billing_month])
+sum({total_cost}) / distinct_count({usage_date})
 ```
 
 **Month-over-Month Change**:
 ```text
-percentDifference(sum(total_cost), [billing_month], -1, ASC)
+percentDifference(sum({total_cost}), [{billing_month} ASC], -1)
 ```
 
 **Cost per Unit**:
 ```text
-ifelse(total_usage > 0, total_cost / total_usage, 0)
+ifelse(sum({total_usage}) > 0, sum({total_cost}) / sum({total_usage}), 0)
 ```
 
 ## Setting Up SPICE for Performance
@@ -243,10 +242,10 @@ SPICE (Super-fast, Parallel, In-memory Calculation Engine) caches your data in m
 aws quicksight describe-account-settings \
   --aws-account-id 123456789012
 
-# Purchase additional SPICE capacity if needed (in GB)
-aws quicksight update-account-settings \
+# Enable automatic SPICE capacity purchasing if needed
+aws quicksight update-spice-capacity-configuration \
   --aws-account-id 123456789012 \
-  --default-namespace default
+  --purchase-mode AUTO_PURCHASE
 ```
 
 When creating your dataset, select SPICE as the import mode. Then schedule daily refreshes so the dashboard stays current.
@@ -260,7 +259,7 @@ aws quicksight create-refresh-schedule \
     "ScheduleId": "daily-refresh",
     "ScheduleFrequency": {
       "Interval": "DAILY",
-      "TimeOfDay": "06:00"
+      "TimeOfTheDay": "06:00"
     },
     "StartAfterDateTime": "2026-02-12T06:00:00Z",
     "RefreshType": "FULL_REFRESH"
