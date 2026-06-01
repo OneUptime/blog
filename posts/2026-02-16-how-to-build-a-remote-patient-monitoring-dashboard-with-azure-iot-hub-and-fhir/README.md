@@ -8,7 +8,7 @@ Description: Build a remote patient monitoring solution that collects device dat
 
 ---
 
-Remote patient monitoring (RPM) allows healthcare providers to track patients' vital signs and symptoms from their homes. Wearable devices and home health monitors generate continuous streams of data - heart rate, blood pressure, blood glucose, oxygen saturation, weight, and more. Azure IoT Hub ingests this device telemetry at scale, and Azure Health Data Services transforms it into FHIR-compliant clinical observations that integrate with existing EHR workflows.
+Remote patient monitoring (RPM) allows healthcare providers to track patients' vital signs and symptoms from their homes. Wearable devices and home health monitors generate continuous streams of data - heart rate, blood pressure, blood glucose, oxygen saturation, weight, and more. Azure IoT Hub ingests this device telemetry at scale, and the Azure Health Data Services MedTech service can transform it into FHIR-compliant clinical observations that integrate with existing EHR workflows.
 
 This guide covers building the full RPM pipeline from device to dashboard.
 
@@ -22,7 +22,7 @@ flowchart TD
     D -->|FHIR API| E[Clinical Dashboard]
     B -->|Stream Analytics| F[Real-Time Alerts]
     F -->|Logic App| G[Care Team Notification]
-    D -->|Change Feed| H[Power BI Analytics]
+    D -->|FHIR $export| H[Power BI Analytics]
 ```
 
 ## Step 1: Set Up Azure IoT Hub
@@ -45,18 +45,24 @@ Each patient's monitoring device needs to be registered. Here is how to register
 # Register patient monitoring devices in Azure IoT Hub
 
 # Each device represents a physical monitoring device assigned to a patient
+import base64
+import os
 from azure.iot.hub import IoTHubRegistryManager
 
 connection_string = "YOUR_IOT_HUB_CONNECTION_STRING"
-registry = IoTHubRegistryManager(connection_string)
+registry = IoTHubRegistryManager.from_connection_string(connection_string)
+
+def generate_device_key():
+    """Generate a base64-encoded 32-byte symmetric key for SAS auth."""
+    return base64.b64encode(os.urandom(32)).decode("utf-8")
 
 def register_device(device_id, patient_id, device_type):
     """Register a monitoring device and tag it with patient metadata."""
     # Create the device identity
     device = registry.create_device_with_sas(
         device_id=device_id,
-        primary_key=None,  # Auto-generate
-        secondary_key=None,  # Auto-generate
+        primary_key=generate_device_key(),
+        secondary_key=generate_device_key(),
         status="enabled"
     )
 
@@ -101,7 +107,8 @@ For development and testing, simulate device data:
 import asyncio
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timezone
+from azure.iot.device import Message
 from azure.iot.device.aio import IoTHubDeviceClient
 
 async def simulate_bp_monitor(connection_string, patient_id):
@@ -120,7 +127,7 @@ async def simulate_bp_monitor(connection_string, patient_id):
         telemetry = {
             "deviceId": "bp-monitor-P001",
             "patientId": patient_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "measurements": {
                 "systolic": {
                     "value": round(systolic, 1),
@@ -137,7 +144,9 @@ async def simulate_bp_monitor(connection_string, patient_id):
             }
         }
 
-        message = json.dumps(telemetry)
+        message = Message(json.dumps(telemetry))
+        message.content_encoding = "utf-8"
+        message.content_type = "application/json"
         await client.send_message(message)
         print(f"Sent: BP {systolic:.0f}/{diastolic:.0f}, HR {heart_rate:.0f}")
 
@@ -177,7 +186,7 @@ OR $body.measurements.oxygenSaturation IS NOT NULL
 
 ## Step 3: Set Up the MedTech Service
 
-The MedTech service (formerly IoT Connector) in Azure Health Data Services transforms device telemetry into FHIR Observation resources automatically.
+The MedTech service (formerly IoT Connector) in Azure Health Data Services transforms device telemetry into FHIR Observation resources automatically. Microsoft initiated deprecation of the hosted MedTech service on May 3, 2025, with support for active instances in supported regions ending May 3, 2028, so plan new deployments with that lifecycle in mind.
 
 ### Deploy MedTech Service
 
@@ -196,44 +205,44 @@ The device mapping tells MedTech how to parse your device telemetry format:
     "templateType": "CollectionContent",
     "template": [
         {
-            "templateType": "JsonPathContent",
+            "templateType": "CalculatedContent",
             "template": {
                 "typeName": "bloodpressure",
-                "typeMatchExpression": "$..[?(@measurements.systolic)]",
-                "patientIdExpression": "$.patientId",
-                "deviceIdExpression": "$.deviceId",
-                "timestampExpression": "$.timestamp",
+                "typeMatchExpression": "$..[?(@Body.measurements.systolic)]",
+                "patientIdExpression": "$.Body.patientId",
+                "deviceIdExpression": "$.SystemProperties.iothub-connection-device-id",
+                "timestampExpression": "$.Body.timestamp",
                 "values": [
                     {
                         "required": true,
-                        "valueExpression": "$.measurements.systolic.value",
+                        "valueExpression": "$.Body.measurements.systolic.value",
                         "valueName": "systolic"
                     },
                     {
                         "required": true,
-                        "valueExpression": "$.measurements.diastolic.value",
+                        "valueExpression": "$.Body.measurements.diastolic.value",
                         "valueName": "diastolic"
                     },
                     {
                         "required": false,
-                        "valueExpression": "$.measurements.heartRate.value",
+                        "valueExpression": "$.Body.measurements.heartRate.value",
                         "valueName": "heartRate"
                     }
                 ]
             }
         },
         {
-            "templateType": "JsonPathContent",
+            "templateType": "CalculatedContent",
             "template": {
                 "typeName": "oxygensaturation",
-                "typeMatchExpression": "$..[?(@measurements.oxygenSaturation)]",
-                "patientIdExpression": "$.patientId",
-                "deviceIdExpression": "$.deviceId",
-                "timestampExpression": "$.timestamp",
+                "typeMatchExpression": "$..[?(@Body.measurements.oxygenSaturation)]",
+                "patientIdExpression": "$.Body.patientId",
+                "deviceIdExpression": "$.SystemProperties.iothub-connection-device-id",
+                "timestampExpression": "$.Body.timestamp",
                 "values": [
                     {
                         "required": true,
-                        "valueExpression": "$.measurements.oxygenSaturation.value",
+                        "valueExpression": "$.Body.measurements.oxygenSaturation.value",
                         "valueName": "spo2"
                     }
                 ]
@@ -249,7 +258,7 @@ The FHIR mapping tells MedTech how to create FHIR Observation resources:
 
 ```json
 {
-    "templateType": "CollectionFhirTemplate",
+    "templateType": "CollectionFhir",
     "template": [
         {
             "templateType": "CodeValueFhir",
@@ -262,11 +271,6 @@ The FHIR mapping tells MedTech how to create FHIR Observation resources:
                     }
                 ],
                 "typeName": "bloodpressure",
-                "value": {
-                    "defaultPeriod": 5000,
-                    "valueName": "systolic",
-                    "valueType": "component"
-                },
                 "components": [
                     {
                         "codes": [
@@ -278,7 +282,7 @@ The FHIR mapping tells MedTech how to create FHIR Observation resources:
                         ],
                         "value": {
                             "valueName": "systolic",
-                            "valueType": "quantity",
+                            "valueType": "Quantity",
                             "unit": "mmHg",
                             "system": "http://unitsofmeasure.org",
                             "code": "mm[Hg]"
@@ -294,7 +298,7 @@ The FHIR mapping tells MedTech how to create FHIR Observation resources:
                         ],
                         "value": {
                             "valueName": "diastolic",
-                            "valueType": "quantity",
+                            "valueType": "Quantity",
                             "unit": "mmHg",
                             "system": "http://unitsofmeasure.org",
                             "code": "mm[Hg]"
@@ -310,13 +314,33 @@ The FHIR mapping tells MedTech how to create FHIR Observation resources:
                         ],
                         "value": {
                             "valueName": "heartRate",
-                            "valueType": "quantity",
+                            "valueType": "Quantity",
                             "unit": "bpm",
                             "system": "http://unitsofmeasure.org",
                             "code": "/min"
                         }
                     }
                 ]
+            }
+        },
+        {
+            "templateType": "CodeValueFhir",
+            "template": {
+                "codes": [
+                    {
+                        "code": "59408-5",
+                        "system": "http://loinc.org",
+                        "display": "Oxygen saturation in Arterial blood by Pulse oximetry"
+                    }
+                ],
+                "typeName": "oxygensaturation",
+                "value": {
+                    "valueName": "spo2",
+                    "valueType": "Quantity",
+                    "unit": "%",
+                    "system": "http://unitsofmeasure.org",
+                    "code": "%"
+                }
             }
         }
     ]
@@ -356,11 +380,11 @@ WHERE
     OR measurements.heartRate.value > 150
     OR measurements.heartRate.value < 40
 
--- Detect trends: BP increasing over 3 consecutive readings
+-- Detect trends: sustained high average BP over at least 3 readings
 SELECT
     deviceId,
     patientId,
-    'Rising BP Trend' AS alertType,
+    'Sustained High BP' AS alertType,
     AVG(measurements.systolic.value) AS avgSystolic,
     System.Timestamp() AS alertTime
 INTO
