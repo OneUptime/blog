@@ -57,8 +57,7 @@ Never put credentials directly in ADF pipelines. Use Azure Key Vault:
    - `graph-client-secret`: Your app's client secret
    - `graph-tenant-id`: Your Azure AD tenant ID
 3. Grant ADF's managed identity access to the Key Vault:
-   - Go to Key Vault > Access policies.
-   - Add a policy with Get secret permission for the ADF managed identity.
+   - Go to Key Vault > Access policies and add Get/List secret permissions for the ADF managed identity, or use Azure RBAC and assign the Key Vault Secrets User role.
 
 ### Create a Key Vault Linked Service in ADF
 
@@ -75,21 +74,24 @@ Graph API requires an OAuth 2.0 token. Use a Web Activity to acquire it.
 
 This pipeline acquires an access token using the client credentials flow:
 
-1. Add a Web Activity named "GetAccessToken".
-2. Configure it:
-   - URL: `https://login.microsoftonline.com/@{pipeline().parameters.TenantId}/oauth2/v2.0/token`
+1. Add Web Activities to read `graph-tenant-id`, `graph-client-id`, and `graph-client-secret` from Key Vault.
+2. Configure each Key Vault Web Activity:
+   - URL: `https://<your-vault-name>.vault.azure.net/secrets/<secret-name>?api-version=7.5`
+   - Method: GET
+   - Authentication: System Assigned Managed Identity
+   - Resource: `https://vault.azure.net`
+   - Secure output: True
+3. Add a Web Activity named "GetAccessToken".
+4. Configure it:
+   - URL: `https://login.microsoftonline.com/@{activity('GetTenantId').output.value}/oauth2/v2.0/token`
    - Method: POST
    - Headers: Content-Type: `application/x-www-form-urlencoded`
+   - Secure input: True
    - Body:
 
 ```text
-client_id=@{pipeline().parameters.ClientId}&scope=https://graph.microsoft.com/.default&client_secret=@{pipeline().parameters.ClientSecret}&grant_type=client_credentials
+client_id=@{uriComponent(activity('GetClientId').output.value)}&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default&client_secret=@{uriComponent(activity('GetClientSecret').output.value)}&grant_type=client_credentials
 ```
-
-3. Add pipeline parameters that pull values from Key Vault:
-   - TenantId: `@linkedService('AzureKeyVault').getSecret('graph-tenant-id')`
-   - ClientId: `@linkedService('AzureKeyVault').getSecret('graph-client-id')`
-   - ClientSecret: `@linkedService('AzureKeyVault').getSecret('graph-client-secret')`
 
 The Web Activity response contains the access token at `@activity('GetAccessToken').output.access_token`.
 
@@ -106,7 +108,7 @@ The Web Activity response contains the access token at `@activity('GetAccessToke
 
 This pipeline extracts all user profiles and saves them to Data Lake:
 
-1. **Web Activity: Get Token** - Acquire the access token (or call the GetGraphToken pipeline).
+1. **Web Activity: Get Token** - Acquire the access token at the start of this pipeline, or configure the REST linked service with OAuth2 Client Credential authentication.
 
 2. **Copy Activity: Extract Users**
    - Source: REST connector
@@ -126,7 +128,7 @@ Graph API returns paginated results. ADF's Copy Activity supports pagination thr
 In the Copy Activity source settings, add pagination rules:
 
 - Rule Type: `AbsoluteUrl`
-- Value: `@odata.nextLink` in the response body
+- Value: `$['@odata.nextLink']` in the response body
 
 This tells ADF to keep making requests using the `@odata.nextLink` URL until there are no more pages.
 
@@ -135,7 +137,7 @@ Alternatively, use the pagination support in the REST connector:
 ```json
 {
     "paginationRules": {
-        "AbsoluteUrl": "$.@odata\\.nextLink"
+        "AbsoluteUrl": "$['@odata.nextLink']"
     }
 }
 ```
@@ -150,8 +152,9 @@ Similar to users, extract groups and their memberships:
    - Source URL: `/groups?$select=id,displayName,description,groupTypes,membershipRule&$top=999`
    - Sink: Data Lake at `raw/groups/groups_@{formatDateTime(utcNow(),'yyyyMMdd')}.json`
 
-2. **ForEach Activity: Extract Group Members**
-   - Items: The list of group IDs from step 1
+2. **Lookup + ForEach Activity: Extract Group Members**
+   - Add a Lookup activity that reads the extracted groups JSON and returns the group IDs.
+   - ForEach Items: `@activity('LookupGroups').output.value`
    - Inside the loop:
      - Copy Activity to extract members: `/groups/@{item().id}/members?$select=id,displayName,mail`
      - Sink: Data Lake at `raw/group-members/@{item().id}_@{formatDateTime(utcNow(),'yyyyMMdd')}.json`
@@ -165,7 +168,7 @@ For large tenants with many groups, this ForEach can take hours. Set the batch c
 Sign-in and audit logs are useful for security analytics:
 
 ```text
-Source URL: /auditLogs/signIns?$filter=createdDateTime ge @{addDays(utcNow(),-1)}
+Source URL: /auditLogs/signIns?$filter=createdDateTime%20ge%20@{formatDateTime(addDays(utcNow(),-1),'yyyy-MM-ddTHH:mm:ssZ')}
 ```
 
 This extracts sign-in logs from the last 24 hours.
@@ -173,7 +176,7 @@ This extracts sign-in logs from the last 24 hours.
 For directory audit logs:
 
 ```text
-Source URL: /auditLogs/directoryAudits?$filter=activityDateTime ge @{addDays(utcNow(),-1)}
+Source URL: /auditLogs/directoryAudits?$filter=activityDateTime%20ge%20@{formatDateTime(addDays(utcNow(),-1),'yyyy-MM-ddTHH:mm:ssZ')}
 ```
 
 Save both to Data Lake in separate folders.
@@ -223,13 +226,12 @@ CREATE INDEX IX_Users_Email ON dbo.Users(Email);
 
 Create a master pipeline that runs all extraction and transformation steps in order:
 
-1. **Execute Pipeline: GetGraphToken** - Acquire the token.
-2. **Execute Pipeline: ExtractUsers** - Extract user data (pass token as parameter).
-3. **Execute Pipeline: ExtractGroups** - Extract group data (can run in parallel with users).
-4. **Execute Pipeline: ExtractAuditLogs** - Extract audit data (can run in parallel).
-5. **Data Flow: TransformUsers** - Transform and load users after extraction completes.
-6. **Data Flow: TransformGroups** - Transform and load groups.
-7. **Web Activity: SendNotification** - Send a Teams notification or email on completion.
+1. **Execute Pipeline: ExtractUsers** - Extract user data. The extraction pipeline acquires its own token or uses an OAuth2 Client Credential REST linked service.
+2. **Execute Pipeline: ExtractGroups** - Extract group data (can run in parallel with users).
+3. **Execute Pipeline: ExtractAuditLogs** - Extract audit data (can run in parallel).
+4. **Data Flow: TransformUsers** - Transform and load users after extraction completes.
+5. **Data Flow: TransformGroups** - Transform and load groups.
+6. **Web Activity: SendNotification** - Send a Teams notification or email on completion.
 
 ### Schedule the Pipeline
 
@@ -254,7 +256,7 @@ ADF provides built-in monitoring:
 
 **403 Forbidden**: The app does not have the required permissions. Check the app registration permissions and ensure admin consent was granted.
 
-**429 Too Many Requests**: Rate limiting. Add a Wait Activity between iterations in ForEach loops. Reduce the batch count.
+**429 Too Many Requests**: Rate limiting. Honor the `Retry-After` response header when it is returned. Add a Wait Activity between iterations in ForEach loops and reduce the batch count.
 
 **504 Gateway Timeout**: Graph API timeout for large queries. Add `$top` parameters to reduce page size. Break large queries into smaller date ranges.
 
