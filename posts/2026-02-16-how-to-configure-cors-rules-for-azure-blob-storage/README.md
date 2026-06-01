@@ -12,7 +12,7 @@ When your web application needs to access Azure Blob Storage directly from the b
 
 ## What CORS Does
 
-CORS is a browser security mechanism. When JavaScript running on `https://myapp.com` tries to fetch a blob from `https://mystorageaccount.blob.core.windows.net`, the browser sends a preflight OPTIONS request to the storage account. If the storage account responds with headers that permit the origin, the browser allows the actual request.
+CORS is a browser security mechanism. When JavaScript running on `https://myapp.com` tries to fetch a blob from `https://mystorageaccount.blob.core.windows.net`, the browser checks whether the storage account response permits that origin. For non-simple requests, such as uploads with custom headers, the browser first sends a preflight OPTIONS request to the storage account. If the storage account responds with headers that permit the origin, method, and headers, the browser allows the actual request.
 
 Without CORS rules configured on the storage account, the browser blocks the request and your users see errors in the console like "Access to XMLHttpRequest has been blocked by CORS policy."
 
@@ -29,8 +29,8 @@ az storage cors add \
   --services b \
   --methods GET PUT OPTIONS HEAD \
   --origins "https://myapp.com" \
-  --allowed-headers "Content-Type,x-ms-blob-type,x-ms-blob-content-type" \
-  --exposed-headers "x-ms-request-id,x-ms-version" \
+  --allowed-headers Content-Type x-ms-blob-type x-ms-blob-content-type \
+  --exposed-headers x-ms-request-id x-ms-version \
   --max-age 3600
 
 # The --services flag specifies which storage service:
@@ -236,9 +236,9 @@ sequenceDiagram
     Browser->>App: Load page
     App-->>Browser: HTML with JS that references blob storage
 
-    Note over Browser: Preflight check (OPTIONS)
-    Browser->>Storage: OPTIONS /container/file.jpg<br/>Origin: https://myapp.com
-    Storage-->>Browser: 200 OK<br/>Access-Control-Allow-Origin: https://myapp.com<br/>Access-Control-Allow-Methods: GET, HEAD
+    Note over Browser: Preflight check for non-simple upload
+    Browser->>Storage: OPTIONS /container/file.jpg<br/>Origin: https://myapp.com<br/>Access-Control-Request-Method: PUT
+    Storage-->>Browser: 200 OK<br/>Access-Control-Allow-Origin: https://myapp.com<br/>Access-Control-Allow-Methods: PUT, GET, HEAD
 
     Note over Browser: Actual request
     Browser->>Storage: GET /container/file.jpg<br/>Origin: https://myapp.com
@@ -257,8 +257,8 @@ az storage cors add \
   --services b \
   --methods GET HEAD OPTIONS \
   --origins "*" \
-  --allowed-headers "Accept,Accept-Language,Content-Language" \
-  --exposed-headers "Content-Length,Content-Type" \
+  --allowed-headers Accept Accept-Language Content-Language \
+  --exposed-headers Content-Length Content-Type \
   --max-age 86400
 ```
 
@@ -272,8 +272,8 @@ az storage cors add \
   --services b \
   --methods GET PUT HEAD OPTIONS \
   --origins "https://myapp.com" \
-  --allowed-headers "Content-Type,x-ms-blob-type,x-ms-blob-content-type,x-ms-blob-content-disposition,Authorization" \
-  --exposed-headers "x-ms-request-id,x-ms-version,Content-Length,ETag" \
+  --allowed-headers Content-Type x-ms-blob-type x-ms-blob-content-type x-ms-blob-content-disposition Authorization \
+  --exposed-headers x-ms-request-id x-ms-version Content-Length ETag \
   --max-age 3600
 ```
 
@@ -287,8 +287,8 @@ az storage cors add \
   --services b \
   --methods GET HEAD OPTIONS \
   --origins "https://myapp.com" \
-  --allowed-headers "Range,Accept-Ranges,Content-Range" \
-  --exposed-headers "Accept-Ranges,Content-Range,Content-Length,Content-Type" \
+  --allowed-headers Range \
+  --exposed-headers Accept-Ranges Content-Range Content-Length Content-Type \
   --max-age 3600
 ```
 
@@ -315,7 +315,7 @@ Caching can hide changes. Browsers cache preflight responses for up to max-age s
 
 ```bash
 # Quick test: send a preflight request manually with curl
-curl -I -X OPTIONS \
+curl -i -X OPTIONS \
   "https://mystorageaccount.blob.core.windows.net/mycontainer/test.jpg" \
   -H "Origin: https://myapp.com" \
   -H "Access-Control-Request-Method: GET" \
