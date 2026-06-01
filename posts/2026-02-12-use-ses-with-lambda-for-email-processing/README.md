@@ -88,7 +88,13 @@ Resources:
       Role: !GetAtt EmailProcessorRole.Arn
       Timeout: 60
       MemorySize: 256
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              print(event)
 ```
+
+Replace the inline `ZipFile` handler with the processor code below, or point `Code` at a deployment package in S3. Make sure your SES receipt rule runs the S3 action before the Lambda action and uses `incoming` as the S3 object key prefix so the Lambda can fetch the message by ID.
 
 ## The Main Lambda Handler
 
@@ -198,6 +204,14 @@ def route_email(parsed_email, mail_info):
         else:
             # Default handling - create a general ticket
             handle_support_email(sender, subject, body, parsed_email)
+
+def handle_order_email(sender, subject, body):
+    """Process order-related emails."""
+    print(f"Order email from {sender}: {subject}")
+
+def handle_unsubscribe(sender, subject):
+    """Process unsubscribe requests."""
+    print(f"Unsubscribe request from {sender}: {subject}")
 
 def extract_body(msg):
     """Get the plain text body from an email, falling back to HTML."""
