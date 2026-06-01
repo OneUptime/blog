@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, GraphQL, Hot Chocolate, ASP.NET Core, C#, App Service, API
 
-Description: Build a GraphQL API using Hot Chocolate in ASP.NET Core with queries, mutations, subscriptions, and deploy it to Azure App Service.
+Description: Build a GraphQL API using Hot Chocolate in ASP.NET Core with queries and mutations, and deploy it to Azure App Service.
 
 ---
 
-REST APIs work well for most scenarios, but when your frontend needs to fetch data from multiple related resources in a single request, or when different clients need different subsets of data, GraphQL is a better fit. Hot Chocolate is the most popular GraphQL server for .NET. It integrates deeply with ASP.NET Core and supports the full GraphQL specification including queries, mutations, subscriptions, and schema stitching.
+REST APIs work well for most scenarios, but when your frontend needs to fetch data from multiple related resources in a single request, or when different clients need different subsets of data, GraphQL is a better fit. Hot Chocolate is the most popular GraphQL server for .NET. It integrates deeply with ASP.NET Core and supports the full GraphQL specification including queries, mutations, and subscriptions.
 
 In this post, I will build a GraphQL API with Hot Chocolate, deploy it to Azure App Service, and cover the patterns you will use most often.
 
@@ -25,6 +25,7 @@ cd GraphQLBookstore
 dotnet add package HotChocolate.AspNetCore
 dotnet add package HotChocolate.Data
 dotnet add package HotChocolate.Data.EntityFramework
+dotnet add package HotChocolate.AspNetCore.Authorization
 dotnet add package Microsoft.EntityFrameworkCore.SqlServer
 dotnet add package Microsoft.EntityFrameworkCore.Design
 ```
@@ -127,14 +128,13 @@ using Microsoft.EntityFrameworkCore;
 public class Query
 {
     /// <summary>
-    /// Get all books with filtering, sorting, and pagination.
-    /// The [UseDbContext] attribute manages the DbContext lifecycle.
+    /// Get all books with filtering and sorting.
+    /// RegisterDbContextFactory manages the DbContext lifecycle.
     /// [UseFiltering] and [UseSorting] add automatic filter and sort capabilities.
     /// </summary>
-    [UseDbContext(typeof(BookstoreContext))]
     [UseFiltering]
     [UseSorting]
-    public IQueryable<Book> GetBooks([ScopedService] BookstoreContext context)
+    public IQueryable<Book> GetBooks(BookstoreContext context)
     {
         return context.Books.Include(b => b.Author);
     }
@@ -142,9 +142,8 @@ public class Query
     /// <summary>
     /// Get a single book by ID.
     /// </summary>
-    [UseDbContext(typeof(BookstoreContext))]
     public async Task<Book?> GetBookById(
-        [ScopedService] BookstoreContext context,
+        BookstoreContext context,
         int id)
     {
         return await context.Books
@@ -156,10 +155,9 @@ public class Query
     /// <summary>
     /// Get all authors.
     /// </summary>
-    [UseDbContext(typeof(BookstoreContext))]
     [UseFiltering]
     [UseSorting]
-    public IQueryable<Author> GetAuthors([ScopedService] BookstoreContext context)
+    public IQueryable<Author> GetAuthors(BookstoreContext context)
     {
         return context.Authors;
     }
@@ -167,9 +165,8 @@ public class Query
     /// <summary>
     /// Get a single author by ID with their books.
     /// </summary>
-    [UseDbContext(typeof(BookstoreContext))]
     public async Task<Author?> GetAuthorById(
-        [ScopedService] BookstoreContext context,
+        BookstoreContext context,
         int id)
     {
         return await context.Authors
@@ -192,9 +189,8 @@ public class Mutation
     /// <summary>
     /// Add a new book to the catalog.
     /// </summary>
-    [UseDbContext(typeof(BookstoreContext))]
     public async Task<Book> AddBook(
-        [ScopedService] BookstoreContext context,
+        BookstoreContext context,
         AddBookInput input)
     {
         var author = await context.Authors.FindAsync(input.AuthorId);
@@ -223,9 +219,8 @@ public class Mutation
     /// <summary>
     /// Add a review for a book.
     /// </summary>
-    [UseDbContext(typeof(BookstoreContext))]
     public async Task<Review> AddReview(
-        [ScopedService] BookstoreContext context,
+        BookstoreContext context,
         AddReviewInput input)
     {
         var book = await context.Books.FindAsync(input.BookId);
@@ -256,9 +251,8 @@ public class Mutation
     /// <summary>
     /// Update a book's price.
     /// </summary>
-    [UseDbContext(typeof(BookstoreContext))]
     public async Task<Book> UpdateBookPrice(
-        [ScopedService] BookstoreContext context,
+        BookstoreContext context,
         int bookId,
         decimal newPrice)
     {
@@ -312,6 +306,7 @@ builder.Services.AddPooledDbContextFactory<BookstoreContext>(options =>
 // Register Hot Chocolate GraphQL server
 builder.Services
     .AddGraphQLServer()
+    .RegisterDbContextFactory<BookstoreContext>()
     .AddQueryType<Query>()
     .AddMutationType<Mutation>()
     .AddFiltering()
@@ -323,7 +318,7 @@ var app = builder.Build();
 // Map the GraphQL endpoint
 app.MapGraphQL();
 
-// Redirect root to the Banana Cake Pop IDE (built-in GraphQL explorer)
+// Redirect root to the Nitro GraphQL IDE (built-in GraphQL explorer)
 app.MapGet("/", () => Results.Redirect("/graphql"));
 
 app.Run();
@@ -331,7 +326,7 @@ app.Run();
 
 ## Running and Testing
 
-Start the application and open the Banana Cake Pop IDE at `/graphql`.
+Start the application and open the Nitro GraphQL IDE at `/graphql`.
 
 ```bash
 dotnet run
@@ -425,7 +420,7 @@ az webapp create \
     --name my-graphql-api \
     --resource-group graphql-rg \
     --plan graphql-plan \
-    --runtime "DOTNET|8.0"
+    --runtime "DOTNETCORE:8.0"
 
 # Set the connection string
 az webapp config connection-string set \
@@ -445,12 +440,18 @@ az webapp deployment source config-zip \
 
 ## Securing the GraphQL Endpoint
 
-In production, you probably want to disable the Banana Cake Pop IDE and add authentication.
+In production, you probably want to disable the Nitro GraphQL IDE and add authentication.
 
 ```csharp
 // Program.cs - production configuration
+using HotChocolate.AspNetCore;
+
+builder.Services
+    .AddAuthorization();
+
 builder.Services
     .AddGraphQLServer()
+    .RegisterDbContextFactory<BookstoreContext>()
     .AddQueryType<Query>()
     .AddMutationType<Mutation>()
     .AddFiltering()
@@ -458,13 +459,10 @@ builder.Services
     .AddAuthorization();
 
 // Disable the IDE in production
-if (!app.Environment.IsDevelopment())
+app.MapGraphQL().WithOptions(new GraphQLServerOptions
 {
-    app.MapGraphQL().WithOptions(new GraphQLServerOptions
-    {
-        Tool = { Enable = false }
-    });
-}
+    Tool = { Enable = app.Environment.IsDevelopment() }
+});
 ```
 
 ## Performance: DataLoader
@@ -510,4 +508,4 @@ public class AuthorBatchDataLoader : BatchDataLoader<int, Author>
 
 ## Wrapping Up
 
-Hot Chocolate gives you a full-featured GraphQL server on ASP.NET Core with minimal configuration. The code-first approach using C# classes feels natural to .NET developers, and the built-in filtering, sorting, and pagination support saves significant development time. Deploying to Azure App Service is the same as any ASP.NET Core application, and the Banana Cake Pop IDE makes development and testing interactive.
+Hot Chocolate gives you a full-featured GraphQL server on ASP.NET Core with minimal configuration. The code-first approach using C# classes feels natural to .NET developers, and the built-in filtering and sorting support saves significant development time. Deploying to Azure App Service is the same as any ASP.NET Core application, and the Nitro GraphQL IDE makes development and testing interactive.
