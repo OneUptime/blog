@@ -38,9 +38,11 @@ helm install argocd argo/argo-cd \
   --namespace argocd \
   --set server.service.type=LoadBalancer \
   --set configs.params."server\.insecure"=true \
-  --set controller.replicas=2 \
+  --set redis-ha.enabled=true \
+  --set controller.replicas=1 \
   --set server.replicas=2 \
-  --set repoServer.replicas=2
+  --set repoServer.replicas=2 \
+  --set applicationSet.replicas=2
 ```
 
 For production, you would put ArgoCD behind an ingress with TLS instead of exposing it directly with a LoadBalancer. But for getting started, the LoadBalancer approach works.
@@ -75,7 +77,7 @@ brew install argocd  # macOS
 # or download from https://github.com/argoproj/argo-cd/releases
 
 # Log in to ArgoCD
-argocd login <argocd-server-ip> --username admin --password <password> --insecure
+argocd login <argocd-server-ip> --username admin --password <password> --plaintext
 ```
 
 ## Step 3: Connect Your Git Repository
@@ -145,7 +147,7 @@ spec:
   syncPolicy:
     # Automatically sync when Git changes
     automated:
-      # Automatically create the namespace if it does not exist
+      # Automatically correct drift when live resources change
       selfHeal: true
       # Prune resources that are no longer in Git
       prune: true
@@ -174,7 +176,7 @@ Once the application is created, ArgoCD will:
 3. Compare the rendered manifests to what is in the cluster
 4. If they differ and auto-sync is enabled, apply the changes
 
-The sync process repeats every 3 minutes by default (configurable). You can also trigger a manual sync.
+The sync process runs within 3 minutes by default (configurable). You can also trigger a manual sync.
 
 ```bash
 # Manually sync an application
@@ -281,11 +283,19 @@ helm upgrade argocd argo/argo-cd \
   --set notifications.enabled=true
 ```
 
-Create a notification configuration for Slack.
+Create a notification secret and configuration for Slack.
 
 ```yaml
 # notifications-configmap.yaml
 # ArgoCD notification templates and triggers
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: argocd
+stringData:
+  slack-token: <slack-bot-oauth-token>
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -299,11 +309,20 @@ data:
       Application {{.app.metadata.name}} sync is {{.app.status.sync.status}}.
       Revision: {{.app.status.sync.revision}}
   trigger.on-sync-succeeded: |
-    - when: app.status.sync.status == 'Synced'
+    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       send: [app-sync-status]
   trigger.on-sync-failed: |
-    - when: app.status.sync.status == 'OutOfSync'
+    - when: app.status.operationState.phase in ['Error', 'Failed']
       send: [app-sync-status]
+```
+
+Subscribe an application to the Slack triggers.
+
+```yaml
+metadata:
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: my-channel
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: my-channel
 ```
 
 ## Step 9: Rollback
@@ -312,6 +331,7 @@ One of the biggest advantages of GitOps is easy rollbacks. You have two options:
 
 ```bash
 # Option 1: Rollback in ArgoCD to a previous sync
+argocd app set web-app --sync-policy none
 argocd app rollback web-app <history-id>
 
 # Option 2: Git revert (preferred - keeps Git as source of truth)
