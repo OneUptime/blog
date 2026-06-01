@@ -55,13 +55,18 @@ az backup vault create \
   --name my-recovery-vault \
   --location westus
 
-# Alternatively, use the Site Recovery specific creation
+# Alternatively, create the Recovery Services vault as an ARM resource
 az resource create \
   --resource-group dr-rg \
-  --resource-type Microsoft.RecoveryServices/vaults \
   --name my-recovery-vault \
+  --resource-type Microsoft.RecoveryServices/vaults \
   --location westus \
-  --properties '{"sku": {"name": "RS0", "tier": "Standard"}}'
+  --is-full-object \
+  --properties '{
+    "location": "westus",
+    "sku": {"name": "RS0", "tier": "Standard"},
+    "properties": {}
+  }'
 ```
 
 ### Enable Replication for Virtual Machines
@@ -69,14 +74,8 @@ az resource create \
 Configure replication for each VM that needs DR protection:
 
 ```bash
-# Enable replication for a VM from East US to West US
-az site-recovery vmware-site create \
-  --resource-group dr-rg \
-  --vault-name my-recovery-vault \
-  --site-name primary-site
-
 # Enable replication using the portal is often easier for the initial setup
-# But here is the CLI approach for Azure VMs
+# But here is the CLI approach for Azure-to-Azure VM replication
 az site-recovery protected-item create \
   --resource-group dr-rg \
   --vault-name my-recovery-vault \
@@ -84,12 +83,21 @@ az site-recovery protected-item create \
   --protection-container "azure-eastus-container" \
   --name "web-server-01-replication" \
   --policy-id "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationPolicies/24-hour-retention" \
-  --provider-specific-details '{
-    "instanceType": "A2A",
-    "fabricObjectId": "/subscriptions/{sub}/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/web-server-01",
-    "recoveryResourceGroupId": "/subscriptions/{sub}/resourceGroups/dr-prod-rg",
-    "recoveryAvailabilityZone": "1",
-    "recoveryContainerId": "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-westus/replicationProtectionContainers/azure-westus-container"
+  --provider-details '{
+    a2a: {
+      fabric-object-id: "/subscriptions/{sub}/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/web-server-01",
+      vm-managed-disks: [
+        {
+          disk-id: "/subscriptions/{sub}/resourceGroups/prod-rg/providers/Microsoft.Compute/disks/web-server-01-osdisk",
+          primary-staging-azure-storage-account-id: "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.Storage/storageAccounts/asrstagingeastus",
+          recovery-resource-group-id: "/subscriptions/{sub}/resourceGroups/dr-prod-rg"
+        }
+      ],
+      recovery-azure-network-id: "/subscriptions/{sub}/resourceGroups/dr-prod-rg/providers/Microsoft.Network/virtualNetworks/dr-vnet",
+      recovery-container-id: "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-westus/replicationProtectionContainers/azure-westus-container",
+      recovery-resource-group-id: "/subscriptions/{sub}/resourceGroups/dr-prod-rg",
+      recovery-subnet-name: "default"
+    }
   }'
 ```
 
@@ -104,11 +112,12 @@ az site-recovery policy create \
   --vault-name my-recovery-vault \
   --name "standard-dr-policy" \
   --provider-specific-input '{
-    "instanceType": "A2A",
-    "appConsistentFrequencyInMinutes": 60,
-    "crashConsistentFrequencyInMinutes": 5,
-    "recoveryPointHistory": 1440,
-    "multiVmSyncStatus": "Enable"
+    a2a: {
+      app-consistent-frequency-in-minutes: 60,
+      crash-consistent-frequency-in-minutes: 5,
+      recovery-point-history: 1440,
+      multi-vm-sync-status: Enable
+    }
   }'
 ```
 
@@ -118,69 +127,44 @@ This policy takes crash-consistent snapshots every 5 minutes (giving you an RPO 
 
 A recovery plan defines the order in which VMs start during failover. This is critical because database servers need to start before application servers, and application servers need to start before web servers.
 
-```json
-{
-  "properties": {
-    "primaryFabricId": "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-eastus",
-    "recoveryFabricId": "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-westus",
-    "groups": [
-      {
-        "groupType": "Boot",
-        "replicationProtectedItems": [
-          {"id": "sql-server-01-replication"},
-          {"id": "sql-server-02-replication"}
-        ],
-        "startGroupActions": [],
-        "endGroupActions": [
-          {
-            "actionName": "WaitForSQLReady",
-            "failoverTypes": ["PlannedFailover", "UnplannedFailover"],
-            "failoverDirections": ["PrimaryToRecovery"],
-            "customDetails": {
-              "instanceType": "ScriptActionDetails",
-              "fabricLocation": "Recovery",
-              "scriptPath": "scripts/wait-for-sql.ps1",
-              "timeout": "PT10M"
-            }
-          }
-        ]
-      },
-      {
-        "groupType": "Boot",
-        "replicationProtectedItems": [
-          {"id": "app-server-01-replication"},
-          {"id": "app-server-02-replication"}
-        ],
-        "startGroupActions": [],
-        "endGroupActions": [
-          {
-            "actionName": "UpdateAppConfig",
-            "failoverTypes": ["PlannedFailover", "UnplannedFailover"],
-            "failoverDirections": ["PrimaryToRecovery"],
-            "customDetails": {
-              "instanceType": "ScriptActionDetails",
-              "fabricLocation": "Recovery",
-              "scriptPath": "scripts/update-config.ps1",
-              "timeout": "PT5M"
-            }
-          }
-        ]
-      },
-      {
-        "groupType": "Boot",
-        "replicationProtectedItems": [
-          {"id": "web-server-01-replication"},
-          {"id": "web-server-02-replication"}
-        ]
-      }
-    ]
-  }
-}
+```bash
+az site-recovery recovery-plan create \
+  --resource-group dr-rg \
+  --vault-name my-recovery-vault \
+  --name my-recovery-plan \
+  --primary-fabric-id "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-eastus" \
+  --recovery-fabric-id "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-westus" \
+  --failover-deployment-model ResourceManager \
+  --groups '[
+    {
+      group-type: Boot,
+      replication-protected-items: [
+        {id: "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-eastus/replicationProtectionContainers/azure-eastus-container/replicationProtectedItems/sql-server-01-replication", virtual-machine-id: "/subscriptions/{sub}/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/sql-server-01"},
+        {id: "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-eastus/replicationProtectionContainers/azure-eastus-container/replicationProtectedItems/sql-server-02-replication", virtual-machine-id: "/subscriptions/{sub}/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/sql-server-02"}
+      ]
+    },
+    {
+      group-type: Boot,
+      replication-protected-items: [
+        {id: "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-eastus/replicationProtectionContainers/azure-eastus-container/replicationProtectedItems/app-server-01-replication", virtual-machine-id: "/subscriptions/{sub}/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/app-server-01"},
+        {id: "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-eastus/replicationProtectionContainers/azure-eastus-container/replicationProtectedItems/app-server-02-replication", virtual-machine-id: "/subscriptions/{sub}/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/app-server-02"}
+      ]
+    },
+    {
+      group-type: Boot,
+      replication-protected-items: [
+        {id: "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-eastus/replicationProtectionContainers/azure-eastus-container/replicationProtectedItems/web-server-01-replication", virtual-machine-id: "/subscriptions/{sub}/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/web-server-01"},
+        {id: "/subscriptions/{sub}/resourceGroups/dr-rg/providers/Microsoft.RecoveryServices/vaults/my-recovery-vault/replicationFabrics/azure-eastus/replicationProtectionContainers/azure-eastus-container/replicationProtectedItems/web-server-02-replication", virtual-machine-id: "/subscriptions/{sub}/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/web-server-02"}
+      ]
+    }
+  ]'
 ```
+
+Post-actions such as "WaitForSQLReady" and "UpdateAppConfig" can be added to the recovery plan in the Azure portal by attaching Azure Automation runbooks to the appropriate group.
 
 ## DNS Failover
 
-When you failover to the secondary region, DNS needs to point to the new region. Azure Traffic Manager or Azure Front Door handles this automatically:
+When you failover to the secondary region, users need to reach the new region. Azure Traffic Manager handles this with DNS-based failover; Azure Front Door can handle failover at the edge by routing to a healthy origin:
 
 ```bash
 # Create a Traffic Manager profile for DNS-based failover
@@ -229,6 +213,7 @@ az sql failover-group create \
   --name my-failover-group \
   --partner-server my-sql-server-westus \
   --partner-resource-group dr-prod-rg \
+  --add-db myappdb \
   --failover-policy Automatic \
   --grace-period 1
 ```
@@ -237,7 +222,7 @@ The failover group provides a listener endpoint that automatically redirects con
 
 ### Azure Cosmos DB
 
-Cosmos DB handles failover natively with automatic failover configuration:
+Cosmos DB handles failover natively with automatic failover configuration. The account must already have the regions you include in the failover policy:
 
 ```bash
 # Enable automatic failover for Cosmos DB
@@ -258,21 +243,19 @@ az cosmosdb failover-priority-change \
 
 A disaster recovery plan that has never been tested is just a hope. Azure Site Recovery supports test failovers that do not affect your production environment:
 
-```bash
+```powershell
 # Run a test failover
 # This creates the VMs in an isolated network so it does not affect production
-az site-recovery recovery-plan planned-failover \
-  --resource-group dr-rg \
-  --vault-name my-recovery-vault \
-  --name my-recovery-plan \
-  --failover-direction PrimaryToRecovery \
-  --properties '{
-    "instanceType": "RecoveryPlanPlannedFailoverInput",
-    "failoverDirection": "PrimaryToRecovery",
-    "providerSpecificDetails": [{
-      "instanceType": "A2A"
-    }]
-  }'
+$vault = Get-AzRecoveryServicesVault -ResourceGroupName "dr-rg" -Name "my-recovery-vault"
+Set-AzRecoveryServicesAsrVaultContext -Vault $vault
+
+$recoveryPlan = Get-AzRecoveryServicesAsrRecoveryPlan -Name "my-recovery-plan"
+$testNetworkId = "/subscriptions/{sub}/resourceGroups/dr-prod-rg/providers/Microsoft.Network/virtualNetworks/dr-test-vnet"
+
+Start-AzRecoveryServicesAsrTestFailoverJob `
+  -RecoveryPlan $recoveryPlan `
+  -Direction PrimaryToRecovery `
+  -AzureVMNetworkId $testNetworkId
 ```
 
 Schedule DR tests quarterly. Document the results, including how long the failover took, any issues encountered, and the actual RPO achieved.
@@ -284,10 +267,8 @@ Automate post-failover tasks with Azure Automation runbooks that run as part of 
 ```powershell
 # PowerShell runbook that updates DNS and verifies the failover
 param(
-    [string]$RecoveryPlanContext
+    [Object]$RecoveryPlanContext
 )
-
-$context = ConvertFrom-Json $RecoveryPlanContext
 
 # Update application settings to point to DR resources
 $webApp = Get-AzWebApp -ResourceGroupName "dr-prod-rg" -Name "myapp-westus"
