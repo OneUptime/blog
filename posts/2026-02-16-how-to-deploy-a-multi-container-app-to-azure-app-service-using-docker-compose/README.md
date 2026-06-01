@@ -8,7 +8,7 @@ Description: How to deploy multi-container applications to Azure App Service on 
 
 ---
 
-Sometimes a single container is not enough. Your application might need a web server, a background worker, and a cache all running together. While Azure Kubernetes Service handles complex container orchestration, Azure App Service supports Docker Compose for simpler multi-container deployments. It is a good middle ground when you need more than one container but do not want the complexity of Kubernetes.
+Sometimes a single container is not enough. Your application might need a web server, a background worker, and a cache all running together. While Azure Kubernetes Service handles complex container orchestration, Azure App Service supports Docker Compose for simpler multi-container deployments. It is a good middle ground when you need more than one container but do not want the complexity of Kubernetes. Be aware that Microsoft has announced that the Docker Compose feature in App Service will be retired on March 31, 2027, with sidecar containers as the successor for new services.
 
 This post covers how to deploy a multi-container application to Azure App Service using Docker Compose, including the limitations you should know about upfront.
 
@@ -20,14 +20,15 @@ Azure App Service on Linux supports a subset of Docker Compose features. Before 
 - Multiple container definitions
 - Environment variables
 - Port mapping (only port 80 and 8080 for the primary container)
-- Volume mounts (Azure Storage)
-- Container dependencies (depends_on)
+- Volume mappings to `WEBAPP_STORAGE_HOME` for persistent App Service storage
 - Image pull from registries
 
 **Not Supported:**
 - Build directives (you must use pre-built images)
-- Networks (all containers share the same network)
-- Volume mounts to local paths (only Azure Storage)
+- Networks (ignored)
+- Volume mounts to local paths
+- Custom Azure Storage mounts through the Docker Compose file
+- Container dependencies with `depends_on` (ignored)
 - Docker Compose v3 deploy section
 - Healthcheck directives in compose file
 
@@ -67,7 +68,7 @@ WORKDIR /app
 
 # Install dependencies first for layer caching
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -97,9 +98,20 @@ redisClient.on('error', (err) => {
     console.log('Redis connection error:', err.message);
 });
 
-redisClient.connect().then(() => {
-    console.log('Connected to Redis');
-});
+async function connectRedisWithRetry(retries = 10) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            await redisClient.connect();
+            console.log('Connected to Redis');
+            return;
+        } catch (err) {
+            console.log(`Redis connection attempt ${attempt} failed:`, err.message);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+    }
+
+    throw new Error('Could not connect to Redis');
+}
 
 app.get('/', async (req, res) => {
     // Simple example: increment a visit counter in Redis
@@ -116,8 +128,13 @@ app.get('/health', async (req, res) => {
     }
 });
 
-app.listen(port, () => {
-    console.log(`API server listening on port ${port}`);
+connectRedisWithRetry().then(() => {
+    app.listen(port, () => {
+        console.log(`API server listening on port ${port}`);
+    });
+}).catch((err) => {
+    console.error(err.message);
+    process.exit(1);
 });
 ```
 
@@ -139,21 +156,20 @@ services:
       # Use the Redis service name as the hostname
       - REDIS_HOST=redis
       - NODE_ENV=production
-    depends_on:
-      - redis
 
   # Secondary container - Redis cache
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
 ```
 
 Test it locally:
 
 ```bash
-# Build and run locally to verify everything works
-docker compose up --build
+# Build the API image with the same tag used in the compose file
+docker build -t myregistry.azurecr.io/my-api:latest ./api
+
+# Run locally to verify everything works
+docker compose up
 
 # Test the API
 curl http://localhost:8080/
@@ -218,33 +234,14 @@ az webapp config container set \
 
 ## Adding Persistent Storage
 
-By default, container data is ephemeral. If Redis needs to persist data across restarts, you need to mount Azure Storage:
+By default, container data is ephemeral. If Redis needs to persist data across restarts, enable persistent App Service storage and map a volume to `WEBAPP_STORAGE_HOME`:
 
 ```bash
-# Create a storage account
-az storage account create \
-    --name mystorageaccount \
-    --resource-group my-resource-group \
-    --sku Standard_LRS
-
-# Create a file share for Redis data
-az storage share create \
-    --name redis-data \
-    --account-name mystorageaccount
-
-# Get the storage account key
-STORAGE_KEY=$(az storage account keys list --account-name mystorageaccount --query "[0].value" -o tsv)
-
-# Mount the storage in the App Service
-az webapp config storage-account add \
+# Enable persistent App Service storage for the web app
+az webapp config appsettings set \
     --name my-multi-container-app \
     --resource-group my-resource-group \
-    --custom-id redisdata \
-    --storage-type AzureFiles \
-    --share-name redis-data \
-    --account-name mystorageaccount \
-    --access-key $STORAGE_KEY \
-    --mount-path /data
+    --settings WEBSITES_ENABLE_APP_SERVICE_STORAGE=TRUE
 ```
 
 Then update your Docker Compose file to use the mount:
@@ -261,14 +258,10 @@ services:
     environment:
       - REDIS_HOST=redis
       - NODE_ENV=production
-    depends_on:
-      - redis
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    # Use the Azure Files mount for Redis persistence
+    # Use persistent App Service storage for Redis persistence
     volumes:
       - ${WEBAPP_STORAGE_HOME}/redis-data:/data
     command: redis-server --appendonly yes
@@ -319,7 +312,7 @@ Azure App Service expects the primary container (the one that handles HTTP reque
 
 ### Inter-Container Communication
 
-All containers in the compose file share the same network namespace. They can communicate using `localhost` or the service name as the hostname. If your containers cannot talk to each other, check that you are using the correct hostnames and ports.
+Containers in the compose file can communicate by using the service name as the hostname. If your containers cannot talk to each other, check that you are using the correct hostnames and ports, and do not rely on custom Docker networks because App Service ignores the `networks` option.
 
 ### Image Pull Failures
 
@@ -327,7 +320,7 @@ If one image fails to pull, the entire deployment fails. Check that all image na
 
 ### Startup Order
 
-The `depends_on` directive controls startup order but does not wait for the dependency to be ready. Your application code needs to handle the case where a dependency is not yet available (retry logic).
+Azure App Service ignores the `depends_on` directive. Your application code needs to handle the case where a dependency is not yet available (retry logic).
 
 ## When to Use This vs. Other Options
 
@@ -343,4 +336,4 @@ Consider these alternatives for more complex scenarios:
 
 ## Summary
 
-Docker Compose on Azure App Service lets you run multiple containers together without the overhead of a full orchestration platform. It works well for straightforward multi-container applications, but be aware of the limitations. Test your compose file locally first, use Azure Storage for persistence, and monitor the container logs to catch issues early.
+Docker Compose on Azure App Service lets you run multiple containers together without the overhead of a full orchestration platform. It works well for straightforward multi-container applications, but be aware of the limitations and the March 31, 2027 retirement date. Test your compose file locally first, use persistent App Service storage when needed, and monitor the container logs to catch issues early.
