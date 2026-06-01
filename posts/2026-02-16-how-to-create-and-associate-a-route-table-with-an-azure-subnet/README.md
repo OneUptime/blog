@@ -16,19 +16,19 @@ This article shows you how to create a route table, add custom routes, and assoc
 
 Every subnet in an Azure virtual network has a set of system routes. These routes handle basic scenarios like routing between subnets in the same VNet, sending internet-bound traffic to Azure's default gateway, and dropping traffic destined for private address ranges.
 
-When you create a custom route table and attach it to a subnet, your user-defined routes take precedence over the default system routes for matching destinations. Azure evaluates routes using longest-prefix matching - the most specific route wins.
+When you create a custom route table and attach it to a subnet, your user-defined routes take precedence over default system routes with the same address prefix. Azure evaluates routes using longest-prefix matching first - the most specific route wins. If multiple routes have the same address prefix, Azure selects the route type in this order: user-defined route, BGP route, then system route.
 
 Here is how route evaluation works:
 
 ```mermaid
 flowchart TD
-    A[Outbound Packet from VM] --> B{User-Defined Route match?}
-    B -->|Yes| C[Use UDR next hop]
-    B -->|No| D{BGP Route match?}
-    D -->|Yes| E[Use BGP next hop]
-    D -->|No| F{System Route match?}
-    F -->|Yes| G[Use system route next hop]
-    F -->|No| H[Drop packet]
+    A[Outbound Packet from VM] --> B{Find all matching routes}
+    B --> C[Select longest prefix match]
+    C --> D{Same prefix from multiple sources?}
+    D -->|Yes| E[Prefer UDR, then BGP, then system route]
+    D -->|No| F[Use the matching route]
+    E --> G[Use selected next hop]
+    F --> G
 ```
 
 ## Step 1: Create a Route Table
@@ -48,7 +48,7 @@ az network route-table create \
   --disable-bgp-route-propagation false
 ```
 
-The `--disable-bgp-route-propagation` flag controls whether BGP routes from a VPN or ExpressRoute gateway are propagated to the subnet. Setting it to `false` means BGP routes will still be injected. If you want your UDRs to be the only routes (common in forced tunneling scenarios), set it to `true`.
+The `--disable-bgp-route-propagation` flag controls whether routes from a VPN or ExpressRoute gateway are propagated to the subnet. Setting it to `false` means gateway routes can still be injected. If you do not want gateway routes propagated to subnets that use this route table, set it to `true`.
 
 ## Step 2: Add a Route to Send Traffic Through a Firewall
 
@@ -156,7 +156,7 @@ Azure supports several next hop types in user-defined routes:
 | Next Hop Type | Description |
 |---|---|
 | VirtualAppliance | Send traffic to a specific IP (firewall, NVA) |
-| VirtualNetworkGateway | Send traffic through a VPN or ExpressRoute gateway |
+| VirtualNetworkGateway | Send traffic through a VPN gateway |
 | VnetLocal | Route to the local virtual network |
 | Internet | Route directly to the internet |
 | None | Drop the traffic (black hole) |
@@ -179,7 +179,7 @@ You also need to enable IP forwarding inside the guest operating system. On Linu
 
 ## Common Architecture: Hub-Spoke with Forced Tunneling
 
-A typical use case for route tables is the hub-spoke topology. The hub VNet contains a firewall, and spoke VNets have route tables that force all traffic through the hub.
+A typical use case for route tables is the hub-spoke topology. The hub VNet contains a firewall, and spoke VNets have route tables that force all traffic through the hub. When the firewall is in a peered hub VNet, make sure the VNet peering is configured to allow forwarded traffic.
 
 ```mermaid
 graph TD
