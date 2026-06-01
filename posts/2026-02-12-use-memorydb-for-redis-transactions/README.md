@@ -93,13 +93,16 @@ aws memorydb create-cluster \
 
 Redis transactions use `MULTI`, `EXEC`, `WATCH`, and `DISCARD` commands. In MemoryDB, these transactions are durable - once `EXEC` returns successfully, all commands in the transaction have been persisted to the transaction log.
 
+Because the cluster created above has multiple shards, every key touched by one Redis transaction or Lua script must be in the same Redis Cluster hash slot. The examples below use hash tags like `{account_id}` and `{item_id}` to keep related keys together.
+
 ### Basic Transaction
 
 ```python
 # Basic Redis transaction in MemoryDB
 import redis
+from redis.cluster import RedisCluster
 
-client = redis.Redis(
+client = RedisCluster(
     host='clustercfg.my-memorydb.xxxxx.memorydb.us-east-1.amazonaws.com',
     port=6379,
     ssl=True,
@@ -108,8 +111,13 @@ client = redis.Redis(
     decode_responses=True
 )
 
-def transfer_funds(from_account, to_account, amount):
+def transfer_funds(account_group, from_account, to_account, amount):
     """Transfer funds between accounts atomically."""
+    balance_from_key = f"balance:{{{account_group}}}:{from_account}"
+    balance_to_key = f"balance:{{{account_group}}}:{to_account}"
+    transfers_from_key = f"transfers:{{{account_group}}}:{from_account}"
+    transfers_to_key = f"transfers:{{{account_group}}}:{to_account}"
+
     pipe = client.pipeline(transaction=True)
 
     try:
@@ -117,14 +125,14 @@ def transfer_funds(from_account, to_account, amount):
         pipe.multi()
 
         # Debit the source account
-        pipe.decrby(f"balance:{from_account}", amount)
+        pipe.decrby(balance_from_key, amount)
 
         # Credit the destination account
-        pipe.incrby(f"balance:{to_account}", amount)
+        pipe.incrby(balance_to_key, amount)
 
         # Record the transfer
-        pipe.rpush(f"transfers:{from_account}", f"-{amount} to {to_account}")
-        pipe.rpush(f"transfers:{to_account}", f"+{amount} from {from_account}")
+        pipe.rpush(transfers_from_key, f"-{amount} to {to_account}")
+        pipe.rpush(transfers_to_key, f"+{amount} from {from_account}")
 
         # Execute all commands atomically
         results = pipe.execute()
@@ -146,15 +154,17 @@ def debit_account_safe(account_id, amount):
     Retries if another client modifies the balance concurrently.
     """
     max_retries = 5
+    balance_key = f"balance:{{{account_id}}}"
+    ledger_key = f"ledger:{{{account_id}}}"
 
     for attempt in range(max_retries):
         try:
             # Watch the balance key for changes
             pipe = client.pipeline(transaction=True)
-            pipe.watch(f"balance:{account_id}")
+            pipe.watch(balance_key)
 
             # Read current balance
-            current_balance = int(pipe.get(f"balance:{account_id}") or 0)
+            current_balance = int(pipe.get(balance_key) or 0)
 
             if current_balance < amount:
                 pipe.unwatch()
@@ -164,10 +174,10 @@ def debit_account_safe(account_id, amount):
             pipe.multi()
 
             # Set the new balance
-            pipe.set(f"balance:{account_id}", current_balance - amount)
+            pipe.set(balance_key, current_balance - amount)
 
             # Log the debit
-            pipe.rpush(f"ledger:{account_id}", f"debit:{amount}:{current_balance - amount}")
+            pipe.rpush(ledger_key, f"debit:{amount}:{current_balance - amount}")
 
             # Execute - will fail if balance was modified by another client
             pipe.execute()
@@ -190,8 +200,9 @@ def purchase_item(user_id, item_id, quantity):
     Purchase an item - decrements stock and creates an order atomically.
     Uses WATCH to prevent overselling.
     """
-    stock_key = f"stock:{item_id}"
-    order_key = f"orders:{user_id}"
+    stock_key = f"stock:{{{item_id}}}"
+    order_key = f"orders:{{{item_id}}}:{user_id}"
+    item_key = f"item:{{{item_id}}}"
 
     pipe = client.pipeline(transaction=True)
 
@@ -207,7 +218,7 @@ def purchase_item(user_id, item_id, quantity):
             return {"success": False, "error": "Out of stock"}
 
         # Get item price
-        price = float(pipe.hget(f"item:{item_id}", "price") or 0)
+        price = float(pipe.hget(item_key, "price") or 0)
 
         # Start transaction
         pipe.multi()
@@ -229,7 +240,7 @@ def purchase_item(user_id, item_id, quantity):
         pipe.rpush(order_key, order)
 
         # Increment sales counter
-        pipe.hincrby(f"item:{item_id}", "total_sold", quantity)
+        pipe.hincrby(item_key, "total_sold", quantity)
 
         # Execute atomically
         pipe.execute()
@@ -290,23 +301,23 @@ def check_rate_limit(user_id, max_requests=100, window_seconds=60):
 ### Key Metrics
 
 ```bash
-# Monitor write latency - important because MemoryDB writes go to the transaction log
+# Monitor delayed writes caused by synchronous replication
 aws cloudwatch get-metric-statistics \
   --namespace AWS/MemoryDB \
-  --metric-name CommandLatency \
-  --dimensions Name=ClusterName,Value=my-memorydb Name=CommandType,Value=write \
+  --metric-name ReplicationDelayedWriteCommands \
+  --dimensions Name=ClusterName,Value=my-memorydb Name=NodeId,Value=0001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
-  --statistics Average,p99
+  --statistics Maximum
 ```
 
 ```bash
-# Monitor transaction log replication lag
+# Monitor replica lag
 aws cloudwatch get-metric-statistics \
   --namespace AWS/MemoryDB \
   --metric-name ReplicationLag \
-  --dimensions Name=ClusterName,Value=my-memorydb \
+  --dimensions Name=ClusterName,Value=my-memorydb Name=NodeId,Value=0002 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
@@ -316,15 +327,15 @@ aws cloudwatch get-metric-statistics \
 ### Alerts
 
 ```bash
-# Alert on high write latency
+# Alert when write commands are delayed by synchronous replication
 aws cloudwatch put-metric-alarm \
-  --alarm-name memorydb-write-latency \
+  --alarm-name memorydb-delayed-write-commands \
   --namespace AWS/MemoryDB \
-  --metric-name CommandLatency \
-  --dimensions Name=ClusterName,Value=my-memorydb Name=CommandType,Value=write \
-  --extended-statistic p99 \
+  --metric-name ReplicationDelayedWriteCommands \
+  --dimensions Name=ClusterName,Value=my-memorydb Name=NodeId,Value=0001 \
+  --statistic Maximum \
   --period 60 \
-  --threshold 10 \
+  --threshold 0 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 5 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:DatabaseAlerts
