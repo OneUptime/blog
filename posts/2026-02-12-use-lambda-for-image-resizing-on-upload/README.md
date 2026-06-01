@@ -47,7 +47,7 @@ If you're deploying with a zip file, make sure you install Sharp for the Linux p
 
 ```bash
 # Install Sharp compiled for AWS Lambda's Linux environment
-npm install --platform=linux --arch=x64 sharp
+npm install --os=linux --cpu=x64 --libc=glibc sharp
 ```
 
 ## Step 2: Write the Lambda Function
@@ -180,6 +180,7 @@ Set up the event notification on the source bucket. Make sure you use a separate
 Resources:
   SourceBucket:
     Type: AWS::S3::Bucket
+    DependsOn: S3Permission
     Properties:
       BucketName: my-image-uploads
       NotificationConfiguration:
@@ -201,7 +202,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: image-resizer
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: index.handler
       MemorySize: 1536  # Image processing needs more memory/CPU
       Timeout: 60
@@ -220,7 +221,8 @@ Resources:
       FunctionName: !Ref ImageResizerFunction
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
-      SourceArn: !GetAtt SourceBucket.Arn
+      SourceArn: !Sub arn:${AWS::Partition}:s3:::my-image-uploads
+      SourceAccount: !Ref AWS::AccountId
 ```
 
 ## Step 5: IAM Permissions
@@ -284,6 +286,8 @@ def handler(event, context):
 
             # Save to buffer as JPEG
             buffer = BytesIO()
+            if resized.mode != 'RGB':
+                resized = resized.convert('RGB')
             resized.save(buffer, 'JPEG', quality=85, progressive=True)
             buffer.seek(0)
 
