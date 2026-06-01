@@ -8,19 +8,21 @@ Description: Implement real-time notifications for Azure Managed Application lif
 
 ---
 
-When you publish a managed application on the Azure Marketplace, you need visibility into what is happening with your deployments. When does a customer deploy your application? When do they delete it? When do they change configuration parameters? Without notifications, you are flying blind - you only find out about issues when customers contact support.
+When you publish a managed application on the Azure Marketplace, you need visibility into what is happening with your deployments. When does a customer deploy your application? When do they delete it? When do they change tags, access policy, or managed identity settings? Without notifications, you are flying blind - you only find out about issues when customers contact support.
 
-Azure Event Grid provides a native eventing mechanism for Azure resource lifecycle events, and managed applications emit events at every stage of their lifecycle. In this guide, I will show you how to set up Event Grid subscriptions, build webhook handlers, and use these notifications to automate your operational workflows.
+Azure Managed Applications provide lifecycle notifications through a webhook endpoint, and Azure Event Grid provides a native eventing mechanism for Azure resource lifecycle events. In this guide, I will show you how to use the managed application notification endpoint, set up Event Grid subscriptions for resource-level events, build webhook handlers, and use these notifications to automate your operational workflows.
 
 ## Managed Application Lifecycle Events
 
-Managed applications emit several types of events through Azure Resource Manager notifications:
+Managed applications emit lifecycle notifications with `eventType` values and provisioning states:
 
-- **Deployment succeeded** - A customer successfully deployed your managed application
-- **Deployment failed** - A deployment attempt failed
-- **Update succeeded** - A customer or your team updated the managed application
-- **Delete initiated** - A customer is deleting the managed application
-- **Resource action** - A custom action was invoked on the managed application
+- **PUT / Accepted** - The managed resource group was created and projected successfully
+- **PUT / Succeeded** - A customer successfully deployed your managed application
+- **PUT / Failed** - A deployment attempt failed
+- **PATCH / Succeeded** - Tags, just-in-time access policy, or managed identity changed
+- **DELETE / Deleting** - A customer started deleting the managed application
+- **DELETE / Deleted** - The managed application was deleted
+- **DELETE / Failed** - Deletion failed
 
 Each of these events gives you an opportunity to take action: send a welcome email, alert your support team, clean up external resources, or update your customer database.
 
@@ -29,11 +31,12 @@ Each of these events gives you an opportunity to take action: send a welcome ema
 ```mermaid
 graph TD
     A[Managed App Deployment] --> B[Azure Resource Manager]
-    B --> C[Event Grid System Topic]
-    C --> D[Event Grid Subscription]
-    D --> E[Webhook Endpoint]
-    D --> F[Azure Function]
-    D --> G[Logic App]
+    B --> C[Managed App Notification Endpoint]
+    B --> D[Event Grid System Topic]
+    C --> E[Webhook Endpoint]
+    D --> K[Event Grid Subscription]
+    K --> F[Azure Function]
+    K --> G[Logic App]
     E --> H[Your Backend]
     F --> I[Cosmos DB]
     G --> J[Email Notification]
@@ -41,17 +44,17 @@ graph TD
 
 ## Setting Up the Event Grid System Topic
 
-First, create a system topic that captures events from your managed application deployments. This requires the publisher's Azure AD tenant to have the right permissions:
+For granular resource events inside a managed resource group, create an Event Grid system topic on the managed resource group. This must be done in the subscription that contains the source resource group and requires permissions to create Event Grid system topics and event subscriptions:
 
 ```bash
-# Create an Event Grid system topic for managed application events
+# Create an Event Grid system topic for resource events in a managed resource group
 
 az eventgrid system-topic create \
   --name topic-managed-app-events \
-  --resource-group rg-saas-operations \
+  --resource-group {event-grid-rg} \
   --location global \
-  --topic-type "Microsoft.Solutions.Applications" \
-  --source "/subscriptions/{publisher-sub-id}/resourceGroups/{managed-rg}"
+  --topic-type "Microsoft.Resources.ResourceGroups" \
+  --source "/subscriptions/{customer-sub-id}/resourceGroups/{managed-rg}"
 ```
 
 For marketplace managed applications, you can also use the notification endpoint URL configured in Partner Center. This is a simpler approach that sends HTTP POST requests directly to your webhook endpoint whenever a lifecycle event occurs.
@@ -61,10 +64,10 @@ For marketplace managed applications, you can also use the notification endpoint
 In the Partner Center technical configuration for your managed application plan, specify a notification endpoint URL:
 
 ```text
-Notification Endpoint URL: https://api.yoursaas.com/webhooks/managed-app
+Notification Endpoint URL: https://api.yoursaas.com/webhooks/managed-app?sig={shared-secret}
 ```
 
-This URL receives POST requests with the event details every time something happens to any deployment of your managed application across all customer subscriptions.
+Azure appends `/resource` to the notification endpoint URI. For the URL above, your webhook must handle POST requests at `https://api.yoursaas.com/webhooks/managed-app/resource?sig={shared-secret}` whenever lifecycle events occur for deployments of your managed application.
 
 ## Building the Webhook Handler
 
@@ -73,7 +76,7 @@ Create a webhook endpoint that processes managed application notifications:
 ```csharp
 // Webhook controller that handles managed application lifecycle notifications
 [ApiController]
-[Route("webhooks/managed-app")]
+[Route("webhooks/managed-app/resource")]
 public class ManagedAppWebhookController : ControllerBase
 {
     private readonly ICustomerService _customerService;
@@ -95,14 +98,15 @@ public class ManagedAppWebhookController : ControllerBase
 
     [HttpPost]
     public async Task<IActionResult> HandleNotification(
-        [FromBody] ManagedAppNotification notification)
+        [FromBody] ManagedAppNotification notification,
+        [FromQuery] string sig)
     {
         _logger.LogInformation(
             "Received notification: {EventType} for {ApplicationId}",
             notification.EventType, notification.ApplicationId);
 
-        // Validate the notification signature to prevent spoofing
-        if (!ValidateSignature(notification))
+        // Validate the shared secret and confirm state with Azure Resource Manager
+        if (!ValidateSignature(sig))
         {
             _logger.LogWarning("Invalid notification signature");
             return Unauthorized();
@@ -111,7 +115,14 @@ public class ManagedAppWebhookController : ControllerBase
         switch (notification.EventType)
         {
             case "PUT":
-                await HandleDeployment(notification);
+                if (notification.ProvisioningState == "Succeeded")
+                {
+                    await HandleDeployment(notification);
+                }
+                else if (notification.ProvisioningState == "Failed")
+                {
+                    await HandleFailure(notification);
+                }
                 break;
 
             case "PATCH":
@@ -119,7 +130,11 @@ public class ManagedAppWebhookController : ControllerBase
                 break;
 
             case "DELETE":
-                await HandleDeletion(notification);
+                if (notification.ProvisioningState == "Deleting" ||
+                    notification.ProvisioningState == "Deleted")
+                {
+                    await HandleDeletion(notification);
+                }
                 break;
 
             default:
@@ -136,30 +151,27 @@ public class ManagedAppWebhookController : ControllerBase
     {
         // A customer deployed your managed application
         _logger.LogInformation(
-            "New deployment: {AppId} in subscription {SubId}",
-            notification.ApplicationId, notification.SubscriptionId);
+            "New deployment: {AppId} on plan {Plan}",
+            notification.ApplicationId, notification.Plan?.Name);
 
         // Track the deployment
         await _deploymentTracker.RecordDeploymentAsync(new Deployment
         {
             ApplicationId = notification.ApplicationId,
-            CustomerSubscriptionId = notification.SubscriptionId,
-            CustomerTenantId = notification.CustomerTenantId,
-            PlanId = notification.PlanId,
-            ManagedResourceGroupId = notification.ManagedResourceGroupId,
+            PlanId = notification.Plan?.Name,
             DeployedAt = DateTime.UtcNow,
             Status = "Active"
         });
 
         // Send welcome notification to the customer
         await _notifications.SendWelcomeEmailAsync(
-            notification.CustomerTenantId,
-            notification.PlanId);
+            notification.ApplicationId,
+            notification.Plan?.Name);
 
         // Alert the sales team about the new deployment
         await _notifications.NotifySlackChannelAsync(
             "#new-customers",
-            $"New managed app deployment in tenant {notification.CustomerTenantId} on plan {notification.PlanId}");
+            $"New managed app deployment {notification.ApplicationId} on plan {notification.Plan?.Name}");
     }
 
     private async Task HandleUpdate(ManagedAppNotification notification)
@@ -169,14 +181,26 @@ public class ManagedAppWebhookController : ControllerBase
 
         await _deploymentTracker.RecordUpdateAsync(
             notification.ApplicationId,
-            notification.Parameters);
+            notification.EventTime);
+    }
+
+    private async Task HandleFailure(ManagedAppNotification notification)
+    {
+        _logger.LogError(
+            "Application provisioning failed: {AppId}. Error: {Error}",
+            notification.ApplicationId,
+            notification.Error?.Message);
+
+        await _deploymentTracker.MarkAsFailedAsync(
+            notification.ApplicationId,
+            notification.Error?.Message);
     }
 
     private async Task HandleDeletion(ManagedAppNotification notification)
     {
         _logger.LogWarning(
-            "Application deleted: {AppId} by tenant {TenantId}",
-            notification.ApplicationId, notification.CustomerTenantId);
+            "Application deletion event: {AppId} state {State}",
+            notification.ApplicationId, notification.ProvisioningState);
 
         // Update the deployment status
         await _deploymentTracker.MarkAsDeletedAsync(notification.ApplicationId);
@@ -187,7 +211,7 @@ public class ManagedAppWebhookController : ControllerBase
         // Notify the customer success team
         await _notifications.NotifySlackChannelAsync(
             "#churn-alerts",
-            $"Managed app deleted by tenant {notification.CustomerTenantId}. " +
+            $"Managed app deletion event for {notification.ApplicationId}. " +
             $"Investigate potential churn.");
     }
 
@@ -207,11 +231,10 @@ public class ManagedAppWebhookController : ControllerBase
         }
     }
 
-    private bool ValidateSignature(ManagedAppNotification notification)
+    private bool ValidateSignature(string sig)
     {
-        // Validate the notification came from Azure
-        // Check the sig parameter in the notification URL
-        return true; // Simplified - implement actual validation
+        // Compare the sig query parameter with the value configured in Partner Center.
+        return sig == "{shared-secret}";
     }
 }
 ```
@@ -230,26 +253,41 @@ public class ManagedAppNotification
     // The resource ID of the managed application
     public string ApplicationId { get; set; }
 
-    // The customer's Azure subscription ID
-    public string SubscriptionId { get; set; }
-
-    // The customer's Azure AD tenant ID
-    public string CustomerTenantId { get; set; }
-
-    // The managed resource group where resources are deployed
-    public string ManagedResourceGroupId { get; set; }
-
-    // The plan ID from Partner Center
-    public string PlanId { get; set; }
+    // The time the event occurred
+    public DateTimeOffset EventTime { get; set; }
 
     // The provisioning state of the application
     public string ProvisioningState { get; set; }
 
-    // Parameters provided during deployment or update
-    public Dictionary<string, object> Parameters { get; set; }
+    // Service catalog applications include this value
+    public string ApplicationDefinitionId { get; set; }
+
+    // Marketplace applications include billing details and plan metadata
+    public BillingDetails BillingDetails { get; set; }
+    public Plan Plan { get; set; }
 
     // Error details if the operation failed
     public NotificationError Error { get; set; }
+}
+
+public class BillingDetails
+{
+    public string ResourceUsageId { get; set; }
+}
+
+public class Plan
+{
+    public string Publisher { get; set; }
+    public string Product { get; set; }
+    public string Name { get; set; }
+    public string Version { get; set; }
+}
+
+public class NotificationError
+{
+    public string Code { get; set; }
+    public string Message { get; set; }
+    public List<NotificationError> Details { get; set; }
 }
 ```
 
@@ -271,10 +309,16 @@ public class EventGridSetupFunction
         var notification = await JsonSerializer
             .DeserializeAsync<ManagedAppNotification>(req.Body);
 
-        if (notification.EventType != "PUT") return;
+        if (notification.EventType != "PUT" ||
+            notification.ProvisioningState != "Succeeded")
+        {
+            return;
+        }
 
         // Create an Event Grid subscription on the managed resource group
-        var subscriptionName = $"sub-{notification.ApplicationId.GetHashCode():x}";
+        var managedResourceGroupId = await ResolveManagedResourceGroupIdAsync(
+            notification.ApplicationId);
+        var subscriptionName = $"sub-{Guid.NewGuid():N}";
 
         var subscription = new EventSubscription
         {
@@ -290,18 +334,24 @@ public class EventGridSetupFunction
                     "Microsoft.Resources.ResourceDeleteSuccess",
                     "Microsoft.Resources.ResourceActionSuccess"
                 },
-                SubjectBeginsWith = notification.ManagedResourceGroupId
+                SubjectBeginsWith = managedResourceGroupId
             }
         };
 
         await _eventGridClient.EventSubscriptions.CreateOrUpdateAsync(
-            notification.ManagedResourceGroupId,
+            managedResourceGroupId,
             subscriptionName,
             subscription);
 
         log.LogInformation(
             "Created Event Grid subscription for {ManagedRg}",
-            notification.ManagedResourceGroupId);
+            managedResourceGroupId);
+    }
+
+    private Task<string> ResolveManagedResourceGroupIdAsync(string applicationId)
+    {
+        // GET the managed application resource and read properties.managedResourceGroupId.
+        return Task.FromResult("/subscriptions/{customer-sub-id}/resourceGroups/{managed-rg}");
     }
 }
 ```
@@ -351,7 +401,7 @@ public class DeploymentHealthService
 
 ## Retry and Reliability
 
-Webhooks can fail. Azure retries notifications with an exponential backoff, but you should also build your own retry mechanism for critical actions:
+Webhooks can fail. Azure retries managed application notifications for HTTP 429, HTTP 5xx, and temporarily unreachable endpoints for up to 10 hours, but you should also build your own retry mechanism for critical actions:
 
 ```csharp
 // Durable function orchestration for reliable notification processing
