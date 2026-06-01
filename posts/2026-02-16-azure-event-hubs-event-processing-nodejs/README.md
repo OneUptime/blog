@@ -34,7 +34,7 @@ graph LR
 ## Prerequisites
 
 - Azure account with an active subscription
-- Node.js 18 or later
+- Node.js 20 or later
 - Azure CLI installed
 - Basic understanding of event-driven architecture
 
@@ -60,7 +60,7 @@ az eventhubs eventhub create \
   --resource-group eventhubs-demo-rg \
   --namespace-name my-eventhubs-ns \
   --partition-count 4 \
-  --message-retention 7
+  --retention-time 168
 
 # Create a consumer group for our application
 az eventhubs eventhub consumer-group create \
@@ -147,7 +147,7 @@ async function sendEvents() {
 
   try {
     // Create a batch of events
-    const batch = await producer.createBatch();
+    let batch = await producer.createBatch();
 
     // Generate some sample sensor readings
     const readings: SensorReading[] = Array.from({ length: 100 }, (_, i) => ({
@@ -160,8 +160,7 @@ async function sendEvents() {
     for (const reading of readings) {
       const eventData: EventData = {
         body: reading,
-        // Use sensor ID as partition key to ensure
-        // events from the same sensor go to the same partition
+        // Application properties are delivered with the event
         properties: {
           source: 'sensor-network',
           type: 'reading',
@@ -174,8 +173,8 @@ async function sendEvents() {
         await producer.sendBatch(batch);
         console.log(`Sent batch of ${batch.count} events`);
 
-        const newBatch = await producer.createBatch();
-        if (!newBatch.tryAdd(eventData)) {
+        batch = await producer.createBatch();
+        if (!batch.tryAdd(eventData)) {
           throw new Error('Event too large for an empty batch');
         }
       }
@@ -332,7 +331,7 @@ processEvents().catch(console.error);
 In production, you want robust error handling. Events that fail processing should not block the entire partition:
 
 ```typescript
-// Resilient event processing with dead-letter handling
+// Resilient event processing with failed-event handling
 processEvents: async (events, context) => {
   const failedEvents: ReceivedEventData[] = [];
 
@@ -345,9 +344,9 @@ processEvents: async (events, context) => {
     }
   }
 
-  // Send failed events to a dead-letter queue for later investigation
+  // Send failed events to a separate Event Hub or Service Bus queue for later investigation
   if (failedEvents.length > 0) {
-    await sendToDeadLetter(failedEvents);
+    await sendToFailureStream(failedEvents);
   }
 
   // Always checkpoint to avoid reprocessing successful events
@@ -378,4 +377,4 @@ setInterval(() => {
 
 ## Wrapping Up
 
-Azure Event Hubs with the `@azure/event-hubs` SDK provides a reliable, high-throughput event processing pipeline for Node.js applications. The partitioned model gives you parallelism, checkpointing ensures you do not lose events on restart, and the managed service means you do not have to run Kafka clusters yourself. The key patterns to remember are: use partition keys for ordering guarantees, checkpoint after processing (not before), and handle errors per event rather than per batch so one bad event does not stall your pipeline.
+Azure Event Hubs with the `@azure/event-hubs` SDK provides a reliable, high-throughput event processing pipeline for Node.js applications. The partitioned model gives you parallelism, checkpointing records processing progress so consumers can resume after a restart, and the managed service means you do not have to run Kafka clusters yourself. The key patterns to remember are: use partition keys for ordering guarantees, checkpoint after processing (not before), and handle errors per event rather than per batch so one bad event does not stall your pipeline.
