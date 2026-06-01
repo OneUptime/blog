@@ -18,11 +18,11 @@ The core concept has not changed: access reviews periodically ask reviewers to c
 
 **Multi-stage reviews**: You can now chain multiple review stages. For example, the direct manager reviews first, then the resource owner reviews any decisions the manager did not make.
 
-**Machine learning recommendations**: The new platform uses ML to recommend approve or deny decisions based on user activity patterns. If a user has not accessed a resource in 90 days, the system recommends removal.
+**Recommendation insights**: The platform provides system-based recommendations to help reviewers approve or deny access. For example, inactive-user recommendations can recommend denial when a user has not signed in during the configured look-back period.
 
-**Inactive user reviews**: You can create reviews that specifically target users who have not used a resource within a specified timeframe.
+**Inactive user reviews**: You can create reviews that specifically target users who have not signed in within a specified timeframe.
 
-**Custom review scopes**: Instead of reviewing all members of a group, you can scope the review to specific conditions like guest users only, or users from a specific department.
+**Custom review scopes**: Instead of reviewing all members of a group, you can scope the review with supported Microsoft Graph queries, such as guest users in a group or users assigned to a specific application.
 
 **Improved reporting**: The governance dashboard provides better visibility into review completion rates, decision patterns, and compliance posture.
 
@@ -30,7 +30,7 @@ The core concept has not changed: access reviews periodically ask reviewers to c
 flowchart LR
     A[Legacy Azure AD Access Reviews] -->|Migration| B[Microsoft Entra ID Governance]
     B --> C[Multi-Stage Reviews]
-    B --> D[ML Recommendations]
+    B --> D[Recommendation Insights]
     B --> E[Inactive User Reviews]
     B --> F[Custom Scopes]
     B --> G[Enhanced Reporting]
@@ -40,9 +40,9 @@ flowchart LR
 
 Before migrating, confirm the following:
 
-- Microsoft Entra ID P2 licenses (same requirement as before)
-- Microsoft Entra ID Governance license for the advanced features (multi-stage, inactive user reviews)
-- Global Administrator, Identity Governance Administrator, or User Administrator role
+- Microsoft Entra ID P2 or Microsoft Entra ID Governance licenses for access reviews
+- Microsoft Entra ID Governance license for features such as inactive user reviews, user-to-group affiliation recommendations, and reviewing multiple resources together
+- Global Administrator, Identity Governance Administrator, User Administrator, or Privileged Role Administrator role, depending on the resource being reviewed
 - An inventory of your existing access reviews
 
 ## Step 1: Inventory Existing Access Reviews
@@ -60,7 +60,7 @@ $reviews | Select-Object DisplayName, Status, @{
     Name='Scope'; Expression={$_.Scope.AdditionalProperties.query}
 }, @{
     Name='ReviewerType'; Expression={$_.Reviewers[0].Query}
-}, StartDate | Format-Table -AutoSize
+}, CreatedDateTime | Format-Table -AutoSize
 
 # Export the inventory to a CSV for reference
 $reviews | Select-Object Id, DisplayName, Status, CreatedDateTime |
@@ -79,17 +79,17 @@ For each review, document:
 
 The new Entra ID Governance access reviews are configured through the same Microsoft Graph API and the Entra admin center portal, but the options have expanded.
 
-Navigate to the Microsoft Entra admin center > Identity Governance > Access Reviews.
+Navigate to the Microsoft Entra admin center > ID Governance > Access Reviews.
 
 Here is a comparison of old vs. new settings:
 
 | Setting | Legacy | Entra ID Governance |
 |---|---|---|
 | Review stages | Single stage | Multi-stage (up to 3 stages) |
-| ML recommendations | Basic (last sign-in) | Advanced (resource usage, peer analysis) |
+| Recommendation insights | Last sign-in inactivity and peer outlier recommendations | Inactive-user and user-to-group affiliation recommendations for supported reviews |
 | Inactive user filter | Not available | Filter by days of inactivity |
-| Auto-apply results | Yes | Yes, with configurable delay |
-| Review scope | Group/App/Role members | Custom query-based scopes |
+| Auto-apply results | Yes | Yes, after the review instance duration ends |
+| Review scope | Group/App/Role members | Supported Microsoft Graph query scopes |
 | Reviewer fallback | Fixed | Configurable fallback per stage |
 
 ## Step 3: Recreate Reviews in the New Platform
@@ -125,8 +125,9 @@ $reviewDefinition = @{
                 }
             )
             RecommendationsEnabled = $true
-            # Pass undecided items to stage 2
-            FallbackReviewers = @()
+            RecommendationLookBackDuration = "P90D"
+            # Pass only undecided items to stage 2
+            DecisionsThatWillMoveToNextStage = @("NotReviewed")
         },
         @{
             StageId = "2"
@@ -140,6 +141,7 @@ $reviewDefinition = @{
                 }
             )
             RecommendationsEnabled = $true
+            RecommendationLookBackDuration = "P90D"
         }
     )
     Settings = @{
@@ -153,6 +155,7 @@ $reviewDefinition = @{
         Recurrence = @{
             Pattern = @{
                 Type = "absoluteMonthly"
+                DayOfMonth = 1
                 Interval = 3  # Quarterly
             }
             Range = @{
@@ -162,22 +165,13 @@ $reviewDefinition = @{
         }
         # Apply results automatically after review ends
         AutoApplyDecisionsEnabled = $true
-        # Require reviewer to provide a reason for approval
-        InstanceDurationInDays = 14
-        RecommendationInsightSettings = @(
-            @{
-                "@odata.type" = "#microsoft.graph.userLastSignInRecommendationInsightSetting"
-                RecommendationLookBackDuration = "P90D"  # 90 days
-                SignInScope = "tenant"
-            }
-        )
     }
 }
 
 New-MgIdentityGovernanceAccessReviewDefinition -BodyParameter $reviewDefinition
 ```
 
-This review has two stages: first the direct manager reviews, then the group owner reviews anything the manager did not decide on. ML recommendations are enabled with a 90-day look-back window, and access is automatically removed if nobody approves within the review period.
+This review has two stages: first the direct manager reviews, then the group owner reviews anything the manager did not decide on. Recommendations are enabled with a 90-day look-back window, and access is automatically removed if nobody approves within the review period.
 
 ### Example: Review of Inactive Guest Users
 
@@ -188,9 +182,14 @@ One of the new capabilities is reviewing users based on inactivity. This is perf
 $guestReview = @{
     DisplayName = "Monthly Inactive Guest User Review"
     DescriptionForAdmins = "Review guest users who have not signed in for 60 days"
+    InstanceEnumerationScope = @{
+        "@odata.type" = "#microsoft.graph.accessReviewQueryScope"
+        Query = "/groups?$filter=(groupTypes/any(c:c eq 'Unified'))"
+        QueryType = "MicrosoftGraph"
+    }
     Scope = @{
         "@odata.type" = "#microsoft.graph.accessReviewInactiveUsersQueryScope"
-        Query = "/users?$filter=(userType eq 'Guest')"
+        Query = "./members/microsoft.graph.user/?$filter=(userType eq 'Guest')"
         QueryType = "MicrosoftGraph"
         InactiveDuration = "P60D"  # 60 days of inactivity
     }
@@ -205,9 +204,11 @@ $guestReview = @{
         DefaultDecisionEnabled = $true
         DefaultDecision = "Deny"
         AutoApplyDecisionsEnabled = $true
+        InstanceDurationInDays = 7
         Recurrence = @{
             Pattern = @{
                 Type = "absoluteMonthly"
+                DayOfMonth = 1
                 Interval = 1
             }
             Range = @{
@@ -250,7 +251,8 @@ foreach ($def in $definitions) {
     foreach ($instance in $instances) {
         $decisions = Get-MgIdentityGovernanceAccessReviewDefinitionInstanceDecision `
             -AccessReviewScheduleDefinitionId $def.Id `
-            -AccessReviewInstanceId $instance.Id
+            -AccessReviewInstanceId $instance.Id `
+            -All
         $total = $decisions.Count
         $decided = ($decisions | Where-Object { $_.Decision -ne "NotReviewed" }).Count
         Write-Output "$($def.DisplayName): $decided/$total decisions made ($($instance.Status))"
@@ -268,7 +270,7 @@ If reviewers are not completing their reviews on time, consider:
 
 1. **Migrate one review at a time.** Do not try to move everything at once. Start with your most important reviews and verify they work before moving on.
 
-2. **Take advantage of ML recommendations.** Reviewers often approve everyone because reviewing hundreds of users is tedious. ML recommendations make the review faster and more accurate.
+2. **Take advantage of recommendations.** Reviewers often approve everyone because reviewing hundreds of users is tedious. Recommendation insights make the review faster and more accurate.
 
 3. **Use multi-stage reviews for sensitive resources.** A single reviewer might miss something. Having a second stage catches mistakes and distributes the review workload.
 
@@ -278,4 +280,4 @@ If reviewers are not completing their reviews on time, consider:
 
 ## Wrapping Up
 
-The migration from Azure AD Access Reviews to Microsoft Entra ID Governance Access Reviews is not a forced cutover - existing reviews continue to work. But the new platform offers significant improvements like multi-stage reviews, ML-powered recommendations, and inactive user targeting that make the migration worthwhile. Plan the transition by inventorying your current reviews, recreate them with enhanced settings in the new platform, verify they complete successfully, and then decommission the old ones. The result is a more effective governance program with less reviewer fatigue and better compliance coverage.
+The migration from Azure AD Access Reviews to Microsoft Entra ID Governance Access Reviews is not a forced cutover - existing reviews continue to work. But the new platform offers significant improvements like multi-stage reviews, recommendation insights, and inactive user targeting that make the migration worthwhile. Plan the transition by inventorying your current reviews, recreate them with enhanced settings in the new platform, verify they complete successfully, and then decommission the old ones. The result is a more effective governance program with less reviewer fatigue and better compliance coverage.
