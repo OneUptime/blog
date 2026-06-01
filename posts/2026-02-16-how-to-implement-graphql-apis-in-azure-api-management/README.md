@@ -73,11 +73,11 @@ Upload this schema during API creation or update it later in the API's Schema ta
 
 ## Query Validation Policies
 
-One of the biggest advantages of handling GraphQL at the gateway is query validation. You can enforce limits on query complexity, depth, and size before the request reaches your backend. This prevents abusive queries that could overwhelm your backend (the classic N+1 or deeply nested query problem).
+One of the biggest advantages of handling GraphQL at the gateway is query validation. You can enforce limits on query depth, request size, and field access before the request reaches your backend. This prevents abusive queries that could overwhelm your backend (the classic N+1 or deeply nested query problem).
 
 ```xml
 <!-- Validate GraphQL queries to prevent abuse -->
-<!-- Limits query depth to 5 levels and restricts field count -->
+<!-- Limits query depth to 5 levels and request size to 10 KB -->
 <inbound>
     <base />
     <validate-graphql-request
@@ -86,8 +86,7 @@ One of the biggest advantages of handling GraphQL at the gateway is query valida
         max-size="10240">
         <!-- Block introspection queries in production -->
         <authorize>
-            <rule path="/__schema" action="reject" />
-            <rule path="/__type" action="reject" />
+            <rule path="/__*" action="reject" />
         </authorize>
     </validate-graphql-request>
 </inbound>
@@ -103,17 +102,20 @@ This policy:
 You can selectively allow or block specific queries and mutations:
 
 ```xml
-<!-- Allow all queries but restrict mutations to authenticated users -->
+<!-- Allow all queries but restrict mutations to users with a writer role -->
+<!-- Assumes a previous validate-jwt policy stored a Jwt in context.Variables["jwt"] -->
 <inbound>
     <base />
-    <validate-graphql-request error-variable-name="graphql-errors">
+    <validate-graphql-request
+        error-variable-name="graphql-errors"
+        max-size="10240">
         <authorize>
             <!-- Allow all queries -->
             <rule path="/Query/*" action="allow" />
             <!-- Block mutations unless the user has the 'writer' role -->
             <rule path="/Mutation/*" action="@{
-                var jwt = (Jwt)context.Variables["jwt"];
-                return jwt.Claims["roles"]?.Contains("writer") == true ? "allow" : "reject";
+                var jwt = (Jwt)context.Variables[&quot;jwt&quot;];
+                return jwt.Claims.GetValueOrDefault(&quot;roles&quot;, &quot;&quot;).Contains(&quot;writer&quot;) ? &quot;allow&quot; : &quot;reject&quot;;
             }" />
         </authorize>
     </validate-graphql-request>
@@ -147,10 +149,10 @@ For example, to resolve the `products` query against a REST API:
             var category = context.GraphQL.Arguments["category"];
             var limit = context.GraphQL.Arguments["limit"];
             var url = "https://products-api.azurewebsites.net/api/products";
-            var query = new List<string>();
+            var query = new List&lt;string&gt;();
             if (category != null) query.Add($"category={category}");
             if (limit != null) query.Add($"limit={limit}");
-            return query.Count > 0 ? $"{url}?{string.Join("&", query)}" : url;
+            return query.Count > 0 ? $"{url}?{string.Join("&amp;", query)}" : url;
         }</set-url>
         <set-header name="Authorization" exists-action="override">
             <value>Bearer {{backend-token}}</value>
@@ -158,7 +160,7 @@ For example, to resolve the `products` query against a REST API:
     </http-request>
     <http-response>
         <set-body>@{
-            var response = context.Response.Body.As<JArray>();
+            var response = context.Response.Body.As&lt;JArray&gt;();
             return response.ToString();
         }</set-body>
     </http-response>
@@ -200,7 +202,10 @@ Consider combining approaches:
         counter-key="@(context.Subscription.Id)" />
 
     <!-- Reject overly complex queries -->
-    <validate-graphql-request max-depth="5" max-size="10240" />
+    <validate-graphql-request
+        error-variable-name="graphql-errors"
+        max-depth="5"
+        max-size="10240" />
 </inbound>
 ```
 
@@ -208,34 +213,24 @@ For more sophisticated cost-based rate limiting, you would need to calculate the
 
 ## Caching GraphQL Responses
 
-Caching GraphQL is different from REST because every query can request different fields. The built-in response caching policy works, but the cache key needs to include the query body:
+Caching GraphQL is different from REST because every query can request different fields. APIM response caching is designed for HTTP GET responses, so it is not a drop-in fit for the standard POST operation used by most GraphQL APIs. If you expose cacheable GraphQL reads through GET (for example, persisted queries), make sure the cache varies by the query identifier and variables:
 
 ```xml
-<!-- Cache GraphQL responses based on the full query text -->
-<!-- Different queries get different cache entries -->
+<!-- Cache GET-based GraphQL reads by persisted query ID and variables -->
 <inbound>
     <base />
-    <cache-lookup-value
-        key="@(context.Request.Body.As<string>(preserveContent: true).GetHashCode().ToString())"
-        variable-name="cachedResponse" />
-    <choose>
-        <when condition="@(context.Variables.ContainsKey("cachedResponse"))">
-            <return-response>
-                <set-status code="200" reason="OK" />
-                <set-header name="Content-Type" exists-action="override">
-                    <value>application/json</value>
-                </set-header>
-                <set-body>@((string)context.Variables["cachedResponse"])</set-body>
-            </return-response>
-        </when>
-    </choose>
+    <cache-lookup
+        vary-by-developer="false"
+        vary-by-developer-groups="false"
+        downstream-caching-type="none"
+        caching-type="internal">
+        <vary-by-query-parameter>id</vary-by-query-parameter>
+        <vary-by-query-parameter>variables</vary-by-query-parameter>
+    </cache-lookup>
 </inbound>
 <outbound>
     <base />
-    <cache-store-value
-        key="@(context.Request.Body.As<string>(preserveContent: true).GetHashCode().ToString())"
-        value="@(context.Response.Body.As<string>(preserveContent: true))"
-        duration="120" />
+    <cache-store duration="120" />
 </outbound>
 ```
 
@@ -265,7 +260,7 @@ GraphQL monitoring requires looking beyond HTTP status codes. A GraphQL response
     <base />
     <trace source="graphql-monitoring" severity="information">
         <message>@($"GraphQL query executed in {context.Elapsed.TotalMilliseconds}ms")</message>
-        <metadata name="querySize" value="@(context.Request.Body.As<string>(preserveContent: true).Length.ToString())" />
+        <metadata name="querySize" value="@(context.Request.Body.As&lt;string&gt;(preserveContent: true).Length.ToString())" />
     </trace>
 </outbound>
 ```
