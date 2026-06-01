@@ -20,6 +20,7 @@ Before building the pipeline, you need a few things in place:
 - An Azure Container Registry (ACR)
 - The AKS cluster configured to pull images from ACR
 - A service connection in Azure DevOps to your Azure subscription
+- A Docker registry service connection in Azure DevOps for your ACR
 - A Dockerfile for your application
 
 If your AKS cluster does not have pull access to ACR, run this command.
@@ -154,7 +155,7 @@ trigger:
 
 variables:
   # Container registry settings
-  registryName: 'myregistry'
+  registryServiceConnection: 'my-acr-service-connection'
   registryUrl: 'myregistry.azurecr.io'
   imageName: 'myapp'
   # Use build ID for unique, traceable image tags
@@ -180,7 +181,7 @@ stages:
           - task: Docker@2
             displayName: 'Build Docker image'
             inputs:
-              containerRegistry: '$(registryName)'
+              containerRegistry: '$(registryServiceConnection)'
               repository: '$(imageName)'
               command: 'build'
               Dockerfile: 'Dockerfile'
@@ -192,7 +193,7 @@ stages:
           - task: Docker@2
             displayName: 'Push to ACR'
             inputs:
-              containerRegistry: '$(registryName)'
+              containerRegistry: '$(registryServiceConnection)'
               repository: '$(imageName)'
               command: 'push'
               tags: |
@@ -208,10 +209,10 @@ stages:
               targetFolder: '$(Build.ArtifactStagingDirectory)/k8s'
 
           # Publish manifests as pipeline artifact
-          - task: PublishBuildArtifacts@1
+          - task: PublishPipelineArtifact@1
             displayName: 'Publish manifests'
             inputs:
-              pathToPublish: '$(Build.ArtifactStagingDirectory)'
+              targetPath: '$(Build.ArtifactStagingDirectory)'
               artifactName: 'manifests'
 
   # Stage 2: Deploy to AKS
@@ -269,7 +270,7 @@ I use this tagging approach:
 - task: Docker@2
   displayName: 'Build with multiple tags'
   inputs:
-    containerRegistry: '$(registryName)'
+    containerRegistry: '$(registryServiceConnection)'
     repository: '$(imageName)'
     command: 'build'
     Dockerfile: 'Dockerfile'
