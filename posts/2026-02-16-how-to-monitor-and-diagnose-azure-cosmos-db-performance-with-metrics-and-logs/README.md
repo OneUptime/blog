@@ -26,9 +26,9 @@ graph TD
     D --> G[Validate autoscale behavior]
 ```
 
-**Normalized RU Consumption**: This is the most important metric. It shows the percentage of provisioned throughput being used, normalized across all partitions. If this is consistently above 70%, you need more throughput. If it spikes to 100%, you are getting throttled.
+**Normalized RU Consumption**: This is the most important metric. It shows the highest percentage of provisioned throughput being used across partition key ranges. If this is consistently above 70%, review whether you need more throughput or query optimization. If it reaches 100% and clients keep sending requests to that saturated partition key range, those requests can be throttled.
 
-**Total Request Units**: The absolute number of RUs consumed. Directly maps to your bill.
+**Total Request Units**: The absolute number of RUs consumed. Track this to understand capacity usage and cost trends.
 
 **Provisioned Throughput**: The current provisioned RU/s. With autoscale, this changes dynamically.
 
@@ -40,7 +40,7 @@ graph TD
 
 ### Latency Metrics
 
-**Server-Side Latency**: Time spent processing the request on the Cosmos DB backend. Compare P50, P95, and P99.
+**Server-Side Latency Direct / Server-Side Latency Gateway**: Time spent processing the request on the Cosmos DB backend, split by connection mode. Compare average and maximum values in Azure Monitor, and use diagnostic logs for percentile analysis.
 
 **Replication Latency**: If using multi-region, this shows how far behind read regions are.
 
@@ -96,33 +96,23 @@ az monitor diagnostic-settings create \
     --name "cosmos-diagnostics" \
     --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/myCosmosAccount" \
     --workspace "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/myLogAnalytics" \
+    --export-to-resource-specific true \
     --logs '[
         {
             "category": "DataPlaneRequests",
-            "enabled": true,
-            "retentionPolicy": { "enabled": true, "days": 30 }
+            "enabled": true
         },
         {
             "category": "QueryRuntimeStatistics",
-            "enabled": true,
-            "retentionPolicy": { "enabled": true, "days": 30 }
+            "enabled": true
         },
         {
             "category": "PartitionKeyStatistics",
-            "enabled": true,
-            "retentionPolicy": { "enabled": true, "days": 30 }
+            "enabled": true
         },
         {
             "category": "PartitionKeyRUConsumption",
-            "enabled": true,
-            "retentionPolicy": { "enabled": true, "days": 30 }
-        }
-    ]' \
-    --metrics '[
-        {
-            "category": "Requests",
-            "enabled": true,
-            "retentionPolicy": { "enabled": true, "days": 30 }
+            "enabled": true
         }
     ]'
 ```
@@ -130,8 +120,8 @@ az monitor diagnostic-settings create \
 ### Log Categories Explained
 
 - **DataPlaneRequests**: Every read, write, query, and stored procedure execution. Includes RU charge, duration, status code, and request size.
-- **QueryRuntimeStatistics**: Detailed query execution metrics including execution time, output document count, and RU charge per query.
-- **PartitionKeyStatistics**: Information about storage distribution across partition keys. Useful for detecting hot partitions.
+- **QueryRuntimeStatistics**: Query-operation records for SQL API accounts. By default, query text and parameters are obfuscated to avoid logging sensitive data.
+- **PartitionKeyStatistics**: Information about storage distribution across partition keys. Useful for detecting storage-skewed partitions.
 - **PartitionKeyRUConsumption**: RU consumption broken down by partition key. Shows which partitions are consuming the most throughput.
 
 ## Querying Diagnostic Logs with KQL
@@ -142,15 +132,19 @@ Once logs are in Log Analytics, use Kusto Query Language (KQL) to analyze them:
 
 ```text
 // Top 20 queries by RU cost in the last 24 hours
-CDBDataPlaneRequests
+let queryRequests = CDBDataPlaneRequests
 | where TimeGenerated > ago(24h)
-| where OperationName == "Query"
+| where OperationName in ("Query", "SqlQuery", "JSQuery")
+| project ActivityId, RequestCharge, ClientIpAddress;
+CDBQueryRuntimeStatistics
+| where TimeGenerated > ago(24h)
+| join kind=inner queryRequests on ActivityId
 | summarize
     TotalRU = sum(RequestCharge),
     AvgRU = avg(RequestCharge),
     MaxRU = max(RequestCharge),
     Count = count()
-    by tostring(RequestResourceId), tostring(ClientIpAddress)
+    by tostring(QueryText), tostring(ClientIpAddress)
 | top 20 by TotalRU desc
 ```
 
@@ -215,11 +209,11 @@ az monitor metrics alert create \
     --name "cosmos-high-ru" \
     --resource-group myResourceGroup \
     --scopes "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/myCosmosAccount" \
-    --condition "avg NormalizedRUConsumption > 80" \
+    --condition "max NormalizedRUConsumption > 80" \
     --window-size 5m \
     --evaluation-frequency 1m \
     --severity 2 \
-    --action-group "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Insights/actionGroups/myTeam" \
+    --action "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Insights/actionGroups/myTeam" \
     --description "Cosmos DB throughput usage is above 80 percent"
 ```
 
@@ -231,28 +225,28 @@ az monitor metrics alert create \
     --name "cosmos-throttling" \
     --resource-group myResourceGroup \
     --scopes "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/myCosmosAccount" \
-    --condition "count TotalRequests > 100 where StatusCode includes 429" \
+    --condition "total TotalRequests > 100 where StatusCode includes 429" \
     --window-size 5m \
     --evaluation-frequency 1m \
     --severity 1 \
-    --action-group "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Insights/actionGroups/myTeam" \
+    --action "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Insights/actionGroups/myTeam" \
     --description "Cosmos DB is experiencing throttling"
 ```
 
 ### Alert on High Latency
 
 ```bash
-# Alert when server-side latency P99 exceeds 50ms
+# Alert when direct-mode server-side latency exceeds 50ms
 az monitor metrics alert create \
     --name "cosmos-high-latency" \
     --resource-group myResourceGroup \
     --scopes "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/myCosmosAccount" \
-    --condition "avg ServerSideLatency > 50" \
+    --condition "max ServerSideLatencyDirect > 50" \
     --window-size 15m \
     --evaluation-frequency 5m \
     --severity 2 \
-    --action-group "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Insights/actionGroups/myTeam" \
-    --description "Cosmos DB P99 latency is above 50ms"
+    --action "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Insights/actionGroups/myTeam" \
+    --description "Cosmos DB direct-mode server-side latency is above 50ms"
 ```
 
 ## SDK-Level Diagnostics
@@ -301,9 +295,9 @@ while (iterator.HasMoreResults)
     Console.WriteLine($"Diagnostics: {page.Diagnostics}");
 
     // Index utilization tells you if the query used indexes efficiently
-    if (page.Headers.TryGetValue("x-ms-cosmos-index-utilization", out string indexUtilization))
+    if (!string.IsNullOrEmpty(page.IndexMetrics))
     {
-        Console.WriteLine($"Index utilization: {indexUtilization}");
+        Console.WriteLine($"Index utilization: {page.IndexMetrics}");
     }
 }
 ```
@@ -314,7 +308,7 @@ Create a custom Azure dashboard that gives you an at-a-glance view:
 
 1. **Row 1 - Throughput**: Normalized RU Consumption (line chart, 24h), Total Request Units (line chart, 24h)
 2. **Row 2 - Availability**: Total Requests split by StatusCode (stacked bar), 429 Count (line chart)
-3. **Row 3 - Latency**: Server-Side Latency P50/P95/P99 (line chart), Replication Latency (if multi-region)
+3. **Row 3 - Latency**: Server-Side Latency Direct and Server-Side Latency Gateway (line chart), Replication Latency (if multi-region)
 4. **Row 4 - Storage**: Data Usage (number tile), Index Usage (number tile), Document Count (number tile)
 
 ```bash
@@ -329,7 +323,7 @@ az portal dashboard create \
 
 When something goes wrong, follow this diagnostic workflow:
 
-1. **Check Normalized RU Consumption**: If it is at 100%, you are being throttled. Increase throughput or optimize queries.
+1. **Check Normalized RU Consumption**: If it is consistently at 100% and 429s are elevated, you are being throttled. Increase throughput or optimize queries.
 
 2. **Check 429 count**: If throttling is partition-specific, you have a hot partition problem. Check PartitionKeyRUConsumption logs.
 
