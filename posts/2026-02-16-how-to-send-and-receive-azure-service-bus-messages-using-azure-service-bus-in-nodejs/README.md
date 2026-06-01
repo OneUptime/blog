@@ -8,7 +8,7 @@ Description: Learn how to send and receive messages with Azure Service Bus using
 
 ---
 
-Azure Service Bus is an enterprise message broker that handles both queues (point-to-point) and topics (publish-subscribe). The `@azure/service-bus` SDK for Node.js gives you a clean, promise-based API for sending and receiving messages. It supports sessions, dead-letter queues, scheduled messages, and transactions - features you need when building reliable distributed systems.
+Azure Service Bus is an enterprise message broker that handles both queues (point-to-point) and topics (publish-subscribe). The `@azure/service-bus` SDK for Node.js gives you a clean, promise-based API for sending and receiving messages. It supports sessions, dead-letter queues, and scheduled messages. Azure Service Bus supports transactions in the Standard and Premium tiers, but the JavaScript SDK does not currently support transactions.
 
 In this post, we will build a complete messaging solution in Node.js using the Service Bus SDK. We will send messages to queues, subscribe to topics, handle errors, and implement patterns like dead-letter processing and scheduled messages.
 
@@ -58,7 +58,7 @@ az servicebus topic subscription create \
 ## Installing the SDK
 
 ```bash
-npm install @azure/service-bus @azure/identity dotenv
+npm install @azure/service-bus @azure/identity dotenv express
 ```
 
 ## Connecting to Service Bus
