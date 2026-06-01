@@ -62,7 +62,7 @@ az network vnet subnet create \
   --address-prefixes 10.0.255.0/27
 ```
 
-The GatewaySubnet should be at least a /27 for production use. A /28 works but leaves no room for future expansion. Microsoft recommends /27 as the minimum.
+The GatewaySubnet should be at least a /27 for production use. The Basic SKU can use a smaller gateway subnet, but all other VPN gateway SKUs require /27 or larger, and a larger subnet leaves more room for future configurations.
 
 ## Step 2: Create a Public IP for the VPN Gateway
 
@@ -89,6 +89,7 @@ az network vnet-gateway create \
   --gateway-type Vpn \
   --vpn-type RouteBased \
   --sku VpnGw2 \
+  --vpn-gateway-generation Generation2 \
   --public-ip-addresses pip-vpn-gateway \
   --no-wait
 ```
@@ -97,7 +98,7 @@ A few notes on the options:
 
 - `--gateway-type Vpn`: This is a VPN gateway (as opposed to ExpressRoute).
 - `--vpn-type RouteBased`: Route-based VPNs support more features than policy-based, including site-to-site and point-to-site simultaneously. Always use RouteBased unless you have a specific reason not to.
-- `--sku VpnGw2`: The SKU determines throughput and features. VpnGw2 supports up to 1.25 Gbps. Choose based on your bandwidth needs.
+- `--sku VpnGw2`: The SKU determines throughput and features. VpnGw2 with Generation2 supports up to 1.25 Gbps. Choose based on your bandwidth needs.
 
 You can check the provisioning status with:
 
@@ -197,7 +198,7 @@ Use the VPN diagnostics tool in Azure Network Watcher for detailed troubleshooti
 az network watcher troubleshooting start \
   --resource-group rg-vpn-demo \
   --resource vng-azure \
-  --resource-type vpnGateway \
+  --resource-type vnetGateway \
   --storage-account ststoragediag \
   --storage-path "https://ststoragediag.blob.core.windows.net/vpn-diag"
 ```
