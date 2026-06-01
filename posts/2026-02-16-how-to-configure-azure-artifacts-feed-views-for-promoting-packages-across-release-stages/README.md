@@ -34,7 +34,7 @@ graph LR
 
 Navigate to your Azure DevOps project, go to Artifacts, and select the feed you want to configure. Click the gear icon to access feed settings, then select Views.
 
-You will see the three default views. For most teams, these three are sufficient, but you can rename them to match your workflow. For example, some teams rename Local to "dev," Prerelease to "staging," and Release to "prod."
+You will see the three default views. For most teams, these three are sufficient, but you can rename the suggested Prerelease and Release views or add custom views to match your workflow. For example, some teams use Prerelease as "staging" and Release as "prod."
 
 To promote a package through the portal, find it in the feed, select the version you want to promote, click the three-dot menu, and choose "Promote." Then pick the target view.
 
@@ -52,6 +52,11 @@ trigger:
     include:
       - main
       - develop
+
+name: 1.0.$(Rev:r)
+
+variables:
+  azureDevOpsOrganization: 'your-organization'
 
 stages:
   # Stage 1: Build and publish to feed (lands in @Local view)
@@ -113,15 +118,17 @@ stages:
               arguments: '--configuration Release'
 
           # Promote the package to Prerelease view after tests pass
-          - task: UniversalPackages@0
+          - script: |
+              AUTH=$(printf ":%s" "$SYSTEM_ACCESSTOKEN" | base64 | tr -d '\n')
+
+              curl -X PATCH \
+                "https://pkgs.dev.azure.com/$(azureDevOpsOrganization)/$(System.TeamProject)/_apis/packaging/feeds/my-feed/nuget/packages/MyLibrary/versions/$(Build.BuildNumber)?api-version=7.2-preview.1" \
+                -H "Authorization: Basic ${AUTH}" \
+                -H "Content-Type: application/json" \
+                -d '{"views":{"op":"add","path":"/views/-","value":"Prerelease"}}'
             displayName: 'Promote to Prerelease'
-            inputs:
-              command: 'promote'
-              feedsToUse: 'internal'
-              vstsFeed: 'my-feed'
-              packageName: 'MyLibrary'
-              packageVersion: '$(Build.BuildNumber)'
-              viewId: 'Prerelease'
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
   # Stage 3: Staging validation, then promote to Release
   - stage: StagingValidation
@@ -134,15 +141,17 @@ stages:
           runOnce:
             deploy:
               steps:
-                - task: UniversalPackages@0
+                - script: |
+                    AUTH=$(printf ":%s" "$SYSTEM_ACCESSTOKEN" | base64 | tr -d '\n')
+
+                    curl -X PATCH \
+                      "https://pkgs.dev.azure.com/$(azureDevOpsOrganization)/$(System.TeamProject)/_apis/packaging/feeds/my-feed/nuget/packages/MyLibrary/versions/$(Build.BuildNumber)?api-version=7.2-preview.1" \
+                      -H "Authorization: Basic ${AUTH}" \
+                      -H "Content-Type: application/json" \
+                      -d '{"views":{"op":"add","path":"/views/-","value":"Release"}}'
                   displayName: 'Promote to Release'
-                  inputs:
-                    command: 'promote'
-                    feedsToUse: 'internal'
-                    vstsFeed: 'my-feed'
-                    packageName: 'MyLibrary'
-                    packageVersion: '$(Build.BuildNumber)'
-                    viewId: 'Release'
+                  env:
+                    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 ```
 
 ## Promoting Packages with the REST API
@@ -166,7 +175,7 @@ AUTH=$(echo -n ":${PAT}" | base64)
 
 # Promote the package using the PATCH endpoint
 curl -X PATCH \
-  "https://pkgs.dev.azure.com/${ORG}/${PROJECT}/_apis/packaging/feeds/${FEED}/nuget/packages/${PACKAGE_NAME}/versions/${PACKAGE_VERSION}?api-version=7.1" \
+  "https://pkgs.dev.azure.com/${ORG}/${PROJECT}/_apis/packaging/feeds/${FEED}/nuget/packages/${PACKAGE_NAME}/versions/${PACKAGE_VERSION}?api-version=7.2-preview.1" \
   -H "Authorization: Basic ${AUTH}" \
   -H "Content-Type: application/json" \
   -d "{\"views\": {\"op\": \"add\", \"path\": \"/views/-\", \"value\": \"${VIEW}\"}}"
@@ -204,7 +213,7 @@ always-auth=true
 
 Feed views inherit permissions from the parent feed, but you can also set up permissions so that only certain users or service accounts can promote packages. This is an important governance control.
 
-In the feed settings, under Permissions, you can assign the "Feed and Upstream Reader (Collaborator)" role for consumers who should only read from a view, and "Feed Publisher (Contributor)" for accounts that can publish but not promote. The "Feed Owner" role can promote packages between views.
+In the feed settings, under Permissions, you can assign the "Feed Reader" role for consumers who should only read from a feed, "Feed and Upstream Reader (Collaborator)" for consumers who also need to save packages from upstream sources, and "Feed Publisher (Contributor)" for accounts that can publish and promote packages. The "Feed Owner" role can promote packages between views and manage feed settings.
 
 For automated promotion, create a dedicated service account with just enough permissions to promote packages. Do not use broad admin credentials in your pipelines.
 
@@ -215,15 +224,17 @@ The promotion model works across all package types that Azure Artifacts supports
 ```yaml
 # Promote an npm package to the Release view
 - script: |
-    # Use the Azure DevOps CLI to promote the package
-    az artifacts universal promote \
-      --organization "https://dev.azure.com/myorg" \
-      --project "myproject" \
-      --feed "my-feed" \
-      --name "my-npm-package" \
-      --version "2.1.0" \
-      --to-view "Release"
+    # Use the Azure DevOps REST API to promote the package
+    AUTH=$(printf ":%s" "$SYSTEM_ACCESSTOKEN" | base64 | tr -d '\n')
+
+    curl -X PATCH \
+      "https://pkgs.dev.azure.com/myorg/myproject/_apis/packaging/feeds/my-feed/npm/my-npm-package/versions/2.1.0?api-version=7.2-preview.1" \
+      -H "Authorization: Basic ${AUTH}" \
+      -H "Content-Type: application/json" \
+      -d '{"views":{"op":"add","path":"/views/-","value":"Release"}}'
   displayName: 'Promote npm package to Release'
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 ```
 
 ## Best Practices for Feed View Management
@@ -236,6 +247,6 @@ Monitor your feed regularly. Packages that sit in the Local view for weeks witho
 
 Version your packages using semantic versioning. Feed views work best when combined with clear version numbers. Prerelease versions (like 1.0.0-beta.1) naturally belong in the Prerelease view, while stable versions (1.0.0) get promoted to Release.
 
-Consider feed retention policies. Azure Artifacts lets you configure how many versions to keep per package. Apply stricter retention to the Local view (keep last 10 versions) and more generous retention to the Release view (keep all versions) to balance storage costs with availability.
+Consider feed retention policies. Azure Artifacts lets you configure how many versions to keep per package at the feed level, and packages promoted to a view are exempt from retention policies. Keep your Local view clean with retention settings, and promote versions that must be preserved to Prerelease or Release.
 
 Feed views transform Azure Artifacts from a simple package repository into a promotion pipeline that gives you confidence about what is running in each environment. When combined with automated testing and approval gates, they provide a structured path from development to production that scales across teams and projects.
