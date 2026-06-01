@@ -19,16 +19,18 @@ Microsoft Defender for Servers comes in two plans:
 **Plan 1** (lower cost):
 - Integration with Microsoft Defender for Endpoint (MDE) for EDR
 - Licensed access to MDE features
-- No vulnerability assessment or just-in-time VM access
+- Core vulnerability management through Microsoft Defender Vulnerability Management
+- No just-in-time VM access, file integrity monitoring, or premium vulnerability management capabilities
 
 **Plan 2** (full protection):
 - Everything in Plan 1
-- Vulnerability assessment powered by Microsoft Defender Vulnerability Management
+- Agentless machine scanning for posture, vulnerability, malware, and secret scanning
+- Premium Microsoft Defender Vulnerability Management capabilities
+- OS configuration assessment against Microsoft Cloud Security Benchmark baselines
 - Just-in-time VM access
 - File integrity monitoring
-- Adaptive application controls
-- Network map and adaptive network hardening
-- Docker host hardening
+- Network map
+- Docker host hardening for Linux machines running Docker containers
 
 ```mermaid
 graph TD
@@ -38,20 +40,20 @@ graph TD
     B --> E[Security Alerts]
     C --> D
     C --> E
-    C --> F[Vulnerability Assessment]
+    C --> F[Agentless Scanning]
     C --> G[Just-in-Time VM Access]
     C --> H[File Integrity Monitoring]
-    C --> I[Adaptive Application Controls]
-    C --> J[Network Hardening]
+    C --> I[Premium Vulnerability Management]
+    C --> J[OS Configuration Assessment]
 ```
 
-For most production environments, Plan 2 is worth the investment because vulnerability assessment and just-in-time access are critical capabilities.
+For most production environments, Plan 2 is worth the investment because agentless scanning, premium vulnerability management, and just-in-time access are critical capabilities.
 
 ## Prerequisites
 
 You need:
 - Azure subscription with VMs to protect
-- Owner or Security Administrator role
+- Owner, Contributor, or Security Admin role (Owner may be required to enable all plan capabilities)
 - Understanding of your VM inventory and which ones need protection
 
 ## Step 1: Enable Defender for Servers
@@ -89,6 +91,7 @@ Write-Host "Defender for Servers Plan 2 enabled."
 az security pricing create \
     --name VirtualMachines \
     --tier Standard \
+    --subplan P2 \
     --subscription YOUR_SUBSCRIPTION_ID
 ```
 
@@ -99,7 +102,7 @@ Defender for Servers integrates with Microsoft Defender for Endpoint (MDE) for d
 1. In Defender for Cloud, go to Environment settings.
 2. Select your subscription and click on Settings and monitoring.
 3. Verify that Endpoint protection (Microsoft Defender for Endpoint) is set to On.
-4. Verify that the Log Analytics agent or Azure Monitor Agent is configured.
+4. For File Integrity Monitoring, verify that agentless machine scanning is enabled and that a Log Analytics workspace is selected for storing change events.
 
 For existing VMs that might not have received the agent:
 
@@ -119,20 +122,17 @@ foreach ($vm in $vms) {
 }
 ```
 
-If the agent is missing on a VM, you can trigger deployment:
+If the extension is missing on a supported VM, check that Defender for Servers and Endpoint protection are enabled. If the extension was removed or failed, Defender for Cloud can redeploy it automatically after you correct prerequisites; you can also remove the failed extension and let automatic provisioning retry:
 
 ```powershell
-# Manually deploy the MDE extension to a Windows VM
-Set-AzVMExtension `
+# Remove a failed MDE extension so Defender for Cloud can redeploy it
+Remove-AzVMExtension `
     -ResourceGroupName "production-rg" `
     -VMName "web-server-01" `
     -Name "MDE.Windows" `
-    -Publisher "Microsoft.Azure.AzureDefenderForServers" `
-    -ExtensionType "MDE.Windows" `
-    -TypeHandlerVersion "1.0" `
-    -Settings @{}
+    -Force
 
-Write-Host "MDE extension deployment initiated."
+Write-Host "MDE extension removed. Defender for Cloud automatic provisioning can redeploy it."
 ```
 
 ## Step 3: Review Security Alerts
@@ -165,6 +165,7 @@ When you click on an alert, Defender for Cloud shows:
 SecurityAlert
 | where TimeGenerated > ago(24h)
 | where AlertType has "VM"
+| extend SeverityRank = case(AlertSeverity == "High", 0, AlertSeverity == "Medium", 1, AlertSeverity == "Low", 2, 3)
 | project
     TimeGenerated,
     AlertName,
@@ -172,8 +173,10 @@ SecurityAlert
     Description,
     AffectedVM = tostring(parse_json(ExtendedProperties).["Compromised Host"]),
     AttackTechnique = Tactics,
-    RemediationSteps
-| sort by Severity asc, TimeGenerated desc
+    RemediationSteps,
+    SeverityRank
+| sort by SeverityRank asc, TimeGenerated desc
+| project-away SeverityRank
 ```
 
 For each alert:
@@ -183,7 +186,7 @@ For each alert:
 
 ## Step 4: Configure Vulnerability Assessment
 
-Defender for Servers Plan 2 includes vulnerability assessment. It scans your VMs for known vulnerabilities in the operating system and installed software:
+Defender for Servers includes vulnerability assessment, and Plan 2 adds agentless scanning and premium Microsoft Defender Vulnerability Management capabilities. It scans your VMs for known vulnerabilities in the operating system and installed software:
 
 1. In Defender for Cloud, go to Recommendations.
 2. Search for "Machines should have vulnerability findings resolved."
@@ -201,7 +204,8 @@ Each vulnerability shows:
 $subscriptionId = "YOUR_SUBSCRIPTION_ID"
 $uri = "https://management.azure.com/subscriptions/$subscriptionId/providers/Microsoft.Security/subAssessments?api-version=2019-01-01-preview"
 
-$token = (Get-AzAccessToken -ResourceUrl "https://management.azure.com").Token
+$accessToken = Get-AzAccessToken -ResourceUrl "https://management.azure.com"
+$token = [System.Net.NetworkCredential]::new("", $accessToken.Token).Password
 $headers = @{ Authorization = "Bearer $token" }
 
 $response = Invoke-RestMethod -Uri $uri -Headers $headers
@@ -212,11 +216,13 @@ $vulnerabilities = $response.value | Where-Object {
 Write-Host "Found $($vulnerabilities.Count) unresolved vulnerabilities."
 
 # Show the top 10 by severity
+$severityOrder = @{ High = 0; Medium = 1; Low = 2 }
+
 $vulnerabilities |
     Select-Object @{N='CVE';E={$_.properties.id}},
         @{N='Severity';E={$_.properties.status.severity}},
         @{N='Description';E={$_.properties.displayName}} |
-    Sort-Object Severity |
+    Sort-Object @{ Expression = { $severityOrder[$_.Severity] } } |
     Select-Object -First 10 |
     Format-Table
 ```
@@ -248,17 +254,16 @@ $vmId = "/subscriptions/SUB_ID/resourceGroups/production-rg/providers/Microsoft.
 $jitRequest = @{
     VirtualMachines = @(
         @{
-            Id = $vmId
-            Ports = @(
+            id = $vmId
+            ports = @(
                 @{
-                    Number = 3389             # RDP port
-                    Duration = "PT3H"         # 3 hours in ISO 8601 duration
-                    AllowedSourceAddressPrefix = "203.0.113.50"  # Your IP
+                    number = 3389             # RDP port
+                    endTimeUtc = (Get-Date).ToUniversalTime().AddHours(3).ToString("o")
+                    allowedSourceAddressPrefix = @("203.0.113.50")  # Your IP
                 }
             )
         }
     )
-    Justification = "Deploying hotfix for production issue #1234"
 }
 
 # Initiate the JIT request through the Security Center API
@@ -277,25 +282,25 @@ File integrity monitoring (FIM) tracks changes to critical system files, registr
 
 1. In Defender for Cloud, go to Workload protections.
 2. Click File Integrity Monitoring.
-3. Select the Log Analytics workspace connected to your VMs.
+3. Select the Log Analytics workspace where change events should be stored.
 4. Enable FIM and configure which paths to monitor.
 
-Default monitored paths include:
-- Windows: System32, registry hives, boot configuration
-- Linux: /etc, /bin, /sbin, /usr/bin, boot files
+Recommended monitored items include:
+- Windows: critical system files such as `C:\Windows\System32\userinit.exe` and registry keys under `HKLM`
+- Linux: critical system paths and files such as `/bin`, `/boot`, and `/bin/passwd`
 
 FIM generates alerts when unexpected changes occur, which can indicate compromise or unauthorized configuration changes.
 
-## Step 7: Review Adaptive Application Controls
+## Step 7: Review OS Configuration Recommendations
 
-Adaptive application controls learn which applications normally run on your VMs and alert you when unknown applications are executed:
+Defender for Servers Plan 2 assesses operating system configuration settings against compute security baselines in the Microsoft Cloud Security Benchmark:
 
-1. In Defender for Cloud, go to Workload protections.
-2. Click Adaptive application controls.
-3. Review the groups of VMs and the recommended allowlists.
-4. Approve the recommendations to enforce application control.
+1. In Defender for Cloud, go to Recommendations.
+2. Filter by resource type for virtual machines or Azure Arc machines.
+3. Review OS configuration and security baseline recommendations.
+4. Remediate the findings or create exemptions where there is a documented business reason.
 
-This is particularly valuable for production servers where the set of running applications should be predictable and stable.
+This is particularly valuable for production servers where operating system settings should be predictable and aligned with a known security baseline.
 
 ## Step 8: Set Up Alert Automation
 
@@ -326,7 +331,7 @@ Create a regular review cadence:
 
 - **Daily**: Review high-severity security alerts and take immediate action.
 - **Weekly**: Review vulnerability assessment findings and prioritize patching.
-- **Monthly**: Review adaptive application control recommendations and FIM changes.
+- **Monthly**: Review OS configuration recommendations and FIM changes.
 - **Quarterly**: Audit JIT access logs and review which VMs are protected.
 
 ```kusto
@@ -344,4 +349,4 @@ SecurityRecommendation
 
 ## Conclusion
 
-Microsoft Defender for Servers provides comprehensive protection for Azure VMs that goes far beyond basic antivirus. The combination of endpoint detection and response, vulnerability assessment, just-in-time access, file integrity monitoring, and adaptive application controls creates multiple layers of defense. Start by enabling Plan 2 at the subscription level, verify agent deployment, review the initial alerts and vulnerability findings, and then progressively enable the advanced features like JIT access and adaptive application controls. The key is not just enabling these features but building operational processes to review and act on the findings they generate.
+Microsoft Defender for Servers provides comprehensive protection for Azure VMs that goes far beyond basic antivirus. The combination of endpoint detection and response, vulnerability assessment, just-in-time access, file integrity monitoring, and OS configuration assessment creates multiple layers of defense. Start by enabling Plan 2 at the subscription level, verify agent deployment, review the initial alerts and vulnerability findings, and then progressively enable the advanced features like JIT access and file integrity monitoring. The key is not just enabling these features but building operational processes to review and act on the findings they generate.
