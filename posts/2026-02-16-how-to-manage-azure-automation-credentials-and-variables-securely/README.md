@@ -20,13 +20,12 @@ If your runbook needs to interact with Azure resources, a managed identity is th
 
 Every Automation account can have a system-assigned managed identity. Enable it when you create the account or add it later:
 
-```bash
+```powershell
 # Enable system-assigned managed identity on an existing Automation account
-
-az automation account update \
-  --resource-group rg-automation \
-  --name aa-operations \
-  --assign-identity
+Set-AzAutomationAccount `
+    -ResourceGroupName "rg-automation" `
+    -Name "aa-operations" `
+    -AssignSystemIdentity
 ```
 
 Use it in your runbooks:
@@ -45,30 +44,19 @@ Write-Output "Found $($vms.Count) VMs"
 
 If you need different runbooks to use different identities (for example, different permission sets), use user-assigned managed identities:
 
-```bash
+```powershell
 # Create a user-assigned managed identity
-az identity create \
-  --resource-group rg-automation \
-  --name mi-database-admin
-
-# Get the identity's client ID and resource ID
-CLIENT_ID=$(az identity show \
-  --resource-group rg-automation \
-  --name mi-database-admin \
-  --query "clientId" -o tsv)
-
-IDENTITY_ID=$(az identity show \
-  --resource-group rg-automation \
-  --name mi-database-admin \
-  --query "id" -o tsv)
+$identity = New-AzUserAssignedIdentity `
+    -ResourceGroupName "rg-automation" `
+    -Name "mi-database-admin" `
+    -Location "eastus"
 
 # Assign the user-assigned identity to the Automation account
-az automation account update \
-  --resource-group rg-automation \
-  --name aa-operations \
-  --assign-identity \
-  --identity-type SystemAssigned,UserAssigned \
-  --user-assigned "$IDENTITY_ID"
+Set-AzAutomationAccount `
+    -ResourceGroupName "rg-automation" `
+    -Name "aa-operations" `
+    -AssignSystemIdentity `
+    -AssignUserIdentity $identity.Id
 ```
 
 In the runbook, specify which identity to use:
@@ -87,15 +75,17 @@ For non-Azure services where managed identities do not apply (third-party APIs, 
 
 Credentials store a username and password pair encrypted at rest:
 
-```bash
+```powershell
 # Create a credential in Azure Automation
 # The password is encrypted and stored securely
-az automation credential create \
-  --resource-group rg-automation \
-  --automation-account-name aa-operations \
-  --name "SMTP-Credentials" \
-  --user-name "alerts@company.com" \
-  --password "YourSecurePassword123!"
+$password = ConvertTo-SecureString "YourSecurePassword123!" -AsPlainText -Force
+$credential = [System.Management.Automation.PSCredential]::new("alerts@company.com", $password)
+
+New-AzAutomationCredential `
+    -ResourceGroupName "rg-automation" `
+    -AutomationAccountName "aa-operations" `
+    -Name "SMTP-Credentials" `
+    -Value $credential
 ```
 
 Use it in a runbook:
@@ -105,43 +95,36 @@ Use it in a runbook:
 # The password is decrypted at runtime but never exposed in logs
 $smtpCred = Get-AutomationPSCredential -Name "SMTP-Credentials"
 
-# Use the credential to send email
-$mailParams = @{
-    From       = $smtpCred.UserName
-    To         = "ops-team@company.com"
-    Subject    = "Automation Report"
-    Body       = "Your weekly report is attached."
-    SmtpServer = "smtp.company.com"
-    Port       = 587
-    UseSsl     = $true
-    Credential = $smtpCred
-}
+# Use the credential with a service that accepts PSCredential
+Invoke-Command `
+    -ComputerName "app-server-01" `
+    -Credential $smtpCred `
+    -ScriptBlock { Get-Service -Name "Spooler" }
 
-Send-MailMessage @mailParams
-Write-Output "Email sent successfully"
+Write-Output "Service status retrieved successfully"
 ```
 
 ### Automation Variables
 
 Variables store individual values. They can be encrypted or unencrypted:
 
-```bash
+```powershell
 # Create an encrypted variable (for sensitive data like API keys)
 # Encrypted variables cannot be read back through the portal or API
-az automation variable create \
-  --resource-group rg-automation \
-  --automation-account-name aa-operations \
-  --name "SlackWebhookURL" \
-  --value '"https://hooks.slack.com/services/T00/B00/xxxx"' \
-  --encrypted true
+New-AzAutomationVariable `
+    -ResourceGroupName "rg-automation" `
+    -AutomationAccountName "aa-operations" `
+    -Name "SlackWebhookURL" `
+    -Value "https://hooks.slack.com/services/T00/B00/xxxx" `
+    -Encrypted $true
 
 # Create an unencrypted variable (for non-sensitive configuration)
-az automation variable create \
-  --resource-group rg-automation \
-  --automation-account-name aa-operations \
-  --name "MaintenanceMode" \
-  --value '"false"' \
-  --encrypted false
+New-AzAutomationVariable `
+    -ResourceGroupName "rg-automation" `
+    -AutomationAccountName "aa-operations" `
+    -Name "MaintenanceMode" `
+    -Value "false" `
+    -Encrypted $false
 ```
 
 Use variables in runbooks:
@@ -254,7 +237,7 @@ Regardless of which approach you use, secrets need to be rotated regularly.
 
 ### Automated Rotation with Key Vault
 
-Key Vault supports automatic rotation for certain secret types. For custom secrets, you can build a rotation runbook:
+Key Vault supports automatic key rotation and event-driven secret rotation patterns. For custom secrets, you can build a rotation runbook:
 
 ```powershell
 # Runbook: Rotate-APIKey
@@ -305,7 +288,7 @@ Write-Output "API key rotated successfully at $(Get-Date)"
 
 5. **Enable diagnostic logging.** Turn on diagnostic logs for both the Automation account and Key Vault so you have an audit trail of secret access.
 
-6. **Set secret expiration dates.** Both Key Vault secrets and Automation credentials should have documented expiration and rotation schedules.
+6. **Set secret expiration dates.** Key Vault secrets should have expiration dates, and Automation credentials should have documented rotation schedules.
 
 7. **Use separate Key Vaults for different environments.** Do not share a Key Vault between production and development. This limits the blast radius if dev credentials are compromised.
 
