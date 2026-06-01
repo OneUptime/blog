@@ -22,7 +22,10 @@ brew install azure-functions-core-tools@4
 
 # Or on Ubuntu
 curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
-sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/
+sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
+sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-$(lsb_release -cs 2>/dev/null)-prod $(lsb_release -cs 2>/dev/null) main" > /etc/apt/sources.list.d/dotnetdev.list'
+sudo apt-get update
+sudo apt-get install azure-functions-core-tools-4
 
 # Verify installation
 func --version
@@ -34,7 +37,7 @@ The v2 programming model uses a single Python file with decorators instead of se
 
 ```bash
 # Create a new function project
-func init my-functions --python --model V2
+func init my-functions --worker-runtime python --model V2
 cd my-functions
 
 # Install dependencies
@@ -61,7 +64,7 @@ import azure.functions as func
 import json
 from datetime import datetime
 
-app = func.FunctionApp()
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 
 @app.function_name(name="hello")
@@ -320,12 +323,9 @@ curl -X POST "https://$FUNC_URL/api/reports" \
 
 ## Combining Multiple Bindings
 
-The real power of Azure Functions comes from combining triggers and bindings. Here is a function that receives a file upload via HTTP, saves it to Blob Storage, and returns a download URL.
+The real power of Azure Functions comes from combining triggers and bindings. Here is a function that receives a file upload via HTTP, saves it to Blob Storage, and returns an upload confirmation.
 
 ```python
-from azure.storage.blob import generate_blob_sas, BlobSasPermissions
-from datetime import timedelta
-
 @app.function_name(name="upload_file")
 @app.route(route="upload", methods=["POST"])
 @app.blob_output(
@@ -336,7 +336,7 @@ from datetime import timedelta
 def upload_file(req: func.HttpRequest, outputblob: func.Out[bytes]) -> func.HttpResponse:
     """
     Accept a file upload via HTTP and store it in Blob Storage.
-    Returns the blob path for future reference.
+    Returns a confirmation with the uploaded size.
     """
     # Read the uploaded file from the request body
     file_content = req.get_body()
