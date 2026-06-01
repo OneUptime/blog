@@ -8,13 +8,13 @@ Description: Learn how to secure Azure Relay Hybrid Connections using Shared Acc
 
 ---
 
-Azure Relay Hybrid Connections allow cloud applications to communicate with on-premises services, but that communication path needs to be secured. You do not want just anyone sending requests through your relay or listening for incoming traffic. Shared Access Signatures (SAS) are the primary authentication mechanism for Azure Relay, and understanding how to use them properly is essential for a secure deployment.
+Azure Relay Hybrid Connections allow cloud applications to communicate with on-premises services, but that communication path needs to be secured. You do not want just anyone sending requests through your relay or listening for incoming traffic. Shared Access Signatures (SAS) are one authentication mechanism for Azure Relay, and understanding how to use them properly is essential for a secure deployment.
 
 In this post, I will cover how SAS authentication works with Hybrid Connections, how to create and manage authorization rules, how to generate tokens programmatically, and best practices for keeping your relay endpoints secure.
 
 ## How SAS Authentication Works
 
-Every request to Azure Relay - whether it is a listener establishing a connection or a sender making a request - must include a valid SAS token. The token proves that the caller has the right to access the relay resource.
+When you use SAS authentication, every authorized request to Azure Relay - whether it is a listener establishing a connection or a sender making a request - must include a valid SAS token. The token proves that the caller has the right to access the relay resource. Hybrid Connections can also be configured to allow anonymous senders, but that is not recommended for the secured pattern covered in this post.
 
 A SAS token is generated from three pieces of information:
 
@@ -142,11 +142,11 @@ import hmac
 import hashlib
 import base64
 import time
-from urllib.parse import quote_plus
+from urllib.parse import quote
 
 def create_relay_token(uri, key_name, key, expiry_seconds=3600):
     # Encode the URI
-    encoded_uri = quote_plus(uri)
+    encoded_uri = quote(uri, safe='')
 
     # Calculate expiry
     expiry = int(time.time()) + expiry_seconds
@@ -164,7 +164,7 @@ def create_relay_token(uri, key_name, key, expiry_seconds=3600):
     ).decode('utf-8')
 
     # Construct the token
-    token = f"SharedAccessSignature sr={encoded_uri}&sig={quote_plus(signature)}&se={expiry}&skn={key_name}"
+    token = f"SharedAccessSignature sr={encoded_uri}&sig={quote(signature, safe='')}&se={expiry}&skn={quote(key_name, safe='')}"
 
     return token
 ```
@@ -176,14 +176,13 @@ def create_relay_token(uri, key_name, key, expiry_seconds=3600):
 using System;
 using System.Security.Cryptography;
 using System.Text;
-using System.Web;
 
 public static class SasTokenGenerator
 {
     public static string CreateToken(string resourceUri, string keyName, string key, int expirySeconds = 3600)
     {
         // Encode the URI
-        string encodedUri = HttpUtility.UrlEncode(resourceUri);
+        string encodedUri = Uri.EscapeDataString(resourceUri);
 
         // Calculate expiry timestamp
         long expiry = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + expirySeconds;
@@ -197,7 +196,7 @@ public static class SasTokenGenerator
         string signature = Convert.ToBase64String(hash);
 
         // Build the token
-        return $"SharedAccessSignature sr={encodedUri}&sig={HttpUtility.UrlEncode(signature)}&se={expiry}&skn={keyName}";
+        return $"SharedAccessSignature sr={encodedUri}&sig={Uri.EscapeDataString(signature)}&se={expiry}&skn={Uri.EscapeDataString(keyName)}";
     }
 }
 ```
@@ -208,11 +207,11 @@ Keys should be rotated periodically. The dual-key design (primary and secondary)
 
 Here is the rotation procedure:
 
-1. Update your listener application to use the secondary key.
+1. Update the application that uses the rule to use the secondary key.
 2. Regenerate the primary key.
-3. Update your sender application to use the new primary key.
+3. Update the application to use the new primary key.
 4. Regenerate the secondary key.
-5. Update your listener application back to the primary key (now new).
+5. Repeat the same process separately for each listener and sender authorization rule.
 
 ```bash
 # Step 1: Regenerate the primary key
@@ -236,12 +235,12 @@ Automate this with a scheduled Azure Function or pipeline.
 
 ```javascript
 // key-rotation.js - Automated key rotation function
-const { RelayManagementClient } = require('@azure/arm-relay');
+const { RelayAPI } = require('@azure/arm-relay');
 const { DefaultAzureCredential } = require('@azure/identity');
 
 async function rotateKeys(ruleName) {
   const credential = new DefaultAzureCredential();
-  const client = new RelayManagementClient(credential, process.env.AZURE_SUBSCRIPTION_ID);
+  const client = new RelayAPI(credential, process.env.AZURE_SUBSCRIPTION_ID);
 
   // Regenerate the primary key
   const result = await client.hybridConnections.regenerateKeys(
@@ -293,12 +292,21 @@ For **senders** (individual requests), short-lived tokens (5-15 minutes) are app
 SAS alone does not restrict which IP addresses can access the relay. For additional security, combine SAS with network-level controls.
 
 ```bash
-# Configure IP filtering on the Relay namespace (if supported in your region)
-az relay namespace network-rule-set update \
-  --namespace-name my-relay-ns \
-  --resource-group rg-relay \
-  --default-action Deny \
-  --ip-rules "[{\"ip-mask\":\"203.0.113.0/24\",\"action\":\"Allow\"}]"
+# Configure IP filtering on the Relay namespace
+az rest --method put \
+  --url "https://management.azure.com/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/rg-relay/providers/Microsoft.Relay/namespaces/my-relay-ns/networkRuleSets/default?api-version=2024-01-01" \
+  --body '{
+    "properties": {
+      "defaultAction": "Deny",
+      "publicNetworkAccess": "Enabled",
+      "ipRules": [
+        {
+          "ipMask": "203.0.113.0/24",
+          "action": "Allow"
+        }
+      ]
+    }
+  }'
 ```
 
 ## Best Practices Summary
