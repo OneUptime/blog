@@ -67,17 +67,19 @@ If you're using a different DNS provider (Cloudflare, GoDaddy, Namecheap, etc.),
 
 ## Step 3: Set Up SPF
 
-SPF (Sender Policy Framework) tells receiving mail servers which IP addresses are authorized to send email for your domain. This helps prevent your emails from being flagged as spam.
+SPF (Sender Policy Framework) tells receiving mail servers which mail servers are authorized to send email for a MAIL FROM domain. SES uses an `amazonses.com` MAIL FROM domain by default, so SPF is handled automatically unless you configure a custom MAIL FROM domain.
+
+If you use a custom MAIL FROM domain, publish the SPF record on that MAIL FROM subdomain:
 
 ```bash
-# Add or update the SPF record
+# Add or update the SPF record for the custom MAIL FROM domain
 aws route53 change-resource-record-sets \
   --hosted-zone-id Z1234567890 \
   --change-batch '{
     "Changes": [{
       "Action": "UPSERT",
       "ResourceRecordSet": {
-        "Name": "example.com",
+        "Name": "bounce.example.com",
         "Type": "TXT",
         "TTL": 3600,
         "ResourceRecords": [{
@@ -88,7 +90,7 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-If you already have an SPF record, append `include:amazonses.com` to it rather than creating a new one. DNS only allows one SPF record per domain. For example:
+If that MAIL FROM domain already has an SPF record, append `include:amazonses.com` to it rather than creating a new one. A domain should have only one SPF TXT record. For example:
 
 ```text
 "v=spf1 include:amazonses.com include:_spf.google.com ~all"
@@ -114,8 +116,8 @@ You can also verify DNS propagation independently:
 # Check if the TXT record has propagated
 dig TXT _amazonses.example.com +short
 
-# Check SPF record
-dig TXT example.com +short
+# Check SPF record for the custom MAIL FROM domain
+dig TXT bounce.example.com +short
 ```
 
 ## Step 5: Set Up DMARC
@@ -176,7 +178,7 @@ aws sesv2 create-email-identity \
   --email-identity "example.com" \
   --region us-east-1
 
-# This automatically sets up DKIM as well
+# This starts Easy DKIM setup as well
 # Get the DKIM tokens to add to DNS
 aws sesv2 get-email-identity \
   --email-identity "example.com" \
@@ -187,7 +189,7 @@ aws sesv2 get-email-identity \
   }'
 ```
 
-The v2 API combines domain verification and DKIM setup into a single call, which is more convenient.
+The v2 API starts domain verification and Easy DKIM setup in a single call, which is more convenient. You still need to add the DKIM CNAME records to DNS before verification completes.
 
 ## Troubleshooting Verification Issues
 
@@ -205,13 +207,13 @@ dig @8.8.8.8 TXT _amazonses.example.com +short
 ```
 
 **Multiple TXT records conflicting:**
-Some DNS providers don't handle multiple TXT records on the same hostname well. If you have both an SPF record and the SES verification token as TXT records on the root domain, make sure they're separate records, not combined.
+Some DNS providers don't handle multiple TXT records on the same hostname well. If you have multiple TXT values at the same host, make sure they're separate TXT values, not combined into one string. The SES verification token belongs at `_amazonses.example.com`; SPF belongs on your MAIL FROM domain.
 
 **Wrong record name:**
 The record should be `_amazonses.example.com`, not `_amazonses` alone (though some DNS providers automatically append the domain).
 
-**Verification expired:**
-If you remove the DNS record and SES re-checks, it will revoke verification. Keep the TXT record in place permanently.
+**Verification failed after 72 hours:**
+If SES doesn't detect the required DNS record within 72 hours, the verification status changes to "Failed" and you need to restart the verification process. Keep the DNS records in place after verification so SES can continue to authenticate your domain.
 
 ## Listing and Managing Verified Identities
 
