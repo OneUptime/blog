@@ -10,17 +10,17 @@ Description: Learn how to use Step Functions Distributed Map to process millions
 
 The standard Map state in Step Functions works great for arrays with a few hundred items. But what if you need to process millions of S3 objects, or a CSV file with 10 million rows? That is where Distributed Map comes in.
 
-Distributed Map is a special mode of the Map state that can process datasets of virtually unlimited size. It reads items directly from S3 (objects, CSV files, JSON arrays, or S3 inventory reports) and launches up to 10,000 parallel child executions to process them.
+Distributed Map is a special mode of the Map state that can process large datasets beyond the normal Step Functions payload and event-history limits. It reads items from S3 data sources such as object lists, CSV files, JSON files, or S3 inventory reports and launches up to 10,000 parallel child executions to process them.
 
 ## How Distributed Map Differs from Inline Map
 
 | Feature | Inline Map | Distributed Map |
 |---------|-----------|----------------|
-| Max items | ~40,000 (payload limit) | Unlimited |
+| Max items | Limited by 256 KiB payload and 25,000-event history limits | Large S3 datasets |
 | Max concurrency | 40 | 10,000 |
-| Input source | JSON array in state input | S3 objects directly |
+| Input source | JSON array in state input | JSON input or S3 data sources |
 | Child execution | States within parent | Separate child executions |
-| Results | Array in parent output | Written to S3 |
+| Results | Array in parent output | Can be returned or written to S3 |
 | History events | Counted in parent | Separate per child |
 
 ```mermaid
@@ -40,7 +40,7 @@ graph TD
 
 ## Setting Up Distributed Map
 
-Here is a complete state machine that processes all CSV files in an S3 bucket:
+Here is a complete state machine that processes a large CSV file in an S3 bucket:
 
 ```json
 {
@@ -216,7 +216,7 @@ Instead of collecting all results in the parent execution's state (which would e
 }
 ```
 
-Results are written as JSON files under the specified prefix. Each child execution writes its own result file.
+Results are written as JSON files under the specified prefix. Step Functions consolidates child workflow execution results by status, such as `SUCCEEDED_0.json` and `FAILED_0.json`, and writes a `manifest.json` file that references the exported results.
 
 ## Real-World Example: Processing S3 Objects at Scale
 
@@ -301,7 +301,7 @@ def handler(event, context):
     results = []
 
     for item in items:
-        bucket = item['Bucket']
+        bucket = 'my-images-bucket'
         key = item['Key']
 
         # Skip non-image files
@@ -337,7 +337,6 @@ def handler(event, context):
 The state machine role needs permissions to read from and write to S3, plus permissions to start child executions:
 
 ```json
-// IAM policy for Distributed Map state machine
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -389,10 +388,10 @@ The response includes counters for total items, items processed, succeeded, fail
 
 ## Cost Optimization
 
-Distributed Map pricing is based on state transitions in both the parent and child executions. To minimize cost:
+Distributed Map pricing includes the parent workflow transitions and one state transition for each Map iteration. If child workflows use Express execution type, those child workflows are also billed by request count and duration. To minimize cost:
 
 1. **Batch aggressively** - Fewer child executions with more items per batch means fewer state transitions
-2. **Use Express child executions** - For processing steps under 5 minutes, set `ExecutionType` to `EXPRESS` for lower per-transition costs
+2. **Use Express child executions** - For child workflows that complete within 5 minutes, set `ExecutionType` to `EXPRESS` to use Express request and duration pricing
 3. **Right-size concurrency** - Higher concurrency finishes faster but may hit Lambda concurrency limits
 
 For high-volume scenarios, see our guide on [Step Functions Express Workflows](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-express-workflows-for-high-volume-events/view).
