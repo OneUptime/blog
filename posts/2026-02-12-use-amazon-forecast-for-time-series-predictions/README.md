@@ -8,9 +8,9 @@ Description: A practical guide to using Amazon Forecast for time-series predicti
 
 ---
 
-Predicting the future is hard. Predicting it with data is less hard - especially when you've got a managed service handling the machine learning parts. Amazon Forecast takes historical time-series data and produces predictions using the same technology Amazon uses for its own demand forecasting.
+Predicting the future is hard. Predicting it with data is less hard - especially when you've got a managed service handling the machine learning parts. Amazon Forecast takes historical time-series data and produces predictions using the same technology Amazon uses for its own demand forecasting. AWS no longer makes Amazon Forecast available to new customers, but existing Forecast customers can continue using the service as normal.
 
-Whether you're forecasting product demand, server capacity, energy consumption, or financial metrics, Forecast can help. Let's walk through the entire process from raw data to actionable predictions.
+If your account already has access and you're forecasting product demand, server capacity, energy consumption, or financial metrics, Forecast can help. Let's walk through the entire process from raw data to actionable predictions.
 
 ## What Makes Forecast Different
 
@@ -28,7 +28,7 @@ Forecast needs at least a target time-series dataset. This is your core data - t
 Here's a sample demand forecasting CSV:
 
 ```csv
-item_id,timestamp,target_value
+item_id,timestamp,demand
 product_001,2025-01-01,150
 product_001,2025-01-02,142
 product_001,2025-01-03,165
@@ -75,7 +75,7 @@ schema = {
     "Attributes": [
         {"AttributeName": "item_id", "AttributeType": "string"},
         {"AttributeName": "timestamp", "AttributeType": "timestamp"},
-        {"AttributeName": "target_value", "AttributeType": "float"}
+        {"AttributeName": "demand", "AttributeType": "float"}
     ]
 }
 
@@ -141,6 +141,7 @@ Available optimization metrics:
 - **RMSE** - Root Mean Square Error (penalizes large errors more)
 - **MASE** - Mean Absolute Scaled Error (works well with intermittent demand)
 - **MAPE** - Mean Absolute Percentage Error (percentage-based)
+- **AverageWeightedQuantileLoss** - Average weighted quantile loss across the forecast types
 
 Training can take 30 minutes to a few hours. Check progress:
 
@@ -218,12 +219,15 @@ p10_values = predictions.get('p10', [])
 p50_values = predictions.get('p50', [])
 p90_values = predictions.get('p90', [])
 
+def format_value(value):
+    return 'N/A' if value is None else f'{value:.0f}'
+
 for i in range(len(p50_values)):
     timestamp = p50_values[i]['Timestamp']
-    p10 = p10_values[i]['Value'] if i < len(p10_values) else 'N/A'
+    p10 = p10_values[i]['Value'] if i < len(p10_values) else None
     p50 = p50_values[i]['Value']
-    p90 = p90_values[i]['Value'] if i < len(p90_values) else 'N/A'
-    print(f"{timestamp} | {p10:.0f} | {p50:.0f} | {p90:.0f}")
+    p90 = p90_values[i]['Value'] if i < len(p90_values) else None
+    print(f"{timestamp} | {format_value(p10)} | {format_value(p50)} | {format_value(p90)}")
 ```
 
 ## Exporting Forecasts
@@ -251,23 +255,23 @@ This produces CSV files you can load into a data warehouse or visualization tool
 Want to improve accuracy? Add contextual data that might influence your target metric:
 
 ```csv
-item_id,timestamp,price,promotion_flag
+item_id,timestamp,price,promotion_applied
 product_001,2025-01-01,29.99,0
 product_001,2025-01-02,24.99,1
 product_001,2025-01-03,24.99,1
 ```
 
-If you're running a promotion, sales will spike. If price goes up, demand might drop. Forecast can learn these patterns when you provide related data. You need to provide this data for both the historical period and the forecast horizon - Forecast needs to know future prices and promotion plans to factor them in.
+If you're running a promotion, sales will spike. If price goes up, demand might drop. Forecast can learn these patterns when you provide related data. In most cases, you need to provide this data for both the historical period and the forecast horizon - Forecast needs to know future prices and promotion plans to factor them in. CNN-QR is the exception that can use related time series without future values.
 
 ## Cost Management
 
 Forecast charges for:
+- Imported data
 - Training hours
-- Forecast generation
-- Data storage
-- Forecast queries (explain predictions)
+- Generated forecast data points
+- Forecast explanations
 
-Training is the biggest cost for most users. A few tips to keep costs reasonable:
+Generated forecast data points and training are usually the biggest costs to watch. A few tips to keep costs reasonable:
 
 1. Start with a smaller subset of your data to prototype
 2. Don't retrain more often than necessary - weekly or monthly is usually fine
@@ -282,6 +286,6 @@ For a unified view of your prediction pipeline and the applications that depend 
 
 ## Wrapping Up
 
-Amazon Forecast makes time-series prediction accessible without deep ML expertise. The key to good results is good data - make sure your historical data is clean, complete, and covers enough time periods to capture seasonal patterns. Start with the AutoML predictor, check your metrics, and iterate from there.
+For existing customers, Amazon Forecast makes time-series prediction accessible without deep ML expertise. The key to good results is good data - make sure your historical data is clean, complete, and covers enough time periods to capture seasonal patterns. Start with the AutoML predictor, check your metrics, and iterate from there.
 
 The probabilistic forecast output is particularly valuable. Instead of planning around a single number, you can plan for different scenarios and set appropriate safety stock levels, capacity buffers, or budget ranges.
