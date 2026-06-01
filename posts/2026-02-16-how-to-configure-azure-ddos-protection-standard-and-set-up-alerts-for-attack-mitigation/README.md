@@ -1,22 +1,22 @@
-# How to Configure Azure DDoS Protection Standard and Set Up Alerts
+# How to Configure Azure DDoS Network Protection and Set Up Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, DDoS Protection, Network Security, Azure Monitor, Alert, Mitigation, Public IP
 
-Description: Learn how to enable Azure DDoS Protection Standard, configure it for your virtual networks, and set up alerting to monitor attack mitigation in real time.
+Description: Learn how to enable Azure DDoS Network Protection, configure it for your virtual networks, and set up alerting to monitor attack mitigation in real time.
 
 ---
 
-Distributed Denial of Service (DDoS) attacks are one of the most disruptive threats to any internet-facing application. Azure provides two tiers of DDoS protection - Basic (free, enabled by default) and Standard (paid, with advanced capabilities). While Basic protection handles common network-layer attacks, DDoS Protection Standard provides adaptive tuning based on your specific traffic patterns, real-time attack metrics, detailed diagnostics, and cost protection guarantees.
+Distributed Denial of Service (DDoS) attacks are one of the most disruptive threats to any internet-facing application. Azure provides infrastructure-level DDoS protection at no additional cost, and paid Azure DDoS Protection tiers for enhanced protection: Network Protection for virtual networks and IP Protection for individual public IP resources. While infrastructure protection handles common network-layer attacks, DDoS Network Protection provides adaptive tuning based on your specific traffic patterns, real-time attack metrics, detailed diagnostics, and cost protection guarantees.
 
-This guide walks through enabling DDoS Protection Standard, associating it with your resources, and setting up alerts so you know immediately when an attack is being mitigated.
+This guide walks through enabling DDoS Network Protection, associating it with your resources, and setting up alerts so you know immediately when an attack is being mitigated.
 
-## DDoS Protection Basic vs. Standard
+## Infrastructure Protection vs. Network Protection
 
-Understanding the difference helps justify the cost of Standard:
+Understanding the difference helps justify the cost of Network Protection:
 
-| Feature | Basic (Free) | Standard (Paid) |
+| Feature | Infrastructure protection (Free) | Network Protection (Paid) |
 |---|---|---|
 | Protection level | Platform-level, always on | Adaptive, application-specific |
 | Traffic monitoring | No per-resource monitoring | Per-resource monitoring and metrics |
@@ -24,13 +24,13 @@ Understanding the difference helps justify the cost of Standard:
 | Diagnostics & logging | No | Full mitigation reports |
 | Cost protection | No | Yes, DDoS cost credit during attacks |
 | Rapid response support | No | DDoS Rapid Response (DRR) team access |
-| Custom policies | No | Application-specific tuning |
+| Policy tuning | No | Automatic application-specific tuning |
 
 ```mermaid
 graph TD
     A[Internet Traffic] --> B{Azure Edge}
-    B --> C[DDoS Basic: Platform Protection]
-    C --> D{DDoS Standard Enabled?}
+    B --> C[DDoS Infrastructure Protection]
+    C --> D{DDoS Network Protection Enabled?}
     D -->|No| E[Traffic passes to VNet as-is]
     D -->|Yes| F[Adaptive Mitigation]
     F --> G[Attack traffic scrubbed]
@@ -41,12 +41,12 @@ graph TD
 
 ## Prerequisites
 
-Before enabling DDoS Protection Standard:
+Before enabling DDoS Network Protection:
 
 - Azure subscription with Contributor or Network Contributor role
 - At least one virtual network with public IP addresses to protect
-- Budget approval - DDoS Protection Standard costs approximately $2,944 per month per DDoS protection plan, plus data processing charges
-- Understanding that the plan protects up to 100 public IP resources (additional IPs cost extra)
+- Budget approval - DDoS Network Protection has a fixed monthly charge for each DDoS protection plan
+- Understanding that the plan includes up to 100 protected public IP resources across the tenant (additional IPs cost extra)
 
 ## Step 1: Create a DDoS Protection Plan
 
@@ -102,7 +102,8 @@ $vnet = Get-AzVirtualNetwork `
     -Name "production-vnet"
 
 # Enable DDoS protection on the VNet
-$vnet.DdosProtectionPlan = @{ Id = $ddosPlan.Id }
+$vnet.DdosProtectionPlan = New-Object Microsoft.Azure.Commands.Network.Models.PSResourceId
+$vnet.DdosProtectionPlan.Id = $ddosPlan.Id
 $vnet.EnableDdosProtection = $true
 
 # Apply the changes
@@ -122,7 +123,8 @@ $vnets = Get-AzVirtualNetwork | Where-Object {
 }
 
 foreach ($vnet in $vnets) {
-    $vnet.DdosProtectionPlan = @{ Id = $ddosPlan.Id }
+    $vnet.DdosProtectionPlan = New-Object Microsoft.Azure.Commands.Network.Models.PSResourceId
+    $vnet.DdosProtectionPlan.Id = $ddosPlan.Id
     $vnet.EnableDdosProtection = $true
     $vnet | Set-AzVirtualNetwork
     Write-Host "Protected: $($vnet.Name) in $($vnet.ResourceGroupName)"
@@ -131,18 +133,18 @@ foreach ($vnet in $vnets) {
 
 ## Step 3: Verify Protection on Public IPs
 
-Check which public IP addresses are now protected:
+For public IP addresses attached directly to VM network interfaces, you can check the parent VNet protection setting:
 
 ```powershell
-# List all public IPs and their DDoS protection status
+# List VM public IPs and their DDoS Network Protection status
 $publicIPs = Get-AzPublicIpAddress
 
 foreach ($pip in $publicIPs) {
-    # Get the VNet associated with this public IP (through NIC/LB)
+    # Get the VNet associated with this public IP through a NIC
     $protected = $false
 
     if ($pip.IpConfiguration) {
-        # The public IP is attached to something - check the VNet
+        # The public IP is attached to something - check the VNet for NIC-attached IPs
         $nicId = $pip.IpConfiguration.Id
         if ($nicId -match "networkInterfaces") {
             $nicName = ($nicId -split '/')[-3]
@@ -170,14 +172,23 @@ Enable diagnostic logging on your public IP addresses to capture DDoS mitigation
 $publicIP = Get-AzPublicIpAddress -Name "web-app-pip" -ResourceGroupName "production-rg"
 $workspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName "monitoring-rg" -Name "central-log-analytics"
 
+$logs = @(
+    New-AzDiagnosticSettingLogSettingsObject -Enabled $true -Category "DDoSProtectionNotifications"
+    New-AzDiagnosticSettingLogSettingsObject -Enabled $true -Category "DDoSMitigationFlowLogs"
+    New-AzDiagnosticSettingLogSettingsObject -Enabled $true -Category "DDoSMitigationReports"
+)
+
+$metrics = @(
+    New-AzDiagnosticSettingMetricSettingsObject -Enabled $true -Category "AllMetrics"
+)
+
 # Create diagnostic setting to capture DDoS-specific logs and metrics
-Set-AzDiagnosticSetting `
+New-AzDiagnosticSetting `
     -ResourceId $publicIP.Id `
     -Name "ddos-diagnostics" `
     -WorkspaceId $workspace.ResourceId `
-    -Enabled $true `
-    -Category @("DDoSProtectionNotifications", "DDoSMitigationFlowLogs", "DDoSMitigationReports") `
-    -MetricCategory @("AllMetrics")
+    -Log $logs `
+    -Metric $metrics
 
 Write-Host "DDoS diagnostics enabled for $($publicIP.Name)"
 ```
@@ -195,7 +206,7 @@ Configure alerts that fire when a DDoS attack is detected:
 ### Alert on Mitigation Triggered
 
 ```powershell
-# Create an alert that fires when DDoS mitigation is triggered on any public IP
+# Create an alert that fires when DDoS mitigation is triggered on a public IP
 $publicIP = Get-AzPublicIpAddress -Name "web-app-pip" -ResourceGroupName "production-rg"
 
 # Create the metric alert condition
@@ -208,15 +219,17 @@ $condition = New-AzMetricAlertRuleV2Criteria `
     -Threshold 1
 
 # Create an action group for notifications
-$emailReceiver = New-AzActionGroupReceiver `
+$emailReceiver = New-AzActionGroupEmailReceiverObject `
     -Name "SecurityTeam" `
     -EmailAddress "security-team@contoso.com"
 
-$actionGroup = Set-AzActionGroup `
+$actionGroup = New-AzActionGroup `
     -ResourceGroupName "monitoring-rg" `
     -Name "ddos-alert-group" `
-    -ShortName "DDoSAlert" `
-    -Receiver $emailReceiver
+    -Location "global" `
+    -GroupShortName "DDoSAlert" `
+    -EmailReceiver $emailReceiver `
+    -Enabled
 
 # Create the alert rule
 Add-AzMetricAlertRuleV2 `
@@ -233,11 +246,11 @@ Add-AzMetricAlertRuleV2 `
 Write-Host "DDoS attack alert configured."
 ```
 
-### Alert on High Packet Drop Rate
+### Alert on High TCP Mitigation Trigger Rate
 
 ```powershell
-# Alert when the inbound packet drop rate exceeds a threshold
-# This indicates significant attack traffic is being mitigated
+# Alert when the inbound TCP packets-to-trigger-mitigation metric exceeds a threshold
+# This indicates traffic is approaching or exceeding the automatically tuned TCP mitigation policy
 $condition = New-AzMetricAlertRuleV2Criteria `
     -MetricName "DDoSTriggerTCPPackets" `
     -MetricNameSpace "Microsoft.Network/publicIPAddresses" `
@@ -279,12 +292,8 @@ You can also query mitigation details in Log Analytics:
 AzureDiagnostics
 | where Category == "DDoSMitigationFlowLogs"
 | where TimeGenerated > ago(1h)
-| extend SourceIP = tostring(parse_json(properties_s).sourceIP)
-| extend DestIP = tostring(parse_json(properties_s).destIP)
-| extend DestPort = tostring(parse_json(properties_s).destPort)
-| extend Protocol = tostring(parse_json(properties_s).protocol)
-| extend MitigationAction = tostring(parse_json(properties_s).action)
-| summarize FlowCount = count() by MitigationAction, Protocol, bin(TimeGenerated, 5m)
+| summarize FlowCount = count()
+    by Message, Protocol, SourcePublicIpAddress, DestPublicIpAddress, bin(TimeGenerated, 5m)
 | render timechart
 ```
 
@@ -297,29 +306,22 @@ After an attack ends, review the mitigation report:
 AzureDiagnostics
 | where Category == "DDoSMitigationReports"
 | where TimeGenerated > ago(7d)
-| extend AttackVectors = tostring(parse_json(properties_s).attackVectors)
-| extend MitigationPeriod = tostring(parse_json(properties_s).mitigationPeriod)
-| extend MaxAttackBandwidthMbps = tostring(parse_json(properties_s).maxAttackBandwidthInMbps)
-| extend MaxPacketsPerSec = tostring(parse_json(properties_s).maxPacketsPerSecond)
 | project
     TimeGenerated,
     AttackVectors,
-    MitigationPeriod,
-    MaxAttackBandwidthMbps,
-    MaxPacketsPerSec
+    TrafficOverview,
+    DropReasons,
+    TopSourceCountries,
+    MitigationPeriodStart,
+    MitigationPeriodEnd
 ```
 
 ## DDoS Cost Protection
 
-One often-overlooked benefit of DDoS Protection Standard is cost protection. During a DDoS attack, your resources may scale out (auto-scaling VMs, Application Gateway, etc.), incurring additional costs. Microsoft provides service credits for:
+One often-overlooked benefit of DDoS Network Protection is cost protection. During a DDoS attack, your resources may scale out or incur extra data-transfer costs. Microsoft provides service credits for documented DDoS-related data-transfer and application scale-out costs.
 
-- Azure VM scale out costs
-- Application Gateway with WAF data processing
-- Public IP address costs
-- Azure CDN data transfer
-
-To claim credits, file a support request within 30 days of the attack with the mitigation report as evidence.
+To claim credits, file a support request with the mitigation report as evidence.
 
 ## Conclusion
 
-Azure DDoS Protection Standard provides enterprise-grade DDoS protection that goes well beyond the basic platform protection. The setup involves creating a DDoS protection plan, associating it with your virtual networks, enabling diagnostics on public IP addresses, and configuring alerts for real-time notification during attacks. While the monthly cost is significant, the protection it provides against volumetric, protocol, and application-layer attacks, combined with the cost protection guarantee and access to the DDoS Rapid Response team, makes it essential for organizations running internet-facing workloads in Azure. Set up your alerts and diagnostics before an attack happens, not during one.
+Azure DDoS Network Protection provides enterprise-grade DDoS protection that goes well beyond the basic platform protection. The setup involves creating a DDoS protection plan, associating it with your virtual networks, enabling diagnostics on public IP addresses, and configuring alerts for real-time notification during attacks. While the monthly cost is significant, the protection it provides against Layer 3 and Layer 4 volumetric and protocol attacks, combined with the cost protection guarantee and access to the DDoS Rapid Response team, makes it essential for organizations running internet-facing workloads in Azure. For Layer 7 application attacks, combine Azure DDoS Protection with a web application firewall. Set up your alerts and diagnostics before an attack happens, not during one.
