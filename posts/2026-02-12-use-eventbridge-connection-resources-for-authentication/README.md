@@ -21,10 +21,10 @@ graph TD
     A[EventBridge Rule] --> B[API Destination]
     B --> C[Connection]
     C --> D{Auth Type?}
-    D -->|API Key| E[Adds Header/Query Param]
+    D -->|API Key| E[Adds Header]
     D -->|Basic| F[Adds Authorization Header]
     D -->|OAuth| G[Fetches Token from Auth Server]
-    G --> H[Caches Token Until Expiry]
+    G --> H[Manages Token Refresh]
     H --> I[Adds Bearer Token Header]
     E --> J[HTTP Request to Endpoint]
     F --> J
@@ -35,7 +35,7 @@ Behind the scenes, Connections use AWS Secrets Manager to store credentials. Eve
 
 ## Authentication Type 1: API Key
 
-API Key authentication adds a key-value pair as a header or query parameter to every request. This is the most common auth method for webhook services.
+API Key authentication adds a key-value pair as a header to every request. This is the most common auth method for webhook services.
 
 ### Example: Datadog API Key
 
@@ -57,22 +57,27 @@ aws events create-connection \
 
 ### Example: Custom Service with Query Parameter
 
-Some APIs expect the key as a query parameter:
+EventBridge's built-in API key authorization is header-based. If an API also expects a query parameter, add it with `InvocationHttpParameters`:
 
 ```bash
-# Connection with API key passed as a query parameter
+# Connection with API key authorization plus an extra query parameter
 aws events create-connection \
   --name custom-service-connection \
   --authorization-type API_KEY \
   --auth-parameters '{
     "ApiKeyAuthParameters": {
-      "ApiKeyName": "api_key",
+      "ApiKeyName": "X-API-Key",
       "ApiKeyValue": "sk_live_abc123"
+    },
+    "InvocationHttpParameters": {
+      "QueryStringParameters": [
+        {"Key": "api_key", "Value": "sk_live_abc123", "IsValueSecret": true}
+      ]
     }
   }'
 ```
 
-When using `API_KEY` auth type, EventBridge adds the key as an HTTP header by default. The `ApiKeyName` becomes the header name and `ApiKeyValue` becomes the header value.
+When using `API_KEY` auth type, EventBridge adds the key as an HTTP header. The `ApiKeyName` becomes the header name and `ApiKeyValue` becomes the header value.
 
 ## Authentication Type 2: Basic Auth
 
@@ -99,8 +104,8 @@ This is the most powerful auth type. EventBridge handles the full OAuth client c
 
 1. Sends client ID and secret to the authorization endpoint
 2. Receives an access token
-3. Caches the token until it expires
-4. Automatically refreshes when needed
+3. Caches and manages the token
+4. Refreshes when the API returns `401` or `407`, and proactively during an HTTPS invocation if the token expires within 60 seconds
 5. Attaches the token to each API request
 
 ```bash
@@ -250,7 +255,7 @@ aws events update-connection \
   }'
 ```
 
-The update takes effect immediately. Any in-flight requests use the old credentials, and new requests use the updated ones. There is no downtime.
+After the update completes, EventBridge uses the updated credentials. For changes that require it, EventBridge re-authorizes the connection and verifies connectivity.
 
 For OAuth connections, if the client secret rotates:
 
@@ -276,8 +281,12 @@ aws events update-connection \
 Connections go through several states:
 
 - **CREATING** - Being created
+- **UPDATING** - Being updated
+- **DELETING** - Being deleted
 - **AUTHORIZING** - OAuth flow in progress
-- **AUTHORIZED** - Ready to use (OAuth token obtained)
+- **AUTHORIZED** - Ready to use for a public API connection
+- **ACTIVE** - Ready to use for a private API connection
+- **FAILED_CONNECTIVITY** - Network connectivity verification failed
 - **DEAUTHORIZING** - OAuth token being revoked
 - **DEAUTHORIZED** - Needs re-authorization
 
@@ -290,7 +299,7 @@ aws events describe-connection \
   --query '{Name: Name, State: ConnectionState, AuthType: AuthorizationType}'
 ```
 
-If an OAuth connection enters `DEAUTHORIZED` state, it means the token refresh failed. Check that the authorization endpoint is reachable and credentials are still valid.
+If an OAuth connection enters `DEAUTHORIZED` state, it can mean the token refresh failed. Check that the authorization endpoint is reachable and credentials are still valid.
 
 ## Security Best Practices
 
