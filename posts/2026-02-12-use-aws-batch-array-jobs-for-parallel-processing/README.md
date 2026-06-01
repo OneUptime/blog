@@ -85,7 +85,7 @@ aws batch submit-job \
   --array-properties size=1000
 ```
 
-That is it. One command creates 1000 child jobs. The maximum array size is 10,000.
+That is it. One command creates 1000 child jobs. The array size can be between 2 and 10,000.
 
 ## Step 3: Write Index-Aware Container Code
 
@@ -206,6 +206,9 @@ def create_manifest_and_submit():
         Body=json.dumps(files)
     )
 
+    if len(files) < 2:
+        raise ValueError("AWS Batch array jobs require an array size of at least 2")
+
     # Submit array job with size matching the manifest
     response = batch.submit_job(
         jobName='manifest-processing',
@@ -265,15 +268,15 @@ aws batch submit-job \
   --job-name aggregate-step \
   --job-queue my-job-queue \
   --job-definition aggregator \
-  --depends-on "jobId=$PROCESSING_JOB_ID,type=N_TO_N"
+  --depends-on "jobId=$PROCESSING_JOB_ID"
 ```
 
-The `type=N_TO_N` dependency means the aggregation job waits for all children of the array to complete. For more on job dependencies, see our post on [configuring AWS Batch job dependencies](https://oneuptime.com/blog/post/2026-02-12-configure-aws-batch-job-dependencies/view).
+Omitting the dependency type makes the aggregation job wait for the parent array job to succeed, which requires all children to complete successfully. Use `type=N_TO_N` when submitting another array job whose child indices should depend on the matching child indices in the first array. For more on job dependencies, see our post on [configuring AWS Batch job dependencies](https://oneuptime.com/blog/post/2026-02-12-configure-aws-batch-job-dependencies/view).
 
 ## Monitoring Array Job Progress
 
 ```bash
-# List all child jobs and their statuses
+# Count succeeded child jobs
 aws batch list-jobs \
   --array-job-id <parent-job-id> \
   --job-status SUCCEEDED \
@@ -291,7 +294,7 @@ For comprehensive monitoring, see [monitoring AWS Batch jobs with CloudWatch](ht
 ## Performance Tips
 
 - **Right-size your compute environment** - Set maxvCpus high enough to run many children in parallel. If your array has 1000 tasks and each needs 2 vCPUs, you want at least a few hundred vCPUs available.
-- **Use BEST_FIT_PROGRESSIVE allocation** - This packs multiple small containers onto larger instances, reducing per-job overhead.
+- **Use BEST_FIT_PROGRESSIVE allocation** - This lets AWS Batch select additional instance types that are large enough for queued jobs when previously selected instance types are not available.
 - **Pre-stage data** - If all children need access to common reference data, download it once to a shared filesystem rather than having each child download it from S3.
 - **Keep child tasks between 5 minutes and 2 hours** - Too short and you spend more time launching than working. Too long and a failure wastes significant compute.
 
