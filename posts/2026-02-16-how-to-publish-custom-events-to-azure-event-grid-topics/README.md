@@ -228,7 +228,7 @@ graph TD
     B -->|Orders.OrderPlaced| C[Order Processing Function]
     B -->|Orders.OrderShipped| D[Notification Service]
     B -->|Orders.OrderCancelled| E[Refund Service]
-    B -->|Orders.*| F[Analytics Pipeline - gets everything]
+    B -->|No event type filter| F[Analytics Pipeline - gets everything]
 ```
 
 Some naming tips:
@@ -246,7 +246,7 @@ Event Grid accepts up to 1 MB per request and supports batching. For high-throug
 // Batch events for efficient publishing
 var allEvents = GenerateEvents(10000); // Generate a large number of events
 
-// Split into batches of 500 (stay well under the 1 MB limit)
+// For small events, split into batches; choose a batch size that stays under the 1 MB limit
 var batches = allEvents.Chunk(500);
 
 foreach (var batch in batches)
