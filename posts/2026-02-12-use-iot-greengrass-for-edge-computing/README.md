@@ -38,7 +38,7 @@ graph TD
 
 ## Installing Greengrass Core
 
-Greengrass V2 runs on Linux devices with Java 8 or later. The device needs at least 128 MB RAM and 256 MB disk space, though production workloads typically need more.
+Greengrass V2 runs on Linux devices with Java 8 or later. The device needs at least 96 MB RAM allocated to the Greengrass Core software and 256 MB disk space, though production workloads typically need more.
 
 ```bash
 # Download and install Greengrass Core V2
@@ -82,7 +82,7 @@ sudo tail -f /greengrass/v2/logs/greengrass.log
 
 Components are the deployment units in Greengrass V2. A component is a recipe (YAML/JSON describing the component) plus artifacts (code, binaries, models).
 
-Here's a simple component that reads a temperature sensor and publishes to local MQTT.
+Here's a simple component that reads a temperature sensor and publishes to a local pub/sub topic.
 
 First, the component code.
 
@@ -91,6 +91,7 @@ First, the component code.
 import json
 import time
 import random
+import os
 import awsiot.greengrasscoreipc as ipc
 from awsiot.greengrasscoreipc.model import (
     PublishToTopicRequest,
@@ -102,7 +103,7 @@ from awsiot.greengrasscoreipc.model import (
 ipc_client = ipc.connect()
 
 TOPIC = "sensors/temperature/readings"
-PUBLISH_INTERVAL = 10  # seconds
+PUBLISH_INTERVAL = int(os.environ.get("PUBLISH_INTERVAL", "10"))  # seconds
 
 def read_temperature():
     """Read from temperature sensor. Replace with actual sensor code."""
@@ -118,14 +119,16 @@ def publish_reading(temperature):
         "source": "edge"
     }
 
-    request = PublishToTopicRequest(
-        topic=TOPIC,
-        publish_message=PublishMessage(
-            json_message=JsonMessage(message=message)
-        )
-    )
+    request = PublishToTopicRequest()
+    request.topic = TOPIC
+    publish_message = PublishMessage()
+    publish_message.json_message = JsonMessage()
+    publish_message.json_message.message = message
+    request.publish_message = publish_message
 
-    ipc_client.new_publish_to_topic().activate(request).result()
+    operation = ipc_client.new_publish_to_topic()
+    operation.activate(request)
+    operation.get_response().result(10)
     print(f"Published: {json.dumps(message)}")
 
 # Main loop
@@ -154,14 +157,21 @@ ComponentConfiguration:
   DefaultConfiguration:
     publishInterval: 10
     sensorPin: 4
+    accessControl:
+      aws.greengrass.ipc.pubsub:
+        com.example.TemperatureReader:pubsub:1:
+          policyDescription: Allows publishing temperature readings.
+          operations:
+            - aws.greengrass#PublishToTopic
+          resources:
+            - sensors/temperature/readings
 
 Manifests:
   - Platform:
       os: linux
     Lifecycle:
-      install: pip3 install awsiotsdk
-      run:
-        script: python3 {artifacts:path}/temperature_reader.py
+      install: python3 -m pip install --user awsiotsdk
+      Run: PUBLISH_INTERVAL={configuration:/publishInterval} python3 -u {artifacts:path}/temperature_reader.py
     Artifacts:
       - URI: s3://my-greengrass-components/com.example.TemperatureReader/1.0.0/temperature_reader.py
 ```
@@ -181,7 +191,7 @@ aws greengrassv2 create-component-version \
 
 # Create a deployment to the core device
 aws greengrassv2 create-deployment \
-    --target-arn "arn:aws:iot:us-east-1:123456789:thing/MyGreengrassCore" \
+    --target-arn "arn:aws:iot:us-east-1:123456789012:thing/MyGreengrassCore" \
     --deployment-name "DeployTemperatureReader" \
     --components '{
         "com.example.TemperatureReader": {
@@ -226,7 +236,7 @@ def handler(event, context):
             payload=json.dumps(alert)
         )
 
-        # Also publish to a cloud-synced topic
+        # Publish to another local topic that an MQTT bridge component can forward to AWS IoT Core
         client.publish(
             topic='cloud/alerts/temperature',
             payload=json.dumps(alert)
@@ -239,11 +249,14 @@ def handler(event, context):
 
 ## Local Device Communication
 
-One of Greengrass's most useful features is local MQTT messaging between devices. Devices connected to the Greengrass Core can communicate without any cloud involvement.
+One of Greengrass's most useful features is local messaging between devices and components. Devices connected to the Greengrass Core can communicate without any cloud involvement.
+
+The subscriber component's recipe must grant `aws.greengrass#SubscribeToTopic` access for the topic it reads.
 
 ```python
 # local_subscriber.py - Subscribe to local MQTT topics
 import awsiot.greengrasscoreipc as ipc
+import awsiot.greengrasscoreipc.client as client
 from awsiot.greengrasscoreipc.model import (
     SubscribeToTopicRequest,
     SubscriptionResponseMessage
@@ -252,9 +265,14 @@ import json
 
 ipc_client = ipc.connect()
 
-class StreamHandler(ipc.client.SubscribeToTopicStreamHandler):
+def activate_fan():
+    """Replace with GPIO, serial, or actuator-specific control code."""
+    print("Fan activation command sent")
+
+class StreamHandler(client.SubscribeToTopicStreamHandler):
     def on_stream_event(self, event: SubscriptionResponseMessage):
-        message = json.loads(event.json_message.message)
+        payload = event.json_message.message
+        message = payload if isinstance(payload, dict) else json.loads(payload)
         print(f"Received: {message}")
 
         # React to local sensor data
@@ -265,15 +283,18 @@ class StreamHandler(ipc.client.SubscribeToTopicStreamHandler):
 
     def on_stream_error(self, error):
         print(f"Stream error: {error}")
+        return False
 
     def on_stream_closed(self):
         print("Stream closed")
 
 # Subscribe to local temperature readings
-request = SubscribeToTopicRequest(topic="sensors/temperature/readings")
+request = SubscribeToTopicRequest()
+request.topic = "sensors/temperature/readings"
 handler = StreamHandler()
 operation = ipc_client.new_subscribe_to_topic(handler)
 operation.activate(request)
+operation.get_response().result(10)
 
 # Keep running
 import time
@@ -285,9 +306,12 @@ while True:
 
 Greengrass can run ML models locally for real-time inference without cloud latency.
 
+Pass the deployed model path to the component as `MODEL_PATH`, and grant `aws.greengrass#PublishToTopic` access for the output topic.
+
 ```python
 # ml_inference.py - Run ML model at the edge
 import json
+import os
 import numpy as np
 import awsiot.greengrasscoreipc as ipc
 from awsiot.greengrasscoreipc.model import PublishToTopicRequest, PublishMessage, JsonMessage
@@ -295,7 +319,8 @@ from awsiot.greengrasscoreipc.model import PublishToTopicRequest, PublishMessage
 # Load the model (deployed as a component artifact)
 import tflite_runtime.interpreter as tflite
 
-interpreter = tflite.Interpreter(model_path="/greengrass/v2/packages/artifacts/model.tflite")
+MODEL_PATH = os.environ["MODEL_PATH"]
+interpreter = tflite.Interpreter(model_path=MODEL_PATH)
 interpreter.allocate_tensors()
 
 ipc_client = ipc.connect()
@@ -329,14 +354,16 @@ def process_and_publish(sensor_reading):
     }
 
     if result["is_anomaly"]:
-        # Publish anomaly alert locally and to cloud
-        request = PublishToTopicRequest(
-            topic="ml/anomalies",
-            publish_message=PublishMessage(
-                json_message=JsonMessage(message=result)
-            )
-        )
-        ipc_client.new_publish_to_topic().activate(request)
+        # Publish anomaly alert locally
+        request = PublishToTopicRequest()
+        request.topic = "ml/anomalies"
+        publish_message = PublishMessage()
+        publish_message.json_message = JsonMessage()
+        publish_message.json_message.message = result
+        request.publish_message = publish_message
+        operation = ipc_client.new_publish_to_topic()
+        operation.activate(request)
+        operation.get_response().result(10)
 
     return result
 ```
@@ -344,6 +371,8 @@ def process_and_publish(sensor_reading):
 ## Stream Manager
 
 Stream Manager buffers data locally and sends it to the cloud efficiently. It handles network interruptions automatically.
+
+Deploy the `aws.greengrass.StreamManager` component and install the Stream Manager SDK in the component that uses this client.
 
 ```python
 # stream_manager_example.py - Use Stream Manager for reliable cloud upload
@@ -384,6 +413,6 @@ stream_client.append_message("SensorDataStream", data)
 
 ## Wrapping Up
 
-Greengrass bridges the gap between cloud and edge. When you need sub-millisecond response times, offline operation, or local data processing before cloud upload, it's the right tool. The component model in V2 makes deployment and updates clean, and the IPC mechanism gives your edge code access to local MQTT, stream management, and secrets.
+Greengrass bridges the gap between cloud and edge. When you need millisecond-scale response times, offline operation, or local data processing before cloud upload, it's the right tool. The component model in V2 makes deployment and updates clean, and the IPC mechanism gives your edge code access to local pub/sub, stream management, and secrets.
 
 Start with a simple component, get comfortable with the deployment workflow, then layer on ML inference and stream management as your use case demands. For the cloud side of your IoT architecture, see our guides on [IoT Core device connectivity](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iot-core-for-device-connectivity/view) and the [Rules Engine](https://oneuptime.com/blog/post/2026-02-12-use-iot-core-rules-engine/view).
