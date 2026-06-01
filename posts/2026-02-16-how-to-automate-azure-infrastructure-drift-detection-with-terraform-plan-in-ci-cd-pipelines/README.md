@@ -62,7 +62,7 @@ env:
   ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
   ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-  TF_VERSION: '1.7.0'
+  TF_VERSION: '1.15.5'
 
 jobs:
   detect-drift:
@@ -94,8 +94,11 @@ jobs:
         working-directory: environments/${{ matrix.environment }}
         # -detailed-exitcode returns 0 (no changes), 1 (error), 2 (changes detected)
         run: |
+          set +e
           terraform plan -detailed-exitcode -input=false -out=tfplan 2>&1 | tee plan_output.txt
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          exit_code=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
         continue-on-error: true
 
       - name: Check for Drift
@@ -108,6 +111,7 @@ jobs:
           elif [ "$EXIT_CODE" == "1" ]; then
             echo "drift_detected=error" >> $GITHUB_OUTPUT
             echo "Error running plan for ${{ matrix.environment }}"
+            exit 1
           else
             echo "drift_detected=false" >> $GITHUB_OUTPUT
             echo "No drift in ${{ matrix.environment }}"
@@ -171,8 +175,10 @@ jobs:
 
       - name: Send Slack Notification
         if: steps.drift.outputs.drift_detected == 'true'
-        uses: slackapi/slack-github-action@v1.25.0
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
             {
               "text": "Infrastructure drift detected in ${{ matrix.environment }} environment. Check GitHub Issues for details.",
@@ -193,8 +199,6 @@ jobs:
                 }
               ]
             }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
 
 ## Understanding the Exit Codes
@@ -244,7 +248,7 @@ stages:
         steps:
           - task: TerraformInstaller@1
             inputs:
-              terraformVersion: '1.7.0'
+              terraformVersion: '1.15.5'
 
           - script: terraform init -input=false
             displayName: 'Terraform Init'
