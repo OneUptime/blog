@@ -217,6 +217,7 @@ resource "azurerm_mssql_managed_instance" "secondary" {
   location                     = azurerm_resource_group.secondary.location
   administrator_login          = "miadmin"
   administrator_login_password = var.sql_admin_password
+  dns_zone_partner_id          = azurerm_mssql_managed_instance.primary.id
   license_type                 = "BasePrice"
   sku_name                     = "GP_Gen5"
   storage_size_in_gb           = 256
@@ -235,7 +236,7 @@ resource "azurerm_mssql_managed_instance" "secondary" {
 }
 ```
 
-Both instances should have the same SKU, vCores, and storage configuration. The failover group requires matching configurations.
+Both instances should have the same SKU, vCores, and storage configuration. The secondary instance must also share the primary instance's DNS zone, which is why `dns_zone_partner_id` is set. The failover group requires matching configurations.
 
 ## Creating the Failover Group
 
@@ -270,17 +271,17 @@ After deployment, your application should connect through the failover group lis
 ```hcl
 # Output the failover group listener endpoints
 output "failover_group_read_write_endpoint" {
-  value       = "fog-sqlmi-prod.database.windows.net"
-  description = "Read-write listener endpoint - always points to primary"
+  value       = "fog-sqlmi-prod.${azurerm_mssql_managed_instance.primary.dns_zone}.database.windows.net"
+  description = "Read-write listener endpoint - always points to the current primary"
 }
 
 output "failover_group_read_only_endpoint" {
-  value       = "fog-sqlmi-prod.secondary.database.windows.net"
-  description = "Read-only listener endpoint - always points to secondary"
+  value       = "fog-sqlmi-prod.secondary.${azurerm_mssql_managed_instance.primary.dns_zone}.database.windows.net"
+  description = "Read-only listener endpoint - points to the current secondary"
 }
 ```
 
-The read-write endpoint always resolves to whichever instance is currently the primary. The read-only endpoint always resolves to the secondary, which is useful for offloading read queries.
+The read-write endpoint always resolves to whichever instance is currently the primary. The read-only endpoint resolves to the current secondary, which is useful for offloading read queries.
 
 ## Important Considerations
 
@@ -300,7 +301,7 @@ resource "azurerm_mssql_managed_instance" "primary" {
 }
 ```
 
-Cost is another consideration. SQL Managed Instance is one of the more expensive Azure services. A General Purpose instance with 8 vCores runs about $700-800 per month, and you need two of them for geo-replication.
+Cost is another consideration. SQL Managed Instance is one of the more expensive Azure services. Pricing depends on region, service tier, vCores, storage, backup storage, and whether you use the base rate with Azure Hybrid Benefit or license-included pricing. You need two managed instances for geo-replication, although the secondary can be configured as a license-free standby replica if it is used only for disaster recovery.
 
 Testing failover is something you should do before going to production. You can trigger a manual failover through the Azure CLI or the portal to verify that your application handles the switch gracefully.
 
