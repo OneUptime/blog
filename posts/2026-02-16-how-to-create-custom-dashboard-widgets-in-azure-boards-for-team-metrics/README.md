@@ -72,22 +72,22 @@ The most flexible widgets are built on work item queries. Any saved query can be
 
 ### Bug Trend Chart
 
-First, create a query that finds all bugs created in the current sprint.
+First, create a query that finds all bugs assigned to the current sprint.
 
 ```text
 Work Item Type = Bug
-AND Created Date >= @StartOfIteration
+AND Iteration Path = @CurrentIteration
 ```
 
-Save this query as "Sprint Bugs - Created" in Shared Queries. Then:
+Save this query as "Sprint Bugs" in Shared Queries. Then:
 
 1. On your dashboard, add the **Chart for Work Items** widget
 2. Select your saved query
-3. Choose "Stacked Area" chart type
-4. Group by "Created Date" (by day)
-5. Stack by "Priority"
+3. Choose "Trend" chart type
+4. Set the period to match your sprint length
+5. Set the aggregation to "Count of Work Items"
 
-This gives you a chart showing how many bugs are being found each day, broken down by priority.
+This gives you a chart showing how your sprint bug count changes over time. If you need to track bugs created after the sprint started, use your actual sprint start date in a Created Date clause, because WIQL does not provide an `@StartOfIteration` macro.
 
 ### Work Distribution by Assignee
 
@@ -125,9 +125,9 @@ Query tiles are simple count widgets that show how many items match a query. The
 Create tiles for:
 
 - **Open Bugs**: Query for `Work Item Type = Bug AND State NOT IN (Done, Closed)` - shows total open bug count
-- **Sprint Progress**: Query for `Iteration Path = @CurrentIteration AND State = Done` - shows how many items are done
+- **Sprint Progress**: Query for `Iteration Path = @CurrentIteration AND State IN (Done, Closed)` - shows how many items are complete
 - **Blocked Items**: Query for items tagged "blocked" - anything above 0 needs attention
-- **Unestimated Stories**: Query for stories with 0 story points - these need grooming
+- **Unestimated Stories**: Query for stories where Story Points is blank - these need grooming
 
 Configure the tile color to change based on thresholds. For example, the open bugs tile could show green when under 10, yellow when 10-20, and red when above 20.
 
@@ -166,7 +166,7 @@ A good dashboard has a clear information hierarchy. Here is a layout that works 
 |    Work by Assignee (bar chart)  |    Build History                 |
 |    (medium widget)               |    (medium widget)               |
 +----------------------------------+----------------------------------+
-|    Aging Items (query results)   |    Bug Trend (area chart)        |
+|    Aging Items (query results)   |    Bug Trend (trend chart)       |
 |    (medium widget)               |    (medium widget)               |
 +----------------------------------+----------------------------------+
 ```
@@ -185,27 +185,65 @@ The following script calculates cycle time for completed items.
 
 ORG="myorg"
 PROJECT="myproject"
+TEAM="myteam"
 PAT="your-pat-token"
 
+# Get the team's current iteration path. The @CurrentIteration macro is
+# evaluated by the web portal, so REST scripts should use an explicit path.
+ITERATION_PATH=$(curl -s -u ":$PAT" \
+  "https://dev.azure.com/$ORG/$PROJECT/$TEAM/_apis/work/teamsettings/iterations?\$timeframe=current&api-version=7.1" |
+  jq -r '.values[0].path')
+
+if [ -z "$ITERATION_PATH" ] || [ "$ITERATION_PATH" = "null" ]; then
+  echo "No current iteration found for team $TEAM"
+  exit 1
+fi
+
+if [[ "$ITERATION_PATH" == \\* ]]; then
+  CURRENT_ITERATION_PATH="${PROJECT}${ITERATION_PATH}"
+else
+  CURRENT_ITERATION_PATH="$ITERATION_PATH"
+fi
+
 # Query for items completed in the current sprint
-QUERY='{"query": "SELECT [System.Id], [System.Title], [Microsoft.VSTS.Common.ActivatedDate], [Microsoft.VSTS.Common.ClosedDate] FROM WorkItems WHERE [System.IterationPath] = @CurrentIteration AND [System.State] = \"Closed\" AND [System.WorkItemType] = \"User Story\""}'
+QUERY=$(jq -n --arg iteration "$CURRENT_ITERATION_PATH" '{
+  query: "SELECT [System.Id] FROM WorkItems WHERE [System.IterationPath] = '\''\($iteration)'\'' AND [System.State] IN ('\''Done'\'', '\''Closed'\'') AND [System.WorkItemType] = '\''User Story'\''"
+}')
 
 # Execute the query
 RESULT=$(curl -s -u ":$PAT" \
-  "https://dev.azure.com/$ORG/$PROJECT/_apis/wit/wiql?api-version=7.0" \
+  "https://dev.azure.com/$ORG/$PROJECT/_apis/wit/wiql?api-version=7.1" \
   -H "Content-Type: application/json" \
   -d "$QUERY")
 
 # Extract work item IDs
-IDS=$(echo $RESULT | jq -r '.workItems[].id' | tr '\n' ',' | sed 's/,$//')
+IDS=$(echo "$RESULT" | jq -r '.workItems[].id' | tr '\n' ',' | sed 's/,$//')
 
 # Fetch details for each item
 if [ -n "$IDS" ]; then
   DETAILS=$(curl -s -u ":$PAT" \
-    "https://dev.azure.com/$ORG/$PROJECT/_apis/wit/workitems?ids=$IDS&fields=System.Title,Microsoft.VSTS.Common.ActivatedDate,Microsoft.VSTS.Common.ClosedDate&api-version=7.0")
+    "https://dev.azure.com/$ORG/$PROJECT/_apis/wit/workitems?ids=$IDS&fields=System.Title,Microsoft.VSTS.Common.ActivatedDate,Microsoft.VSTS.Common.ClosedDate&api-version=7.1")
 
   echo "Completed Items and Cycle Times:"
-  echo "$DETAILS" | jq -r '.value[] | "\(.fields."System.Title") - Activated: \(.fields."Microsoft.VSTS.Common.ActivatedDate") Closed: \(.fields."Microsoft.VSTS.Common.ClosedDate")"'
+  echo "$DETAILS" | jq -r '
+    def to_seconds: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    .value[] |
+    select(.fields."Microsoft.VSTS.Common.ActivatedDate" and .fields."Microsoft.VSTS.Common.ClosedDate") |
+    . as $item |
+    (($item.fields."Microsoft.VSTS.Common.ClosedDate" | to_seconds) - ($item.fields."Microsoft.VSTS.Common.ActivatedDate" | to_seconds)) / 86400 as $days |
+    "\($item.fields."System.Title") - Cycle time: \($days | round) days"
+  '
+
+  AVG_DAYS=$(echo "$DETAILS" | jq -r '
+    def to_seconds: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    [
+      .value[] |
+      select(.fields."Microsoft.VSTS.Common.ActivatedDate" and .fields."Microsoft.VSTS.Common.ClosedDate") |
+      ((.fields."Microsoft.VSTS.Common.ClosedDate" | to_seconds) - (.fields."Microsoft.VSTS.Common.ActivatedDate" | to_seconds)) / 86400
+    ] as $days |
+    if ($days | length) > 0 then ($days | add / length) else 0 end
+  ')
+  printf "Average cycle time: %.1f days\n" "$AVG_DAYS"
 fi
 ```
 
