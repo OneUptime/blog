@@ -27,7 +27,7 @@ graph LR
     end
 ```
 
-gRPC is typically 5-10x faster than REST for the same payload due to binary serialization and HTTP/2 connection reuse. It also supports streaming - server-side, client-side, and bidirectional - which REST cannot do natively.
+gRPC can be significantly faster than JSON-over-HTTP APIs for many service-to-service workloads due to binary serialization and HTTP/2 connection reuse, though the exact gain depends on payload shape, network conditions, and implementation. It also supports streaming - server-side, client-side, and bidirectional - which REST cannot do natively.
 
 ## Prerequisites
 
@@ -43,6 +43,7 @@ gRPC is typically 5-10x faster than REST for the same payload due to binary seri
 # Create the project
 
 mkdir grpc-azure-demo && cd grpc-azure-demo
+mkdir protos
 python -m venv venv
 source venv/bin/activate
 
@@ -154,14 +155,15 @@ Generate the Python code from the proto file:
 ```bash
 # Generate Python gRPC code
 python -m grpc_tools.protoc \
-  -I protos \
-  --python_out=generated \
-  --pyi_out=generated \
-  --grpc_python_out=generated \
+  -I . \
+  --python_out=. \
+  --pyi_out=. \
+  --grpc_python_out=. \
   protos/inventory.proto
+touch protos/__init__.py
 ```
 
-This generates `inventory_pb2.py` (message classes), `inventory_pb2.pyi` (type stubs), and `inventory_pb2_grpc.py` (service stubs).
+This generates `protos/inventory_pb2.py` (message classes), `protos/inventory_pb2.pyi` (type stubs), and `protos/inventory_pb2_grpc.py` (service stubs).
 
 ## Implementing the gRPC Server
 
@@ -171,12 +173,11 @@ import grpc
 from concurrent import futures
 from datetime import datetime, timezone
 import uuid
-import asyncio
 import time
 import logging
 
-from generated import inventory_pb2
-from generated import inventory_pb2_grpc
+from protos import inventory_pb2
+from protos import inventory_pb2_grpc
 from grpc_reflection.v1alpha import reflection
 
 logging.basicConfig(level=logging.INFO)
@@ -288,7 +289,7 @@ class InventoryServicer(inventory_pb2_grpc.InventoryServiceServicer):
             context.set_details("Insufficient stock")
             return inventory_pb2.Product()
 
-        # Create updated product (protobuf messages are immutable)
+        # Create a replacement product value for the in-memory store.
         now = datetime.now(timezone.utc).isoformat()
         updated = inventory_pb2.Product(
             id=product.id, name=product.name, sku=product.sku,
@@ -423,14 +424,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy proto files and generate code
 COPY protos/ protos/
-RUN mkdir -p generated && \
-    python -m grpc_tools.protoc \
-    -I protos \
-    --python_out=generated \
-    --pyi_out=generated \
-    --grpc_python_out=generated \
+RUN python -m grpc_tools.protoc \
+    -I . \
+    --python_out=. \
+    --pyi_out=. \
+    --grpc_python_out=. \
     protos/inventory.proto && \
-    touch generated/__init__.py
+    touch protos/__init__.py
 
 # Production stage
 FROM python:3.11-slim
@@ -441,8 +441,8 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy generated code and server
-COPY --from=builder /app/generated ./generated
+# Copy proto files, generated code, and server
+COPY --from=builder /app/protos ./protos
 COPY server.py .
 
 # Run as non-root user
@@ -459,10 +459,10 @@ CMD ["python", "server.py"]
 Create `requirements.txt`:
 
 ```text
-grpcio==1.60.0
-grpcio-tools==1.60.0
-grpcio-reflection==1.60.0
-protobuf==4.25.1
+grpcio==1.80.0
+grpcio-tools==1.80.0
+grpcio-reflection==1.80.0
+protobuf==6.33.6
 ```
 
 ## Deploying to Azure Container Apps
@@ -512,15 +512,15 @@ az containerapp create \
   --memory 1.0Gi
 ```
 
-The key setting is `--transport http2`. Without this, Azure Container Apps defaults to HTTP/1.1, which does not support gRPC.
+The key setting is `--transport http2`. Azure Container Apps defaults to `auto`, but setting `http2` explicitly ensures the ingress is configured for gRPC traffic.
 
 ## Building a gRPC Client
 
 ```python
 # client.py - gRPC client for testing
 import grpc
-from generated import inventory_pb2
-from generated import inventory_pb2_grpc
+from protos import inventory_pb2
+from protos import inventory_pb2_grpc
 
 
 def run():
