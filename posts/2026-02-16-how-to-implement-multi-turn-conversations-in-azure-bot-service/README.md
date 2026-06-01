@@ -38,7 +38,7 @@ graph TD
 ## Prerequisites
 
 - Python 3.9+
-- Bot Framework SDK for Python
+- Bot Framework SDK for Python v4 for existing bots. The SDK and Bot Framework Emulator are archived and no longer receive product updates; for new agents, Microsoft recommends the Microsoft 365 Agents SDK.
 - An Azure Bot Service resource (or Bot Framework Emulator for local testing)
 
 Install the required packages:
@@ -46,7 +46,7 @@ Install the required packages:
 ```bash
 # Install Bot Framework SDK packages including dialogs
 
-pip install botbuilder-core botbuilder-dialogs botbuilder-integration-aiohttp
+pip install botbuilder-core botbuilder-dialogs botbuilder-integration-aiohttp botbuilder-azure
 ```
 
 ## Step 1: Set Up State Management
@@ -99,6 +99,7 @@ from botbuilder.dialogs import (
     WaterfallDialog,
     WaterfallStepContext,
     DialogTurnResult,
+    DialogTurnStatus,
     ComponentDialog,
 )
 from botbuilder.dialogs.prompts import (
@@ -377,7 +378,7 @@ async def _interrupt(self, inner_dc):
             "You are creating a support ticket. "
             "Answer each question to proceed, or type 'cancel' to stop."
         )
-        # Return a waiting status so the current prompt re-displays
+        # Return a waiting status so the current prompt remains active
         return DialogTurnResult(DialogTurnStatus.Waiting)
 
     return None
