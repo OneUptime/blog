@@ -22,12 +22,12 @@ The problem is that default caching behavior might not match your application's 
 
 Azure CDN comes in several flavors, and caching rule configuration varies slightly between them:
 
-- **Azure CDN Standard from Microsoft** - uses rules engine for caching behavior
-- **Azure CDN Standard from Akamai** - uses global caching rules and custom caching rules
-- **Azure CDN Standard from Verizon** - uses the Premium Verizon rules engine
-- **Azure Front Door** - integrated CDN with more advanced routing and caching options
+- **Azure Front Door Standard/Premium** - Microsoft's current CDN platform with advanced routing and caching options
+- **Azure CDN Standard from Microsoft (classic)** - uses the standard rules engine for caching behavior, but is on a retirement path and cannot be used for new profile creation
+- **Azure CDN Standard from Akamai** - retired in 2023
+- **Azure CDN Standard/Premium from Edgio, formerly Verizon** - retired in 2025
 
-For this guide, I will focus on the Azure CDN Standard from Microsoft profile, since it is the most commonly used and has good flexibility through the rules engine.
+For this guide, I will focus on existing Azure CDN Standard from Microsoft (classic) profiles, since they still have good flexibility through the rules engine. For new deployments, use Azure Front Door Standard or Premium instead.
 
 ## Setting Up Global Caching Rules
 
@@ -38,24 +38,22 @@ Here is how to set a global caching rule using Azure CLI that forces a specific 
 ```bash
 # Set a global caching rule to cache all content for 7 days
 
-# Override means ignore origin cache headers
+# Override replaces the origin TTL when the response is cacheable
 az cdn endpoint rule add \
   --resource-group myResourceGroup \
   --profile-name myCdnProfile \
   --name myEndpoint \
-  --order 1 \
+  --order 0 \
   --rule-name "GlobalCacheRule" \
-  --match-variable RequestUri \
-  --operator Any \
   --action-name CacheExpiration \
   --cache-behavior Override \
-  --cache-duration "7.00:00:00"
+  --cache-duration "168:00:00"
 ```
 
 The `cache-behavior` parameter accepts three values:
 
-- **Override** - ignores the origin's cache headers and applies the specified duration
-- **SetIfMissing** - applies the specified duration only if the origin does not send cache headers
+- **Override** - overrides the TTL returned by the origin and applies the specified duration when the response is cacheable
+- **SetIfMissing** - applies the specified duration only if the origin does not send a TTL and the response is cacheable
 - **BypassCache** - tells CDN not to cache the response at all
 
 For most static-heavy applications, I recommend using `SetIfMissing` as your global rule. This way, if your origin server sends proper Cache-Control headers, the CDN respects them, but if it does not, your fallback duration kicks in.
@@ -64,7 +62,7 @@ For most static-heavy applications, I recommend using `SetIfMissing` as your glo
 
 Different file types need different cache durations. JavaScript and CSS files that are versioned with hashes can be cached for a long time, while HTML pages should be refreshed more frequently.
 
-Here is an example of creating custom caching rules for different file types using the rules engine:
+Here is an example delivery policy fragment for creating custom caching rules for different file types using the rules engine:
 
 ```json
 {
@@ -78,7 +76,8 @@ Here is an example of creating custom caching rules for different file types usi
           "parameters": {
             "operator": "Equal",
             "matchValues": ["css", "js", "woff2", "woff", "ttf"],
-            "transforms": ["Lowercase"]
+            "transforms": ["Lowercase"],
+            "typeName": "DeliveryRuleUrlFileExtensionMatchConditionParameters"
           }
         }
       ],
@@ -88,7 +87,8 @@ Here is an example of creating custom caching rules for different file types usi
           "parameters": {
             "cacheBehavior": "Override",
             "cacheType": "All",
-            "cacheDuration": "30.00:00:00"
+            "cacheDuration": "30.00:00:00",
+            "typeName": "DeliveryRuleCacheExpirationActionParameters"
           }
         }
       ]
@@ -102,7 +102,8 @@ Here is an example of creating custom caching rules for different file types usi
           "parameters": {
             "operator": "Equal",
             "matchValues": ["jpg", "jpeg", "png", "gif", "svg", "webp"],
-            "transforms": ["Lowercase"]
+            "transforms": ["Lowercase"],
+            "typeName": "DeliveryRuleUrlFileExtensionMatchConditionParameters"
           }
         }
       ],
@@ -112,7 +113,8 @@ Here is an example of creating custom caching rules for different file types usi
           "parameters": {
             "cacheBehavior": "Override",
             "cacheType": "All",
-            "cacheDuration": "90.00:00:00"
+            "cacheDuration": "90.00:00:00",
+            "typeName": "DeliveryRuleCacheExpirationActionParameters"
           }
         }
       ]
@@ -126,7 +128,8 @@ Here is an example of creating custom caching rules for different file types usi
           "parameters": {
             "operator": "Equal",
             "matchValues": ["html", "htm"],
-            "transforms": ["Lowercase"]
+            "transforms": ["Lowercase"],
+            "typeName": "DeliveryRuleUrlFileExtensionMatchConditionParameters"
           }
         }
       ],
@@ -136,7 +139,8 @@ Here is an example of creating custom caching rules for different file types usi
           "parameters": {
             "cacheBehavior": "Override",
             "cacheType": "All",
-            "cacheDuration": "0.01:00:00"
+            "cacheDuration": "01:00:00",
+            "typeName": "DeliveryRuleCacheExpirationActionParameters"
           }
         }
       ]
@@ -149,13 +153,13 @@ This setup caches static assets for 30 days, images for 90 days, and HTML files 
 
 ## Handling Query Strings
 
-Query strings can have a major impact on your cache hit ratio. By default, Azure CDN treats URLs with different query strings as different resources. So `style.css?v=1` and `style.css?v=2` would result in two separate cache entries.
+Query strings can have a major impact on your cache hit ratio. When Azure CDN is configured with `UseQueryString`, URLs with different query strings are treated as different resources. So `style.css?v=1` and `style.css?v=2` would result in two separate cache entries.
 
 You have three options for query string behavior:
 
 1. **IgnoreQueryString** - strips query strings before caching, so all variations hit the same cached object
 2. **BypassCaching** - does not cache any URL that includes query strings
-3. **UseQueryString** - treats each unique query string as a separate cached resource (default)
+3. **UseQueryString** - treats each unique query string as a separate cached resource
 
 For most applications, `UseQueryString` is the right choice if you use query strings for cache busting (like `app.js?v=abc123`). If your query strings are irrelevant to content (like tracking parameters), switch to `IgnoreQueryString`.
 
@@ -182,7 +186,7 @@ const app = express();
 // maxAge is in milliseconds - 30 days = 2592000000ms
 app.use('/static', express.static('public', {
   maxAge: '30d',
-  immutable: true, // tells CDN the content will never change at this URL
+  immutable: true, // tells supported caches not to revalidate while maxAge is fresh
   etag: true       // enable ETags for conditional requests
 }));
 
