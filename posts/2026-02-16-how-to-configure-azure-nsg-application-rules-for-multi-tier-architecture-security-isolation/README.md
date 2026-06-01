@@ -10,7 +10,7 @@ Description: A practical guide to configuring Azure Network Security Groups for 
 
 Running a multi-tier application in Azure without proper network segmentation is like leaving all the doors in your house unlocked. Sure, everything works, but one compromised component gives an attacker free rein to move laterally across your entire infrastructure. Network Security Groups (NSGs) are the primary tool Azure gives you to lock down traffic between tiers, and getting the rules right is critical.
 
-In this guide, I will walk through how to design and configure NSG rules for a classic three-tier architecture: a web tier, an application tier, and a database tier. We will build the rules from scratch, starting with a deny-all baseline and adding only the traffic flows that are actually needed.
+In this guide, I will walk through how to design and configure NSG rules for a classic three-tier architecture: a web tier, an application tier, and a database tier. We will build the rules from scratch, overriding Azure's permissive default VNet and outbound internet rules where needed, and adding only the traffic flows that are actually needed.
 
 ## Understanding the Three-Tier Model
 
@@ -105,6 +105,20 @@ az network nsg rule create \
   --destination-address-prefixes '10.0.1.0/24' \
   --destination-port-ranges 443
 
+# Deny other inbound traffic from the VNet
+az network nsg rule create \
+  --resource-group $RG \
+  --nsg-name nsg-web \
+  --name Deny-VNet-Inbound \
+  --priority 4000 \
+  --direction Inbound \
+  --access Deny \
+  --protocol '*' \
+  --source-address-prefixes VirtualNetwork \
+  --source-port-ranges '*' \
+  --destination-address-prefixes '10.0.1.0/24' \
+  --destination-port-ranges '*'
+
 # Allow outbound traffic to the application tier on port 8080
 az network nsg rule create \
   --resource-group $RG \
@@ -131,6 +145,20 @@ az network nsg rule create \
   --source-address-prefixes '10.0.1.0/24' \
   --source-port-ranges '*' \
   --destination-address-prefixes '10.0.3.0/24' \
+  --destination-port-ranges '*'
+
+# Deny all other initiated outbound traffic
+az network nsg rule create \
+  --resource-group $RG \
+  --nsg-name nsg-web \
+  --name Deny-All-Other-Outbound \
+  --priority 4096 \
+  --direction Outbound \
+  --access Deny \
+  --protocol '*' \
+  --source-address-prefixes '10.0.1.0/24' \
+  --source-port-ranges '*' \
+  --destination-address-prefixes '*' \
   --destination-port-ranges '*'
 ```
 
@@ -196,6 +224,34 @@ az network nsg rule create \
   --source-port-ranges '*' \
   --destination-address-prefixes '10.0.1.0/24' \
   --destination-port-ranges '*'
+
+# Deny outbound to internet
+az network nsg rule create \
+  --resource-group $RG \
+  --nsg-name nsg-app \
+  --name Deny-Internet-Outbound \
+  --priority 300 \
+  --direction Outbound \
+  --access Deny \
+  --protocol '*' \
+  --source-address-prefixes '10.0.2.0/24' \
+  --source-port-ranges '*' \
+  --destination-address-prefixes Internet \
+  --destination-port-ranges '*'
+
+# Deny all other initiated outbound traffic
+az network nsg rule create \
+  --resource-group $RG \
+  --nsg-name nsg-app \
+  --name Deny-All-Other-Outbound \
+  --priority 4096 \
+  --direction Outbound \
+  --access Deny \
+  --protocol '*' \
+  --source-address-prefixes '10.0.2.0/24' \
+  --source-port-ranges '*' \
+  --destination-address-prefixes '*' \
+  --destination-port-ranges '*'
 ```
 
 ## Step 4: Configure the Database Tier NSG
@@ -233,18 +289,18 @@ az network nsg rule create \
   --destination-address-prefixes '10.0.3.0/24' \
   --destination-port-ranges '*'
 
-# Deny all outbound to internet (database should not reach the internet)
+# Deny all initiated outbound traffic from the database tier
 az network nsg rule create \
   --resource-group $RG \
   --nsg-name nsg-db \
-  --name Deny-Internet-Outbound \
+  --name Deny-All-Outbound \
   --priority 100 \
   --direction Outbound \
   --access Deny \
   --protocol '*' \
   --source-address-prefixes '10.0.3.0/24' \
   --source-port-ranges '*' \
-  --destination-address-prefixes Internet \
+  --destination-address-prefixes '*' \
   --destination-port-ranges '*'
 ```
 
@@ -308,16 +364,19 @@ az network watcher test-ip-flow \
   --remote '10.0.3.4:1433'
 ```
 
-## Enabling NSG Flow Logs
+## Enabling Virtual Network Flow Logs
 
-You should always enable NSG flow logs for visibility into what traffic is being allowed and denied. This is invaluable for troubleshooting and security auditing.
+You should always enable flow logs for visibility into network traffic. NSG flow logs are being retired, and new NSG flow logs can no longer be created after June 30, 2025, so use virtual network flow logs for new deployments.
 
 ```bash
-# Enable NSG flow logs (requires a storage account and Network Watcher)
+# Enable virtual network flow logs (requires a storage account and Microsoft.Insights provider registration)
+az provider register --namespace Microsoft.Insights
+
 az network watcher flow-log create \
   --resource-group $RG \
-  --name flowlog-nsg-web \
-  --nsg nsg-web \
+  --location $LOCATION \
+  --name flowlog-vnet-multitier \
+  --vnet $VNET_NAME \
   --storage-account stgsecuritylogs \
   --enabled true \
   --retention 90 \
