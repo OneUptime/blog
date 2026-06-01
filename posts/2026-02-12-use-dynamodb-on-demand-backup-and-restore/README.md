@@ -14,7 +14,7 @@ Let's cover how to set up both, automate them, and handle restores when things g
 
 ## Creating On-Demand Backups
 
-On-demand backups capture the full contents of a DynamoDB table - all items, provisioned capacity settings, GSIs, LSIs, encryption settings, and DynamoDB Streams configuration. They're consistent to within seconds of the backup request.
+On-demand backups capture the full contents of a DynamoDB table - all items, provisioned capacity settings, GSIs, LSIs, and DynamoDB Streams. They're consistent to within seconds of the backup request.
 
 Here's how to create one via the CLI.
 
@@ -57,7 +57,7 @@ aws dynamodb list-backups \
 
 ## Restoring from a Backup
 
-Restores always create a new table - you can't overwrite an existing one. The restored table gets the same data content and key schema, but some settings like auto-scaling policies, IAM policies, CloudWatch alarms, and tags aren't carried over. You'll need to reconfigure those.
+Restores always create a new table - you can't overwrite an existing one. The restored table gets the same data content and key schema, but some settings like auto-scaling policies, IAM policies, CloudWatch alarms, tags, stream settings, TTL settings, deletion protection settings, and PITR settings aren't carried over. You'll need to reconfigure those.
 
 ```bash
 # Restore a table from a backup
@@ -123,7 +123,7 @@ For production tables, you should automate backups. Here's a Lambda function tha
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 dynamodb = boto3.client('dynamodb')
 
@@ -132,13 +132,13 @@ TABLES_TO_BACKUP = ['Users', 'Orders', 'Products', 'Sessions']
 RETENTION_DAYS = 30
 
 def handler(event, context):
-    today = datetime.utcnow().strftime('%Y-%m-%d')
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
     for table_name in TABLES_TO_BACKUP:
         # Create today's backup
         backup_name = f'{table_name}-daily-{today}'
         try:
-            response = dynamodb.create_backup(
+            dynamodb.create_backup(
                 TableName=table_name,
                 BackupName=backup_name
             )
@@ -146,6 +146,8 @@ def handler(event, context):
         except dynamodb.exceptions.TableNotFoundException:
             print(f'Table {table_name} not found, skipping')
             continue
+        except dynamodb.exceptions.BackupInUseException:
+            print(f'Backup {backup_name} already exists or is in use, skipping create')
         except Exception as e:
             print(f'Error backing up {table_name}: {e}')
             continue
@@ -155,26 +157,36 @@ def handler(event, context):
 
 def cleanup_old_backups(table_name):
     """Delete backups older than the retention period."""
-    cutoff = datetime.utcnow() - timedelta(days=RETENTION_DAYS)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
+    exclusive_start_backup_arn = None
 
-    # List all user-created backups for this table
-    response = dynamodb.list_backups(
-        TableName=table_name,
-        BackupType='USER',
-        TimeRangeUpperBound=cutoff
-    )
+    while True:
+        # List all user-created backups for this table
+        request = {
+            'TableName': table_name,
+            'BackupType': 'USER',
+            'TimeRangeUpperBound': cutoff
+        }
+        if exclusive_start_backup_arn:
+            request['ExclusiveStartBackupArn'] = exclusive_start_backup_arn
 
-    for backup in response.get('BackupSummaries', []):
-        backup_arn = backup['BackupArn']
-        backup_name = backup['BackupName']
+        response = dynamodb.list_backups(**request)
 
-        # Only delete our automated daily backups
-        if '-daily-' in backup_name:
-            try:
-                dynamodb.delete_backup(BackupArn=backup_arn)
-                print(f'Deleted old backup: {backup_name}')
-            except Exception as e:
-                print(f'Error deleting backup {backup_name}: {e}')
+        for backup in response.get('BackupSummaries', []):
+            backup_arn = backup['BackupArn']
+            backup_name = backup['BackupName']
+
+            # Only delete our automated daily backups
+            if '-daily-' in backup_name:
+                try:
+                    dynamodb.delete_backup(BackupArn=backup_arn)
+                    print(f'Deleted old backup: {backup_name}')
+                except Exception as e:
+                    print(f'Error deleting backup {backup_name}: {e}')
+
+        exclusive_start_backup_arn = response.get('LastEvaluatedBackupArn')
+        if not exclusive_start_backup_arn:
+            break
 ```
 
 Schedule this with EventBridge to run daily.
