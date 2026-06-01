@@ -92,6 +92,7 @@ For testing, you can generate a self-signed certificate.
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout tls.key \
   -out tls.crt \
+  -addext "subjectAltName=DNS:myapp.example.com" \
   -subj "/CN=myapp.example.com/O=myorg"
 
 # Create the Kubernetes secret from the generated files
@@ -161,7 +162,7 @@ metadata:
   annotations:
     # Force HTTPS redirect for any HTTP requests
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # Use the NGINX ingress class
+    # Force HTTPS redirects even if TLS is not configured on the Ingress
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   ingressClassName: nginx
@@ -232,7 +233,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Now update your Ingress to use cert-manager annotations instead of a manually created secret.
@@ -307,7 +308,7 @@ data:
 
 **Mixed content warnings**: If your application serves assets over HTTP while the page loads over HTTPS, browsers will block those assets. Update your application to use relative URLs or HTTPS URLs.
 
-**cert-manager not issuing certificates**: Check the Certificate and CertificateRequest resources. Run `kubectl describe certificate myapp-tls-auto` to see the status. Common issues include DNS not pointing to the cluster IP and rate limits from Let's Encrypt.
+**cert-manager not issuing certificates**: Check the Certificate and CertificateRequest resources. Run `kubectl describe certificate myapp-tls-auto` to see the status. Common issues include DNS not pointing to the ingress controller's external IP and rate limits from Let's Encrypt.
 
 ## Summary
 
