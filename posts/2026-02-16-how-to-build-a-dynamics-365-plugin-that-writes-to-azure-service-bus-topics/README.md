@@ -8,7 +8,7 @@ Description: Build a Dynamics 365 plugin that publishes entity change events to 
 
 ---
 
-Dynamics 365 plugins are the primary way to extend the CRM's behavior when records are created, updated, or deleted. But plugins run inside the Dynamics 365 sandbox, which limits what they can do. You cannot make arbitrary HTTP calls from a plugin, and long-running operations will time out. The solution is to have the plugin publish a message to Azure Service Bus, and then have an external service pick it up and do the heavy lifting.
+Dynamics 365 plugins are the primary way to extend the CRM's behavior when records are created, updated, or deleted. But plugins run inside the Dynamics 365 sandbox, which limits what they can do. HTTP and HTTPS calls are supported with sandbox restrictions, and long-running operations will time out. A reliable pattern is to have the plugin publish a message to Azure Service Bus, and then have an external service pick it up and do the heavy lifting.
 
 This pattern is incredibly useful for integrations. When a new opportunity is created in Dynamics 365, you might want to sync it to your ERP system, notify a Slack channel, update a data warehouse, or trigger a custom workflow. By publishing to a Service Bus topic, you decouple the Dynamics 365 event from the downstream processing, making the system more reliable and easier to maintain.
 
@@ -45,12 +45,16 @@ var endpoint = new Entity("serviceendpoint")
 {
     ["name"] = "Azure Service Bus - Dynamics Events",
     ["connectionmode"] = new OptionSetValue(1), // Normal
-    ["contract"] = new OptionSetValue(7), // Topic
+    ["contract"] = new OptionSetValue(5), // Topic
+    ["authtype"] = new OptionSetValue(2), // SAS Key
+    ["namespaceformat"] = new OptionSetValue(2), // Namespace Address
+    ["solutionnamespace"] = "sb-dynamics-events",
+    ["namespaceaddress"] = "sb://sb-dynamics-events.servicebus.windows.net/",
     ["url"] = "sb://sb-dynamics-events.servicebus.windows.net/",
     ["saskey"] = "your-sas-key",
     ["saskeyname"] = "RootManageSharedAccessKey",
     ["path"] = "dynamics-events",
-    ["messageformat"] = new OptionSetValue(1) // JSON
+    ["messageformat"] = new OptionSetValue(2) // JSON
 };
 
 var endpointId = organizationService.Create(endpoint);
@@ -58,15 +62,12 @@ var endpointId = organizationService.Create(endpoint);
 
 ## Building the Plugin
 
-The plugin runs on entity operations and formats the event data before sending it to Service Bus. Here is a plugin that handles opportunity events:
+The plugin runs on entity operations and asks Dataverse to post the execution context to Service Bus. Here is a plugin that handles opportunity events:
 
 ```csharp
 // Dynamics 365 plugin that publishes opportunity events to Azure Service Bus
 using Microsoft.Xrm.Sdk;
 using System;
-using System.Runtime.Serialization.Json;
-using System.IO;
-using System.Text;
 
 namespace Dynamics365.Plugins
 {
@@ -98,11 +99,6 @@ namespace Dynamics365.Plugins
             {
                 tracingService.Trace("OpportunityEventPlugin executing...");
 
-                // Build the event payload
-                var eventPayload = BuildEventPayload(context);
-
-                tracingService.Trace("Event payload built: {0}", eventPayload.EventType);
-
                 // Get the Service Bus notification service
                 var cloudService = (IServiceEndpointNotificationService)serviceProvider
                     .GetService(typeof(IServiceEndpointNotificationService));
@@ -129,77 +125,6 @@ namespace Dynamics365.Plugins
                     $"Failed to publish event to Service Bus: {ex.Message}", ex);
             }
         }
-
-        private EventPayload BuildEventPayload(IPluginExecutionContext context)
-        {
-            var payload = new EventPayload
-            {
-                EventType = $"{context.PrimaryEntityName}.{context.MessageName}",
-                EntityName = context.PrimaryEntityName,
-                EntityId = context.PrimaryEntityId.ToString(),
-                MessageName = context.MessageName,
-                Timestamp = DateTime.UtcNow,
-                UserId = context.InitiatingUserId.ToString(),
-                OrganizationId = context.OrganizationId.ToString(),
-                Depth = context.Depth
-            };
-
-            // Include the entity attributes for Create and Update operations
-            if (context.InputParameters.Contains("Target") &&
-                context.InputParameters["Target"] is Entity target)
-            {
-                payload.ChangedAttributes = new SerializableDictionary();
-
-                foreach (var attribute in target.Attributes)
-                {
-                    // Convert attribute values to serializable format
-                    payload.ChangedAttributes[attribute.Key] = ConvertAttributeValue(attribute.Value);
-                }
-            }
-
-            // Include pre-image data for Update and Delete operations
-            if (context.PreEntityImages.Contains("PreImage"))
-            {
-                var preImage = context.PreEntityImages["PreImage"];
-                payload.PreviousValues = new SerializableDictionary();
-
-                foreach (var attribute in preImage.Attributes)
-                {
-                    payload.PreviousValues[attribute.Key] = ConvertAttributeValue(attribute.Value);
-                }
-            }
-
-            return payload;
-        }
-
-        private object ConvertAttributeValue(object value)
-        {
-            // Convert Dynamics-specific types to standard serializable types
-            return value switch
-            {
-                EntityReference er => new { id = er.Id.ToString(), name = er.Name, logicalName = er.LogicalName },
-                OptionSetValue osv => osv.Value,
-                Money money => money.Value,
-                AliasedValue av => ConvertAttributeValue(av.Value),
-                _ => value?.ToString()
-            };
-        }
-    }
-
-    // Serializable event payload class
-    [DataContract]
-    public class EventPayload
-    {
-        [DataMember] public string EventType { get; set; }
-        [DataMember] public string EntityName { get; set; }
-        [DataMember] public string EntityId { get; set; }
-        [DataMember] public string MessageName { get; set; }
-        [DataMember] public DateTime Timestamp { get; set; }
-        [DataMember] public string UserId { get; set; }
-        [DataMember] public string OrganizationId { get; set; }
-        [DataMember] public int Depth { get; set; }
-        [DataMember] public SerializableDictionary ChangedAttributes { get; set; }
-        [DataMember] public SerializableDictionary PreviousValues { get; set; }
     }
 }
 ```
@@ -210,7 +135,7 @@ Register the plugin step using the Plugin Registration Tool:
 
 - **Message**: Create, Update, Delete (register separate steps for each)
 - **Primary Entity**: opportunity
-- **Stage**: Post-Operation (so the Dynamics transaction has already committed)
+- **Stage**: Post-Operation (asynchronous steps run after the record operation completes)
 - **Execution Mode**: Asynchronous (recommended - does not block the user)
 - **Pre-Entity Image**: Include for Update and Delete operations
 
@@ -243,21 +168,16 @@ az servicebus topic create \
   --resource-group rg-d365-integrations
 
 # Create subscriptions for different consumers
-# ERP sync - only cares about opportunity events
+# ERP sync - registered for opportunity events
 az servicebus topic subscription create \
   --name erp-sync \
   --topic-name dynamics-events \
   --namespace-name sb-dynamics-events \
   --resource-group rg-d365-integrations
 
-# Add a filter so ERP sync only gets opportunity messages
-az servicebus topic subscription rule create \
-  --name opportunity-only \
-  --subscription-name erp-sync \
-  --topic-name dynamics-events \
-  --namespace-name sb-dynamics-events \
-  --resource-group rg-d365-integrations \
-  --filter-sql-expression "EntityName = 'opportunity'"
+# Service Bus SQL filters evaluate message properties, not the JSON body.
+# With the Dataverse execution context payload, route by registering
+# entity-specific endpoints or filter inside the consumer.
 
 # Notification service - gets all events
 az servicebus topic subscription create \
@@ -280,9 +200,21 @@ Here is an Azure Function that consumes messages from the ERP sync subscription:
 
 ```csharp
 // Azure Function that syncs opportunity data to the ERP system
+using System.Text.Json;
+using System.Threading.Tasks;
+using Azure.Messaging.ServiceBus;
+using Microsoft.Azure.WebJobs;
+using Microsoft.Extensions.Logging;
+using Microsoft.Xrm.Sdk;
+
 public class ErpSyncFunction
 {
     private readonly IErpClient _erpClient;
+
+    public ErpSyncFunction(IErpClient erpClient)
+    {
+        _erpClient = erpClient;
+    }
 
     [FunctionName("SyncOpportunityToErp")]
     public async Task Run(
@@ -332,9 +264,9 @@ az servicebus topic subscription update \
   --namespace-name sb-dynamics-events \
   --resource-group rg-d365-integrations \
   --max-delivery-count 5 \
-  --dead-lettering-on-message-expiration true
+  --enable-dead-lettering-on-message-expiration true
 ```
 
 ## Wrapping Up
 
-Publishing Dynamics 365 entity events to Azure Service Bus through a plugin creates a clean, decoupled integration architecture. The plugin itself is simple - it just triggers the Service Bus notification. All the complex processing happens outside Dynamics 365 in Azure Functions or other subscribers that can take as long as they need, retry on failure, and scale independently. The topic/subscription model lets you add new consumers without modifying the plugin, and SQL filters on subscriptions ensure each consumer only processes the events it cares about. This pattern is the recommended approach for Dynamics 365 integrations that need reliability and scalability.
+Publishing Dynamics 365 entity events to Azure Service Bus through a plugin creates a clean, decoupled integration architecture. The plugin itself is simple - it just triggers the Service Bus notification. All the complex processing happens outside Dynamics 365 in Azure Functions or other subscribers that can take as long as they need, retry on failure, and scale independently. The topic/subscription model lets you add new consumers without modifying the plugin, while consumers can route the Dataverse execution context to the processing paths they care about. This pattern is the recommended approach for Dynamics 365 integrations that need reliability and scalability.
