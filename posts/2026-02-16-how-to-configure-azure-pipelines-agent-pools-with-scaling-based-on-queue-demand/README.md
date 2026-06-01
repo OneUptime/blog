@@ -10,11 +10,11 @@ Description: Set up Azure Pipelines agent pools with auto-scaling using VMSS age
 
 Microsoft-hosted agents are convenient but they come with limitations. Build times can be slower because every job starts with a fresh machine, you cannot pre-install specialized tools, and for security-sensitive workloads you might need agents that run inside your own network. Self-hosted agents solve these problems, but they introduce a new challenge: how many agents should you run?
 
-Too few agents and your builds queue up, frustrating developers. Too many and you are paying for idle VMs. The answer is auto-scaling agent pools backed by Azure Virtual Machine Scale Sets (VMSS). Azure Pipelines natively integrates with VMSS to automatically spin up agents when jobs are waiting and tear them down when the queue is empty.
+Too few agents and your builds queue up, frustrating developers. Too many and you are paying for idle VMs. The answer is auto-scaling agent pools backed by Azure Virtual Machine Scale Sets (VMSS). Azure Pipelines natively integrates with VMSS to automatically spin up agents when jobs are waiting and remove excess idle agents after the configured delay.
 
 ## How VMSS Agent Pools Work
 
-When you create a VMSS-backed agent pool, Azure Pipelines monitors the job queue. When a job is waiting and no agents are available, it tells the VMSS to scale up. When agents finish their jobs and the queue is empty, it scales them back down.
+When you create a VMSS-backed agent pool, Azure Pipelines samples the pool and VMSS state periodically. When a job is waiting and no agents are available, it tells the VMSS to scale up. When agents finish their jobs and the pool has more idle agents than the configured standby count for the configured delay, it scales them back down.
 
 ```mermaid
 flowchart TD
@@ -34,7 +34,7 @@ flowchart TD
     K -->|No| J
 ```
 
-The key advantage over manually managed agents is that you only pay for compute when builds are actually running. During nights and weekends when nobody is pushing code, the scale set drops to zero (or whatever minimum you configure).
+The key advantage over manually managed agents is that you only pay for compute when builds are running, agents are on standby, or idle agents are waiting through the scale-down delay. During nights and weekends when nobody is pushing code, the scale set can drop to zero if you configure zero standby agents.
 
 ## Prerequisites
 
@@ -67,6 +67,8 @@ az vmss create \
   --disable-overprovision \
   --upgrade-policy-mode "manual" \
   --single-placement-group false \
+  --platform-fault-domain-count 1 \
+  --orchestration-mode "Uniform" \
   --load-balancer ""
 ```
 
@@ -75,6 +77,7 @@ Important settings to note:
 - `--instance-count 0`: Start with zero instances. Azure Pipelines will scale up as needed.
 - `--disable-overprovision`: VMSS normally over-provisions instances for reliability, but for build agents you want exact counts.
 - `--upgrade-policy-mode "manual"`: Azure Pipelines manages the instances, not auto-upgrade.
+- `--orchestration-mode "Uniform"`: Azure Pipelines VMSS agent pools use Uniform scale sets.
 - `--load-balancer ""`: Build agents do not need a load balancer.
 
 ## Step 2: Install Build Tools on the VMSS Image
@@ -101,7 +104,7 @@ apt-get update
 apt-get install -y dotnet-sdk-8.0
 
 # Install Node.js
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt-get install -y nodejs
 
 # Install Docker
@@ -120,9 +123,10 @@ SCRIPT_EOF
 az vmss extension set \
   --vmss-name "vmss-build-agents" \
   --resource-group "rg-build-agents" \
-  --name "customScript" \
+  --name "CustomScript" \
   --publisher "Microsoft.Azure.Extensions" \
-  --settings '{"fileUris": [], "commandToExecute": "bash /tmp/install-build-tools.sh"}' \
+  --version 2.0 \
+  --settings '{}' \
   --protected-settings "{\"script\": \"$(base64 -w0 install-build-tools.sh)\"}"
 ```
 
@@ -144,6 +148,8 @@ az vmss create \
   --disable-overprovision \
   --upgrade-policy-mode "manual" \
   --single-placement-group false \
+  --platform-fault-domain-count 1 \
+  --orchestration-mode "Uniform" \
   --load-balancer ""
 ```
 
@@ -162,7 +168,7 @@ Select:
   - **Maximum number of VMs**: Set your upper limit (e.g., 10)
   - **Number of agents to keep on standby**: How many idle agents to maintain (0 for cost savings, 1-2 for faster job pickup)
   - **Delay in minutes before deleting excess idle agents**: How long to wait before scaling down (e.g., 15 minutes)
-  - **Automatically tear down virtual machines after every use**: Enable this for clean builds; disable for faster subsequent builds with caching
+  - **Automatically tear down virtual machines after every use**: Enable this for clean builds on Windows Server or supported Linux images; disable for faster subsequent builds with caching
 
 ## Step 4: Configure Your Pipelines to Use the Pool
 
@@ -213,15 +219,15 @@ The scaling behavior is controlled by several settings that you can adjust after
 
 ### Scaling Up
 
-Azure Pipelines checks the queue every 30 seconds. When it detects waiting jobs, it requests new instances. The time from "job queued" to "job running" depends on:
+Azure Pipelines samples the state of the agents and scale set every 5 minutes. When it detects waiting jobs with no idle agents, it requests new instances. The time from "job queued" to "job running" depends on:
 
-- VM provisioning time (1-5 minutes depending on image and SKU)
+- VM provisioning time (several minutes depending on image and SKU; Azure Pipelines documentation says to allow 20 minutes for machines to be created for each scale-out step)
 - Agent registration time (about 30 seconds)
 - Whether you have standby agents (0 wait time if an idle agent is available)
 
 ### Scaling Down
 
-After an agent finishes a job and no new jobs are queued, it becomes idle. The pool keeps it running for the configured delay period. If no jobs arrive during that time, the VM is deallocated.
+After an agent finishes a job and no new jobs are queued, it becomes idle. The pool keeps excess idle agents running for the configured delay period. If no jobs arrive during that time, Azure Pipelines scales in the pool by deleting excess VM instances from the scale set.
 
 Here are my recommended settings for different scenarios:
 
@@ -277,11 +283,13 @@ az vmss create \
   --disable-overprovision \
   --upgrade-policy-mode "manual" \
   --single-placement-group false \
+  --platform-fault-domain-count 1 \
+  --orchestration-mode "Uniform" \
   --load-balancer ""
 ```
 
-The agents need outbound internet access to communicate with Azure DevOps. If your network restricts outbound traffic, allow access to `dev.azure.com` and `vstsagentpackage.azureedge.net`.
+The agents need outbound internet access to communicate with Azure DevOps. If your network restricts outbound traffic, allow the Azure DevOps Services URLs and IP ranges required by your organization, including access to `dev.azure.com` and `download.agent.dev.azure.com` for agent downloads.
 
 ## Wrapping Up
 
-VMSS-backed agent pools give you the flexibility of self-hosted agents with the scalability of cloud infrastructure. The setup requires some upfront work - creating the VMSS, installing tools, and tuning the scaling parameters - but once it is running, you get agents that scale to demand and cost you nothing when idle. Start with conservative settings, monitor the queue wait times for a few weeks, and adjust the standby count and idle delay until you find the right balance between cost and developer experience.
+VMSS-backed agent pools give you the flexibility of self-hosted agents with the scalability of cloud infrastructure. The setup requires some upfront work - creating the VMSS, installing tools, and tuning the scaling parameters - but once it is running, you get agents that scale to demand and can scale down to zero when you configure zero standby agents. Start with conservative settings, monitor the queue wait times for a few weeks, and adjust the standby count and idle delay until you find the right balance between cost and developer experience.
