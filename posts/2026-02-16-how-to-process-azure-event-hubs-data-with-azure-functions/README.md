@@ -14,7 +14,7 @@ In this post, we will build event processing functions in multiple languages, co
 
 ## How the Event Hubs Trigger Works
 
-When you create an Azure Function with an Event Hubs trigger, the Functions runtime creates an internal event processor that reads from your Event Hub. Behind the scenes, it uses the same EventProcessorHost pattern that you would use if building a consumer manually:
+When you create an Azure Function with an Event Hubs trigger, the Functions runtime creates an internal event processor that reads from your Event Hub. Behind the scenes, it uses the same partitioned event processor pattern that you would use if building a consumer manually:
 
 1. The runtime claims ownership of partitions using a checkpoint store (Azure Blob Storage)
 2. Events are read in batches from each partition
@@ -75,10 +75,11 @@ app = func.FunctionApp()
     arg_name="events",
     event_hub_name="user-events",
     connection="EventHubConnectionString",
-    consumer_group="functions-processor"
+    consumer_group="functions-processor",
+    cardinality="many"
 )
-def process_user_events(events: func.EventHubEvent):
-    # events can be a single event or a batch depending on configuration
+def process_user_events(events: list[func.EventHubEvent]):
+    # The function receives a batch because cardinality is set to "many"
     for event in events:
         # Parse the event body
         body = event.get_body().decode('utf-8')
@@ -150,11 +151,9 @@ The `host.json` file controls how the Event Hub trigger behaves:
     "version": "2.0",
     "extensions": {
         "eventHubs": {
-            "batchCheckpointFrequency": 5,
-            "eventProcessorOptions": {
-                "maxBatchSize": 64,
-                "prefetchCount": 256
-            },
+            "batchCheckpointFrequency": 1,
+            "maxEventBatchSize": 64,
+            "prefetchCount": 256,
             "initialOffsetOptions": {
                 "type": "fromEnqueuedTime",
                 "enqueuedTimeUtc": "2026-02-16T00:00:00Z"
@@ -166,8 +165,8 @@ The `host.json` file controls how the Event Hub trigger behaves:
 
 Key settings explained:
 
-- **maxBatchSize**: Maximum events per function invocation. Higher values improve throughput but increase per-invocation processing time.
-- **batchCheckpointFrequency**: Checkpoint every N batches. Setting this to 5 means checkpoints happen every 5th batch instead of every batch, reducing storage I/O.
+- **maxEventBatchSize**: Maximum events per function invocation. Higher values improve throughput but increase per-invocation processing time.
+- **batchCheckpointFrequency**: Checkpoint every N batches. The default is 1; setting this higher reduces checkpoint writes but can cause incorrect target-based scaling behavior on supported hosting plans.
 - **prefetchCount**: How many events to prefetch from Event Hubs. Higher values reduce latency between batches.
 - **initialOffsetOptions**: Where to start reading when there is no existing checkpoint. Use `fromStart` for all historical events or `fromEnqueuedTime` for a specific point in time.
 
@@ -182,6 +181,7 @@ import azure.functions as func
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 
 app = func.FunctionApp()
 
@@ -189,7 +189,8 @@ app = func.FunctionApp()
     arg_name="events",
     event_hub_name="user-events",
     connection="EventHubConnectionString",
-    consumer_group="functions-processor"
+    consumer_group="functions-processor",
+    cardinality="many"
 )
 @app.cosmos_db_output(
     arg_name="documents",
@@ -197,7 +198,7 @@ app = func.FunctionApp()
     container_name="processed-events",
     connection="CosmosDBConnectionString"
 )
-def process_and_store(events: func.EventHubEvent, documents: func.Out[func.DocumentList]):
+def process_and_store(events: list[func.EventHubEvent], documents: func.Out[list[func.Document]]):
     """Read events from Event Hub and write enriched documents to Cosmos DB."""
     output_docs = []
 
@@ -210,7 +211,7 @@ def process_and_store(events: func.EventHubEvent, documents: func.Out[func.Docum
             "userId": body.get("userId"),
             "action": body.get("action"),
             "originalTimestamp": body.get("timestamp"),
-            "processedAt": event.enqueued_time.isoformat(),
+            "processedAt": datetime.now(timezone.utc).isoformat(),
             "partitionKey": body.get("userId"),
             "source": "event-hubs-processor"
         }
@@ -228,7 +229,8 @@ def process_and_store(events: func.EventHubEvent, documents: func.Out[func.Docum
     arg_name="events",
     event_hub_name="raw-events",
     connection="SourceEventHubConnection",
-    consumer_group="router"
+    consumer_group="router",
+    cardinality="many"
 )
 @app.event_hub_output(
     arg_name="purchaseEvents",
@@ -240,9 +242,9 @@ def process_and_store(events: func.EventHubEvent, documents: func.Out[func.Docum
     event_hub_name="login-events",
     connection="TargetEventHubConnection"
 )
-def route_events(events: func.EventHubEvent,
-                 purchaseEvents: func.Out[str],
-                 loginEvents: func.Out[str]):
+def route_events(events: list[func.EventHubEvent],
+                 purchaseEvents: func.Out[list[str]],
+                 loginEvents: func.Out[list[str]]):
     """Route events to different Event Hubs based on action type."""
     purchase_batch = []
     login_batch = []
@@ -257,23 +259,24 @@ def route_events(events: func.EventHubEvent,
             login_batch.append(json.dumps(body))
 
     if purchase_batch:
-        purchaseEvents.set(json.dumps(purchase_batch))
+        purchaseEvents.set(purchase_batch)
     if login_batch:
-        loginEvents.set(json.dumps(login_batch))
+        loginEvents.set(login_batch)
 ```
 
 ## Error Handling and Retries
 
-Event Hub trigger functions do not have built-in retry for individual events. If your function throws an exception, the entire batch fails and is retried. This means you need to handle errors carefully:
+Event Hub trigger functions do not have built-in retry for individual events. Azure Functions supports function-level retry policies for Event Hubs; when an uncaught exception is retried, the entire invocation is retried, not one event from the batch. This means you need to handle errors carefully:
 
 ```python
 @app.event_hub_message_trigger(
     arg_name="events",
     event_hub_name="user-events",
     connection="EventHubConnectionString",
-    consumer_group="functions-processor"
+    consumer_group="functions-processor",
+    cardinality="many"
 )
-def process_with_error_handling(events: func.EventHubEvent):
+def process_with_error_handling(events: list[func.EventHubEvent]):
     """Process events with per-event error handling to prevent batch failures."""
     failed_events = []
 
@@ -305,8 +308,8 @@ def process_with_error_handling(events: func.EventHubEvent):
 
 Azure Functions scales based on the Event Hub partition count and event backlog:
 
-- **Maximum instances**: Equal to the number of partitions. If your Event Hub has 16 partitions, Functions scales up to 16 instances.
-- **Scale triggers**: The runtime monitors the backlog (difference between latest event and last checkpoint). If the backlog grows, more instances are added.
+- **Maximum useful parallelism**: Limited by the number of partitions for a consumer group. If your Event Hub has 16 partitions, at most 16 instances can actively read partitions for that consumer group.
+- **Scale triggers**: The runtime monitors the number of unprocessed events across partitions. If the backlog grows, more instances are added.
 - **Scale down**: When the backlog is caught up, instances are removed.
 
 For the Consumption plan, this happens automatically. For the Premium plan, you can set minimum and maximum instance counts:
@@ -331,9 +334,10 @@ import logging
     arg_name="events",
     event_hub_name="user-events",
     connection="EventHubConnectionString",
-    consumer_group="functions-processor"
+    consumer_group="functions-processor",
+    cardinality="many"
 )
-def monitored_processor(events: func.EventHubEvent):
+def monitored_processor(events: list[func.EventHubEvent]):
     """Process events with detailed logging for monitoring."""
     batch_size = len(events)
     logging.info(f"Processing batch of {batch_size} events")
