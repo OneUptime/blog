@@ -8,13 +8,13 @@ Description: Practical techniques for optimizing query performance in Azure Syna
 
 ---
 
-Azure Synapse Analytics dedicated SQL pools (formerly SQL Data Warehouse) use a massively parallel processing (MPP) architecture that distributes data across 60 compute nodes. When queries are well-optimized, this architecture delivers incredible performance. When they are not, queries that should take seconds take minutes or even hours, and you end up paying for DWU capacity that is wasted on inefficient execution.
+Azure Synapse Analytics dedicated SQL pools (formerly SQL Data Warehouse) use a massively parallel processing (MPP) architecture that distributes data across 60 distributions, which are mapped to compute nodes based on the service level. When queries are well-optimized, this architecture delivers incredible performance. When they are not, queries that should take seconds take minutes or even hours, and you end up paying for DWU capacity that is wasted on inefficient execution.
 
 I have tuned Synapse dedicated SQL pools for workloads ranging from 500 GB to 50 TB. The optimization principles are consistent regardless of scale. Distribution strategy, table design, statistics, and query patterns matter far more than raw compute power.
 
 ## Understanding the MPP Architecture
 
-A dedicated SQL pool splits your data across 60 distributions. When you run a query, the control node creates an execution plan and distributes it to the compute nodes. Each compute node processes its local data independently, and the results are aggregated.
+A dedicated SQL pool splits your data across 60 distributions. When you run a query, the control node creates an execution plan and distributes work to the compute nodes that own those distributions. Each compute node processes its local data independently, and the results are aggregated.
 
 The key performance principle: minimize data movement between distributions. Data movement is the single biggest performance killer in Synapse. If a join requires shuffling data between nodes, the query slows down dramatically.
 
@@ -53,7 +53,7 @@ Choosing the right hash distribution column is critical. The column should:
 
 ```sql
 -- Create a replicated dimension table
--- Good for small tables (under 2 GB) that are joined with fact tables
+-- Good for small tables (under 2 GB compressed) that are joined with fact tables
 CREATE TABLE dbo.DimProduct
 (
     ProductKey INT NOT NULL,
@@ -64,7 +64,7 @@ CREATE TABLE dbo.DimProduct
 WITH
 (
     DISTRIBUTION = REPLICATE,
-    CLUSTERED COLUMNSTORE INDEX
+    CLUSTERED INDEX (ProductKey)
 );
 ```
 
@@ -114,11 +114,11 @@ WHERE STATS_DATE(st.object_id, st.stats_id) < DATEADD(DAY, -7, GETDATE())
 ORDER BY stats_updated;
 ```
 
-Enable automatic statistics creation and update:
+Enable automatic statistics creation and update statistics explicitly:
 
 ```sql
 -- Enable auto-create statistics (usually on by default)
-ALTER DATABASE CURRENT SET AUTO_CREATE_STATISTICS ON;
+ALTER DATABASE [YourDedicatedSqlPool] SET AUTO_CREATE_STATISTICS ON;
 
 -- Manually update statistics on a critical table after a large data load
 UPDATE STATISTICS dbo.FactSales;
@@ -127,7 +127,7 @@ UPDATE STATISTICS dbo.FactSales;
 UPDATE STATISTICS dbo.FactSales WITH FULLSCAN;
 ```
 
-Update statistics after every significant data load. The auto-update mechanism works, but for large tables it can trigger at inconvenient times. I prefer to update statistics explicitly at the end of ETL pipelines.
+Update statistics after every significant data load. Automatic creation handles missing statistics, but it does not keep existing dedicated SQL pool statistics up to date for you. I prefer to update statistics explicitly at the end of ETL pipelines.
 
 ## Columnstore Index Optimization
 
@@ -139,17 +139,27 @@ Check the health of your columnstore indexes.
 -- Check for fragmented or poorly compressed rowgroups
 -- Open and compressed rowgroups with fewer than 100K rows indicate issues
 SELECT
+    s.name AS schema_name,
     t.name AS table_name,
-    rg.state_desc,
+    rg.state_description,
     COUNT(*) AS rowgroup_count,
     SUM(rg.total_rows) AS total_rows,
     SUM(rg.deleted_rows) AS deleted_rows,
     AVG(rg.total_rows) AS avg_rows_per_rowgroup
-FROM sys.dm_pdw_nodes_column_store_row_groups rg
-JOIN sys.pdw_nodes_tables nt ON rg.object_id = nt.object_id
-JOIN sys.tables t ON nt.name = t.name
-GROUP BY t.name, rg.state_desc
-ORDER BY t.name, rg.state_desc;
+FROM sys.pdw_nodes_column_store_row_groups rg
+JOIN sys.pdw_nodes_tables nt
+    ON rg.object_id = nt.object_id
+   AND rg.pdw_node_id = nt.pdw_node_id
+   AND rg.distribution_id = nt.distribution_id
+JOIN sys.pdw_table_mappings tm
+    ON nt.name = tm.physical_name
+JOIN sys.tables t
+    ON tm.object_id = t.object_id
+JOIN sys.schemas s
+    ON t.schema_id = s.schema_id
+WHERE rg.total_rows > 0
+GROUP BY s.name, t.name, rg.state_description
+ORDER BY s.name, t.name, rg.state_description;
 ```
 
 If you see many small rowgroups (under 100,000 rows), rebuild the columnstore index.
@@ -196,7 +206,7 @@ Enable result set caching to avoid re-executing identical queries. This is espec
 
 ```sql
 -- Enable result set caching at the database level
-ALTER DATABASE CURRENT SET RESULT_SET_CACHING ON;
+ALTER DATABASE [YourDedicatedSqlPool] SET RESULT_SET_CACHING ON;
 
 -- Check if a query used the cache
 SELECT
@@ -229,6 +239,6 @@ JOIN dbo.DimProduct d ON f.ProductKey = d.ProductKey
 GROUP BY f.OrderDate, d.Category;
 ```
 
-Materialized views need to be refreshed after data loads, but the refresh is incremental and usually fast.
+Materialized views are maintained automatically and synchronously as base tables change, with incremental changes stored in a delta store. Monitor them because the maintenance work and delta store overhead increase as base table changes accumulate.
 
 Synapse dedicated SQL pool optimization is an iterative process. Start with distribution strategy and statistics, then move to index maintenance and workload management. Monitor your most expensive queries regularly and address performance regressions before they become problems. The MPP architecture delivers excellent performance when you work with it rather than against it.
