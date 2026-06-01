@@ -25,7 +25,7 @@ graph LR
     end
 ```
 
-If server-side copy is not possible (for example, when copying between different Azure clouds or when the source requires special authentication), AzCopy falls back to downloading data to your machine and re-uploading it. You can force this behavior or avoid it with specific flags.
+If server-side copy is not possible (for example, when network restrictions prevent the destination service from reading the source), AzCopy reports the failure and you need to change the network or authorization configuration, or perform a separate download and upload.
 
 ## Authentication Setup
 
@@ -163,7 +163,7 @@ azcopy sync \
   --delete-destination=false
 ```
 
-Sync compares the source and destination by timestamp and size, then only copies new or modified blobs. This is much faster for incremental updates.
+Sync compares the source and destination by last-modified time by default, then only copies new or modified blobs. This is much faster for incremental updates.
 
 ## Copying Across Regions
 
@@ -181,18 +181,18 @@ For large cross-region transfers, consider the cost implications. Transferring 1
 
 ## Preserving Blob Properties and Metadata
 
-By default, AzCopy preserves blob metadata and tags during server-side copies. To also preserve the access tier:
+By default, AzCopy preserves blob properties and metadata during server-side copies, and it preserves the access tier unless you set `--s2s-preserve-access-tier=false`. To preserve blob index tags, use `--s2s-preserve-blob-tags=true`:
 
 ```bash
-# Copy and preserve the original blob tier
+# Copy and preserve blob index tags
 azcopy copy \
   "https://sourceaccount.blob.core.windows.net/container/?$SOURCE_SAS" \
   "https://destaccount.blob.core.windows.net/container/?$DEST_SAS" \
   --recursive \
-  --s2s-preserve-access-tier=true
+  --s2s-preserve-blob-tags=true
 ```
 
-The `--s2s-preserve-access-tier` flag ensures blobs maintain their original tier (Hot, Cool, Cold, Archive) in the destination.
+The `--s2s-preserve-blob-tags` flag copies existing blob index tags to the destination. If you use SAS tokens for this, the SAS needs tag permission (`t`); if you use Azure AD, your identity needs permission to write blob tags.
 
 ## Handling Large-Scale Migrations
 
@@ -257,20 +257,25 @@ azcopy jobs show <job-id> --with-status=Failed
 azcopy jobs resume <job-id>
 ```
 
-## Forcing Client-Side Copy
+## Using Client-Side Copy
 
-In some cases, you might need to force AzCopy to download and re-upload data instead of using server-side copy. This is necessary when:
+In some cases, you might need to download and re-upload data instead of using server-side copy. This is necessary when:
 
 - Copying between different Azure clouds (public to government, for example)
 - Server-side copy is throttled or blocked by network policies
 
 ```bash
-# Force client-side copy (data flows through your machine)
+# Download from the source account
 azcopy copy \
   "https://sourceaccount.blob.core.windows.net/container/?$SOURCE_SAS" \
+  "./container-copy" \
+  --recursive
+
+# Upload to the destination account
+azcopy copy \
+  "./container-copy/*" \
   "https://destaccount.blob.core.windows.net/container/?$DEST_SAS" \
-  --recursive \
-  --s2s-detect-source-changed=true
+  --recursive
 ```
 
 Be aware that client-side copy uses your machine's bandwidth and is significantly slower for large transfers.
