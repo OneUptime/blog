@@ -161,18 +161,11 @@ Here is how to apply a comprehensive policy to the orders API.
 ```typescript
 // Helper function to build policy XML
 // Keeps the XML readable and allows dynamic values from Pulumi config
-function buildOrdersApiPolicy(rateLimitCalls: number, cacheDuration: number): string {
+function buildOrdersApiPolicy(rateLimitCalls: number): string {
     return `
 <policies>
     <inbound>
         <base />
-
-        <!-- Rate limiting: restrict calls per subscription -->
-        <rate-limit-by-key
-            calls="${rateLimitCalls}"
-            renewal-period="60"
-            counter-key="@(context.Subscription.Id)"
-            increment-condition="@(context.Response.StatusCode >= 200 && context.Response.StatusCode < 400)" />
 
         <!-- Validate JWT token from Azure AD -->
         <validate-jwt
@@ -186,6 +179,13 @@ function buildOrdersApiPolicy(rateLimitCalls: number, cacheDuration: number): st
                 </claim>
             </required-claims>
         </validate-jwt>
+
+        <!-- Rate limiting: restrict calls per subscription -->
+        <rate-limit-by-key
+            calls="${rateLimitCalls}"
+            renewal-period="60"
+            counter-key="@(context.Subscription.Id)"
+            increment-condition="@(context.Response.StatusCode >= 200 &amp;&amp; context.Response.StatusCode &lt; 400)" />
 
         <!-- Add correlation ID for request tracing -->
         <set-header name="X-Correlation-Id" exists-action="skip">
@@ -219,9 +219,6 @@ function buildOrdersApiPolicy(rateLimitCalls: number, cacheDuration: number): st
         <set-header name="X-Frame-Options" exists-action="override">
             <value>DENY</value>
         </set-header>
-
-        <!-- Cache successful GET responses -->
-        <cache-store duration="${cacheDuration}" />
     </outbound>
 
     <on-error>
@@ -253,8 +250,8 @@ const ordersApiPolicy = new azure.apimanagement.ApiPolicy("orders-api-policy", {
     serviceName: apimService.name,
     apiId: ordersApi.apiId!,
     // Use the helper function to generate policy XML
-    value: buildOrdersApiPolicy(100, 300),
-    format: "xml",
+    value: buildOrdersApiPolicy(100),
+    format: "rawxml",
 });
 ```
 
@@ -277,7 +274,9 @@ const listOrdersPolicy = new azure.apimanagement.ApiOperationPolicy("list-orders
         <!-- Cache lookup for GET requests -->
         <cache-lookup vary-by-developer="false"
                       vary-by-developer-groups="false"
-                      downstream-caching-type="none">
+                      downstream-caching-type="none"
+                      allow-private-response-caching="true">
+            <vary-by-header>Authorization</vary-by-header>
             <vary-by-query-parameter>page</vary-by-query-parameter>
             <vary-by-query-parameter>limit</vary-by-query-parameter>
         </cache-lookup>
@@ -293,7 +292,7 @@ const listOrdersPolicy = new azure.apimanagement.ApiOperationPolicy("list-orders
         <base />
     </on-error>
 </policies>`,
-    format: "xml",
+    format: "rawxml",
 });
 ```
 
@@ -312,7 +311,6 @@ const freeProduct = new azure.apimanagement.Product("free-product", {
     state: "published",
     subscriptionRequired: true,
     approvalRequired: false,
-    subscriptionsLimit: 1,
 });
 
 // Associate the orders API with the free product
@@ -340,7 +338,7 @@ const freeProductPolicy = new azure.apimanagement.ProductPolicy("free-product-po
     <outbound><base /></outbound>
     <on-error><base /></on-error>
 </policies>`,
-    format: "xml",
+    format: "rawxml",
 });
 ```
 
