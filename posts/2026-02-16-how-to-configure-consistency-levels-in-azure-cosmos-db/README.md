@@ -29,7 +29,7 @@ graph LR
 
 ### Strong Consistency
 
-Reads are guaranteed to return the most recent committed write. This is the same guarantee you get with traditional relational databases. In a globally distributed setup, a write must be replicated to a majority of replicas across all regions before it is acknowledged.
+Reads are guaranteed to return the most recent committed write. This is the same guarantee you get with traditional relational databases. In a globally distributed setup, changes must be committed in every region in the account before the write is acknowledged.
 
 Tradeoffs: Highest latency, highest RU cost, only available in single-region or with single-region writes.
 
@@ -53,17 +53,17 @@ Best for: User-facing applications, shopping carts, user profiles, social media 
 
 ### Consistent Prefix
 
-Reads never see out-of-order writes. If writes happen in order A, B, C, you will never see A, C without B. However, you might not see the latest writes immediately.
+Reads never see out-of-order writes for transactional batches. If a transaction commits related writes together, reads will not return only part of that committed transaction. However, you might not see the latest writes immediately, and single-document writes follow eventual consistency semantics.
 
 Tradeoffs: Lower latency than session, but no guarantee you will see your own writes.
 
-Best for: Applications where order matters but freshness does not. Activity feeds, timeline events.
+Best for: Applications where transaction order matters but freshness does not. Activity feeds, timeline events.
 
 ### Eventual Consistency
 
-No ordering guarantee. Reads will eventually return the latest write, but there is no bound on how long "eventually" takes. In practice, convergence usually happens within seconds.
+No ordering guarantee. Reads will eventually return the latest write, but there is no bound on how long "eventually" takes.
 
-Tradeoffs: Lowest latency, lowest RU cost, but no ordering or freshness guarantees.
+Tradeoffs: Lowest latency and the same read RU cost as Session and Consistent Prefix, but no ordering or freshness guarantees.
 
 Best for: Non-critical reads, analytics, counters, likes, view counts.
 
@@ -214,7 +214,7 @@ Consistency level affects your Request Unit consumption. Here is the approximate
 
 Strong and Bounded Staleness reads cost twice as much because the read must contact a quorum of replicas. Session, Consistent Prefix, and Eventual reads only contact a single replica.
 
-Write costs are the same across all consistency levels because writes always go through the same replication process.
+Write costs are the same across all consistency levels for a given write operation, although Strong consistency commits changes in every region while the other consistency levels use a local majority.
 
 ## Choosing the Right Level
 
@@ -226,7 +226,7 @@ Here is a decision framework:
 
 3. If you need to quantify maximum staleness for compliance or SLA reasons, use Bounded Staleness.
 
-4. If you are doing analytics or background reads where freshness does not matter, drop to Eventual and save on RU costs.
+4. If you are doing analytics or background reads where freshness does not matter, drop to Eventual to minimize latency. This saves read RUs only when you are relaxing from Strong or Bounded Staleness.
 
 5. If you care about ordering but not freshness, Consistent Prefix gives you the best of both worlds.
 
@@ -235,7 +235,7 @@ Here is a decision framework:
 Consistency levels interact with multi-region replication:
 
 - Strong consistency is not available with multi-region writes. You can use it with a single write region and multiple read regions.
-- Bounded Staleness in a multi-region setup behaves like Strong within the write region and Bounded Staleness in read regions.
+- Bounded Staleness keeps cross-region replication lag within the configured K-version or T-time bound. If lag exceeds that bound, writes for the affected partition can be throttled until staleness returns within the configured limit.
 - Session consistency works across regions as long as you pass the session token.
 
 ## Monitoring Consistency
