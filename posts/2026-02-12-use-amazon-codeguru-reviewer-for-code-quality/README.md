@@ -4,11 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CodeGuru, Code Review, DevOps, Code Quality
 
-Description: A hands-on guide to setting up Amazon CodeGuru Reviewer for automated code reviews, catching bugs, security issues, and performance problems in your codebase.
+Description: A hands-on guide to using existing Amazon CodeGuru Reviewer repository associations for automated code reviews, catching bugs, security issues, and performance problems in your codebase.
 
 ---
 
-Code reviews catch bugs. That's not controversial. What is controversial is how much time developers spend doing them and how many issues still slip through. Amazon CodeGuru Reviewer uses machine learning to automatically review your code and flag potential problems - security vulnerabilities, resource leaks, concurrency issues, and more.
+Code reviews catch bugs. That's not controversial. What is controversial is how much time developers spend doing them and how many issues still slip through. Amazon CodeGuru Reviewer uses program analysis and machine learning to automatically review your code and flag potential problems - security vulnerabilities, resource leaks, concurrency issues, and more.
+
+As of November 7, 2025, AWS no longer lets you create new repository associations in CodeGuru Reviewer. You can still use CodeGuru Reviewer with repository associations that already exist; for new repositories, AWS points teams to Amazon Q Developer for code reviews and Amazon Inspector for code security scanning.
 
 It's not replacing human reviewers. It's catching the stuff humans tend to miss because they're focused on logic and design rather than scanning for subtle resource handling patterns.
 
@@ -21,11 +23,11 @@ CodeGuru Reviewer analyzes your code for:
 - **Code quality** - Resource leaks, concurrency bugs, null pointer dereferences
 - **Performance issues** - Inefficient algorithms, unnecessary object creation
 
-It supports Java and Python today, with recommendations powered by models trained on millions of code reviews from Amazon's internal codebase and open source projects.
+It supports Java and Python today, with recommendations powered by models trained on millions of lines of Java and Python code from Amazon's internal codebase and other sources.
 
 ## Setting It Up
 
-CodeGuru Reviewer integrates directly with your repository. It supports:
+CodeGuru Reviewer integrates directly with an existing repository association. It supports:
 
 - GitHub
 - GitHub Enterprise
@@ -34,12 +36,12 @@ CodeGuru Reviewer integrates directly with your repository. It supports:
 
 ### Associating a Repository
 
-In the CodeGuru console, navigate to "Reviewer" and click "Associate repository."
+If your AWS account already has a supported repository association, you can work with it from the CodeGuru console. New repository associations can no longer be created.
 
-Or do it programmatically:
+For existing GitHub Enterprise Server or Bitbucket workflows that already rely on this API shape, repository association used this pattern:
 
 ```python
-# Associate a GitHub repository with CodeGuru Reviewer
+# Associate a GitHub Enterprise Server repository with CodeGuru Reviewer
 
 import boto3
 
@@ -59,9 +61,9 @@ association_arn = response['RepositoryAssociation']['AssociationArn']
 print(f"Association ARN: {association_arn}")
 ```
 
-For GitHub repositories, you'll need an AWS CodeStar connection. Set that up first in the Developer Tools console.
+GitHub Enterprise Server and Bitbucket repository associations used an AWS CodeStar connection. GitHub.com repositories could not be associated through the SDK or AWS CLI; AWS required the console for that setup.
 
-Once associated, CodeGuru Reviewer automatically kicks in on every pull request. You'll see its recommendations appear as PR comments, just like a human reviewer.
+For repositories that are already associated, CodeGuru Reviewer automatically kicks in on every pull request. You'll see its recommendations appear as PR comments, just like a human reviewer.
 
 ## How the Review Process Works
 
@@ -78,11 +80,11 @@ sequenceDiagram
     Dev->>GH: Fix issues, push updates
 ```
 
-CodeGuru reviews only the changed files in a PR, not the entire codebase. This keeps reviews focused and fast - typically completing in 5-15 minutes depending on the size of the change.
+CodeGuru reviews the changed code in a PR, not the entire codebase. This keeps reviews focused, with completion time depending on the size of the change.
 
 ## Running a Full Repository Analysis
 
-Beyond PR reviews, you can run a full repository analysis to scan your entire codebase:
+Beyond PR reviews, you can run a full repository analysis on an existing repository association to scan your entire codebase:
 
 ```python
 # Trigger a full repository analysis
@@ -102,7 +104,7 @@ code_review_arn = response['CodeReview']['CodeReviewArn']
 print(f"Code review ARN: {code_review_arn}")
 ```
 
-This is useful when you first set up CodeGuru on an existing project. It finds issues that accumulated before you started using automated reviews.
+This is useful when you first start using CodeGuru on an already-associated project. It finds issues that accumulated before you started using automated reviews.
 
 Check the status:
 
@@ -235,7 +237,7 @@ codeguru.put_recommendation_feedback(
 
 ## Integrating with CI/CD
 
-While CodeGuru automatically reviews PRs, you can also trigger reviews from your CI/CD pipeline:
+While CodeGuru automatically reviews PRs for existing repository associations, existing CI/CD workflows can also trigger reviews:
 
 ```yaml
 # GitHub Actions workflow that triggers CodeGuru analysis
@@ -259,7 +261,7 @@ jobs:
           aws-region: us-east-1
 
       - name: CodeGuru Reviewer
-        uses: aws-actions/codeguru-reviewer@v1
+        uses: aws-actions/codeguru-reviewer@v1.1
         with:
           s3_bucket: codeguru-reviewer-artifacts
           build_path: ./build
@@ -276,23 +278,23 @@ Profiler is a separate tool that instruments your running application and identi
 
 ## Cost Considerations
 
-CodeGuru Reviewer pricing is based on the number of lines of code analyzed:
+CodeGuru Reviewer pricing is based on a monthly fixed rate determined by the aggregate number of lines of code across onboarded repositories:
 
-- First 100K lines per month per repository are included in the associated repository fee
-- Additional lines are charged per line
+- The free tier lasts 90 days for up to 100K lines of code in onboarded repositories per AWS account
+- Standard pricing includes incremental reviews and up to two full repository scans per month for each onboarded repository
+- Additional full repository scans are charged per 100K lines of code
 
-The associated repository fee is relatively modest. For most teams, it's significantly cheaper than the developer time it saves by catching issues early.
+For teams with existing CodeGuru Reviewer associations, compare the monthly repository-size-based cost with the developer time it saves by catching issues early.
 
 ## Monitoring Your Reviews
 
 Track CodeGuru metrics through CloudWatch to understand its impact:
 
 - Number of recommendations generated
-- Recommendation types (security vs. quality vs. performance)
-- Feedback ratios (helpful vs. not helpful)
+- Recommendation counts by provider type, code review type, or repository name
 
 This data helps you measure ROI and tune your usage. For broader application monitoring and operational insights, take a look at [Amazon DevOps Guru](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view).
 
 ## Wrapping Up
 
-CodeGuru Reviewer won't replace your senior engineers, but it'll catch the issues they miss when they're reviewing 15 PRs on a Friday afternoon. The security and AWS best practice recommendations alone make it worth trying. Set it up on one repository, see what it finds, and expand from there.
+CodeGuru Reviewer won't replace your senior engineers, but for teams that already have repository associations, it'll catch the issues they miss when they're reviewing 15 PRs on a Friday afternoon. The security and AWS best practice recommendations alone can still make those existing associations worth using.
