@@ -39,7 +39,7 @@ Before building the flow, turn on debug mode. This provisions a Spark cluster th
 1. In ADF Studio, go to **Author**
 2. Create a new data flow (click **+** > **Data flow** > **Mapping data flow**)
 3. Toggle the **Data flow debug** switch at the top of the canvas
-4. Choose the cluster size (4 cores is enough for development) and the time-to-live (60 minutes is a good default)
+4. Choose the integration runtime and time-to-live (the AutoResolve Azure Integration Runtime uses a 60-minute TTL by default)
 5. Wait a few minutes for the cluster to start
 
 The cluster stays alive for the TTL period. You will not need to wait again as long as you work within that window.
@@ -73,7 +73,6 @@ Click the **+** next to the SalesData source and select **Filter**.
 Name it `FilterValidSales`. In the expression builder, enter:
 
 ```text
-// Keep only records where quantity is greater than 0 and price is not null
 Quantity > 0 && !isNull(UnitPrice)
 ```
 
@@ -86,14 +85,11 @@ Click **+** after the filter and select **Derived column**.
 Name it `CalculateMetrics`. Add new columns:
 
 ```text
-// Calculate total amount for each line item
 TotalAmount = Quantity * UnitPrice
 
-// Extract year and month from the transaction date
 SaleYear = year(TransactionDate)
 SaleMonth = month(TransactionDate)
 
-// Clean up product code by trimming whitespace and converting to uppercase
 CleanProductCode = upper(trim(ProductCode))
 ```
 
@@ -122,13 +118,10 @@ Name it `AggregateByCategory`. Configure:
 - **Aggregates**:
 
 ```text
-// Sum total sales amount per category per month
 TotalSales = sum(TotalAmount)
 
-// Count number of transactions
 TransactionCount = count()
 
-// Calculate average order value
 AvgOrderValue = avg(TotalAmount)
 ```
 
@@ -146,8 +139,9 @@ Name it `WriteToDatalake`. Configure:
 
 - **Dataset** - select your output Parquet or Delta Lake dataset
 - **Settings** tab:
-  - **File name option** - "Output to single file" or "Pattern" (partitioned output)
-  - **Partition option** - for large datasets, partition by `SaleYear` and `SaleMonth`
+  - **File name option** - use "Default" for one file per Spark partition, "Pattern" for named partition files, or "Output to single file" only for small outputs
+- **Optimize** tab:
+  - **Partition option** - for large datasets, use current partitioning or repartition by keys such as `SaleYear` and `SaleMonth`
 
 The complete flow should look something like this.
 
@@ -179,7 +173,6 @@ Data flows do not run on their own. You need to add them to a pipeline.
 5. Configure the compute settings:
 
 ```json
-// Data flow activity settings in the pipeline
 {
   "name": "RunSalesTransformation",
   "type": "ExecuteDataFlow",
@@ -189,11 +182,9 @@ Data flows do not run on their own. You need to add them to a pipeline.
       "type": "DataFlowReference"
     },
     "compute": {
-      // Choose cluster size based on data volume
       "coreCount": 8,
       "computeType": "General"
     },
-    // Staging linked service for data movement
     "staging": {
       "linkedService": {
         "referenceName": "ls_staging_blob",
@@ -205,7 +196,7 @@ Data flows do not run on their own. You need to add them to a pipeline.
 }
 ```
 
-The staging linked service is used for intermediate data during certain operations. Point it to a blob storage container.
+The staging linked service is required only for Azure Synapse Analytics sources or sinks that use PolyBase staging. If you are only reading files and writing Parquet or Delta files to a data lake, you can omit the `staging` block.
 
 ## Transformation Types Reference
 
