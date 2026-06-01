@@ -28,13 +28,28 @@ az aks show \
   --name myAKS \
   --query nodeResourceGroup -o tsv
 
-# Get cost summary for the last 30 days (requires Cost Management API access)
-az costmanagement query \
-  --type ActualCost \
-  --scope "/subscriptions/<sub-id>/resourceGroups/MC_myRG_myAKS_eastus" \
-  --timeframe MonthToDate \
-  --dataset-aggregation '{"totalCost":{"name":"Cost","function":"Sum"}}' \
-  --dataset-grouping name=ResourceType type=Dimension
+# Get cost summary for the month to date (requires Cost Management API access)
+az rest \
+  --method post \
+  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/MC_myRG_myAKS_eastus/providers/Microsoft.CostManagement/query?api-version=2025-03-01" \
+  --body '{
+    "type": "ActualCost",
+    "timeframe": "MonthToDate",
+    "dataset": {
+      "aggregation": {
+        "totalCost": {
+          "name": "Cost",
+          "function": "Sum"
+        }
+      },
+      "grouping": [
+        {
+          "type": "Dimension",
+          "name": "ResourceType"
+        }
+      ]
+    }
+  }'
 ```
 
 ### Tagging Resources for Cost Allocation
@@ -64,27 +79,31 @@ Create budgets with alerts to catch cost spikes before they become problems.
 
 ```bash
 # Create a monthly budget with alerts
-az consumption budget create \
+az consumption budget create-with-rg \
   --budget-name "aks-monthly-budget" \
   --amount 5000 \
-  --category cost \
-  --time-grain monthly \
-  --start-date "2026-02-01" \
-  --end-date "2027-01-31" \
+  --category Cost \
+  --time-grain Monthly \
+  --time-period start-date="2026-02-01" end-date="2027-01-31" \
   --resource-group myRG \
-  --notification-key "over-80-percent" \
-  --notification-enabled true \
-  --notification-threshold 80 \
-  --notification-contact-emails "ops@example.com" \
-  --notification-operator "GreaterThan"
+  --notifications '{
+    "over-80-percent": {
+      "enabled": true,
+      "operator": "GreaterThan",
+      "threshold": 80,
+      "contactEmails": [
+        "ops@example.com"
+      ]
+    }
+  }'
 ```
 
 ## Installing Kubecost on AKS
 
-While Azure Cost Management gives you the infrastructure view, Kubecost provides Kubernetes-native cost allocation. It shows costs broken down by namespace, deployment, label, and even individual pod. AKS has a built-in Kubecost integration through the cost analysis add-on.
+While Azure Cost Management gives you the infrastructure view, Kubecost provides Kubernetes-native cost allocation. It shows costs broken down by namespace, controller, label, and even individual pod. AKS has a built-in cost analysis add-on built on OpenCost.
 
 ```bash
-# Enable the AKS cost analysis add-on (uses Kubecost under the hood)
+# Enable the AKS cost analysis add-on
 az aks update \
   --resource-group myRG \
   --name myAKS \
@@ -95,16 +114,14 @@ Alternatively, install the full Kubecost using Helm for more features.
 
 ```bash
 # Add the Kubecost Helm repo
-helm repo add kubecost https://kubecost.github.io/cost-analyzer/
+helm repo add kubecost https://kubecost.github.io/kubecost/
 helm repo update
 
 # Install Kubecost
-helm install kubecost kubecost/cost-analyzer \
+helm install kubecost kubecost/kubecost \
   --namespace kubecost \
   --create-namespace \
-  --set kubecostToken="<your-token>" \
-  --set prometheus.server.persistentVolume.size=32Gi \
-  --set persistentVolume.size=32Gi
+  --set global.clusterId=myAKS
 
 # Check that Kubecost is running
 kubectl get pods -n kubecost
@@ -114,18 +131,18 @@ Access the Kubecost dashboard.
 
 ```bash
 # Port-forward to the Kubecost UI
-kubectl port-forward -n kubecost deployment/kubecost-cost-analyzer 9090:9090
+kubectl port-forward -n kubecost svc/kubecost-frontend 9090:9090
 
 # Open http://localhost:9090 in your browser
 ```
 
 ## Configuring Kubecost for Azure Pricing
 
-By default, Kubecost uses public Azure pricing. For accurate costs that reflect your actual pricing (reserved instances, enterprise agreements, spot pricing), configure the Azure integration.
+By default, Kubecost estimates costs from cloud pricing data. For accurate costs that reflect your actual Azure billing exports, configure the Azure cloud integration.
 
 ```yaml
 # kubecost-azure-config.yaml
-# Configure Kubecost to use actual Azure pricing data
+# Configure Kubecost to use exported Azure cost data
 apiVersion: v1
 kind: Secret
 metadata:
@@ -138,11 +155,11 @@ stringData:
       "azure": [
         {
           "azureSubscriptionID": "<your-subscription-id>",
-          "azureOfferDurableID": "MS-AZR-0017P",
-          "azureBillingRegion": "US",
-          "azureClientID": "<service-principal-client-id>",
-          "azureClientPassword": "<service-principal-password>",
-          "azureTenantID": "<your-tenant-id>"
+          "azureStorageAccount": "<storage-account-name>",
+          "azureStorageAccessKey": "<storage-account-access-key>",
+          "azureStorageContainer": "<cost-export-container>",
+          "azureContainerPath": "",
+          "azureCloud": "public"
         }
       ]
     }
@@ -152,8 +169,11 @@ stringData:
 # Apply the secret
 kubectl apply -f kubecost-azure-config.yaml
 
-# Restart Kubecost to pick up the configuration
-kubectl rollout restart deployment kubecost-cost-analyzer -n kubecost
+# Tell Kubecost which secret contains the cloud integration
+helm upgrade kubecost kubecost/kubecost \
+  --namespace kubecost \
+  --reuse-values \
+  --set kubecostProductConfigs.cloudIntegrationSecret=cloud-integration
 ```
 
 ## Understanding Kubecost Allocation Model
@@ -191,8 +211,8 @@ Kubecost exposes an API for programmatic cost queries. This is useful for buildi
 # Get namespace-level cost allocation for the last 7 days
 curl -s "http://localhost:9090/model/allocation?window=7d&aggregate=namespace" | jq '.data[0] | to_entries[] | {namespace: .key, totalCost: .value.totalCost}'
 
-# Get costs by deployment
-curl -s "http://localhost:9090/model/allocation?window=7d&aggregate=deployment" | jq '.data[0] | to_entries[] | select(.value.totalCost > 10) | {deployment: .key, totalCost: .value.totalCost}'
+# Get costs by controller
+curl -s "http://localhost:9090/model/allocation?window=7d&aggregate=controller" | jq '.data[0] | to_entries[] | select(.value.totalCost > 10) | {controller: .key, totalCost: .value.totalCost}'
 
 # Get costs by label (useful for team cost allocation)
 curl -s "http://localhost:9090/model/allocation?window=7d&aggregate=label:team" | jq '.data[0] | to_entries[] | {team: .key, totalCost: .value.totalCost}'
@@ -206,26 +226,26 @@ The biggest cost savings come from right-sizing over-provisioned workloads.
 
 ```bash
 # Use Kubecost API to find workloads requesting much more than they use
-curl -s "http://localhost:9090/model/allocation?window=7d&aggregate=deployment" | \
+curl -s "http://localhost:9090/model/allocation?window=7d&aggregate=controller" | \
   jq '.data[0] | to_entries[] | select(.value.cpuEfficiency < 0.3) | {
-    deployment: .key,
+    controller: .key,
     cpuRequested: .value.cpuCoreRequestAverage,
     cpuUsed: .value.cpuCoreUsageAverage,
     efficiency: .value.cpuEfficiency
   }'
 ```
 
-For deployments with less than 30% CPU efficiency, you are paying for resources that are sitting idle. Reduce the requests and limits.
+For controllers with less than 30% CPU efficiency, you are paying for resources that are sitting idle. Reduce the requests and limits.
 
 ### Finding Idle Namespaces
 
 ```bash
 # Check for namespaces with minimal resource usage but provisioned pods
 kubectl get pods --all-namespaces -o json | jq '
-  .items | group_by(.metadata.namespace) | map({
+  .items | sort_by(.metadata.namespace) | group_by(.metadata.namespace) | map({
     namespace: .[0].metadata.namespace,
     podCount: length,
-    totalCPURequests: [.[].spec.containers[].resources.requests.cpu // "0"] | length
+    containersWithCPURequests: [.[].spec.containers[] | select(.resources.requests.cpu?)] | length
   }) | sort_by(.podCount) | reverse'
 ```
 
@@ -272,9 +292,9 @@ curl -s "${KUBECOST_URL}/model/allocation?window=${WINDOW}&aggregate=namespace" 
 
 echo ""
 echo "Total Cluster Cost: $(curl -s "${KUBECOST_URL}/model/allocation?window=${WINDOW}&aggregate=cluster" | jq '.data[0] | to_entries[0].value.totalCost')"
-echo "Idle Cost: $(curl -s "${KUBECOST_URL}/model/allocation?window=${WINDOW}&aggregate=cluster" | jq '.data[0] | to_entries[0].value.totalCost * (1 - .data[0] | to_entries[0].value.cpuEfficiency)')"
+echo "Idle Cost: $(curl -s "${KUBECOST_URL}/model/allocation?window=${WINDOW}&aggregate=cluster&idle=true" | jq '[.data[0] | to_entries[] | select(.key | test("__idle__|Idle")) | .value.totalCost] | add // 0')"
 ```
 
 ## Wrapping Up
 
-Cost visibility on AKS requires both the infrastructure perspective from Azure Cost Management and the Kubernetes-level detail from Kubecost. Azure Cost Management tells you what your VMs, disks, and network cost. Kubecost tells you which namespaces, deployments, and teams are consuming those resources. The combination lets you make informed decisions about right-sizing workloads, identifying idle resources, and allocating costs to the right teams. Start by installing Kubecost and letting it collect a week of data. The initial report will almost certainly reveal over-provisioned workloads and idle resources that represent quick cost savings.
+Cost visibility on AKS requires both the infrastructure perspective from Azure Cost Management and the Kubernetes-level detail from Kubecost. Azure Cost Management tells you what your VMs, disks, and network cost. Kubecost tells you which namespaces, controllers, and teams are consuming those resources. The combination lets you make informed decisions about right-sizing workloads, identifying idle resources, and allocating costs to the right teams. Start by installing Kubecost and letting it collect a week of data. The initial report will almost certainly reveal over-provisioned workloads and idle resources that represent quick cost savings.
