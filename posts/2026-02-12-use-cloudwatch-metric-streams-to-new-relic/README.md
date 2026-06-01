@@ -237,8 +237,30 @@ Resources:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+                Action: ["s3:GetBucketLocation", "s3:ListBucket"]
+                Resource: !GetAtt BackupBucket.Arn
+              - Effect: Allow
+                Action: ["s3:AbortMultipartUpload", "s3:GetObject", "s3:PutObject"]
                 Resource: !Sub "${BackupBucket.Arn}/*"
+
+  MetricStreamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: streams.metrics.cloudwatch.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehosePutAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ["firehose:PutRecord", "firehose:PutRecordBatch"]
+                Resource: !GetAtt DeliveryStream.Arn
 
   DeliveryStream:
     Type: AWS::KinesisFirehose::DeliveryStream
@@ -249,12 +271,25 @@ Resources:
         EndpointConfiguration:
           Url: https://aws-api.newrelic.com/cloudwatch-metrics/v1
           AccessKey: !Ref NewRelicLicenseKey
+          Name: New Relic
+        RequestConfiguration:
+          ContentEncoding: GZIP
         BufferingHints:
           IntervalInSeconds: 60
           SizeInMBs: 1
+        S3BackupMode: FailedDataOnly
         S3Configuration:
           RoleARN: !GetAtt FirehoseRole.Arn
           BucketARN: !GetAtt BackupBucket.Arn
+        RoleARN: !GetAtt FirehoseRole.Arn
+
+  MetricStream:
+    Type: AWS::CloudWatch::MetricStream
+    Properties:
+      Name: newrelic-metric-stream
+      FirehoseArn: !GetAtt DeliveryStream.Arn
+      RoleArn: !GetAtt MetricStreamRole.Arn
+      OutputFormat: opentelemetry1.0
 ```
 
 ## Verifying Data in New Relic
@@ -275,7 +310,7 @@ The `collector.name` dimension lets you filter specifically for data coming thro
 
 If metrics are not showing up in New Relic:
 
-- Check the Firehose delivery stream metrics in CloudWatch for `DeliveryToHttpEndpoint.Success` and `DeliveryToHttpEndpoint.Failures`
+- Check the Firehose delivery stream metrics in CloudWatch for `DeliveryToHttpEndpoint.Success` using the Minimum statistic, and watch `DeliveryToHttpEndpoint.DataFreshness` for delivery delays
 - Look in the S3 backup bucket for failed records
 - Verify your New Relic license key is an Ingest key, not a User key
 - Confirm the Metric Stream state is `running` using `aws cloudwatch list-metric-streams`
