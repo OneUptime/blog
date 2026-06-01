@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring Azure Backup for SQL Server datab
 
 ---
 
-If you are running SQL Server on Azure VMs (IaaS), you are responsible for your own database backups. Azure does not automatically back up SQL Server databases just because the VM is backed up. VM-level backups capture the disk state, but they are not ideal for database recovery because they do not guarantee transaction-level consistency or allow point-in-time restores.
+If you are running SQL Server on Azure VMs (IaaS), you are responsible for your own database backups. Azure does not automatically give you SQL database-level recovery just because the VM is backed up. VM-level backups capture the disk state and can be application-consistent when VSS succeeds, but they are not ideal for database recovery because they do not provide SQL transaction log backups or point-in-time restores.
 
 Azure Backup has a dedicated SQL Server backup feature that understands SQL Server natively. It takes full backups, differential backups, and transaction log backups, giving you point-in-time recovery with RPOs as low as 15 minutes. This guide covers how to set it up.
 
@@ -17,7 +17,7 @@ Azure Backup has a dedicated SQL Server backup feature that understands SQL Serv
 VM-level backups take a snapshot of the entire disk. While they are application-consistent (thanks to VSS), they have limitations for databases:
 
 - **No point-in-time recovery** - You can only restore to the exact time the snapshot was taken
-- **Full VM restore required** - You cannot restore a single database; you have to restore the entire VM
+- **No direct database restore** - You can restore the VM, disks, or files, but not a single SQL database with point-in-time recovery
 - **Large restore times** - Restoring a 1 TB VM to recover a 50 GB database is wasteful
 - **No transaction log management** - The transaction log keeps growing because nothing is truncating it
 
@@ -27,28 +27,29 @@ Azure Backup for SQL Server solves all of these. It takes SQL-native backups dir
 
 Azure Backup installs a workload backup extension on the Azure VM. This extension communicates with SQL Server to:
 
-1. Take full backups on a schedule (default: weekly)
-2. Take differential backups between full backups (default: every 12 hours)
-3. Take transaction log backups at frequent intervals (default: every 15 minutes)
+1. Take full backups on a schedule (daily by default, or weekly if you want differentials)
+2. Take differential backups between weekly full backups (up to once per day)
+3. Take transaction log backups at frequent intervals (as often as every 15 minutes)
 4. Stream backup data to the Recovery Services vault
 
 ```mermaid
 flowchart TB
-    A[SQL Server on Azure VM] -->|Full backup weekly| B[Recovery Services Vault]
-    A -->|Differential every 12h| B
+    A[SQL Server on Azure VM] -->|Full backup weekly or daily| B[Recovery Services Vault]
+    A -->|Differential daily| B
     A -->|Log backup every 15min| B
     B -->|Point-in-time restore| C[Restored Database]
 ```
 
-This gives you a 15-minute RPO by default, and you can restore to any point in time within the retention period.
+With 15-minute log backups enabled, this gives you a 15-minute RPO, and you can restore to any point in time within the log retention period.
 
 ## Prerequisites
 
-- SQL Server running on an Azure VM (SQL Server 2012 SP4 or later)
+- SQL Server running on a Windows Azure VM (SQL Server 2012 or later)
 - The VM must be registered with a Recovery Services vault
-- SQL Server must be installed with local system or NT Service accounts (not custom domain accounts on older versions)
-- Network connectivity from the VM to Azure on port 443
+- The Azure Backup workload extension service account must have SQL sysadmin permissions
+- HTTPS network connectivity from the VM to the required Azure Backup, Azure Storage, and Microsoft Entra ID endpoints
 - The VM must have the Azure VM Agent installed
+- The VM must have .NET Framework 4.6.2 or later installed
 
 ## Step 1: Discover SQL Server Instances on the VM
 
@@ -83,7 +84,7 @@ The SQL Server backup policy is different from the VM backup policy. It has sepa
 - Retention: 30 days, 12 weeks, 12 months, 7 years
 
 **Differential backup schedule:**
-- Frequency: Every 12 hours (or 6, 8, 12, 24 hours)
+- Frequency: Once per day when full backups are weekly
 - Retention: 30 days
 
 **Transaction log backup schedule:**
@@ -95,7 +96,10 @@ The SQL Server backup policy is different from the VM backup policy. It has sepa
 ```bash
 # Create a SQL Server backup policy with custom schedules
 
-# Full weekly, differential every 12 hours, logs every 15 minutes
+# Full weekly, differential daily, logs every 15 minutes
+
+# Save the policy JSON as SQLPolicy.json, then create the policy.
+# The differential backup runs daily except on the full backup day.
 
 az backup policy create \
     --resource-group rg-backup-eastus2 \
@@ -103,65 +107,78 @@ az backup policy create \
     --name policy-sql-production \
     --backup-management-type AzureWorkload \
     --workload-type SQLDataBase \
-    --policy '{
-        "protectedItemsCount": 0,
-        "settings": {
-            "timeZone": "UTC",
-            "issqlcompression": true
+    --policy SQLPolicy.json
+```
+
+Example `SQLPolicy.json`:
+
+```json
+{
+  "properties": {
+    "backupManagementType": "AzureWorkload",
+    "workLoadType": "SQLDataBase",
+    "settings": {
+      "timeZone": "UTC",
+      "issqlcompression": true,
+      "isCompression": true
+    },
+    "subProtectionPolicy": [
+      {
+        "policyType": "Full",
+        "schedulePolicy": {
+          "schedulePolicyType": "SimpleSchedulePolicy",
+          "scheduleRunFrequency": "Weekly",
+          "scheduleRunDays": ["Sunday"],
+          "scheduleRunTimes": ["2026-02-16T02:00:00Z"],
+          "scheduleWeeklyFrequency": 0
         },
-        "subProtectionPolicy": [
-            {
-                "policyType": "Full",
-                "schedulePolicy": {
-                    "schedulePolicyType": "SimpleSchedulePolicy",
-                    "scheduleRunFrequency": "Weekly",
-                    "scheduleRunDays": ["Sunday"],
-                    "scheduleRunTimes": ["2026-02-16T02:00:00Z"]
-                },
-                "retentionPolicy": {
-                    "retentionPolicyType": "LongTermRetentionPolicy",
-                    "weeklySchedule": {
-                        "daysOfTheWeek": ["Sunday"],
-                        "retentionTimes": ["2026-02-16T02:00:00Z"],
-                        "retentionDuration": {
-                            "count": 30,
-                            "durationType": "Days"
-                        }
-                    }
-                }
-            },
-            {
-                "policyType": "Differential",
-                "schedulePolicy": {
-                    "schedulePolicyType": "SimpleSchedulePolicy",
-                    "scheduleRunFrequency": "Weekly",
-                    "scheduleRunDays": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],
-                    "scheduleRunTimes": ["2026-02-16T14:00:00Z"]
-                },
-                "retentionPolicy": {
-                    "retentionPolicyType": "SimpleRetentionPolicy",
-                    "retentionDuration": {
-                        "count": 30,
-                        "durationType": "Days"
-                    }
-                }
-            },
-            {
-                "policyType": "Log",
-                "schedulePolicy": {
-                    "schedulePolicyType": "LogSchedulePolicy",
-                    "scheduleFrequencyInMins": 15
-                },
-                "retentionPolicy": {
-                    "retentionPolicyType": "SimpleRetentionPolicy",
-                    "retentionDuration": {
-                        "count": 15,
-                        "durationType": "Days"
-                    }
-                }
+        "retentionPolicy": {
+          "retentionPolicyType": "LongTermRetentionPolicy",
+          "weeklySchedule": {
+            "daysOfTheWeek": ["Sunday"],
+            "retentionTimes": ["2026-02-16T02:00:00Z"],
+            "retentionDuration": {
+              "count": 12,
+              "durationType": "Weeks"
             }
-        ]
-    }'
+          }
+        }
+      },
+      {
+        "policyType": "Differential",
+        "schedulePolicy": {
+          "schedulePolicyType": "SimpleSchedulePolicy",
+          "scheduleRunFrequency": "Weekly",
+          "scheduleRunDays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+          "scheduleRunTimes": ["2026-02-16T14:00:00Z"],
+          "scheduleWeeklyFrequency": 0
+        },
+        "retentionPolicy": {
+          "retentionPolicyType": "SimpleRetentionPolicy",
+          "retentionDuration": {
+            "count": 30,
+            "durationType": "Days"
+          }
+        }
+      },
+      {
+        "policyType": "Log",
+        "schedulePolicy": {
+          "schedulePolicyType": "LogSchedulePolicy",
+          "scheduleFrequencyInMins": 15
+        },
+        "retentionPolicy": {
+          "retentionPolicyType": "SimpleRetentionPolicy",
+          "retentionDuration": {
+            "count": 15,
+            "durationType": "Days"
+          }
+        }
+      }
+    ],
+    "protectedItemsCount": 0
+  }
+}
 ```
 
 ## Step 3: Configure Backup for Individual Databases
@@ -202,6 +219,10 @@ $sqlInstance = $protectableItems | Where-Object {
 }
 
 # Enable auto-protection on the instance
+$backupPolicy = Get-AzRecoveryServicesBackupProtectionPolicy `
+    -Name "policy-sql-production" `
+    -VaultId $vault.ID
+
 Enable-AzRecoveryServicesBackupAutoProtection `
     -InputItem $sqlInstance `
     -BackupManagementType AzureWorkload `
@@ -245,25 +266,30 @@ The combination of full, differential, and log backups gives you point-in-time r
 2. Applies the most recent differential backup after that full
 3. Replays transaction logs up to your exact target timestamp
 
-This means you can restore a database to any second within the log retention period. If your log backups run every 15 minutes and you retain logs for 15 days, you can restore to any point within the last 15 days with at most 15 minutes of data loss.
+This means you can select a restore time to the second within the log retention period. If your log backups run every 15 minutes and you retain logs for 15 days, you can restore to any point covered by the retained log chain, with an RPO of up to 15 minutes.
 
 ## Step 6: Handle Special Database Configurations
 
 ### Always On Availability Groups
 
-Azure Backup supports backing up databases in AG configurations. It preferentially backs up from the secondary replica to offload backup I/O from the primary. Configure the backup preference in the AG settings:
+Azure Backup supports backing up databases in AG configurations when the required nodes are registered in the same region and subscription as the vault. Full and differential backups run from the primary replica. Copy-only full and transaction log backups follow the AG backup preference, so you can prefer secondary replicas for log backup I/O. Configure the backup preference in the AG settings:
 
 ```sql
--- Set backup preference to prefer secondary replicas
--- This reduces I/O load on the primary during backup operations
+-- Set backup preference to prefer secondary replicas.
+-- Azure Backup uses this preference for copy-only full and log backups.
+ALTER AVAILABILITY GROUP [MyAG]
+SET (
+    AUTOMATED_BACKUP_PREFERENCE = SECONDARY
+);
+
 ALTER AVAILABILITY GROUP [MyAG]
 MODIFY REPLICA ON N'vm-sql-01' WITH (
-    BACKUP_PRIORITY = 30  -- Lower priority for primary
+    BACKUP_PRIORITY = 30
 );
 
 ALTER AVAILABILITY GROUP [MyAG]
 MODIFY REPLICA ON N'vm-sql-02' WITH (
-    BACKUP_PRIORITY = 70  -- Higher priority for secondary
+    BACKUP_PRIORITY = 70
 );
 ```
 
@@ -273,7 +299,7 @@ Databases with Transparent Data Encryption are fully supported. Azure Backup han
 
 ### System Databases
 
-Azure Backup protects the master, model, and msdb system databases. The tempdb database is excluded because it is recreated every time SQL Server starts.
+Azure Backup protects the master, model, and msdb system databases. Differential backup is not supported for the master database. The tempdb database is excluded because it is recreated every time SQL Server starts.
 
 ## Monitoring and Alerting
 
@@ -282,10 +308,10 @@ Set up alerts for backup failures:
 1. In the vault, go to "Alerts"
 2. Enable notifications for:
    - SQL backup failures
-   - Log chain break warnings
-   - RPO threshold breaches
+   - Restore failures
+   - Backup data deletion
 
-A log chain break means the sequence of transaction log backups was interrupted. This can happen if someone runs a manual full backup outside of Azure Backup, or if a database is taken offline. Azure Backup automatically takes a new full backup to restart the chain, but you should investigate the cause.
+A log chain break means the sequence of transaction log backups was interrupted. This can happen if someone runs a manual log backup outside of Azure Backup, changes the recovery model, or takes a database offline. Azure Backup takes a new full backup to restart the chain when needed, but you should investigate the cause.
 
 ## Wrapping Up
 
