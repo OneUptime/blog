@@ -22,7 +22,7 @@ The distance between vectors is typically measured using cosine similarity, dot 
 
 You will need:
 
-1. An Azure AI Search service (Basic tier or higher)
+1. An Azure AI Search service (Free works for small tests; Basic tier or higher is recommended for larger datasets)
 2. An Azure OpenAI resource with an embedding model deployed (text-embedding-ada-002 or text-embedding-3-small)
 3. Python 3.8+ with the `openai` and `azure-search-documents` packages installed
 
@@ -54,7 +54,7 @@ def get_embedding(text: str) -> list[float]:
     """Generate an embedding vector for the given text."""
     response = client.embeddings.create(
         input=text,
-        model="text-embedding-ada-002"  # or your deployed model name
+        model="<your-embedding-deployment-name>"  # for example, a text-embedding-ada-002 deployment
     )
     return response.data[0].embedding
 
@@ -90,8 +90,8 @@ from azure.search.documents.indexes.models import (
     SearchableField,
     VectorSearch,
     HnswAlgorithmConfiguration,
+    HnswParameters,
     VectorSearchProfile,
-    SearchField,
 )
 from azure.core.credentials import AzureKeyCredential
 
@@ -106,12 +106,12 @@ vector_search = VectorSearch(
         # HNSW is the recommended algorithm for most use cases
         HnswAlgorithmConfiguration(
             name="my-hnsw-config",
-            parameters={
-                "m": 4,          # Number of bi-directional links per node
-                "efConstruction": 400,  # Size of dynamic candidate list during indexing
-                "efSearch": 500,        # Size of dynamic candidate list during search
-                "metric": "cosine"      # Distance metric
-            }
+            parameters=HnswParameters(
+                m=4,                    # Number of bi-directional links per node
+                ef_construction=400,    # Size of dynamic candidate list during indexing
+                ef_search=500,          # Size of dynamic candidate list during search
+                metric="cosine"         # Distance metric
+            )
         )
     ],
     profiles=[
