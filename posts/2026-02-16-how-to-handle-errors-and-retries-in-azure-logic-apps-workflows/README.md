@@ -12,7 +12,7 @@ A workflow that only handles the happy path is a workflow that will fail in prod
 
 ## Retry Policies
 
-Every HTTP action and managed connector action in Logic Apps has a configurable retry policy. The default policy retries 4 times with exponential intervals.
+HTTP actions and connector operations that support retry policies let you configure retry behavior. For most operations, the default policy retries up to 4 times with exponential intervals.
 
 You can configure four types of retry policies:
 
@@ -52,7 +52,7 @@ Here is how to set a custom retry policy on an HTTP action.
 }
 ```
 
-The exponential policy starts with a 10-second interval and doubles each time, up to the maximum of 1 hour, for a total of 5 retry attempts.
+The exponential policy uses the 10-second interval to calculate an exponentially growing range and waits a random interval within that range, up to the maximum of 1 hour, for a total of 5 retry attempts.
 
 For actions where retrying would cause side effects (like charging a credit card twice), disable retries entirely.
 
@@ -63,7 +63,10 @@ For actions where retrying would cause side effects (like charging a credit card
     "inputs": {
       "method": "POST",
       "uri": "https://api.payments.com/v1/charge",
-      "body": { ... },
+      "body": {
+        "amount": "@body('Parse_Order')?['totalAmount']",
+        "currency": "USD"
+      },
       "retryPolicy": {
         "type": "none"
       }
@@ -83,7 +86,7 @@ By default, an action runs only when its predecessor succeeds. But you can confi
       "type": "Http",
       "inputs": {
         "method": "POST",
-        "uri": "@appsetting('OrderApiUrl')/process",
+        "uri": "@{parameters('OrderApiUrl')}/process",
         "body": "@triggerBody()"
       },
       "runAfter": {}
@@ -131,7 +134,15 @@ Logic Apps does not have explicit try-catch blocks, but you can build the same p
           "type": "ParseJson",
           "inputs": {
             "content": "@triggerBody()",
-            "schema": { ... }
+            "schema": {
+              "type": "object",
+              "properties": {
+                "orderId": {
+                  "type": "string"
+                }
+              },
+              "required": ["orderId"]
+            }
           },
           "runAfter": {}
         },
@@ -167,7 +178,7 @@ Logic Apps does not have explicit try-catch blocks, but you can build the same p
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "@appsetting('LoggingApiUrl')/errors",
+            "uri": "@{parameters('LoggingApiUrl')}/errors",
             "body": {
               "workflowRunId": "@workflow().run.name",
               "error": "@result('Try_Scope')",
@@ -180,7 +191,7 @@ Logic Apps does not have explicit try-catch blocks, but you can build the same p
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "@appsetting('SlackWebhookUrl')",
+            "uri": "@parameters('SlackWebhookUrl')",
             "body": {
               "text": "Workflow failed: @{workflow().run.name}"
             }
@@ -201,7 +212,7 @@ Logic Apps does not have explicit try-catch blocks, but you can build the same p
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "@appsetting('CleanupApiUrl')",
+            "uri": "@parameters('CleanupApiUrl')",
             "body": {
               "runId": "@workflow().run.name"
             }
@@ -253,7 +264,7 @@ When an action fails, you can access detailed error information using the `resul
 }
 ```
 
-The `result('Try_Scope')` function returns an array with the result of every action inside the scope, including which ones failed and why.
+The `result('Try_Scope')` function returns an array with the result of each top-level action inside the scope, including which ones failed and why.
 
 ## Timeout Configuration
 
@@ -288,7 +299,7 @@ Sometimes you need to undo work when a later step fails. This is called compensa
       "type": "Http",
       "inputs": {
         "method": "POST",
-        "uri": "@appsetting('OrderApiUrl')/orders",
+        "uri": "@{parameters('OrderApiUrl')}/orders",
         "body": "@triggerBody()"
       },
       "runAfter": {}
@@ -297,7 +308,7 @@ Sometimes you need to undo work when a later step fails. This is called compensa
       "type": "Http",
       "inputs": {
         "method": "POST",
-        "uri": "@appsetting('PaymentApiUrl')/charge",
+        "uri": "@{parameters('PaymentApiUrl')}/charge",
         "body": {
           "orderId": "@body('Create_Order')?['orderId']",
           "amount": "@triggerBody()?['totalAmount']"
@@ -312,7 +323,7 @@ Sometimes you need to undo work when a later step fails. This is called compensa
       "type": "Http",
       "inputs": {
         "method": "DELETE",
-        "uri": "@{appsetting('OrderApiUrl')}/orders/@{body('Create_Order')?['orderId']}"
+        "uri": "@{parameters('OrderApiUrl')}/orders/@{body('Create_Order')?['orderId']}"
       },
       "runAfter": {
         "Process_Payment": ["Failed"]
