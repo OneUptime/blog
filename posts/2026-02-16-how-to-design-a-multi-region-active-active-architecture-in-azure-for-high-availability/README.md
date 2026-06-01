@@ -97,6 +97,19 @@ az afd origin create \
   --priority 1 \
   --weight 1000 \
   --enabled-state Enabled
+
+# Create a route that maps the endpoint to the origin group
+az afd route create \
+  --resource-group global-rg \
+  --profile-name my-global-app \
+  --endpoint-name myapp \
+  --route-name default-route \
+  --origin-group app-origins \
+  --supported-protocols Http Https \
+  --patterns-to-match "/*" \
+  --forwarding-protocol MatchRequest \
+  --https-redirect Enabled \
+  --link-to-default-domain Enabled
 ```
 
 Notice that both origins have priority 1 and equal weight. This means Front Door distributes traffic to both regions based on latency - users in North America hit East US, users in Europe hit West Europe.
@@ -121,7 +134,7 @@ With multi-region writes enabled, both regions can accept writes simultaneously.
 
 ### Handling Write Conflicts
 
-When two regions write to the same document at the same time, you need a conflict resolution strategy. Cosmos DB offers three options:
+When two regions write to the same document at the same time, you need a conflict resolution strategy. Cosmos DB offers two conflict resolution policies: Last Writer Wins and Custom. In practice, you can use these common approaches:
 
 ```csharp
 // Option 1: Last Writer Wins (default) - highest _ts value wins
@@ -134,7 +147,7 @@ var containerProperties = new ContainerProperties("orders", "/customerId")
     }
 };
 
-// Option 2: Custom resolution path - use a version number you control
+// Option 2: Custom resolution path - use a numeric version number you control
 var containerProperties2 = new ContainerProperties("inventory", "/productId")
 {
     ConflictResolutionPolicy = new ConflictResolutionPolicy
@@ -155,7 +168,7 @@ var containerProperties3 = new ContainerProperties("accounts", "/accountId")
 };
 ```
 
-For most applications, Last Writer Wins is sufficient. For inventory or financial data where you cannot lose writes, use a custom merge strategy.
+For most applications, Last Writer Wins is sufficient. For inventory or financial data where you cannot lose writes, consider a custom merge strategy.
 
 ## Application Configuration for Multi-Region
 
@@ -171,7 +184,7 @@ var cosmosClient = new CosmosClient(
         // This ensures reads and writes go to the local region
         ApplicationRegion = Environment.GetEnvironmentVariable("AZURE_REGION"),
 
-        // Enable content response on writes - needed for conflict detection
+        // Return the written item in create, upsert, and replace responses
         EnableContentResponseOnWrite = true,
 
         // Connection settings for production
@@ -209,7 +222,7 @@ az redis create \
   --name myapp-cache-eastus \
   --location eastus \
   --sku Premium \
-  --vm-size P1 \
+  --vm-size p1 \
   --zones 1 2 3
 
 az redis create \
@@ -217,7 +230,7 @@ az redis create \
   --name myapp-cache-westeurope \
   --location westeurope \
   --sku Premium \
-  --vm-size P1 \
+  --vm-size p1 \
   --zones 1 2 3
 ```
 
@@ -232,20 +245,31 @@ Cache invalidation in a multi-region setup requires care. When data changes in o
 For active-active to work, user sessions must be accessible from any region. Do not use in-memory sessions or sticky sessions tied to a specific server.
 
 ```csharp
-// Use Azure Cosmos DB for distributed session storage
+// Choose one IDistributedCache provider before adding session.
+// Option 1: use Azure Cosmos DB for globally available distributed session storage
+builder.Services.AddCosmosCache(options =>
+{
+    options.ContainerName = builder.Configuration["CosmosCacheContainer"];
+    options.DatabaseName = builder.Configuration["CosmosCacheDatabase"];
+    options.ClientBuilder = new CosmosClientBuilder(
+        builder.Configuration["CosmosConnectionString"]);
+    options.CreateIfNotExists = true;
+});
+
+// Option 2: use Redis if the session data is replicated or
+// you can tolerate session loss during a regional failover
+// builder.Services.AddStackExchangeRedisCache(options =>
+// {
+//     options.Configuration = builder.Configuration
+//         .GetConnectionString("RedisCache");
+//     options.InstanceName = "session:";
+// });
+
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromMinutes(30);
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
-});
-
-// Or use Redis for session storage (region-local)
-builder.Services.AddStackExchangeRedisCache(options =>
-{
-    options.Configuration = builder.Configuration
-        .GetConnectionString("RedisCache");
-    options.InstanceName = "session:";
 });
 ```
 
