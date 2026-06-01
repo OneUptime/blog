@@ -39,17 +39,20 @@ Click on an individual reservation to see its detailed utilization over time, in
 
 ## Step 2: Query Reservation Data with the API
 
-For a comprehensive analysis, use the Cost Management API to pull reservation utilization data programmatically:
+For a comprehensive analysis, use the Azure Consumption reservation summaries API to pull reservation utilization data programmatically:
 
 ```bash
 # Get reservation utilization summary for the last 30 days
 
-curl -X GET "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/<billing-account-id>/providers/Microsoft.Consumption/reservationSummaries?grain=daily&startDate=2024-02-01&endDate=2024-03-01&api-version=2023-05-01" \
+curl -G "https://management.azure.com/providers/Microsoft.Billing/billingAccounts/<billing-account-id>/providers/Microsoft.Consumption/reservationSummaries" \
+  --data-urlencode "api-version=2024-08-01" \
+  --data-urlencode "grain=daily" \
+  --data-urlencode "\$filter=properties/usageDate ge 2024-02-01 AND properties/usageDate le 2024-03-01" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json"
 ```
 
-The response includes daily utilization percentages, reserved quantity, used quantity, and the specific resources consuming the reservation.
+The response includes daily utilization percentages, reserved quantity, used quantity, reserved hours, and used hours. Use the reservation details API when you need the specific resources consuming the reservation.
 
 ## Step 3: Analyze Utilization Patterns
 
@@ -68,8 +71,6 @@ def get_reservation_utilization(token, billing_account_id, days=30):
         f"https://management.azure.com/providers/Microsoft.Billing/"
         f"billingAccounts/{billing_account_id}/providers/"
         f"Microsoft.Consumption/reservationSummaries"
-        f"?grain=daily&startDate={start_date}&endDate={end_date}"
-        f"&api-version=2023-05-01"
     )
 
     headers = {
@@ -77,7 +78,14 @@ def get_reservation_utilization(token, billing_account_id, days=30):
         'Content-Type': 'application/json'
     }
 
-    response = requests.get(url, headers=headers)
+    params = {
+        'api-version': '2024-08-01',
+        'grain': 'daily',
+        '$filter': f"properties/usageDate ge {start_date} AND properties/usageDate le {end_date}"
+    }
+
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status()
     return response.json()
 
 
@@ -122,19 +130,21 @@ def analyze_utilization(data):
 
 ## Step 4: Build a Utilization Dashboard
 
-Use KQL queries in Log Analytics or Azure Workbooks to visualize reservation utilization:
+Use Azure Resource Graph queries in Resource Graph Explorer or Azure Workbooks to visualize reservation-related Advisor recommendations:
 
 ```kql
-// Reservation utilization trend from the AdvisorResources table
+// Reservation-related cost recommendations from the AdvisorResources table
 AdvisorResources
-| where type == "microsoft.advisor/recommendations"
+| where type =~ "microsoft.advisor/recommendations"
 | where properties.category == "Cost"
-| where properties.shortDescription.solution contains "reservation"
 | extend
+    Solution = tostring(properties.shortDescription.solution),
     Savings = todouble(properties.extendedProperties.savingsAmount),
     SKU = tostring(properties.extendedProperties.sku),
-    Region = tostring(properties.extendedProperties.region)
-| project TimeGenerated, SKU, Region, Savings
+    Region = tostring(properties.extendedProperties.region),
+    LastUpdated = todatetime(properties.lastUpdated)
+| where Solution contains "reservation"
+| project LastUpdated, SKU, Region, Savings, Solution
 ```
 
 For a more detailed view, use the Cost Management data export to track utilization over time. Schedule a daily export and visualize in Power BI:
@@ -159,12 +169,12 @@ Fix: Azure supports instance size flexibility within the same VM series. A D4s_v
 az reservations reservation show \
   --reservation-order-id <order-id> \
   --reservation-id <reservation-id> \
-  --query "properties.appliedScopeType"
+  --query "properties.instanceFlexibility"
 ```
 
 **Workloads decommissioned**: The project that needed those VMs was shut down, but the reservation is still active.
 
-Fix: You can exchange reservations for a different type or return them (with an early termination fee). Use the Cost Management portal to initiate an exchange.
+Fix: You can exchange reservations for another reservation of the same type or return them. Microsoft currently doesn't charge an early termination fee for cancellations, but a 12% fee might apply in the future. Use the Cost Management portal to initiate an exchange or return.
 
 **Wrong scope**: The reservation is scoped to a specific subscription, but the matching VMs were moved to a different subscription.
 
@@ -250,21 +260,7 @@ def find_reservation_candidates(cost_data, min_hours_per_day=20):
 
 ## Step 8: Set Up Utilization Alerts
 
-Create alerts that notify you when reservation utilization drops below acceptable levels:
-
-```bash
-# Create a budget alert for reservation underutilization
-# This uses the Azure Advisor alert mechanism
-az monitor metrics alert create \
-  --name "reservation-utilization-low" \
-  --resource-group myRG \
-  --scopes "/providers/Microsoft.Billing/billingAccounts/<billing-account-id>" \
-  --condition "avg ReservationUtilizationPercentage < 80" \
-  --window-size 1d \
-  --evaluation-frequency 1d \
-  --severity 3 \
-  --action-group "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Insights/actionGroups/FinOpsTeam"
-```
+Create alerts that notify you when reservation utilization drops below acceptable levels. In the Azure portal, go to Cost Management + Billing, choose the appropriate billing scope, select **Cost alerts**, and create an alert rule with **Reservation utilization** as the alert type. Set the target utilization percentage, choose a 7-day or 30-day time grain, and add the email recipients.
 
 ## Reporting Cadence
 
