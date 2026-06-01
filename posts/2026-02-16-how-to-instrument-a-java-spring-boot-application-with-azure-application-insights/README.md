@@ -19,11 +19,11 @@ The Application Insights Java agent is a standalone JAR file that you attach to 
 ```bash
 # Download the latest Application Insights Java agent
 
-curl -L -o applicationinsights-agent-3.4.0.jar \
-  https://github.com/microsoft/ApplicationInsights-Java/releases/download/3.4.0/applicationinsights-agent-3.4.0.jar
+curl -L -o applicationinsights-agent-3.7.8.jar \
+  https://github.com/microsoft/ApplicationInsights-Java/releases/download/3.7.8/applicationinsights-agent-3.7.8.jar
 ```
 
-Place the JAR in a location accessible to your application at runtime. For Docker deployments, include it in your image. For App Service, put it in a directory alongside your application JAR.
+Place the JAR in a location accessible to your application at runtime. For Docker deployments, include it in your image. For App Service, you can use the managed Application Insights Java agent shown later in this guide.
 
 ## Step 2: Create the Configuration File
 
@@ -36,9 +36,6 @@ The agent reads its configuration from a JSON file named `applicationinsights.js
     "name": "order-service",
     "instance": "order-service-01"
   },
-  "sampling": {
-    "percentage": 100
-  },
   "instrumentation": {
     "logging": {
       "level": "WARN"
@@ -50,21 +47,21 @@ The agent reads its configuration from a JSON file named `applicationinsights.js
   "heartbeat": {
     "intervalSeconds": 60
   },
-  "preview": {
-    "sampling": {
-      "overrides": [
-        {
-          "attributes": [
-            {
-              "key": "http.url",
-              "value": "/health",
-              "matchType": "contains"
-            }
-          ],
-          "percentage": 0
-        }
-      ]
-    }
+  "sampling": {
+    "percentage": 100,
+    "overrides": [
+      {
+        "telemetryType": "request",
+        "attributes": [
+          {
+            "key": "url.path",
+            "value": "/health",
+            "matchType": "strict"
+          }
+        ],
+        "percentage": 0
+      }
+    ]
   }
 }
 ```
@@ -73,7 +70,7 @@ Key configuration options:
 
 - **role.name**: Sets the cloud role name, which identifies your service in the application map and distributed traces
 - **sampling.percentage**: Controls what percentage of telemetry is collected (100 = everything, 25 = 25%)
-- **preview.sampling.overrides**: Lets you exclude noisy endpoints like health checks from telemetry
+- **sampling.overrides**: Lets you exclude noisy endpoints like health checks from telemetry
 - **instrumentation.logging.level**: Controls which log levels are sent to Application Insights
 
 ## Step 3: Attach the Agent to Your Application
@@ -82,7 +79,7 @@ Add the `-javaagent` JVM argument when starting your Spring Boot application:
 
 ```bash
 # Start the Spring Boot application with the Application Insights agent
-java -javaagent:./applicationinsights-agent-3.4.0.jar \
+java -javaagent:./applicationinsights-agent-3.7.8.jar \
      -jar my-spring-boot-app.jar
 ```
 
@@ -93,7 +90,7 @@ FROM eclipse-temurin:17-jre
 
 # Copy the application and the AI agent
 COPY target/my-app.jar /app/my-app.jar
-COPY applicationinsights-agent-3.4.0.jar /app/applicationinsights-agent.jar
+COPY applicationinsights-agent-3.7.8.jar /app/applicationinsights-agent.jar
 COPY applicationinsights.json /app/applicationinsights.json
 
 WORKDIR /app
@@ -102,21 +99,22 @@ WORKDIR /app
 ENTRYPOINT ["java", "-javaagent:applicationinsights-agent.jar", "-jar", "my-app.jar"]
 ```
 
-For Azure App Service, set the `JAVA_OPTS` application setting:
+For Azure App Service, enable the App Service-managed Java agent with application settings:
 
 ```bash
 # Configure the Java agent on Azure App Service
 az webapp config appsettings set \
   --resource-group myRG \
   --name mySpringApp \
-  --settings JAVA_OPTS="-javaagent:/home/site/wwwroot/applicationinsights-agent-3.4.0.jar"
+  --settings APPLICATIONINSIGHTS_CONNECTION_STRING="<your-application-insights-connection-string>" \
+             ApplicationInsightsAgent_EXTENSION_VERSION="~3"
 ```
 
 ## Step 4: What Gets Auto-Collected
 
 Once the agent is attached, it automatically collects:
 
-**Incoming requests**: Every HTTP request to your Spring Boot endpoints is tracked, including URL, response code, duration, and request body size.
+**Incoming requests**: Every HTTP request to your Spring Boot endpoints is tracked, including method, route or URL, response code, and duration.
 
 **Outbound HTTP calls**: Calls made through RestTemplate, WebClient, Apache HttpClient, and OkHttp are tracked as dependencies.
 
@@ -128,7 +126,7 @@ Once the agent is attached, it automatically collects:
 
 **Log forwarding**: Log statements from Log4j2, Logback, and java.util.logging are sent to Application Insights as trace telemetry.
 
-**Spring-specific instrumentation**: Spring MVC controller execution, Spring WebFlux handlers, and Spring Scheduling tasks are all captured.
+**Spring-specific instrumentation**: Requests handled by Spring MVC and Spring WebFlux are captured automatically. Controller method spans can be captured by enabling the `preview.captureControllerSpans` option.
 
 ## Step 5: Add Custom Telemetry with Code
 
@@ -141,7 +139,7 @@ Add the Application Insights SDK to your project:
 <dependency>
     <groupId>com.microsoft.azure</groupId>
     <artifactId>applicationinsights-core</artifactId>
-    <version>3.4.0</version>
+    <version>3.7.8</version>
 </dependency>
 ```
 
@@ -217,9 +215,11 @@ public class PaymentController {
     private final Counter paymentSuccessCounter;
     private final Counter paymentFailureCounter;
     private final Timer paymentProcessingTimer;
+    private final PaymentService paymentService;
 
     // Micrometer metrics are auto-exported to Application Insights
-    public PaymentController(MeterRegistry registry) {
+    public PaymentController(MeterRegistry registry, PaymentService paymentService) {
+        this.paymentService = paymentService;
         this.paymentSuccessCounter = Counter.builder("payments.success")
             .description("Number of successful payments")
             .tag("service", "payment-api")
@@ -255,14 +255,14 @@ public class PaymentController {
 
 Application Insights correlates log statements with the request that generated them. This means when you look at a slow request in the portal, you can see all the log entries associated with that specific request.
 
-For Logback (the default in Spring Boot), the agent automatically adds trace context to the MDC. You can include it in your log pattern:
+For Logback (the default in Spring Boot), the agent automatically adds OpenTelemetry trace context to the MDC. You can include it in your log pattern:
 
 ```xml
 <!-- logback-spring.xml - Include trace context in log output -->
 <configuration>
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [trace=%mdc{ai-operation-id}] - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [trace_id=%mdc{trace_id} span_id=%mdc{span_id}] - %msg%n</pattern>
         </encoder>
     </appender>
 
@@ -283,21 +283,23 @@ For high-throughput services, sending all telemetry to Application Insights can 
     "percentage": 25,
     "overrides": [
       {
+        "telemetryType": "request",
         "attributes": [
           {
-            "key": "http.url",
+            "key": "url.path",
             "value": "/health",
-            "matchType": "contains"
+            "matchType": "strict"
           }
         ],
         "percentage": 0
       },
       {
+        "telemetryType": "request",
         "attributes": [
           {
-            "key": "http.statusCode",
-            "value": "5..",
-            "matchType": "regexp"
+            "key": "url.path",
+            "value": "/api/payments",
+            "matchType": "strict"
           }
         ],
         "percentage": 100
@@ -307,7 +309,7 @@ For high-throughput services, sending all telemetry to Application Insights can 
 }
 ```
 
-This configuration samples 25% of normal traffic, excludes health check endpoints entirely, and captures 100% of 5xx errors.
+This configuration samples 25% of normal traffic, excludes health check endpoints entirely, and captures 100% of `/api/payments` request traces.
 
 ## Verify the Setup
 
