@@ -24,7 +24,7 @@ IFS=$'\n\t'
 
 Here is what each setting does:
 
-- **`set -e`**: Exit immediately if any command fails. Without this, the script continues after errors, causing cascading failures.
+- **`set -e`**: Exit when a simple command fails in most contexts. Without this, the script continues after errors, causing cascading failures.
 - **`set -u`**: Treat unset variables as errors. Without this, `$UNSET_VAR` silently expands to an empty string.
 - **`set -o pipefail`**: A pipeline fails if any command in it fails. Without this, `bad_command | grep something` succeeds as long as `grep` succeeds, even if `bad_command` failed.
 - **`IFS=$'\n\t'`**: Changes the Internal Field Separator so that word splitting does not happen on spaces. This prevents bugs with filenames containing spaces.
@@ -40,7 +40,7 @@ graph TD
 
 ## Error Handling
 
-`set -e` catches most errors, but some patterns need explicit handling.
+`set -e` catches many errors, but it has documented exceptions and some patterns need explicit handling.
 
 ### Trap for Cleanup
 
@@ -51,22 +51,24 @@ Use `trap` to ensure cleanup code runs regardless of how the script exits:
 
 cleanup() {
     local exit_code=$?
-    rm -f "$TMPFILE"
+    rm -f "${TMPFILE:-}"
     # Restore any modified state
-    if [ -f "$BACKUP_FILE" ]; then
+    if [ -n "${BACKUP_FILE:-}" ] && [ -f "$BACKUP_FILE" ]; then
         mv "$BACKUP_FILE" "$ORIGINAL_FILE"
     fi
     exit "$exit_code"
 }
 
-trap cleanup EXIT ERR INT TERM
-
-TMPFILE=$(mktemp)
+TMPFILE=""
 BACKUP_FILE=""
 ORIGINAL_FILE=""
+
+trap cleanup EXIT
+
+TMPFILE=$(mktemp)
 ```
 
-The `EXIT` trap fires on normal exit, `ERR` on errors (with `set -e`), `INT` on Ctrl+C, and `TERM` on kill signals.
+The `EXIT` trap fires when the shell exits, including after failures that cause `set -e` to exit. An `ERR` trap can be useful for logging failures, but it follows the same exceptions as `set -e` and should not duplicate cleanup already handled by `EXIT`.
 
 ### Commands That Are Expected to Fail
 
@@ -192,7 +194,7 @@ if [ -f "$file" ]; then
 fi
 ```
 
-The only exception is inside `[[ ]]` (Bash double brackets) where word splitting does not occur, but single brackets `[ ]` always need quotes.
+A common exception is simple variable expansion inside `[[ ]]` (Bash double brackets), where word splitting and pathname expansion do not occur. Still quote values there when you need literal string matching rather than pattern or regex matching. Single brackets `[ ]` need quotes.
 
 ## Temporary Files
 
@@ -221,8 +223,8 @@ DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:?DB_NAME environment variable is required}"
 DEPLOY_TIMEOUT="${DEPLOY_TIMEOUT:-300}"
 
-# The :? syntax causes the script to exit with an error if the variable is unset
-# The :- syntax provides a default value if the variable is unset
+# The :? syntax causes the script to exit with an error if the variable is unset or empty
+# The :- syntax provides a default value if the variable is unset or empty
 ```
 
 For more complex configuration, source a config file:
@@ -259,18 +261,18 @@ Scripts that contain credentials or sensitive configuration should have restrict
 ```bash
 # Set restrictive permissions on sensitive files
 umask 077  # New files created by this script are owner-only
-chmod 700 "$CONFIG_FILE"
+chmod 600 "$CONFIG_FILE"
 ```
 
-### Avoid Storing Secrets in Variables
+### Avoid Storing Secrets in Environment Variables
 
-Secrets stored in shell variables appear in `/proc/<pid>/environ` on Linux:
+Exported secrets can appear in a process environment, including `/proc/<pid>/environ` on Linux:
 
 ```bash
-# WRONG: Secret visible in process environment
+# WRONG: Exported secret is placed in the process environment
 export DB_PASSWORD="supersecret"
 
-# BETTER: Read from a file descriptor or secrets manager
+# BETTER: Read from a protected file or secrets manager when needed
 DB_PASSWORD=$(cat /run/secrets/db_password)
 ```
 
@@ -389,7 +391,7 @@ This block serves as both documentation and the output of a `--help` flag:
 ```bash
 # Show help text when --help is passed
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
-    sed -n '2,/^[^#]/p' "$0" | sed 's/^# \?//'
+    sed -n '2,/^[^#]/ { /^[^#]/q; s/^# \?//; p; }' "$0"
     exit 0
 fi
 ```
