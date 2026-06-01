@@ -10,7 +10,7 @@ Description: Run controlled chaos engineering experiments with AWS Fault Injecti
 
 Your system looks great on the architecture diagram. Multi-AZ deployments, auto-scaling groups, health checks, retry logic. But does it actually work when things break? The only way to find out is to break things on purpose - in a controlled way. That is what chaos engineering is about, and AWS Fault Injection Simulator (FIS) makes it accessible without building your own chaos tooling.
 
-FIS lets you create experiments that inject failures into your AWS resources - stopping EC2 instances, throttling API calls, disrupting network connectivity, increasing CPU load, and more. You define the blast radius, set stop conditions, and let it run. Then you observe whether your system handles the failure gracefully or falls over.
+FIS lets you create experiments that inject failures into your AWS resources - stopping EC2 instances, throttling supported API calls, disrupting network connectivity, increasing CPU load, and more. You define the blast radius, set stop conditions, and let it run. Then you observe whether your system handles the failure gracefully or falls over.
 
 ## Why Chaos Engineering Matters
 
@@ -44,6 +44,8 @@ The bottom path is much better. You find and fix weaknesses before your customer
 ## Step 1: Set Up IAM Permissions
 
 FIS needs an IAM role with permissions to perform the fault injection actions:
+
+For experiments that use SSM documents, such as the network latency and CPU stress examples below, the target EC2 instances must also be managed by Systems Manager with SSM Agent installed and an IAM instance profile that allows Systems Manager to run commands.
 
 ```bash
 # Create the FIS experiment role
@@ -82,6 +84,7 @@ aws iam put-role-policy \
           "ecs:ListContainerInstances",
           "ecs:DescribeContainerInstances",
           "rds:FailoverDBCluster",
+          "rds:DescribeDBClusters",
           "rds:RebootDBInstance",
           "ssm:SendCommand",
           "ssm:ListCommands",
@@ -92,7 +95,8 @@ aws iam put-role-policy \
       {
         "Effect": "Allow",
         "Action": [
-          "cloudwatch:DescribeAlarms"
+          "cloudwatch:DescribeAlarms",
+          "tag:GetResources"
         ],
         "Resource": "*"
       }
@@ -108,7 +112,7 @@ Stop conditions are your safety net. They are CloudWatch alarms that automatical
 # Create a CloudWatch alarm to serve as a stop condition
 aws cloudwatch put-metric-alarm \
   --alarm-name "FIS-Stop-HighErrorRate" \
-  --alarm-description "Stop FIS experiment if error rate exceeds 10%" \
+  --alarm-description "Stop FIS experiment if target 5XX count exceeds 100 per minute" \
   --namespace "AWS/ApplicationELB" \
   --metric-name "HTTPCode_Target_5XX_Count" \
   --dimensions '[{"Name": "LoadBalancer", "Value": "app/my-alb/abc123"}]' \
@@ -172,7 +176,8 @@ aws fis create-experiment-template \
     "StopInstances": {
       "actionId": "aws:ec2:stop-instances",
       "parameters": {
-        "startInstancesAfterDuration": "PT5M"
+        "startInstancesAfterDuration": "PT5M",
+        "completeIfInstancesTerminated": "true"
       },
       "targets": {
         "Instances": "WebInstances"
@@ -182,7 +187,7 @@ aws fis create-experiment-template \
   --tags '{"ExperimentType": "ec2-failure"}'
 ```
 
-This experiment stops 30% of instances tagged with `Application: web-tier`, waits 5 minutes, then restarts them. The stop conditions halt everything if error rates or latency get too high.
+This experiment stops 30% of instances tagged with `Application: web-tier`, waits 5 minutes, then restarts them. If the Auto Scaling group replaces stopped instances before FIS can restart them, `completeIfInstancesTerminated` keeps the action from failing for that reason. The stop conditions halt everything if error counts or latency get too high.
 
 ### Experiment 2: Network Disruption
 
