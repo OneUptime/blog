@@ -22,15 +22,16 @@ Before writing any code, you need:
 
 The ODBC driver is a system-level dependency that Python libraries use to communicate with SQL Server and Azure SQL Database.
 
-On Ubuntu/Debian:
+On Ubuntu:
 
 ```bash
 # Install the Microsoft ODBC Driver 18 for SQL Server on Ubuntu
 
-curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
-sudo add-apt-repository "$(curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list)"
+curl -sSL -O https://packages.microsoft.com/config/ubuntu/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)/packages-microsoft-prod.deb
+sudo dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
 sudo apt-get update
-sudo apt-get install -y msodbcsql18
+sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
 ```
 
 On macOS:
@@ -39,7 +40,7 @@ On macOS:
 # Install the ODBC driver on macOS using Homebrew
 brew tap microsoft/mssql-release https://github.com/Microsoft/homebrew-mssql-release
 brew update
-brew install msodbcsql18
+HOMEBREW_ACCEPT_EULA=Y brew install msodbcsql18
 ```
 
 On Windows, download the installer from Microsoft's documentation page and run it.
@@ -180,7 +181,7 @@ finally:
 SQLAlchemy provides an ORM layer that maps Python classes to database tables. This is useful for larger applications where you want to work with objects instead of raw SQL.
 
 ```python
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, Integer, String, select
 from sqlalchemy.orm import declarative_base, Session
 from urllib.parse import quote_plus
 
@@ -216,7 +217,7 @@ class Customer(Base):
 # Query using the ORM
 with Session(engine) as session:
     # Fetch all customers
-    customers = session.query(Customer).limit(10).all()
+    customers = session.scalars(select(Customer).limit(10)).all()
     for customer in customers:
         print(f"  {customer.CustomerID}: {customer}")
 
@@ -257,6 +258,7 @@ For production applications running in Azure, using Azure AD authentication with
 
 ```python
 import pyodbc
+import struct
 from azure.identity import DefaultAzureCredential
 
 # Get an access token using the managed identity
@@ -279,7 +281,7 @@ conn_str = (
 # pyodbc uses a special struct to pass the access token
 # This converts the token to the format pyodbc expects
 token_bytes = token.token.encode('utf-16-le')
-token_struct = bytes([len(token_bytes) & 0xFF, (len(token_bytes) >> 8) & 0xFF]) + token_bytes
+token_struct = struct.pack('<I', len(token_bytes)) + token_bytes
 
 # Connect using the access token
 conn = pyodbc.connect(conn_str, attrs_before={1256: token_struct})
@@ -299,6 +301,7 @@ For applications outside Azure that need Azure AD authentication:
 ```python
 from azure.identity import ClientSecretCredential
 import pyodbc
+import struct
 
 # Authenticate with a service principal (app registration)
 credential = ClientSecretCredential(
@@ -319,7 +322,7 @@ conn_str = (
 )
 
 token_bytes = token.token.encode('utf-16-le')
-token_struct = bytes([len(token_bytes) & 0xFF, (len(token_bytes) >> 8) & 0xFF]) + token_bytes
+token_struct = struct.pack('<I', len(token_bytes)) + token_bytes
 conn = pyodbc.connect(conn_str, attrs_before={1256: token_struct})
 ```
 
