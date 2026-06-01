@@ -245,6 +245,12 @@ az webapp config set \
     --name my-flask-api \
     --resource-group flask-api-rg \
     --startup-file "startup.sh"
+
+# Enable App Service build automation so requirements.txt is installed during deployment
+az webapp config appsettings set \
+    --name my-flask-api \
+    --resource-group flask-api-rg \
+    --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
 ```
 
 ## Getting the Publish Profile
@@ -359,6 +365,12 @@ az webapp config appsettings set \
 For production APIs, you want zero-downtime deployments. Deployment slots let you deploy to a staging slot, verify it works, then swap it into production.
 
 ```bash
+# Deployment slots require the Standard tier or higher
+az appservice plan update \
+    --name flask-api-plan \
+    --resource-group flask-api-rg \
+    --sku S1
+
 # Create a staging slot
 az webapp deployment slot create \
     --name my-flask-api \
@@ -375,6 +387,8 @@ az webapp deployment slot swap \
 ```
 
 Update your GitHub Actions deploy step to target the staging slot.
+
+Download the staging slot publish profile with `az webapp deployment list-publishing-profiles --name my-flask-api --resource-group flask-api-rg --slot staging --xml`, and save it as the `AZURE_WEBAPP_PUBLISH_PROFILE_STAGING` secret.
 
 ```yaml
       - name: Deploy to staging slot
@@ -411,16 +425,16 @@ az monitor app-insights component create \
     --location eastus \
     --resource-group flask-api-rg
 
-# Get the instrumentation key and set it as an app setting
-INSTRUMENTATION_KEY=$(az monitor app-insights component show \
+# Get the connection string and set it as an app setting
+APPLICATIONINSIGHTS_CONNECTION_STRING=$(az monitor app-insights component show \
     --app flask-api-insights \
     --resource-group flask-api-rg \
-    --query instrumentationKey -o tsv)
+    --query connectionString -o tsv)
 
 az webapp config appsettings set \
     --name my-flask-api \
     --resource-group flask-api-rg \
-    --settings APPINSIGHTS_INSTRUMENTATIONKEY=$INSTRUMENTATION_KEY
+    --settings APPLICATIONINSIGHTS_CONNECTION_STRING="$APPLICATIONINSIGHTS_CONNECTION_STRING"
 ```
 
 ## Wrapping Up
