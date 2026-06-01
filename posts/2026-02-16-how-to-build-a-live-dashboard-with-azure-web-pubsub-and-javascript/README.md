@@ -61,7 +61,7 @@ const serviceClient = new WebPubSubServiceClient(connectionString, hubName);
 
 // Endpoint that returns a WebSocket URL with an embedded access token
 app.get('/api/token', async (req, res) => {
-  const token = await serviceClient.getClientAccessUrl({
+  const token = await serviceClient.getClientAccessToken({
     roles: ['webpubsub.joinLeaveGroup', 'webpubsub.sendToGroup']
   });
   res.json({ url: token.url });
@@ -79,9 +79,7 @@ setInterval(async () => {
   };
 
   // Send the metrics to all connected clients in the dashboard hub
-  await serviceClient.sendToAll(JSON.stringify(metrics), {
-    contentType: 'application/json'
-  });
+  await serviceClient.sendToAll(metrics);
 }, 2000);
 
 app.listen(3000, () => {
@@ -275,9 +273,7 @@ If your dashboard serves different teams, you might not want everyone to see the
 // On the server side, publish metrics to specific groups
 async function publishTeamMetrics(team, metrics) {
   // Only clients subscribed to this team's group will receive the message
-  await serviceClient.group(team).sendToAll(JSON.stringify(metrics), {
-    contentType: 'application/json'
-  });
+  await serviceClient.group(team).sendToAll(metrics);
 }
 
 // Publish different metrics to different teams
