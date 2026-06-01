@@ -25,7 +25,7 @@ In this post, I will walk through the major migration methods, pre-migration ass
 
 ### Check PostgreSQL Version
 
-Azure Database for PostgreSQL Flexible Server supports versions 13 through 16. Check your source version:
+Azure Database for PostgreSQL Flexible Server supports versions 11 through 18, with older versions in extended support. Check your source version:
 
 ```bash
 # Check the source PostgreSQL version
@@ -33,7 +33,7 @@ Azure Database for PostgreSQL Flexible Server supports versions 13 through 16. C
 psql -c "SELECT version();"
 ```
 
-If your source is older than version 13, you may need to upgrade first or use pg_dump which handles cross-version migrations.
+If your source is older than the versions supported by Flexible Server, you may need to upgrade first or use pg_dump which handles cross-version migrations.
 
 ### Assess Database Size
 
@@ -47,12 +47,12 @@ ORDER BY pg_database_size(pg_database.datname) DESC;
 -- Get per-table sizes
 SELECT
     schemaname || '.' || tablename AS table_full_name,
-    pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) AS total_size,
-    pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) AS data_size,
-    pg_size_pretty(pg_indexes_size(schemaname || '.' || quote_ident(tablename))) AS index_size
+    pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS total_size,
+    pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS data_size,
+    pg_size_pretty(pg_indexes_size(format('%I.%I', schemaname, tablename)::regclass)) AS index_size
 FROM pg_tables
 WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
+ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC
 LIMIT 20;
 ```
 
@@ -133,15 +133,11 @@ pg_dump \
 # Restore with parallel jobs for faster loading
 # -j 4 uses 4 parallel workers
 pg_restore \
-  --host=my-pg-azure.postgres.database.azure.com \
-  --port=5432 \
-  --username=pgadmin \
-  --dbname=myapp \
+  --dbname="host=my-pg-azure.postgres.database.azure.com port=5432 dbname=myapp user=pgadmin sslmode=require" \
   --verbose \
   --no-owner \
   --no-privileges \
   --jobs=4 \
-  "sslmode=require" \
   myapp.dump
 ```
 
@@ -159,7 +155,7 @@ REINDEX DATABASE myapp;
 
 ## Method 2: Azure Database Migration Service (Online)
 
-For minimal downtime migrations, use Azure DMS with online mode. It performs an initial full copy and then uses logical replication to keep the target in sync until cutover.
+For minimal downtime migrations, use Azure DMS with online mode. Microsoft recommends the newer migration service in Azure Database for PostgreSQL for Flexible Server migrations, but DMS classic also supports online PostgreSQL migrations. It performs an initial full copy and then uses logical replication to keep the target in sync until cutover.
 
 ### Step 1: Prepare the Source Server
 
@@ -175,6 +171,8 @@ max_replication_slots = 10
 ```
 
 Restart PostgreSQL after changing these settings.
+
+For online DMS migrations, make sure the tables to be synchronized have primary keys so incremental changes can be applied to the target.
 
 ### Step 2: Create a Replication User
 
@@ -277,7 +275,7 @@ After migration, validate thoroughly:
 ```sql
 -- Compare row counts between source and target
 -- Run on both servers and compare results
-SELECT schemaname, relname, n_live_tup
+SELECT schemaname, relname, n_live_tup AS approximate_rows
 FROM pg_stat_user_tables
 ORDER BY n_live_tup DESC;
 
@@ -296,6 +294,8 @@ ORDER BY conrelid::regclass::text, conname;
 -- Check extensions
 SELECT extname, extversion FROM pg_extension ORDER BY extname;
 ```
+
+The `n_live_tup` value is an estimate from PostgreSQL statistics. Use `COUNT(*)` on important tables when you need exact row-count validation.
 
 Run your application's test suite against the new database. Pay special attention to:
 
