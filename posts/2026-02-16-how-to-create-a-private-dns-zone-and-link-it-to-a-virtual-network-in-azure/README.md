@@ -17,7 +17,7 @@ Private DNS zones let you use your own domain names (like `internal.mycompany.co
 There are several scenarios where private DNS zones become essential:
 
 - **Custom internal domains.** You want VMs to be reachable at names like `db-primary.internal.mycompany.com` rather than Azure-generated names.
-- **Private endpoints.** When you create private endpoints for Azure PaaS services (Storage, SQL, Key Vault), they require private DNS zones for name resolution.
+- **Private endpoints.** When you create private endpoints for Azure PaaS services (Storage, SQL, Key Vault), Azure Private DNS zones are the recommended way to configure name resolution.
 - **Cross-VNet name resolution.** VMs in peered VNets cannot resolve each other's names by default. Private DNS zones solve this.
 - **Split-horizon DNS.** You want `api.mycompany.com` to resolve to a private IP inside the VNet but a public IP from the internet.
 
@@ -79,7 +79,7 @@ az network private-dns link vnet create \
 
 The `--registration-enabled true` flag is important. It enables auto-registration, which means VMs in the linked VNet will automatically get DNS records (A records) created in the zone. When a VM named `webserver01` is created in the VNet, it will automatically be resolvable at `webserver01.internal.mycompany.com`.
 
-You can link a DNS zone to multiple VNets, but only one link can have auto-registration enabled. Other links will still allow VMs to resolve records in the zone, but they will not auto-register.
+You can link a DNS zone to multiple VNets, and more than one VNet link can have auto-registration enabled. The key limit is per VNet: a specific VNet can be linked to only one private DNS zone with auto-registration enabled. Links without auto-registration still allow VMs to resolve records in the zone, but they will not auto-register.
 
 ## Step 4: Add Manual DNS Records
 
@@ -166,7 +166,7 @@ Azure DNS first checks private DNS zones linked to the VNet. If a record is foun
 
 ## Private DNS Zones for Private Endpoints
 
-When you create a private endpoint for an Azure service, you need a specific private DNS zone for it to work correctly. Here are the common zone names:
+When you create a private endpoint for an Azure service, use the recommended private DNS zone name for that service if you want Azure Private DNS integration. Here are the common zone names:
 
 | Service | DNS Zone Name |
 |---|---|
@@ -191,7 +191,7 @@ az network private-dns link vnet create \
   --registration-enabled false
 ```
 
-When you then create a private endpoint for a storage account, Azure can automatically add the DNS record to this zone.
+When you then create a private endpoint for a storage account and associate it with this private DNS zone, Azure can automatically add the DNS record to this zone.
 
 ## Listing Records and Links
 
@@ -217,7 +217,7 @@ az network private-dns link vnet list \
 
 **Multiple zones with the same name.** If you have multiple private DNS zones with the same name linked to the same VNet, Azure cannot determine which one to use. Avoid this.
 
-**Auto-registration conflicts.** A VNet can be linked with auto-registration to only one private DNS zone. If you try to enable auto-registration on a second link, it will fail.
+**Auto-registration conflicts.** A VNet can be linked with auto-registration to only one private DNS zone. If you try to enable auto-registration for the same VNet in a second private DNS zone, it will fail.
 
 **On-premises resolution.** VMs on-premises cannot natively resolve Azure Private DNS zone records. You need a DNS forwarder in Azure that on-premises DNS servers forward queries to.
 
