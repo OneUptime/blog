@@ -72,20 +72,9 @@ az mysql flexible-server parameter set \
   --server-name wp-primary-mysql \
   --name long_query_time \
   --value 2
-
-# Optimize for WordPress query patterns
-az mysql flexible-server parameter set \
-  --resource-group rg-wordpress \
-  --server-name wp-primary-mysql \
-  --name query_cache_type \
-  --value 1
-
-az mysql flexible-server parameter set \
-  --resource-group rg-wordpress \
-  --server-name wp-primary-mysql \
-  --name query_cache_size \
-  --value 67108864
 ```
+
+MySQL 8.0 removed the old MySQL query cache, so do not try to tune `query_cache_type` or `query_cache_size` on a MySQL 8.0 Flexible Server. Use WordPress object caching, page caching, and the InnoDB buffer pool for the common WordPress caching paths instead.
 
 ## Creating Read Replicas
 
@@ -122,7 +111,7 @@ Here is how the data flows between the primary and replicas.
 flowchart TD
     A[WordPress App] --> B{Query Type}
     B -->|Write: INSERT, UPDATE, DELETE| C[Primary MySQL Server]
-    B -->|Read: SELECT| D[Read Replica Load Balancer]
+    B -->|Read: SELECT| D[HyperDB Read Router]
     D --> E[Replica 1 - East US]
     D --> F[Replica 2 - East US]
     D --> G[Replica 3 - West US]
@@ -131,16 +120,16 @@ flowchart TD
     C -->|Binary Log Replication| G
 ```
 
-Replication lag is typically under a second for Azure MySQL Flexible Server replicas. This means there is a brief window where a user might write data (like posting a comment) and not immediately see it when the page reloads if the read hits a replica. There are strategies to handle this, which I will cover below.
+Replication lag is often low, but it depends on network latency, transaction volume, replica sizing, and the queries running on the source and replica servers. This means there is a brief window where a user might write data (like posting a comment) and not immediately see it when the page reloads if the read hits a replica. There are strategies to handle this, which I will cover below.
 
 ## Configuring WordPress to Use Read Replicas
 
 WordPress does not natively support read replicas. You need a plugin that splits read and write queries. The HyperDB plugin (originally developed by Automattic for WordPress.com) is the standard solution.
 
-Download HyperDB and place the `db.php` file in your `wp-content` directory. Then configure it with your primary and replica connection details.
+Download HyperDB and place the `db.php` file in your `wp-content` directory. Then create `db-config.php` in the directory that holds `wp-config.php` and configure it with your primary and replica connection details.
 
 ```php
-// wp-content/db-config.php
+// db-config.php
 // HyperDB configuration for Azure MySQL read replicas
 
 $wpdb->save_queries = false;
@@ -155,7 +144,7 @@ $wpdb->add_database(array(
     'password' => 'Str0ngP@ssword123!',
     'name'     => 'wordpress',
     'write'    => 1,    // This server accepts writes
-    'read'     => 1,    // Also accepts reads as fallback
+    'read'     => 2,    // Also accepts reads as fallback
     'dataset'  => 'global',
     'timeout'  => 0.5,  // Connection timeout in seconds
 ));
@@ -167,7 +156,7 @@ $wpdb->add_database(array(
     'password' => 'Str0ngP@ssword123!',
     'name'     => 'wordpress',
     'write'    => 0,    // Read-only
-    'read'     => 2,    // Higher priority for reads
+    'read'     => 1,    // Preferred for reads
     'dataset'  => 'global',
     'timeout'  => 0.5,
 ));
@@ -179,13 +168,13 @@ $wpdb->add_database(array(
     'password' => 'Str0ngP@ssword123!',
     'name'     => 'wordpress',
     'write'    => 0,
-    'read'     => 2,
+    'read'     => 1,
     'dataset'  => 'global',
     'timeout'  => 0.5,
 ));
 ```
 
-HyperDB automatically routes SELECT queries to the read replicas and everything else to the primary. The `read` weight parameter controls how queries are distributed. Higher values mean more reads go to that server.
+HyperDB automatically routes SELECT queries to the read replicas and everything else to the primary. The `read` parameter controls read preference groups. Lower values are tried first, and servers in the same group are selected randomly.
 
 ## Handling Replication Lag
 
@@ -200,7 +189,9 @@ add_action('init', function() {
     if (is_user_logged_in()) {
         // Tell HyperDB to use the primary for all queries
         global $wpdb;
-        $wpdb->stickywrite = true;
+        if (method_exists($wpdb, 'send_reads_to_masters')) {
+            $wpdb->send_reads_to_masters();
+        }
     }
 });
 ```
@@ -221,7 +212,7 @@ az mysql flexible-server replica list \
 # Monitor replication lag via MySQL
 mysql -h wp-replica-1.mysql.database.azure.com \
   -u wpadmin -p \
-  -e "SHOW SLAVE STATUS\G" | grep "Seconds_Behind_Master"
+  -e "SHOW REPLICA STATUS\G" | grep "Seconds_Behind_Source"
 ```
 
 You can also set up Azure Monitor alerts for replication lag.
@@ -240,7 +231,7 @@ az monitor metrics alert create \
 
 A single replica can handle a significant amount of read traffic. You should consider adding more replicas when you see sustained CPU usage above 70% on existing replicas, average query latency increasing during peak hours, or connection count approaching the limit.
 
-Each replica can be a different SKU from the primary. If your read workload is lighter than your write workload, you can use smaller SKUs for replicas to save cost.
+Read replicas are created with the same server configuration as the source server. After a replica has been created, you can scale its configuration separately. If your read workload is lighter than your write workload, you can use smaller SKUs for replicas to save cost.
 
 ## Cost Considerations
 
