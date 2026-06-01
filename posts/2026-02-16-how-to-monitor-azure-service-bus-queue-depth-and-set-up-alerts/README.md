@@ -100,7 +100,7 @@ resource deadLetterAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
           metricNamespace: 'Microsoft.ServiceBus/namespaces'
           operator: 'GreaterThan'
           threshold: 0
-          timeAggregation: 'Total'
+          timeAggregation: 'Maximum'
           dimensions: [
             {
               name: 'EntityName'
@@ -143,7 +143,7 @@ az monitor metrics alert create \
   --name "alert-sb-deadletter-orders" \
   --resource-group "rg-messaging" \
   --scopes "/subscriptions/{sub-id}/resourceGroups/rg-messaging/providers/Microsoft.ServiceBus/namespaces/sb-prod" \
-  --condition "total DeadletteredMessages > 0 where EntityName includes orders" \
+  --condition "max DeadletteredMessages > 0 where EntityName includes orders" \
   --window-size 5m \
   --evaluation-frequency 5m \
   --severity 1 \
@@ -237,18 +237,17 @@ public class QueueStats
 
 ## Dashboard with Azure Workbooks
 
-For a visual overview, create an Azure Workbook that shows queue depth over time. You can query the metrics data using KQL.
+For a visual overview, create an Azure Workbook that shows queue depth over time. Use the Metrics data source in the workbook. The Service Bus active-message count is a platform metric, but it is not exported to the `AzureMetrics` Log Analytics table with queue dimensions.
 
 ```text
-// KQL query to show queue depth trend over the last 24 hours
-AzureMetrics
-| where ResourceProvider == "MICROSOFT.SERVICEBUS"
-| where MetricName == "ActiveMessages"
-| where TimeGenerated > ago(24h)
-| extend QueueName = tostring(parse_json(DimensionList)[0].value)
-| summarize MaxDepth = max(Maximum), AvgDepth = avg(Average) by bin(TimeGenerated, 5m), QueueName
-| order by TimeGenerated asc
-| render timechart
+Data source: Metrics
+Resource type: Microsoft.ServiceBus/namespaces
+Metric namespace: Microsoft.ServiceBus/namespaces
+Metric: Active Messages (ActiveMessages)
+Aggregation: Maximum
+Split by: EntityName
+Time range: Last 24 hours
+Visualization: Time chart
 ```
 
 ## Choosing the Right Thresholds
