@@ -14,7 +14,7 @@ In this guide, we will cover setting up Hive on HDInsight, creating databases an
 
 ## Setting Up a Hive-Capable HDInsight Cluster
 
-You can run Hive on several HDInsight cluster types - Hadoop, Interactive Query (LLAP), and Spark clusters all include Hive. For dedicated data warehousing, the Interactive Query cluster type gives you the best query performance thanks to LLAP (Live Long and Process) caching.
+You can run Hive on several HDInsight cluster types - Hadoop, Interactive Query (LLAP), and Spark clusters all include Hive. For dedicated data warehousing, the Interactive Query cluster type gives you the best query performance thanks to LLAP (Low Latency Analytical Processing) caching.
 
 For standard Hive workloads, a Hadoop cluster is sufficient:
 
@@ -25,16 +25,17 @@ az hdinsight create \
   --name my-hive-cluster \
   --resource-group my-resource-group \
   --type Hadoop \
-  --component-version Hadoop=3.1 \
+  --version 5.1 \
+  --component-version Hadoop=3.3.4 \
   --http-user admin \
   --http-password "YourStr0ngP@ssword!" \
   --ssh-user sshuser \
   --ssh-password "YourSSHP@ssword!" \
   --workernode-count 4 \
-  --workernode-size Standard_D13_V2 \
+  --workernode-size Standard_E8_v3 \
   --storage-account mystorageaccount \
   --storage-account-key "your-key" \
-  --storage-default-container hive-warehouse \
+  --storage-container hive-warehouse \
   --location eastus
 ```
 
@@ -173,6 +174,7 @@ ORDER BY order_year, order_month;
 
 ```sql
 -- Find the top 20 products by total revenue
+-- Assumes a dim_products table exists in the warehouse
 SELECT
     p.product_name,
     p.category,
@@ -285,6 +287,7 @@ For a data warehouse, you typically need to run ETL queries on a schedule. You c
 # Useful for integrating with external schedulers
 curl -u admin:"YourStr0ngP@ssword!" -d 'user.name=admin' \
   -d 'execute=SELECT+COUNT(*)+FROM+ecommerce_dw.fact_orders' \
+  -d 'statusdir=/example/rest' \
   'https://my-hive-cluster.azurehdinsight.net/templeton/v1/hive'
 ```
 
