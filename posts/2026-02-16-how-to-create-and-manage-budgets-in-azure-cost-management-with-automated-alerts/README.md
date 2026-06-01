@@ -34,7 +34,7 @@ Budgets do not enforce spending limits - they do not stop resources from running
    - **Name**: A descriptive name like "prod-subscription-monthly" or "dev-rg-monthly".
    - **Reset period**: Monthly, Quarterly, or Annually.
    - **Creation date**: When the budget starts tracking.
-   - **Expiration date**: When the budget stops (maximum 10 years out).
+   - **Expiration date**: When the budget stops. If you omit it, Azure defaults it to 10 years from the start date.
    - **Budget amount**: The spending limit in your billing currency.
 6. Click **Next**.
 
@@ -57,35 +57,33 @@ Now configure the alert conditions:
 ```bash
 # Create a monthly budget of $5000 for a subscription
 
-az consumption budget create \
+az consumption budget update \
   --budget-name "prod-monthly" \
   --amount 5000 \
   --category Cost \
   --time-grain Monthly \
-  --start-date "2026-02-01" \
-  --end-date "2027-02-01" \
-  --resource-group "" \
+  --time-period '{"start-date":"2026-02-01","end-date":"2027-02-01"}' \
   --notifications '{
     "Actual_GreaterThan_80_Percent": {
       "enabled": true,
       "operator": "GreaterThan",
       "threshold": 80,
-      "contactEmails": ["ops@example.com", "finance@example.com"],
-      "thresholdType": "Actual"
+      "contact-emails": ["ops@example.com", "finance@example.com"],
+      "threshold-type": "Actual"
     },
     "Actual_GreaterThan_100_Percent": {
       "enabled": true,
       "operator": "GreaterThan",
       "threshold": 100,
-      "contactEmails": ["ops@example.com", "finance@example.com", "manager@example.com"],
-      "thresholdType": "Actual"
+      "contact-emails": ["ops@example.com", "finance@example.com", "manager@example.com"],
+      "threshold-type": "Actual"
     },
     "Forecasted_GreaterThan_100_Percent": {
       "enabled": true,
       "operator": "GreaterThan",
       "threshold": 100,
-      "contactEmails": ["ops@example.com"],
-      "thresholdType": "Forecasted"
+      "contact-emails": ["ops@example.com"],
+      "threshold-type": "Forecasted"
     }
   }'
 ```
@@ -175,14 +173,16 @@ public static async Task Run(
 
     // Use managed identity to authenticate
     var credential = new DefaultAzureCredential();
-    var computeClient = new ComputeManagementClient(credential, "<sub-id>");
+    var armClient = new ArmClient(credential);
+    var resourceGroupId = ResourceGroupResource.CreateResourceIdentifier("<sub-id>", "rg-dev");
+    var resourceGroup = armClient.GetResourceGroupResource(resourceGroupId);
 
     // Deallocate all VMs in the dev resource group
-    var vms = computeClient.VirtualMachines.ListByResourceGroupAsync("rg-dev");
+    var vms = resourceGroup.GetVirtualMachines().GetAllAsync();
     await foreach (var vm in vms)
     {
         log.LogInformation($"Deallocating VM: {vm.Data.Name}");
-        await computeClient.VirtualMachines.StartDeallocateAsync("rg-dev", vm.Data.Name);
+        await vm.DeallocateAsync(WaitUntil.Started);
     }
 }
 ```
