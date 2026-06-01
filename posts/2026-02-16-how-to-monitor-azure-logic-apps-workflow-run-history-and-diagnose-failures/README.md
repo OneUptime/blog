@@ -18,10 +18,11 @@ Every Logic Apps workflow run has a status:
 
 - **Succeeded**: All actions completed successfully
 - **Failed**: One or more actions failed and the workflow did not recover
-- **Cancelled**: The workflow was cancelled (manually or by a timeout)
+- **Cancelled**: The workflow was triggered and started, but received a cancellation request
+- **Aborted**: The workflow stopped because of an external problem, such as a system outage
 - **Running**: The workflow is currently executing
-- **Waiting**: The workflow is paused, waiting for an approval or callback
-- **Skipped**: The workflow was skipped due to a trigger condition
+- **Waiting**: The workflow did not start yet or is paused, for example, due to an earlier workflow instance still running
+- **Timed out**: The workflow exceeded its configured duration limit
 
 Each action within a run also has its own status, so you can see exactly which step failed even when the overall workflow succeeds (because of error handling).
 
@@ -45,15 +46,14 @@ The inputs and outputs are extremely valuable. For a failed HTTP action, you can
 For programmatic monitoring and alerting, enable diagnostic logging to send Logic Apps data to Log Analytics.
 
 ```bash
-# Enable diagnostic settings for a Logic App
+# Enable diagnostic settings for a Consumption Logic App
 
 az monitor diagnostic-settings create \
   --name logicapp-diagnostics \
   --resource "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Logic/workflows/myLogicApp" \
   --workspace "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.OperationalInsights/workspaces/myWorkspace" \
   --logs '[
-    {"category": "WorkflowRuntime", "enabled": true},
-    {"category": "IntegrationAccountTrackingEvents", "enabled": true}
+    {"category": "WorkflowRuntime", "enabled": true}
   ]' \
   --metrics '[{"category": "AllMetrics", "enabled": true}]'
 ```
@@ -176,7 +176,7 @@ az monitor metrics alert create \
   --window-size 5m \
   --evaluation-frequency 5m \
   --severity 2 \
-  --action-group "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Insights/actionGroups/OpsTeam"
+  --action "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Insights/actionGroups/OpsTeam"
 ```
 
 ## Step 6: Track Workflow Duration
@@ -190,7 +190,7 @@ AzureDiagnostics
 | where Category == "WorkflowRuntime"
 | where OperationName == "Microsoft.Logic/workflows/workflowRunCompleted"
 | where status_s == "Succeeded"
-| extend DurationSeconds = toint(durationInMilliseconds_d / 1000)
+| extend DurationSeconds = toint(duration_milliseconds_d / 1000)
 | summarize
     AvgDuration = avg(DurationSeconds),
     P95Duration = percentile(DurationSeconds, 95),
@@ -207,9 +207,9 @@ Set a duration alert for workflows that should complete within a certain time:
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.LOGIC"
 | where OperationName == "Microsoft.Logic/workflows/workflowRunCompleted"
-| where durationInMilliseconds_d > 300000
+| where duration_milliseconds_d > 300000
 | project TimeGenerated, WorkflowName = resource_workflowName_s,
-          DurationMinutes = round(durationInMilliseconds_d / 60000.0, 1)
+          DurationMinutes = round(duration_milliseconds_d / 60000.0, 1)
 ```
 
 ## Step 7: Diagnose Common Failure Patterns
@@ -278,7 +278,7 @@ For bulk resubmission, use the REST API:
 ```bash
 # Resubmit a failed workflow run
 az rest --method POST \
-  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Logic/workflows/myLogicApp/triggers/manual/histories/<run-id>/resubmit?api-version=2016-06-01"
+  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Logic/workflows/myLogicApp/triggers/manual/histories/<run-id>/resubmit?api-version=2019-05-01"
 ```
 
 ## Summary
