@@ -18,7 +18,7 @@ You need:
 
 - An Azure subscription
 - An Azure Communication Services resource
-- A phone number provisioned in ACS (toll-free or local)
+- A phone number or sender provisioned in ACS, such as a toll-free number, short code, 10DLC number, mobile number, or alphanumeric sender ID
 
 ## Step 1: Create an ACS Resource and Get a Phone Number
 
@@ -38,7 +38,7 @@ az communication list-key \
   --query primaryConnectionString -o tsv
 ```
 
-Phone numbers must be purchased through the Azure Portal or the Phone Numbers SDK. Navigate to your ACS resource in the portal, click Phone Numbers, and purchase a toll-free or local number with SMS capabilities.
+Phone numbers must be purchased through the Azure Portal or the Phone Numbers SDK. Navigate to your ACS resource in the portal, click Phone Numbers, and purchase a sender type with SMS capabilities that is supported in your target country or region.
 
 ## Step 2: Install the SDK
 
@@ -243,9 +243,6 @@ def process_delivery_report(event: func.EventGridEvent):
     elif delivery_status == "Failed":
         logging.warning(f"Message {message_id} failed delivery to {to}")
         # Handle the failure - maybe retry or alert
-    elif delivery_status == "Undelivered":
-        logging.warning(f"Message {message_id} undelivered to {to}")
-        # The number might be invalid
 ```
 
 ## Common SMS Patterns
@@ -275,7 +272,7 @@ def send_appointment_reminder(patient_phone: str, doctor_name: str,
 
 ```python
 # two_factor.py - Send 2FA verification codes
-import random
+import secrets
 import time
 
 # Simple in-memory code store (use Redis or a database in production)
@@ -283,7 +280,7 @@ verification_codes = {}
 
 def send_verification_code(phone: str) -> str:
     """Generate and send a 6-digit verification code."""
-    code = str(random.randint(100000, 999999))
+    code = f"{secrets.randbelow(1_000_000):06d}"
 
     # Store the code with a 5-minute expiry
     verification_codes[phone] = {
@@ -371,8 +368,8 @@ def send_sms_with_opt_out_check(phone: str, message: str) -> dict:
 ACS SMS has rate limits that vary by number type:
 
 - Toll-free numbers: 200 messages per minute
-- Short codes: Much higher throughput (contact Azure for specific limits)
-- Local numbers: Varies by region
+- Short codes: 6,000 messages per minute (can be increased upon request)
+- 10DLC and mobile numbers: 200 messages per minute
 
 For high-volume messaging, use short codes. For transactional messages like 2FA codes, toll-free numbers work well.
 
