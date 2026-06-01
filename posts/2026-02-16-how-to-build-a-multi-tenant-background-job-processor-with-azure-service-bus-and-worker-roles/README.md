@@ -28,7 +28,7 @@ graph TD
     B --> J[Bulk Queue - Low Priority]
 ```
 
-The architecture uses multiple queues for different priority levels. Each message contains the tenant ID and job payload, and workers pull messages from queues in priority order while ensuring fair distribution across tenants.
+The architecture uses multiple queues for different priority levels. Each message contains the tenant ID and job payload, and workers allocate more processing capacity to higher-priority queues while ensuring fair distribution across tenants.
 
 ## Setting Up Service Bus Queues
 
@@ -50,7 +50,7 @@ az servicebus queue create \
   --resource-group rg-saas-app \
   --lock-duration PT1M \
   --max-delivery-count 5 \
-  --dead-lettering-on-message-expiration true
+  --enable-dead-lettering-on-message-expiration true
 
 # Create the standard queue
 az servicebus queue create \
@@ -59,7 +59,7 @@ az servicebus queue create \
   --resource-group rg-saas-app \
   --lock-duration PT5M \
   --max-delivery-count 3 \
-  --dead-lettering-on-message-expiration true
+  --enable-dead-lettering-on-message-expiration true
 
 # Create the bulk/low-priority queue with longer timeouts
 az servicebus queue create \
@@ -68,7 +68,7 @@ az servicebus queue create \
   --resource-group rg-saas-app \
   --lock-duration PT10M \
   --max-delivery-count 3 \
-  --dead-lettering-on-message-expiration true
+  --enable-dead-lettering-on-message-expiration true
 ```
 
 The lock durations differ because high-priority jobs should be quick (if they fail, release them fast), while bulk jobs might take longer to process.
@@ -161,7 +161,6 @@ public class JobSchedulerService
         var message = new ServiceBusMessage(JsonSerializer.Serialize(job))
         {
             MessageId = job.JobId,
-            SessionId = job.TenantId, // Group messages by tenant for ordered processing
             ContentType = "application/json",
             Subject = job.JobType
         };
@@ -189,11 +188,11 @@ public class JobSchedulerService
 }
 ```
 
-Notice the `SessionId` is set to the tenant ID. Service Bus sessions group messages by a key, which lets you process all jobs for a tenant in order if needed.
+The tenant ID is stored as an application property so workers can enforce tenant-level limits. If you need strict in-order processing for each tenant, create the queues with `--enable-session true`, set `SessionId`, and use a session processor instead of the regular processor shown below.
 
 ## Building the Worker Role
 
-The worker processes jobs from all three queues, prioritizing high-priority messages:
+The worker processes jobs from all three queues, assigning more concurrent processing capacity to high-priority messages:
 
 ```csharp
 // Background worker that processes jobs from Service Bus queues
@@ -202,11 +201,10 @@ public class JobProcessorWorker : BackgroundService
     private readonly ServiceBusClient _client;
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<JobProcessorWorker> _logger;
-    private readonly ConcurrentDictionary<string, int> _activeTenantJobs;
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _tenantSemaphores;
 
     // Maximum concurrent jobs per tenant to ensure fairness
     private const int MaxConcurrentJobsPerTenant = 3;
-    private const int MaxTotalConcurrentJobs = 20;
 
     public JobProcessorWorker(
         ServiceBusClient client,
@@ -216,7 +214,7 @@ public class JobProcessorWorker : BackgroundService
         _client = client;
         _serviceProvider = serviceProvider;
         _logger = logger;
-        _activeTenantJobs = new ConcurrentDictionary<string, int>();
+        _tenantSemaphores = new ConcurrentDictionary<string, SemaphoreSlim>();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -253,7 +251,8 @@ public class JobProcessorWorker : BackgroundService
         {
             MaxConcurrentCalls = maxConcurrent,
             AutoCompleteMessages = false,
-            PrefetchCount = maxConcurrent * 2
+            PrefetchCount = maxConcurrent * 2,
+            MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(35)
         });
     }
 
@@ -262,19 +261,12 @@ public class JobProcessorWorker : BackgroundService
         var job = JsonSerializer.Deserialize<JobMessage>(args.Message.Body.ToString());
         var tenantId = job.TenantId;
 
-        // Check per-tenant concurrency limit
-        var currentCount = _activeTenantJobs.GetOrAdd(tenantId, 0);
-        if (currentCount >= MaxConcurrentJobsPerTenant)
-        {
-            // Release the message back to the queue for later processing
-            await args.AbandonMessageAsync(args.Message);
-            _logger.LogInformation(
-                "Tenant {TenantId} at concurrency limit, deferring job {JobId}",
-                tenantId, job.JobId);
-            return;
-        }
-
-        _activeTenantJobs.AddOrUpdate(tenantId, 1, (_, count) => count + 1);
+        // Wait for a tenant slot without abandoning the message, which would
+        // increment its delivery count and could send healthy jobs to the DLQ.
+        var tenantSemaphore = _tenantSemaphores.GetOrAdd(
+            tenantId,
+            _ => new SemaphoreSlim(MaxConcurrentJobsPerTenant));
+        await tenantSemaphore.WaitAsync(args.CancellationToken);
 
         try
         {
@@ -312,7 +304,7 @@ public class JobProcessorWorker : BackgroundService
         }
         finally
         {
-            _activeTenantJobs.AddOrUpdate(tenantId, 0, (_, count) => Math.Max(0, count - 1));
+            tenantSemaphore.Release();
         }
     }
 
@@ -341,7 +333,7 @@ public class JobProcessorWorker : BackgroundService
 }
 ```
 
-The key fairness mechanism here is the `MaxConcurrentJobsPerTenant` limit. Even if Tenant A has 1,000 jobs queued, they can only run 3 at a time. This ensures Tenant B's jobs get processed promptly.
+The key fairness mechanism here is the `MaxConcurrentJobsPerTenant` limit. Even if Tenant A has 1,000 jobs queued, they can only run 3 at a time in this worker process. In a scaled-out worker pool, enforce the same limit with a shared lease or distributed semaphore if the limit must apply across all worker instances.
 
 ## Implementing a Job Handler
 
@@ -476,4 +468,4 @@ public async Task<IActionResult> GetJobStatus(string jobId)
 
 ## Wrapping Up
 
-Building a multi-tenant background job processor requires careful attention to fairness and isolation. Azure Service Bus gives you the reliable messaging layer with built-in features like dead letter queues, scheduled messages, and sessions. By combining multiple priority queues with per-tenant concurrency limits, you ensure that no single tenant can monopolize your processing resources. The pattern of separating job submission, processing, and status tracking into distinct components keeps the system maintainable and easy to scale independently.
+Building a multi-tenant background job processor requires careful attention to fairness and isolation. Azure Service Bus gives you the reliable messaging layer with built-in features like dead letter queues, scheduled messages, and sessions when you need ordered processing. By combining multiple priority queues with per-tenant concurrency limits, you ensure that no single tenant can monopolize your processing resources. The pattern of separating job submission, processing, and status tracking into distinct components keeps the system maintainable and easy to scale independently.
