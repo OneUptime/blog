@@ -130,6 +130,8 @@ def assign_license(req: func.HttpRequest) -> func.HttpResponse:
     if not user:
         # If the user does not exist in your tenant, invite them as a guest
         user = invite_guest_user(token, user_email)
+        if not user:
+            return error_response("Failed to invite user", 500)
 
     # Add the user to the license group
     group_id = subscription["tiers"][tier]["groupId"]
@@ -207,13 +209,18 @@ Here are the Graph API wrapper functions for managing group membership.
 def find_user_by_email(token: str, email: str) -> dict:
     """Find a user in Azure AD by their email address."""
     headers = {"Authorization": f"Bearer {token}"}
+    escaped_email = email.replace("'", "''")
+    user_filter = (
+        f"mail eq '{escaped_email}' or "
+        f"userPrincipalName eq '{escaped_email}' or "
+        f"otherMails/any(m:m eq '{escaped_email}')"
+    )
 
     # Search in both regular users and guest users
     response = requests.get(
-        f"{GRAPH_API_URL}/users?$filter=mail eq '{email}' or "
-        f"userPrincipalName eq '{email}' or "
-        f"otherMails/any(m:m eq '{email}')",
-        headers=headers
+        f"{GRAPH_API_URL}/users",
+        headers=headers,
+        params={"$filter": user_filter, "$select": "id,displayName,mail,userPrincipalName"}
     )
 
     users = response.json().get("value", [])
@@ -267,8 +274,15 @@ def add_user_to_group(token: str, group_id: str, user_id: str) -> bool:
         json=payload
     )
 
-    # 204 = success, 400 with "already exists" = also fine
-    return response.status_code in [204, 400]
+    # 204 = success. Graph also returns 400 when the object is already a member.
+    if response.status_code == 204:
+        return True
+
+    if response.status_code == 400:
+        error_message = response.json().get("error", {}).get("message", "").lower()
+        return "already exist" in error_message
+
+    return False
 
 def remove_user_from_group(token: str, group_id: str, user_id: str) -> bool:
     """Remove a user from an Azure AD group."""
@@ -305,13 +319,15 @@ def get_user_license_tier(token: str, user_id: str, customer_id: str) -> str:
     """Determine the user's license tier based on group membership."""
     headers = {"Authorization": f"Bearer {token}"}
 
-    # Get all groups the user belongs to
-    response = requests.get(
-        f"{GRAPH_API_URL}/users/{user_id}/memberOf?$select=id,displayName",
-        headers=headers
-    )
+    # Get direct groups the user belongs to
+    user_groups = set()
+    url = f"{GRAPH_API_URL}/users/{user_id}/memberOf?$select=id,displayName"
 
-    user_groups = {g["id"] for g in response.json().get("value", [])}
+    while url:
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        user_groups.update(g["id"] for g in data.get("value", []))
+        url = data.get("@odata.nextLink")
 
     # Check against the customer's license groups (highest tier wins)
     subscription = get_subscription(customer_id)
