@@ -8,7 +8,7 @@ Description: Learn how to set up and use AWS Cloud9 IDE for collaborative cloud 
 
 ---
 
-Setting up local development environments is one of those time sinks that every team deals with but nobody enjoys. Different operating systems, different versions of tools, dependency conflicts, and the classic "it works on my machine" problem. AWS Cloud9 sidesteps all of this by giving you a cloud-based IDE that runs in your browser, backed by an EC2 instance or your own server. Everyone on the team gets the same environment, and you can even share environments for real-time pair programming.
+Setting up local development environments is one of those time sinks that every team deals with but nobody enjoys. Different operating systems, different versions of tools, dependency conflicts, and the classic "it works on my machine" problem. For existing AWS Cloud9 customers, Cloud9 sidesteps all of this by giving you a cloud-based IDE that runs in your browser, backed by an EC2 instance or your own server. Everyone on the team gets the same environment, and you can even share environments for real-time pair programming.
 
 This guide covers setting up Cloud9 environments, configuring them for your workflow, and using the collaboration features effectively.
 
@@ -22,11 +22,11 @@ Cloud9 is a cloud-based integrated development environment (IDE) that provides:
 - Direct integration with AWS services
 - Support for 40+ programming languages
 
-The IDE runs in your browser, and the actual compute and storage happen on an EC2 instance in your AWS account. You can choose the instance size based on your workload needs.
+The IDE runs in your browser, and for EC2 environments the actual compute and storage happen on an EC2 instance in your AWS account. You can choose the instance size based on your workload needs.
 
 ## Prerequisites
 
-- An AWS account
+- An AWS account with existing access to AWS Cloud9 (Cloud9 is no longer available to new AWS customers)
 - IAM user or SSO access with permissions for Cloud9 and EC2
 - A modern web browser (Chrome, Firefox, Safari, or Edge)
 
@@ -42,10 +42,10 @@ aws cloud9 create-environment-ec2 \
   --description "Shared development environment for the backend team" \
   --instance-type t3.small \
   --image-id amazonlinux-2023-x86_64 \
-  --subnet-id subnet-abc123 \
+  --subnet-id subnet-0abc123def4567890 \
   --automatic-stop-time-minutes 30 \
   --owner-arn arn:aws:iam::123456789012:user/developer1 \
-  --tags Key=Team,Value=backend,Key=Environment,Value=development
+  --tags Key=Team,Value=backend Key=Environment,Value=development
 ```
 
 Key parameters:
@@ -78,8 +78,9 @@ nvm use --lts
 # Install Python virtual environment tools
 python3 -m pip install --user virtualenv
 
-# Install Docker (Cloud9 on Amazon Linux 2023 has Docker available)
-sudo systemctl start docker
+# Install and start Docker on Amazon Linux 2023
+sudo yum install -y docker
+sudo systemctl enable --now docker
 sudo usermod -aG docker ec2-user
 ```
 
@@ -108,7 +109,7 @@ aws cloud9 create-environment-membership \
 When multiple users are in the same environment:
 - Each user gets a colored cursor in the editor
 - Changes appear in real time
-- The terminal is shared (everyone sees the same session)
+- Read/write members can run code and use the environment's terminal access
 - Chat is available within the IDE
 
 ## Step 4: Connect to AWS Services
@@ -128,6 +129,7 @@ aws cloudformation deploy \
 # Invoke a Lambda function
 aws lambda invoke \
   --function-name my-function \
+  --cli-binary-format raw-in-base64-out \
   --payload '{"key": "value"}' \
   output.json
 ```
@@ -136,7 +138,10 @@ For Lambda development specifically, Cloud9 provides a local testing and debuggi
 
 ```bash
 # Install AWS SAM CLI
-pip install aws-sam-cli
+curl -Lo aws-sam-cli-linux-x86_64.zip \
+  https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
+unzip aws-sam-cli-linux-x86_64.zip -d sam-installation
+sudo ./sam-installation/install
 
 # Create a new SAM project
 sam init --runtime python3.12 --name my-lambda-project
@@ -155,20 +160,44 @@ The default EBS volume might be too small for large projects:
 ```bash
 # Resize the EBS volume (Cloud9 provides a script for this)
 # First, find the volume ID
-INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-VOLUME_ID=$(aws ec2 describe-volumes \
-  --filters "Name=attachment.instance-id,Values=$INSTANCE_ID" \
-  --query 'Volumes[0].VolumeId' \
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/instance-id)
+REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/placement/region)
+VOLUME_ID=$(aws ec2 describe-instances \
+  --instance-ids $INSTANCE_ID \
+  --region $REGION \
+  --query 'Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId' \
   --output text)
 
 # Resize to 30 GB
 aws ec2 modify-volume \
   --volume-id $VOLUME_ID \
+  --region $REGION \
   --size 30
 
-# Extend the filesystem
-sudo growpart /dev/xvda 1
-sudo resize2fs /dev/xvda1
+while [[ "$(aws ec2 describe-volumes-modifications \
+  --volume-ids $VOLUME_ID \
+  --region $REGION \
+  --query 'VolumesModifications[0].ModificationState' \
+  --output text)" = "modifying" ]]; do
+  sleep 5
+done
+
+# Extend the partition and filesystem
+if [[ -e "/dev/xvda" && $(readlink -f /dev/xvda) = "/dev/xvda" ]]; then
+  sudo growpart /dev/xvda 1
+else
+  sudo growpart /dev/nvme0n1 1
+fi
+
+if [[ "$(findmnt -n -o FSTYPE /)" = "xfs" ]]; then
+  sudo xfs_growfs -d /
+else
+  sudo resize2fs "$(findmnt -n -o SOURCE /)"
+fi
 ```
 
 ### Configure Git
@@ -235,10 +264,13 @@ python3 -m pip install --user pipenv black flake8
 # Go
 sudo yum install -y golang
 
-# Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
-  -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
+# Docker and Docker Compose
+sudo yum install -y docker
+sudo systemctl enable --now docker
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Terraform
 sudo yum install -y yum-utils
