@@ -10,15 +10,15 @@ Description: Learn how to use AWS Glue Job Bookmarks to process only new or chan
 
 Imagine you have a daily ETL job that processes event data from S3. On day one, you process 1 million records. On day two, there are 1.1 million records. Do you reprocess all 1.1 million, or just the 100,000 new ones? Without bookmarks, Glue processes everything every time. With bookmarks, it picks up where it left off.
 
-Glue Job Bookmarks track what data has already been processed and ensure your jobs only handle new or changed data on subsequent runs. This saves compute time, reduces costs, and prevents duplicate processing.
+Glue Job Bookmarks track what data has already been processed and help your jobs handle only new or changed data on subsequent runs. This saves compute time, reduces costs, and helps prevent duplicate processing.
 
 ## How Job Bookmarks Work
 
 When you enable bookmarks, Glue tracks the "high-water mark" of processed data:
 
-**For S3 sources**: It tracks file timestamps and paths. On the next run, only files added since the last successful run are processed.
+**For S3 sources**: It tracks object modification timestamps for supported S3 source formats. On the next run, files modified since the last successful run are processed.
 
-**For JDBC sources**: It tracks the maximum value of a specified column (like an auto-incrementing ID or timestamp). On the next run, only rows with values above the previous maximum are processed.
+**For JDBC sources**: It tracks bookmark key columns, such as a sequential primary key or user-specified columns. On the next run, only rows beyond the previous bookmark are processed.
 
 ```mermaid
 graph TD
@@ -65,9 +65,9 @@ The `--job-bookmark-option` has three possible values:
 |--------|----------|
 | `job-bookmark-enable` | Track processed data, process only new data |
 | `job-bookmark-disable` | Process everything on every run |
-| `job-bookmark-pause` | Don't update the bookmark, but still use the current one |
+| `job-bookmark-pause` | Process from the current bookmark, or from a specified run range, without updating bookmark state |
 
-The `pause` option is useful for testing. It lets you reprocess the same data repeatedly without advancing the bookmark.
+The `pause` option is useful for testing. It lets you reprocess the same bookmark range repeatedly without advancing the bookmark. You can also use the optional `job-bookmark-from` and `job-bookmark-to` run ID arguments together to process a specific range.
 
 ## S3 Source with Bookmarks
 
@@ -125,7 +125,7 @@ if record_count > 0:
             "partitionKeys": ["year", "month", "day"]
         },
         format="parquet",
-        transformation_ctx="output"  # Also needed for bookmark tracking on write
+        transformation_ctx="output"  # Keeps this sink state identifiable in the job bookmark
     )
 
     print(f"Wrote {record_count} records")
@@ -136,9 +136,9 @@ else:
 job.commit()
 ```
 
-The `transformation_ctx` parameter is the key to making bookmarks work. It must be unique for each source and target in your job. Glue uses this context to track the bookmark state for each data node.
+The `transformation_ctx` parameter is the key to making bookmarks work. It must be unique and stable for each source, transform, or sink whose state you want Glue to identify. Glue uses this context to track bookmark state for each data node.
 
-**If you forget `transformation_ctx`, bookmarks won't work and you'll reprocess everything every time.**
+**If you forget `transformation_ctx` on a bookmarked source, bookmarks won't be enabled for that dynamic frame or table and you'll reprocess everything every time.**
 
 ## JDBC Source with Bookmarks
 
@@ -159,7 +159,7 @@ source = glueContext.create_dynamic_frame.from_catalog(
 print(f"New orders to process: {source.count()}")
 ```
 
-The `jobBookmarkKeys` specifies which column to use as the bookmark. This should be a monotonically increasing column like an auto-increment ID or a timestamp. On each run, Glue remembers the maximum value and only reads rows with higher values next time.
+The `jobBookmarkKeys` specifies which column to use as the bookmark. This should be a strictly monotonically increasing or decreasing column, such as an auto-increment ID. Gaps are allowed for user-defined keys, but case-sensitive column names are not supported as bookmark keys. On each run, Glue records the bookmarked key value and only reads rows beyond it next time.
 
 You can use multiple bookmark keys for composite tracking:
 
@@ -170,11 +170,13 @@ source = glueContext.create_dynamic_frame.from_catalog(
     table_name="events",
     transformation_ctx="jdbc_events",
     additional_options={
-        "jobBookmarkKeys": ["event_date", "event_id"],
+        "jobBookmarkKeys": ["ingest_sequence", "event_id"],
         "jobBookmarkKeysSortOrder": "asc"
     }
 )
 ```
+
+For compound bookmark keys, each key column must be strictly monotonic in the configured sort order.
 
 ## Data Catalog Source with Bookmarks
 
@@ -200,9 +202,8 @@ Understanding how bookmarks interact with your data is important:
 
 For S3 sources, Glue tracks files based on:
 - File modification timestamp
-- File path
 
-New files (newer timestamp or previously unseen path) are included in the next run. Modified files with an updated timestamp are also included. Deleted files don't cause reprocessing.
+New files with a newer modification timestamp are included in the next run. Modified files with an updated timestamp are also included. Deleted files don't cause reprocessing.
 
 ### Important: File Naming Matters
 
@@ -223,6 +224,8 @@ print("Bookmark reset - next run will process all data")
 bookmark = glue.get_job_bookmark(JobName='incremental-event-processor')
 print(f"Bookmark: {bookmark['JobBookmarkEntry']}")
 ```
+
+When you rewind or reset a bookmark, Glue does not clean up target files. Only source inputs are tracked for reprocessing decisions, so manage target output carefully when backfilling.
 
 ## Handling Failures
 
@@ -304,7 +307,7 @@ This is exactly what you want for multi-stage pipelines. The first job picks up 
 
 ## Common Issues and Fixes
 
-**Bookmark not working**: Check that `transformation_ctx` is set on both source and target operations. Without it, Glue can't track what was processed.
+**Bookmark not working**: Check that `transformation_ctx` is set on the source operation you want bookmarked. Without it, Glue can't track what was processed for that dynamic frame or table.
 
 **Reprocessing old data**: The bookmark might have been reset accidentally. Check the bookmark state with `get_job_bookmark`.
 
@@ -314,9 +317,9 @@ This is exactly what you want for multi-stage pipelines. The first job picks up 
 
 ## Best Practices
 
-1. **Always use `transformation_ctx`** on every `create_dynamic_frame` and `write_dynamic_frame` call
+1. **Always use a stable `transformation_ctx`** on every bookmarked `create_dynamic_frame` call, and avoid renaming it after the job has run
 2. **Always call `job.commit()`** at the end of successful runs
-3. **Use monotonically increasing keys** for JDBC bookmarks
+3. **Use strictly monotonically increasing or decreasing keys** for JDBC bookmarks
 4. **Handle duplicates** in your target since at-least-once is the guarantee
 5. **Monitor bookmark progress** with custom CloudWatch metrics
 6. **Test with `job-bookmark-pause`** before going to production
