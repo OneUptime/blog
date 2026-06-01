@@ -14,7 +14,7 @@ This guide shows you how to set up continuous data export from IoT Central to Az
 
 ## Why Azure Data Explorer for IoT Data
 
-IoT Central retains telemetry data for 30 days by default. If you need longer retention, historical trend analysis, or the ability to correlate IoT data with other sources, you need an external analytics store. ADX is a natural fit because:
+IoT Central retains telemetry data for up to 7 days. If you need longer retention, historical trend analysis, or the ability to correlate IoT data with other sources, you need an external analytics store. ADX is a natural fit because:
 
 - It is optimized for append-only time-series data, which is exactly what IoT telemetry is
 - KQL is more expressive than SQL for time-series operations like time bucketing, interpolation, and anomaly detection
@@ -36,6 +36,7 @@ az kusto cluster create \
   --cluster-name iot-adx-cluster \
   --resource-group iot-analytics-rg \
   --location eastus \
+  --enable-streaming-ingest true \
   --sku name="Dev(No SLA)_Standard_E2a_v4" tier="Basic" capacity=1
 
 # Create a database with 365-day retention
@@ -43,8 +44,7 @@ az kusto database create \
   --cluster-name iot-adx-cluster \
   --resource-group iot-analytics-rg \
   --database-name iot-telemetry \
-  --soft-delete-period P365D \
-  --hot-cache-period P31D
+  --read-write-database location="eastus" kind="ReadWrite" soft-delete-period="P365D" hot-cache-period="P31D"
 ```
 
 The `hot-cache-period` controls how much data stays in SSD cache for fastest query performance. Set it to cover your most common query window - 31 days is a good starting point.
@@ -53,10 +53,10 @@ The `hot-cache-period` controls how much data stays in SSD cache for fastest que
 
 Connect to your ADX cluster using the Azure Data Explorer web UI (https://dataexplorer.azure.com) and create a table to receive the exported data.
 
-IoT Central exports data in a specific JSON format. Here is a table schema that matches the export structure.
+IoT Central exports telemetry as JSON. The transform you configure in the next step writes one JSON object per message with column names that match this table schema.
 
 ```sql
-// Create the telemetry table with columns matching IoT Central export format
+// Create the telemetry table with columns matching the transformed IoT Central export format
 .create table DeviceTelemetry (
     enqueuedTime: datetime,
     deviceId: string,
@@ -67,19 +67,6 @@ IoT Central exports data in a specific JSON format. Here is a table schema that 
     telemetry: dynamic,
     messageProperties: dynamic
 )
-
-// Create a JSON ingestion mapping that maps the export payload to table columns
-.create table DeviceTelemetry ingestion json mapping 'TelemetryMapping'
-'['
-'  {"column": "enqueuedTime", "path": "$.enqueuedTime", "datatype": "datetime"},'
-'  {"column": "deviceId", "path": "$.device.id", "datatype": "string"},'
-'  {"column": "deviceName", "path": "$.device.name", "datatype": "string"},'
-'  {"column": "templateId", "path": "$.device.templateId", "datatype": "string"},'
-'  {"column": "templateName", "path": "$.device.templateName", "datatype": "string"},'
-'  {"column": "enrichments", "path": "$.enrichments", "datatype": "dynamic"},'
-'  {"column": "telemetry", "path": "$.telemetry", "datatype": "dynamic"},'
-'  {"column": "messageProperties", "path": "$.messageProperties", "datatype": "dynamic"}'
-']'
 
 // Enable streaming ingestion on the table for low latency
 .alter table DeviceTelemetry policy streamingingestion enable
@@ -107,12 +94,27 @@ In your IoT Central application, navigate to Data export in the left menu.
 4. Enter the table name: `DeviceTelemetry`
 5. For authentication, use a service principal or managed identity
 
+Add a transform for the destination so the IoT Central telemetry array is converted into a dynamic object that matches the table schema and the queries later in this guide.
+
+```jq
+{
+  enqueuedTime: .enqueuedTime,
+  deviceId: .device.id,
+  deviceName: .device.name,
+  templateId: .device.templateId,
+  templateName: .device.templateName,
+  enrichments: .enrichments,
+  telemetry: (.telemetry | map({ key: .name, value: .value }) | from_entries),
+  messageProperties: .messageProperties
+}
+```
+
 If using a service principal, you need to grant it permissions on the ADX database.
 
 ```sql
 // Grant the service principal ingestor and viewer roles
-.add database iot-telemetry ingestors ('aadapp=<service-principal-app-id>;<tenant-id>')
-.add database iot-telemetry viewers ('aadapp=<service-principal-app-id>;<tenant-id>')
+.add database ['iot-telemetry'] ingestors ('aadapp=<service-principal-app-id>;<tenant-id>')
+.add database ['iot-telemetry'] viewers ('aadapp=<service-principal-app-id>;<tenant-id>')
 ```
 
 Enable the export and IoT Central will begin streaming telemetry data to your ADX table.
@@ -249,8 +251,8 @@ As your data grows, query performance becomes important. Here are optimization t
 
 ```sql
 // Keep raw data for 90 days, aggregates for 2 years
-.alter table DeviceTelemetry policy retention softdelete = 90d
-.alter materialized-view HourlyTelemetry policy retention softdelete = 730d
+.alter-merge table DeviceTelemetry policy retention softdelete = 90d
+.alter-merge materialized-view HourlyTelemetry policy retention softdelete = 730d
 ```
 
 **Use update policies to extract frequently queried fields from the dynamic column:**
@@ -268,12 +270,12 @@ As your data grows, query performance becomes important. Here are optimization t
 
 // Create an update policy that automatically parses incoming data
 .alter table ParsedTelemetry policy update
-@'[{"IsEnabled": true, "Source": "DeviceTelemetry", "Query": "DeviceTelemetry | extend temperature=todouble(telemetry.temperature), humidity=todouble(telemetry.humidity), pressure=todouble(telemetry.pressure), airQualityIndex=toint(telemetry.airQualityIndex) | project enqueuedTime, deviceId, temperature, humidity, pressure, airQualityIndex", "IsTransactional": true}]'
+@'[{"IsEnabled": true, "Source": "DeviceTelemetry", "Query": "DeviceTelemetry | extend temperature=todouble(telemetry.temperature), humidity=todouble(telemetry.humidity), pressure=todouble(telemetry.pressure), airQualityIndex=toint(telemetry.airQualityIndex) | project enqueuedTime, deviceId, temperature, humidity, pressure, airQualityIndex", "IsTransactional": true, "PropagateIngestionProperties": false}]'
 ```
 
 ## Cost Considerations
 
-ADX pricing is based on cluster size and data volume. For development and small deployments, the Dev/Test SKU is free for the first cluster. For production, choose a cluster size based on your ingestion rate and query complexity. A few pointers:
+ADX pricing is based on cluster size and data volume. For development and small deployments, the Developer tier has no Azure Data Explorer markup, but you should still check the current pricing for compute and storage in your region. For production, choose a cluster size based on your ingestion rate and query complexity. A few pointers:
 
 - The hot cache period determines how much SSD storage you need. More hot cache means faster queries but higher cost.
 - Streaming ingestion uses more resources than batched ingestion. Only enable it if you need sub-minute latency.
