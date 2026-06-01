@@ -27,7 +27,7 @@ sequenceDiagram
 
     User->>Client: Access resource
     Client->>EntraID: Request access token
-    EntraID->>Client: Issue CAE-enabled token (24h lifetime)
+    EntraID->>Client: Issue CAE-enabled token (up to 28h lifetime)
     Client->>Resource: Request with access token
     Resource->>Resource: Validate token
     Resource-->>Client: Access granted
@@ -63,20 +63,21 @@ CAE responds to two types of events:
 
 CAE is enabled by default for tenants with supported Microsoft 365 workloads. However, it is worth verifying that it is active and not being overridden by any policies.
 
-Check the current CAE configuration using PowerShell:
+Check any Conditional Access policies that customize CAE using PowerShell:
 
 ```powershell
 # Connect to Microsoft Graph
+Import-Module Microsoft.Graph.Beta.Identity.SignIns
 
 Connect-MgGraph -Scopes "Policy.Read.All"
 
-# Check if CAE is enabled at the tenant level
-# CAE is controlled through Conditional Access session controls
-$policies = Get-MgIdentityConditionalAccessPolicy
+# Check Conditional Access policies that customize CAE
+# The continuousAccessEvaluation session control is currently exposed in Microsoft Graph beta
+$policies = Get-MgBetaIdentityConditionalAccessPolicy
 
 foreach ($policy in $policies) {
     if ($policy.SessionControls.DisableResilienceDefaults -eq $true) {
-        Write-Output "WARNING: Policy '$($policy.DisplayName)' has disabled resilience defaults, which can affect CAE"
+        Write-Output "Policy '$($policy.DisplayName)' has disabled resilience defaults"
     }
 
     if ($policy.SessionControls.ContinuousAccessEvaluation) {
@@ -89,15 +90,20 @@ foreach ($policy in $policies) {
 
 While CAE is on by default, you can fine-tune its behavior through Conditional Access policies. The key setting is the `continuousAccessEvaluation` session control.
 
-CAE has two modes:
+CAE has these configurable modes:
 
 - **Strict enforcement** - Both critical events and IP-based Conditional Access policies trigger CAE. This is the most secure option.
+- **Strict location enforcement** - Removes the standard exception for some IP address variations in stable network topologies.
 - **Disabled** - CAE is turned off (not recommended).
 
 This creates a Conditional Access policy that enforces strict CAE evaluation:
 
 ```powershell
 # Create a Conditional Access policy with strict CAE enforcement
+Import-Module Microsoft.Graph.Beta.Identity.SignIns
+
+Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess", "Application.Read.All"
+
 $caePolicy = @{
     displayName = "Enforce Strict Continuous Access Evaluation"
     state = "enabledForReportingButNotEnforced"  # Start in report-only
@@ -111,10 +117,6 @@ $caePolicy = @{
         }
         clientAppTypes = @("all")
     }
-    grantControls = @{
-        operator = "OR"
-        builtInControls = @("block")
-    }
     sessionControls = @{
         continuousAccessEvaluation = @{
             mode = "strictEnforcement"
@@ -122,14 +124,13 @@ $caePolicy = @{
     }
 }
 
-# Note: For strict enforcement, the grant control should match
-# your actual access requirements, not just "block"
-# The above is simplified - adjust grant controls to your needs
+# Note: The continuousAccessEvaluation session control is currently in Microsoft Graph beta.
+# Test with report-only mode before enabling the policy.
 
-New-MgIdentityConditionalAccessPolicy -BodyParameter $caePolicy
+New-MgBetaIdentityConditionalAccessPolicy -BodyParameter $caePolicy
 ```
 
-In strict enforcement mode, CAE-capable clients are required to handle claims challenges. Non-CAE-capable clients will fall back to regular token validation, which means they will not benefit from near real-time revocation.
+In strict enforcement mode, CAE-capable clients are required to handle claims challenges. Non-CAE-capable clients and unsupported resource/client combinations fall back to regular token validation, which means they will not benefit from near real-time revocation.
 
 ## Step 3: Understand Token Lifetime with CAE
 
@@ -146,15 +147,20 @@ To verify that CAE is working, you can test the revocation flow. The simplest te
 This script tests CAE by revoking a user's sessions and then checking access:
 
 ```powershell
+Import-Module Microsoft.Graph.Users
+Import-Module Microsoft.Graph.Users.Actions
+
+Connect-MgGraph -Scopes "User.Read.All", "User.RevokeSessions.All"
+
 # Step 1: Note the user's current access
 $testUser = "test.user@company.com"
 $userId = (Get-MgUser -Filter "userPrincipalName eq '$testUser'").Id
 
 Write-Output "Revoking sessions for $testUser at $(Get-Date)"
 
-# Step 2: Revoke all refresh tokens for the user
+# Step 2: Revoke all sign-in sessions for the user
 # This triggers a critical event that CAE will propagate
-Invoke-MgInvalidateUserRefreshToken -UserId $userId
+Revoke-MgUserSignInSession -UserId $userId
 
 Write-Output "Tokens revoked. CAE should enforce this within minutes."
 Write-Output "The user's next request to a CAE-enabled resource should trigger a claims challenge."
@@ -164,27 +170,26 @@ After revoking tokens, the user should be prompted to re-authenticate within a f
 
 ## Step 5: Monitor CAE Events
 
-Track CAE enforcement in the Entra ID sign-in logs to see when claims challenges are issued and whether they result in successful re-authentication or access denial.
+Track CAE enforcement in the Entra ID sign-in logs to see when CAE tokens are issued and whether sign-ins result in successful re-authentication or access denial.
 
 This KQL query finds CAE-related events in the sign-in logs:
 
 ```kusto
-// Monitor CAE claims challenge events
+// Monitor sign-ins where CAE details are present
 SigninLogs
 | where TimeGenerated > ago(7d)
 // Look for sign-ins that include CAE-related information
 | where AuthenticationProcessingDetails has "continuous access evaluation"
     or AuthenticationProcessingDetails has "CAE"
-| extend
-    CAEDetails = parse_json(AuthenticationProcessingDetails)
 | project
     TimeGenerated,
     UserPrincipalName,
     AppDisplayName,
     IPAddress,
+    IPAddressFromResourceProvider,
     Status,
     ConditionalAccessStatus,
-    CAEDetails,
+    AuthenticationProcessingDetails,
     RiskLevelAggregated
 | order by TimeGenerated desc
 ```
@@ -195,8 +200,8 @@ You can also check for token revocation events specifically:
 // Track token revocation events and their CAE enforcement
 AuditLogs
 | where TimeGenerated > ago(7d)
-| where OperationName == "Revoke user sign-in tokens"
-    or OperationName == "Invalidate all refresh tokens for a user"
+| where OperationName has "Revoke"
+    or OperationName has "Invalidate"
 | project
     TimeGenerated,
     OperationName,
@@ -215,12 +220,13 @@ For your client application to support CAE, it needs to handle claims challenges
 ```python
 import msal
 import requests
+import www_authenticate
 
-# Initialize the MSAL confidential client
-app = msal.ConfidentialClientApplication(
+# Declare CP1 so Microsoft identity can issue CAE-capable tokens
+app = msal.PublicClientApplication(
     client_id="<your-app-id>",
-    client_credential="<your-client-secret>",
     authority="https://login.microsoftonline.com/<tenant-id>",
+    client_capabilities=["cp1"],
 )
 
 def make_api_call(token):
@@ -235,30 +241,23 @@ def make_api_call(token):
     if response.status_code == 401:
         # Check for a claims challenge in the WWW-Authenticate header
         www_auth = response.headers.get("WWW-Authenticate", "")
+        parsed = www_authenticate.parse(www_auth)
+        claims = parsed.get("bearer", {}).get("claims")
 
-        if "claims" in www_auth:
-            # Extract the claims challenge value
-            # The claims value is base64-encoded
-            import re
-            claims_match = re.search(r'claims="([^"]+)"', www_auth)
+        if claims:
+            # Re-acquire a delegated token with the claims challenge
+            new_token = app.acquire_token_interactive(
+                scopes=["User.Read"],
+                claims_challenge=claims,
+            )
 
-            if claims_match:
-                claims = claims_match.group(1)
-
-                # Re-acquire a token with the claims challenge
-                # This forces re-authentication
-                new_token = app.acquire_token_for_client(
-                    scopes=["https://graph.microsoft.com/.default"],
-                    claims_challenge=claims,
+            if "access_token" in new_token:
+                # Retry the request with the new token
+                headers = {"Authorization": f"Bearer {new_token['access_token']}"}
+                response = requests.get(
+                    "https://graph.microsoft.com/v1.0/me",
+                    headers=headers,
                 )
-
-                if "access_token" in new_token:
-                    # Retry the request with the new token
-                    headers = {"Authorization": f"Bearer {new_token['access_token']}"}
-                    response = requests.get(
-                        "https://graph.microsoft.com/v1.0/me",
-                        headers=headers,
-                    )
 
     return response
 ```
@@ -283,13 +282,13 @@ For unsupported resources, the standard token lifetime and refresh flow still ap
 
 ## Strict vs. Default Enforcement
 
-The difference between strict and default enforcement mainly affects IP-based Conditional Access evaluation:
+The difference between strict and default enforcement mainly affects IP-based Conditional Access location evaluation:
 
-**Default enforcement**: IP location changes are evaluated on a best-effort basis. Some scenarios (like a user on a VPN that routes traffic through different exit points) might not trigger immediate re-evaluation.
+**Default enforcement**: IP location changes are enforced in near real time, but Microsoft Entra allows an exception for some IP address variation scenarios. If Microsoft Entra sees an allowed IP address while the resource provider sees a disallowed IP address, Microsoft Entra can issue a one-hour token that suspends client location checks at the resource provider while continuing to enforce other CAE events.
 
-**Strict enforcement**: All IP location changes are strictly evaluated. The client must prove its network location on every request. This provides stronger security but may cause more frequent re-authentication prompts for mobile users.
+**Strict location enforcement**: This removes the standard IP address variation exception for stable network topologies. It provides stronger location enforcement but may cause more frequent access interruptions for users whose traffic exits through changing or split network paths.
 
-Choose strict enforcement for high-security applications and users with access to sensitive data. Use default enforcement as the baseline for the rest of your organization.
+Choose strict location enforcement for high-security applications and users with access to sensitive data when your network egress paths are predictable. Use default enforcement as the baseline for the rest of your organization.
 
 ## Wrapping Up
 
