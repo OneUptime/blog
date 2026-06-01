@@ -8,7 +8,7 @@ Description: Learn how to configure GPU-enabled session hosts in Azure Virtual D
 
 ---
 
-Not all virtual desktop workloads are about email and spreadsheets. Engineers running CAD software, architects using 3D modeling tools, video editors working with high-resolution footage, and data scientists building visualizations all need GPU acceleration in their remote sessions. Azure Virtual Desktop supports GPU-enabled session hosts through the NV, NVv3, NVv4, NCasT4, and NVadsA10 VM series. This guide covers how to select the right GPU VM, configure the drivers and display settings, and optimize the remote display protocol for graphics-heavy workloads.
+Not all virtual desktop workloads are about email and spreadsheets. Engineers running CAD software, architects using 3D modeling tools, video editors working with high-resolution footage, and data scientists building visualizations all need GPU acceleration in their remote sessions. Azure Virtual Desktop supports GPU-enabled session hosts through GPU-optimized VM series such as NVv3, NVv4, NCasT4_v3, and NVadsA10 v5. This guide covers how to select the right GPU VM, configure the drivers and display settings, and optimize the remote display protocol for graphics-heavy workloads.
 
 ## Understanding GPU VM Options
 
@@ -16,10 +16,12 @@ Azure offers several GPU-enabled VM families, each suited for different workload
 
 | VM Series | GPU | VRAM | Best For |
 |-----------|-----|------|----------|
-| NVv3 | NVIDIA Tesla M60 | 8-16 GB | General GPU visualization |
-| NVadsA10 v5 | NVIDIA A10 | 6-24 GB | Professional visualization, AI |
-| NCasT4 v3 | NVIDIA Tesla T4 | 16 GB | Mixed visualization and compute |
-| NVv4 | AMD Radeon MI25 | 4-16 GB | Cost-effective visualization |
+| NVv3 | NVIDIA Tesla M60 | 8-32 GB | General GPU visualization |
+| NVadsA10 v5 | NVIDIA A10 | 4-48 GB | Professional visualization, AI |
+| NCasT4_v3 | NVIDIA Tesla T4 | 16-64 GB | Mixed visualization and compute |
+| NVv4 | AMD Radeon Instinct MI25 | 2-16 GB | Cost-effective visualization |
+
+Note that NVv3 and NVv4 are scheduled for retirement on September 30, 2026, so prefer NVadsA10 v5 for new deployments unless you have a specific reason to use those older series.
 
 For most AVD graphics workloads, I recommend the NVadsA10 v5 series. It provides the best balance of performance, features, and cost. The NVIDIA A10 GPU supports hardware-accelerated encoding (NVENC), which offloads the remote display encoding from the CPU to the GPU, significantly improving the remote experience.
 
@@ -49,7 +51,7 @@ az vm list-usage \
 # Quota increases for GPU VMs can take 1-3 business days
 ```
 
-## Step 2: Create the GPU Session Host
+## Step 2: Create the GPU VM and Register It as a Session Host
 
 ```bash
 # Set variables
@@ -58,6 +60,8 @@ VM_NAME="sh-gpu-01"
 LOCATION="eastus"
 VNET_NAME="vnet-avd"
 SUBNET_NAME="subnet-gpu-hosts"
+HOST_POOL_NAME="hp-gpu-desktop"
+HOST_POOL_RESOURCE_GROUP="rg-avd-gpu"
 
 # Create a subnet for GPU session hosts (if not already created)
 az network vnet subnet create \
@@ -82,11 +86,25 @@ az vm create \
     --license-type Windows_Client \
     --os-disk-size-gb 256 \
     --storage-sku Premium_LRS
+
+# This creates the VM. To make it an AVD session host, join it to
+# Microsoft Entra ID or Active Directory, then register it with the host pool.
+az desktopvirtualization hostpool update \
+    --name $HOST_POOL_NAME \
+    --resource-group $HOST_POOL_RESOURCE_GROUP \
+    --registration-info expiration-time=$(date -d '+24 hours' --iso-8601=ns) registration-token-operation="Update"
+
+REGISTRATION_TOKEN=$(az desktopvirtualization hostpool retrieve-registration-token \
+    --name $HOST_POOL_NAME \
+    --resource-group $HOST_POOL_RESOURCE_GROUP \
+    --query token --output tsv)
 ```
+
+Use the registration token when installing the Azure Virtual Desktop Agent and Agent Boot Loader on the VM. The VM will not appear as an available session host until it is domain-joined or Microsoft Entra-joined and the AVD agent components are installed.
 
 ## Step 3: Install GPU Drivers
 
-GPU VMs need the appropriate drivers installed. Azure provides an extension that handles this:
+GPU VMs need the appropriate drivers installed. Azure provides an extension that handles this for the NVadsA10 v5 example below. If you use NCasT4_v3 for graphics and visualization workloads, install the Azure-supported NVIDIA GRID drivers manually; the extension installs CUDA drivers on that series.
 
 ```bash
 # Install the NVIDIA GPU driver extension
@@ -96,7 +114,7 @@ az vm extension set \
     --resource-group $RESOURCE_GROUP \
     --name NvidiaGpuDriverWindows \
     --publisher Microsoft.HpcCompute \
-    --version 1.9 \
+    --version 1.10 \
     --settings '{}'
 
 # Wait for the extension to complete (this can take 10-15 minutes)
@@ -125,7 +143,7 @@ az vm run-command invoke \
 
 The `nvidia-smi` output should show the GPU model, driver version, and memory usage. If this command fails, the driver installation did not complete successfully.
 
-## Step 4: Configure GPU for RemoteFX/Remote Display
+## Step 4: Configure GPU for Remote Display
 
 By default, the Remote Desktop Protocol (RDP) may not use the GPU for encoding. You need to configure the session host to leverage GPU acceleration for the remote display:
 
@@ -137,9 +155,8 @@ By default, the Remote Desktop Protocol (RDP) may not use the GPU for encoding. 
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" `
     -Name "HwSchMode" -Value 2 -Type DWord
 
-# Configure RemoteFX vGPU (for server OS)
-# Enable GPU-accelerated frame encoding
 $regPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
+if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force }
 
 # Use hardware graphics adapter for all Remote Desktop Services sessions
 Set-ItemProperty -Path $regPath `
@@ -153,14 +170,14 @@ Set-ItemProperty -Path $regPath `
 Set-ItemProperty -Path $regPath `
     -Name "AVCHardwareEncodePreferred" -Value 1 -Type DWord
 
-# Enable full-screen video playback optimization
+# Use the WDDM graphics display driver for Remote Desktop connections
 Set-ItemProperty -Path $regPath `
     -Name "fEnableWddmDriver" -Value 1 -Type DWord
 
 Write-Host "GPU remote display settings configured. Restart required."
 ```
 
-For a more automated approach, use this as a Custom Script Extension:
+For a more automated approach, apply the same settings with Azure VM Run Command:
 
 ```bash
 # Apply GPU display settings via Custom Script Extension
@@ -188,14 +205,14 @@ The RDP connection itself needs to be configured for high-quality graphics. Crea
 az desktopvirtualization hostpool update \
     --name hp-gpu-desktop \
     --resource-group $RESOURCE_GROUP \
-    --custom-rdp-property "use multimon:i:1;videoplaybackmode:i:1;audiocapturemode:i:1;encode redirected video capture:i:1;redirected video capture encoding quality:i:2;camerastoredirect:s:*;devicestoredirect:s:*;drivestoredirect:s:*;gfxrenderingmode:i:0"
+    --custom-rdp-property "use multimon:i:1;videoplaybackmode:i:1;audiocapturemode:i:1;encode redirected video capture:i:1;redirected video capture encoding quality:i:2;camerastoredirect:s:*;devicestoredirect:s:*;drivestoredirect:s:*"
 ```
 
 Key RDP properties for graphics workloads:
 
 - `use multimon:i:1` - Enable multiple monitor support
 - `videoplaybackmode:i:1` - Optimize video playback
-- `gfxrenderingmode:i:0` - Use the default graphics rendering (which will use GPU when available)
+- `encode redirected video capture:i:1` - Enable encoding for redirected camera and video capture streams
 
 ## Step 6: Install Graphics Applications
 
@@ -223,7 +240,7 @@ choco install vlc -y               # Media playback
 Track GPU utilization to ensure you are getting value from the GPU VMs:
 
 ```bash
-# Install the Azure Monitor agent for GPU metrics
+# Install the Azure Monitor agent for VM monitoring and log ingestion
 az vm extension set \
     --vm-name $VM_NAME \
     --resource-group $RESOURCE_GROUP \
@@ -244,12 +261,13 @@ az vm run-command invoke \
     '
 ```
 
-For ongoing monitoring, set up a scheduled task that logs GPU metrics to a file and ingest them into Log Analytics:
+For ongoing GPU monitoring, set up a scheduled task that logs GPU metrics to a file and ingest them into Log Analytics with an Azure Monitor Agent data collection rule:
 
 ```powershell
 # gpu-metrics-collector.ps1
 # Runs on the session host and logs GPU metrics for monitoring
 $logPath = "C:\Logs\gpu-metrics.csv"
+New-Item -ItemType Directory -Path (Split-Path $logPath) -Force | Out-Null
 
 # Collect GPU metrics using nvidia-smi
 $metrics = nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu,power.draw --format=csv,noheader
