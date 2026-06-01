@@ -21,9 +21,11 @@ There are two types of WebJobs:
 - **Continuous WebJobs** - These run in a loop and stay alive as long as your App Service is running. Good for message queue processors and similar always-on workloads.
 - **Triggered WebJobs** - These run on demand or on a schedule (using CRON expressions). Good for periodic cleanup tasks, report generation, or anything that does not need to run constantly.
 
-## Creating a Simple Triggered WebJob
+## Creating a Simple Queue-Triggered WebJob
 
-Let us start with a triggered WebJob. The simplest version is just a script. Here is a C# console application that processes items from a queue.
+Let us start with a queue-triggered WebJob. The simplest version is just a script. Here is a C# console application that processes items from a queue.
+
+With the WebJobs SDK, queue triggers are different from the App Service "Triggered" deployment type. A WebJob that listens for queue messages should be deployed as a continuous WebJob with Always On enabled.
 
 The following code sets up a basic WebJob host that listens for Azure Storage Queue messages:
 
@@ -72,10 +74,11 @@ Now you need a function that handles the actual work. Create a separate class fo
 // Functions.cs - Contains the actual job logic
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace MyWebJob
 {
-    public class Functions
+    public static class Functions
     {
         // This method triggers whenever a message lands in the "orders" queue
         public static void ProcessOrder(
@@ -86,6 +89,10 @@ namespace MyWebJob
 
             // Parse the order and do whatever work is needed
             var order = JsonSerializer.Deserialize<Order>(orderMessage);
+            if (order == null)
+            {
+                throw new InvalidOperationException("The queue message did not contain a valid order.");
+            }
 
             // Simulate some processing work
             ProcessOrderInternal(order);
@@ -98,6 +105,11 @@ namespace MyWebJob
             // Your business logic goes here
             // Send confirmation email, update inventory, etc.
         }
+    }
+
+    public class Order
+    {
+        public string Id { get; set; } = string.Empty;
     }
 }
 ```
@@ -124,13 +136,14 @@ dotnet publish -c Release -o ./publish
 # Create a ZIP of the published output
 cd publish && zip -r ../webjob.zip . && cd ..
 
-# Deploy the WebJob to your App Service
+# Deploy the WebJob to your App Service as a continuous WebJob
 # Replace the placeholders with your actual resource names
-az webapp webjob triggered upload \
+az webapp deploy \
     --resource-group my-resource-group \
     --name my-app-service \
-    --webjob-name process-orders \
-    --src webjob.zip
+    --src-path webjob.zip \
+    --type zip \
+    --target-path /home/site/wwwroot/App_Data/jobs/continuous/process-orders
 ```
 
 ### Deploying as Part of Your Web App
@@ -138,7 +151,7 @@ az webapp webjob triggered upload \
 If you are using Visual Studio or a CI/CD pipeline, you can include WebJobs directly in your web app deployment. Place your WebJob files in a specific folder structure:
 
 ```text
-app_data/
+App_Data/
   jobs/
     triggered/
       my-webjob/
@@ -191,7 +204,7 @@ curl -u '$username:password' \
 
 ## Scaling Considerations
 
-WebJobs run on the same instances as your App Service. If you scale out to multiple instances, continuous WebJobs will run on all instances by default. This is fine for queue processors (they will compete for messages), but it can be a problem for jobs that should only run once.
+WebJobs run on the same instances as your App Service. If you scale out to multiple instances, continuous WebJobs can run on all instances when configured for multi-instance scale. This is fine for queue processors (they will compete for messages), but it can be a problem for jobs that should only run once.
 
 To make a continuous WebJob run on a single instance only, add a `settings.job` file:
 
@@ -216,19 +229,20 @@ WebJobs are simpler to set up if you already have an App Service, but Azure Func
 
 The WebJobs SDK has built-in retry support for queue-triggered functions. If your function throws an exception, the message goes back to the queue and gets retried. After 5 failed attempts (by default), the message moves to a poison queue.
 
-You can customize this behavior:
+You can customize this behavior when configuring the queue extension in the WebJobs host:
 
 ```csharp
-// Configure retry behavior on the queue trigger
-public static void ProcessOrder(
-    [QueueTrigger("orders", MaxDequeueCount = 3)] string orderMessage,
-    ILogger logger)
+builder.ConfigureWebJobs(b =>
 {
-    // MaxDequeueCount = 3 means the message will be retried 3 times
-    // before being moved to the poison queue
-    logger.LogInformation($"Processing: {orderMessage}");
-}
+    b.AddAzureStorageCoreServices();
+    b.AddAzureStorageQueues(options =>
+    {
+        options.MaxDequeueCount = 3;
+    });
+});
 ```
+
+In this example, `MaxDequeueCount = 3` means the message is tried up to 3 times before being moved to the poison queue.
 
 ## Wrapping Up
 
