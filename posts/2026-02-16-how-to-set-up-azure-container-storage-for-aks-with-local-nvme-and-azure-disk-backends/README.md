@@ -10,11 +10,11 @@ Description: Learn how to configure Azure Container Storage for AKS clusters usi
 
 Azure Container Storage is a volume management service built natively for containers. It provides a Kubernetes-native storage stack that manages persistent volumes for stateful applications running on AKS. If you have been wrestling with storage provisioning, performance tuning, or dealing with the limitations of standard CSI drivers, Azure Container Storage gives you a much better path forward.
 
-In this guide, I will walk through setting up Azure Container Storage on AKS with two backend options: local NVMe disks for ultra-low latency workloads, and Azure Disk for durable, replicated storage.
+In this guide, I will walk through setting up Azure Container Storage version 1.x on AKS with two backend options: local NVMe disks for ultra-low latency workloads, and Azure Disk for durable, replicated storage. Azure Container Storage version 2.x is now available for local NVMe and Azure Elastic SAN, but Azure Disk support is still on the version 1.x path.
 
 ## Why Azure Container Storage
 
-Traditional storage provisioning in Kubernetes involves creating StorageClasses, PersistentVolumeClaims, and hoping that the underlying CSI driver handles things properly. Azure Container Storage sits on top of this and adds a management layer that handles volume replication, snapshots, and performance tiering.
+Traditional storage provisioning in Kubernetes involves creating StorageClasses, PersistentVolumeClaims, and hoping that the underlying CSI driver handles things properly. Azure Container Storage sits on top of this and adds a management layer for storage pools, volume orchestration, snapshots, and performance settings.
 
 The two backends we will cover serve different use cases:
 
@@ -25,68 +25,64 @@ The two backends we will cover serve different use cases:
 
 Before you start, make sure you have:
 
-- An AKS cluster running Kubernetes 1.26 or later
-- Azure CLI version 2.50 or newer
-- The `k8s-extension` Azure CLI extension installed
+- A Linux-based AKS cluster
+- Azure CLI version 2.83.0 or newer
+- The `k8s-extension` Azure CLI extension installed or updated with `az extension add --upgrade --name k8s-extension`
 - Node pools with NVMe-capable VMs (for the NVMe backend), such as the Lsv3 series
 
-## Step 1: Register the Required Feature Flags
+## Step 1: Set the Subscription Context
 
-Azure Container Storage requires a couple of feature flags to be enabled on your subscription.
-
-The following commands register the necessary providers and feature flags for Azure Container Storage.
+Azure Container Storage version 1.x requires the Azure CLI install path to pin the major version explicitly. Start by making sure you are working in the right subscription.
 
 ```bash
-# Register the Azure Container Storage feature flag
-
-az feature register --namespace "Microsoft.ContainerService" --name "AzureContainerStorageInterface"
-
-# Wait for the registration to complete (this can take a few minutes)
-az feature show --namespace "Microsoft.ContainerService" --name "AzureContainerStorageInterface" --query properties.state -o tsv
-
-# Once registered, refresh the provider
-az provider register --namespace Microsoft.ContainerService
+# Set the Azure subscription for the AKS cluster
+az account set --subscription <subscription-id>
 ```
 
-You can check the status periodically. Once it shows "Registered", you are good to proceed.
+If you are using Azure Cloud Shell, `kubectl` is already available. For a local workstation, install it with `az aks install-cli` if needed.
 
 ## Step 2: Install the Azure Container Storage Extension
 
-The extension installs as a Kubernetes extension on your AKS cluster. This deploys the necessary controllers and agents.
+The Azure CLI installs Azure Container Storage on your AKS cluster and creates a default storage pool for the storage type you enable. Because this guide uses Azure Disk, pin Azure Container Storage to version 1.x.
 
-This command installs the Azure Container Storage extension onto your AKS cluster with both NVMe and Azure Disk enabled.
+Run the command once for the local NVMe storage type:
 
 ```bash
-# Install Azure Container Storage extension on your cluster
-az k8s-extension create \
-  --cluster-type managedClusters \
-  --cluster-name myAKSCluster \
+# Install Azure Container Storage v1.x and enable local NVMe
+az aks update \
+  --name myAKSCluster \
   --resource-group myResourceGroup \
-  --name azurecontainerstorage \
-  --extension-type microsoft.azurecontainerstorage \
-  --scope cluster \
-  --release-train stable \
-  --release-namespace acstor
+  --enable-azure-container-storage ephemeralDisk \
+  --container-storage-version 1 \
+  --storage-pool-option NVMe \
+  --ephemeral-disk-volume-type PersistentVolumeWithAnnotation \
+  --azure-container-storage-nodepools nvmepool
 ```
 
-The installation takes around 10 minutes. You can monitor the progress with:
+Then enable Azure Disk as another storage pool type:
 
 ```bash
-# Check the extension installation status
-az k8s-extension show \
-  --cluster-type managedClusters \
-  --cluster-name myAKSCluster \
+# Enable Azure Disk for Azure Container Storage v1.x
+az aks update \
+  --name myAKSCluster \
   --resource-group myResourceGroup \
-  --name azurecontainerstorage \
-  --query provisioningState -o tsv
+  --enable-azure-container-storage azureDisk \
+  --container-storage-version 1
 ```
 
-## Step 3: Label Your Node Pool for NVMe
-
-For local NVMe storage, you need to label the nodes that have NVMe drives. Azure Container Storage uses these labels to identify which nodes can provide local storage.
+The installation takes around 10 to 15 minutes. You can monitor the available storage pools with:
 
 ```bash
-# Label the node pool that has NVMe-capable VMs
+# Check the Azure Container Storage pools
+kubectl get sp -n acstor
+```
+
+## Step 3: Target Your NVMe Node Pool
+
+For local NVMe storage, Azure Container Storage must run on a node pool that has NVMe drives. The install command above targets `nvmepool` directly with `--azure-container-storage-nodepools`. Another option is to label the node pool before enabling Azure Container Storage.
+
+```bash
+# Optional: label the node pool that has NVMe-capable VMs before installation
 az aks nodepool update \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
@@ -116,10 +112,6 @@ spec:
       diskType: nvme
       # Replicas set to 3 for data protection across nodes
       replicas: 3
-  # Resources allocated from each node's NVMe capacity
-  resources:
-    requests:
-      storage: 1Ti
 ```
 
 ### Azure Disk Storage Pool
@@ -160,48 +152,21 @@ Check that your storage pools are healthy and have available capacity.
 
 ```bash
 # List all storage pools and their status
-kubectl get storagepool -n acstor
+kubectl get sp -n acstor
 
 # Get detailed info about the NVMe pool
-kubectl describe storagepool nvme-pool -n acstor
+kubectl describe sp nvme-pool -n acstor
 ```
 
-You should see the pools in a "Ready" state with the requested capacity available.
+You should see the pools ready once the `Message` indicates that the storage pool is ready.
 
-## Step 6: Create StorageClasses
+## Step 6: Check StorageClasses
 
-Each storage pool needs a corresponding StorageClass that Kubernetes workloads can reference.
+Azure Container Storage creates a corresponding StorageClass for each storage pool using the naming convention `acstor-<storage-pool-name>`. Check the generated classes and avoid using any class marked as internal.
 
-```yaml
-# nvme-storageclass.yaml
-# StorageClass for workloads needing local NVMe-backed volumes
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: acstor-nvme
-parameters:
-  # Reference the NVMe storage pool we created
-  acstor.azure.com/storagepool: nvme-pool
-provisioner: containerstorage.csi.azure.com
-reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true
-```
-
-```yaml
-# azuredisk-storageclass.yaml
-# StorageClass for workloads needing Azure Disk-backed volumes
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: acstor-azuredisk
-parameters:
-  # Reference the Azure Disk storage pool
-  acstor.azure.com/storagepool: azuredisk-pool
-provisioner: containerstorage.csi.azure.com
-reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true
+```bash
+# Display Azure Container Storage classes
+kubectl get sc | grep "^acstor-"
 ```
 
 ## Step 7: Deploy a Workload with NVMe Storage
@@ -211,6 +176,18 @@ Let's deploy a sample stateful application that uses NVMe storage. This is a goo
 ```yaml
 # redis-nvme.yaml
 # Redis deployment using NVMe-backed persistent storage
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-nvme
+spec:
+  clusterIP: None
+  selector:
+    app: redis-nvme
+  ports:
+  - port: 6379
+    targetPort: 6379
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -238,9 +215,11 @@ spec:
   volumeClaimTemplates:
   - metadata:
       name: redis-data
+      annotations:
+        acstor.azure.com/accept-ephemeral-storage: "true"
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: acstor-nvme
+      storageClassName: acstor-nvme-pool
       resources:
         requests:
           storage: 100Gi
@@ -253,6 +232,18 @@ For workloads that prioritize durability over raw speed, use the Azure Disk back
 ```yaml
 # postgres-azuredisk.yaml
 # PostgreSQL deployment using Azure Disk-backed persistent storage
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-durable
+spec:
+  clusterIP: None
+  selector:
+    app: postgres-durable
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -274,6 +265,8 @@ spec:
         env:
         - name: POSTGRES_PASSWORD
           value: "changeme"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         ports:
         - containerPort: 5432
         volumeMounts:
@@ -284,7 +277,7 @@ spec:
       name: pgdata
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: acstor-azuredisk
+      storageClassName: acstor-azuredisk-pool
       resources:
         requests:
           storage: 256Gi
@@ -299,10 +292,10 @@ Once everything is running, you should keep an eye on storage pool utilization. 
 kubectl get pvc -A
 
 # Check storage pool capacity and usage
-kubectl get storagepool -n acstor -o yaml
+kubectl get sp -n acstor -o yaml
 
-# View Azure Container Storage component logs
-kubectl logs -n acstor -l app=acstor-controller --tail=100
+# List Azure Container Storage pods before checking specific logs
+kubectl get pods -n acstor
 ```
 
 Common issues include nodes not having the NVMe label, storage pools not having enough capacity, and PVCs stuck in Pending state because no node matches the topology constraints.
@@ -317,24 +310,24 @@ You can also run both backends simultaneously on the same cluster, which is what
 
 ## Cleaning Up
 
-If you need to remove Azure Container Storage, delete the workloads first, then the storage pools, and finally the extension.
+If you need to remove Azure Container Storage, delete the workloads first, then the storage pools, and finally disable Azure Container Storage on the cluster.
 
 ```bash
 # Delete workloads using the storage
 kubectl delete statefulset redis-nvme postgres-durable
+kubectl delete service redis-nvme postgres-durable
 
 # Delete PVCs
 kubectl delete pvc --all
 
 # Delete storage pools
-kubectl delete storagepool nvme-pool azuredisk-pool -n acstor
+kubectl delete sp nvme-pool azuredisk-pool -n acstor
 
-# Remove the extension
-az k8s-extension delete \
-  --cluster-type managedClusters \
-  --cluster-name myAKSCluster \
+# Disable Azure Container Storage
+az aks update \
+  --name myAKSCluster \
   --resource-group myResourceGroup \
-  --name azurecontainerstorage
+  --disable-azure-container-storage all
 ```
 
 Azure Container Storage is a solid choice for teams that want a managed, Kubernetes-native storage experience on AKS. Setting up both NVMe and Azure Disk backends gives you the flexibility to match storage characteristics to workload requirements without juggling multiple CSI drivers or third-party tools.
