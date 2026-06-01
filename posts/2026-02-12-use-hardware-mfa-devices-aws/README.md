@@ -8,7 +8,7 @@ Description: Learn how to configure and use hardware MFA devices like YubiKeys a
 
 ---
 
-Virtual MFA apps are good. Hardware MFA devices are better. They can't be phished, they can't be cloned remotely, and they don't depend on a phone battery. For high-security environments - especially the root account and admin users - hardware MFA is the gold standard.
+Virtual MFA apps are good. Hardware MFA devices are better. FIDO2 hardware keys are phishing-resistant, TOTP hardware tokens can't be cloned remotely, and neither option depends on a phone battery. For high-security environments - especially the root account and admin users - hardware MFA is the gold standard.
 
 AWS supports two categories of hardware MFA: FIDO2 security keys (like YubiKeys) and time-based one-time password (TOTP) hardware tokens (like the Gemalto key fob). Let's go through both.
 
@@ -21,7 +21,7 @@ Here's a quick comparison to help you decide.
 | Phishing resistant | Yes | No |
 | Works with CLI | No (console only) | Yes |
 | Battery required | No | Yes |
-| Price | $25-$70 | $13-$25 |
+| Price | $30-$75 | $13-$25 |
 | Works with root | Yes | Yes |
 | Multiple accounts | Yes | No (one per device) |
 
@@ -61,13 +61,13 @@ The process through the console is nearly identical:
 4. Select "Security key"
 5. Follow the browser prompts to register the key
 
-You can also do this via CLI, though it's more involved:
+You can't register a FIDO2 security key through the CLI:
 
 ```bash
 # Enable a FIDO2 security key for an IAM user
 
-# First, start the registration from the console
-# CLI registration for FIDO2 requires the WebAuthn API which is browser-based
+# Registration must happen from the AWS Management Console
+# FIDO2 registration uses WebAuthn, which is browser-based
 
 # For TOTP hardware tokens, CLI works directly (see below)
 ```
@@ -98,7 +98,7 @@ You can order Gemalto tokens from Amazon or directly from Thales. Each token has
 # The serial number is printed on the back of the physical token
 aws iam enable-mfa-device \
   --user-name admin-user \
-  --serial-number "arn:aws:iam::123456789012:mfa/hardware-token-serial" \
+  --serial-number GAHT12345678 \
   --authentication-code1 123456 \
   --authentication-code2 789012
 ```
@@ -112,7 +112,7 @@ This is where TOTP tokens have an advantage over FIDO2 keys. You can use TOTP co
 ```bash
 # Get temporary session credentials using hardware MFA token
 aws sts get-session-token \
-  --serial-number arn:aws:iam::123456789012:mfa/hardware-token-serial \
+  --serial-number GAHT12345678 \
   --token-code 123456 \
   --duration-seconds 43200
 ```
@@ -136,7 +136,7 @@ Here's a helper script that makes CLI usage with hardware MFA easier:
 #!/bin/bash
 # Script to authenticate CLI sessions with hardware MFA
 
-MFA_SERIAL="arn:aws:iam::123456789012:mfa/hardware-token-serial"
+MFA_SERIAL="GAHT12345678"
 PROFILE="default"
 
 echo "Enter MFA code from your hardware token:"
@@ -172,7 +172,7 @@ For cross-account access that requires MFA, you can use the hardware token with 
 aws sts assume-role \
   --role-arn arn:aws:iam::987654321098:role/AdminRole \
   --role-session-name hardware-mfa-session \
-  --serial-number arn:aws:iam::123456789012:mfa/hardware-token-serial \
+  --serial-number GAHT12345678 \
   --token-code 654321 \
   --duration-seconds 3600
 ```
@@ -218,12 +218,12 @@ If a hardware token is lost or compromised, deactivate it immediately:
 # Deactivate a compromised or lost MFA device
 aws iam deactivate-mfa-device \
   --user-name admin-user \
-  --serial-number arn:aws:iam::123456789012:mfa/lost-token-serial
+  --serial-number GAHT12345678
 
 # Then register the replacement device
 aws iam enable-mfa-device \
   --user-name admin-user \
-  --serial-number arn:aws:iam::123456789012:mfa/new-token-serial \
+  --serial-number GAHT87654321 \
   --authentication-code1 111111 \
   --authentication-code2 222222
 ```
@@ -236,7 +236,7 @@ Hardware TOTP tokens can drift out of sync over time. If your codes aren't being
 # Resynchronize a hardware MFA device that has drifted
 aws iam resync-mfa-device \
   --user-name admin-user \
-  --serial-number arn:aws:iam::123456789012:mfa/hardware-token-serial \
+  --serial-number GAHT12345678 \
   --authentication-code1 111111 \
   --authentication-code2 222222
 ```
@@ -247,11 +247,11 @@ Enter two consecutive codes and AWS will recalibrate its time offset for your de
 
 Hardware tokens aren't free, but they're cheap compared to a security breach:
 
-- YubiKey 5 NFC: ~$45 each
+- YubiKey 5 NFC: ~$50 each
 - YubiKey 5C: ~$55 each
 - Gemalto TOTP token: ~$15 each
 
-For an organization with 10 admin users, each needing a primary and backup token, you're looking at around $900 for YubiKeys or $300 for Gemalto tokens. That's a rounding error on most AWS bills.
+For an organization with 10 admin users, each needing a primary and backup token, you're looking at around $1,000 for YubiKeys or $300 for Gemalto tokens. That's a rounding error on most AWS bills.
 
 ## When to Use Hardware MFA
 
