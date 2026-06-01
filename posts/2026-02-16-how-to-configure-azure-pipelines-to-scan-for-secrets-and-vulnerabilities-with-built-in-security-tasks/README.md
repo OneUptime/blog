@@ -10,7 +10,7 @@ Description: Learn how to configure Azure Pipelines with built-in security tasks
 
 The number of security breaches that start with a leaked credential in source code is staggering. A database connection string committed to a public repository. An API key hardcoded in a configuration file. A private key accidentally included in a Docker image. These mistakes happen because developers are focused on making things work, and security checks happen too late - if they happen at all.
 
-Azure Pipelines lets you shift security left by adding scanning tasks directly into your build pipeline. Every pull request and every commit gets scanned for secrets, vulnerabilities, and security misconfigurations before the code reaches production. When a scan finds something, the pipeline fails, and the developer fixes it immediately rather than months later when a security auditor flags it.
+Azure Pipelines lets you shift security left by adding scanning tasks directly into your build pipeline. Every pull request and every commit can be scanned for vulnerabilities and security misconfigurations before the code reaches production. When a scan finds something, the pipeline fails, and the developer fixes it immediately rather than months later when a security auditor flags it.
 
 ## Microsoft Security DevOps Extension
 
@@ -18,11 +18,13 @@ Microsoft provides the "Microsoft Security DevOps" extension for Azure DevOps, w
 
 The extension includes:
 
-- **Credscan/CredentialScanner**: Detects credentials, API keys, and secrets in source code
 - **Bandit**: Security linter for Python code
 - **ESLint**: JavaScript/TypeScript security rules
+- **Checkov**: Infrastructure as Code security scanning for Terraform, ARM, Bicep, Kubernetes, Dockerfiles, and other formats
 - **Terrascan**: Infrastructure as Code security scanning
 - **Trivy**: Container image and filesystem vulnerability scanning
+
+CredScan in Microsoft Security DevOps was deprecated on September 20, 2023. For secret scanning in Azure Repos, use GitHub Advanced Security for Azure DevOps, or run a separate scanner such as Gitleaks in your pipeline.
 
 ```yaml
 # azure-pipelines.yml - Basic security scanning pipeline
@@ -40,9 +42,9 @@ steps:
   - task: MicrosoftSecurityDevOps@1
     displayName: 'Run Microsoft Security DevOps'
     inputs:
-      categories: 'secrets,code,IaC'
+      categories: 'code,IaC,containers'
       # Optionally specify which tools to run
-      # tools: 'credscan,bandit,eslint,terrascan,trivy'
+      # tools: 'bandit,eslint,checkov,terrascan,trivy'
 
   # Publish the security results as a build artifact
   - task: PublishBuildArtifacts@1
@@ -57,47 +59,9 @@ steps:
 
 Credential scanning is the highest-priority security check. A leaked credential can be exploited within hours of being committed to a repository.
 
-### Using CredScan in Pipelines
+### Using GitHub Advanced Security Secret Scanning
 
-```yaml
-# Focused credential scanning pipeline
-
-steps:
-  - task: CredScan@3
-    displayName: 'Scan for credentials'
-    inputs:
-      toolVersion: 'Latest'
-      scanFolder: '$(Build.SourcesDirectory)'
-      # Exclude test files that might contain fake credentials
-      suppressionsFile: '.credscan-suppressions.json'
-      outputFormat: 'sarif'
-
-  - task: PostAnalysis@2
-    displayName: 'Check scan results'
-    inputs:
-      CredScan: true
-      # Fail the build if any credentials are found
-      ToolLogsNotFoundAction: 'Error'
-```
-
-Create a suppressions file for legitimate false positives.
-
-```json
-{
-  "tool": "CredScan",
-  "suppressions": [
-    {
-      "file": "tests/fixtures/mock-config.json",
-      "reason": "Contains fake test credentials, not real secrets",
-      "expirationDate": "2026-12-31"
-    },
-    {
-      "placeholder": "EXAMPLE_API_KEY_12345",
-      "reason": "Documentation placeholder, not a real key"
-    }
-  ]
-}
-```
+GitHub Advanced Security for Azure DevOps provides secret scanning for Azure Repos. When you enable Secret Protection for a repository, repository scanning and push protection are enabled automatically. Push protection evaluates new pushes after the feature is enabled, while repository-level scanning detects existing secrets, including secrets in historical commits.
 
 ### Using Gitleaks for Secret Detection
 
@@ -108,17 +72,16 @@ Gitleaks is an open-source alternative that scans both the current code and the 
 steps:
   - script: |
       # Install gitleaks
-      wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
-      tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+      GITLEAKS_URL=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | \
+        grep -o -E 'https://[^"]+gitleaks_[^"]+_linux_x64\.tar\.gz' | head -n 1)
+      curl -sSL "$GITLEAKS_URL" -o gitleaks.tar.gz
+      tar -xzf gitleaks.tar.gz gitleaks
 
       # Scan the repository for secrets
-      # --no-git skips git history (faster, use for PR checks)
-      # Remove --no-git to scan full history (use for scheduled scans)
-      ./gitleaks detect \
-        --source="$(Build.SourcesDirectory)" \
+      # Use "gitleaks git" instead of "gitleaks dir" for scheduled full-history scans
+      ./gitleaks dir "$(Build.SourcesDirectory)" \
         --report-format=sarif \
         --report-path="$(Build.ArtifactStagingDirectory)/gitleaks-results.sarif" \
-        --no-git \
         --verbose
 
       SCAN_EXIT=$?
@@ -126,6 +89,7 @@ steps:
       if [ $SCAN_EXIT -ne 0 ]; then
         echo "##vso[task.logissue type=error]Secrets detected in source code!"
         echo "##vso[task.complete result=Failed;]"
+        exit 1
       else
         echo "No secrets detected"
       fi
@@ -139,6 +103,10 @@ Customize the Gitleaks configuration to match your organization's patterns.
 # .gitleaks.toml - Custom configuration for your codebase
 title = "Custom Gitleaks Config"
 
+# Extend the built-in rules instead of replacing them.
+[extend]
+useDefault = true
+
 # Define custom rules for internal secret patterns
 [[rules]]
 id = "internal-api-key"
@@ -147,7 +115,7 @@ regex = '''(?i)internal[-_]?api[-_]?key\s*[:=]\s*['"]?([a-zA-Z0-9]{32,})['"]?'''
 tags = ["internal", "api-key"]
 
 # Allowlist specific paths and patterns
-[allowlist]
+[[allowlists]]
 paths = [
   '''tests/.*''',
   '''docs/.*''',
@@ -171,19 +139,21 @@ steps:
       projects: '**/*.csproj'
 
   - script: |
-      # Install dotnet-audit tool
-      dotnet tool install --global dotnet-audit
-
       # Scan for vulnerable NuGet packages
-      dotnet audit --project "$(Build.SourcesDirectory)" \
-        --output "$(Build.ArtifactStagingDirectory)/dotnet-audit.json"
+      # For .NET SDK 9 or earlier, use "dotnet list package" instead.
+      cd "$(Build.SourcesDirectory)"
+      dotnet package list \
+        --vulnerable \
+        --include-transitive \
+        --format json \
+        > "$(Build.ArtifactStagingDirectory)/dotnet-package-vulnerabilities.json"
     displayName: 'Scan .NET dependencies'
 
   # Node.js dependency scanning
   - script: |
       cd "$(Build.SourcesDirectory)"
       # npm audit returns non-zero if vulnerabilities found
-      npm audit --json > "$(Build.ArtifactStagingDirectory)/npm-audit.json" 2>&1 || true
+      npm audit --json > "$(Build.ArtifactStagingDirectory)/npm-audit.json" || true
 
       # Check for high and critical vulnerabilities
       HIGH_COUNT=$(cat "$(Build.ArtifactStagingDirectory)/npm-audit.json" | \
@@ -200,8 +170,9 @@ steps:
   # Container image scanning with Trivy
   - script: |
       # Install Trivy
-      wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-      echo "deb https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+      sudo apt-get install -y wget gnupg
+      wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+      echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
       sudo apt-get update && sudo apt-get install -y trivy
 
       # Scan the Docker image for vulnerabilities
@@ -228,6 +199,7 @@ steps:
     displayName: 'Initialize CodeQL'
     inputs:
       languages: 'csharp,javascript'
+      enableAutomaticCodeQLInstall: true
 
   - task: DotNetCoreCLI@2
     displayName: 'Build for CodeQL analysis'
@@ -240,7 +212,7 @@ steps:
 
   # Python security scanning with Bandit
   - script: |
-      pip install bandit
+      pip install 'bandit[sarif]'
 
       # Run Bandit with SARIF output for Azure DevOps integration
       bandit -r "$(Build.SourcesDirectory)/src" \
@@ -251,8 +223,7 @@ steps:
 
       # Check for high severity issues
       bandit -r "$(Build.SourcesDirectory)/src" \
-        --severity-level high \
-        --exit-zero-if-no-issues
+        --severity-level high
     displayName: 'Run Python security scan'
 ```
 
@@ -272,8 +243,8 @@ steps:
         --directory "$(Build.SourcesDirectory)/infrastructure" \
         --framework arm \
         --output sarif \
-        --output-file-path "$(Build.ArtifactStagingDirectory)/checkov-results.sarif" \
-        --soft-fail  # Don't fail the pipeline (review results first)
+        --soft-fail \
+        > "$(Build.ArtifactStagingDirectory)/checkov-results.sarif"
 
       # For strict enforcement, remove --soft-fail
     displayName: 'Scan IaC templates'
@@ -300,7 +271,8 @@ steps:
   - task: AdvancedSecurity-Publish@1
     displayName: 'Publish security scan results'
     inputs:
-      SarifFiles: '$(Build.ArtifactStagingDirectory)/*.sarif'
+      SarifsInputDirectory: '$(Build.ArtifactStagingDirectory)'
+      Category: 'third-party-security-tools'
     condition: always()
 ```
 
@@ -353,4 +325,4 @@ stages:
     # ... deployment stages ...
 ```
 
-Integrating security scanning into your pipeline turns security from a periodic audit into a continuous process. Every change is checked, every vulnerability is caught early, and every leaked credential is blocked before it reaches a branch that anyone can see. The pipeline becomes your first line of defense, and passing it means the code meets a minimum security bar that your organization has defined.
+Integrating security scanning into your pipeline turns security from a periodic audit into a continuous process. Every configured change is checked, vulnerabilities are caught early, and leaked credentials can be blocked before they reach a protected branch or deployment. The pipeline becomes your first line of defense, and passing it means the code meets a minimum security bar that your organization has defined.
