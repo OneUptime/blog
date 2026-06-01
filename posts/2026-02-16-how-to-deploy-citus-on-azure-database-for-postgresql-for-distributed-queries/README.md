@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, PostgreSQL, Citus, Distributed Database, Sharding, Scalability, Flexible Server
 
-Description: Learn how to enable and use the Citus extension on Azure Database for PostgreSQL Flexible Server for horizontally scalable distributed queries.
+Description: Learn how to create and use a Citus-backed Elastic Cluster on Azure Database for PostgreSQL Flexible Server for horizontally scalable distributed queries.
 
 ---
 
-When your PostgreSQL database grows beyond what a single server can handle, you have two choices: scale up (bigger server) or scale out (more servers). Scaling up has a ceiling - there is only so much RAM and CPU you can put in one machine. Scaling out with Citus lets you distribute your data across multiple PostgreSQL nodes while keeping the familiar SQL interface. Azure Database for PostgreSQL Flexible Server supports Citus as an extension, giving you horizontal scalability without leaving the managed service.
+When your PostgreSQL database grows beyond what a single server can handle, you have two choices: scale up (bigger server) or scale out (more servers). Scaling up has a ceiling - there is only so much RAM and CPU you can put in one machine. Scaling out with Citus lets you distribute your data across multiple PostgreSQL nodes while keeping the familiar SQL interface. Azure Database for PostgreSQL Flexible Server supports Citus through Elastic Clusters, giving you horizontal scalability without leaving the managed service.
 
-This post covers how to enable Citus, distribute your tables, and write queries that take advantage of the distributed architecture.
+This post covers how to create an Elastic Cluster, distribute your tables, and write queries that take advantage of the distributed architecture.
 
 ## What Is Citus?
 
@@ -30,78 +30,49 @@ graph TB
 
 The coordinator node receives queries, plans the distributed execution, and combines results from worker nodes. Your application connects only to the coordinator - it looks like a regular PostgreSQL database from the outside.
 
-## Enabling Citus on Flexible Server
+## Creating an Elastic Cluster
 
-Citus is available as an extension on Azure Database for PostgreSQL Flexible Server. You do not need the old Hyperscale (Citus) deployment option anymore.
+Citus is available through Elastic Clusters on Azure Database for PostgreSQL Flexible Server. You do not need the old Hyperscale (Citus) deployment option anymore.
 
-First, allowlist the extension:
+Create an Elastic Cluster with multiple nodes:
 
 ```bash
-# Add citus to the allowed extensions
-
-az postgres flexible-server parameter set \
+# Create an Azure Database for PostgreSQL Flexible Server Elastic Cluster
+az postgres flexible-server create \
   --resource-group myResourceGroup \
-  --server-name my-pg-server \
-  --name azure.extensions \
-  --value "citus"
-
-# Add citus to shared_preload_libraries
-az postgres flexible-server parameter set \
-  --resource-group myResourceGroup \
-  --server-name my-pg-server \
-  --name shared_preload_libraries \
-  --value "citus"
-
-# Restart the server to load the library
-az postgres flexible-server restart \
-  --resource-group myResourceGroup \
-  --name my-pg-server
+  --name my-pg-cluster \
+  --location eastus \
+  --admin-user pgadmin \
+  --admin-password 'StrongPassword123!' \
+  --sku-name Standard_D4ds_v5 \
+  --tier GeneralPurpose \
+  --version 17 \
+  --cluster-option ElasticCluster \
+  --node-count 3
 ```
 
-Then create the extension in your database:
+Then connect to the cluster coordinator and verify Citus is available:
 
 ```sql
--- Enable the Citus extension
-CREATE EXTENSION IF NOT EXISTS citus;
-
--- Verify it is installed
+-- Verify Citus is installed
 SELECT * FROM citus_version();
 ```
 
 ## Setting Up Worker Nodes
 
-For a true distributed setup, you need multiple Flexible Server instances acting as worker nodes. Create additional servers:
+For a distributed setup, create the Flexible Server as an Elastic Cluster with more than one node. Azure manages the coordinator and worker nodes as part of the cluster, so you do not create separate Flexible Server instances and register them manually.
 
 ```bash
-# Create worker nodes
-az postgres flexible-server create \
+# Scale the cluster to add more nodes later
+az postgres flexible-server update \
   --resource-group myResourceGroup \
-  --name my-pg-worker-1 \
-  --location eastus \
-  --admin-user pgadmin \
-  --admin-password 'StrongPassword123!' \
-  --sku-name Standard_D4ds_v4 \
-  --tier GeneralPurpose \
-  --version 16
-
-az postgres flexible-server create \
-  --resource-group myResourceGroup \
-  --name my-pg-worker-2 \
-  --location eastus \
-  --admin-user pgadmin \
-  --admin-password 'StrongPassword123!' \
-  --sku-name Standard_D4ds_v4 \
-  --tier GeneralPurpose \
-  --version 16
+  --name my-pg-cluster \
+  --node-count 4
 ```
 
-Enable Citus on each worker and then register them with the coordinator:
+Verify the cluster topology from the coordinator:
 
 ```sql
--- On the coordinator, add worker nodes
-SELECT citus_add_node('my-pg-worker-1.postgres.database.azure.com', 5432);
-SELECT citus_add_node('my-pg-worker-2.postgres.database.azure.com', 5432);
-
 -- Verify the cluster topology
 SELECT * FROM citus_get_active_worker_nodes();
 ```
@@ -153,7 +124,7 @@ SELECT create_distributed_table('users', 'company_id');
 SELECT create_distributed_table('events', 'company_id');
 ```
 
-When all related tables are distributed by the same column (company_id), Citus can perform joins locally on each node without shuffling data across the network. This is called co-location and it is critical for performance.
+When related tables are distributed by the same tenant identifier, Citus can perform joins locally on each node without shuffling data across the network. This is called co-location and it is critical for performance.
 
 ### Reference Tables
 
@@ -252,11 +223,18 @@ SELECT create_distributed_table('notifications', 'company_id');
 
 ## Rebalancing Shards
 
-When you add new worker nodes, you need to rebalance shards to distribute data evenly:
+When you add nodes, you need to rebalance shards to distribute data evenly:
+
+```bash
+# Add a new node to the Elastic Cluster
+az postgres flexible-server update \
+  --resource-group myResourceGroup \
+  --name my-pg-cluster \
+  --node-count 4
+```
 
 ```sql
--- Add a new worker node
-SELECT citus_add_node('my-pg-worker-3.postgres.database.azure.com', 5432);
+-- Run this from the coordinator after the new node is available
 
 -- Rebalance shards across all nodes
 SELECT citus_rebalance_start();
@@ -323,4 +301,4 @@ ORDER BY query_start;
 
 ## Summary
 
-Citus on Azure Database for PostgreSQL Flexible Server gives you horizontal scalability with a familiar PostgreSQL interface. The key to success is choosing the right distribution column, co-locating related tables, and writing queries that include the distribution column. For multi-tenant SaaS applications, Citus is a natural fit since tenant_id serves as both the business partition key and the database distribution key. Start with a single coordinator and add worker nodes as your data grows.
+Citus on Azure Database for PostgreSQL Flexible Server Elastic Clusters gives you horizontal scalability with a familiar PostgreSQL interface. The key to success is choosing the right distribution column, co-locating related tables, and writing queries that include the distribution column. For multi-tenant SaaS applications, Citus is a natural fit since tenant_id serves as both the business partition key and the database distribution key. Start with an Elastic Cluster and add nodes as your data grows.
