@@ -56,7 +56,7 @@ az eventhubs eventhub create \
   --namespace-name trading-events-ns \
   --resource-group trading-platform-rg \
   --partition-count 32 \
-  --message-retention 7
+  --retention-time-in-hours 168
 ```
 
 ## Step 2 - Set Up Cosmos DB
@@ -71,9 +71,11 @@ az cosmosdb create \
   --kind GlobalDocumentDB \
   --default-consistency-level Session \
   --locations regionName=eastus failoverPriority=0 isZoneRedundant=true \
+  --locations regionName=westus failoverPriority=1 isZoneRedundant=true \
+  --enable-multiple-write-locations true \
   --enable-automatic-failover true
 
-# Create a database with shared throughput
+# Create a database
 az cosmosdb sql database create \
   --account-name trading-data-db \
   --resource-group trading-platform-rg \
@@ -143,8 +145,8 @@ The stream processor reads events from Event Hubs, applies any transformations, 
 import json
 import logging
 import azure.functions as func
-from azure.cosmos import CosmosClient, PartitionKey
-from datetime import datetime
+from azure.cosmos import CosmosClient
+from datetime import datetime, timezone
 
 # Initialize Cosmos DB client (use managed identity in production)
 cosmos_client = CosmosClient(
@@ -154,7 +156,7 @@ cosmos_client = CosmosClient(
 database = cosmos_client.get_database_client("TradingDB")
 container = database.get_container_client("PriceData")
 
-def main(events: func.EventHubEvent):
+def main(events: list[func.EventHubEvent]):
     """Process incoming market data events and write to Cosmos DB."""
     for event in events:
         try:
@@ -164,7 +166,7 @@ def main(events: func.EventHubEvent):
 
             # Enrich the event with processing metadata
             price_data["id"] = f"{price_data['symbol']}-{price_data['timestamp']}"
-            price_data["processedAt"] = datetime.utcnow().isoformat()
+            price_data["processedAt"] = datetime.now(timezone.utc).isoformat()
 
             # Calculate a simple moving indicator (for demonstration)
             price_data["priceCategory"] = categorize_price_movement(price_data)
@@ -218,8 +220,8 @@ az eventhubs eventhub update \
   --name market-data \
   --namespace-name trading-events-ns \
   --resource-group trading-platform-rg \
-  --capture-enabled true \
-  --capture-encoding Avro \
+  --enable-capture true \
+  --encoding Avro \
   --capture-interval 60 \
   --capture-size-limit 314572800 \
   --destination-name "EventHubArchive.AzureBlockBlob" \
@@ -260,19 +262,19 @@ latest = get_latest_price("AAPL")
 print(f"AAPL: ${latest['price']} at {latest['timestamp']}")
 ```
 
-This query is efficient because it targets a single partition (the symbol). Cosmos DB can serve this in under 5 milliseconds even with millions of documents.
+This query is efficient because it targets a single partition (the symbol). Cosmos DB is designed for single-digit millisecond response times when the container is partitioned and provisioned correctly.
 
 ## Performance Tuning Tips
 
 For throughput, use autoscale on your Cosmos DB container instead of fixed throughput. Trading volumes spike during market hours and drop to near zero overnight. Autoscale adjusts RU/s between 10% of the max and the full max, saving money during off-hours.
 
-For Event Hubs, monitor the checkpoint lag. If your consumer is falling behind, increase the partition count or scale out your Azure Functions plan. The Premium tier gives you more predictable latency compared to Standard.
+For Event Hubs, monitor the checkpoint lag. If your consumer is falling behind, scale out your Azure Functions plan or revisit the partition count before production. Since this design relies on partition keys for per-symbol ordering, avoid changing the partition count dynamically unless you have tested how it affects your producers and consumers. The Premium tier gives you more predictable latency compared to Standard.
 
 For Cosmos DB indexing, exclude paths you never query on. The default policy indexes everything, which consumes extra RUs on writes. For a trading platform where writes are constant, trimming the index policy can reduce RU consumption significantly.
 
 ## Monitoring and Alerting
 
-Set up Azure Monitor alerts for two critical metrics: Event Hubs incoming messages rate and Cosmos DB RU consumption. If incoming messages spike beyond your capacity, you will start losing data. If RU consumption hits the limit, your writes will get throttled.
+Set up Azure Monitor alerts for two critical metrics: Event Hubs incoming messages rate and Cosmos DB RU consumption. If incoming messages spike beyond your capacity, publishers can be throttled or rejected unless they retry and apply back pressure. If RU consumption hits the limit, your writes will get throttled.
 
 ```bash
 # Create an alert rule for Event Hubs throttled requests
