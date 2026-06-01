@@ -10,7 +10,7 @@ Description: Learn how to create and manage Azure Policy exemptions for resource
 
 In a perfect world, every resource in your Azure environment would comply with every policy you have in place. In the real world, there are always edge cases. Maybe a legacy application needs a specific configuration that violates your security policy while the team works on upgrading it. Maybe a proof-of-concept deployment needs relaxed rules temporarily. Maybe a vendor-managed appliance requires settings that do not fit your standard policies.
 
-Azure Policy exemptions let you handle these situations properly. Instead of removing the policy entirely (which creates gaps for all resources), or ignoring the non-compliant resource (which pollutes your compliance reports), you create a targeted exemption that documents why the exception exists, who approved it, and when it expires.
+Azure Policy exemptions let you handle these situations properly. Instead of removing the policy entirely (which creates gaps for all resources), or ignoring the non-compliant resource (which pollutes your compliance reports), you create a targeted exemption that shows the resource as exempt and documents why the exception exists, who approved it, and when it expires.
 
 In this post, I will walk through creating policy exemptions, managing them at scale, and setting up processes to make sure temporary exemptions do not become permanent ones.
 
@@ -18,9 +18,9 @@ In this post, I will walk through creating policy exemptions, managing them at s
 
 An exemption is an Azure resource that tells the policy engine to skip evaluation for a specific resource or resource group against a specific policy or initiative assignment. Exemptions have two categories:
 
-**Waiver** - The resource is non-compliant, and you are accepting the risk. The resource is excluded from compliance calculations. Use this for situations where you know the resource does not comply but have a documented reason for accepting that risk.
+**Waiver** - The resource is non-compliant, and you are accepting the risk. The resource is shown as exempt in compliance results and counted toward the overall compliance percentage. Use this for situations where you know the resource does not comply but have a documented reason for accepting that risk.
 
-**Mitigated** - The resource technically does not comply with the policy, but equivalent security controls are in place through other means. For example, the resource might not have Azure disk encryption, but it uses a third-party encryption solution instead. The resource is excluded from compliance calculations.
+**Mitigated** - The resource technically does not comply with the policy, but equivalent security controls are in place through other means. For example, the resource might not have Azure disk encryption, but it uses a third-party encryption solution instead. The resource is shown as exempt in compliance results and counted toward the overall compliance percentage.
 
 ```mermaid
 graph TD
@@ -31,7 +31,7 @@ graph TD
     C --> F[Set Expiration Date]
     D --> F
     F --> G[Document Justification]
-    G --> H[Resource Excluded from Compliance Score]
+    G --> H[Resource Shown as Exempt in Compliance Results]
 ```
 
 ## Step 1: Identify Resources That Need Exemptions
@@ -82,7 +82,7 @@ Key fields in the exemption:
 - **description** - This is critical. Document why the exemption exists, what the plan is to resolve it, and any reference to security review or approval processes.
 - **exemption-category** - Either "Waiver" (accepting risk) or "Mitigated" (alternative control in place).
 - **scope** - The specific resource, resource group, or subscription being exempted.
-- **expires-on** - When the exemption automatically stops being effective. After this date, the resource will show as non-compliant again.
+- **expires-on** - When the exemption automatically stops being effective. After this date, the exemption is no longer honored, and the resource will show as non-compliant again if it still does not meet the policy requirements.
 
 ## Step 3: Create an Exemption for a Policy Initiative
 
@@ -130,7 +130,7 @@ Be cautious with resource group-level exemptions. Any new resource created in th
 
 As your environment grows, you will accumulate exemptions. Managing them requires visibility and process.
 
-This script lists all exemptions across your subscription with their expiration status:
+This script lists all exemptions across your subscription with their expiration dates:
 
 ```bash
 # List all policy exemptions with their expiration dates
@@ -145,12 +145,13 @@ For a more detailed report, use PowerShell to identify expired or soon-to-expire
 # Find exemptions that are expired or expiring within 30 days
 Connect-AzAccount
 
-$exemptions = Get-AzPolicyExemption -All
+$exemptions = Get-AzPolicyExemption
 $today = Get-Date
 $warningThreshold = $today.AddDays(30)
 
 $report = foreach ($exemption in $exemptions) {
-    $expiry = $exemption.Properties.ExpiresOn
+    $expiry = $exemption.ExpiresOn
+    $scope = $exemption.Id -replace "/providers/Microsoft.Authorization/policyExemptions/[^/]+$", ""
 
     $status = if ($null -eq $expiry) {
         "No Expiration (Permanent)"
@@ -166,12 +167,12 @@ $report = foreach ($exemption in $exemptions) {
     }
 
     [PSCustomObject]@{
-        Name        = $exemption.Properties.DisplayName
-        Category    = $exemption.Properties.ExemptionCategory
-        Scope       = $exemption.Properties.Scope
+        Name        = $exemption.DisplayName
+        Category    = $exemption.ExemptionCategory
+        Scope       = $scope
         ExpiresOn   = $expiry
         Status      = $status
-        Description = $exemption.Properties.Description
+        Description = $exemption.Description
     }
 }
 
@@ -199,22 +200,24 @@ This Logic App or Azure Automation script checks for expiring exemptions weekly:
 $warningDays = 30
 $today = Get-Date
 
-$exemptions = Get-AzPolicyExemption -All
+$exemptions = Get-AzPolicyExemption
 $expiring = @()
 
 foreach ($exemption in $exemptions) {
-    $expiry = $exemption.Properties.ExpiresOn
+    $expiry = $exemption.ExpiresOn
 
     if ($null -ne $expiry) {
         $daysRemaining = ($expiry - $today).Days
 
         if ($daysRemaining -le $warningDays -and $daysRemaining -gt 0) {
+            $scope = $exemption.Id -replace "/providers/Microsoft.Authorization/policyExemptions/[^/]+$", ""
+
             $expiring += [PSCustomObject]@{
-                Name          = $exemption.Properties.DisplayName
-                Scope         = $exemption.Properties.Scope
+                Name          = $exemption.DisplayName
+                Scope         = $scope
                 ExpiresOn     = $expiry.ToString("yyyy-MM-dd")
                 DaysRemaining = $daysRemaining
-                Description   = $exemption.Properties.Description
+                Description   = $exemption.Description
             }
         }
     }
