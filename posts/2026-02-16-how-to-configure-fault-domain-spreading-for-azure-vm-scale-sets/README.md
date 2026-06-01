@@ -8,7 +8,7 @@ Description: Learn how to configure fault domain spreading in Azure VM Scale Set
 
 ---
 
-When Azure provisions virtual machines, each VM is placed on a physical host within a rack in a datacenter. A fault domain represents a group of VMs that share a common power source and network switch - essentially, a rack. If that rack loses power or a top-of-rack switch fails, all VMs in that fault domain go down simultaneously. Fault domain spreading ensures your scale set instances are distributed across multiple fault domains so a single hardware failure does not take out your entire application.
+When Azure provisions virtual machines, each VM is placed on a physical host within a datacenter. A fault domain represents a group of VMs that share a common power source and network switch - often a rack or similar hardware isolation unit. If that hardware loses power or a top-of-rack switch fails, all VMs in that fault domain can go down simultaneously. Fault domain spreading ensures your scale set instances are distributed across multiple fault domains so a single hardware failure does not take out your entire application.
 
 Getting fault domain spreading right is one of those foundational decisions that you make when creating a scale set and rarely think about again - until a hardware failure proves it was either the right or wrong choice.
 
@@ -16,8 +16,8 @@ Getting fault domain spreading right is one of those foundational decisions that
 
 Azure datacenters organize physical hardware into fault domains and update domains:
 
-- **Fault domains**: Groups of hardware that share a single point of failure (power, networking). Azure regions typically have 2-3 fault domains per availability zone or datacenter.
-- **Update domains**: Groups of hardware that Azure updates together during planned maintenance. Up to 20 update domains are available.
+- **Fault domains**: Groups of hardware that share a single point of failure (power, networking). The supported fault domain count depends on the scale set orchestration mode and whether the deployment is regional, zonal, or zone-spanning.
+- **Update domains**: Groups of hardware that Azure updates together during planned maintenance. Availability sets support up to 20 update domains; VM Scale Sets have different update-domain behavior depending on orchestration mode.
 
 For VM Scale Sets, fault domain spreading controls how instances are distributed across available fault domains.
 
@@ -31,9 +31,9 @@ With max spreading, Azure distributes instances across as many fault domains as 
 
 Max spreading is the default for scale sets that use Flexible orchestration mode and is the recommended setting for most workloads.
 
-### Static Spreading (platformFaultDomainCount = 2, 3, or 5)
+### Fixed Spreading (platformFaultDomainCount > 1)
 
-With static spreading, you specify the exact number of fault domains to use. Instances are distributed evenly across that number of fault domains. This is useful when you need a predictable distribution (for example, database replicas that need exactly 3 fault domains).
+With fixed spreading, you specify the exact number of fault domains to use. Supported values depend on orchestration mode and deployment type: Flexible regional scale sets support 2 or 3, Uniform regional scale sets support 2, 3, 4, or 5, and zonal or zone-spanning Flexible scale sets only support max spreading with a fault domain count of 1. Fixed spreading is useful when you need a predictable distribution (for example, database replicas that need exactly 3 fault domains).
 
 ## Configuring Fault Domain Spreading
 
@@ -45,6 +45,7 @@ With static spreading, you specify the exact number of fault domains to use. Ins
 az vmss create \
   --resource-group myResourceGroup \
   --name myScaleSet \
+  --orchestration-mode Flexible \
   --image Ubuntu2204 \
   --vm-sku Standard_D2s_v5 \
   --instance-count 6 \
@@ -52,10 +53,11 @@ az vmss create \
   --admin-username azureuser \
   --generate-ssh-keys
 
-# Create a scale set with static spreading (3 fault domains)
+# Create a scale set with fixed spreading (3 fault domains)
 az vmss create \
   --resource-group myResourceGroup \
-  --name myStaticScaleSet \
+  --name myFixedScaleSet \
+  --orchestration-mode Flexible \
   --image Ubuntu2204 \
   --vm-sku Standard_D2s_v5 \
   --instance-count 6 \
@@ -65,6 +67,8 @@ az vmss create \
 ```
 
 ### Using ARM Templates
+
+The relevant VMSS resource properties look like this:
 
 ```json
 {
@@ -103,6 +107,7 @@ When you deploy a scale set across availability zones, fault domain spreading wo
 az vmss create \
   --resource-group myResourceGroup \
   --name myZonalScaleSet \
+  --orchestration-mode Flexible \
   --image Ubuntu2204 \
   --vm-sku Standard_D2s_v5 \
   --instance-count 9 \
@@ -112,30 +117,30 @@ az vmss create \
   --generate-ssh-keys
 ```
 
-With 9 instances across 3 zones and max spreading, Azure distributes 3 instances per zone and then spreads within each zone across fault domains. The result is maximum protection against both zone-level and fault-domain-level failures.
+With 9 instances across 3 zones and max spreading, Azure attempts to keep the zones balanced (3 instances per zone in the normal case) and then spreads within each zone across fault domains on a best-effort basis. The result is maximum protection against both zone-level and fault-domain-level failures.
 
 ```mermaid
 graph TD
     subgraph Zone1[Availability Zone 1]
-        FD1A[Fault Domain A: Instance 1]
-        FD1B[Fault Domain B: Instance 2]
-        FD1C[Fault Domain C: Instance 3]
+        FD1A[Implicit fault domain spread: Instance 1]
+        FD1B[Implicit fault domain spread: Instance 2]
+        FD1C[Implicit fault domain spread: Instance 3]
     end
     subgraph Zone2[Availability Zone 2]
-        FD2A[Fault Domain A: Instance 4]
-        FD2B[Fault Domain B: Instance 5]
-        FD2C[Fault Domain C: Instance 6]
+        FD2A[Implicit fault domain spread: Instance 4]
+        FD2B[Implicit fault domain spread: Instance 5]
+        FD2C[Implicit fault domain spread: Instance 6]
     end
     subgraph Zone3[Availability Zone 3]
-        FD3A[Fault Domain A: Instance 7]
-        FD3B[Fault Domain B: Instance 8]
-        FD3C[Fault Domain C: Instance 9]
+        FD3A[Implicit fault domain spread: Instance 7]
+        FD3B[Implicit fault domain spread: Instance 8]
+        FD3C[Implicit fault domain spread: Instance 9]
     end
 ```
 
 ## Checking Instance Fault Domain Placement
 
-After deployment, verify how instances are distributed:
+After deployment, verify how instances are distributed. For Uniform scale sets, or for fixed-spread deployments where the API exposes fault domains, use instance view:
 
 ```bash
 # Check fault domain placement for each instance
@@ -143,11 +148,11 @@ az vmss get-instance-view \
   --resource-group myResourceGroup \
   --name myScaleSet \
   --instance-id "*" \
-  --query "[].{InstanceId:instanceId, FaultDomain:platformFaultDomain, Zone:zones[0]}" \
+  --query "[].{InstanceId:instanceId, FaultDomain:platformFaultDomain}" \
   -o table
 ```
 
-The output shows which fault domain (and zone, if applicable) each instance is placed in. For a well-spread scale set, you should see instances evenly distributed.
+The output shows which visible fault domain each instance is placed in. For max spreading, Azure's physical spreading is implicit: you might only see one visible fault domain even though Azure is spreading instances behind the scenes.
 
 ## Choosing the Right Spreading Mode
 
@@ -158,7 +163,7 @@ The output shows which fault domain (and zone, if applicable) each instance is p
 - You are running stateless workloads where any instance can handle any request.
 - You are using the Flexible orchestration mode.
 
-### Use Static Spreading When:
+### Use Fixed Spreading When:
 
 - You need exactly N fault domains for compliance or architecture reasons.
 - You are running a distributed system that requires specific replica placement (like a 3-node database cluster where each node must be in a separate fault domain).
@@ -168,7 +173,7 @@ The output shows which fault domain (and zone, if applicable) each instance is p
 
 Fault domain spreading affects how new instances are placed during scale-out:
 
-When the scale set adds new instances, Azure tries to maintain even distribution across fault domains. If fault domain A has 3 instances and fault domain B has 2, the next instance goes to fault domain B.
+When the scale set adds new instances, Azure tries to maintain even distribution across configured fault domains. If fault domain A has 3 instances and fault domain B has 2 in a fixed-spread scale set, the next instance typically goes to fault domain B.
 
 However, this is a best-effort distribution. Under certain circumstances (capacity constraints in a fault domain, specific VM size availability), Azure might not achieve perfect distribution. The instances will still be spread as well as possible given the constraints.
 
@@ -176,7 +181,7 @@ However, this is a best-effort distribution. Under certain circumstances (capaci
 # After a scale-out event, verify the distribution is still balanced
 az vmss scale --resource-group myResourceGroup --name myScaleSet --new-capacity 12
 
-# Check the distribution
+# Check the distribution for fixed-spread or Uniform deployments
 az vmss get-instance-view \
   --resource-group myResourceGroup \
   --name myScaleSet \
@@ -184,7 +189,7 @@ az vmss get-instance-view \
   --query "[].platformFaultDomain" -o tsv | sort | uniq -c
 ```
 
-This command counts instances per fault domain. Ideally, the numbers should be equal or differ by at most 1.
+This command counts instances per visible fault domain. For fixed spreading, ideally the numbers should be equal or differ by at most 1. For max spreading, this command might show only one visible fault domain because the spread is implicit.
 
 ## Fault Domain Spreading and Availability Sets
 
@@ -199,9 +204,9 @@ You do not need an availability set when using a VM Scale Set. The scale set's f
 
 The number of available fault domains depends on your deployment type:
 
-**Regional deployment** (no availability zones specified): Typically 2-5 fault domains available, depending on the region.
+**Regional deployment** (no availability zones specified): Flexible scale sets support max spreading or fixed spreading across 2 or 3 fault domains, depending on the region. Uniform scale sets can support up to 5 fault domains.
 
-**Zonal deployment** (availability zones specified): Each zone has its own set of fault domains. The exact count varies by region but is usually 2-3 per zone.
+**Zonal deployment** (availability zones specified): Flexible scale sets only support max spreading (`platformFaultDomainCount = 1`) for zonal and zone-spanning deployments. Azure spreads instances across fault domains within each zone, but those implicit fault domains are not exposed as separate values.
 
 ```bash
 # Check available fault domain count in a region
@@ -239,7 +244,7 @@ With zone-redundant deployment across 3 zones:
 While Azure does not provide per-fault-domain health metrics directly, you can infer fault domain health from instance health data:
 
 ```bash
-# Correlate instance health with fault domain placement
+# Correlate instance health with visible fault domain placement
 az vmss get-instance-view \
   --resource-group myResourceGroup \
   --name myScaleSet \
@@ -248,16 +253,16 @@ az vmss get-instance-view \
   -o table
 ```
 
-If all unhealthy instances share the same fault domain, that points to a hardware issue in that fault domain.
+If all unhealthy instances share the same visible fault domain in a fixed-spread deployment, that points to a hardware issue in that fault domain.
 
-Use OneUptime to track per-instance health and correlate failures with fault domain placement. When multiple instances fail simultaneously and they all share a fault domain, you know the cause is infrastructure rather than application.
+Use OneUptime to track per-instance health and correlate failures with fault domain placement when Azure exposes it. When multiple instances fail simultaneously and they all share a fault domain, you know the cause is infrastructure rather than application.
 
 ## Best Practices
 
-1. **Always use max spreading** unless you have a specific reason for static spreading.
+1. **Always use max spreading** unless you have a specific reason for fixed spreading.
 2. **Deploy across availability zones** in addition to fault domains for maximum resilience.
 3. **Run at least 2 instances** in production so a single fault domain failure does not cause a complete outage.
-4. **Monitor fault domain distribution** after scale operations to verify instances are evenly spread.
+4. **Monitor visible fault domain distribution** after scale operations when using fixed spreading, and monitor zone balance for zone-spanning deployments.
 5. **Design for N-1 fault domains**: If you have instances across 3 fault domains, your application should handle losing one-third of its instances.
 6. **Combine with autoscale**: Automatic replacement of failed instances in healthy fault domains is the fastest recovery path.
 
