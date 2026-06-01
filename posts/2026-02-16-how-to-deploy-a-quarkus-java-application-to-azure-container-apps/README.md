@@ -14,13 +14,13 @@ In this post, we will build a Quarkus REST API, containerize it (with both JVM a
 
 ## Why Quarkus on Azure Container Apps?
 
-Container Apps charges based on resource consumption. The faster your application starts and the less memory it uses, the less you pay. Quarkus is optimized for exactly this scenario:
+Container Apps charges based on allocated CPU and memory while replicas are running. The faster your application starts and the smaller the resources you can assign to it, the less you pay. Quarkus is optimized for exactly this scenario:
 
 - JVM mode: Starts in about 1 second with ~100MB memory
 - Native mode: Starts in under 100 milliseconds with ~30MB memory
 - Compared to a typical Spring Boot app: 5-10 seconds startup, 300MB+ memory
 
-For serverless workloads that scale to zero, startup time directly impacts user-perceived latency. A native Quarkus app can start and serve a request before a Spring Boot app finishes loading its context.
+For serverless workloads that scale to zero, startup time directly impacts user-perceived latency. A native Quarkus app process can start quickly, which helps reduce cold-start latency compared with larger JVM applications.
 
 ## Creating the Quarkus Project
 
@@ -30,7 +30,7 @@ Use the Quarkus CLI or Maven plugin to scaffold a new project.
 # Using the Quarkus CLI
 
 quarkus create app com.example:azure-quarkus-demo \
-  --extension='resteasy-reactive-jackson,smallrye-health,micrometer'
+  --extension='rest-jackson,smallrye-health,micrometer,container-image-jib'
 
 cd azure-quarkus-demo
 ```
@@ -38,13 +38,13 @@ cd azure-quarkus-demo
 Or with Maven:
 
 ```bash
-mvn io.quarkus.platform:quarkus-maven-plugin:3.6.0:create \
+mvn io.quarkus.platform:quarkus-maven-plugin:3.36.0:create \
   -DprojectGroupId=com.example \
   -DprojectArtifactId=azure-quarkus-demo \
-  -Dextensions="resteasy-reactive-jackson,smallrye-health,micrometer"
+  -Dextensions="rest-jackson,smallrye-health,micrometer,container-image-jib"
 ```
 
-The generated project includes a RESTEasy Reactive endpoint (non-blocking by default), health checks (used by Container Apps for probes), and Micrometer for metrics.
+The generated project includes a Quarkus REST endpoint (formerly RESTEasy Reactive), health checks (used by Container Apps for probes), Micrometer for metrics, and Jib support for container image builds.
 
 ## Building the REST API
 
@@ -165,13 +165,14 @@ public class Product {
 
 Azure Container Apps uses health probes to determine if your container is healthy. Quarkus provides these through the SmallRye Health extension.
 
+Create `LivenessCheck.java`:
+
 ```java
 package com.example;
 
 import org.eclipse.microprofile.health.HealthCheck;
 import org.eclipse.microprofile.health.HealthCheckResponse;
 import org.eclipse.microprofile.health.Liveness;
-import org.eclipse.microprofile.health.Readiness;
 
 import jakarta.enterprise.context.ApplicationScoped;
 
@@ -185,6 +186,18 @@ public class LivenessCheck implements HealthCheck {
         return HealthCheckResponse.up("Application is running");
     }
 }
+```
+
+Create `ReadinessCheck.java`:
+
+```java
+package com.example;
+
+import org.eclipse.microprofile.health.HealthCheck;
+import org.eclipse.microprofile.health.HealthCheckResponse;
+import org.eclipse.microprofile.health.Readiness;
+
+import jakarta.enterprise.context.ApplicationScoped;
 
 // Readiness check - is the application ready to serve traffic?
 @Readiness
@@ -227,7 +240,7 @@ quarkus.log.console.format=%d{yyyy-MM-dd HH:mm:ss} %-5p [%c{2.}] %s%e%n
 
 # Container image settings for building with Jib
 quarkus.container-image.build=true
-quarkus.container-image.group=myregistry.azurecr.io
+quarkus.container-image.registry=myquarkusregistry.azurecr.io
 quarkus.container-image.name=quarkus-demo
 quarkus.container-image.tag=latest
 ```
@@ -240,7 +253,7 @@ Quarkus provides multiple Dockerfiles. Let's look at both JVM and native options
 
 ```dockerfile
 # Dockerfile.jvm
-FROM registry.access.redhat.com/ubi8/openjdk-17:1.18
+FROM registry.access.redhat.com/ubi9/openjdk-17-runtime:1.24
 
 ENV LANGUAGE='en_US:en'
 
@@ -260,21 +273,22 @@ ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
 ENTRYPOINT ["java", "-jar", "/deployments/quarkus-run.jar"]
 ```
 
-**Native Dockerfile** - slower to build, tiny image, instant startup:
+**Native micro Dockerfile** - slower to build, tiny image, instant startup:
 
 ```dockerfile
-# Dockerfile.native
-FROM quay.io/quarkus/quarkus-micro-image:2.0
+# Dockerfile.native-micro
+FROM quay.io/quarkus/ubi9-quarkus-micro-image:2.0
 
 WORKDIR /work/
-COPY target/*-runner /work/application
-
-RUN chmod 775 /work /work/application
+RUN chown 1001 /work \
+    && chmod "g+rwX" /work \
+    && chown 1001:root /work
+COPY --chown=1001:root --chmod=755 target/*-runner /work/application
 
 EXPOSE 8080
 USER 1001
 
-CMD ["./application", "-Dquarkus.http.host=0.0.0.0"]
+ENTRYPOINT ["./application", "-Dquarkus.http.host=0.0.0.0"]
 ```
 
 Build the application:
@@ -284,10 +298,10 @@ Build the application:
 mvn clean package -DskipTests
 docker build -f src/main/docker/Dockerfile.jvm -t quarkus-demo:jvm .
 
-# Native build (requires GraalVM or uses container build)
+# Native build (requires GraalVM or Mandrel, or uses a container build)
 mvn clean package -Dnative -DskipTests \
   -Dquarkus.native.container-build=true
-docker build -f src/main/docker/Dockerfile.native -t quarkus-demo:native .
+docker build -f src/main/docker/Dockerfile.native-micro -t quarkus-demo:native .
 ```
 
 ## Deploying to Azure Container Apps
@@ -300,6 +314,14 @@ az group create --name quarkus-demo-rg --location eastus
 
 # Create an Azure Container Registry
 az acr create --name myquarkusregistry --resource-group quarkus-demo-rg --sku Basic
+
+# Create a managed identity for pulling from the private registry
+az identity create --name quarkus-api-identity --resource-group quarkus-demo-rg --location eastus
+IDENTITY_ID=$(az identity show \
+  --name quarkus-api-identity \
+  --resource-group quarkus-demo-rg \
+  --query id \
+  --output tsv)
 
 # Build and push the image using ACR Tasks
 az acr build --registry myquarkusregistry --image quarkus-demo:v1 \
@@ -316,7 +338,9 @@ az containerapp create \
   --name quarkus-api \
   --resource-group quarkus-demo-rg \
   --environment quarkus-env \
+  --user-assigned "$IDENTITY_ID" \
   --image myquarkusregistry.azurecr.io/quarkus-demo:v1 \
+  --registry-identity "$IDENTITY_ID" \
   --registry-server myquarkusregistry.azurecr.io \
   --target-port 8080 \
   --ingress external \
@@ -326,7 +350,7 @@ az containerapp create \
   --memory 0.5Gi
 ```
 
-Notice `--min-replicas 0`. This enables scale-to-zero, which means you pay nothing when there is no traffic. When a request arrives, Container Apps spins up an instance. With a native Quarkus image, that instance is ready in under 100 milliseconds.
+Notice `--min-replicas 0`. This enables scale-to-zero, which means you are not billed usage charges when there are no running replicas. When a request arrives, Container Apps spins up an instance. With a native Quarkus image, the application process can be ready very quickly after the platform starts the replica.
 
 ## Configuring Health Probes
 
@@ -339,13 +363,13 @@ az containerapp update \
   --set-env-vars "QUARKUS_PROFILE=prod"
 ```
 
-Container Apps automatically detects common health endpoint patterns. For explicit configuration:
+When ingress is enabled and you do not define probes, Container Apps adds default TCP startup, liveness, and readiness probes for the ingress target port. For explicit HTTP probe configuration, use the Quarkus health endpoints in your Container Apps template or YAML:
 
 ```json
 {
   "probes": [
     {
-      "type": "liveness",
+      "type": "Liveness",
       "httpGet": {
         "path": "/q/health/live",
         "port": 8080
@@ -353,7 +377,7 @@ Container Apps automatically detects common health endpoint patterns. For explic
       "periodSeconds": 10
     },
     {
-      "type": "readiness",
+      "type": "Readiness",
       "httpGet": {
         "path": "/q/health/ready",
         "port": 8080
