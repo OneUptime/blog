@@ -14,7 +14,7 @@ Azure Deployment Stacks solve this problem. They track which resources belong to
 
 ## What Are Deployment Stacks?
 
-A deployment stack is an Azure resource that manages a collection of other resources. When you deploy a template through a stack, Azure tracks which resources the stack owns. On subsequent deployments, if a resource is no longer in the template, the stack can detach it, delete it, or block its deletion based on your configuration.
+A deployment stack is an Azure resource that manages a collection of other resources. When you deploy a template through a stack, Azure tracks which resources the stack owns. On subsequent deployments, if a resource is no longer in the template, the stack can detach it or delete it based on your configuration.
 
 ```mermaid
 flowchart TD
@@ -29,7 +29,7 @@ flowchart TD
     Stack -->|Keeps| R3
 ```
 
-Deployment stacks work at three scopes: resource group, subscription, and management group. This means you can manage resources across multiple resource groups from a single stack.
+Deployment stacks work at three scopes: resource group, subscription, and management group. Subscription-scoped and management group-scoped stacks can manage resources across multiple resource groups from a single stack.
 
 ## Creating Your First Deployment Stack
 
@@ -113,14 +113,13 @@ az stack group create \
   --template-file main.bicep \
   --parameters environment=dev \
   --deny-settings-mode "denyWriteAndDelete" \
-  --action-on-unmanage "deleteResources" \
-  --deny-settings-excluded-principals ""
+  --action-on-unmanage "deleteResources"
 ```
 
 Let me break down the important flags:
 
 - `--deny-settings-mode`: Controls what operations are blocked on managed resources. "denyWriteAndDelete" prevents manual changes outside the stack.
-- `--action-on-unmanage`: What happens when a resource is removed from the template. "deleteResources" deletes them, "detachResources" removes them from the stack but leaves them in Azure.
+- `--action-on-unmanage`: What happens when a resource is removed from the template. "deleteResources" deletes managed resources, "detachAll" removes managed resources and resource groups from the stack but leaves them in Azure.
 - `--deny-settings-excluded-principals`: Service principals or users exempt from deny settings (useful for emergency access).
 
 ## Managing Resource Lifecycle
@@ -196,7 +195,7 @@ az stack group create \
   --action-on-unmanage "deleteResources"
 ```
 
-Because we set `--action-on-unmanage` to "deleteResources", the Log Analytics workspace gets deleted. If we had used "detachResources", it would remain in Azure but no longer be tracked by the stack.
+Because we set `--action-on-unmanage` to "deleteResources", the Log Analytics workspace gets deleted. If we had used "detachAll", it would remain in Azure but no longer be tracked by the stack.
 
 ## Subscription-Scoped Stacks
 
