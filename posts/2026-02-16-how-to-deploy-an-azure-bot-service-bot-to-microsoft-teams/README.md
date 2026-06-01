@@ -30,15 +30,15 @@ Go to the Azure portal, open your Azure Bot resource, and navigate to "Channels.
 
 You will be presented with the Teams channel configuration page. For most bots, the default settings work fine:
 
-- **Messaging**: Enable this to allow the bot to send and receive text messages
+- **Messaging**: Select the cloud environment your bot uses
 - **Calling**: Enable only if your bot handles voice calls (most do not)
-- **Tab applications**: Enable if you want to embed web content in Teams tabs through the bot
+- **Publish**: Use this tab only when you are ready to publish the Teams app
 
 Click "Apply" to save the configuration. Azure Bot Service will validate the setup and activate the Teams channel.
 
 ## Step 2: Test with the Teams Web Client
 
-Before building a full app manifest, do a quick smoke test. In the Azure portal, under the Teams channel configuration, you will find a link that says "Open in Teams." Click it, and Teams will open with a chat to your bot. Send a test message and verify that the bot responds correctly.
+Before building a full app manifest, do a quick smoke test. In the Azure portal, under the Teams channel configuration, select "Get bot embed code" and copy the HTTPS Teams link from the embed code. Open that link in your browser, choose the Teams web or desktop client, and Teams will open with a chat to your bot. Send a test message and verify that the bot responds correctly.
 
 If this works, your bot is successfully connected to Teams at the protocol level. The remaining steps are about packaging it as a proper Teams app for distribution.
 
@@ -62,7 +62,7 @@ Create the manifest file:
     "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
     "manifestVersion": "1.16",
     "version": "1.0.0",
-    "id": "your-microsoft-app-id-here",
+    "id": "00000000-0000-0000-0000-000000000000",
     "developer": {
         "name": "Your Company",
         "websiteUrl": "https://yourcompany.com",
@@ -84,7 +84,7 @@ Create the manifest file:
     "accentColor": "#5C2D91",
     "bots": [
         {
-            "botId": "your-microsoft-app-id-here",
+            "botId": "00000000-0000-0000-0000-000000000000",
             "scopes": [
                 "personal",
                 "team",
@@ -123,7 +123,7 @@ Create the manifest file:
 }
 ```
 
-The `id` and `botId` fields must match the Microsoft App ID from your Azure Bot resource registration. The `scopes` array defines where the bot can be used - `personal` for 1:1 chats, `team` for channel conversations, and `groupChat` for group chats.
+The `botId` field must match the Microsoft App ID from your Azure Bot resource registration. The `id` field must be a GUID that uniquely identifies the Teams app; for a bot-only app, it is common to reuse the Microsoft App ID. The `scopes` array defines where the bot can be used - `personal` for 1:1 chats, `team` for channel conversations, and `groupChat` for group chats.
 
 ## Step 4: Create the App Icons
 
@@ -162,10 +162,10 @@ Teams sends additional events that your bot should handle, like being added to a
 
 ```python
 # teams_bot.py - Bot with Teams-specific event handlers
-from botbuilder.core import ActivityHandler, TurnContext
-from botbuilder.schema import ChannelAccount
+from botbuilder.core import TurnContext
+from botbuilder.core.teams import TeamsActivityHandler
 
-class TeamsSupportBot(ActivityHandler):
+class TeamsSupportBot(TeamsActivityHandler):
     """Bot that handles Teams-specific events in addition to messages."""
 
     async def on_message_activity(self, turn_context: TurnContext):
@@ -199,26 +199,15 @@ class TeamsSupportBot(ActivityHandler):
         # Clean up any stored state for removed members
         pass
 
-    async def on_installation_update_activity(self, turn_context: TurnContext):
-        """Called when the bot is installed or uninstalled."""
-        action = turn_context.activity.action
-        if action == "add":
-            await turn_context.send_activity(
-                "Thanks for installing me! Type 'help' to see what I can do."
-            )
+    async def on_installation_update_add(self, turn_context: TurnContext):
+        """Called when the bot is installed."""
+        await turn_context.send_activity(
+            "Thanks for installing me! Type 'help' to see what I can do."
+        )
 
     def _remove_mention(self, turn_context: TurnContext) -> str:
         """Remove the bot @mention from the message text."""
-        text = turn_context.activity.text or ""
-        mentions = turn_context.activity.entities or []
-        for mention in mentions:
-            if mention.type == "mention":
-                mentioned = mention.additional_properties.get("mentioned", {})
-                if mentioned.get("id") == turn_context.activity.recipient.id:
-                    # Remove the mention text from the message
-                    mention_text = mention.additional_properties.get("text", "")
-                    text = text.replace(mention_text, "").strip()
-        return text
+        return TurnContext.remove_recipient_mention(turn_context.activity).strip()
 ```
 
 ## Step 8: Use Adaptive Cards for Rich Responses
@@ -294,7 +283,7 @@ After uploading, you can control who has access to the app through app setup pol
 
 **Bot works in personal chat but not in channels**: Make sure the `team` scope is included in the manifest and that your bot handles the `@mention` properly.
 
-**Cards not rendering**: Teams has specific Adaptive Card version requirements. Stick to version 1.4 or earlier for maximum compatibility.
+**Cards not rendering**: Teams has specific Adaptive Card version requirements. Teams supports Adaptive Card features up to version 1.5 for bot-sent cards, but mobile clients support up to version 1.2. Test cards on the clients your users use most.
 
 ## Summary
 
