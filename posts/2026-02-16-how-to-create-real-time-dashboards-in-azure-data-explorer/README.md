@@ -49,7 +49,7 @@ AppLogs
 
 After running the query, configure the tile:
 
-1. Click "Add visual"
+1. Select the "Visual" tab
 2. Choose "Line chart" as the visualization type
 3. Set the X axis to `Timestamp`
 4. Set the Y axis to `ErrorRate`
@@ -136,20 +136,14 @@ Parameters make your dashboard interactive. Users can filter all tiles by select
 
 ### Time Range Parameter
 
-1. Click the "Parameters" icon in the dashboard toolbar
-2. Click "Add parameter"
-3. Configure:
-   - **Name**: TimeRange
-   - **Type**: Time range
-   - **Default value**: Last 6 hours
-   - **Available values**: Last 1 hour, Last 6 hours, Last 24 hours, Last 7 days
+Every dashboard has a default time range parameter. It appears as a dashboard filter after you use it in at least one tile query.
 
 Then update your queries to use the parameter:
 
 ```kql
 // Use the TimeRange parameter in queries
 AppLogs
-| where Timestamp >= _startTime and Timestamp <= _endTime
+| where Timestamp between (_startTime.._endTime)
 | summarize
     TotalRequests = count(),
     Errors = countif(Level == "ERROR")
@@ -166,8 +160,9 @@ Create a dropdown that lets users filter by service:
 
 1. Add a new parameter
 2. Configure:
-   - **Name**: ServiceFilter
-   - **Type**: Single selection / Multi selection
+   - **Label**: Service
+   - **Parameter type**: Multiple selection
+   - **Variable name**: `_ServiceFilter`
    - **Source**: Query
    - **Query**: `AppLogs | distinct Service | sort by Service asc`
 
@@ -176,7 +171,7 @@ Update queries to use the service filter:
 ```kql
 // Filter by selected service(s)
 AppLogs
-| where Timestamp >= _startTime and Timestamp <= _endTime
+| where Timestamp between (_startTime.._endTime)
 | where Service in (_ServiceFilter) or isempty(_ServiceFilter)
 | summarize
     TotalRequests = count(),
@@ -198,11 +193,13 @@ AppLogs
 
 For real-time monitoring, enable auto-refresh:
 
-1. Click the refresh icon in the dashboard toolbar
-2. Select an auto-refresh interval:
-   - **30 seconds**: For active incident investigation
+1. In the dashboard toolbar, select **Settings > Auto refresh**
+2. Turn on auto-refresh
+3. Select values for the minimum time interval and default refresh rate:
+   - **30 seconds**: For active incident investigation, if allowed by your minimum interval setting
    - **1 minute**: For operational monitoring
    - **5 minutes**: For general oversight
+4. Click "Apply" and save the dashboard
 
 The auto-refresh re-executes all tile queries at the specified interval, keeping the dashboard current.
 
@@ -225,7 +222,7 @@ For complex dashboards, use multiple pages:
 - **Page 3: Errors** - Error drill-down, top errors, error trends
 - **Page 4: Users** - User-level impact analysis
 
-Create pages by clicking the "+" icon next to page tabs in the dashboard editor.
+Create pages from the Pages pane by clicking "+ Add page" in the dashboard editor.
 
 ## KPI Cards
 
@@ -263,7 +260,7 @@ AppLogs
 
 ## Conditional Formatting
 
-Use KQL to add color-coding to your table tiles:
+Use KQL to add status labels to your table tiles, then configure table conditional formatting in the visual pane if you want color-coding:
 
 ```kql
 // Service health table with status indicators
@@ -295,27 +292,11 @@ ADX dashboards support sharing with team members:
    - **Edit**: Users can modify tiles and parameters
 3. Enter email addresses or Azure AD groups
 
-For organization-wide access, publish the dashboard and share the URL.
+After granting permissions, copy the dashboard link and share the URL. Viewers also need access to the underlying database in the Azure Data Explorer cluster.
 
-## Programmatic Dashboard Management
+## Dashboard JSON Management
 
-You can export and import dashboard definitions as JSON for version control:
-
-```bash
-# Export a dashboard definition
-
-# Use the ADX API to retrieve the dashboard JSON
-curl -H "Authorization: Bearer $TOKEN" \
-  "https://dataexplorer.azure.com/api/dashboards/{dashboard-id}" \
-  -o dashboard-definition.json
-
-# Import a dashboard definition
-curl -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d @dashboard-definition.json \
-  "https://dataexplorer.azure.com/api/dashboards"
-```
+You can export and import dashboard definitions as JSON for version control. In the dashboard toolbar, use **File > Download dashboard to file** to export the dashboard JSON. To create a new dashboard from that file, go to the main Dashboards page and select **New dashboard > Import dashboard from file**. To restore an existing dashboard, use **File > Replace dashboard with file**.
 
 Store dashboard definitions in Git for version control and reproducible deployments.
 
@@ -339,7 +320,7 @@ Store dashboard definitions in Git for version control and reproducible deployme
 }
 ```
 
-**Cache results**: ADX automatically caches recent query results. Dashboards with short auto-refresh intervals benefit from this caching.
+**Cache results**: Configure **Query results cache max age** on the dashboard data source to enable query results caching for all queries that use that data source.
 
 ## Summary
 
