@@ -10,6 +10,8 @@ Description: Build a product recommendation engine using Azure Personalizer for 
 
 Product recommendations drive a significant chunk of e-commerce revenue. When customers see products that actually match their interests, they buy more. The challenge is that building a recommendation engine from scratch requires serious machine learning expertise and infrastructure. Azure Personalizer simplifies this by providing a reinforcement learning service that learns from user behavior in real time.
 
+Azure Personalizer is being retired on October 1, 2026, and Microsoft stopped allowing new Personalizer resources to be created on September 20, 2023. This guide is only useful if you already have an existing Personalizer resource that you can use before the retirement date.
+
 Unlike traditional collaborative filtering that needs large datasets before it becomes useful, Personalizer starts working immediately. It uses contextual bandits to learn from each interaction, getting better with every click and purchase. In this guide, I will show you how to integrate Personalizer into a retail application.
 
 ## How Azure Personalizer Works
@@ -17,8 +19,8 @@ Unlike traditional collaborative filtering that needs large datasets before it b
 Personalizer uses reinforcement learning, which is different from typical recommendation systems. Instead of training a model on historical data and deploying it, Personalizer learns continuously. Here is the flow:
 
 1. Your application sends a Rank request with the current context (who the user is, what page they are on, time of day) and a list of candidate products.
-2. Personalizer returns the ranked list, with the best predicted match at the top.
-3. Your application shows the recommendations and observes what happens.
+2. Personalizer returns a `rewardActionId`, which is the action your application should show. It also returns a ranking list for analysis.
+3. Your application shows the recommended product and observes what happens.
 4. When the user interacts (clicks, adds to cart, buys), you send a Reward signal back to Personalizer.
 5. Personalizer uses the reward to update its model.
 
@@ -26,8 +28,8 @@ Personalizer uses reinforcement learning, which is different from typical recomm
 graph LR
     A[User Visits Page] --> B[Application Collects Context]
     B --> C[Rank API Call]
-    C --> D[Personalizer Returns Ranked Products]
-    D --> E[Display Recommendations]
+    C --> D[Personalizer Returns rewardActionId]
+    D --> E[Display Recommended Product]
     E --> F{User Interacts?}
     F -->|Yes| G[Reward API Call - Score 1.0]
     F -->|No| H[Reward API Call - Score 0.0]
@@ -37,20 +39,10 @@ graph LR
 
 The beauty of this approach is that the model adapts to changing preferences and seasonal trends automatically. You do not need to retrain and redeploy a model every time customer behavior shifts.
 
-## Step 1 - Create the Personalizer Resource
+## Step 1 - Use an Existing Personalizer Resource
 
 ```bash
-# Create a Personalizer resource
-
-az cognitiveservices account create \
-  --name retail-personalizer \
-  --resource-group retail-rg \
-  --kind Personalizer \
-  --sku S0 \
-  --location eastus \
-  --yes
-
-# Get the endpoint and key
+# Get the endpoint and key for an existing Personalizer resource
 az cognitiveservices account show \
   --name retail-personalizer \
   --resource-group retail-rg \
@@ -62,9 +54,9 @@ az cognitiveservices account keys list \
   --query "key1" -o tsv
 ```
 
-After creation, configure the Personalizer settings in the Azure portal:
+Configure the Personalizer settings in the Azure portal:
 - Set the reward wait time to 15 minutes (how long Personalizer waits for a reward before recording zero)
-- Set the model update frequency to 5 minutes
+- Set the model update frequency to 15 minutes for a production loop that needs to track changing user behavior
 - Set the exploration percentage to 20% (this means 20% of requests will explore new options rather than exploit the best known option)
 
 The exploration rate is important. Too low and the model never discovers better options. Too high and too many users see suboptimal recommendations. Start at 20% and reduce it as the model stabilizes.
@@ -75,7 +67,7 @@ The quality of Personalizer's recommendations depends heavily on the context fea
 
 Good context features for retail include:
 
-- User demographics (age range, location)
+- User demographics (age range, coarse region)
 - Current session behavior (categories browsed, items viewed)
 - Time features (time of day, day of week, season)
 - Device type (mobile, desktop)
@@ -178,17 +170,15 @@ def categorize_price(price: float) -> str:
 This is the core integration. When a user visits a page where recommendations are shown, call the Rank API. When the user interacts with a recommendation, call the Reward API.
 
 ```python
-from azure.cognitiveservices.personalizer import PersonalizerClient
-from azure.cognitiveservices.personalizer.models import (
-    RankRequest, RankableAction, RewardRequest
-)
-from msrest.authentication import CognitiveServicesCredentials
+from azure.ai.personalizer import PersonalizerClient
+from azure.core.credentials import AzureKeyCredential
+import os
 import uuid
 
 # Initialize the Personalizer client
 personalizer_client = PersonalizerClient(
     endpoint="https://retail-personalizer.cognitiveservices.azure.com/",
-    credentials=CognitiveServicesCredentials(os.environ["PERSONALIZER_KEY"])
+    credential=AzureKeyCredential(os.environ["PERSONALIZER_KEY"])
 )
 
 def get_recommendations(user: dict, session: dict, candidate_products: list) -> dict:
@@ -201,29 +191,28 @@ def get_recommendations(user: dict, session: dict, candidate_products: list) -> 
     event_id = str(uuid.uuid4())
 
     # Call the Rank API
-    rank_request = RankRequest(
-        context_features=context_features,
-        actions=[RankableAction(id=a["id"], features=a["features"]) for a in actions],
-        event_id=event_id
-    )
+    rank_request = {
+        "contextFeatures": context_features,
+        "actions": actions,
+        "eventId": event_id
+    }
 
     rank_response = personalizer_client.rank(rank_request)
 
-    # Return the ranked product IDs and the event ID for reward tracking
+    # Return the selected action and keep the ranking for analysis
     return {
-        "eventId": event_id,
-        "topRecommendation": rank_response.reward_action_id,
+        "eventId": rank_response["eventId"],
+        "topRecommendation": rank_response["rewardActionId"],
         "ranking": [
-            {"productId": r.id, "probability": r.probability}
-            for r in rank_response.ranking
+            {"productId": r["id"], "probability": r["probability"]}
+            for r in rank_response["ranking"]
         ]
     }
 
 def send_reward(event_id: str, reward_value: float):
     """Send a reward signal when the user interacts with a recommendation."""
-    # reward_value: 1.0 for purchase, 0.5 for add-to-cart, 0.1 for click, 0.0 for ignore
-    reward_request = RewardRequest(value=reward_value)
-    personalizer_client.events.reward(event_id=event_id, value=reward_request)
+    # reward_value: 1.0 for purchase, 0.5 for add-to-cart, 0.2 for click, 0.0 for ignore
+    personalizer_client.reward(event_id, {"value": reward_value})
 ```
 
 The reward values should reflect the business value of different actions. A purchase is worth more than a click. Here is a reward scheme that works well for most retail scenarios:
@@ -238,6 +227,7 @@ The reward values should reflect the business value of different actions. A purc
 Here is how the recommendation component fits into a typical product page.
 
 ```python
+from datetime import datetime
 from flask import Flask, request, jsonify, session
 
 app = Flask(__name__)
@@ -274,14 +264,14 @@ def recommendations_endpoint():
     # Store event ID in session for reward tracking
     session.setdefault("recommendation_events", {})[result["eventId"]] = {
         "timestamp": datetime.utcnow().isoformat(),
-        "products": [r["productId"] for r in result["ranking"][:5]]
+        "product": result["topRecommendation"]
     }
 
-    # Return top 5 recommendations
-    top_products = get_product_details([r["productId"] for r in result["ranking"][:5]])
+    # Return the single action selected by Personalizer for this slot
+    top_product = get_product_details([result["topRecommendation"]])[0]
 
     return jsonify({
-        "recommendations": top_products,
+        "recommendation": top_product,
         "eventId": result["eventId"]
     })
 
