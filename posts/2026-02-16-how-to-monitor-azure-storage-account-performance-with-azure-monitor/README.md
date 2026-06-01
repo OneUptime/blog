@@ -62,7 +62,7 @@ The difference between E2E latency and server latency tells you how much time is
 Here are the most important metrics to track for each scenario:
 
 **Capacity and Usage**:
-- `UsedCapacity`: Total bytes used across all services
+- `UsedCapacity`: Total bytes used across all services for standard storage accounts
 - `BlobCapacity`: Bytes used by blob storage
 - `BlobCount`: Number of blobs in the account
 - `ContainerCount`: Number of containers
@@ -97,17 +97,18 @@ az monitor diagnostic-settings create \
   --name diag-blob-logs \
   --workspace law-storage-monitoring \
   --logs '[{"category":"StorageRead","enabled":true},{"category":"StorageWrite","enabled":true},{"category":"StorageDelete","enabled":true}]' \
-  --metrics '[{"category":"Transaction","enabled":true}]'
+  --metrics '[{"category":"Transaction","enabled":true}]' \
+  --export-to-resource-specific true
 
-# Enable diagnostic settings for the account level
+# Enable diagnostic settings for exportable account-level transaction metrics
 az monitor diagnostic-settings create \
   --resource "/subscriptions/<sub-id>/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/stappdata2026" \
   --name diag-account-metrics \
   --workspace law-storage-monitoring \
-  --metrics '[{"category":"Transaction","enabled":true},{"category":"Capacity","enabled":true}]'
+  --metrics '[{"category":"Transaction","enabled":true}]'
 ```
 
-Once enabled, logs start flowing within a few minutes. Storage read logs can be very high volume, so consider enabling them selectively or setting a sampling rate in production.
+Once enabled, logs start flowing within a few minutes. Storage read logs can be very high volume, so consider enabling them selectively or using ingestion-time transformations in production. Capacity metrics such as `UsedCapacity` are available in Azure Monitor Metrics, but they are not exported through diagnostic settings for storage accounts.
 
 ## Step 4: Create Alert Rules
 
@@ -137,8 +138,7 @@ az monitor metrics alert create \
   --resource-group rg-app \
   --name alert-storage-throttling \
   --scopes "/subscriptions/<sub-id>/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/stappdata2026" \
-  --condition "total Transactions > 10" \
-  --dimension "ResponseType=ServerBusyError" \
+  --condition "total Transactions > 10 where ResponseType includes ServerBusyError or ClientThrottlingError" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --action "/subscriptions/<sub-id>/resourceGroups/rg-app/providers/microsoft.insights/actionGroups/ag-ops-team" \
@@ -146,15 +146,15 @@ az monitor metrics alert create \
   --severity 1
 ```
 
-This alert fires when capacity reaches 80% of the limit:
+This alert fires when capacity reaches 80% of the default 5 PiB standard storage account limit:
 
 ```bash
-# Alert when used capacity exceeds 80% of a 5 TiB limit (4 TiB threshold)
+# Alert when used capacity exceeds 80% of a 5 PiB limit (4 PiB threshold)
 az monitor metrics alert create \
   --resource-group rg-app \
   --name alert-storage-capacity \
   --scopes "/subscriptions/<sub-id>/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/stappdata2026" \
-  --condition "avg UsedCapacity > 4398046511104" \
+  --condition "avg UsedCapacity > 4503599627370496" \
   --window-size 1h \
   --evaluation-frequency 1h \
   --action "/subscriptions/<sub-id>/resourceGroups/rg-app/providers/microsoft.insights/actionGroups/ag-ops-team" \
@@ -192,7 +192,7 @@ Detect failed authentication attempts:
 ```text
 StorageBlobLogs
 | where TimeGenerated > ago(24h)
-| where StatusCode == 403
+| where StatusCode == "403"
 | summarize FailCount = count() by CallerIpAddress, AuthenticationType
 | order by FailCount desc
 ```
@@ -202,7 +202,7 @@ Find throttled requests and their patterns:
 ```text
 StorageBlobLogs
 | where TimeGenerated > ago(6h)
-| where StatusCode == 503 or StatusCode == 429
+| where StatusCode == "503" or StatusCode == "429"
 | summarize ThrottledCount = count() by bin(TimeGenerated, 5m), OperationName
 | render timechart
 ```
@@ -253,7 +253,7 @@ A useful workbook for storage monitoring includes:
 
 **Frequent throttling (503 errors)**: You are hitting IOPS or throughput limits. Options include spreading data across multiple storage accounts, using premium storage, or implementing retry logic with exponential backoff.
 
-**Gradual latency increase over time**: This often indicates growing blob counts in a single container. Azure Storage performance degrades when containers have millions of blobs without a good partition key prefix.
+**Gradual latency increase over time**: This can indicate a naming pattern that concentrates traffic on a narrow partition range. For small block sizes or timestamp-based names, use an early hash or time component in the blob name to help Azure Storage load-balance partitions.
 
 **Spiky availability metrics**: Check for transient failures. If availability drops briefly but recovers, implement retry logic in your application. If drops are sustained, investigate network connectivity and region health.
 
