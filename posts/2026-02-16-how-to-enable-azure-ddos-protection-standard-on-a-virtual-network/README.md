@@ -10,7 +10,7 @@ Description: A practical guide to enabling Azure DDoS Protection Standard on you
 
 Distributed denial-of-service (DDoS) attacks are one of those things you do not worry about until they happen, and then they consume your entire day. Azure provides basic DDoS protection automatically for all resources at no extra cost. This basic protection covers infrastructure-level attacks. But for applications that need stronger protection - think adaptive tuning, attack analytics, cost protection guarantees, and rapid response support - you need DDoS Protection Standard (now called DDoS Network Protection).
 
-DDoS Protection Standard monitors your public endpoints, learns your normal traffic patterns, and automatically mitigates attacks. It can absorb massive volumetric attacks (Azure has mitigated attacks exceeding 3.47 Tbps) while keeping legitimate traffic flowing. This guide covers how to set it up.
+DDoS Protection Standard monitors your public endpoints, learns your normal traffic patterns, and automatically mitigates attacks. It can absorb massive volumetric attacks (Azure has mitigated attacks exceeding 15 Tbps) while keeping legitimate traffic flowing. This guide covers how to set it up.
 
 ## Basic vs. Standard DDoS Protection
 
@@ -33,7 +33,7 @@ DDoS Network Protection (standard) provides:
 
 ## Step 1: Create a DDoS Protection Plan
 
-The DDoS Protection plan is a top-level resource that you link to virtual networks. One plan can protect up to 200 virtual networks across subscriptions within the same tenant.
+The DDoS Protection plan is a top-level resource that you link to virtual networks. One plan can be linked to virtual networks across subscriptions within the same tenant.
 
 ```bash
 # Create a resource group
@@ -47,7 +47,7 @@ az network ddos-protection create \
   --location eastus
 ```
 
-Note that DDoS Protection Standard has a fixed monthly cost plus per-GB charges for data processing. The monthly cost covers up to 100 public IP resources. Make sure this fits your budget before proceeding.
+Note that DDoS Network Protection has a fixed monthly cost that covers up to 100 public IP resources, with additional protected public IP resources billed on a per-resource basis. Make sure this fits your budget before proceeding.
 
 ## Step 2: Create or Identify Your Virtual Network
 
@@ -83,7 +83,7 @@ az network vnet update \
   --ddos-protection true
 ```
 
-Once enabled, all public IPs associated with resources in this VNet are protected. This includes public IPs on VMs, load balancers, Application Gateways, and any other resource with a public endpoint.
+Once enabled, supported public IPs associated with resources in this VNet are protected. This includes public IPs on VMs, load balancers, Application Gateways, Azure Firewall, Bastion, VPN gateways, Service Fabric, and IaaS-based network virtual appliances.
 
 ## Step 4: Verify DDoS Protection Status
 
@@ -199,7 +199,7 @@ With DDoS Protection Standard, you can engage the Microsoft DDoS Rapid Response 
 2. Select "DDoS" as the problem type
 3. The DRR team will work with you on mitigation
 
-You can also pre-engage the DRR team by creating a DDoS Rapid Response profile, which includes your contact information and attack playbook details.
+You can also engage the DRR team ahead of a planned viral event that will significantly increase network traffic.
 
 ## Cost Protection Guarantee
 
