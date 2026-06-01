@@ -143,7 +143,7 @@ This is where hybrid gets tricky. Your on-premises servers need to resolve `myst
 
 The recommended approach is to use Azure DNS Private Resolver, which provides inbound and outbound DNS endpoints in your VNet.
 
-This creates a DNS Private Resolver with inbound and outbound endpoints:
+This creates a DNS Private Resolver with an inbound endpoint:
 
 ```bash
 # Create Azure DNS Private Resolver in the hub VNet
@@ -159,7 +159,7 @@ az dns-resolver inbound-endpoint create \
     --resource-group rg-networking \
     --dns-resolver-name dnspr-hub \
     --location eastus \
-    --ip-configurations "[{\"privateIpAllocationMethod\":\"Dynamic\",\"subnet\":{\"id\":\"/subscriptions/<sub-id>/resourceGroups/rg-networking/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-dns-inbound\"}}]"
+    --ip-configurations "[{private-ip-address:'',private-ip-allocation-method:'Dynamic',id:'/subscriptions/<sub-id>/resourceGroups/rg-networking/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-dns-inbound'}]"
 
 # Get the inbound endpoint IP address
 az dns-resolver inbound-endpoint show \
@@ -173,7 +173,7 @@ The inbound endpoint gets a private IP in your VNet. This is the IP address you 
 
 ## Step 5: Configure On-Premises DNS Forwarding
 
-On your on-premises DNS servers (Windows DNS, BIND, or whatever you use), create conditional forwarders for each `privatelink.*` zone that point to the inbound endpoint IP.
+On your on-premises DNS servers (Windows DNS, BIND, or whatever you use), create conditional forwarders for each recommended public DNS zone that point to the inbound endpoint IP. For example, forward `blob.core.windows.net` instead of `privatelink.blob.core.windows.net`. The Azure DNS Private Resolver follows the public CNAME and resolves the corresponding record in the linked Private DNS zone.
 
 For Windows DNS Server, here is the PowerShell configuration. This creates conditional forwarders for Private Endpoint DNS zones pointing to the Azure DNS Private Resolver:
 
@@ -181,20 +181,21 @@ For Windows DNS Server, here is the PowerShell configuration. This creates condi
 # Azure DNS Private Resolver inbound endpoint IP
 $AzureDnsResolverIP = "10.0.4.4"
 
-# List of privatelink zones to forward
-$PrivateLinkZones = @(
-    "privatelink.blob.core.windows.net",
-    "privatelink.file.core.windows.net",
-    "privatelink.queue.core.windows.net",
-    "privatelink.table.core.windows.net",
-    "privatelink.database.windows.net",
-    "privatelink.vaultcore.azure.net",
-    "privatelink.azurecr.io",
-    "privatelink.azurewebsites.net"
+# List of public DNS zones to forward
+$PublicDnsZones = @(
+    "blob.core.windows.net",
+    "file.core.windows.net",
+    "queue.core.windows.net",
+    "table.core.windows.net",
+    "database.windows.net",
+    "vault.azure.net",
+    "vaultcore.azure.net",
+    "azurecr.io",
+    "azurewebsites.net"
 )
 
 # Create conditional forwarders on the on-premises DNS server
-foreach ($zone in $PrivateLinkZones) {
+foreach ($zone in $PublicDnsZones) {
     Add-DnsServerConditionalForwarderZone `
         -Name $zone `
         -MasterServers $AzureDnsResolverIP `
@@ -204,23 +205,29 @@ foreach ($zone in $PrivateLinkZones) {
 }
 ```
 
-For BIND DNS servers, add the following to your named.conf. These forward declarations send queries for Private Link zones to the Azure DNS resolver:
+For BIND DNS servers, add the following to your named.conf. These forward declarations send queries for the public service zones to the Azure DNS resolver:
 
 ```text
-// Forward privatelink zones to Azure DNS Private Resolver
-zone "privatelink.blob.core.windows.net" {
+// Forward public service zones to Azure DNS Private Resolver
+zone "blob.core.windows.net" {
     type forward;
     forward only;
     forwarders { 10.0.4.4; };
 };
 
-zone "privatelink.database.windows.net" {
+zone "database.windows.net" {
     type forward;
     forward only;
     forwarders { 10.0.4.4; };
 };
 
-zone "privatelink.vaultcore.azure.net" {
+zone "vault.azure.net" {
+    type forward;
+    forward only;
+    forwarders { 10.0.4.4; };
+};
+
+zone "vaultcore.azure.net" {
     type forward;
     forward only;
     forwarders { 10.0.4.4; };
@@ -256,7 +263,14 @@ az dns-resolver forwarding-rule create \
     --ruleset-name frs-onprem-forwarding \
     --domain-name "corp.yourcompany.com." \
     --forwarding-rule-state Enabled \
-    --target-dns-servers "[{\"ipAddress\":\"192.168.1.10\",\"port\":53}]"
+    --target-dns-servers "[{ip-address:'192.168.1.10',port:53}]"
+
+# Link the ruleset to the VNet whose workloads should use the forwarding rule
+az dns-resolver vnet-link create \
+    --name link-vnet-hub \
+    --resource-group rg-networking \
+    --ruleset-name frs-onprem-forwarding \
+    --id "/subscriptions/<sub-id>/resourceGroups/rg-networking/providers/Microsoft.Network/virtualNetworks/vnet-hub"
 ```
 
 ## Step 7: Verify DNS Resolution
