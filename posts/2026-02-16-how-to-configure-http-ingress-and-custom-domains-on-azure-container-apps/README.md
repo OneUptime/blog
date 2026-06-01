@@ -74,21 +74,13 @@ az containerapp ingress access-restriction set \
   --rule-name office-network \
   --ip-address 203.0.113.0/24 \
   --action Allow
-
-# Set the default action to deny everything else
-az containerapp ingress access-restriction set \
-  --name my-web-app \
-  --resource-group my-rg \
-  --rule-name deny-all \
-  --ip-address 0.0.0.0/0 \
-  --action Deny
 ```
 
-Rules are evaluated in order, so put the Allow rules first, followed by a deny-all catch-all rule.
+All IP restriction rules on a container app must use the same action. If you add `Allow` rules, traffic that does not match those rules is denied. If you add `Deny` rules, matching ranges are blocked and other traffic is allowed.
 
 ## Step 4: Set Up a Custom Domain
 
-Now for the interesting part - mapping your own domain to the container app. The process involves three steps: verifying domain ownership, uploading a TLS certificate, and binding it.
+Now for the interesting part - mapping your own domain to the container app. The process involves three steps: verifying domain ownership, provisioning or uploading a TLS certificate, and binding it.
 
 First, add the custom domain to your container app.
 
@@ -100,7 +92,24 @@ az containerapp hostname add \
   --hostname app.example.com
 ```
 
-Azure will tell you to create a CNAME record (or an A record for apex domains) and a TXT record for domain verification. Log in to your DNS provider and add these records.
+Azure will tell you to create a CNAME record (or an A record for apex domains) and a TXT record for domain verification. You can also retrieve the values from the CLI.
+
+```bash
+# Get the generated domain and verification ID
+az containerapp show \
+  --name my-web-app \
+  --resource-group my-rg \
+  --query "properties.configuration.ingress.fqdn" \
+  --output tsv
+
+az containerapp show \
+  --name my-web-app \
+  --resource-group my-rg \
+  --query "properties.customDomainVerificationId" \
+  --output tsv
+```
+
+Log in to your DNS provider and add these records.
 
 For a subdomain like `app.example.com`, create a CNAME record pointing to your container app's default domain.
 
@@ -135,25 +144,21 @@ az containerapp env certificate upload \
   --name my-env \
   --resource-group my-rg \
   --certificate-file ./my-cert.pfx \
-  --password "cert-password"
+  --password "cert-password" \
+  --certificate-name wildcard-example-com
 ```
 
 After uploading, bind it to your hostname.
 
 ```bash
-# Get the certificate ID
-CERT_ID=$(az containerapp env certificate list \
-  --name my-env \
-  --resource-group my-rg \
-  --query "[?properties.subjectName=='*.example.com'].id" \
-  --output tsv)
-
 # Bind the certificate to the hostname
 az containerapp hostname bind \
   --name my-web-app \
   --resource-group my-rg \
   --hostname app.example.com \
-  --certificate $CERT_ID
+  --environment my-env \
+  --certificate wildcard-example-com \
+  --validation-method CNAME
 ```
 
 ## Step 7: Enable CORS
@@ -177,7 +182,7 @@ Here is how the ingress flow works in Azure Container Apps.
 
 ```mermaid
 graph LR
-    A[Client Browser] --> B[Azure Load Balancer]
+    A[Client Browser] --> B[Container Apps Environment Endpoint]
     B --> C[Container Apps Ingress]
     C --> D{Ingress Type?}
     D -->|External| E[Public Endpoint]
@@ -203,7 +208,7 @@ graph LR
 
 The built-in ingress in Azure Container Apps is sufficient for most web applications and APIs. However, it does have some limitations compared to a full reverse proxy like NGINX or Azure Application Gateway. For example, you cannot configure custom rewrite rules or advanced header manipulation directly. If you need those features, consider placing an Azure Application Gateway or Azure Front Door in front of your Container Apps environment.
 
-Also, note that the auto-generated Azure domain always uses HTTPS with a valid certificate. There is no way to disable TLS on the external endpoint, which is a good security default.
+Also, note that the auto-generated Azure domain always supports HTTPS with a valid certificate. You can allow HTTP with `--allow-insecure`, but HTTPS remains available on the external endpoint.
 
 ## Summary
 
