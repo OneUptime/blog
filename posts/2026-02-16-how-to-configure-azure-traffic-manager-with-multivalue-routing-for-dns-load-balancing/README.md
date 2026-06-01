@@ -32,7 +32,7 @@ sequenceDiagram
     Client->>EP1: Connection attempt
 ```
 
-The key behavior is that unhealthy endpoints are excluded from the response. If Endpoint 3 is failing health checks, its IP address is not returned in the DNS response. This gives you automatic failover without the client needing to detect failures itself.
+The key behavior is that unhealthy endpoints are normally excluded from the response while other eligible endpoints are healthy. If Endpoint 3 is failing health checks and the other endpoints are healthy, its IP address is not returned in the DNS response. This gives you automatic failover without the client needing to detect failures itself.
 
 ## When to Use Multivalue Routing
 
@@ -40,7 +40,7 @@ Multivalue routing is a good fit when:
 
 - **You have multiple independent endpoints** that can each handle the full request (not sharded or partitioned)
 - **You want client-side load distribution** without a centralized load balancer
-- **Your clients support DNS-level failover** (most HTTP clients and browsers do)
+- **Your clients can retry alternate addresses returned by DNS**
 - **You need fast failover** because the client already has alternate IPs from the DNS response and can try them without another DNS lookup
 - **You are distributing across external or non-Azure endpoints** where you cannot use Azure Load Balancer
 
@@ -63,7 +63,7 @@ Create a Traffic Manager profile with multivalue routing:
 az network traffic-manager profile create \
   --name myMultivalueProfile \
   --resource-group myResourceGroup \
-  --routing-method MultiValue \
+  --routing-method Multivalue \
   --unique-dns-name myapp-multivalue \
   --ttl 30 \
   --protocol HTTPS \
@@ -74,14 +74,14 @@ az network traffic-manager profile create \
 
 Important parameters:
 
-- **routing-method MultiValue**: Enables the multivalue routing mode
-- **max-return 3**: The maximum number of healthy endpoints to return in each DNS response. You can set this between 1 and 8.
+- **routing-method Multivalue**: Enables the multivalue routing mode
+- **max-return 3**: The maximum number of healthy endpoints to return in each DNS response. You can set this between 1 and 10.
 - **ttl 30**: DNS TTL in seconds. Lower values mean faster failover but more DNS queries. 30 seconds is a good balance.
 - **path "/health"**: The health probe path. Traffic Manager checks this endpoint to determine health status.
 
 ## Step 2: Add Endpoints
 
-Add the endpoints that Traffic Manager will monitor and include in DNS responses. For multivalue routing, you must use external endpoints with IPv4 addresses:
+Add the endpoints that Traffic Manager will monitor and include in DNS responses. For multivalue routing, you must use external endpoints specified as IPv4 or IPv6 addresses:
 
 ```bash
 # Add external endpoints with their IP addresses
@@ -134,14 +134,14 @@ az network traffic-manager profile update \
   --path "/health" \
   --interval 10 \
   --timeout 5 \
-  --tolerated-number-of-failures 2
+  --max-failures 2
 ```
 
 Parameters explained:
 
 - **interval 10**: Check every 10 seconds
 - **timeout 5**: Wait up to 5 seconds for a response
-- **tolerated-number-of-failures 2**: Mark as unhealthy after 2 consecutive failures (so unhealthy detection takes about 20-30 seconds)
+- **max-failures 2**: Tolerate 2 consecutive health check failures before marking the endpoint degraded (so unhealthy detection takes about 20-30 seconds)
 
 ## Step 4: Verify the DNS Response
 
@@ -221,7 +221,7 @@ This is useful when your endpoints sit behind a reverse proxy that requires a sp
 
 The behavior when a client receives multiple A records depends on the client implementation:
 
-**Web browsers**: Most browsers implement Happy Eyeballs (RFC 6555) or similar algorithms. They try the first IP, and if it does not respond within a short timeout (typically 300ms), they try the next one. This gives you very fast failover at the client level.
+**Web browsers**: Browser behavior depends on the browser and operating system resolver. Happy Eyeballs (RFC 6555, updated by RFC 8305) primarily handles dual-stack IPv4/IPv6 connection selection, so do not assume every browser will race or quickly retry all IPv4 A records.
 
 **HTTP libraries**: Libraries like curl, requests (Python), and HttpClient (.NET) typically try IPs in order and fall back if the first one fails.
 
@@ -233,17 +233,17 @@ The behavior when a client receives multiple A records depends on the client imp
 
 The `max-return` value affects both resilience and performance:
 
-- **Higher values** (4-8): More IPs in each response means faster client-side failover since the client has more alternatives. But it also means more load on your health probing infrastructure.
+- **Higher values** (4-10): More IPs in each response means faster client-side failover since the client has more alternatives.
 - **Lower values** (1-2): Fewer IPs per response, which means less client-side redundancy. If the returned IPs happen to be the ones that go down, the client needs to wait for DNS TTL expiry and re-query.
 - **Recommended**: Set `max-return` to at least 2 for basic redundancy, and no more than the total number of endpoints you have.
 
 ## Limitations
 
-**External endpoints only**: Multivalue routing only works with external endpoints (IP addresses). You cannot use Azure endpoints or nested profiles.
+**External endpoints only**: Multivalue routing only works when all endpoints are external endpoints specified as IP addresses. You cannot use Azure endpoints or nested profiles in a multivalue profile.
 
-**IPv4 only**: Endpoints must be IPv4 addresses. IPv6 is not supported for multivalue routing.
+**IP address endpoints only**: Endpoints must be IPv4 or IPv6 addresses. FQDN targets are not supported for multivalue routing.
 
-**No weighting**: Unlike weighted routing, multivalue routing does not let you assign different weights to different endpoints. All healthy endpoints are equally likely to be included in the response.
+**No weighting**: Unlike weighted routing, multivalue routing does not let you assign different weights to different endpoints. Traffic Manager returns no more than the configured maximum number of healthy endpoints, and the same set is not guaranteed for every query.
 
 **Client behavior varies**: You cannot control how the client selects from the returned IPs. Some clients always use the first one, which can lead to uneven distribution.
 
