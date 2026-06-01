@@ -12,11 +12,11 @@ Pulling container images directly from Docker Hub and other public registries in
 
 ## How ACR Artifact Cache Works
 
-When you configure a cache rule, ACR acts as a pull-through cache for a specific upstream registry. The first time you pull an image through the cache, ACR fetches it from the upstream registry and stores it locally. Subsequent pulls are served from ACR's local cache, bypassing the upstream entirely. ACR periodically refreshes the cached images based on your configuration.
+When you configure a cache rule, ACR acts as a pull-through cache for a specific upstream registry. The first time you pull an image through the cache, ACR fetches it from the upstream registry and stores it locally. Subsequent pulls are served from ACR's local cache, bypassing the upstream entirely. ACR does not automatically pull newly available tags; each tag is cached after it is pulled through the cache.
 
 The benefits are significant:
 
-- **No rate limiting** - Docker Hub limits free accounts to 100 pulls per 6 hours. With caching, you pull once from Docker Hub and serve unlimited pulls from ACR.
+- **No rate limiting** - Docker Hub limits unauthenticated users to 100 pulls per 6 hours per IPv4 address or IPv6 /64 subnet, and Personal authenticated users to 200 pulls per 6 hours. With caching, you pull once from Docker Hub and serve repeated pulls from ACR.
 - **Faster pulls** - ACR is in your Azure region, usually much closer to your AKS cluster than Docker Hub.
 - **Reliability** - If Docker Hub goes down, your cached images are still available.
 - **Security** - You can scan cached images for vulnerabilities before using them.
@@ -24,20 +24,44 @@ The benefits are significant:
 
 ## Prerequisites
 
-You need an ACR instance (Premium tier is recommended for the full feature set, but artifact cache works on all tiers), Azure CLI 2.45 or later, and optionally a Docker Hub account for authenticated pulls with higher rate limits.
+You need an ACR instance (Premium tier is recommended for the full feature set, but artifact cache works on all tiers), Azure CLI 2.46 or later, and a Docker Hub account for Docker Hub cache rules.
 
 ## Step 1: Create a Cache Rule for Docker Hub
 
 A cache rule maps a source registry path to a target repository in your ACR.
 
-```bash
-# Create a cache rule for Docker Hub official images
+Docker Hub cache rules require a credential set. Create the credential set from Key Vault secret URIs first, then grant the credential set identity permission to read those secrets.
 
+```bash
+# Create a credential set for Docker Hub
+az acr credential-set create \
+  --registry myregistry \
+  --name docker-hub-creds \
+  --login-server docker.io \
+  --username-id https://myvault.vault.azure.net/secrets/dockerhub-username \
+  --password-id https://myvault.vault.azure.net/secrets/dockerhub-password
+
+PRINCIPAL_ID=$(az acr credential-set show \
+  --registry myregistry \
+  --name docker-hub-creds \
+  --query 'identity.principalId' \
+  -o tsv)
+
+az keyvault set-policy \
+  --name myvault \
+  --object-id $PRINCIPAL_ID \
+  --secret-permissions get
+```
+
+Now create the cache rule for Docker Hub official images.
+
+```bash
 az acr cache create \
   --registry myregistry \
   --name docker-hub-cache \
   --source-repo docker.io/library/* \
-  --target-repo docker-hub/*
+  --target-repo docker-hub/* \
+  --cred-set docker-hub-creds
 ```
 
 This rule caches any image from Docker Hub's official library (like `nginx`, `redis`, `postgres`) under the `docker-hub/` prefix in your ACR. When you pull `myregistry.azurecr.io/docker-hub/nginx:1.25`, ACR fetches `docker.io/library/nginx:1.25` and caches it.
@@ -50,32 +74,20 @@ az acr cache create \
   --registry myregistry \
   --name grafana-cache \
   --source-repo docker.io/grafana/* \
-  --target-repo docker-hub/grafana/*
+  --target-repo docker-hub/grafana/* \
+  --cred-set docker-hub-creds
 
 az acr cache create \
   --registry myregistry \
   --name bitnami-cache \
   --source-repo docker.io/bitnami/* \
-  --target-repo docker-hub/bitnami/*
+  --target-repo docker-hub/bitnami/* \
+  --cred-set docker-hub-creds
 ```
 
-## Step 2: Set Up Authenticated Caching
+## Step 2: Update Authenticated Caching
 
-Docker Hub rate limits are stricter for unauthenticated pulls. Configure ACR with Docker Hub credentials to get higher limits.
-
-First, store the Docker Hub credentials in ACR.
-
-```bash
-# Create a credential set for Docker Hub
-az acr credential-set create \
-  --registry myregistry \
-  --name docker-hub-creds \
-  --login-server docker.io \
-  --username-id https://myvault.vault.azure.net/secrets/dockerhub-username \
-  --password-id https://myvault.vault.azure.net/secrets/dockerhub-password
-```
-
-The credentials are stored in Azure Key Vault and referenced by their secret URIs. Now update the cache rule to use these credentials.
+Docker Hub cache rules use the credential set you created in Step 1. The credentials are stored in Azure Key Vault and referenced by their secret URIs. If you rotate the Docker Hub credentials or created a cache rule without credentials for another supported registry, update the cache rule to use the credential set.
 
 ```bash
 # Update the cache rule to use authenticated pulls
@@ -273,21 +285,13 @@ sequenceDiagram
 
 ## Security Scanning of Cached Images
 
-One of the major benefits of caching is the ability to scan public images before using them. Enable Microsoft Defender for container registries to automatically scan cached images.
+One of the major benefits of caching is the ability to scan public images before using them. Enable Microsoft Defender for Containers to scan images in Azure Container Registry, then review the findings in Microsoft Defender for Cloud recommendations.
 
-```bash
-# Check scan results for a cached image
-az acr repository show \
-  --name myregistry \
-  --image docker-hub/nginx:1.25 \
-  --query "changeableAttributes"
-```
-
-You can also set up Azure Policy to prevent deployment of images with critical vulnerabilities, even cached ones.
+You can also use Defender for Containers gated deployment to prevent deployment of images with critical vulnerabilities, even cached ones.
 
 ## Handling Cache Staleness
 
-ACR refreshes cached images when they are pulled and the upstream has a newer digest for the same tag. If you need the latest version of a tag, pull it again and ACR will check the upstream.
+ACR does not automatically cache newly published tags. If you need a new tag, pull that tag through the cache so ACR can fetch and store it.
 
 For production, pin to specific digests rather than mutable tags.
 
