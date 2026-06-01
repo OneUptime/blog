@@ -26,6 +26,7 @@ There are several reasons to use VNet-integrated ACI:
 
 - An Azure Virtual Network with a dedicated subnet for ACI
 - The subnet must be delegated to `Microsoft.ContainerInstance/containerGroups`
+- A NAT gateway or Azure Firewall configuration if the container needs outbound internet access
 - Azure CLI installed
 
 ## Step 1: Create the Virtual Network and Subnet
@@ -100,7 +101,7 @@ properties:
         resources:
           requests:
             cpu: 2.0
-            memoryInGb: 4.0
+            memoryInGB: 4.0
         ports:
           - port: 8080
             protocol: TCP
@@ -235,17 +236,11 @@ Now your container can connect to `mydb.privatelink.database.windows.net` and it
 
 ## Outbound Internet Access
 
-VNet-deployed containers can still make outbound connections to the internet by default. The outbound traffic goes through the VNet's default route. If you need to control outbound traffic:
+VNet-deployed containers need an explicitly supported egress path for outbound internet access. Use a NAT gateway for straightforward static outbound IP requirements, or route through Azure Firewall when you need firewall-based inspection and rules.
 
 ### Using a NAT Gateway
 
 ```bash
-# Create a NAT gateway for predictable outbound IPs
-az network nat gateway create \
-    --resource-group my-resource-group \
-    --name aci-nat-gateway \
-    --location eastus
-
 # Create a public IP for the NAT gateway
 az network public-ip create \
     --resource-group my-resource-group \
@@ -253,10 +248,11 @@ az network public-ip create \
     --sku Standard \
     --allocation-method Static
 
-# Associate the public IP with the NAT gateway
-az network nat gateway update \
+# Create a NAT gateway for predictable outbound IPs
+az network nat gateway create \
     --resource-group my-resource-group \
     --name aci-nat-gateway \
+    --location eastus \
     --public-ip-addresses nat-public-ip
 
 # Associate the NAT gateway with the ACI subnet
@@ -271,7 +267,7 @@ This gives your containers a static outbound IP, which is useful when you need t
 
 ### Using a Firewall
 
-For more control, route outbound traffic through Azure Firewall using a route table:
+For more control, route traffic through Azure Firewall using a route table and firewall rules:
 
 ```bash
 # Create a route table
@@ -322,10 +318,10 @@ graph TB
 
 A few things to keep in mind:
 
-- VNet deployment is only supported for Linux containers
-- Windows containers are not supported for VNet deployment
+- VNet deployment is generally available for Linux and Windows containers in most Azure regions where ACI is available
 - The ACI subnet requires delegation and cannot contain other resource types
 - VNet-deployed containers do not support public IP addresses
+- Container instances do not inherit DNS settings from the associated VNet; custom DNS settings must be configured explicitly for the container group
 - Some regions may have limited availability for VNet deployment
 
 ## Summary
