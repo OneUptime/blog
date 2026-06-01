@@ -14,7 +14,7 @@ This post covers how to set up metric alerts with dynamic thresholds, when to us
 
 ## How Dynamic Thresholds Work
 
-When you create a metric alert with dynamic thresholds, Azure Monitor looks at the historical data for that metric (at least 3 days, ideally more) and builds a model of its expected behavior. This model accounts for daily patterns (like lower traffic at night), weekly patterns (like reduced activity on weekends), and gradual trends (like steadily increasing storage usage).
+When you create a metric alert with dynamic thresholds, Azure Monitor looks at the historical data for that metric and builds a model of its expected behavior. Azure Monitor uses 10 days of historical data to calculate the initial hourly or daily seasonal patterns, and the alert does not fire until it has at least 3 days and 30 samples of metric data. Weekly patterns, like reduced activity on weekends, need about three weeks of history before the model can account for them.
 
 The alert fires when the actual metric value falls outside the expected range. You control how far outside is "too far" by setting the sensitivity level.
 
@@ -29,7 +29,7 @@ There are three sensitivity options:
 Before you begin, make sure:
 
 - The resource you want to monitor is emitting metrics (most Azure resources do this automatically).
-- The metric you want to alert on has at least 3 days of historical data. Dynamic thresholds need this baseline to build an accurate model.
+- The metric you want to alert on has enough historical data. Dynamic thresholds can be configured before the baseline is ready, but they will not trigger until Azure Monitor has at least 3 days and 30 samples of metric data.
 - You have an action group configured for receiving notifications (email, SMS, webhook, etc.).
 
 ## Step 1: Create a Dynamic Threshold Alert in the Azure Portal
@@ -51,7 +51,8 @@ Now configure the condition:
 9. Set **Sensitivity** to **Medium** (you can adjust later).
 10. Under **Advanced options**, configure:
     - **Number of violations** - How many data points must be anomalous before firing. Setting this to "3 out of 5" means 3 out of the last 5 evaluation periods must be anomalous.
-    - **Look back period** - How far back the model looks when evaluating. This determines the evaluation window.
+    - **Evaluation period** - The number of evaluation periods used with the number of violations.
+    - **Ignore data before** - Optionally set the date from which Azure Monitor should start learning the metric history.
 11. Click **Done**.
 
 ## Step 2: Configure the Action Group
@@ -83,7 +84,7 @@ az monitor metrics alert create \
   --name "vm-cpu-anomaly" \
   --resource-group rg-monitoring \
   --scopes "$RESOURCE_ID" \
-  --condition "avg Percentage CPU > dynamic medium 3 of 5 since 2023-01-01" \
+  --condition "avg Percentage CPU > dynamic medium 3 of 5 since 2023-01-01T00:00:00Z" \
   --action "$ACTION_GROUP_ID" \
   --severity 2 \
   --description "Fires when CPU usage deviates from the learned normal pattern" \
@@ -91,7 +92,7 @@ az monitor metrics alert create \
   --window-size 15m
 ```
 
-The condition syntax for dynamic thresholds follows this pattern: `{aggregation} {metric} {operator} dynamic {sensitivity} {violations} of {total} since {date}`.
+The condition syntax for dynamic thresholds follows this pattern: `{aggregation} {metric} {operator} dynamic {sensitivity} {violations} of {total} since {ISO8601 datetime}`.
 
 ## Setting Up with an ARM Template
 
@@ -147,13 +148,14 @@ Dynamic thresholds are not always the right choice. Here is a quick decision gui
 - The metric has a predictable daily or weekly pattern (web traffic, batch processing schedules).
 - You do not know what "normal" looks like for a new workload.
 - You are tired of tuning static thresholds that keep generating false positives.
-- You want to catch gradual degradation that would not breach a static threshold.
+- You want to catch unexpected deviations from a normal seasonal pattern.
 
 **Use static thresholds when:**
 
 - There is a hard limit that should never be crossed (disk space below 10%, connection pool at maximum).
 - The metric does not have enough history (less than 3 days of data).
 - You need deterministic, predictable alert behavior for compliance reasons.
+- You need to alert on slow, steadily evolving degradation.
 - The metric is inherently random with no discernible pattern.
 
 ## Tuning Sensitivity
@@ -168,7 +170,7 @@ The evaluation frequency and window size also matter. A 5-minute frequency with 
 
 ## Multi-Resource Dynamic Alerts
 
-One powerful feature is the ability to apply a single dynamic threshold alert to multiple resources of the same type. Instead of creating one alert per VM, you can scope the alert to a resource group or subscription and have it monitor every VM at once.
+One powerful feature is the ability to apply a single dynamic threshold alert to multiple resources of the same type in the same Azure region. Instead of creating one alert per VM, you can scope the alert to a resource group or subscription and have it monitor matching VMs in that region at once.
 
 Each VM gets its own learned baseline. So "normal" for a web server and "normal" for a database server will be different, even though they share the same alert rule.
 
@@ -182,7 +184,7 @@ If the model looks off - for example, if you recently changed your application d
 
 ## Cost Considerations
 
-Metric alerts in Azure Monitor are billed per alert rule per month. Dynamic threshold alerts cost slightly more than static ones because of the machine learning component. As of the current pricing, a standard metric alert costs roughly $0.10 per month per signal, while dynamic threshold alerts cost around $1.00 per month per signal. For a small number of alerts, the difference is negligible. But if you are creating hundreds of alert rules, static thresholds may be more cost-effective for simple cases.
+Metric alerts in Azure Monitor are billed based on the number of metric time series monitored. Dynamic threshold alerts add a separate dynamic-threshold charge on top of the underlying metric alert charge. For a small number of alerts, the difference is usually negligible. But if you are creating hundreds of alert rules or monitoring many resources and dimensions, static thresholds may be more cost-effective for simple cases.
 
 ## Wrapping Up
 
