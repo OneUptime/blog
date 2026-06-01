@@ -26,10 +26,9 @@ graph TD
     C --> G[ERP RemoteApp]
     D --> H[Photoshop RemoteApp]
     D --> I[Illustrator RemoteApp]
-    J[Finance Team Azure AD Group] --> B
-    J --> C
+    J[Finance Team Azure AD Group] --> C
     K[Design Team Azure AD Group] --> D
-    L[All Employees Azure AD Group] --> B
+    L[Desktop Users Azure AD Group] --> B
 ```
 
 1. **Host Pool** - The collection of VMs. Users do not connect to the host pool directly.
@@ -39,7 +38,7 @@ graph TD
 
 A host pool can have one Desktop application group and multiple RemoteApp application groups. Users assigned to the Desktop group get a full Windows desktop. Users assigned to a RemoteApp group see only the published applications.
 
-Important rule: a user cannot be assigned to both the Desktop application group and a RemoteApp application group on the same host pool. It is one or the other.
+Important rule: if a user is assigned to both a Desktop application group and a RemoteApp application group on the same pooled host pool, they only get access to the application type selected by the host pool's preferred application group type. Plan assignments so users get either desktops or RemoteApps from a given host pool.
 
 ## Prerequisites
 
@@ -54,7 +53,7 @@ If you have not already created application groups, set them up.
 
 ### Desktop Application Group
 
-A Desktop application group is created automatically with every host pool. Check if one exists.
+A Desktop application group is created automatically when you create a host pool by using the Azure portal. Check if one exists.
 
 ```bash
 # List application groups for your host pool
@@ -96,30 +95,30 @@ az desktopvirtualization applicationgroup create \
 
 Publish specific applications within the RemoteApp group.
 
-```bash
+```powershell
 # Add Excel as a published application
-az desktopvirtualization application create \
-  --resource-group myResourceGroup \
-  --application-group-name avd-finance-apps-ag \
-  --name Excel \
-  --friendly-name "Microsoft Excel" \
-  --file-path "C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE" \
-  --icon-path "C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE" \
-  --icon-index 0 \
-  --command-line-setting DoNotAllow \
-  --show-in-portal true
+New-AzWvdApplication `
+  -ResourceGroupName "myResourceGroup" `
+  -GroupName "avd-finance-apps-ag" `
+  -Name "Excel" `
+  -FriendlyName "Microsoft Excel" `
+  -FilePath "C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE" `
+  -IconPath "C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE" `
+  -IconIndex 0 `
+  -CommandLineSetting "DoNotAllow" `
+  -ShowInPortal
 
 # Add the ERP application
-az desktopvirtualization application create \
-  --resource-group myResourceGroup \
-  --application-group-name avd-finance-apps-ag \
-  --name ERPClient \
-  --friendly-name "ERP System" \
-  --file-path "C:\Program Files\ERPVendor\ERPClient.exe" \
-  --icon-path "C:\Program Files\ERPVendor\ERPClient.exe" \
-  --icon-index 0 \
-  --command-line-setting DoNotAllow \
-  --show-in-portal true
+New-AzWvdApplication `
+  -ResourceGroupName "myResourceGroup" `
+  -GroupName "avd-finance-apps-ag" `
+  -Name "ERPClient" `
+  -FriendlyName "ERP System" `
+  -FilePath "C:\Program Files\ERPVendor\ERPClient.exe" `
+  -IconPath "C:\Program Files\ERPVendor\ERPClient.exe" `
+  -IconIndex 0 `
+  -CommandLineSetting "DoNotAllow" `
+  -ShowInPortal
 ```
 
 ## Step 2: Associate Application Groups with a Workspace
@@ -178,14 +177,9 @@ az role assignment create \
   --assignee-principal-type Group \
   --role "Desktop Virtualization User" \
   --scope "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.DesktopVirtualization/applicationgroups/avd-finance-apps-ag"
-
-# Assign the same group to the Desktop application group
-az role assignment create \
-  --assignee-object-id "$GROUP_ID" \
-  --assignee-principal-type Group \
-  --role "Desktop Virtualization User" \
-  --scope "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.DesktopVirtualization/applicationgroups/avd-desktop-ag"
 ```
+
+If the Finance Team needs full desktops instead of RemoteApps, assign it to the Desktop application group instead.
 
 Using groups lets you manage access through Azure AD group membership rather than modifying AVD role assignments every time someone joins or leaves the team.
 
@@ -210,26 +204,31 @@ az desktopvirtualization applicationgroup create \
   --application-group-type RemoteApp \
   --location eastus \
   --friendly-name "Developer Tools"
+```
 
-# Add apps to each group
-az desktopvirtualization application create \
-  --resource-group myResourceGroup \
-  --application-group-name avd-design-apps-ag \
-  --name Photoshop \
-  --friendly-name "Adobe Photoshop" \
-  --file-path "C:\Program Files\Adobe\Adobe Photoshop 2024\Photoshop.exe" \
-  --command-line-setting DoNotAllow \
-  --show-in-portal true
+Add apps to each group with Azure PowerShell.
 
-az desktopvirtualization application create \
-  --resource-group myResourceGroup \
-  --application-group-name avd-dev-apps-ag \
-  --name VSCode \
-  --friendly-name "Visual Studio Code" \
-  --file-path "C:\Program Files\Microsoft VS Code\Code.exe" \
-  --command-line-setting DoNotAllow \
-  --show-in-portal true
+```powershell
+New-AzWvdApplication `
+  -ResourceGroupName "myResourceGroup" `
+  -GroupName "avd-design-apps-ag" `
+  -Name "Photoshop" `
+  -FriendlyName "Adobe Photoshop" `
+  -FilePath "C:\Program Files\Adobe\Adobe Photoshop 2024\Photoshop.exe" `
+  -CommandLineSetting "DoNotAllow" `
+  -ShowInPortal
 
+New-AzWvdApplication `
+  -ResourceGroupName "myResourceGroup" `
+  -GroupName "avd-dev-apps-ag" `
+  -Name "VSCode" `
+  -FriendlyName "Visual Studio Code" `
+  -FilePath "C:\Program Files\Microsoft VS Code\Code.exe" `
+  -CommandLineSetting "DoNotAllow" `
+  -ShowInPortal
+```
+
+```bash
 # Associate all groups with the workspace
 az desktopvirtualization workspace update \
   --resource-group myResourceGroup \
@@ -265,10 +264,10 @@ Common policies include:
 
 - Require multi-factor authentication (MFA) for AVD connections.
 - Block access from non-compliant devices.
-- Require managed devices for full desktop access but allow RemoteApps from any device.
+- Require managed or compliant devices for selected user groups or client apps.
 - Restrict access to specific geographic locations.
 
-Configure these in Azure AD > Security > Conditional Access. Target the "Azure Virtual Desktop" cloud app.
+Configure these in the Microsoft Entra admin center under Protection > Conditional Access. Target the "Azure Virtual Desktop" app, and also target "Windows Cloud Login" if you use single sign-on to session hosts.
 
 ## Step 7: Verify User Access
 
@@ -282,7 +281,7 @@ az role assignment list \
   --output table
 ```
 
-Have the user connect through the AVD web client at `https://client.wvd.microsoft.com/arm/webclient` or the Windows Desktop client. They should see only the workspaces and applications they have been assigned.
+Have the user connect through Windows App at `https://windows.cloud.microsoft/` in a supported browser, or by using the Windows App client. They should see only the workspaces and applications they have been assigned.
 
 ## Managing Access at Scale
 
@@ -292,6 +291,7 @@ For organizations with hundreds of users, use automation to manage assignments.
 # PowerShell script to sync AVD access from a CSV file
 # CSV format: UserPrincipalName,ApplicationGroupName
 $assignments = Import-Csv "C:\AVD\user-assignments.csv"
+$subId = az account show --query id --output tsv
 
 foreach ($assignment in $assignments) {
     $scope = "/subscriptions/$subId/resourceGroups/myResourceGroup/providers/Microsoft.DesktopVirtualization/applicationgroups/$($assignment.ApplicationGroupName)"
@@ -313,7 +313,7 @@ foreach ($assignment in $assignments) {
 
 ## Common Mistakes
 
-**Assigning users to both Desktop and RemoteApp groups on the same host pool**: This is not supported. Users get the Desktop application group if assigned to both, and the RemoteApp applications are hidden.
+**Assigning users to both Desktop and RemoteApp groups on the same pooled host pool**: Users only get access to the application type selected by the host pool's preferred application group type. If you expect them to see both a desktop and RemoteApps from the same host pool, they will not.
 
 **Forgetting to associate the application group with a workspace**: Users cannot discover application groups that are not in a workspace. The assignments work, but the user sees nothing in their feed.
 
