@@ -14,7 +14,7 @@ But resource moves are not as simple as drag and drop. Some resources cannot be 
 
 ## How Resource Moves Work
 
-When you move a resource in Azure, you are changing its resource group and possibly its subscription. The resource ID changes (because the resource group is part of the ID), but the resource itself is not redeployed or recreated. It is a metadata operation - the resource stays running throughout the move.
+When you move a resource in Azure, you are changing its resource group and possibly its subscription. The resource ID changes (because the resource group is part of the ID), but the resource itself is not redeployed or recreated. It is a metadata operation - the resource generally keeps running, although the source and destination resource groups are locked for write and delete operations during the move.
 
 ```mermaid
 flowchart LR
@@ -40,6 +40,7 @@ The resource IDs change after a move. If you have scripts, pipelines, or applica
 ## Prerequisites
 
 - Azure CLI installed and logged in
+- `jq` installed if you use the full Bash script later in this guide
 - Contributor (or Owner) role on both the source and destination resource groups
 - If moving between subscriptions, Contributor role on both subscriptions
 - The destination resource group must already exist
@@ -59,11 +60,11 @@ Not all Azure resources support moves. Before attempting anything, validate that
 - Container Registries
 - Log Analytics Workspaces
 
-Resources That Cannot Be Moved
+### Resources That Cannot Be Moved
 
 - Azure Active Directory Domain Services
-- Azure Backup vaults (with active backups)
-- Resources in a classic deployment model
+- Some Backup and Recovery Services vault scenarios, such as CMK-encrypted vaults or vaults with unsupported backup item types
+- Many resources in a classic deployment model
 - Some marketplace resources
 
 ### Validate Before Moving
@@ -85,19 +86,7 @@ az resource invoke-action \
   }'
 ```
 
-A simpler approach using the `az resource move` command with the `--validate` flag:
-
-```bash
-# Validate a move without actually performing it
-# First, get the resource IDs
-APP_ID=$(az webapp show --name "myapp" --resource-group "rg-old" --query id -o tsv)
-PLAN_ID=$(az appservice plan show --name "myplan" --resource-group "rg-old" --query id -o tsv)
-
-# Validate the move
-az resource move \
-  --destination-group "rg-new" \
-  --ids "$APP_ID" "$PLAN_ID"
-```
+The `az resource move` command also validates the request before moving resources, but it does not have a validate-only flag. Use `validateMoveResources` when you need a dry run.
 
 ## Step 2: Move Resources Between Resource Groups
 
@@ -199,10 +188,10 @@ Some resources have dependencies that must be moved together. If you try to move
 **Virtual Machines** must move with:
 - Managed disks
 - Network interfaces
-- Public IP addresses (optional)
+- Public IP addresses, network security groups, virtual networks, and storage accounts when the move validation reports them as dependencies
 
 ```bash
-# Move a VM and all its dependencies
+# Move a VM and common dependencies
 VM_ID=$(az vm show --name "myvm" --resource-group "rg-old" --query id -o tsv)
 NIC_ID=$(az vm show --name "myvm" --resource-group "rg-old" --query "networkProfile.networkInterfaces[0].id" -o tsv)
 OS_DISK_ID=$(az vm show --name "myvm" --resource-group "rg-old" --query "storageProfile.osDisk.managedDisk.id" -o tsv)
@@ -229,6 +218,8 @@ az resource move \
   --ids "$APP_ID" "$PLAN_ID"
 ```
 
+For cross-subscription App Service moves, all App Service resources in the source resource group must move together, and the destination resource group must not already contain App Service resources.
+
 **SQL Databases** must move with their SQL Server:
 
 ```bash
@@ -252,6 +243,8 @@ Here is a comprehensive script that validates, moves, and verifies:
 SOURCE_RG="rg-old"
 DEST_RG="rg-new"
 DEST_SUB=""  # Leave empty for same-subscription move
+SOURCE_SUB=$(az account show --query id -o tsv)
+TARGET_SUB="${DEST_SUB:-$SOURCE_SUB}"
 
 echo "=== Gathering resource IDs from $SOURCE_RG ==="
 RESOURCE_IDS=$(az resource list \
@@ -273,23 +266,44 @@ if [ "$confirm" != "y" ]; then
 fi
 
 # Create destination group if it does not exist
-az group show --name "$DEST_RG" &>/dev/null || \
-    az group create --name "$DEST_RG" --location "eastus2"
+az group show --name "$DEST_RG" --subscription "$TARGET_SUB" &>/dev/null || \
+    az group create --name "$DEST_RG" --location "eastus2" --subscription "$TARGET_SUB"
+
+DEST_RG_ID="/subscriptions/$TARGET_SUB/resourceGroups/$DEST_RG"
+
+# Validate the move before starting it
+echo "=== Validating move ==="
+az resource invoke-action \
+  --action validateMoveResources \
+  --ids "/subscriptions/$SOURCE_SUB/resourceGroups/$SOURCE_RG" \
+  --request-body "{
+    \"resources\": $(printf '%s\n' "$RESOURCE_IDS" | jq -R . | jq -s .),
+    \"targetResourceGroup\": \"$DEST_RG_ID\"
+  }"
+
+if [ $? -ne 0 ]; then
+    echo "=== Validation failed ==="
+    exit 1
+fi
 
 # Perform the move
 echo "=== Starting move ==="
-MOVE_CMD="az resource move --destination-group $DEST_RG --ids $RESOURCE_IDS"
 if [ -n "$DEST_SUB" ]; then
-    MOVE_CMD="$MOVE_CMD --destination-subscription-id $DEST_SUB"
+    az resource move \
+      --destination-group "$DEST_RG" \
+      --destination-subscription-id "$DEST_SUB" \
+      --ids $RESOURCE_IDS
+else
+    az resource move \
+      --destination-group "$DEST_RG" \
+      --ids $RESOURCE_IDS
 fi
-
-eval $MOVE_CMD
 
 if [ $? -eq 0 ]; then
     echo "=== Move completed successfully ==="
     echo ""
     echo "Resources now in $DEST_RG:"
-    az resource list --resource-group "$DEST_RG" --output table
+    az resource list --resource-group "$DEST_RG" --subscription "$TARGET_SUB" --output table
 else
     echo "=== Move failed ==="
     echo "Check the source group for remaining resources:"
@@ -302,7 +316,7 @@ fi
 After moving resources, verify these items:
 
 1. **Update resource IDs** in any scripts, pipelines, or application configurations
-2. **Check RBAC assignments** - role assignments at the resource level stay with the resource, but resource group-level assignments do not follow
+2. **Check RBAC assignments** - active role assignments on moved resources do not move and must be recreated; resource group-level assignments also do not follow
 3. **Update diagnostic settings** - if diagnostics were configured to send to a resource in the old group, check they still work
 4. **Verify resource locks** - locks at the resource group level do not follow resources to the new group
 5. **Test your applications** - make sure everything still works after the move
