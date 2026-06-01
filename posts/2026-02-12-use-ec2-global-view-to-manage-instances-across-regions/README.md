@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, EC2, Global View, Multi-Region, Resource Management, Operation
 
-Description: Use EC2 Global View to see and manage EC2 instances, VPCs, subnets, and security groups across all AWS regions from a single dashboard.
+Description: Use EC2 Global View to see EC2 instances, VPCs, subnets, security groups, EBS volumes, and Auto Scaling groups across AWS regions from a single dashboard.
 
 ---
 
-If you're running EC2 instances in multiple AWS regions, you know the pain of switching between regions in the console to get a full picture. Did someone launch a test instance in ap-southeast-1 and forget about it? Is there an unused Elastic IP sitting in eu-central-1? EC2 Global View gives you a single pane of glass to see all your EC2 resources across every region.
+If you're running EC2 instances in multiple AWS regions, you know the pain of switching between regions in the console to get a full picture. Did someone launch a test instance in ap-southeast-1 and forget about it? Is there an unused volume sitting in eu-central-1? EC2 Global View gives you a single pane of glass to see key EC2 and VPC resources across regions.
 
 ## What EC2 Global View Shows
 
@@ -19,7 +19,7 @@ EC2 Global View provides a unified view of these resource types across all enabl
 - Subnets
 - Security groups
 - EBS volumes
-- Elastic IPs
+- Auto Scaling groups
 
 You can search, filter, and sort across all regions without switching context. It's particularly useful for:
 - Finding orphaned resources
@@ -29,26 +29,20 @@ You can search, filter, and sort across all regions without switching context. I
 
 ## Accessing Global View
 
-In the AWS Console, navigate to EC2 and click "EC2 Global View" in the left sidebar. But the real power comes from the API, which lets you script and automate cross-region visibility.
+In the AWS Console, navigate to EC2 and click "EC2 Global View" in the left sidebar. Global View is read-only, so the real power for automation comes from regional EC2 APIs, which let you script cross-region visibility.
 
 ## Using the API
 
 List all instances across all regions:
 
 ```bash
-# Get a summary of EC2 instances across all regions
-
-aws ec2 describe-instance-type-offerings \
-  --location-type region \
-  --query 'InstanceTypeOfferings[0:5]'
-
 # Since there is no single API for global view,
 # here is a script that queries all regions
 for REGION in $(aws ec2 describe-regions --query 'Regions[*].RegionName' --output text); do
   COUNT=$(aws ec2 describe-instances \
     --region $REGION \
     --filters "Name=instance-state-name,Values=running" \
-    --query 'length(Reservations[*].Instances[*])' --output text 2>/dev/null)
+    --query 'length(Reservations[].Instances[])' --output text 2>/dev/null)
 
   if [ "$COUNT" -gt 0 ] 2>/dev/null; then
     echo "$REGION: $COUNT running instances"
@@ -92,8 +86,7 @@ for REGION in $(aws ec2 describe-regions --query 'Regions[*].RegionName' --outpu
   # Count unattached Elastic IPs
   EIPS=$(aws ec2 describe-addresses \
     --region $REGION \
-    --filters "Name=association-id,Values=" \
-    --query 'length(Addresses)' \
+    --query 'length(Addresses[?AssociationId==null])' \
     --output text 2>/dev/null || echo 0)
 
   # Only print regions with resources
@@ -157,7 +150,7 @@ for REGION in $(aws ec2 describe-regions --query 'Regions[*].RegionName' --outpu
     echo "$UNUSED_EIPS" | jq -r '.[] | "  \(.IP) (\(.AllocId))"'
   fi
 
-  # Find stopped instances older than 30 days
+  # Find stopped instances launched more than 30 days ago
   THIRTY_DAYS_AGO=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -v-30d +%Y-%m-%dT%H:%M:%S)
   STOPPED=$(aws ec2 describe-instances \
     --region $REGION \
@@ -167,7 +160,7 @@ for REGION in $(aws ec2 describe-regions --query 'Regions[*].RegionName' --outpu
 
   if [ "$STOPPED" != "[[]]" ] && [ "$STOPPED" != "[]" ] && [ "$STOPPED" != "" ]; then
     echo ""
-    echo "[$REGION] Stopped instances (30+ days):"
+    echo "[$REGION] Stopped instances launched 30+ days ago:"
     echo "$STOPPED" | jq -r '.[][] | "  \(.Id) - \(.Type) - \(.Name // "no name")"' 2>/dev/null
   fi
 
@@ -242,7 +235,7 @@ aws configservice put-configuration-aggregator \
   --configuration-aggregator-name "global-ec2-view" \
   --account-aggregation-sources '[
     {
-      "AccountIds": ["123456789"],
+      "AccountIds": ["123456789012"],
       "AllAwsRegions": true
     }
   ]'
@@ -320,4 +313,4 @@ def lambda_handler(event, context):
 
 4. **Centralize monitoring**: Use CloudWatch cross-account dashboards or a tool like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to monitor instances across all regions from one place.
 
-EC2 Global View, whether through the console or scripts, is essential for any organization running instances in multiple regions. The alternative - manually checking each region one by one - simply doesn't scale.
+EC2 Global View, combined with cross-region scripts, is essential for any organization running instances in multiple regions. The alternative - manually checking each region one by one - simply doesn't scale.
