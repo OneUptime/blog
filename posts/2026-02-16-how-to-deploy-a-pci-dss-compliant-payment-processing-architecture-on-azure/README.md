@@ -14,7 +14,7 @@ Azure provides the infrastructure to meet PCI DSS requirements, but it does not 
 
 ## Understanding the Shared Responsibility Model
 
-Azure is a PCI DSS Level 1 Service Provider, meaning Microsoft maintains compliance for the underlying infrastructure. But that only covers the physical data centers, hypervisors, and core network infrastructure. Everything you deploy on top of that - your virtual machines, databases, applications, and configurations - is your responsibility.
+Azure is a PCI DSS Level 1 Service Provider, meaning Microsoft maintains compliance for the Azure services it operates. But that does not cover everything you deploy on top of those services. Your virtual machines, databases, applications, data, identities, and configurations remain your responsibility.
 
 Think of it this way: Azure gives you compliant building blocks, but you are responsible for assembling them correctly.
 
@@ -50,11 +50,11 @@ graph TB
     E --> H
 ```
 
-The CDE is the smallest possible footprint. The web frontend never sees card numbers. The business logic layer handles orders but passes payment details directly to the payment service, which is the only component in scope.
+The CDE is the smallest possible footprint. The web frontend never stores card numbers. The business logic layer handles orders but passes payment details directly to the payment service. If the business logic layer transmits un-tokenized card data, it is still in PCI scope; hosted payment fields or tokenization are needed to keep it out of the CDE.
 
 ## Step 1 - Network Segmentation
 
-PCI DSS Requirement 1 mandates firewall and network segmentation. On Azure, this means Virtual Networks, Network Security Groups (NSGs), and private endpoints.
+PCI DSS Requirement 1 covers network security controls, and strong segmentation reduces the size of the CDE. On Azure, this means Virtual Networks, Network Security Groups (NSGs), and private endpoints.
 
 ```bash
 # Create the main VNet with separate subnets for each zone
@@ -154,15 +154,27 @@ az keyvault create \
 az keyvault key create \
   --vault-name payment-keyvault \
   --name sql-tde-key \
-  --kty RSA \
+  --kty RSA-HSM \
   --size 2048
 
-# Configure Azure SQL to use the customer-managed key
+# Add the key to Azure SQL and configure it as the TDE protector.
+# The SQL server's managed identity must have get, wrapKey, and unwrapKey permissions on the key.
+az sql server key create \
+  --server payment-sql-server \
+  --resource-group payment-rg \
+  --kid "https://payment-keyvault.vault.azure.net/keys/sql-tde-key/<version>"
+
 az sql server tde-key set \
-  --server-name payment-sql-server \
+  --server payment-sql-server \
   --resource-group payment-rg \
   --server-key-type AzureKeyVault \
   --kid "https://payment-keyvault.vault.azure.net/keys/sql-tde-key/<version>"
+
+az sql db tde set \
+  --database payment-db \
+  --server payment-sql-server \
+  --resource-group payment-rg \
+  --status Enabled
 ```
 
 Using customer-managed keys means you control the encryption key lifecycle. If you need to revoke access, you can disable the key in Key Vault and the database becomes unreadable. This is a strong control that auditors appreciate.
@@ -171,7 +183,7 @@ Using customer-managed keys means you control the encryption key lifecycle. If y
 
 PCI DSS Requirements 7 and 8 deal with access control. You need to restrict access to cardholder data on a need-to-know basis and assign unique IDs to each person with access.
 
-Use Azure Active Directory with role-based access control (RBAC). Create custom roles that give the minimum necessary permissions.
+Use Microsoft Entra ID, formerly Azure Active Directory, with role-based access control (RBAC). Create custom roles that give the minimum necessary permissions.
 
 ```bash
 # Create a custom role for payment service operators
@@ -193,11 +205,11 @@ az role definition create --role-definition '{
   ]
 }'
 
-# Require MFA for all CDE access via Conditional Access
-# This is configured in Azure AD portal or via Graph API
+# Require MFA for CDE access via Conditional Access
+# This is configured in the Microsoft Entra admin center or via Graph API
 ```
 
-Enforce multi-factor authentication for anyone accessing CDE resources. PCI DSS 3.2.1 requires MFA for all remote access to the CDE.
+Enforce multi-factor authentication for anyone accessing CDE resources. PCI DSS v4.0.1 Requirement 8.4.2 requires MFA for non-console access into the CDE, and Requirement 8.4.3 requires MFA for remote access that could access or impact the CDE.
 
 ## Step 4 - Enable Comprehensive Logging
 
@@ -211,12 +223,27 @@ az monitor log-analytics workspace create \
   --location eastus \
   --retention-time 365
 
-# Enable diagnostic logging on the SQL server
+# Get the Log Analytics workspace resource ID
+workspace_id=$(az monitor log-analytics workspace show \
+  --workspace-name pci-audit-logs \
+  --resource-group payment-rg \
+  --query id \
+  --output tsv)
+
+# Enable Azure SQL auditing to Log Analytics
+az sql db audit-policy update \
+  --resource-group payment-rg \
+  --server payment-sql-server \
+  --name payment-db \
+  --state Enabled \
+  --lats Enabled \
+  --lawri "$workspace_id"
+
+# Enable diagnostic metrics on the SQL database
 az monitor diagnostic-settings create \
   --name sql-diagnostics \
   --resource "/subscriptions/<sub-id>/resourceGroups/payment-rg/providers/Microsoft.Sql/servers/payment-sql-server/databases/payment-db" \
   --workspace pci-audit-logs \
-  --logs '[{"category": "SQLSecurityAuditEvents", "enabled": true}, {"category": "SQLInsights", "enabled": true}]' \
   --metrics '[{"category": "AllMetrics", "enabled": true}]'
 
 # Enable Key Vault audit logging
@@ -227,11 +254,11 @@ az monitor diagnostic-settings create \
   --logs '[{"category": "AuditEvent", "enabled": true}]'
 ```
 
-Set the retention to 365 days minimum. PCI DSS requires at least one year of audit log retention, with the most recent three months immediately available for analysis.
+Set the retention to 365 days minimum. PCI DSS v4.0.1 Requirement 10.5.1 requires at least 12 months of audit log retention, with the most recent three months immediately available for analysis.
 
 ## Step 5 - Deploy a Web Application Firewall
 
-PCI DSS Requirement 6.6 requires either a web application firewall or regular code reviews for public-facing applications. A WAF is more practical for ongoing protection.
+PCI DSS v4.0.1 Requirement 6.4.2 requires public-facing web applications to be protected by an automated technical solution that continually detects and prevents web-based attacks. A WAF is the usual way to meet this control.
 
 ```bash
 # Create Azure Front Door with WAF policy
@@ -244,8 +271,8 @@ az network front-door waf-policy create \
 az network front-door waf-policy managed-rules add \
   --policy-name payment-waf-policy \
   --resource-group payment-rg \
-  --type DefaultRuleSet \
-  --version 1.0 \
+  --type Microsoft_DefaultRuleSet \
+  --version 2.2 \
   --action Block
 
 # Add rate limiting rule to prevent brute force attacks
@@ -255,7 +282,10 @@ az network front-door waf-policy rule create \
   --resource-group payment-rg \
   --rule-type RateLimitRule \
   --rate-limit-threshold 100 \
-  --rate-limit-duration-in-minutes 1 \
+  --rate-limit-duration 1 \
+  --match-variable RemoteAddr \
+  --operator IPMatch \
+  --values 0.0.0.0/0 \
   --action Block \
   --priority 1
 ```
