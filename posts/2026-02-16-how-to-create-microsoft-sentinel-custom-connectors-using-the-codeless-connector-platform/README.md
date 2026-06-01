@@ -2,19 +2,19 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Sentinel, Custom Connector, Codeless Connector Platform, SIEM, Data Ingestion, Security
+Tags: Azure, Microsoft Sentinel, Custom Connector, Codeless Connector Framework, Codeless Connector Platform, SIEM, Data Ingestion, Security
 
-Description: A step-by-step guide to building custom data connectors for Microsoft Sentinel using the Codeless Connector Platform without writing backend code.
+Description: A step-by-step guide to building custom data connectors for Microsoft Sentinel using the Codeless Connector Framework without writing backend code.
 
 ---
 
-Microsoft Sentinel has built-in connectors for dozens of data sources, but sooner or later you will need to pull in data from a system that does not have one. Maybe it is a niche security appliance, a custom internal application, or a SaaS product with a REST API but no Sentinel connector. In the past, building a custom connector meant writing and deploying an Azure Function, managing authentication, handling pagination, and dealing with all the plumbing that comes with data ingestion. The Codeless Connector Platform (CCP) simplifies this dramatically. You define your connector's behavior in a JSON configuration file, and Sentinel handles the rest.
+Microsoft Sentinel has built-in connectors for dozens of data sources, but sooner or later you will need to pull in data from a system that does not have one. Maybe it is a niche security appliance, a custom internal application, or a SaaS product with a REST API but no Sentinel connector. In the past, building a custom connector meant writing and deploying an Azure Function, managing authentication, handling pagination, and dealing with all the plumbing that comes with data ingestion. The Codeless Connector Framework (CCF), formerly called the Codeless Connector Platform (CCP), simplifies this dramatically. You define your connector's behavior in a JSON configuration file, and Sentinel handles the rest.
 
-In this post, I will walk through building a custom connector from scratch using CCP, covering everything from the data connector definition to polling configuration and deployment.
+In this post, I will walk through building a custom connector from scratch using CCF, covering everything from the data connector definition to polling configuration and deployment.
 
-## What Is the Codeless Connector Platform?
+## What Is the Codeless Connector Framework?
 
-CCP is a framework that lets you create Sentinel data connectors by writing a JSON (or ARM template) definition rather than code. You describe how to authenticate with the data source, what API endpoints to call, how to handle pagination, and how to map the response data to a Log Analytics table. Sentinel takes that definition and runs the polling infrastructure for you.
+CCF is a framework that lets you create Sentinel data connectors by writing a JSON (or ARM template) definition rather than code. You describe how to authenticate with the data source, what API endpoints to call, how to handle pagination, and how to map the response data to a Log Analytics table. Sentinel takes that definition and runs the polling infrastructure for you.
 
 The platform supports:
 
@@ -24,16 +24,16 @@ The platform supports:
 - Response parsing and field mapping
 - Built-in retry logic and error handling
 
-## When to Use CCP vs. Other Methods
+## When to Use CCF vs. Other Methods
 
-CCP is ideal when your data source has a REST API that returns JSON data. If the data source pushes events via webhook, syslog, or file drops, CCP is not the right tool - you would use a different connector type or an Azure Function.
+CCF is ideal when your data source has a REST API that returns JSON data. If the data source pushes events via webhook, syslog, or file drops, CCF is not the right tool - you would use a different connector type or an Azure Function.
 
 Here is a quick decision guide:
 
 ```mermaid
 graph TD
     A[Data Source] --> B{How does it provide data?}
-    B -->|REST API that you poll| C[Use Codeless Connector Platform]
+    B -->|REST API that you poll| C[Use Codeless Connector Framework]
     B -->|Pushes via Webhook| D[Use Azure Function with HTTP trigger]
     B -->|Syslog/CEF| E[Use Syslog/CEF connector]
     B -->|File drops to storage| F[Use Azure Function with Blob trigger]
@@ -52,7 +52,7 @@ Before writing any connector definition, you need to understand the API you are 
 
 ## Step 2: Define the Data Connector Resource
 
-The CCP connector is defined as an ARM template resource of type `Microsoft.SecurityInsights/dataConnectorDefinitions` paired with a `Microsoft.SecurityInsights/dataConnectors` resource.
+The CCF connector is defined as an ARM template resource of type `Microsoft.SecurityInsights/dataConnectorDefinitions` paired with a `Microsoft.SecurityInsights/dataConnectors` resource.
 
 Let us build the definition. First, the connector definition that appears in the Sentinel UI.
 
@@ -73,7 +73,7 @@ This is the connector definition that controls how the connector appears in the 
     "resources": [
         {
             "type": "Microsoft.SecurityInsights/dataConnectorDefinitions",
-            "apiVersion": "2022-09-01-preview",
+            "apiVersion": "2025-09-01",
             "name": "SecurityAuditProDefinition",
             "location": "[resourceGroup().location]",
             "kind": "Customizable",
@@ -100,7 +100,7 @@ This is the connector definition that controls how the connector appears in the 
                     ],
                     "connectivityCriteria": [
                         {
-                            "type": "HasDataConnectors"
+                            "type": "hasDataConnectors"
                         }
                     ],
                     "availability": {
@@ -144,6 +144,15 @@ This is the connector definition that controls how the connector appears in the 
                                         "type": "password",
                                         "name": "clientSecret"
                                     }
+                                },
+                                {
+                                    "type": "ConnectionToggleButton",
+                                    "parameters": {
+                                        "name": "connect",
+                                        "connectLabel": "Connect",
+                                        "disconnectLabel": "Disconnect",
+                                        "isPrimary": true
+                                    }
                                 }
                             ]
                         }
@@ -157,17 +166,17 @@ This is the connector definition that controls how the connector appears in the 
 
 ## Step 3: Define the Polling Configuration
 
-The polling configuration is the heart of the CCP connector. It tells Sentinel how to call the API, authenticate, handle pagination, and parse responses.
+The polling configuration is the heart of the CCF connector. It tells Sentinel how to call the API, authenticate, handle pagination, and parse responses.
 
 This resource definition configures the actual data polling behavior:
 
 ```json
 {
     "type": "Microsoft.SecurityInsights/dataConnectors",
-    "apiVersion": "2022-09-01-preview",
+    "apiVersion": "2025-09-01",
     "name": "SecurityAuditProPoller",
     "location": "[resourceGroup().location]",
-    "kind": "APIPolling",
+    "kind": "RestApiPoller",
     "scope": "[concat('Microsoft.OperationalInsights/workspaces/', parameters('workspace'))]",
     "properties": {
         "connectorDefinitionName": "SecurityAuditProDefinition",
@@ -189,8 +198,6 @@ This resource definition configures the actual data polling behavior:
         "auth": {
             "type": "OAuth2",
             "tokenEndpoint": "https://api.securityauditpro.com/oauth/token",
-            "authorizationEndpoint": "https://api.securityauditpro.com/oauth/token",
-            "authorizationEndpointQueryParameters": {},
             "tokenEndpointHeaders": {
                 "Content-Type": "application/x-www-form-urlencoded"
             },
@@ -203,13 +210,12 @@ This resource definition configures the actual data polling behavior:
         "request": {
             "apiEndpoint": "https://api.securityauditpro.com/v2/events",
             "httpMethod": "GET",
-            "queryParameters": {
-                "start_time": "{datetime:yyyy-MM-ddTHH:mm:ssZ}",
-                "end_time": "{now:yyyy-MM-ddTHH:mm:ssZ}"
-            },
+            "startTimeAttributeName": "start_time",
+            "endTimeAttributeName": "end_time",
             "queryTimeFormat": "yyyy-MM-ddTHH:mm:ssZ",
             "queryWindowInMin": 5,
-            "rateLimitQps": 1,
+            "rateLimitQPS": 1,
+            "paginatedCallsPerSecond": 1,
             "retryCount": 3,
             "headers": {
                 "Accept": "application/json"
@@ -221,19 +227,19 @@ This resource definition configures the actual data polling behavior:
 
 Let me break down the key sections:
 
-**auth** - Defines how to authenticate. CCP supports OAuth2 (client credentials, authorization code), API key (header or query parameter), and Basic authentication. In this example, we use OAuth2 client credentials flow.
+**auth** - Defines how to authenticate. CCF supports OAuth2 (client credentials, authorization code), API key, Basic authentication, and JWT token authentication. In this example, we use OAuth2 client credentials flow.
 
-**request** - Defines the API endpoint, HTTP method, query parameters, and polling window. The `queryWindowInMin` parameter controls how frequently Sentinel polls for new data. The `{datetime}` and `{now}` placeholders are replaced with the appropriate timestamps at runtime.
+**request** - Defines the API endpoint, HTTP method, query parameters, and query window. The `queryWindowInMin` parameter controls the time range used for each poll. The `startTimeAttributeName` and `endTimeAttributeName` fields tell CCF which query string parameters should receive the formatted start and end times at runtime.
 
-**response** - Tells CCP where to find the event data in the API response. `eventsJsonPaths` uses JSONPath syntax to locate the array of events.
+**response** - Tells CCF where to find the event data in the API response. `eventsJsonPaths` uses JSONPath syntax to locate the array of events.
 
-**paging** - Configures how to handle paginated responses. CCP supports several pagination types including `NextPageToken`, `LinkHeader`, and `Offset`.
+**paging** - Configures how to handle paginated responses. CCF supports several pagination types including `NextPageToken`, `LinkHeader`, and `Offset`.
 
 ## Step 4: Create the Data Collection Rule
 
-CCP connectors use Data Collection Rules (DCRs) to define how data is transformed and ingested into the Log Analytics workspace. You need to create a DCR and a custom table.
+CCF connectors use Data Collection Rules (DCRs) to define how data is transformed and ingested into the Log Analytics workspace. You need a DCR, a data collection endpoint (DCE), and a custom table.
 
-This creates the custom table and DCR for the connector:
+This creates the custom table and DCE for the connector, then creates the DCR from a JSON rule file:
 
 ```bash
 # Create a custom table in Log Analytics for the connector data
@@ -255,10 +261,18 @@ az monitor log-analytics workspace table create \
 
 # Create a data collection endpoint
 az monitor data-collection endpoint create \
-  --name dce-sentinel-ccp \
+  --name dce-sentinel-ccf \
   --resource-group rg-sentinel \
   --location eastus \
   --public-network-access Enabled
+
+# Create a data collection rule from a JSON file that declares the
+# Custom-SecurityAuditPro_CL stream and routes it to SecurityAuditPro_CL
+az monitor data-collection rule create \
+  --resource-group rg-sentinel \
+  --location eastus \
+  --name dcr-securityauditpro \
+  --rule-file dcr-securityauditpro.json
 ```
 
 ## Step 5: Deploy the Connector
@@ -274,7 +288,7 @@ az deployment group create \
   --template-file connector-template.json \
   --parameters \
     workspace=law-sentinel-prod \
-    dceUri="https://dce-sentinel-ccp-xxxx.eastus.ingest.monitor.azure.com" \
+    dceUri="https://dce-sentinel-ccf-xxxx.eastus.ingest.monitor.azure.com" \
     dcrImmutableId="dcr-xxxxxxxxxxxxxxx"
 ```
 
@@ -305,7 +319,7 @@ If you do not see data after 15-20 minutes, check the connector health status in
 
 **Pagination not working** - Test the pagination manually by calling the API and following the page tokens. Make sure the `nextPageTokenJsonPath` correctly points to the pagination field.
 
-**Rate limiting errors** - Lower the `rateLimitQps` value in the request configuration. If the API returns 429 responses, the built-in retry logic should handle it, but reducing the polling rate helps prevent it in the first place.
+**Rate limiting errors** - Lower the `rateLimitQPS` and `paginatedCallsPerSecond` values in the request configuration. If the API returns 429 responses, the built-in retry logic should handle it, but reducing the polling rate helps prevent it in the first place.
 
 ## Best Practices
 
@@ -316,4 +330,4 @@ If you do not see data after 15-20 minutes, check the connector health status in
 
 ## Wrapping Up
 
-The Codeless Connector Platform significantly lowers the barrier to integrating custom data sources with Microsoft Sentinel. Instead of writing and maintaining Azure Functions, you describe the integration in JSON and let Sentinel handle the infrastructure. For any REST API-based data source, CCP should be your first choice. It handles authentication, polling, pagination, and retry logic out of the box, letting you focus on what matters - getting the security data into Sentinel so you can write detection rules and investigate incidents.
+The Codeless Connector Framework significantly lowers the barrier to integrating custom data sources with Microsoft Sentinel. Instead of writing and maintaining Azure Functions, you describe the integration in JSON and let Sentinel handle the infrastructure. For any REST API-based data source that can be polled, CCF should be your first choice. It handles authentication, polling, pagination, and retry logic out of the box, letting you focus on what matters - getting the security data into Sentinel so you can write detection rules and investigate incidents.
