@@ -12,7 +12,7 @@ Azure Logic Apps Consumption runs on shared multi-tenant infrastructure. That wo
 
 ## Important Note on ISE Availability
 
-Microsoft announced the retirement of ISE for new deployments. If you are starting fresh, you should use Logic Apps Standard with VNET integration instead. However, many existing deployments still run on ISE, and understanding how it works remains relevant for maintaining and operating those environments. This guide covers both ISE concepts and the migration path to Standard.
+Microsoft retired ISE on August 31, 2024. If you are starting fresh, you should use Logic Apps Standard with VNET integration instead. However, some existing deployments still need migration planning, and understanding how ISE worked remains relevant for maintaining or retiring those environments. This guide covers both ISE concepts and the migration path to Standard.
 
 ## What Is an ISE?
 
@@ -21,7 +21,7 @@ An ISE is a dedicated instance of the Logic Apps service deployed into an Azure 
 ```mermaid
 graph TD
     subgraph "Azure Virtual Network"
-        subgraph "ISE Subnet"
+        subgraph "ISE Subnets"
             A[ISE Instance]
             B[Logic App Workflow 1]
             C[Logic App Workflow 2]
@@ -42,19 +42,19 @@ graph TD
 
 Setting up an ISE requires:
 
-- An Azure Virtual Network with a dedicated subnet (minimum /27)
-- The subnet must be empty and delegated to `Microsoft.Logic/integrationServiceEnvironments`
-- No network security groups or route tables on the ISE subnet (the ISE manages its own networking)
-- The VNET must be in a supported region
+- An Azure Virtual Network with four dedicated subnets (minimum /27 each)
+- The subnets must be empty; the ISE deployment applies a `Microsoft.Logic/integrationServiceEnvironments` delegation to the first subnet
+- If you use network security groups or route tables, they must allow the required inbound and outbound ISE traffic
+- The VNET must be in the same region as the ISE
 
-The ISE subnet needs at least 32 IP addresses (/27 subnet), though Microsoft recommends /24 for room to scale.
+Each ISE subnet needs at least 32 IP addresses (/27 subnet), though larger subnets such as /24 provide more room to scale.
 
 ## Creating an ISE
 
-Creating an ISE is a long-running operation that takes several hours. Plan accordingly.
+Creating an ISE was a long-running operation that took several hours. Because ISE is retired, the following example is useful only for understanding existing deployments and historical templates, not for creating new production environments.
 
 ```bash
-# Create a VNET with an ISE subnet
+# Create a VNET with four ISE subnets
 
 az network vnet create \
   --name vnet-integration \
@@ -63,11 +63,29 @@ az network vnet create \
   --address-prefix 10.0.0.0/16
 
 az network vnet subnet create \
-  --name snet-ise \
+  --name snet-ise-1 \
   --vnet-name vnet-integration \
   --resource-group rg-integration \
   --address-prefix 10.0.1.0/24 \
   --delegations Microsoft.Logic/integrationServiceEnvironments
+
+az network vnet subnet create \
+  --name snet-ise-2 \
+  --vnet-name vnet-integration \
+  --resource-group rg-integration \
+  --address-prefix 10.0.2.0/24
+
+az network vnet subnet create \
+  --name snet-ise-3 \
+  --vnet-name vnet-integration \
+  --resource-group rg-integration \
+  --address-prefix 10.0.3.0/24
+
+az network vnet subnet create \
+  --name snet-ise-4 \
+  --vnet-name vnet-integration \
+  --resource-group rg-integration \
+  --address-prefix 10.0.4.0/24
 
 # Create the ISE (this takes 2-4 hours)
 az rest --method PUT \
@@ -82,7 +100,16 @@ az rest --method PUT \
       "networkConfiguration": {
         "subnets": [
           {
-            "id": "/subscriptions/{sub-id}/resourceGroups/rg-integration/providers/Microsoft.Network/virtualNetworks/vnet-integration/subnets/snet-ise"
+            "id": "/subscriptions/{sub-id}/resourceGroups/rg-integration/providers/Microsoft.Network/virtualNetworks/vnet-integration/subnets/snet-ise-1"
+          },
+          {
+            "id": "/subscriptions/{sub-id}/resourceGroups/rg-integration/providers/Microsoft.Network/virtualNetworks/vnet-integration/subnets/snet-ise-2"
+          },
+          {
+            "id": "/subscriptions/{sub-id}/resourceGroups/rg-integration/providers/Microsoft.Network/virtualNetworks/vnet-integration/subnets/snet-ise-3"
+          },
+          {
+            "id": "/subscriptions/{sub-id}/resourceGroups/rg-integration/providers/Microsoft.Network/virtualNetworks/vnet-integration/subnets/snet-ise-4"
           }
         ]
       }
@@ -94,7 +121,7 @@ az rest --method PUT \
 
 When running in an ISE, connectors come in three flavors:
 
-**ISE-labeled connectors**: These run directly inside the ISE, on your dedicated infrastructure. Data does not leave your VNET. Examples include SQL Server ISE, Azure Blob Storage ISE, and HTTP ISE.
+**ISE-labeled connectors**: These run directly inside the ISE, on your dedicated infrastructure. Examples include SQL Server ISE, Azure Blob Storage ISE, and Service Bus ISE.
 
 **Core connectors**: Built-in connectors that always run inside the ISE. These include HTTP, Request/Response, Compose, Variables, and other basic actions.
 
@@ -132,7 +159,7 @@ az rest --method PUT \
             "type": "Http",
             "inputs": {
               "method": "GET",
-              "uri": "http://10.0.2.10:8080/api/orders"
+              "uri": "http://10.0.10.10:8080/api/orders"
             },
             "runAfter": {}
           }
@@ -171,8 +198,8 @@ One of the primary use cases for ISE is connecting to on-premises systems throug
         "uri": "https://erp.corp.local/api/inventory",
         "authentication": {
           "type": "Basic",
-          "username": "@appsetting('ErpUsername')",
-          "password": "@appsetting('ErpPassword')"
+          "username": "@parameters('ErpUsername')",
+          "password": "@parameters('ErpPassword')"
         }
       },
       "runAfter": {}
@@ -226,9 +253,9 @@ Set up alerts on ISE-specific metrics:
 
 ## Migration Path: ISE to Logic Apps Standard
 
-Since ISE is being retired for new deployments, existing ISE users should plan their migration to Logic Apps Standard with VNET integration.
+Since ISE is retired, existing ISE users should plan their migration to Logic Apps Standard with VNET integration.
 
-Logic Apps Standard on the WS3 App Service Plan (or higher) supports VNET integration through regional VNET integration and private endpoints. This gives you similar network isolation without the ISE overhead.
+Logic Apps Standard on a Workflow Standard App Service plan supports VNET integration through regional VNET integration and private endpoints. This gives you similar network isolation without the ISE overhead.
 
 ```bash
 # Create a Logic App Standard with VNET integration
@@ -246,7 +273,7 @@ az logicapp create \
   --storage-account stworkflowsruntime
 
 # Enable VNET integration
-az logicapp vnet-integration add \
+az webapp vnet-integration add \
   --name logic-order-workflows-std \
   --resource-group rg-integration \
   --vnet vnet-integration \
