@@ -10,23 +10,23 @@ Description: Configure Azure CDN rules engine to perform URL rewrites for clean 
 
 URL rewriting at the CDN level is powerful. It lets you present clean, user-friendly URLs to your visitors while your origin server uses a completely different URL structure. You can handle API versioning, redirect legacy paths, route traffic based on device type, and more - all without touching your application code.
 
-Azure CDN with the Rules Engine gives you this capability. In this post, I will walk through setting up Azure CDN with URL rewrite rules using the Standard Microsoft tier and the Premium Verizon tier, covering the most common rewrite scenarios you will encounter.
+Azure CDN with the Rules Engine gives you this capability. In this post, I will walk through URL rewrite rules using existing Azure CDN Standard from Microsoft profiles and Azure Front Door Standard or Premium, covering the most common rewrite scenarios you will encounter.
 
 ## When to Use URL Rewrites at the CDN
 
 URL rewrites at the CDN layer are useful in several scenarios:
 
-- **Clean URLs**: Rewrite `/products/shoes` to `/catalog/category.html?name=shoes` on the origin
-- **API versioning**: Rewrite `/api/users` to `/api/v3/users` so clients always hit the latest version
+- **Clean URLs**: Rewrite `/products/shoes` to `/catalog/shoes` on the origin
+- **API versioning**: Rewrite `/api/current/users` to `/api/v3/users` so clients always hit the latest version
 - **SPA routing**: Rewrite all paths to `/index.html` for single-page applications
-- **Language routing**: Rewrite `/fr/about` to `/about?lang=fr`
-- **Legacy path migration**: Silently redirect old URL structures to new ones without client-side redirects
+- **Language routing**: Rewrite `/fr/about` to `/localized/fr/about`
+- **Legacy path migration**: Silently rewrite old URL structures to new ones without client-side redirects
 
 The key distinction is that a **rewrite** changes the URL internally (the user does not see it), while a **redirect** sends the user to a new URL (the browser URL changes). Rules Engine supports both.
 
 ## Setting Up Azure CDN
 
-Let us start by creating the CDN infrastructure.
+Let us start with the CDN infrastructure. Azure CDN Standard from Microsoft is now a classic service: new profile creation, new domain onboarding, and managed certificates are disabled, and the service retires on September 30, 2027. For new deployments, use Azure Front Door Standard or Premium. The Azure CDN examples below assume you already have an existing Standard Microsoft profile and endpoint.
 
 ```bash
 # Create a resource group
@@ -35,33 +35,23 @@ az group create \
   --name rg-cdn \
   --location eastus
 
-# Create a CDN profile with the Standard Microsoft tier
-# This tier supports the Rules Engine
-az cdn profile create \
-  --resource-group rg-cdn \
-  --name cdn-profile-main \
-  --sku Standard_Microsoft
-
-# Create a CDN endpoint pointing to your origin
-az cdn endpoint create \
+# Confirm the existing CDN endpoint that you will attach rules to
+az cdn endpoint show \
   --resource-group rg-cdn \
   --profile-name cdn-profile-main \
-  --name cdn-myapp \
-  --origin myapp.azurewebsites.net \
-  --origin-host-header myapp.azurewebsites.net \
-  --enable-compression true
+  --name cdn-myapp
 ```
 
 ## Configuring URL Rewrite Rules
 
-Azure CDN Standard Microsoft tier supports rules through delivery rules. Let us configure some common rewrite patterns.
+Existing Azure CDN Standard Microsoft profiles support rules through delivery rules. Let us configure some common rewrite patterns.
 
 ### Rewrite Clean URLs to Origin Paths
 
-Your users visit `/products/shoes` but your origin expects `/catalog/index.php?category=shoes`. The CDN rewrites the URL before forwarding to the origin.
+Your users visit `/products/shoes` but your origin expects `/catalog/shoes`. The CDN rewrites the URL before forwarding to the origin.
 
 ```bash
-# Create a rule that rewrites /products/{category} to /catalog/index.php?category={category}
+# Create a rule that rewrites /products/{category} to /catalog/{category}
 az cdn endpoint rule add \
   --resource-group rg-cdn \
   --profile-name cdn-profile-main \
@@ -72,12 +62,12 @@ az cdn endpoint rule add \
   --operator BeginsWith \
   --match-values "/products/" \
   --action-name UrlRewrite \
-  --source-pattern "/products/(.*)" \
-  --destination "/catalog/index.php?category=$1" \
-  --preserve-unmatched-path false
+  --source-pattern "/products/" \
+  --destination "/catalog/" \
+  --preserve-unmatched-path true
 ```
 
-The `--source-pattern` uses regex-like capture groups, and `$1` in the destination refers to the first captured group. So `/products/shoes` gets rewritten to `/catalog/index.php?category=shoes`.
+The `--source-pattern` is a path prefix to replace. With `--preserve-unmatched-path true`, the remaining path is appended to the destination. So `/products/shoes` gets rewritten to `/catalog/shoes`.
 
 ### SPA Fallback Routing
 
@@ -104,10 +94,10 @@ This catches requests like `/dashboard`, `/settings/profile`, or `/users/123` an
 
 ### API Version Routing
 
-Route unversioned API calls to the latest API version automatically.
+Route calls from a stable API alias to the latest API version automatically.
 
 ```bash
-# Rewrite /api/ requests to include the current API version
+# Rewrite /api/current/ requests to include the current API version
 az cdn endpoint rule add \
   --resource-group rg-cdn \
   --profile-name cdn-profile-main \
@@ -116,15 +106,15 @@ az cdn endpoint rule add \
   --rule-name api-version-rewrite \
   --match-variable UrlPath \
   --operator BeginsWith \
-  --match-values "/api/" \
+  --match-values "/api/current/" \
   --negate-condition false \
   --action-name UrlRewrite \
-  --source-pattern "/api/((?!v[0-9]).*)" \
-  --destination "/api/v3/$1" \
-  --preserve-unmatched-path false
+  --source-pattern "/api/current/" \
+  --destination "/api/v3/" \
+  --preserve-unmatched-path true
 ```
 
-This rewrites `/api/users` to `/api/v3/users` but leaves `/api/v2/users` untouched (since it already has a version prefix).
+This rewrites `/api/current/users` to `/api/v3/users`. Existing versioned paths such as `/api/v2/users` are untouched because the rule only matches the `/api/current/` prefix.
 
 ### Device-Based Routing
 
@@ -155,7 +145,7 @@ With `--preserve-unmatched-path true`, a mobile request to `/about` gets rewritt
 Sometimes you need a redirect instead of a rewrite. Redirects change the URL in the user's browser.
 
 ```bash
-# Redirect old blog paths to new blog paths (301 permanent redirect)
+# Redirect old blog paths to the new blog index (301 permanent redirect)
 az cdn endpoint rule add \
   --resource-group rg-cdn \
   --profile-name cdn-profile-main \
@@ -168,7 +158,7 @@ az cdn endpoint rule add \
   --action-name UrlRedirect \
   --redirect-type Moved \
   --redirect-protocol Https \
-  --custom-path "/blog/{url_path.1}"
+  --custom-path "/blog/"
 ```
 
 The `--redirect-type Moved` sends a 301 status code. Options include:
@@ -179,10 +169,10 @@ The `--redirect-type Moved` sends a 301 status code. Options include:
 
 ## Combining Multiple Conditions
 
-Rules can have multiple match conditions for more precise targeting.
+Rules can have multiple match conditions for more precise targeting. In the Azure CLI, create the rule with one condition and then add the extra conditions to the same rule.
 
 ```bash
-# Rewrite only HTTPS GET requests to /search with a query parameter
+# Rewrite only HTTPS GET requests to /search
 az cdn endpoint rule add \
   --resource-group rg-cdn \
   --profile-name cdn-profile-main \
@@ -196,6 +186,24 @@ az cdn endpoint rule add \
   --source-pattern "/search" \
   --destination "/search/results.html" \
   --preserve-unmatched-path false
+
+az cdn endpoint rule condition add \
+  --resource-group rg-cdn \
+  --profile-name cdn-profile-main \
+  --name cdn-myapp \
+  --rule-name rewrite-search \
+  --match-variable RequestScheme \
+  --operator Equal \
+  --match-values HTTPS
+
+az cdn endpoint rule condition add \
+  --resource-group rg-cdn \
+  --profile-name cdn-profile-main \
+  --name cdn-myapp \
+  --rule-name rewrite-search \
+  --match-variable RequestMethod \
+  --operator Equal \
+  --match-values GET
 ```
 
 ## Using Azure Front Door Rules Engine
@@ -219,7 +227,7 @@ az afd rule create \
   --match-variable RequestPath \
   --operator BeginsWith \
   --match-values "/api/" \
-  --action-name RouteConfigurationOverride \
+  --action-name UrlRewrite \
   --source-pattern "/api/" \
   --destination "/backend/api/" \
   --preserve-unmatched-path true
@@ -241,7 +249,7 @@ curl -v -H "Host: cdn-myapp.azureedge.net" \
 
 **Verify rule order**: Rules are evaluated in the order specified by the `--order` parameter. If a lower-order rule matches first, subsequent rules might not execute. Check that your rules are ordered from most specific to least specific.
 
-**Purge the CDN cache**: Cached responses use the rewritten URL as the cache key. After changing rules, purge the cache to see the new behavior.
+**Purge the CDN cache**: After changing rules, purge the affected requested paths to see the new behavior.
 
 ```bash
 # Purge the CDN cache for a specific path
@@ -254,9 +262,9 @@ az cdn endpoint purge \
 
 ## Performance Considerations
 
-URL rewrites at the CDN edge add negligible latency - they are string operations that happen in microseconds. However, be aware of these interactions:
+URL rewrites at the CDN edge add a small amount of edge processing overhead. However, be aware of these interactions:
 
-**Cache key impact**: The cache key is based on the original URL (pre-rewrite) by default. This means different original URLs that rewrite to the same origin path will be cached separately, which is usually what you want.
+**Cache key impact**: Different requested URLs can still be cached separately even if they rewrite to the same origin path, so plan SPA fallback and other broad rewrites with cache behavior in mind.
 
 **Query string handling**: If your rewrite adds query strings, make sure your CDN caching rules account for query string variations.
 
