@@ -66,6 +66,14 @@ stages:
               projects: '**/*Tests.csproj'
               arguments: '--configuration Release'
 
+          - task: DotNetCoreCLI@2
+            displayName: 'Publish the web app'
+            inputs:
+              command: 'publish'
+              publishWebProjects: true
+              arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)'
+              zipAfterPublish: true
+
           - task: PublishBuildArtifacts@1
             displayName: 'Publish build artifacts'
             inputs:
@@ -86,6 +94,7 @@ stages:
                 - task: AzureWebApp@1
                   inputs:
                     azureSubscription: 'my-azure-connection'
+                    appType: 'webApp'
                     appName: 'myapp-staging'
                     package: '$(Pipeline.Workspace)/drop/**/*.zip'
 
@@ -103,11 +112,12 @@ stages:
                 - task: AzureWebApp@1
                   inputs:
                     azureSubscription: 'my-azure-connection'
+                    appType: 'webApp'
                     appName: 'myapp-production'
                     package: '$(Pipeline.Workspace)/drop/**/*.zip'
 ```
 
-The `dependsOn` keyword is what creates the sequential flow. Without it, stages would run in parallel.
+The `dependsOn` keyword makes the sequence explicit. By default, stages run sequentially in the order they are defined; if you want a stage to run without depending on the previous stage, use `dependsOn: []`.
 
 ## Setting Up Environments and Approval Gates
 
@@ -206,10 +216,10 @@ The syntax for referencing cross-stage variables is verbose, but it works reliab
 
 One thing that YAML pipelines do not give you out of the box is automatic rollback. If your production deployment fails, the pipeline stops, but it does not undo what was deployed. You need to handle that yourself.
 
-I typically add a rollback job that runs on failure.
+If your deployment pattern keeps a tested version in a staging slot, you can add a rollback step that runs on failure.
 
 ```yaml
-# Rollback job that triggers only when deployment fails
+# Rollback step that triggers only when deployment fails
 - stage: DeployProduction
   jobs:
     - deployment: DeployProductionJob
@@ -221,6 +231,7 @@ I typically add a rollback job that runs on failure.
               - task: AzureWebApp@1
                 inputs:
                   azureSubscription: 'my-azure-connection'
+                  appType: 'webApp'
                   appName: 'myapp-production'
                   package: '$(Pipeline.Workspace)/drop/**/*.zip'
 
@@ -228,14 +239,19 @@ I typically add a rollback job that runs on failure.
           on:
             failure:
               steps:
-                - script: |
-                    echo "Deployment failed. Rolling back to previous version."
-                    az webapp deployment slot swap \
-                      --resource-group myapp-rg \
-                      --name myapp-production \
-                      --slot staging \
-                      --target-slot production
+                - task: AzureCLI@2
                   displayName: 'Rollback deployment'
+                  inputs:
+                    azureSubscription: 'my-azure-connection'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      echo "Deployment failed. Rolling back to the staging slot."
+                      az webapp deployment slot swap \
+                        --resource-group myapp-rg \
+                        --name myapp-production \
+                        --slot staging \
+                        --target-slot production
 ```
 
 ## Tips From Production Experience
