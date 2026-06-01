@@ -60,7 +60,7 @@ If your cache is a pure pass-through cache where data can be quickly regenerated
 ## Prerequisites
 
 - Azure Cache for Redis on the **Premium tier** (Standard and Basic tiers do not support persistence).
-- An Azure Storage account in the same region as the cache (Azure creates and manages this automatically, but you can use your own).
+- An Azure Storage account in the same region as the cache. On the Premium tier, the storage account is one that you own and manage.
 
 ## Enabling RDB Persistence
 
@@ -68,24 +68,44 @@ If your cache is a pure pass-through cache where data can be quickly regenerated
 
 ```bash
 # Create a Premium Redis cache with RDB persistence enabled
+STORAGE_CONNECTION=$(az storage account show-connection-string \
+  --resource-group myResourceGroup \
+  --name myredisbackupstorage \
+  --query "connectionString" \
+  --output tsv)
+
+cat > config_rdb.json <<EOF
+{
+  "rdb-storage-connection-string": "$STORAGE_CONNECTION",
+  "rdb-backup-enabled": "true",
+  "rdb-backup-frequency": "60",
+  "rdb-backup-max-snapshot-count": "1"
+}
+EOF
 
 az redis create \
   --resource-group myResourceGroup \
   --name my-redis-persistent \
   --location eastus \
   --sku Premium \
-  --vm-size P1 \
-  --enable-non-ssl-port false \
-  --redis-configuration '{"rdb-backup-enabled": "true", "rdb-backup-frequency": "60", "rdb-backup-max-snapshot-count": "1"}'
+  --vm-size p1 \
+  --redis-configuration @config_rdb.json
 ```
 
 ### On an Existing Cache
 
 ```bash
 # Enable RDB persistence on an existing Premium cache
+STORAGE_CONNECTION=$(az storage account show-connection-string \
+  --resource-group myResourceGroup \
+  --name myredisbackupstorage \
+  --query "connectionString" \
+  --output tsv)
+
 az redis update \
   --resource-group myResourceGroup \
   --name my-redis-existing \
+  --set "redisConfiguration.rdb-storage-connection-string=$STORAGE_CONNECTION" \
   --set "redisConfiguration.rdb-backup-enabled=true" \
   --set "redisConfiguration.rdb-backup-frequency=60" \
   --set "redisConfiguration.rdb-backup-max-snapshot-count=1"
@@ -97,7 +117,7 @@ az redis update \
 2. Click "Data persistence" in the left menu under Settings.
 3. Toggle "RDB" to Enabled.
 4. Select the backup frequency.
-5. Choose the storage account (or let Azure manage it).
+5. Choose the storage account and authentication method.
 6. Click "Save."
 
 ## Configuring Backup Frequency
@@ -129,13 +149,9 @@ az redis update \
 
 ## Storage Configuration
 
-### Managed Storage (Default)
+### Storage Account
 
-By default, Azure manages the storage account for your RDB snapshots. This is the simplest option - you do not need to create or manage a separate storage account.
-
-### Custom Storage Account
-
-If you need more control (for example, to set retention policies or access the RDB files directly):
+On the Premium tier, Azure saves RDB snapshots to an Azure Storage account that you own and manage:
 
 ```bash
 # Create a storage account for Redis persistence
@@ -163,8 +179,9 @@ az redis update \
 Important considerations for the storage account:
 
 - It must be in the same region as the cache.
-- Use Standard performance (Premium storage is not necessary for backups).
-- Do not enable storage firewall restrictions that would block Redis access.
+- Microsoft recommends Premium storage because it has higher throughput.
+- Do not enable storage firewall restrictions that would block Redis access. If you need storage firewall rules, use managed identity based authentication.
+- Do not use a storage account with hierarchical namespace enabled, such as Azure Data Lake Storage Gen2.
 - Do not delete the storage account while the cache is using it.
 
 ## Monitoring Persistence
@@ -189,9 +206,9 @@ az monitor metrics alert create \
   --name redis-persistence-alert \
   --resource-group myResourceGroup \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Cache/redis/my-redis-persistent" \
-  --condition "total errors > 0" \
+  --condition "max errors > 0 where ErrorType includes RDB" \
   --description "Redis persistence error detected" \
-  --action-group myActionGroup
+  --action myActionGroup
 ```
 
 In the Azure portal, check the "Data persistence" blade for the last successful backup time and any errors.
@@ -277,10 +294,9 @@ az redis create \
   --name my-redis-cluster-persistent \
   --location eastus \
   --sku Premium \
-  --vm-size P1 \
+  --vm-size p1 \
   --shard-count 3 \
-  --enable-non-ssl-port false \
-  --redis-configuration '{"rdb-backup-enabled": "true", "rdb-backup-frequency": "60"}'
+  --redis-configuration @config_rdb.json
 ```
 
 ## Disabling Persistence
@@ -302,7 +318,7 @@ Existing RDB files in storage are not deleted automatically. Clean them up manua
 1. **Set the right frequency**: Balance data loss tolerance against performance impact. 60 minutes is a good default.
 2. **Monitor backup success**: A failed backup means your safety net is gone.
 3. **Account for memory overhead**: During snapshots, memory usage spikes. Leave headroom in your cache size.
-4. **Use managed storage unless you need custom control**: It is simpler and requires no maintenance.
+4. **Use a dedicated storage account for persistence**: Do not share it with another cache or with periodic export jobs.
 5. **Test recovery**: Occasionally force a restart and verify the cache recovers with data intact.
 6. **Combine with application-level cache warming**: Even with persistence, have a strategy for populating hot keys quickly after restart.
 
