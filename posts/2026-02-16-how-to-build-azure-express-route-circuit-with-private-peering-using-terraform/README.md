@@ -159,7 +159,7 @@ terraform output express_route_service_key
 
 ## Private Peering Configuration
 
-Once the connectivity provider has provisioned the circuit (the circuit status changes to "Provisioned"), you can configure private peering. Private peering sets up BGP sessions for routing between your on-premises network and Azure VNets.
+Once the connectivity provider has provisioned the circuit (the provider status changes to "Provisioned"), you can configure private peering. Private peering sets up BGP sessions for routing between your on-premises network and Azure VNets.
 
 ```hcl
 # Private Peering configuration
@@ -183,11 +183,11 @@ resource "azurerm_express_route_circuit_peering" "private" {
 }
 ```
 
-The `/30` subnets provide exactly two usable addresses each - one for the Azure router and one for your on-premises router. Azure always uses the first usable address in the range and your router uses the second.
+The `/30` subnets provide exactly two usable addresses each - one for the Azure router and one for your on-premises router. Your router uses the first usable address in the range and Microsoft uses the second.
 
 For example, with `172.16.0.0/30`:
-- Azure router: 172.16.0.1
-- Your router: 172.16.0.2
+- Your router: 172.16.0.1
+- Azure router: 172.16.0.2
 - Network address: 172.16.0.0
 - Broadcast: 172.16.0.3
 
@@ -279,7 +279,7 @@ resource "azurerm_virtual_network_gateway_connection" "er" {
   virtual_network_gateway_id = azurerm_virtual_network_gateway.er.id
   express_route_circuit_id   = azurerm_express_route_circuit.main.id
 
-  # Enable FastPath for high-throughput scenarios (requires ErGw3AZ or Ultra Performance)
+  # Enable FastPath for high-throughput scenarios (requires ErGw3AZ, Ultra Performance, or ErGwScale with at least 10 scale units)
   # express_route_gateway_bypass = true
 
   tags = local.tags
@@ -302,8 +302,8 @@ resource "azurerm_route_filter" "main" {
     access      = "Allow"
     rule_type   = "Community"
     communities = [
-      "12076:5040",    # Azure Storage
-      "12076:5100",    # Azure SQL
+      "12076:52005",   # Azure Storage in East US 2
+      "12076:53005",   # Azure SQL in East US 2
     ]
   }
 
@@ -392,7 +392,7 @@ terraform apply -target=azurerm_express_route_circuit.main
 terraform output -raw express_route_service_key
 # Provider provisions the physical connection (can take days to weeks)
 
-# Step 3: Once the circuit shows "Provisioned", deploy the rest
+# Step 3: Once the provider status shows "Provisioned", deploy the rest
 terraform apply
 ```
 
