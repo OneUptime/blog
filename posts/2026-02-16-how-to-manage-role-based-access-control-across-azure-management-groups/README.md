@@ -29,8 +29,8 @@ graph TD
 Key rules for inheritance:
 - A role assigned at a management group applies to all child management groups, subscriptions, resource groups, and resources
 - Permissions are additive - if you have Reader at the management group level and Contributor at the subscription level, you effectively have Contributor for that subscription
-- There is no "deny" assignment in standard RBAC (deny assignments exist but can only be created by Azure Blueprints and some Azure PIM configurations)
-- The most permissive role wins when you have overlapping assignments
+- There is no user-created "deny" assignment in standard RBAC (deny assignments exist, but they are created and managed by Azure, such as through deployment stack deny settings)
+- Effective access is the union of your allowed actions when you have overlapping assignments, unless an Azure-managed deny assignment applies
 
 ## RBAC Strategy for Management Groups
 
@@ -47,7 +47,7 @@ The fundamental rule: assign the most restrictive role that still allows people 
 Here is a practical structure for an enterprise:
 
 **Tenant Root Group**
-- Security Reader: Security operations team (read-only visibility across everything)
+- Security Reader: Security operations team (read-only visibility into security posture and recommendations)
 - Cost Management Reader: Finance and FinOps team (cost visibility everywhere)
 - Management Group Contributor: Cloud governance team (can manage the hierarchy)
 
@@ -117,7 +117,7 @@ az role assignment create \
     "roleDefinitionId": {
       "type": "string",
       "metadata": {
-        "description": "Role definition ID (e.g., Reader, Contributor)"
+        "description": "Role definition GUID (e.g., Reader is acdd72a7-3385-48ef-bd42-f606fba81ae7)"
       }
     }
   },
@@ -136,12 +136,12 @@ az role assignment create \
 }
 ```
 
-## Using Azure AD Groups for RBAC
+## Using Microsoft Entra Groups for RBAC
 
-Always assign roles to Azure AD groups rather than individual users. This gives you several advantages:
+Always assign roles to Microsoft Entra groups (formerly Azure AD groups) rather than individual users. This gives you several advantages:
 
 - Adding or removing team members only requires changing group membership, not touching Azure RBAC
-- You can review group membership in Azure AD without needing to check each management group
+- You can review group membership in Microsoft Entra ID without needing to check each management group
 - Groups make it clear what the role assignment is for (the group name documents the intent)
 
 ### Recommended Group Naming Convention
@@ -157,7 +157,7 @@ az-rbac-root-securityreader
 ```
 
 ```bash
-# Create an Azure AD group for the role assignment
+# Create a Microsoft Entra group for the role assignment
 az ad group create \
   --display-name "az-rbac-platform-contributor" \
   --mail-nickname "az-rbac-platform-contributor" \
@@ -224,7 +224,8 @@ az role assignment list \
 ### Find All Assignments for a Specific User
 
 ```bash
-# Check what access a specific user has across all management groups
+# Check what access a specific user has in the current subscription context
+# Repeat with management group scopes as needed for a full tenant-wide review
 az role assignment list \
   --all \
   --assignee "<user-email-or-object-id>" \
@@ -263,7 +264,7 @@ This dramatically reduces the risk of standing permissions being misused.
 
 **Assigning Contributor when Reader is sufficient.** Many teams request Contributor access "just in case" but only need Reader for their day-to-day work. Start with Reader and elevate only when they demonstrate a need.
 
-**Not reviewing access regularly.** Set a quarterly access review schedule. Azure AD Access Reviews can automate this process.
+**Not reviewing access regularly.** Set a quarterly access review schedule. Microsoft Entra access reviews can automate this process.
 
 **Ignoring the scope of service principals.** Managed identities and service principals can also have role assignments at management groups. Audit these alongside user and group assignments.
 
