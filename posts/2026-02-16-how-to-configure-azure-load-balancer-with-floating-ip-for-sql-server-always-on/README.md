@@ -61,11 +61,11 @@ az network lb create \
 
 ## Step 2: Create the Health Probe
 
-The health probe determines which SQL VM is the current primary replica. You configure a TCP probe on a port that only the primary replica responds to. The common approach is to use a custom port (like 59999) and configure a probe listener on the primary replica only.
+The health probe determines which SQL VM currently owns the listener IP resource. You configure a TCP probe on a port that the Windows Server Failover Cluster IP Address resource responds to only on the node where that resource is online. A common probe port is 59999, but any unused TCP port is valid.
 
 ```bash
 # Create a health probe on a custom port
-# Only the primary replica will respond on this port
+# Only the node that owns the listener IP resource will respond on this port
 az network lb probe create \
   --name sqlHealthProbe \
   --resource-group myResourceGroup \
@@ -157,38 +157,26 @@ $ipResource | Start-ClusterResource
 
 The `SubnetMask` of `255.255.255.255` is deliberate. It tells the cluster that this is a single-host IP address managed by the load balancer, not a traditional subnet-based IP.
 
-## Step 6: Configure the Probe Listener on SQL VMs
+## Step 6: Allow the Probe Port on SQL VMs
 
-The health probe needs something to connect to on port 59999. You need to set up a probe listener on each SQL VM. The simplest approach is to use a PowerShell script that creates a TCP listener only on the primary replica.
-
-Create this script and schedule it to run on cluster failover events:
+The health probe needs to reach the cluster IP resource on port 59999. You do not need to create your own TCP listener script; after you set the `ProbePort` cluster parameter, WSFC responds to the load balancer probe on the node that owns the listener IP resource. Make sure Windows Firewall allows the probe port on each SQL VM:
 
 ```powershell
-# Script to manage the health probe listener
-# Run this on each SQL VM as part of the cluster failover notification
-
-# Check if this node is the primary replica
-$agPrimary = (Invoke-Sqlcmd -Query "
-    SELECT replica_server_name
-    FROM sys.dm_hadr_availability_replica_states AS rs
-    JOIN sys.availability_replicas AS r
-    ON rs.replica_id = r.replica_id
-    WHERE rs.role_desc = 'PRIMARY'
-" -ServerInstance "localhost").replica_server_name
-
-if ($agPrimary -eq $env:COMPUTERNAME) {
-    # This node is primary, start the probe listener
-    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 59999)
-    $listener.Start()
-    Write-Output "Probe listener started on port 59999"
-} else {
-    # This node is secondary, stop any existing probe listener
-    # The load balancer health probe will fail, routing traffic away
-    Write-Output "This node is secondary, probe listener not started"
-}
+New-NetFirewallRule `
+    -DisplayName "SQL AG Load Balancer Probe" `
+    -Direction Inbound `
+    -Protocol TCP `
+    -LocalPort 59999 `
+    -Action Allow
 ```
 
-A cleaner alternative is to use the Azure SQL VM IaaS Agent Extension, which handles the probe listener automatically.
+If you choose a probe port in the Windows dynamic port range (49152-65535), exclude it on every SQL VM so another process does not dynamically claim it:
+
+```powershell
+netsh int ipv4 add excludedportrange tcp startport=59999 numberofports=1 store=persistent
+```
+
+A cleaner alternative is to create and manage the listener through the Azure SQL VM IaaS Agent Extension, which configures the load balancer listener metadata and probe port for SQL Server VMs.
 
 ## Step 7: Verify the Configuration
 
@@ -204,9 +192,9 @@ sqlcmd -S 10.0.1.100,1433 -U sa -P 'YourPassword' -Q "SELECT @@SERVERNAME"
 
 The query should return the name of the current primary replica. To test failover:
 
-```powershell
-# Initiate a manual failover in SQL Server Management Studio or via T-SQL
-# On the secondary replica:
+```sql
+-- Initiate a manual failover in SQL Server Management Studio or via T-SQL
+-- On the secondary replica:
 ALTER AVAILABILITY GROUP [MyAG] FAILOVER;
 ```
 
@@ -216,7 +204,7 @@ After failover, the health probe on the old primary will fail, the load balancer
 
 **Connection timeouts after failover**: The load balancer health probe has an interval and threshold. With the settings above (5-second interval, 2 failure threshold), failover detection takes about 10 seconds. Increase the idle timeout on the load balancing rule if connections drop during this window.
 
-**Health probe not detecting the primary**: Verify the probe port (59999) is open in the Windows Firewall on both VMs and that the probe listener is running on the current primary.
+**Health probe not detecting the primary**: Verify the probe port (59999) is open in the Windows Firewall on both VMs and that the AG listener IP resource has the correct `ProbePort` cluster parameter.
 
 **Floating IP traffic not arriving**: Check that the NSG rules on the SQL subnet allow traffic from the Azure Load Balancer (use the AzureLoadBalancer service tag as the source).
 
