@@ -51,9 +51,9 @@ Here is a typical comparison for a Standard_D4s_v5 in East US:
 | Pay-as-you-go | ~$140 | ~$1,680 | Baseline |
 | 1-year RI (monthly payments) | ~$88 | ~$1,056 | ~37% |
 | 3-year RI (monthly payments) | ~$56 | ~$672 | ~60% |
-| 3-year RI (upfront payment) | N/A | ~$630 | ~62% |
+| 3-year RI (upfront payment) | N/A | ~$672 | ~60% |
 
-The savings scale with commitment length and payment method. Upfront payment gives a slightly better rate than monthly payments.
+The savings scale with commitment length. Azure lets you pay upfront or monthly, and the total reservation cost is the same either way.
 
 ## Purchasing a Reserved Instance
 
@@ -69,7 +69,7 @@ You can purchase RIs through the Azure portal, PowerShell, CLI, or the REST API.
    - **Region**: The Azure region where the VMs run.
    - **VM size**: The specific VM size to reserve.
    - **Term**: 1 year or 3 years.
-   - **Billing frequency**: Pay all upfront, monthly, or upfront plus monthly (for some terms).
+   - **Billing frequency**: Pay all upfront or monthly.
    - **Quantity**: How many instances to reserve.
 5. Review the pricing and click "Purchase."
 
@@ -79,14 +79,15 @@ You can purchase RIs through the Azure portal, PowerShell, CLI, or the REST API.
 # Purchase a 1-year reservation for 2x Standard_D4s_v5 in East US
 az reservations reservation-order purchase \
   --reservation-order-id "$(uuidgen)" \
-  --sku-name Standard_D4s_v5 \
+  --sku Standard_D4s_v5 \
   --location eastus \
   --reserved-resource-type VirtualMachines \
-  --billing-scope-id "/subscriptions/{sub-id}" \
+  --billing-scope "{sub-id}" \
   --term P1Y \
+  --billing-plan Monthly \
   --quantity 2 \
   --applied-scope-type Single \
-  --applied-scope "/subscriptions/{sub-id}" \
+  --applied-scope "{sub-id}" \
   --display-name "Prod Web Servers"
 ```
 
@@ -99,9 +100,9 @@ For example, if you purchase a reservation for Standard_D4s_v5 (4 vCPUs), it can
 - 1x Standard_D4s_v5 (exactly what you reserved)
 - Half of a Standard_D8s_v5 (you would need another reservation to cover the other half)
 
-The ratio is based on vCPU count within the same series. This flexibility means you do not have to re-purchase reservations every time you resize a VM within the same family.
+The ratio is based on the relative footprint within the same instance size flexibility group. This flexibility means you do not have to re-purchase reservations every time you resize a VM within the same family.
 
-Instance size flexibility is enabled by default for most Linux VMs. For Windows VMs, you need to make sure the "instance size flexibility" option is turned on during purchase.
+When purchasing, select the "Optimized for instance size flexibility" option if you want the discount to apply across sizes in the same flexibility group. The setting applies to both Linux and Windows VM infrastructure costs; Windows software charges are billed separately unless covered by Azure Hybrid Benefit.
 
 ## Scope Options
 
@@ -152,7 +153,7 @@ Azure offers some flexibility if your needs change:
 
 **Exchanges**: You can exchange a reservation for a different VM size, region, or term. The remaining value of the original reservation is applied to the new purchase. There is no fee for exchanges.
 
-**Cancellations**: You can cancel a reservation and get a prorated refund, minus a 12% early termination fee. There is a lifetime refund limit of $50,000.
+**Cancellations**: You can cancel a reservation and get a prorated refund. Microsoft is not currently charging early termination fees, though it says a 12% fee might apply in the future. Canceled reservation commitments are limited to $50,000 in a 12-month rolling window for a billing profile or Enterprise Agreement enrollment.
 
 ```bash
 # Exchange a reservation (done through the portal or REST API)
