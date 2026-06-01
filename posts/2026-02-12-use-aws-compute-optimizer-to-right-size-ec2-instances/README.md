@@ -12,11 +12,11 @@ Most EC2 instances are over-provisioned. Engineers pick instance sizes based on 
 
 ## What Compute Optimizer Does
 
-Compute Optimizer collects CloudWatch metrics for your running instances over the past 14 days (or up to 93 days with enhanced recommendations). It analyzes CPU utilization, memory utilization (if the CloudWatch agent is installed), network throughput, and disk I/O. Then it compares your usage patterns against the specifications of all available instance types and gives you ranked recommendations.
+Compute Optimizer collects CloudWatch metrics for your running instances over the past 14 days (or up to 93 days with enhanced infrastructure metrics). It analyzes CPU utilization, memory utilization (if the CloudWatch agent is installed), network throughput, and disk I/O. Then it compares your usage patterns against the specifications of supported instance types and gives you ranked recommendations.
 
 Each recommendation includes:
 - The recommended instance type
-- Projected performance risk (1-5 scale)
+- Projected performance risk (0-4 scale)
 - Estimated monthly savings or additional cost
 - Detailed metric comparisons
 
@@ -42,7 +42,7 @@ aws compute-optimizer update-enrollment-status \
   --include-member-accounts
 ```
 
-After enabling, it takes about 12 hours to generate initial recommendations (it needs to analyze your CloudWatch data).
+After enabling, it can take up to 24 hours to generate initial recommendations, and EC2 instances need at least 30 hours of CloudWatch metric data in the lookback period.
 
 ## Getting Recommendations
 
@@ -75,7 +75,7 @@ Let's look at a typical recommendation in detail:
 ```bash
 # Get detailed recommendations for a specific instance
 aws compute-optimizer get-ec2-instance-recommendations \
-  --instance-arns "arn:aws:ec2:us-east-1:123456789:instance/i-0abc123" \
+  --instance-arns "arn:aws:ec2:us-east-1:123456789012:instance/i-0abc123" \
   --output json
 ```
 
@@ -85,13 +85,13 @@ The response includes recommendation options ranked from best to least optimal:
 {
   "instanceRecommendations": [
     {
-      "instanceArn": "arn:aws:ec2:us-east-1:123456789:instance/i-0abc123",
+      "instanceArn": "arn:aws:ec2:us-east-1:123456789012:instance/i-0abc123",
       "currentInstanceType": "m5.2xlarge",
       "finding": "OVER_PROVISIONED",
       "findingReasonCodes": ["CPUOverprovisioned", "MemoryOverprovisioned"],
       "utilizationMetrics": [
-        {"name": "CPU", "statistic": "MAXIMUM", "value": 22.5},
-        {"name": "MEMORY", "statistic": "MAXIMUM", "value": 35.0}
+        {"name": "Cpu", "statistic": "Maximum", "value": 22.5},
+        {"name": "Memory", "statistic": "Maximum", "value": 35.0}
       ],
       "recommendationOptions": [
         {
@@ -116,7 +116,7 @@ The response includes recommendation options ranked from best to least optimal:
 }
 ```
 
-This instance is using a max of 22.5% CPU and 35% memory. Going from m5.2xlarge to m5.large would save $145/month with a performance risk of 2 (low-moderate). Going to m5.xlarge is more conservative - saves less but has almost no performance risk.
+This instance is using a max of 22.5% CPU and 35% memory. Going from m5.2xlarge to m5.large would save $145/month with a performance risk of 2 (moderate). Going to m5.xlarge is more conservative - saves less but has lower performance risk.
 
 ## Enhanced Recommendations
 
@@ -128,12 +128,12 @@ aws compute-optimizer put-recommendation-preferences \
   --resource-type Ec2Instance \
   --scope '{
     "name": "AccountId",
-    "value": "123456789"
+    "value": "123456789012"
   }' \
   --enhanced-infrastructure-metrics Active
 ```
 
-This costs $0.0003360219 per resource per hour but gives you much better recommendations, especially for workloads with weekly or monthly patterns.
+This costs $0.0003360215 per resource per hour but gives you much better recommendations, especially for workloads with weekly or monthly patterns.
 
 ## Exporting Recommendations
 
@@ -160,7 +160,7 @@ Not all recommendations should be acted on immediately. Here's a prioritization 
 # Find the biggest savings opportunities
 aws compute-optimizer get-ec2-instance-recommendations \
   --filters '[
-    {"name": "Finding", "values": ["OVER_PROVISIONED"]},
+    {"name": "Finding", "values": ["Overprovisioned"]},
     {"name": "RecommendationSourceType", "values": ["Ec2Instance"]}
   ]' \
   --query 'instanceRecommendations | sort_by(@, &recommendationOptions[0].savingsOpportunity.estimatedMonthlySavings.value) | reverse(@) | [0:10].{
@@ -174,7 +174,7 @@ aws compute-optimizer get-ec2-instance-recommendations \
 ```
 
 Start with:
-1. High savings, low risk (performance risk <= 2)
+1. High savings, low to moderate risk (performance risk <= 2)
 2. Non-production environments (less impact if something goes wrong)
 3. Stateless instances behind a load balancer (easy to change)
 
@@ -238,7 +238,7 @@ aws autoscaling start-instance-refresh \
 After changing instance types, watch the metrics closely for a week:
 
 ```bash
-# Check CPU and memory after right-sizing
+# Check CPU after right-sizing
 aws cloudwatch get-metric-statistics \
   --namespace AWS/EC2 \
   --metric-name CPUUtilization \
@@ -250,7 +250,7 @@ aws cloudwatch get-metric-statistics \
   --output table
 ```
 
-If CPU or memory regularly exceeds 80% after resizing, you may have gone too aggressive and should bump up one size.
+If CPU regularly exceeds 80% after resizing, or memory from your CloudWatch agent metrics regularly exceeds 80%, you may have gone too aggressive and should bump up one size.
 
 For comprehensive instance monitoring, make sure you've got the [CloudWatch agent installed](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view) so you can track memory usage alongside the standard metrics.
 
@@ -290,7 +290,7 @@ aws compute-optimizer get-ec2-instance-recommendations \
 
 ## Graviton Recommendations
 
-Compute Optimizer also recommends Graviton (ARM) instances when appropriate. These typically offer 20-40% better price-performance than x86 equivalents. If you see recommendations for c7g, m7g, or r7g instances, it's worth investigating.
+Compute Optimizer also recommends Graviton (ARM) instances when appropriate. These can offer up to 40% better price-performance than comparable x86 instances. If you see recommendations for c7g, m7g, or r7g instances, it's worth investigating.
 
 The catch is that your application needs to support ARM. Most modern applications do, but check for any native binaries or architecture-specific dependencies first.
 
