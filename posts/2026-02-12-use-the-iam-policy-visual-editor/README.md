@@ -81,7 +81,7 @@ And a third block for CloudWatch Logs:
 
 - Service: CloudWatch Logs
 - Actions: Under "Read", check "GetLogEvents", "FilterLogEvents", "DescribeLogGroups"
-- Resources: All resources or specific log group ARNs
+- Resources: All resources, or split DescribeLogGroups into its own statement with All resources and use specific log group ARNs for GetLogEvents and FilterLogEvents
 
 ## Using the Action Search
 
@@ -124,8 +124,7 @@ Let's build a more complete developer policy using the visual editor. We'll need
 
 **Block 3 - Lambda management:**
 - Service: Lambda
-- Actions: GetFunction, ListFunctions, UpdateFunctionCode, InvokeFunction
-- Resources: Functions matching `arn:aws:lambda:us-east-1:*:function:dev-*`
+- Actions: ListFunctions with All resources; GetFunction, UpdateFunctionCode, and InvokeFunction for functions matching `arn:aws:lambda:us-east-1:*:function:dev-*`
 
 **Block 4 - CloudWatch monitoring:**
 - Service: CloudWatch
@@ -162,11 +161,16 @@ The resulting JSON would look something like this:
             "Resource": "*"
         },
         {
+            "Sid": "LambdaListAccess",
+            "Effect": "Allow",
+            "Action": "lambda:ListFunctions",
+            "Resource": "*"
+        },
+        {
             "Sid": "LambdaDevAccess",
             "Effect": "Allow",
             "Action": [
                 "lambda:GetFunction",
-                "lambda:ListFunctions",
                 "lambda:UpdateFunctionCode",
                 "lambda:InvokeFunction"
             ],
