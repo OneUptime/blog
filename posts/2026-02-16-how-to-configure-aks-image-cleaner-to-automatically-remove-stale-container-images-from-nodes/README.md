@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AKS, Kubernetes, Image Cleaner, Disk Management, Azure, Container Image, Node Maintenance
 
-Description: Learn how to configure the AKS Image Cleaner feature to automatically remove unused and vulnerable container images from nodes to free disk space.
+Description: Learn how to configure the AKS Image Cleaner feature to automatically remove vulnerable unused container images from nodes to free disk space.
 
 ---
 
 AKS nodes accumulate container images over time. Every deployment, every rollback, every version bump leaves behind old image layers on the node's local disk. On a busy cluster with frequent deployments, a node can easily fill up its OS disk with hundreds of stale images. When the disk fills up, kubelet starts evicting pods, new pods fail to schedule, and you end up with a cascading failure that could have been easily prevented.
 
-The AKS Image Cleaner feature (powered by Eraser) automatically identifies and removes unused container images from your nodes on a schedule. It can also remove images with known vulnerabilities, giving you both disk hygiene and security benefits in one package.
+The AKS Image Cleaner feature (powered by Eraser) automatically identifies and removes vulnerable unused container images from your nodes on a schedule, giving you both disk hygiene and security benefits in one package.
 
 ## How Image Accumulation Happens
 
@@ -29,18 +29,18 @@ az aks create \
   --resource-group myRG \
   --name myAKS \
   --node-count 3 \
-  --image-cleaner-enabled \
+  --enable-image-cleaner \
   --image-cleaner-interval-hours 168
 
 # Enable on an existing cluster
 az aks update \
   --resource-group myRG \
   --name myAKS \
-  --image-cleaner-enabled \
+  --enable-image-cleaner \
   --image-cleaner-interval-hours 48
 ```
 
-The `--image-cleaner-interval-hours` parameter controls how often the cleaner runs. For production clusters with frequent deployments, I recommend 24-48 hours. For more stable environments, 168 hours (weekly) works fine.
+The `--image-cleaner-interval-hours` parameter controls how often the cleaner runs. The minimum supported interval is 24 hours. For production clusters with frequent deployments, I recommend 24-48 hours. For more stable environments, 168 hours (weekly) works fine.
 
 ## Verifying the Deployment
 
@@ -48,10 +48,10 @@ After enabling, check that the Image Cleaner components are running.
 
 ```bash
 # Check for the eraser controller manager
-kubectl get pods -n kube-system -l app=eraser-controller-manager
+kubectl get pods -n kube-system | grep eraser-controller-manager
 
 # Check for eraser worker pods (these run during cleanup)
-kubectl get pods -n kube-system -l app=eraser
+kubectl get pods -n kube-system | grep eraser-aks
 
 # View the Image Cleaner CRD
 kubectl get imagelist -A
@@ -61,64 +61,55 @@ The controller manager runs continuously, while the worker pods are created on e
 
 ## Understanding What Gets Cleaned
 
-By default, the Image Cleaner removes images that meet all of these criteria:
+In automatic mode, the Image Cleaner removes images that meet all of these criteria:
 
 1. The image is not currently being used by any running pod on the node.
-2. The image is not referenced by any pod in a non-terminal state (Pending, Running, Unknown).
-3. The image has been unused for longer than the configured interval.
+2. The image is detected as unused by the collector.
+3. The image has vulnerabilities found by the built-in Trivy scanner.
 
-Images that are actively in use are never removed. The cleaner is conservative by design - it would rather leave an unused image on disk than accidentally remove one that is about to be needed.
+Images that are actively in use are not removed. The cleaner is conservative by design - it would rather leave an unused image on disk than accidentally remove one that is still needed.
 
 ## Customizing Image Cleaner Behavior
 
-You can customize which images get cleaned using ImageList resources. This lets you explicitly mark images for removal or exclusion.
-
-```yaml
-# imagelist-exclude.yaml
-# Exclude certain images from being cleaned
-# Useful for base images you always want cached on nodes
-apiVersion: eraser.sh/v1
-kind: ImageList
-metadata:
-  name: excluded-images
-spec:
-  images:
-    # Keep these base images cached on all nodes
-    - docker.io/library/nginx:1.25
-    - docker.io/library/redis:7
-    - mcr.microsoft.com/dotnet/aspnet:8.0
-```
-
-You can also create a list of images that should always be removed, regardless of the normal cleanup criteria.
+You can manually trigger cleanup of specific unused images using an ImageList resource. In AKS, the ImageList must be named `imagelist`.
 
 ```yaml
 # imagelist-remove.yaml
-# Force removal of specific vulnerable images
+# Request removal of a specific image if it is unused
 apiVersion: eraser.sh/v1
 kind: ImageList
 metadata:
-  name: vulnerable-images
+  name: imagelist
 spec:
   images:
-    # Remove these images immediately - they have known CVEs
-    - myacr.azurecr.io/app:v1.0.0-vulnerable
     - myacr.azurecr.io/app:v0.9.0-deprecated
+```
+
+You can also create an exclusion list using a ConfigMap in the `kube-system` namespace. This is useful for base images you always want cached on nodes.
+
+```bash
+cat > sample.json <<EOF
+{"excluded": ["docker.io/library/nginx:1.25", "docker.io/library/redis:7", "mcr.microsoft.com/dotnet/aspnet:8.0"]}
+EOF
+
+kubectl create configmap excluded --from-file=sample.json --namespace=kube-system
+kubectl label configmap excluded eraser.sh/exclude.list=true -n kube-system
 ```
 
 ## Enabling Vulnerability-Based Cleanup
 
-The Image Cleaner can integrate with Trivy (a container vulnerability scanner) to automatically remove images with known vulnerabilities, even if they are still technically in use by non-running pods.
+The Image Cleaner includes Trivy (a container vulnerability scanner) in the automatic cleanup workflow. You don't enable it with a separate flag; it runs as part of the Image Cleaner worker pod.
 
 ```bash
-# Enable the Image Cleaner with vulnerability scanning
+# Enable the Image Cleaner
 az aks update \
   --resource-group myRG \
   --name myAKS \
-  --image-cleaner-enabled \
+  --enable-image-cleaner \
   --image-cleaner-interval-hours 24
 ```
 
-When vulnerability scanning is enabled, the cleaner runs Trivy against cached images on each node and removes those with critical or high severity vulnerabilities that are not actively running. This is a powerful defense-in-depth measure.
+When Image Cleaner runs, it scans unused cached images and removes images with vulnerabilities. AKS doesn't currently let you customize the vulnerability severities used by Image Cleaner. This is a useful defense-in-depth measure.
 
 ## Monitoring Disk Usage Before and After
 
@@ -129,10 +120,10 @@ Track the impact of the Image Cleaner by monitoring node disk usage.
 kubectl get nodes -o json | jq -r '.items[] | "\(.metadata.name): \(.status.conditions[] | select(.type=="DiskPressure") | .status)"'
 
 # Get detailed disk information from a specific node
-kubectl debug node/<node-name> -it --image=busybox -- df -h /
+kubectl debug node/<node-name> -it --image=busybox -- df -h /host
 
-# Count images on a specific node
-kubectl debug node/<node-name> -it --image=busybox -- crictl images | wc -l
+# List cached images reported for a specific node
+kubectl describe node <node-name> | sed -n '/Images:/,/Non-terminated Pods:/p'
 ```
 
 You can also set up Prometheus metrics to track image count and disk usage over time.
@@ -154,11 +145,11 @@ Different clusters need different cleanup frequencies. Here are the settings I u
 For clusters with dozens of deployments per day.
 
 ```bash
-# Clean every 12 hours
+# Clean daily
 az aks update \
   --resource-group myRG \
   --name myAKS \
-  --image-cleaner-interval-hours 12
+  --image-cleaner-interval-hours 24
 ```
 
 ### Stable Production Clusters
@@ -178,30 +169,27 @@ az aks update \
 For dev clusters with frequent image builds and tests.
 
 ```bash
-# Clean every 6 hours - dev clusters accumulate images fast
+# Clean daily - dev clusters accumulate images fast
 az aks update \
   --resource-group myRG \
   --name myAKS \
-  --image-cleaner-interval-hours 6
+  --image-cleaner-interval-hours 24
 ```
 
 ## Handling Edge Cases
 
 ### Pre-Pulled Images
 
-If you use DaemonSets to pre-pull images onto nodes for faster pod startup, the Image Cleaner might remove them between cleanup cycles if no pods are currently using them. Use the ImageList exclusion to prevent this.
+If you use DaemonSets to pre-pull images onto nodes for faster pod startup, the Image Cleaner might remove them between cleanup cycles if no pods are currently using them. Use an exclusion ConfigMap to prevent this.
 
-```yaml
-# exclude-prepulled.yaml
+```bash
 # Exclude pre-pulled images from cleanup
-apiVersion: eraser.sh/v1
-kind: ImageList
-metadata:
-  name: prepulled-exclusions
-spec:
-  images:
-    - myacr.azurecr.io/heavy-app:v3.0
-    - myacr.azurecr.io/ml-model:latest
+cat > sample.json <<EOF
+{"excluded": ["myacr.azurecr.io/heavy-app:v3.0", "myacr.azurecr.io/ml-model:latest"]}
+EOF
+
+kubectl create configmap prepulled-exclusions --from-file=sample.json --namespace=kube-system
+kubectl label configmap prepulled-exclusions eraser.sh/exclude.list=true -n kube-system
 ```
 
 ### Init Container Images
@@ -252,7 +240,7 @@ If you need to disable the feature.
 az aks update \
   --resource-group myRG \
   --name myAKS \
-  --image-cleaner-enabled false
+  --disable-image-cleaner
 ```
 
 This stops the cleanup cycles but does not remove any images. The Eraser components are cleaned up from the cluster.
@@ -268,12 +256,12 @@ az aks nodepool add \
   --cluster-name myAKS \
   --name largedisk \
   --node-count 3 \
-  --os-disk-size-gb 128 \
-  --os-disk-type Ephemeral
+  --node-osdisk-size 128 \
+  --node-osdisk-type Ephemeral
 ```
 
-Ephemeral OS disks are faster and cheaper than managed disks. They use the VM's local SSD, which provides better I/O performance for image pulls and container operations.
+Ephemeral OS disks use the VM's local storage, which can provide better I/O performance for image pulls and container operations. Make sure the selected VM size has enough local cache or temporary storage for the requested OS disk size.
 
 ## Wrapping Up
 
-The AKS Image Cleaner is a set-it-and-forget-it feature that prevents disk pressure issues from stale container images. Enable it on every cluster, set the interval based on your deployment frequency, and exclude any images you want permanently cached. Combined with proper OS disk sizing and image pull policies, it keeps your nodes healthy and your disk usage predictable. The vulnerability scanning integration adds a security bonus - automatically removing images with known CVEs from your nodes reduces your attack surface without any manual intervention.
+The AKS Image Cleaner is a set-it-and-forget-it feature that helps prevent disk pressure issues from stale container images. Enable it on every supported cluster, set the interval based on your deployment frequency, and exclude any images you want permanently cached. Combined with proper OS disk sizing and image pull policies, it keeps your nodes healthy and your disk usage predictable. The built-in vulnerability scanning adds a security bonus - automatically removing unused images with known CVEs from your nodes reduces your attack surface without any manual intervention.
