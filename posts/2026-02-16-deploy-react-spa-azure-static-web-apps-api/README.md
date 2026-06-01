@@ -14,10 +14,11 @@ This guide builds a complete task management application with a React frontend a
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 20.19+ or 22.12+
 - An Azure account
 - A GitHub account
 - Azure CLI installed
+- GitHub CLI installed
 - Basic React knowledge
 
 ## Creating the React Application
@@ -52,7 +53,7 @@ Build an API client that talks to the Azure Functions backend:
 
 ```typescript
 // src/api.ts - API client for the Azure Functions backend
-import { Task } from './types';
+import type { Task } from './types';
 
 // The API is served from the same domain under /api
 const API_BASE = '/api';
@@ -108,7 +109,7 @@ Now build the main application component:
 ```typescript
 // src/App.tsx - Main application component
 import { useState, useEffect } from 'react';
-import { Task } from './types';
+import type { Task } from './types';
 import { fetchTasks, createTask, toggleTask, deleteTask } from './api';
 
 function App() {
@@ -252,6 +253,15 @@ mkdir -p api/src/functions
 cd api
 npm init -y
 npm install @azure/functions
+npm pkg set main="src/functions/*.js"
+```
+
+Create `api/host.json` so the Functions runtime can load the app:
+
+```json
+{
+  "version": "2.0"
+}
 ```
 
 Create the tasks API function:
@@ -355,7 +365,7 @@ app.http('deleteTask', {
 
 ## Configuring the Static Web App
 
-Create a configuration file at the project root:
+Create a configuration file that Vite will copy to the build output:
 
 ```json
 {
@@ -372,11 +382,14 @@ Create a configuration file at the project root:
   "globalHeaders": {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY"
+  },
+  "platform": {
+    "apiRuntime": "node:20"
   }
 }
 ```
 
-Save this as `staticwebapp.config.json` in the root directory.
+Save this as `public/staticwebapp.config.json`.
 
 ## Deploying to Azure
 
@@ -387,7 +400,11 @@ Push to GitHub and create the Static Web App:
 git init
 git add .
 git commit -m "Initial commit"
+git branch -M main
 gh repo create task-manager-swa --public --push --source .
+
+# Create the Azure resource group
+az group create --name swa-demo-rg --location eastus
 
 # Create the Azure Static Web App
 az staticwebapp create \
@@ -412,8 +429,11 @@ Before deploying, test the full stack locally using the Static Web Apps CLI:
 # Install the SWA CLI
 npm install -g @azure/static-web-apps-cli
 
-# Start both the frontend dev server and API
-swa start http://localhost:5173 --api-location api
+# Terminal 1: start the Vite dev server
+npm run dev
+
+# Terminal 2: start the SWA emulator with the API
+swa start http://localhost:5173 --api-location api --swa-config-location public
 ```
 
 This proxies API requests from the Vite dev server to the local Azure Functions runtime, mimicking the production environment.
@@ -426,12 +446,12 @@ Azure Static Web Apps has built-in authentication providers. You can protect API
 {
   "routes": [
     {
-      "route": "/api/tasks",
+      "route": "/api/tasks*",
       "methods": ["POST", "PATCH", "DELETE"],
       "allowedRoles": ["authenticated"]
     },
     {
-      "route": "/api/tasks",
+      "route": "/api/tasks*",
       "methods": ["GET"],
       "allowedRoles": ["anonymous"]
     }
