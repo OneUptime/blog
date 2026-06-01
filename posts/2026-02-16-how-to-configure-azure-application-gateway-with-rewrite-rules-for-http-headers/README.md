@@ -167,8 +167,17 @@ az network application-gateway rewrite-rule create \
   --sequence 400 \
   --response-headers "Access-Control-Allow-Origin={http_req_Origin}" \
                      "Access-Control-Allow-Methods=GET, POST, OPTIONS" \
-                     "Access-Control-Allow-Headers=Content-Type, Authorization" \
-  --conditions "http_req_Origin" ".*\\.myapp\\.com$" false
+                     "Access-Control-Allow-Headers=Content-Type, Authorization"
+
+az network application-gateway rewrite-rule condition create \
+  --gateway-name myAppGateway \
+  --resource-group myResourceGroup \
+  --rule-set-name SecurityHeaders \
+  --rule-name AddCORSHeaders \
+  --variable http_req_Origin \
+  --pattern ".*\\.myapp\\.com$" \
+  --ignore-case false \
+  --negate false
 ```
 
 The condition checks if the Origin header matches the pattern. If it does, the rewrite rule fires and adds the CORS headers with the actual origin value.
@@ -185,8 +194,17 @@ az network application-gateway rewrite-rule create \
   --rule-set-name SecurityHeaders \
   --name RewriteAPIv1 \
   --sequence 500 \
-  --modified-path "/api/v2{var_uri_path_1}" \
-  --conditions "var_uri_path" "/api/v1/(.*)" false
+  --modified-path "/api/v2/{var_uri_path_1}"
+
+az network application-gateway rewrite-rule condition create \
+  --gateway-name myAppGateway \
+  --resource-group myResourceGroup \
+  --rule-set-name SecurityHeaders \
+  --rule-name RewriteAPIv1 \
+  --variable var_uri_path \
+  --pattern "/api/v1/(.*)" \
+  --ignore-case false \
+  --negate false
 ```
 
 The `{var_uri_path_1}` captures the part of the path after `/api/v1/` and appends it to the new path prefix.
@@ -228,19 +246,27 @@ For request header verification, check your backend server's access logs to conf
 
 ## Common Rewrite Scenarios
 
-**Redirect HTTP to HTTPS at the header level**: While Application Gateway has a built-in redirect feature, you can also set a Location header in the rewrite:
+**Rewrite redirect Location headers**: While Application Gateway has a built-in redirect feature, you can also rewrite the Location header on redirect responses from the backend:
 
 ```bash
-# Add Location header to redirect HTTP to HTTPS
-# This uses a condition to match HTTP requests
+# Rewrite Location headers on backend redirect responses
 az network application-gateway rewrite-rule create \
   --gateway-name myAppGateway \
   --resource-group myResourceGroup \
   --rule-set-name SecurityHeaders \
-  --name HTTPToHTTPS \
+  --name RewriteRedirectLocation \
   --sequence 50 \
-  --response-headers "Location=https://{var_host}{var_request_uri}" \
-  --conditions "var_request_scheme" "^http$" false
+  --response-headers "Location=https://{var_host}{http_resp_Location_1}"
+
+az network application-gateway rewrite-rule condition create \
+  --gateway-name myAppGateway \
+  --resource-group myResourceGroup \
+  --rule-set-name SecurityHeaders \
+  --rule-name RewriteRedirectLocation \
+  --variable http_resp_Location \
+  --pattern "^http://[^/]+(.*)" \
+  --ignore-case true \
+  --negate false
 ```
 
 **Add cache control headers**: Control how CDNs and browsers cache content:
@@ -253,8 +279,17 @@ az network application-gateway rewrite-rule create \
   --rule-set-name SecurityHeaders \
   --name AddCacheControl \
   --sequence 600 \
-  --response-headers "Cache-Control=public, max-age=86400" \
-  --conditions "var_uri_path" "\\.(css|js|png|jpg|gif|ico)$" false
+  --response-headers "Cache-Control=public, max-age=86400"
+
+az network application-gateway rewrite-rule condition create \
+  --gateway-name myAppGateway \
+  --resource-group myResourceGroup \
+  --rule-set-name SecurityHeaders \
+  --rule-name AddCacheControl \
+  --variable var_uri_path \
+  --pattern "\\.(css|js|png|jpg|gif|ico)$" \
+  --ignore-case true \
+  --negate false
 ```
 
 ## Troubleshooting
@@ -263,7 +298,7 @@ az network application-gateway rewrite-rule create \
 
 **Conditions not matching**: The condition pattern uses regex. Make sure your regex is correct. Test it with a tool like regex101.com before deploying.
 
-**Variable values empty**: Not all server variables are available in all contexts. Request headers are only available in request rewrite rules, and response headers are only available in response rewrite rules.
+**Variable values empty**: Not all server variables are available in all contexts. Make sure you use the correct variable name and prefix: request headers use `http_req_`, response headers use `http_resp_`, and server variables use `var_`.
 
 ## Wrapping Up
 
