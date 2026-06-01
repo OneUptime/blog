@@ -1,16 +1,16 @@
-# How to Deploy Dedicated Game Servers on Azure Kubernetes Service
+# How to Deploy Dedicated Game Servers with PlayFab Multiplayer Servers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Kubernetes Service, PlayFab, Game Server, Multiplayer Gaming, AKS, Dedicated Server, Game Development
+Tags: PlayFab, Game Server, Multiplayer Gaming, Dedicated Server, Game Development, Azure
 
-Description: Deploy dedicated game servers on Azure Kubernetes Service using PlayFab Multiplayer Servers for scalable multiplayer gaming experiences.
+Description: Deploy dedicated game servers using PlayFab Multiplayer Servers for scalable multiplayer gaming experiences.
 
 ---
 
 Multiplayer games need dedicated servers. Peer-to-peer networking works for some genres, but for competitive games where fairness matters, you need an authoritative server running the game simulation. The server validates all player actions, prevents cheating, and ensures everyone sees the same game state.
 
-The challenge is that multiplayer game server demand is wildly unpredictable. A popular streamer plays your game and suddenly you need 500 servers instead of 50. An hour later, they stop and demand drops back. PlayFab Multiplayer Servers, backed by Azure infrastructure, handles this elastic scaling. In this guide, I will show you how to containerize your game server, deploy it through PlayFab, and manage the fleet on AKS.
+The challenge is that multiplayer game server demand is wildly unpredictable. A popular streamer plays your game and suddenly you need 500 servers instead of 50. An hour later, they stop and demand drops back. PlayFab Multiplayer Servers, backed by Azure infrastructure, handles this elastic scaling. In this guide, I will show you how to containerize your game server, deploy it through PlayFab, and manage the fleet.
 
 ## How PlayFab Multiplayer Servers Work
 
@@ -24,8 +24,8 @@ graph LR
     C --> E[Active Servers]
     D -->|Allocate| E
     E -->|Game Ends| D
-    C --> F[AKS Cluster]
-    F --> G[Game Server Pods]
+    C --> F[Azure VMs]
+    F --> G[Game Server Containers]
 ```
 
 PlayFab manages the lifecycle: spinning up containers, monitoring health, recycling crashed servers, and scaling the pool based on demand. You just provide the container image.
@@ -78,8 +78,10 @@ Here is the GSDK integration for a C# game server (Unreal and custom engines hav
 
 ```csharp
 using Microsoft.Playfab.Gaming.GSDK.CSharp;
+using Microsoft.Playfab.Gaming.GSDK.CSharp.Model;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 public class GameServerManager
 {
@@ -87,10 +89,13 @@ public class GameServerManager
 
     public void Initialize()
     {
+        // Start GSDK heartbeats and communication with the PlayFab agent
+        GameserverSDK.Start();
+
         // Register GSDK callbacks
         GameserverSDK.RegisterShutdownCallback(OnShutdown);
         GameserverSDK.RegisterHealthCallback(OnHealthCheck);
-        GameserverSDK.RegisterMaintenanceCallback(OnMaintenance);
+        GameserverSDK.RegisterMaintenanceV2Callback(OnMaintenance);
 
         // Get the server configuration from PlayFab
         IDictionary<string, string> config = GameserverSDK.getConfigSettings();
@@ -105,9 +110,16 @@ public class GameServerManager
         // Start your game server logic here
         StartGameServer(connectionInfo);
 
-        // Signal to PlayFab that the server is ready to accept players
-        GameserverSDK.ReadyForPlayers();
-        Console.WriteLine("Server is ready for players");
+        // Signal to PlayFab that the server is ready. This blocks until the server is allocated or terminated.
+        if (GameserverSDK.ReadyForPlayers())
+        {
+            Console.WriteLine("Server allocated and ready for players");
+        }
+        else
+        {
+            Console.WriteLine("Server terminated before allocation");
+            CleanupAndExit();
+        }
     }
 
     private bool OnHealthCheck()
@@ -132,13 +144,22 @@ public class GameServerManager
         CleanupAndExit();
     }
 
-    private void OnMaintenance(DateTimeOffset maintenanceTime)
+    private void OnMaintenance(MaintenanceSchedule maintenanceSchedule)
     {
         // PlayFab is warning about upcoming maintenance
+        DateTime? maintenanceTime = maintenanceSchedule.Events?
+            .Where(e => e.NotBefore.HasValue)
+            .Select(e => e.NotBefore)
+            .OrderBy(t => t)
+            .FirstOrDefault();
+
         Console.WriteLine($"Maintenance scheduled at: {maintenanceTime}");
 
         // Notify connected players
-        BroadcastToPlayers($"Server maintenance in {(maintenanceTime - DateTimeOffset.UtcNow).TotalMinutes:F0} minutes");
+        if (maintenanceTime.HasValue)
+        {
+            BroadcastToPlayers($"Server maintenance in {(maintenanceTime.Value - DateTime.UtcNow).TotalMinutes:F0} minutes");
+        }
     }
 
     private void StartGameServer(GameServerConnectionInfo connInfo)
@@ -156,22 +177,23 @@ public class GameServerManager
 ```
 
 The key lifecycle events are:
-- `ReadyForPlayers()` - call this once your server is initialized and ready to accept connections
+- `Start()` - starts GSDK communication and heartbeats with the local PlayFab agent
+- `ReadyForPlayers()` - call this once your server is initialized; it blocks until the server is allocated or terminated
 - Health callback - PlayFab polls this regularly; return false to mark the server unhealthy
 - Shutdown callback - called when PlayFab needs to reclaim the server
 
 ## Step 3 - Upload and Configure the Build in PlayFab
 
-Push your container image to a registry and create a build in PlayFab.
+Push your container image to the PlayFab container registry for your title and create a build in PlayFab.
 
 ```bash
-# Push the game server image to Azure Container Registry
-az acr login --name mygameregistry
-docker build -t mygameregistry.azurecr.io/game-server:v1.0 .
-docker push mygameregistry.azurecr.io/game-server:v1.0
+# Push the game server image to the PlayFab container registry shown in Game Manager
+docker login customer5555555.azurecr.io
+docker build -t customer5555555.azurecr.io/game-server:v1.0 .
+docker push customer5555555.azurecr.io/game-server:v1.0
 ```
 
-Then create the build through the PlayFab API or portal. Using the PlayFab Admin API in Python:
+Then create the build through the PlayFab API or portal. Using the PlayFab MultiplayerServer API in Python:
 
 ```python
 import requests
@@ -180,26 +202,34 @@ import json
 PLAYFAB_TITLE_ID = "YOUR_TITLE_ID"
 PLAYFAB_SECRET_KEY = "YOUR_SECRET_KEY"
 
-def create_build():
-    """Create a new game server build in PlayFab MPS."""
-    url = f"https://{PLAYFAB_TITLE_ID}.playfabapi.com/MultiplayerServer/CreateBuildWithCustomContainer"
-
+def get_entity_token() -> str:
+    """Exchange a title secret key for a title entity token."""
+    url = f"https://{PLAYFAB_TITLE_ID}.playfabapi.com/Authentication/GetEntityToken"
     headers = {
         "Content-Type": "application/json",
         "X-SecretKey": PLAYFAB_SECRET_KEY
+    }
+
+    response = requests.post(url, headers=headers, json={})
+    response.raise_for_status()
+    return response.json()["data"]["EntityToken"]
+
+def create_build():
+    """Create a new game server build in PlayFab MPS."""
+    url = f"https://{PLAYFAB_TITLE_ID}.playfabapi.com/MultiplayerServer/CreateBuildWithCustomContainer"
+    entity_token = get_entity_token()
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-EntityToken": entity_token
     }
 
     payload = {
         "BuildName": "GameServer-v1.0",
         "ContainerFlavor": "CustomLinux",
         "ContainerImageReference": {
-            "ImageName": "mygameregistry.azurecr.io/game-server",
+            "ImageName": "game-server",
             "Tag": "v1.0"
-        },
-        "ContainerRegistryCredentials": {
-            "Url": "mygameregistry.azurecr.io",
-            "Username": "mygameregistry",
-            "Password": "<acr-password>"
         },
         "MultiplayerServerCountPerVm": 4,  # Run 4 server instances per VM
         "Ports": [
@@ -238,6 +268,7 @@ def create_build():
     }
 
     response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
     result = response.json()
     print(f"Build created: {result['data']['BuildId']}")
     return result
@@ -259,10 +290,11 @@ When your matchmaker finds a group of players ready to play, request a server fr
 def request_game_server(session_id: str, region: str, player_ids: list) -> dict:
     """Request an allocated game server for a matched group of players."""
     url = f"https://{PLAYFAB_TITLE_ID}.playfabapi.com/MultiplayerServer/RequestMultiplayerServer"
+    entity_token = get_entity_token()
 
     headers = {
         "Content-Type": "application/json",
-        "X-SecretKey": PLAYFAB_SECRET_KEY
+        "X-EntityToken": entity_token
     }
 
     payload = {
@@ -278,6 +310,7 @@ def request_game_server(session_id: str, region: str, player_ids: list) -> dict:
     }
 
     response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
     result = response.json()
 
     if "data" in result:
@@ -311,13 +344,15 @@ If allocation times spike above 5 seconds, your standby pool is too small. If mo
 def get_fleet_metrics():
     """Retrieve server fleet utilization metrics from PlayFab."""
     url = f"https://{PLAYFAB_TITLE_ID}.playfabapi.com/MultiplayerServer/ListBuildSummariesV2"
+    entity_token = get_entity_token()
 
     headers = {
         "Content-Type": "application/json",
-        "X-SecretKey": PLAYFAB_SECRET_KEY
+        "X-EntityToken": entity_token
     }
 
     response = requests.post(url, headers=headers, json={})
+    response.raise_for_status()
     builds = response.json()["data"]["BuildSummaries"]
 
     for build in builds:
@@ -325,11 +360,11 @@ def get_fleet_metrics():
         for region in build.get("RegionConfigurations", []):
             print(f"  {region['Region']}: "
                   f"Active={region.get('CurrentServerStats', {}).get('Active', 0)}, "
-                  f"Standby={region.get('CurrentServerStats', {}).get('StandBy', 0)}")
+                  f"Standby={region.get('CurrentServerStats', {}).get('StandingBy', 0)}")
 
 get_fleet_metrics()
 ```
 
 ## Wrapping Up
 
-PlayFab Multiplayer Servers takes the infrastructure management out of running game servers. You package your server as a container, configure the fleet size and regions, and PlayFab handles allocation, scaling, and lifecycle management. The GSDK integration is straightforward - a few callbacks to handle health checks and shutdown signals. Combined with AKS as the underlying compute, you get elastic scaling that handles anything from a quiet Tuesday night to a viral launch day. Focus on making a great multiplayer experience and let the platform handle the servers.
+PlayFab Multiplayer Servers takes the infrastructure management out of running game servers. You package your server as a container, configure the fleet size and regions, and PlayFab handles allocation, scaling, and lifecycle management. The GSDK integration is straightforward - a few callbacks to handle health checks and shutdown signals. Built on Azure compute, you get elastic scaling that handles anything from a quiet Tuesday night to a viral launch day. Focus on making a great multiplayer experience and let the platform handle the servers.
