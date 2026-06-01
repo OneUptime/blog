@@ -12,9 +12,9 @@ Azure Spot VMs offer unused Azure compute capacity at steep discounts - up to 90
 
 ## How Spot Nodes Work in AKS
 
-Spot node pools are standard AKS node pools backed by Azure Spot VMs instead of regular VMs. When you create a spot node pool, AKS provisions the nodes at the spot price. If Azure needs the capacity, it sends a 30-second eviction notice, and the node is deallocated. Kubernetes reschedules the evicted pods - either on other spot nodes (if available) or on regular nodes if your workloads can tolerate it.
+Spot node pools are standard AKS node pools backed by Azure Spot VMs instead of regular VMs. When you create a spot node pool, AKS provisions the nodes at the spot price. If Azure needs the capacity, it sends a 30-second eviction notice, and the node is deleted or deallocated depending on the pool's eviction policy. Kubernetes reschedules the evicted pods - either on other spot nodes (if available) or on regular nodes if your workloads can tolerate it.
 
-The key constraint: spot node pools cannot be the system node pool. You always need at least one regular node pool for system components like CoreDNS and the kube-proxy.
+The key constraint: spot node pools cannot be the system node pool. You always need at least one regular node pool for system components like CoreDNS and metrics-server.
 
 ```mermaid
 graph TD
@@ -38,7 +38,7 @@ graph TD
 ## Prerequisites
 
 - An AKS cluster with a regular system node pool
-- Azure CLI 2.40+
+- Azure CLI 2.14+
 - Workloads that can tolerate interruption and rescheduling
 
 ## Step 1: Add a Spot Node Pool
@@ -50,7 +50,7 @@ Create a spot node pool with the `--priority Spot` flag.
 
 # --priority Spot makes this a spot instance pool
 # --eviction-policy Delete removes the VM on eviction (vs Deallocate which keeps the disk)
-# --spot-max-price -1 means pay up to the on-demand price (maximum discount)
+# --spot-max-price -1 means the VM won't be evicted based on price
 az aks nodepool add \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
@@ -70,33 +70,40 @@ az aks nodepool add \
 Breaking down the important flags:
 
 - **--eviction-policy Delete**: When a spot node is evicted, the VM and its disk are deleted. Use `Deallocate` if you want to keep the disk (costs more but allows faster re-provisioning).
-- **--spot-max-price -1**: Accept the current spot price up to the on-demand price. You can set a specific maximum (e.g., `0.05` for $0.05/hour) to limit spending.
+- **--spot-max-price -1**: Accept the current spot price without price-based eviction. Azure charges the current spot price, up to the pay-as-you-go price. You can set a specific maximum (e.g., `0.05` for $0.05/hour) to limit spending.
 - **--min-count 0**: Allow the pool to scale to zero when there are no jobs to run.
 - **--node-taints**: Prevents regular workloads from being scheduled on spot nodes.
 
 ## Step 2: Set a Maximum Spot Price
 
-If you want to control costs more precisely, set a maximum price you are willing to pay.
+If you want to control costs more precisely, set a maximum price you are willing to pay when you create the spot node pool. AKS doesn't allow changing `SpotMaxPrice` after the node pool is created, so create a replacement spot pool if you need a different maximum price.
 
 ```bash
-# Update the spot pool to set a maximum price of $0.10/hour
-# If the spot price exceeds this, nodes will not be provisioned
-az aks nodepool update \
+# Create a spot pool with a maximum price of $0.10/hour
+# If the spot price exceeds this, nodes can be evicted or not provisioned
+az aks nodepool add \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
-  --name spotpool \
-  --spot-max-price 0.10
+  --name spotpool10 \
+  --priority Spot \
+  --eviction-policy Delete \
+  --spot-max-price 0.10 \
+  --node-count 3 \
+  --node-vm-size Standard_D4s_v3 \
+  --enable-cluster-autoscaler \
+  --min-count 0 \
+  --max-count 10 \
+  --labels workload-type=batch \
+  --node-taints "kubernetes.azure.com/scalesetpriority=spot:NoSchedule"
 ```
 
-To check current spot prices for your VM size and region, use the Azure pricing page or the CLI.
+To check current spot prices for your VM size and region, use the Azure pricing page or the Azure Retail Prices API.
 
 ```bash
-# Check the current spot price for Standard_D4s_v3 in East US
-az vm list-skus \
-  --location eastus \
-  --size Standard_D4s_v3 \
-  --query "[].{name:name, tier:tier}" \
-  --output table
+# Check current retail prices for Standard_D4s_v3 in East US, including Spot meters
+curl -sG "https://prices.azure.com/api/retail/prices" \
+  --data-urlencode "\$filter=serviceName eq 'Virtual Machines' and armRegionName eq 'eastus' and armSkuName eq 'Standard_D4s_v3' and priceType eq 'Consumption'" \
+  --data-urlencode "currencyCode='USD'"
 ```
 
 ## Step 3: Schedule Batch Workloads on Spot Nodes
@@ -148,7 +155,7 @@ Key settings for spot-friendly jobs:
 
 ## Step 4: Handle Spot Evictions Gracefully
 
-When Azure evicts a spot node, Kubernetes receives a 30-second warning. Your application should handle this gracefully.
+When Azure evicts a spot node, Azure provides a `Preempt` scheduled event with at least 30 seconds of notice. Your application should handle this gracefully.
 
 ### Use Termination Grace Period
 
@@ -239,7 +246,7 @@ spec:
       app: batch-worker
 ```
 
-Note that spot evictions bypass PDBs in some cases. PDBs are best-effort for spot nodes, not guaranteed protection.
+Note that spot evictions are involuntary disruptions. PDBs can't prevent involuntary disruptions, but unavailable pods still count against the disruption budget.
 
 ## Step 6: Mix Spot and Regular Node Pools
 
@@ -308,7 +315,7 @@ Track eviction events to understand patterns and optimize your spot strategy.
 
 ```bash
 # Check for spot eviction events in the cluster
-kubectl get events --all-namespaces --field-selector reason=Preempted
+kubectl get events --all-namespaces --field-selector reason=PreemptScheduled
 
 # View node conditions for spot-related information
 kubectl get nodes -l "kubernetes.azure.com/scalesetpriority=spot" -o wide
