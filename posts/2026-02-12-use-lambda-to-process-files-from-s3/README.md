@@ -100,7 +100,8 @@ Your Lambda function needs permission to read from S3 and write to whatever dest
     {
       "Effect": "Allow",
       "Action": [
-        "dynamodb:PutItem"
+        "dynamodb:PutItem",
+        "dynamodb:BatchWriteItem"
       ],
       "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/ProcessedRecords"
     },
@@ -164,6 +165,7 @@ Using CloudFormation:
 Resources:
   UploadBucket:
     Type: AWS::S3::Bucket
+    DependsOn: S3InvokePermission
     Properties:
       BucketName: my-upload-bucket
       NotificationConfiguration:
@@ -185,7 +187,8 @@ Resources:
       FunctionName: !Ref ProcessorFunction
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
-      SourceArn: !GetAtt UploadBucket.Arn
+      SourceArn: arn:aws:s3:::my-upload-bucket
+      SourceAccount: !Ref AWS::AccountId
 ```
 
 ## Handling Large Files
@@ -197,11 +200,43 @@ Here's a streaming approach for large CSV files:
 ```javascript
 // Stream large files instead of loading them entirely into memory
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { DynamoDBClient, BatchWriteItemCommand } = require('@aws-sdk/client-dynamodb');
 const { parse } = require('csv-parse');
 const { pipeline } = require('stream/promises');
 const { Transform } = require('stream');
 
 const s3 = new S3Client({ region: 'us-east-1' });
+const dynamo = new DynamoDBClient({ region: 'us-east-1' });
+
+const extractS3Info = (record) => ({
+  bucket: record.s3.bucket.name,
+  key: decodeURIComponent(record.s3.object.key.replace(/\+/g, ' ')),
+});
+
+const writeBatch = async (records) => {
+  const requestItems = records.map((row) => ({
+    PutRequest: {
+      Item: {
+        id: { S: row.id },
+        name: { S: row.name },
+        email: { S: row.email },
+        processedAt: { S: new Date().toISOString() },
+      },
+    },
+  }));
+
+  let unprocessed = {
+    ProcessedRecords: requestItems,
+  };
+
+  while (Object.keys(unprocessed).length > 0) {
+    const result = await dynamo.send(new BatchWriteItemCommand({
+      RequestItems: unprocessed,
+    }));
+
+    unprocessed = result.UnprocessedItems ?? {};
+  }
+};
 
 exports.handler = async (event) => {
   const { bucket, key } = extractS3Info(event.Records[0]);
@@ -216,20 +251,28 @@ exports.handler = async (event) => {
   const processor = new Transform({
     objectMode: true,
     async transform(row, encoding, callback) {
-      batch.push(row);
-      if (batch.length >= batchSize) {
-        await writeBatch(batch);
-        processedCount += batch.length;
-        batch = [];
+      try {
+        batch.push(row);
+        if (batch.length >= batchSize) {
+          await writeBatch(batch);
+          processedCount += batch.length;
+          batch = [];
+        }
+        callback();
+      } catch (error) {
+        callback(error);
       }
-      callback();
     },
     async flush(callback) {
-      if (batch.length > 0) {
-        await writeBatch(batch);
-        processedCount += batch.length;
+      try {
+        if (batch.length > 0) {
+          await writeBatch(batch);
+          processedCount += batch.length;
+        }
+        callback();
+      } catch (error) {
+        callback(error);
       }
-      callback();
     },
   });
 
@@ -272,14 +315,14 @@ exports.handler = async (event) => {
 };
 ```
 
-## Error Handling and Dead Letter Queues
+## Error Handling and Failure Destinations
 
-S3 event notifications are asynchronous. If your Lambda function fails, AWS retries it twice. After that, the event is lost unless you've configured a dead letter queue (DLQ) or an on-failure destination.
+S3 event notifications are asynchronous. If your Lambda function fails, AWS retries it twice by default. After that, the event is discarded unless you've configured a dead letter queue (DLQ) or an on-failure destination.
 
-Set up an SQS dead letter queue to capture failed events:
+Set up an SQS on-failure destination to capture failed invocation records:
 
 ```bash
-# Configure a DLQ for failed S3 processing events
+# Configure an on-failure destination for failed S3 processing events
 aws lambda put-function-event-invoke-config \
   --function-name s3-file-processor \
   --maximum-retry-attempts 2 \
@@ -332,4 +375,4 @@ NotificationConfiguration:
 
 ## Wrapping Up
 
-Lambda + S3 event notifications is one of the most powerful serverless patterns in AWS. It lets you build reactive file processing pipelines without managing any infrastructure. The key things to remember: avoid the recursive trigger trap, stream large files instead of loading them into memory, configure dead letter queues for failed events, and use appropriate file type filters to route different files to different processors.
+Lambda + S3 event notifications is one of the most powerful serverless patterns in AWS. It lets you build reactive file processing pipelines without managing any infrastructure. The key things to remember: avoid the recursive trigger trap, stream large files instead of loading them into memory, configure DLQs or on-failure destinations for failed events, and use appropriate file type filters to route different files to different processors.
