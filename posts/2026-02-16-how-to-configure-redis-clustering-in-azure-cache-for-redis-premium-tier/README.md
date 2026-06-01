@@ -8,7 +8,7 @@ Description: A hands-on guide to configuring Redis clustering in Azure Cache for
 
 ---
 
-A single Redis instance has limits. No matter how much memory you give it, there is a ceiling on the data it can hold and the throughput it can deliver. Redis clustering breaks through that ceiling by distributing data across multiple shards, each handling a portion of the total keyspace. Azure Cache for Redis Premium Tier supports Redis clustering natively, letting you scale horizontally without managing the cluster infrastructure yourself.
+A single Redis instance has limits. No matter how much memory you give it, there is a ceiling on the data it can hold and the throughput it can deliver. Redis clustering breaks through that ceiling by distributing data across multiple shards, each handling a portion of the total keyspace. Azure Cache for Redis Premium Tier supports Redis clustering natively, letting you scale horizontally without managing the cluster infrastructure yourself. Azure Cache for Redis is on a retirement timeline, so use Azure Managed Redis for new designs when possible.
 
 In this post, I will walk through how Redis clustering works, how to set it up on Azure, and the application-level changes you need to make to work with a clustered cache.
 
@@ -20,10 +20,9 @@ When you write a key, Redis computes the hash slot for that key using CRC16, and
 
 ```mermaid
 graph TB
-    A[Client] --> B[Cluster Proxy]
-    B --> C[Shard 0 - Slots 0-5460]
-    B --> D[Shard 1 - Slots 5461-10922]
-    B --> E[Shard 2 - Slots 10923-16383]
+    A[Cluster-aware Client] --> C[Shard 0 - Slots 0-5460]
+    A --> D[Shard 1 - Slots 5461-10922]
+    A --> E[Shard 2 - Slots 10923-16383]
     C --> F[Replica 0]
     D --> G[Replica 1]
     E --> H[Replica 2]
@@ -41,7 +40,7 @@ Key benefits of clustering:
 
 Clustering makes sense when:
 
-- Your cache data exceeds 53 GB (the maximum for a single Premium node).
+- Your cache data exceeds the capacity of a single Premium node.
 - You need higher throughput than a single instance can provide.
 - You want to distribute the workload across multiple CPU cores.
 - Your read/write patterns benefit from parallel processing.
@@ -60,9 +59,8 @@ az redis create \
   --name my-redis-cluster \
   --location eastus \
   --sku Premium \
-  --vm-size P1 \
-  --shard-count 3 \
-  --enable-non-ssl-port false
+  --vm-size p1 \
+  --shard-count 3
 ```
 
 The `--shard-count` parameter sets the number of shards. Each shard includes a primary and a replica, so 3 shards means 6 Redis nodes total.
@@ -72,7 +70,7 @@ The `--shard-count` parameter sets the number of shards. Each shard includes a p
 1. Search for "Azure Cache for Redis" and click Create.
 2. Select the Premium pricing tier.
 3. In the "Advanced" tab, set "Clustering" to Enabled.
-4. Choose the number of shards (1-10).
+4. Choose the number of shards. Premium clustering supports up to 10 shards generally, with higher shard counts available in preview in supported configurations.
 5. Review and create.
 
 ### Available Shard Counts
@@ -89,7 +87,7 @@ Each additional shard adds proportional memory and throughput. A P1 instance wit
 
 ## Connecting to the Cluster
 
-Azure Cache for Redis Premium with clustering uses a single connection endpoint. You do not need to know the individual shard addresses - Azure handles the routing.
+Azure Cache for Redis Premium with clustering uses a single DNS name for discovery, but it follows the OSS Redis Cluster protocol. Use a cluster-aware client library so the client can discover shard topology and route commands to the correct shard.
 
 ```bash
 # Get the connection details
@@ -107,11 +105,11 @@ az redis list-keys \
 ### Python with redis-py
 
 ```python
-import redis
+from redis.cluster import RedisCluster
 
 # Connect to the clustered cache
-# Azure handles routing internally, so use a regular connection
-r = redis.StrictRedis(
+# Use a cluster-aware client for Premium clustering
+r = RedisCluster(
     host='my-redis-cluster.redis.cache.windows.net',
     port=6380,
     password='your-access-key',
@@ -133,14 +131,22 @@ print(r.get('user:1002'))  # Bob
 const Redis = require('ioredis');
 
 // Connect to the Azure Redis cluster
-const redis = new Redis({
-    host: 'my-redis-cluster.redis.cache.windows.net',
-    port: 6380,
-    password: 'your-access-key',
-    tls: {
-        servername: 'my-redis-cluster.redis.cache.windows.net'
+const redis = new Redis.Cluster(
+    [
+        {
+            host: 'my-redis-cluster.redis.cache.windows.net',
+            port: 6380
+        }
+    ],
+    {
+        redisOptions: {
+            password: 'your-access-key',
+            tls: {
+                servername: 'my-redis-cluster.redis.cache.windows.net'
+            }
+        }
     }
-});
+);
 
 // Operations work normally
 redis.set('session:abc123', JSON.stringify({ userId: 42 }));
@@ -184,7 +190,7 @@ values = r.mget('{user:1001}:name', '{user:1001}:email', '{user:1001}:preference
 print(values)  # ['Alice', 'alice@example.com', '{"theme": "dark"}']
 ```
 
-Without hash tags, MGET across keys on different shards would fail in a native Redis Cluster, but Azure's proxy layer handles some of this transparently for basic commands.
+Without hash tags, MGET across keys on different shards fails with a `CROSSSLOT` error in Premium clustering because it follows OSS Redis Cluster behavior.
 
 ## Scaling the Cluster
 
@@ -197,7 +203,7 @@ You can add shards to an existing cluster without downtime:
 az redis update \
   --resource-group myResourceGroup \
   --name my-redis-cluster \
-  --shard-count 6
+  --set shardCount=6
 ```
 
 When you add shards, Redis rebalances the hash slots across the new topology. This process runs in the background and may temporarily increase latency for affected keys.
@@ -211,7 +217,7 @@ You can also scale down:
 az redis update \
   --resource-group myResourceGroup \
   --name my-redis-cluster \
-  --shard-count 3
+  --set shardCount=3
 ```
 
 Scaling down moves data from the removed shards to the remaining ones. Make sure the remaining shards have enough memory to hold all the data.
@@ -226,7 +232,7 @@ az redis update \
   --resource-group myResourceGroup \
   --name my-redis-cluster \
   --sku Premium \
-  --vm-size P2
+  --vm-size p2
 ```
 
 ## Monitoring the Cluster
@@ -255,7 +261,7 @@ Important metrics:
 If one shard has significantly higher load than others, you likely have hot keys:
 
 ```bash
-# Set up alert for individual shard CPU
+# Set up alert for shard server load
 az monitor metrics alert create \
   --name redis-shard-load-alert \
   --resource-group myResourceGroup \
@@ -298,4 +304,4 @@ Each shard includes a replica at no additional cost. Factor in both memory needs
 
 ## Summary
 
-Redis clustering in Azure Cache for Redis Premium Tier gives you horizontal scalability for cache workloads that outgrow a single instance. The setup is straightforward - specify the shard count during creation or scale later. Your application connects to a single endpoint, and Azure handles the routing. The main application-level concern is ensuring multi-key operations target keys on the same shard using hash tags. Monitor per-shard metrics to detect imbalances, and scale shards up or out as your workload grows.
+Redis clustering in Azure Cache for Redis Premium Tier gives you horizontal scalability for cache workloads that outgrow a single instance. The setup is straightforward - specify the shard count during creation or scale later. Your application connects through the cache DNS name with a cluster-aware client, and the client handles routing. The main application-level concern is ensuring multi-key operations target keys on the same shard using hash tags. Monitor per-shard metrics to detect imbalances, and scale shards up or out as your workload grows.
