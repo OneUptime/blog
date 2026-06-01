@@ -14,7 +14,7 @@ Azure File Shares provide a simple way to add persistent storage to your ACI con
 
 ## How It Works
 
-Azure Files is a managed file share service that supports the SMB and NFS protocols. When you mount an Azure File Share in ACI, the container runtime mounts the share into the container's filesystem at the path you specify. Multiple containers can mount the same share, which makes it useful for sharing data between containers in a group or even between separate container groups.
+Azure Files is a managed file share service that supports the SMB and NFS protocols. ACI Azure Files volume mounts use SMB/CIFS and are supported for Linux containers. When you mount an Azure File Share in ACI, the container runtime mounts the share into the container's filesystem at the path you specify. Multiple containers can mount the same share, which makes it useful for sharing data between containers in a group or even between separate container groups.
 
 The key characteristics:
 
@@ -34,7 +34,7 @@ You need:
 
 ## Step 1: Create the Storage Account and File Share
 
-If you do not have them yet:
+If you do not have them yet, choose a storage account name that is globally unique, 3 to 24 characters long, and contains only lowercase letters and numbers:
 
 ```bash
 # Create a storage account
@@ -101,7 +101,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 2.0
+            memoryInGB: 2.0
         ports:
           - port: 8080
             protocol: TCP
@@ -156,7 +156,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 2.0
+            memoryInGB: 2.0
         # Mount multiple volumes at different paths
         volumeMounts:
           - name: app-data
@@ -176,7 +176,7 @@ properties:
         resources:
           requests:
             cpu: 0.5
-            memoryInGb: 0.5
+            memoryInGB: 0.5
         # This container can also mount the logs volume
         volumeMounts:
           - name: app-logs
@@ -199,6 +199,7 @@ properties:
     - name: app-config
       secret:
         config.json: 'eyJkYXRhYmFzZSI6ICJteWRiLmRhdGFiYXNlLndpbmRvd3MubmV0In0='
+  osType: Linux
 type: Microsoft.ContainerInstance/containerGroups
 ```
 
@@ -252,7 +253,7 @@ az storage directory create \
 
 Azure Files performance varies by tier:
 
-- **Standard (HDD)** - Good for general-purpose workloads. Expect around 60 MB/s throughput for a single share.
+- **Standard (HDD)** - Good for general-purpose workloads. A single file is limited to 60 MiB/s throughput, and share throughput is subject to the storage account limits.
 - **Premium (SSD)** - Better for I/O-intensive workloads. Throughput scales with the provisioned share size.
 
 For containers that do heavy I/O, the Standard tier might become a bottleneck. Things to watch for:
@@ -311,14 +312,14 @@ After deploying, verify that the volume is mounted correctly:
 # Execute a command in the container to check the mount
 az container exec \
     --resource-group my-resource-group \
-    --name my-container \
+    --name my-container-with-storage \
     --container-name app \
     --exec-command "/bin/sh -c 'df -h /app/data && ls -la /app/data'"
 
 # Write a test file
 az container exec \
     --resource-group my-resource-group \
-    --name my-container \
+    --name my-container-with-storage \
     --container-name app \
     --exec-command "/bin/sh -c 'echo hello > /app/data/test.txt'"
 
