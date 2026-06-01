@@ -8,7 +8,7 @@ Description: Learn how to configure Azure Kubernetes Service with Kubenet networ
 
 ---
 
-When you spin up an AKS cluster, one of the first decisions you face is which network plugin to use. Azure CNI is the default go-to for many teams, but Kubenet still has its place - particularly when you need to conserve IP addresses or want tighter control over routing through custom route tables and user-defined routes (UDR). In this post, I will walk through setting up AKS with Kubenet networking and configuring custom route tables so that you have full control over how traffic flows in and out of your cluster.
+When you spin up an AKS cluster, one of the first decisions you face is which network plugin to use. Azure CNI is the default go-to for many teams, but Kubenet still has its place - particularly when you need to conserve IP addresses or want tighter control over routing through custom route tables and user-defined routes (UDR). Keep in mind that Microsoft has announced Kubenet networking for AKS will be retired on March 31, 2028, so new designs should also evaluate Azure CNI Overlay. In this post, I will walk through setting up AKS with Kubenet networking and configuring custom route tables so that you have full control over how traffic flows in and out of your cluster.
 
 ## Why Choose Kubenet Over Azure CNI
 
@@ -95,21 +95,64 @@ SUBNET_ID=$(az network vnet subnet show \
   --name aks-subnet \
   --query id -o tsv)
 
+# Create user-assigned identities for the AKS control plane and kubelet
+az identity create \
+  --resource-group aks-kubenet-rg \
+  --name aks-control-plane-identity
+
+az identity create \
+  --resource-group aks-kubenet-rg \
+  --name aks-kubelet-identity
+
+CONTROL_PLANE_ID=$(az identity show \
+  --resource-group aks-kubenet-rg \
+  --name aks-control-plane-identity \
+  --query id -o tsv)
+
+CONTROL_PLANE_PRINCIPAL_ID=$(az identity show \
+  --resource-group aks-kubenet-rg \
+  --name aks-control-plane-identity \
+  --query principalId -o tsv)
+
+KUBELET_ID=$(az identity show \
+  --resource-group aks-kubenet-rg \
+  --name aks-kubelet-identity \
+  --query id -o tsv)
+
+# Get the route table resource ID
+RT_ID=$(az network route-table show \
+  --resource-group aks-kubenet-rg \
+  --name aks-route-table \
+  --query id -o tsv)
+
+# Give the AKS control plane identity permission to manage the subnet and route table
+az role assignment create \
+  --assignee $CONTROL_PLANE_PRINCIPAL_ID \
+  --role "Network Contributor" \
+  --scope $SUBNET_ID
+
+az role assignment create \
+  --assignee $CONTROL_PLANE_PRINCIPAL_ID \
+  --role "Network Contributor" \
+  --scope $RT_ID
+
 # Create the AKS cluster with Kubenet networking
 az aks create \
   --resource-group aks-kubenet-rg \
   --name aks-kubenet-cluster \
   --network-plugin kubenet \
   --vnet-subnet-id $SUBNET_ID \
+  --assign-identity $CONTROL_PLANE_ID \
+  --assign-kubelet-identity $KUBELET_ID \
   --pod-cidr 10.244.0.0/16 \
-  --service-cidr 10.0.4.0/24 \
-  --dns-service-ip 10.0.4.10 \
+  --service-cidr 10.2.0.0/24 \
+  --dns-service-ip 10.2.0.10 \
   --node-count 3 \
   --generate-ssh-keys \
   --outbound-type userDefinedRouting
 ```
 
-A few things to note here. The `--pod-cidr` defines the address space for pod IPs. This must not overlap with your VNet address space. The `--outbound-type userDefinedRouting` tells AKS not to create a public load balancer for egress. Instead, it relies on your custom routes.
+A few things to note here. The `--pod-cidr` defines the address space for pod IPs. This must not overlap with your VNet address space, and neither should the service CIDR. The `--outbound-type userDefinedRouting` tells AKS not to create a public load balancer for egress. Instead, it relies on your custom routes.
 
 ## Step 5: Verify the Route Table
 
@@ -127,29 +170,17 @@ You should see routes like `10.244.0.0/24 -> <node1-ip>`, `10.244.1.0/24 -> <nod
 
 ## Step 6: Assign the Right Permissions
 
-AKS needs permissions to manage the route table. The cluster identity (either a managed identity or service principal) must have the Network Contributor role on the route table and subnet.
+AKS needs permissions to manage the route table. For Kubenet with your own route table, use a user-assigned managed identity and assign Network Contributor on the subnet and route table before creating the cluster. You can verify the role assignments after the cluster is created.
 
 ```bash
-# Get the AKS managed identity principal ID
-IDENTITY_ID=$(az aks show \
-  --resource-group aks-kubenet-rg \
-  --name aks-kubenet-cluster \
-  --query identity.principalId -o tsv)
-
-# Get the route table resource ID
-RT_ID=$(az network route-table show \
-  --resource-group aks-kubenet-rg \
-  --name aks-route-table \
-  --query id -o tsv)
-
-# Assign Network Contributor role on the route table
-az role assignment create \
-  --assignee $IDENTITY_ID \
+# Verify Network Contributor role assignments for the control plane identity
+az role assignment list \
+  --assignee $CONTROL_PLANE_PRINCIPAL_ID \
   --role "Network Contributor" \
-  --scope $RT_ID
+  --output table
 ```
 
-If you skip this step, AKS will not be able to update the route table when nodes are added or removed, and pod networking will break.
+If you skip these permissions, AKS will not be able to update the route table when nodes are added or removed, and pod networking will break.
 
 ## Understanding the Traffic Flow
 
@@ -178,7 +209,7 @@ Pod-to-pod traffic within the same node stays local. Pod-to-pod traffic across n
 
 ## Scaling Considerations
 
-Each node in a Kubenet cluster gets its own /24 CIDR block by default, supporting up to 250 pods per node. With a /16 pod CIDR, you can have up to 256 nodes. If you need more, use a larger pod CIDR like /14 or /12.
+Each node in a Kubenet cluster gets its own /24 CIDR block by default. AKS uses a default maximum of 110 pods per node for Kubenet, and the maximum value you can configure is 250 pods per node. With a /16 pod CIDR, you can have up to 256 node pod ranges. If you need more, use a larger pod CIDR like /14 or /12.
 
 When you scale up, AKS automatically adds new routes to the route table. When you scale down, it removes them. As long as the permissions are correct, this happens transparently.
 
