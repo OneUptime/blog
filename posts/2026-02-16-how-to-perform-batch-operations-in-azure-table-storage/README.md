@@ -14,13 +14,13 @@ When you need to work with multiple entities at once in Azure Table Storage, doi
 
 There are two main reasons. First, performance. A batch of 100 inserts makes a single HTTP request instead of 100 separate requests. That alone can speed things up by an order of magnitude. Second, atomicity. If you need to insert five related entities and all of them must succeed or fail together, a batch operation gives you that guarantee without needing a distributed transaction coordinator.
 
-Each batch operation is called an Entity Group Transaction (EGT). The name hints at the key constraint: all entities in a batch must share the same partition key.
+Each batch operation is called an Entity Group Transaction (EGT). The name hints at the key constraint: all entities in a batch must be in the same table and share the same partition key.
 
 ## Batch Operation Rules
 
 Before writing code, here are the rules.
 
-- All entities in a batch must have the same PartitionKey.
+- All entities in a batch must be in the same table and have the same PartitionKey.
 - A batch can contain at most 100 operations.
 - The total payload of a batch request cannot exceed 4 MB.
 - Each entity can appear only once in a batch (no duplicate RowKeys).
@@ -204,14 +204,14 @@ def batch_insert_multi_partition(table_client, entities, batch_size=100):
 
 ## Error Handling
 
-When a batch fails, the entire transaction is rolled back. The error tells you which operation in the batch caused the failure.
+When a batch fails, the entire transaction is rolled back. The error usually includes the index of the operation in the batch that caused the failure.
 
 ```python
 try:
     table_client.submit_transaction(operations)
 except TableTransactionError as e:
     # The error includes details about which operation failed
-    print(f"Transaction failed: {e.message}")
+    print(f"Transaction failed at operation {e.index}: {e.message}")
 
     # In production, you might want to:
     # 1. Log the failed batch for investigation
@@ -226,7 +226,7 @@ Here is the flow for handling batch failures.
 flowchart TD
     A[Prepare batch operations] --> B[Submit transaction]
     B --> C{Transaction succeeded?}
-    C -->|Yes| D[All 100 operations committed]
+    C -->|Yes| D[All operations committed]
     C -->|No| E[All operations rolled back]
     E --> F{Transient error?}
     F -->|Yes| G[Retry entire batch]
