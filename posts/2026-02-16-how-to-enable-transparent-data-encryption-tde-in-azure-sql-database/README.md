@@ -27,7 +27,6 @@ graph TD
     B -->|Encrypts/Decrypts| C[Data Files]
     B -->|Encrypts/Decrypts| D[Log Files]
     B -->|Encrypts/Decrypts| E[Backup Files]
-    B -->|Encrypts/Decrypts| F[tempdb]
 ```
 
 When the database starts, Azure unwraps the DEK using the TDE Protector, and the unwrapped DEK is held in memory for the life of the database process. If the TDE Protector becomes unavailable (e.g., a Key Vault key is deleted), the database becomes inaccessible.
@@ -128,11 +127,11 @@ az keyvault create \
     --resource-group myResourceGroup \
     --name mykeyvault \
     --location eastus \
-    --enable-soft-delete true \
+    --enable-rbac-authorization false \
     --enable-purge-protection true
 ```
 
-Important: Enable soft-delete and purge protection. If the key is accidentally deleted without these protections, you will permanently lose access to your database.
+Important: Enable purge protection. Soft-delete is enabled by default for new Key Vaults. This example uses Key Vault access policies, so it explicitly sets `--enable-rbac-authorization false`. If you use Azure RBAC instead, grant the SQL server identity the appropriate Key Vault crypto permissions instead of using `az keyvault set-policy`.
 
 ### Step 2: Create a Key
 
@@ -271,12 +270,12 @@ It is important to understand the boundaries of TDE:
 
 ## Performance Impact
 
-TDE's performance impact is generally 3-5% on most workloads. The encryption and decryption happen at the I/O level, so workloads that are CPU-bound rather than I/O-bound will see less impact.
+TDE's performance impact is generally 3-5% on most workloads. The encryption and decryption happen during page I/O and add CPU work, so the actual impact depends on your workload and how much data is served from memory.
 
 The impact is slightly higher during:
 - Full database scans (more pages to decrypt)
 - Backup and restore operations
-- Tempdb-heavy operations (tempdb is also encrypted when TDE is enabled)
+- Tempdb-heavy operations (tempdb is encrypted in Azure SQL Database)
 
 For most production workloads, this overhead is acceptable and well worth the security benefit.
 
