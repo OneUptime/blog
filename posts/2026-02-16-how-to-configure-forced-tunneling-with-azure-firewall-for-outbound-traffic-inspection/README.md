@@ -36,7 +36,7 @@ graph TD
 
 ## Step 1: Design the Network Topology
 
-For forced tunneling with Azure Firewall, you need a hub-spoke topology. The hub VNet contains the firewall, and spoke VNets route their traffic through it.
+For forced tunneling with Azure Firewall, a hub-spoke topology is a common design. The hub VNet contains the firewall, and spoke VNets route their traffic through it.
 
 ```mermaid
 graph TD
@@ -54,7 +54,7 @@ graph TD
     FW --> Internet((Internet))
 ```
 
-When forced tunneling is enabled, Azure Firewall needs a separate management subnet (`AzureFirewallManagementSubnet`) with its own public IP for management traffic. This is because the firewall's data path uses the forced tunnel, and it still needs a direct internet path for its own management operations.
+When Azure Firewall forced tunneling mode is enabled, the firewall needs a separate management subnet (`AzureFirewallManagementSubnet`) with its own public IP for management traffic. This is because the firewall's data path can use the forced tunnel, and it still needs a direct internet path for its own management operations. The example below includes the management interface so the firewall is ready for that mode.
 
 ## Step 2: Create the Hub VNet
 
@@ -72,7 +72,7 @@ az network vnet create \
   --subnet-name AzureFirewallSubnet \
   --subnet-prefixes 10.0.1.0/26
 
-# Create the management subnet (required for forced tunneling)
+# Create the management subnet (required for Azure Firewall forced tunneling mode)
 az network vnet subnet create \
   --resource-group rg-forced-tunnel-demo \
   --vnet-name vnet-hub \
@@ -102,7 +102,7 @@ az network public-ip create \
 
 ## Step 4: Deploy Azure Firewall with Forced Tunneling
 
-When creating the firewall with forced tunneling enabled, you must specify the management IP configuration.
+When creating the firewall with Azure Firewall forced tunneling mode enabled, specify the management IP configuration.
 
 ```bash
 # Create a firewall policy
@@ -120,22 +120,11 @@ az network firewall create \
   --sku AZFW_VNet \
   --tier Standard \
   --vnet-name vnet-hub \
-  --firewall-policy policy-fw
-
-# Configure the data IP configuration
-az network firewall ip-config create \
-  --resource-group rg-forced-tunnel-demo \
-  --firewall-name fw-hub \
-  --name fw-ipconfig-data \
-  --public-ip-address pip-fw-data \
-  --vnet-name vnet-hub
-
-# Configure the management IP configuration
-az network firewall management-ip-config update \
-  --resource-group rg-forced-tunnel-demo \
-  --firewall-name fw-hub \
-  --public-ip-address pip-fw-mgmt \
-  --vnet-name vnet-hub
+  --firewall-policy policy-fw \
+  --conf-name fw-ipconfig-data \
+  --public-ip pip-fw-data \
+  --m-conf-name fw-ipconfig-mgmt \
+  --m-public-ip pip-fw-mgmt
 
 # Get the firewall's private IP
 FW_PRIVATE_IP=$(az network firewall show \
@@ -224,7 +213,7 @@ az network firewall policy rule-collection-group create \
   --name rcg-outbound \
   --priority 200
 
-# Allow DNS resolution
+# Allow DNS resolution when clients use a custom DNS resolver through the firewall
 az network firewall policy rule-collection-group collection add-filter-collection \
   --resource-group rg-forced-tunnel-demo \
   --policy-name policy-fw \
@@ -309,7 +298,7 @@ az monitor diagnostic-settings create \
 
 ## Common Issues
 
-**VMs lose all internet access after applying the route table.** This is expected behavior. You need to add firewall rules to allow the traffic you want. Start with DNS (port 53) since nothing works without name resolution.
+**VMs lose all internet access after applying the route table.** This is expected behavior. You need to add firewall rules to allow the traffic you want. If clients use a custom DNS resolver through the firewall, start with DNS (port 53) since nothing works without name resolution.
 
 **The firewall itself cannot reach the internet.** Make sure the management IP configuration is set up correctly with its own public IP. The management subnet should not have a UDR applied.
 
