@@ -14,21 +14,21 @@ In this post, we will use the Azure Blob Storage Python SDK to programmatically 
 
 ## Understanding Storage Tiers
 
-Azure Blob Storage has four access tiers, each with different pricing:
+Azure Blob Storage has four main manually assigned access tiers, each with different pricing:
 
 - **Hot**: Highest storage cost, lowest access cost. For frequently accessed data.
 - **Cool**: Lower storage cost, higher access cost. For data accessed infrequently (at least 30 days).
 - **Cold**: Even lower storage cost. For data accessed rarely (at least 90 days).
-- **Archive**: Lowest storage cost, highest access cost. For data that can tolerate hours of retrieval latency.
+- **Archive**: Lowest storage cost, highest access cost. For data stored for at least 180 days that can tolerate hours of retrieval latency.
 
-The pricing difference is significant. Archive storage costs roughly 90% less than Hot storage, but retrieving a blob from Archive can take hours and costs more per operation.
+The pricing difference is significant. Archive storage can cost much less than Hot storage, but retrieving a blob from Archive can take hours and costs more per operation.
 
 ## Setup
 
 ```bash
 # Install the Azure Storage and Management SDKs
 
-pip install azure-storage-blob azure-mgmt-storage azure-identity
+pip install azure-storage-blob azure-mgmt-storage azure-identity azure-functions
 ```
 
 ## Creating Lifecycle Policies with the Management SDK
@@ -201,7 +201,7 @@ def get_current_policy():
 
 ## Custom Lifecycle Logic with the Blob SDK
 
-The built-in lifecycle policies are based on time since last modification. If you need more complex logic - like moving blobs based on access patterns, size, or custom metadata - you need to implement it yourself using the Blob SDK.
+The built-in lifecycle policies are time-based and can use last modified time, creation time, or last access time when access time tracking is enabled. If you need more complex logic - like combining access patterns with size or custom metadata - you need to implement it yourself using the Blob SDK.
 
 ```python
 # custom_lifecycle.py
@@ -314,8 +314,13 @@ Schedule the custom lifecycle logic to run periodically using a timer-triggered 
 
 ```python
 # Timer-triggered function for custom lifecycle management
+import logging
 import azure.functions as func
-from custom_lifecycle import tier_blobs_by_access_pattern, cleanup_by_size
+from custom_lifecycle import (
+    tier_blobs_by_access_pattern,
+    cleanup_by_size,
+    cleanup_by_metadata,
+)
 
 app = func.FunctionApp()
 
@@ -366,4 +371,4 @@ def get_tier_statistics(container_name):
 
 ## Summary
 
-Lifecycle management is essential for controlling Azure Blob Storage costs. The built-in policies handle time-based tiering and deletion well, and you can configure them programmatically through the management SDK. For more complex scenarios - access pattern-based tiering, size-based cleanup, or metadata-driven deletion - build custom logic with the Blob SDK and run it on a schedule with Azure Functions. The combination gives you full control over your storage lifecycle while keeping costs in check.
+Lifecycle management is essential for controlling Azure Blob Storage costs. The built-in policies handle time-based tiering and deletion well, and you can configure them programmatically through the management SDK. For more complex scenarios - custom access-pattern logic, size-based cleanup, or metadata-driven deletion - build custom logic with the Blob SDK and run it on a schedule with Azure Functions. The combination gives you full control over your storage lifecycle while keeping costs in check.
