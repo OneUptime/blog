@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS Proxy, Lambda, Serverless, Database
 
-Description: Learn how to use RDS Proxy with AWS Lambda to solve connection exhaustion, improve performance, and enable IAM-based database authentication.
+Description: Learn how to use RDS Proxy with AWS Lambda to solve connection exhaustion, improve performance, and enable IAM-based proxy authentication.
 
 ---
 
@@ -17,7 +17,7 @@ Here's what happens without RDS Proxy:
 1. API Gateway receives 200 concurrent requests
 2. Lambda scales to 200 concurrent executions
 3. Each execution opens a database connection
-4. Your db.t3.medium has max_connections = 100
+4. Your database has 100 available connections for this workload
 5. 100 Lambda functions fail with "too many connections"
 
 Even with connection reuse in Lambda (keeping the connection between warm invocations), cold starts create new connections, and burst traffic overwhelms the database.
@@ -25,12 +25,12 @@ Even with connection reuse in Lambda (keeping the connection between warm invoca
 ```mermaid
 graph TD
     subgraph Without RDS Proxy
-        A1[200 Lambda<br/>Invocations] -->|200 connections| B1[RDS<br/>max_connections: 100]
+        A1[200 Lambda<br/>Invocations] -->|200 connections| B1[RDS<br/>100 available connections]
         B1 -->|100 rejected| C1[Errors]
     end
     subgraph With RDS Proxy
         A2[200 Lambda<br/>Invocations] -->|200 connections| D2[RDS Proxy<br/>Connection Pool]
-        D2 -->|20 connections| B2[RDS<br/>max_connections: 100]
+        D2 -->|20 connections| B2[RDS<br/>100 available connections]
     end
     style C1 fill:#f55,color:#fff
     style D2 fill:#4a9,color:#fff
@@ -61,7 +61,7 @@ aws secretsmanager create-secret \
 
 ## Step 2: Create IAM Roles
 
-You need two roles: one for the proxy to access Secrets Manager, and one for Lambda to connect to the proxy using IAM auth.
+You need two roles: one for the proxy to access Secrets Manager, and one for Lambda to connect to the proxy using IAM auth. The Lambda execution role also needs the VPC access policy when you attach the function to private subnets.
 
 This creates the proxy's IAM role.
 
@@ -104,6 +104,10 @@ aws iam put-role-policy \
 Add RDS Proxy connection permission to the Lambda execution role.
 
 ```bash
+aws iam attach-role-policy \
+  --role-name lambda-execution-role \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
 aws iam put-role-policy \
   --role-name lambda-execution-role \
   --policy-name rds-proxy-connect \
@@ -119,14 +123,13 @@ aws iam put-role-policy \
 
 ## Step 3: Create the Database User
 
-Create a database user that supports IAM authentication.
+Create a database user whose password matches the Secrets Manager secret. In this setup, Lambda uses IAM authentication to connect to the proxy, and the proxy uses the secret to authenticate to the database.
 
 For PostgreSQL, run this SQL on your RDS instance.
 
 ```sql
 -- Create the Lambda user
-CREATE USER lambda_user WITH LOGIN;
-GRANT rds_iam TO lambda_user;
+CREATE USER lambda_user WITH LOGIN PASSWORD 'LambdaStrongPassword123!';
 
 -- Grant appropriate permissions
 GRANT CONNECT ON DATABASE myappdb TO lambda_user;
@@ -139,14 +142,14 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 For MySQL:
 
 ```sql
-CREATE USER 'lambda_user'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
+CREATE USER 'lambda_user'@'%' IDENTIFIED BY 'LambdaStrongPassword123!';
 GRANT SELECT, INSERT, UPDATE, DELETE ON myappdb.* TO 'lambda_user'@'%';
 FLUSH PRIVILEGES;
 ```
 
 ## Step 4: Create the RDS Proxy
 
-This creates the proxy with IAM authentication required.
+This creates the proxy with client IAM authentication required.
 
 ```bash
 aws rds create-db-proxy \
@@ -317,7 +320,6 @@ def handler(event, context):
 This Node.js Lambda function connects to RDS through the proxy with IAM auth.
 
 ```javascript
-const { RDSClient } = require('@aws-sdk/client-rds');
 const { Signer } = require('@aws-sdk/rds-signer');
 const { Client } = require('pg');
 
@@ -379,7 +381,7 @@ exports.handler = async (event) => {
 
 1. **Keep connections outside the handler**: Create the connection in module scope so it's reused across warm invocations
 2. **Set reserved concurrency**: Limit Lambda concurrency to prevent overwhelming even the proxy
-3. **Use short IAM token TTL**: Auth tokens are valid for 15 minutes, which works well with Lambda's warm container lifetime
+3. **Generate tokens only when opening connections**: IAM auth tokens are valid for 15 minutes, so reuse warm connections instead of generating a token for every query
 4. **Enable connection borrowing timeout**: Set `ConnectionBorrowTimeout` to a reasonable value (30-60 seconds) so Lambda doesn't hang waiting for a connection
 
 ## Monitoring
@@ -387,7 +389,7 @@ exports.handler = async (event) => {
 Track these CloudWatch metrics for your Lambda-Proxy-RDS stack:
 
 - **Lambda**: ConcurrentExecutions, Duration, Errors
-- **RDS Proxy**: ClientConnections, DatabaseConnections, QueryRequests
+- **RDS Proxy**: ClientConnections, DatabaseConnections, QueryRequests, DatabaseConnectionsCurrentlySessionPinned
 - **RDS**: DatabaseConnections, CPUUtilization, FreeableMemory
 
 Set up dashboards to see all three layers at once. [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) can consolidate these metrics into a single view.
@@ -396,11 +398,11 @@ Set up dashboards to see all three layers at once. [OneUptime](https://oneuptime
 
 **"Connection timed out" from Lambda**: Check that Lambda's security group allows outbound to the proxy's security group on port 5432.
 
-**"IAM authentication is not enabled"**: Make sure both the proxy AND the database user support IAM auth.
+**"IAM authentication is not enabled"**: Make sure the proxy has IAM authentication required or enabled, and that the Lambda execution role has `rds-db:connect` permission for the proxy resource ID and database user.
 
 **"Too many connections" even with proxy**: The proxy still has limits. Check `MaxConnectionsPercent` and your Lambda concurrency.
 
-**Slow first invocation**: Cold starts in VPC add 1-2 seconds, plus the IAM token generation and TLS handshake. Subsequent invocations reuse the connection and are much faster.
+**Slow first invocation**: The first request in a new execution environment still pays for IAM token generation, TLS, and opening the database connection. Subsequent invocations reuse the connection and are much faster.
 
 ## Wrapping Up
 
