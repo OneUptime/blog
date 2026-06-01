@@ -34,7 +34,7 @@ Go to Azure AD, click "App registrations," and create a new registration:
 - **Supported account types**: Depends on your scenario (single tenant, multi-tenant, etc.)
 - **Redirect URI**: Not needed for the backend
 
-After creation, go to "Expose an API" and add an Application ID URI (e.g., `api://my-api-backend`). Then add a scope, like `api://my-api-backend/read`. This scope is what clients will request when obtaining tokens.
+After creation, go to "Expose an API" and add an Application ID URI (for example, the default `api://BACKEND_APP_CLIENT_ID`). Then add a scope, like `api://BACKEND_APP_CLIENT_ID/read`. This scope is what clients will request when obtaining tokens. Because the examples below use the Microsoft identity platform v2.0 endpoints, also set the backend app manifest's `requestedAccessTokenVersion` value to `2`.
 
 **Developer Portal Client Registration:**
 
@@ -45,17 +45,18 @@ Create another registration:
 
 Go to "Certificates & secrets" and create a client secret. Copy the value immediately - you will not see it again.
 
-Go to "API permissions" and add a permission for your backend API. Select the scope you created (`api://my-api-backend/read`) and grant admin consent if appropriate.
+Go to "API permissions" and add a permission for your backend API. Select the scope you created (`api://BACKEND_APP_CLIENT_ID/read`) and grant admin consent if appropriate.
 
 Note down the following values:
-- Backend API Application ID URI: `api://my-api-backend`
+- Backend API Application ID URI: `api://BACKEND_APP_CLIENT_ID`
+- Backend API Application (client) ID
 - Client (portal) Application (client) ID
 - Client secret
 - Your Azure AD tenant ID
 
 ## Step 2: Configure the Authorization Server in APIM
 
-In the Azure Portal, navigate to your APIM instance. Under Security, click "OAuth 2.0" and then "Add."
+In the Azure Portal, navigate to your APIM instance. Under Developer portal, click "OAuth 2.0 + OpenID Connect," open the OAuth 2.0 tab, and then click "Add."
 
 Fill in the form:
 
@@ -65,7 +66,7 @@ Fill in the form:
 - **Authorization grant types**: Check "Authorization code"
 - **Authorization endpoint URL**: `https://login.microsoftonline.com/YOUR_TENANT_ID/oauth2/v2.0/authorize`
 - **Token endpoint URL**: `https://login.microsoftonline.com/YOUR_TENANT_ID/oauth2/v2.0/token`
-- **Default scope**: `api://my-api-backend/read`
+- **Default scope**: `api://BACKEND_APP_CLIENT_ID/read`
 - **Client ID**: The Application (client) ID of the developer portal registration
 - **Client secret**: The client secret you created
 
@@ -97,7 +98,7 @@ As I mentioned, the authorization server configuration only enables the OAuth fl
         <openid-config url="https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0/.well-known/openid-configuration" />
 
         <audiences>
-            <audience>api://my-api-backend</audience>
+            <audience>BACKEND_APP_CLIENT_ID</audience>
         </audiences>
 
         <issuers>
@@ -106,7 +107,7 @@ As I mentioned, the authorization server configuration only enables the OAuth fl
 
         <!-- Optionally require specific scopes -->
         <required-claims>
-            <claim name="scp" match="any">
+            <claim name="scp" match="any" separator=" ">
                 <value>read</value>
             </claim>
         </required-claims>
@@ -124,7 +125,7 @@ Once authorized, the portal will attach the Bearer token to all test requests. T
 
 The authorization code flow above is for interactive users. For service-to-service communication, you need the client credentials flow. The client application requests a token directly from Azure AD using its client ID and secret, without any user interaction.
 
-In Azure AD, the client app needs an "Application permission" (not a "Delegated permission") on the backend API. After granting admin consent, the client can request a token:
+In Azure AD, the backend API registration needs an app role, such as `API.ReadWrite`, and the client app needs that role added as an "Application permission" (not a "Delegated permission") on the backend API. After granting admin consent, the client can request a token:
 
 ```bash
 # Obtain a token using the client credentials flow
@@ -135,7 +136,7 @@ curl -X POST \
     -H "Content-Type: application/x-www-form-urlencoded" \
     -d "client_id=CLIENT_APP_ID" \
     -d "client_secret=CLIENT_SECRET" \
-    -d "scope=api://my-api-backend/.default" \
+    -d "scope=api://BACKEND_APP_CLIENT_ID/.default" \
     -d "grant_type=client_credentials"
 ```
 
@@ -154,7 +155,7 @@ Note that client credentials tokens do not have a `scp` claim. They have a `role
 
 ## Handling Token Refresh
 
-Access tokens have a limited lifetime (usually one hour for Azure AD). In the developer portal, APIM handles token refresh automatically if the authorization server is configured with a refresh token grant type.
+Access tokens have a limited lifetime. Microsoft Entra ID access tokens are typically valid for a variable default lifetime of 60 to 90 minutes. In the developer portal, APIM can use a refresh token if the OAuth provider issues one, such as when the authorization request includes `offline_access`.
 
 For programmatic clients, the client application is responsible for refreshing tokens. A typical pattern is to catch 401 responses, request a new token, and retry the request.
 
@@ -162,7 +163,7 @@ For programmatic clients, the client application is responsible for refreshing t
 
 If your client is a single-page application (SPA) or mobile app that cannot securely store a client secret, use PKCE (Proof Key for Code Exchange). APIM supports this as part of the OAuth 2.0 configuration.
 
-When configuring the authorization server in APIM, you can enable PKCE by selecting "Authorization code" as the grant type and ensuring your client app registration in Azure AD is configured as a public client (no client secret).
+When configuring the authorization server in APIM, you can enable PKCE by selecting "Authorization code + PKCE" as the grant type and ensuring your client app registration in Azure AD is configured as a public client (no client secret).
 
 The developer portal will automatically generate the code verifier and code challenge as part of the authorization flow.
 
@@ -176,7 +177,7 @@ If your API needs to accept tokens from multiple Azure AD tenants, change the is
 <validate-jwt header-name="Authorization" require-scheme="Bearer">
     <openid-config url="https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration" />
     <audiences>
-        <audience>api://my-api-backend</audience>
+        <audience>BACKEND_APP_CLIENT_ID</audience>
     </audiences>
     <!-- Do not restrict issuers for multi-tenant -->
 </validate-jwt>
