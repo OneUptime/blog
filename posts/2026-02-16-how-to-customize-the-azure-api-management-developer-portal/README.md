@@ -14,10 +14,10 @@ In this post, I will walk through the practical steps of customizing the develop
 
 ## Accessing the Portal Editor
 
-Navigate to your APIM instance in the Azure Portal and click "Developer portal" in the left menu. You will see two options:
+Navigate to your APIM instance in the Azure Portal and, under "Developer portal" in the left menu, open "Portal overview." If your instance is in a v2 service tier, enable the developer portal from "Portal settings" first.
 
 - **Developer portal**: Opens the portal editor in admin mode
-- **Developer portal (legacy)**: The old portal that Microsoft is deprecating. Ignore this.
+- **Publish**: Publishes the current saved portal content from the Azure Portal
 
 Click "Developer portal" to open the visual editor. You are now in the admin view where you can modify the portal's layout, content, and styling.
 
@@ -29,28 +29,19 @@ The first thing most teams do is update the branding. Click the paintbrush icon 
 - **Font family**: The typeface used throughout the portal
 - **Header background**: The color or gradient for the navigation bar
 
-For more granular control, click "Custom CSS" and add your own stylesheet rules:
+For more granular control over embedded content, add a "Custom HTML code" widget and include CSS with the markup. The widget is rendered in an iframe, so these styles apply to the content in that widget rather than globally to the portal shell:
 
 ```css
-/* Custom branding for the developer portal */
-/* Override the default header styling with your brand colors */
-:root {
-    --portal-primary-color: #2563eb;
-    --portal-font-family: 'Inter', sans-serif;
+.quick-start-panel {
+    font-family: Inter, sans-serif;
+    border-left: 3px solid #2563eb;
+    padding: 1rem;
+    background: #f8fafc;
 }
 
-.nav-bar {
-    background-color: #1e293b;
-}
-
-.nav-bar a {
-    color: #e2e8f0;
-}
-
-/* Style the API operation cards */
-.operation-card {
-    border-left: 3px solid var(--portal-primary-color);
-    margin-bottom: 1rem;
+.quick-start-panel a {
+    color: #2563eb;
+    font-weight: 600;
 }
 ```
 
@@ -102,22 +93,17 @@ Custom pages are great for:
 
 ## Configuring Authentication Providers
 
-By default, the developer portal uses a basic username/password registration. You can add OAuth 2.0 providers so developers can sign in with their existing identities.
+By default, the developer portal can use a basic username/password registration. You can also add Microsoft Entra-based identity providers so developers can sign in with their existing identities.
 
 Go to your APIM instance in the Azure Portal (not the developer portal editor), navigate to "Developer portal" > "Identities." You can add:
 
-- **Azure Active Directory**: For enterprise developers in your organization
-- **Azure AD B2C**: For external developers with self-service registration
-- **Google**: Sign in with Google accounts
-- **Microsoft Account**: Sign in with personal Microsoft accounts
+- **Microsoft Entra ID**: For enterprise developers in your organization
+- **Microsoft Entra External ID**: For external developers with self-service registration and social identity providers
+- **External identity providers in your Entra tenant**: For example, Google or Facebook accounts configured through Microsoft Entra
 
-For Azure AD, you need to register an application and provide the client ID, client secret, and tenant information. Here is the redirect URI format:
+For Microsoft Entra ID, API Management can create the application and identity provider for you from the Portal overview page. If you configure it manually, register an application, select the MSAL client library in API Management, and provide the client ID, client secret, tenant information, and the redirect URL shown in the Add identity provider pane. Configure that redirect URL as a Single-page application (SPA) redirect URI in the app registration.
 
-```text
-https://yourinstance.developer.azure-api.net/signin-aad
-```
-
-After configuring the provider, it appears as a sign-in option on the developer portal login page.
+After configuring the provider, republish the developer portal. It then appears as a sign-in option on the developer portal login page.
 
 ## Customizing Email Templates
 
@@ -144,9 +130,9 @@ Each template supports HTML and a set of variables for dynamic content. For exam
 
 By default, anonymous users can browse the API documentation. If you want to require authentication before viewing any content, configure the portal's visibility settings:
 
-1. In the portal editor, go to the site settings
-2. Enable "Require user login" to make the entire portal require authentication
-3. Alternatively, restrict specific pages by setting them to "Authenticated users only"
+1. In the Azure Portal, go to your APIM instance
+2. Under "Developer portal," open "Identities" > "Settings"
+3. Under "Anonymous users," enable "Redirect anonymous users to sign-in page"
 
 For APIs that should not be publicly visible, set their associated products to "Requires subscription" and limit the product visibility to specific groups.
 
@@ -162,14 +148,17 @@ The repository is available on GitHub. To set it up:
 git clone https://github.com/Azure/api-management-developer-portal.git
 cd api-management-developer-portal
 
+# Check out the latest release tag from the repository releases page
+git checkout <current-release-tag>
+
 # Install dependencies
 npm install
 
 # Configure the connection to your APIM instance
-# Edit the src/config.json file with your APIM details
+# Edit src/config.design.json, src/config.publish.json, and src/config.runtime.json
 
 # Start the development server
-npm start
+npm run start
 ```
 
 With the self-hosted version, you can:
