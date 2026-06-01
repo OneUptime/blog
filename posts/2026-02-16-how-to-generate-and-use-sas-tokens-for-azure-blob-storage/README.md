@@ -22,7 +22,7 @@ There are three types of SAS tokens:
 - **Service SAS** - Grants access to resources in a single storage service.
 - **User delegation SAS** - The most secure option. Signed with Azure AD credentials instead of the account key.
 
-User delegation SAS is the recommended approach when possible because it does not rely on the storage account key. If the key gets rotated or compromised, account-key-based SAS tokens become invalid. User delegation SAS ties access to an Azure AD identity instead.
+User delegation SAS is the recommended approach when possible because it does not rely on the storage account key. If a storage account key gets rotated, SAS tokens signed with that key become invalid; if the key is compromised, anyone with it can generate new account-key-based SAS tokens until the key is rotated. User delegation SAS ties access to an Azure AD identity instead.
 
 ## Generating a SAS Token in the Azure Portal
 
@@ -51,6 +51,7 @@ az storage container generate-sas \
   --name mycontainer \
   --permissions rl \
   --expiry $(date -u -d "24 hours" '+%Y-%m-%dT%H:%MZ') \
+  --https-only \
   --auth-mode key \
   --account-key $STORAGE_ACCOUNT_KEY
 ```
@@ -67,6 +68,7 @@ az storage blob generate-sas \
   --name myfile.pdf \
   --permissions r \
   --expiry $(date -u -d "1 hour" '+%Y-%m-%dT%H:%MZ') \
+  --https-only \
   --auth-mode key \
   --account-key $STORAGE_ACCOUNT_KEY
 ```
@@ -75,16 +77,17 @@ az storage blob generate-sas \
 
 User delegation SAS tokens are signed using Azure AD credentials rather than the storage account key. This is the preferred method for production scenarios.
 
-First, you need to get a user delegation key:
+With the Azure CLI, the user delegation key is requested for you when you generate the SAS:
 
 ```bash
-# Get a user delegation key (requires Azure AD authentication)
+# Generate a user delegation SAS (requires Azure AD authentication)
 az storage blob generate-sas \
   --account-name mystorageaccount \
   --container-name mycontainer \
   --name myfile.pdf \
   --permissions r \
   --expiry $(date -u -d "1 hour" '+%Y-%m-%dT%H:%MZ') \
+  --https-only \
   --auth-mode login \
   --as-user
 ```
@@ -97,9 +100,9 @@ In most real applications, you generate SAS tokens in your backend code. Here is
 
 ```python
 from datetime import datetime, timedelta, timezone
-from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+from azure.storage.blob import generate_blob_sas, BlobSasPermissions
 
-# Initialize the BlobServiceClient with your connection string
+# Use the storage account name and key to sign a service SAS
 account_name = "mystorageaccount"
 account_key = "your-account-key"
 
@@ -131,7 +134,7 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 using Azure.Storage;
 
-// Create a BlobServiceClient using the storage account connection string
+// Create a BlobServiceClient using a shared key credential
 var credential = new StorageSharedKeyCredential("mystorageaccount", "your-account-key");
 var blobServiceClient = new BlobServiceClient(
     new Uri("https://mystorageaccount.blob.core.windows.net"),
@@ -168,7 +171,9 @@ az storage container policy create \
   --container-name mycontainer \
   --name readonly-policy \
   --permissions rl \
-  --expiry 2026-12-31T00:00:00Z
+  --expiry 2026-12-31T00:00:00Z \
+  --auth-mode key \
+  --account-key $STORAGE_ACCOUNT_KEY
 ```
 
 Then generate a SAS token referencing that policy:
@@ -178,7 +183,10 @@ Then generate a SAS token referencing that policy:
 az storage container generate-sas \
   --account-name mystorageaccount \
   --name mycontainer \
-  --policy-name readonly-policy
+  --policy-name readonly-policy \
+  --https-only \
+  --auth-mode key \
+  --account-key $STORAGE_ACCOUNT_KEY
 ```
 
 If you need to revoke access, just delete the policy:
@@ -188,7 +196,9 @@ If you need to revoke access, just delete the policy:
 az storage container policy delete \
   --account-name mystorageaccount \
   --container-name mycontainer \
-  --name readonly-policy
+  --name readonly-policy \
+  --auth-mode key \
+  --account-key $STORAGE_ACCOUNT_KEY
 ```
 
 ## Security Best Practices
@@ -201,7 +211,7 @@ az storage container policy delete \
 
 **Prefer user delegation SAS.** Whenever your architecture supports Azure AD authentication, use user delegation SAS tokens instead of account-key-based ones.
 
-**Never put SAS tokens in client-side code.** Generate them on your backend and send the signed URL to the client. The client should never see your account key or have the ability to generate its own tokens.
+**Never put account keys or SAS generation logic in client-side code.** Generate SAS tokens on your backend and send the signed URL to the client. The client can use the SAS URL, but it should never see your account key or have the ability to generate its own tokens.
 
 **Use stored access policies for revocability.** If you need the ability to revoke access, stored access policies are essential.
 
