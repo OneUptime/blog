@@ -35,7 +35,7 @@ sequenceDiagram
     DB-->>App: Connection established
 ```
 
-The token is short-lived (typically 1 hour), but the MySQL JDBC driver and the Azure identity library handle token refresh automatically.
+The token is short-lived (up to 60 minutes). The Spring Cloud Azure MySQL starter handles token acquisition for you; if you acquire tokens manually, you need to make sure pooled connections are recycled before the token expires.
 
 ## Prerequisites
 
@@ -65,15 +65,27 @@ az mysql flexible-server create \
   --version 8.0.21 \
   --public-access 0.0.0.0
 
+# Create and assign the user-assigned managed identity that the server uses for Microsoft Entra authentication
+az identity create \
+  --name mysql-server-identity \
+  --resource-group mysql-demo-rg \
+  --location eastus
+
+az mysql flexible-server identity assign \
+  --server-name my-mysql-server \
+  --resource-group mysql-demo-rg \
+  --identity mysql-server-identity
+
 # Enable Azure AD authentication
 az mysql flexible-server ad-admin create \
   --server-name my-mysql-server \
   --resource-group mysql-demo-rg \
   --display-name "your-email@domain.com" \
-  --object-id "your-azure-ad-object-id"
+  --object-id "your-azure-ad-object-id" \
+  --identity mysql-server-identity
 ```
 
-The Azure AD admin can create additional database users that correspond to Azure AD identities.
+The user-assigned managed identity needs Microsoft Graph permissions (`User.Read.All`, `GroupMember.Read.All`, and `Application.Read.All`) or the Directory Readers role so the server can validate Microsoft Entra identities. The Azure AD admin can create additional database users that correspond to Azure AD identities.
 
 ## Creating an Azure AD Database User
 
@@ -81,14 +93,15 @@ Connect to MySQL as the Azure AD admin and create a user for your application.
 
 ```sql
 -- Connect as the Azure AD admin first
+-- Create the application database
+CREATE DATABASE IF NOT EXISTS myappdb;
+
 -- Create a user for a managed identity
+SET aad_auth_validate_oids_in_tenant = OFF;
 CREATE AADUSER 'my-app-identity' IDENTIFIED BY 'your-managed-identity-client-id';
 
 -- Grant permissions to the application database
 GRANT ALL PRIVILEGES ON myappdb.* TO 'my-app-identity'@'%';
-
--- Create the application database
-CREATE DATABASE IF NOT EXISTS myappdb;
 
 FLUSH PRIVILEGES;
 ```
@@ -99,6 +112,18 @@ Add the necessary dependencies to your Spring Boot project.
 
 ```xml
 <!-- pom.xml -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.azure.spring</groupId>
+            <artifactId>spring-cloud-azure-dependencies</artifactId>
+            <version>5.25.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <dependency>
         <groupId>org.springframework.boot</groupId>
@@ -121,17 +146,17 @@ Add the necessary dependencies to your Spring Boot project.
     <dependency>
         <groupId>com.azure</groupId>
         <artifactId>azure-identity</artifactId>
-        <version>1.11.1</version>
     </dependency>
 
     <!-- Azure Spring Boot starter for MySQL integration -->
     <dependency>
         <groupId>com.azure.spring</groupId>
         <artifactId>spring-cloud-azure-starter-jdbc-mysql</artifactId>
-        <version>5.8.0</version>
     </dependency>
 </dependencies>
 ```
+
+This BOM version is for Spring Boot 3.1.x through 3.5.x. Use the Spring Cloud Azure BOM that matches your Spring Boot version to manage the starter version.
 
 ## Configuring the Connection
 
@@ -141,17 +166,16 @@ The Spring Cloud Azure starter handles token acquisition automatically. Your con
 # application.yml
 spring:
   datasource:
-    url: jdbc:mysql://my-mysql-server.mysql.database.azure.com:3306/myappdb?useSSL=true&requireSSL=true&sslMode=REQUIRED
+    url: jdbc:mysql://my-mysql-server.mysql.database.azure.com:3306/myappdb?serverTimezone=UTC
     username: my-app-identity
-    # No password needed - the Azure Identity plugin provides the token
-
-  cloud:
     azure:
+      passwordless-enabled: true
       credential:
         # For managed identity in production
         managed-identity-enabled: true
         # Uncomment and set this for user-assigned managed identity
         # client-id: your-managed-identity-client-id
+    # No password needed - the Azure Identity plugin provides the token
 
   jpa:
     hibernate:
@@ -324,10 +348,10 @@ Create a development-specific profile that uses your Azure CLI identity.
 # application-dev.yml
 spring:
   datasource:
-    url: jdbc:mysql://my-mysql-server.mysql.database.azure.com:3306/myappdb?useSSL=true&sslMode=REQUIRED
+    url: jdbc:mysql://my-mysql-server.mysql.database.azure.com:3306/myappdb?serverTimezone=UTC
     username: your-email@domain.com  # Your Azure AD email
-  cloud:
     azure:
+      passwordless-enabled: true
       credential:
         managed-identity-enabled: false  # Use Azure CLI instead
 ```
@@ -341,17 +365,17 @@ Azure Database for MySQL has a firewall that blocks all connections by default. 
 ```bash
 # Allow Azure services to connect
 az mysql flexible-server firewall-rule create \
-  --name allow-azure-services \
-  --server-name my-mysql-server \
+  --name my-mysql-server \
   --resource-group mysql-demo-rg \
+  --rule-name allow-azure-services \
   --start-ip-address 0.0.0.0 \
   --end-ip-address 0.0.0.0
 
 # Allow your development machine
 az mysql flexible-server firewall-rule create \
-  --name allow-dev-machine \
-  --server-name my-mysql-server \
+  --name my-mysql-server \
   --resource-group mysql-demo-rg \
+  --rule-name allow-dev-machine \
   --start-ip-address YOUR_IP \
   --end-ip-address YOUR_IP
 ```
