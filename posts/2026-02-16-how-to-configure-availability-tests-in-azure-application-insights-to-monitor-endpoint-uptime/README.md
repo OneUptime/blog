@@ -10,17 +10,19 @@ Description: A complete guide to setting up availability tests in Azure Applicat
 
 You can have the most sophisticated monitoring stack in the world, but if you are not checking whether your endpoints are actually reachable from the outside, you are missing the most basic signal. Availability tests in Azure Application Insights ping your URLs from multiple locations around the globe at regular intervals and alert you when something stops responding.
 
-This guide walks through setting up both basic URL ping tests and more advanced standard tests, configuring alerting, and troubleshooting common issues.
+This guide walks through setting up standard tests and custom TrackAvailability tests, configuring alerting, and troubleshooting common issues.
 
 ## Types of Availability Tests
 
 Application Insights offers several types of availability tests:
 
-1. **URL ping test** - The simplest option. Sends an HTTP GET request to a URL and checks for a successful response code. Can optionally validate that the response body contains a specific string.
+1. **Standard test** - The recommended single-request option. Supports HTTP GET, HEAD, and POST methods. Can send custom headers, validate SSL certificates, check response content, and handle redirects.
 
-2. **Standard test** - More full-featured. Supports HTTP GET, HEAD, and POST methods. Can send custom headers, validate SSL certificates, check response content, and handle redirects.
+2. **Custom TrackAvailability test** - Write your own test logic using the Application Insights SDK. Useful when you need to test multi-step flows or non-HTTP protocols.
 
-3. **Custom TrackAvailability test** - Write your own test logic using the Application Insights SDK. Useful when you need to test multi-step flows or non-HTTP protocols.
+3. **URL ping test** - A deprecated single-request option. It validates whether an endpoint is responding and can use custom success criteria, but Microsoft will retire URL ping tests on September 30, 2026.
+
+4. **Multi-step web test** - A deprecated Visual Studio webtest-based option. Application Insights retired multi-step web tests on August 31, 2024.
 
 For most use cases, the standard test covers everything you need.
 
@@ -33,7 +35,7 @@ For most use cases, the standard test covers everything you need.
    - **Test name**: A descriptive name like "Homepage health check" or "API orders endpoint".
    - **URL**: The full URL to test, including `https://`.
    - **Parse dependent requests**: Enable this if you want the test to also load referenced resources (CSS, JS, images). For API health checks, leave this off.
-   - **Enable retries**: Enable this to retry once on failure before marking the test as failed. Recommended to reduce false positives from transient network issues.
+   - **Enable retries**: Enable this to retry after a short interval when a test fails. A failure is reported only if three successive attempts fail. Recommended to reduce false positives from transient network issues.
    - **SSL certificate validity**: Set the minimum number of days before SSL expiration. If the certificate will expire within this window, the test fails. This doubles as an SSL expiration monitor.
    - **Test frequency**: How often to run the test. Options are 5, 10, or 15 minutes. For critical endpoints, use 5 minutes.
    - **Test locations**: Select at least 5 locations for reliable results. Pick locations that match where your users are. Azure tests from data centers in regions like East US, West Europe, Southeast Asia, Brazil South, and others.
@@ -54,6 +56,7 @@ For repeatable deployments, use ARM templates.
   "type": "Microsoft.Insights/webtests",
   "apiVersion": "2022-06-15",
   "name": "api-health-check",
+  "kind": "standard",
   "location": "eastus",
   "tags": {
     "hidden-link:/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Insights/components/<ai-name>": "Resource"
@@ -104,10 +107,10 @@ You can also create custom alert rules based on availability test results using 
 
 ```text
 // Alert query: availability test failures in the last 15 minutes
-availabilityResults
-| where timestamp > ago(15m)
-| where success == false
-| summarize FailedLocations = dcount(location) by name
+AppAvailabilityResults
+| where TimeGenerated > ago(15m)
+| where Success == false
+| summarize FailedLocations = dcount(Location) by Name
 | where FailedLocations >= 2
 ```
 
@@ -131,8 +134,10 @@ public static async Task Run(
     [TimerTrigger("0 */5 * * * *")] TimerInfo timer,
     ILogger log)
 {
-    var telemetryClient = new TelemetryClient(
-        TelemetryConfiguration.CreateDefault());
+    var telemetryConfiguration = TelemetryConfiguration.CreateDefault();
+    telemetryConfiguration.ConnectionString =
+        Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING");
+    var telemetryClient = new TelemetryClient(telemetryConfiguration);
 
     var testName = "Authenticated API Check";
     var testLocation = Environment.GetEnvironmentVariable("REGION_NAME") ?? "custom";
@@ -192,7 +197,7 @@ You can add this service tag to your firewall or NSG rules.
 ```bash
 # Get the IP ranges for availability test locations
 
-az network service-tag list \
+az network list-service-tags \
   --location eastus \
   --query "values[?name=='ApplicationInsightsAvailability'].properties.addressPrefixes" \
   -o tsv
@@ -202,20 +207,20 @@ Alternatively, if you are using Azure Front Door or Application Gateway, you can
 
 ## Multi-Step Tests
 
-The classic multi-step web tests (recorded in Visual Studio) have been deprecated. If you need to test multi-step flows like "log in, navigate to dashboard, check a value", use custom TrackAvailability tests with an Azure Function or Azure DevOps pipeline.
+The classic multi-step web tests (recorded in Visual Studio) have been retired in Application Insights. If you need to test multi-step flows like "log in, navigate to dashboard, check a value", use custom TrackAvailability tests with an Azure Function or Azure DevOps pipeline.
 
 A typical pattern is:
 
 1. Create an Azure Function on a timer trigger (every 5 minutes).
 2. Use an HTTP client to execute the multi-step flow.
 3. Report success or failure using the `TrackAvailability` API.
-4. Set up alerts on the `availabilityResults` table in Log Analytics.
+4. Set up alerts on the `AppAvailabilityResults` table in Log Analytics.
 
 ## Cost Considerations
 
-Availability tests are billed based on the number of test executions. Each test location counts as one execution per interval. So a test running every 5 minutes from 5 locations generates approximately 1,440 executions per day. Azure provides a generous free tier (up to 10 tests), so for most users, the cost is negligible.
+Standard availability tests are billed based on the number of scheduled test executions. Each test location counts as one execution per interval. So a test running every 5 minutes from 5 locations generates approximately 1,440 executions per day. URL ping tests are free until they retire, but standard tests are charged per scheduled execution, so review the current Azure Monitor pricing before enabling many tests.
 
-The data generated by availability tests (the `availabilityResults` table) counts toward your Log Analytics data ingestion. Each test result is small (a few hundred bytes), so the data volume is minimal unless you have hundreds of tests.
+The data generated by availability tests (the `AppAvailabilityResults` table) counts toward your Log Analytics data ingestion. Each test result is small, so the data volume is minimal unless you have hundreds of tests.
 
 ## Best Practices
 
