@@ -17,6 +17,11 @@ This post covers practical runbook examples for common infrastructure maintenanc
 First, you need an Azure Automation account. If you are managing this with Terraform or Bicep, great. If not, here is the quick portal-free setup.
 
 ```powershell
+# Create the resource group
+New-AzResourceGroup `
+  -Name "rg-automation" `
+  -Location "eastus"
+
 # Create the Automation Account
 
 New-AzAutomationAccount `
@@ -46,7 +51,9 @@ Orphaned managed disks happen when VMs are deleted but their disks are left behi
 # Finds and removes managed disks that are not attached to any VM
 
 # Authenticate using the Automation Account's managed identity
-Connect-AzAccount -Identity
+$null = Disable-AzContextAutosave -Scope Process
+$AzureContext = (Connect-AzAccount -Identity).Context
+$AzureContext = Set-AzContext -SubscriptionName $AzureContext.Subscription -DefaultProfile $AzureContext
 
 # Get all managed disks in the subscription
 $allDisks = Get-AzDisk
@@ -68,7 +75,7 @@ foreach ($disk in $unattachedDisks) {
     }
 
     # Skip disks tagged with "keep" or "do-not-delete"
-    if ($disk.Tags.ContainsKey("keep") -or $disk.Tags.ContainsKey("do-not-delete")) {
+    if ($disk.Tags -and ($disk.Tags.ContainsKey("keep") -or $disk.Tags.ContainsKey("do-not-delete"))) {
         Write-Output "  Skipping $($disk.Name) - tagged for retention"
         continue
     }
@@ -92,10 +99,13 @@ Save money by shutting down development VMs at night and on weekends.
 # Runbook: Stop-DevVMs.ps1
 # Stops all VMs tagged with environment=dev
 
-Connect-AzAccount -Identity
+$null = Disable-AzContextAutosave -Scope Process
+$AzureContext = (Connect-AzAccount -Identity).Context
+$AzureContext = Set-AzContext -SubscriptionName $AzureContext.Subscription -DefaultProfile $AzureContext
 
 # Get all VMs tagged as dev
 $devVMs = Get-AzVM -Status | Where-Object {
+    $_.Tags -and
     $_.Tags["environment"] -eq "dev" -and
     $_.PowerState -eq "VM running"
 }
@@ -104,7 +114,7 @@ Write-Output "Found $($devVMs.Count) running dev VMs"
 
 foreach ($vm in $devVMs) {
     # Check for an override tag that prevents auto-shutdown
-    if ($vm.Tags.ContainsKey("auto-shutdown") -and $vm.Tags["auto-shutdown"] -eq "disabled") {
+    if ($vm.Tags -and $vm.Tags.ContainsKey("auto-shutdown") -and $vm.Tags["auto-shutdown"] -eq "disabled") {
         Write-Output "  Skipping $($vm.Name) - auto-shutdown disabled"
         continue
     }
@@ -130,10 +140,13 @@ The complement to the shutdown runbook - start VMs at the beginning of the workd
 # Runbook: Start-DevVMs.ps1
 # Starts all VMs tagged with environment=dev that are deallocated
 
-Connect-AzAccount -Identity
+$null = Disable-AzContextAutosave -Scope Process
+$AzureContext = (Connect-AzAccount -Identity).Context
+$AzureContext = Set-AzContext -SubscriptionName $AzureContext.Subscription -DefaultProfile $AzureContext
 
 # Get all deallocated dev VMs
 $stoppedDevVMs = Get-AzVM -Status | Where-Object {
+    $_.Tags -and
     $_.Tags["environment"] -eq "dev" -and
     $_.PowerState -eq "VM deallocated"
 }
@@ -142,7 +155,7 @@ Write-Output "Found $($stoppedDevVMs.Count) stopped dev VMs"
 
 foreach ($vm in $stoppedDevVMs) {
     # Only start VMs that have the auto-start tag
-    if ($vm.Tags.ContainsKey("auto-start") -and $vm.Tags["auto-start"] -eq "enabled") {
+    if ($vm.Tags -and $vm.Tags.ContainsKey("auto-start") -and $vm.Tags["auto-start"] -eq "enabled") {
         Write-Output "  Starting $($vm.Name) in $($vm.ResourceGroupName)"
         Start-AzVM `
             -ResourceGroupName $vm.ResourceGroupName `
@@ -164,7 +177,9 @@ Snapshots taken for backups or troubleshooting should not live forever.
 # Runbook: Remove-OldSnapshots.ps1
 # Deletes snapshots older than 30 days
 
-Connect-AzAccount -Identity
+$null = Disable-AzContextAutosave -Scope Process
+$AzureContext = (Connect-AzAccount -Identity).Context
+$AzureContext = Set-AzContext -SubscriptionName $AzureContext.Subscription -DefaultProfile $AzureContext
 
 $maxAgeDays = 30
 $cutoffDate = (Get-Date).AddDays(-$maxAgeDays)
@@ -182,7 +197,7 @@ $totalSizeGB = 0
 
 foreach ($snapshot in $oldSnapshots) {
     # Skip snapshots with retention tags
-    if ($snapshot.Tags.ContainsKey("retain-until")) {
+    if ($snapshot.Tags -and $snapshot.Tags.ContainsKey("retain-until")) {
         $retainUntil = [DateTime]::Parse($snapshot.Tags["retain-until"])
         if ($retainUntil -gt (Get-Date)) {
             Write-Output "  Skipping $($snapshot.Name) - retained until $retainUntil"
@@ -212,7 +227,9 @@ Generate a report of resources that are missing required tags.
 # Runbook: Check-TagCompliance.ps1
 # Reports resources missing required tags
 
-Connect-AzAccount -Identity
+$null = Disable-AzContextAutosave -Scope Process
+$AzureContext = (Connect-AzAccount -Identity).Context
+$AzureContext = Set-AzContext -SubscriptionName $AzureContext.Subscription -DefaultProfile $AzureContext
 
 # Define required tags for production resources
 $requiredTags = @("environment", "cost-center", "owner", "team")
@@ -315,7 +332,9 @@ Add error handling and send notifications when something goes wrong.
 ```powershell
 try {
     # Main runbook logic here
-    Connect-AzAccount -Identity
+    $null = Disable-AzContextAutosave -Scope Process
+    $AzureContext = (Connect-AzAccount -Identity).Context
+    $AzureContext = Set-AzContext -SubscriptionName $AzureContext.Subscription -DefaultProfile $AzureContext
     # ... your cleanup code ...
 }
 catch {
@@ -328,8 +347,10 @@ catch {
         time    = (Get-Date -Format o)
     } | ConvertTo-Json
 
+    $alertWebhookUrl = Get-AutomationVariable -Name "ALERT_WEBHOOK_URL"
+
     Invoke-RestMethod `
-        -Uri $env:ALERT_WEBHOOK_URL `
+        -Uri $alertWebhookUrl `
         -Method Post `
         -Body $body `
         -ContentType "application/json"
