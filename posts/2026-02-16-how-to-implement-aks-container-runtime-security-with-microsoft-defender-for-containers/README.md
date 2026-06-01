@@ -24,10 +24,10 @@ Defender for Containers has three main capabilities:
 
 ## Prerequisites
 
-- An AKS cluster running Kubernetes 1.24 or later
+- An AKS cluster running a Kubernetes version supported by AKS and Defender for Containers
 - An Azure subscription with Defender for Containers enabled (or a trial)
-- Azure CLI 2.50 or later
-- Owner or Contributor access to the subscription
+- Azure CLI 2.40 or later
+- Contributor or Security Admin access to the subscription
 
 ## Step 1: Enable Defender for Containers
 
@@ -61,7 +61,7 @@ az aks update \
 az aks show \
   --resource-group myResourceGroup \
   --name myAKSCluster \
-  --query "securityProfile.defender" -o json
+  --query "securityProfile.defender.securityMonitoring.enabled" -o tsv
 ```
 
 ## Step 2: Verify the Defender Agent
@@ -70,36 +70,34 @@ After enabling the Defender profile, the security agent is deployed as a DaemonS
 
 ```bash
 # Check that the Defender agent pods are running
-kubectl get pods -n kube-system -l app=microsoft-defender
+kubectl get pods -n kube-system -l app=defender
 
 # Check the DaemonSet status
-kubectl get daemonset -n kube-system -l app=microsoft-defender
+kubectl get ds microsoft-defender-collector-ds -n kube-system
 
 # View Defender agent logs
-kubectl logs -n kube-system -l app=microsoft-defender --tail=20
+kubectl logs -n kube-system -l app=defender --tail=20
 ```
 
 You should see one Defender agent pod per node. If any pods are not running, check the events:
 
 ```bash
 # Check for issues with the Defender agent
-kubectl describe pods -n kube-system -l app=microsoft-defender
+kubectl describe pods -n kube-system -l app=defender
 ```
 
 ## Step 3: Enable Vulnerability Scanning for ACR
 
-Defender automatically scans images in your ACR registries when pushed and on a recurring schedule.
+Defender scans images in your ACR registries when the Containers plan has the Registry access component enabled. New or imported images are scanned within a few hours, and recently pushed or pulled images are rescanned daily.
 
 ```bash
-# Enable Defender for Container Registries (if not already covered by Containers plan)
-az security pricing create \
-  --name ContainerRegistry \
-  --tier Standard
+# Verify Defender for Containers is enabled
+az security pricing show --name Containers --query "pricingTier" -o tsv
 
-# Check scan results for a specific registry
+# Check scan results for ACR image vulnerability findings
 az security sub-assessment list \
-  --assessed-resource-type "ContainerRegistryVulnerability" \
-  --query "[].{image:additionalData.imageDigest, cve:id, severity:status.severity}" \
+  --assessment-name "c0b7cfc6-3172-465a-b378-53c7ff2cc0d5" \
+  --query "[].{image:properties.additionalData.imageDigest, cve:properties.id, severity:properties.status.severity}" \
   -o table
 ```
 
@@ -119,7 +117,10 @@ az aks enable-addons \
   --name myAKSCluster
 
 # Verify the policy addon is running
-kubectl get pods -n kube-system -l app=azure-policy
+az aks show \
+  --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --query "addonProfiles.azurepolicy.enabled" -o tsv
 ```
 
 ### Apply Security Policy Initiatives
@@ -144,7 +145,7 @@ Common policies include:
 
 ## Step 5: Review Security Alerts
 
-When Defender detects suspicious behavior, it generates security alerts visible in the Azure portal, Azure Security Center, and through Azure Monitor.
+When Defender detects suspicious behavior, it generates security alerts visible in the Azure portal, Microsoft Defender for Cloud, and through Azure Monitor.
 
 ```bash
 # List recent security alerts for your subscription
@@ -265,28 +266,20 @@ spec:
 
 ## Step 8: Set Up Alert Notifications
 
-Route security alerts to your team's communication channels.
+Route security alerts to your team's email distribution list.
 
 ```bash
-# Create an action group for security notifications
-az monitor action-group create \
-  --resource-group myResourceGroup \
-  --name SecurityAlerts \
-  --short-name SecAlerts \
-  --email-receiver security-team security-team@company.com
-
-# Configure Defender to use the action group
-az security automation create \
-  --name "AKS-Security-Notifications" \
-  --resource-group myResourceGroup \
-  --scopes "/subscriptions/<sub-id>" \
-  --actions "[{\"actionGroupResourceId\":\"/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Insights/actionGroups/SecurityAlerts\"}]" \
-  --sources "[{\"eventSource\":\"Alerts\"}]"
+# Configure Defender for Cloud email notifications
+az security contact create \
+  --name "default" \
+  --emails "security-team@company.com" \
+  --notifications-by-role '{"state":"On","roles":["Owner"]}' \
+  --alert-notifications '{"state":"On","minimalSeverity":"Medium"}'
 ```
 
 ## Cost and Performance Impact
 
-Defender for Containers costs around $7 per vCPU per month for the runtime protection component. The vulnerability scanning for ACR images is included.
+Defender for Containers is billed per vCore for Kubernetes resources. The price includes a monthly allowance of vulnerability assessments for container registry images per charged vCore; check the Azure pricing page for the current regional price and included scan allowance.
 
 The Defender agent typically uses 100-200MB of memory and minimal CPU per node. On large clusters, this adds up but is generally negligible compared to the total cluster resources.
 
