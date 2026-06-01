@@ -23,8 +23,8 @@ sequenceDiagram
     participant App as Application
 
     K8s->>Pod: Mark as Terminating
-    K8s->>Pod: Remove from Service endpoints
     K8s->>Pod: Execute preStop hook
+    K8s->>Pod: Mark endpoint terminating / not ready
     Note over Pod: preStop hook runs
     Pod->>App: Send SIGTERM
     Note over App: App handles SIGTERM
@@ -35,7 +35,7 @@ sequenceDiagram
 
 The key points:
 
-1. The pod is removed from Service endpoints first (no new traffic arrives)
+1. The pod is marked as terminating, and the control plane updates EndpointSlices so load balancers stop using it for regular traffic
 2. The preStop hook runs (can be a command, HTTP request, or sleep)
 3. SIGTERM is sent to the main process
 4. Kubernetes waits for `terminationGracePeriodSeconds` (counting from when the preStop hook started)
@@ -93,7 +93,7 @@ spec:
     image: myregistry.azurecr.io/batch-processor:v1
 ```
 
-There is no hard upper limit on `terminationGracePeriodSeconds`, but be practical. Setting it to 24 hours means node drains during upgrades will take that long per pod.
+There is no hard upper limit on `terminationGracePeriodSeconds`, but be practical. Setting it to 24 hours means node drains can wait a very long time, and managed upgrade drain timeouts may need to be increased to match.
 
 ## Step 2: Implement preStop Hooks
 
@@ -101,7 +101,7 @@ preStop hooks run before SIGTERM is sent. They are useful for several purposes:
 
 ### Waiting for In-Flight Requests to Drain
 
-When a pod is removed from Service endpoints, there is a brief window where in-flight requests are still arriving. A preStop sleep gives the load balancer and kube-proxy time to update.
+When a pod is marked terminating, EndpointSlice state and downstream routing rules are not always observed instantly by every load balancer, proxy, or ingress controller. A preStop sleep gives those components time to stop routing regular traffic to the pod.
 
 ```yaml
 # web-server-deployment.yaml
@@ -220,6 +220,7 @@ import time
 # Track the current job
 current_job = None
 shutting_down = False
+jobs = [{"id": "example-job", "total_steps": 300}]
 
 def sigterm_handler(signum, frame):
     """Handle SIGTERM by finishing the current job and exiting."""
@@ -251,6 +252,10 @@ def save_checkpoint(job, step):
     """Save job progress to persistent storage for resumption."""
     # Write to a shared database or persistent volume
     print(f"Checkpoint saved: job={job['id']}, step={step}")
+
+def get_next_job():
+    """Fetch the next job from your queue."""
+    return jobs.pop(0) if jobs else None
 
 def main():
     while not shutting_down:
@@ -358,7 +363,8 @@ az aks nodepool update \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
   --name longrunpool \
-  --max-surge 33%
+  --max-surge 33% \
+  --drain-timeout 60
 ```
 
 ### Spot VM Evictions
@@ -386,6 +392,15 @@ spec:
       terminationGracePeriodSeconds: 30
       nodeSelector:
         kubernetes.azure.com/scalesetpriority: spot
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.azure.com/scalesetpriority
+                operator: In
+                values:
+                - spot
       tolerations:
       - key: kubernetes.azure.com/scalesetpriority
         operator: Equal
@@ -414,7 +429,7 @@ kubectl get events --field-selector reason=Killing -o json | \
   jq -r '.items[] | "\(.involvedObject.name) - \(.message)"' | tail -20
 ```
 
-Set up monitoring for SIGKILL events (which mean the grace period was not long enough):
+Set up monitoring for containers that exit with code 137, which can indicate a SIGKILL after the grace period expires. Track OOMKilled separately, because memory-limit kills are a different failure mode:
 
 ```yaml
 # monitoring-configmap.yaml
@@ -429,7 +444,7 @@ data:
     - name: pod-shutdown
       rules:
       - alert: PodForcefullyKilled
-        expr: increase(kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}[1h]) > 0
+        expr: kube_pod_container_status_last_terminated_exitcode == 137 unless on(namespace, pod, container, uid) kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
         for: 5m
         labels:
           severity: warning
