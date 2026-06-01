@@ -8,7 +8,7 @@ Description: Learn how to authenticate .NET applications with Azure services usi
 
 ---
 
-Every Azure SDK call requires authentication. The Azure.Identity library for .NET provides a unified way to handle credentials across development, testing, and production environments. Instead of scattering connection strings and secrets throughout your code, you use a single credential class that automatically picks the right authentication method based on where your code is running.
+Most Azure SDK calls to protected Azure resources require authentication. The Azure.Identity library for .NET provides a unified way to handle credentials across development, testing, and production environments. Instead of scattering connection strings and secrets throughout your code, you use a single credential class that automatically picks the right authentication method based on where your code is running.
 
 In this post, I will show how to use Azure.Identity in C# applications, from basic setup to production patterns.
 
@@ -24,6 +24,7 @@ dotnet add package Azure.Identity
 # You will also need the SDK for whatever service you are using
 dotnet add package Azure.Security.KeyVault.Secrets
 dotnet add package Azure.Storage.Blobs
+dotnet add package Azure.Messaging.ServiceBus
 ```
 
 ## DefaultAzureCredential Basics
@@ -55,10 +56,13 @@ graph TD
     A[DefaultAzureCredential] --> B[EnvironmentCredential]
     B --> C[WorkloadIdentityCredential]
     C --> D[ManagedIdentityCredential]
-    D --> E[AzureDeveloperCliCredential]
-    E --> F[AzureCliCredential]
-    F --> G[AzurePowerShellCredential]
-    G --> H[InteractiveBrowserCredential]
+    D --> E[VisualStudioCredential]
+    E --> F[VisualStudioCodeCredential]
+    F --> G[AzureCliCredential]
+    G --> H[AzurePowerShellCredential]
+    H --> I[AzureDeveloperCliCredential]
+    I --> J[InteractiveBrowserCredential]
+    J --> K[BrokerCredential]
 ```
 
 On your development machine, it uses your Azure CLI or Visual Studio login. In production on Azure, it uses managed identity. Same code, different environments, no changes needed.
@@ -79,7 +83,7 @@ If you use Visual Studio, you can also authenticate through Tools > Options > Az
 
 ## Using with Multiple Services
 
-One credential instance works with every Azure SDK client.
+One credential instance works with Azure SDK clients that accept `TokenCredential`.
 
 ```csharp
 using Azure.Identity;
@@ -111,7 +115,7 @@ var serviceBusClient = new ServiceBusClient(
 
 ## Configuring DefaultAzureCredential
 
-You can customize which credential types are tried and in what order.
+You can customize which credential types are tried. If you need to control the order, use `ChainedTokenCredential` instead.
 
 ```csharp
 // Exclude credential types you do not need
