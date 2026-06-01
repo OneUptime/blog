@@ -31,7 +31,7 @@ DCRs are Azure resources, which means they can be managed through ARM templates,
 
 ## Understanding the Azure Monitor Agent
 
-The Azure Monitor Agent (AMA) is the replacement for the legacy Log Analytics Agent (MMA/OMS) and the Telegraf agent. It runs on Windows and Linux, both in Azure VMs and on-premises servers registered through Azure Arc.
+The Azure Monitor Agent (AMA) is the supported agent for collecting guest OS monitoring data in Azure Monitor and replaces the legacy Log Analytics Agent (MMA/OMS) for supported scenarios. It runs on Windows and Linux, both in Azure VMs and on-premises servers registered through Azure Arc.
 
 ```bash
 # Install Azure Monitor Agent on an Azure VM
@@ -93,34 +93,53 @@ Here is the DCR definition in JSON:
 
 ```json
 {
-  // Data Collection Rule for custom application log files
   "location": "eastus",
   "properties": {
+    "dataCollectionEndpointId": "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.Insights/dataCollectionEndpoints/myDataCollectionEndpoint",
+    "streamDeclarations": {
+      "Custom-ApplicationLogsRaw": {
+        "columns": [
+          {
+            "name": "TimeGenerated",
+            "type": "datetime"
+          },
+          {
+            "name": "RawData",
+            "type": "string"
+          },
+          {
+            "name": "FilePath",
+            "type": "string"
+          },
+          {
+            "name": "Computer",
+            "type": "string"
+          }
+        ]
+      }
+    },
     "dataSources": {
       "logFiles": [
         {
-          "streams": ["Custom-ApplicationLogs_CL"],
+          "streams": ["Custom-ApplicationLogsRaw"],
           "filePatterns": [
-            // Glob pattern for the log file path
             "/var/log/myapp/application.log"
           ],
           "format": "text",
           "settings": {
             "text": {
-              // Each line is a separate record
-              "recordStartTimestampFormat": "ISO 8601"
+              "recordStartTimestampFormat": "YYYY-MM-DD HH:MM:SS"
             }
           },
           "name": "myAppLogSource"
         }
       ]
     },
-    // KQL transformation to parse the raw log line into structured fields
     "dataFlows": [
       {
-        "streams": ["Custom-ApplicationLogs_CL"],
+        "streams": ["Custom-ApplicationLogsRaw"],
         "destinations": ["logAnalyticsWorkspace"],
-        "transformKql": "source | parse RawData with Timestamp:datetime ' ' LogLevel:string ' ' SourceModule:string ' - ' Message:string",
+        "transformKql": "source | parse RawData with LogDate:string ' ' LogTime:string ' ' LogLevel:string ' ' SourceModule:string ' - ' Message:string | extend TimeGenerated = todatetime(strcat(LogDate, ' ', LogTime)) | project TimeGenerated, RawData, Computer, LogLevel, Message, SourceModule",
         "outputStream": "Custom-ApplicationLogs_CL"
       }
     ],
@@ -174,7 +193,6 @@ Syslog is a common source for Linux servers and network devices. Here is a DCR t
 
 ```json
 {
-  // DCR for syslog collection from Linux servers
   "location": "eastus",
   "properties": {
     "dataSources": {
@@ -190,7 +208,6 @@ Syslog is a common source for Linux servers and network devices. Here is a DCR t
             "local0",
             "local1"
           ],
-          // Collect Warning level and above
           "logLevels": [
             "Warning",
             "Error",
@@ -237,13 +254,13 @@ Here is an example transformation that parses a custom log format and filters ou
 // KQL transformation in a DCR dataFlow
 // Parse the raw log line and filter out debug messages
 source
-| parse RawData with Timestamp:datetime ' ' LogLevel:string ' [' ThreadId:string '] ' ClassName:string ' - ' Message:string
+| parse RawData with LogDate:string ' ' LogTime:string ' ' LogLevel:string ' [' ThreadId:string '] ' ClassName:string ' - ' Message:string
 | where LogLevel != "DEBUG"
-| extend TimeGenerated = Timestamp
+| extend TimeGenerated = todatetime(strcat(LogDate, ' ', LogTime))
 | project TimeGenerated, LogLevel, ThreadId, ClassName, Message, Computer
 ```
 
-This transformation runs in the pipeline before data reaches the workspace. Filtered-out records are not stored and not billed.
+This transformation runs in the pipeline before data reaches the workspace. Filtered-out records are not stored, which reduces ingestion volume; check the current Azure Monitor pricing rules because transformation processing can have separate billing implications for some table plans and filtering ratios.
 
 ## DCR for Windows Event Logs
 
@@ -251,14 +268,12 @@ For Windows servers, you can collect specific event log channels:
 
 ```json
 {
-  // DCR for Windows security and application event logs
   "location": "eastus",
   "properties": {
     "dataSources": {
       "windowsEventLogs": [
         {
-          "streams": ["Microsoft-SecurityEvent"],
-          // XPath queries to filter specific events
+          "streams": ["Microsoft-Event"],
           "xPathQueries": [
             "Security!*[System[(EventID=4624 or EventID=4625 or EventID=4648)]]",
             "Application!*[System[(Level=1 or Level=2 or Level=3)]]"
@@ -269,7 +284,7 @@ For Windows servers, you can collect specific event log channels:
     },
     "dataFlows": [
       {
-        "streams": ["Microsoft-SecurityEvent"],
+        "streams": ["Microsoft-Event"],
         "destinations": ["logAnalyticsWorkspace"]
       }
     ],
@@ -285,7 +300,7 @@ For Windows servers, you can collect specific event log channels:
 }
 ```
 
-The XPath queries let you collect only specific event IDs, which is critical for cost management. Collecting all Windows Security events generates enormous data volumes.
+The XPath queries let you collect only specific event IDs, which is critical for cost management. Generic Windows event collection through Azure Monitor Agent is stored in the `Event` table; use the Microsoft Sentinel Windows Security Events via AMA connector when you specifically need the `SecurityEvent` table. Collecting all Windows Security events generates enormous data volumes.
 
 ## Managing DCRs with Bicep
 
@@ -302,15 +317,38 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2022-06-01' = {
   name: 'dcr-production-app-logs'
   location: location
   properties: {
+    dataCollectionEndpointId: '/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.Insights/dataCollectionEndpoints/myDataCollectionEndpoint'
+    streamDeclarations: {
+      'Custom-ApplicationLogsRaw': {
+        columns: [
+          {
+            name: 'TimeGenerated'
+            type: 'datetime'
+          }
+          {
+            name: 'RawData'
+            type: 'string'
+          }
+          {
+            name: 'FilePath'
+            type: 'string'
+          }
+          {
+            name: 'Computer'
+            type: 'string'
+          }
+        ]
+      }
+    }
     dataSources: {
       logFiles: [
         {
-          streams: ['Custom-ApplicationLogs_CL']
+          streams: ['Custom-ApplicationLogsRaw']
           filePatterns: ['/var/log/myapp/*.log']
           format: 'text'
           settings: {
             text: {
-              recordStartTimestampFormat: 'ISO 8601'
+              recordStartTimestampFormat: 'YYYY-MM-DD HH:MM:SS'
             }
           }
           name: 'appLogs'
@@ -327,10 +365,9 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2022-06-01' = {
     }
     dataFlows: [
       {
-        streams: ['Custom-ApplicationLogs_CL']
+        streams: ['Custom-ApplicationLogsRaw']
         destinations: ['workspace']
-        // Parse and filter the application logs
-        transformKql: 'source | where RawData !contains "HEARTBEAT" | extend TimeGenerated = now()'
+        transformKql: 'source | where RawData !contains "HEARTBEAT" | parse RawData with LogDate:string " " LogTime:string " " LogLevel:string " " SourceModule:string " - " Message:string | extend TimeGenerated = todatetime(strcat(LogDate, " ", LogTime)) | project TimeGenerated, RawData, Computer, LogLevel, Message, SourceModule'
         outputStream: 'Custom-ApplicationLogs_CL'
       }
       {
