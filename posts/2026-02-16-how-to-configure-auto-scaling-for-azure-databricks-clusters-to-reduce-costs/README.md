@@ -14,7 +14,7 @@ The difference is significant. I have seen teams cut their Databricks compute co
 
 ## How Auto-Scaling Works in Databricks
 
-Databricks auto-scaling monitors the pending task queue in Spark. When there are more tasks than available cores, it adds workers. When workers sit idle for a defined period, it removes them. The scaling happens at the VM level - Databricks requests new VMs from Azure, waits for them to provision, and adds them to the Spark cluster.
+Databricks auto-scaling monitors cluster load and Spark task demand. When the workload needs more capacity, it adds workers. When the cluster is underutilized, it removes workers according to the autoscaling mode used by your workspace. The scaling happens at the VM level - Databricks requests new VMs from Azure, waits for them to provision, and adds them to the Spark cluster.
 
 ```mermaid
 graph TD
@@ -55,7 +55,6 @@ When creating or editing a cluster in the Databricks workspace, you will see opt
     },
     "autotermination_minutes": 30,
     "spark_conf": {
-        "spark.databricks.cluster.profile": "serverless",
         "spark.databricks.repl.allowedLanguages": "python,sql"
     },
     "custom_tags": {
@@ -77,9 +76,8 @@ You can create clusters via the Databricks CLI:
 ```bash
 # Create an auto-scaling interactive cluster using the Databricks CLI
 
-databricks clusters create --json '{
+databricks clusters create 13.3.x-scala2.12 --json '{
     "cluster_name": "analytics-team",
-    "spark_version": "13.3.x-scala2.12",
     "node_type_id": "Standard_DS3_v2",
     "autoscale": {
         "min_workers": 2,
@@ -96,12 +94,13 @@ Job clusters are more aggressive about scaling because they exist only for the d
 ```python
 # job_config.py - Configure a Databricks job with auto-scaling cluster
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.compute import (
+    AutoScale,
+    ClusterSpec
+)
 from databricks.sdk.service.jobs import (
-    JobSettings,
     Task,
-    NotebookTask,
-    ClusterSpec,
-    AutoScale
+    NotebookTask
 )
 
 w = WorkspaceClient()
@@ -143,9 +142,7 @@ The biggest complaint about auto-scaling is that it takes 3-5 minutes for new VM
 
 ```bash
 # Create a cluster pool with pre-warmed instances
-databricks instance-pools create --json '{
-    "instance_pool_name": "analytics-pool",
-    "node_type_id": "Standard_DS3_v2",
+databricks instance-pools create analytics-pool Standard_DS3_v2 --json '{
     "min_idle_instances": 2,
     "max_capacity": 50,
     "idle_instance_autotermination_minutes": 15,
@@ -171,7 +168,7 @@ Then configure your cluster to use the pool:
 }
 ```
 
-With a pool, scale-up takes seconds instead of minutes because the VMs are already provisioned and have Spark pre-installed.
+With a pool, scale-up can be much faster because the VMs are already provisioned, and preloading the Databricks Runtime version can further reduce startup time.
 
 ## Step 4: Optimize Spot Instances for Cost Savings
 
@@ -217,30 +214,28 @@ events = w.clusters.events(
     cluster_id=cluster_id,
     start_time=int((datetime.now() - timedelta(days=1)).timestamp() * 1000),
     end_time=int(datetime.now().timestamp() * 1000),
-    event_types=["AUTOSCALING_STATS_REPORT", "NODES_ADDED", "NODES_REMOVED"]
+    event_types=["AUTOSCALING_STATS_REPORT", "UPSIZE_COMPLETED", "RESIZING"]
 )
 
 # Analyze scaling events
-scale_ups = 0
-scale_downs = 0
+resize_events = 0
 max_nodes = 0
 
-for event in events.events:
-    if event.type.value == "NODES_ADDED":
-        scale_ups += 1
-        current = event.details.get("current_num_workers", 0)
-        if current > max_nodes:
-            max_nodes = current
-        print(f"Scale up at {event.timestamp}: {current} workers")
+for event in events.events or []:
+    event_type = event.type.value if event.type else "UNKNOWN"
+    details = event.details
+    current = details.current_num_workers if details and details.current_num_workers else 0
+    target = details.target_num_workers if details and details.target_num_workers else 0
 
-    elif event.type.value == "NODES_REMOVED":
-        scale_downs += 1
-        current = event.details.get("current_num_workers", 0)
-        print(f"Scale down at {event.timestamp}: {current} workers")
+    if current > max_nodes:
+        max_nodes = current
+
+    if event_type in ("RESIZING", "UPSIZE_COMPLETED"):
+        resize_events += 1
+        print(f"{event_type} at {event.timestamp}: current={current}, target={target}")
 
 print(f"\nSummary:")
-print(f"  Scale up events: {scale_ups}")
-print(f"  Scale down events: {scale_downs}")
+print(f"  Resize events: {resize_events}")
 print(f"  Maximum workers reached: {max_nodes}")
 ```
 
@@ -254,7 +249,7 @@ After monitoring for a week or two, adjust your configuration:
 
 **If scale-up is too slow**: Use cluster pools to pre-warm instances, or increase min_workers to avoid cold starts.
 
-**If you see frequent scale-up and scale-down cycles (thrashing)**: Increase the scale-down threshold or set a longer idle timeout.
+**If you see frequent scale-up and scale-down cycles (thrashing)**: Tune Spark job parallelism, increase min_workers, or use `spark.databricks.aggressiveWindowDownS` to make optimized autoscaling scale down more slowly.
 
 ## Cost Comparison Example
 
