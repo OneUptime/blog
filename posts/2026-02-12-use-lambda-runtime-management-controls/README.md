@@ -21,15 +21,15 @@ Every Lambda function runs on a managed runtime that includes the language inter
 A runtime version is identified by an ARN like:
 
 ```text
-arn:aws:lambda:us-east-1::runtime:python3.12:20240101
+arn:aws:lambda:us-east-1::runtime:8eeff65f6809a3ce81507fe733fe09b835899b99481ba22fd75b5a7338290ec1
 ```
 
-The date component indicates the specific version. When AWS releases a patch, a new version with a new date is published.
+The runtime ARN is an opaque identifier for a specific runtime version. Runtime version numbers are separate from language runtime identifiers like `python3.12`, and AWS can use different ARNs for the same runtime version across Regions and CPU architectures.
 
 ```mermaid
 flowchart TD
     A[Runtime Update Released] --> B{Update Mode?}
-    B -->|Auto| C[Applied within 2 weeks to all functions]
+    B -->|Auto| C[Applied during Lambda's two-phase rollout]
     B -->|Function Update| D[Applied when you next deploy]
     B -->|Manual| E[Only applied when you explicitly change the ARN]
 ```
@@ -38,7 +38,7 @@ flowchart TD
 
 ### 1. Auto (Default)
 
-This is the default mode. AWS applies runtime updates to your function within roughly two weeks of a new runtime version becoming available. You do not need to do anything.
+This is the default mode. AWS applies runtime updates to your function automatically during Lambda's two-phase runtime version rollout. You do not need to do anything.
 
 **Best for**: Development environments, non-critical workloads, and teams that want to stay current without manual intervention.
 
@@ -76,12 +76,12 @@ In this mode, you explicitly pin your function to a specific runtime version ARN
 aws lambda put-runtime-management-config \
   --function-name my-function \
   --update-runtime-on "Manual" \
-  --runtime-version-arn "arn:aws:lambda:us-east-1::runtime:python3.12:20240815"
+  --runtime-version-arn "arn:aws:lambda:us-east-1::runtime:8eeff65f6809a3ce81507fe733fe09b835899b99481ba22fd75b5a7338290ec1"
 ```
 
 ## Finding Available Runtime Versions
 
-To pin to a specific version, you first need to know what versions are available. You can find the current runtime version of your function in the console or via the CLI.
+To pin to a specific version, you first need the runtime version ARN you want to use. You can find the current runtime version of your function in the console, in the `RuntimeVersionConfig` returned by `get-function` or `get-function-configuration`, or in the `INIT_START` line of your function logs.
 
 ```bash
 # Get the current runtime management configuration
@@ -89,16 +89,16 @@ aws lambda get-runtime-management-config \
   --function-name my-function
 ```
 
-The response includes the current `RuntimeVersionArn`:
+The response includes the `RuntimeVersionArn` only when the function is using `Manual` mode. For `Auto` and `FunctionUpdate`, this value is returned as `null`:
 
 ```json
 {
   "UpdateRuntimeOn": "Auto",
-  "RuntimeVersionArn": "arn:aws:lambda:us-east-1::runtime:python3.12:20240815"
+  "RuntimeVersionArn": null
 }
 ```
 
-You can also find the runtime version in your function's CloudWatch logs. Each invocation logs the runtime version in the INIT_START log line.
+You can also find the runtime version in your function's CloudWatch logs. Lambda logs the runtime version in the `INIT_START` log line when it creates a new execution environment.
 
 ## Practical Configuration Strategies
 
@@ -121,27 +121,27 @@ aws lambda put-runtime-management-config \
 aws lambda put-runtime-management-config \
   --function-name my-function-prod \
   --update-runtime-on "Manual" \
-  --runtime-version-arn "arn:aws:lambda:us-east-1::runtime:python3.12:20240815"
+  --runtime-version-arn "arn:aws:lambda:us-east-1::runtime:8eeff65f6809a3ce81507fe733fe09b835899b99481ba22fd75b5a7338290ec1"
 ```
 
 This way, dev catches runtime issues first, staging validates during your release process, and production only changes when you explicitly approve it.
 
 ### Strategy 2: Fleet-Wide Governance with AWS Organizations
 
-For organizations managing hundreds of Lambda functions, you can use AWS Config rules or Service Control Policies to enforce runtime management settings.
+For organizations managing hundreds of Lambda functions, you can use AWS Config rules to detect runtime management settings and Service Control Policies to restrict who can change them.
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "RequireManualRuntimeManagement",
+      "Sid": "DenyRuntimeManagementChangesOutsideApprovedRole",
       "Effect": "Deny",
       "Action": "lambda:PutRuntimeManagementConfig",
       "Resource": "arn:aws:lambda:*:*:function:prod-*",
       "Condition": {
-        "StringNotEquals": {
-          "lambda:UpdateRuntimeOn": "Manual"
+        "StringNotLike": {
+          "aws:PrincipalArn": "arn:aws:iam::*:role/lambda-runtime-admin"
         }
       }
     }
@@ -149,7 +149,7 @@ For organizations managing hundreds of Lambda functions, you can use AWS Config 
 }
 ```
 
-This SCP ensures that any function with a "prod-" prefix must use manual runtime management.
+This SCP prevents changes to runtime management settings for functions with a "prod-" prefix unless the caller is using the approved admin role.
 
 ### Strategy 3: Automated Version Tracking
 
@@ -207,9 +207,10 @@ def lambda_handler(event, context):
 
 AWS eventually deprecates old runtime versions. When a runtime reaches end of support:
 
-1. You can no longer create new functions with that runtime.
-2. You can no longer update the runtime version on existing functions.
-3. Existing functions continue to run but no longer receive security patches.
+1. AWS may no longer apply security patches or other updates to that runtime.
+2. You can no longer create or update functions with that runtime in the Lambda console, although AWS still allows CLI, AWS SAM, and CloudFormation updates for a limited period.
+3. After the later block-function-create and block-function-update dates, Lambda begins blocking new functions and then code and configuration updates for existing functions that use the deprecated runtime.
+4. Existing functions can continue to run, but they are no longer eligible for runtime security updates or technical support.
 
 If you are using manual mode and pinned to an old runtime version, you need to plan your migration before the runtime reaches end of support. AWS publishes deprecation timelines well in advance.
 
@@ -222,13 +223,13 @@ aws lambda get-function \
 
 ## CloudWatch Metrics for Runtime Changes
 
-Lambda emits CloudWatch metrics that you can use to detect runtime changes and their impact.
+Lambda emits CloudWatch metrics and logs that you can use to detect runtime changes and their impact.
 
 Monitor these after a runtime change:
 
 - **Duration**: Look for changes in p50 and p99 execution time.
 - **Errors**: Watch for increases in error rates.
-- **Init Duration**: Cold start times may change with new runtime versions.
+- **Init Duration**: Cold start times may change with new runtime versions. Review this in function logs or with Lambda Insights.
 - **Throttles**: New runtime overhead could change concurrency patterns.
 
 Set up CloudWatch alarms on these metrics to catch regressions quickly. For a comprehensive monitoring setup, see our guide on [connecting Amazon Managed Grafana to CloudWatch](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-cloudwatch/view).
@@ -244,7 +245,7 @@ For **Manual** mode, simply change the ARN back:
 aws lambda put-runtime-management-config \
   --function-name my-function \
   --update-runtime-on "Manual" \
-  --runtime-version-arn "arn:aws:lambda:us-east-1::runtime:python3.12:20240701"
+  --runtime-version-arn "arn:aws:lambda:us-east-1::runtime:7b620fc2e66107a1046b140b9d320295811af3ad5d4c6a011fad1fa65127e9e6"
 ```
 
 For **Function Update** mode, deploying any change to your function will apply the latest runtime. To avoid this, switch to Manual mode first, pin the old version, then investigate.
