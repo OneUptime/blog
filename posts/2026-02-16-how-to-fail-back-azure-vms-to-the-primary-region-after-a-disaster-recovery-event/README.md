@@ -66,8 +66,8 @@ if ($vnetExists) {
     Write-Output "WARNING: Virtual network not found - needs to be recreated"
 }
 
-# Check cache storage account availability in primary region
-$cacheStorage = Get-AzStorageAccount -ResourceGroupName "rg-production-eastus2" -Name "stcacheeastus2" -ErrorAction SilentlyContinue
+# Check cache storage account availability in the DR region for reverse replication
+$cacheStorage = Get-AzStorageAccount -ResourceGroupName "rg-dr-centralus" -Name "stcachecentralus" -ErrorAction SilentlyContinue
 if ($cacheStorage) {
     Write-Output "Cache storage account available"
 } else {
@@ -102,13 +102,20 @@ Reprotection sets up reverse replication from the DR region back to the primary 
 $vault = Get-AzRecoveryServicesVault -Name "rsv-dr-centralus-001" -ResourceGroupName "rg-dr-centralus"
 Set-AzRecoveryServicesAsrVaultContext -Vault $vault
 
-# Get all failed-over VMs
-$container = Get-AzRecoveryServicesAsrProtectionContainer
+# Get all failed-over VMs from the DR-region protection container
+$drFabric = Get-AzRecoveryServicesAsrFabric -FriendlyName "Central US"
+$container = Get-AzRecoveryServicesAsrProtectionContainer -Fabric $drFabric |
+    Select-Object -First 1
 $failedOverItems = Get-AzRecoveryServicesAsrReplicationProtectedItem -ProtectionContainer $container |
     Where-Object { $_.ActiveLocation -eq "Recovery" }
 
 # Cache storage account in the DR region for reverse replication
 $cacheStorageId = "/subscriptions/<sub-id>/resourceGroups/rg-dr-centralus/providers/Microsoft.Storage/storageAccounts/stcachecentralus"
+
+# Reverse protection container mapping from DR back to primary
+$reverseContainerMapping = Get-AzRecoveryServicesAsrProtectionContainerMapping `
+    -ProtectionContainer $container `
+    -Name "A2ARecoveryToPrimary"
 
 foreach ($item in $failedOverItems) {
     Write-Output "Reprotecting: $($item.FriendlyName)"
@@ -128,7 +135,7 @@ Write-Output "All VMs submitted for reprotection"
 
 ## Step 3: Monitor Reverse Replication
 
-After reprotection is initiated, Azure Site Recovery performs a full initial replication of the VM disks from the DR region to the primary region. This is the same process as the original replication, just in reverse.
+After reprotection is initiated, Azure Site Recovery seeds the primary region with the latest data from the DR region. In most cases, Site Recovery compares the disks and transfers only the differences. If the original VM data or disks are unavailable, a full copy is required.
 
 Monitor the progress:
 
@@ -136,7 +143,7 @@ Monitor the progress:
 2. Each VM shows the reverse replication progress
 3. Wait for the status to change to "Protected"
 
-The time required depends on disk sizes and network bandwidth between regions. For a typical VM with 256 GB of disks, expect 1-4 hours for initial reverse replication.
+The time required depends on disk sizes, data churn, storage throughput, and network bandwidth between regions. Use Site Recovery job progress and replication health to estimate the actual cutover window for your environment.
 
 During this time, the VMs continue running in the DR region without interruption. Your applications stay up while the reverse replication completes in the background.
 
@@ -187,10 +194,10 @@ $recoveryPlan = Get-AzRecoveryServicesAsrRecoveryPlan -Name "rp-erp-application"
 $failbackJob = Start-AzRecoveryServicesAsrPlannedFailoverJob `
     -RecoveryPlan $recoveryPlan `
     -Direction RecoveryToPrimary `
-    -CreateVmErrorAction "AlertOnly"
+    -CreateVmIfNotFound "Yes"
 
 # Monitor the failback job
-while ($failbackJob.State -eq "InProgress") {
+while ($failbackJob.State -in @("InProgress", "NotStarted")) {
     Start-Sleep -Seconds 30
     $failbackJob = Get-AzRecoveryServicesAsrJob -Job $failbackJob
     Write-Output "Failback status: $($failbackJob.State) - $($failbackJob.StateDescription)"
@@ -207,7 +214,7 @@ After the VMs are running in the primary region and you have verified everything
 2. Click "Commit"
 3. Confirm the commit
 
-Committing deletes the DR region VMs and finalizes the failback. Until you commit, you have the option to fail back to the DR region if something goes wrong.
+Committing finalizes the selected recovery point for the failback. For Azure VMs with managed disks, Site Recovery cleans up the machines in the secondary disaster recovery region after failback is complete and the VMs are reprotected from primary to secondary. VMs that use unmanaged disks are not cleaned up automatically.
 
 ## Step 7: Re-establish DR Protection
 
