@@ -43,7 +43,7 @@ spec:
     # Object count limits
     pods: "50"                  # Maximum number of pods
     services: "20"              # Maximum number of services
-    services.loadbalancers: "2" # Maximum LoadBalancer services (each costs a public IP)
+    services.loadbalancers: "2" # Maximum LoadBalancer services (external ones typically use public IPs)
     services.nodeports: "0"     # Disallow NodePort services
     configmaps: "50"            # Maximum ConfigMaps
     secrets: "50"               # Maximum Secrets
@@ -67,13 +67,13 @@ The output shows both the hard limits and the current usage, making it easy to s
 
 ## Important: Quotas Require Resource Requests
 
-Here is the gotcha that trips up most people. Once you apply a resource quota that limits CPU or memory, every pod in that namespace must specify resource requests and limits. If a pod does not specify them, Kubernetes rejects it with an error like "must specify requests.cpu" or "must specify limits.memory".
+Here is the gotcha that trips up most people. Once you apply a resource quota that limits CPU or memory requests, every pod in that namespace must specify resource requests. If the quota limits CPU or memory limits, every pod must specify resource limits. Since the quota above sets both, a pod that does not specify them is rejected with an error like "must specify requests.cpu" or "must specify limits.memory".
 
 This is where limit ranges come in.
 
 ## Limit Ranges: Pod and Container Defaults
 
-A LimitRange sets default resource requests and limits for containers that do not specify their own. It also sets minimum and maximum values that individual containers can request.
+A LimitRange sets default resource requests and limits for containers that do not specify their own. It also sets minimum and maximum values for individual pods, containers, and persistent volume claims.
 
 ```yaml
 # team-alpha-limits.yaml
@@ -98,14 +98,14 @@ spec:
         cpu: "50m"         # Minimum CPU any container can request
         memory: "64Mi"     # Minimum memory any container can request
       max:
-        cpu: "4"           # Maximum CPU any container can request
-        memory: "8Gi"      # Maximum memory any container can request
+        cpu: "4"           # Maximum CPU limit any container can set
+        memory: "8Gi"      # Maximum memory limit any container can set
 
     # Limits for pods (sum of all containers in the pod)
     - type: Pod
       max:
-        cpu: "8"           # Maximum total CPU for all containers in a pod
-        memory: "16Gi"     # Maximum total memory for all containers in a pod
+        cpu: "8"           # Maximum total CPU limit for all containers in a pod
+        memory: "16Gi"     # Maximum total memory limit for all containers in a pod
 
     # Limits for PVCs
     - type: PersistentVolumeClaim
@@ -123,7 +123,7 @@ kubectl apply -f team-alpha-limits.yaml
 kubectl describe limitrange team-alpha-limits -n team-alpha
 ```
 
-Now when a developer deploys a pod without resource specifications, Kubernetes automatically applies the defaults from the LimitRange. And if they try to request more than the maximum, the pod is rejected.
+Now when a developer deploys a pod without resource specifications, Kubernetes automatically applies the defaults from the LimitRange. And if they try to set a request or limit outside the allowed range, the pod is rejected.
 
 ## Practical Example: Multi-Team Cluster Setup
 
@@ -249,13 +249,13 @@ You can also set up Prometheus alerts for quota utilization. If you are using Az
 ```promql
 # Percentage of CPU request quota used per namespace
 kube_resourcequota{type="used", resource="requests.cpu"}
-/
+/ ignoring(type)
 kube_resourcequota{type="hard", resource="requests.cpu"}
 * 100
 
 # Alert when any namespace exceeds 80% of its memory quota
 kube_resourcequota{type="used", resource="requests.memory"}
-/
+/ ignoring(type)
 kube_resourcequota{type="hard", resource="requests.memory"}
 * 100 > 80
 ```
@@ -264,7 +264,7 @@ kube_resourcequota{type="hard", resource="requests.memory"}
 
 ### Forgetting to Set Limit Ranges
 
-If you add a ResourceQuota without a LimitRange, existing pods continue running fine but new pods without explicit resource requests fail to schedule. Always deploy both together.
+If you add a ResourceQuota without a LimitRange, existing pods continue running fine but new pods without explicit resource requests can fail admission. Always deploy both together.
 
 ### Setting Limits Too Tight
 
@@ -276,20 +276,24 @@ If your LimitRange sets default requests much lower than default limits (for exa
 
 ### Not Accounting for System Overhead
 
-Every namespace has a default service account, and Kubernetes creates a token secret for it. Do not set your secrets quota to 0 or you will break basic functionality. Similarly, leave room for ConfigMaps used by system components.
+Every namespace has a default service account, and many workloads or controllers still need to create Secret objects for credentials, image pulls, or explicitly requested service account tokens. Do not set your secrets quota to 0 unless you have verified the namespace does not need any Secrets. Similarly, leave room for ConfigMaps used by system components.
 
 ## Automating with Azure Policy
 
 You can use Azure Policy to automatically enforce that every namespace has a quota and limit range.
 
 ```bash
-# Assign a built-in policy that requires resource limits on containers
+# Assign a built-in policy that requires container resource limits and caps their values
 az policy assignment create \
   --name 'require-resource-limits' \
-  --display-name 'Require resource limits on AKS containers' \
+  --display-name 'Require and cap resource limits on AKS containers' \
   --scope "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.ContainerService/managedClusters/myAKS" \
   --policy "e345eecc-fa47-480f-9e88-67dcc122b164" \
-  --params '{"effect": {"value": "Deny"}}'
+  --params '{
+    "effect": {"value": "Deny"},
+    "cpuLimit": {"value": "2"},
+    "memoryLimit": {"value": "4Gi"}
+  }'
 ```
 
 ## Wrapping Up
