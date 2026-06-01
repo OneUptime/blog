@@ -54,10 +54,9 @@ This returns something like `xxxxx-ats.iot.us-east-1.amazonaws.com`.
 
 ## Step 3: Set Up IAM Permissions
 
-The Cognito Identity Pool authenticated role needs permission to connect to IoT Core and subscribe/publish to topics.
+The Cognito Identity Pool authenticated role needs permission to connect to IoT Core and subscribe/publish to topics. For authenticated Cognito identities, AWS IoT Core also evaluates an IoT policy attached to the Cognito identity, so attach a matching IoT policy with `aws iot attach-policy` when you provision or sign in the user.
 
 ```json
-// IAM policy for PubSub access via IoT Core
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -93,13 +92,14 @@ The Cognito Identity Pool authenticated role needs permission to connect to IoT 
 }
 ```
 
-Notice the fine-grained access control. The `Connect` permission uses the Cognito identity sub as the client ID, ensuring each user gets a unique connection. The `Subscribe` and `Receive` permissions control which topics the user can listen to, and `Publish` controls where they can send messages.
+Notice the fine-grained access control. The `Connect` permission uses the Cognito identity ID as the client ID, so configure the PubSub client with the same identity ID in the next step. The `Subscribe` and `Receive` permissions control which topics the user can listen to, and `Publish` controls where they can send messages.
 
 ## Step 4: Configure Amplify PubSub
 
 ```typescript
 // src/pubsub-config.ts
 import { Amplify } from 'aws-amplify';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import { PubSub } from '@aws-amplify/pubsub';
 
 Amplify.configure({
@@ -112,10 +112,17 @@ Amplify.configure({
   },
 });
 
+const { identityId } = await fetchAuthSession();
+
+if (!identityId) {
+  throw new Error('No Cognito identity ID found');
+}
+
 // Configure PubSub with IoT Core
 const pubsub = new PubSub({
   region: 'us-east-1',
   endpoint: 'wss://xxxxx-ats.iot.us-east-1.amazonaws.com/mqtt',
+  clientId: identityId,
 });
 
 export default pubsub;
@@ -254,7 +261,7 @@ function ChatRoom({ roomId, currentUser }: { roomId: string; currentUser: string
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           style={{ flex: 1, padding: '8px' }}
           placeholder="Type a message..."
         />
@@ -325,9 +332,32 @@ Keep topics specific. Avoid subscribing to wildcard topics like `#` (all topics)
 WebSocket connections can drop due to network issues. Amplify PubSub handles reconnection automatically, but you should handle the gap in messages:
 
 ```typescript
-// Resubscribe and fetch missed messages after reconnection
+import { Hub } from 'aws-amplify/utils';
+import { CONNECTION_STATE_CHANGE, ConnectionState } from '@aws-amplify/pubsub';
+
+// Fetch missed messages after reconnection
 function setupResilientSubscription(topic: string, onMessage: (msg: any) => void) {
   let lastMessageTime = new Date().toISOString();
+  let priorConnectionState: ConnectionState | undefined;
+
+  const hubListenerCancel = Hub.listen('pubsub', (data) => {
+    const { payload } = data;
+
+    if (payload.event === CONNECTION_STATE_CHANGE) {
+      const connectionState = payload.data.connectionState as ConnectionState;
+
+      if (
+        priorConnectionState === ConnectionState.Connecting &&
+        connectionState === ConnectionState.Connected
+      ) {
+        fetchMissedMessages(topic, lastMessageTime).then((missed) => {
+          missed.forEach(onMessage);
+        });
+      }
+
+      priorConnectionState = connectionState;
+    }
+  });
 
   const subscription = pubsub.subscribe({
     topics: [topic],
@@ -337,15 +367,16 @@ function setupResilientSubscription(topic: string, onMessage: (msg: any) => void
       onMessage(data.value);
     },
     error: (err) => {
-      console.error('Connection error, will auto-reconnect:', err);
-      // After reconnection, fetch missed messages from your API
-      fetchMissedMessages(topic, lastMessageTime).then((missed) => {
-        missed.forEach(onMessage);
-      });
+      console.error('Subscription error:', err);
     },
   });
 
-  return subscription;
+  return {
+    unsubscribe: () => {
+      subscription.unsubscribe();
+      hubListenerCancel();
+    },
+  };
 }
 ```
 
