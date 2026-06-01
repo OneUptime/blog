@@ -96,8 +96,10 @@ Add the Azure Web App Maven plugin to your `pom.xml`.
         <plugin>
             <groupId>com.microsoft.azure</groupId>
             <artifactId>azure-webapp-maven-plugin</artifactId>
-            <version>2.12.0</version>
+            <version>2.14.1</version>
             <configuration>
+                <schemaVersion>v2</schemaVersion>
+
                 <!-- Subscription ID (optional if you only have one) -->
                 <subscriptionId>your-subscription-id</subscriptionId>
 
@@ -107,11 +109,14 @@ Add the Azure Web App Maven plugin to your `pom.xml`.
                 <!-- App Service name - must be globally unique -->
                 <appName>my-spring-boot-app</appName>
 
+                <!-- App Service Plan name used by the scaling commands below -->
+                <servicePlanName>my-spring-boot-app-plan</servicePlanName>
+
                 <!-- Region for the App Service -->
                 <region>eastus</region>
 
-                <!-- Pricing tier: B1 (Basic), S1 (Standard), P1v2 (Premium) -->
-                <pricingTier>B1</pricingTier>
+                <!-- Pricing tier: S1 or higher is required for deployment slots -->
+                <pricingTier>S1</pricingTier>
 
                 <!-- Java runtime configuration -->
                 <runtime>
@@ -136,6 +141,7 @@ Add the Azure Web App Maven plugin to your `pom.xml`.
                 <deployment>
                     <resources>
                         <resource>
+                            <type>jar</type>
                             <directory>${project.basedir}/target</directory>
                             <includes>
                                 <include>*.jar</include>
@@ -167,7 +173,7 @@ The Maven plugin picks up your Azure CLI credentials automatically. For CI/CD pi
 ```bash
 # Create a service principal for CI/CD
 az ad sp create-for-rbac --name "spring-boot-deployer" --role contributor \
-  --scopes /subscriptions/your-subscription-id/resourceGroups/spring-boot-demo-rg
+  --scopes /subscriptions/your-subscription-id
 ```
 
 Store the credentials in your Maven settings.xml or as environment variables.
@@ -211,7 +217,7 @@ Create an Azure-specific profile for your application settings.
 ```properties
 # application-azure.properties
 # Server configuration
-server.port=80
+server.port=${PORT:8080}
 
 # Logging - write to console, App Service captures it
 logging.level.root=INFO
@@ -228,6 +234,8 @@ spring.datasource.url=${AZURE_MYSQL_CONNECTIONSTRING:jdbc:mysql://localhost:3306
 ## Using Deployment Slots
 
 Deployment slots let you deploy to a staging environment, verify everything works, and then swap the staging slot into production with zero downtime.
+
+Deployment slots require the App Service plan to be on the Standard, Premium, or Isolated tier.
 
 ```xml
 <!-- Add deployment slot configuration to the Maven plugin -->
@@ -266,30 +274,25 @@ Sometimes Spring Boot needs custom JVM options or startup commands. Configure th
 az webapp config set \
   --name my-spring-boot-app \
   --resource-group spring-boot-demo-rg \
-  --startup-file "java -jar /home/site/wwwroot/app.jar --server.port=80 -Xms512m -Xmx1024m"
+  --startup-file "java -Xms512m -Xmx1024m -jar /home/site/wwwroot/app.jar --server.port=\${PORT:-8080}"
 ```
 
 ## Enabling Application Insights
 
 Azure Application Insights provides monitoring, logging, and performance tracking for your Spring Boot application.
 
-```xml
-<!-- Add Application Insights dependency -->
-<dependency>
-    <groupId>com.microsoft.azure</groupId>
-    <artifactId>applicationinsights-spring-boot-starter</artifactId>
-    <version>2.6.4</version>
-</dependency>
+For App Service Java apps, the recommended path is App Service's built-in Application Insights Java 3.x agent rather than adding the older Spring Boot starter dependency.
+
+```bash
+# Enable the App Service-managed Application Insights Java agent on Linux
+az webapp config appsettings set \
+  --name my-spring-boot-app \
+  --resource-group spring-boot-demo-rg \
+  --settings "APPLICATIONINSIGHTS_CONNECTION_STRING=<connection-string>" \
+             "ApplicationInsightsAgent_EXTENSION_VERSION=~3"
 ```
 
-```properties
-# application-azure.properties
-# Application Insights configuration
-azure.application-insights.instrumentation-key=${APPINSIGHTS_INSTRUMENTATIONKEY}
-azure.application-insights.enabled=true
-```
-
-Enable Application Insights on the App Service through the Portal or CLI, and the instrumentation key is injected automatically as an environment variable.
+Enable Application Insights on the App Service through the Portal or CLI, and configure the connection string as an app setting.
 
 ## Scaling Configuration
 
@@ -303,10 +306,10 @@ az appservice plan update \
   --sku P1v2
 
 # Scale out (add more instances)
-az webapp update \
-  --name my-spring-boot-app \
+az appservice plan update \
+  --name my-spring-boot-app-plan \
   --resource-group spring-boot-demo-rg \
-  --set siteConfig.numberOfWorkers=3
+  --number-of-workers 3
 
 # Configure auto-scaling rules
 az monitor autoscale create \
@@ -344,7 +347,7 @@ az webapp ssh \
 
 Common issues include:
 
-- **Port mismatch**: App Service expects your app to listen on the port specified by the `PORT` environment variable or port 80
+- **Port mismatch**: On Linux Java SE, App Service exposes the port through the `PORT` environment variable
 - **Memory limits**: The B1 tier has 1.75 GB of RAM. If your Spring Boot app needs more, scale up
 - **Startup timeout**: App Service has a configurable startup timeout (default 230 seconds). Spring Boot apps with many dependencies might need more time
 - **Java version mismatch**: Make sure your local Java version matches the one configured in App Service
