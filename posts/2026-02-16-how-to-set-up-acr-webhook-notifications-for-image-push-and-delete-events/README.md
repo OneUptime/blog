@@ -15,7 +15,7 @@ Azure Container Registry (ACR) can notify external services whenever something h
 ACR supports webhooks for the following events:
 
 - **push** - Triggered when an image manifest is pushed (new image or new tag)
-- **delete** - Triggered when an image manifest or tag is deleted
+- **delete** - Triggered when an image repository or manifest is deleted, including when you delete an image by tag
 - **quarantine** - Triggered when an image is quarantined (for registries with quarantine enabled)
 - **chart_push** - Triggered when a Helm chart is pushed
 - **chart_delete** - Triggered when a Helm chart is deleted
@@ -46,7 +46,7 @@ az acr webhook create \
 Key parameters:
 
 - `--actions` can be `push`, `delete`, `quarantine`, `chart_push`, `chart_delete`, or a combination
-- `--scope` limits the webhook to specific repositories and tags. `myapp:*` matches all tags in the myapp repository. `*` matches everything.
+- `--scope` limits the webhook to specific repositories and tags. `myapp:*` matches all tags in the myapp repository. Omit `--scope` to match all repositories.
 - `--uri` is the endpoint that will receive the HTTP POST
 
 ## Step 2: Create a Webhook for Multiple Events
@@ -98,14 +98,14 @@ When a webhook fires, ACR sends a JSON payload like this for a push event:
     "tag": "v1.5.0"
   },
   "request": {
-    "id": "a]f8c3971-9adc-488b-bdd8-43cbb4974ff5",
+    "id": "af8c3971-9adc-488b-bdd8-43cbb4974ff5",
     "host": "myregistry.azurecr.io",
     "method": "PUT"
   }
 }
 ```
 
-For delete events, the payload is similar but with `"action": "delete"` and the tag or digest that was removed.
+For delete events, the payload is similar but with `"action": "delete"` and the repository and digest that were removed. ACR does not send a delete webhook for a tag-only delete.
 
 ## Step 5: Build an Azure Function to Handle Webhooks
 
@@ -204,7 +204,7 @@ az acr webhook create \
   --name frontendPush \
   --registry myregistry \
   --resource-group myResourceGroup \
-  --uri https://deploy.internal/api/frontend \
+  --uri https://deploy.example.com/api/frontend \
   --actions push \
   --scope "frontend:v*" \
   --status enabled
@@ -214,7 +214,7 @@ az acr webhook create \
   --name backendPush \
   --registry myregistry \
   --resource-group myResourceGroup \
-  --uri https://deploy.internal/api/backend \
+  --uri https://deploy.example.com/api/backend \
   --actions push \
   --scope "backend:v*" \
   --status enabled
@@ -295,22 +295,17 @@ az acr webhook list-events \
   --name imagePushNotification \
   --registry myregistry \
   --resource-group myResourceGroup \
-  --query "[?responseStatus!='200']" \
+  --query "[?eventResponseMessage.statusCode!='200']" \
   --output table
 ```
 
 Set up monitoring to alert when webhook deliveries start failing. Consistent 4xx or 5xx responses indicate a problem with your receiving endpoint.
 
-## Webhook Retry Behavior
+## Webhook Delivery Behavior
 
-When a webhook delivery fails (non-2xx response or timeout), ACR retries the delivery. The retry behavior is:
+ACR records the request and response for recent webhook deliveries so you can inspect failures with `az acr webhook list-events`. Microsoft does not publish a fixed retry schedule for native ACR webhook delivery, so do not rely on a specific retry delay or retention window.
 
-- ACR waits 10 seconds before the first retry
-- Subsequent retries use exponential backoff
-- Retries continue for up to 1 hour
-- After all retries are exhausted, the event is dropped
-
-Design your webhook endpoints to be idempotent since the same event might be delivered more than once due to retries.
+Design your webhook endpoints to be idempotent since webhook deliveries can be repeated by manual pings, deployment retries, or receiving-side retry logic.
 
 ## Best Practices
 
@@ -318,7 +313,7 @@ Design your webhook endpoints to be idempotent since the same event might be del
 
 **Secure your webhook endpoints.** Use custom headers with authentication tokens. Validate the webhook payload before acting on it.
 
-**Keep webhook handlers fast.** The webhook expects a response within 10 seconds. If you need to do heavy processing, acknowledge the webhook immediately and process asynchronously.
+**Keep webhook handlers fast.** Return a 2xx response as soon as you have accepted the event. If you need to do heavy processing, acknowledge the webhook immediately and process asynchronously.
 
 **Log webhook deliveries.** Use the ACR webhook event history for auditing, but also log on the receiving side for correlation.
 
