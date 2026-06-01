@@ -61,7 +61,7 @@ Click the source node and add a "Change Schema" transform:
 - Change data types (e.g., `order_total` from string to double)
 - Drop columns you don't need
 
-You can also use the "ApplyMapping" transform, which is the same thing with a different UI.
+In the generated script, the Change Schema node is commonly represented with `ApplyMapping`.
 
 ### Step 3: Add Filters
 
@@ -113,9 +113,9 @@ Glue Studio includes a solid set of built-in transforms:
 | DropDuplicates | Remove duplicate rows |
 | FillMissingValues | Replace nulls with default values |
 | Union | Combine two datasets with the same schema |
-| Split | Split a dataset into two based on a condition |
+| Conditional Router | Split rows into different groups based on conditions |
 | Aggregate | Group by and aggregate (sum, count, avg, etc.) |
-| Custom transform | Write your own SQL or PySpark code |
+| Custom transform | Write your own Python or Scala code |
 | SQL query | Write raw SQL against the data |
 
 ### Using the SQL Transform
@@ -143,6 +143,7 @@ When built-in transforms aren't enough, add a custom transform:
 
 ```python
 # Custom transform: Parse JSON strings and extract nested fields
+from awsglue.dynamicframe import DynamicFrame, DynamicFrameCollection
 
 def MyTransform(glueContext, dfc) -> DynamicFrameCollection:
     from pyspark.sql.functions import from_json, col
@@ -169,7 +170,6 @@ def MyTransform(glueContext, dfc) -> DynamicFrameCollection:
         col("product_info_parsed.brand").alias("brand")
     ).drop("product_info", "product_info_parsed")
 
-    from awsglue.dynamicframe import DynamicFrame
     output = DynamicFrame.fromDF(result, glueContext, "output")
     return DynamicFrameCollection({"CustomTransform0": output}, glueContext)
 ```
@@ -182,7 +182,7 @@ Before running, configure the job settings:
 
 - **Name**: Descriptive job name
 - **IAM Role**: Role with access to your data sources and targets
-- **Glue Version**: 4.0 (latest)
+- **Glue Version**: 5.1 (latest)
 - **Worker Type**: G.1X for most jobs
 - **Number of Workers**: Start with 5-10
 - **Job timeout**: 60-120 minutes depending on data size
@@ -251,7 +251,7 @@ glueContext.write_dynamic_frame.from_options(
 job.commit()
 ```
 
-You can edit this code directly, and changes will be reflected in the visual canvas. It's a two-way sync, which is nice for learning PySpark through the visual interface and then tweaking the code.
+You can use this generated code to understand what Glue Studio is doing, and you can download it or convert the job to script-only editing if you need full code control. Be aware that saving direct script edits converts the job from a visual job to a script-only job, so keep the visual canvas as the source of truth unless you are ready to move to code.
 
 ## Data Preview
 
@@ -259,7 +259,7 @@ Glue Studio lets you preview data at any node in the pipeline. Click a node and 
 
 This is incredibly useful for debugging. If your output doesn't look right, preview the data at each step to find where things go wrong.
 
-Note that data preview spins up a small development endpoint, which takes a minute to start and costs a small amount.
+Note that data preview starts a preview session for the job, which takes a minute to become ready and can incur a small amount of cost.
 
 ## Running and Monitoring
 
@@ -282,7 +282,11 @@ cloudwatch.put_metric_alarm(
     AlarmName='glue-etl-job-failure',
     MetricName='glue.driver.aggregate.numFailedTasks',
     Namespace='Glue',
-    Dimensions=[{'Name': 'JobName', 'Value': 'csv-to-parquet-transform'}],
+    Dimensions=[
+        {'Name': 'JobName', 'Value': 'csv-to-parquet-transform'},
+        {'Name': 'JobRunId', 'Value': 'ALL'},
+        {'Name': 'Type', 'Value': 'count'}
+    ],
     Statistic='Sum',
     Period=300,
     EvaluationPeriods=1,
