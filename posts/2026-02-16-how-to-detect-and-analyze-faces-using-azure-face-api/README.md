@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Face API, Computer Vision, AI, Facial Detection, Cognitive Services
 
-Description: Use Azure Face API to detect faces in images and extract attributes like age, head pose, and accessories with practical Python examples.
+Description: Use Azure Face API to detect faces in images and extract attributes like head pose, blur, and accessories with practical Python examples.
 
 ---
 
@@ -12,7 +12,7 @@ Azure Face API is a cloud service that provides algorithms for detecting, recogn
 
 ## Important Note on Responsible Use
 
-Before diving in, it is worth noting that Microsoft has implemented access restrictions on Face API features. As of mid-2022, face identification, face verification, and emotion recognition features require an application for access through the Limited Access program. Face detection and basic attribute analysis are still generally available. This change reflects Microsoft's commitment to responsible AI practices. Make sure your use case complies with Microsoft's Responsible AI principles and any applicable regulations.
+Before diving in, it is worth noting that Microsoft has implemented access restrictions on Face API features. Face service access is limited based on eligibility and usage criteria, and face IDs, identification, verification, and some sensitive attributes require approval through Microsoft's Limited Access process. Emotion and gender prediction have been retired. This change reflects Microsoft's commitment to responsible AI practices. Make sure your use case complies with Microsoft's Responsible AI principles and any applicable regulations.
 
 ## Step 1: Create a Face API Resource
 
@@ -31,7 +31,7 @@ Copy the endpoint and API key from the resource's "Keys and Endpoint" page.
 ```bash
 # Install the Azure Face SDK
 
-pip install azure-cognitiveservices-vision-face
+pip install azure-ai-vision-face
 ```
 
 ## Step 3: Detect Faces in an Image
@@ -39,41 +39,42 @@ pip install azure-cognitiveservices-vision-face
 The most basic operation is face detection - finding faces in an image and getting their bounding box coordinates.
 
 ```python
-from azure.cognitiveservices.vision.face import FaceClient
-from azure.cognitiveservices.vision.face.models import (
-    FaceAttributeType,
-    DetectionModel,
-    RecognitionModel
+from azure.core.credentials import AzureKeyCredential
+from azure.ai.vision.face import FaceClient
+from azure.ai.vision.face.models import (
+    FaceAttributeTypeDetection01,
+    FaceAttributeTypeRecognition04,
+    FaceDetectionModel,
+    FaceRecognitionModel
 )
-from msrest.authentication import CognitiveServicesCredentials
 
 # Configure the client
 endpoint = "https://your-resource.cognitiveservices.azure.com/"
 key = "your-api-key"
 
-face_client = FaceClient(endpoint, CognitiveServicesCredentials(key))
+face_client = FaceClient(endpoint, AzureKeyCredential(key))
 
 def detect_faces_from_url(image_url):
     """
     Detect faces in an image at a given URL.
     Returns a list of detected faces with their bounding rectangles.
     """
-    detected_faces = face_client.face.detect_with_url(
+    detected_faces = face_client.detect_from_url(
         url=image_url,
-        return_face_id=True,
+        return_face_id=False,
         return_face_landmarks=True,       # Include facial landmark points
         return_face_attributes=[
-            FaceAttributeType.head_pose,
-            FaceAttributeType.glasses,
-            FaceAttributeType.blur,
-            FaceAttributeType.exposure,
-            FaceAttributeType.noise,
-            FaceAttributeType.occlusion,
-            FaceAttributeType.accessories,
-            FaceAttributeType.quality_for_recognition
+            FaceAttributeTypeDetection01.HEAD_POSE,
+            FaceAttributeTypeDetection01.GLASSES,
+            FaceAttributeTypeDetection01.BLUR,
+            FaceAttributeTypeDetection01.EXPOSURE,
+            FaceAttributeTypeDetection01.NOISE,
+            FaceAttributeTypeDetection01.OCCLUSION,
+            FaceAttributeTypeDetection01.ACCESSORIES,
+            FaceAttributeTypeRecognition04.QUALITY_FOR_RECOGNITION
         ],
-        detection_model=DetectionModel.detection03,     # Latest detection model
-        recognition_model=RecognitionModel.recognition04  # Latest recognition model
+        detection_model=FaceDetectionModel.DETECTION01,     # Supports the broader attribute set below
+        recognition_model=FaceRecognitionModel.RECOGNITION04
     )
 
     print(f"Detected {len(detected_faces)} face(s)")
@@ -110,23 +111,25 @@ def detect_faces_from_file(image_path):
     Returns detected faces with all requested attributes.
     """
     with open(image_path, "rb") as image_stream:
-        detected_faces = face_client.face.detect_with_stream(
-            image=image_stream,
-            return_face_id=True,
-            return_face_landmarks=True,
-            return_face_attributes=[
-                FaceAttributeType.head_pose,
-                FaceAttributeType.glasses,
-                FaceAttributeType.blur,
-                FaceAttributeType.exposure,
-                FaceAttributeType.noise,
-                FaceAttributeType.occlusion,
-                FaceAttributeType.accessories,
-                FaceAttributeType.quality_for_recognition
-            ],
-            detection_model=DetectionModel.detection03,
-            recognition_model=RecognitionModel.recognition04
-        )
+        image_content = image_stream.read()
+
+    detected_faces = face_client.detect(
+        image_content,
+        return_face_id=False,
+        return_face_landmarks=True,
+        return_face_attributes=[
+            FaceAttributeTypeDetection01.HEAD_POSE,
+            FaceAttributeTypeDetection01.GLASSES,
+            FaceAttributeTypeDetection01.BLUR,
+            FaceAttributeTypeDetection01.EXPOSURE,
+            FaceAttributeTypeDetection01.NOISE,
+            FaceAttributeTypeDetection01.OCCLUSION,
+            FaceAttributeTypeDetection01.ACCESSORIES,
+            FaceAttributeTypeRecognition04.QUALITY_FOR_RECOGNITION
+        ],
+        detection_model=FaceDetectionModel.DETECTION01,
+        recognition_model=FaceRecognitionModel.RECOGNITION04
+    )
 
     return detected_faces
 
@@ -291,12 +294,12 @@ def detect_faces_rest(image_path, endpoint, key):
     Detect faces using the REST API directly.
     Useful when the SDK is not available for your language or platform.
     """
-    url = f"{endpoint}face/v1.0/detect"
+    url = f"{endpoint.rstrip('/')}/face/v1.2/detect"
     params = {
-        "returnFaceId": "true",
+        "returnFaceId": "false",
         "returnFaceLandmarks": "true",
-        "returnFaceAttributes": "headPose,glasses,blur,exposure",
-        "detectionModel": "detection_03",
+        "returnFaceAttributes": "headPose,glasses,blur,exposure,noise,occlusion,accessories,qualityForRecognition",
+        "detectionModel": "detection_01",
         "recognitionModel": "recognition_04"
     }
     headers = {
@@ -320,16 +323,17 @@ Azure Face API offers multiple detection models:
 
 | Model | Best For |
 |-------|----------|
-| detection_01 | General face detection (legacy) |
+| detection_01 | Near-frontal face detection and the broadest attribute support |
 | detection_02 | Improved accuracy, especially for small and side-facing faces |
-| detection_03 | Latest model with best accuracy. Recommended for new projects. |
+| detection_03 | Improved accuracy, especially for small faces and rotated face orientations |
 
-Use `detection_03` for new projects. It handles challenging conditions better, including small faces, side profiles, and partially occluded faces. However, note that it does not support all face attributes that `detection_01` supports. Check the documentation for the specific attributes available with each model.
+Use `detection_03` when you need the newer detection model and only need attributes it supports, such as head pose, blur, mask, and `qualityForRecognition` when paired with `recognition_04`. Use `detection_01` when you need broader attribute analysis, such as glasses, occlusion, accessories, exposure, or noise. Check the documentation for the specific attributes available with each model.
 
 ## Error Handling and Rate Limits
 
 ```python
 import time
+from azure.core.exceptions import HttpResponseError
 
 def detect_with_retry(image_path, max_retries=3):
     """
@@ -339,8 +343,8 @@ def detect_with_retry(image_path, max_retries=3):
     for attempt in range(max_retries):
         try:
             return detect_faces_from_file(image_path)
-        except Exception as e:
-            if "429" in str(e):
+        except HttpResponseError as e:
+            if e.status_code == 429:
                 wait = 2 ** attempt  # Exponential backoff
                 print(f"Rate limited. Waiting {wait}s...")
                 time.sleep(wait)
