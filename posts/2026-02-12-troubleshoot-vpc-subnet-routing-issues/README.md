@@ -8,7 +8,7 @@ Description: Practical guide to diagnosing and fixing VPC subnet routing problem
 
 ---
 
-VPC subnet routing issues are one of the most frustrating problems in AWS. Your EC2 instance can't reach the internet. Your Lambda in a VPC can't talk to DynamoDB. Two subnets in the same VPC can't communicate. The symptoms are always the same - timeouts and connection refused errors - but the causes vary widely. Let's systematically troubleshoot the most common scenarios.
+VPC subnet routing issues are one of the most frustrating problems in AWS. Your EC2 instance can't reach the internet. Your Lambda in a VPC can't talk to DynamoDB. Two subnets in the same VPC can't communicate. The symptoms often look similar - timeouts, unreachable hosts, and sometimes connection refused errors - but the causes vary widely. Let's systematically troubleshoot the most common scenarios.
 
 ## Understanding VPC Routing Basics
 
@@ -19,7 +19,7 @@ Destination       Target
 10.0.0.0/16       local
 ```
 
-This `local` route means traffic within the VPC is routed automatically. You can't delete it. Everything else needs explicit routes.
+This `local` route means traffic within the VPC is routed automatically. You can't delete it, though advanced architectures can replace and later restore its target. Everything else needs explicit or propagated routes.
 
 ```mermaid
 graph TD
@@ -215,11 +215,11 @@ The analysis tells you exactly which component is blocking the traffic - route t
 
 ## Step 4: Use VPC Flow Logs for Deep Debugging
 
-When other tools don't reveal the issue, flow logs show you what's happening at the packet level:
+When other tools don't reveal the issue, flow logs show you flow-level metadata for IP traffic:
 
 ```bash
 # Enable VPC flow logs to CloudWatch
-aws ec2 create-flow-log \
+aws ec2 create-flow-logs \
   --resource-type VPC \
   --resource-id vpc-abc123 \
   --traffic-type ALL \
@@ -239,7 +239,7 @@ fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, action
 | limit 50
 ```
 
-Flow logs show you whether packets are being accepted or rejected, which helps you narrow down whether it's a routing issue (packets never arrive) or a security issue (packets arrive but are rejected).
+Flow logs show you whether traffic records are being accepted or rejected, which helps you narrow down whether it's a routing issue (traffic does not reach the expected interface) or a security issue (traffic reaches the interface but is rejected).
 
 ## Quick Reference: Route Table Requirements
 
