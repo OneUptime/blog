@@ -73,10 +73,10 @@ az network application-gateway http-settings update \
 
 ## Step 3: Enable Diagnostic Logging
 
-Backend health diagnostics rely on Application Gateway diagnostic logs. Enable them to get full visibility:
+Application Gateway resource logs and metrics complement the backend health report. Enable them to get fuller visibility:
 
 ```bash
-# Enable all diagnostic log categories
+# Enable common diagnostic log categories
 az monitor diagnostic-settings create \
   --name "appgw-diagnostics" \
   --resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Network/applicationGateways/myAppGateway" \
@@ -88,6 +88,8 @@ az monitor diagnostic-settings create \
   ]' \
   --metrics '[{"category": "AllMetrics", "enabled": true}]'
 ```
+
+`ApplicationGatewayPerformanceLog` is available only for the v1 SKU. For v2 gateways, use Azure Monitor metrics for performance and backend health data.
 
 The key metrics for backend health monitoring are:
 
@@ -107,12 +109,12 @@ az network application-gateway show-backend-health \
   --output table
 ```
 
-This command returns the health status of every server in every backend pool. Each server will be marked as one of:
+This command returns the health status of every server in every backend pool. Each server will commonly be marked as one of:
 
 - **Healthy**: The probe succeeded and the server is receiving traffic
 - **Unhealthy**: The probe failed and the server is not receiving traffic
-- **Draining**: The server is being gracefully removed from the pool
 - **Unknown**: The gateway has not yet completed a probe cycle
+- **Draining**: The server is being gracefully removed from the pool when connection draining is in effect
 
 For more detail, use the JSON output:
 
@@ -124,7 +126,7 @@ az network application-gateway show-backend-health \
   --output json | jq '.backendAddressPools[].backendHttpSettingsCollection[].servers[]'
 ```
 
-The output includes a `health` field and a `healthProbeLog` field that tells you exactly why a server is marked unhealthy.
+The output includes a `health` field and a `healthProbeLog` field that often provides the diagnostic message for an unhealthy server.
 
 ## Step 5: Set Up Backend Health Alerts
 
@@ -168,7 +170,7 @@ az monitor metrics alert create \
 When a backend is unhealthy, use Log Analytics to dig into the details:
 
 ```text
-// KQL query to find backend health probe failures
+// KQL query to find backend/server-side failures that can correlate with unhealthy backends
 AzureDiagnostics
 | where ResourceType == "APPLICATIONGATEWAYS"
 | where Category == "ApplicationGatewayAccessLog"
@@ -192,23 +194,23 @@ AzureMetrics
 
 ## Common Backend Health Issues and Fixes
 
-**NSG blocking probe traffic**: Application Gateway health probes originate from the GatewayManager service tag on ports 65503-65534 (v1) or any port (v2). Make sure the NSG on the backend subnet allows this traffic.
+**NSG blocking probe traffic**: For private backends, Application Gateway health probes originate from the Application Gateway subnet. Make sure the NSG on the backend subnet allows traffic from the Application Gateway subnet to the backend port. Also make sure the NSG on the Application Gateway subnet allows the required Azure infrastructure traffic from the GatewayManager service tag on TCP ports 65503-65534 for v1 or 65200-65535 for v2.
 
 ```bash
-# Add NSG rule to allow Application Gateway health probes
+# Add NSG rule to allow Application Gateway health probes to the backend port
 az network nsg rule create \
   --nsg-name backendNSG \
   --resource-group myResourceGroup \
   --name AllowAppGwProbes \
   --priority 100 \
-  --source-address-prefixes GatewayManager \
-  --destination-port-ranges "*" \
+  --source-address-prefixes "<app-gateway-subnet-cidr>" \
+  --destination-port-ranges "<backend-port>" \
   --access Allow \
   --protocol Tcp \
   --direction Inbound
 ```
 
-**SSL certificate mismatch**: If you are using HTTPS probes, the backend server's certificate must be trusted by the Application Gateway. For v2, upload the root certificate of the backend's certificate chain as a trusted root certificate.
+**SSL certificate mismatch**: If you are using HTTPS probes, the backend server's certificate must be trusted by the Application Gateway and the certificate name must match the hostname used by the backend setting or custom probe. For v2, certificates from well-known CAs can be trusted without uploading a certificate; for self-signed certificates or certificates issued by a private CA, upload the root certificate of the backend's certificate chain as a trusted root certificate.
 
 **Host header mismatch**: If your backend application validates the Host header, make sure the probe sends the correct host. Either set `host-name-from-http-settings` to true or specify a fixed host in the probe configuration.
 
@@ -223,6 +225,7 @@ A well-designed health endpoint makes troubleshooting much easier. Here is an ex
 ```python
 # Example health endpoint for a Python web application
 # Returns detailed health status for diagnostics
+from sqlalchemy import text
 
 @app.route('/health')
 def health_check():
@@ -231,7 +234,7 @@ def health_check():
 
     # Check database connectivity
     try:
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
         checks['database'] = 'healthy'
     except Exception as e:
         checks['database'] = f'unhealthy: {str(e)}'
