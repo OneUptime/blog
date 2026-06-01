@@ -28,7 +28,7 @@ These are not mutually exclusive. You can combine all three for a layered approa
 
 - An Azure Key Vault (Standard or Premium tier)
 - A virtual network with at least one subnet
-- Key Vault Administrator or Contributor role
+- Key Vault Contributor, Contributor, Owner, or a custom role that can update the vault's management-plane properties; data-plane permissions such as Key Vault Secrets User are also required for the secret-list test
 - Understanding of which applications and users need access to the vault
 
 ## Step 1: Enable Service Endpoints on Your Subnet
@@ -94,7 +94,7 @@ Some Azure services need to access Key Vault but do not come from your VNet. For
 - Azure Backup needs to access key vault for encryption keys
 - Azure Disk Encryption needs certificate access
 - Azure Resource Manager needs access for template deployments
-- Azure App Service and Azure Functions using Key Vault references
+- Azure App Service needs access when deploying certificates from Key Vault
 
 Enable the "Allow trusted Microsoft services to bypass this firewall" setting:
 
@@ -108,7 +108,7 @@ az keyvault update \
 
 This does not open the vault to all Azure traffic. It only allows specific first-party Microsoft services that are on the trusted services list. The full list is documented by Microsoft and includes services like Azure Backup, Azure Disk Encryption, Azure SQL, Azure Data Factory, and others.
 
-If you do not enable this bypass and you use Key Vault references in App Service, your app will fail to read secrets at startup.
+For Azure App Service and Azure Functions Key Vault references, do not rely on this bypass for the app's own secret reads. Configure the app with network access to the vault, such as VNet integration with a subnet that the vault allows, or use a private endpoint with the required DNS configuration.
 
 ## Step 4: Verify the Configuration
 
@@ -165,7 +165,7 @@ A common mistake is setting the default action to Deny without adding your own I
 
 Recovery options:
 
-1. **Azure Portal still works:** The portal accesses Key Vault through the Azure Resource Manager, which can bypass the firewall if "Allow trusted Microsoft services" is enabled. You can modify the firewall rules from the portal.
+1. **Azure Portal management still works:** Firewall rules apply to the Key Vault data plane, not the Azure Resource Manager control plane. You can still modify the vault's networking settings through the portal or ARM if your Azure role allows it, but browsing secrets, keys, or certificates from the portal still requires your client to be within the allowed network boundary.
 
 2. **Use a VM in an allowed subnet:** If you have a VM in one of the allowed subnets, connect to it and manage the vault from there.
 
@@ -231,12 +231,11 @@ Both options restrict network access, but they work differently:
 | Traffic path | Azure backbone (optimized route) | Through private IP in your VNet |
 | DNS resolution | Still resolves to public IP | Resolves to private IP |
 | On-premises access | Requires ExpressRoute/VPN + IP rules | Requires ExpressRoute/VPN + DNS forwarding |
-| Cross-region | Not supported | Supported |
+| Cross-region | Supported for Key Vault | Supported; the private endpoint and VNet must be in the same region, but the vault can be in a different region |
 | Cost | Free | Per-hour and per-GB charge |
 
 For most scenarios, service endpoints are sufficient and simpler. Use private endpoints when:
 
-- You need cross-region access
 - You want DNS-based isolation (vault resolves to a private IP)
 - You need to access the vault from on-premises without IP-based rules
 - Compliance requires no public endpoint at all
