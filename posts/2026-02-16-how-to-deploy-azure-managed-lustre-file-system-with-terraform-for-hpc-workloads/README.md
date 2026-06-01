@@ -51,12 +51,18 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.80"
     }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 2.45"
+    }
   }
 }
 
 provider "azurerm" {
   features {}
 }
+
+provider "azuread" {}
 
 variable "location" {
   type        = string
@@ -78,7 +84,7 @@ variable "lustre_sku" {
 variable "storage_capacity_tib" {
   type        = number
   default     = 48
-  description = "Storage capacity in TiB. Must be a multiple specific to the SKU (e.g., 48, 96, 144 for Premium-250)"
+  description = "Storage capacity in TiB. Must be a multiple specific to the SKU (e.g., 8, 16, 24 for Premium-250)"
 }
 
 variable "maintenance_day" {
@@ -142,15 +148,15 @@ resource "azurerm_subnet" "compute" {
   address_prefixes     = ["10.0.1.0/22"]   # /22 for up to ~1000 compute nodes
 }
 
-# NSG for the compute subnet
-resource "azurerm_network_security_group" "compute" {
-  name                = "nsg-${local.name_prefix}-compute"
+# NSG for the Lustre subnet
+resource "azurerm_network_security_group" "lustre" {
+  name                = "nsg-${local.name_prefix}-lustre"
   location            = azurerm_resource_group.hpc.location
   resource_group_name = azurerm_resource_group.hpc.name
   tags                = local.tags
 }
 
-# Allow Lustre client traffic between subnets
+# Allow Lustre client traffic from compute nodes to the file system
 resource "azurerm_network_security_rule" "lustre_client" {
   name                        = "AllowLustreClient"
   priority                    = 100
@@ -158,16 +164,16 @@ resource "azurerm_network_security_rule" "lustre_client" {
   access                      = "Allow"
   protocol                    = "Tcp"
   source_port_range           = "*"
-  destination_port_range      = "988"   # Lustre default port
-  source_address_prefix       = "10.0.0.0/24"
-  destination_address_prefix  = "10.0.1.0/22"
+  destination_port_ranges     = ["988", "1019-1023"]
+  source_address_prefix       = "10.0.1.0/22"
+  destination_address_prefix  = "10.0.0.0/24"
   resource_group_name         = azurerm_resource_group.hpc.name
-  network_security_group_name = azurerm_network_security_group.compute.name
+  network_security_group_name = azurerm_network_security_group.lustre.name
 }
 
-resource "azurerm_subnet_network_security_group_association" "compute" {
-  subnet_id                 = azurerm_subnet.compute.id
-  network_security_group_id = azurerm_network_security_group.compute.id
+resource "azurerm_subnet_network_security_group_association" "lustre" {
+  subnet_id                 = azurerm_subnet.lustre.id
+  network_security_group_id = azurerm_network_security_group.lustre.id
 }
 ```
 
@@ -187,7 +193,7 @@ resource "azurerm_managed_lustre_file_system" "main" {
   sku_name = var.lustre_sku
 
   # Storage capacity in TiB - must be in valid increments for the SKU
-  # For Premium-250: increments of 48 TiB (48, 96, 144, etc.)
+  # For Premium-250: increments of 8 TiB (8, 16, 24, etc.)
   storage_capacity_in_tb = var.storage_capacity_tib
 
   # Subnet where the Lustre MGS, MDS, and OSS components will run
@@ -202,10 +208,22 @@ resource "azurerm_managed_lustre_file_system" "main" {
     time_of_day_in_utc = var.maintenance_time
   }
 
-  # Managed identity for blob integration
+  # Blob integration for Lustre HSM
+  hsm_setting {
+    container_id         = azurerm_storage_container.hpc_data.resource_manager_id
+    logging_container_id = azurerm_storage_container.hpc_logs.resource_manager_id
+    import_prefix        = "/"
+  }
+
+  # Optional managed identity for resource identity scenarios
   identity {
     type = "SystemAssigned"
   }
+
+  depends_on = [
+    azurerm_role_assignment.lustre_storage_account_contributor,
+    azurerm_role_assignment.lustre_blob_contributor
+  ]
 
   tags = local.tags
 }
@@ -227,6 +245,11 @@ The SKU options and their throughput per TiB:
 One of Managed Lustre's key features is the ability to import data from Azure Blob Storage (called Hierarchical Storage Management or HSM). You configure a blob container as a data source, and Lustre lazily loads files as they are accessed or eagerly loads them on import.
 
 ```hcl
+# Look up the Azure service principal used by Azure Managed Lustre for blob access
+data "azuread_service_principal" "hpc_cache" {
+  display_name = "HPC Cache Resource Provider"
+}
+
 # Storage account for data staging (import/export)
 resource "azurerm_storage_account" "hpc_data" {
   name                     = replace("st${local.name_prefix}data", "-", "")
@@ -249,11 +272,24 @@ resource "azurerm_storage_container" "hpc_data" {
   container_access_type = "private"
 }
 
-# Grant the Lustre file system access to the blob storage
+# Separate container for import/export logs
+resource "azurerm_storage_container" "hpc_logs" {
+  name                  = "hpc-logs"
+  storage_account_name  = azurerm_storage_account.hpc_data.name
+  container_access_type = "private"
+}
+
+# Grant Azure Managed Lustre's service principal access to the storage account
+resource "azurerm_role_assignment" "lustre_storage_account_contributor" {
+  scope                = azurerm_storage_account.hpc_data.id
+  role_definition_name = "Storage Account Contributor"
+  principal_id         = data.azuread_service_principal.hpc_cache.object_id
+}
+
 resource "azurerm_role_assignment" "lustre_blob_contributor" {
   scope                = azurerm_storage_account.hpc_data.id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azurerm_managed_lustre_file_system.main.identity[0].principal_id
+  principal_id         = data.azuread_service_principal.hpc_cache.object_id
 }
 ```
 
@@ -261,13 +297,13 @@ To import data from blob storage into the Lustre file system, you use the import
 
 ```bash
 # Create an import job to load data from blob storage
-az amlfs import-job create \
+az amlfs import create \
   --resource-group rg-lustre-hpc \
-  --amlfs-name amlfs-lustre-hpc \
+  --aml-filesystem-name amlfs-lustre-hpc \
   --import-job-name import-dataset-v1 \
   --conflict-resolution-mode "OverwriteIfDirty" \
-  --import-prefix "/" \
-  --maximum-throughput 500
+  --import-prefixes "[/]" \
+  --maximum-errors 0
 ```
 
 ## Compute Node Configuration
@@ -318,20 +354,24 @@ resource "azurerm_linux_virtual_machine_scale_set" "hpc" {
     #!/bin/bash
     set -e
 
-    # Install Lustre client packages
-    # Ubuntu HPC images often have these pre-installed
+    # Install the Azure Managed Lustre client packages
     apt-get update
-    apt-get install -y lustre-client-modules-$(uname -r) lustre-client-utils
+    apt-get install -y ca-certificates curl apt-transport-https lsb-release gnupg
+    source /etc/lsb-release
+    echo "deb [arch=amd64] https://packages.microsoft.com/repos/amlfs-$${DISTRIB_CODENAME}/ $${DISTRIB_CODENAME} main" > /etc/apt/sources.list.d/amlfs.list
+    curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /etc/apt/trusted.gpg.d/microsoft.gpg
+    apt-get update
+    apt-get install -y amlfs-lustre-client-2.15.8-34-gc0f2040=$(uname -r)
 
     # Create mount point
     mkdir -p /mnt/lustre
 
     # Mount the Lustre file system
     # The MGS address comes from the Managed Lustre deployment
-    mount -t lustre ${azurerm_managed_lustre_file_system.main.mgs_address}@tcp:/lustrefs /mnt/lustre
+    mount -t lustre -o noatime,flock ${azurerm_managed_lustre_file_system.main.mgs_address}@tcp:/lustrefs /mnt/lustre
 
     # Add to fstab for persistence across reboots
-    echo "${azurerm_managed_lustre_file_system.main.mgs_address}@tcp:/lustrefs /mnt/lustre lustre defaults,noatime,flock 0 0" >> /etc/fstab
+    echo "${azurerm_managed_lustre_file_system.main.mgs_address}@tcp:/lustrefs /mnt/lustre lustre defaults,noatime,flock,_netdev,x-systemd.automount,x-systemd.requires=network.service 0 0" >> /etc/fstab
 
     echo "Lustre file system mounted at /mnt/lustre"
   SCRIPT
@@ -379,11 +419,11 @@ resource "azurerm_monitor_metric_alert" "lustre_throughput" {
   severity            = 2
 
   criteria {
-    metric_namespace = "Microsoft.StorageCache/amlFileSystems"
-    metric_name      = "WriteIOPS"
+    metric_namespace = "Microsoft.StorageCache/amlFilesystems"
+    metric_name      = "ClientWriteThroughput"
     aggregation      = "Average"
     operator         = "GreaterThan"
-    threshold        = 800000   # Adjust based on your capacity and SKU
+    threshold        = 9600000000   # 80% of 12 GB/s, in bytes per second
   }
 
   action {
@@ -412,7 +452,7 @@ output "lustre_mgs_address" {
 }
 
 output "lustre_mount_command" {
-  value       = "mount -t lustre ${azurerm_managed_lustre_file_system.main.mgs_address}@tcp:/lustrefs /mnt/lustre"
+  value       = "mount -t lustre -o noatime,flock ${azurerm_managed_lustre_file_system.main.mgs_address}@tcp:/lustrefs /mnt/lustre"
   description = "Command to mount the Lustre file system on a client"
 }
 
