@@ -14,14 +14,14 @@ Azure Logic Apps Consumption plan was the original way to build workflows - one 
 
 The Consumption plan works well for simple, low-volume workflows. But it has limitations that become painful at scale:
 
-- **No local development**: You design and test entirely in the Azure Portal
-- **No CI/CD**: Deployment is through ARM templates that are hard to manage
+- **Limited local development**: You do most design and testing in the Azure Portal or against Azure resources
+- **More complex CI/CD**: Deployment is usually through ARM templates that can be hard to manage
 - **One workflow per resource**: Managing hundreds of workflows means hundreds of Azure resources
 - **Unpredictable costs**: Pay-per-action pricing makes budgeting difficult for high-volume workloads
 - **Cold starts**: Consumption plan workflows can have noticeable startup latency
 - **Limited networking**: No VNET integration on Consumption
 
-Standard solves all of these. You develop locally in VS Code, deploy through CI/CD, run multiple workflows in one resource, pay a fixed hosting cost, and get VNET integration with the Premium App Service plan.
+Standard solves all of these. You develop locally in VS Code, deploy through CI/CD, run multiple workflows in one resource, pay a fixed hosting cost, and get VNET integration with the Workflow Standard hosting plan or an App Service Environment.
 
 ## Assessment: What Can and Cannot Be Migrated
 
@@ -39,10 +39,10 @@ Not every Consumption workflow translates directly to Standard. Here is what to 
 - Managed API connectors (Outlook, SharePoint, SQL) - these exist in Standard but use a different connection model
 - Custom connectors - need to be recreated
 - ISE connectors - not applicable in Standard
+- Integration Account features work differently and may require manual setup after export
 
 **Not available in Standard:**
 - Some Consumption-only triggers (certain polling triggers)
-- Integration Account features work differently
 
 ## Step 1: Export the Consumption Workflow Definition
 
@@ -93,7 +93,9 @@ cat > local.settings.json << 'SETTINGSEOF'
   "IsEncrypted": false,
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "APP_KIND": "workflowApp",
+    "FUNCTIONS_EXTENSION_VERSION": "~4",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet",
     "WORKFLOWS_SUBSCRIPTION_ID": "your-subscription-id",
     "WORKFLOWS_RESOURCE_GROUP_NAME": "rg-workflows"
   }
@@ -135,7 +137,7 @@ Here is how to restructure the definition.
         "type": "Http",
         "inputs": {
           "method": "POST",
-          "uri": "@appsetting('BackendApiUrl')/orders",
+          "uri": "@{appsetting('BackendApiUrl')}/orders",
           "headers": {
             "Content-Type": "application/json",
             "Authorization": "Bearer @{appsetting('BackendApiKey')}"
@@ -175,7 +177,7 @@ Here is how to restructure the definition.
 }
 ```
 
-Notice the `@appsetting('BackendApiUrl')` syntax - in Standard, you reference application settings instead of parameters for configuration values. This is one of the key changes from Consumption.
+Notice the `@{appsetting('BackendApiUrl')}` syntax - in Standard, you reference application settings instead of parameters for configuration values. This is one of the key changes from Consumption.
 
 ## Step 4: Migrate Connections
 
@@ -228,7 +230,7 @@ az logicapp create \
   --resource-group rg-workflows \
   --plan plan-workflows \
   --storage-account stworkflowsruntime \
-  --runtime-version ~4
+  --functions-version 4
 
 # Set application settings
 az logicapp config appsettings set \
@@ -237,6 +239,10 @@ az logicapp config appsettings set \
   --settings \
     "BackendApiUrl=https://api.myapp.com/v1" \
     "BackendApiKey=your-key" \
+    "APP_KIND=workflowApp" \
+    "FUNCTIONS_EXTENSION_VERSION=~4" \
+    "FUNCTIONS_WORKER_RUNTIME=dotnet" \
+    "WEBSITE_NODE_DEFAULT_VERSION=~18" \
     "ServiceBusConnectionString=Endpoint=sb://..."
 
 # Deploy the project
