@@ -48,8 +48,11 @@ export class WafStack extends cdk.Stack {
             managedRuleGroupStatement: {
               vendorName: 'AWS',
               name: 'AWSManagedRulesCommonRuleSet',
-              excludedRules: [
-                { name: 'SizeRestrictions_BODY' }, // Exclude if you accept large payloads
+              ruleActionOverrides: [
+                {
+                  name: 'SizeRestrictions_BODY',
+                  actionToUse: { count: {} }, // Count instead of block if you accept large payloads
+                },
               ],
             },
           },
@@ -101,7 +104,7 @@ export class WafStack extends cdk.Stack {
 
 A few important things to understand here. The `scope` must be `CLOUDFRONT` for CloudFront distributions (and the stack must be in us-east-1), or `REGIONAL` for ALBs and API Gateways. The `defaultAction` is `allow`, meaning requests that don't match any rule pass through. Individual rules block matching requests.
 
-The `overrideAction: { none: {} }` on managed rule groups means "use the rule group's built-in actions." If you want to start in count-only mode (log but don't block), change this to `{ count: {} }`.
+The `overrideAction: { none: {} }` on managed rule groups means "use the rule group's built-in actions." If you want to start a managed rule group in count-only mode while preserving per-rule metrics, use `ruleActionOverrides` to set individual rules to `{ count: {} }`.
 
 ## Rate Limiting
 
@@ -115,8 +118,9 @@ Rate limiting prevents abuse by capping how many requests a single IP can make:
   action: { block: {} },
   statement: {
     rateBasedStatement: {
-      limit: 2000, // Max requests per 5-minute window
+      limit: 2000, // Max requests per evaluation window
       aggregateKeyType: 'IP',
+      evaluationWindowSec: 300, // 5 minutes; valid values are 60, 120, 300, and 600
     },
   },
   visibilityConfig: {
@@ -127,7 +131,7 @@ Rate limiting prevents abuse by capping how many requests a single IP can make:
 }
 ```
 
-The limit is per 5-minute window, which is fixed by AWS. A limit of 2000 means roughly 6-7 requests per second sustained. Adjust based on your application's expected traffic patterns.
+The limit is per evaluation window. AWS defaults to 5 minutes, and you can set `evaluationWindowSec` to 60, 120, 300, or 600 seconds. A limit of 2000 over 5 minutes means roughly 6-7 requests per second sustained. Adjust based on your application's expected traffic patterns.
 
 You can also rate limit more granularly by combining with scope-down statements:
 
@@ -141,6 +145,7 @@ You can also rate limit more granularly by combining with scope-down statements:
     rateBasedStatement: {
       limit: 100,
       aggregateKeyType: 'IP',
+      evaluationWindowSec: 300,
       scopeDownStatement: {
         byteMatchStatement: {
           searchString: '/api/login',
