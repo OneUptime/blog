@@ -10,7 +10,7 @@ Description: Learn how to export Azure Advisor recommendations to CSV files and 
 
 Azure Advisor recommendations are useful in the portal, but when you need to share them with stakeholders, track progress over time, or build governance reports for management, you need the data outside the portal. Whether it is a simple CSV for a spreadsheet or a Power BI dashboard that updates automatically, getting Advisor data into a reporting format is straightforward once you know the available methods.
 
-This post covers three approaches: direct CSV download from the portal, Azure Resource Graph queries for programmatic extraction, and Power BI integration for automated dashboards.
+This post covers four approaches: direct CSV download from the portal, Azure Resource Graph queries for programmatic extraction, PowerShell automation, and Power BI integration for automated dashboards.
 
 ## Method 1: Direct CSV Download from the Portal
 
@@ -96,7 +96,7 @@ az graph query -q "
   | where properties.category == 'Cost'
   | project
       Problem = tostring(properties.shortDescription.problem),
-      AnnualSavings = tostring(properties.extendedProperties.annualSavingsAmount),
+      AnnualSavings = todouble(properties.extendedProperties.annualSavingsAmount),
       Currency = tostring(properties.extendedProperties.savingsCurrency),
       Resource = tostring(properties.resourceMetadata.resourceId)
   | order by AnnualSavings desc
@@ -193,7 +193,7 @@ For automated Power BI reports that refresh on a schedule:
 
 1. Create a Power BI dataset using the Azure Resource Graph REST API.
 2. Set up scheduled refresh in Power BI Service (requires a gateway for on-premises, but not for cloud data sources).
-3. The report refreshes daily or hourly, always showing current recommendations.
+3. The report refreshes daily or multiple times per day, depending on your Power BI capacity and refresh limits, always showing current recommendations.
 
 ### Building the Dashboard
 
@@ -228,6 +228,7 @@ Schedule an Azure Automation runbook or Azure Function to run daily, query the r
 import azure.functions as func
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.resourcegraph import ResourceGraphClient
+from azure.mgmt.resourcegraph.models import QueryRequest
 from azure.storage.blob import BlobServiceClient
 import json
 from datetime import datetime
@@ -247,13 +248,13 @@ def main(timer: func.TimerRequest):
     """
 
     # Execute the query
-    result = client.resources({"query": query})
+    result = client.resources(QueryRequest(query=query))
 
     # Upload to blob storage with today's date as filename
     blob_client = BlobServiceClient.from_connection_string("<conn-string>")
     container = blob_client.get_container_client("advisor-snapshots")
     blob_name = f"recommendations-{datetime.utcnow().strftime('%Y-%m-%d')}.json"
-    container.upload_blob(blob_name, json.dumps(result.data))
+    container.upload_blob(blob_name, json.dumps(result.data), overwrite=True)
 ```
 
 ### Option 2: Ingest into Log Analytics
