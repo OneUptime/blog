@@ -43,7 +43,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
 }
 
 // Container Apps Environment with Log Analytics integration
-resource environment 'Microsoft.App/managedEnvironments@2023-05-01' = {
+resource environment 'Microsoft.App/managedEnvironments@2026-01-01' = {
   name: environmentName
   location: location
   properties: {
@@ -66,7 +66,7 @@ Most production setups pull images from Azure Container Registry. Define it in t
 // Azure Container Registry for storing container images
 param acrName string = 'mycontainerregistry'
 
-resource acr 'Microsoft.ContainerRegistry/registries@2023-01-01-preview' = {
+resource acr 'Microsoft.ContainerRegistry/registries@2025-11-01' = {
   name: acrName
   location: location
   sku: {
@@ -87,11 +87,11 @@ Now define the container app itself. This includes the container image, resource
 param appName string = 'order-service'
 param containerImage string = 'myregistry.azurecr.io/order-service:v1'
 
-resource orderService 'Microsoft.App/containerApps@2023-05-01' = {
+resource orderService 'Microsoft.App/containerApps@2026-01-01' = {
   name: appName
   location: location
   properties: {
-    managedEnvironmentId: environment.id
+    environmentId: environment.id
     configuration: {
       // Secret definitions - referenced by containers and scale rules
       secrets: [
@@ -154,7 +154,7 @@ resource orderService 'Microsoft.App/containerApps@2023-05-01' = {
           // Health probes
           probes: [
             {
-              type: 'liveness'
+              type: 'Liveness'
               httpGet: {
                 path: '/health'
                 port: 3000
@@ -163,7 +163,7 @@ resource orderService 'Microsoft.App/containerApps@2023-05-01' = {
               failureThreshold: 3
             }
             {
-              type: 'readiness'
+              type: 'Readiness'
               httpGet: {
                 path: '/ready'
                 port: 3000
@@ -200,11 +200,11 @@ If your services use Dapr, enable it in the container app definition and add Dap
 
 ```bicep
 // Dapr-enabled container app
-resource paymentService 'Microsoft.App/containerApps@2023-05-01' = {
+resource paymentService 'Microsoft.App/containerApps@2026-01-01' = {
   name: 'payment-service'
   location: location
   properties: {
-    managedEnvironmentId: environment.id
+    environmentId: environment.id
     configuration: {
       // Enable Dapr sidecar
       dapr: {
@@ -238,7 +238,7 @@ resource paymentService 'Microsoft.App/containerApps@2023-05-01' = {
 }
 
 // Dapr state store component
-resource stateStore 'Microsoft.App/managedEnvironments/daprComponents@2023-05-01' = {
+resource stateStore 'Microsoft.App/managedEnvironments/daprComponents@2026-01-01' = {
   name: 'statestore'
   parent: environment
   properties: {
@@ -290,11 +290,11 @@ param cpu string = '0.5'
 param memory string = '1Gi'
 param envVars array = []
 
-resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
+resource containerApp 'Microsoft.App/containerApps@2026-01-01' = {
   name: name
   location: location
   properties: {
-    managedEnvironmentId: environmentId
+    environmentId: environmentId
     configuration: {
       ingress: {
         external: isExternal
@@ -388,12 +388,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v1
+      - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy Bicep template
-        uses: azure/arm-deploy@v1
+        uses: azure/arm-deploy@v2
         with:
           resourceGroupName: my-rg
           template: ./infra/main.bicep
