@@ -168,18 +168,18 @@ Common service tags:
 Example using a service tag:
 
 ```bash
-# Allow traffic from Azure SQL to a backend subnet
+# Allow traffic to Azure SQL from a backend subnet
 az network nsg rule create \
   --resource-group myResourceGroup \
   --nsg-name myNSG \
-  --name AllowAzureSQL \
+  --name AllowAzureSQLOutbound \
   --priority 1030 \
-  --direction Inbound \
+  --direction Outbound \
   --access Allow \
   --protocol Tcp \
-  --source-address-prefixes Sql \
+  --source-address-prefixes '*' \
   --source-port-ranges '*' \
-  --destination-address-prefixes '*' \
+  --destination-address-prefixes Sql \
   --destination-port-ranges 1433
 ```
 
@@ -307,7 +307,7 @@ az network nsg rule delete \
 2. **Never expose management ports to the internet**: Use Azure Bastion, a VPN, or at minimum restrict SSH/RDP to specific IP addresses.
 3. **Use subnet-level NSGs for shared rules**: If all VMs in a subnet need the same rules, apply the NSG at the subnet level rather than duplicating it on each NIC.
 4. **Document your rules**: Use meaningful names and add descriptions. Future you will thank present you.
-5. **Use NSG flow logs**: Enable flow logging to see what traffic is being allowed or denied. This is invaluable for troubleshooting.
+5. **Use virtual network flow logs**: Enable virtual network flow logs to see what traffic is being allowed or denied. NSG flow logs are being retired, so use virtual network flow logs for new deployments.
 6. **Review rules regularly**: Remove rules that are no longer needed. Stale rules are a security risk.
 
 ## Wrapping Up
