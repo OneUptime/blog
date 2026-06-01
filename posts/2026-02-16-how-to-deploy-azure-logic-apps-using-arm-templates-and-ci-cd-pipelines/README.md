@@ -51,11 +51,10 @@ The exported template will have hardcoded values that need to change between env
   "properties": {
     "definition": {
       "actions": {
-        "Send_Email": {
+        "Set_Notification_Email": {
+          "type": "Compose",
           "inputs": {
-            "body": {
-              "To": "ops-team@company.com"
-            }
+            "notificationEmail": "ops-team@company.com"
           }
         }
       }
@@ -114,12 +113,10 @@ The exported template will have hardcoded values that need to change between env
             }
           },
           "actions": {
-            "Send_Email": {
-              "type": "ApiConnection",
+            "Set_Notification_Email": {
+              "type": "Compose",
               "inputs": {
-                "body": {
-                  "To": "[parameters('notificationEmail')]"
-                }
+                "notificationEmail": "[parameters('notificationEmail')]"
               }
             }
           }
@@ -249,7 +246,7 @@ azure-pipelines.yml
 
 ### Azure DevOps Pipeline
 
-Here is a complete pipeline that deploys a Logic App across three environments with manual approval gates:
+Here is a complete pipeline that deploys a Logic App across three environments. Configure approvals and checks on the staging and production environments in Azure DevOps to add manual approval gates:
 
 ```yaml
 # azure-pipelines.yml
@@ -343,7 +340,7 @@ stages:
 
 ## CI/CD with GitHub Actions
 
-If your team uses GitHub instead of Azure DevOps:
+If your team uses GitHub instead of Azure DevOps, you can use `azure/arm-deploy@v2`. The Azure team recommends considering `azure/bicep-deploy` for ongoing support and new ARM or Bicep deployment features:
 
 ```yaml
 # .github/workflows/deploy-logic-app.yml
@@ -361,13 +358,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v1
+      - uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       # Validate the template before deploying
       - name: Validate ARM Template
-        uses: azure/arm-deploy@v1
+        uses: azure/arm-deploy@v2
         with:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-workflows-dev
@@ -377,7 +374,7 @@ jobs:
 
       # Deploy to dev
       - name: Deploy to Dev
-        uses: azure/arm-deploy@v1
+        uses: azure/arm-deploy@v2
         with:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-workflows-dev
@@ -392,12 +389,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v1
+      - uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy to Production
-        uses: azure/arm-deploy@v1
+        uses: azure/arm-deploy@v2
         with:
           subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           resourceGroupName: rg-workflows-prod
@@ -408,7 +405,7 @@ jobs:
 
 ## Handling Secrets in Parameters
 
-Never commit secrets to your parameter files. For sensitive values like API keys or connection strings, use Azure Key Vault references:
+Never commit secrets to your parameter files. For sensitive values like API keys or connection strings, define the template parameter as `secureString` or `secureObject`, enable the key vault for template deployment, and use Azure Key Vault references in the parameter file:
 
 ```json
 {
@@ -425,7 +422,7 @@ Never commit secrets to your parameter files. For sensitive values like API keys
 }
 ```
 
-The deployment process fetches the secret from Key Vault at deploy time, so it never appears in your source code or pipeline logs.
+The deployment process fetches the secret from Key Vault at deploy time, so it never appears in your source code or pipeline logs. The identity that runs the deployment must have the `Microsoft.KeyVault/vaults/deploy/action` permission for the key vault.
 
 ## Testing Before Deployment
 
