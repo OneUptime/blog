@@ -43,6 +43,24 @@ az automation account create \
   --sku Basic
 ```
 
+Enable a system-assigned managed identity for the Automation Account and grant it the permissions the runbook needs:
+
+```powershell
+Set-AzAutomationAccount `
+  -ResourceGroupName "myRG" `
+  -Name "myAutomationAccount" `
+  -AssignSystemIdentity
+
+$AutomationAccount = Get-AzAutomationAccount `
+  -ResourceGroupName "myRG" `
+  -Name "myAutomationAccount"
+
+New-AzRoleAssignment `
+  -ObjectId $AutomationAccount.Identity.PrincipalId `
+  -RoleDefinitionName "Virtual Machine Contributor" `
+  -ResourceGroupName "production-rg"
+```
+
 ## Step 2: Create a Runbook
 
 Create a PowerShell runbook that the webhook will trigger. This example restarts a VM:
@@ -83,7 +101,7 @@ try {
 
 # Restart the VM
 try {
-    Restart-AzVM -ResourceGroupName $ResourceGroup -Name $VMName -Force
+    Restart-AzVM -ResourceGroupName $ResourceGroup -Name $VMName
     Write-Output "Successfully restarted VM: $VMName"
 } catch {
     Write-Error "Failed to restart VM: $_"
@@ -119,16 +137,19 @@ az automation runbook publish \
 
 Create a webhook that triggers the runbook:
 
-```bash
+```powershell
 # Create a webhook for the runbook
 # IMPORTANT: The URL is only shown once - save it immediately
-az automation webhook create \
-  --automation-account-name myAutomationAccount \
-  --resource-group myRG \
-  --name restart-vm-webhook \
-  --runbook-name Restart-VM-Runbook \
-  --expiry-time "2025-12-31T23:59:59Z" \
-  --is-enabled true
+$Webhook = New-AzAutomationWebhook `
+  -AutomationAccountName "myAutomationAccount" `
+  -ResourceGroupName "myRG" `
+  -Name "restart-vm-webhook" `
+  -RunbookName "Restart-VM-Runbook" `
+  -ExpiryTime "2027-12-31T23:59:59Z" `
+  -IsEnabled $true `
+  -Force
+
+$Webhook.WebhookURI
 ```
 
 The response includes the webhook URL. Copy it immediately - Azure will never show the full URL again. If you lose it, you need to create a new webhook.
@@ -258,9 +279,9 @@ Write-Output "Action: $Action on VM: $VMName in RG: $ResourceGroup"
 Connect-AzAccount -Identity
 
 switch ($Action) {
-    "start"   { Start-AzVM -ResourceGroupName $ResourceGroup -Name $VMName -Force }
+    "start"   { Start-AzVM -ResourceGroupName $ResourceGroup -Name $VMName }
     "stop"    { Stop-AzVM -ResourceGroupName $ResourceGroup -Name $VMName -Force }
-    "restart" { Restart-AzVM -ResourceGroupName $ResourceGroup -Name $VMName -Force }
+    "restart" { Restart-AzVM -ResourceGroupName $ResourceGroup -Name $VMName }
 }
 
 Write-Output "Completed $Action on $VMName"
@@ -295,12 +316,13 @@ az automation job list \
 
 Get the output of a specific job:
 
-```bash
+```powershell
 # Get the output stream of a specific job
-az automation job show-output \
-  --automation-account-name myAutomationAccount \
-  --resource-group myRG \
-  --job-name <job-id>
+Get-AzAutomationJobOutput `
+  -AutomationAccountName "myAutomationAccount" `
+  -ResourceGroupName "myRG" `
+  -Id "<job-id>" `
+  -Stream Output
 ```
 
 ## Common Use Cases
