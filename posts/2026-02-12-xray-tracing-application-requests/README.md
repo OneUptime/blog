@@ -42,11 +42,13 @@ flowchart LR
     style H fill:#ff9800
 ```
 
-Everything in orange gets a segment in the trace. The trace shows the full request lifecycle.
+Your instrumented services get segments in the trace. Downstream AWS services, databases, and external APIs appear as subsegments or inferred downstream nodes. The trace shows the full request lifecycle.
 
 ## Setting Up the X-Ray Daemon
 
 The X-Ray SDK in your application doesn't send traces directly to the X-Ray service. Instead, it sends UDP packets to the X-Ray daemon, which batches and forwards them. You need the daemon running wherever your application runs.
+
+AWS X-Ray SDKs and the X-Ray daemon entered maintenance mode on February 25, 2026. For new instrumentation, AWS recommends OpenTelemetry, but the X-Ray SDKs and daemon are still supported for security fixes.
 
 **On EC2:**
 
@@ -55,10 +57,10 @@ The X-Ray SDK in your application doesn't send traces directly to the X-Ray serv
 
 curl https://s3.us-east-2.amazonaws.com/aws-xray-assets.us-east-2/xray-daemon/aws-xray-daemon-linux-3.x.zip -o xray-daemon.zip
 unzip xray-daemon.zip
-sudo cp xray-daemon /usr/local/bin/
+sudo cp xray /usr/local/bin/
 
 # Run the daemon
-xray-daemon -o -n us-east-1 &
+xray -o -n us-east-1 &
 ```
 
 Or install as a systemd service:
@@ -72,7 +74,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/xray-daemon -o -n us-east-1
+ExecStart=/usr/local/bin/xray -o -n us-east-1
 Restart=always
 
 [Install]
@@ -84,11 +86,12 @@ sudo systemctl enable xray && sudo systemctl start xray
 
 **On ECS (as a sidecar):**
 
+Add the X-Ray daemon as a sidecar container in your task definition:
+
 ```json
-// Add X-Ray daemon as a sidecar container in your task definition
 {
   "name": "xray-daemon",
-  "image": "amazon/aws-xray-daemon:latest",
+  "image": "public.ecr.aws/xray/aws-xray-daemon:3.x",
   "essential": false,
   "portMappings": [
     {
@@ -231,6 +234,7 @@ MIDDLEWARE = [
 
 # X-Ray configuration
 XRAY_RECORDER = {
+    'AWS_XRAY_TRACING_NAME': 'user-service',
     'AWS_XRAY_DAEMON_ADDRESS': '127.0.0.1:2000',
     'SAMPLING': True,
     'AUTO_INSTRUMENT': True,
@@ -247,17 +251,17 @@ For Spring Boot:
 <dependency>
     <groupId>com.amazonaws</groupId>
     <artifactId>aws-xray-recorder-sdk-core</artifactId>
-    <version>2.14.0</version>
+    <version>2.21.0</version>
 </dependency>
 <dependency>
     <groupId>com.amazonaws</groupId>
     <artifactId>aws-xray-recorder-sdk-spring</artifactId>
-    <version>2.14.0</version>
+    <version>2.21.0</version>
 </dependency>
 <dependency>
     <groupId>com.amazonaws</groupId>
     <artifactId>aws-xray-recorder-sdk-aws-sdk-v2</artifactId>
-    <version>2.14.0</version>
+    <version>2.21.0</version>
 </dependency>
 ```
 
@@ -327,7 +331,6 @@ function processPayment(orderId, amount, customerId) {
 Your application needs permissions to send traces to X-Ray:
 
 ```json
-// IAM policy for sending X-Ray traces
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -360,7 +363,7 @@ aws xray get-trace-summaries \
 
 # Get a specific trace by ID
 aws xray batch-get-traces \
-  --trace-ids "1-67abcdef-1234567890abcdef"
+  --trace-ids "1-67abcdef-1234567890abcdef12345678"
 ```
 
 You should see traces in the X-Ray console within a minute of making requests to your application.
