@@ -44,17 +44,12 @@ These recommendations are based on well-established cloud architecture best prac
 ## Creating an Advisor Alert with Azure CLI
 
 ```bash
-# Create an Advisor alert for new reliability recommendations
-
-az advisor configuration create-or-update \
-  --resource-group rg-monitoring
-
 # Create an activity log alert for Advisor reliability recommendations
 az monitor activity-log alert create \
   --name "advisor-reliability-alert" \
   --resource-group rg-monitoring \
   --scope "/subscriptions/<sub-id>" \
-  --condition category=Recommendation recommendationCategory=HighAvailability \
+  --condition category=Recommendation and operationName=Microsoft.Advisor/recommendations/available/action and properties.recommendationCategory=HighAvailability \
   --action-group "/subscriptions/<sub-id>/resourceGroups/rg-monitoring/providers/Microsoft.Insights/actionGroups/ops-team" \
   --description "Alert when new Advisor reliability recommendations appear"
 ```
@@ -106,22 +101,22 @@ For infrastructure-as-code deployments:
 
 ## Setting Up Alerts for All Categories
 
-While this post focuses on reliability, you probably want alerts for other categories too. Here is how to set up alerts for all five Advisor categories.
+While this post focuses on reliability, you probably want alerts for other supported categories too. Advisor alerts currently support High Availability, Performance, and Cost recommendations.
 
 ```bash
 # Create alerts for each Advisor category
-for CATEGORY in HighAvailability Security Performance Cost OperationalExcellence; do
+for CATEGORY in HighAvailability Performance Cost; do
   az monitor activity-log alert create \
     --name "advisor-${CATEGORY,,}-alert" \
     --resource-group rg-monitoring \
     --scope "/subscriptions/<sub-id>" \
-    --condition category=Recommendation recommendationCategory=$CATEGORY \
+    --condition category=Recommendation and operationName=Microsoft.Advisor/recommendations/available/action and properties.recommendationCategory=$CATEGORY \
     --action-group "/subscriptions/<sub-id>/resourceGroups/rg-monitoring/providers/Microsoft.Insights/actionGroups/ops-team" \
     --description "Alert for new Advisor $CATEGORY recommendations"
 done
 ```
 
-This creates five alert rules, one per category, all routing to the same action group.
+This creates three alert rules, one per supported category, all routing to the same action group.
 
 ## Routing to Different Teams
 
@@ -133,7 +128,7 @@ In many organizations, different teams handle different types of recommendations
 - **Performance** goes to the application development team.
 - **Operational Excellence** goes to the platform team.
 
-Create separate action groups for each team and assign them to the corresponding alert rules.
+Create separate action groups for each team and assign them to the corresponding alert rules where Advisor alerts support that category.
 
 ```bash
 # Create team-specific action groups
@@ -155,7 +150,7 @@ az monitor activity-log alert create \
   --name "advisor-reliability-alert" \
   --resource-group rg-monitoring \
   --scope "/subscriptions/<sub-id>" \
-  --condition category=Recommendation recommendationCategory=HighAvailability \
+  --condition category=Recommendation and operationName=Microsoft.Advisor/recommendations/available/action and properties.recommendationCategory=HighAvailability \
   --action-group "/subscriptions/<sub-id>/resourceGroups/rg-monitoring/providers/Microsoft.Insights/actionGroups/sre-team"
 ```
 
@@ -215,11 +210,10 @@ Track which alerts have fired and whether they were addressed.
 2. Filter by the alert rule name.
 3. You can see the history of when each alert fired and its current state.
 
-For longer-term tracking, export Advisor recommendations to a Log Analytics workspace and build reports showing recommendation trends over time.
+For longer-term tracking, use Azure Resource Graph queries to report on current Advisor recommendations and build reports showing recommendation trends over time.
 
 ```bash
-# Export Advisor recommendations to Log Analytics
-# You can use Azure Resource Graph queries to get current recommendations
+# Query current Advisor recommendations with Azure Resource Graph
 az graph query -q "
   advisorresources
   | where type == 'microsoft.advisor/recommendations'
@@ -231,7 +225,7 @@ az graph query -q "
 ## Best Practices
 
 - **Alert on all subscriptions**: If you manage multiple subscriptions, create alerts on each one. Advisor recommendations are subscription-scoped.
-- **Include Reliability and Security at minimum**: These two categories directly affect your SLA commitments and security posture.
+- **Include Reliability at minimum**: Reliability recommendations directly affect your SLA commitments. Use Defender for Cloud and Azure Monitor alerting for security recommendations, since Advisor alerts do not support Security recommendations.
 - **Review dismissed recommendations quarterly**: Circumstances change. A recommendation you dismissed 6 months ago might be relevant now.
 - **Document exceptions**: When you decide not to implement a recommendation, document why. This is valuable for audit trails and team knowledge transfer.
 - **Connect to your ticketing system**: Use webhooks in action groups to automatically create tickets in Jira, ServiceNow, or your preferred tracking tool.
