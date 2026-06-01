@@ -14,7 +14,7 @@ Burndown charts show you how work is being completed throughout a sprint. Veloci
 
 ## Setting Up Sprints in Azure Boards
 
-Before burndown and velocity work, your project needs properly configured iterations (sprints). Navigate to Project Settings, then Boards, then Team Configuration, then Iterations.
+Before burndown and velocity work, your project needs properly configured iterations (sprints). Add or modify sprint dates at Project Settings, then Project configuration, then Iterations. Then make sure the team has selected those iterations under Project Settings, then Boards, then Team Configuration, then Iterations.
 
 Add your sprints with specific start and end dates. Azure Boards uses these dates to calculate the burndown ideal line and to associate completed work with specific sprints for velocity calculation.
 
@@ -26,13 +26,13 @@ Sprint structure example:
   Sprint 25 (Mar 3 - Mar 14, 2026)
 ```
 
-Each sprint must have a start date and an end date. Without dates, the burndown chart cannot calculate the ideal trend line, and velocity cannot distinguish between sprints.
+Each sprint should have a start date and an end date. Without dates, the burndown chart cannot calculate the ideal trend line, and the Velocity widget may show a "Set iteration dates to use this widget" message instead of useful trend data.
 
 ## Configuring the Burndown Chart
 
-Azure Boards provides a built-in sprint burndown widget that you can add to dashboards, or you can view it directly from the sprint board.
+Azure Boards provides a built-in sprint burndown widget that you can add to dashboards, or you can view the in-context report directly from the sprint backlog.
 
-Navigate to your team's sprint board and click on the "Analytics" tab. This shows the sprint burndown chart for the current sprint. The chart displays:
+Navigate to Boards, then Sprints, select your team's sprint backlog, and click on the "Analytics" tab. This shows the sprint burndown chart for the current sprint. The chart displays:
 
 - Ideal trend line: A straight line from the total work at sprint start to zero at sprint end
 - Actual remaining work: The real burndown of work items as they are completed
@@ -42,7 +42,7 @@ Navigate to your team's sprint board and click on the "Analytics" tab. This show
 
 The burndown can track different metrics. The most common options are:
 
-**Story Points**: Burns down based on the effort field of user stories. This is the most popular choice for Scrum teams.
+**Story Points, Effort, or Size**: Burns down based on the estimation field used by your process. Agile projects typically use Story Points on user stories, Scrum projects use Effort on product backlog items, and CMMI projects use Size on requirements.
 
 **Count of Work Items**: Simply counts work items regardless of their size. Useful for teams that do not estimate.
 
@@ -65,12 +65,13 @@ Step 4: Configure the widget settings:
 ```text
 Widget Configuration:
   Team: Your Team Name
-  Sprint: Current sprint (or select a specific one)
-  Burndown on: Story Points (recommended)
-  Show: Completed work, Total scope, Ideal trend
+  Backlogs and work items: Stories, Product Backlog Items, Requirements, Tasks, or another backlog level
+  Burndown on: Count of work items, Story Points, Effort, Size, Remaining Work, or another numeric field
+  Select iteration: @CurrentIteration or a specific iteration
+  Advanced features: Show total scope, show non-working days, or plot remaining by work item type color
 ```
 
-The widget updates automatically as work items are completed during the sprint. It refreshes based on the analytics service, which typically processes data within a few hours.
+The widget updates automatically as work items are completed during the sprint. It refreshes based on the Analytics service, which is not real time but typically shows changes after a delay of up to about 30 seconds.
 
 ## Interpreting the Burndown Chart
 
@@ -105,14 +106,15 @@ To view velocity, add the "Velocity" widget to your dashboard.
 Configure it with:
 - Team: Your team name
 - Number of sprints to display: 6-12 sprints gives a good trend view
-- Metric: Story Points (should match your burndown metric)
-- Show: Completed work, Planned work, Completed late work
+- Backlog level or work item type: Choose the items you want to track
+- Metric: Count of work items or a numeric field such as Story Points, Effort, or Size
+- Optional settings: Display planned work for iterations and highlight work completed late
 
 The velocity chart shows bars for each sprint, broken into:
-- Completed work (green): Story points completed within the sprint
-- Planned work (blue outline): Story points committed at sprint start
-- Incomplete work (red): Story points not completed by sprint end
-- Late completion (light green): Work completed after the sprint ended
+- Planned work: Work items assigned to the sprint by the planning cutoff
+- Completed work: Work items completed on or before the sprint end date
+- Incomplete work: Work items currently assigned to the sprint that are still in progress
+- Completed late work: Work items completed after the sprint end date
 
 ## Calculating Team Capacity
 
