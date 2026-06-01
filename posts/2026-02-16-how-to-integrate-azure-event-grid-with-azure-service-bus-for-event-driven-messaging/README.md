@@ -16,9 +16,9 @@ In this post, I will show you how to set up this integration, explain when and w
 
 Consider these scenarios:
 
-- **Azure resource events need reliable processing.** When a blob is uploaded to Storage, Event Grid fires an event instantly. But if your processor is down, the event is lost after retries. By routing Event Grid events to a Service Bus queue, the messages persist until processed.
+- **Azure resource events need reliable processing.** When a blob is uploaded to Storage, Event Grid fires an event instantly. But if your processor is down, the event is eventually dropped or dead-lettered after Event Grid's retry policy is exhausted. By routing Event Grid events to a Service Bus queue, the messages persist until processed.
 
-- **Fan-out with different processing guarantees.** An event from Event Grid can go to multiple subscribers. Some need instant webhook delivery (Event Grid handles this), while others need guaranteed, ordered processing (Service Bus handles this).
+- **Fan-out with different processing guarantees.** An event from Event Grid can go to multiple subscribers. Some need instant webhook delivery (Event Grid handles this), while others need durable processing or ordered workflows with sessions (Service Bus handles this).
 
 - **Buffering bursty events.** If a burst of events arrives from Event Grid faster than your processor can handle, Service Bus queues absorb the burst and let the processor drain at its own pace.
 
@@ -50,7 +50,8 @@ az servicebus queue create \
   --namespace-name my-servicebus-ns \
   --resource-group rg-events \
   --max-size 1024 \
-  --default-message-time-to-live P7D
+  --default-message-time-to-live P7D \
+  --enable-dead-lettering-on-message-expiration true
 
 # Or create a topic if you need multiple subscribers
 az servicebus topic create \
