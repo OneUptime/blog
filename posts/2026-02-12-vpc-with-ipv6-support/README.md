@@ -17,8 +17,8 @@ Let's build a dual-stack VPC from scratch.
 A few important differences to understand before we start:
 
 - IPv6 addresses in AWS are globally unique and publicly routable. There's no concept of "private" IPv6 addresses the way private IPv4 ranges work (though there are now VPC-specific IPv6 CIDR blocks using unique local addresses).
-- NAT doesn't exist in IPv6. Instead, you use an egress-only internet gateway for outbound-only traffic.
-- IPv6 CIDR blocks are /56 for VPCs and /64 for subnets.
+- AWS NAT gateways don't perform IPv6-to-IPv6 NAT. Instead, you use an egress-only internet gateway for outbound-only IPv6 traffic.
+- Amazon-provided IPv6 CIDR blocks are typically /56 for VPCs in this setup, and /64 is the common subnet size. AWS also supports other IPv6 CIDR sizes for VPCs and subnets.
 - Security groups and NACLs work the same way for IPv6, but you need separate rules for IPv6 traffic.
 
 ## Creating a Dual-Stack VPC
@@ -90,7 +90,7 @@ aws ec2 create-route \
   --gateway-id igw-0abc123def456789
 ```
 
-For private subnets, instead of a NAT gateway (which doesn't support IPv6), you use an egress-only internet gateway. This allows instances to initiate outbound IPv6 connections but prevents inbound connections from the internet.
+For private subnets, instead of using a NAT gateway for native IPv6 egress, you use an egress-only internet gateway. This allows instances to initiate outbound IPv6 connections but prevents inbound connections from the internet.
 
 ```bash
 # Create an egress-only internet gateway
@@ -226,6 +226,16 @@ resource "aws_route_table" "private" {
     ipv6_cidr_block                = "::/0"
     egress_only_gateway_id         = aws_egress_only_internet_gateway.main.id
   }
+}
+
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "private" {
+  subnet_id      = aws_subnet.private.id
+  route_table_id = aws_route_table.private.id
 }
 ```
 
