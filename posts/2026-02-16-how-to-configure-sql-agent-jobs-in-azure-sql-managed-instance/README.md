@@ -26,9 +26,9 @@ SQL Agent in Managed Instance works mostly the same as on-premises, with a few d
 
 **Limitations**:
 - No CmdExec job steps (you cannot run operating system commands)
-- No PowerShell job steps (use Azure Automation instead)
+- PowerShell job steps have Managed Instance-specific limitations, such as no PowerShell Core support and no importing external modules; use Azure Automation for broader OS-level automation
 - No ActiveX Script job steps
-- No Replication Agent jobs (use Azure-native replication)
+- Only supported Replication Agent job steps are Transaction Log Reader, Snapshot, and Distribution; Merge and Queue Reader steps are not supported
 - No SSAS or SSRS job steps
 - The Agent service is always running and cannot be stopped
 
@@ -199,10 +199,10 @@ EXEC msdb.dbo.sp_add_jobstep
         DELETE FROM dbo.Orders
         WHERE OrderDate < DATEADD(YEAR, -2, GETDATE());
 
-        COMMIT TRANSACTION;
-
         -- Log the result
         DECLARE @count INT = @@ROWCOUNT;
+        COMMIT TRANSACTION;
+
         RAISERROR(''Archived %d orders'', 0, 1, @count) WITH NOWAIT;
     ',
     @database_name = N'MyDatabase',
@@ -212,9 +212,8 @@ EXEC msdb.dbo.sp_add_jobstep
 -- Schedule for the first day of each month at 4 AM
 EXEC msdb.dbo.sp_add_schedule
     @schedule_name = N'First of Month 4 AM',
-    @freq_type = 32,          -- Monthly relative
-    @freq_interval = 1,       -- First day
-    @freq_relative_interval = 1,
+    @freq_type = 16,          -- Monthly
+    @freq_interval = 1,       -- Day 1 of the month
     @freq_recurrence_factor = 1,
     @active_start_time = 040000;
 
@@ -294,7 +293,7 @@ RECONFIGURE;
 
 -- Create a mail profile
 EXEC msdb.dbo.sysmail_add_profile_sp
-    @profile_name = N'SQLAlerts',
+    @profile_name = N'AzureManagedInstance_dbmail_profile',
     @description = N'Profile for SQL Agent notifications';
 
 -- Create a mail account (using your SMTP server details)
@@ -309,7 +308,7 @@ EXEC msdb.dbo.sysmail_add_account_sp
 
 -- Add the account to the profile
 EXEC msdb.dbo.sysmail_add_profileaccount_sp
-    @profile_name = N'SQLAlerts',
+    @profile_name = N'AzureManagedInstance_dbmail_profile',
     @account_name = N'AlertAccount',
     @sequence_number = 1;
 ```
@@ -351,6 +350,7 @@ SELECT
         WHEN 1 THEN 'Succeeded'
         WHEN 2 THEN 'Retry'
         WHEN 3 THEN 'Canceled'
+        WHEN 4 THEN 'In Progress'
     END AS Status,
     h.message
 FROM msdb.dbo.sysjobhistory h
@@ -391,7 +391,7 @@ For bulk migration, script all jobs:
 
 ### Important Migration Considerations
 
-1. **Remove unsupported step types**: CmdExec and PowerShell steps will not work. Replace them with T-SQL equivalents or use Azure Automation for OS-level tasks.
+1. **Review unsupported or limited step types**: CmdExec, Merge replication, Queue Reader, Analysis Services, and jobs that depend on local files or external PowerShell modules will not work as-is. Replace them with T-SQL equivalents or use Azure Automation for OS-level tasks.
 
 2. **Update database references**: If your jobs reference databases by name, make sure those databases exist on the Managed Instance.
 
@@ -401,7 +401,7 @@ For bulk migration, script all jobs:
 
 5. **Reconfigure Database Mail**: SMTP settings and mail profiles need to be set up from scratch.
 
-6. **Adjust schedules for UTC**: Managed Instance uses UTC time by default. Adjust your schedules accordingly if your on-premises server uses a different time zone.
+6. **Check the instance time zone**: SQL Server Agent schedules follow the Managed Instance time zone. The default is UTC if no time zone was specified when the instance was created, so adjust schedules if your on-premises server used a different time zone.
 
 ## Best Practices
 
@@ -419,4 +419,4 @@ For bulk migration, script all jobs:
 
 ## Summary
 
-SQL Agent jobs in Azure SQL Managed Instance let you maintain the scheduling and automation patterns you built on-premises. Create jobs with T-SQL or SSMS, set up multi-step workflows with conditional logic, configure notifications through Database Mail, and monitor execution through system views. When migrating, replace unsupported step types (CmdExec, PowerShell) with T-SQL alternatives or Azure Automation, and remember to adjust schedules for UTC time. Regular monitoring and failure notifications ensure your automated processes keep running smoothly.
+SQL Agent jobs in Azure SQL Managed Instance let you maintain the scheduling and automation patterns you built on-premises. Create jobs with T-SQL or SSMS, set up multi-step workflows with conditional logic, configure notifications through Database Mail, and monitor execution through system views. When migrating, replace unsupported or limited step types with T-SQL alternatives or Azure Automation, and remember that schedules follow the instance time zone. Regular monitoring and failure notifications ensure your automated processes keep running smoothly.
