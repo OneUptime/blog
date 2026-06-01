@@ -8,7 +8,7 @@ Description: Step-by-step instructions for creating custom Azure Policy definiti
 
 ---
 
-Naming conventions in Azure might seem like a minor concern until you are staring at a resource group full of resources like "vm1," "storageacct," and "test-app" with no idea which team owns them or what environment they belong to. Consistent naming makes resources discoverable, reduces operational confusion, and helps with cost allocation. Azure Policy lets you enforce naming conventions automatically, so resources that do not follow the pattern are either denied at creation time or flagged for remediation.
+Naming conventions in Azure might seem like a minor concern until you are staring at a resource group full of resources like "vm1," "storageacct," and "test-app" with no idea which team owns them or what environment they belong to. Consistent naming makes resources discoverable, reduces operational confusion, and helps with cost allocation. Azure Policy lets you enforce naming conventions automatically, so resources that do not follow the pattern are either denied at creation time or flagged in compliance results.
 
 In this post, I will show you how to build custom Azure Policy definitions that enforce naming patterns tailored to your organization.
 
@@ -17,7 +17,7 @@ In this post, I will show you how to build custom Azure Policy definitions that 
 You could document naming conventions in a wiki and hope everyone follows them. In practice, that never works. Azure Policy enforces conventions at the platform level, which means:
 
 - Resources that violate the policy cannot be created (in Deny mode)
-- Non-compliant existing resources are flagged for remediation (in Audit mode)
+- Non-compliant existing resources are flagged in compliance results (in Audit mode)
 - The enforcement is consistent regardless of whether resources are created through the portal, CLI, PowerShell, Terraform, or ARM templates
 
 ## Common Naming Convention Patterns
@@ -50,13 +50,13 @@ graph LR
 You need:
 
 - Azure subscription
-- Owner or Policy Contributor role
+- Owner or Resource Policy Contributor role
 - Understanding of Azure Policy definition structure and JSON
 - A defined naming convention for your organization
 
 ## Step 1: Create a Simple Naming Convention Policy
 
-Let us start with a policy that requires all resource groups to follow a naming pattern. Resource groups must start with "rg-" followed by a workload name, a hyphen, and an environment label.
+Let us start with a policy that requires all resource groups to follow a fixed naming pattern. In this example, resource groups must start with "rg-" followed by a six-letter workload name, a hyphen, and a three-letter environment label.
 
 Here is the policy definition in JSON:
 
@@ -73,7 +73,7 @@ Here is the policy definition in JSON:
                 {
                     "not": {
                         "field": "name",
-                        "match": "rg-??*-??*"
+                        "match": "rg-??????-???"
                     }
                 }
             ]
@@ -86,7 +86,7 @@ Here is the policy definition in JSON:
 }
 ```
 
-The `match` condition uses a pattern where `?` matches any single character and `*` matches zero or more characters. So `rg-??*-??*` requires the name to start with "rg-" followed by at least two characters, a hyphen, and at least two more characters.
+The `match` condition uses a pattern where `#` matches a digit, `?` matches a letter, and `.` matches any single character. So `rg-??????-???` requires the name to start with "rg-" followed by six letters, a hyphen, and three more letters.
 
 ## Step 2: Create a More Flexible Policy with Parameters
 
@@ -100,7 +100,7 @@ Hard-coding patterns into the policy is limiting. A better approach uses paramet
             "type": "String",
             "metadata": {
                 "displayName": "Required Name Pattern",
-                "description": "The naming pattern that resources must match. Use # for digits, ? for letters, and * for wildcards."
+                "description": "The naming pattern that resources must match. Use # for digits, ? for letters, and . for any single character."
             }
         },
         "resourceType": {
@@ -165,14 +165,14 @@ $definition = New-AzPolicyDefinition `
 Write-Host "Policy definition created: $($definition.Name)"
 
 # Assign the policy to enforce VM naming
-# VMs must start with "vm-" followed by workload and environment
+# VMs must start with "vm-" followed by a six-letter workload and three-letter environment
 $vmAssignment = New-AzPolicyAssignment `
     -Name "enforce-vm-naming" `
     -DisplayName "Enforce VM Naming Convention" `
     -PolicyDefinition $definition `
     -Scope "/subscriptions/YOUR_SUBSCRIPTION_ID" `
     -PolicyParameterObject @{
-        namePattern = "vm-??*-??*"
+        namePattern = "vm-??????-???"
         resourceType = "Microsoft.Compute/virtualMachines"
         effect = "Deny"
     }
@@ -187,7 +187,7 @@ $storageAssignment = New-AzPolicyAssignment `
     -PolicyDefinition $definition `
     -Scope "/subscriptions/YOUR_SUBSCRIPTION_ID" `
     -PolicyParameterObject @{
-        namePattern = "st??*??*"
+        namePattern = "st?????????###"
         resourceType = "Microsoft.Storage/storageAccounts"
         effect = "Deny"
     }
@@ -203,8 +203,8 @@ Here is a table of common constraints:
 
 | Resource Type | Max Length | Allowed Characters |
 |---|---|---|
-| Resource Group | 90 | Alphanumeric, hyphens, underscores, periods |
-| Virtual Machine | 64 (Linux), 15 (Windows) | Alphanumeric, hyphens |
+| Resource Group | 90 | Letters, digits, hyphens, underscores, periods, parentheses |
+| Virtual Machine | 64 (Linux), 15 (Windows) | Cannot use spaces, control characters, or special characters such as `_`, `.`, `/`, `?`, and `*` |
 | Storage Account | 24 | Lowercase letters and numbers only |
 | Key Vault | 24 | Alphanumeric, hyphens |
 | SQL Server | 63 | Lowercase letters, numbers, hyphens |
@@ -224,7 +224,7 @@ For storage accounts, you might use a compressed naming convention like `st{work
                 {
                     "not": {
                         "field": "name",
-                        "match": "st??*"
+                        "like": "st*"
                     }
                 }
             ]
@@ -236,9 +236,9 @@ For storage accounts, you might use a compressed naming convention like `st{work
 }
 ```
 
-## Step 5: Create a Policy with Regular Expression-Like Matching
+## Step 5: Create a Policy with Multiple Conditions
 
-The `match` condition is limited. For more complex patterns, you can use the `like` condition, which supports wildcards:
+The `match` condition is limited. For more flexible checks, you can combine `like` with one wildcard and `contains` for required name segments:
 
 ```json
 {
@@ -251,26 +251,36 @@ The `match` condition is limited. For more complex patterns, you can use the `li
                     "equals": "Microsoft.Compute/virtualMachines"
                 },
                 {
-                    "not": {
-                        "anyOf": [
-                            {
+                    "anyOf": [
+                        {
+                            "not": {
                                 "field": "name",
-                                "like": "vm-*-prod-*"
-                            },
-                            {
-                                "field": "name",
-                                "like": "vm-*-dev-*"
-                            },
-                            {
-                                "field": "name",
-                                "like": "vm-*-staging-*"
-                            },
-                            {
-                                "field": "name",
-                                "like": "vm-*-test-*"
+                                "like": "vm-*"
                             }
-                        ]
-                    }
+                        },
+                        {
+                            "not": {
+                                "anyOf": [
+                                    {
+                                        "field": "name",
+                                        "contains": "-prod-"
+                                    },
+                                    {
+                                        "field": "name",
+                                        "contains": "-dev-"
+                                    },
+                                    {
+                                        "field": "name",
+                                        "contains": "-staging-"
+                                    },
+                                    {
+                                        "field": "name",
+                                        "contains": "-test-"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
                 }
             ]
         },
@@ -281,16 +291,16 @@ The `match` condition is limited. For more complex patterns, you can use the `li
 }
 ```
 
-This policy requires VM names to contain one of the recognized environment identifiers (prod, dev, staging, test).
+This policy requires VM names to start with `vm-` and contain one of the recognized environment identifiers (prod, dev, staging, test).
 
 ## Step 6: Apply the Policy in Audit Mode First
 
 I always recommend deploying naming convention policies in Audit mode before switching to Deny:
 
 1. Assign the policy with `effect` set to `Audit`.
-2. Wait 24 to 48 hours for the compliance scan to complete.
+2. Wait for the compliance scan to complete. Azure Policy automatically reevaluates assignments every 24 hours, and large scopes can take additional time to finish.
 3. Review the compliance results in the Azure portal under Policy, then Compliance.
-4. Identify existing resources that do not comply and decide whether to rename them or exempt them.
+4. Identify existing resources that do not comply and decide whether to migrate, recreate, or exempt them.
 5. Once you are comfortable with the results, change the effect to `Deny`.
 
 ```powershell
@@ -309,7 +319,7 @@ Write-Host "Total non-compliant resources: $($compliance.Count)"
 
 ## Step 7: Create Exemptions for Existing Resources
 
-Resources created before the policy was applied will show as non-compliant. If renaming them is not practical, create exemptions:
+Resources created before the policy was applied will show as non-compliant. If migrating or recreating them is not practical, create exemptions:
 
 ```powershell
 # Create a policy exemption for a specific resource group with legacy names
@@ -334,14 +344,14 @@ $policySets = @(
     @{
         policyDefinitionId = "/subscriptions/SUB_ID/providers/Microsoft.Authorization/policyDefinitions/enforce-vm-naming-def"
         parameters = @{
-            namePattern = @{ value = "vm-??*-??*" }
+            namePattern = @{ value = "vm-??????-???" }
             effect = @{ value = "Deny" }
         }
     },
     @{
         policyDefinitionId = "/subscriptions/SUB_ID/providers/Microsoft.Authorization/policyDefinitions/enforce-storage-naming-def"
         parameters = @{
-            namePattern = @{ value = "st??*" }
+            namePattern = @{ value = "st?????????###" }
             effect = @{ value = "Deny" }
         }
     }
