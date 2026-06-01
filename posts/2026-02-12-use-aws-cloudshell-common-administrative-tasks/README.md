@@ -31,7 +31,7 @@ aws ec2 describe-instances \
   --output table
 ```
 
-Start, stop, or reboot instances by name instead of ID.
+Start or stop instances by name instead of ID.
 
 ```bash
 # Find an instance ID by its Name tag
@@ -48,6 +48,7 @@ aws ec2 start-instances --instance-ids "$INSTANCE_ID"
 
 # Check its current state
 aws ec2 describe-instance-status --instance-ids "$INSTANCE_ID" \
+  --include-all-instances \
   --query 'InstanceStatuses[0].{State: InstanceState.Name, SystemStatus: SystemStatus.Status, InstanceStatus: InstanceStatus.Status}'
 ```
 
@@ -70,7 +71,7 @@ aws s3 sync ~/data/ s3://my-bucket/data/ --exclude "*.tmp"
 # Find large files in a bucket
 aws s3api list-objects-v2 \
   --bucket my-bucket \
-  --query 'sort_by(Contents, &Size)[-10:].{Key: Key, SizeMB: Size}' \
+  --query 'sort_by(Contents, &Size)[-10:].{Key: Key, SizeBytes: Size}' \
   --output table
 ```
 
@@ -222,7 +223,7 @@ aws ce get-cost-and-usage \
   --granularity MONTHLY \
   --metrics "UnblendedCost" \
   --group-by Type=DIMENSION,Key=SERVICE \
-  --query 'ResultsByTime[0].Groups[?Metrics.UnblendedCost.Amount > `1`] | sort_by(@, &Metrics.UnblendedCost.Amount) | reverse(@)[0:10].{Service: Keys[0], Cost: Metrics.UnblendedCost.Amount}' \
+  --query 'ResultsByTime[0].Groups[?to_number(Metrics.UnblendedCost.Amount) > `1`] | sort_by(@, &to_number(Metrics.UnblendedCost.Amount)) | reverse(@)[0:10].{Service: Keys[0], Cost: Metrics.UnblendedCost.Amount}' \
   --output table
 ```
 
@@ -232,6 +233,7 @@ Save frequently used operations as scripts in your CloudShell home directory.
 
 ```bash
 # Create a comprehensive health check script
+mkdir -p ~/scripts
 cat > ~/scripts/health-check.sh << 'SCRIPT'
 #!/bin/bash
 # Quick infrastructure health check
@@ -255,7 +257,7 @@ aws cloudformation list-stacks \
 echo ""
 echo "=== Lambda Errors (Last Hour) ==="
 aws cloudwatch get-metric-data \
-  --metric-data-queries '[{"Id":"errors","MetricStat":{"Metric":{"Namespace":"AWS/Lambda","MetricName":"Errors"},"Period":3600,"Stat":"Sum"}}]' \
+  --metric-data-queries '[{"Id":"errors","Expression":"SELECT SUM(Errors) FROM SCHEMA(\"AWS/Lambda\", FunctionName)","Period":3600}]' \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --query 'MetricDataResults[0].Values[0]' \
@@ -279,7 +281,7 @@ Run it anytime with `~/scripts/health-check.sh`.
 Tags are critical for organization and cost allocation. CloudShell makes bulk tagging easy.
 
 ```bash
-# Find all resources missing a required tag
+# Find tagged resources missing a required tag
 aws resourcegroupstaggingapi get-resources \
   --query 'ResourceTagMappingList[?!Tags[?Key==`Environment`]].ResourceARN' \
   --output text | tr '\t' '\n' | head -20
