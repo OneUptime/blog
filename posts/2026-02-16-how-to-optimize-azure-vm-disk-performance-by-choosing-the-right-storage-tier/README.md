@@ -18,11 +18,11 @@ Azure offers five managed disk tiers, each with different performance and cost c
 
 | Tier | Max IOPS | Max Throughput | Latency | Best For |
 |------|----------|---------------|---------|----------|
-| Ultra Disk | 160,000 | 4,000 MB/s | Sub-ms | SAP HANA, top-tier databases |
-| Premium SSD v2 | 80,000 | 1,200 MB/s | Sub-ms | High-performance databases |
+| Ultra Disk | 400,000 | 10,000 MB/s | Sub-ms | SAP HANA, top-tier databases |
+| Premium SSD v2 | 80,000 | 2,000 MB/s | Sub-ms | High-performance databases |
 | Premium SSD | 20,000 | 900 MB/s | Single-digit ms | Production databases, demanding apps |
 | Standard SSD | 6,000 | 750 MB/s | Single-digit ms | Web servers, dev/test, light databases |
-| Standard HDD | 2,000 | 500 MB/s | Tens of ms | Backups, archival, infrequent access |
+| Standard HDD | 2,000 (3,000 with performance plus) | 500 MB/s | Higher than SSD | Backups, archival, infrequent access |
 
 The most common mistake I see: running a production database on Standard SSD when it needs Premium SSD IOPS, or running a development server on Premium SSD when Standard SSD would be perfectly fine.
 
@@ -96,8 +96,8 @@ This is where Premium SSD v2 shines - it lets you provision IOPS and throughput 
 **Premium SSD v2** lets you provision capacity, IOPS, and throughput independently:
 
 - Base: 3,000 IOPS and 125 MB/s included with any size
-- Additional IOPS: $0.05 per provisioned IOPS per month
-- Additional throughput: $0.04 per provisioned MB/s per month
+- Additional IOPS: charged separately for provisioned IOPS above 3,000
+- Additional throughput: charged separately for provisioned throughput above 125 MB/s
 
 This means you can have a 100 GB disk with 10,000 IOPS, which is not possible with standard Premium SSD.
 
@@ -140,26 +140,26 @@ Ultra Disks have some restrictions:
 - Only available in specific regions and zones
 - Only supported on specific VM sizes (Es_v5, Dsv5, M series, etc.)
 - Cannot be used as OS disks
-- Do not support disk snapshots (use disk backup instead)
+- Support incremental snapshots only, with additional limitations
 
 Only use Ultra Disks if your workload genuinely needs more than 20,000 IOPS or sub-millisecond latency. For most workloads, Premium SSD v2 is sufficient.
 
 ## Step 5: Use Disk Bursting for Spiky Workloads
 
-Premium SSD and Standard SSD disks smaller than P30 (1 TB) support bursting - they can temporarily exceed their baseline IOPS. This is useful for workloads with periodic spikes (like boot sequences, batch jobs, or traffic bursts).
+Premium SSD and Standard SSD disks support bursting for eligible sizes - they can temporarily exceed their baseline IOPS. This is useful for workloads with periodic spikes (like boot sequences, batch jobs, or traffic bursts).
 
 There are two types of bursting:
 
-- **Credit-based bursting** (default, free): Accumulates burst credits during idle periods. Bursts up to 3,500 IOPS for P4-P20 disks.
-- **On-demand bursting** (paid, for P30+): Allows disks P30 and larger to burst beyond their baseline at a per-operation cost.
+- **Credit-based bursting** (default, free): Accumulates burst credits during idle periods. It is available for Premium SSD managed disks 512 GiB and smaller, and Standard SSDs 1,024 GiB and smaller.
+- **On-demand bursting** (paid, for P30+): Allows Premium SSD disks larger than 512 GiB to burst beyond their baseline at an hourly enablement fee and per-transaction cost.
 
 Check if your disk is using burst credits:
 
 ```bash
 # Monitor disk burst credit percentage
 az monitor metrics list \
-  --resource "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Compute/disks/myDisk" \
-  --metric "BurstIOCreditsPercentage,BurstBWCreditsPercentage" \
+  --resource "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Compute/virtualMachines/myVM" \
+  --metric "Data Disk Used Burst IO Credits Percentage,Data Disk Used Burst BPS Credits Percentage" \
   --interval PT5M \
   --output table
 ```
@@ -171,17 +171,19 @@ If burst credits are frequently at 0%, your disk is constantly bursting and you 
 Even if your disk supports 20,000 IOPS, the VM itself has I/O limits. Each VM size has a maximum cached and uncached disk IOPS and throughput.
 
 ```bash
-# Check VM size specifications including disk limits
-az vm list-sizes \
+# Check VM size capabilities, including disk-related limits
+az vm list-skus \
   --location eastus \
-  --query "[?name=='Standard_D4s_v5'].{Name: name, Cores: numberOfCores, MemoryMB: memoryInMb, MaxDataDisks: maxDataDiskCount}" \
+  --resource-type virtualMachines \
+  --size Standard_D4s_v5 \
+  --query "[0].capabilities[?contains(name, 'Disk') || contains(name, 'IOPS') || contains(name, 'Bandwidth')]" \
   --output table
 ```
 
-For detailed specs including I/O limits, check the Azure documentation or:
+For detailed specs including I/O limits, check the Azure documentation. To get the VM size of your running VM:
 
 ```bash
-# Get the disk throughput limits of your running VM
+# Get the VM size of your running VM
 az vm show \
   --resource-group myResourceGroup \
   --name myVM \
@@ -191,8 +193,8 @@ az vm show \
 
 A Standard_D4s_v5 VM supports:
 - Uncached disk IOPS: 6,400
-- Uncached disk throughput: 150 MB/s
-- Cached disk IOPS: 9,000
+- Uncached disk throughput: 145 MB/s
+- Uncached disk burst IOPS: 20,000
 
 So even if you attach a P40 (7,500 IOPS) disk, the VM can only deliver 6,400 IOPS uncached. To get more disk I/O, you need a larger VM.
 
