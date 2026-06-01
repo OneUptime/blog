@@ -95,10 +95,10 @@ resource "azurerm_data_factory_linked_service_azure_sql_database" "warehouse" {
   data_factory_id = azurerm_data_factory.main.id
 
   # Connection string with managed identity authentication
+  use_managed_identity = true
   connection_string = join(";", [
     "Server=tcp:${azurerm_mssql_server.warehouse.fully_qualified_domain_name},1433",
     "Database=${azurerm_mssql_database.warehouse.name}",
-    "Authentication=Active Directory Managed Identity",
     "Encrypt=yes",
     "TrustServerCertificate=no",
     "Connection Timeout=30"
@@ -151,6 +151,11 @@ resource "azurerm_data_factory_dataset_delimited_text" "raw_csv" {
   data_factory_id     = azurerm_data_factory.main.id
   linked_service_name = azurerm_data_factory_linked_service_azure_blob_storage.raw_data.name
 
+  parameters = {
+    folderPath = ""
+    fileName   = ""
+  }
+
   azure_blob_storage_location {
     container = "raw-data"
     # Dynamic path using parameters
@@ -186,8 +191,8 @@ resource "azurerm_data_factory_dataset_parquet" "processed" {
   data_factory_id     = azurerm_data_factory.main.id
   linked_service_name = azurerm_data_factory_linked_service_data_lake_storage_gen2.datalake.name
 
-  azure_blob_storage_location {
-    container = "processed"
+  azure_blob_fs_location {
+    file_system = "processed"
     path      = "data/processed"
   }
 
@@ -195,17 +200,12 @@ resource "azurerm_data_factory_dataset_parquet" "processed" {
 }
 
 # SQL table dataset for the warehouse
-resource "azurerm_data_factory_dataset_azure_blob" "warehouse_table" {
+resource "azurerm_data_factory_dataset_azure_sql_table" "warehouse_table" {
   name                = "ds-sql-warehouse-table"
   data_factory_id     = azurerm_data_factory.main.id
-  linked_service_name = azurerm_data_factory_linked_service_azure_sql_database.warehouse.name
-
-  additional_properties = {
-    "typeProperties" = jsonencode({
-      schema    = "dbo"
-      tableName = "orders"
-    })
-  }
+  linked_service_id   = azurerm_data_factory_linked_service_azure_sql_database.warehouse.id
+  schema              = "dbo"
+  table               = "orders"
 }
 ```
 
@@ -227,7 +227,6 @@ resource "azurerm_data_factory_pipeline" "etl_main" {
   parameters = {
     sourceFolder = ""
     sourceFile   = ""
-    targetTable  = ""
   }
 
   # Pipeline activities defined as JSON
@@ -297,7 +296,7 @@ resource "azurerm_data_factory_pipeline" "etl_main" {
         type          = "DatasetReference"
       }]
       outputs = [{
-        referenceName = azurerm_data_factory_dataset_azure_blob.warehouse_table.name
+        referenceName = azurerm_data_factory_dataset_azure_sql_table.warehouse_table.name
         type          = "DatasetReference"
       }]
     }
@@ -332,7 +331,6 @@ resource "azurerm_data_factory_trigger_schedule" "daily_etl" {
     parameters = {
       sourceFolder = "daily-uploads"
       sourceFile   = "orders.csv"
-      targetTable  = "dbo.orders"
     }
   }
 }
@@ -345,7 +343,7 @@ resource "azurerm_data_factory_trigger_blob_event" "new_file" {
   storage_account_id = azurerm_storage_account.raw_data.id
   events             = ["Microsoft.Storage.BlobCreated"]
 
-  blob_path_begins_with = "/raw-data/incoming/"
+  blob_path_begins_with = "/raw-data/blobs/incoming/"
   blob_path_ends_with   = ".csv"
   ignore_empty_blobs    = true
 
@@ -356,7 +354,6 @@ resource "azurerm_data_factory_trigger_blob_event" "new_file" {
     parameters = {
       sourceFolder = "@triggerBody().folderPath"
       sourceFile   = "@triggerBody().fileName"
-      targetTable  = "dbo.orders"
     }
   }
 }
