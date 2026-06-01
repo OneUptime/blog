@@ -51,7 +51,7 @@ public class ReminderScheduler
     }
 
     // Schedule a reminder message for a specific time
-    public async Task ScheduleReminderAsync(string userId, string message, DateTime deliveryTime)
+    public async Task ScheduleReminderAsync(string userId, string message, DateTimeOffset deliveryTime)
     {
         var busMessage = new ServiceBusMessage(BinaryData.FromObjectAsJson(new
         {
@@ -74,7 +74,7 @@ public class ReminderScheduler
     }
 
     // Schedule a batch of messages all at once
-    public async Task ScheduleFollowUpSequenceAsync(string userId, DateTime signupTime)
+    public async Task ScheduleFollowUpSequenceAsync(string userId, DateTimeOffset signupTime)
     {
         var messages = new List<ServiceBusMessage>
         {
@@ -103,7 +103,7 @@ public class ReminderScheduler
             messages.Count, userId);
     }
 
-    private ServiceBusMessage CreateMessage(string userId, string text, DateTime deliveryTime)
+    private ServiceBusMessage CreateMessage(string userId, string text, DateTimeOffset deliveryTime)
     {
         return new ServiceBusMessage(BinaryData.FromObjectAsJson(new
         {
@@ -115,7 +115,7 @@ public class ReminderScheduler
             ContentType = "application/json",
             Subject = "FollowUp",
             ScheduledEnqueueTime = deliveryTime,
-            // Group by user ID for potential session-based ordering
+            // Store user ID as searchable application metadata
             ApplicationProperties = { ["UserId"] = userId }
         };
     }
@@ -202,8 +202,9 @@ public class DelayedRetryProcessor
         catch (TransientException ex)
         {
             // Determine the retry delay based on the attempt number
-            int attempt = message.ApplicationProperties.TryGetValue(
-                "RetryAttempt", out var val) ? (int)(long)val : 0;
+            int attempt = message.ApplicationProperties.TryGetValue("RetryAttempt", out var val)
+                ? Convert.ToInt32(val)
+                : 0;
 
             if (attempt >= 5)
             {
@@ -298,6 +299,11 @@ public class TimeoutMonitor
     {
         var record = await _database.GetAsync(processId);
 
+        if (record == null)
+        {
+            return;
+        }
+
         if (record?.TimeoutSequenceNumber != null)
         {
             await _sender.CancelScheduledMessageAsync(
@@ -380,7 +386,7 @@ public async Task<List<ScheduledMessageInfo>> GetScheduledMessagesAsync(string q
 
 Scheduled messages count toward your queue's storage quota. If you schedule millions of messages far into the future, you could hit storage limits.
 
-The scheduling precision is approximately 1 second. Do not rely on sub-second timing accuracy.
+Do not rely on exact delivery at the scheduled time. Service Bus makes the message available for retrieval at the scheduled enqueue time, but actual processing still depends on queue load, receiver availability, and normal message delivery behavior.
 
 Scheduled messages cannot be received by consumers until their enqueue time, but they can be peeked at any time. Keep this in mind if your scheduled messages contain sensitive data.
 
