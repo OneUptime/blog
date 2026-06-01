@@ -16,9 +16,9 @@ Secure files are encrypted at rest, access-controlled through pipeline permissio
 
 Navigate to your Azure DevOps project, go to Pipelines, then Library, then click the "Secure files" tab. Click the "+ Secure file" button to upload a file.
 
-You can upload any file type. Common examples include `.pfx` certificate files, `.p12` files for iOS signing, `.keystore` files for Android, `.pem` files for SSH or TLS, and `.json` credential files for cloud providers.
+You can upload any file type up to the 10 MB per-file limit. Common examples include `.pfx` certificate files, `.p12` files for iOS signing, `.keystore` files for Android, `.pem` files for SSH or TLS, and `.json` credential files for cloud providers.
 
-After uploading, each secure file gets a unique ID and shows up in the list with its name and the date it was uploaded. By default, only the person who uploaded the file can authorize pipelines to use it.
+After uploading, each secure file gets a unique ID and shows up in the list with its name and the date it was uploaded. The file creator is assigned the "Administrator" role for that secure file, and any inherited library security roles also apply.
 
 ## Setting Permissions on Secure Files
 
@@ -69,9 +69,18 @@ steps:
 
         # Use signtool to sign the assemblies
         # The certificate password is stored as a pipeline secret variable
-        $assemblies = Get-ChildItem -Path "$(Build.ArtifactStagingDirectory)" -Filter "*.dll" -Recurse
+        $signtool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter "signtool.exe" -Recurse |
+            Where-Object { $_.FullName -match "\\x64\\signtool.exe$" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if (-not $signtool) {
+            throw "signtool.exe was not found in the Windows Kits installation."
+        }
+
+        $assemblies = Get-ChildItem -Path "$(Build.SourcesDirectory)" -Filter "*.dll" -Recurse |
+            Where-Object { $_.FullName -match "\\bin\\Release\\" }
         foreach ($assembly in $assemblies) {
-            & "C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe" sign `
+            & $signtool.FullName sign `
                 /f "$certPath" `
                 /p "$(CertPassword)" `
                 /tr http://timestamp.digicert.com `
@@ -202,31 +211,27 @@ steps:
             "cd /opt/app && git pull && docker-compose up -d"
 ```
 
-## Managing Secure Files with the Azure CLI
+## Managing Secure Files with the REST API
 
-You can manage secure files programmatically using the Azure DevOps REST API or CLI. This is useful for automation and rotating files.
+You can manage secure files programmatically using the Azure DevOps REST API. This is useful for automation and rotating files.
 
 ```bash
-# Upload a new secure file using the Azure DevOps CLI
+# Upload a new secure file using the Azure DevOps REST API
 
-az pipelines secure-file upload \
-  --org "https://dev.azure.com/your-org" \
-  --project "your-project" \
-  --name "new-certificate.pfx" \
-  --file "/path/to/certificate.pfx"
+curl -u ":$AZURE_DEVOPS_PAT" \
+  -X POST \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary "@/path/to/certificate.pfx" \
+  "https://dev.azure.com/your-org/your-project/_apis/distributedtask/securefiles?name=new-certificate.pfx&api-version=7.2-preview.1"
 
 # List all secure files in the project
-az pipelines secure-file list \
-  --org "https://dev.azure.com/your-org" \
-  --project "your-project" \
-  --output table
+curl -u ":$AZURE_DEVOPS_PAT" \
+  "https://dev.azure.com/your-org/your-project/_apis/distributedtask/securefiles?api-version=7.2-preview.1"
 
 # Delete an old secure file
-az pipelines secure-file delete \
-  --org "https://dev.azure.com/your-org" \
-  --project "your-project" \
-  --id "secure-file-id" \
-  --yes
+curl -u ":$AZURE_DEVOPS_PAT" \
+  -X DELETE \
+  "https://dev.azure.com/your-org/your-project/_apis/distributedtask/securefiles/secure-file-id?api-version=7.2-preview.1"
 ```
 
 ## Rotating Certificates and Keys
