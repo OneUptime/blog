@@ -18,7 +18,7 @@ Traditional data warehousing requires moving data from a lake into a dedicated w
 
 - No infrastructure to manage. The pool scales automatically.
 - Pay per query (per TB of data scanned), not per hour of compute.
-- Query Parquet, CSV, JSON, and Delta Lake files directly.
+- Query Parquet, CSV, Delta Lake, and JSON files directly (JSON is read as delimited text and parsed with T-SQL JSON functions).
 - Use standard T-SQL, which Power BI already speaks fluently.
 - Ideal for exploration and ad-hoc reporting on data lake data.
 
@@ -47,6 +47,9 @@ USE SalesReporting;
 
 -- Create a credential for accessing the data lake
 -- Use a managed identity or SAS token
+-- Create a master key first if the database does not already have one
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = '<Very Strong Password>';
+
 CREATE DATABASE SCOPED CREDENTIAL DataLakeCredential
 WITH IDENTITY = 'Managed Identity';
 
@@ -99,8 +102,8 @@ SELECT
     Quantity * UnitPrice AS TotalAmount,
     OrderDate,
     -- Extract year and month from the partition path
-    filepath(1) AS SalesYear,
-    filepath(2) AS SalesMonth
+    orders.filepath(1) AS SalesYear,
+    orders.filepath(2) AS SalesMonth
 FROM OPENROWSET(
     BULK 'orders/year=*/month=*/*.parquet',
     DATA_SOURCE = 'SalesDataLake',
@@ -112,7 +115,7 @@ FROM OPENROWSET(
 
 ```sql
 -- Create a view over Delta Lake tables
--- Delta format supports ACID transactions and time travel
+-- Serverless SQL pool reads the current Delta Lake table version
 CREATE VIEW dbo.vw_Customers AS
 SELECT
     CustomerId,
@@ -135,8 +138,8 @@ FROM OPENROWSET(
 -- Power BI queries against this view will scan less data
 CREATE VIEW dbo.vw_MonthlySalesSummary AS
 SELECT
-    filepath(1) AS SalesYear,
-    filepath(2) AS SalesMonth,
+    orders.filepath(1) AS SalesYear,
+    orders.filepath(2) AS SalesMonth,
     COUNT(*) AS OrderCount,
     SUM(Quantity * UnitPrice) AS TotalRevenue,
     AVG(Quantity * UnitPrice) AS AvgOrderValue,
@@ -146,7 +149,7 @@ FROM OPENROWSET(
     DATA_SOURCE = 'SalesDataLake',
     FORMAT = 'PARQUET'
 ) AS orders
-GROUP BY filepath(1), filepath(2);
+GROUP BY orders.filepath(1), orders.filepath(2);
 ```
 
 ## Step 3: Connect Power BI Desktop
@@ -192,7 +195,7 @@ For serverless SQL pools, this decision matters more than usual:
 
 **Import cons:**
 - Data is only as fresh as the last refresh
-- Dataset size limits (1 GB for Pro, 400 GB for Premium)
+- Semantic model size limits depend on the Power BI license or Fabric/Premium capacity
 - Refresh can be slow for large datasets
 
 For most reporting scenarios, Import mode with scheduled refresh is the better choice. Use DirectQuery only when you need truly live data or when the dataset is too large to import.
@@ -224,7 +227,7 @@ CSV files require reading entire rows even if you need one column. For Power BI 
 
 - Too many small files: Overhead from opening and reading metadata for each file.
 - Too few large files: Cannot parallelize reads efficiently.
-- Ideal file size: 100 MB to 1 GB per Parquet file.
+- Ideal file size: keep files at least 100 MB, and avoid very large single files that limit parallelism.
 
 ### Create Statistics
 
@@ -233,9 +236,29 @@ Statistics help the query optimizer make better decisions:
 ```sql
 -- Create statistics on columns commonly used in Power BI filters
 -- This improves query plan quality
-CREATE STATISTICS stat_OrderDate ON dbo.vw_SalesOrders (OrderDate);
-CREATE STATISTICS stat_CustomerId ON dbo.vw_SalesOrders (CustomerId);
-CREATE STATISTICS stat_SalesYear ON dbo.vw_SalesOrders (SalesYear);
+EXEC sys.sp_create_openrowset_statistics N'
+SELECT OrderDate
+FROM OPENROWSET(
+    BULK ''orders/year=*/month=*/*.parquet'',
+    DATA_SOURCE = ''SalesDataLake'',
+    FORMAT = ''PARQUET''
+) AS orders';
+
+EXEC sys.sp_create_openrowset_statistics N'
+SELECT CustomerId
+FROM OPENROWSET(
+    BULK ''orders/year=*/month=*/*.parquet'',
+    DATA_SOURCE = ''SalesDataLake'',
+    FORMAT = ''PARQUET''
+) AS orders';
+
+EXEC sys.sp_create_openrowset_statistics N'
+SELECT orders.filepath(1) AS SalesYear
+FROM OPENROWSET(
+    BULK ''orders/year=*/month=*/*.parquet'',
+    DATA_SOURCE = ''SalesDataLake'',
+    FORMAT = ''PARQUET''
+) AS orders';
 ```
 
 ## Step 5: Publish and Schedule Refresh
@@ -279,7 +302,7 @@ You can implement row-level security in the serverless SQL views:
 
 ```sql
 -- View that filters data based on the user's email
--- Power BI passes the user identity through the connection
+-- In DirectQuery, Power BI can pass the user identity when SSO is configured
 CREATE VIEW dbo.vw_MySalesOrders AS
 SELECT *
 FROM OPENROWSET(
@@ -290,11 +313,11 @@ FROM OPENROWSET(
 WHERE SalesRepEmail = SUSER_SNAME();
 ```
 
-Alternatively, implement row-level security in Power BI using DAX.
+For Import mode, or when DirectQuery SSO is not configured, implement row-level security in Power BI using DAX.
 
 ### Data Lake ACLs
 
-Control who can access the underlying data lake files using ADLS Gen2 ACLs. The managed identity used by the serverless SQL pool needs read access to the files.
+Control who can access the underlying data lake files using ADLS Gen2 ACLs. The managed identity used by the serverless SQL pool needs read access to the files and execute access on each folder in the path.
 
 ## Wrapping Up
 
