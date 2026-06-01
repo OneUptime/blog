@@ -105,12 +105,22 @@ message DeleteProductResponse {
 }
 ```
 
+Add the new `.proto` file to the project file so the C# base class and messages are generated.
+
+```xml
+<!-- ProductService.csproj -->
+<ItemGroup>
+  <Protobuf Include="Protos\product.proto" GrpcServices="Server" />
+</ItemGroup>
+```
+
 ## Implementing the Service
 
 The gRPC service implements the interface generated from the .proto file.
 
 ```csharp
 // Services/ProductCatalogService.cs
+using System.Collections.Concurrent;
 using Grpc.Core;
 using ProductService;
 
@@ -119,8 +129,8 @@ public class ProductCatalogService : ProductCatalog.ProductCatalogBase
     private readonly ILogger<ProductCatalogService> _logger;
 
     // In-memory store (use a real database in production)
-    private static readonly Dictionary<int, ProductData> _products = new();
-    private static int _nextId = 1;
+    private static readonly ConcurrentDictionary<int, ProductData> _products = new();
+    private static int _nextId = 0;
 
     public ProductCatalogService(ILogger<ProductCatalogService> logger)
     {
@@ -182,7 +192,7 @@ public class ProductCatalogService : ProductCatalog.ProductCatalogBase
     {
         var product = new ProductData
         {
-            Id = _nextId++,
+            Id = Interlocked.Increment(ref _nextId),
             Name = request.Name,
             Description = request.Description,
             Price = request.Price,
@@ -277,6 +287,12 @@ public class ProductData
 ```
 
 ## Configuring the Host
+
+Add the gRPC health checks package.
+
+```bash
+dotnet add package Grpc.AspNetCore.HealthChecks
+```
 
 ```csharp
 // Program.cs
@@ -533,7 +549,7 @@ kubectl logs -l app=product-service --tail=50
 
 ## Best Practices
 
-1. **Use gRPC health checks.** Kubernetes native gRPC probes (available since v1.24) work well.
+1. **Use gRPC health checks.** Kubernetes native gRPC probes (stable since v1.27) work well.
 2. **Enable HTTP/2** on your ingress controller. gRPC requires it.
 3. **Set resource requests and limits.** This helps Kubernetes schedule pods efficiently.
 4. **Use connection pooling** in gRPC clients. gRPC channels are expensive to create but cheap to reuse.
