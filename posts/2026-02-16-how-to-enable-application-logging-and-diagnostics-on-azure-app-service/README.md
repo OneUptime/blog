@@ -17,7 +17,7 @@ This post walks through how to enable each type of logging, where the logs end u
 Azure App Service offers several distinct logging features:
 
 - **Application Logging** - Captures output from your application code (console.log, ILogger, etc.)
-- **Web Server Logging** - Raw HTTP request logs from the web server (IIS on Windows, Nginx on Linux)
+- **Web Server Logging** - Raw HTTP request logs from IIS on Windows App Service
 - **Detailed Error Messages** - Full HTML error pages for HTTP errors (4xx and 5xx)
 - **Failed Request Tracing** - Detailed tracing of failed HTTP requests through the IIS pipeline (Windows only)
 - **Deployment Logging** - Logs from the deployment process itself
@@ -26,15 +26,15 @@ Let us go through each one.
 
 ## Enabling Application Logging
 
-Application logging captures output that your code writes to the standard logging framework. On Windows App Service, this includes anything written to System.Diagnostics.Trace. On Linux, it captures stdout and stderr.
+Application logging captures output that your code writes to the standard logging framework. On Windows App Service, this includes anything written to System.Diagnostics.Trace. On Linux and containers, App Service can capture console output such as stdout and stderr.
 
 ### Through the Azure Portal
 
 1. Navigate to your App Service
 2. Go to "App Service logs" in the Monitoring section
-3. For Application Logging, you have two options:
+3. For Application Logging on Windows apps, you have two options:
    - **File System** - Logs are written to the App Service file system. This option automatically turns off after 12 hours to prevent filling up your disk.
-   - **Blob Storage** - Logs are written to an Azure Storage blob container. This stays on indefinitely and is better for long-term retention.
+   - **Blob Storage** - Logs are written to an Azure Storage blob container. This stays on indefinitely and is better for long-term retention. Currently, only .NET application logs can be written to blob storage without code changes; Java, PHP, Node.js, and Python application logs are stored in the App Service file system unless you write them to external storage yourself.
 4. Set the logging level (Error, Warning, Information, or Verbose)
 5. Click Save
 
@@ -59,29 +59,27 @@ az webapp log config \
     --level information
 ```
 
-For blob storage, you also need to configure the storage account connection string and container name in the Diagnostic settings.
+For blob storage, you also need to configure the storage container, or provide the container SAS URL when you configure logs through infrastructure as code.
 
 ## Enabling Web Server Logging
 
-Web server logs give you raw HTTP request data - the client IP, URL, response code, and timing. These are useful for understanding traffic patterns and finding slow or failing endpoints.
+Web server logs on Windows App Service give you raw HTTP request data - the client IP, URL, response code, and timing. These are useful for understanding traffic patterns and finding slow or failing endpoints.
 
 ```bash
 # Enable web server logging to the file system
-# Retention is set in days, quota in MB
 az webapp log config \
     --resource-group my-resource-group \
     --name my-app-service \
     --web-server-logging filesystem
 
-# You can also configure retention period
+# For Linux or custom containers, enable container stdout/stderr logging instead
 az webapp log config \
     --resource-group my-resource-group \
     --name my-app-service \
-    --web-server-logging filesystem \
     --docker-container-logging filesystem
 ```
 
-On Windows, web server logs are in W3C Extended Log Format. On Linux, you get Nginx access logs.
+On Windows, web server logs are in W3C Extended Log Format. For Linux and custom containers, use application logging or container logging for stdout and stderr output rather than IIS-style web server logs.
 
 ## Streaming Logs in Real Time
 
@@ -103,7 +101,7 @@ az webapp log tail \
 az webapp log tail \
     --resource-group my-resource-group \
     --name my-app-service \
-    --filter Application
+    --provider application
 ```
 
 ### From a Browser
@@ -128,7 +126,7 @@ az webapp log download \
     --log-file logs.zip
 ```
 
-The ZIP contains separate folders for each log type: Application, http (web server logs), DetailedErrors, and W3SVC (failed request traces).
+For Windows apps, the ZIP contains separate folders for each log type: Application, http/RawLogs (web server logs), DetailedErrors, and W3SVC folders (failed request traces). For Linux or custom containers, the ZIP contains console output logs for the Docker host and container, and this command may not work for every Linux app.
 
 ## Configuring Application Insights
 
@@ -142,7 +140,7 @@ To enable Application Insights:
 4. Choose to create a new resource or connect to an existing one
 5. Click Apply
 
-Once enabled, your application automatically sends telemetry to Application Insights without code changes (for .NET and Java apps). For Node.js and Python, you may need to install the SDK.
+For supported App Service stacks, your application can send telemetry to Application Insights without code changes by using App Service-managed instrumentation. If you need custom telemetry, unsupported hosting scenarios, or more control over configuration, install and configure the SDK for your stack.
 
 Here is how to add Application Insights to a Node.js application:
 
@@ -156,7 +154,7 @@ appInsights.setup(process.env.APPLICATIONINSIGHTS_CONNECTION_STRING)
     .setAutoCollectPerformance(true)     // Collect performance counters
     .setAutoCollectExceptions(true)      // Catch unhandled exceptions
     .setAutoCollectDependencies(true)    // Track outgoing HTTP calls, DB queries
-    .setAutoCollectConsole(true)         // Capture console.log output
+    .setAutoCollectConsole(true, true)   // Capture console.log output
     .start();
 
 // Now import the rest of your application
