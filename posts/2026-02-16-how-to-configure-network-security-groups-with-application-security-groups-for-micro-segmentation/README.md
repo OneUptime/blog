@@ -120,9 +120,16 @@ az network nic ip-config update \
   --nic-name db-vm2-nic \
   --resource-group myResourceGroup \
   --application-security-groups DbServers
+
+# Assign management host NICs to the ManagementHosts ASG
+az network nic ip-config update \
+  --name ipconfig1 \
+  --nic-name mgmt-vm1-nic \
+  --resource-group myResourceGroup \
+  --application-security-groups ManagementHosts
 ```
 
-A single NIC can be associated with multiple ASGs if the VM serves multiple roles.
+A single NIC can be associated with multiple ASGs if the VM serves multiple roles. ASG members that are referenced together in an NSG rule must be in the same virtual network.
 
 ## Step 3: Create the NSG with Micro-Segmentation Rules
 
@@ -242,29 +249,27 @@ az network watcher test-ip-flow \
   --remote 10.0.1.10:50000 \
   --protocol TCP \
   --resource-group myResourceGroup \
-  --vm web-vm1
+  --vm app-vm1
 ```
 
-## Step 6: Enable NSG Flow Logs
+## Step 6: Enable Virtual Network Flow Logs
 
-Flow logs give you visibility into what traffic is being allowed and denied by your NSG rules:
+Flow logs give you visibility into traffic that is flowing through your virtual network. New NSG flow logs can no longer be created, so use virtual network flow logs for new deployments:
 
 ```bash
-# Enable NSG flow logs (requires a storage account and Network Watcher)
+# Enable virtual network flow logs (requires a storage account and Network Watcher)
 az network watcher flow-log create \
   --name micro-seg-flow-log \
   --resource-group myResourceGroup \
-  --nsg micro-seg-nsg \
+  --location eastus \
+  --vnet myVNet \
   --storage-account myStorageAccount \
-  --enabled true \
-  --format JSON \
-  --log-version 2 \
-  --retention 30 \
   --traffic-analytics true \
-  --workspace "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myWorkspace"
+  --workspace "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myWorkspace" \
+  --interval 10
 ```
 
-Traffic Analytics processes the flow logs and gives you visual dashboards showing traffic patterns between your ASGs.
+Traffic Analytics processes the flow logs and gives you visual dashboards showing traffic patterns in your virtual network.
 
 ## Scaling Considerations
 
@@ -285,7 +290,7 @@ az vmss create \
   --instance-count 2 \
   --vnet-name myVNet \
   --subnet appSubnet \
-  --application-security-groups WebServers \
+  --asgs WebServers \
   --admin-username azureuser \
   --generate-ssh-keys
 ```
