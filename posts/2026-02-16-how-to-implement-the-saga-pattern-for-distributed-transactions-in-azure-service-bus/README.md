@@ -57,15 +57,19 @@ az servicebus namespace create \
   --sku Standard
 
 # Create queues for each saga step
-# Each service has a command queue and a reply queue
+# Each service has a command queue, and the orchestrator has one reply queue
 az servicebus queue create --namespace-name my-saga-bus \
-  --resource-group myResourceGroup --name order-commands
+  --resource-group myResourceGroup --name order-commands \
+  --enable-dead-lettering-on-message-expiration true
 az servicebus queue create --namespace-name my-saga-bus \
-  --resource-group myResourceGroup --name inventory-commands
+  --resource-group myResourceGroup --name inventory-commands \
+  --enable-dead-lettering-on-message-expiration true
 az servicebus queue create --namespace-name my-saga-bus \
-  --resource-group myResourceGroup --name payment-commands
+  --resource-group myResourceGroup --name payment-commands \
+  --enable-dead-lettering-on-message-expiration true
 az servicebus queue create --namespace-name my-saga-bus \
-  --resource-group myResourceGroup --name shipping-commands
+  --resource-group myResourceGroup --name shipping-commands \
+  --enable-dead-lettering-on-message-expiration true
 
 # Create a reply queue for the orchestrator
 az servicebus queue create --namespace-name my-saga-bus \
@@ -117,6 +121,7 @@ public class OrderSagaDefinition
 // Tracks the state of a running saga instance
 public class SagaState
 {
+    public string id { get; set; }
     public string SagaId { get; set; }
     public string Status { get; set; }  // Running, Compensating, Completed, Failed
     public int CurrentStep { get; set; }
@@ -136,16 +141,19 @@ The orchestrator is the brain of the saga. It receives replies from services and
 // The saga orchestrator processes replies and advances the saga
 public class OrderSagaOrchestrator
 {
-    private readonly ServiceBusSender[] _senders;
-    private readonly CosmosContainer _sagaStore;
+    private readonly ServiceBusClient _serviceBusClient;
+    private readonly Container _sagaStore;
 
     // Start a new saga
     public async Task StartSaga(OrderRequest request)
     {
+        var sagaId = Guid.NewGuid().ToString();
+
         // Create the initial saga state
         var sagaState = new SagaState
         {
-            SagaId = Guid.NewGuid().ToString(),
+            id = sagaId,
+            SagaId = sagaId,
             Status = "Running",
             CurrentStep = 0,
             Data = new Dictionary<string, object>
@@ -161,7 +169,8 @@ public class OrderSagaOrchestrator
         };
 
         // Persist the saga state
-        await _sagaStore.CreateItemAsync(sagaState);
+        await _sagaStore.CreateItemAsync(
+            sagaState, new PartitionKey(sagaState.SagaId));
 
         // Send the first command
         await SendStepCommand(sagaState, OrderSagaDefinition.Steps[0]);
@@ -188,13 +197,15 @@ public class OrderSagaOrchestrator
                 // All steps completed successfully
                 state.Status = "Completed";
                 state.UpdatedAt = DateTime.UtcNow;
-                await _sagaStore.ReplaceItemAsync(state, state.SagaId);
+                await _sagaStore.ReplaceItemAsync(
+                    state, state.id, new PartitionKey(state.SagaId));
                 return;
             }
 
             // Send the next step command
             state.UpdatedAt = DateTime.UtcNow;
-            await _sagaStore.ReplaceItemAsync(state, state.SagaId);
+            await _sagaStore.ReplaceItemAsync(
+                state, state.id, new PartitionKey(state.SagaId));
             await SendStepCommand(state, OrderSagaDefinition.Steps[state.CurrentStep]);
         }
         else
@@ -203,7 +214,8 @@ public class OrderSagaOrchestrator
             state.Status = "Compensating";
             state.FailureReason = reply.ErrorMessage;
             state.UpdatedAt = DateTime.UtcNow;
-            await _sagaStore.ReplaceItemAsync(state, state.SagaId);
+            await _sagaStore.ReplaceItemAsync(
+                state, state.id, new PartitionKey(state.SagaId));
 
             // Start compensation from the last completed step
             await StartCompensation(state);
@@ -221,6 +233,26 @@ public class OrderSagaOrchestrator
 
             await SendCompensationCommand(state, step);
         }
+    }
+
+    private async Task SendCompensationCommand(SagaState state, SagaStep step)
+    {
+        var message = new ServiceBusMessage(
+            JsonSerializer.Serialize(new SagaCommand
+            {
+                SagaId = state.SagaId,
+                CommandType = step.CompensationCommandType,
+                Data = state.Data
+            }))
+        {
+            CorrelationId = state.SagaId,
+            Subject = step.CompensationCommandType,
+            ReplyTo = "saga-replies",
+            TimeToLive = TimeSpan.FromMinutes(5)
+        };
+
+        var sender = _serviceBusClient.CreateSender(step.CommandQueue);
+        await sender.SendMessageAsync(message);
     }
 
     // Send a command to a service queue
@@ -257,13 +289,14 @@ Each service processes commands from its queue and sends replies back to the orc
 // Inventory service processes reserve and release commands
 [Function("InventoryCommandHandler")]
 public async Task HandleCommand(
-    [ServiceBusTrigger("inventory-commands", Connection = "ServiceBusConnection")]
+    [ServiceBusTrigger("inventory-commands", Connection = "ServiceBusConnection",
+        AutoCompleteMessages = false)]
     ServiceBusReceivedMessage message,
     ServiceBusMessageActions messageActions,
     FunctionContext context)
 {
     var logger = context.GetLogger("InventoryCommandHandler");
-    var command = JsonSerializer.Deserialize<SagaCommand>(message.Body);
+    var command = JsonSerializer.Deserialize<SagaCommand>(message.Body.ToString());
 
     SagaReply reply;
 
@@ -344,19 +377,19 @@ public async Task HandleCommand(
 
 ## Handling Timeouts
 
-What happens if a service never responds? You need timeout handling. Service Bus message TTL combined with dead-letter queues handles this:
+What happens if a command is never picked up? You need timeout handling. Service Bus message TTL combined with dead-letter queues handles this:
 
 ```csharp
-// Monitor the dead letter queue for timed-out saga commands
+// Monitor each command queue's dead letter queue for timed-out saga commands
 [Function("SagaTimeoutHandler")]
 public async Task HandleTimeout(
-    [ServiceBusTrigger("saga-replies/$deadletterqueue",
+    [ServiceBusTrigger("inventory-commands/$deadletterqueue",
      Connection = "ServiceBusConnection")]
     ServiceBusReceivedMessage message,
     FunctionContext context)
 {
     var logger = context.GetLogger("SagaTimeoutHandler");
-    var command = JsonSerializer.Deserialize<SagaCommand>(message.Body);
+    var command = JsonSerializer.Deserialize<SagaCommand>(message.Body.ToString());
 
     logger.LogWarning("Saga {SagaId} step timed out: {CommandType}",
         command.SagaId, command.CommandType);
@@ -408,4 +441,4 @@ public async Task ReleaseReservation(string sagaId)
 
 ## Summary
 
-The saga pattern implemented with Azure Service Bus gives you reliable distributed transaction management across microservices. The orchestrator approach provides clear visibility into the transaction flow, making it easier to debug failures. Remember to make all compensations idempotent, handle timeouts with dead-letter queues, persist saga state for recovery, and design your services so that partial failures can always be compensated. It requires more design work upfront compared to simple API calls, but for any multi-service transaction that needs consistency guarantees, it is the proven approach.
+The saga pattern implemented with Azure Service Bus gives you reliable distributed workflow management across microservices. The orchestrator approach provides clear visibility into the transaction flow, making it easier to debug failures. Remember to make all compensations idempotent, handle timeouts with dead-letter queues, persist saga state for recovery, and design your services so that partial failures can always be compensated. It requires more design work upfront compared to simple API calls, but for any multi-service transaction that needs eventual consistency guarantees, it is the proven approach.
