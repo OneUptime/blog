@@ -19,7 +19,7 @@ There are a few things to keep in mind:
 - You can only increase the disk size, never decrease it. Once you expand a disk to 256 GB, you cannot shrink it back to 128 GB.
 - The VM must be deallocated before you can expand the OS disk. This means downtime.
 - Take a snapshot of the disk before resizing, just in case something goes wrong.
-- Make sure your VM size supports the target disk size. Most VM sizes support disks up to 4 TB, but check the documentation if you are going very large.
+- Make sure the OS disk and partition table support the target size. Azure OS disks support up to 4,095 GiB, but MBR partition tables limit usable space to 2 TiB unless you convert to GPT.
 
 ## Taking a Snapshot First
 
@@ -174,26 +174,17 @@ Get-Partition -DriveLetter C | Select-Object DriveLetter, @{Name="SizeGB";Expres
 
 The entire process takes just a few seconds on Windows. No reboot is required for the partition resize inside the OS - that happens live.
 
-## Expanding Without Downtime (Preview)
+## Expanding Without Downtime
 
-Azure has been rolling out a feature called "online disk resize" that allows you to expand the OS disk without deallocating the VM. As of this writing, it is available for data disks on most VM types, but OS disk online resize has specific requirements:
+Azure supports online resize for some managed data disks, but not for OS disks. For an OS disk, plan to deallocate the VM before resizing it.
 
-- The VM must be running a supported OS version.
-- The disk must be a managed disk.
-- The feature must be registered for your subscription.
+Online resize for data disks has specific requirements:
 
-Check if your subscription has the feature:
+- The disk must be a managed data disk.
+- Shared disks are not supported.
+- Standard HDD, Standard SSD, and Premium SSD data disks that are 4 TiB or smaller must be deallocated and detached before you expand them beyond 4 TiB.
 
-```bash
-# Check if the online resize feature is registered
-az feature show \
-  --namespace Microsoft.Compute \
-  --name LiveResize \
-  --query properties.state \
-  --output tsv
-```
-
-If this feature is available and registered, you can skip the deallocation step and resize the disk while the VM is running. You still need to extend the partition inside the OS afterward.
+For OS disks, do not skip the deallocation step. You still need to extend the partition inside the OS afterward.
 
 ## Using the Azure Portal
 
@@ -226,7 +217,7 @@ So expanding your disk does not just give you more space - it can also improve d
 
 **growpart fails with "no space to grow"**: This usually means the partition table does not have free space. Check if there are other partitions after the OS partition that are blocking expansion.
 
-**Partition resize command not found**: Install the `cloud-utils-growpart` package on Ubuntu/Debian or `cloud-utils` on RHEL/CentOS.
+**Partition resize command not found**: Install the `cloud-guest-utils` package on Ubuntu/Debian or `cloud-utils-growpart` and `gdisk` on RHEL/CentOS.
 
 **Windows partition cannot be extended**: Make sure there is no recovery partition between the OS partition and the unallocated space. You may need to delete and recreate the recovery partition at the end of the disk.
 
