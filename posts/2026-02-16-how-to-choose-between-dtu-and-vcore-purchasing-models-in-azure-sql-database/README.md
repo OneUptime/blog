@@ -26,18 +26,18 @@ DTU tiers break down like this:
 
 The vCore (virtual Core) model separates compute and storage, giving you independent control over each. You choose the number of virtual CPU cores, and storage is billed separately based on how much you provision.
 
-Using the restaurant analogy, this is like ordering a la carte. You pick exactly how many cores you want, how much memory you need, and how much storage to provision, all independently.
+Using the restaurant analogy, this is like ordering a la carte. You pick how many cores you want, choose a hardware configuration that determines the memory-to-core ratio, and decide how much storage to provision.
 
 The vCore model has three service tiers:
 
 - **General Purpose**: Balanced compute and storage for typical business workloads. Uses remote storage.
 - **Business Critical**: High-performance with local SSD storage. Supports in-memory OLTP. Comes with a built-in readable secondary replica.
-- **Hyperscale**: Highly scalable storage up to 100 TB with rapid scale-out capabilities and fast backups.
+- **Hyperscale**: Highly scalable storage up to 128 TB with rapid scale-out capabilities and fast backups.
 
 Within the vCore model, you also choose between compute tiers:
 
 - **Provisioned**: You pay for a fixed amount of compute resources regardless of usage.
-- **Serverless**: The database auto-scales based on demand and can auto-pause when idle. You pay per-second for compute actually used.
+- **Serverless**: The database auto-scales based on demand. General Purpose serverless databases can auto-pause when idle, while Hyperscale serverless databases support auto-scaling without auto-pause. You pay per-second for compute actually used while the database is online.
 
 ## Key Differences at a Glance
 
@@ -63,7 +63,7 @@ graph TD
 
 **License benefits**: The vCore model supports Azure Hybrid Benefit, which lets you use existing SQL Server licenses to save up to 55% on Azure SQL. DTU does not offer this.
 
-**Serverless option**: Only available in the vCore model. If you have databases with intermittent usage, the serverless tier can dramatically reduce costs.
+**Serverless option**: Only available in the vCore model. If you have databases with intermittent usage, the serverless tier can reduce costs, especially when General Purpose databases can auto-pause during idle periods.
 
 **Hyperscale tier**: Only available in the vCore model. If you need databases larger than 4 TB or require near-instantaneous backups regardless of database size, Hyperscale is the way to go.
 
@@ -89,13 +89,13 @@ The vCore model is the better choice in these scenarios.
 
 **You have existing SQL Server licenses.** Azure Hybrid Benefit can save you 30-55% on compute costs. This alone can make vCore significantly cheaper than DTU.
 
-**You need to match on-premises performance.** If you know your SQL Server workload requires specific CPU and memory characteristics, vCore lets you map those requirements directly. A database that needs 8 cores and 40 GB of RAM on-premises can be provisioned with similar specs in vCore.
+**You need to match on-premises performance.** If you know your SQL Server workload requires specific CPU and memory characteristics, vCore lets you map those requirements more directly by choosing the number of vCores and the hardware configuration. A database that needs 8 cores and around 40 GB of RAM on-premises can be provisioned with similar specs in vCore.
 
 **You want the serverless tier.** For development, testing, or production databases with intermittent usage, serverless compute is only available in the vCore model.
 
 **You need Hyperscale.** Databases larger than 4 TB, or workloads that need rapid scale-out and near-instant point-in-time restores regardless of database size, require the Hyperscale tier.
 
-**You want a built-in readable secondary.** The Business Critical tier includes a free readable replica that can offload read queries, which is not available in DTU tiers.
+**You want a built-in readable secondary.** The Business Critical tier includes a readable secondary replica that can offload read queries. Premium databases in the DTU model also support read scale-out, but Basic, Standard, and General Purpose databases do not.
 
 **You are running a standardized fleet.** If you manage many databases across different environments (dev, staging, production), vCore's consistent sizing model makes it easier to standardize configurations.
 
@@ -105,7 +105,7 @@ Let me compare costs for a few common scenarios. These are approximate and vary 
 
 **Small database (development)**:
 - DTU: Basic tier, 5 DTUs, 2 GB storage - roughly $5/month
-- vCore: Serverless, 0.5-2 vCores, auto-pause enabled - roughly $5-10/month when idle (near $0 if auto-paused)
+- vCore: General Purpose serverless, 0.5-2 vCores, auto-pause enabled - roughly $5-10/month when idle (near $0 compute cost if auto-paused, with storage still billed)
 
 For small dev databases, both are inexpensive. Serverless wins if the database sits idle most of the time.
 
@@ -154,7 +154,7 @@ If you are starting fresh and do not have SQL Server licenses, start with DTU fo
 
 If you have SQL Server licenses with Software Assurance, go with vCore immediately to take advantage of Azure Hybrid Benefit. The cost savings are substantial.
 
-If you need advanced features like serverless auto-pause, Hyperscale storage, or built-in readable replicas, vCore is your only option.
+If you need advanced features like General Purpose serverless auto-pause or Hyperscale storage, vCore is your only option. If you need a built-in readable replica, compare Premium DTU and Business Critical vCore.
 
 And regardless of which model you choose, remember that you can switch later. Do not overthink this decision upfront. Pick what seems right, monitor your usage for a few weeks, and adjust if needed. Azure makes it relatively painless to switch between models, so you are not making an irreversible commitment.
 
