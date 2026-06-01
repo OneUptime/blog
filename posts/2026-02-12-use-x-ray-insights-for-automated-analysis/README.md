@@ -82,7 +82,7 @@ aws events put-rule \
   --name xray-insight-notifications \
   --event-pattern '{
     "source": ["aws.xray"],
-    "detail-type": ["X-Ray Insight State Change"]
+    "detail-type": ["AWS X-Ray Insight Update"]
   }'
 
 # Set the SNS topic as the target
@@ -94,29 +94,29 @@ aws events put-targets \
   }]'
 ```
 
+If you add the SNS target through the CLI, make sure the topic policy allows the `events.amazonaws.com` service principal to call `sns:Publish` on the topic. The EventBridge console can add this permission for you when you configure the target there.
+
 The insight events include rich detail about what was detected. A typical event looks like this:
 
 ```json
-// Sample X-Ray Insight event payload
 {
+  "version": "0",
+  "id": "6a7e8feb-b491-4cf7-a9f1-bf3703467718",
+  "detail-type": "AWS X-Ray Insight Update",
   "source": "aws.xray",
-  "detail-type": "X-Ray Insight State Change",
+  "account": "123456789012",
+  "time": "2026-02-12T10:30:00Z",
+  "region": "us-east-1",
+  "resources": [],
   "detail": {
-    "InsightId": "abc-123-def",
+    "InsightId": "1a2b3c4d-5678-4abc-9def-0123456789ab",
     "GroupName": "production-services",
     "State": "ACTIVE",
-    "Categories": ["FAULT"],
+    "Category": "FAULT",
     "RootCauseServiceId": {
       "Name": "payment-service",
       "Type": "AWS::ECS::Container"
-    },
-    "TopAnomalousServices": [
-      {
-        "ServiceId": {"Name": "payment-service"},
-        "FaultStatistics": {"ErrorPercent": 12.5}
-      }
-    ],
-    "StartTime": "2026-02-12T10:30:00Z"
+    }
   }
 }
 ```
@@ -127,7 +127,6 @@ For more sophisticated alerting, send the insight event to a Lambda function tha
 
 ```python
 # Lambda function to process X-Ray insight events
-import json
 import boto3
 
 sns_client = boto3.client('sns')
@@ -136,13 +135,17 @@ xray_client = boto3.client('xray')
 def handler(event, context):
     detail = event['detail']
     insight_id = detail['InsightId']
-    group_name = detail['GroupName']
-    state = detail['State']
 
     # Fetch the full insight details
-    insight = xray_client.get_insight(InsightId=insight_id)
+    insight = xray_client.get_insight(InsightId=insight_id)['Insight']
 
-    root_cause = detail.get('RootCauseServiceId', {}).get('Name', 'Unknown')
+    group_name = detail.get('GroupName', insight.get('GroupName', 'Unknown'))
+    state = detail.get('State', insight.get('State', 'UNKNOWN'))
+    root_cause = insight.get('RootCauseServiceId', {}).get('Name', 'Unknown')
+    impact = insight.get('RootCauseServiceRequestImpactStatistics', {})
+    total_count = impact.get('TotalCount', 0)
+    fault_count = impact.get('FaultCount', 0)
+    fault_rate = (fault_count / total_count * 100) if total_count else 0
 
     # Build a human-readable notification
     message = f"""
@@ -151,15 +154,15 @@ def handler(event, context):
     State: {state}
     Group: {group_name}
     Root Cause Service: {root_cause}
-    Start Time: {detail.get('StartTime', 'N/A')}
+    Start Time: {insight.get('StartTime', 'N/A')}
+    Root Cause Fault Rate: {fault_rate:.2f}%
 
     Top Anomalous Services:
     """
 
-    for svc in detail.get('TopAnomalousServices', []):
+    for svc in insight.get('TopAnomalousServices', []):
         name = svc['ServiceId']['Name']
-        error_pct = svc.get('FaultStatistics', {}).get('ErrorPercent', 0)
-        message += f"  - {name}: {error_pct}% error rate\n"
+        message += f"  - {name}\n"
 
     # Send to SNS
     sns_client.publish(
