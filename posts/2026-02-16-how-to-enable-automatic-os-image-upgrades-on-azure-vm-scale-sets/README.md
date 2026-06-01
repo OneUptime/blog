@@ -24,9 +24,11 @@ Before enabling automatic OS image upgrades, you need:
 
 1. **Health monitoring**: Either a load balancer health probe or the Application Health Extension must be configured. Automatic OS image upgrades will not work without health monitoring because the system needs a signal to determine if updated instances are healthy.
 
-2. **Rolling or Automatic upgrade policy**: The scale set must use either Rolling or Automatic upgrade policy. Manual upgrade policy is not compatible with automatic OS image upgrades.
+2. **Image version set to latest**: The scale set's image version must be set to `latest`. Upgrade policy mode and automatic OS upgrade policy are separate settings; automatic OS upgrades use the rolling upgrade policy configuration, and if your scale set uses Manual upgrade policy you must bring the VMs to the latest scale set model after enabling the feature.
 
-3. **Supported image**: The OS image must be a platform image (published by Microsoft or partners) or a Shared Image Gallery image. Custom images uploaded directly as managed images are not supported.
+3. **Supported image**: The OS image must be a supported platform image (published by Microsoft or partners) or an Azure Compute Gallery image. Custom images uploaded directly as managed images are not supported.
+
+4. **Windows configuration**: For Windows scale sets, `virtualMachineProfile.osProfile.windowsConfiguration.enableAutomaticUpdates` must be set to `false`; automatic OS image upgrades replace the OS disk instead of applying patches through Windows Update.
 
 ## Enabling Automatic OS Image Upgrades
 
@@ -145,11 +147,11 @@ When a rollback happens, the scale set reimages the unhealthy instances with the
 
 For platform images (like Ubuntu, Windows Server), Microsoft publishes new image versions regularly. These contain security patches, bug fixes, and sometimes feature updates. When a new version is published:
 
-1. Azure detects the new version within 24 hours (the check interval varies).
+1. Azure makes the scale set's region eligible through the availability-first rollout process.
 2. If automatic OS image upgrades are enabled, the upgrade is scheduled.
 3. The upgrade proceeds using the rolling upgrade policy.
 
-For Shared Image Gallery images, the process is similar. When you publish a new image version to the gallery and the scale set references the image definition (without a pinned version), Azure detects the new version and triggers an upgrade.
+For Azure Compute Gallery images, the process is similar. When you publish a new image version to the gallery and the scale set references the image definition (without a pinned version), Azure detects the new version and triggers an upgrade.
 
 ```bash
 # Configure the scale set to use the latest version from a gallery
@@ -181,7 +183,7 @@ az vmss list-instances \
 
 ### Setting Up Alerts
 
-Create alerts for OS upgrade events so you know when upgrades happen and whether they succeed:
+Create alerts for OS upgrade events so you know when upgrades are started:
 
 ```bash
 # Create an activity log alert for OS upgrade events
@@ -189,7 +191,7 @@ az monitor activity-log alert create \
   --resource-group myResourceGroup \
   --name "os-upgrade-alert" \
   --scope "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachineScaleSets/myScaleSet" \
-  --condition category=Administrative and operationName="Microsoft.Compute/virtualMachineScaleSets/rollingUpgrades/action" \
+  --condition category=Administrative and operationName="Microsoft.Compute/virtualMachineScaleSets/osRollingUpgrade/action" \
   --action-group myActionGroup
 ```
 
@@ -233,7 +235,7 @@ systemctl restart nginx
 
 ## Maintenance Windows
 
-While Azure does not provide a built-in maintenance window for automatic OS image upgrades, you can approximate one by:
+For Uniform scale sets, Azure Maintenance control lets you decide when automatic OS image upgrades are applied by associating the scale set with a maintenance configuration. If you are not using Maintenance control, you can approximate a maintenance window by:
 
 1. Disabling automatic OS image upgrades during business hours.
 2. Re-enabling them during a maintenance window.
@@ -252,7 +254,7 @@ az vmss update \
   --set upgradePolicy.automaticOSUpgradePolicy.enableAutomaticOSUpgrade=true
 ```
 
-This approach is not perfect since Azure does not guarantee when during the enabled period the upgrade will occur, but it prevents upgrades during peak hours.
+This scheduled enable/disable approach is not perfect since Azure does not guarantee when during the enabled period the upgrade will occur, but it prevents upgrades during peak hours.
 
 ## Platform Images vs. Custom Gallery Images
 
@@ -260,7 +262,7 @@ The approach differs slightly depending on your image source:
 
 **Platform images**: Azure handles new version detection automatically. You do not need to do anything except enable the feature. New images are published by Microsoft and partners on their own schedule.
 
-**Shared Image Gallery images**: You control when new versions are published. This gives you a workflow where your CI/CD pipeline builds and tests a new image, publishes it to the gallery, and the automatic OS image upgrade picks it up and rolls it out. This is the most controlled approach.
+**Azure Compute Gallery images**: You control when new versions are published. This gives you a workflow where your CI/CD pipeline builds and tests a new image, publishes it to the gallery, and the automatic OS image upgrade picks it up and rolls it out. This is the most controlled approach.
 
 ```mermaid
 graph LR
