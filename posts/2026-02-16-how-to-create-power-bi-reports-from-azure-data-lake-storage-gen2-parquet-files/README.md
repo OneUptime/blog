@@ -27,7 +27,7 @@ This is the simplest method. Power BI reads Parquet files directly from ADLS Gen
 
 1. Open Power BI Desktop.
 2. Click Get Data > Azure > Azure Data Lake Storage Gen2.
-3. Enter the URL in the format: `https://yourstorageaccount.dfs.core.windows.net/`
+3. Enter the container URL in the format: `https://yourstorageaccount.dfs.core.windows.net/container-name`
 4. Click OK.
 5. Sign in with your Azure AD credentials.
 
@@ -54,11 +54,14 @@ Here is a typical Power Query M script for loading Parquet files from ADLS Gen2:
 let
     // Connect to the ADLS Gen2 endpoint
     Source = AzureStorage.DataLake(
-        "https://yourstorageaccount.dfs.core.windows.net/sales-data/processed/"
+        "https://yourstorageaccount.dfs.core.windows.net/sales-data"
     ),
 
-    // Filter to only Parquet files
-    FilteredFiles = Table.SelectRows(Source, each Text.EndsWith([Name], ".parquet")),
+    // Filter to only Parquet files under the processed folder
+    FilteredFiles = Table.SelectRows(Source,
+        each Text.EndsWith([Name], ".parquet")
+            and Text.Contains([Folder Path], "/processed/")
+    ),
 
     // Combine all Parquet files into a single table
     CombinedData = Table.Combine(
@@ -86,12 +89,12 @@ in
 
 - **Import mode only**: Direct Parquet connection does not support DirectQuery. All data is loaded into Power BI memory.
 - **No query folding**: Filters applied in Power Query execute in Power BI, not in the storage layer. Power BI reads all files and then filters.
-- **Size limits**: The dataset must fit in the Power BI memory limit (1 GB for Pro, up to 400 GB for Premium).
+- **Size limits**: The dataset must fit in the Power BI semantic model size and memory limits. Pro workspaces have a 1 GB model size limit; Premium and Fabric capacity limits depend on the SKU and capacity settings.
 - **Slow refresh for large datasets**: Power BI downloads and processes all files on every refresh.
 
 ## Approach 2: Azure Synapse Serverless SQL Pool
 
-This is the recommended approach for production. Synapse serverless SQL pools query Parquet files in place and let Power BI use DirectQuery.
+This is a common approach for production reporting when you need a SQL interface over lake files. Synapse serverless SQL pools query Parquet files in place and let Power BI use DirectQuery, but complex queries and large result sets still need careful performance testing.
 
 ### Set Up Synapse Views
 
@@ -103,6 +106,9 @@ CREATE DATABASE Analytics;
 GO
 
 USE Analytics;
+
+-- Use a UTF-8 collation for better compatibility with Parquet string data
+ALTER DATABASE CURRENT COLLATE Latin1_General_100_BIN2_UTF8;
 
 -- Create credentials for accessing the data lake
 CREATE DATABASE SCOPED CREDENTIAL LakeCredential
@@ -129,8 +135,8 @@ SELECT
     Quantity * UnitPrice AS Revenue,
     Region,
     -- Extract partition columns from the file path
-    filepath(1) AS SalesYear,
-    filepath(2) AS SalesMonth
+    sales.filepath(1) AS SalesYear,
+    sales.filepath(2) AS SalesMonth
 FROM OPENROWSET(
     BULK 'processed/year=*/month=*/*.parquet',
     DATA_SOURCE = 'SalesLake',
@@ -169,10 +175,10 @@ If your data pipeline already uses Databricks, you can connect Power BI to Datab
 ### Register Tables in Unity Catalog
 
 ```sql
--- Create a table over the Parquet files in Delta format
+-- Create a table over the Parquet files
 -- Databricks handles schema inference automatically
 CREATE TABLE IF NOT EXISTS sales.orders
-USING DELTA
+USING PARQUET
 LOCATION 'abfss://sales-data@yourstorageaccount.dfs.core.windows.net/processed/';
 
 -- Or create a view for quick access
