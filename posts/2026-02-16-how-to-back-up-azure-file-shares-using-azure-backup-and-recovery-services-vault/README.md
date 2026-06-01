@@ -10,18 +10,18 @@ Description: Learn how to configure Azure Backup for Azure File Shares with sche
 
 Azure Files is a popular choice for shared storage in the cloud - replacing on-premises file servers, hosting application configuration, or providing shared storage for containers and VMs. But just because your files are in Azure does not mean they are backed up. Azure provides durability through replication (LRS, ZRS, GRS), but replication is not backup. If someone deletes a file or ransomware encrypts your data, replication faithfully copies the damage to all replicas.
 
-Azure Backup integrates directly with Azure Files to provide scheduled snapshots with configurable retention. You can restore entire file shares, individual folders, or single files. This guide walks through the setup and ongoing management.
+Azure Backup integrates directly with Azure Files to provide snapshot-based backup with configurable retention, and it can also copy backup data to the vault when you choose the Vault-Standard tier. You can restore entire file shares, individual folders, or single files when using snapshot backup. This guide walks through the setup and ongoing management.
 
 ## How Azure File Share Backup Works
 
-Azure Backup uses Azure Files' native snapshot capability. When a backup runs, it triggers a share snapshot - a read-only, point-in-time copy of the entire file share. These snapshots are incremental at the storage level, meaning only changes since the last snapshot are stored.
+Azure Backup's snapshot tier uses Azure Files' native snapshot capability. When a backup runs, it triggers a share snapshot - a read-only, point-in-time copy of the entire file share. These snapshots are incremental at the storage level, meaning only changes since the last snapshot are stored. With the Vault-Standard tier, Azure Backup keeps snapshots for short-term recovery and transfers the last scheduled snapshot of the day to the Recovery Services vault for longer retention.
 
 The key characteristics:
 
-- **Snapshot-based** - Backups are share snapshots stored alongside the file share
+- **Snapshot-based** - Snapshot-tier backups are share snapshots stored alongside the file share
 - **Incremental** - Only changed data since the last snapshot is stored
-- **Fast restore** - Restoring from a snapshot is nearly instant because data is already in the storage account
-- **No data egress** - Backup data stays in the same storage account (no vault transfer for standard tier)
+- **Fast restore** - Snapshot-tier restores are faster because recovery points are already in the storage account
+- **No data egress for snapshot tier** - Snapshot-tier backup data stays in the same storage account; Vault-Standard backup transfers data to the vault
 - **File-level restore** - You can restore individual files without restoring the whole share
 
 ```mermaid
@@ -29,18 +29,20 @@ flowchart LR
     A[Azure File Share] -->|Scheduled snapshot| B[Share Snapshot 1]
     A -->|Next schedule| C[Share Snapshot 2]
     A -->|Next schedule| D[Share Snapshot 3]
-    B --> E[Recovery Services Vault - metadata only]
+    B --> E[Recovery Services Vault - snapshot metadata]
     C --> E
     D --> E
 ```
 
-The Recovery Services vault manages the schedule and retention, but the actual snapshot data lives in the storage account.
+For snapshot-tier backup, the Recovery Services vault manages the schedule and retention, but the actual snapshot data lives in the storage account.
 
 ## Prerequisites
 
 - An Azure storage account with at least one file share
 - A Recovery Services vault in the same region as the storage account
-- The storage account must be of a supported type (General Purpose v1, v2, or FileStorage)
+- The storage account must be of a supported type (General Purpose v1, v2, or FileStorage for snapshot-tier backup; General Purpose v2 or FileStorage for Vault-Standard backup)
+- The file share must use SMB; Azure Backup does not currently support NFS file shares
+- The source storage account must allow storage account key access
 - You need Contributor access to both the storage account and the vault
 
 ## Step 1: Register the Storage Account with the Vault
@@ -98,43 +100,48 @@ az backup policy create \
     --vault-name rsv-backup-eastus2-001 \
     --name policy-fileshare-production \
     --backup-management-type AzureStorage \
+    --workload-type AzureFileShare \
     --policy '{
-        "schedulePolicy": {
-            "schedulePolicyType": "SimpleSchedulePolicy",
-            "scheduleRunFrequency": "Daily",
-            "scheduleRunTimes": ["2026-02-16T22:00:00Z"]
-        },
-        "retentionPolicy": {
-            "retentionPolicyType": "LongTermRetentionPolicy",
-            "dailySchedule": {
-                "retentionTimes": ["2026-02-16T22:00:00Z"],
-                "retentionDuration": {
-                    "count": 30,
-                    "durationType": "Days"
-                }
+        "properties": {
+            "backupManagementType": "AzureStorage",
+            "workLoadType": "AzureFileShare",
+            "schedulePolicy": {
+                "schedulePolicyType": "SimpleSchedulePolicy",
+                "scheduleRunFrequency": "Daily",
+                "scheduleRunTimes": ["2026-02-16T22:00:00Z"]
             },
-            "weeklySchedule": {
-                "daysOfTheWeek": ["Sunday"],
-                "retentionTimes": ["2026-02-16T22:00:00Z"],
-                "retentionDuration": {
-                    "count": 12,
-                    "durationType": "Weeks"
-                }
-            },
-            "monthlySchedule": {
-                "retentionScheduleFormatType": "Weekly",
-                "retentionScheduleWeekly": {
-                    "daysOfTheWeek": ["Sunday"],
-                    "weeksOfTheMonth": ["First"]
+            "retentionPolicy": {
+                "retentionPolicyType": "LongTermRetentionPolicy",
+                "dailySchedule": {
+                    "retentionTimes": ["2026-02-16T22:00:00Z"],
+                    "retentionDuration": {
+                        "count": 30,
+                        "durationType": "Days"
+                    }
                 },
-                "retentionTimes": ["2026-02-16T22:00:00Z"],
-                "retentionDuration": {
-                    "count": 6,
-                    "durationType": "Months"
+                "weeklySchedule": {
+                    "daysOfTheWeek": ["Sunday"],
+                    "retentionTimes": ["2026-02-16T22:00:00Z"],
+                    "retentionDuration": {
+                        "count": 12,
+                        "durationType": "Weeks"
+                    }
+                },
+                "monthlySchedule": {
+                    "retentionScheduleFormatType": "Weekly",
+                    "retentionScheduleWeekly": {
+                        "daysOfTheWeek": ["Sunday"],
+                        "weeksOfTheMonth": ["First"]
+                    },
+                    "retentionTimes": ["2026-02-16T22:00:00Z"],
+                    "retentionDuration": {
+                        "count": 6,
+                        "durationType": "Months"
+                    }
                 }
-            }
-        },
-        "timeZone": "UTC"
+            },
+            "timeZone": "UTC"
+        }
     }'
 ```
 
@@ -180,7 +187,7 @@ az backup protection backup-now \
     --vault-name rsv-backup-eastus2-001 \
     --container-name "StorageContainer;storage;rg-production;stproductioneastus2" \
     --item-name "AzureFileShare;shared-documents" \
-    --retain-until 2026-03-18
+    --retain-until 18-03-2026
 ```
 
 ## Step 4: Restore Entire File Shares
@@ -213,20 +220,22 @@ az backup recoverypoint list \
     --vault-name rsv-backup-eastus2-001 \
     --container-name "StorageContainer;storage;rg-production;stproductioneastus2" \
     --item-name "AzureFileShare;shared-documents" \
+    --backup-management-type azurestorage \
+    --workload-type azurefileshare \
     --output table
 
-# Restore to a new file share in the same or different storage account
+# Restore to a new file share in a storage account in the same location as the vault
 az backup restore restore-azurefileshare \
     --resource-group rg-backup-eastus2 \
     --vault-name rsv-backup-eastus2-001 \
     --container-name "StorageContainer;storage;rg-production;stproductioneastus2" \
     --item-name "AzureFileShare;shared-documents" \
     --rp-name "recovery-point-id" \
-    --resolve-conflict Overwrite \
-    --restore-mode AlternateLocation \
-    --target-storage-account "/subscriptions/<sub-id>/resourceGroups/rg-production/providers/Microsoft.Storage/storageAccounts/stproductioneastus2" \
+    --resolve-conflict overwrite \
+    --restore-mode alternatelocation \
+    --target-storage-account stproductioneastus2 \
     --target-file-share "shared-documents-restored" \
-    --target-folder "/"
+    --target-folder ""
 ```
 
 ## Step 5: Restore Individual Files and Folders
@@ -262,7 +271,7 @@ If you use the enhanced policy with 4-hour backups and keep them for 5 days, tha
 
 **Backup fails with "Snapshot limit reached"** - You have hit the 200-snapshot limit. Reduce retention or backup frequency. Azure Backup will not delete manually created snapshots, so check for those too.
 
-**Backup fails with "Storage account locked"** - If the storage account has a delete lock, backups may fail when Azure Backup tries to manage snapshots. Ensure the lock allows snapshot operations.
+**Backup fails with "Storage account locked"** - If the storage account has a read-only lock, backup or restore jobs may fail. Remove the read-only lock or use a delete lock instead.
 
 **Restore is slow for large file shares** - Restoring a multi-TB file share takes time. For faster recovery of specific files, use the item-level restore option instead.
 
@@ -286,4 +295,4 @@ az backup item show \
 
 ## Wrapping Up
 
-Azure File Share backup through Azure Backup is the right way to protect your cloud file shares. The snapshot-based approach means backups are fast, restores are nearly instant, and you get granular file-level recovery. Set up a policy that matches your RPO needs, enable protection for all your file shares, and monitor for failures. The incremental nature of snapshots keeps costs manageable, but keep an eye on the 200-snapshot limit and plan your retention accordingly.
+Azure File Share backup through Azure Backup is the right way to protect your cloud file shares. The snapshot-based approach means backups are fast, snapshot-tier restores stay close to the data, and you get granular file-level recovery. Set up a policy that matches your RPO needs, enable protection for all your file shares, and monitor for failures. The incremental nature of snapshots keeps costs manageable, but keep an eye on the 200-snapshot limit and plan your retention accordingly.
