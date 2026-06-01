@@ -42,7 +42,7 @@ graph LR
 
 1. A VNet with at least two dedicated subnets for the resolver endpoints
 2. The subnets must be delegated to `Microsoft.Network/dnsResolvers`
-3. Each subnet needs at least a /28 address range
+3. Each subnet needs an address range between /28 and /24
 4. The VNet must be in a region where Private Resolver is available
 
 ## Step 1: Create Dedicated Subnets
@@ -189,11 +189,11 @@ az dns-resolver forwarding-rule create \
 
 ## Step 7: Configure On-Premises DNS
 
-On your on-premises DNS server, create a conditional forwarder for Azure private DNS zones. Forward these zones to the inbound endpoint IP:
+On your on-premises DNS server, create a conditional forwarder for the recommended public DNS zone forwarders used by your Azure private endpoints. Forward these zones to the inbound endpoint IP:
 
-- `privatelink.database.windows.net`
-- `privatelink.blob.core.windows.net`
-- `privatelink.azurewebsites.net`
+- `database.windows.net`
+- `blob.core.windows.net`
+- `azurewebsites.net`
 - Any custom private DNS zones you have created
 
 For Windows DNS Server, you would add a conditional forwarder for each zone pointing to the inbound endpoint IP (for example, 10.0.10.4).
@@ -202,13 +202,13 @@ For BIND:
 
 ```text
 # BIND conditional forwarding configuration for Azure private zones
-zone "privatelink.database.windows.net" {
+zone "database.windows.net" {
     type forward;
     forward only;
     forwarders { 10.0.10.4; };
 };
 
-zone "privatelink.blob.core.windows.net" {
+zone "blob.core.windows.net" {
     type forward;
     forward only;
     forwarders { 10.0.10.4; };
@@ -228,7 +228,7 @@ From an on-premises server, test resolution of an Azure private endpoint:
 
 ```bash
 # Test resolving Azure private endpoint from on-premises
-nslookup mysqlserver.privatelink.database.windows.net
+nslookup sqlserver.database.windows.net
 ```
 
 Both should return the correct private IP addresses.
@@ -241,7 +241,7 @@ For multi-region deployments, deploy a resolver in each region and configure you
 
 ## Pricing Considerations
 
-Private Resolver charges based on the number of endpoints (inbound and outbound) per hour. Each endpoint costs roughly $0.18 per hour. An inbound plus outbound setup runs about $260 per month, which is comparable to running two small VMs but without the management overhead.
+Private Resolver charges for inbound endpoints, outbound endpoints, and DNS forwarding rulesets. Prices are listed monthly and prorated to hours if you delete the resources earlier, so check the Azure DNS pricing page for the current rate in your region and currency.
 
 ## Summary
 
