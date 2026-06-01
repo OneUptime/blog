@@ -8,7 +8,9 @@ Description: Step-by-step instructions for mapping custom domains and configurin
 
 ---
 
-When you deploy an application on Azure Spring Apps, it gets a default URL like `order-service-my-spring-service.azuremicroservices.io`. That is fine for development, but for production you need your own domain with a proper TLS certificate. Azure Spring Apps supports both custom domain mapping and managed or self-provided TLS certificates. This guide covers the complete setup process.
+When you deploy an application on Azure Spring Apps, it gets a default URL like `order-service-my-spring-service.azuremicroservices.io`. That is fine for development, but for production you need your own domain with a proper TLS certificate. Azure Spring Apps supports both custom domain mapping and Key Vault-backed TLS certificates. This guide covers the complete setup process.
+
+Note that the Azure Spring Apps Basic, Standard, and Enterprise plans are in a retirement period, so use this guidance for existing services and plan migrations according to Microsoft's retirement guidance.
 
 ## Prerequisites
 
@@ -17,13 +19,22 @@ Before you start, you need:
 - An Azure Spring Apps instance with the Standard or Enterprise SKU (custom domains are not available on the Basic SKU)
 - A domain name that you control
 - Access to your DNS provider's management panel
-- Optionally, a TLS certificate in PFX format if you are not using a managed certificate
+- Optionally, a TLS certificate in PFX or PEM format with its private key if you are bringing your own certificate
 
 ## Step 1: Verify Domain Ownership
 
-Azure requires you to prove that you own the domain before you can map it. This is done through a CNAME or TXT record.
+Azure requires you to prove that you own the domain before you can map it. For Azure Spring Apps, this is done through a CNAME record.
 
-First, assign the custom domain to the application.
+First, create the CNAME record for the domain you want to map.
+
+```text
+Type:  CNAME
+Name:  api
+Value: my-spring-service.azuremicroservices.io
+TTL:   3600
+```
+
+Then assign the custom domain to the application.
 
 ```bash
 # Add a custom domain to the application
@@ -35,11 +46,11 @@ az spring app custom-domain bind \
   --domain-name api.example.com
 ```
 
-Azure will tell you to add a CNAME record to verify ownership.
+Azure validates the CNAME record before it adds the custom domain.
 
 ## Step 2: Configure DNS Records
 
-Go to your DNS provider and add the following records.
+Go to your DNS provider and make sure the following record exists.
 
 For a subdomain like `api.example.com`, create a CNAME record.
 
@@ -50,60 +61,37 @@ Value: my-spring-service.azuremicroservices.io
 TTL:   3600
 ```
 
-For domain verification, you may also need a TXT record.
-
-```text
-Type:  TXT
-Name:  asuid.api
-Value: <verification-id-provided-by-azure>
-TTL:   3600
-```
-
-For an apex domain (like `example.com` without a subdomain), you cannot use a CNAME. Instead, use an A record pointing to the Spring Apps instance's IP address, plus a TXT record for verification.
-
-```bash
-# Get the IP address of the Spring Apps instance
-az spring show \
-  --name my-spring-service \
-  --resource-group spring-rg \
-  --query "properties.networkProfile.outboundIPs"
-```
-
-```text
-Type:  A
-Name:  @
-Value: <spring-apps-ip-address>
-TTL:   3600
-```
+Azure Spring Apps custom domains require a CNAME record. An A record is not supported for this mapping, so use a subdomain such as `api.example.com` or `www.example.com`.
 
 Wait for DNS propagation. This can take anywhere from a few minutes to 48 hours, though most providers propagate within 15-30 minutes.
 
 ## Step 3: Upload a TLS Certificate
 
-If you have your own TLS certificate, upload it to the Spring Apps instance.
+If you have your own TLS certificate, import it into Azure Key Vault, grant Azure Spring Apps access, and then add it to the Spring Apps instance.
 
 ```bash
-# Upload a PFX certificate
-az spring certificate add \
-  --name my-tls-cert \
-  --service my-spring-service \
-  --resource-group spring-rg \
-  --type KeyVaultCertificate \
+# Import a PFX certificate into Key Vault
+az keyvault certificate import \
   --vault-name my-keyvault \
-  --vault-certificate-name my-cert
-```
+  --name my-cert \
+  --file ./my-cert.pfx \
+  --password "cert-password"
 
-Alternatively, upload directly from a PFX file.
+# Grant Azure Spring Apps Domain-Management access to Key Vault
+az keyvault set-policy \
+  --resource-group spring-rg \
+  --name my-keyvault \
+  --object-id 938df8e2-2b9d-40b1-940c-c75c33494239 \
+  --certificate-permissions get list \
+  --secret-permissions get list
 
-```bash
-# Upload a PFX file directly
+# Add the Key Vault certificate to Azure Spring Apps
 az spring certificate add \
   --name my-tls-cert \
   --service my-spring-service \
   --resource-group spring-rg \
-  --type ContentCertificate \
-  --certificate-file ./my-cert.pfx \
-  --password "cert-password"
+  --vault-uri https://my-keyvault.vault.azure.net/ \
+  --vault-certificate-name my-cert
 ```
 
 ## Step 4: Bind the Certificate to the Custom Domain
@@ -145,9 +133,9 @@ az spring certificate add \
   --name api-cert \
   --service my-spring-service \
   --resource-group spring-rg \
-  --type KeyVaultCertificate \
-  --vault-name my-keyvault \
-  --vault-certificate-name api-example-cert
+  --vault-uri https://my-keyvault.vault.azure.net/ \
+  --vault-certificate-name api-example-cert \
+  --enable-auto-sync true
 
 # Bind it to the custom domain
 az spring app custom-domain update \
@@ -158,20 +146,16 @@ az spring app custom-domain update \
   --certificate api-cert
 ```
 
-For this to work, the Azure Spring Apps instance needs access to the Key Vault. Grant access using a managed identity.
+For this to work, Azure Spring Apps Domain-Management needs access to the Key Vault.
 
 ```bash
-# Get the Spring Apps instance's managed identity
-SPRING_IDENTITY=$(az spring show \
-  --name my-spring-service \
-  --resource-group spring-rg \
-  --query "identity.principalId" -o tsv)
-
-# Grant the identity access to Key Vault certificates
+# Grant Azure Spring Apps read access to Key Vault certificates and secrets
 az keyvault set-policy \
+  --resource-group spring-rg \
   --name my-keyvault \
-  --object-id $SPRING_IDENTITY \
-  --certificate-permissions get list
+  --object-id 938df8e2-2b9d-40b1-940c-c75c33494239 \
+  --certificate-permissions get list \
+  --secret-permissions get list
 ```
 
 ## Step 6: Configure Multiple Custom Domains
@@ -199,24 +183,27 @@ If you have a wildcard certificate for `*.example.com`, you can reuse it across 
 
 ## Step 7: Force HTTPS Redirect
 
-After setting up TLS, you likely want to redirect HTTP requests to HTTPS. This is done at the application level in Spring Boot.
+After setting up TLS, you likely want to redirect HTTP requests to HTTPS. Azure Spring Apps supports this with the HTTPS Only setting.
 
-Add the following to your `application.yml`.
-
-```yaml
-# Force HTTPS in Spring Boot
-server:
-  port: 8080
-  # Trust the proxy headers from Azure Spring Apps
-  forward-headers-strategy: framework
-
-spring:
-  # Redirect HTTP to HTTPS when behind a proxy
-  security:
-    require-ssl: true
+```bash
+# Enforce HTTPS for the app
+az spring app update \
+  --resource-group spring-rg \
+  --service my-spring-service \
+  --name order-service \
+  --https-only
 ```
 
-Or configure it in a Spring Security configuration class.
+If your Spring Boot app also needs to generate redirects or absolute links correctly behind the Azure Spring Apps proxy, add the following to your `application.yml`.
+
+```yaml
+# Trust the proxy headers from Azure Spring Apps
+server:
+  port: 8080
+  forward-headers-strategy: framework
+```
+
+Or configure application-level HTTPS redirects in a Spring Security configuration class.
 
 ```java
 // SecurityConfig.java - Redirect HTTP to HTTPS
@@ -250,9 +237,9 @@ sequenceDiagram
     participant ASA as Azure Spring Apps
     participant KV as Key Vault
 
+    Dev->>DNS: Add CNAME record
     Dev->>ASA: Add custom domain
-    ASA-->>Dev: Return verification TXT record
-    Dev->>DNS: Add CNAME + TXT records
+    ASA-->>Dev: Validate CNAME record
     DNS-->>ASA: DNS propagation
     Dev->>KV: Upload TLS certificate
     Dev->>ASA: Reference KV certificate
@@ -293,19 +280,18 @@ openssl s_client -connect api.example.com:443 -servername api.example.com < /dev
 
 TLS certificates expire and need renewal. Your renewal strategy depends on how you manage certificates.
 
-**Key Vault with auto-renewal:** If you use a certificate authority that integrates with Key Vault (like DigiCert or GlobalSign), certificates can be renewed automatically. Azure Spring Apps picks up the new certificate from Key Vault.
+**Key Vault with auto-renewal:** If you use a certificate authority that integrates with Key Vault (like DigiCert or GlobalSign), certificates can be renewed automatically. When auto sync is enabled for the imported certificate, Azure Spring Apps checks Key Vault for new versions regularly and imports them.
 
-**Manual renewal:** When you manually upload a new certificate, update the binding to use the new certificate.
+**Manual renewal:** When you manually import a new certificate version into Key Vault, add or update the certificate in Azure Spring Apps and update the binding if you use a new Azure Spring Apps certificate name.
 
 ```bash
-# Upload the renewed certificate
+# Add the renewed certificate from Key Vault
 az spring certificate add \
   --name api-cert-renewed \
   --service my-spring-service \
   --resource-group spring-rg \
-  --type ContentCertificate \
-  --certificate-file ./renewed-cert.pfx \
-  --password "new-password"
+  --vault-uri https://my-keyvault.vault.azure.net/ \
+  --vault-certificate-name api-example-cert-renewed
 
 # Update the domain binding
 az spring app custom-domain update \
@@ -318,7 +304,7 @@ az spring app custom-domain update \
 
 ## Troubleshooting
 
-**Domain verification fails:** Check DNS records with `nslookup api.example.com` or `dig api.example.com`. Ensure the CNAME and TXT records are correctly set.
+**Domain verification fails:** Check DNS records with `nslookup api.example.com` or `dig api.example.com`. Ensure the CNAME record is correctly set.
 
 **Certificate binding fails:** Verify the certificate matches the domain. A certificate for `example.com` will not work for `api.example.com` unless it is a wildcard or includes `api.example.com` as a Subject Alternative Name.
 
