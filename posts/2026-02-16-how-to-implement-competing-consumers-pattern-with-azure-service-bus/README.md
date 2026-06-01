@@ -8,7 +8,7 @@ Description: Implement the competing consumers pattern with Azure Service Bus to
 
 ---
 
-The competing consumers pattern is one of the fundamental building blocks of scalable message-driven systems. The idea is simple: multiple consumer instances read from the same queue, and each message is processed by exactly one consumer. As load increases, you add more consumers. As it decreases, you remove them. Azure Service Bus queues implement this pattern natively - you just need to configure it correctly.
+The competing consumers pattern is one of the fundamental building blocks of scalable message-driven systems. The idea is simple: multiple consumer instances read from the same queue, and each message is locked and delivered to one consumer at a time. As load increases, you add more consumers. As it decreases, you remove them. Azure Service Bus queues implement this pattern natively - you just need to configure it correctly.
 
 In this post, I will walk through implementing competing consumers, tuning concurrency, handling the edge cases that come with parallel processing, and scaling the consumer count based on load.
 
@@ -25,7 +25,7 @@ graph LR
     Q --> C4[Consumer N...]
 ```
 
-Multiple producers publish messages to a queue. Multiple consumer instances compete to receive and process those messages. Service Bus ensures that each message is delivered to exactly one consumer (using the PeekLock mechanism). If a consumer fails to process a message, the lock expires and the message becomes available for another consumer to pick up.
+Multiple producers publish messages to a queue. Multiple consumer instances compete to receive and process those messages. Service Bus ensures that each locked message is delivered to one consumer at a time (using the PeekLock mechanism), but processing is still at-least-once. If a consumer fails to process a message, the lock expires and the message becomes available for another consumer to pick up.
 
 ## Basic Implementation
 
@@ -145,7 +145,7 @@ public class OrderFunction
     // Azure Functions automatically scales instances based on queue depth
     [Function("ProcessOrder")]
     public async Task Run(
-        [ServiceBusTrigger("orders", Connection = "ServiceBusConnection")]
+        [ServiceBusTrigger("orders", Connection = "ServiceBusConnection", AutoCompleteMessages = false)]
         ServiceBusReceivedMessage message,
         ServiceBusMessageActions messageActions)
     {
@@ -176,11 +176,7 @@ Configure the concurrency in `host.json`.
   "extensions": {
     "serviceBus": {
       "prefetchCount": 20,
-      "messageHandlerOptions": {
-        "maxConcurrentCalls": 16,
-        "autoComplete": false
-      },
-      "maxMessageBatchSize": 1000,
+      "autoCompleteMessages": false,
       "maxConcurrentCalls": 16
     }
   }
@@ -247,35 +243,29 @@ public class IdempotentOrderProcessor : IOrderService
 
     public async Task ProcessAsync(Order order)
     {
-        // Check if this order has already been processed
         // Use a unique identifier from the message (not a random value)
-        var existingResult = await _db.GetProcessingResultAsync(order.Id);
-
-        if (existingResult != null)
-        {
-            _logger.LogInformation(
-                "Order {Id} already processed at {Time}, skipping",
-                order.Id, existingResult.ProcessedAt);
-            return;
-        }
-
-        // Use optimistic concurrency to prevent race conditions
-        // between competing consumers
+        // and a unique constraint to prevent race conditions between consumers.
         try
         {
-            var result = new ProcessingResult
+            var started = await _db.TryStartProcessingAsync(new ProcessingResult
             {
                 OrderId = order.Id,
-                ProcessedAt = DateTime.UtcNow,
+                StartedAt = DateTime.UtcNow,
                 ProcessedBy = Environment.MachineName
-            };
+            });
 
-            // This will fail with a unique constraint violation
-            // if another consumer already processed this order
-            await _db.InsertProcessingResultAsync(result);
+            if (!started)
+            {
+                _logger.LogInformation(
+                    "Order {Id} is already processed or being processed, skipping",
+                    order.Id);
+                return;
+            }
 
-            // Do the actual work only if we won the race
+            // Do the actual work only if we won the race.
+            // For external side effects, make FulfillOrder idempotent too.
             await FulfillOrder(order);
+            await _db.MarkProcessingCompleteAsync(order.Id, DateTime.UtcNow);
         }
         catch (DuplicateKeyException)
         {
