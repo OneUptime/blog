@@ -61,7 +61,7 @@ recipe-app/
 # Create the Angular frontend
 ng new client --routing --style=scss --skip-git
 # Create the Azure Functions API
-mkdir api && cd api && func init --typescript
+mkdir api && cd api && func init --worker-runtime node --language typescript
 ```
 
 ## Building the Azure Functions API
@@ -69,7 +69,7 @@ mkdir api && cd api && func init --typescript
 Install the Cosmos DB SDK in the functions project:
 
 ```bash
-cd api && npm install @azure/cosmos dotenv
+cd api && npm install @azure/cosmos
 ```
 
 Create the database configuration:
@@ -245,7 +245,7 @@ app.http('getCuisines', {
   route: 'cuisines',
   handler: async (): Promise<HttpResponseInit> => {
     const { resources } = await recipesContainer.items
-      .query<{ cuisine: string }>({
+      .query<string>({
         query: 'SELECT DISTINCT VALUE c.cuisine FROM c',
       })
       .fetchAll();
@@ -256,6 +256,20 @@ app.http('getCuisines', {
 ```
 
 ## Building the Angular Frontend
+
+Register `HttpClient` in the Angular app configuration:
+
+```typescript
+// client/src/app/app.config.ts
+import { ApplicationConfig } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { provideRouter } from '@angular/router';
+import { routes } from './app.routes';
+
+export const appConfig: ApplicationConfig = {
+  providers: [provideRouter(routes), provideHttpClient()],
+};
+```
 
 Create the recipe service:
 
@@ -307,7 +321,8 @@ export class RecipeService {
 
   // Delete a recipe
   deleteRecipe(id: string, cuisine: string): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/${id}?cuisine=${cuisine}`);
+    const params = new HttpParams().set('cuisine', cuisine);
+    return this.http.delete<void>(`${this.apiUrl}/${id}`, { params });
   }
 
   // Get available cuisines
@@ -321,12 +336,15 @@ Build the recipe list component:
 
 ```typescript
 // client/src/app/components/recipe-list/recipe-list.component.ts
+import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { RecipeService, Recipe } from '../../services/recipe.service';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
 @Component({
   selector: 'app-recipe-list',
+  standalone: true,
+  imports: [CommonModule],
   template: `
     <div class="recipe-list">
       <h1>Recipe Book</h1>
