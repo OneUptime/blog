@@ -10,7 +10,7 @@ Description: Learn when and how to redeploy an Azure VM to a new physical host n
 
 Sometimes an Azure VM develops problems that have nothing to do with your software or configuration. Intermittent network connectivity issues, unexpected performance degradation, or strange hardware-related errors can point to a problem with the underlying physical host. When that happens, redeploying the VM to a new host node is often the quickest fix.
 
-Redeployment moves your VM to a different physical server within the same Azure datacenter. Your data stays intact, your configuration does not change, and the VM gets a fresh start on new hardware. It is essentially the cloud equivalent of moving a server to a different rack.
+Redeployment moves your VM to a different physical server within the Azure infrastructure. Your data stays intact, your configuration does not change, and the VM gets a fresh start on new hardware. It is essentially the cloud equivalent of moving a server to a different rack.
 
 ## When to Redeploy
 
@@ -28,15 +28,15 @@ Redeployment is not your first troubleshooting step. It is something you reach f
 
 Understanding the process helps you plan for the impact:
 
-1. Azure shuts down the VM (a clean shutdown, not a power-off).
-2. The VM is moved to a new physical host within the same Azure datacenter.
+1. Azure shuts down the VM.
+2. The VM is moved to a new physical host within the Azure infrastructure.
 3. The VM is powered back on.
 4. The OS disk, data disks, and network configuration all carry over.
 
 There are some important side effects:
 
 - The VM will get a new dynamic public IP address (if using dynamic allocation). Static IPs are preserved.
-- Temporary disk data (the D: drive on Windows, /dev/sdb on Linux) is lost. This is the local SSD attached to the physical host, not your managed disks.
+- Temporary disk data (the D: drive on Windows, often mounted at /mnt/resource on Linux) is lost. This is the local SSD attached to the physical host, not your managed disks.
 - The VM will be unavailable during the redeployment, typically for 5 to 15 minutes.
 - Any in-memory data that was not persisted to disk will be lost.
 
@@ -80,7 +80,7 @@ echo "Recording current VM state..."
 az vm get-instance-view \
   --resource-group $RESOURCE_GROUP \
   --name $VM_NAME \
-  --query "{Status:instanceView.statuses[1].displayStatus, Host:instanceView.platformFaultDomain}" \
+  --query "{Status:instanceView.statuses[1].displayStatus, FaultDomain:instanceView.platformFaultDomain}" \
   -o table
 
 # Perform the redeployment
@@ -94,7 +94,7 @@ echo "Redeployment complete. New state:"
 az vm get-instance-view \
   --resource-group $RESOURCE_GROUP \
   --name $VM_NAME \
-  --query "{Status:instanceView.statuses[1].displayStatus, Host:instanceView.platformFaultDomain}" \
+  --query "{Status:instanceView.statuses[1].displayStatus, FaultDomain:instanceView.platformFaultDomain}" \
   -o table
 
 # Verify connectivity (wait for VM to fully boot)
@@ -125,14 +125,14 @@ try {
 }
 ```
 
-## Redeploying with ARM Templates
+## Redeploying with the REST API
 
 You can also trigger a redeploy through a REST API call, which is useful for integration with custom automation:
 
 ```bash
 # Trigger redeploy via REST API
 az rest --method post \
-  --uri "https://management.azure.com/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/myVM/redeploy?api-version=2023-07-01"
+  --uri "https://management.azure.com/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/myVM/redeploy?api-version=2025-11-01"
 ```
 
 ## Verifying the Redeploy Worked
