@@ -26,9 +26,9 @@ The scaling happens at the instance level. Each instance is a full Application G
 
 Before diving into configuration, you need to understand capacity units. A capacity unit measures the gateway's consumption across three dimensions:
 
-- **Compute units:** SSL/TLS connections processed per second, URL path map computations, and WAF rule evaluations
-- **Persistent connections:** Up to 2,500 persistent connections per compute unit
-- **Throughput:** Up to 2.22 Mbps per compute unit
+- **Compute units:** TLS connections per second, URL rewrite computations, and WAF rule processing
+- **Persistent connections:** Up to 2,500 persistent connections per capacity unit
+- **Throughput:** Up to 2.22 Mbps per capacity unit
 
 The gateway scales based on whichever dimension is most constrained. If you are hitting the connection limit but throughput is fine, it scales based on connections.
 
@@ -73,7 +73,6 @@ az network application-gateway create \
   --subnet appGwSubnet \
   --min-capacity 2 \
   --max-capacity 10 \
-  --capacity 2 \
   --http-settings-port 80 \
   --http-settings-protocol Http \
   --frontend-port 80 \
@@ -84,7 +83,6 @@ The key parameters for autoscaling:
 
 - `--min-capacity 2` sets the minimum number of instances. The gateway will never scale below this.
 - `--max-capacity 10` caps the maximum instances. This protects against runaway costs.
-- `--capacity 2` sets the initial instance count.
 
 ## Updating an Existing Application Gateway to Use Autoscaling
 
@@ -107,6 +105,7 @@ az network application-gateway update \
   --resource-group myResourceGroup \
   --name myAppGateway \
   --capacity 5 \
+  --remove autoscaleConfiguration \
   --no-wait
 ```
 
@@ -130,7 +129,7 @@ Here is a sizing approach:
 Azure provides metrics to track how the gateway is scaling:
 
 ```bash
-# Check current instance count
+# Check current connection count
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/applicationGateways/myAppGateway" \
   --metric "CurrentConnections" \
@@ -181,7 +180,7 @@ az network vnet subnet show \
 
 Some things to know about how autoscaling actually works:
 
-**Scale out** takes approximately 6-7 minutes. New instances need to be provisioned, configured, and health-checked before they start receiving traffic.
+**Scale out** takes approximately 3-5 minutes. New instances need to be provisioned, configured, and health-checked before they start receiving traffic.
 
 **Scale in** is more conservative. The gateway waits for a sustained period of low utilization before removing instances. This prevents flapping (rapid scale out/in cycles).
 
@@ -218,7 +217,7 @@ az network application-gateway update \
   --max-capacity 15
 ```
 
-Pre-warming by increasing the minimum before the event means instances are already running when traffic hits. Relying purely on reactive autoscaling means 6-7 minutes of under-provisioned capacity at the start of the spike.
+Pre-warming by increasing the minimum before the event means instances are already running when traffic hits. Relying purely on reactive autoscaling means 3-5 minutes of under-provisioned capacity at the start of the spike.
 
 ## Summary
 
