@@ -15,7 +15,7 @@ Setting this up involves three pieces: DNS configuration, domain verification, a
 ## Prerequisites
 
 Before starting, you need:
-- An Azure App Service on a paid tier (Basic B1 or higher - free and shared tiers do not support custom domains)
+- An Azure App Service on Basic B1 or higher for custom TLS/SSL bindings. Free tier does not support custom domains, and Shared tier does not support custom SSL bindings.
 - A domain name that you own and can manage DNS for
 - Access to your DNS provider's management panel
 
@@ -134,10 +134,12 @@ az webapp config ssl bind \
 ```
 
 Limitations of managed certificates:
-- Only supports subdomains, not root/apex domains
 - No wildcard support
 - Cannot be exported
-- Auto-renews every 6 months
+- Not supported with private DNS or App Service Environment
+- Root/apex domains must have an A record pointing to the web app IP address
+- Subdomains must have a CNAME mapped directly to `<app-name>.azurewebsites.net` or `trafficmanager.net`
+- Issued with an approximately 6-month validity period and automatically renewed as long as the prerequisites stay in place
 
 ### Option 2: Azure Key Vault Certificate
 
@@ -157,11 +159,17 @@ az keyvault certificate import \
   --file myapp.pfx \
   --password <pfx-password>
 
-# Or create a certificate request through Key Vault
+# Or create a self-signed certificate through Key Vault for testing
 az keyvault certificate create \
   --vault-name myAppKeyVault \
   --name myapp-cert \
   --policy "$(az keyvault certificate get-default-policy)"
+
+# Grant App Service read access to the Key Vault certificate
+az role assignment create \
+  --role "Key Vault Certificate User" \
+  --assignee "abfa0a7c-a6b6-4736-8310-5855508787cd" \
+  --scope "/subscriptions/<subscription-id>/resourcegroups/myAppRG/providers/Microsoft.KeyVault/vaults/myAppKeyVault"
 
 # Import the Key Vault certificate to App Service
 az webapp config ssl import \
@@ -177,6 +185,8 @@ az webapp config ssl bind \
   --certificate-thumbprint <thumbprint> \
   --ssl-type SNI
 ```
+
+For production public HTTPS, use a certificate signed by a trusted certificate authority. A self-signed certificate will not be trusted by browsers.
 
 ### Option 3: Upload Your Own Certificate
 
@@ -207,10 +217,10 @@ After configuring SSL, force all traffic to use HTTPS:
 az webapp update \
   --resource-group myAppRG \
   --name myapp \
-  --set httpsOnly=true
+  --https-only true
 ```
 
-This tells App Service to return a 301 redirect for any HTTP request, sending the client to the HTTPS version of the URL.
+This tells App Service to redirect HTTP requests to the HTTPS version of the URL.
 
 You can also enforce HTTPS at the application level for more control:
 
@@ -235,7 +245,7 @@ az webapp config hostname add --resource-group myAppRG --webapp-name myapp --hos
 az webapp config hostname add --resource-group myAppRG --webapp-name myapp --hostname www.myapp.com
 
 # Create and bind certificates for both
-# (Managed certificate for www, Key Vault or uploaded cert for root)
+# (Managed certificates can work for root and www if the DNS prerequisites are met)
 ```
 
 In your application, redirect the non-canonical domain:
@@ -337,4 +347,4 @@ Use OneUptime to monitor your HTTPS endpoint. Configure alerts for certificate e
 
 ## Wrapping Up
 
-Custom domains and SSL on Azure App Service involve DNS configuration, domain verification, and certificate management. Use managed certificates for the simplest setup on subdomains, Key Vault certificates for root domains and wildcard needs, and always enforce HTTPS. Set up certificate expiration monitoring early so you never have an unexpected expiration take down your site. The whole process takes about 30 minutes from start to finish, assuming DNS propagation cooperates.
+Custom domains and SSL on Azure App Service involve DNS configuration, domain verification, and certificate management. Use managed certificates for the simplest setup when they meet your domain's requirements, Key Vault or uploaded certificates for wildcard needs or advanced control, and always enforce HTTPS. Set up certificate expiration monitoring early so you never have an unexpected expiration take down your site. The whole process takes about 30 minutes from start to finish, assuming DNS propagation cooperates.
