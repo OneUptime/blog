@@ -17,7 +17,7 @@ This approach scales beautifully. When you create a new resource, just tag it co
 Traditional policies reference specific resource ARNs:
 
 ```text
-"Resource": "arn:aws:s3:::team-alpha-data"
+"Resource": "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
 ```
 
 Tag-based policies use conditions instead:
@@ -25,12 +25,12 @@ Tag-based policies use conditions instead:
 ```text
 "Condition": {
     "StringEquals": {
-        "s3:ResourceTag/Team": "alpha"
+        "ec2:ResourceTag/Team": "alpha"
     }
 }
 ```
 
-The second approach works for any resource tagged with `Team: alpha`, whether it exists now or gets created next week.
+The second approach works for any EC2 instance tagged with `Team: alpha`, whether it exists now or gets created next week.
 
 ```mermaid
 graph TD
@@ -182,6 +182,9 @@ A critical part of ABAC is preventing users from changing tags to escalate their
             ],
             "Resource": "*",
             "Condition": {
+                "StringNotEqualsIfExists": {
+                    "ec2:CreateAction": "RunInstances"
+                },
                 "ForAnyValue:StringEquals": {
                     "aws:TagKeys": ["Team"]
                 }
@@ -191,7 +194,7 @@ A critical part of ABAC is preventing users from changing tags to escalate their
 }
 ```
 
-This prevents anyone from adding or removing the Team tag on any resource. Without this, a user could change a resource's Team tag to match their own and gain access to it.
+This prevents anyone from adding or removing the Team tag on any existing resource while still allowing the earlier tag-on-create permission for `RunInstances` to work. Without this, a user could change a resource's Team tag to match their own and gain access to it.
 
 You might want to allow tag modification for some tags while protecting others:
 
@@ -255,11 +258,10 @@ S3 has its own condition keys for tags:
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "AllowAccessToTeamObjects",
+            "Sid": "AllowReadTeamObjects",
             "Effect": "Allow",
             "Action": [
-                "s3:GetObject",
-                "s3:PutObject"
+                "s3:GetObject"
             ],
             "Resource": "arn:aws:s3:::shared-data/*",
             "Condition": {
@@ -267,12 +269,25 @@ S3 has its own condition keys for tags:
                     "s3:ExistingObjectTag/Team": "${aws:PrincipalTag/Team}"
                 }
             }
+        },
+        {
+            "Sid": "AllowWriteTeamObjects",
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject"
+            ],
+            "Resource": "arn:aws:s3:::shared-data/*",
+            "Condition": {
+                "StringEquals": {
+                    "s3:RequestObjectTag/Team": "${aws:PrincipalTag/Team}"
+                }
+            }
         }
     ]
 }
 ```
 
-Note that S3 object tagging uses `s3:ExistingObjectTag/` for reading existing objects and `s3:RequestObjectTag/` for tagging new objects.
+Note that S3 object tagging uses `s3:ExistingObjectTag/` for reading existing objects and `s3:RequestObjectTag/` for tagging new objects. You can't use `s3:ExistingObjectTag/` to control `PutObject`.
 
 ## Terraform Implementation
 
