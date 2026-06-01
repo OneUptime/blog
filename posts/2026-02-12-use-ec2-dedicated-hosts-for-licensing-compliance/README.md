@@ -34,7 +34,7 @@ This visibility is exactly what license auditors need to verify compliance.
 
 ## Allocating a Dedicated Host
 
-Let's start by allocating a host. You need to specify the instance family and availability zone:
+Let's start by allocating a host. You need to specify the instance type or instance family and availability zone:
 
 ```bash
 # Allocate a Dedicated Host for m5 instances in us-east-1a
@@ -53,7 +53,7 @@ The command returns a host ID like `h-0abc123def456`. You'll use this when launc
 
 ## Launching Instances on a Dedicated Host
 
-There are two ways to place instances on your host: targeting a specific host or using host affinity with auto-placement.
+There are two ways to place instances on your host: targeting a specific host or launching with host tenancy onto any matching host that has auto-placement enabled.
 
 Here's how to launch directly onto a specific host:
 
@@ -72,7 +72,7 @@ The `Tenancy=host` and `HostId` parameters ensure the instance runs on your spec
 
 ## BYOL for Windows Server
 
-Windows Server licensing is one of the most common reasons for Dedicated Hosts. Microsoft's licensing allows you to bring your own licenses if you can demonstrate that your instances run on dedicated hardware with a known core count.
+Windows Server licensing is one of the most common reasons for Dedicated Hosts. Eligible Windows Server BYOL licenses can be used on Dedicated Hosts if you license all physical cores of the host and meet the applicable Microsoft product terms.
 
 Here's the typical setup for Windows Server BYOL:
 
@@ -86,7 +86,7 @@ aws ec2 allocate-hosts \
   --host-recovery "on" \
   --tag-specifications 'ResourceType=dedicated-host,Tags=[{Key=OS,Value=WindowsServer},{Key=License,Value=BYOL}]'
 
-# Step 2: Import your custom Windows AMI (with your license)
+# Step 2: Import your custom Windows AMI (with your eligible license)
 # You'd use VM Import/Export or create an AMI from an existing BYOL instance
 
 # Step 3: Launch using your BYOL AMI on the dedicated host
@@ -101,7 +101,7 @@ With auto-placement enabled, AWS will place the instance on any available Dedica
 
 ## BYOL for SQL Server
 
-SQL Server licensing on Dedicated Hosts gets a bit more involved because SQL Server licenses are counted per physical core. An m5.xlarge has 2 vCPUs but maps to 2 physical cores on the host. You need to track this carefully.
+SQL Server licensing on Dedicated Hosts gets a bit more involved because core-based licenses need to be tracked against the cores you are assigning or licensing. An m5.xlarge has 4 vCPUs and consumes 2 physical cores on an m5 Dedicated Host. You need to track this carefully.
 
 Here's a Terraform configuration that sets up Dedicated Hosts for SQL Server:
 
@@ -116,7 +116,7 @@ resource "aws_ec2_host" "sql_server" {
   tags = {
     Name        = "sql-server-host-1"
     License     = "SQL-Server-Enterprise-BYOL"
-    CoreCount   = "16"  # Track physical cores for licensing
+    CoreCount   = "48"  # Track physical cores on the m5 Dedicated Host for licensing
     Environment = "production"
   }
 }
@@ -152,12 +152,10 @@ aws license-manager create-license-configuration \
   --license-count 32 \
   --license-count-hard-limit \
   --description "SQL Server Enterprise - 32 core license" \
-  --license-rules '[
-    "allowedTenancies#EC2-DedicatedHost"
-  ]'
+  --license-rules "#allowedTenancy=EC2-DedicatedHost"
 ```
 
-The `allowedTenancies` rule restricts this license to only be used on Dedicated Hosts, preventing someone from accidentally consuming a license on shared hardware.
+The `allowedTenancy` rule restricts this license to only be used on Dedicated Hosts, preventing someone from accidentally consuming a license on shared hardware.
 
 You can then associate the license configuration with your AMI:
 
@@ -165,7 +163,7 @@ You can then associate the license configuration with your AMI:
 # Associate a license configuration with a BYOL AMI
 aws license-manager update-license-specifications-for-resource \
   --resource-arn "arn:aws:ec2:us-east-1::image/ami-yoursqlserverbyol" \
-  --add-license-specifications "LicenseConfigurationArn=arn:aws:license-manager:us-east-1:123456789:license-configuration/lic-abc123"
+  --add-license-specifications "LicenseConfigurationArn=arn:aws:license-manager:us-east-1:123456789:license-configuration:lic-abc123"
 ```
 
 Now whenever someone launches an instance from this AMI, License Manager tracks the core usage against your license pool.
@@ -182,7 +180,7 @@ aws resource-groups create-group \
     {
       "Type": "AWS::EC2::HostManagement",
       "Parameters": [
-        {"Name": "allowed-host-based-license-configurations", "Values": ["arn:aws:license-manager:us-east-1:123456789:license-configuration/lic-abc123"]},
+        {"Name": "allowed-host-based-license-configurations", "Values": ["arn:aws:license-manager:us-east-1:123456789:license-configuration:lic-abc123"]},
         {"Name": "any-host-based-license-configuration", "Values": ["false"]},
         {"Name": "auto-allocate-host", "Values": ["true"]},
         {"Name": "auto-release-host", "Values": ["true"]}
@@ -209,7 +207,7 @@ Dedicated Hosts are more expensive per-instance than shared tenancy, but the mat
 | Shared tenancy + AWS license | $2.50/hr | Included | $2.50/hr |
 | Dedicated Host + BYOL | $4.00/hr (host) | $0 (already owned) | $4.00/hr for multiple instances |
 
-The key insight is that a single Dedicated Host can run multiple instances. An m5 host with 48 vCPUs can run 12 m5.xlarge instances. If you're consolidating workloads, the per-instance cost drops significantly.
+The key insight is that a single Dedicated Host can run multiple instances. An m5 host with 48 physical cores and 96 vCPUs can run up to 24 m5.xlarge instances. If you're consolidating workloads, the per-instance cost drops significantly.
 
 You can also save with Dedicated Host Reservations:
 
@@ -218,7 +216,8 @@ You can also save with Dedicated Host Reservations:
 aws ec2 purchase-host-reservation \
   --host-id-set "h-0abc123def456" \
   --offering-id "hro-abc123" \
-  --limit-price "CurrencyCode=USD,Amount=10000"
+  --currency-code "USD" \
+  --limit-price "10000.00"
 ```
 
 ## Host Recovery and Maintenance
@@ -232,7 +231,7 @@ aws ec2 modify-hosts \
   --host-recovery "on"
 ```
 
-With host recovery enabled, if the underlying hardware fails, AWS automatically migrates your instances to a new Dedicated Host. The instance retains its ID, IP address, and EBS volumes. This is important for licensing because the host ID changes, which you'll need to document for audit purposes.
+With host recovery enabled, if the underlying hardware fails and the instances support host recovery, AWS automatically recovers your instances to a new Dedicated Host in the same Availability Zone. The instance retains attributes such as its ID, private IP addresses, Elastic IP addresses, and EBS volumes. This is important for licensing because the host ID changes, which you'll need to document for audit purposes.
 
 For a broader look at EC2 availability strategies, check out [setting up multi-AZ deployments](https://oneuptime.com/blog/post/2026-02-12-set-up-multi-az-ec2-deployments-for-high-availability/view).
 
