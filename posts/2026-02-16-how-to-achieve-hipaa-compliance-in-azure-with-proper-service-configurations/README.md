@@ -14,7 +14,7 @@ In this post, I will walk through the specific Azure configurations needed to me
 
 ## The Business Associate Agreement (BAA)
 
-Before anything else, you need a Business Associate Agreement with Microsoft. As a cloud provider handling ePHI on your behalf, Microsoft is considered a Business Associate under HIPAA. The BAA is included in the Microsoft Online Services Terms and covers most Azure services.
+Before anything else, you need a Business Associate Agreement with Microsoft. As a cloud provider handling ePHI on your behalf, Microsoft is considered a Business Associate under HIPAA. The BAA is made available through Microsoft licensing agreements that include the Microsoft Product Terms and the Microsoft Products and Services Data Protection Addendum (DPA).
 
 To verify the BAA covers your services, check the Microsoft Trust Center. Key covered services include:
 
@@ -25,17 +25,17 @@ To verify the BAA covers your services, check the Microsoft Trust Center. Key co
 - Azure App Service
 - Azure Functions
 - Azure Key Vault
-- Azure Active Directory / Entra ID
+- Microsoft Entra ID
 
 Not all Azure services are covered by the BAA. Before using a service for ePHI workloads, verify it is listed as a HIPAA-eligible service.
 
 ## Encryption Requirements
 
-HIPAA requires encryption of ePHI both at rest and in transit.
+HIPAA treats encryption as an addressable implementation specification, which means you must implement it when reasonable and appropriate or document an equivalent alternative. In Azure, encrypt ePHI both at rest and in transit.
 
 ### Encryption at Rest
 
-All Azure services encrypt data at rest by default using Microsoft-managed keys. For HIPAA, you may want to use customer-managed keys (CMK) for additional control:
+Most core Azure data services encrypt data at rest by default using Microsoft-managed keys. For HIPAA workloads, you may want to use customer-managed keys (CMK) for additional control:
 
 ```bash
 # Create a Key Vault for customer-managed encryption keys
@@ -45,7 +45,6 @@ az keyvault create \
   --name hipaa-keyvault \
   --location eastus \
   --sku premium \
-  --enable-soft-delete true \
   --enable-purge-protection true \
   --retention-days 90
 
@@ -53,6 +52,12 @@ az keyvault create \
 az keyvault key create \
   --vault-name hipaa-keyvault \
   --name storage-encryption-key \
+  --kty RSA \
+  --size 2048
+
+az keyvault key create \
+  --vault-name hipaa-keyvault \
+  --name sql-encryption-key \
   --kty RSA \
   --size 2048
 
@@ -121,7 +126,10 @@ az role definition create --role-definition '{
   ],
   "NotActions": [
     "Microsoft.Sql/*/read",
-    "Microsoft.Storage/storageAccounts/listKeys/action",
+    "Microsoft.Storage/storageAccounts/listKeys/action"
+  ],
+  "DataActions": [],
+  "NotDataActions": [
     "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read"
   ],
   "AssignableScopes": [
@@ -191,6 +199,12 @@ az network vnet subnet create \
 az network nsg create \
   --resource-group hipaa-rg \
   --name data-subnet-nsg
+
+az network vnet subnet update \
+  --resource-group hipaa-rg \
+  --vnet-name hipaa-vnet \
+  --name data-subnet \
+  --network-security-group data-subnet-nsg
 
 # Only allow traffic from the app subnet to the data subnet
 az network nsg rule create \
@@ -262,25 +276,19 @@ HIPAA requires detailed audit trails of who accessed ePHI and what they did with
 ### Enable Diagnostic Logging
 
 ```bash
-# Enable diagnostic logging for Azure SQL - captures all access events
-az monitor diagnostic-settings create \
-  --resource $(az sql server show \
-    --resource-group hipaa-rg \
-    --name hipaa-sql-server \
-    --query id --output tsv) \
-  --name hipaa-sql-diagnostics \
-  --workspace $LOG_ANALYTICS_ID \
-  --logs '[
-    {"category": "SQLSecurityAuditEvents", "enabled": true, "retentionPolicy": {"days": 365, "enabled": true}},
-    {"category": "SQLInsights", "enabled": true, "retentionPolicy": {"days": 365, "enabled": true}},
-    {"category": "AutomaticTuning", "enabled": true}
-  ]'
+# Enable Azure SQL auditing to Log Analytics
+az sql server audit-policy update \
+  --resource-group hipaa-rg \
+  --name hipaa-sql-server \
+  --state Enabled \
+  --lats Enabled \
+  --lawri $LOG_ANALYTICS_ID
 
 # Enable Activity Log forwarding
-az monitor diagnostic-settings create \
+az monitor diagnostic-settings subscription create \
   --name hipaa-activity-log \
-  --resource "/subscriptions/{subscription-id}" \
   --workspace $LOG_ANALYTICS_ID \
+  --location eastus \
   --logs '[
     {"category": "Administrative", "enabled": true},
     {"category": "Security", "enabled": true},
@@ -296,20 +304,20 @@ az monitor diagnostic-settings create \
   --name hipaa-kv-diagnostics \
   --workspace $LOG_ANALYTICS_ID \
   --logs '[
-    {"category": "AuditEvent", "enabled": true, "retentionPolicy": {"days": 365, "enabled": true}}
+    {"category": "AuditEvent", "enabled": true}
   ]'
 ```
 
 ### Log Retention
 
-HIPAA requires audit logs to be retained for at least 6 years. Configure Log Analytics and storage account retention accordingly:
+HIPAA requires Security Rule documentation to be retained for at least 6 years. Many healthcare organizations align audit evidence and exported logs to that period based on their risk analysis and policies:
 
 ```bash
-# Set Log Analytics workspace retention to 365 days
+# Set Log Analytics workspace interactive retention to 730 days
 az monitor log-analytics workspace update \
   --resource-group hipaa-rg \
   --workspace-name hipaa-logs \
-  --retention-time 365
+  --retention-time 730
 
 # For longer retention, export to immutable storage
 az storage account create \
@@ -318,12 +326,18 @@ az storage account create \
   --sku Standard_GRS \
   --kind StorageV2
 
+az storage container create \
+  --account-name hipaaauditlogs \
+  --name audit-logs \
+  --auth-mode login
+
 # Enable immutable storage to prevent log tampering
 az storage container immutability-policy create \
   --resource-group hipaa-rg \
   --account-name hipaaauditlogs \
   --container-name audit-logs \
-  --period 2190
+  --period 2190 \
+  --allow-protected-append-writes true
 ```
 
 ## Azure Policy for HIPAA
@@ -353,8 +367,8 @@ az monitor scheduled-query create \
   --resource-group hipaa-rg \
   --name "unusual-data-access" \
   --scopes $LOG_ANALYTICS_ID \
-  --condition "count > 100" \
-  --condition-query "
+  --condition "count 'UnusualAccess' > 100" \
+  --condition-query UnusualAccess="
     AzureDiagnostics
     | where Category == 'SQLSecurityAuditEvents'
     | where action_name_s == 'SELECT'
@@ -369,4 +383,4 @@ az monitor scheduled-query create \
 
 ## Summary
 
-Achieving HIPAA compliance in Azure requires a layered approach: sign the BAA, encrypt everything at rest and in transit with customer-managed keys, implement strict RBAC and conditional access, isolate HIPAA workloads in private networks, enable comprehensive audit logging with long-term retention, and continuously assess your configuration using the HIPAA HITRUST policy initiative. Remember that Azure provides the tools, but compliance is your responsibility. Regularly review your configurations, conduct risk assessments, and train your staff on HIPAA requirements.
+Achieving HIPAA compliance in Azure requires a layered approach: confirm the Microsoft BAA applies, encrypt ePHI at rest and in transit with appropriate key management, implement strict RBAC and conditional access, isolate HIPAA workloads in private networks, enable comprehensive audit logging with long-term retention, and continuously assess your configuration using the HIPAA HITRUST policy initiative. Remember that Azure provides the tools, but compliance is your responsibility. Regularly review your configurations, conduct risk assessments, and train your staff on HIPAA requirements.
