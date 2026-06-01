@@ -111,15 +111,21 @@ Console.WriteLine("Blob moved to Cool tier");
 
 Moving blobs one at a time is fine for a handful of files, but when you have thousands or millions of blobs to move, you need a more efficient approach.
 
-### Batch Tier Change with Azure CLI
+### Bulk Tier Change with Azure CLI
 
 ```bash
-# Move all blobs with a specific prefix to Cool tier using a batch operation
-az storage blob set-tier \
+# Move all blobs with a specific prefix to Cool tier
+az storage blob list \
+  --account-name mystorageaccount \
+  --container-name mycontainer \
+  --prefix "logs/2024/" \
+  --query "[].name" \
+  --output tsv \
+  | xargs -I {} az storage blob set-tier \
   --account-name mystorageaccount \
   --container-name mycontainer \
   --tier Cool \
-  --name "logs/2024/" \
+  --name "{}" \
   --type block
 ```
 
@@ -244,7 +250,7 @@ Then use `daysAfterLastAccessTimeGreaterThan` in your lifecycle policy:
 
 ## Early Deletion Fees
 
-Each tier has a minimum storage duration:
+For general-purpose v2 storage accounts, each cooler tier has a minimum storage duration:
 
 - Cool: 30 days
 - Cold: 90 days
@@ -252,11 +258,13 @@ Each tier has a minimum storage duration:
 
 If you move a blob out of a tier before the minimum period, you get charged an early deletion fee equal to the remaining days. For example, moving a blob from Cool to Hot after 10 days means you pay for 20 additional days of Cool storage.
 
+For Blob Storage accounts, there is no minimum storage duration for the Cool or Cold tier.
+
 This is important when designing lifecycle policies. Do not create rules that move blobs from Cool to Archive in less than 30 days - you will pay the Cool early deletion fee on top of the Archive storage cost.
 
 ## Tier Transition Costs
 
-Every tier change incurs a write operation charge at the destination tier's rate. Moving a blob to Archive is cheap, but moving it from Archive (rehydrating) is expensive.
+Moving a blob to a cooler tier incurs a write operation charge at the destination tier's rate. Moving a blob to a warmer tier is billed as a read from the source tier plus a write to the destination tier. Moving a blob to Archive is cheap, but moving it from Archive (rehydrating) is expensive.
 
 Here is a rough cost comparison for moving 1 TB of data:
 
