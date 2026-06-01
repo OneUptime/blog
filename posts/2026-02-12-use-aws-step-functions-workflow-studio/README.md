@@ -17,7 +17,7 @@ Workflow Studio changes this by giving you a visual, drag-and-drop interface for
 Workflow Studio is built into the Step Functions console. When you create or edit a state machine, you get both the visual editor and the code editor:
 
 ```bash
-# Create a new state machine - this opens Workflow Studio in the console
+# Create a new state machine from the CLI
 
 aws stepfunctions create-state-machine \
   --name "order-processing-workflow" \
@@ -26,7 +26,7 @@ aws stepfunctions create-state-machine \
   --type "STANDARD"
 ```
 
-But the real power is in the console's visual editor. Navigate to Step Functions in the AWS Console, click "Create state machine," and you land in Workflow Studio.
+But the real power is in the console's visual editor. Navigate to Step Functions in the AWS Console, click "Create state machine," choose "Create from blank," and continue to edit the state machine in Workflow Studio.
 
 ## Understanding the Workflow Studio Interface
 
@@ -52,15 +52,14 @@ Let us build a realistic workflow that processes an order through multiple steps
 
 ### Step 1: Define the Workflow Flow
 
-Start by dragging the flow control states onto the canvas:
+Start by dragging the workflow states onto the canvas:
 
-1. **Pass state** (Start) - entry point
-2. **Lambda Invoke** (Validate Order) - check order data
-3. **Choice state** (Is Valid?) - branch based on validation result
-4. **Parallel state** (Process Order) - run payment and inventory in parallel
-5. **Lambda Invoke** (Create Shipment) - create shipping label
-6. **Lambda Invoke** (Send Notification) - notify the customer
-7. **Fail state** (Order Failed) - handle failures
+1. **Lambda Invoke** (Validate Order) - check order data
+2. **Choice state** (Is Valid?) - branch based on validation result
+3. **Parallel state** (Process Order) - run payment and inventory in parallel
+4. **Lambda Invoke** (Create Shipment) - create shipping label
+5. **SNS Publish** (Send Notification) - notify the customer
+6. **Fail state** (Order Failed) - handle failures
 
 ### Step 2: Configure Each State
 
@@ -84,11 +83,11 @@ Click on each state in the canvas to configure it in the Inspector panel.
 
 ### Step 3: Add Error Handling
 
-For each Lambda state, add retry and catch configurations:
+For the Lambda and processing states, add retry and catch configurations:
 
-In the Inspector panel for the Payment Lambda:
-- **Retry:** on `ServiceException` and `Lambda.TooManyRequestsException`, retry 3 times with exponential backoff
-- **Catch:** on all errors, transition to a `HandlePaymentError` state
+In the Inspector panels for the processing states:
+- **Retry:** on `Lambda.ServiceException` and `Lambda.TooManyRequestsException`, retry 3 times with exponential backoff
+- **Catch:** on all processing errors, transition to a `Handle Processing Error` state
 
 ### The Generated ASL
 
@@ -101,12 +100,24 @@ Workflow Studio generates this ASL definition as you build:
   "States": {
     "Validate Order": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:validate-order",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:validate-order",
+        "Payload.$": "$"
+      },
+      "ResultSelector": {
+        "isValid.$": "$.Payload.isValid"
+      },
       "ResultPath": "$.validation",
       "Next": "Is Valid?",
       "Retry": [
         {
-          "ErrorEquals": ["Lambda.ServiceException"],
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
           "IntervalSeconds": 2,
           "MaxAttempts": 3,
           "BackoffRate": 2.0
@@ -132,10 +143,20 @@ Workflow Studio generates this ASL definition as you build:
           "States": {
             "Process Payment": {
               "Type": "Task",
-              "Resource": "arn:aws:lambda:us-east-1:123456789012:function:process-payment",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:process-payment",
+                "Payload.$": "$"
+              },
+              "OutputPath": "$.Payload",
               "Retry": [
                 {
-                  "ErrorEquals": ["States.ALL"],
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException"
+                  ],
                   "IntervalSeconds": 5,
                   "MaxAttempts": 3,
                   "BackoffRate": 2.0
@@ -150,7 +171,12 @@ Workflow Studio generates this ASL definition as you build:
           "States": {
             "Check Inventory": {
               "Type": "Task",
-              "Resource": "arn:aws:lambda:us-east-1:123456789012:function:check-inventory",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:check-inventory",
+                "Payload.$": "$"
+              },
+              "OutputPath": "$.Payload",
               "End": true
             }
           }
@@ -168,7 +194,14 @@ Workflow Studio generates this ASL definition as you build:
     },
     "Create Shipment": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:create-shipment",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:create-shipment",
+        "Payload.$": "$"
+      },
+      "ResultSelector": {
+        "trackingNumber.$": "$.Payload.trackingNumber"
+      },
       "ResultPath": "$.shipment",
       "Next": "Send Notification"
     },
@@ -188,7 +221,11 @@ Workflow Studio generates this ASL definition as you build:
     },
     "Handle Processing Error": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:handle-error",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:handle-error",
+        "Payload.$": "$"
+      },
       "End": true
     }
   }
@@ -213,15 +250,16 @@ graph TD
     A --> I[Step Functions]
     A --> J[EventBridge]
     A --> K[S3]
-    A --> L[200+ Services via SDK]
+    A --> L[220+ Services via SDK]
 ```
 
 ### DynamoDB Integration Example
 
 Drag a "DynamoDB PutItem" action onto the canvas and configure it:
 
+This is configured through the Inspector panel forms:
+
 ```json
-// This is configured through the Inspector panel forms
 {
   "Type": "Task",
   "Resource": "arn:aws:states:::dynamodb:putItem",
@@ -254,7 +292,7 @@ Configure in the Inspector:
 
 The Map state is one of the trickiest states to configure in raw ASL, but Workflow Studio makes it straightforward. Map iterates over an array in your input and runs a sub-workflow for each element.
 
-Drag a "Map" state onto the canvas. Inside the Map, you get a nested canvas where you design the per-item workflow. Workflow Studio handles the iterator configuration automatically.
+Drag a "Map" state onto the canvas. Inside the Map, you get a nested canvas where you design the per-item workflow. Workflow Studio handles the per-item processing configuration automatically.
 
 Use cases for Map:
 - Process each line item in an order
@@ -308,7 +346,7 @@ When creating a state machine in Workflow Studio, you choose between:
 **Express Workflows:**
 - Maximum 5-minute duration
 - At-least-once execution
-- No execution history (use CloudWatch Logs)
+- No durable execution history in Step Functions (send execution history to CloudWatch Logs)
 - Much cheaper for high-volume
 - Best for: real-time data processing, API backends, high-throughput workloads
 
@@ -350,4 +388,4 @@ Store the ASL JSON in version control alongside your application code. Use Workf
 
 ## Wrapping Up
 
-Workflow Studio transforms Step Functions from a service you need to learn a custom JSON language for into something you can build visually and intuitively. The drag-and-drop interface handles the tedious parts - state transitions, IAM permissions for service integrations, error handling configuration - while still giving you full control through the code editor. Start with Workflow Studio for new workflows, and use it as a visualization tool for existing ones that need debugging or modification. For designing the serverless applications that Step Functions orchestrate, check out our guide on [setting up AWS Application Composer for visual design](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-application-composer-for-visual-design/view).
+Workflow Studio transforms Step Functions from a service you need to learn a custom JSON language for into something you can build visually and intuitively. The drag-and-drop interface handles the tedious parts - state transitions, IAM permission generation for service integrations, error handling configuration - while still giving you full control through the code editor. Start with Workflow Studio for new workflows, and use it as a visualization tool for existing ones that need debugging or modification. For designing the serverless applications that Step Functions orchestrate, check out our guide on [setting up AWS Application Composer for visual design](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-application-composer-for-visual-design/view).
