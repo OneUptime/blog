@@ -29,26 +29,28 @@ Here is how to schedule a notification for a specific time.
 
 ```javascript
 // schedule-basic.js - Schedule a notification for future delivery
-const { NotificationHubsClient } = require('@azure/notification-hubs');
+const { NotificationHubsClient, createFcmV1Notification } = require('@azure/notification-hubs');
 
 const connectionString = process.env.NOTIFICATION_HUB_CONNECTION_STRING;
 const client = new NotificationHubsClient(connectionString, 'my-hub');
 
 async function scheduleNotification(title, body, scheduledTimeUtc, tagExpression) {
   // Create the notification payload
-  const notification = {
+  const notification = createFcmV1Notification({
     body: JSON.stringify({
-      notification: {
-        title: title,
-        body: body
+      message: {
+        notification: {
+          title: title,
+          body: body
+        }
       }
     })
-  };
+  });
 
   // Schedule the notification for a specific UTC time
   const result = await client.scheduleNotification(
-    { kind: 'Gcm', ...notification },
     new Date(scheduledTimeUtc),
+    notification,
     { tagExpression: tagExpression }
   );
 
@@ -74,29 +76,27 @@ scheduleNotification(
 
 ## Handling Time Zones
 
-The biggest challenge with scheduled notifications is dealing with time zones. Your users are probably spread across different zones, and a "9 AM notification" means a different UTC time for each zone.
+The biggest challenge with scheduled notifications is dealing with time zones. Your users are probably spread across different zones, and a "9 AM notification" means a different UTC time for each zone. The example below uses Luxon for timezone conversion.
 
 ```javascript
 // timezone-schedule.js - Schedule notifications respecting user time zones
-function localToUtc(localHour, localMinute, timezone) {
-  // Create a date in the target timezone and convert to UTC
-  // Using Intl.DateTimeFormat to handle DST correctly
-  const now = new Date();
-  const targetDate = new Date(now);
-  targetDate.setHours(localHour, localMinute, 0, 0);
+const { DateTime } = require('luxon');
 
-  // Get the offset for the target timezone
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    timeZoneName: 'shortOffset'
+function localToUtc(localHour, localMinute, timezone) {
+  const now = DateTime.now().setZone(timezone);
+  let targetDate = now.set({
+    hour: localHour,
+    minute: localMinute,
+    second: 0,
+    millisecond: 0
   });
 
-  // Simple offset calculation (for production, use a proper library like luxon or date-fns-tz)
-  const parts = formatter.formatToParts(targetDate);
-  const offsetPart = parts.find(p => p.type === 'timeZoneName');
+  if (targetDate <= now) {
+    targetDate = targetDate.plus({ days: 1 });
+  }
 
   console.log(`Scheduling for ${localHour}:${localMinute} in ${timezone}`);
-  return targetDate;
+  return targetDate.toUTC().toJSDate();
 }
 
 // Schedule the same notification for different time zones
@@ -173,6 +173,8 @@ For a production application, you probably want a service that manages scheduled
 
 ```javascript
 // notification-scheduler.js - A service for managing scheduled notifications
+const { createFcmV1Notification } = require('@azure/notification-hubs');
+
 class NotificationScheduler {
   constructor(client, db) {
     this.client = client;
@@ -183,15 +185,17 @@ class NotificationScheduler {
   async schedule(params) {
     const { title, body, scheduledTime, tagExpression, category, referenceId } = params;
 
-    const notification = {
+    const notification = createFcmV1Notification({
       body: JSON.stringify({
-        notification: { title, body }
+        message: {
+          notification: { title, body }
+        }
       })
-    };
+    });
 
     const result = await this.client.scheduleNotification(
-      { kind: 'Gcm', ...notification },
       new Date(scheduledTime),
+      notification,
       { tagExpression }
     );
 
@@ -270,7 +274,8 @@ Azure Notification Hubs does not natively support recurring notifications. You n
 // recurring-scheduler.js - Azure Function that schedules recurring notifications
 // This runs on a timer trigger, e.g., every day at midnight UTC
 
-const { NotificationHubsClient } = require('@azure/notification-hubs');
+const { NotificationHubsClient, createTemplateNotification } = require('@azure/notification-hubs');
+const { DateTime } = require('luxon');
 
 module.exports = async function (context, myTimer) {
   const client = new NotificationHubsClient(
@@ -287,15 +292,16 @@ module.exports = async function (context, myTimer) {
 
     if (nextFireTime) {
       await client.scheduleNotification(
-        {
-          kind: 'Template',
+        nextFireTime,
+        createTemplateNotification({
           body: JSON.stringify({
             title: recurring.title,
             body: recurring.body
           })
-        },
-        nextFireTime,
-        { tagExpression: recurring.tagExpression }
+        }),
+        {
+          tagExpression: recurring.tagExpression
+        }
       );
 
       context.log(`Scheduled recurring notification "${recurring.title}" for ${nextFireTime.toISOString()}`);
@@ -306,10 +312,17 @@ module.exports = async function (context, myTimer) {
 function calculateNextFireTime(pattern, localTime, timezone) {
   // Simple daily recurrence example
   if (pattern === 'daily') {
-    const tomorrow = new Date();
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    tomorrow.setUTCHours(localTime.hour, localTime.minute, 0, 0);
-    return tomorrow;
+    return DateTime.now()
+      .setZone(timezone)
+      .plus({ days: 1 })
+      .set({
+        hour: localTime.hour,
+        minute: localTime.minute,
+        second: 0,
+        millisecond: 0
+      })
+      .toUTC()
+      .toJSDate();
   }
 
   // Add more patterns as needed: weekly, monthly, etc.
