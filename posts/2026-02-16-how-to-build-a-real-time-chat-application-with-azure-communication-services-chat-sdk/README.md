@@ -8,7 +8,7 @@ Description: A step-by-step guide to building a real-time chat application using
 
 ---
 
-Building a real-time chat system from scratch means dealing with WebSocket connections, message persistence, presence tracking, typing indicators, read receipts, and scaling to handle concurrent users. Azure Communication Services (ACS) Chat SDK handles all of this infrastructure so you can focus on the user experience. The SDK provides thread-based conversations, real-time message delivery, typing notifications, and read receipts out of the box.
+Building a real-time chat system from scratch means dealing with WebSocket connections, message persistence, typing indicators, read receipts, and scaling to handle concurrent users. Azure Communication Services (ACS) Chat SDK handles much of this chat infrastructure so you can focus on the user experience. The SDK provides thread-based conversations, real-time message delivery, typing notifications, and read receipts out of the box.
 
 This guide walks through building a functional chat application using the ACS Chat SDK for JavaScript, covering user identity creation, thread management, sending and receiving messages, and handling real-time events.
 
@@ -90,7 +90,7 @@ app.listen(3001, () => {
 Install the required packages.
 
 ```bash
-npm install express @azure/communication-identity @azure/communication-chat
+npm install express @azure/communication-identity @azure/communication-chat @azure/communication-common @azure/communication-signaling
 ```
 
 ## Step 2: Initialize the Chat Client on the Frontend
@@ -107,8 +107,11 @@ const ACS_ENDPOINT = 'https://my-acs-resource.communication.azure.com';
 let chatClient = null;
 let chatThreadClient = null;
 let currentUserId = null;
+let currentUserName = null;
 
 async function initializeChat(userName) {
+    currentUserName = userName;
+
     // Get a token from your backend
     const response = await fetch('/api/token', {
         method: 'POST',
@@ -135,7 +138,7 @@ async function initializeChat(userName) {
 
 ## Step 3: Create and Manage Chat Threads
 
-A chat thread is a conversation. It can have two or more participants.
+A chat thread is a conversation. It can have up to 250 participants, and users are added as participants to any threads they create.
 
 ```javascript
 async function createThread(topic, participantIds) {
@@ -410,7 +413,7 @@ async function listParticipants() {
 
 ## Message Persistence
 
-ACS stores all chat messages in the cloud. When a user opens a chat thread, you can load the full message history using `listMessages()`. Messages are retained for the lifetime of the thread. This means you do not need to build your own message storage - ACS is the source of truth.
+ACS stores chat messages in the cloud according to the thread's retention policy. When a user opens a chat thread, you can load the message history using `listMessages()`. If the thread uses indefinite retention, messages are retained for the lifetime of the thread. This means you do not need to build your own message storage for the chat experience - ACS is the source of truth.
 
 However, if you need to integrate chat data with your own analytics or search system, you can set up Event Grid subscriptions on your ACS resource to get notified of every message and store copies in your own database.
 
@@ -432,7 +435,7 @@ async function refreshToken() {
 }
 
 // Use the auto-refresh credential
-const { CommunicationTokenRefreshOptions } = require('@azure/communication-common');
+const initialToken = '<initial token returned by /api/token>';
 
 const tokenCredential = new AzureCommunicationTokenCredential({
     tokenRefresher: refreshToken,
@@ -443,4 +446,4 @@ const tokenCredential = new AzureCommunicationTokenCredential({
 
 ## Wrapping Up
 
-The Azure Communication Services Chat SDK gives you a production-ready chat infrastructure without the complexity of building WebSocket servers, message queues, and presence systems from scratch. The thread-based model, combined with real-time events for messages, typing indicators, and read receipts, covers the features users expect in a modern chat experience. Start with the basic message send and receive flow, add real-time events for responsiveness, and layer in typing indicators and read receipts to make the experience feel polished.
+The Azure Communication Services Chat SDK gives you a production-ready chat infrastructure without the complexity of building WebSocket servers and message queues from scratch. The thread-based model, combined with real-time events for messages, typing indicators, and read receipts, covers the features users expect in a modern chat experience. Start with the basic message send and receive flow, add real-time events for responsiveness, and layer in typing indicators and read receipts to make the experience feel polished.
