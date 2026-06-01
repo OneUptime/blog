@@ -58,6 +58,10 @@ az policy assignment create \
   --display-name "Inherit CostCenter tag from resource group" \
   --policy "/providers/Microsoft.Authorization/policyDefinitions/cd3aa116-8754-49c9-a813-ad46512ece54" \
   --params '{"tagName": {"value": "CostCenter"}}' \
+  --mi-system-assigned \
+  --identity-scope "/subscriptions/<sub-id>" \
+  --role "Contributor" \
+  --location "eastus" \
   --scope "/subscriptions/<sub-id>"
 ```
 
@@ -90,7 +94,7 @@ Go to Azure Cost Management > Cost Analysis to create views:
 
 1. Open Cost Analysis
 2. Group by "Tag: CostCenter"
-3. Add a secondary grouping by "Service name"
+3. Use the table view or drill into a cost center, then group by "Service name"
 4. Save as "Cost Center Breakdown by Service"
 
 **Trend view for each department**:
@@ -109,18 +113,17 @@ Automate report delivery so department leads get their cost data without asking 
 # Create a scheduled export of cost data to a storage account
 az costmanagement export create \
   --name "monthly-department-costs" \
-  --scope "/subscriptions/<sub-id>" \
+  --scope "subscriptions/<sub-id>" \
   --type "ActualCost" \
   --timeframe "MonthToDate" \
   --storage-account-id "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Storage/storageAccounts/costdatastorage" \
   --storage-container "cost-exports" \
-  --schedule-recurrence "Monthly" \
+  --recurrence "Monthly" \
   --schedule-status "Active" \
-  --recurrence-period-from "2024-01-01" \
-  --recurrence-period-to "2025-12-31"
+  --recurrence-period from="2026-07-01T00:00:00Z" to="2027-12-31T00:00:00Z"
 ```
 
-The exported CSV contains every cost line item with tags, which you can then process with a script or Power BI to generate department-specific reports.
+The exported CSV contains cost line items with resource tags, which you can then process with a script or Power BI to generate department-specific reports.
 
 ## Step 5: Build a Power BI Chargeback Dashboard
 
@@ -130,7 +133,7 @@ The Azure Cost Management connector for Power BI provides direct access:
 
 1. Open Power BI Desktop
 2. Get Data > Azure > Azure Cost Management
-3. Select your billing scope (enrollment, subscription, or management group)
+3. Select your billing scope (EA enrollment number or a supported Microsoft Customer Agreement billing scope)
 4. Load the data
 
 Key visualizations for the chargeback dashboard:
@@ -168,35 +171,41 @@ Create budgets per department so teams get alerted when they approach their limi
 
 ```bash
 # Create a monthly budget for the Engineering department
-az consumption budget create \
-  --budget-name "engineering-monthly" \
-  --amount 50000 \
-  --category Cost \
-  --time-grain Monthly \
-  --start-date 2024-01-01 \
-  --end-date 2025-12-31 \
-  --resource-group myRG \
-  --filter '{
-    "tags": {
-      "name": "Department",
-      "operator": "In",
-      "values": ["Engineering"]
-    }
-  }' \
-  --notifications '{
-    "Forecast80": {
-      "enabled": true,
-      "operator": "GreaterThan",
-      "threshold": 80,
-      "contactEmails": ["eng-lead@company.com", "finance@company.com"],
-      "thresholdType": "Forecasted"
-    },
-    "Actual90": {
-      "enabled": true,
-      "operator": "GreaterThan",
-      "threshold": 90,
-      "contactEmails": ["eng-lead@company.com", "finance@company.com", "cto@company.com"],
-      "thresholdType": "Actual"
+az rest \
+  --method put \
+  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.Consumption/budgets/engineering-monthly?api-version=2024-08-01" \
+  --body '{
+    "properties": {
+      "amount": 50000,
+      "category": "Cost",
+      "timeGrain": "Monthly",
+      "timePeriod": {
+        "startDate": "2026-06-01T00:00:00Z",
+        "endDate": "2027-12-31T00:00:00Z"
+      },
+      "filter": {
+        "tags": {
+          "name": "Department",
+          "operator": "In",
+          "values": ["Engineering"]
+        }
+      },
+      "notifications": {
+        "Forecast80": {
+          "enabled": true,
+          "operator": "GreaterThan",
+          "threshold": 80,
+          "contactEmails": ["eng-lead@company.com", "finance@company.com"],
+          "thresholdType": "Forecasted"
+        },
+        "Actual90": {
+          "enabled": true,
+          "operator": "GreaterThan",
+          "threshold": 90,
+          "contactEmails": ["eng-lead@company.com", "finance@company.com", "cto@company.com"],
+          "thresholdType": "Actual"
+        }
+      }
     }
   }'
 ```
@@ -208,22 +217,28 @@ The forecasted alert is especially useful - it warns teams before they overshoot
 For the shared cost allocation, write a script that processes the exported cost data:
 
 ```python
+import json
 import pandas as pd
 
 # Load the exported cost data
 costs = pd.read_csv('cost-export.csv')
 
-# Separate direct and shared costs based on tags
-direct_costs = costs[costs['CostCenter'].notna()]
-shared_costs = costs[costs['CostCenter'].isna()]
+# Expand the JSON tags column from Azure Cost Management exports
+tags = costs['Tags'].fillna('{}').apply(json.loads).apply(pd.Series)
+costs['TagCostCenter'] = tags.get('CostCenter')
+costs['TagDepartment'] = tags.get('Department')
+
+# Separate direct and shared costs based on resource tags
+direct_costs = costs[costs['TagCostCenter'].notna()]
+shared_costs = costs[costs['TagCostCenter'].isna()]
 
 # Calculate each department's proportion of direct costs
-dept_totals = direct_costs.groupby('Department')['Cost'].sum()
+dept_totals = direct_costs.groupby('TagDepartment')['CostInBillingCurrency'].sum()
 total_direct = dept_totals.sum()
 dept_proportions = dept_totals / total_direct
 
 # Allocate shared costs proportionally
-total_shared = shared_costs['Cost'].sum()
+total_shared = shared_costs['CostInBillingCurrency'].sum()
 allocated_shared = dept_proportions * total_shared
 
 # Build the chargeback report
