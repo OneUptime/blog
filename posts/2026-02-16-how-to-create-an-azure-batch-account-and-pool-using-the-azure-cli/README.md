@@ -104,19 +104,19 @@ This creates a pool called `my-compute-pool` with 3 VMs, each using the Standard
 A start task runs on each node when it joins the pool. Use it to install software, download dependencies, or configure the environment.
 
 ```bash
-# Create a pool with a start task that installs dependencies
+# Create a pool with a start task that downloads and runs a setup script
 az batch pool create \
   --id worker-pool \
   --vm-size Standard_D4s_v3 \
   --target-dedicated-nodes 5 \
   --image "canonical:0001-com-ubuntu-server-jammy:22_04-lts" \
   --node-agent-sku-id "batch.node.ubuntu 22.04" \
-  --start-task-command-line "/bin/bash -c 'apt-get update && apt-get install -y python3-pip ffmpeg && pip3 install numpy pandas'" \
+  --start-task-command-line "/bin/bash -c 'bash setup.sh'" \
   --start-task-wait-for-success true \
-  --start-task-resource-files "https://batchstorageacct.blob.core.windows.net/scripts/setup.sh"
+  --start-task-resource-files "setup.sh=https://batchstorageacct.blob.core.windows.net/scripts/setup.sh?<sas-token>"
 ```
 
-The `--start-task-wait-for-success true` flag means the node will not be marked as ready until the start task completes successfully. If the start task fails, the node will be marked as unusable and Batch will try to provision a replacement.
+The `--start-task-wait-for-success true` flag means the node will not be marked as ready until the start task completes successfully. Resource files use `filename=httpurl` syntax, and private blobs should include a SAS token or another supported access method. If the start task fails after its retries, Batch will not schedule tasks on that node. For setup commands that install system packages, run the start task with elevated user identity, as shown in the JSON example below.
 
 ## Step 7: Create a Pool with JSON Configuration
 
@@ -137,7 +137,7 @@ For more complex configurations, use a JSON file.
     "nodeAgentSkuId": "batch.node.ubuntu 22.04"
   },
   "startTask": {
-    "commandLine": "/bin/bash -c 'echo Pool node started at $(date)'",
+    "commandLine": "/bin/bash -c 'apt-get update && apt-get install -y python3-pip ffmpeg && pip3 install numpy pandas'",
     "waitForSuccess": true,
     "userIdentity": {
       "autoUser": {
@@ -182,7 +182,7 @@ az batch node list \
   --pool-id my-compute-pool \
   --output table
 
-# Wait until all nodes are idle (ready for tasks)
+# Check pool allocation state
 az batch pool show \
   --pool-id my-compute-pool \
   --query "allocationState"
@@ -257,6 +257,7 @@ The VM size significantly impacts both cost and performance. Here are some guide
 az batch node file list \
   --pool-id my-compute-pool \
   --node-id tvm-12345 \
+  --recursive \
   --output table
 ```
 
