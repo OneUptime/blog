@@ -12,7 +12,7 @@ Snapshots are point-in-time copies of Azure Managed Disks. They capture the comp
 
 ## How Snapshots Work
 
-When you create a snapshot, Azure captures a read-only copy of the disk at that instant. The first snapshot captures all the data on the disk. Subsequent snapshots are incremental - they only store the changes since the last snapshot. This makes them storage-efficient.
+When you create a snapshot, Azure captures a read-only copy of the disk at that instant. Azure supports full snapshots and incremental snapshots. Full snapshots are independent point-in-time copies, while incremental snapshots store only the changes since the previous incremental snapshot. This makes incremental snapshots storage-efficient.
 
 A few important details:
 
@@ -228,7 +228,7 @@ Here is a script that creates daily snapshots with retention management.
 ```python
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 credential = DefaultAzureCredential()
 subscription_id = "your-subscription-id"
@@ -243,7 +243,7 @@ def create_daily_snapshot():
     Create a daily snapshot with a date-stamped name.
     Uses incremental snapshots to minimize storage costs.
     """
-    today = datetime.utcnow().strftime("%Y%m%d")
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
     snapshot_name = f"{disk_name}-snap-{today}"
 
     # Get the source disk
@@ -271,7 +271,7 @@ def cleanup_old_snapshots():
     """
     Delete snapshots older than the retention period.
     """
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
     snapshots = compute_client.snapshots.list_by_resource_group(resource_group)
     for snap in snapshots:
@@ -300,11 +300,11 @@ flowchart TD
 
 ## Cross-Region Snapshot Copy
 
-To use snapshots for disaster recovery across regions, you need to copy them.
+To use incremental snapshots for disaster recovery across regions, you need to copy them. Full snapshots cannot be copied across regions.
 
 ```bash
-# Get the snapshot ID
-SNAP_ID=$(az snapshot show --name data-disk-snap-20260216 --resource-group my-resource-group --query id -o tsv)
+# Get the incremental snapshot ID
+SNAP_ID=$(az snapshot show --name data-disk-incremental-snap --resource-group my-resource-group --query id -o tsv)
 
 # Create a copy in another region
 az snapshot create \
@@ -312,6 +312,8 @@ az snapshot create \
   --resource-group my-dr-resource-group \
   --location westus2 \
   --source "$SNAP_ID" \
+  --incremental true \
+  --copy-start true \
   --sku Standard_LRS
 ```
 
