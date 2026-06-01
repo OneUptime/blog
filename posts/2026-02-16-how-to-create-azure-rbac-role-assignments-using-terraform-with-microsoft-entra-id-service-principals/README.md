@@ -63,8 +63,8 @@ resource "azuread_application" "deployment_app" {
   # Owners can manage the application without Global Admin
   owners = [data.azurerm_client_config.current.object_id]
 
-  # Optional: Add tags for organization
-  tags = ["terraform-managed", "ci-cd"]
+  # Optional: Add notes for operational context
+  notes = "Managed by Terraform for CI/CD"
 }
 
 # Create the service principal for the application
@@ -74,7 +74,7 @@ resource "azuread_service_principal" "deployment_sp" {
 
   owners = [data.azurerm_client_config.current.object_id]
 
-  tags = ["terraform-managed", "ci-cd"]
+  notes = "Managed by Terraform for CI/CD"
 }
 
 # Output the service principal details
@@ -102,8 +102,8 @@ resource "azurerm_role_assignment" "contributor_rg" {
   role_definition_name = "Contributor"
   principal_id         = azuread_service_principal.deployment_sp.object_id
 
-  # Skip the principal validation check during plan
-  # This is useful when the SP might not exist yet during initial plan
+  # Skip the principal validation check during creation
+  # This is useful when the SP was newly created and has not fully replicated yet
   skip_service_principal_aad_check = true
 }
 
@@ -258,7 +258,7 @@ resource "azuread_application" "apps" {
   for_each     = var.service_principals
   display_name = each.value.display_name
   owners       = [data.azurerm_client_config.current.object_id]
-  tags         = ["terraform-managed"]
+  notes        = "Managed by Terraform"
 }
 
 # Create service principals
@@ -266,7 +266,7 @@ resource "azuread_service_principal" "sps" {
   for_each  = var.service_principals
   client_id = azuread_application.apps[each.key].client_id
   owners    = [data.azurerm_client_config.current.object_id]
-  tags      = ["terraform-managed"]
+  notes     = "Managed by Terraform"
 }
 
 # Flatten the role assignments for easier iteration
@@ -362,12 +362,12 @@ resource "azurerm_role_assignment" "after_delay" {
 terraform import azurerm_role_assignment.contributor_rg "/subscriptions/<sub-id>/resourceGroups/rg-app-production/providers/Microsoft.Authorization/roleAssignments/<assignment-id>"
 ```
 
-**Role assignment IDs are random GUIDs.** Azure generates a random GUID for each role assignment. If you destroy and recreate a role assignment, it gets a new GUID, which can cause issues with audit trails. To keep the GUID stable, you can specify it explicitly:
+**Role assignment IDs are generated GUIDs.** When Terraform creates an `azurerm_role_assignment` without a `name`, the provider generates a GUID for the role assignment. If you destroy and recreate a role assignment, it gets a new GUID, which can cause issues with audit trails. To keep the GUID stable, you can specify it explicitly:
 
 ```hcl
 resource "azurerm_role_assignment" "stable_id" {
   # Use a deterministic name based on the principal and role
-  name                 = uuidv5("dns", "${azuread_service_principal.deployment_sp.object_id}-Contributor-${azurerm_resource_group.app_rg.id}")
+  name                 = uuidv5("url", "https://example.com/azure-rbac/${data.azurerm_client_config.current.tenant_id}/${azuread_service_principal.deployment_sp.object_id}/Contributor/${azurerm_resource_group.app_rg.id}")
   scope                = azurerm_resource_group.app_rg.id
   role_definition_name = "Contributor"
   principal_id         = azuread_service_principal.deployment_sp.object_id
