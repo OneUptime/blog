@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Oracle, PostgreSQL, Database Migration, DMS, Azure Database Migration Service, Cloud Migration
+Tags: Azure, Oracle, PostgreSQL, Database Migration, ora2pg, Cloud Migration
 
-Description: A practical guide to migrating Oracle databases to Azure Database for PostgreSQL using Azure Database Migration Service and related tools.
+Description: A practical guide to migrating Oracle databases to Azure Database for PostgreSQL using ora2pg and related tools.
 
 ---
 
-Migrating from Oracle to PostgreSQL is one of the more challenging database migration paths. The two systems have significant differences in SQL syntax, data types, stored procedure languages, and features. Azure Database Migration Service (DMS) helps with the data migration part, but the schema and application code conversion requires additional tools. This guide covers the full process from assessment to cutover.
+Migrating from Oracle to PostgreSQL is one of the more challenging database migration paths. The two systems have significant differences in SQL syntax, data types, stored procedure languages, and features. ora2pg helps with the schema and data migration parts, but application code conversion requires additional review and tooling. This guide covers the full process from assessment to cutover.
 
 ## Understanding the Migration Complexity
 
@@ -26,10 +26,10 @@ Because of this complexity, the migration typically involves three phases: schem
 
 - An Oracle source database (11g or later)
 - An Azure Database for PostgreSQL Flexible Server instance
-- Azure Database Migration Service (Premium tier for online migrations)
 - ora2pg (an open-source Oracle to PostgreSQL migration tool) for schema conversion
 - Oracle Instant Client installed on the machine running ora2pg
 - Network connectivity between the Oracle source and Azure
+- For near-zero-downtime cutover, a CDC or replication tool that supports Oracle-to-PostgreSQL replication
 
 ## Step 1: Assess the Migration with ora2pg
 
@@ -38,8 +38,7 @@ ora2pg is the standard tool for assessing and converting Oracle schemas to Postg
 Install ora2pg (on Linux):
 
 ```bash
-# Install ora2pg from source
-
+# Install ora2pg dependencies
 sudo apt-get install libdbi-perl libdbd-pg-perl
 # Also need Oracle Instant Client and DBD::Oracle Perl module
 
@@ -147,7 +146,7 @@ RETURNS VARCHAR AS $$
 DECLARE
     v_name VARCHAR(100);
 BEGIN
-    SELECT customer_name INTO v_name
+    SELECT customer_name INTO STRICT v_name
     FROM customers
     WHERE customer_id = p_id;
     RETURN v_name;
@@ -178,11 +177,11 @@ az postgres flexible-server db create \
   --resource-group rg-oracle-migration \
   --database-name myappdb
 
-# Configure firewall to allow DMS access
+# Configure firewall to allow Azure-internal access
 az postgres flexible-server firewall-rule create \
-  --name allow-azure-services \
+  --name pg-target-server \
   --resource-group rg-oracle-migration \
-  --server-name pg-target-server \
+  --rule-name allow-azure-services \
   --start-ip-address 0.0.0.0 \
   --end-ip-address 0.0.0.0
 ```
@@ -208,35 +207,25 @@ Fix any errors that come up during schema application. Common issues at this sta
 - Missing function dependencies
 - Reserved word conflicts (Oracle column names that are PostgreSQL reserved words)
 
-## Step 5: Migrate Data with Azure DMS
+## Step 5: Migrate Data with ora2pg
 
-With the schema in place, use Azure DMS to migrate the data.
+With the schema in place, use ora2pg to export and load the data. Azure Database Migration Service (classic) does not provide a direct Oracle-source to Azure Database for PostgreSQL migration task like the portal flow used for PostgreSQL-to-PostgreSQL migrations, so do not plan on DMS to move Oracle table data into PostgreSQL for this path.
 
 ```bash
-# Create a DMS instance for Oracle to PostgreSQL migration
-az dms create \
-  --name dms-oracle-to-pg \
-  --resource-group rg-oracle-migration \
-  --location eastus \
-  --sku-name Premium_4vCores \
-  --subnet "/subscriptions/<sub-id>/resourceGroups/rg-oracle-migration/providers/Microsoft.Network/virtualNetworks/vnet-migration/subnets/snet-dms"
+# Export data as PostgreSQL COPY statements
+ora2pg -c ora2pg.conf -t COPY -o data.sql
+
+# Load the exported data into Azure Database for PostgreSQL
+psql "host=pg-target-server.postgres.database.azure.com dbname=myappdb \
+  user=pgadmin password=<password> sslmode=require" \
+  -f data.sql
 ```
 
-**Using the Azure Portal to configure the migration:**
-
-1. Navigate to the DMS instance.
-2. Create a new migration project with source type "Oracle" and target type "Azure Database for PostgreSQL".
-3. Configure the Oracle source connection.
-4. Configure the PostgreSQL target connection.
-5. Map source tables to target tables.
-6. Choose online or offline migration.
-7. Start the migration.
-
-DMS handles the data type conversion during transfer. For example, Oracle NUMBER(10) maps to PostgreSQL INTEGER, Oracle CLOB maps to TEXT, and Oracle BLOB maps to BYTEA.
+For large databases or low-downtime cutovers, use a replication or CDC product that explicitly supports Oracle as the source and PostgreSQL as the target, then perform a final cutover after validation.
 
 ## Step 6: Handle Data Type Mappings
 
-While DMS handles most data type conversions, be aware of these common mapping decisions:
+While ora2pg handles many data type conversions, be aware of these common mapping decisions:
 
 | Oracle Type | PostgreSQL Type | Notes |
 |---|---|---|
@@ -256,14 +245,9 @@ Pay special attention to the Oracle DATE type. In Oracle, DATE includes hours, m
 After data migration, run comprehensive validation:
 
 ```sql
--- Compare row counts for all migrated tables
--- Run on Oracle:
-SELECT table_name, num_rows FROM all_tables WHERE owner = 'MY_APP_SCHEMA';
-
--- Run equivalent on PostgreSQL:
-SELECT schemaname, relname, n_live_tup
-FROM pg_stat_user_tables
-ORDER BY relname;
+-- Compare exact row counts for migrated tables.
+-- Run equivalent COUNT(*) checks on Oracle and PostgreSQL:
+SELECT COUNT(*) AS customer_count FROM customers;
 
 -- Test converted functions
 SELECT get_customer_name(1);
@@ -287,4 +271,4 @@ This is often the most time-consuming part. Your application likely contains Ora
 
 ## Wrapping Up
 
-Migrating from Oracle to Azure PostgreSQL is a multi-step journey that goes well beyond just copying data. The schema conversion with ora2pg handles the bulk of the structural changes, but manual review and PL/SQL-to-PL/pgSQL conversion will take significant effort. Azure DMS handles the data migration reliably, including online migration for minimal downtime. Budget the most time for testing - run your full application test suite against PostgreSQL, because the differences between Oracle and PostgreSQL will surface in ways you do not expect. Plan for the migration to take weeks or months, not days, depending on the complexity of your Oracle codebase.
+Migrating from Oracle to Azure PostgreSQL is a multi-step journey that goes well beyond just copying data. The schema conversion with ora2pg handles the bulk of the structural changes, but manual review and PL/SQL-to-PL/pgSQL conversion will take significant effort. ora2pg can handle the initial data load, while low-downtime cutovers require a CDC or replication tool that supports Oracle-to-PostgreSQL replication. Budget the most time for testing - run your full application test suite against PostgreSQL, because the differences between Oracle and PostgreSQL will surface in ways you do not expect. Plan for the migration to take weeks or months, not days, depending on the complexity of your Oracle codebase.
