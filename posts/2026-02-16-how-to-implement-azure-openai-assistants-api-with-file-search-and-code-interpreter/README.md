@@ -10,6 +10,8 @@ Description: Build intelligent assistants using the Azure OpenAI Assistants API 
 
 The Assistants API is a higher-level abstraction on top of Azure OpenAI that manages conversation state, tool execution, and file handling for you. Instead of manually maintaining conversation history, implementing RAG pipelines, and managing code execution, you configure an assistant with tools and let the API handle the orchestration.
 
+As of 2026, Azure OpenAI Assistants API is deprecated and scheduled for retirement on August 26, 2026. For new production workloads, Microsoft recommends the generally available Microsoft Foundry Agents service, but the Assistants API examples below remain useful for existing Assistants API integrations.
+
 Two of the most powerful built-in tools are File Search (for retrieving information from uploaded documents) and Code Interpreter (for writing and executing Python code on the fly). Together, they let you build assistants that can answer questions from your documents and perform calculations, data analysis, and chart generation without you writing any of that logic yourself.
 
 ## How the Assistants API Works
@@ -42,12 +44,12 @@ sequenceDiagram
 
 ## Prerequisites
 
-- An Azure OpenAI resource with a supported model deployed (gpt-4o recommended)
-- Python 3.9+ with the `openai` package (version 1.12+)
+- An Azure OpenAI resource with a supported model deployed (for example, a gpt-4o deployment where available)
+- Python 3.9+ with the current `openai` package
 - Files to upload for the file search feature
 
 ```bash
-pip install openai
+python -m pip install --upgrade openai
 ```
 
 ## Step 1: Create an Assistant with File Search and Code Interpreter
@@ -71,7 +73,7 @@ assistant = client.beta.assistants.create(
     and performing calculations. When asked about data, first check the uploaded
     files for relevant information. When calculations or charts are needed, use
     the code interpreter. Always explain your reasoning and show your work.""",
-    model="gpt-4o",
+    model="gpt-4o-deployment",  # Use your Azure OpenAI model deployment name
     tools=[
         {"type": "file_search"},     # Enable document retrieval
         {"type": "code_interpreter"}  # Enable Python code execution
@@ -115,14 +117,18 @@ print(f"Uploaded {len(uploaded_files)} files")
 
 # Create a vector store and add the files for file search
 vector_store = client.beta.vector_stores.create(
-    name="Company Knowledge Base",
-    file_ids=uploaded_files
+    name="Company Knowledge Base"
 )
 
 # Wait for the files to be processed and indexed
+file_batch = client.beta.vector_stores.file_batches.create_and_poll(
+    vector_store_id=vector_store.id,
+    file_ids=uploaded_files
+)
+
 print(f"Vector store created: {vector_store.id}")
-print(f"Status: {vector_store.status}")
-print(f"File counts: {vector_store.file_counts}")
+print(f"Status: {file_batch.status}")
+print(f"File counts: {file_batch.file_counts}")
 
 # Attach the vector store to the assistant
 assistant = client.beta.assistants.update(
@@ -341,9 +347,8 @@ chat_with_assistant(client, assistant.id)
 The Assistants API has several cost components:
 
 - **Token usage**: Model tokens for messages and tool calls
-- **File storage**: $0.10/GB/day for files uploaded to the API
-- **Vector store storage**: $0.10/GB/day for indexed files
-- **Code Interpreter sessions**: Charged per session
+- **File Search storage**: Billed based on the size of the vector store objects created
+- **Code Interpreter sessions**: Charged per session, in addition to token-based fees
 
 To manage costs, clean up resources when they are no longer needed:
 
