@@ -22,15 +22,14 @@ Explicit proxy mode is useful in several scenarios:
 - **Compliance requirements**: Some regulatory frameworks require explicit proxy configurations for audit trail purposes
 - **VDI environments**: Virtual desktop environments where configuring individual proxy settings is easier than managing complex UDR chains
 
-The explicit proxy feature is available on Azure Firewall Premium and Standard tiers.
+The explicit proxy feature is available in preview on Azure Firewall Premium and Standard tiers.
 
 ## Prerequisites
 
 - Azure Firewall (Standard or Premium) deployed in your VNet
 - A Firewall Policy associated with the firewall
 - Client machines or VMs that can be configured to use a proxy
-- Azure CLI installed
-- Firewall must be running firmware version 20230301 or later
+- Azure CLI installed with the `azure-firewall` extension
 
 ## Step 1: Enable Explicit Proxy on the Firewall Policy
 
@@ -43,21 +42,21 @@ Enable the explicit proxy feature on your Firewall Policy:
 az network firewall policy update \
   --name myFirewallPolicy \
   --resource-group myResourceGroup \
-  --explicit-proxy enabled=true \
-                   http-port=8080 \
-                   https-port=8443 \
-                   enable-pac-file=true \
-                   pac-file-port=8081 \
-                   pac-file="https://mystorageaccount.blob.core.windows.net/proxy/proxy.pac"
+  --explicit-proxy enableExplicitProxy=true \
+                   httpPort=8080 \
+                   httpsPort=8443 \
+                   enablePacFile=true \
+                   pacFilePort=8081 \
+                   pacFile="https://mystorageaccount.blob.core.windows.net/proxy/proxy.pac?<sas-token>"
 ```
 
 Parameters explained:
 
-- **http-port**: The port the firewall listens on for HTTP proxy requests (default 8080)
-- **https-port**: The port for HTTPS proxy requests (default 8443)
-- **enable-pac-file**: Enable serving a PAC (Proxy Auto-Configuration) file
-- **pac-file-port**: The port for serving the PAC file
-- **pac-file**: URL to the PAC file that clients will use for auto-configuration
+- **httpPort**: The port the firewall listens on for HTTP proxy requests (default 8080)
+- **httpsPort**: The port for HTTPS proxy requests (default 8443)
+- **enablePacFile**: Enable serving a PAC (Proxy Auto-Configuration) file
+- **pacFilePort**: The port for serving the PAC file
+- **pacFile**: SAS URL to the PAC file that the firewall downloads and serves to clients
 
 ## Step 2: Create a PAC File
 
@@ -94,7 +93,7 @@ function FindProxyForURL(url, host) {
 }
 ```
 
-Upload the PAC file to a location accessible by clients. Azure Blob Storage works well:
+Upload the PAC file to a storage container and generate a read-only SAS URL that the firewall can use to download it. Azure Blob Storage works well:
 
 ```bash
 # Upload the PAC file to blob storage
@@ -104,6 +103,15 @@ az storage blob upload \
   --name proxy.pac \
   --file proxy.pac \
   --content-type "application/x-ns-proxy-autoconfig"
+
+# Generate a read-only SAS URL for the firewall policy pacFile setting
+az storage blob generate-sas \
+  --account-name mystorageaccount \
+  --container-name proxy \
+  --name proxy.pac \
+  --permissions r \
+  --expiry 2026-12-31T23:59:59Z \
+  --full-uri
 ```
 
 ## Step 3: Configure Application Rules for Proxy Traffic
@@ -132,19 +140,19 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --protocols Https=443 Http=80 \
   --target-fqdns "*"
 
-# Block specific categories or FQDNs
+# Block a specific web category
 az network firewall policy rule-collection-group collection add-filter-collection \
   --name "BlockRiskySites" \
   --policy-name myFirewallPolicy \
   --resource-group myResourceGroup \
   --rule-collection-group-name ProxyRules \
-  --collection-priority 50 \
+  --collection-priority 200 \
   --action Deny \
-  --rule-name "DenyMalware" \
+  --rule-name "DenyGambling" \
   --rule-type ApplicationRule \
   --source-addresses "10.0.0.0/16" \
   --protocols Https=443 Http=80 \
-  --web-categories Malware Phishing
+  --web-categories Gambling
 ```
 
 ## Step 4: Configure Clients to Use the Proxy
@@ -156,8 +164,8 @@ Clients need to be configured to send their web traffic to the Azure Firewall's 
 On Windows, you can configure this via Group Policy:
 
 1. Open Group Policy Editor
-2. Navigate to User Configuration > Windows Settings > Internet Explorer Maintenance > Connection > Automatic Browser Configuration
-3. Set "Auto-proxy URL" to: `http://10.0.0.4:8081/proxy.pac`
+2. Navigate to User Configuration > Preferences > Windows Settings > Registry
+3. Create an `AutoConfigURL` string value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` with the value `http://10.0.0.4:8081/proxy.pac`
 
 Or configure it via PowerShell:
 
@@ -207,11 +215,11 @@ If you are using Azure Firewall Premium, you can combine explicit proxy with TLS
 # Enable TLS inspection on the proxy application rules
 # This requires the TLS inspection certificate to be configured
 az network firewall policy rule-collection-group collection rule add \
-  --name "AllowWebBrowsing" \
+  --name "InspectHTTPS" \
   --policy-name myFirewallPolicy \
   --resource-group myResourceGroup \
   --rule-collection-group-name ProxyRules \
-  --rule-name "InspectHTTPS" \
+  --collection-name "AllowWebBrowsing" \
   --rule-type ApplicationRule \
   --source-addresses "10.0.0.0/16" \
   --protocols Https=443 \
@@ -259,7 +267,7 @@ Here is a comparison to help you decide which mode to use:
 | Client configuration | Required (proxy settings) | None (UDR handles routing) |
 | Protocol support | HTTP/HTTPS only | All protocols |
 | FQDN visibility | Always available | Requires SNI for HTTPS |
-| Client IP tracking | Via X-Forwarded-For | Source IP preserved |
+| Client IP tracking | Source IP is visible to the firewall; forwarded traffic is proxied | Source IP preserved through routing |
 | Non-web traffic | Not intercepted | Intercepted by firewall |
 | Setup difficulty | Client config needed | UDR setup needed |
 | PAC file support | Yes | N/A |
@@ -270,7 +278,7 @@ For most environments, a combination works best: use UDR-based transparent mode 
 
 **Clients cannot reach the proxy**: Verify that the NSG on the client's subnet allows outbound traffic to the firewall's private IP on the proxy ports (8080, 8443, 8081).
 
-**PAC file not loading**: Check that the PAC file URL is accessible from the client. The firewall serves the PAC file on the configured port. Also verify the content type is set to `application/x-ns-proxy-autoconfig`.
+**PAC file not loading**: Check that the firewall can download the PAC file from the configured read-only SAS URL and that clients can reach the firewall's PAC file port. Also verify the content type is set to `application/x-ns-proxy-autoconfig`.
 
 **HTTPS connections failing**: If TLS inspection is not enabled, HTTPS proxy connections use the CONNECT method. Make sure your application rules allow the CONNECT method for the destination FQDNs.
 
