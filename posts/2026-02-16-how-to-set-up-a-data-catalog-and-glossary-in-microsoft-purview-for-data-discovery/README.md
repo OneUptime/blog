@@ -29,7 +29,7 @@ The power comes from linking glossary terms to catalog assets. When a business u
 Start by defining a hierarchy of glossary terms that reflects your business domains. In the Purview governance portal:
 
 1. Navigate to Data Catalog > Glossary
-2. Click "New term" to create a top-level category
+2. Click "New term" to create a top-level term
 
 Here is a practical glossary structure for an e-commerce company:
 
@@ -89,16 +89,31 @@ term_payload = {
     "anchor": {
         "glossaryGuid": "<your-glossary-guid>"
     },
+    "contacts": {
+        "Expert": [
+            {
+                "id": "jane.smith@company.com",
+                "info": "Data Steward for Customer domain"
+            }
+        ],
+        "Steward": [
+            {
+                "id": "vp.customer@company.com",
+                "info": "Business owner for Customer terms"
+            }
+        ]
+    },
     "attributes": {
-        "Data Steward": "Jane Smith",
-        "Source of Truth": "customer_analytics.dim_customers",
-        "Update Frequency": "Daily",
-        "Business Owner": "VP of Customer Success"
+        "Business Term Template": {
+            "Source of Truth": "customer_analytics.dim_customers",
+            "Update Frequency": "Daily",
+            "Review Date": "2026-06-01"
+        }
     }
 }
 
 response = requests.post(
-    f"{base_url}/catalog/api/atlas/v2/glossary/term",
+    f"{base_url}/datamap/api/atlas/v2/glossary/term?api-version=2023-09-01",
     headers=headers,
     json=term_payload
 )
@@ -111,34 +126,34 @@ term_guid = response.json().get("guid")
 Purview supports custom term templates that add structured fields to your glossary terms. Create a template when you want consistent metadata across all terms:
 
 ```python
-# Create a custom term template with additional attributes
+# Define the custom attributes to create in Manage term templates
 template_payload = {
     "name": "Business Term Template",
     "attributes": [
         {
             "name": "Data Steward",
             "description": "Person responsible for the accuracy of this term",
-            "type": "string"
+            "fieldType": "Text"
         },
         {
             "name": "Source of Truth",
             "description": "The authoritative data source for this term",
-            "type": "string"
+            "fieldType": "Text"
         },
         {
             "name": "Calculation Logic",
             "description": "SQL or business logic for computing this metric",
-            "type": "string"
+            "fieldType": "Text"
         },
         {
             "name": "Business Owner",
             "description": "Business stakeholder who owns this term",
-            "type": "string"
+            "fieldType": "Text"
         },
         {
             "name": "Review Date",
             "description": "Date when this term was last reviewed for accuracy",
-            "type": "string"
+            "fieldType": "Date"
         }
     ]
 }
@@ -154,7 +169,7 @@ The real value of the glossary emerges when you connect terms to the actual data
 # Link the "Active Customer" term to the dim_customers table
 # First, find the table's GUID
 search_response = requests.post(
-    f"{base_url}/catalog/api/search/query?api-version=2022-08-01-preview",
+    f"{base_url}/datamap/api/search/query?api-version=2023-09-01",
     headers=headers,
     json={
         "keywords": "dim_customers",
@@ -167,13 +182,12 @@ table_guid = search_response.json()["value"][0]["id"]
 # Assign the glossary term to the table
 assign_payload = [
     {
-        "typeName": "AtlasGlossaryTerm",
-        "guid": term_guid  # GUID of the "Active Customer" term
+        "guid": table_guid
     }
 ]
 
 response = requests.post(
-    f"{base_url}/catalog/api/atlas/v2/entity/guid/{table_guid}/classifications",
+    f"{base_url}/datamap/api/atlas/v2/glossary/terms/{term_guid}/assignedEntities?api-version=2023-09-01",
     headers=headers,
     json=assign_payload
 )
@@ -201,24 +215,28 @@ Collections provide a hierarchical access control structure for your catalog. Th
 # Create a collection structure via the Purview API
 collections = [
     {
-        "name": "Production",
+        "name": "production",
+        "friendlyName": "Production",
         "description": "Production data assets",
-        "parentCollection": "root"
+        "parentCollection": purview_account
     },
     {
-        "name": "Customer Data",
+        "name": "customer-data",
+        "friendlyName": "Customer Data",
         "description": "All customer-related data assets",
-        "parentCollection": "Production"
+        "parentCollection": "production"
     },
     {
-        "name": "Financial Data",
+        "name": "financial-data",
+        "friendlyName": "Financial Data",
         "description": "Financial and revenue data assets",
-        "parentCollection": "Production"
+        "parentCollection": "production"
     },
     {
-        "name": "Development",
+        "name": "development",
+        "friendlyName": "Development",
         "description": "Development and testing data assets",
-        "parentCollection": "root"
+        "parentCollection": purview_account
     }
 ]
 
@@ -227,6 +245,7 @@ for collection in collections:
         f"{base_url}/account/collections/{collection['name']}?api-version=2019-11-01-preview",
         headers=headers,
         json={
+            "friendlyName": collection["friendlyName"],
             "description": collection["description"],
             "parentCollection": {
                 "referenceName": collection["parentCollection"]
@@ -242,7 +261,7 @@ With the catalog populated and glossary terms linked, let us make sure people ca
 
 ### Search Best Practices
 
-Purview's search supports several query patterns:
+Purview's portal search supports simple keyword searches:
 
 ```text
 # Search by business term
@@ -250,18 +269,49 @@ Purview's search supports several query patterns:
 
 # Search by table name
 dim_customers
+```
 
+For API searches, use the documented `filter` object rather than field-qualified strings:
+
+```python
 # Search by classification
-classification:SSN
+requests.post(
+    f"{base_url}/datamap/api/search/query?api-version=2023-09-01",
+    headers=headers,
+    json={
+        "keywords": None,
+        "limit": 10,
+        "filter": {
+            "classification": "MICROSOFT.GOVERNMENT.US.SOCIAL_SECURITY_NUMBER"
+        }
+    }
+)
 
 # Search by collection
-collection:Production
+requests.post(
+    f"{base_url}/datamap/api/search/query?api-version=2023-09-01",
+    headers=headers,
+    json={
+        "keywords": None,
+        "limit": 10,
+        "filter": {
+            "collectionId": "production"
+        }
+    }
+)
 
-# Search by owner
-owner:"jane.smith@company.com"
-
-# Combine filters
-Active Customer AND collection:Production
+# Search by glossary term
+requests.post(
+    f"{base_url}/datamap/api/search/query?api-version=2023-09-01",
+    headers=headers,
+    json={
+        "keywords": "Active Customer",
+        "limit": 10,
+        "filter": {
+            "term": "Active Customer"
+        }
+    }
+)
 ```
 
 ### Curating Asset Descriptions
@@ -295,7 +345,7 @@ update_payload = {
 }
 
 response = requests.post(
-    f"{base_url}/catalog/api/atlas/v2/entity",
+    f"{base_url}/datamap/api/atlas/v2/entity?api-version=2023-09-01",
     headers=headers,
     json=update_payload
 )
@@ -329,10 +379,10 @@ Track whether your catalog is actually being used:
 # Query Purview for catalog statistics
 # Get total asset count
 search_response = requests.post(
-    f"{base_url}/catalog/api/search/query?api-version=2022-08-01-preview",
+    f"{base_url}/datamap/api/search/query?api-version=2023-09-01",
     headers=headers,
     json={
-        "keywords": "*",
+        "keywords": None,
         "limit": 1
     }
 )
@@ -341,10 +391,10 @@ print(f"Total cataloged assets: {total_assets}")
 
 # Get assets with descriptions
 search_response = requests.post(
-    f"{base_url}/catalog/api/search/query?api-version=2022-08-01-preview",
+    f"{base_url}/datamap/api/search/query?api-version=2023-09-01",
     headers=headers,
     json={
-        "keywords": "*",
+        "keywords": None,
         "limit": 1,
         "filter": {
             "not": {"attributeName": "userDescription", "operator": "eq", "attributeValue": ""}
