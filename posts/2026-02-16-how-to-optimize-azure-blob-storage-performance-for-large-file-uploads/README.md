@@ -45,19 +45,11 @@ The Azure Storage SDKs support parallel block uploads out of the box. You just n
 Here is a Python example that uploads a large file with tuned parallelism and block size:
 
 ```python
-from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.blob import BlobClient, ContentSettings
 from azure.identity import DefaultAzureCredential
 import os
 
 credential = DefaultAzureCredential()
-blob_service = BlobServiceClient(
-    account_url="https://mystorageaccount.blob.core.windows.net",
-    credential=credential
-)
-
-container_client = blob_service.get_container_client("large-files")
-blob_client = container_client.get_blob_client("backup-2026-02-16.tar.gz")
-
 file_path = "/data/backup-2026-02-16.tar.gz"
 file_size = os.path.getsize(file_path)
 
@@ -71,12 +63,20 @@ else:
     block_size = 8 * 1024 * 1024    # 8 MB blocks
     max_concurrency = 4              # 4 parallel uploads
 
+blob_client = BlobClient(
+    account_url="https://mystorageaccount.blob.core.windows.net",
+    container_name="large-files",
+    blob_name="backup-2026-02-16.tar.gz",
+    credential=credential,
+    max_block_size=block_size,
+    max_single_put_size=block_size
+)
+
 # Upload the file with configured parallelism
 with open(file_path, "rb") as data:
     blob_client.upload_blob(
         data,
         overwrite=True,
-        max_block_size=block_size,
         max_concurrency=max_concurrency,
         content_settings=ContentSettings(
             content_type="application/gzip"
@@ -104,12 +104,12 @@ var containerClient = blobServiceClient.GetBlobContainerClient("large-files");
 var blobClient = containerClient.GetBlobClient("backup-2026-02-16.tar.gz");
 
 // Configure transfer options for optimal large file upload
-// InitialTransferSize controls the threshold for switching to block upload
+// InitialTransferSize controls the first request size and single-request threshold
 var transferOptions = new StorageTransferOptions
 {
     MaximumTransferSize = 64 * 1024 * 1024,    // 64 MB per block
     MaximumConcurrency = 8,                     // 8 parallel uploads
-    InitialTransferSize = 64 * 1024 * 1024      // Switch to blocks above 64 MB
+    InitialTransferSize = 64 * 1024 * 1024      // Single request for blobs up to 64 MB
 };
 
 await blobClient.UploadAsync(
@@ -152,7 +152,7 @@ If you are uploading from an Azure VM, make sure Accelerated Networking is enabl
 
 ### Choose the Right VM Size
 
-Network bandwidth is tied to VM size in Azure. A Standard_D4s_v3 has a maximum network bandwidth of 8 Gbps, while a Standard_D16s_v3 gets up to 12 Gbps. If upload speed is critical, pick a VM size with adequate network bandwidth.
+Network bandwidth is tied to VM size in Azure. For example, the Dsv3 size table lists Standard_D4s_v3 and Standard_D16s_v3 at up to 2,000 Mbps, while Standard_D32s_v3 is listed at up to 16,000 Mbps. If upload speed is critical, pick a VM size with adequate network bandwidth.
 
 ### Use Azure ExpressRoute or Private Endpoints
 
@@ -166,7 +166,7 @@ For very large files, you need the ability to resume an upload that was interrup
 import os
 import math
 import hashlib
-from azure.storage.blob import BlobServiceClient, BlobBlock
+from azure.storage.blob import BlobBlock
 
 def resumable_upload(blob_client, file_path, block_size=64*1024*1024):
     """Upload a large file with resume capability.
@@ -177,8 +177,8 @@ def resumable_upload(blob_client, file_path, block_size=64*1024*1024):
 
     # Check which blocks have already been uploaded
     try:
-        block_list = blob_client.get_block_list(block_list_type="uncommitted")
-        uploaded_ids = {b.id for b in block_list.uncommitted_blocks}
+        _, uncommitted_blocks = blob_client.get_block_list(block_list_type="uncommitted")
+        uploaded_ids = {b.block_id for b in uncommitted_blocks}
     except Exception:
         uploaded_ids = set()
 
