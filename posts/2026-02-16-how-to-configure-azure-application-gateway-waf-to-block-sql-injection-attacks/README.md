@@ -14,7 +14,7 @@ While input validation and parameterized queries are the primary defense, a Web 
 
 ## How WAF Detects SQL Injection
 
-The WAF uses rule sets based on the OWASP Core Rule Set (CRS). These rules pattern-match against request headers, query strings, request bodies, and URLs looking for SQL injection signatures. Common patterns include:
+The WAF uses Azure-managed rule sets based on the OWASP Core Rule Set (CRS), with additional Microsoft Threat Intelligence protections in the Default Rule Set (DRS). These rules pattern-match against request headers, query strings, request bodies, and URLs looking for SQL injection signatures. Common patterns include:
 
 - SQL keywords in unexpected places (`SELECT`, `UNION`, `DROP`, `INSERT`)
 - Comment sequences used to bypass filters (`--`, `/**/`)
@@ -24,7 +24,7 @@ The WAF uses rule sets based on the OWASP Core Rule Set (CRS). These rules patte
 ```mermaid
 flowchart LR
     Client[Client Request] --> WAF[WAF Engine]
-    WAF -->|Check rules| Rules[OWASP CRS Rules<br>SQL Injection Rules]
+    WAF -->|Check rules| Rules[Managed WAF Rules<br>SQL Injection Rules]
     Rules -->|No match| Allow[Forward to Backend]
     Rules -->|Match detected| Action{Mode?}
     Action -->|Detection| Log[Log Only]
@@ -95,22 +95,23 @@ az network application-gateway waf-policy create \
 
 ## Step 3: Configure Managed Rule Sets
 
-Enable the OWASP CRS rule set. CRS 3.2 is the latest stable version and includes comprehensive SQL injection detection rules.
+Enable the Azure-managed Default Rule Set. DRS 2.2 is the latest recommended managed rule set for Application Gateway WAF and includes comprehensive SQL injection detection rules.
 
 ```bash
-# Configure the managed rule set (OWASP CRS 3.2)
+# Configure the managed rule set (DRS 2.2)
 az network application-gateway waf-policy managed-rule rule-set add \
   --resource-group rg-waf-demo \
   --policy-name waf-policy-sqli \
-  --type OWASP \
-  --version 3.2
+  --type Microsoft_DefaultRuleSet \
+  --version 2.2
 ```
 
-The OWASP CRS includes several rule groups. The ones most relevant to SQL injection are:
+The Default Rule Set includes several rule groups. The ones most relevant to SQL injection are:
 
-- **REQUEST-942-APPLICATION-ATTACK-SQLI**: The primary SQL injection rule group with dozens of individual rules targeting different injection techniques
-- **REQUEST-941-APPLICATION-ATTACK-XSS**: Cross-site scripting rules (also important)
-- **REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION**: Session attack rules
+- **SQLI**: The primary SQL injection rule group with individual rules targeting different injection techniques
+- **MS-ThreatIntel-SQLI**: Microsoft Threat Intelligence SQL injection protections
+- **XSS**: Cross-site scripting rules (also important)
+- **SESSION-FIXATION**: Session attack rules
 
 ## Step 4: Set the WAF to Prevention Mode
 
@@ -165,7 +166,7 @@ az network application-gateway waf-policy custom-rule match-condition add \
   --name BlockSQLiInQueryString \
   --match-variables "QueryString" \
   --operator Contains \
-  --values "UNION SELECT" "OR 1=1" "DROP TABLE" "INSERT INTO" "xp_cmdshell" \
+  --values "union select" "or 1=1" "drop table" "insert into" "xp_cmdshell" \
   --transforms Lowercase
 ```
 
@@ -176,7 +177,7 @@ The `--transforms Lowercase` flag normalizes the input before matching, so it ca
 Sometimes legitimate traffic triggers WAF rules. For example, if your application has a field where users can enter SQL code (like a SQL learning platform), you need exclusions.
 
 ```bash
-# Exclude a specific request header from SQL injection checks
+# Exclude a specific request argument from managed rule checks
 az network application-gateway waf-policy managed-rule exclusion add \
   --resource-group rg-waf-demo \
   --policy-name waf-policy-sqli \
@@ -240,7 +241,7 @@ AzureDiagnostics
 | where ResourceType == "APPLICATIONGATEWAYS"
 | where Category == "ApplicationGatewayFirewallLog"
 | where action_s == "Blocked"
-| where ruleGroup_s == "REQUEST-942-APPLICATION-ATTACK-SQLI"
+| where ruleGroup_s in ("SQLI", "MS-ThreatIntel-SQLI")
 | project TimeGenerated, clientIp_s, requestUri_s, ruleId_s, message_s
 | order by TimeGenerated desc
 ```
@@ -262,4 +263,4 @@ az group delete --name rg-waf-demo --yes --no-wait
 
 ## Wrapping Up
 
-Azure Application Gateway WAF with OWASP CRS provides strong protection against SQL injection attacks. Deploy the WAF_v2 SKU, enable the OWASP 3.2 rule set, start in Detection mode to tune out false positives, then switch to Prevention mode for active blocking. Enable logging to monitor attacks and tune rules over time. Remember that WAF is a defense-in-depth measure - your application should still use parameterized queries and input validation as the primary defense against SQL injection.
+Azure Application Gateway WAF with the Azure-managed Default Rule Set provides strong protection against SQL injection attacks. Deploy the WAF_v2 SKU, enable DRS 2.2, start in Detection mode to tune out false positives, then switch to Prevention mode for active blocking. Enable logging to monitor attacks and tune rules over time. Remember that WAF is a defense-in-depth measure - your application should still use parameterized queries and input validation as the primary defense against SQL injection.
