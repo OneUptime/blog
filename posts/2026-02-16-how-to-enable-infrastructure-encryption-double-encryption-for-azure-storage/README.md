@@ -194,7 +194,7 @@ For the highest level of control, combine infrastructure encryption with custome
 - Layer 1: Encryption with your own key from Azure Key Vault
 - Layer 2: Infrastructure encryption with a platform-managed key
 
-### Step 1: Create a Key Vault and Key
+### Step 1: Create a Key Vault, Key, and Managed Identity
 
 ```bash
 # Create a Key Vault
@@ -211,15 +211,43 @@ az keyvault key create \
   --name storage-encryption-key \
   --kty RSA \
   --size 2048
+
+# Create a user-assigned managed identity
+az identity create \
+  --name storage-encryption-identity \
+  --resource-group security-rg \
+  --location eastus
 ```
 
-### Step 2: Create Storage Account with Both CMK and Infrastructure Encryption
+### Step 2: Grant Key Vault Access
+
+A new storage account needs a user-assigned managed identity to use the key during account creation. Grant that identity permission before creating the storage account:
 
 ```bash
-# Get the key vault URI and key name
-KEY_VAULT_URI=$(az keyvault show --name secure-kv-2026 --query "properties.vaultUri" -o tsv)
+# Get the managed identity principal ID
+PRINCIPAL_ID=$(az identity show \
+  --name storage-encryption-identity \
+  --resource-group security-rg \
+  --query "principalId" -o tsv)
 
-# Create storage account with infrastructure encryption
+# Grant the managed identity access to the key vault
+az keyvault set-policy \
+  --name secure-kv-2026 \
+  --object-id "${PRINCIPAL_ID}" \
+  --key-permissions get wrapKey unwrapKey
+```
+
+### Step 3: Create Storage Account with Both CMK and Infrastructure Encryption
+
+```bash
+# Get the key vault URI and managed identity resource ID
+KEY_VAULT_URI=$(az keyvault show --name secure-kv-2026 --query "properties.vaultUri" -o tsv)
+IDENTITY_RESOURCE_ID=$(az identity show \
+  --name storage-encryption-identity \
+  --resource-group security-rg \
+  --query "id" -o tsv)
+
+# Create storage account with infrastructure encryption and a customer-managed key
 az storage account create \
   --name securestorage2026 \
   --resource-group security-rg \
@@ -227,28 +255,12 @@ az storage account create \
   --sku Standard_GRS \
   --kind StorageV2 \
   --require-infrastructure-encryption true \
+  --identity-type UserAssigned \
+  --user-identity-id "${IDENTITY_RESOURCE_ID}" \
   --encryption-key-source Microsoft.Keyvault \
   --encryption-key-vault "${KEY_VAULT_URI}" \
   --encryption-key-name storage-encryption-key \
-  --identity-type SystemAssigned
-```
-
-### Step 3: Grant Key Vault Access
-
-The storage account needs permission to use the key:
-
-```bash
-# Get the storage account's managed identity principal ID
-PRINCIPAL_ID=$(az storage account show \
-  --name securestorage2026 \
-  --resource-group security-rg \
-  --query "identity.principalId" -o tsv)
-
-# Grant the storage account access to the key vault
-az keyvault set-policy \
-  --name secure-kv-2026 \
-  --object-id "${PRINCIPAL_ID}" \
-  --key-permissions get wrapKey unwrapKey
+  --key-vault-user-identity-id "${IDENTITY_RESOURCE_ID}"
 ```
 
 ## Encryption Scopes with Infrastructure Encryption
