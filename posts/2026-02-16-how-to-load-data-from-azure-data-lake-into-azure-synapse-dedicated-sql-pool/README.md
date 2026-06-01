@@ -17,7 +17,7 @@ Loading data from Azure Data Lake into a Synapse dedicated SQL pool is one of th
 | COPY INTO | Very fast | High | Low | Most loading scenarios |
 | PolyBase (External Tables) | Very fast | Moderate | Medium | Complex ETL with SQL |
 | Synapse Pipeline (Copy Activity) | Fast | Very high | Medium | Orchestrated ETL workflows |
-| INSERT...SELECT from Serverless | Slow | High | Low | Small/ad-hoc loads |
+| Serverless SQL CETAS + COPY | Slow | High | Medium | Small/ad-hoc transformations |
 
 Microsoft recommends COPY INTO as the primary loading method for dedicated SQL pools. It is simpler than PolyBase, supports more file formats, and performs just as well.
 
@@ -35,7 +35,7 @@ The COPY INTO statement is the simplest and most performant way to load data.
 
 ```sql
 -- Load Parquet files from Data Lake into a staging table
--- Parquet files include schema, so column mapping is automatic
+-- Without AUTO_CREATE_TABLE, COPY maps source fields to target columns by ordinal position
 COPY INTO dbo.StagingSales
 FROM 'https://synapsedatalake2026.dfs.core.windows.net/synapse-data/raw/sales/year=2025/*.parquet'
 WITH (
@@ -44,7 +44,7 @@ WITH (
 );
 ```
 
-That is it. For Parquet files with matching column names, this is all you need.
+That is it. For Parquet files with columns in the same order as the target table, this is all you need.
 
 ### Loading CSV Files
 
@@ -69,13 +69,20 @@ WITH (
 
 ### Loading with Column Mapping
 
-When file columns do not match table columns (different names or different order), use explicit column mapping.
+When file columns do not match table columns, use explicit column mapping. Field numbers start at 1.
 
 ```sql
 -- Load with explicit column mapping
 -- File has: order_id, prod_id, cust_id, order_dt, qty, price
 -- Table has: OrderId, ProductId, CustomerId, OrderDate, Quantity, UnitPrice
-COPY INTO dbo.FactSales (OrderId, ProductId, CustomerId, OrderDate, Quantity, UnitPrice)
+COPY INTO dbo.FactSales (
+    OrderId 1,
+    ProductId 2,
+    CustomerId 3,
+    OrderDate 4,
+    Quantity 5,
+    UnitPrice 6
+)
 FROM 'https://synapsedatalake2026.dfs.core.windows.net/synapse-data/raw/sales/*.csv'
 WITH (
     FILE_TYPE = 'CSV',
@@ -152,7 +159,7 @@ CREATE MASTER KEY ENCRYPTION BY PASSWORD = '<StrongPassword!>';
 
 -- Create a database-scoped credential
 CREATE DATABASE SCOPED CREDENTIAL DataLakeCredential
-WITH IDENTITY = 'Managed Identity';
+WITH IDENTITY = 'Managed Service Identity';
 
 -- Create an external data source pointing to the data lake
 CREATE EXTERNAL DATA SOURCE DataLakeSource
@@ -314,23 +321,20 @@ ALTER ROLE xlargerc ADD MEMBER loading_user;
 
 Resource class allocations:
 
-| Resource Class | Memory per Query (DW1000c) |
-|---------------|---------------------------|
-| smallrc | 250 MB |
-| mediumrc | 800 MB |
-| largerc | 1.6 GB |
-| xlargerc | 3.2 GB |
+| Resource Class | Memory Allocation (DW1000c and higher) |
+|---------------|----------------------------------------|
+| smallrc | 3% |
+| mediumrc | 10% |
+| largerc | 22% |
+| xlargerc | 70% |
 
-### 5. Disable Constraints During Loading
+### 5. Maintain Indexes After Loading
 
 ```sql
--- Disable indexes on the target table before loading
-ALTER INDEX ALL ON dbo.FactSales DISABLE;
-
 -- Load the data
 COPY INTO dbo.FactSales ...;
 
--- Rebuild indexes after loading
+-- Rebuild indexes after large loads if rowgroup quality or fragmentation suffers
 ALTER INDEX ALL ON dbo.FactSales REBUILD;
 ```
 
