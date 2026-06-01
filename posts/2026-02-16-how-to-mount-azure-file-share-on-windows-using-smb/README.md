@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Files, SMB, Window, File Share, Network Drive, Azure Storage
+Tags: Azure, Azure Files, SMB, Windows, File Share, Network Drive, Azure Storage
 
 Description: Step-by-step instructions for mounting an Azure File Share as a mapped network drive on Windows using SMB protocol with persistent and on-demand configurations.
 
@@ -17,7 +17,7 @@ This is one of the simplest ways to give Windows applications access to cloud st
 Before you can mount an Azure File Share on Windows, verify these requirements:
 
 - **Windows version**: Windows 10 version 1507 or later, or Windows Server 2016 or later. Older versions may work but with limited SMB protocol support.
-- **SMB 3.0 or later**: Required for encryption in transit. SMB 3.0 is available on Windows 8.1/Server 2012 R2 and later.
+- **SMB 3.0 or later**: Required for encryption in transit. SMB 3.0 is available on Windows 8/Server 2012 and later.
 - **Port 445 open**: SMB uses TCP port 445. Many ISPs and corporate firewalls block this port. This is the most common reason mounts fail.
 - **Storage account credentials**: You need the storage account name and one of the access keys.
 
@@ -192,10 +192,10 @@ Windows Server's File and Storage Services can manage mounted Azure File Shares 
 If you need IIS to serve content from an Azure File Share:
 
 ```powershell
-# Mount the share as the IIS application pool identity
-# The IIS app pool needs access to the credentials
+# Mount the share from the identity IIS will use
+# Save credentials as the app pool identity or another configured service account
 
-# First, store credentials for the machine account
+# First, store credentials for that account
 cmdkey /add:myfilesaccount.file.core.windows.net `
   /user:AZURE\myfilesaccount `
   /pass:"your-storage-account-key"
@@ -242,7 +242,7 @@ Remember to update the credentials in Windows Credential Manager after regenerat
 SMB performance over the internet depends on latency. For best results:
 
 - Place your Azure VM (if accessing from a VM) in the same region as the storage account
-- Use SMB Multichannel (available on premium file shares) for higher throughput
+- Use SMB Multichannel (available on SSD/premium file shares) for higher throughput
 - Enable larger SMB message sizes
 
 ```powershell
@@ -263,13 +263,14 @@ Set-SmbClientConfiguration -SessionTimeout 60 -KeepConn 600
 
 **Use private endpoints** whenever possible. This routes traffic through your virtual network instead of the public internet.
 
-**Enable encryption in transit.** Azure Files enforces SMB encryption by default on newer accounts. Verify it is enabled:
+**Enable encryption in transit.** Azure Files has a dedicated "Require Encryption in Transit for SMB" setting. Verify the SMB setting:
 
 ```bash
-# Check if secure transfer is required
-az storage account show \
-  --name myfilesaccount \
-  --query "enableHttpsTrafficOnly"
+# Check whether SMB encryption in transit is required
+az storage account file-service-properties show \
+  --account-name myfilesaccount \
+  --resource-group myresourcegroup \
+  --query "protocolSettings.smb.encryptionInTransit.required"
 ```
 
 **Rotate storage account keys regularly.** When you rotate keys, update the credentials stored in Windows Credential Manager.
