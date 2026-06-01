@@ -10,6 +10,8 @@ Description: Build real-time Power BI dashboards powered by Azure Stream Analyti
 
 Standard Power BI reports refresh on a schedule - hourly, daily, or somewhere in between. But some scenarios demand live data. Manufacturing floor monitoring, live website analytics, IoT sensor dashboards, and financial trading all need data that updates in seconds, not hours. Azure Stream Analytics processes streaming data in real time and can push results directly to Power BI, where they show up on dashboards within seconds.
 
+Important: Microsoft has announced retirement of real-time streaming in Power BI. Creation of new real-time semantic models remains available until October 31, 2027, and Microsoft recommends evaluating Fabric Real-Time Intelligence for new long-term architectures.
+
 This guide covers the full pipeline from streaming data source to real-time Power BI dashboard.
 
 ## Architecture
@@ -20,19 +22,19 @@ flowchart LR
     C[Applications] -->|Events| D[Azure Event Hubs]
     B --> E[Azure Stream Analytics]
     D --> E
-    E -->|Push Dataset| F[Power BI Service]
+    E -->|PushStreaming Semantic Model| F[Power BI Service]
     F --> G[Real-Time Dashboard]
 ```
 
 ## Understanding Power BI Streaming Datasets
 
-Power BI has three types of datasets for real-time scenarios:
+Power BI has three types of real-time semantic models, formerly called datasets, for real-time scenarios:
 
 1. **Push dataset**: Data is pushed to Power BI via API or Stream Analytics. Supports full Power BI visuals. Data is stored and available for historical reporting.
 2. **Streaming dataset**: Data is pushed but not stored. Only a few visual types are available. Good for pure live monitoring.
 3. **PubNub streaming dataset**: Data comes from a PubNub stream. Very specific use case.
 
-Azure Stream Analytics creates a push dataset in Power BI. This is the best option because you get both real-time updates and historical data.
+Azure Stream Analytics creates a pushStreaming semantic model in Power BI. This gives you both push-model storage for reports and streaming-model support for dashboard tiles.
 
 ## Step 1: Set Up the Streaming Data Source
 
@@ -96,7 +98,7 @@ main().catch(console.error);
 1. In the Azure portal, search for "Stream Analytics jobs" and click Create.
 2. Enter a name, select your resource group, and set the location.
 3. Choose Cloud hosting (unless you need edge processing).
-4. Set streaming units to 3 (the minimum for production - adjust based on throughput).
+4. Start with 1 SU V2 for a simple query, then adjust based on throughput and SU utilization.
 5. Click Create.
 
 ### Configure the Input
@@ -136,7 +138,7 @@ SELECT
 INTO
     [powerbi-output]
 FROM
-    [sensor-input]
+    [sensor-input] TIMESTAMP BY timestamp
 GROUP BY
     sensorId,
     location,
@@ -161,7 +163,7 @@ SELECT
 INTO
     [powerbi-alerts]
 FROM
-    [sensor-input]
+    [sensor-input] TIMESTAMP BY timestamp
 WHERE
     temperature > 30
 ```
@@ -178,7 +180,7 @@ SELECT
 INTO
     [powerbi-trends]
 FROM
-    [sensor-input]
+    [sensor-input] TIMESTAMP BY timestamp
 GROUP BY
     sensorId,
     SlidingWindow(minute, 5)
@@ -244,11 +246,11 @@ For the fastest updates, add streaming tiles directly to the dashboard:
 4. Configure the visual (line chart, gauge, card, etc.).
 5. Set the time window for display (e.g., last 10 minutes).
 
-Streaming tiles update faster than pinned report visuals because they connect directly to the push dataset.
+Streaming tiles update faster than pinned report visuals because they use the streaming side of the pushStreaming semantic model.
 
 ## Step 5: Handle Late-Arriving Data
 
-Real-world streaming data arrives out of order. A sensor might send a reading at 10:00:00, but network latency delivers it at 10:00:05. Stream Analytics handles this with late arrival and out-of-order policies.
+Real-world streaming data arrives out of order. A sensor might send a reading at 10:00:00, but network latency delivers it at 10:00:05. Because the queries above use `TIMESTAMP BY timestamp`, Stream Analytics can handle this with late arrival and out-of-order policies.
 
 Configure these in the Event ordering section of the job:
 
@@ -269,11 +271,12 @@ Stream Analytics performance scales with streaming units (SUs). Monitor the SU u
 
 ### Reduce Power BI Push Volume
 
-Power BI push datasets have rate limits:
+Power BI push semantic models have rate limits:
 
 - 1 million rows per hour per dataset.
-- 5 API calls per second per dataset.
-- 200,000 rows per API call.
+- 10,000 rows per single POST rows request.
+- 120 POST rows requests per minute per dataset.
+- For the FIFO retention policy used by Stream Analytics, 200,000 rows are stored per table.
 
 If you exceed these limits, data loss occurs. Strategies to stay within limits:
 
