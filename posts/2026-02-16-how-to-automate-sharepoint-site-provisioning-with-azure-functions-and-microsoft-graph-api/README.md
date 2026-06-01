@@ -34,18 +34,27 @@ The Azure Function needs application-level permissions to create SharePoint site
 ```bash
 # Create the app registration
 
-az ad app create \
+APP_ID=$(az ad app create \
   --display-name "SharePoint Site Provisioner" \
-  --sign-in-audience "AzureADMyOrg"
+  --sign-in-audience "AzureADMyOrg" \
+  --query appId \
+  --output tsv)
+
+az ad sp create --id $APP_ID
 
 # Add Microsoft Graph application permissions
 # Sites.FullControl.All - Required for site creation and configuration
 # Group.ReadWrite.All - Required for Microsoft 365 group-connected sites
+# User.Read.All - Required to resolve owner and member user principal names
+# Mail.Send - Required to send notification emails with application permissions
 az ad app permission add \
   --id $APP_ID \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions 9492366f-7969-46a4-8d15-ed1a20078fff=Role \
-  --api-permissions 62a82d76-70ea-41e2-9197-370581804d09=Role
+  --api-permissions \
+    9492366f-7969-46a4-8d15-ed1a20078fff=Role \
+    62a82d76-70ea-41e2-9197-370581804d09=Role \
+    df021288-bdef-4463-88db-98f22de89214=Role \
+    b633e1c5-b582-4048-a93e-9f11b44c7e96=Role
 
 # Grant admin consent
 az ad app permission admin-consent --id $APP_ID
@@ -139,7 +148,7 @@ public class SiteProvisioningFunction
             // Step 2: Wait for the SharePoint site to be fully provisioned
             var siteUrl = await WaitForSiteCreationAsync(group.Id);
 
-            // Step 3: Apply the site template (lists, libraries, navigation)
+            // Step 3: Apply the site template (lists, libraries, columns)
             await _templateService.ApplyTemplateAsync(siteUrl, request.Template);
 
             // Step 4: Configure permissions beyond the default group membership
@@ -200,7 +209,7 @@ public class SiteProvisioningFunction
         {
             var user = await _graphClient.Users[ownerUpn].GetAsync();
             await _graphClient.Groups[createdGroup.Id].Owners.Ref.PostAsync(
-                new ReferenceCreate { OdataId = $"https://graph.microsoft.com/v1.0/users/{user.Id}" });
+                new ReferenceCreate { OdataId = $"https://graph.microsoft.com/v1.0/directoryObjects/{user.Id}" });
         }
 
         // Add members
@@ -208,7 +217,7 @@ public class SiteProvisioningFunction
         {
             var user = await _graphClient.Users[memberUpn].GetAsync();
             await _graphClient.Groups[createdGroup.Id].Members.Ref.PostAsync(
-                new ReferenceCreate { OdataId = $"https://graph.microsoft.com/v1.0/users/{user.Id}" });
+                new ReferenceCreate { OdataId = $"https://graph.microsoft.com/v1.0/directoryObjects/{user.Id}" });
         }
 
         _logger.LogInformation("Group created: {GroupId}", createdGroup.Id);
@@ -282,13 +291,23 @@ public class SiteProvisioningFunction
 
 ## Site Templates
 
-The template service creates standard lists, libraries, and pages based on the template type:
+The template service creates standard lists, libraries, and columns based on the template type:
 
 ```csharp
 // Service that applies site templates using Microsoft Graph
+public interface ITemplateService
+{
+    Task ApplyTemplateAsync(string siteUrl, string templateName);
+}
+
 public class TemplateService : ITemplateService
 {
     private readonly GraphServiceClient _graphClient;
+
+    public TemplateService(GraphServiceClient graphClient)
+    {
+        _graphClient = graphClient;
+    }
 
     public async Task ApplyTemplateAsync(string siteUrl, string templateName)
     {
@@ -318,15 +337,15 @@ public class TemplateService : ITemplateService
         {
             DisplayName = "Project Tasks",
             Template = "genericList",
-            Columns = new[]
+            Columns = new System.Collections.Generic.List<ColumnDefinition>
             {
-                new ColumnDefinition { Name = "AssignedTo", Type = "personOrGroup" },
-                new ColumnDefinition { Name = "DueDate", Type = "dateTime" },
-                new ColumnDefinition { Name = "Priority", Type = "choice",
-                    Choices = new[] { "High", "Medium", "Low" } },
-                new ColumnDefinition { Name = "Status", Type = "choice",
-                    Choices = new[] { "Not Started", "In Progress", "Completed", "Blocked" } },
-                new ColumnDefinition { Name = "PercentComplete", Type = "number" }
+                new ColumnDefinition { Name = "AssignedTo", PersonOrGroup = new PersonOrGroupColumn() },
+                new ColumnDefinition { Name = "DueDate", DateTime = new DateTimeColumn() },
+                new ColumnDefinition { Name = "Priority", Choice = new ChoiceColumn
+                    { Choices = new System.Collections.Generic.List<string> { "High", "Medium", "Low" } } },
+                new ColumnDefinition { Name = "Status", Choice = new ChoiceColumn
+                    { Choices = new System.Collections.Generic.List<string> { "Not Started", "In Progress", "Completed", "Blocked" } } },
+                new ColumnDefinition { Name = "PercentComplete", Number = new NumberColumn() }
             }
         });
 
@@ -349,14 +368,14 @@ public class TemplateService : ITemplateService
         {
             DisplayName = "Risk Register",
             Template = "genericList",
-            Columns = new[]
+            Columns = new System.Collections.Generic.List<ColumnDefinition>
             {
-                new ColumnDefinition { Name = "Impact", Type = "choice",
-                    Choices = new[] { "Critical", "High", "Medium", "Low" } },
-                new ColumnDefinition { Name = "Probability", Type = "choice",
-                    Choices = new[] { "Very Likely", "Likely", "Possible", "Unlikely" } },
-                new ColumnDefinition { Name = "Mitigation", Type = "multilineText" },
-                new ColumnDefinition { Name = "Owner", Type = "personOrGroup" }
+                new ColumnDefinition { Name = "Impact", Choice = new ChoiceColumn
+                    { Choices = new System.Collections.Generic.List<string> { "Critical", "High", "Medium", "Low" } } },
+                new ColumnDefinition { Name = "Probability", Choice = new ChoiceColumn
+                    { Choices = new System.Collections.Generic.List<string> { "Very Likely", "Likely", "Possible", "Unlikely" } } },
+                new ColumnDefinition { Name = "Mitigation", Text = new TextColumn { AllowMultipleLines = true } },
+                new ColumnDefinition { Name = "Owner", PersonOrGroup = new PersonOrGroupColumn() }
             }
         });
     }
@@ -380,13 +399,42 @@ public class TemplateService : ITemplateService
         {
             DisplayName = "Contact Directory",
             Template = "genericList",
-            Columns = new[]
+            Columns = new System.Collections.Generic.List<ColumnDefinition>
             {
-                new ColumnDefinition { Name = "Role", Type = "text" },
-                new ColumnDefinition { Name = "Phone", Type = "text" },
-                new ColumnDefinition { Name = "Email", Type = "text" },
-                new ColumnDefinition { Name = "Department", Type = "text" }
+                new ColumnDefinition { Name = "Role", Text = new TextColumn() },
+                new ColumnDefinition { Name = "Phone", Text = new TextColumn() },
+                new ColumnDefinition { Name = "Email", Text = new TextColumn() },
+                new ColumnDefinition { Name = "Department", Text = new TextColumn() }
             }
+        });
+    }
+
+    private async Task ApplyDepartmentTemplateAsync(string siteId)
+    {
+        await CreateListAsync(siteId, new ListCreate
+        {
+            DisplayName = "Department Documents",
+            Template = "documentLibrary"
+        });
+
+        await CreateListAsync(siteId, new ListCreate
+        {
+            DisplayName = "Announcements",
+            Template = "genericList",
+            Columns = new System.Collections.Generic.List<ColumnDefinition>
+            {
+                new ColumnDefinition { Name = "Category", Text = new TextColumn() },
+                new ColumnDefinition { Name = "PublishDate", DateTime = new DateTimeColumn() }
+            }
+        });
+    }
+
+    private async Task ApplyDefaultTemplateAsync(string siteId)
+    {
+        await CreateListAsync(siteId, new ListCreate
+        {
+            DisplayName = "Shared Documents",
+            Template = "documentLibrary"
         });
     }
 
@@ -396,7 +444,8 @@ public class TemplateService : ITemplateService
         var list = new Microsoft.Graph.Models.List
         {
             DisplayName = listDef.DisplayName,
-            ListInfo = new ListInfo
+            Columns = listDef.Columns,
+            List = new ListInfo
             {
                 Template = listDef.Template
             }
@@ -414,6 +463,13 @@ public class TemplateService : ITemplateService
         var site = await _graphClient.Sites[$"{hostname}:{sitePath}"].GetAsync();
         return site.Id;
     }
+}
+
+public class ListCreate
+{
+    public string DisplayName { get; set; }
+    public string Template { get; set; }
+    public System.Collections.Generic.List<ColumnDefinition> Columns { get; set; }
 }
 ```
 
