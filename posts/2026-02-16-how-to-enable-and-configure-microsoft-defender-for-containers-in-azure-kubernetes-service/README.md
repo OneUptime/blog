@@ -28,9 +28,9 @@ The service has three main capabilities:
 ## Prerequisites
 
 - An Azure subscription with Microsoft Defender for Cloud enabled (or the ability to enable it)
-- At least one AKS cluster running Kubernetes 1.24 or later
+- At least one AKS cluster running a Kubernetes version that AKS currently supports
 - An Azure Container Registry (ACR) if you want image vulnerability scanning
-- Owner or Security Admin role on the subscription
+- Contributor or Security Admin role on the subscription
 
 ## Step 1: Enable Defender for Containers at the Subscription Level
 
@@ -86,34 +86,41 @@ az aks show \
 After enabling, verify the sensor pods are running:
 
 ```bash
-# Check that Defender pods are running on each node
-kubectl get pods -n kube-system -l app=microsoft-defender
+# Check that Defender pods are running
+kubectl get pods -n kube-system -l app=defender
 
-# You should see one pod per node, all in Running status
+# You should see Defender sensor pods in Running status
 # Example output:
-# NAME                          READY   STATUS    RESTARTS   AGE
-# microsoft-defender-xxxxx      1/1     Running   0          5m
-# microsoft-defender-yyyyy      1/1     Running   0          5m
+# NAME                                  READY   STATUS    RESTARTS   AGE
+# microsoft-defender-collector-ds-xxx   1/1     Running   0          5m
+# microsoft-defender-publisher-ds-yyy   1/1     Running   0          5m
 ```
 
 ## Step 3: Configure the Log Analytics Workspace
 
 Defender for Containers sends its security data to a Log Analytics workspace. By default, it uses a workspace managed by Defender. You can change this to your own workspace if you want to query the data alongside other logs.
 
+```json
+{
+  "logAnalyticsWorkspaceResourceId": "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/myWorkspace"
+}
+```
+
+Save that as `defender.json`, then run:
+
 ```bash
-# Enable Defender with a custom Log Analytics workspace
 az aks update \
   --name myAKSCluster \
   --resource-group myResourceGroup \
   --enable-defender \
-  --defender-config logAnalyticsWorkspaceResourceId="/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/myWorkspace"
+  --defender-config defender.json
 ```
 
 ## Step 4: Set Up Image Vulnerability Scanning
 
-If your AKS cluster pulls images from Azure Container Registry, Defender for Containers automatically scans those images. You do not need to configure anything extra beyond enabling the plan.
+If your AKS cluster pulls images from Azure Container Registry, Defender for Containers scans those images when Registry access is enabled. You do not need to configure anything extra beyond enabling the plan with that component.
 
-For images from external registries (Docker Hub, GitHub Container Registry, etc.), Defender scans them when they are pulled into the cluster. The runtime sensor detects the image pull and triggers a scan.
+For images from supported external registries and images running in the cluster, Defender can create vulnerability findings when the required components are enabled. Running container images are scanned on a periodic basis rather than immediately on each pull.
 
 To check vulnerability findings for a specific image:
 
@@ -145,8 +152,8 @@ To manage alert routing, configure email notifications in Defender for Cloud:
 az security contact create \
   --name "default" \
   --emails "security-team@contoso.com" \
-  --alert-notifications on \
-  --alerts-to-admins on
+  --alert-notifications '{"state":"On","minimalSeverity":"Low"}' \
+  --notifications-by-role '{"state":"On","roles":["Owner"]}'
 ```
 
 You can also forward alerts to Microsoft Sentinel for SIEM integration, or to a Logic App for custom automation.
@@ -217,10 +224,10 @@ Be careful with suppression. Only suppress alerts you have investigated and conf
 
 ## Cost Considerations
 
-Defender for Containers is billed per vCore per hour for runtime protection, plus per-image-scan for vulnerability assessment. For a typical AKS cluster:
+Defender for Containers is billed based on vCores in supported Kubernetes worker nodes. The plan includes a monthly allowance for vulnerability assessments in container registries, with additional scans billed per image digest. For a typical AKS cluster:
 
 - Runtime protection: Based on the total vCores across all nodes
-- Image scanning: First 500 scans per month are included, then per-scan pricing
+- Image scanning: A monthly scan allowance is included based on charged vCore consumption, then per-image-digest pricing applies
 
 You can check the current pricing in the Defender for Cloud pricing page. For dev/test clusters, you might want to enable only the vulnerability scanning component and skip runtime protection to save costs.
 
@@ -230,10 +237,10 @@ Make sure the Defender sensor stays healthy over time:
 
 ```bash
 # Check Defender sensor logs for errors
-kubectl logs -n kube-system -l app=microsoft-defender --tail=50
+kubectl logs -n kube-system -l app=defender --tail=50
 
 # Check if the sensor DaemonSet has any unhealthy pods
-kubectl get daemonset -n kube-system microsoft-defender-collector
+kubectl get daemonset -n kube-system microsoft-defender-collector-ds
 ```
 
 If nodes are added to the cluster, the DaemonSet automatically deploys the sensor to new nodes. If you notice gaps in coverage, check that the DaemonSet is not hitting resource limits or scheduling constraints.
