@@ -120,7 +120,8 @@ GO
 
 -- Create a predicate function that checks if the current user
 -- has access to a given region
--- SESSION_CONTEXT is used to pass the user identity from Power BI
+-- USER_NAME() is evaluated from the Microsoft Entra identity
+-- Power BI passes to Azure SQL when DirectQuery SSO is enabled
 CREATE FUNCTION Security.fn_RegionFilter(@Region NVARCHAR(100))
 RETURNS TABLE
 WITH SCHEMABINDING
@@ -128,7 +129,7 @@ AS
 RETURN
     SELECT 1 AS AccessGranted
     FROM dbo.UserRegionMapping
-    WHERE UserEmail = CAST(SESSION_CONTEXT(N'UserEmail') AS NVARCHAR(200))
+    WHERE UserEmail = USER_NAME()
       AND Region = @Region;
 GO
 ```
@@ -144,44 +145,27 @@ CREATE SECURITY POLICY Security.SalesFilter
 GO
 ```
 
-Now, any query against the `Sales` table automatically filters based on the user email stored in `SESSION_CONTEXT`.
+Now, any query against the `Sales` table automatically filters based on the database user name returned by `USER_NAME()`. For Microsoft Entra users in Azure SQL Database, this is typically the user's UPN, such as `alice@contoso.com`, as long as the database user names match the values in `UserRegionMapping`.
 
-### Step 3: Set the Session Context from Power BI
+### Step 3: Enable Single Sign-On from Power BI
 
-Power BI DirectQuery can pass the user's identity to Azure SQL using a connection string parameter. In Power BI Desktop:
+Power BI DirectQuery can pass the report viewer's Microsoft Entra identity to Azure SQL Database by using single sign-on (SSO). In Power BI service:
 
-1. Open the Power Query Editor.
-2. Click Advanced Editor.
-3. Modify the connection to include `SESSION_CONTEXT`:
+1. Publish the report and semantic model.
+2. Go to the semantic model settings.
+3. Open the Data source credentials or Data sources section.
+4. Enable single sign-on (SSO) for the Azure SQL Database connection.
 
-```text
-// Power Query M code that sets the user identity in SQL session context
-// This allows Azure SQL RLS to filter data based on the Power BI user
-let
-    Source = Sql.Database(
-        "yourserver.database.windows.net",
-        "yourdatabase",
-        [
-            Query = "
-                EXEC sp_set_session_context @key = N'UserEmail',
-                    @value = N'" & User.Identity() & "';
-                SELECT * FROM dbo.Sales;
-            "
-        ]
-    )
-in
-    Source
-```
+When SSO is enabled, Power BI sends the viewer's authenticated Microsoft Entra credentials in DirectQuery queries to Azure SQL Database. This allows Azure SQL RLS predicates based on `USER_NAME()` or similar SQL identity functions to run under the viewer's identity.
 
-Note: This approach requires using a native SQL query, which may limit some Power BI features.
+Note: This requires Microsoft Entra authentication to be configured for Azure SQL Database, and each report viewer must have a corresponding database user and the required database permissions. SSO applies to DirectQuery connections, not Import mode refreshes.
 
-### Alternative: Use Azure AD Authentication
+### Alternative: Use SESSION_CONTEXT for Applications
 
-If your Power BI service connects to Azure SQL using Azure AD authentication, the user's identity flows through automatically. You can modify the predicate function to use `SUSER_SNAME()` instead of `SESSION_CONTEXT`:
+If a middle-tier application connects to Azure SQL using a shared database user, the application can set `SESSION_CONTEXT` after opening the database connection. That pattern is useful outside Power BI, or in custom embedded scenarios where your application controls the SQL connection:
 
 ```sql
--- Simplified predicate using Azure AD identity
--- Works when Power BI connects with Azure AD pass-through auth
+-- Predicate using a session-context value set by the application
 CREATE FUNCTION Security.fn_RegionFilter(@Region NVARCHAR(100))
 RETURNS TABLE
 WITH SCHEMABINDING
@@ -189,12 +173,12 @@ AS
 RETURN
     SELECT 1 AS AccessGranted
     FROM dbo.UserRegionMapping
-    WHERE UserEmail = SUSER_SNAME()
+    WHERE UserEmail = CAST(SESSION_CONTEXT(N'UserEmail') AS NVARCHAR(200))
       AND Region = @Region;
 GO
 ```
 
-This is cleaner but requires all Power BI users to have Azure SQL database access through Azure AD.
+For regular Power BI DirectQuery reports, use Microsoft Entra SSO instead of trying to set `SESSION_CONTEXT` in Power Query.
 
 ## Testing RLS
 
@@ -204,16 +188,18 @@ Use the "View as roles" feature to impersonate different users and verify the fi
 
 ### Test in Azure SQL
 
-Execute queries as different users to verify database-level RLS:
+Execute queries as different database users to verify database-level RLS:
 
 ```sql
--- Set the session context to simulate a specific user
-EXEC sp_set_session_context @key = N'UserEmail', @value = N'alice@contoso.com';
+-- Run as a test database user whose name matches UserRegionMapping.UserEmail
+EXECUTE AS USER = 'alice@contoso.com';
 
 -- This query should only return West and Central region data
 SELECT Region, COUNT(*) AS OrderCount, SUM(TotalAmount) AS TotalRevenue
 FROM dbo.Sales
 GROUP BY Region;
+
+REVERT;
 ```
 
 Run this for each user to confirm they see only their authorized data.
@@ -276,12 +262,12 @@ AS
 RETURN
     SELECT 1 AS AccessGranted
     FROM dbo.UserRegionMapping
-    WHERE UserEmail = CAST(SESSION_CONTEXT(N'UserEmail') AS NVARCHAR(200))
+    WHERE UserEmail = USER_NAME()
       AND Region = @Region
     UNION ALL
     SELECT 1 AS AccessGranted
     FROM dbo.AdminUsers
-    WHERE UserEmail = CAST(SESSION_CONTEXT(N'UserEmail') AS NVARCHAR(200));
+    WHERE UserEmail = USER_NAME();
 GO
 ```
 
