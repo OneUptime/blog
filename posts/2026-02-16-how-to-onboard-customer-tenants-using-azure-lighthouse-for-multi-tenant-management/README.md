@@ -25,7 +25,7 @@ Before you start onboarding, you need a few things in place:
 1. Your managing tenant ID (your Azure AD tenant where your team lives)
 2. The object IDs of the users, groups, or service principals that will manage customer resources
 3. The RBAC role definition IDs you want to assign
-4. The customer must have the Microsoft.ManagedServices resource provider registered
+4. A customer-tenant account with permissions to create, read, and delete role assignments on the subscription, such as Owner
 
 ## Step 1: Define the Authorization Structure
 
@@ -35,28 +35,21 @@ Here is a common structure for a managed services engagement:
 
 ```json
 {
-  // List of authorization mappings from your tenant to RBAC roles
   "authorizations": [
     {
-      // Security group for your L1 support team
       "principalId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       "principalIdDisplayName": "L1 Support Team",
       "roleDefinitionId": "acdd72a7-3385-48ef-bd42-f606fba81ae7"
-      // Reader role - can view but not modify
     },
     {
-      // Security group for your L2 operations team
       "principalId": "ffffffff-1111-2222-3333-444444444444",
       "principalIdDisplayName": "L2 Operations Team",
       "roleDefinitionId": "b24988ac-6180-42a0-ab88-20f7382dd24c"
-      // Contributor role - can manage most resources
     },
     {
-      // Security group for your security team
       "principalId": "55555555-6666-7777-8888-999999999999",
       "principalIdDisplayName": "Security Admins",
       "roleDefinitionId": "91c1777a-f3dc-4fae-b103-61d183457e46"
-      // Managed Services Registration Assignment Delete role
     }
   ]
 }
@@ -83,28 +76,24 @@ Azure Lighthouse onboarding is done through ARM template deployments. Microsoft 
     }
   },
   "variables": {
-    // Your managing tenant ID
     "managedByTenantId": "your-managing-tenant-id-here",
     "authorizations": [
       {
         "principalId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         "principalIdDisplayName": "Contoso L2 Operations",
-        // Contributor role definition ID
         "roleDefinitionId": "b24988ac-6180-42a0-ab88-20f7382dd24c"
       },
       {
         "principalId": "55555555-6666-7777-8888-999999999999",
         "principalIdDisplayName": "Contoso Security Team",
-        // Managed Services Registration Assignment Delete role
         "roleDefinitionId": "91c1777a-f3dc-4fae-b103-61d183457e46"
       }
     ]
   },
   "resources": [
     {
-      // Registration definition - defines the delegation terms
       "type": "Microsoft.ManagedServices/registrationDefinitions",
-      "apiVersion": "2020-02-01-preview",
+      "apiVersion": "2022-10-01",
       "name": "[guid(parameters('mspOfferName'))]",
       "properties": {
         "registrationDefinitionName": "[parameters('mspOfferName')]",
@@ -114,9 +103,8 @@ Azure Lighthouse onboarding is done through ARM template deployments. Microsoft 
       }
     },
     {
-      // Registration assignment - activates the delegation
       "type": "Microsoft.ManagedServices/registrationAssignments",
-      "apiVersion": "2020-02-01-preview",
+      "apiVersion": "2022-10-01",
       "name": "[guid(parameters('mspOfferName'))]",
       "dependsOn": [
         "[resourceId('Microsoft.ManagedServices/registrationDefinitions', guid(parameters('mspOfferName')))]"
@@ -159,30 +147,30 @@ az deployment sub create \
 ```powershell
 # Connect to the customer tenant
 Connect-AzAccount -Tenant "customer-tenant-id"
+Set-AzContext -SubscriptionId "customer-subscription-id"
 
 # Deploy the template at subscription scope
 New-AzSubscriptionDeployment `
   -Name "lighthouse-onboarding" `
   -Location "eastus" `
-  -TemplateFile "./onboarding-template.json" `
-  -SubscriptionId "customer-subscription-id"
+  -TemplateFile "./onboarding-template.json"
 ```
 
 ## Step 4: Verify the Delegation
 
 After deployment, you should verify the delegation from both sides.
 
-From the managing tenant, check that the customer's resources are visible:
+Check that the registration definition and assignment exist in the delegated subscription:
 
 ```powershell
-# List all delegated subscriptions visible to your tenant
+# List Azure Lighthouse registration assignments
 Get-AzManagedServicesAssignment
 
 # Or use Azure CLI
 az managedservices assignment list
 ```
 
-In the Azure Portal, navigate to "My customers" in the Lighthouse blade. You should see the customer's subscription listed there. You can also navigate to the delegated resources directly from your own portal session.
+From the managing tenant, navigate to "My customers" in Azure Lighthouse. You should see the customer's subscription listed there. You can also navigate to the delegated resources directly from your own portal session.
 
 From the customer's side, they can verify the delegation by going to "Service providers" in the Lighthouse blade. They will see your offer listed along with the specific roles you have been granted.
 
@@ -207,7 +195,7 @@ foreach ($sub in $subscriptions) {
 
 ## Common Pitfalls and How to Avoid Them
 
-**Resource provider not registered.** If the customer has not registered the Microsoft.ManagedServices resource provider, the deployment will fail. Have them run `az provider register --namespace Microsoft.ManagedServices` before deploying.
+**Resource provider not registered.** The onboarding process usually registers the Microsoft.ManagedServices resource provider for the subscription. If you are delegating additional resources through some marketplace-offer flows or onboarding through management-group policy, the customer may need to register it first with `az provider register --namespace Microsoft.ManagedServices`.
 
 **Using user IDs instead of group IDs.** If you map individual users, you will need to redeploy the template every time someone joins or leaves your team. Always use Azure AD groups.
 
@@ -217,7 +205,7 @@ foreach ($sub in $subscriptions) {
 
 ## Security Considerations
 
-Azure Lighthouse was designed with security in mind, but there are still things to be aware of. Customers retain full visibility into what the managing tenant can do. They can see the roles assigned and can revoke the delegation at any time. The managing tenant cannot escalate their own permissions beyond what was defined in the delegation.
+Azure Lighthouse was designed with security in mind, but there are still things to be aware of. Customers retain visibility into delegated offers and assigned roles. Users in the customer tenant with the required permissions can revoke the delegation at any time. The managing tenant cannot escalate their own permissions beyond what was defined in the delegation.
 
 For additional security, consider using Azure AD Conditional Access policies to restrict where and how your team members can access delegated resources. You can also use Privileged Identity Management (PIM) to make Lighthouse authorizations eligible rather than permanent, so your team members have to activate their access before managing customer resources.
 
