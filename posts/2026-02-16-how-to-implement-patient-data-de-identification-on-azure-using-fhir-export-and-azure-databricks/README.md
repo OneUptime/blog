@@ -64,7 +64,7 @@ Azure FHIR service supports the FHIR Bulk Data Export specification. This export
 
 # The $export operation runs asynchronously and returns a job URL
 curl -X GET \
-    "https://my-fhir-server.azurehealthcareapis.com/$export" \
+    "https://<workspace>-<fhir-service>.fhir.azurehealthcareapis.com/$export" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Accept: application/fhir+json" \
     -H "Prefer: respond-async"
@@ -75,7 +75,7 @@ For a more targeted export, use the Patient compartment export:
 ```bash
 # Export only specific resource types for all patients
 curl -X GET \
-    "https://my-fhir-server.azurehealthcareapis.com/Patient/$export?_type=Patient,Observation,Condition,MedicationRequest" \
+    "https://<workspace>-<fhir-service>.fhir.azurehealthcareapis.com/Patient/$export?_type=Patient,Observation,Condition,MedicationRequest" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Accept: application/fhir+json" \
     -H "Prefer: respond-async"
@@ -86,7 +86,7 @@ The response includes a `Content-Location` header with the URL to check export s
 ```bash
 # Check export status
 curl -X GET \
-    "https://my-fhir-server.azurehealthcareapis.com/_operations/export/{job-id}" \
+    "$CONTENT_LOCATION" \
     -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -111,21 +111,35 @@ Mount both the export storage (source) and the research data lake (destination):
 # Mount the FHIR export storage as a Databricks file system path
 # Uses service principal authentication for secure access
 dbutils.fs.mount(
-    source="wasbs://fhir-export@exportstorageaccount.blob.core.windows.net",
+    source="abfss://fhir-export@exportstorageaccount.dfs.core.windows.net/",
     mount_point="/mnt/fhir-export",
     extra_configs={
-        "fs.azure.account.key.exportstorageaccount.blob.core.windows.net":
-            dbutils.secrets.get(scope="healthcare", key="export-storage-key")
+        "fs.azure.account.auth.type": "OAuth",
+        "fs.azure.account.oauth.provider.type":
+            "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
+        "fs.azure.account.oauth2.client.id":
+            dbutils.secrets.get(scope="healthcare", key="sp-client-id"),
+        "fs.azure.account.oauth2.client.secret":
+            dbutils.secrets.get(scope="healthcare", key="sp-client-secret"),
+        "fs.azure.account.oauth2.client.endpoint":
+            "https://login.microsoftonline.com/<tenant-id>/oauth2/token"
     }
 )
 
 # Mount the research data lake for de-identified output
 dbutils.fs.mount(
-    source="wasbs://deidentified@researchlake.blob.core.windows.net",
+    source="abfss://deidentified@researchlake.dfs.core.windows.net/",
     mount_point="/mnt/research-data",
     extra_configs={
-        "fs.azure.account.key.researchlake.blob.core.windows.net":
-            dbutils.secrets.get(scope="healthcare", key="research-storage-key")
+        "fs.azure.account.auth.type": "OAuth",
+        "fs.azure.account.oauth.provider.type":
+            "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
+        "fs.azure.account.oauth2.client.id":
+            dbutils.secrets.get(scope="healthcare", key="sp-client-id"),
+        "fs.azure.account.oauth2.client.secret":
+            dbutils.secrets.get(scope="healthcare", key="sp-client-secret"),
+        "fs.azure.account.oauth2.client.endpoint":
+            "https://login.microsoftonline.com/<tenant-id>/oauth2/token"
     }
 )
 ```
@@ -136,21 +150,21 @@ dbutils.fs.mount(
 
 ```python
 # Load the exported FHIR NDJSON files into Spark DataFrames
-# Each resource type is in a separate file
+# Each resource type can be split across multiple files in an export job folder
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType
 
 # Read Patient resources
-patients_df = spark.read.json("/mnt/fhir-export/Patient.ndjson")
+patients_df = spark.read.json("/mnt/fhir-export/*/Patient*.ndjson")
 
 # Read Observation resources (lab results, vitals, etc.)
-observations_df = spark.read.json("/mnt/fhir-export/Observation.ndjson")
+observations_df = spark.read.json("/mnt/fhir-export/*/Observation*.ndjson")
 
 # Read Condition resources (diagnoses)
-conditions_df = spark.read.json("/mnt/fhir-export/Condition.ndjson")
+conditions_df = spark.read.json("/mnt/fhir-export/*/Condition*.ndjson")
 
 # Read MedicationRequest resources
-medications_df = spark.read.json("/mnt/fhir-export/MedicationRequest.ndjson")
+medications_df = spark.read.json("/mnt/fhir-export/*/MedicationRequest*.ndjson")
 
 print(f"Patients: {patients_df.count()}")
 print(f"Observations: {observations_df.count()}")
@@ -162,25 +176,15 @@ print(f"Medications: {medications_df.count()}")
 
 ```python
 # De-identify Patient resources following HIPAA Safe Harbor rules
-# Removes or transforms all 18 identifier types
-import hashlib
+# Removes direct identifiers and uses a non-derived study ID for linkage
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType
 
-# Salt for consistent pseudonymization
-# Store this securely - it is the key to re-identification
-HASH_SALT = dbutils.secrets.get(scope="healthcare", key="deidentification-salt")
-
-def pseudonymize_id(original_id):
-    """Generate a consistent pseudonym for a patient ID.
-    Uses SHA-256 with a salt to create a one-way mapping."""
-    if original_id is None:
-        return None
-    salted = f"{HASH_SALT}:{original_id}"
-    return hashlib.sha256(salted.encode()).hexdigest()[:16]
-
-# Register as UDF for Spark
-pseudonymize_udf = F.udf(pseudonymize_id, StringType())
+# Create a non-derived study ID map. Store this map separately with strict
+# controls if you need re-identification or repeatable exports.
+patient_id_map = patients_df.select(
+    F.col("id").alias("patient_id_raw")
+).distinct().withColumn("patient_id", F.expr("uuid()"))
 
 def generalize_date(date_str):
     """Generalize dates to year only for Safe Harbor compliance.
@@ -207,9 +211,22 @@ def generalize_zip(zip_code):
 
 generalize_zip_udf = F.udf(generalize_zip, StringType())
 
+def generalized_zip_col(zip_col):
+    """Generalize zip codes using Spark expressions."""
+    prefix = F.substring(zip_col, 1, 3)
+    small_zips = ["036", "059", "063", "102", "203", "556", "692",
+                  "790", "821", "823", "830", "831", "878", "879",
+                  "884", "890", "893"]
+    return F.when(zip_col.isNull(), None) \
+        .when(prefix.isin(small_zips), "000") \
+        .otherwise(prefix)
+
 # Apply de-identification to Patient resources
 deidentified_patients = patients_df \
-    .withColumn("id", pseudonymize_udf(F.col("id"))) \
+    .join(patient_id_map, patients_df.id == patient_id_map.patient_id_raw) \
+    .drop(patients_df.id) \
+    .drop("patient_id_raw") \
+    .withColumnRenamed("patient_id", "id") \
     .withColumn("birthDate", generalize_date_udf(F.col("birthDate"))) \
     .drop("name") \
     .drop("telecom") \
@@ -221,7 +238,7 @@ deidentified_patients = patients_df \
                 F.lit(None).alias("line"),
                 F.lit(None).alias("city"),
                 addr.state.alias("state"),
-                generalize_zip_udf(addr.postalCode).alias("postalCode"),
+                generalized_zip_col(addr.postalCode).alias("postalCode"),
                 addr.country.alias("country")
             )
         )
@@ -232,7 +249,7 @@ deidentified_patients = patients_df \
 
 ```python
 # De-identify Observation resources
-# Replace patient references with pseudonymized IDs
+# Replace patient references with study IDs
 # Remove free-text notes that might contain PHI
 
 def extract_patient_id(reference):
@@ -246,16 +263,18 @@ def extract_patient_id(reference):
 extract_patient_id_udf = F.udf(extract_patient_id, StringType())
 
 deidentified_observations = observations_df \
-    .withColumn("id", pseudonymize_udf(F.col("id"))) \
+    .withColumn("id", F.expr("uuid()")) \
     .withColumn("patient_id_raw",
         extract_patient_id_udf(F.col("subject.reference"))) \
+    .join(patient_id_map, "patient_id_raw") \
     .withColumn("subject",
         F.struct(
             F.concat(F.lit("Patient/"),
-                pseudonymize_udf(F.col("patient_id_raw"))
+                F.col("patient_id")
             ).alias("reference")
         )) \
     .drop("patient_id_raw") \
+    .drop("patient_id") \
     .withColumn("effectiveDateTime",
         generalize_date_udf(F.col("effectiveDateTime"))) \
     .drop("performer") \
@@ -269,16 +288,18 @@ deidentified_observations = observations_df \
 # De-identify Condition resources
 # Keep clinical codes (ICD-10, SNOMED) but remove identifying references
 deidentified_conditions = conditions_df \
-    .withColumn("id", pseudonymize_udf(F.col("id"))) \
+    .withColumn("id", F.expr("uuid()")) \
     .withColumn("patient_id_raw",
         extract_patient_id_udf(F.col("subject.reference"))) \
+    .join(patient_id_map, "patient_id_raw") \
     .withColumn("subject",
         F.struct(
             F.concat(F.lit("Patient/"),
-                pseudonymize_udf(F.col("patient_id_raw"))
+                F.col("patient_id")
             ).alias("reference")
         )) \
     .drop("patient_id_raw") \
+    .drop("patient_id") \
     .withColumn("recordedDate",
         generalize_date_udf(F.col("recordedDate"))) \
     .drop("recorder") \
@@ -418,6 +439,7 @@ az ad group create --display-name "Healthcare Researchers" \
 # Grant the group read access to the research data lake
 az role assignment create \
     --assignee-object-id {group-object-id} \
+    --assignee-principal-type Group \
     --role "Storage Blob Data Reader" \
     --scope "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Storage/storageAccounts/researchlake"
 ```
@@ -435,11 +457,11 @@ Even with de-identified data, implement data governance:
 
 No de-identification is perfect. Mitigate re-identification risks:
 
-- Store the pseudonymization salt in Azure Key Vault with strict access controls. Anyone with the salt can reverse the pseudonymization.
+- Store any re-identification map in Azure Key Vault or a separate access-controlled store. Under Safe Harbor, a re-identification code must not be derived from information about the individual, and the re-identification mechanism must not be disclosed.
 - Assess quasi-identifiers (combinations of fields that could identify individuals). For example, a rare disease combined with age and state might uniquely identify someone.
 - Consider adding noise to numerical values (differential privacy) for highly sensitive datasets.
 - Use k-anonymity checks to ensure each record is indistinguishable from at least k-1 other records.
 
 ## Wrapping Up
 
-De-identifying FHIR data on Azure involves exporting from the FHIR server, processing with Databricks to remove or transform all 18 HIPAA Safe Harbor identifier types, validating the output, and storing the clean data in a separate research data lake. The key technical decisions are choosing between pseudonymization and full removal for identifiers, determining the right level of date generalization, handling free-text fields that might contain PHI, and implementing access controls on the research data. Automate the pipeline with Databricks Workflows and monitor it with validation checks and access auditing.
+De-identifying FHIR data on Azure involves exporting from the FHIR server, processing with Databricks to remove or transform all 18 HIPAA Safe Harbor identifier types, validating the output, and storing the clean data in a separate research data lake. The key technical decisions are choosing between non-derived study IDs and full removal for identifiers, determining the right level of date generalization, handling free-text fields that might contain PHI, and implementing access controls on the research data. Automate the pipeline with Databricks Workflows and monitor it with validation checks and access auditing.
