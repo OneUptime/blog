@@ -10,7 +10,7 @@ Description: Learn how to build a gRPC service using Java and Spring Boot, then 
 
 gRPC has become one of the go-to choices for building high-performance microservices. If you have worked with REST APIs for a while, you probably know their limitations when it comes to strict typing, bidirectional streaming, and efficient binary serialization. gRPC addresses all of these by using Protocol Buffers and HTTP/2 under the hood.
 
-In this post, we will build a gRPC service in Java using Spring Boot, containerize it with Docker, and deploy it to Azure Kubernetes Service (AKS). By the end, you will have a production-ready gRPC microservice running in the cloud.
+In this post, we will build a gRPC service in Java using Spring Boot, containerize it with Docker, and deploy it to Azure Kubernetes Service (AKS). By the end, you will have a working gRPC microservice running in the cloud.
 
 ## Why gRPC with Spring Boot?
 
@@ -89,6 +89,13 @@ Your `pom.xml` needs the gRPC Spring Boot starter and the protobuf compiler plug
         <groupId>io.grpc</groupId>
         <artifactId>grpc-stub</artifactId>
         <version>1.59.0</version>
+    </dependency>
+    <dependency>
+        <!-- Java 9+ compatibility for generated gRPC stubs -->
+        <groupId>jakarta.annotation</groupId>
+        <artifactId>jakarta.annotation-api</artifactId>
+        <version>1.3.5</version>
+        <optional>true</optional>
     </dependency>
 </dependencies>
 
@@ -217,9 +224,13 @@ EXPOSE 9090
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
-Build and push the image to Azure Container Registry.
+Build and push the image to Azure Container Registry. The registry name must be globally unique, so replace `myregistry` with your own ACR name.
 
 ```bash
+# Create the resource group and registry if they do not already exist
+az group create --name grpc-rg --location eastus
+az acr create --resource-group grpc-rg --name myregistry --sku Basic
+
 # Build the Docker image locally
 docker build -t product-grpc-service:latest .
 
@@ -236,7 +247,7 @@ docker push myregistry.azurecr.io/product-grpc-service:v1
 If you do not already have an AKS cluster, create one.
 
 ```bash
-# Create a resource group for the cluster
+# Reuse the resource group created for the registry, or create it if needed
 az group create --name grpc-rg --location eastus
 
 # Create an AKS cluster with 2 nodes
@@ -253,7 +264,7 @@ az aks get-credentials --resource-group grpc-rg --name grpc-aks-cluster
 
 ## Step 7: Deploy to AKS
 
-Create a Kubernetes deployment and service manifest. Note that gRPC requires HTTP/2, so we use `appProtocol: grpc` on the service port.
+Create a Kubernetes deployment and service manifest. gRPC uses HTTP/2 over TCP; `appProtocol: kubernetes.io/h2c` gives Kubernetes integrations a hint that this cleartext port carries HTTP/2 traffic.
 
 ```yaml
 # k8s/deployment.yaml
@@ -304,7 +315,7 @@ spec:
     - port: 9090
       targetPort: 9090
       protocol: TCP
-      appProtocol: grpc
+      appProtocol: kubernetes.io/h2c
   type: LoadBalancer
 ```
 
@@ -354,7 +365,7 @@ When running gRPC on Kubernetes, keep these things in mind:
 
 ## Monitoring and Observability
 
-Add gRPC interceptors for metrics collection. The Spring Boot gRPC starter integrates with Micrometer, so you can export metrics to Azure Monitor or Prometheus.
+Add gRPC interceptors for metrics collection. The Spring Boot gRPC starter integrates with Micrometer when a `MeterRegistry` is available, so add Spring Boot Actuator and `micrometer-registry-prometheus` if you want to expose Prometheus metrics.
 
 ```yaml
 # Add to application.yml for metrics
@@ -371,4 +382,4 @@ management:
 
 ## Wrapping Up
 
-We built a gRPC service in Java with Spring Boot, containerized it, and deployed it to AKS. The combination of Protocol Buffers for strict contracts, HTTP/2 for efficient transport, and Kubernetes for orchestration gives you a solid foundation for microservice communication. From here, you can extend the service with streaming RPCs, add interceptors for authentication, or integrate it with other Azure services like Cosmos DB for persistent storage. The key takeaway is that gRPC and Spring Boot play nicely together, and AKS provides a managed environment where you do not have to worry about the underlying infrastructure.
+We built a gRPC service in Java with Spring Boot, containerized it, and deployed it to AKS. The combination of Protocol Buffers for strict contracts, HTTP/2 for efficient transport, and Kubernetes for orchestration gives you a solid foundation for microservice communication. From here, you can extend the service with streaming RPCs, add interceptors for authentication, or integrate it with other Azure services like Cosmos DB for persistent storage. The key takeaway is that gRPC and Spring Boot play nicely together, and AKS provides a managed environment for running the Kubernetes control plane.
