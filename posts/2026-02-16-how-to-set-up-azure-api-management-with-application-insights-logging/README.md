@@ -23,7 +23,7 @@ You need:
 
 Go to your APIM instance in the Azure Portal, navigate to "Application Insights" under the Monitoring section, and click "Add."
 
-Select your existing Application Insights resource (or create a new one). APIM will use the instrumentation key to send telemetry.
+Select your existing Application Insights resource (or create a new one). In the portal, APIM creates an Application Insights logger that uses the resource's instrumentation key. For stronger security in automated deployments, use a connection string with a managed identity.
 
 After connecting, you need to enable logging for specific APIs. Go to the "APIs" blade, select an API, and click on the "Settings" tab. Under "Diagnostics Logs," you will see the Application Insights section. Enable it and configure:
 
@@ -37,17 +37,18 @@ After connecting, you need to enable logging for specific APIs. Go to the "APIs"
 
 ## Configuring Logging with Policies
 
-For finer control, use the `diagnostic` policy or the `trace` policy to log specific data at specific points in the request pipeline:
+For finer control, use diagnostic settings and the `trace` policy to log specific data at specific points in the request pipeline:
 
 ```xml
 <!-- Log custom data to Application Insights -->
-<!-- Captures the subscription name and API version for each request -->
+<!-- Captures the subscription name and API identity for each request -->
 <inbound>
     <base />
     <trace source="api-gateway" severity="information">
         <message>@($"Request received: {context.Request.Method} {context.Request.Url.Path}")</message>
-        <metadata name="subscriptionName" value="@(context.Subscription?.Name ?? "anonymous")" />
-        <metadata name="apiVersion" value="@(context.Api.Version ?? "unversioned")" />
+        <metadata name="subscriptionName" value='@(context.Subscription?.Name ?? "anonymous")' />
+        <metadata name="apiId" value="@(context.Api.Id)" />
+        <metadata name="apiName" value="@(context.Api.Name)" />
         <metadata name="clientIp" value="@(context.Request.IpAddress)" />
     </trace>
 </inbound>
@@ -59,10 +60,10 @@ The `trace` policy sends custom trace messages to Application Insights where you
 
 Once Application Insights is enabled, APIM automatically logs:
 
-- **Request telemetry**: Every API call with method, URL, status code, duration, and headers
+- **Request telemetry**: API calls included by your diagnostic sampling setting, with method, URL, status code, duration, and any configured headers
 - **Dependency telemetry**: Backend calls made by APIM, with target URL, duration, and success/failure
 - **Exception telemetry**: Policy errors, backend connection failures, and timeouts
-- **Metric telemetry**: Request count, failed requests, and response time aggregations
+- **Trace telemetry**: Custom entries when you configure the `trace` policy
 
 This data flows into Application Insights within a few minutes (sometimes faster) and is queryable with KQL (Kusto Query Language).
 
@@ -82,7 +83,7 @@ requests
     avg_duration = avg(duration),
     p95_duration = percentile(duration, 95),
     max_duration = max(duration),
-    request_count = count()
+    request_count = sum(itemCount)
     by operation_Name
 | order by p95_duration desc
 | take 10
@@ -111,9 +112,9 @@ requests
 | where timestamp > ago(24h)
 | extend subscriptionId = tostring(customDimensions["Subscription Name"])
 | summarize
-    total = count(),
-    failures = countif(success == false),
-    error_rate = round(100.0 * countif(success == false) / count(), 2),
+    total = sum(itemCount),
+    failures = sumif(itemCount, success == false),
+    error_rate = round(100.0 * sumif(itemCount, success == false) / sum(itemCount), 2),
     avg_duration = round(avg(duration), 2)
     by subscriptionId
 | order by total desc
@@ -127,8 +128,8 @@ Track backend dependency health:
 dependencies
 | where timestamp > ago(1h)
 | summarize
-    total = count(),
-    success_rate = round(100.0 * countif(success == true) / count(), 2),
+    total = sum(itemCount),
+    success_rate = round(100.0 * sumif(itemCount, success == true) / sum(itemCount), 2),
     avg_duration = round(avg(duration), 2),
     p95_duration = round(percentile(duration, 95), 2)
     by target
@@ -143,7 +144,7 @@ Alerts turn your monitoring data into action. Here are the essential alerts for 
 
 Go to Application Insights, click "Alerts," and create a new alert rule:
 - Signal: Custom log search
-- Query: `requests | where cloud_RoleName contains "apim" | summarize error_rate = 100.0 * countif(success == false) / count() | where error_rate > 5`
+- Query: `requests | where cloud_RoleName contains "apim" | summarize error_rate = 100.0 * sumif(itemCount, success == false) / sum(itemCount) | where error_rate > 5`
 - Frequency: Every 5 minutes
 - Window: 15 minutes
 
@@ -163,7 +164,7 @@ requests
 // Alert when backend dependency failure rate spikes
 dependencies
 | where target contains "orders"
-| summarize failure_rate = 100.0 * countif(success == false) / count()
+| summarize failure_rate = 100.0 * sumif(itemCount, success == false) / sum(itemCount)
 | where failure_rate > 10
 ```
 
@@ -171,11 +172,11 @@ dependencies
 
 At high traffic volumes, logging every request to Application Insights gets expensive. Sampling reduces the volume while still giving you statistically valid data.
 
-APIM supports two sampling approaches:
+APIM gateway telemetry uses diagnostic sampling:
 
 **Fixed-rate sampling**: Log a fixed percentage of requests (e.g., 25%). Configure this in the API's diagnostic settings.
 
-**Adaptive sampling**: Application Insights automatically adjusts the sampling rate based on traffic volume. This is configured in the Application Insights resource itself.
+Application Insights SDKs in your backend services may use adaptive sampling, but APIM's own Application Insights logging is controlled by the sampling setting in the APIM diagnostic configuration.
 
 For most APIs, 10-25% sampling gives you enough data for monitoring and troubleshooting while keeping costs manageable. For critical APIs or during incident investigation, temporarily increase to 100%.
 
@@ -187,19 +188,23 @@ Be cautious with body logging. It is incredibly useful for debugging but has imp
 2. **Cost**: Bodies increase the telemetry volume significantly, especially for large payloads.
 3. **Performance**: Reading the body for logging buffers it in memory.
 
-A common pattern is to log bodies only for failed requests:
+A common pattern is to log bodies only for failed HTTP responses:
 
 ```xml
-<!-- Log request and response bodies only for failed requests -->
+<!-- Log request and response bodies only for failed HTTP responses -->
 <!-- This reduces volume while capturing the data you need for debugging -->
-<on-error>
+<outbound>
     <base />
-    <trace source="error-diagnostics" severity="error">
-        <message>@($"Error: {context.Response.StatusCode} on {context.Request.Method} {context.Request.Url.Path}")</message>
-        <metadata name="requestBody" value="@(context.Request.Body?.As<string>(preserveContent: true) ?? "empty")" />
-        <metadata name="responseBody" value="@(context.Response.Body?.As<string>(preserveContent: true) ?? "empty")" />
-    </trace>
-</on-error>
+    <choose>
+        <when condition="@(context.Response.StatusCode >= 400)">
+            <trace source="error-diagnostics" severity="error">
+                <message>@($"Error: {context.Response.StatusCode} on {context.Request.Method} {context.Request.Url.Path}")</message>
+                <metadata name="requestBody" value='@(context.Request.Body?.As<string>(preserveContent: true) ?? "empty")' />
+                <metadata name="responseBody" value='@(context.Response.Body?.As<string>(preserveContent: true) ?? "empty")' />
+            </trace>
+        </when>
+    </choose>
+</outbound>
 ```
 
 ## Correlating Requests End-to-End
@@ -221,10 +226,9 @@ Beyond the built-in telemetry, you can emit custom metrics from policies:
 <!-- Emit a custom metric tracking payload size -->
 <outbound>
     <base />
-    <emit-metric name="response-size" namespace="apim-custom">
+    <emit-metric name="response-size" namespace="apim-custom" value='@(Convert.ToDouble(context.Response.Headers.GetValueOrDefault("Content-Length", "0")))'>
         <dimension name="api" value="@(context.Api.Name)" />
         <dimension name="operation" value="@(context.Operation.Name)" />
-        <value>@(context.Response.Headers.GetValueOrDefault("Content-Length", "0"))</value>
     </emit-metric>
 </outbound>
 ```
