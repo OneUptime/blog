@@ -74,7 +74,7 @@ az netappfiles account ad add \
   --domain "corp.contoso.com" \
   --dns "10.0.1.4" \
   --smb-server-name "ANFSMB" \
-  --organizational-unit "OU=NetApp,OU=Servers,DC=corp,DC=contoso,DC=com"
+  --organizational-unit "OU=NetApp,OU=Servers"
 ```
 
 A few important notes about the AD connection:
@@ -82,7 +82,7 @@ A few important notes about the AD connection:
 - The **username** should be a service account with permissions to create computer objects in the specified OU.
 - The **smb-server-name** becomes the NetBIOS name of the computer account created in AD. It must be 15 characters or fewer.
 - The **dns** IP must be reachable from the delegated subnet.
-- The **organizational-unit** is optional but recommended. If omitted, the computer account is created in the default Computers container.
+- The **organizational-unit** is optional but recommended. Use the OU path within the domain, such as `OU=NetApp,OU=Servers`. If omitted, the computer account is created in the default Computers container.
 
 ## Step 3: Create a Delegated Subnet
 
@@ -115,7 +115,7 @@ az netappfiles pool create \
   --service-level Premium
 ```
 
-The minimum pool size is 4 TiB for all service levels. The pool can be expanded later without downtime, but it cannot be shrunk below the total size of volumes it contains.
+The minimum pool size is 1 TiB when all volumes use Standard network features, or 4 TiB if any volume uses Basic network features. The pool can be expanded later without downtime, but it cannot be shrunk below the total size of volumes it contains.
 
 ## Step 5: Create an SMB Volume
 
@@ -185,7 +185,7 @@ By default, the volume root has permissions for the AD administrator account. Yo
 
 ```powershell
 # Set NTFS permissions on the share root
-# First, remove inherited permissions and set explicit ones
+# First, retrieve the current ACL
 $acl = Get-Acl "S:\"
 
 # Add a permission rule for the application service group
@@ -209,7 +209,7 @@ Get-Acl "S:\" | Format-List
 
 To get the best performance from your SMB volume, consider these settings on your Windows clients:
 
-**Enable SMB Multichannel**: This allows multiple TCP connections to the same share, improving throughput. It is enabled by default on Windows Server 2022 and newer.
+**Enable SMB Multichannel**: This allows multiple TCP connections to the same share, improving throughput. It is enabled by default on supported Windows clients and on Azure NetApp Files SMB shares.
 
 ```powershell
 # Check if SMB Multichannel is enabled
