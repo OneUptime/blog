@@ -14,15 +14,15 @@ Understanding how your Azure Storage account is performing requires metrics. How
 
 Like logging, Azure Storage has both a legacy and modern metrics system:
 
-**Storage Analytics Metrics (classic)**: Written to tables within the storage account itself ($MetricsTransactionsBlob, $MetricsCapacityBlob, etc.). Provides per-API-operation granularity but has a 1-minute or 1-hour aggregation period. Being retired in favor of Azure Monitor.
+**Storage Analytics Metrics (classic)**: Written to tables within the storage account itself ($MetricsTransactionsBlob, $MetricsCapacityBlob, etc.). Provides per-API-operation granularity but has a 1-minute or 1-hour aggregation period. Retired on January 9, 2024 in favor of Azure Monitor.
 
 **Azure Monitor Metrics**: The modern approach. Metrics are available in Azure Monitor with up to 1-minute granularity, support dimensional filtering, and integrate with Azure Monitor alerts, dashboards, and workbooks.
 
-Use Azure Monitor metrics for new monitoring setups. Classic metrics are still useful if you have existing tooling that reads from the $Metrics tables.
+Use Azure Monitor metrics for new monitoring setups. If you have existing tooling that reads from the $Metrics tables, migrate it to Azure Monitor metrics.
 
 ## Enabling Azure Monitor Metrics
 
-Azure Monitor metrics are enabled by default for all storage accounts. You do not need to turn them on. As soon as your storage account exists and receives traffic, metrics start flowing to Azure Monitor.
+Azure Monitor metrics are enabled by default for Azure Resource Manager storage accounts. You do not need to turn them on. As soon as your storage account exists and receives traffic, metrics start flowing to Azure Monitor.
 
 You can view them immediately in the Azure Portal:
 
@@ -55,6 +55,7 @@ Transaction metrics support these dimensions for filtering:
 - **ApiName**: GetBlob, PutBlob, ListBlobs, etc.
 - **Authentication**: AccountKey, SAS, OAuth, Anonymous
 - **GeoType**: Primary or Secondary
+- **TransactionType**: User or System
 
 ### Latency Metrics
 
@@ -95,70 +96,37 @@ az monitor metrics list \
 
 ### Capacity Metrics
 
-Capacity metrics are emitted once per day and show the total storage used:
+Capacity metrics are emitted hourly. For Blob Capacity and Blob Count, a background process computes the values and updates them multiple times a day:
 
 - **BlobCapacity**: Total bytes stored in blob storage
 - **BlobCount**: Total number of blobs
 - **ContainerCount**: Total number of containers
 
-## Enabling Classic Storage Analytics Metrics
+## Migrating from Classic Storage Analytics Metrics
 
-If you need classic metrics for legacy tooling:
+Classic Storage Analytics metrics retired on January 9, 2024. If you still have legacy tooling that depends on classic metrics settings, review the current settings and migrate the tooling to Azure Monitor metrics:
 
 ```bash
-# Enable minute-level metrics for blob service
-az storage metrics update \
+# Review classic metrics settings for blob service
+az storage metrics show \
   --account-name mystorageaccount \
   --services b \
-  --hour true \
-  --minute true \
-  --retention 30 \
-  --api true
+  --interval both
 ```
 
 Parameters explained:
 - `--services b`: Blob service (use `q` for queue, `t` for table, `f` for file)
-- `--hour true`: Enable hourly aggregation
-- `--minute true`: Enable per-minute aggregation
-- `--api true`: Include per-API-operation breakdown
-- `--retention 30`: Keep metrics data for 30 days
+- `--interval both`: Show both hourly and minute-level classic metrics settings
 
 ## Building a Monitoring Dashboard
 
-Azure Monitor dashboards let you visualize multiple metrics in one view. Here is an example using an Azure Monitor workbook to create a storage monitoring dashboard:
+Azure Monitor dashboards let you visualize multiple metrics in one view. In an Azure Monitor workbook, add metric items for the storage account or blob service resource, then select the metric namespace, metric name, aggregation, split, and time range in the workbook editor. For example, add:
 
-```json
-{
-  "version": "Notebook/1.0",
-  "items": [
-    {
-      "type": "metric",
-      "name": "Transactions by Response Type",
-      "resourceType": "microsoft.storage/storageaccounts",
-      "metric": "microsoft.storage/storageaccounts/blobservices-Transactions",
-      "aggregation": "Total",
-      "splitBy": "ResponseType",
-      "timeRange": "P1D"
-    },
-    {
-      "type": "metric",
-      "name": "Average E2E Latency",
-      "resourceType": "microsoft.storage/storageaccounts",
-      "metric": "microsoft.storage/storageaccounts/blobservices-SuccessE2ELatency",
-      "aggregation": "Average",
-      "timeRange": "P1D"
-    },
-    {
-      "type": "metric",
-      "name": "Throughput",
-      "resourceType": "microsoft.storage/storageaccounts",
-      "metric": "microsoft.storage/storageaccounts/blobservices-Ingress",
-      "aggregation": "Total",
-      "timeRange": "P1D"
-    }
-  ]
-}
-```
+- Transactions with Total aggregation and split by ResponseType
+- SuccessE2ELatency with Average aggregation
+- Ingress and Egress with Total aggregation
+
+If you need a reusable workbook template, export the workbook from the Azure portal and parameterize the exported `serializedData` value rather than hand-writing a simplified JSON shape.
 
 ## Setting Up Alerts
 
@@ -237,7 +205,7 @@ response = metrics_client.query_resource(
     timespan=timedelta(hours=6),
     granularity=timedelta(minutes=5),
     aggregations=["Total"],
-    dimension_filter="ApiName eq 'GetBlob' or ApiName eq 'PutBlob'"
+    filter="ApiName eq 'GetBlob' or ApiName eq 'PutBlob'"
 )
 
 # Process the results
@@ -261,7 +229,7 @@ import pandas as pd
 # with columns: date, blob_capacity_gb
 df = pd.DataFrame({
     "date": pd.date_range("2026-01-17", "2026-02-16"),
-    "blob_capacity_gb": [100, 101, 102, ...]  # Daily capacity values
+    "blob_capacity_gb": [100 + i for i in range(31)]  # Daily capacity values
 })
 
 # Calculate daily growth rate
@@ -289,4 +257,4 @@ print(f"Projected in 90 days: {projected_90_days:.1f} GB")
 
 **Watch for anomalies, not just thresholds.** A sudden 10x increase in transactions might be normal during a scheduled batch job, or it might indicate a misconfigured client in a tight retry loop. Context matters, so build dashboards that show trends alongside absolute values.
 
-Storage Analytics metrics are the eyes into your storage account's health. Set up the basics now - a few alerts on latency and error rates take 10 minutes and pay for themselves the first time they catch an issue before your users do.
+Azure Storage metrics are the eyes into your storage account's health. Set up the basics now - a few alerts on latency and error rates take 10 minutes and pay for themselves the first time they catch an issue before your users do.
