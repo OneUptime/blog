@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, RBAC, Least Privilege, Security, Access Control, IAM, Azure AD
+Tags: Azure, RBAC, Least Privilege, Security, Access Control, IAM, Microsoft Entra ID
 
 Description: A practical guide to implementing least privilege access in Azure using role-based access control scoping, custom roles, and access reviews.
 
@@ -24,7 +24,7 @@ When you create a role assignment, you combine all three: "Grant User X the Read
 
 ## Start with an Access Inventory
 
-Before you tighten anything, understand what exists today. Pull a list of all current role assignments across your subscriptions.
+Before you tighten anything, understand what exists today. Pull a list of all current role assignments in each subscription you manage.
 
 ```bash
 # List all role assignments across the subscription
@@ -86,7 +86,7 @@ az role assignment create \
 
 ## Use Built-in Roles Before Creating Custom Ones
 
-Azure has over 300 built-in roles. Before you create a custom role, check if a built-in one already fits your use case. Some commonly useful narrow roles:
+Azure has many built-in roles. Before you create a custom role, check if a built-in one already fits your use case. Some commonly useful narrow roles:
 
 - **Reader** - view all resources but change nothing
 - **Storage Blob Data Reader** - read blob data without full storage account access
@@ -95,7 +95,7 @@ Azure has over 300 built-in roles. Before you create a custom role, check if a b
 - **Network Contributor** - manage networks but not other resources
 - **Monitoring Reader** - view monitoring data without changing configurations
 
-The naming convention is helpful. Roles ending in "Reader" are read-only. Roles ending in "Contributor" allow modifications to a specific resource type. Roles ending in "Administrator" provide full control including access management.
+The naming convention is helpful. Roles ending in "Reader" are usually read-only. Roles ending in "Contributor" allow modifications to a specific resource type but do not allow Azure RBAC role assignment. Roles ending in "Administrator" are broader, but you should still check the full role definition because not every administrator role includes access management.
 
 ## Create Custom Roles When Needed
 
@@ -110,16 +110,22 @@ Here is an example of a custom role that allows a deployment service principal t
   "Actions": [
     "Microsoft.Web/sites/read",
     "Microsoft.Web/sites/write",
-    "Microsoft.Web/sites/config/*",
-    "Microsoft.Web/sites/slots/*",
+    "Microsoft.Web/sites/config/read",
+    "Microsoft.Web/sites/config/write",
+    "Microsoft.Web/sites/slots/read",
+    "Microsoft.Web/sites/slots/write",
+    "Microsoft.Web/sites/slots/config/read",
+    "Microsoft.Web/sites/slots/config/write",
+    "Microsoft.Web/sites/slots/publishxml/action",
+    "Microsoft.Web/sites/slots/restart/action",
+    "Microsoft.Web/sites/slots/start/action",
+    "Microsoft.Web/sites/slots/stop/action",
     "Microsoft.Web/sites/publishxml/action",
     "Microsoft.Web/sites/restart/action",
     "Microsoft.Web/sites/start/action",
     "Microsoft.Web/sites/stop/action"
   ],
-  "NotActions": [
-    "Microsoft.Web/sites/delete"
-  ],
+  "NotActions": [],
   "AssignableScopes": [
     "/subscriptions/<sub-id>/resourceGroups/production-rg"
   ]
@@ -137,7 +143,7 @@ Notice the `AssignableScopes` field. This restricts where the custom role can be
 
 ## Use Groups Instead of Direct Assignments
 
-Assigning roles directly to individual users creates a maintenance problem. When someone changes teams, you need to find and update every assignment. Instead, create Azure AD groups that map to job functions and assign roles to groups.
+Assigning roles directly to individual users creates a maintenance problem. When someone changes teams, you need to find and update every assignment. Instead, create Microsoft Entra groups that map to job functions and assign roles to groups.
 
 ```bash
 # Create a security group for the database team
@@ -157,7 +163,7 @@ When a new DBA joins, add them to the group. When they leave, remove them. The r
 
 ## Implement Just-in-Time Access with PIM
 
-Some roles should not be active all the time. Azure AD Privileged Identity Management (PIM) lets you make role assignments eligible rather than permanent. Users activate the role when they need it, with time limits and optional approval workflows.
+Some roles should not be active all the time. Microsoft Entra Privileged Identity Management (PIM) lets you make role assignments eligible rather than permanent. Users activate the role when they need it, with time limits and optional approval workflows.
 
 This is especially valuable for high-privilege roles:
 
@@ -170,7 +176,7 @@ Configure PIM to require MFA for activation, limit activation to a few hours, an
 
 ## Use Deny Assignments for Hard Boundaries
 
-Azure supports deny assignments through Azure Blueprints and managed applications. Deny assignments explicitly block specific actions, regardless of role assignments. They take precedence over any allow assignment.
+Azure supports deny assignments created and managed by Azure, including through deployment stacks and managed applications. Deny assignments explicitly block specific actions, regardless of role assignments. They take precedence over any allow assignment.
 
 This is useful for enforcing hard boundaries. For example, you might want to prevent anyone from deleting a production resource group, even users with Owner access.
 
@@ -178,11 +184,11 @@ This is useful for enforcing hard boundaries. For example, you might want to pre
 
 Least privilege is not a one-time configuration. It requires ongoing review.
 
-**Azure AD Access Reviews** automate the process of reviewing role assignments. Create recurring reviews for sensitive roles and require managers or resource owners to confirm that each assignment is still needed.
+**Microsoft Entra access reviews** automate the process of reviewing role assignments. Create recurring reviews for sensitive roles and require managers or resource owners to confirm that each assignment is still needed.
 
 ```bash
-# Check for role assignments that have not been used recently
-# This query finds assignments where the principal has not performed any actions
+# Review recent control-plane activity by caller and action
+# Compare this output with role assignments to identify candidates for review
 az monitor activity-log list \
   --start-time 2026-01-01 \
   --end-time 2026-02-16 \
@@ -218,8 +224,8 @@ az ad sp create-for-rbac \
 A few patterns that undermine least privilege:
 
 - Assigning Owner when Contributor would suffice. Owner includes the ability to manage access, which most users do not need.
-- Using wildcard actions in custom roles (e.g., `Microsoft.Compute/*`). Be explicit about which operations are allowed.
+- Using broad wildcard actions in custom roles (e.g., `Microsoft.Compute/*`). Be explicit about which operations are allowed where possible, and remember that `NotActions` subtracts from wildcard permissions but is not a deny rule.
 - Forgetting that some built-in roles include `*/read` in their actions, which grants read access across all resource providers. Check the full role definition before assigning it.
-- Not accounting for data plane permissions. RBAC covers the control plane (managing resources), but data plane access (reading blob data, querying databases) often uses separate role assignments.
+- Not accounting for data plane permissions. Azure RBAC separates control plane permissions from data plane permissions. Data plane access, such as reading blob data, requires roles that include the appropriate `DataActions` or another service-specific authorization path.
 
 Least privilege takes effort to implement and maintain, but it dramatically reduces your attack surface. Start with an inventory, scope down the obvious over-assignments, and build processes for ongoing review. Your future self will thank you when you are responding to a security incident and the blast radius is contained because access was properly scoped.
