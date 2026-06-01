@@ -16,11 +16,13 @@ In this post, I will walk through each error handling mechanism with practical e
 
 By default, when an action in a Logic App fails, all downstream actions are skipped and the workflow run is marked as "Failed." This is the simplest behavior but also the least useful for production workflows. You usually want to catch the error, log it, maybe retry the operation, and continue with the rest of the workflow.
 
-Each action in a Logic App can finish with one of four statuses:
+For error handling and run-after configuration, you will usually work with these action statuses:
 - **Succeeded** - the action completed successfully
 - **Failed** - the action encountered an error
 - **Skipped** - the action was skipped because a prerequisite action failed
 - **TimedOut** - the action did not complete within the configured timeout
+
+In run history, you may also see other statuses such as Cancelled, Aborted, Running, Waiting, or Succeeded with retries, depending on the action and where it is in the workflow lifecycle.
 
 ## Retry Policies
 
@@ -28,13 +30,13 @@ Retry policies are the first line of defense against transient failures. They te
 
 ### Configuring Retry Policies
 
-Every HTTP-based action (HTTP, HTTP + Swagger, API Connection actions) supports retry policies. Configure them in the action's settings:
+Many HTTP-based operations, including the built-in HTTP action and API Connection actions that expose retry settings, support retry policies. Configure them in the action's settings:
 
 In the Logic App designer, click on the action, click the three dots, select "Settings," and scroll to the Retry Policy section.
 
 The available retry policy types are:
 
-**Default** - retries up to 4 times at exponentially increasing intervals. This is what you get if you do not configure anything.
+**Default** - for most operations, retries up to 4 times at exponentially increasing intervals. This is what you get if you do not configure anything, although some connector operations use a different default retry behavior.
 
 **None** - no retries. The action fails immediately on the first error.
 
@@ -68,7 +70,7 @@ Here is how retry policies look in the workflow JSON definition:
 }
 ```
 
-This configuration retries up to 5 times, starting with a 10-second delay and growing exponentially up to a maximum of 1 hour between retries.
+This configuration retries up to 5 times, using 10 seconds as the exponential retry interval and allowing Logic Apps to choose delays between the configured minimum and maximum intervals.
 
 ### Choosing the Right Retry Parameters
 
@@ -160,24 +162,32 @@ Add a third Scope action. Configure its run-after to run after the Catch scope o
 
 ### Accessing Error Details in the Catch Block
 
-Inside the Catch scope, you can access the error details from the Try scope:
+Inside the Catch scope, you can access the error details from the Try scope. The `result('Try')` function returns an array of all top-level action results within the Try scope, including their statuses and any error information.
 
 ```json
 {
   "actions": {
+    "Filter_Failed_Actions": {
+      "type": "Query",
+      "inputs": {
+        "from": "@result('Try')",
+        "where": "@equals(item()['status'], 'Failed')"
+      }
+    },
     "Get_Error_Details": {
       "type": "Compose",
       "inputs": {
         "scopeResult": "@result('Try')",
-        "failedActions": "@filter(result('Try'), item => item['status'] eq 'Failed')",
-        "errorMessage": "@first(filter(result('Try'), item => item['status'] eq 'Failed'))['error']['message']"
+        "failedActions": "@body('Filter_Failed_Actions')",
+        "firstFailedAction": "@first(body('Filter_Failed_Actions'))"
+      },
+      "runAfter": {
+        "Filter_Failed_Actions": ["Succeeded"]
       }
     }
   }
 }
 ```
-
-The `result('Try')` function returns an array of all action results within the Try scope, including their statuses and any error information.
 
 ## Practical Error Handling Patterns
 
@@ -212,10 +222,10 @@ Try the primary service. If it fails after retries, fall back to a secondary ser
     },
     "Process_Result": {
       "type": "Compose",
-      "inputs": "@coalesce(outputs('Call_Primary_API')['body'], outputs('Call_Fallback_API')['body'])",
+      "inputs": "@coalesce(actions('Call_Primary_API')?['outputs']?['body'], actions('Call_Fallback_API')?['outputs']?['body'])",
       "runAfter": {
-        "Call_Primary_API": ["Succeeded"],
-        "Call_Fallback_API": ["Succeeded"]
+        "Call_Primary_API": ["Succeeded", "Failed", "TimedOut"],
+        "Call_Fallback_API": ["Succeeded", "Skipped"]
       }
     }
   }
@@ -283,7 +293,7 @@ For multi-step operations where a later step fails, undo the earlier steps:
 
 Sometimes you want to handle different HTTP errors differently. A 429 (Too Many Requests) should trigger a retry with backoff, while a 404 (Not Found) should be handled as a business logic case, not an error.
 
-Use a condition action after the HTTP call to check the status code:
+Use a Switch action after the HTTP call to check the status code:
 
 ```json
 {
@@ -300,17 +310,31 @@ Use a condition action after the HTTP call to check the status code:
       "type": "Switch",
       "expression": "@outputs('Call_API')['statusCode']",
       "cases": {
-        "200": {
+        "Status_200": {
+          "case": 200,
           "actions": { "Process_Success": { "type": "Compose", "inputs": "Success" } }
         },
-        "404": {
+        "Status_404": {
+          "case": 404,
           "actions": { "Handle_Not_Found": { "type": "Compose", "inputs": "Resource not found - creating new" } }
         },
-        "429": {
+        "Status_429": {
+          "case": 429,
           "actions": {
             "Wait_And_Retry": {
               "type": "Wait",
               "inputs": { "interval": { "count": 60, "unit": "Second" } }
+            },
+            "Retry_Call_API": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "https://api.example.com/resource/@{triggerBody()?['id']}",
+                "retryPolicy": { "type": "exponential", "count": 3, "interval": "PT30S" }
+              },
+              "runAfter": {
+                "Wait_And_Retry": ["Succeeded"]
+              }
             }
           }
         }
@@ -344,7 +368,7 @@ For production workflows, log all errors to a centralized location:
         "body": {
           "PartitionKey": "@{workflow()['name']}",
           "RowKey": "@{workflow()['run']['name']}",
-          "ErrorMessage": "@{actions('Try_Scope')?['error']?['message']}",
+          "ErrorDetails": "@{string(result('Try_Scope'))}",
           "Timestamp": "@{utcNow()}",
           "WorkflowRunId": "@{workflow()['run']['name']}"
         }
