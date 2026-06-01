@@ -46,34 +46,38 @@ Products can have their own policies that apply to all APIs within the product. 
 ```xml
 <!-- Product-level policy for the Starter Plan -->
 <!-- These limits apply to all APIs accessed through this product -->
-<inbound>
-    <base />
-    <rate-limit calls="60" renewal-period="60" />
-    <quota calls="1000" renewal-period="86400" />
-</inbound>
-<outbound>
-    <base />
-    <set-header name="X-Plan" exists-action="override">
-        <value>Starter</value>
-    </set-header>
-</outbound>
+<policies>
+    <inbound>
+        <base />
+        <rate-limit calls="60" renewal-period="60" />
+        <quota calls="1000" renewal-period="86400" />
+    </inbound>
+    <outbound>
+        <base />
+        <set-header name="X-Plan" exists-action="override">
+            <value>Starter</value>
+        </set-header>
+    </outbound>
+</policies>
 ```
 
 Create a different product with higher limits for premium users:
 
 ```xml
 <!-- Product-level policy for the Premium Plan -->
-<inbound>
-    <base />
-    <rate-limit calls="1000" renewal-period="60" />
-    <quota calls="100000" renewal-period="86400" />
-</inbound>
-<outbound>
-    <base />
-    <set-header name="X-Plan" exists-action="override">
-        <value>Premium</value>
-    </set-header>
-</outbound>
+<policies>
+    <inbound>
+        <base />
+        <rate-limit calls="1000" renewal-period="60" />
+        <quota calls="100000" renewal-period="86400" />
+    </inbound>
+    <outbound>
+        <base />
+        <set-header name="X-Plan" exists-action="override">
+            <value>Premium</value>
+        </set-header>
+    </outbound>
+</policies>
 ```
 
 ## Subscription Types
@@ -86,7 +90,7 @@ APIM supports several subscription scopes:
 
 **All-API subscription**: A special subscription that grants access to every API in the APIM instance. Typically used for internal or admin access.
 
-You configure which scopes are available under your APIM instance's "Subscriptions" settings.
+You choose the scope when creating a subscription. Separately, the product and API settings control whether a subscription key is required for access.
 
 ## Managing Subscriptions
 
@@ -100,25 +104,29 @@ To manage subscriptions, go to the "Subscriptions" blade. Here you can:
 - **Regenerate keys**: Issue new keys if the old ones are compromised
 - **Create subscriptions manually**: Generate keys for a specific developer or service account
 
-For programmatic subscription management, use the REST API or Azure CLI:
+For programmatic subscription management, use the Azure Resource Manager REST API through Azure CLI:
 
 ```bash
-# Create a subscription for a specific user to a product
+# Create a standalone subscription scoped to a product
 
-az apim subscription create \
-    --resource-group my-rg \
-    --service-name my-apim \
-    --subscription-id "partner-acme" \
-    --display-name "Acme Corp - Premium" \
-    --product-id premium-plan \
-    --state active
+AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+az rest --method put \
+    --uri "https://management.azure.com/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/my-rg/providers/Microsoft.ApiManagement/service/my-apim/subscriptions/partner-acme?api-version=2024-05-01" \
+    --body '{
+        "properties": {
+            "displayName": "Acme Corp - Premium",
+            "scope": "/products/premium-plan",
+            "state": "active"
+        }
+    }'
 ```
 
 ## Access Control with Groups
 
 Groups control which products developers can see and subscribe to. APIM has three built-in groups:
 
-- **Administrators**: Full access to the APIM instance
+- **Administrators**: Built-in group for developer portal administration
 - **Developers**: Registered users who can subscribe to products
 - **Guests**: Unauthenticated visitors to the developer portal
 
@@ -131,13 +139,13 @@ You can also create custom groups to represent different tiers of access:
 
 For example, your "Premium Plan" product might only be visible to the "Partners" group, while the "Starter Plan" is available to all "Developers."
 
-## Integrating with Azure AD Groups
+## Integrating with Microsoft Entra Groups
 
-If your developers authenticate with Azure AD, you can map Azure AD groups to APIM groups. This means group membership is managed in Azure AD, and APIM automatically reflects those changes.
+If your developers authenticate with Microsoft Entra ID, you can map Microsoft Entra groups to APIM groups. This means group membership is managed in Microsoft Entra ID, and APIM reflects those changes when users sign in or groups synchronize.
 
-Go to "Groups," click "Add," and select "Azure Active Directory" as the group type. Search for the Azure AD group and link it. Now any Azure AD user in that group automatically belongs to the corresponding APIM group.
+Go to "Groups," click "Add Microsoft Entra group," search for the Microsoft Entra group, and link it. Now users in that group can belong to the corresponding APIM group.
 
-This is the recommended approach for enterprise scenarios where user management is centralized in Azure AD.
+This is the recommended approach for enterprise scenarios where user management is centralized in Microsoft Entra ID.
 
 ## Approval Workflows
 
@@ -145,21 +153,24 @@ When a product requires approval, subscription requests go to an approval queue.
 
 APIM sends email notifications for pending approval requests. You can customize the email template under "Notification templates."
 
-For automated approval workflows, use the APIM REST API with an Azure Function or Logic App:
+For automated approval workflows, use the APIM REST API with an Azure Function or Logic App that checks submitted subscriptions:
 
 ```csharp
 // Azure Function that auto-approves subscriptions from known domains
-// Triggered by an Event Grid event from APIM
-[Function("AutoApproveSubscription")]
+// Runs on a schedule and uses the APIM REST API to find submitted requests
+[Function("AutoApproveSubscriptions")]
 public async Task Run(
-    [EventGridTrigger] EventGridEvent eventGridEvent)
+    [TimerTrigger("0 */5 * * * *")] TimerInfo timerInfo)
 {
-    var data = eventGridEvent.Data.ToObjectFromJson<SubscriptionRequestData>();
+    var submittedSubscriptions = await GetSubmittedSubscriptions();
 
-    // Auto-approve if the developer's email is from a known partner domain
-    if (data.DeveloperEmail.EndsWith("@partner.com"))
+    foreach (var subscription in submittedSubscriptions)
     {
-        await ApproveSubscription(data.SubscriptionId);
+        // Auto-approve if the developer's email is from a known partner domain
+        if (subscription.DeveloperEmail.EndsWith("@partner.com", StringComparison.OrdinalIgnoreCase))
+        {
+            await ApproveSubscription(subscription.SubscriptionId);
+        }
     }
 }
 ```
@@ -215,12 +226,15 @@ requests
 
 ## Product Lifecycle
 
-Products go through a lifecycle:
+Products have two built-in states in APIM:
 
-1. **Draft**: Created but not published. Not visible in the developer portal.
-2. **Published**: Visible and subscribable. Active subscriptions are serving traffic.
-3. **Deprecated**: Still functional but marked as deprecated. No new subscriptions allowed.
-4. **Retired**: APIs removed from the product. Existing subscriptions are invalidated.
+1. **Not published**: Created but not visible in the developer portal.
+2. **Published**: Visible in the developer portal and available for subscriptions.
+
+You can still run your own deprecation and retirement process:
+
+1. **Deprecated**: Keep the product published or notify existing consumers, but stop directing new consumers to it.
+2. **Retired**: Remove APIs from the product, suspend or cancel subscriptions, or delete the product when migration is complete.
 
 When deprecating a product, give consumers adequate notice and provide a migration path to the replacement product.
 
