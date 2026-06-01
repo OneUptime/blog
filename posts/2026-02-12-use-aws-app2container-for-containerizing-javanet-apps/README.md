@@ -10,14 +10,16 @@ Description: Learn how to use AWS App2Container to automatically containerize Ja
 
 Containerizing existing Java and .NET applications usually means writing Dockerfiles from scratch, figuring out all the dependencies, and testing everything works in a container. AWS App2Container (A2C) automates this entire process. It analyzes your running application, generates a Dockerfile and container image, and creates the deployment artifacts for ECS or EKS. No code changes required.
 
+As of AWS's current documentation, App2Container is no longer open to new customers after November 7, 2025. This guide is still useful for existing App2Container customers and environments that already have access.
+
 This guide covers how to use App2Container to containerize and deploy your Java and .NET applications to AWS.
 
 ## What App2Container Supports
 
 App2Container works with:
-- **Java**: Applications running in Tomcat, JBoss, Spring Boot (standalone JAR), and other Java application servers
-- **.NET**: Applications running in IIS on Windows
-- **Operating Systems**: Amazon Linux, Ubuntu, RHEL, CentOS, Windows Server 2016+
+- **Java**: Applications running on JDK 1.8 or later, including Tomcat, TomEE, JBoss standalone mode, and process-mode Java applications such as standalone Spring Boot JARs
+- **.NET**: .NET Core 3.1 and .NET 5 through .NET 9 applications on Linux, and .NET Framework 3.5 or 4.x applications running in IIS 7.5 or later on Windows
+- **Operating Systems**: Amazon Linux 2, Amazon Linux 2023, Ubuntu 18.04+, RHEL 7+, CentOS 8+, and Windows Server 2016+
 
 ```mermaid
 graph LR
@@ -75,14 +77,15 @@ sudo app2container init
 # - Whether to collect usage metrics
 ```
 
-The init command creates a configuration file at `/root/app2container/config.json`:
+The init command saves the local App2Container configuration. The values correspond to prompts like:
 
 ```json
 {
   "workspace": "/root/app2container",
   "s3Bucket": "my-app2container-artifacts",
   "awsProfile": "default",
-  "metricsReportDisabled": false
+  "metricsReportPermission": true,
+  "dockerContentTrust": false
 }
 ```
 
@@ -157,25 +160,25 @@ This creates an analysis report at `/root/app2container/java-tomcat-6c7f2389/ana
     "imageRepository": "java-tomcat-6c7f2389",
     "imageTag": "latest",
     "containerBaseImage": "amazoncorretto:11",
-    "containerPort": 8080,
-    "exposedPorts": [8080]
-  },
-  "deployTarget": "ECS",
-  "ecsParameters": {
-    "cpu": 2,
-    "memory": 4096,
-    "desiredCount": 2,
-    "createEcsArtifacts": true
+    "applicationPort": 8080,
+    "applicationMode": true,
+    "appExcludedFiles": [],
+    "appSpecificFiles": [],
+    "logLocations": [],
+    "enableDynamicLogging": false,
+    "dependencies": []
   }
 }
 ```
 
 Review and modify this file before containerization. You can adjust:
 - Base image
-- Container port
-- CPU and memory allocation
-- Deployment target (ECS or EKS)
-- Desired container count
+- Application port
+- Files to include or exclude from the container image
+- Dynamic logging configuration
+- Application mode or process mode
+
+Deployment settings such as ECS or EKS target, CPU, memory, and desired container count are generated later in `deployment.json` by the `containerize` command and should be reviewed before running `generate app-deployment`.
 
 ## Step 4: Containerize the Application
 
@@ -199,7 +202,7 @@ Here is an example of what the generated Dockerfile looks like:
 FROM amazoncorretto:11
 
 # Install required system packages
-RUN yum install -y shadow-utils procps
+RUN yum install -y shadow-utils procps curl
 
 # Create application user
 RUN groupadd -r tomcat && useradd -r -g tomcat tomcat
@@ -391,11 +394,10 @@ A2C can also generate a CI/CD pipeline:
 ```bash
 # Generate pipeline artifacts
 sudo app2container generate pipeline \
-  --application-id java-tomcat-6c7f2389 \
-  --pipeline-type CodePipeline
+  --application-id java-tomcat-6c7f2389
 ```
 
-This creates a CodePipeline that automatically builds and deploys new versions when you push code changes.
+The pipeline type and source settings are controlled by the generated `pipeline.json` file. For CodePipeline, App2Container creates CodeCommit and CodePipeline artifacts that can automatically build and deploy new versions when you push code changes.
 
 ## Monitoring After Deployment
 
