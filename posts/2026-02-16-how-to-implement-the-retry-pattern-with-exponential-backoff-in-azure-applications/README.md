@@ -19,7 +19,7 @@ A naive retry strategy that retries immediately can actually make things worse. 
 Here is the basic formula:
 
 ```text
-wait_time = base_delay * (2 ^ attempt_number) + random_jitter
+wait_time = base_delay * (2 ^ (retry_attempt - 1)) + random_jitter
 ```
 
 The first retry might wait 1 second, the second waits 2 seconds, the third waits 4 seconds, and so on. Adding random jitter prevents multiple clients from synchronizing their retries.
@@ -46,18 +46,24 @@ var retryPolicy = HttpPolicyExtensions
             {
                 return response.Result.Headers.RetryAfter.Delta.Value;
             }
+            if (response.Result?.Headers.RetryAfter?.Date != null)
+            {
+                var retryAfter = response.Result.Headers.RetryAfter.Date.Value - DateTimeOffset.UtcNow;
+                return retryAfter > TimeSpan.Zero ? retryAfter : TimeSpan.Zero;
+            }
 
             // Calculate exponential backoff with jitter
-            var baseDelay = TimeSpan.FromSeconds(Math.Pow(2, retryAttempt));
+            var baseDelay = TimeSpan.FromSeconds(Math.Pow(2, retryAttempt - 1));
             var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 1000));
             return baseDelay + jitter;
         },
-        onRetryAsync: async (outcome, timespan, retryAttempt, context) =>
+        onRetryAsync: (outcome, timespan, retryAttempt, context) =>
         {
             // Log each retry attempt for debugging
             Console.WriteLine(
                 $"Retry {retryAttempt} after {timespan.TotalSeconds:F1}s " +
                 $"due to {outcome.Result?.StatusCode ?? default}");
+            return Task.CompletedTask;
         }
     );
 
@@ -120,7 +126,7 @@ var cosmosClientOptions = new CosmosClientOptions
     // Maximum wait time for all retries combined
     MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(30),
 
-    // Connection mode - direct is faster but gateway handles retries better
+    // Connection mode - direct is preferred for best performance
     ConnectionMode = ConnectionMode.Direct,
 
     // Request timeout per individual attempt
@@ -140,7 +146,7 @@ import requests
 
 # Decorator that retries on connection errors and server errors
 
-# Waits 1s, 2s, 4s, 8s, then 16s between retries
+# Waits 1s, 2s, 4s, then 8s between the five attempts
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=1, max=60),
@@ -171,19 +177,22 @@ def call_external_api(endpoint):
 
 ## Implementing Retries in Azure Functions
 
-Azure Functions have built-in retry policies for certain trigger types. For HTTP-triggered functions, you need to implement retries yourself, but for queue-triggered functions, you can use the built-in mechanism:
+Azure Functions have built-in retry policies for certain trigger types, including Azure Cosmos DB, Event Hubs, Kafka, and Timer triggers. For HTTP-triggered functions, you need to implement retries yourself. For Azure Service Bus-triggered functions, the Service Bus binding uses Service Bus delivery and lock behavior, while `clientRetryOptions` in `host.json` only controls interactions with the Service Bus service, not retries of your function execution.
+
+For supported trigger types that use `function.json`, configure the retry policy at the function level:
 
 ```json
 {
-  "version": "2.0",
-  "extensions": {
-    "serviceBus": {
-      "messageHandlerOptions": {
-        "maxConcurrentCalls": 16,
-        "maxAutoLockRenewalDuration": "00:05:00"
-      }
+  "disabled": false,
+  "bindings": [
+    {
+      "name": "events",
+      "type": "eventHubTrigger",
+      "direction": "in",
+      "eventHubName": "orders",
+      "connection": "EventHubConnection"
     }
-  },
+  ],
   "retry": {
     "strategy": "exponentialBackoff",
     "maxRetryCount": 5,
@@ -193,24 +202,21 @@ Azure Functions have built-in retry policies for certain trigger types. For HTTP
 }
 ```
 
-For HTTP-triggered functions that call downstream services, wrap your logic with a retry policy:
+For C# functions using supported triggers, you can use the retry attribute:
 
 ```csharp
 // Azure Function with built-in retry attribute
 [Function("ProcessOrder")]
 [ExponentialBackoffRetry(5, "00:00:01", "00:05:00")]
 public async Task Run(
-    [ServiceBusTrigger("orders", Connection = "ServiceBusConnection")]
-    ServiceBusReceivedMessage message,
-    ServiceBusMessageActions messageActions)
+    [EventHubTrigger("orders", Connection = "EventHubConnection")]
+    string[] events)
 {
-    var order = JsonSerializer.Deserialize<Order>(message.Body);
-
-    // Process the order - if this throws, the function retries
-    await _orderProcessor.ProcessAsync(order);
-
-    // Complete the message only after successful processing
-    await messageActions.CompleteMessageAsync(message);
+    foreach (var orderEvent in events)
+    {
+        // Process the event - if this throws, the function retries
+        await _orderProcessor.ProcessAsync(orderEvent);
+    }
 }
 ```
 
