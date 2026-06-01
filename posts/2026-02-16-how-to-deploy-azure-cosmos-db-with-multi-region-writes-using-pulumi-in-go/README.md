@@ -234,7 +234,7 @@ The `EnableMultipleWriteLocations: pulumi.Bool(true)` flag is what enables multi
 
 ### Consistency Level
 
-We use Session consistency, which is the default and most commonly used level. With multi-region writes, Session consistency guarantees that a client will read its own writes within the same session, regardless of which region it connects to. Stronger consistency levels like Strong or Bounded Staleness are available but come with higher latency.
+We use Session consistency, which is the default and most commonly used level. With multi-region writes, Session consistency guarantees that a client will read its own writes within the same session, regardless of which region it connects to. Bounded Staleness is also available but comes with higher latency. Strong consistency is not supported for Azure Cosmos DB accounts with multiple write regions.
 
 ### Conflict Resolution
 
