@@ -65,11 +65,12 @@ az cognitiveservices account keys list \
 
 ## Text Content Moderation
 
-Text moderation analyzes written content for hate speech, sexual content, violence, and self-harm. Each category gets a severity score from 0 to 6.
+Text moderation analyzes written content for hate speech, sexual content, violence, and self-harm. This example requests eight severity levels, so each category gets a severity score from 0 to 7.
 
 ```javascript
 // src/moderation/text-moderator.js
-const { ContentSafetyClient } = require('@azure-rest/ai-content-safety');
+const ContentSafetyClient = require('@azure-rest/ai-content-safety').default;
+const { isUnexpected } = require('@azure-rest/ai-content-safety');
 const { AzureKeyCredential } = require('@azure/core-auth');
 
 const client = ContentSafetyClient(
@@ -86,12 +87,13 @@ async function moderateText(text) {
       categories: ['Hate', 'SelfHarm', 'Sexual', 'Violence'],
       // Block list IDs (custom blocked terms)
       blocklistNames: ['custom-blocked-terms'],
-      // Break long text into segments for better analysis
-      haltOnBlocklistHit: false
+      // Continue harmful-content analysis even when a blocklist item matches
+      haltOnBlocklistHit: false,
+      outputType: 'EightSeverityLevels'
     }
   });
 
-  if (response.status !== '200') {
+  if (isUnexpected(response)) {
     throw new Error(`Content Safety API error: ${response.status}`);
   }
 
@@ -157,29 +159,37 @@ function makeModerationDecision(scores, blockedTerms) {
   };
 }
 
-module.exports = { moderateText };
+module.exports = { moderateText, findCategoryScore, makeModerationDecision };
 ```
 
 ## Image Content Moderation
 
-Image moderation analyzes photos and graphics for the same categories.
+Image moderation analyzes photos and graphics for the same categories. Image analysis returns four severity levels: 0, 2, 4, and 6.
 
 ```javascript
 // src/moderation/image-moderator.js
-const fs = require('fs');
+const ContentSafetyClient = require('@azure-rest/ai-content-safety').default;
+const { isUnexpected } = require('@azure-rest/ai-content-safety');
+const { AzureKeyCredential } = require('@azure/core-auth');
+const { findCategoryScore, makeModerationDecision } = require('./text-moderator');
+
+const client = ContentSafetyClient(
+  process.env.CONTENT_SAFETY_ENDPOINT,
+  new AzureKeyCredential(process.env.CONTENT_SAFETY_KEY)
+);
 
 // Moderate an image from a URL
 async function moderateImageFromUrl(imageUrl) {
   const response = await client.path('/image:analyze').post({
     body: {
       image: {
-        url: imageUrl
+        blobUrl: imageUrl
       },
       categories: ['Hate', 'SelfHarm', 'Sexual', 'Violence']
     }
   });
 
-  if (response.status !== '200') {
+  if (isUnexpected(response)) {
     throw new Error(`Image moderation error: ${response.status}`);
   }
 
@@ -208,7 +218,7 @@ async function moderateImageFromData(imageBuffer) {
     }
   });
 
-  if (response.status !== '200') {
+  if (isUnexpected(response)) {
     throw new Error(`Image moderation error: ${response.status}`);
   }
 
@@ -234,6 +244,14 @@ Create blocklists for terms specific to your platform that the AI might not catc
 ```javascript
 // scripts/manage-blocklist.js
 // Create and manage custom blocked term lists
+const ContentSafetyClient = require('@azure-rest/ai-content-safety').default;
+const { isUnexpected } = require('@azure-rest/ai-content-safety');
+const { AzureKeyCredential } = require('@azure/core-auth');
+
+const client = ContentSafetyClient(
+  process.env.CONTENT_SAFETY_ENDPOINT,
+  new AzureKeyCredential(process.env.CONTENT_SAFETY_KEY)
+);
 
 async function createBlocklist() {
   // Create a new blocklist
@@ -245,6 +263,10 @@ async function createBlocklist() {
       },
       contentType: 'application/merge-patch+json'
     });
+
+  if (isUnexpected(response)) {
+    throw new Error(`Create blocklist error: ${response.status}`);
+  }
 
   console.log('Blocklist created:', response.body);
 }
@@ -265,15 +287,25 @@ async function addBlockedTerms(terms) {
       }
     });
 
+  if (isUnexpected(response)) {
+    throw new Error(`Add blocklist items error: ${response.status}`);
+  }
+
   console.log(`Added ${response.body.blocklistItems.length} terms`);
 }
 
-// Add platform-specific blocked terms
-addBlockedTerms([
-  'competitor-spam-term',
-  'known-scam-phrase',
-  'prohibited-product-name'
-]);
+async function main() {
+  await createBlocklist();
+
+  // Add platform-specific blocked terms
+  await addBlockedTerms([
+    'competitor-spam-term',
+    'known-scam-phrase',
+    'prohibited-product-name'
+  ]);
+}
+
+main().catch(console.error);
 ```
 
 ## Video Moderation Pipeline
