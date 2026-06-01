@@ -42,7 +42,7 @@ graph TD
 
 ## Canary Deployment in Azure Pipelines
 
-Azure Pipelines supports canary deployments through the `canary` strategy in deployment jobs. The pipeline deploys to a subset first, then after validation (manual or automated), promotes to the full fleet.
+Azure Pipelines supports canary deployments through the `canary` strategy in deployment jobs. The pipeline deploys to a subset first, then after validation (manual or automated), promotes to the full fleet. With the Kubernetes manifest task's default pod-based traffic split, the percentage controls the number of baseline and canary replicas rather than an exact request-level traffic percentage. For precise request-level percentages, use `trafficSplitMethod: 'smi'` with a service mesh that supports SMI.
 
 Here is a canary deployment pipeline for a Kubernetes application.
 
@@ -85,7 +85,7 @@ stages:
         environment: 'production.myapp-canary'
         strategy:
           canary:
-            increments: [10, 50]  # Deploy to 10%, then 50%, then 100%
+            increments: [10, 50]  # Use 10%, then 50%, then promote after validation
             deploy:
               steps:
                 # Deploy the canary version
@@ -94,6 +94,7 @@ stages:
                   inputs:
                     action: 'deploy'
                     strategy: 'canary'
+                    trafficSplitMethod: 'pod'
                     percentage: $(strategy.increment)
                     connectionType: 'azureResourceManager'
                     azureSubscriptionConnection: 'my-connection'
@@ -156,9 +157,9 @@ stages:
 ```
 
 The `increments: [10, 50]` means the pipeline will:
-1. Deploy to 10% of pods
+1. Create baseline and canary replicas based on 10% of the replica count in the manifest
 2. Run the `postRouteTraffic` validation
-3. If it passes, deploy to 50%
+3. If it passes, create baseline and canary replicas based on 50%
 4. Run validation again
 5. If it passes, promote to 100%
 
@@ -211,8 +212,10 @@ stages:
                   displayName: 'Deploy to staging slot'
                   inputs:
                     azureSubscription: 'my-connection'
+                    appType: 'webApp'
                     appName: 'myapp-production'
                     deployToSlotOrASE: true
+                    resourceGroupName: 'my-rg'
                     slotName: 'staging'
                     package: '$(Pipeline.Workspace)/drop/**/*.zip'
 
@@ -248,11 +251,12 @@ stages:
                   displayName: 'Swap slots'
                   inputs:
                     azureSubscription: 'my-connection'
-                    action: 'Swap Slots'
-                    webAppName: 'myapp-production'
-                    sourceSlot: 'staging'
-                    targetSlot: 'production'
-                    preserveVnet: true
+                    Action: 'Swap Slots'
+                    WebAppName: 'myapp-production'
+                    ResourceGroupName: 'my-rg'
+                    SourceSlot: 'staging'
+                    SwapWithProduction: true
+                    PreserveVnet: true
 ```
 
 The beauty of slot swaps is that they are nearly instantaneous and easy to reverse. If production breaks after the swap, just swap the slots back.
@@ -304,19 +308,19 @@ spec:
       targetPort: 8080
 ```
 
-The pipeline deploys to the inactive version, validates it, then patches the service selector.
+The pipeline deploys to the inactive version, validates it, then updates the service selector.
 
 ```yaml
 # Pipeline step to switch traffic from blue to green
 - task: Kubernetes@1
   displayName: 'Switch traffic to green'
   inputs:
-    connectionType: 'azureResourceManager'
+    connectionType: 'Azure Resource Manager'
     azureSubscriptionEndpoint: 'my-connection'
     azureResourceGroup: 'my-rg'
     kubernetesCluster: 'my-aks'
-    command: 'patch'
-    arguments: 'service myapp-service -p "{\"spec\":{\"selector\":{\"version\":\"green\"}}}"'
+    command: 'set'
+    arguments: 'selector service/myapp-service app=myapp version=green --overwrite'
     namespace: 'default'
 ```
 
