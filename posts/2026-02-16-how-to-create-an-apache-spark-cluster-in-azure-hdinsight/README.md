@@ -25,7 +25,7 @@ Before creating your cluster, make sure you have these things in place:
 
 The first major decision is sizing your cluster. HDInsight Spark clusters have three node types:
 
-**Head nodes**: These run the Spark driver, YARN ResourceManager, and cluster management services. You always get two head nodes for high availability. For most workloads, D12 v2 or D13 v2 VMs work well here.
+**Head nodes**: These run the Spark driver, YARN ResourceManager, and cluster management services. You always get two head nodes for high availability. For most workloads, use one of the currently supported HDInsight VM sizes recommended for your region and cluster type.
 
 **Worker nodes**: These run the Spark executors that do the actual data processing. The number and size of worker nodes depend on your data volume and computation requirements. Start with 4 worker nodes and scale from there.
 
@@ -42,7 +42,7 @@ The portal provides a guided experience for cluster creation. Here are the steps
    - **Resource group**: Choose an existing group or create a new one
    - **Cluster name**: Pick a unique name (this becomes part of the cluster URL)
    - **Region**: Choose a region close to your data sources
-   - **Cluster type**: Select "Spark" and choose version 3.1 or later
+   - **Cluster type**: Select "Spark" and choose the latest supported HDInsight version, such as HDInsight 5.1 with Spark 3.3
    - **Cluster login username**: Default is "admin"
    - **Cluster login password**: Set a strong password
    - **SSH username**: Default is "sshuser"
@@ -72,17 +72,18 @@ az hdinsight create \
   --name my-spark-cluster \
   --resource-group my-resource-group \
   --type Spark \
-  --component-version Spark=3.1 \
+  --version 5.1 \
+  --component-version Spark=3.3 \
   --http-user admin \
   --http-password "YourStr0ngP@ssword!" \
   --ssh-user sshuser \
   --ssh-password "YourSSHP@ssword!" \
   --workernode-count 4 \
-  --workernode-size Standard_D13_V2 \
-  --headnode-size Standard_D13_V2 \
+  --workernode-size Standard_E8_v3 \
+  --headnode-size Standard_E8_v3 \
   --storage-account mystorageaccount \
   --storage-account-key "your-storage-account-key" \
-  --storage-default-container spark-data \
+  --storage-container spark-data \
   --location eastus
 ```
 
@@ -95,17 +96,18 @@ az hdinsight create \
   --name my-spark-cluster \
   --resource-group my-resource-group \
   --type Spark \
-  --component-version Spark=3.1 \
+  --version 5.1 \
+  --component-version Spark=3.3 \
   --http-user admin \
   --http-password "YourStr0ngP@ssword!" \
   --ssh-user sshuser \
   --ssh-password "YourSSHP@ssword!" \
   --workernode-count 4 \
-  --workernode-size Standard_D13_V2 \
-  --headnode-size Standard_D13_V2 \
+  --workernode-size Standard_E8_v3 \
+  --headnode-size Standard_E8_v3 \
   --storage-account mystorageaccount \
-  --storage-default-filesystem spark-fs \
-  --assign-identity "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/my-identity" \
+  --storage-filesystem spark-fs \
+  --storage-account-managed-identity "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/my-identity" \
   --location eastus
 ```
 
@@ -121,7 +123,7 @@ HDInsight comes with Jupyter Notebook pre-installed. Access it at:
 https://my-spark-cluster.azurehdinsight.net/jupyter
 ```
 
-Log in with the HTTP credentials you specified during creation. Jupyter provides PySpark and Spark (Scala) kernels that are pre-configured to connect to your cluster.
+Log in with the HTTP credentials you specified during creation. Jupyter provides PySpark3 and Spark (Scala) kernels that are pre-configured to connect to your cluster.
 
 ### SSH Access
 
@@ -154,12 +156,11 @@ It offers a slightly different experience from Jupyter, with built-in visualizat
 
 ## Running Your First Spark Job
 
-Let us verify the cluster is working by running a simple word count job. Create a new Jupyter notebook with the PySpark kernel and run:
+Let us verify the cluster is working by running a simple word count job. Create a new Jupyter notebook with the PySpark3 kernel and run:
 
 ```python
 # Read a sample text file from the cluster's default storage
-# The wasbs:// protocol accesses Azure Blob Storage
-text_rdd = sc.textFile("wasbs:///example/data/gutenberg/davinci.txt")
+text_rdd = sc.textFile("/example/data/gutenberg/davinci.txt")
 
 # Split each line into words, count occurrences of each word
 word_counts = text_rdd \
@@ -183,7 +184,7 @@ You often need to tune Spark configuration for your specific workloads. HDInsigh
 https://my-spark-cluster.azurehdinsight.net
 ```
 
-Navigate to Spark2 > Configs to adjust settings like:
+Navigate to Spark (or Spark2, depending on your cluster version) > Configs to adjust settings like:
 
 - `spark.executor.memory` - Memory allocated to each executor
 - `spark.executor.cores` - CPU cores per executor
@@ -235,7 +236,7 @@ HDInsight clusters incur costs for every hour they are running, even if no jobs 
 
 - **Use autoscaling** to scale down during off-peak hours
 - **Delete clusters** when they are not needed and recreate them from scripts
-- **Use spot instances** for worker nodes in non-critical workloads by specifying the `--workernode-size` with spot-eligible VM sizes
+- **Delete idle clusters** instead of relying on spot instances, because HDInsight cluster VMs do not expose Azure Spot VM configuration
 - **Right-size your nodes** - start small and increase only when you see resource bottlenecks in Ambari metrics
 
 ## Networking and Security
@@ -248,7 +249,8 @@ az hdinsight create \
   --name my-spark-cluster \
   --resource-group my-resource-group \
   --type Spark \
-  --component-version Spark=3.1 \
+  --version 5.1 \
+  --component-version Spark=3.3 \
   --http-user admin \
   --http-password "YourStr0ngP@ssword!" \
   --ssh-user sshuser \
@@ -256,13 +258,13 @@ az hdinsight create \
   --workernode-count 4 \
   --storage-account mystorageaccount \
   --storage-account-key "your-key" \
-  --storage-default-container spark-data \
+  --storage-container spark-data \
   --vnet-name my-vnet \
   --subnet default \
   --location eastus
 ```
 
-This enables private connectivity to your data sources and restricts public access to the cluster endpoints. You can combine this with Network Security Groups (NSGs) and Azure Private Link for additional security.
+This enables private connectivity to resources in the virtual network, but the standard public HTTPS and SSH endpoints can still exist. Use Network Security Groups (NSGs), restricted connectivity settings, and Azure Private Link if you need to restrict public access to the cluster endpoints.
 
 ## Summary
 
