@@ -34,7 +34,7 @@ Azure sells SSL certificates directly, including wildcards. This is convenient b
 1. Go to the Azure Portal and search for "App Service Certificates"
 2. Click "Create"
 3. Select "Wildcard" as the certificate type
-4. Enter your domain (e.g., `*.myapp.com`)
+4. Enter your root domain (e.g., `myapp.com`)
 5. Choose a resource group and Key Vault for storing the certificate
 6. Complete the purchase
 
@@ -62,7 +62,7 @@ Note that Let's Encrypt certificates expire every 90 days, so you need to set up
 
 ### Option 3: Third-Party Certificate Authority
 
-Purchase a wildcard certificate from providers like DigiCert, Comodo, or GoDaddy. They typically issue certificates valid for 1-2 years.
+Purchase a wildcard certificate from providers like DigiCert, Comodo, or GoDaddy. Public TLS certificates are typically issued for about one year.
 
 ## Preparing the Certificate for Upload
 
@@ -78,6 +78,9 @@ openssl pkcs12 -export \
     -inkey privkey.pem \
     -in cert.pem \
     -certfile chain.pem \
+    -keypbe PBE-SHA1-3DES \
+    -certpbe PBE-SHA1-3DES \
+    -macalg SHA1 \
     -password pass:YourStrongPassword
 ```
 
@@ -160,6 +163,7 @@ THUMBPRINT=$(az webapp config ssl list \
 az webapp config ssl bind \
     --name my-app-service \
     --resource-group my-resource-group \
+    --hostname "api.myapp.com" \
     --certificate-thumbprint $THUMBPRINT \
     --ssl-type SNI
 
@@ -194,15 +198,18 @@ az keyvault certificate import \
     --password "YourStrongPassword"
 
 # Grant App Service access to the Key Vault
-# First, get the App Service resource provider's service principal
-az ad sp show --id abfa0a7c-a6b6-4736-8310-5855508787cd --query objectId -o tsv
-
-# Then grant it GET permissions on certificates and secrets
-az keyvault set-policy \
+# First, get the Key Vault resource ID
+KEY_VAULT_ID=$(az keyvault show \
     --name my-cert-vault \
-    --object-id "<object-id-from-above>" \
-    --certificate-permissions get \
-    --secret-permissions get
+    --resource-group my-resource-group \
+    --query id \
+    --output tsv)
+
+# Then grant the App Service resource provider permission to read certificates
+az role assignment create \
+    --role "Key Vault Certificate User" \
+    --assignee "abfa0a7c-a6b6-4736-8310-5855508787cd" \
+    --scope "$KEY_VAULT_ID"
 ```
 
 Then import the certificate from Key Vault into your App Service:
@@ -247,6 +254,7 @@ NEW_THUMBPRINT="<new-thumbprint-from-upload>"
 az webapp config ssl bind \
     --name my-app-service \
     --resource-group my-resource-group \
+    --hostname "api.myapp.com" \
     --certificate-thumbprint $NEW_THUMBPRINT \
     --ssl-type SNI
 ```
@@ -260,7 +268,7 @@ After binding the certificate, enforce HTTPS so all HTTP requests redirect to HT
 az webapp update \
     --name my-app-service \
     --resource-group my-resource-group \
-    --set httpsOnly=true
+    --https-only true
 ```
 
 You can also set the minimum TLS version to ensure only modern clients can connect:
