@@ -10,44 +10,44 @@ Description: Step-by-step guide to setting up agentless dependency analysis in A
 
 When you are planning a cloud migration, one of the trickiest parts is figuring out which servers talk to each other. Move a web server without its database, and the application breaks. Migrate a database without the middleware tier, and you get the same result. Dependency analysis solves this by showing you the actual network connections between servers.
 
-Azure Migrate offers two flavors of dependency analysis: agent-based and agentless. The agentless option is the one most teams prefer because it requires no software installation on the discovered servers. It uses vCenter APIs and guest OS credentials to collect connection data directly from each VM. This guide walks through setting it up end to end.
+Azure Migrate offers two flavors of dependency analysis: agent-based and agentless. The agentless option is the one most teams prefer because it requires no software installation on the discovered servers. For VMware VMs, it uses vCenter and vSphere APIs together with guest OS credentials to collect connection data. For Hyper-V, physical servers, and servers running in other clouds, the appliance connects directly to the servers with the credentials you provide. This guide walks through setting it up end to end.
 
 ## Why Agentless Over Agent-Based
 
-The agent-based approach requires installing the Microsoft Monitoring Agent (MMA) and Dependency Agent on every server you want to analyze. For 50 servers, that is manageable. For 500 or 5,000, it becomes a project in itself. Agentless dependency analysis avoids all of that.
+The agent-based approach requires installing the Azure Monitor Agent (AMA) and Dependency Agent on every server you want to analyze. For 50 servers, that is manageable. For 500 or 5,000, it becomes a project in itself. Agentless dependency analysis avoids all of that.
 
 Here is a quick comparison:
 
 | Feature | Agent-Based | Agentless |
 |---------|-------------|-----------|
 | Software installation required | Yes (two agents per server) | No |
-| Supported platforms | Windows, Linux | VMware VMs only |
-| Data collection method | Log Analytics workspace | vCenter + guest credentials |
+| Supported platforms | Windows, Linux | VMware VMs, Hyper-V VMs, physical servers, and servers in other clouds |
+| Data collection method | Log Analytics workspace | Azure Migrate appliance + guest credentials |
 | Visualization duration | Configurable | Up to 30 days |
 | Cost | Log Analytics ingestion charges | No additional cost |
 
-The trade-off is that agentless analysis only works with VMware VMs discovered through the Azure Migrate appliance. If you have physical servers or Hyper-V VMs, you will need the agent-based approach for those.
+The trade-off is that agentless analysis requires servers to be discovered through an Azure Migrate appliance and to pass the prerequisite checks. If you are using the older classic dependency experience, some workflows and support details differ from the current enhanced experience.
 
 ## Prerequisites
 
 Before setting up agentless dependency analysis, ensure you have:
 
-- An Azure Migrate project with the appliance already deployed and discovering VMware VMs
-- vCenter Server credentials configured on the appliance
-- Guest OS credentials for the VMs you want to analyze (Windows domain credentials or Linux SSH credentials)
-- The appliance must have network access to the target VMs on WMI (port 5985/5986 for Windows) and SSH (port 22 for Linux)
+- An Azure Migrate project with the appliance already deployed and discovering servers
+- Discovery source credentials configured on the appliance, such as vCenter Server, Hyper-V host or cluster, or physical server details
+- Guest OS credentials for the servers you want to analyze, such as Windows domain or nondomain credentials and Linux credentials
+- Required connectivity for the environment. For VMware, the appliance must be able to connect to TCP port 443 on the ESXi hosts running the VMs. For Hyper-V and physical servers, Windows servers use WinRM on port 5986 or 5985, and Linux servers use SSH on port 22.
 
 If you have not yet set up the Azure Migrate appliance and started discovery, do that first. Dependency analysis builds on top of the discovery data.
 
 ## Step 1: Provide Guest OS Credentials on the Appliance
 
-The agentless method needs to log into each VM's guest OS to collect active network connections. You provide these credentials through the appliance configuration manager.
+The agentless method needs guest OS credentials to collect active network connections from each server. You provide these credentials through the appliance configuration manager.
 
 1. Open the appliance configuration manager at `https://<appliance-ip>:44368`
 2. Navigate to the "Manage credentials" section
 3. Add credentials for your environment
 
-For Windows VMs, you typically need a domain account with local administrator privileges. For Linux VMs, you need an account with sudo access or root credentials.
+For Windows servers, you typically need a domain or local account with administrator privileges. For Linux servers, you need an account with sudo access or root credentials.
 
 Here is an example of creating a dedicated service account for this purpose on Windows:
 
@@ -61,44 +61,46 @@ Add-LocalGroupMember -Group "Administrators" -Member "azuremigrate-dep"
 
 # Enable WinRM for remote access (required for agentless dependency collection)
 Enable-PSRemoting -Force
-Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*" -Force
 ```
 
 For Linux, the approach differs slightly:
 
 ```bash
 # Create a service account on Linux for Azure Migrate dependency analysis
-# The account needs sudo access to run netstat/ss for connection discovery
+# The account needs sudo access to run ls and netstat for dependency discovery
 sudo useradd -m -s /bin/bash azuremigrate-dep
 echo "azuremigrate-dep:YourSecurePassword123!" | sudo chpasswd
 
-# Grant sudo access for network commands without password prompt
-echo "azuremigrate-dep ALL=(ALL) NOPASSWD: /usr/bin/netstat, /usr/sbin/ss" | sudo tee /etc/sudoers.d/azuremigrate
+# Grant sudo access for the required commands without password prompts
+LS_PATH="$(command -v ls)"
+NETSTAT_PATH="$(command -v netstat)"
+echo "azuremigrate-dep ALL=(ALL) NOPASSWD: ${LS_PATH}, ${NETSTAT_PATH}" | sudo tee /etc/sudoers.d/azuremigrate
+sudo chmod 440 /etc/sudoers.d/azuremigrate
 ```
 
-You can add multiple credential sets on the appliance. It will try each one against each VM until it finds one that works.
+You can add multiple credential sets on the appliance. It will try each one against each server until it finds one that works.
 
-## Step 2: Enable Dependency Analysis on Discovered Servers
+## Step 2: Review Dependency Analysis on Discovered Servers
 
-Once credentials are configured, you enable dependency analysis from the Azure portal.
+Once credentials are configured and discovery runs, Azure Migrate automatically enables agentless dependency analysis for discovered servers that pass validation, up to 1,000 servers per appliance.
 
 1. Go to your Azure Migrate project
-2. Navigate to "Servers, databases and web apps"
-3. Under "Discovery and assessment," click the count of discovered servers
-4. Select the servers you want to analyze (you can select multiple)
-5. Click "Dependency analysis" and choose "Enable"
+2. Go to the Azure Migrate: Discovery and assessment inventory
+3. Open the "All inventory" or "Infrastructure inventory" view
+4. Check the "Dependencies" or "Dependencies (agentless)" column for each server
+5. Use "Manage Dependencies" only if you need to disable analysis on some servers or enable it on other eligible servers after freeing capacity under the 1,000-server-per-appliance limit
 
-You can enable it for all discovered servers at once or select specific groups. If you have thousands of VMs, consider starting with the ones involved in your first migration wave.
+If you have thousands of servers, consider disabling analysis on lower-priority servers so the appliance can collect dependency data for the ones involved in your first migration wave.
 
-The appliance begins collecting dependency data immediately. However, it takes about 2-6 hours for meaningful data to appear in the portal. For the best results, let it run for at least 24 hours to capture daily patterns.
+After dependency analysis is enabled, the appliance polls dependency data every five minutes and sends aggregated data to Azure Migrate every six hours. For the best results, let it run for at least 24 hours to capture daily patterns.
 
 ## Step 3: Visualize Dependencies
 
 After collection has been running for a while, you can view the dependency map for any server.
 
-1. Click on a server name in the discovered servers list
-2. Go to the "Dependencies" tab
-3. Set your time range (1 hour, 6 hours, 1 day, or 30 days)
+1. Find the server in the discovered servers list
+2. Select "View dependencies" in the "Dependencies" or "Dependencies (agentless)" column
+3. Set your time range, such as the last 24 hours, last 7 days, last 30 days, or a custom range
 4. The dependency map renders showing all inbound and outbound connections
 
 The map displays:
@@ -116,8 +118,8 @@ You can expand each server to see individual processes. For example, you might s
 The real value of dependency analysis is using it to form migration groups - sets of servers that should move together.
 
 1. From the dependency map, identify clusters of servers that are tightly connected
-2. Go back to the Azure Migrate project and click "Groups"
-3. Create a new group and add the interdependent servers
+2. In the dependency visualization, multi-select the related servers and use tags to identify them as an application, or go back to the Azure Migrate project and create a group
+3. Add the interdependent servers to the group
 4. Run an assessment on this group to get sizing and cost estimates
 
 A practical approach is to start with a critical application and trace its dependencies outward. For example, start with the front-end web server. Its dependency map shows it connects to an application server and a database server. The application server also connects to a file server and an LDAP server. Now you know all five servers should be in the same migration group.
@@ -141,13 +143,17 @@ Domain controllers, DNS servers, and monitoring servers typically show connectio
 You can check whether dependency data is being collected successfully:
 
 1. In the Azure Migrate portal, go to the discovered servers list
-2. Look at the "Dependency analysis" column
+2. Look at the "Dependencies" or "Dependencies (agentless)" column
 3. Possible statuses include:
-   - **Enabled** - collection is active and working
-   - **Credential validation failed** - the appliance could not log into the VM
-   - **Not available** - the VM was unreachable
+   - **View dependencies** - validation passed and dependency analysis is enabled
+   - **Credentials not available** - no usable server credentials were provided on the appliance
+   - **Validation in progress** - prerequisite checks have not finished yet
+   - **Validation failed** - the server failed prerequisite checks, such as invalid credentials or insufficient permissions
+   - **Not initiated** - Azure Migrate reached the 1,000-server-per-appliance automatic enablement limit
+   - **Disabled** - dependency analysis was manually disabled
+   - **Not supported** - dependency data cannot be collected for that server, such as a server discovered through CSV import
 
-For VMs where collection fails, check the network connectivity from the appliance and verify that the provided credentials work. Common issues include Windows Firewall blocking WMI, SSH being disabled on Linux VMs, or the credentials lacking sufficient privileges.
+For servers where collection fails, check the network connectivity from the appliance and verify that the provided credentials work. Common issues include Windows Firewall or WinRM configuration issues for Windows servers, SSH being disabled on Linux servers in Hyper-V or physical discovery scenarios, or the credentials lacking sufficient privileges.
 
 ## Data Retention and Limits
 
@@ -165,6 +171,6 @@ The dependency data itself is stored in the Azure Migrate project and does not i
 
 ## Wrapping Up
 
-Agentless dependency analysis in Azure Migrate gives you a clear picture of how your servers interact without installing anything on the VMs themselves. Set up the credentials, enable analysis, let it run for a few days, and then use the dependency maps to form smart migration groups. This prevents the all-too-common scenario of migrating a server only to discover that it cannot reach a critical dependency.
+Agentless dependency analysis in Azure Migrate gives you a clear picture of how your servers interact without installing anything on the servers themselves. Set up the credentials, review which servers were enabled, let it run for a few days, and then use the dependency maps to form smart migration groups. This prevents the all-too-common scenario of migrating a server only to discover that it cannot reach a critical dependency.
 
 Combined with the assessment data from Azure Migrate, dependency analysis rounds out your migration planning toolkit and sets you up for a smooth transition to Azure.
