@@ -8,7 +8,7 @@ Description: Deploy Azure Spring Apps with custom VNet injection using Bicep to 
 
 ---
 
-Azure Spring Apps (formerly Azure Spring Cloud) is a managed service for running Spring Boot and Spring Cloud applications. By default, it runs in a Microsoft-managed virtual network, which is fine for development but not ideal for production. VNet injection lets you deploy Azure Spring Apps into your own virtual network, giving you control over network security groups, route tables, DNS resolution, and connectivity to on-premises resources.
+Azure Spring Apps (formerly Azure Spring Cloud) is a managed service for running Spring Boot and Spring Cloud applications. The Basic, Standard, and Enterprise plans entered retirement on March 17, 2025 and are scheduled to retire on May 31, 2028, so use this guidance for existing services and migration planning. By default, Azure Spring Apps runs in a Microsoft-managed virtual network, which is fine for development but not ideal for production. VNet injection lets you deploy Azure Spring Apps into your own virtual network, giving you control over network security groups, route tables, DNS resolution, and connectivity to on-premises resources.
 
 VNet injection is one of those features that is straightforward in concept but has a long list of specific networking requirements. Doing it through Bicep ensures you get all the details right every time. This post covers a complete Bicep deployment for Azure Spring Apps with VNet injection.
 
@@ -16,11 +16,11 @@ VNet injection is one of those features that is straightforward in concept but h
 
 Before writing any Bicep, you need to understand what Azure Spring Apps needs from the network:
 
-1. **Two dedicated subnets** - One for the Spring Apps runtime and one for your applications. Both must be delegated to `Microsoft.AppPlatform/Spring`.
+1. **Two dedicated subnets** - One for the Spring Apps runtime and one for your applications. Each subnet can host only one Azure Spring Apps service instance.
 2. **Minimum subnet size** - Each subnet needs at least a /28 (16 addresses), but /24 is recommended for production.
 3. **No existing resources** - The subnets must be empty before deployment.
-4. **Network contributor permissions** - The Azure Spring Apps resource provider needs Network Contributor role on the VNet.
-5. **DNS resolution** - You need a private DNS zone for the internal FQDN resolution.
+4. **Network permissions** - The Azure Spring Apps resource provider needs User Access Administrator and Network Contributor roles on the VNet.
+5. **DNS resolution** - You need a private DNS zone for application private FQDN resolution.
 
 ## Parameters and Variables
 
@@ -42,13 +42,13 @@ var tags = {
 }
 
 // Azure Spring Apps Resource Provider Object ID
-// This is a well-known ID that needs Network Contributor on your VNet
+// This is a well-known ID that needs User Access Administrator and Network Contributor on your VNet
 var springAppsResourceProviderObjectId = 'e8de9221-a19c-4c81-b814-fd37c6caf9d2'
 ```
 
 ## Virtual Network and Subnets
 
-Create the VNet with the required subnets. The key detail is the subnet delegation, which tells Azure that these subnets are reserved for Spring Apps.
+Create the VNet with the required subnets. The key detail is that the runtime and app subnets are dedicated to this Azure Spring Apps instance.
 
 ```bicep
 // Virtual Network for Spring Apps
@@ -103,9 +103,20 @@ resource appSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' existi
 
 ## Role Assignment for the Resource Provider
 
-Azure Spring Apps resource provider needs Network Contributor permissions on the VNet to manage networking resources within the subnets.
+Azure Spring Apps resource provider needs User Access Administrator and Network Contributor permissions on the VNet to grant and manage the dedicated service principal used for deployment and maintenance.
 
 ```bicep
+// Grant Azure Spring Apps resource provider User Access Administrator on the VNet
+resource springAppsUserAccessAdministrator 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: vnet
+  name: guid(vnet.id, springAppsResourceProviderObjectId, 'User Access Administrator')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9')
+    principalId: springAppsResourceProviderObjectId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // Grant Azure Spring Apps resource provider Network Contributor on the VNet
 resource springAppsNetworkContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: vnet
@@ -148,12 +159,13 @@ resource springApps 'Microsoft.AppPlatform/Spring@2023-12-01' = {
     zoneRedundant: true
   }
   dependsOn: [
+    springAppsUserAccessAdministrator
     springAppsNetworkContributor   // Ensure network permissions are in place first
   ]
 }
 ```
 
-The `serviceCidr` property defines internal CIDR ranges used by Spring Apps for Kubernetes pods and services. These ranges must not overlap with the VNet address space or any peered networks.
+The `serviceCidr` property defines three internal CIDR ranges used by Spring Apps infrastructure. These ranges must be at least /16 each and must not overlap with the VNet address space or any other routable network ranges.
 
 ## Deploying Spring Boot Applications
 
@@ -165,7 +177,7 @@ resource apiApp 'Microsoft.AppPlatform/Spring/apps@2023-12-01' = {
   parent: springApps
   name: 'api-service'
   properties: {
-    // Public endpoint for this app (accessible through the assigned FQDN)
+    // Assign an endpoint for this app. In a VNet-injected instance, this is a private FQDN unless a public endpoint is enabled.
     public: true
     httpsOnly: true
     temporaryDisk: {
@@ -197,11 +209,11 @@ resource apiDeployment 'Microsoft.AppPlatform/Spring/apps/deployments@2023-12-01
       environmentVariables: {
         SPRING_PROFILES_ACTIVE: environmentName
         SERVER_PORT: '8080'
-        JAVA_OPTS: '-Xms2g -Xmx3g -XX:+UseG1GC'
       }
     }
     source: {
       type: 'Jar'
+      jvmOptions: '-Xms2g -Xmx3g -XX:+UseG1GC'
       relativePath: '<default>'    // Placeholder - actual JAR is deployed via CI/CD
     }
   }
@@ -227,7 +239,7 @@ resource configServer 'Microsoft.AppPlatform/Spring/configServers@2023-12-01' = 
 
 ## Private DNS Zone
 
-For applications within your VNet to resolve the Spring Apps internal URLs, you need a private DNS zone.
+For applications within your VNet to resolve the Spring Apps private FQDNs, you need a private DNS zone.
 
 ```bicep
 // Private DNS zone for Spring Apps internal resolution
