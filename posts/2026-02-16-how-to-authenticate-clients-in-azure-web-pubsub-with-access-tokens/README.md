@@ -37,7 +37,7 @@ sequenceDiagram
     WebPubSub-->>Client: Connection established
 ```
 
-The token itself is a JWT that contains claims about the user, their permissions, and an expiration time. The Web PubSub service signs and verifies these tokens, so clients cannot forge them.
+The token itself is a JWT that contains claims about the user, their permissions, and an expiration time. Your application server signs these tokens using the SDK, and the Web PubSub service verifies them when clients connect, so clients cannot forge them.
 
 ## Generating Access Tokens
 
@@ -68,7 +68,7 @@ function requireAuth(req, res, next) {
 app.get('/api/ws-token', requireAuth, async (req, res) => {
   try {
     // Generate a token tied to the authenticated user
-    const tokenResponse = await serviceClient.getClientAccessUrl({
+    const tokenResponse = await serviceClient.getClientAccessToken({
       userId: req.userId,
       expirationTimeInMinutes: 60 // Token valid for 1 hour
     });
@@ -95,6 +95,8 @@ Here are the available roles:
 - `webpubsub.sendToGroup` - Client can send messages to groups
 - `webpubsub.joinLeaveGroup.<group-name>` - Client can join/leave a specific group only
 - `webpubsub.sendToGroup.<group-name>` - Client can send to a specific group only
+- `webpubsub.joinLeaveGroups.<pattern>` - Client can join/leave groups that match a wildcard pattern
+- `webpubsub.sendToGroups.<pattern>` - Client can send to groups that match a wildcard pattern
 
 ```javascript
 // Generate tokens with different permission levels based on user role
@@ -112,7 +114,7 @@ async function generateToken(userId, userRole) {
     roles = ['webpubsub.joinLeaveGroup', 'webpubsub.sendToGroup'];
   }
 
-  const tokenResponse = await serviceClient.getClientAccessUrl({
+  const tokenResponse = await serviceClient.getClientAccessToken({
     userId: userId,
     roles: roles,
     expirationTimeInMinutes: 60
@@ -129,7 +131,7 @@ For finer control, you can scope permissions to specific groups. This is useful 
 async function generateTeamToken(userId, teamId) {
   const groupName = `team-${teamId}`;
 
-  const tokenResponse = await serviceClient.getClientAccessUrl({
+  const tokenResponse = await serviceClient.getClientAccessToken({
     userId: userId,
     roles: [
       `webpubsub.joinLeaveGroup.${groupName}`,
@@ -144,7 +146,7 @@ async function generateTeamToken(userId, teamId) {
 
 ## Token Expiration and Renewal
 
-Tokens expire. The default expiration is 60 minutes, and you can set it anywhere from 1 minute to 24 hours. When a token expires, the WebSocket connection is terminated by the service. Your client needs to handle this gracefully.
+Tokens expire. The `expirationTimeInMinutes` option controls the token lifetime, and the service will not accept an expired token when a client tries to connect. If a connection drops after its original token has expired, the client needs to fetch a fresh access URL before reconnecting.
 
 ```javascript
 // client-with-renewal.js - Client that handles token expiration and reconnection
@@ -176,7 +178,6 @@ class PubSubClient {
 
     this.ws.onclose = (event) => {
       console.log('Connection closed, code:', event.code);
-      // Code 1008 indicates a policy violation, which includes expired tokens
       // Reconnect with a fresh token after a short delay
       setTimeout(() => this.connect(), 2000);
     };
@@ -184,22 +185,21 @@ class PubSubClient {
 }
 ```
 
-A smarter approach is to proactively renew the token before it expires. If your token has a 60-minute lifetime, start the renewal process at the 50-minute mark.
+If your application intentionally limits session length to match the access token lifetime, you can schedule a reconnect before the token expires. For example, with a 60-minute token lifetime, start the reconnect process at about the 50-minute mark.
 
 ```javascript
-// Schedule token renewal before expiration
-function scheduleRenewal(expirationMinutes) {
-  // Renew at 80% of the token lifetime
-  const renewalDelay = expirationMinutes * 60 * 1000 * 0.8;
+// Schedule a reconnect before expiration
+function scheduleReconnect(client, expirationMinutes) {
+  // Reconnect at 80% of the token lifetime
+  const reconnectDelay = expirationMinutes * 60 * 1000 * 0.8;
 
   setTimeout(async () => {
-    console.log('Proactively renewing token...');
-    // Close the current connection and reconnect with a fresh token
-    if (this.ws) {
-      this.ws.close();
+    console.log('Reconnecting with a fresh token...');
+    if (client.ws) {
+      client.ws.close();
     }
-    await this.connect();
-  }, renewalDelay);
+    await client.connect();
+  }, reconnectDelay);
 }
 ```
 
@@ -208,61 +208,60 @@ function scheduleRenewal(expirationMinutes) {
 For additional security, you can use the `connect` event handler to perform server-side validation when a client connects. This gives you a chance to inspect the connection request and reject it if needed.
 
 ```javascript
-// connect-handler.js - Express endpoint that handles the connect event
+// connect-handler.js - Express handler for the connect event
 const express = require('express');
+const { WebPubSubEventHandler } = require('@azure/web-pubsub-express');
+
 const app = express();
-app.use(express.json());
 
-// This endpoint is called by Web PubSub when a client tries to connect
-app.post('/api/pubsub/connect', (req, res) => {
-  const event = req.body;
+const handler = new WebPubSubEventHandler('chat', {
+  path: '/api/pubsub',
+  handleConnect: (req, res) => {
+    // The userId from the token is available on the connection context
+    const userId = req.context.userId;
+    const connectionId = req.context.connectionId;
 
-  // The userId from the token is available in the event
-  const userId = event.userId;
-  const connectionId = event.connectionId;
+    console.log(`User ${userId} attempting to connect (${connectionId})`);
 
-  console.log(`User ${userId} attempting to connect (${connectionId})`);
+    // Perform additional validation
+    if (isUserBanned(userId)) {
+      return res.fail(401, 'User is banned');
+    }
 
-  // Perform additional validation
-  if (isUserBanned(userId)) {
-    // Return an error response to reject the connection
-    return res.status(401).json({
-      code: 'Unauthorized',
-      errorMessage: 'User is banned'
+    // Accept the connection and optionally assign groups or roles
+    return res.success({
+      userId: userId,
+      groups: ['general'], // Auto-join the user to the general group
+      roles: ['webpubsub.sendToGroup.general']
     });
   }
-
-  // Accept the connection and optionally assign groups or roles
-  res.json({
-    userId: userId,
-    groups: ['general'], // Auto-join the user to the general group
-    roles: ['webpubsub.sendToGroup.general']
-  });
 });
+
+app.use(handler.getMiddleware());
 ```
 
 This two-layer approach - token-based authentication plus server-side connect validation - gives you defense in depth. Even if a token is valid, you can still reject the connection based on real-time business logic.
 
-## Integrating with Azure Active Directory
+## Integrating with Microsoft Entra ID
 
-If your application uses Azure Active Directory (Azure AD) for authentication, you can pass the user's Azure AD identity through to Web PubSub.
+If your application uses Microsoft Entra ID (formerly Azure Active Directory) for authentication, you can pass the user's Entra identity through to Web PubSub.
 
 ```javascript
-// aad-integration.js - Using Azure AD identity with Web PubSub tokens
-app.get('/api/ws-token', requireAzureAdAuth, async (req, res) => {
-  // req.user comes from your Azure AD middleware (e.g., passport-azure-ad)
-  const azureAdUser = req.user;
+// entra-integration.js - Using Microsoft Entra identity with Web PubSub tokens
+app.get('/api/ws-token', requireEntraAuth, async (req, res) => {
+  // req.user comes from your Microsoft Entra authentication middleware
+  const entraUser = req.user;
 
-  const tokenResponse = await serviceClient.getClientAccessUrl({
-    userId: azureAdUser.oid, // Use the Azure AD object ID as the user ID
+  const tokenResponse = await serviceClient.getClientAccessToken({
+    userId: entraUser.oid, // Use the Entra object ID as the user ID
     expirationTimeInMinutes: 60,
-    roles: getRolesForUser(azureAdUser) // Map Azure AD roles to Web PubSub roles
+    roles: getRolesForUser(entraUser) // Map Entra roles to Web PubSub roles
   });
 
   res.json({ url: tokenResponse.url });
 });
 
-// Map Azure AD group memberships to Web PubSub permissions
+// Map Entra group memberships to Web PubSub permissions
 function getRolesForUser(user) {
   const roles = [];
 
