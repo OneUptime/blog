@@ -19,19 +19,18 @@ When you enable zone-redundant HA, Azure deploys two copies of your MySQL server
 ```mermaid
 graph LR
     A[Application] --> B[Primary Server - Zone 1]
-    B --> C[Storage - Zone 1]
-    B -->|Synchronous Replication| D[Standby Server - Zone 2]
-    D --> E[Storage - Zone 2]
+    B --> C[Zone-Redundant Storage]
+    D[Standby Server - Zone 2] -->|Reads and replays logs| C
 ```
 
 The key points:
 
-- Data is replicated synchronously between the primary and standby.
+- Data and log files are hosted in zone-redundant storage, and the standby continuously reads and replays the primary server logs.
 - The standby server is not accessible for reads or connections. It sits idle, waiting for a failover.
 - Failover is automatic. Azure detects the failure and promotes the standby.
-- After failover, a new standby is automatically provisioned.
+- After failover, Azure brings the old primary back as the standby when possible.
 
-The synchronous replication means no data loss during failover - your committed transactions are safe. The trade-off is slightly higher write latency because each commit must be acknowledged by both zones.
+This design means no data loss during failover - your committed transactions are safe. The trade-off is slightly higher write latency because commits and writes are acknowledged after the log files are flushed to the primary server's zone-redundant storage.
 
 ## Same-Zone HA vs. Zone-Redundant HA
 
@@ -43,7 +42,7 @@ Azure offers two flavors of HA for Flexible Server:
 | Protects against | Server/hardware failure | Server, hardware, and zone failure |
 | Failover time | 60-120 seconds | 60-120 seconds |
 | Write latency impact | Minimal | Slightly higher (cross-zone) |
-| Cost | ~2x compute | ~2x compute |
+| Cost | ~2x compute and provisioned storage | ~2x compute and provisioned storage |
 
 If your region supports availability zones and your workload is business-critical, zone-redundant HA is the better choice. Same-zone HA is a reasonable option when zone-level protection is not required or the region does not support zones.
 
@@ -84,20 +83,20 @@ In the Azure portal, you configure HA on the "High Availability" tab during crea
 
 ## Enabling HA on an Existing Server
 
-If you already have a Flexible Server running without HA, you can enable it:
+If you already have a Flexible Server running without HA, you can enable local-redundant HA on that server. You cannot enable zone-redundant HA in place on an existing non-HA server. For zone-redundant HA, create a new server with zone-redundant HA enabled and migrate your workload to it.
 
 ```bash
-# Enable zone-redundant HA on an existing server
+# Enable same-zone HA on an existing server
 az mysql flexible-server update \
   --resource-group myResourceGroup \
   --name my-existing-mysql-server \
-  --high-availability ZoneRedundant \
+  --high-availability SameZone \
   --standby-zone 2
 ```
 
-This operation takes several minutes. Azure provisions the standby server and sets up synchronous replication. During this process, there may be a brief interruption, so plan accordingly.
+This operation takes several minutes. Azure provisions the standby server and sets up HA replication. During this process, there may be a brief interruption, so plan accordingly.
 
-In the portal, go to your server, click "High availability" in the left menu under Settings, check "Zone redundant," select the standby zone, and click Save.
+In the portal, go to your server, click "High availability" in the left menu under Settings, enable high availability, select a same-zone standby, and click Save. For zone-redundant HA, create a replacement server with zone-redundant HA enabled and migrate to it.
 
 ## Monitoring HA Status
 
@@ -111,20 +110,22 @@ az mysql flexible-server show \
   --query "{haState:highAvailability.state, haMode:highAvailability.mode, zone:availabilityZone, standbyZone:highAvailability.standbyAvailabilityZone}"
 ```
 
-You should see the state as "Healthy" and the mode as "ZoneRedundant." If the state shows "NotEnabled" or "CreatingStandby," give it more time.
+You should see the state as "Healthy" and the mode as "ZoneRedundant." If the state shows "NotEnabled" or "ReplicatingData," give it more time.
 
 In Azure Monitor, you can set up alerts on the HA health metric:
 
 ```bash
-# Create an alert rule for HA failover events
+# Create an alert rule for HA replication health
 az monitor metrics alert create \
   --name mysql-ha-failover-alert \
   --resource-group myResourceGroup \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.DBforMySQL/flexibleServers/my-ha-mysql-server" \
-  --condition "total HADRHealthStatus < 1" \
-  --description "Alert when HA health degrades" \
-  --action-group myActionGroup
+  --condition "max HA_IO_status < 1" \
+  --description "Alert when HA IO replication health degrades" \
+  --action "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Insights/actionGroups/myActionGroup"
 ```
+
+Create a similar alert for `HA_SQL_status` so you are notified if the SQL replication thread stops running.
 
 ## What Happens During Failover
 
@@ -132,9 +133,9 @@ When the primary server fails, here is the sequence of events:
 
 1. Azure detects the failure (typically within seconds).
 2. The standby server is promoted to primary.
-3. DNS records are updated to point to the new primary.
+3. Depending on the server's networking architecture, DNS records might be updated to point to the new primary, or traffic might be redirected by Azure's HA load-balancing path.
 4. Your application connections using the server FQDN automatically route to the new primary.
-5. A new standby is provisioned in the background.
+5. Azure brings the old primary back as the standby when possible.
 
 The total failover time is usually 60-120 seconds. During this window, connections will fail. Your application needs to handle this gracefully.
 
@@ -197,7 +198,7 @@ pool = pooling.MySQLConnectionPool(
 
 ### DNS Caching
 
-Make sure your application does not cache DNS results aggressively. During failover, the DNS record for your server changes. If your app caches the old IP, it will keep trying to connect to the failed primary.
+Make sure your application does not cache DNS results aggressively. During failover, the DNS A record for some HA server networking configurations can change. If your app caches the old IP, it can keep trying to connect to the failed primary. Always use the server FQDN rather than an IP address in your connection string.
 
 In Java, set the DNS TTL to a low value:
 
@@ -208,44 +209,32 @@ java.security.Security.setProperty("networkaddress.cache.ttl", "30");
 
 ## Testing Failover
 
-You should test failover before you need it in production. Azure lets you trigger a planned failover:
+You should test failover before you need it in production. Azure lets you trigger a user-initiated forced failover:
 
 ```bash
-# Trigger a planned failover for testing
-az mysql flexible-server restart \
-  --resource-group myResourceGroup \
-  --name my-ha-mysql-server \
-  --failover Planned
-```
-
-During a planned failover, the standby takes over and the old primary becomes the new standby. Time the failover and observe how your application handles it. Ideally, run this test during a maintenance window.
-
-You can also trigger a forced failover to simulate an unplanned outage:
-
-```bash
-# Trigger a forced (unplanned) failover for testing
+# Trigger a forced failover for testing
 az mysql flexible-server restart \
   --resource-group myResourceGroup \
   --name my-ha-mysql-server \
   --failover Forced
 ```
 
-Forced failover is more realistic but slightly riskier. Use it in staging first.
+During a forced failover, the standby takes over and the old primary restarts and becomes the new standby. Time the failover and observe how your application handles it. Ideally, run this test in staging first, then during a maintenance window in production.
 
 ## Cost Implications
 
-Zone-redundant HA roughly doubles your compute cost because you are running two servers. Storage costs do not double since the standby uses the same storage mechanism.
+Zone-redundant HA roughly doubles your compute and provisioned storage cost because Azure bills for both the primary and secondary replicas.
 
-For a Standard_D4ds_v4 server (4 vCores, 16 GB RAM):
+For a Standard_D4ds_v4 server (4 vCores, 16 GB RAM) with 128 GB of provisioned storage:
 
-- Without HA: ~$250/month (compute only)
-- With zone-redundant HA: ~$500/month (compute only)
+- Without HA: billed for 4 vCores and 128 GB of provisioned storage
+- With zone-redundant HA: billed for 8 vCores and 256 GB of provisioned storage
 
 If the doubling feels steep, consider whether your business can absorb 60+ minutes of downtime during a zone failure. For most production workloads, the answer is no, and the HA cost is justified.
 
 ## Common Issues and Troubleshooting
 
-**HA state stuck in "CreatingStandby"**: This usually resolves on its own within 30 minutes. If it persists, check the Azure service health dashboard for regional issues.
+**HA state stuck in "ReplicatingData"**: This usually resolves on its own within 30 minutes. If it persists, check the Azure service health dashboard for regional issues.
 
 **Frequent unplanned failovers**: This can indicate resource pressure on the primary. Check CPU and memory utilization. You might need to scale up.
 
