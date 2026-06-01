@@ -8,7 +8,7 @@ Description: Deploy Azure SignalR Service with serverless Azure Functions integr
 
 ---
 
-Azure SignalR Service is a managed service for adding real-time functionality to web applications. It handles WebSocket connections, automatic reconnection, scaling, and message broadcasting so you do not have to build that infrastructure yourself. When combined with Azure Functions in serverless mode, you get a cost-effective real-time messaging backend that scales to zero when idle and handles thousands of concurrent connections when busy.
+Azure SignalR Service is a managed service for adding real-time functionality to web applications. It handles WebSocket connections, automatic reconnection, scaling, and message broadcasting so you do not have to build that infrastructure yourself. When combined with Azure Functions in serverless mode, you get a cost-effective real-time messaging backend where the Functions app can scale to zero when idle and the SignalR Service can handle thousands of concurrent connections when busy.
 
 Pulumi with Python gives you a familiar programming language for defining this infrastructure. This post covers deploying SignalR Service, connecting it to Azure Functions, and configuring the complete serverless real-time stack.
 
@@ -36,7 +36,7 @@ Start with the SignalR Service instance and its supporting resources.
 
 import pulumi
 import pulumi_azure_native as azure
-from pulumi_azure_native import resources, signalrservice, web, storage, insights
+from pulumi_azure_native import resources, signalrservice, web, storage, insights, operationalinsights
 
 # Configuration
 config = pulumi.Config()
@@ -57,7 +57,7 @@ resource_group = resources.ResourceGroup(
 # SignalR Service instance
 signalr = signalrservice.SignalR(
     "signalr-service",
-    resource_name=f"sigr-realtime-{environment}",
+    resource_name_=f"sigr-realtime-{environment}",
     resource_group_name=resource_group.name,
     location=resource_group.location,
     # Serverless mode - no hub server needed, works with Azure Functions
@@ -92,7 +92,7 @@ signalr = signalrservice.SignalR(
         ],
     ),
     # Network ACLs
-    network_ac_ls=signalrservice.SignalRNetworkACLsArgs(
+    network_acls=signalrservice.SignalRNetworkACLsArgs(
         default_action="Deny",
         public_network=signalrservice.NetworkACLArgs(
             allow=[
@@ -130,14 +130,28 @@ function_storage = storage.StorageAccount(
     tags={"purpose": "functions-storage"},
 )
 
+# Log Analytics workspace for Application Insights
+log_analytics_workspace = operationalinsights.Workspace(
+    "log-workspace",
+    workspace_name=f"log-signalr-{environment}",
+    resource_group_name=resource_group.name,
+    location=resource_group.location,
+    sku=operationalinsights.WorkspaceSkuArgs(
+        name="PerGB2018",
+    ),
+    retention_in_days=30,
+    tags={"environment": environment},
+)
+
 # Application Insights for monitoring
 app_insights = insights.Component(
     "app-insights",
-    resource_name=f"ai-signalr-{environment}",
+    resource_name_=f"ai-signalr-{environment}",
     resource_group_name=resource_group.name,
     location=resource_group.location,
     kind="web",
     application_type="web",
+    workspace_resource_id=log_analytics_workspace.id,
     tags={"environment": environment},
 )
 ```
@@ -162,16 +176,18 @@ app_service_plan = web.AppServicePlan(
 )
 
 # Get storage connection string for the Functions app
+def get_storage_connection_string(args):
+    resource_group_name, account_name = args
+    keys = storage.list_storage_account_keys(
+        resource_group_name=resource_group_name,
+        account_name=account_name,
+    )
+    return f"DefaultEndpointsProtocol=https;AccountName={account_name};AccountKey={keys.keys[0].value};EndpointSuffix=core.windows.net"
+
+
 storage_connection_string = pulumi.Output.all(
     resource_group.name, function_storage.name
-).apply(
-    lambda args: storage.list_storage_account_keys(
-        resource_group_name=args[0],
-        account_name=args[1],
-    )
-).apply(
-    lambda keys: f"DefaultEndpointsProtocol=https;AccountName={function_storage.name};AccountKey={keys.keys[0].value};EndpointSuffix=core.windows.net"
-)
+).apply(get_storage_connection_string)
 
 # Get SignalR connection string
 signalr_connection_string = pulumi.Output.all(
@@ -190,7 +206,7 @@ function_app = web.WebApp(
     resource_group_name=resource_group.name,
     location=resource_group.location,
     server_farm_id=app_service_plan.id,
-    kind="functionapp",
+    kind="functionapp,linux",
     # Managed identity for accessing other Azure services
     identity=web.ManagedServiceIdentityArgs(
         type="SystemAssigned",
@@ -213,8 +229,8 @@ function_app = web.WebApp(
                 value="python",
             ),
             web.NameValuePairArgs(
-                name="APPINSIGHTS_INSTRUMENTATIONKEY",
-                value=app_insights.instrumentation_key,
+                name="APPLICATIONINSIGHTS_CONNECTION_STRING",
+                value=app_insights.connection_string,
             ),
             # SignalR connection string
             web.NameValuePairArgs(
@@ -250,8 +266,8 @@ app = func.FunctionApp()
 @app.generic_input_binding(
     arg_name="connectionInfo",
     type="signalRConnectionInfo",
-    hub_name="chat",
-    connection_string_setting="AzureSignalRConnectionString"
+    hubName="chat",
+    connectionStringSetting="AzureSignalRConnectionString"
 )
 def negotiate(req: func.HttpRequest, connectionInfo) -> func.HttpResponse:
     """
@@ -267,8 +283,8 @@ def negotiate(req: func.HttpRequest, connectionInfo) -> func.HttpResponse:
 @app.generic_output_binding(
     arg_name="signalRMessages",
     type="signalR",
-    hub_name="chat",
-    connection_string_setting="AzureSignalRConnectionString"
+    hubName="chat",
+    connectionStringSetting="AzureSignalRConnectionString"
 )
 def broadcast(req: func.HttpRequest, signalRMessages: func.Out[str]) -> func.HttpResponse:
     """
@@ -299,8 +315,8 @@ def broadcast(req: func.HttpRequest, signalRMessages: func.Out[str]) -> func.Htt
 @app.generic_output_binding(
     arg_name="signalRMessages",
     type="signalR",
-    hub_name="chat",
-    connection_string_setting="AzureSignalRConnectionString"
+    hubName="chat",
+    connectionStringSetting="AzureSignalRConnectionString"
 )
 def send_to_user(req: func.HttpRequest, signalRMessages: func.Out[str]) -> func.HttpResponse:
     """
@@ -319,15 +335,15 @@ def send_to_user(req: func.HttpRequest, signalRMessages: func.Out[str]) -> func.
     return func.HttpResponse(f"Message sent to {user_id}", status_code=200)
 ```
 
-## Custom Domain and Upstream Settings
+## Upstream Settings
 
-For production, configure a custom domain and upstream URLs so SignalR routes events to your Functions.
+For production, add upstream URLs to the SignalR resource so SignalR routes events to your Functions.
 
 ```python
-# Configure upstream URLs so SignalR sends events to Functions
-signalr_with_upstream = signalrservice.SignalR(
-    "signalr-with-upstream",
-    resource_name=f"sigr-realtime-{environment}",
+# Replace the earlier SignalR resource definition with this version to add upstream URLs
+signalr = signalrservice.SignalR(
+    "signalr-service",
+    resource_name_=f"sigr-realtime-{environment}",
     resource_group_name=resource_group.name,
     location=resource_group.location,
     kind="SignalR",
@@ -341,7 +357,34 @@ signalr_with_upstream = signalrservice.SignalR(
             flag="ServiceMode",
             value="Serverless",
         ),
+        signalrservice.SignalRFeatureArgs(
+            flag="EnableConnectivityLogs",
+            value="True",
+        ),
+        signalrservice.SignalRFeatureArgs(
+            flag="EnableMessagingLogs",
+            value="True",
+        ),
     ],
+    cors=signalrservice.SignalRCorsSettingsArgs(
+        allowed_origins=[
+            "https://www.example.com",
+            "https://app.example.com",
+        ],
+    ),
+    network_acls=signalrservice.SignalRNetworkACLsArgs(
+        default_action="Deny",
+        public_network=signalrservice.NetworkACLArgs(
+            allow=[
+                "ServerConnection",
+                "ClientConnection",
+                "RESTAPI",
+            ],
+        ),
+    ),
+    identity=signalrservice.ManagedIdentityArgs(
+        type="SystemAssigned",
+    ),
     # Upstream settings route SignalR events to Azure Functions
     upstream=signalrservice.ServerlessUpstreamSettingsArgs(
         templates=[
@@ -395,4 +438,4 @@ pulumi stack output negotiate_url
 
 ## Summary
 
-Pulumi Python makes it straightforward to deploy Azure SignalR Service with a serverless Functions backend. The infrastructure includes the SignalR Service in serverless mode, a Consumption-plan Functions app with the SignalR connection string, and proper network and CORS configuration. The serverless mode means you only pay for messages sent and connections established, making it cost-effective for applications with variable traffic. With the infrastructure defined in Python, you get the full power of a programming language for configuration logic, making it easy to handle different environments and conditional settings.
+Pulumi Python makes it straightforward to deploy Azure SignalR Service with a serverless Functions backend. The infrastructure includes the SignalR Service in serverless mode, a Consumption-plan Functions app with the SignalR connection string, and proper network and CORS configuration. The Consumption-plan Functions app can scale down when idle, and Azure SignalR Service pricing is based on the selected tier, units, and message usage, making it cost-effective for applications with variable traffic. With the infrastructure defined in Python, you get the full power of a programming language for configuration logic, making it easy to handle different environments and conditional settings.
