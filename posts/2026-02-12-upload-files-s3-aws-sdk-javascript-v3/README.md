@@ -76,7 +76,7 @@ await s3.send(new PutObjectCommand({
     Bucket: 'my-backup-bucket',
     Key: 'backups/large-backup.tar.gz',
     Body: createReadStream(filePath),
-    ContentLength: fileStats.size,  // required for streams
+    ContentLength: fileStats.size,  // useful when the stream size is not inferred
     ContentType: 'application/gzip'
 }));
 
@@ -162,7 +162,7 @@ A utility function that recursively uploads all files in a directory.
 ```javascript
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { readFileSync, readdirSync, statSync } from 'fs';
-import { join, relative, extname } from 'path';
+import { join, relative } from 'path';
 import { lookup } from 'mime-types';
 
 const s3 = new S3Client({ region: 'us-east-1' });
