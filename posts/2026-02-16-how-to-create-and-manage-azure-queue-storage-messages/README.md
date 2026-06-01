@@ -153,7 +153,7 @@ queue_client = QueueClient.from_connection_string(
 # Receive up to 10 messages with a 30-second visibility timeout
 # During this timeout, no other consumer can see these messages
 messages = queue_client.receive_messages(
-    messages_per_page=10,
+    max_messages=10,
     visibility_timeout=30
 )
 
@@ -254,7 +254,10 @@ queue_client = QueueClient.from_connection_string(
 )
 
 # Receive a message with an initial 30-second timeout
-messages = queue_client.receive_messages(visibility_timeout=30)
+messages = queue_client.receive_messages(
+    max_messages=1,
+    visibility_timeout=30
+)
 
 for message in messages:
     # Start processing...
@@ -310,15 +313,7 @@ properties = queue_client.get_queue_properties()
 print(f"Approximate message count: {properties.approximate_message_count}")
 ```
 
-```bash
-# Get the approximate message count via CLI
-az storage queue metadata show \
-  --account-name mystorageaccount \
-  --name task-queue \
-  --query "approximateMessageCount"
-```
-
-Note the word "approximate" - the count is eventually consistent and may not reflect very recent additions or deletions.
+Note the word "approximate" - the count is eventually consistent and may not reflect very recent additions or deletions. The Azure CLI `az storage queue metadata show` command returns user-defined metadata for the queue; use the SDK or the Queue Storage REST API when you need the per-queue approximate message count programmatically.
 
 ## Clearing a Queue
 
@@ -375,9 +370,9 @@ def run_worker():
     logger.info("Worker started. Polling for messages...")
 
     while True:
-        # Receive a batch of messages
+        # Receive a batch of up to 5 messages
         messages = queue_client.receive_messages(
-            messages_per_page=5,
+            max_messages=5,
             visibility_timeout=60
         )
 
