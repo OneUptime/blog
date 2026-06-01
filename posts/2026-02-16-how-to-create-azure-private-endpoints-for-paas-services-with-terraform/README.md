@@ -27,11 +27,11 @@ graph TD
     E --> F[Azure Storage Account]
 ```
 
-Without Private DNS Zones, clients inside your VNet would still resolve the public IP and traffic would route through the internet. The DNS piece is just as important as the endpoint itself.
+Without Private DNS Zones, clients inside your VNet would still resolve through public DNS to the public endpoint, so they would not use the private endpoint and could be blocked if public network access is disabled. The DNS piece is just as important as the endpoint itself.
 
 ## Setting Up the Foundation
 
-First, let us define the VNet and subnet that will host our Private Endpoints. Private Endpoints need a dedicated subnet, and that subnet must have the `privateEndpointNetworkPolicies` setting configured.
+First, let us define the VNet and subnet that will host our Private Endpoints. Many teams use a dedicated subnet for Private Endpoints so routing and security rules stay easier to reason about. The `private_endpoint_network_policies` setting controls whether NSGs and user-defined routes apply to Private Endpoints in the subnet.
 
 ```hcl
 # Resource group for all our resources
@@ -55,7 +55,7 @@ resource "azurerm_subnet" "private_endpoints" {
   resource_group_name               = azurerm_resource_group.main.name
   virtual_network_name              = azurerm_virtual_network.main.name
   address_prefixes                  = ["10.0.1.0/24"]
-  private_endpoint_network_policies = "Enabled"
+  private_endpoint_network_policies = "Disabled"
 }
 ```
 
@@ -66,6 +66,7 @@ Let us start with a Storage Account. We will create the account, disable public 
 ```hcl
 # Storage account with public access disabled
 resource "azurerm_storage_account" "main" {
+  # Storage account names must be globally unique and use only lowercase letters and numbers.
   name                          = "stprivatedemo001"
   resource_group_name           = azurerm_resource_group.main.name
   location                      = azurerm_resource_group.main.location
@@ -121,6 +122,7 @@ SQL Database follows the same pattern, but with a different DNS zone and sub-res
 ```hcl
 # SQL Server
 resource "azurerm_mssql_server" "main" {
+  # SQL server names must be globally unique because they are used in the database.windows.net DNS name.
   name                          = "sql-private-demo"
   resource_group_name           = azurerm_resource_group.main.name
   location                      = azurerm_resource_group.main.location
@@ -174,6 +176,7 @@ data "azurerm_client_config" "current" {}
 
 # Key Vault with public access disabled
 resource "azurerm_key_vault" "main" {
+  # Key Vault names must be globally unique.
   name                          = "kv-private-demo"
   location                      = azurerm_resource_group.main.location
   resource_group_name           = azurerm_resource_group.main.name
