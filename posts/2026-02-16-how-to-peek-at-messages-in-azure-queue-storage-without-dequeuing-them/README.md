@@ -104,9 +104,9 @@ The table output format is particularly nice for quick visual inspection.
 One of the most practical uses for peeking is building a monitoring dashboard. You can periodically peek at your queues and display the results alongside queue depth metrics.
 
 ```python
-from azure.storage.queue import QueueServiceClient
+from azure.storage.queue import QueueClient
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def get_queue_status(connection_string, queue_name):
     """
@@ -119,18 +119,18 @@ def get_queue_status(connection_string, queue_name):
     properties = queue_client.get_queue_properties()
     approx_count = properties.approximate_message_count
 
-    # Peek at the oldest messages to see what is waiting
+    # Peek at a sample of visible messages from the front of the queue
     sample_messages = queue_client.peek_messages(max_messages=5)
 
     status = {
         "queue_name": queue_name,
         "approximate_count": approx_count,
-        "checked_at": datetime.utcnow().isoformat(),
-        "oldest_messages": []
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "sample_messages": []
     }
 
     for msg in sample_messages:
-        status["oldest_messages"].append({
+        status["sample_messages"].append({
             "id": msg.id,
             "inserted_on": msg.inserted_on.isoformat() if msg.inserted_on else None,
             "dequeue_count": msg.dequeue_count,
@@ -186,9 +186,9 @@ There are some important limitations to keep in mind.
 
 You can only peek at up to 32 messages per call. If your queue has thousands of messages, you will only see the first 32. There is no pagination mechanism for peek operations.
 
-Peeked messages are returned in FIFO order from the front of the queue. You cannot peek at messages in the middle or at the end of the queue.
+Peeked messages are retrieved from the front of the queue in best-try FIFO order, but Azure Queue Storage does not guarantee strict FIFO ordering. You cannot peek at messages in the middle or at the end of the queue.
 
-The message content you see when peeking might already be invisible to dequeue operations. If another worker already dequeued a message but has not deleted it yet, you might still see it via peek even though no other worker can receive it right now.
+Peek only returns messages that are currently visible. If another worker already dequeued a message but has not deleted it yet, you will not see it via peek until its visibility timeout expires and it becomes visible again.
 
 Peek does not return a pop receipt, so you cannot delete or update messages based solely on a peek operation. If you need to remove a message you spotted during peeking, you must dequeue it normally first.
 
@@ -217,6 +217,7 @@ If you are using Azure Functions with a Queue trigger, you do not typically peek
 ```python
 import azure.functions as func
 import logging
+import os
 from azure.storage.queue import QueueClient
 
 # Timer-triggered function that runs every 5 minutes to check queue health
