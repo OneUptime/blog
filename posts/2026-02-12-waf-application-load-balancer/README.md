@@ -136,7 +136,7 @@ aws wafv2 update-web-acl \
     {
       "Name": "RateLimit",
       "Priority": 4,
-      "Action": {"Block": {}},
+      "Action": {"Block": {"CustomResponse": {"ResponseCode": 429}}},
       "Statement": {
         "RateBasedStatement": {
           "Limit": 2000,
@@ -152,7 +152,7 @@ aws wafv2 update-web-acl \
     {
       "Name": "LoginRateLimit",
       "Priority": 5,
-      "Action": {"Block": {}},
+      "Action": {"Block": {"CustomResponse": {"ResponseCode": 429}}},
       "Statement": {
         "RateBasedStatement": {
           "Limit": 100,
@@ -522,7 +522,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 1000 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --dimensions "Name=WebACL,Value=alb-waf" "Name=Rule,Value=ALL" "Name=Region,Value=us-east-1" \
+  --dimensions "Name=WebACL,Value=ALB-WAF" "Name=Rule,Value=ALL" "Name=Region,Value=us-east-1" \
   --alarm-actions arn:aws:sns:us-east-1:111111111111:security-alerts
 ```
 
