@@ -12,11 +12,12 @@ When you need to copy blobs within Azure Storage, downloading them to your local
 
 ## Types of Server-Side Copy
 
-Azure Storage provides three copy mechanisms:
+Azure Storage provides several copy mechanisms:
 
 1. **Copy Blob (asynchronous)**: Starts a background copy job that Azure processes asynchronously. Good for large blobs and cross-account copies.
-2. **Copy Blob from URL (synchronous)**: Copies the blob synchronously within a single API call. Limited to 256 MB. Good for small blobs when you need immediate completion.
-3. **Put Block from URL**: Copies a range of a source blob into a block of a destination block blob. Used for composing blobs from multiple sources or copying parts of large blobs.
+2. **Copy Blob from URL (synchronous)**: Copies a committed block blob synchronously within a single API call. Limited to 256 MiB.
+3. **Put Blob from URL (synchronous)**: Creates a block blob synchronously from a source URL in a single API call. Limited to 5,000 MiB. Good for small and medium blobs when you need immediate completion.
+4. **Put Block from URL**: Copies a range of a source blob into a block of a destination block blob. Used for composing blobs from multiple sources or copying parts of large blobs.
 
 ## Basic Asynchronous Copy
 
@@ -128,7 +129,7 @@ wait_for_copy(dest_blob_client)
 
 ## Synchronous Copy from URL
 
-For small blobs (up to 256 MB), synchronous copy completes within the API call:
+For blobs up to 5,000 MiB, `upload_blob_from_url()` uses Put Blob from URL and completes within the API call:
 
 ```python
 from azure.storage.blob import BlobServiceClient
@@ -140,8 +141,7 @@ blob_service = BlobServiceClient(
     credential=credential
 )
 
-# Copy a blob synchronously within the same account
-# Source and destination must be in the same account for this method
+# Copy a blob synchronously from an accessible source URL
 source_client = blob_service.get_blob_client("source-container", "small-file.json")
 dest_client = blob_service.get_blob_client("dest-container", "small-file.json")
 
@@ -161,7 +161,7 @@ from azure.storage.blob import StandardBlobTier
 dest_blob_client = dest_service.get_blob_client("archive", "old-report.pdf")
 copy_result = dest_blob_client.start_copy_from_url(
     source_url,
-    standard_blob_tier=StandardBlobTier.Cool
+    standard_blob_tier=StandardBlobTier.COOL
 )
 ```
 
@@ -169,17 +169,18 @@ This is useful for archival workflows where you copy data from an active contain
 
 ## Copying Blobs from Archive Tier
 
-Blobs in the Archive tier cannot be read directly. Before copying from an Archive blob, you need to rehydrate it first:
+Blobs in the Archive tier cannot be read directly. Before reading from an Archive blob, you need to rehydrate it first, either by changing its tier or by copying it to a new blob in an online tier:
 
 ```python
-from azure.storage.blob import StandardBlobTier
+import time
+from azure.storage.blob import StandardBlobTier, RehydratePriority
 
 # Rehydrate an archived blob before copying
-# Priority can be "Standard" (up to 15 hours) or "High" (under 1 hour)
+# Priority can be "Standard" (up to 15 hours) or "High" (under 1 hour for objects under 10 GB)
 source_client = blob_service.get_blob_client("archive", "old-data.tar.gz")
 source_client.set_standard_blob_tier(
-    StandardBlobTier.Hot,
-    rehydrate_priority="High"
+    StandardBlobTier.HOT,
+    rehydrate_priority=RehydratePriority.HIGH
 )
 
 # Wait for rehydration to complete (check the tier)
@@ -277,11 +278,11 @@ using Azure.Identity;
 
 var credential = new DefaultAzureCredential();
 var sourceService = new BlobServiceClient(
-    new Uri("https://sourcestorageaccount.blob.core.windows.net"),
+    new Uri("https://mystorageaccount.blob.core.windows.net"),
     credential
 );
 var destService = new BlobServiceClient(
-    new Uri("https://deststorageaccount.blob.core.windows.net"),
+    new Uri("https://mystorageaccount.blob.core.windows.net"),
     credential
 );
 
@@ -310,7 +311,7 @@ Console.WriteLine("Copy completed");
 
 **Copy does not preserve snapshots or versions**: Only the current blob data is copied. Snapshots and version history stay with the source.
 
-**Metadata is preserved**: Blob metadata, HTTP headers (content type, cache control, etc.), and tags are copied along with the data.
+**Metadata is preserved**: Blob metadata and HTTP headers (content type, cache control, etc.) are copied along with the data. Blob index tags are not copied by default; set them explicitly, or use an API option that copies source tags when supported.
 
 **You can abort in-progress copies**: If an asynchronous copy is taking too long or was started by mistake, call `abort_copy()` with the copy ID.
 
