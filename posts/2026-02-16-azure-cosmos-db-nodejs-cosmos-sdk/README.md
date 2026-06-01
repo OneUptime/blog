@@ -12,7 +12,7 @@ Azure Cosmos DB is Microsoft's globally distributed, multi-model database. It of
 
 ## Why Cosmos DB
 
-Relational databases work great for many use cases, but they struggle when you need global distribution with low latency or when your data model does not fit neatly into tables. Cosmos DB is designed for exactly those scenarios. It supports multiple APIs (SQL, MongoDB, Cassandra, Gremlin, Table), but the SQL API with the `@azure/cosmos` SDK is the most commonly used and best-supported option for Node.js.
+Relational databases work great for many use cases, but they struggle when you need global distribution with low latency or when your data model does not fit neatly into tables. Cosmos DB is designed for exactly those scenarios. It supports multiple APIs (NoSQL, MongoDB, Cassandra, Gremlin, Table), but the API for NoSQL, formerly called the SQL API, with the `@azure/cosmos` SDK is the most commonly used and best-supported option for Node.js.
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ Create a Cosmos DB account using the Azure CLI:
 
 az group create --name cosmos-demo-rg --location eastus
 
-# Create a Cosmos DB account with the SQL API
+# Create a Cosmos DB account for the API for NoSQL
 az cosmosdb create \
   --name my-cosmos-account \
   --resource-group cosmos-demo-rg \
@@ -117,7 +117,7 @@ import { usersContainer } from './cosmos-client';
 import { SqlQuerySpec } from '@azure/cosmos';
 
 // Define the user interface
-interface User {
+export interface User {
   id: string;
   name: string;
   email: string;
@@ -188,9 +188,9 @@ async function searchByEmail(email: string): Promise<User | undefined> {
     parameters: [{ name: '@email', value: email }],
   };
 
-  // Enable cross-partition query explicitly
+  // Without a partition key filter, the SDK runs this as a cross-partition query
   const { resources } = await usersContainer.items
-    .query<User>(querySpec, { enableCrossPartitionQuery: true })
+    .query<User>(querySpec)
     .fetchAll();
 
   return resources[0];
@@ -206,23 +206,24 @@ When you need to insert or update many documents at once, use bulk operations:
 ```typescript
 // src/bulk-operations.ts - Efficient bulk operations
 import { usersContainer } from './cosmos-client';
-import { BulkOperationType } from '@azure/cosmos';
+import { BulkOperationType, OperationInput } from '@azure/cosmos';
+import type { User } from './user-operations';
 
-// Insert multiple users in a single batch
+// Insert multiple users with bulk execution
 async function bulkCreateUsers(users: User[]) {
-  const operations = users.map((user) => ({
+  const operations: OperationInput[] = users.map((user) => ({
     operationType: BulkOperationType.Create,
     resourceBody: user,
   }));
 
-  // Bulk operations are executed as a batch
-  const response = await usersContainer.items.bulk(operations);
+  // Bulk operations are executed efficiently by the SDK
+  const response = await usersContainer.items.executeBulkOperations(operations);
 
   // Check for individual failures
-  const failures = response.filter((r) => r.statusCode >= 400);
+  const failures = response.filter((r) => r.error || (r.response && r.response.statusCode >= 400));
   if (failures.length > 0) {
     console.error(`${failures.length} operations failed`);
-    failures.forEach((f) => console.error(`Status: ${f.statusCode}`));
+    failures.forEach((f) => console.error(`Status: ${f.response?.statusCode ?? f.error?.code}`));
   }
 
   return response;
@@ -236,18 +237,19 @@ One of Cosmos DB's most powerful features is the change feed. It lets you react 
 ```typescript
 // src/change-feed.ts - Listen for changes in the container
 import { usersContainer } from './cosmos-client';
+import { ChangeFeedStartFrom } from '@azure/cosmos';
 
 async function processChangeFeed() {
   // Start reading the change feed from the beginning
-  const changeFeedIterator = usersContainer.items.changeFeed({
-    changeFeedStartFrom: 'Beginning',
+  const changeFeedIterator = usersContainer.items.getChangeFeedIterator({
+    changeFeedStartFrom: ChangeFeedStartFrom.Beginning(),
   });
 
   console.log('Listening for changes...');
 
   // Continuously poll for changes
   while (changeFeedIterator.hasMoreResults) {
-    const response = await changeFeedIterator.fetchNext();
+    const response = await changeFeedIterator.readNext();
 
     if (response.statusCode === 304) {
       // No new changes - wait before polling again
@@ -320,7 +322,7 @@ Cosmos DB charges in Request Units (RUs). Every operation consumes RUs based on 
 // Check RU consumption for a query
 async function queryWithRUTracking() {
   const { resources, requestCharge } = await usersContainer.items
-    .query('SELECT * FROM users u WHERE u.region = "eastus"')
+    .query('SELECT * FROM users u WHERE u.region = "eastus"', { partitionKey: 'eastus' })
     .fetchAll();
 
   console.log(`Query returned ${resources.length} documents`);
@@ -344,7 +346,7 @@ const client = new CosmosClient({
   endpoint: process.env.COSMOS_ENDPOINT!,
   key: process.env.COSMOS_KEY!,
   connectionPolicy: {
-    // Use direct mode for lower latency
+    // Tune request timeout and retry behavior
     requestTimeout: 10000,
     // Enable automatic retries on throttled requests
     retryOptions: {
