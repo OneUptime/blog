@@ -33,7 +33,8 @@ First, understand the scope of the problem. Open the Azure portal, go to your Co
 
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.DocumentDB/databaseAccounts/myCosmosAccount" \
-  --metric "TotalRequestUnits,ThrottledRequests" \
+  --metrics TotalRequestUnits TotalRequests \
+  --filter "StatusCode eq '*'" \
   --interval PT5M \
   --output table
 ```
@@ -42,23 +43,23 @@ The Normalized RU Consumption metric is particularly important. Even if your ove
 
 ## Step 2: Check for Hot Partitions
 
-Cosmos DB distributes throughput evenly across physical partitions. If you provisioned 10,000 RU/s and have 5 physical partitions, each partition gets 2,000 RU/s. If all your traffic hits one partition (because of a bad partition key choice), that single partition gets throttled at 2,000 RU/s while the other 9,000 RU/s sit unused.
+Cosmos DB distributes throughput evenly across physical partitions. If you provisioned 10,000 RU/s and have 5 physical partitions, each partition gets 2,000 RU/s. If all your traffic hits one partition (because of a bad partition key choice), that single partition gets throttled at 2,000 RU/s while the other 8,000 RU/s sit unused.
 
-To check for hot partitions, look at the **Partition Key Statistics** in the portal or query the diagnostics logs:
+To check for hot partitions, look at **Normalized RU Consumption (%) By PartitionKeyRangeID** in the portal or query the diagnostics logs:
 
 ```kusto
-// Find the most consumed partition key ranges in the last hour
-CDBDataPlaneRequests
+// Find the partition key ranges consuming the most RUs in the last hour
+CDBPartitionKeyRUConsumption
 | where TimeGenerated > ago(1h)
-| where StatusCode == 429
-| summarize ThrottledCount = count() by PartitionId = tostring(PartitionKeyRangeId)
-| order by ThrottledCount desc
+| where isnotempty(PartitionKeyRangeId)
+| summarize TotalRequestCharge = sum(RequestCharge) by PartitionKeyRangeId
+| order by TotalRequestCharge desc
 | take 10
 ```
 
-If one partition key range has significantly more 429s than others, you have a hot partition problem.
+If one partition key range has significantly higher RU consumption than others, you have a hot partition problem.
 
-**Fix**: Choose a better partition key. A good partition key has high cardinality and distributes reads and writes evenly. For example, if you are partitioning by `/region` and 80% of your users are in "us-east", that is a hot partition. Consider using `/userId` or a composite key instead.
+**Fix**: Choose a better partition key. A good partition key has high cardinality and distributes reads and writes evenly. For example, if you are partitioning by `/region` and 80% of your users are in "us-east", that is a hot partition. Consider using `/userId` or a synthetic key instead.
 
 Note: Changing the partition key requires creating a new container and migrating data. There is no way to change it in place.
 
@@ -221,10 +222,10 @@ az monitor metrics alert create \
   --resource-group myResourceGroup \
   --name "CosmosDB-Throttling-Alert" \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.DocumentDB/databaseAccounts/myCosmosAccount" \
-  --condition "total ThrottledRequests > 100" \
+  --condition "total TotalRequests > 100 where StatusCode includes 429" \
   --window-size 5m \
   --evaluation-frequency 1m \
-  --action-group myActionGroup \
+  --action myActionGroup \
   --description "Alert when Cosmos DB throttling exceeds 100 requests in 5 minutes"
 ```
 
