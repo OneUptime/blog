@@ -29,14 +29,14 @@ Navigate to the Well-Architected Assessment in the Azure portal and work through
 VM right-sizing is almost always the biggest quick win. Most teams overprovision VMs because they do not have good data on actual resource utilization. Azure Monitor metrics tell the real story.
 
 ```bash
-# Get average CPU utilization for all VMs in a resource group over the past 30 days
+# Get average and peak CPU utilization for a VM over the past 30 days
 
 # VMs consistently below 20% CPU are candidates for downsizing
 az monitor metrics list \
   --resource "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.Compute/virtualMachines/{vm-name}" \
-  --metric "Percentage CPU" \
+  --metrics "Percentage CPU" \
   --interval PT1H \
-  --aggregation Average \
+  --aggregation Average Maximum \
   --start-time 2026-01-16T00:00:00Z \
   --end-time 2026-02-16T00:00:00Z \
   -o table
@@ -44,7 +44,7 @@ az monitor metrics list \
 
 Look for VMs with average CPU utilization below 20% and peak utilization below 50%. These are strong candidates for downsizing to a smaller SKU. A D4s_v5 running at 15% average CPU could probably be a D2s_v5, cutting compute cost in half.
 
-Do the same analysis for memory. Some workloads are memory-bound rather than CPU-bound, so you need both data points before making sizing decisions.
+Do the same analysis for memory if you collect guest OS metrics with Azure Monitor Agent, VM insights, or another monitoring agent. Some workloads are memory-bound rather than CPU-bound, so you need both data points before making sizing decisions.
 
 ## Eliminating Idle and Orphaned Resources
 
@@ -67,36 +67,35 @@ I once found a client with over 200 unattached Premium SSD managed disks from a 
 
 ## Using Commitment Discounts
 
-Azure offers two main commitment discount mechanisms: Reserved Instances (RIs) and Savings Plans. Both provide significant discounts (up to 72%) in exchange for committing to a certain level of usage for one or three years.
+Azure offers two main compute commitment discount mechanisms: Reserved Instances (RIs) and Savings Plans. Both provide significant discounts in exchange for committing to a certain level of usage for one or three years. Azure VM Reserved Instances can save up to 72% compared to pay-as-you-go pricing, while Azure savings plans for compute can save up to 65% on eligible compute services.
 
 The WAF recommends using commitment discounts for any workload with predictable, steady-state usage. Production databases, application servers that run 24/7, and baseline compute capacity are all good candidates.
 
 Start by analyzing your usage patterns over the past 3-6 months. Azure Advisor provides reservation recommendations based on your actual usage data. Look at both the one-year and three-year options. Three-year commitments give better discounts but less flexibility.
 
-A common mistake is buying reservations that are too specific. If you reserve D4s_v3 instances but later need to resize to D4s_v5, your reservation does not transfer. Savings Plans offer more flexibility because they apply to any VM family and size, though the discount might be slightly lower.
+A common mistake is buying reservations that are too specific. If you reserve D4s_v3 instances but later need to resize to D4s_v5, your reservation discount only applies if the new size is in the same eligible reservation scope and instance size flexibility group. Savings Plans offer more flexibility because they apply to eligible compute usage across participating services and regions, though the discount might be slightly lower.
 
 ## Implementing Auto-Shutdown for Dev/Test
 
 Development and test environments do not need to run 24/7. If your dev VMs only get used during business hours, that is roughly 50 hours per week out of 168 total hours. You are paying for 118 hours of idle time every week.
 
-Azure has a built-in auto-shutdown feature for VMs, but it only handles shutdown, not startup. For a full solution, use Azure Automation with Start/Stop VMs v2 or use Azure DevTest Labs for dev environments.
+Azure has a built-in auto-shutdown feature for VMs, but it only handles shutdown, not scheduled startup. For a full solution, use Start/Stop VMs v2, which is based on Azure Functions and Logic Apps, or use Azure DevTest Labs for dev environments.
 
 ```bash
-# Enable auto-shutdown for a VM at 7 PM local time
+# Enable auto-shutdown for a VM at 7 PM UTC
 az vm auto-shutdown \
   --resource-group myResourceGroup \
   --name myVM \
-  --time 1900 \
-  --timezone "Eastern Standard Time"
+  --time 1900
 ```
 
 For environments that can be completely torn down when not in use, consider using infrastructure-as-code to create and destroy the entire environment on demand. This is the most cost-effective approach for environments used infrequently.
 
 ## Optimizing Storage Costs
 
-Storage costs add up quickly, especially if you are not using the right tier. Azure Blob Storage offers Hot, Cool, Cold, and Archive tiers with dramatically different pricing. Data that has not been accessed in 30 days should probably be in Cool storage. Data not accessed in 90 days should be in Cold or Archive.
+Storage costs add up quickly, especially if you are not using the right tier. Azure Blob Storage offers Hot, Cool, Cold, and Archive tiers with dramatically different pricing. Data that is old and infrequently accessed should probably be in Cool storage. Data that is retained for long periods and rarely accessed should be in Cold or Archive.
 
-Implement lifecycle management policies to automatically move data between tiers based on age and access patterns.
+Implement lifecycle management policies to automatically move data between tiers based on modification age or, when last access time tracking is enabled, access patterns.
 
 ```json
 {
