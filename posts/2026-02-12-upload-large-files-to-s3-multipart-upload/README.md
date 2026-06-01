@@ -183,7 +183,9 @@ aws s3api put-bucket-lifecycle-configuration \
             {
                 "ID": "cleanup-incomplete-uploads",
                 "Status": "Enabled",
-                "Filter": {},
+                "Filter": {
+                    "Prefix": ""
+                },
                 "AbortIncompleteMultipartUpload": {
                     "DaysAfterInitiation": 7
                 }
@@ -242,8 +244,7 @@ print("\nUpload complete!")
 Here's the equivalent using the AWS SDK for JavaScript:
 
 ```javascript
-const { S3Client, CreateMultipartUploadCommand,
-        UploadPartCommand, CompleteMultipartUploadCommand } = require("@aws-sdk/client-s3");
+const { S3Client } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const fs = require("fs");
 
@@ -251,6 +252,7 @@ const s3 = new S3Client({ region: "us-east-1" });
 
 async function uploadLargeFile(filePath, bucket, key) {
     const fileStream = fs.createReadStream(filePath);
+    const fileSize = fs.statSync(filePath).size;
 
     // The Upload class handles multipart automatically
     const upload = new Upload({
@@ -267,7 +269,7 @@ async function uploadLargeFile(filePath, bucket, key) {
 
     // Track progress
     upload.on("httpUploadProgress", (progress) => {
-        const pct = ((progress.loaded / progress.total) * 100).toFixed(1);
+        const pct = ((progress.loaded / fileSize) * 100).toFixed(1);
         process.stdout.write(`\rProgress: ${pct}%`);
     });
 
@@ -301,12 +303,12 @@ time aws s3 cp /tmp/100mb-test s3://my-bucket/speed-test.bin
 # If upload is 50 MB/s:
 #   - 64 MB chunks, 5 concurrent = 320 MB buffer (reasonable)
 #   - Each chunk takes ~1.3 seconds
-#   - 10 GB file = 156 parts, ~40 seconds wall time
+#   - 10 GB file = 156 parts, about 200 seconds wall time at 50 MB/s total throughput
 ```
 
 ## Verifying Upload Integrity
 
-S3 uses MD5 checksums for each part. You can also verify the complete object.
+S3 validates upload integrity with checksums, and multipart ETags are not the MD5 checksum of the complete object. You can also verify the object size and stored checksum metadata.
 
 Verify a multipart upload's integrity:
 
