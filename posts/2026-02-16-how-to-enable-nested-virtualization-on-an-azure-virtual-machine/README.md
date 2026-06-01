@@ -28,7 +28,7 @@ Before diving into the how, here is why you might want this:
 
 ## VM Size Requirements
 
-Not all Azure VM sizes support nested virtualization. You need a size that uses Intel processors with VT-x and EPT support and exposes that capability to the guest OS. The following VM families support nested virtualization:
+Not all Azure VM sizes support nested virtualization. You need a VM size whose Azure size documentation lists Nested Virtualization as supported. The following VM families are common choices:
 
 - Dv3 and Dsv3 series
 - Dv4 and Dsv4 series
@@ -36,8 +36,9 @@ Not all Azure VM sizes support nested virtualization. You need a size that uses 
 - Ev3 and Esv3 series
 - Ev4 and Esv4 series
 - Ev5 and Esv5 series
+- Fsv2 series
 
-The B-series, A-series, and F-series do not support nested virtualization. When in doubt, check the Azure documentation for your specific VM size.
+The B-series and A-series do not support nested virtualization. AMD-based v6 families such as Dalsv6 and Easv6 also support nested virtualization, while some older AMD families do not. When in doubt, check the Azure documentation for your specific VM size.
 
 ```bash
 # Create a VM with a size that supports nested virtualization
@@ -47,6 +48,7 @@ az vm create \
   --name nestedVM \
   --image Win2022Datacenter \
   --size Standard_D4s_v5 \
+  --security-type Standard \
   --admin-username azureuser \
   --admin-password 'YourSecurePassword123!'
 ```
@@ -73,7 +75,7 @@ Get-VMHost
 systeminfo | Select-String "Hyper-V"
 ```
 
-You should see that all Hyper-V requirements are met, including hardware-assisted virtualization, Data Execution Prevention, and Second Level Address Translation (SLAT).
+After Hyper-V is installed and active, `systeminfo` usually reports that a hypervisor has been detected instead of listing the individual Hyper-V requirements. Before installing Hyper-V, those requirements should show hardware-assisted virtualization, Data Execution Prevention, and Second Level Address Translation (SLAT) as available.
 
 ## Enabling KVM on Linux
 
@@ -83,10 +85,10 @@ For Linux VMs, nested virtualization uses KVM (Kernel-based Virtual Machine). Fi
 # Check for virtualization support
 grep -E 'vmx|svm' /proc/cpuinfo
 
-# If you see vmx flags, Intel VT-x is available
+# If you see vmx flags, Intel VT-x is available; if you see svm flags, AMD-V is available
 # Install KVM and related tools on Ubuntu
 sudo apt update
-sudo apt install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils virtinst
+sudo apt install -y qemu-kvm qemu-utils libvirt-daemon-system libvirt-clients bridge-utils virtinst cloud-image-utils
 
 # Verify KVM is loaded
 lsmod | grep kvm
@@ -124,15 +126,7 @@ New-NetIPAddress -IPAddress 192.168.100.1 -PrefixLength 24 -InterfaceIndex $ifIn
 New-NetNat -Name "NestedVMNAT" -InternalIPInterfaceAddressPrefix 192.168.100.0/24
 ```
 
-**External switch with MAC spoofing**: More complex but gives nested VMs direct network access.
-
-```powershell
-# Create an external virtual switch
-New-VMSwitch -Name "ExternalSwitch" -NetAdapterName "Ethernet" -AllowManagementOS $true
-
-# Enable MAC address spoofing on the nested VM (required for Azure)
-Set-VMNetworkAdapter -VMName "NestedVM01" -MacAddressSpoofing On
-```
+**External switch with MAC spoofing**: A Hyper-V option when you control the outer virtualization host, but not the usual choice in Azure public cloud. Azure networking does not natively learn the MAC addresses of your nested VMs, so NAT is the supported approach for most Azure VM nested virtualization setups.
 
 ### Creating a Nested VM
 
@@ -146,7 +140,7 @@ New-VM -Name "NestedVM01" `
   -SwitchName "NATSwitch"
 
 # Attach an ISO for OS installation
-Set-VMDvdDrive -VMName "NestedVM01" -Path "C:\ISOs\ubuntu-22.04.iso"
+Add-VMDvdDrive -VMName "NestedVM01" -Path "C:\ISOs\ubuntu-22.04.iso"
 
 # Configure the VM
 Set-VM -Name "NestedVM01" `
@@ -256,4 +250,4 @@ Also, be aware that Azure's security features like Just-in-Time VM access, Azure
 
 ## Wrapping Up
 
-Nested virtualization on Azure is a powerful feature for specific use cases. Pick the right VM size (Dv3/v4/v5 or Ev3/v4/v5), install the hypervisor (Hyper-V on Windows or KVM on Linux), configure networking carefully, and plan for the performance overhead. It is not meant for running production workloads inside nested VMs - that is what regular Azure VMs are for. But for development, testing, training, and running hypervisor-dependent software, it is exactly the right tool.
+Nested virtualization on Azure is a powerful feature for specific use cases. Pick the right VM size, install the hypervisor (Hyper-V on Windows or KVM on Linux), configure networking carefully, and plan for the performance overhead. It is not meant for running production workloads inside nested VMs - that is what regular Azure VMs are for. But for development, testing, training, and running hypervisor-dependent software, it is exactly the right tool.
