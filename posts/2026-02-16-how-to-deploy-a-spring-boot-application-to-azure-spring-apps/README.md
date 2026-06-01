@@ -8,7 +8,7 @@ Description: A practical guide to deploying a Spring Boot application to Azure S
 
 ---
 
-Azure Spring Apps (formerly Azure Spring Cloud) is a fully managed platform for running Spring Boot applications. It handles the infrastructure, builds, scaling, and networking so you can focus on your Java code. If you are used to deploying Spring Boot apps to VMs or Kubernetes, Azure Spring Apps removes a lot of the operational overhead. This post walks through deploying a Spring Boot application from scratch, covering the service creation, deployment configuration, and production-ready settings.
+Azure Spring Apps (formerly Azure Spring Cloud) is a fully managed platform for running Spring Boot applications. It handles the infrastructure, builds, scaling, and networking so you can focus on your Java code. If you are used to deploying Spring Boot apps to VMs or Kubernetes, Azure Spring Apps removes a lot of the operational overhead. Microsoft has announced that Azure Spring Apps Basic, Standard, and Enterprise plans entered retirement on March 17, 2025 and will be retired on March 31, 2028, so use this guide for existing environments and plan migrations to Azure Container Apps or AKS for new long-term workloads. This post walks through deploying a Spring Boot application from scratch, covering the service creation, deployment configuration, and production-ready settings.
 
 ## Prerequisites
 
@@ -44,11 +44,11 @@ az spring create \
   --sku Standard
 ```
 
-The `Standard` SKU includes features like custom domains, scaling, and VNet injection. The `Basic` SKU is cheaper but more limited. For production workloads, use Standard or Enterprise.
+The `Standard` SKU includes features like custom domains, scaling, and VNet injection. The `Basic` SKU is cheaper but more limited. For production workloads that are already committed to Azure Spring Apps, use Standard or Enterprise while planning for the March 31, 2028 retirement.
 
 ## Step 2: Create an Application
 
-In Azure Spring Apps, an "application" is a deployment slot for your Spring Boot service. You create the application first, then deploy code to it.
+In Azure Spring Apps, an "application" is an abstraction for one Spring Boot service. You create the application first, which creates a default deployment, then deploy code to that deployment.
 
 ```bash
 # Create an application within the Spring Apps instance
@@ -111,18 +111,45 @@ az spring app update \
     "SPRING_DATASOURCE_USERNAME=dbadmin"
 ```
 
-For sensitive values like database passwords, use Azure Key Vault integration.
+For sensitive values like database passwords, use Azure Key Vault with managed identity. Enable a managed identity on the app, grant it permission to read secrets, and configure the Spring Cloud Azure Key Vault starter.
 
 ```bash
-# Enable Key Vault integration
+# Enable system-assigned managed identity on the app
+az spring app identity assign \
+  --name order-service \
+  --service my-spring-service \
+  --resource-group spring-rg
+
+# Grant the app permission to read Key Vault secrets
+APP_IDENTITY=$(az spring app show \
+  --name order-service \
+  --service my-spring-service \
+  --resource-group spring-rg \
+  --query identity.principalId \
+  --output tsv)
+
+az keyvault set-policy \
+  --name my-keyvault \
+  --object-id "$APP_IDENTITY" \
+  --secret-permissions get list
+
+# Configure the Key Vault property source
 az spring app update \
   --name order-service \
   --service my-spring-service \
   --resource-group spring-rg \
-  --env "SPRING_CLOUD_AZURE_KEYVAULT_SECRET_PROPERTY_SOURCES_0_ENDPOINT=https://my-keyvault.vault.azure.net"
+  --env "SPRING_CLOUD_AZURE_KEYVAULT_SECRET_PROPERTY_SOURCES_0_ENDPOINT=https://my-keyvault.vault.azure.net" \
+        "SPRING_CLOUD_AZURE_KEYVAULT_SECRET_PROPERTY_SOURCES_0_CREDENTIAL_MANAGED_IDENTITY_ENABLED=true"
 ```
 
-In your Spring Boot application, reference Key Vault secrets as properties.
+Make sure your application includes the Azure Key Vault starter, then reference Key Vault secrets as properties.
+
+```xml
+<dependency>
+    <groupId>com.azure.spring</groupId>
+    <artifactId>spring-cloud-azure-starter-keyvault-secrets</artifactId>
+</dependency>
+```
 
 ```yaml
 # application-production.yml
@@ -223,7 +250,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -232,19 +259,19 @@ jobs:
         run: ./mvnw clean package -DskipTests
 
       - name: Login to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy to Azure Spring Apps
-        uses: azure/spring-apps-deploy@v1
-        with:
-          azure-subscription: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          action: deploy
-          service-name: my-spring-service
-          app-name: order-service
-          use-staging-deployment: false
-          package: target/order-service-0.0.1-SNAPSHOT.jar
+        run: |
+          az extension add --name spring --upgrade
+          az account set --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          az spring app deploy \
+            --name order-service \
+            --service my-spring-service \
+            --resource-group spring-rg \
+            --artifact-path target/order-service-0.0.1-SNAPSHOT.jar
 ```
 
 ## Application Architecture
@@ -279,7 +306,7 @@ Make sure your `pom.xml` includes the Actuator dependency.
 </dependency>
 ```
 
-Azure Spring Apps automatically configures health probes to use the `/actuator/health` endpoint.
+Azure Spring Apps provides default TCP health probes. If you want probes to call Spring Boot Actuator endpoints, configure custom liveness and readiness probes such as `/actuator/health/liveness` and `/actuator/health/readiness`.
 
 ## Troubleshooting Deployment Issues
 
