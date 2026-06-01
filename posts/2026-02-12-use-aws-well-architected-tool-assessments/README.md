@@ -73,7 +73,7 @@ A workload in the tool represents a specific application or system you want to r
 
 - **Workload name**: Something descriptive like "E-commerce Platform" or "Data Analytics Pipeline"
 - **Description**: What the workload does and why it matters
-- **Environment**: Production, Pre-production, or Non-production
+- **Environment**: Production or Pre-production
 - **Regions**: Which AWS regions the workload runs in
 - **Account IDs**: The AWS accounts involved
 - **Architecture diagram**: Upload a diagram if you have one
@@ -89,24 +89,6 @@ aws wellarchitected create-workload \
   --aws-regions us-east-1 us-west-2 \
   --lenses wellarchitected \
   --review-owner "platform-team@company.com"
-```
-
-Or with Terraform:
-
-```hcl
-resource "aws_wellarchitected_workload" "ecommerce" {
-  workload_name = "E-commerce Platform"
-  description   = "Customer-facing shopping and checkout system"
-  environment   = "PRODUCTION"
-  aws_regions   = ["us-east-1", "us-west-2"]
-  lenses        = ["wellarchitected"]
-  review_owner  = "platform-team@company.com"
-
-  tags = {
-    Team    = "platform"
-    Service = "ecommerce"
-  }
-}
 ```
 
 ## Step 2: Select Lenses
@@ -130,7 +112,7 @@ Each lens contains questions organized by pillar. For each question:
 1. **Read the question** and the associated best practices
 2. **Select which best practices you've implemented** - check the ones that apply
 3. **Add notes** - explain your reasoning, document any tradeoffs
-4. **Mark "None of these"** if no best practices apply (this flags a high-risk issue)
+4. **Mark "None of these"** if no best practices apply (this flags a risk)
 5. **Mark "Question does not apply"** if the question isn't relevant to your workload
 
 Here's what the question flow looks like:
@@ -184,7 +166,7 @@ Export the improvement plan to track it in your project management tool:
 ```bash
 # Export the improvement plan
 aws wellarchitected list-lens-review-improvements \
-  --workload-id "abc123" \
+  --workload-id "1234567890abcdef1234567890abcdef" \
   --lens-alias "wellarchitected" \
   --pillar-id "security" \
   --output json > security_improvements.json
@@ -197,7 +179,7 @@ Milestones capture the state of your review at a point in time. After completing
 ```bash
 # Save a milestone
 aws wellarchitected create-milestone \
-  --workload-id "abc123" \
+  --workload-id "1234567890abcdef1234567890abcdef" \
   --milestone-name "Initial Review - Q1 2026"
 ```
 
@@ -275,7 +257,7 @@ You can share workloads with other AWS accounts:
 ```bash
 # Share a workload with another account
 aws wellarchitected create-workload-share \
-  --workload-id "abc123" \
+  --workload-id "1234567890abcdef1234567890abcdef" \
   --shared-with "987654321012" \
   --permission-type "CONTRIBUTOR"
 ```
