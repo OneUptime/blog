@@ -22,12 +22,12 @@ This means Traffic Manager can only influence which endpoint the client connects
 
 Traffic Manager supports several routing methods:
 
-- **Performance**: Routes to the endpoint with the lowest latency from the client. This is what you want for latency optimization.
+- **Performance**: Routes to the endpoint with the lowest latency from the DNS query source, or from the EDNS Client Subnet if the resolver includes one. This is what you want for latency optimization.
 - **Geographic**: Routes based on the geographic location of the DNS query.
 - **Priority**: Routes to the primary endpoint unless it is unhealthy, then fails over to secondary.
 - **Weighted**: Distributes traffic across endpoints based on assigned weights.
-- **MultiValue**: Returns all healthy endpoints; the client picks one.
-- **Subnet**: Routes based on the client's source IP subnet.
+- **MultiValue**: Returns multiple healthy external endpoints when those endpoints are specified as IPv4 or IPv6 addresses.
+- **Subnet**: Routes based on the DNS query source IP subnet, or the EDNS Client Subnet if the resolver includes one.
 
 If you are experiencing high latency and using Priority or Weighted routing, that is likely the problem. These methods do not consider the client's location or endpoint proximity.
 
@@ -53,7 +53,7 @@ az network traffic-manager profile update \
 
 ## Step 2: Verify Endpoint Health
 
-Traffic Manager only routes to healthy endpoints. If the closest endpoint is unhealthy, traffic gets routed to the next best healthy endpoint, which might be much farther away.
+Traffic Manager normally routes only to healthy endpoints. If the closest endpoint is unhealthy, traffic gets routed to the next best healthy endpoint, which might be much farther away.
 
 ```bash
 # Check the health status of all endpoints
@@ -87,7 +87,7 @@ Make sure the probe path is correct, the port is right, and the expected status 
 
 ## Step 3: Understand the DNS Resolution Chain
 
-A common source of confusion: Traffic Manager uses the location of the DNS resolver, not the client, to determine the "closest" endpoint for Performance routing. Here is the resolution chain:
+A common source of confusion: Traffic Manager uses the location of the DNS resolver, not the client, to determine the "closest" endpoint for Performance routing unless the resolver includes EDNS Client Subnet (ECS) information. Here is the resolution chain:
 
 ```mermaid
 sequenceDiagram
@@ -106,7 +106,7 @@ sequenceDiagram
 
 If a user in Tokyo uses a DNS resolver located in the US (this happens with some corporate DNS setups and VPNs), Traffic Manager sees the query coming from the US and routes to the US endpoint. The user in Tokyo now has to cross the Pacific for every request.
 
-**Fix**: Use DNS resolvers that are geographically close to the user. Modern DNS services like Google Public DNS (8.8.8.8), Cloudflare (1.1.1.1), and Azure DNS use EDNS Client Subnet (ECS) to pass the client's subnet to authoritative DNS servers. Traffic Manager supports ECS, so even if the resolver is remote, Traffic Manager can make a better routing decision.
+**Fix**: Use DNS resolvers that are geographically close to the user, or resolvers that pass EDNS Client Subnet (ECS) information to authoritative DNS servers. Traffic Manager supports ECS, so if the resolver includes ECS, Traffic Manager can make a better routing decision even when the resolver is remote.
 
 If your users are behind a corporate proxy or VPN that forces DNS through a central resolver, there is not much you can do at the Traffic Manager level. You would need to change the network architecture.
 
@@ -123,7 +123,7 @@ az network traffic-manager profile show \
   --output tsv
 ```
 
-The default TTL is 60 seconds. For latency-sensitive applications, a lower TTL (like 10-30 seconds) means faster failover but slightly more DNS queries.
+The default Traffic Manager TTL is 300 seconds. For latency-sensitive applications, a lower TTL (like 10-30 seconds) means faster failover but slightly more DNS queries.
 
 **Fix**: Lower the TTL for faster endpoint switches:
 
@@ -132,7 +132,7 @@ The default TTL is 60 seconds. For latency-sensitive applications, a lower TTL (
 az network traffic-manager profile update \
   --resource-group myResourceGroup \
   --name myTrafficManagerProfile \
-  --set dnsConfig.ttl=30
+  --ttl 30
 ```
 
 Keep in mind that some DNS resolvers ignore low TTLs and cache for longer than specified. There is nothing you can do about that from the Azure side.
@@ -182,12 +182,13 @@ If the returned endpoint is not the one you expect for your location, check:
 Traffic Manager has a Real User Measurements feature that collects latency data from actual users. Instead of relying on Azure's internal latency tables, Traffic Manager uses real measurements from your users' browsers to determine the best endpoint.
 
 ```bash
-# Enable Real User Measurements
-# This returns a key you embed in your web pages
-az network traffic-manager profile update \
-  --resource-group myResourceGroup \
-  --name myTrafficManagerProfile \
-  --traffic-view-enrollment-status Enabled
+# Create or retrieve the subscription-level Real User Measurements key
+# Embed the returned key in the JavaScript snippet from the Azure portal
+az rest \
+  --method put \
+  --url "https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Network/trafficManagerUserMetricsKeys/default?api-version=2022-04-01" \
+  --query "properties.key" \
+  --output tsv
 ```
 
 You embed a JavaScript snippet in your web pages that measures latency from the user's browser to each Azure region. This data feeds back into Traffic Manager to improve routing decisions.
