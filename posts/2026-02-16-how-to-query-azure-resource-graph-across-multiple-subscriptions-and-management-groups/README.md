@@ -67,7 +67,7 @@ az rest --method post \
 
 ## Querying by Management Group
 
-Management groups provide a hierarchical structure for organizing subscriptions. You can scope Resource Graph queries to a management group, which automatically includes all subscriptions under that group and its child groups.
+Management groups provide a hierarchical structure for organizing subscriptions. You can scope Resource Graph queries to a management group, which automatically includes subscriptions under that group and its child groups. If the management group hierarchy contains more than 10,000 subscriptions, Resource Graph includes the first 10,000 subscriptions in the query scope.
 
 ### Using Azure CLI
 
@@ -198,7 +198,7 @@ resources
 
 ## Handling Large Result Sets
 
-Resource Graph has a default limit of 1000 rows per query. For cross-subscription queries that return more results, you need to use pagination.
+Resource Graph returns a maximum of 1000 rows in a single response. For cross-subscription queries that return more results, you need to use pagination.
 
 ### CLI Pagination
 
@@ -211,8 +211,8 @@ TOTAL=0
 while true; do
     RESULT=$(az graph query -q "
         resources
-        | project name, type, subscriptionId, resourceGroup
-        | order by type asc, name asc
+        | project id, name, type, subscriptionId, resourceGroup
+        | order by id asc
     " --first $BATCH --skip $SKIP --output tsv 2>/dev/null)
 
     # Check if we got any results
@@ -237,20 +237,31 @@ echo "Total resources: $TOTAL"
 # Paginated query in PowerShell
 $allResults = @()
 $batchSize = 1000
-$skip = 0
+$skipToken = $null
+
+$query = @"
+resources
+| project id, name, type, subscriptionId, resourceGroup
+| order by id asc
+"@
 
 do {
-    $batch = Search-AzGraph -Query @"
-        resources
-        | project name, type, subscriptionId, resourceGroup
-        | order by type asc, name asc
-"@ -First $batchSize -Skip $skip
+    $params = @{
+        Query = $query
+        First = $batchSize
+    }
+
+    if ($skipToken) {
+        $params.SkipToken = $skipToken
+    }
+
+    $batch = Search-AzGraph @params
 
     $allResults += $batch
-    $skip += $batchSize
+    $skipToken = $batch.SkipToken
     Write-Output "Fetched $($allResults.Count) resources..."
 
-} while ($batch.Count -eq $batchSize)
+} while ($skipToken)
 
 Write-Output "Total: $($allResults.Count) resources"
 $allResults | Export-Csv "all-resources.csv" -NoTypeInformation
@@ -260,11 +271,11 @@ $allResults | Export-Csv "all-resources.csv" -NoTypeInformation
 
 Resource Graph queries are fast, but there are some things to keep in mind when querying at scale:
 
-**Throttling.** Resource Graph has rate limits. For programmatic queries, implement retry logic with exponential backoff. The limits are generous (15 queries per 5 seconds per tenant for CLI, 5 queries per 5 seconds per tenant for REST API), but batch operations can hit them.
+**Throttling.** Resource Graph has rate limits. For programmatic queries, implement retry logic with exponential backoff. For example, a user can send at most 15 queries within each 5-second window without being throttled, but quota values are determined by several factors and can change. Batch operations can hit these limits.
 
 **Query complexity.** Joins, aggregations, and mv-expand operations add processing time. For complex queries across many subscriptions, consider breaking them into smaller scoped queries.
 
-**Result set size.** The maximum result set per query is 1000 rows. Plan your pagination strategy accordingly.
+**Result set size.** The maximum result set per query response is 1000 rows. Plan your pagination strategy accordingly.
 
 ```bash
 # Example with retry logic
