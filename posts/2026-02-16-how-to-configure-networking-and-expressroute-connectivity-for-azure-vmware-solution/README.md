@@ -10,7 +10,7 @@ Description: Learn how to configure networking and ExpressRoute connectivity for
 
 Networking is the foundation that makes Azure VMware Solution (AVS) useful. Without proper connectivity, your AVS private cloud is an isolated island. You need it talking to your Azure virtual networks for accessing native Azure services, to your on-premises data center for hybrid operations, and to the internet for public-facing workloads. Azure VMware Solution uses ExpressRoute as its primary connectivity mechanism, with NSX-T providing the internal networking.
 
-This guide covers the full network architecture: ExpressRoute setup, virtual network peering, on-premises connectivity, DNS configuration, and internet access.
+This guide covers the full network architecture: ExpressRoute setup, virtual network gateway connectivity, on-premises connectivity, DNS configuration, and internet access.
 
 ## AVS Networking Architecture
 
@@ -147,6 +147,8 @@ ExpressRoute Global Reach connects two ExpressRoute circuits directly through th
 
 ```bash
 # Get the AVS circuit ID and authorization key (from Step 3)
+# If the previous authorization key was already redeemed, create a new
+# AVS authorization key for this Global Reach connection.
 # Get your on-premises ExpressRoute circuit ID
 ONPREM_CIRCUIT_ID="/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Network/expressRouteCircuits/onprem-circuit"
 
@@ -177,21 +179,21 @@ NSX-T manages the internal networking within AVS. Create network segments where 
 az vmware workload-network segment create \
   --resource-group myResourceGroup \
   --private-cloud myAVSPrivateCloud \
-  --segment-id web-tier \
+  --segment web-tier \
   --display-name "Web Tier" \
   --connected-gateway "/infra/tier-1s/TNT##-T1" \
-  --subnet dhcp-range="10.180.10.10-10.180.10.200" \
-         gateway-address="10.180.10.1/24"
+  --dhcp-ranges "10.180.10.10-10.180.10.200" \
+  --gateway-address "10.180.10.1/24"
 
 # Create a second segment for the database tier
 az vmware workload-network segment create \
   --resource-group myResourceGroup \
   --private-cloud myAVSPrivateCloud \
-  --segment-id db-tier \
+  --segment db-tier \
   --display-name "Database Tier" \
   --connected-gateway "/infra/tier-1s/TNT##-T1" \
-  --subnet dhcp-range="10.180.20.10-10.180.20.200" \
-         gateway-address="10.180.20.1/24"
+  --dhcp-ranges "10.180.20.10-10.180.20.200" \
+  --gateway-address "10.180.20.1/24"
 ```
 
 ## Step 6: Configure DNS
@@ -199,35 +201,37 @@ az vmware workload-network segment create \
 DNS configuration ensures VMs in AVS can resolve names for on-premises resources and Azure private endpoints.
 
 ```bash
-# Create a DNS service for workload VMs
-az vmware workload-network dns-service create \
-  --resource-group myResourceGroup \
-  --private-cloud myAVSPrivateCloud \
-  --dns-service-id workload-dns \
-  --display-name "Workload DNS Service" \
-  --default-dns-zone "default-zone" \
-  --fqdn-zones "corp.example.com" "azure.example.com" \
-  --dns-service-ip "10.180.0.53" \
-  --log-level "INFO"
-
 # Create a DNS zone for conditional forwarding to on-premises
 az vmware workload-network dns-zone create \
   --resource-group myResourceGroup \
   --private-cloud myAVSPrivateCloud \
-  --dns-zone-id onprem-zone \
+  --dns-zone onprem-zone \
   --display-name "On-Premises DNS Zone" \
-  --domain "corp.example.com" \
-  --dns-server-ips "10.0.0.53" "10.0.0.54" \
+  --domain "[corp.example.com]" \
+  --dns-server-ips "[10.0.0.53,10.0.0.54]" \
+  --source-ip "10.180.0.53" \
+  --revision 1
+
+# Create a DNS service for workload VMs
+az vmware workload-network dns-service create \
+  --resource-group myResourceGroup \
+  --private-cloud myAVSPrivateCloud \
+  --dns-service workload-dns \
+  --display-name "Workload DNS Service" \
+  --default-dns-zone "TNT##-DNS-FORWARDER-ZONE" \
+  --fqdn-zones "[onprem-zone]" \
+  --dns-service-ip "10.180.0.53" \
+  --log-level "INFO" \
   --revision 1
 ```
 
-This setup forwards DNS queries for `corp.example.com` to your on-premises DNS servers, while other queries use the default Azure DNS resolution.
+This setup forwards DNS queries for `corp.example.com` to your on-premises DNS servers through the NSX DNS service, while other queries use the DNS servers configured on the default DNS forwarder zone.
 
 ## Step 7: Configure Internet Access for AVS VMs
 
 By default, AVS VMs do not have internet access. You have two options:
 
-**Option A: Azure public IP on NSX-T edge** - Gives AVS VMs direct internet access through the AVS gateway.
+**Option A: Enable AVS internet connectivity** - Gives AVS VMs outbound internet access through the AVS gateway.
 
 ```bash
 # Enable internet access through AVS
@@ -237,22 +241,7 @@ az vmware private-cloud update \
   --internet Enabled
 ```
 
-**Option B: Route through Azure Firewall or NVA** - Routes internet traffic through your hub virtual network for centralized security. This is the recommended approach for production.
-
-```bash
-# Create a route table with a default route pointing to the Azure Firewall
-az network route-table create \
-  --resource-group myNetworkRG \
-  --name avs-route-table
-
-az network route-table route create \
-  --resource-group myNetworkRG \
-  --route-table-name avs-route-table \
-  --name default-to-firewall \
-  --address-prefix "0.0.0.0/0" \
-  --next-hop-type VirtualAppliance \
-  --next-hop-ip-address "10.100.1.4"
-```
+**Option B: Route through Azure Firewall or NVA** - Routes internet traffic through your hub virtual network for centralized security. This is the recommended approach for production. Configure Azure Firewall, a third-party NVA, or a Virtual WAN hub to advertise a `0.0.0.0/0` default route to AVS, then select **Connect using default route from Azure** under **Workload networking > Internet connectivity** for the private cloud. A route table in the hub VNet by itself does not advertise the default route to AVS.
 
 ## Step 8: Verify Connectivity
 
@@ -263,7 +252,7 @@ Test connectivity from different locations to confirm everything works.
 curl -k https://10.175.0.2/ui
 
 # Test DNS resolution
-nslookup vcenter.avs.azure.com 10.180.0.53
+nslookup vc123.eastus.avs.azure.com 10.180.0.53
 
 # Test connectivity to a workload VM
 ping 10.180.10.100
