@@ -8,7 +8,7 @@ Description: Step-by-step guide to migrating ASP.NET web applications from on-pr
 
 ---
 
-Running ASP.NET applications on IIS servers in your data center works fine, but managing the underlying infrastructure is a constant tax on your team. Patching Windows, scaling during traffic spikes, managing SSL certificates, dealing with hardware failures - all of this goes away when you move to Azure App Service. Azure Migrate now includes tooling specifically for discovering, assessing, and migrating web applications, making the process much more structured than it used to be.
+Running ASP.NET applications on IIS servers in your data center works fine, but managing the underlying infrastructure is a constant tax on your team. Patching Windows, scaling during traffic spikes, managing SSL certificates, dealing with hardware failures - much of this goes away when you move to Azure App Service. Azure Migrate now includes tooling specifically for discovering, assessing, and migrating web applications, making the process much more structured than it used to be.
 
 This guide walks through how to use Azure Migrate to move ASP.NET web apps from on-premises IIS to Azure App Service.
 
@@ -34,7 +34,7 @@ Before starting, ensure you have:
 - .NET Framework 3.5 or later (or .NET Core/.NET 5+)
 - An Azure subscription
 - An Azure Migrate project
-- The Azure Migrate appliance deployed and discovering servers (the same appliance used for server migration)
+- The Azure Migrate appliance deployed or upgraded and discovering servers (the same appliance used for server discovery and assessment)
 - Guest OS credentials configured on the appliance for the IIS servers
 
 ## Step 1: Enable Web App Discovery
@@ -45,7 +45,7 @@ Azure Migrate discovers web apps as part of its software inventory feature. If y
 2. Navigate to "Servers, databases and web apps"
 3. Under "Web apps," you should see discovered IIS web applications
 
-The appliance connects to each Windows server using WMI and queries IIS configuration to discover:
+The appliance connects to each Windows server using WinRM and PowerShell remoting, then reads IIS configuration to discover:
 
 - Web sites and virtual directories
 - Application pools and their .NET CLR versions
@@ -53,7 +53,7 @@ The appliance connects to each Windows server using WMI and queries IIS configur
 - Physical paths
 - Authentication settings
 
-If you do not see any web apps, verify that guest credentials are working. The appliance needs local administrator access to query IIS configuration remotely.
+If you do not see any web apps, verify that guest credentials are working. Microsoft documents local administrator access as supported, and the least-privileged option requires membership in Remote Management Users and IIS_IUSRS plus read permissions on the IIS configuration files.
 
 ## Step 2: Run a Web App Assessment
 
@@ -63,8 +63,8 @@ Create an assessment specifically for web apps to understand readiness and ident
 2. Give the assessment a name
 3. Configure properties:
    - **Target location**: Choose your preferred Azure region
-   - **Pricing tier**: Select the App Service Plan tier (Standard, Premium, Isolated)
-   - **Reserved instances**: Enable for cost comparison
+   - **Isolation required**: Choose whether the apps need a private, dedicated App Service Environment
+   - **Savings options**: Choose pay-as-you-go, reservations, or an Azure savings plan for cost comparison
 4. Select the web apps to include
 5. Run the assessment
 
@@ -87,11 +87,11 @@ The assessment report for each web app shows:
 
 **Windows Authentication with Kerberos.** App Service supports Azure AD authentication, but Kerberos delegation to back-end resources requires additional configuration. Consider using Azure AD with Application Proxy.
 
-**File system writes.** Apps that write to the local file system work in App Service, but the storage is ephemeral. For persistent file storage, switch to Azure Blob Storage or mount an Azure File Share.
+**File system writes.** Apps can write to the App Service content directory under `%HOME%`, which is backed by Azure Storage and persists across restarts. Temporary local storage under `%SystemDrive%\local` is not persistent across restarts and is not shared across instances. For larger or application-owned file storage, switch to Azure Blob Storage or mount an Azure File Share.
 
-**Registry access.** App Service does not allow registry access. If your app reads configuration from the registry, move those settings to App Settings or Azure Key Vault.
+**Registry access.** App Service allows read-only access to much of the registry, but write access is blocked and apps cannot rely on registry state for configuration. If your app reads configuration from the registry, move those settings to App Settings or Azure Key Vault.
 
-**COM components.** Not supported in App Service. You will need to find a managed (.NET) replacement or containerize the app.
+**COM components.** App Service can call some in-process COM components that are already registered on the Windows image, but you cannot install and register arbitrary custom COM components on the worker. You will need to find a managed (.NET) replacement or containerize the app.
 
 Here is an example of how to refactor a file-system-dependent configuration to use App Settings:
 
@@ -121,7 +121,7 @@ public class AppConfig
 
 ### Cost Estimates
 
-The assessment provides monthly cost estimates based on the App Service Plan tier you selected. It also recommends the minimum plan size needed based on resource consumption patterns observed during discovery.
+The assessment provides monthly cost estimates based on the recommended App Service SKU and the savings option you selected. The Azure App Service assessment is configuration-based; Azure Migrate does not collect web app performance data for this assessment.
 
 ## Step 4: Prepare the Application
 
@@ -133,21 +133,21 @@ Before migration, make these changes to ensure a smooth landing on App Service:
 
 **Test with 64-bit.** If your app runs as 32-bit on-premises, decide whether to keep it 32-bit or switch to 64-bit in App Service. This is configurable in the platform settings.
 
-**Check .NET version.** Verify that your target .NET Framework version is supported by App Service. All .NET Framework versions from 3.5 through 4.8 are supported, as well as .NET 6, 7, and 8.
+**Check .NET version.** Verify that your target runtime is supported by App Service in your region. App Service uses CLR 2 for .NET Framework 3.5 and CLR 4 for .NET Framework 4.x, and newer .NET versions are supported according to the current App Service runtime stack list. If the runtime your application requires is not supported, deploy it with a custom container.
 
 ## Step 5: Migrate Using Azure Migrate
 
-Azure Migrate supports direct migration of ASP.NET apps to App Service using the Azure App Service Migration Assistant, which integrates with the Migrate project.
+Azure Migrate supports direct migration of assessed ASP.NET apps to App Service using the integrated migration flow in the Azure Migrate project.
 
-1. Download the App Service Migration Assistant from the Azure Migrate portal
-2. Run it on the IIS server hosting the application
-3. Select the web site to migrate
-4. The tool performs a readiness check and flags any issues
-5. Sign in with your Azure credentials
-6. Select the target subscription, resource group, and App Service Plan
-7. Click "Migrate"
+1. In the Azure Migrate project, go to **Execute > Migration** and select **Replicate**
+2. For the migration intent, select **ASP.NET web apps**
+3. Select **Azure App Service native** as the target
+4. Choose the assessment you want to use for migration
+5. Select the subscription, resource group, region, and intermediate storage account
+6. Review the web apps, App Service Plans, and pricing tiers that will be created
+7. Validate the settings and click **Migrate**
 
-The assistant packages the application, creates the App Service in Azure, and deploys the code. For a typical ASP.NET MVC application, the migration takes about 5-10 minutes.
+The integrated flow packages the application, creates the App Service resources in Azure, and deploys the code. Microsoft documents some current limits: apps must be assessed before migration, the flow does not support selecting existing App Service Plans, and each migrated web app can be up to 2 GB including content stored in mapped virtual directories.
 
 Alternatively, for more control over the process, you can use Azure DevOps or GitHub Actions to deploy:
 
