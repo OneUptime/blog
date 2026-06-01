@@ -10,7 +10,7 @@ Description: Integrate Microsoft Teams Approvals with Power Automate and Azure L
 
 Approval workflows are everywhere in organizations. Purchase requests, time-off approvals, document reviews, expense reports, change requests - they all follow the same pattern: someone submits a request, one or more people need to approve or reject it, and the system needs to take action based on the outcome.
 
-Microsoft Teams has a built-in Approvals app, and when you connect it with Power Automate or Azure Logic Apps, you can build sophisticated approval workflows that trigger from any business event. In this guide, I will show you how to set up approval workflows that integrate with both Power Automate for simpler flows and Azure Logic Apps for more complex enterprise scenarios.
+Microsoft Teams has a built-in Approvals app, and when you connect it with Power Automate, you can build sophisticated approval workflows that trigger from many business events. Azure Logic Apps can still be part of the architecture for complex enterprise scenarios, but the Teams approval itself should be created by a Power Automate approval flow that the logic app invokes.
 
 ## How Teams Approvals Work
 
@@ -19,7 +19,7 @@ The Teams Approvals framework has three components:
 ```mermaid
 graph LR
     A[Trigger Event] --> B[Power Automate / Logic App]
-    B --> C[Create Approval Request]
+    B --> C[Power Automate Creates Approval Request]
     C --> D[Teams Approvals App]
     D --> E[Approver Reviews]
     E --> F[Approve / Reject]
@@ -27,43 +27,48 @@ graph LR
     G --> H[Take Action]
 ```
 
-A business event triggers the flow, the flow creates an approval request, Teams delivers it to the approver, the approver responds, and the flow takes the appropriate action.
+A business event triggers the workflow, Power Automate creates an approval request, Teams delivers it to the approver, the approver responds, and the workflow takes the appropriate action.
 
 ## Basic Approval Flow with Power Automate
 
-Let us start with a straightforward scenario: approving purchase requests submitted through a SharePoint list. Here is the Power Automate flow definition:
+Let us start with a straightforward scenario: approving purchase requests submitted through a SharePoint list. Here is the relevant part of the Power Automate flow definition:
 
 ```json
 {
     "definition": {
         "triggers": {
             "When_an_item_is_created": {
-                "type": "ApiConnection",
+                "type": "OpenApiConnection",
                 "inputs": {
                     "host": {
-                        "connection": { "name": "@parameters('$connections')['sharepointonline']['connectionId']" }
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "GetOnNewItems",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
                     },
-                    "method": "get",
-                    "path": "/datasets/{site-url}/tables/{list-id}/onnewitems"
+                    "parameters": {
+                        "dataset": "https://yourcompany.sharepoint.com/sites/Procurement",
+                        "table": "PurchaseRequests"
+                    }
                 }
             }
         },
         "actions": {
             "Start_and_wait_for_an_approval": {
-                "type": "ApiConnection",
+                "type": "OpenApiConnectionWebhook",
                 "inputs": {
                     "host": {
-                        "connection": { "name": "@parameters('$connections')['approvals']['connectionId']" }
+                        "connectionName": "shared_approvals",
+                        "operationId": "StartAndWaitForAnApproval",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals"
                     },
-                    "method": "post",
-                    "path": "/approvals/create",
-                    "body": {
-                        "title": "Purchase Request: @{triggerOutputs()?['body/Title']}",
-                        "assignedTo": "@{triggerOutputs()?['body/ManagerEmail']}",
-                        "details": "Amount: $@{triggerOutputs()?['body/Amount']}\nVendor: @{triggerOutputs()?['body/Vendor']}\nJustification: @{triggerOutputs()?['body/Justification']}",
-                        "itemLink": "https://yourcompany.sharepoint.com/lists/PurchaseRequests",
-                        "itemLinkDescription": "View Request",
-                        "enableNotifications": true
+                    "parameters": {
+                        "approvalType": "Basic",
+                        "WebhookApprovalCreationInput/title": "Purchase Request: @{triggerOutputs()?['body/Title']}",
+                        "WebhookApprovalCreationInput/assignedTo": "@{triggerOutputs()?['body/ManagerEmail']}",
+                        "WebhookApprovalCreationInput/details": "Amount: $@{triggerOutputs()?['body/Amount']}\nVendor: @{triggerOutputs()?['body/Vendor']}\nJustification: @{triggerOutputs()?['body/Justification']}",
+                        "WebhookApprovalCreationInput/itemLink": "https://yourcompany.sharepoint.com/sites/Procurement/Lists/PurchaseRequests/DispForm.aspx?ID=@{triggerOutputs()?['body/ID']}",
+                        "WebhookApprovalCreationInput/itemLinkDescription": "View Request",
+                        "WebhookApprovalCreationInput/enableNotifications": true
                     }
                 }
             }
@@ -72,7 +77,7 @@ Let us start with a straightforward scenario: approving purchase requests submit
 }
 ```
 
-The approver receives a notification in Teams that looks like a native Teams card with Approve and Reject buttons. They can respond directly from the notification without opening any other application.
+The approver receives an approval request through the approval experience, with Approve and Reject responses. With notifications enabled, Power Automate can send email, push, and Teams notifications for the request.
 
 ## Multi-Stage Approval with Power Automate
 
@@ -91,13 +96,19 @@ For requests above a certain threshold, you might need multiple levels of approv
             },
             "actions": {
                 "Manager_Approval": {
-                    "type": "ApiConnection",
+                    "type": "OpenApiConnectionWebhook",
                     "inputs": {
-                        "body": {
-                            "title": "Purchase Request Approval (Stage 1): @{triggerOutputs()?['body/Title']}",
-                            "assignedTo": "@{triggerOutputs()?['body/ManagerEmail']}",
-                            "details": "Amount: $@{triggerOutputs()?['body/Amount']}",
-                            "enableNotifications": true
+                        "host": {
+                            "connectionName": "shared_approvals",
+                            "operationId": "StartAndWaitForAnApproval",
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals"
+                        },
+                        "parameters": {
+                            "approvalType": "Basic",
+                            "WebhookApprovalCreationInput/title": "Purchase Request Approval (Stage 1): @{triggerOutputs()?['body/Title']}",
+                            "WebhookApprovalCreationInput/assignedTo": "@{triggerOutputs()?['body/ManagerEmail']}",
+                            "WebhookApprovalCreationInput/details": "Amount: $@{triggerOutputs()?['body/Amount']}",
+                            "WebhookApprovalCreationInput/enableNotifications": true
                         }
                     }
                 },
@@ -112,13 +123,19 @@ For requests above a certain threshold, you might need multiple levels of approv
                     },
                     "actions": {
                         "Finance_Director_Approval": {
-                            "type": "ApiConnection",
+                            "type": "OpenApiConnectionWebhook",
                             "inputs": {
-                                "body": {
-                                    "title": "Purchase Request Approval (Stage 2): @{triggerOutputs()?['body/Title']}",
-                                    "assignedTo": "finance.director@yourcompany.com",
-                                    "details": "Manager approved. Amount: $@{triggerOutputs()?['body/Amount']}",
-                                    "enableNotifications": true
+                                "host": {
+                                    "connectionName": "shared_approvals",
+                                    "operationId": "StartAndWaitForAnApproval",
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals"
+                                },
+                                "parameters": {
+                                    "approvalType": "Basic",
+                                    "WebhookApprovalCreationInput/title": "Purchase Request Approval (Stage 2): @{triggerOutputs()?['body/Title']}",
+                                    "WebhookApprovalCreationInput/assignedTo": "finance.director@yourcompany.com",
+                                    "WebhookApprovalCreationInput/details": "Manager approved. Amount: $@{triggerOutputs()?['body/Amount']}",
+                                    "WebhookApprovalCreationInput/enableNotifications": true
                                 }
                             }
                         }
@@ -132,7 +149,9 @@ For requests above a certain threshold, you might need multiple levels of approv
 
 ## Azure Logic Apps for Enterprise Scenarios
 
-When you need more control, error handling, and integration with enterprise systems, Azure Logic Apps provides a more robust platform. Here is a Logic App that handles expense report approvals with parallel approvers:
+When you need more control, error handling, and integration with enterprise systems, Azure Logic Apps provides a more robust orchestration platform. The Standard approvals connector is not available directly in Azure Logic Apps, so a supported pattern is to have the logic app call a Power Automate flow with an HTTP trigger. That flow creates the approval with the Start and wait for an approval action, then returns the outcome to the logic app.
+
+Here is a Logic App that handles an expense report workflow by calling a Power Automate approval flow with parallel approvers:
 
 ```json
 {
@@ -161,17 +180,14 @@ When you need more control, error handling, and integration with enterprise syst
         }
     },
     "actions": {
-        "Create_Teams_Approval": {
-            "type": "ApiConnection",
+        "Run_Power_Automate_Approval": {
+            "type": "Http",
             "inputs": {
-                "host": {
-                    "connection": { "name": "@parameters('$connections')['teams']['connectionId']" }
-                },
-                "method": "post",
-                "path": "/v1.0/approvals",
+                "method": "POST",
+                "uri": "@parameters('approvalFlowUrl')",
                 "body": {
                     "title": "Expense Report: @{triggerBody()?['description']}",
-                    "approvalType": "CustomResponse",
+                    "approvalType": "Custom responses - Wait for all responses",
                     "assignedTo": "@{join(triggerBody()?['approvers'], ';')}",
                     "details": "Submitted by: @{triggerBody()?['submitter']}\nAmount: $@{triggerBody()?['amount']}\nCategory: @{triggerBody()?['category']}",
                     "responseOptions": ["Approve", "Reject", "Request More Info"]
@@ -180,8 +196,8 @@ When you need more control, error handling, and integration with enterprise syst
         },
         "Handle_Response": {
             "type": "Switch",
-            "runAfter": { "Create_Teams_Approval": ["Succeeded"] },
-            "expression": "@body('Create_Teams_Approval')?['outcome']",
+            "runAfter": { "Run_Power_Automate_Approval": ["Succeeded"] },
+            "expression": "@body('Run_Power_Automate_Approval')?['outcome']",
             "cases": {
                 "Approved": {
                     "case": "Approve",
@@ -194,17 +210,24 @@ When you need more control, error handling, and integration with enterprise syst
                                 "body": {
                                     "requestId": "@{triggerBody()?['requestId']}",
                                     "status": "approved",
-                                    "approvedBy": "@{body('Create_Teams_Approval')?['responses'][0]?['approver']}"
+                                    "approvedBy": "@{body('Run_Power_Automate_Approval')?['responses'][0]?['approver']}"
                                 }
                             }
                         },
                         "Notify_Submitter_Approved": {
-                            "type": "ApiConnection",
+                            "type": "Http",
                             "inputs": {
-                                "method": "post",
-                                "path": "/v3/conversations/@{triggerBody()?['submitter']}/activities",
+                                "method": "POST",
+                                "uri": "https://graph.microsoft.com/v1.0/chats/{submitter-chat-id}/messages",
+                                "authentication": {
+                                    "type": "ManagedServiceIdentity",
+                                    "audience": "https://graph.microsoft.com"
+                                },
                                 "body": {
-                                    "text": "Your expense report has been approved and is being processed for reimbursement."
+                                    "body": {
+                                        "contentType": "text",
+                                        "content": "Your expense report has been approved and is being processed for reimbursement."
+                                    }
                                 }
                             }
                         }
@@ -220,7 +243,7 @@ When you need more control, error handling, and integration with enterprise syst
                                 "uri": "https://api.yourcompany.com/expenses/reject",
                                 "body": {
                                     "requestId": "@{triggerBody()?['requestId']}",
-                                    "reason": "@{body('Create_Teams_Approval')?['responses'][0]?['comments']}"
+                                    "reason": "@{body('Run_Power_Automate_Approval')?['responses'][0]?['comments']}"
                                 }
                             }
                         }
@@ -230,11 +253,19 @@ When you need more control, error handling, and integration with enterprise syst
                     "case": "Request More Info",
                     "actions": {
                         "Send_Info_Request": {
-                            "type": "ApiConnection",
+                            "type": "Http",
                             "inputs": {
-                                "method": "post",
+                                "method": "POST",
+                                "uri": "https://graph.microsoft.com/v1.0/chats/{submitter-chat-id}/messages",
+                                "authentication": {
+                                    "type": "ManagedServiceIdentity",
+                                    "audience": "https://graph.microsoft.com"
+                                },
                                 "body": {
-                                    "text": "Your expense report requires additional information. Please update and resubmit. Comments: @{body('Create_Teams_Approval')?['responses'][0]?['comments']}"
+                                    "body": {
+                                        "contentType": "text",
+                                        "content": "Your expense report requires additional information. Please update and resubmit. Comments: @{body('Run_Power_Automate_Approval')?['responses'][0]?['comments']}"
+                                    }
                                 }
                             }
                         }
@@ -300,7 +331,7 @@ public class ApprovalReminderFunction
 
     private async Task EscalateApprovalAsync(PendingApproval approval)
     {
-        // Get the approver's manager from Azure AD
+        // Get the approver's manager from Microsoft Entra ID
         var manager = await _graphClient.Users[approval.ApproverId]
             .Manager
             .GetAsync();
@@ -340,7 +371,7 @@ public async Task<IActionResult> GetAnalytics(
         rejected = stats.Rejected,
         pendingInfo = stats.PendingInfo,
         averageResponseTime = stats.AverageResponseTime.TotalHours,
-        approvalRate = (double)stats.Approved / stats.Total * 100,
+        approvalRate = stats.Total == 0 ? 0 : (double)stats.Approved / stats.Total * 100,
         slowestCategory = stats.SlowestCategory,
         fastestApprover = stats.FastestApprover,
         escalationCount = stats.Escalations
@@ -360,4 +391,4 @@ After building a number of these workflows, here are the patterns that work well
 
 ## Wrapping Up
 
-Microsoft Teams Approvals combined with Power Automate or Azure Logic Apps provides a powerful platform for automating business approval workflows. Power Automate works well for straightforward flows that a business analyst can build and maintain. Azure Logic Apps steps in when you need enterprise-grade error handling, complex branching, and integration with APIs and databases. Either way, the approver experience is the same: a clean, actionable notification right inside Teams, with no context switching needed. Start with your most common approval workflow, prove the pattern, and then expand to other business processes.
+Microsoft Teams Approvals combined with Power Automate provides a powerful platform for automating business approval workflows. Power Automate works well for straightforward flows that a business analyst can build and maintain. Azure Logic Apps steps in when you need enterprise-grade error handling, complex branching, and integration with APIs and databases, while delegating the Teams approval request to Power Automate. Start with your most common approval workflow, prove the pattern, and then expand to other business processes.
