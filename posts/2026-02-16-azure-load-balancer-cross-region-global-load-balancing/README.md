@@ -8,7 +8,7 @@ Description: Deploy Azure Cross-Region Load Balancer to distribute traffic globa
 
 ---
 
-Azure Cross-Region Load Balancer is a global load balancing solution that distributes incoming traffic across multiple regional Standard Load Balancers. It operates at Layer 4 (TCP/UDP) and provides an anycast public IP that routes traffic to the closest healthy region. If a region goes down, traffic automatically shifts to the next healthy region.
+Azure Cross-Region Load Balancer is a global load balancing solution that distributes incoming traffic across multiple regional Standard Load Balancers. It operates at Layer 4 (TCP/UDP) and provides an anycast public IP that routes traffic to the closest healthy regional deployment. If a region goes down, traffic automatically shifts to the next healthy regional load balancer.
 
 This is different from Azure Traffic Manager (DNS-based) or Azure Front Door (Layer 7). Cross-Region Load Balancer works at the network layer, which makes it suitable for non-HTTP workloads like gaming servers, IoT endpoints, or custom TCP protocols.
 
@@ -16,7 +16,7 @@ In this post, I will walk through setting up a Cross-Region Load Balancer that s
 
 ## Architecture Overview
 
-The Cross-Region Load Balancer sits in front of your regional load balancers. It uses an anycast global IP, meaning the IP address is advertised from multiple Azure regions simultaneously. Traffic from a client is routed to the nearest Azure region based on network proximity.
+The Cross-Region Load Balancer sits in front of your regional load balancers. It uses an anycast global IP, meaning the IP address is advertised from participating Azure regions. Traffic from a client is routed to the nearest participating Azure region based on network proximity.
 
 ```mermaid
 flowchart TD
@@ -139,7 +139,7 @@ Now create the global Cross-Region Load Balancer.
 # Create a resource group for the global load balancer
 az group create \
   --name rg-lb-global \
-  --location eastus
+  --location eastus2
 
 # Create a global public IP with the Standard tier for cross-region
 az network public-ip create \
@@ -158,7 +158,7 @@ az network cross-region-lb create \
   --backend-pool-name bp-global
 ```
 
-The `--tier Global` on the public IP is what makes this a global anycast IP. This IP address is advertised from all Azure regions simultaneously.
+The `--tier Global` on the public IP is what makes this a global anycast IP. This IP address must be created in a supported home region and is advertised from participating Azure regions.
 
 ## Step 3: Add Regional Load Balancers as Backends
 
@@ -255,11 +255,11 @@ curl http://<global-ip-address>/
 The Cross-Region Load Balancer monitors the health of regional load balancers, not individual backend VMs. The health status cascades up:
 
 1. Regional load balancer probes individual backend VMs
-2. If enough VMs are unhealthy, the regional load balancer's frontend becomes unavailable
+2. If all backends for the regional rule are unhealthy, the regional load balancer's frontend availability drops to 0
 3. Cross-Region Load Balancer detects the regional frontend is down
 4. Traffic shifts to the next healthy region
 
-This is automatic and transparent to clients. The failover time depends on the health probe intervals configured at each level.
+This is automatic and transparent to clients. The global load balancer checks regional load balancer availability every 5 seconds, and the regional health probe configuration also affects how quickly backend failures are detected.
 
 ```mermaid
 flowchart TD
@@ -311,7 +311,7 @@ az monitor metrics alert create \
   --name alert-global-lb-health \
   --scopes $(az network cross-region-lb show \
     -g rg-lb-global -n lb-cross-region --query id -o tsv) \
-  --condition "avg DipAvailability < 100" \
+  --condition "avg GlobalBackendAvailability < 100" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --severity 2 \
