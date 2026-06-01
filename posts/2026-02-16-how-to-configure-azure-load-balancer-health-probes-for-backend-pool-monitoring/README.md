@@ -8,13 +8,13 @@ Description: Learn how to configure and optimize Azure Load Balancer health prob
 
 ---
 
-Azure Load Balancer distributes incoming traffic across backend VMs, but it only works well if it knows which backends are actually healthy. Health probes are the mechanism the load balancer uses to determine whether a backend instance can receive traffic. If a probe fails, the load balancer stops sending traffic to that instance until it recovers. Get the probes wrong, and you either route traffic to dead servers or unnecessarily remove healthy ones from rotation.
+Azure Load Balancer distributes incoming traffic across backend VMs, but it only works well if it knows which backends are actually healthy. Health probes are the mechanism the load balancer uses to determine whether a backend instance can receive traffic. If a probe fails, the load balancer stops sending new connections to that instance until it recovers. Get the probes wrong, and you either route traffic to dead servers or unnecessarily remove healthy ones from rotation.
 
 This guide covers how to create and configure health probes for different scenarios, understand probe behavior, and troubleshoot common issues.
 
 ## How Health Probes Work
 
-The Azure Load Balancer sends probe requests to each backend instance at regular intervals. If an instance responds correctly within the timeout, it stays in rotation. If it fails to respond for a configured number of consecutive probes, it is marked unhealthy and removed from the pool.
+The Azure Load Balancer sends probe requests to each backend instance at regular intervals. If an instance responds correctly within the probe timing rules, it stays in rotation. If a TCP probe fails for the configured number of consecutive probes, or an HTTP/HTTPS probe returns a non-200 response, it is marked unhealthy and removed from the pool for new connections.
 
 ```mermaid
 sequenceDiagram
@@ -34,7 +34,7 @@ sequenceDiagram
 
 ## Probe Types
 
-Azure Load Balancer supports three probe types:
+Azure Standard Load Balancer supports three probe types:
 
 | Probe Type | Protocol | How It Works |
 |---|---|---|
@@ -88,7 +88,7 @@ az network lb create \
 ## Step 2: Add Backend VMs to the Pool
 
 ```bash
-# Create two VMs and add them to the backend pool
+# Create two VMs
 for i in 1 2; do
   az vm create \
     --resource-group rg-lb-probes-demo \
@@ -107,13 +107,15 @@ done
 After the VMs are created, add their NICs to the backend pool:
 
 ```bash
-# Add NIC to backend pool (repeat for each VM)
-az network nic ip-config address-pool add \
-  --resource-group rg-lb-probes-demo \
-  --nic-name vm-web-1VMNic \
-  --ip-config-name ipconfig1 \
-  --lb-name lb-demo \
-  --address-pool bp-web
+# Add each NIC to the backend pool
+for i in 1 2; do
+  az network nic ip-config address-pool add \
+    --resource-group rg-lb-probes-demo \
+    --nic-name vm-web-${i}VMNic \
+    --ip-config-name ipconfig1 \
+    --lb-name lb-demo \
+    --address-pool bp-web
+done
 ```
 
 ## Step 3: Create an HTTP Health Probe
@@ -139,7 +141,7 @@ Let me explain each parameter:
 - `--port 80`: The port to probe on each backend
 - `--path /health`: The URL path to request (the backend must return HTTP 200 for this path)
 - `--interval 15`: Sends a probe every 15 seconds
-- `--threshold 2`: After 2 consecutive failures, mark the backend as unhealthy
+- `--threshold 2`: After 2 consecutive TCP failures or HTTP/HTTPS timeouts, mark the backend as unhealthy. For HTTP/HTTPS probes, an explicit non-200 response marks the backend unhealthy immediately.
 
 ## Step 4: Create a TCP Health Probe (Alternative)
 
@@ -159,7 +161,7 @@ az network lb probe create \
 
 ## Step 5: Create an HTTPS Health Probe
 
-For backends running HTTPS, use an HTTPS probe. The load balancer does not validate the certificate, so self-signed certs work fine for probing.
+For backends running HTTPS, use an HTTPS probe. The certificate chain must use a minimum SHA-256 signature hash, and HTTPS probes do not support mutual authentication with a client certificate.
 
 ```bash
 # Create an HTTPS health probe
@@ -194,7 +196,7 @@ az network lb rule create \
   --enable-tcp-reset true
 ```
 
-The `--enable-tcp-reset true` flag sends a TCP RST to both ends when a connection is idle for too long or when a backend becomes unhealthy. This helps clients quickly detect dead connections.
+The `--enable-tcp-reset true` flag sends a TCP RST to both ends when a matching TCP flow reaches the idle timeout. This helps clients quickly detect closed connections.
 
 ## Step 7: Implement the Health Endpoint on Your Backend
 
@@ -239,13 +241,13 @@ The key principle: the health endpoint should check the application's critical d
 
 Getting the interval and threshold right matters:
 
-**Fast detection (interval=5, threshold=2)**: Backend marked unhealthy after 10 seconds of failure. Good for applications where fast failover is critical.
+**Fast detection (interval=5, threshold=2)**: TCP failures or HTTP/HTTPS timeouts can mark the backend unhealthy after about 10 seconds. Good for applications where fast failover is critical.
 
-**Balanced (interval=15, threshold=2)**: Backend marked unhealthy after 30 seconds. Good default for most applications.
+**Balanced (interval=15, threshold=2)**: TCP failures or HTTP/HTTPS timeouts can mark the backend unhealthy after about 30 seconds. Good default for most applications.
 
-**Conservative (interval=30, threshold=3)**: Backend marked unhealthy after 90 seconds. Good for applications that occasionally have slow responses (batch processing, startup scenarios).
+**Conservative (interval=30, threshold=3)**: TCP failures or HTTP/HTTPS timeouts can mark the backend unhealthy after about 90 seconds. Good for applications that occasionally have slow responses (batch processing, startup scenarios).
 
-Be careful with aggressive settings. If your health endpoint is slow because it checks database connectivity, a 5-second interval with a 5-second timeout can cause false positives during brief network hiccups.
+For HTTP/HTTPS probes, explicit 200 and non-200 responses take effect immediately; the threshold mainly applies when the probe times out due to no response. Be careful with aggressive settings. If your health endpoint is slow because it checks database connectivity, a short probe interval can cause false positives during brief network hiccups.
 
 ## Monitoring Health Probe Status
 
@@ -262,14 +264,14 @@ az network lb show \
 
 You can also use Azure Monitor metrics:
 
-- **Health Probe Status**: Shows the percentage of healthy instances over time
-- **DIP Availability**: Per-backend availability based on probe results
+- **Health Probe Status** (`DipAvailability`): Shows average health probe status and can be split by backend IP and port
+- **Data Path Availability** (`VipAvailability`): Shows average load balancer data path availability for the frontend
 
 ## Troubleshooting
 
 **All backends show unhealthy.** Check that the health endpoint returns HTTP 200 (not 301 redirects or other codes). Verify the probe port matches what the application listens on. Check NSG rules allow traffic from `168.63.129.16` (Azure's infrastructure IP that sends probes).
 
-**Intermittent probe failures.** The health endpoint might be slow. Increase the timeout or simplify the health check logic. Database checks in health endpoints can time out under load.
+**Intermittent probe failures.** The health endpoint might be slow. Increase the probe interval or simplify the health check logic. Database checks in health endpoints can time out under load.
 
 **Probes pass but application is not working.** Your health endpoint might be too simple. If it just returns 200 without checking dependencies, a backend with a crashed database connection will still appear healthy.
 
