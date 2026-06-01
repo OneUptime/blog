@@ -10,13 +10,15 @@ Description: Troubleshoot and resolve Azure Disk Encryption failures on Windows 
 
 Azure Disk Encryption (ADE) uses BitLocker on Windows and DM-Crypt on Linux to provide volume encryption for OS and data disks on Azure Virtual Machines. It integrates with Azure Key Vault to manage encryption keys. When it works, encryption is transparent to the VM and its applications. When it fails, you get cryptic error messages, stuck provisioning states, and VMs that refuse to boot.
 
+Microsoft has announced that Azure Disk Encryption is scheduled for retirement on September 15, 2028. Use encryption at host for new VMs where possible, and treat ADE troubleshooting as a path to stabilize or migrate existing workloads.
+
 I have worked through ADE failures on both Windows and Linux VMs across dozens of environments. The errors follow predictable patterns, and once you understand the Key Vault integration requirements and the encryption extension lifecycle, most issues resolve quickly.
 
 ## Prerequisites That Must Be Right
 
 Before troubleshooting specific errors, verify that all ADE prerequisites are met. Missing prerequisites account for the majority of encryption failures.
 
-**Key Vault configuration.** The Key Vault must have soft-delete and purge protection enabled. It must also have the appropriate access policies or RBAC roles for the VM identity and the ADE service principal.
+**Key Vault configuration.** The Key Vault must have soft-delete enabled, and purge protection is recommended to protect encryption material from accidental or malicious deletion. The vault must also have the advanced access policy that enables Azure Disk Encryption for volume encryption, or the required permissions for any user-assigned identity or legacy Microsoft Entra app that you use.
 
 ```bash
 # Verify Key Vault is configured correctly for ADE
@@ -33,9 +35,9 @@ If `enabledForDiskEncryption` is false, enable it:
 az keyvault update --name myKeyVault --enabled-for-disk-encryption true
 ```
 
-**VM size compatibility.** Not all VM sizes support ADE. Basic-tier VMs and VMs without sufficient memory (less than 3.5 GB for Linux OS disk encryption) are not supported. Generation 2 VMs with Trusted Launch require a different encryption approach (encryption at host or confidential disk encryption).
+**VM size compatibility.** Not all VM sizes support ADE. Basic-tier VMs, A-series VMs, v6 series VMs, v7 series VMs and newer are not supported. Linux VMs need at least 2 GB of memory for data-volume-only encryption; for OS plus data-volume encryption, they need at least 8 GB when root (`/`) usage is 4 GB or less, and roughly twice the root filesystem usage when root usage is greater than 4 GB.
 
-**OS compatibility.** ADE supports specific OS versions. For Linux, the list includes Ubuntu 18.04+, RHEL 7.x+, CentOS 7.x+, SLES 12+, and Debian 10+. For Windows, Server 2012 R2 and later. Custom images may need additional preparation.
+**OS compatibility.** ADE supports specific OS images. For Linux, the supported list includes selected Azure-endorsed Ubuntu, RHEL, CentOS/OpenLogic, Oracle Linux, CBL-Mariner/Azure Linux, and SUSE images; do not assume every distribution version is supported. For Windows, use versions that support BitLocker and meet BitLocker requirements. Custom images may need additional preparation.
 
 ## Error: Key Vault Access Denied
 
@@ -49,8 +51,7 @@ https://mykeyvault.vault.azure.net/ is not accessible."
 Check the access configuration.
 
 ```bash
-# If using access policies, verify the service principal has access
-# The ADE service principal needs wrap, unwrap, and get key permissions
+# If using access policies, verify the relevant identity or legacy app has access
 az keyvault show --name myKeyVault --query "properties.accessPolicies[?objectId=='your-sp-object-id']" -o json
 
 # If using RBAC, check role assignments on the Key Vault
@@ -75,6 +76,7 @@ Sometimes the ADE extension gets stuck during provisioning. The encryption shows
 
 ```bash
 # Check the extension status on the VM
+# Use AzureDiskEncryption on Windows and AzureDiskEncryptionForLinux on Linux
 az vm extension show \
   --resource-group myResourceGroup \
   --vm-name myVM \
@@ -83,17 +85,21 @@ az vm extension show \
   -o json
 ```
 
-If the extension has been transitioning for more than an hour, try removing and reinstalling it.
+On Linux, OS disk encryption can take 3 to 16 hours on a stock gallery image, and large data disks can take longer. Check the extension status and logs before taking recovery action. If encryption failed and the OS disk was part of the operation, restore the VM from the snapshot or backup taken before encryption. If only data disks were encrypted, disable encryption first and then remove the extension.
 
 ```bash
-# Remove the stuck encryption extension
+# Disable encryption for data disks before removing the extension
+az vm encryption disable \
+  --resource-group myResourceGroup \
+  --name myVM \
+  --volume-type DATA
+
+# Remove the extension after encryption is disabled
+# Use AzureDiskEncryption on Windows and AzureDiskEncryptionForLinux on Linux
 az vm extension delete \
   --resource-group myResourceGroup \
   --vm-name myVM \
-  --name AzureDiskEncryption
-
-# Wait for the deletion to complete, then restart the VM
-az vm restart --resource-group myResourceGroup --name myVM
+  --name AzureDiskEncryptionForLinux
 
 # Re-enable encryption
 az vm encryption enable \
@@ -115,7 +121,7 @@ Common causes:
 Before encrypting a Linux OS disk, verify:
 
 ```bash
-# Check /boot partition has enough free space (needs at least 250 MB)
+# Check /boot partition has enough free space
 df -h /boot
 
 # Check /boot/efi has enough space for EFI-based VMs
@@ -136,7 +142,8 @@ az vm repair create \
   --resource-group myResourceGroup \
   --name myVM \
   --repair-username azureuser \
-  --repair-password 'TempPassword123!'
+  --repair-password 'TempPassword123!' \
+  --unlock-encrypted-vm
 
 # Access the rescue VM and troubleshoot the boot issue
 # The encrypted disk is mounted under /rescue
@@ -146,13 +153,13 @@ az vm repair create \
 
 On Windows VMs, if BitLocker is configured to require a PIN or USB key at boot, the VM will hang waiting for input. Azure VMs cannot interact with the pre-boot BitLocker screen.
 
-ADE configures BitLocker to use TPM-only or key protector-only mode, which does not require a PIN. But if someone manually modifies the BitLocker configuration after ADE is enabled, they can accidentally introduce a PIN requirement.
+ADE uses the BitLocker external key protector for Windows VMs, which does not require a PIN. But if someone manually modifies the BitLocker configuration after ADE is enabled, they can accidentally introduce a PIN requirement.
 
 To fix this, use the Azure Serial Console to access the Special Administration Console (SAC) and remove the PIN protector.
 
 ## Error: Encryption of Data Disks Fails with Size Error
 
-ADE requires the OS disk partition to have at least 30% free space for encryption workspace. Data disks need to be at least 512 MB. If either condition is not met, encryption fails.
+ADE can fail if the filesystem cannot be checked, resized, unmounted, or remounted during encryption. Before encrypting data disks, make sure they are formatted, mounted, and listed correctly in `/etc/fstab` on Linux or initialized with drive letters or mount points on Windows.
 
 ```bash
 # Check disk sizes before encryption
@@ -193,7 +200,7 @@ az vm encryption show \
   -o json
 ```
 
-The output shows the encryption status for each disk. For OS disks, you should see `OsVolumeEncrypted: Encrypted`. For data disks, each attached disk should show as encrypted.
+The output shows the encryption status for the VM and disks. You can query `substatus` for the overall extension status, and `disks[*].[name, statuses[*].displayStatus]` to inspect per-disk status. For Linux, also verify inside the guest with tools such as `lsblk`, because Azure can stamp encryption settings before guest-level encryption has fully completed.
 
 ## Alternatives to ADE
 
@@ -215,4 +222,4 @@ az disk-encryption-set create \
   --source-vault "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.KeyVault/vaults/myKeyVault"
 ```
 
-ADE errors are frustrating because they often leave VMs in a broken state. Always take a snapshot of your disks before enabling encryption, verify all prerequisites are met, and test on a non-production VM first. If ADE proves too problematic for your environment, server-side encryption with customer-managed keys provides comparable security with less operational risk.
+ADE errors are frustrating because they often leave VMs in a broken state. Always take a snapshot of your disks before enabling encryption, verify all prerequisites are met, and test on a non-production VM first. Because ADE is retiring, plan to migrate existing ADE workloads to encryption at host before September 15, 2028. If ADE proves too problematic for your environment, server-side encryption with customer-managed keys provides storage-layer encryption with less operational risk.
