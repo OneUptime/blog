@@ -14,7 +14,7 @@ In this post, we will build a notification system with a .NET backend that pushe
 
 ## How Azure SignalR Service Works
 
-Without Azure SignalR, your .NET server manages WebSocket connections directly. This works fine for small scale, but at thousands of connections, it becomes a bottleneck. Azure SignalR Service acts as a proxy - your server sends messages to the service, and the service delivers them to connected clients. Your server never holds a WebSocket connection.
+Without Azure SignalR, your .NET server manages WebSocket connections directly. This works fine for small scale, but at thousands of connections, it becomes a bottleneck. Azure SignalR Service acts as a proxy - your server sends messages to the service, and the service delivers them to connected clients. Your server no longer holds the client WebSocket connections directly.
 
 ```mermaid
 sequenceDiagram
@@ -61,6 +61,8 @@ Create a new ASP.NET Core project with SignalR support.
 dotnet new webapi -n NotificationServer
 cd NotificationServer
 dotnet add package Microsoft.Azure.SignalR
+dotnet user-secrets init
+dotnet user-secrets set "Azure:SignalR:ConnectionString" "<your-connection-string>"
 ```
 
 Define the SignalR Hub for notifications.
@@ -101,6 +103,24 @@ public class NotificationHub : Hub
     {
         Console.WriteLine($"Client disconnected: {Context.ConnectionId}");
         await base.OnDisconnectedAsync(exception);
+    }
+}
+```
+
+For targeted user notifications in this sample, map a `userId` query string value to SignalR's user identifier. In a production app, use your authenticated user identity instead.
+
+```csharp
+// SignalR/QueryStringUserIdProvider.cs
+// Maps a sample query string userId to SignalR's user identifier
+using Microsoft.AspNetCore.SignalR;
+
+namespace NotificationServer.SignalR;
+
+public class QueryStringUserIdProvider : IUserIdProvider
+{
+    public string? GetUserId(HubConnectionContext connection)
+    {
+        return connection.GetHttpContext()?.Request.Query["userId"];
     }
 }
 ```
@@ -239,10 +259,16 @@ public class NotificationsController : ControllerBase
 ```csharp
 // Program.cs
 // Configure the application with Azure SignalR
+using Microsoft.AspNetCore.SignalR;
+using NotificationServer.Hubs;
+using NotificationServer.Services;
+using NotificationServer.SignalR;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddSingleton<NotificationService>();
+builder.Services.AddSingleton<IUserIdProvider, QueryStringUserIdProvider>();
 
 // Add SignalR with Azure SignalR Service
 builder.Services.AddSignalR().AddAzureSignalR(options =>
@@ -303,6 +329,7 @@ export interface Notification {
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
   private hubConnection!: signalR.HubConnection;
+  private subscribedChannels = new Set<string>();
 
   // Observable stream of notifications
   private notifications$ = new BehaviorSubject<Notification[]>([]);
@@ -317,9 +344,9 @@ export class NotificationService {
   }
 
   // Initialize the SignalR connection
-  async connect(): Promise<void> {
+  async connect(userId = 'demo-user'): Promise<void> {
     this.hubConnection = new signalR.HubConnectionBuilder()
-      .withUrl('http://localhost:5000/notificationhub')
+      .withUrl(`http://localhost:5000/notificationhub?userId=${encodeURIComponent(userId)}`)
       .withAutomaticReconnect([0, 2000, 5000, 10000, 30000]) // Retry intervals
       .configureLogging(signalR.LogLevel.Information)
       .build();
@@ -336,8 +363,11 @@ export class NotificationService {
       console.log('Reconnecting to SignalR...', error);
     });
 
-    this.hubConnection.onreconnected((connectionId) => {
+    this.hubConnection.onreconnected(async (connectionId) => {
       console.log('Reconnected to SignalR:', connectionId);
+      for (const channel of this.subscribedChannels) {
+        await this.hubConnection.invoke('SubscribeToChannel', channel);
+      }
     });
 
     try {
@@ -346,17 +376,20 @@ export class NotificationService {
     } catch (err) {
       console.error('SignalR connection failed:', err);
       // Retry after 5 seconds
-      setTimeout(() => this.connect(), 5000);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      return this.connect(userId);
     }
   }
 
   // Subscribe to a notification channel
   async subscribeToChannel(channel: string): Promise<void> {
+    this.subscribedChannels.add(channel);
     await this.hubConnection.invoke('SubscribeToChannel', channel);
   }
 
   // Unsubscribe from a notification channel
   async unsubscribeFromChannel(channel: string): Promise<void> {
+    this.subscribedChannels.delete(channel);
     await this.hubConnection.invoke('UnsubscribeFromChannel', channel);
   }
 
@@ -391,11 +424,14 @@ Create the notification component.
 // src/app/components/notification-panel/notification-panel.component.ts
 // Component that displays the notification panel
 import { Component, OnInit, OnDestroy } from '@angular/core';
+import { DatePipe, NgFor, NgIf } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { NotificationService, Notification } from '../../services/notification.service';
 
 @Component({
+  standalone: true,
   selector: 'app-notification-panel',
+  imports: [DatePipe, NgFor, NgIf],
   template: `
     <div class="notification-bell" (click)="togglePanel()">
       Notifications
@@ -436,10 +472,7 @@ export class NotificationPanelComponent implements OnInit, OnDestroy {
 
   constructor(public notificationService: NotificationService) {}
 
-  ngOnInit(): void {
-    // Connect to SignalR when the component initializes
-    this.notificationService.connect();
-
+  async ngOnInit(): Promise<void> {
     // Subscribe to notification updates
     this.subscriptions.push(
       this.notificationService.notifications.subscribe(
@@ -450,9 +483,12 @@ export class NotificationPanelComponent implements OnInit, OnDestroy {
       )
     );
 
+    // Connect to SignalR when the component initializes
+    await this.notificationService.connect();
+
     // Subscribe to relevant channels
-    this.notificationService.subscribeToChannel('system-alerts');
-    this.notificationService.subscribeToChannel('order-updates');
+    await this.notificationService.subscribeToChannel('system-alerts');
+    await this.notificationService.subscribeToChannel('order-updates');
   }
 
   togglePanel(): void {
