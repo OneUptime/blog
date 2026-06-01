@@ -41,6 +41,8 @@ Azure Storage has multiple sub-resources, and each needs its own Private Endpoin
 
 If your application uses both blob and file storage, you need two Private Endpoints - one for each sub-resource.
 
+For Data Lake Gen2 accounts, create Private Endpoints for both `dfs` and `blob`. Some Data Lake operations use or redirect to the blob endpoint, and some blob operations require the DFS endpoint.
+
 ## Step 1: Create Private Endpoint for Blob Storage
 
 ```bash
@@ -144,6 +146,13 @@ After this change:
 If you need to access the storage account from the portal or from a specific network temporarily, use the network rules approach instead:
 
 ```bash
+# Enable the Microsoft.Storage service endpoint on the subnet first
+az network vnet subnet update \
+  --resource-group myResourceGroup \
+  --vnet-name myVNet \
+  --name appSubnet \
+  --service-endpoints Microsoft.Storage
+
 # Alternative: Allow only specific VNet subnets instead of disabling entirely
 az storage account network-rule add \
   --resource-group myResourceGroup \
@@ -155,6 +164,7 @@ az storage account network-rule add \
 az storage account update \
   --resource-group myResourceGroup \
   --name mystorageaccount \
+  --public-network-access Enabled \
   --default-action Deny
 ```
 
@@ -219,12 +229,12 @@ For on-premises servers to use the Private Endpoint, configure DNS forwarding:
 
 Without DNS forwarding, on-premises servers resolve the public IP and cannot connect when public access is disabled.
 
-## Monitoring Private Endpoint Traffic
+## Monitoring Storage Access
 
-Monitor traffic through the Private Endpoint using Azure Monitor metrics on the storage account:
+Monitor storage transactions using Azure Monitor metrics on the storage account:
 
 ```bash
-# Check storage metrics for private endpoint traffic
+# Check storage transaction metrics
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Storage/storageAccounts/mystorageaccount" \
   --metric Transactions \
@@ -233,7 +243,7 @@ az monitor metrics list \
   --output table
 ```
 
-Enable storage analytics logging to see which IP addresses are accessing your storage:
+Enable diagnostic logging to see which IP addresses are accessing your storage:
 
 ```bash
 # Enable diagnostic logging for blob storage
