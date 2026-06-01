@@ -29,8 +29,8 @@ Azure Migrate centralizes all of this into a single dashboard, which makes it mu
 Before you begin, make sure you have the following in place:
 
 - An Azure subscription with Contributor access
-- A VMware vCenter Server (version 5.5 or later)
-- A Windows Server (2016 or later) to host the Azure Migrate appliance
+- A VMware vCenter Server running a supported version (5.5, 6.0, 6.5, 6.7, or 7.0)
+- Capacity in vCenter for the Azure Migrate appliance VM (Windows Server 2022, 8 vCPUs, 32 GB RAM, and around 80 GB of disk storage when deployed from the OVA)
 - Network connectivity between the appliance, vCenter, and Azure
 - vCenter credentials with read-only access at minimum
 
@@ -65,22 +65,22 @@ Once the configuration portal opens, you will walk through several setup steps.
 
 First, the appliance registers itself with your Azure Migrate project using a project key. Copy this key from the portal and paste it into the appliance configuration.
 
-Next, provide vCenter Server credentials. The appliance uses these to connect to vCenter and discover VMs. Here is an example of the minimum permissions needed in PowerCLI:
+Next, provide vCenter Server credentials. The appliance uses these to connect to vCenter and discover VMs. For basic discovery and assessment, use the built-in Read-only role or a copy of it. If you also want software inventory and agentless dependency analysis, add Guest operations privileges to that copied role. Here is an example in PowerCLI:
 
 ```powershell
-# Create a read-only role in vCenter for Azure Migrate discovery
+# Copy the built-in Read-only role and add Guest operations privileges
+$readOnlyRole = Get-VIRole -Name "Read-only"
+$privileges = @(
+    Get-VIPrivilege -Role $readOnlyRole
+    Get-VIPrivilege -Id "VirtualMachine.GuestOperations.Query"
+    Get-VIPrivilege -Id "VirtualMachine.GuestOperations.Execute"
+    Get-VIPrivilege -Id "VirtualMachine.GuestOperations.Modify"
+)
 
-# This role grants the minimum permissions needed for VM enumeration and performance data collection
-New-VIRole -Name "AzureMigrateRole" -Privilege (Get-VIPrivilege -Id @(
-    "System.Anonymous",
-    "System.Read",
-    "System.View",
-    "VirtualMachine.Config.AdvancedConfig",
-    "VirtualMachine.GuestOperations.Query"
-))
+New-VIRole -Name "AzureMigrateRole" -Privilege $privileges
 
-# Assign the role to a service account at the vCenter root level
-New-VIPermission -Entity (Get-Folder -NoRecursion) `
+# Assign the role to the service account and propagate it to child objects
+New-VIPermission -Entity (Get-Datacenter) `
     -Principal "DOMAIN\azuremigrate-svc" `
     -Role "AzureMigrateRole" `
     -Propagate $true
