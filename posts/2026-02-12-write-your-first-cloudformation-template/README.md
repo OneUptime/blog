@@ -89,7 +89,7 @@ Let's break this down:
 
 ## Adding More Resources
 
-A single S3 bucket isn't very exciting. Let's add a bucket policy that makes the bucket private and an IAM role that can read from it:
+A single S3 bucket isn't very exciting. Let's add public access block settings to keep the bucket private, plus a bucket policy and IAM role that can read from it:
 
 ```yaml
 # Template with S3 bucket, bucket policy, and IAM role
@@ -175,7 +175,7 @@ Resources:
           Value: !Ref Environment
 ```
 
-The `!Sub` function handles string interpolation. When you deploy this template, CloudFormation will ask you to provide values for `Environment` and `BucketSuffix`.
+The `!Sub` function handles string interpolation. When you deploy this template, you provide values for `Environment` and `BucketSuffix`.
 
 ## Common Resource Types
 
@@ -228,7 +228,7 @@ Stick with YAML unless your tooling requires JSON. It's less noisy and easier to
 Once your template file is ready, you can deploy it through the AWS Console or the CLI. Here's the CLI approach:
 
 ```bash
-# Deploy the template as a new stack
+# Deploy the parameterized template as a new stack
 aws cloudformation create-stack \
   --stack-name my-first-stack \
   --template-body file://my-first-template.yaml \
