@@ -24,7 +24,7 @@ az monitor app-insights component create \
   --location eastus \
   --resource-group myRG \
   --workspace /subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.OperationalInsights/workspaces/myWorkspace \
-  --application-type Node.JS
+  --application-type web
 ```
 
 Copy the connection string from the output. You will need it to configure the SDK.
@@ -53,8 +53,8 @@ appInsights.setup(process.env.APPLICATIONINSIGHTS_CONNECTION_STRING)
     .setAutoCollectRequests(true)         // Track incoming HTTP requests
     .setAutoCollectPerformance(true)      // Track CPU, memory, event loop metrics
     .setAutoCollectExceptions(true)       // Track unhandled exceptions
-    .setAutoCollectDependencies(true)     // Track outbound HTTP, SQL, Redis calls
-    .setAutoCollectConsole(true)          // Track console.log, console.error
+    .setAutoCollectDependencies(true)     // Track outbound HTTP and supported packages such as MySQL, PostgreSQL, MongoDB, and Redis
+    .setAutoCollectConsole(true, true)    // Track console.log, console.error
     .setUseDiskRetryCaching(true)         // Buffer telemetry to disk if upload fails
     .setAutoCollectPreAggregatedMetrics(true)  // Collect pre-aggregated metrics
     .setSendLiveMetrics(true)             // Enable live metrics stream
@@ -171,15 +171,18 @@ In production, high-traffic applications can generate enormous volumes of teleme
 ```javascript
 // Configure fixed-rate sampling
 appInsights.setup(process.env.APPLICATIONINSIGHTS_CONNECTION_STRING)
-    .start();
+    .setAutoCollectRequests(true)
+    .setAutoCollectDependencies(true);
 
-// Set sampling percentage - keep 25% of telemetry
+// Set sampling percentage before start() - keep 25% of telemetry
 appInsights.defaultClient.config.samplingPercentage = 25;
+
+appInsights.start();
 ```
 
-Application Insights also supports adaptive sampling that adjusts the rate based on traffic volume. For most Node.js applications, fixed-rate sampling at 10-50% is a good starting point for production workloads.
+For most Node.js applications, fixed-rate sampling at 10-50% is a good starting point for production workloads.
 
-Be aware that sampling applies to requests, dependencies, and traces. Exceptions and custom metrics are not sampled by default, so you always see all exceptions.
+Be aware that sampling can affect request-correlated telemetry, including requests, dependencies, exceptions, and traces. When querying sampled telemetry, use the `itemCount` column to estimate the original event count.
 
 ## Step 7: Track Dependencies Manually
 
@@ -263,8 +266,7 @@ if (connectionString) {
     appInsights.setup(connectionString)
         .setAutoCollectRequests(true)
         .setAutoCollectDependencies(true)
-        .setAutoCollectExceptions(true)
-        .start();
+        .setAutoCollectExceptions(true);
 
     // Adjust sampling based on environment
     if (process.env.NODE_ENV === 'production') {
@@ -273,6 +275,8 @@ if (connectionString) {
         // Collect everything in non-production environments
         appInsights.defaultClient.config.samplingPercentage = 100;
     }
+
+    appInsights.start();
 
     console.log('Application Insights initialized');
 } else {
@@ -294,7 +298,7 @@ Common issues if data is not appearing:
 
 - **Connection string is wrong or missing**: Check your environment variables
 - **SDK initialized too late**: Make sure `require('applicationinsights')` is the first import
-- **Firewall blocking**: Application Insights sends data to `dc.services.visualstudio.com`. Make sure this is not blocked.
+- **Firewall blocking**: Application Insights sends data to the ingestion endpoint in your connection string, such as `dc.applicationinsights.azure.com` or a region-specific endpoint. Make sure this is not blocked.
 - **Sampling too aggressive**: If sampling is set to 1%, you might not see data in low-traffic environments
 
 ## Querying Your Node.js Telemetry
