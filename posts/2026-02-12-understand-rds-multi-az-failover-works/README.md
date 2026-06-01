@@ -32,7 +32,7 @@ sequenceDiagram
 This synchronous model means:
 - **Zero data loss** during failover - the standby has every committed transaction
 - **Slightly higher write latency** - writes wait for both instances to confirm
-- The performance impact is typically 2-5ms of additional write latency
+- The performance impact depends on your workload, instance class, and cross-AZ latency
 
 For Multi-AZ Cluster deployments, replication is semi-synchronous. At least one of the two readers must acknowledge the write before it's confirmed, which provides a balance between durability and performance.
 
@@ -49,9 +49,9 @@ RDS also triggers failover during planned operations:
 
 5. **Instance class modification**: When you change the instance size
 6. **OS patching**: During maintenance window updates
-7. **Engine upgrades**: When applying minor version upgrades
+7. **Engine upgrades**: Some engine upgrade workflows use Multi-AZ failover to reduce downtime
 
-For planned operations, RDS performs the change on the standby first, then fails over, then updates the old primary. This minimizes downtime.
+For many planned operations, RDS performs work on the standby first, then fails over, then updates the old primary. The exact sequence depends on the engine and operation, but the goal is to minimize downtime.
 
 ## The Failover Process Step by Step
 
@@ -70,7 +70,7 @@ RDS promotes the standby to become the new primary. This involves:
 
 ### Step 3: DNS Update (10-30 seconds)
 
-RDS updates the DNS record for your database endpoint to point to the new primary's IP address. This is a CNAME update with a short TTL (typically 5 seconds).
+RDS updates the DNS record for your database endpoint to point to the new primary. Applications need to reconnect and refresh DNS resolution instead of continuing to use stale connections or cached addresses.
 
 ### Step 4: Old Primary Recovery
 
@@ -110,8 +110,9 @@ aws rds describe-events \
 Key event messages you'll see:
 
 - "Multi-AZ instance failover started" - Failover has begun
-- "Multi-AZ instance failover complete" - New primary is serving traffic
-- "Completed failover to DB instance" - Includes the new AZ
+- "Multi-AZ failover to standby complete - DNS propagation may take a few minutes" - The standby promotion is complete
+- "Multi-AZ instance failover completed" - Failover has completed for a Multi-AZ DB instance
+- "Completed failover to DB instance" - Failover has completed for a Multi-AZ DB cluster and includes the promoted DB instance name
 
 ## What Your Application Experiences
 
@@ -248,7 +249,7 @@ To minimize failover time:
 
 You should regularly test failover to verify your application handles it correctly.
 
-This script triggers failover and measures the duration by attempting connections.
+For Multi-AZ DB instance deployments, this script triggers failover and measures the duration by attempting connections. Multi-AZ DB clusters use the `failover_db_cluster` API instead.
 
 ```python
 import boto3
