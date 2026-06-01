@@ -8,7 +8,7 @@ Description: A practical guide to implementing address search, geocoding, and re
 
 ---
 
-Geocoding is the process of converting a human-readable address into geographic coordinates (latitude and longitude). Reverse geocoding does the opposite - it takes coordinates and returns the nearest address. These operations are fundamental to any location-based application, from delivery route planning to store locators to asset tracking dashboards. Azure Maps provides a Search API that handles geocoding, reverse geocoding, fuzzy search, and point-of-interest discovery in a single service.
+Geocoding is the process of converting a human-readable address into geographic coordinates (latitude and longitude). Reverse geocoding does the opposite - it takes coordinates and returns the nearest address. These operations are fundamental to any location-based application, from delivery route planning to store locators to asset tracking dashboards. Azure Maps provides a Search API that handles geocoding, reverse geocoding, autocomplete, and batch processing in a single service.
 
 This guide covers how to use the Azure Maps Search API for common geocoding tasks, with examples in both JavaScript (for browser-based apps) and Python (for server-side processing).
 
@@ -20,7 +20,8 @@ You need an Azure Maps account with a subscription key. If you do not have one y
 az maps account create \
   --name my-maps-account \
   --resource-group maps-rg \
-  --sku S1
+  --kind Gen2 \
+  --sku G2
 
 # Retrieve the subscription key
 
@@ -30,40 +31,42 @@ az maps account keys list \
   --query primaryKey -o tsv
 ```
 
-The Search API is a REST service. You can call it from any language that can make HTTP requests. The base URL is `https://atlas.microsoft.com/search`.
+The Search API is a REST service. You can call it from any language that can make HTTP requests. The base URL is `https://atlas.microsoft.com`.
 
 ## Forward Geocoding: Address to Coordinates
 
-The most common operation is turning an address into coordinates. The Search Address API does this.
+The most common operation is turning an address into coordinates. The Geocoding API does this.
 
 ```python
 # geocode.py - Forward geocoding with Azure Maps Search API
 import requests
 
 AZURE_MAPS_KEY = "your-subscription-key"
-BASE_URL = "https://atlas.microsoft.com/search/address/json"
+BASE_URL = "https://atlas.microsoft.com/geocode"
 
 def geocode_address(address: str) -> dict:
     """Convert an address string to geographic coordinates."""
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY,
+        "api-version": "2026-01-01",
         "query": address,
-        "limit": 1  # Return only the best match
+        "top": 1  # Return only the best match
     }
+    headers = {"subscription-key": AZURE_MAPS_KEY}
 
-    response = requests.get(BASE_URL, params=params)
+    response = requests.get(BASE_URL, params=params, headers=headers)
     response.raise_for_status()
     data = response.json()
 
-    if data["summary"]["numResults"] > 0:
-        result = data["results"][0]
+    if data.get("features"):
+        result = data["features"][0]
+        properties = result["properties"]
+        lon, lat = result["geometry"]["coordinates"]
         return {
-            "address": result["address"]["freeformAddress"],
-            "latitude": result["position"]["lat"],
-            "longitude": result["position"]["lon"],
-            "confidence": result["score"],
-            "type": result["type"]
+            "address": properties["address"]["formattedAddress"],
+            "latitude": lat,
+            "longitude": lon,
+            "confidence": properties.get("confidence"),
+            "type": properties["type"]
         }
     return None
 
@@ -75,7 +78,7 @@ if result:
     print(f"Confidence: {result['confidence']}")
 ```
 
-The API returns a confidence score that indicates how well the input matches the result. A score close to 1.0 means a very precise match. Lower scores may indicate the API had to guess or approximate.
+The API returns a confidence value that indicates how well the input matches the result. Use this value together with the match codes to decide whether the result is precise enough for your application.
 
 ## Reverse Geocoding: Coordinates to Address
 
@@ -86,29 +89,30 @@ When you have GPS coordinates and need a human-readable address, use the reverse
 import requests
 
 AZURE_MAPS_KEY = "your-subscription-key"
-BASE_URL = "https://atlas.microsoft.com/search/address/reverse/json"
+BASE_URL = "https://atlas.microsoft.com/reverseGeocode"
 
 def reverse_geocode(lat: float, lon: float) -> dict:
     """Convert geographic coordinates to a street address."""
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY,
-        "query": f"{lat},{lon}"
+        "api-version": "2026-01-01",
+        "coordinates": f"{lon},{lat}"
     }
+    headers = {"subscription-key": AZURE_MAPS_KEY}
 
-    response = requests.get(BASE_URL, params=params)
+    response = requests.get(BASE_URL, params=params, headers=headers)
     response.raise_for_status()
     data = response.json()
 
-    if data.get("addresses") and len(data["addresses"]) > 0:
-        addr = data["addresses"][0]["address"]
+    if data.get("features"):
+        addr = data["features"][0]["properties"]["address"]
+        admin_districts = addr.get("adminDistricts", [])
         return {
-            "streetAddress": addr.get("streetNameAndNumber", ""),
-            "city": addr.get("municipality", ""),
-            "state": addr.get("countrySubdivision", ""),
+            "streetAddress": addr.get("addressLine", ""),
+            "city": addr.get("locality", ""),
+            "state": admin_districts[0].get("shortName", "") if admin_districts else "",
             "postalCode": addr.get("postalCode", ""),
-            "country": addr.get("country", ""),
-            "freeformAddress": addr.get("freeformAddress", "")
+            "country": addr.get("countryRegion", {}).get("name", ""),
+            "freeformAddress": addr.get("formattedAddress", "")
         }
     return None
 
@@ -119,59 +123,57 @@ if result:
     print(f"City: {result['city']}, {result['state']}")
 ```
 
-## Fuzzy Search: Flexible Address and POI Discovery
+## Flexible Search: Addresses and Places
 
-The fuzzy search endpoint is the most versatile. It handles partial addresses, business names, landmarks, and points of interest in a single query. This is what you want to use for search boxes where users can type anything.
+The geocoding endpoint handles free-form address and place queries. This is what you want to use for search boxes where users can type a final address or place name.
 
 ```python
-# fuzzy_search.py - Flexible search for addresses and points of interest
+# flexible_search.py - Flexible search for addresses and places
 import requests
 
 AZURE_MAPS_KEY = "your-subscription-key"
-BASE_URL = "https://atlas.microsoft.com/search/fuzzy/json"
+BASE_URL = "https://atlas.microsoft.com/geocode"
 
-def fuzzy_search(query: str, lat: float = None, lon: float = None, radius: int = None) -> list:
-    """Search for addresses, places, and points of interest.
+def flexible_search(query: str, lat: float = None, lon: float = None) -> list:
+    """Search for addresses and places.
 
-    Optionally bias results toward a specific location and radius.
+    Optionally bias results toward a specific location.
     """
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY,
+        "api-version": "2026-01-01",
         "query": query,
-        "limit": 10
+        "top": 10
     }
+    headers = {"subscription-key": AZURE_MAPS_KEY}
 
     # Bias results toward a location if provided
-    if lat and lon:
-        params["lat"] = lat
-        params["lon"] = lon
-    if radius:
-        params["radius"] = radius  # Radius in meters
+    if lat is not None and lon is not None:
+        params["coordinates"] = f"{lon},{lat}"
 
-    response = requests.get(BASE_URL, params=params)
+    response = requests.get(BASE_URL, params=params, headers=headers)
     response.raise_for_status()
     data = response.json()
 
     results = []
-    for item in data.get("results", []):
+    for item in data.get("features", []):
+        properties = item["properties"]
+        address = properties.get("address", {})
+        lon, lat = item["geometry"]["coordinates"]
         results.append({
-            "name": item.get("poi", {}).get("name", item["address"].get("freeformAddress", "")),
-            "address": item["address"].get("freeformAddress", ""),
-            "latitude": item["position"]["lat"],
-            "longitude": item["position"]["lon"],
-            "type": item["type"],
-            "category": item.get("poi", {}).get("categories", []),
-            "phone": item.get("poi", {}).get("phone", ""),
-            "score": item.get("score", 0)
+            "name": properties.get("name", address.get("formattedAddress", "")),
+            "address": address.get("formattedAddress", ""),
+            "latitude": lat,
+            "longitude": lon,
+            "type": properties["type"],
+            "confidence": properties.get("confidence")
         })
 
     return results
 
-# Search for coffee shops near Seattle center
-results = fuzzy_search("coffee", lat=47.6062, lon=-122.3321, radius=5000)
+# Search for a place near Seattle center
+results = flexible_search("Space Needle", lat=47.6062, lon=-122.3321)
 for place in results:
-    print(f"{place['name']} - {place['address']} (score: {place['score']:.2f})")
+    print(f"{place['name']} - {place['address']} (confidence: {place['confidence']})")
 ```
 
 ## Building a Search Autocomplete in JavaScript
@@ -197,23 +199,43 @@ function throttle(func, delay) {
 async function searchSuggestions(query) {
     if (query.length < 3) return []; // Don't search for very short queries
 
-    const url = new URL('https://atlas.microsoft.com/search/fuzzy/json');
-    url.searchParams.set('api-version', '1.0');
-    url.searchParams.set('subscription-key', 'YOUR_AZURE_MAPS_KEY');
+    const url = new URL('https://atlas.microsoft.com/geocode:autocomplete');
+    url.searchParams.set('api-version', '2026-01-01');
     url.searchParams.set('query', query);
-    url.searchParams.set('limit', '5');
-    url.searchParams.set('typeahead', 'true'); // Enable typeahead mode for partial queries
+    url.searchParams.set('top', '5');
+    url.searchParams.set('coordinates', '-122.3321,47.6062'); // Bias suggestions near Seattle
 
-    const response = await fetch(url);
+    const response = await fetch(url, {
+        headers: {
+            'subscription-key': 'YOUR_AZURE_MAPS_KEY'
+        }
+    });
     const data = await response.json();
 
-    return data.results.map(function(result) {
+    return data.features.map(function(result) {
+        const address = result.properties.address || {};
         return {
-            text: result.address.freeformAddress,
-            position: result.position,
-            type: result.type
+            text: address.formattedAddress || result.properties.name || query,
+            type: result.properties.type
         };
     });
+}
+
+async function geocodeSelectedAddress(address) {
+    const url = new URL('https://atlas.microsoft.com/geocode');
+    url.searchParams.set('api-version', '2026-01-01');
+    url.searchParams.set('query', address);
+    url.searchParams.set('top', '1');
+
+    const response = await fetch(url, {
+        headers: {
+            'subscription-key': 'YOUR_AZURE_MAPS_KEY'
+        }
+    });
+    const data = await response.json();
+
+    if (!data.features.length) return null;
+    return data.features[0].geometry.coordinates;
 }
 
 // Wire up the search input
@@ -232,14 +254,17 @@ const handleInput = throttle(async function(event) {
     suggestions.forEach(function(suggestion) {
         const li = document.createElement('li');
         li.textContent = suggestion.text;
-        li.addEventListener('click', function() {
+        li.addEventListener('click', async function() {
             // When user selects a suggestion, center the map on it
             searchInput.value = suggestion.text;
             suggestionsList.innerHTML = '';
-            map.setCamera({
-                center: [suggestion.position.lon, suggestion.position.lat],
-                zoom: 15
-            });
+            const position = await geocodeSelectedAddress(suggestion.text);
+            if (position) {
+                map.setCamera({
+                    center: position,
+                    zoom: 15
+                });
+            }
         });
         suggestionsList.appendChild(li);
     });
@@ -255,11 +280,9 @@ If you need to geocode many addresses at once (for example, importing a CSV of c
 ```python
 # batch_geocode.py - Geocode multiple addresses in a single request
 import requests
-import json
-import time
 
 AZURE_MAPS_KEY = "your-subscription-key"
-BATCH_URL = "https://atlas.microsoft.com/search/address/batch/json"
+BATCH_URL = "https://atlas.microsoft.com/geocode:batch"
 
 def batch_geocode(addresses: list) -> list:
     """Geocode up to 100 addresses in a single batch request."""
@@ -267,7 +290,8 @@ def batch_geocode(addresses: list) -> list:
     batch_items = []
     for address in addresses:
         batch_items.append({
-            "query": f"?query={address}&limit=1"
+            "query": address,
+            "top": 1
         })
 
     payload = {
@@ -275,42 +299,25 @@ def batch_geocode(addresses: list) -> list:
     }
 
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY
+        "api-version": "2026-01-01"
     }
+    headers = {"subscription-key": AZURE_MAPS_KEY}
 
-    response = requests.post(BATCH_URL, params=params, json=payload)
-
-    # For large batches, the API returns 202 with a status URL
-    if response.status_code == 202:
-        status_url = response.headers["Location"]
-        return poll_batch_result(status_url)
-
-    # For small batches, results come back immediately
+    response = requests.post(BATCH_URL, params=params, json=payload, headers=headers)
     response.raise_for_status()
     return parse_batch_results(response.json())
-
-def poll_batch_result(status_url):
-    """Poll for batch results until complete."""
-    while True:
-        response = requests.get(status_url, params={
-            "subscription-key": AZURE_MAPS_KEY
-        })
-        if response.status_code == 200:
-            return parse_batch_results(response.json())
-        # Still processing, wait and retry
-        time.sleep(2)
 
 def parse_batch_results(data):
     """Parse batch response into a clean format."""
     results = []
     for item in data.get("batchItems", []):
-        if item["statusCode"] == 200 and item["response"]["summary"]["numResults"] > 0:
-            result = item["response"]["results"][0]
+        if "features" in item and item["features"]:
+            result = item["features"][0]
+            lon, lat = result["geometry"]["coordinates"]
             results.append({
-                "address": result["address"]["freeformAddress"],
-                "latitude": result["position"]["lat"],
-                "longitude": result["position"]["lon"]
+                "address": result["properties"]["address"]["formattedAddress"],
+                "latitude": lat,
+                "longitude": lon
             })
         else:
             results.append(None)  # Geocoding failed for this address
@@ -339,46 +346,48 @@ The Search API supports both unstructured queries (a single string) and structur
 ```python
 # Structured search - more accurate for known address components
 def structured_geocode(street: str, city: str, state: str, country: str = "US") -> dict:
-    url = "https://atlas.microsoft.com/search/address/structured/json"
+    url = "https://atlas.microsoft.com/geocode"
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY,
-        "streetNumber": street.split()[0] if street else "",
-        "streetName": " ".join(street.split()[1:]) if street else "",
-        "municipality": city,
-        "countrySubdivision": state,
-        "countryCode": country,
-        "limit": 1
+        "api-version": "2026-01-01",
+        "addressLine": street,
+        "locality": city,
+        "adminDistrict": state,
+        "countryRegion": country,
+        "top": 1
     }
+    headers = {"subscription-key": AZURE_MAPS_KEY}
 
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, headers=headers)
     response.raise_for_status()
     data = response.json()
 
-    if data["summary"]["numResults"] > 0:
-        result = data["results"][0]
+    if data.get("features"):
+        result = data["features"][0]
+        lon, lat = result["geometry"]["coordinates"]
         return {
-            "latitude": result["position"]["lat"],
-            "longitude": result["position"]["lon"],
-            "freeformAddress": result["address"]["freeformAddress"]
+            "latitude": lat,
+            "longitude": lon,
+            "freeformAddress": result["properties"]["address"]["formattedAddress"]
         }
     return None
 ```
 
 ## Error Handling and Rate Limits
 
-The Azure Maps Search API has rate limits based on your pricing tier. S0 allows 50 queries per second, S1 allows 50 queries per second with higher overall throughput. Handle rate limiting gracefully.
+The Azure Maps Search API has rate limits based on your pricing tier and operation type. For example, Gen2 allows higher limits for single Search requests than the older Gen1 S0 tier. Handle rate limiting gracefully.
 
 ```python
+import time
+
 def geocode_with_retry(address: str, max_retries: int = 3) -> dict:
     """Geocode with retry logic for rate limiting."""
     for attempt in range(max_retries):
+        headers = {"subscription-key": AZURE_MAPS_KEY}
         response = requests.get(BASE_URL, params={
-            "api-version": "1.0",
-            "subscription-key": AZURE_MAPS_KEY,
+            "api-version": "2026-01-01",
             "query": address,
-            "limit": 1
-        })
+            "top": 1
+        }, headers=headers)
 
         if response.status_code == 429:
             # Rate limited - wait and retry
@@ -390,11 +399,12 @@ def geocode_with_retry(address: str, max_retries: int = 3) -> dict:
         response.raise_for_status()
         data = response.json()
 
-        if data["summary"]["numResults"] > 0:
-            result = data["results"][0]
+        if data.get("features"):
+            result = data["features"][0]
+            lon, lat = result["geometry"]["coordinates"]
             return {
-                "latitude": result["position"]["lat"],
-                "longitude": result["position"]["lon"]
+                "latitude": lat,
+                "longitude": lon
             }
         return None
 
@@ -403,4 +413,4 @@ def geocode_with_retry(address: str, max_retries: int = 3) -> dict:
 
 ## Wrapping Up
 
-The Azure Maps Search API is a solid geocoding solution that handles forward geocoding, reverse geocoding, fuzzy search, and batch processing through a consistent REST interface. For web applications, pair it with the Azure Maps Web SDK for autocomplete search experiences. For server-side batch processing, use the batch endpoint to geocode hundreds of addresses efficiently. The key decision is whether to use fuzzy search (great for user-facing search boxes) or structured search (better for programmatic geocoding of clean address data). Choose based on the quality of your input data and the tolerance for ambiguity in your use case.
+The Azure Maps Search API is a solid geocoding solution that handles forward geocoding, reverse geocoding, autocomplete, and batch processing through a consistent REST interface. For web applications, pair it with the Azure Maps Web SDK for autocomplete search experiences. For server-side batch processing, use the batch endpoint to geocode up to 100 addresses in a single request. The key decision is whether to use unstructured search (great for user-facing search boxes) or structured search (better for programmatic geocoding of clean address data). Choose based on the quality of your input data and the tolerance for ambiguity in your use case.
