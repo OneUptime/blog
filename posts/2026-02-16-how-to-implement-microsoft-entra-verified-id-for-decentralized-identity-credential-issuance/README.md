@@ -41,8 +41,8 @@ The underlying technology uses W3C Verifiable Credentials and Decentralized Iden
 
 ## Prerequisites
 
-- Microsoft Entra ID P1 or P2 license
-- Global Administrator role (for initial setup)
+- Microsoft Entra ID subscription, including the Microsoft Entra ID Free tier
+- Authentication Policy Administrator role (for initial setup); Application Administrator role if you need to register applications
 - Azure subscription for hosting the issuance/verification service
 - An Azure Key Vault for signing key storage
 - Users with Microsoft Authenticator app installed (for holding credentials)
@@ -61,22 +61,28 @@ The setup wizard walks you through:
 
 ```bash
 # Create a Key Vault for Verified ID signing keys
+# Advanced setup requires the Key Vault permission model to be Vault access policy
 
 az keyvault create \
   --name myVerifiedIdKeyVault \
   --resource-group myResourceGroup \
   --location eastus \
   --sku standard \
-  --enable-rbac-authorization true
+  --enable-rbac-authorization false
 
-# Grant the Verified ID service access to the Key Vault
-# The Verified ID service principal needs Key Vault Crypto Officer role
-VERIFIED_ID_SP="bb2a64ee-5d29-4b07-a491-25806dc854d3"
+# Grant the setup administrator and Request Service API access to the Key Vault
+ADMIN_OBJECT_ID=$(az ad signed-in-user show --query id -o tsv)
+VERIFIED_ID_REQUEST_SP="3db474b9-6a0c-4840-96ac-1fceb342124f"
 
-az role assignment create \
-  --assignee $VERIFIED_ID_SP \
-  --role "Key Vault Crypto Officer" \
-  --scope "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.KeyVault/vaults/myVerifiedIdKeyVault"
+az keyvault set-policy \
+  --name myVerifiedIdKeyVault \
+  --object-id $ADMIN_OBJECT_ID \
+  --key-permissions create delete get list sign verify
+
+az keyvault set-policy \
+  --name myVerifiedIdKeyVault \
+  --spn $VERIFIED_ID_REQUEST_SP \
+  --key-permissions get sign
 ```
 
 After completing the wizard, Entra ID creates a DID (Decentralized Identifier) for your organization. This is a unique identifier that looks something like `did:web:contoso.com`.
@@ -109,7 +115,6 @@ You define the credential using a rules file and a display file:
 
 ```json
 {
-  // Display definition for the employee credential
   "locale": "en-US",
   "card": {
     "title": "Contoso Employee Credential",
@@ -126,24 +131,28 @@ You define the credential using a rules file and a display file:
     "title": "Employee Verification",
     "instructions": "Please review the information below. By accepting, a verifiable credential will be added to your Microsoft Authenticator."
   },
-  "claims": {
-    "vc.credentialSubject.displayName": {
-      "type": "String",
-      "label": "Name"
+  "claims": [
+    {
+      "claim": "vc.credentialSubject.displayName",
+      "label": "Name",
+      "type": "String"
     },
-    "vc.credentialSubject.jobTitle": {
-      "type": "String",
-      "label": "Job Title"
+    {
+      "claim": "vc.credentialSubject.jobTitle",
+      "label": "Job Title",
+      "type": "String"
     },
-    "vc.credentialSubject.department": {
-      "type": "String",
-      "label": "Department"
+    {
+      "claim": "vc.credentialSubject.department",
+      "label": "Department",
+      "type": "String"
     },
-    "vc.credentialSubject.employeeId": {
-      "type": "String",
-      "label": "Employee ID"
+    {
+      "claim": "vc.credentialSubject.employeeId",
+      "label": "Employee ID",
+      "type": "String"
     }
-  }
+  ]
 }
 ```
 
@@ -151,7 +160,6 @@ You define the credential using a rules file and a display file:
 
 ```json
 {
-  // Rules definition for the employee credential
   "attestations": {
     "idTokenHints": [
       {
@@ -159,7 +167,7 @@ You define the credential using a rules file and a display file:
           {
             "outputClaim": "displayName",
             "required": true,
-            "inputClaim": "name",
+            "inputClaim": "displayName",
             "indexed": false
           },
           {
@@ -211,6 +219,7 @@ const { ConfidentialClientApplication } = require('@azure/msal-node');
 const axios = require('axios');
 
 const app = express();
+app.use(express.json());
 
 // MSAL configuration for authenticating to the Verified ID API
 const msalConfig = {
