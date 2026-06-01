@@ -8,9 +8,9 @@ Description: Step-by-step guide to querying AWS CloudTrail logs with Amazon Athe
 
 ---
 
-Every API call in your AWS account gets recorded by CloudTrail. Who created that EC2 instance? When was that S3 bucket policy changed? Which IAM user has been making suspicious API calls at 3 AM? The answers are all in CloudTrail - you just need a way to search through them efficiently.
+CloudTrail can record AWS API activity in your account. Management events are logged by default, and data events and network activity events can be recorded when you configure them. Who created that EC2 instance? When was that S3 bucket policy changed? Which IAM user has been making suspicious API calls at 3 AM? The answers are all in CloudTrail - you just need a way to search through them efficiently.
 
-Athena is the natural fit. CloudTrail delivers logs to S3 as JSON files, and Athena can query them directly with SQL. No need to import them into a database or set up an ELK stack. Point Athena at your CloudTrail bucket and start asking questions.
+Athena is the natural fit. Trails deliver logs to S3 as gzip-compressed JSON files, and Athena can query them directly with SQL. No need to import them into a database or set up an ELK stack. Point Athena at your CloudTrail bucket and start asking questions.
 
 ## CloudTrail Log Structure
 
@@ -20,25 +20,31 @@ CloudTrail logs are JSON files organized by account, region, and date:
 s3://your-cloudtrail-bucket/AWSLogs/123456789012/CloudTrail/us-east-1/2025/01/15/
 ```
 
-Each file contains an array of events that look like this:
+Each file contains a `Records` array of events that look like this:
 
 ```json
 {
-  "eventVersion": "1.08",
-  "userIdentity": {
-    "type": "IAMUser",
-    "principalId": "AIDAEXAMPLE",
-    "arn": "arn:aws:iam::123456789012:user/alice",
-    "accountId": "123456789012",
-    "userName": "alice"
-  },
-  "eventTime": "2025-01-15T14:23:45Z",
-  "eventSource": "s3.amazonaws.com",
-  "eventName": "PutBucketPolicy",
-  "awsRegion": "us-east-1",
-  "sourceIPAddress": "198.51.100.42",
-  "requestParameters": { ... },
-  "responseElements": { ... }
+  "Records": [
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAEXAMPLE",
+        "arn": "arn:aws:iam::123456789012:user/alice",
+        "accountId": "123456789012",
+        "userName": "alice"
+      },
+      "eventTime": "2025-01-15T14:23:45Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutBucketPolicy",
+      "awsRegion": "us-east-1",
+      "sourceIPAddress": "198.51.100.42",
+      "requestParameters": {
+        "bucketName": "example-bucket"
+      },
+      "responseElements": null
+    }
+  ]
 }
 ```
 
@@ -106,6 +112,8 @@ PARTITIONED BY (
     day STRING
 )
 ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
+STORED AS INPUTFORMAT 'com.amazon.emr.cloudtrail.CloudTrailInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat'
 LOCATION 's3://your-cloudtrail-bucket/AWSLogs/'
 TBLPROPERTIES (
     'projection.enabled' = 'true',
@@ -125,7 +133,7 @@ TBLPROPERTIES (
 );
 ```
 
-Replace the account ID and region values with your actual values. If you have multiple accounts or regions, list them all in the enum values.
+Replace the account ID and region values with your actual values. If you have multiple accounts or regions, list them all in the enum values, including any sign-in regions you want to query for console login events.
 
 ## Essential Security Queries
 
@@ -208,7 +216,7 @@ SELECT
     userIdentity.sessionContext.attributes.mfaAuthenticated as mfa_used
 FROM cloudtrail_logs
 WHERE account = '123456789012'
-    AND region = 'us-east-1'
+    AND region IN ('us-east-1', 'us-east-2', 'eu-north-1', 'ap-southeast-2')
     AND year = '2025'
     AND month = '02'
     AND eventName = 'ConsoleLogin'
@@ -363,31 +371,30 @@ For even better cost management on Athena, check our dedicated guide on [reducin
 Set up automated queries for daily security reports:
 
 ```python
-# Run a daily security check query and send results via SNS
+# Run a daily security check query
 
 import boto3
-import json
+from datetime import datetime, timedelta, timezone
 
 athena = boto3.client('athena')
-sns = boto3.client('sns')
 
-from datetime import datetime, timedelta
-yesterday = (datetime.now() - timedelta(days=1)).strftime('%d')
-month = datetime.now().strftime('%m')
-year = datetime.now().strftime('%Y')
+yesterday_date = datetime.now(timezone.utc) - timedelta(days=1)
+yesterday = yesterday_date.strftime('%d')
+month = yesterday_date.strftime('%m')
+year = yesterday_date.strftime('%Y')
 
 query = f"""
-SELECT userIdentity.arn, eventName, errorCode, COUNT(*) as count
+SELECT userIdentity.arn, eventName, errorCode, COUNT(*) as access_denied_count
 FROM cloudtrail_logs
 WHERE account = '123456789012' AND region = 'us-east-1'
     AND year = '{year}' AND month = '{month}' AND day = '{yesterday}'
     AND errorCode = 'AccessDenied'
 GROUP BY userIdentity.arn, eventName, errorCode
 HAVING COUNT(*) > 10
-ORDER BY count DESC
+ORDER BY access_denied_count DESC
 """
 
-# Execute and process results, then send via SNS
+# Execute the query and process the results after it completes
 response = athena.start_query_execution(
     QueryString=query,
     QueryExecutionContext={'Database': 'default'},
@@ -397,7 +404,7 @@ response = athena.start_query_execution(
 print(f"Query started: {response['QueryExecutionId']}")
 ```
 
-Combine this with a Lambda function triggered by a CloudWatch Events schedule for daily automated security audits.
+Combine this with a Lambda function triggered by an EventBridge schedule for daily automated security audits.
 
 ## Wrapping Up
 
