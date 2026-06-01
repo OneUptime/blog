@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Service Bus, Subscription Filters, Topic, Message Routing, Azure, Pub-Sub, Messaging
 
-Description: Configure SQL and correlation filters on Azure Service Bus topic subscriptions to route messages to the right consumers based on properties and content.
+Description: Configure SQL and correlation filters on Azure Service Bus topic subscriptions to route messages to the right consumers based on message properties.
 
 ---
 
@@ -18,9 +18,9 @@ Azure Service Bus supports three types of subscription filters.
 
 **Boolean filter**: The simplest type. `TrueFilter` matches all messages (this is the default on new subscriptions). `FalseFilter` matches nothing.
 
-**SQL filter**: Evaluates a SQL-like expression against the message's system properties, user-defined properties, and body. This is the most flexible filter type.
+**SQL filter**: Evaluates a SQL-like expression against the message's system properties and user-defined properties. This is the most flexible filter type.
 
-**Correlation filter**: Matches against specific property values. Faster and cheaper than SQL filters because Service Bus can use hash-based lookups instead of expression evaluation.
+**Correlation filter**: Matches against specific property values. Faster and more efficient than SQL filters because Service Bus can use hash-based lookups instead of expression evaluation.
 
 ```mermaid
 graph TD
@@ -233,26 +233,19 @@ await _adminClient.CreateRuleAsync(topicName, "enriched-subscription",
             "SET sys.Label = 'HighValue'; SET Priority = 'High';")
     });
 
-// Another example: calculate a derived property
+// Another example: set a derived property for a matching tier
 await _adminClient.CreateRuleAsync(topicName, "with-discount-tier",
     new CreateRuleOptions
     {
         Name = "DiscountTierRule",
-        Filter = new SqlRuleFilter("CustomerTier IS NOT NULL"),
-        Action = new SqlRuleAction(@"
-            SET DiscountPercent =
-                CASE CustomerTier
-                    WHEN 'Premium' THEN 20
-                    WHEN 'Gold' THEN 10
-                    WHEN 'Silver' THEN 5
-                    ELSE 0
-                END")
+        Filter = new SqlRuleFilter("CustomerTier = 'Premium'"),
+        Action = new SqlRuleAction("SET DiscountPercent = 20")
     });
 ```
 
 ## Multiple Rules on One Subscription
 
-A subscription can have multiple rules. A message matches the subscription if it matches ANY of the rules (OR logic). If you need AND logic, combine conditions in a single SQL filter expression.
+A subscription can have multiple rules. For rules without actions, a message matches the subscription if it matches ANY of the rules (OR logic), and only one copy is added to the subscription even if multiple rules match. Each matching rule with an action produces its own copy of the message. If you need AND logic, combine conditions in a single SQL filter expression.
 
 ```csharp
 // Multiple rules - message matches if it matches ANY rule
