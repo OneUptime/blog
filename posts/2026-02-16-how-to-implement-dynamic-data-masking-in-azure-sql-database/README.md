@@ -21,7 +21,7 @@ Key points to understand:
 - **No data modification**: The actual data in the database is never changed. Masking happens at the query result level only.
 - **Transparent to applications**: Applications with UNMASK permission work exactly as before. No code changes needed.
 - **Not encryption**: DDM is a presentation-layer feature, not a security boundary. A determined user with sufficient database permissions could potentially infer masked values through clever queries. For true data protection, use encryption or column-level security.
-- **Four masking functions**: Azure SQL provides four built-in masking types - default, email, random, and custom string.
+- **Masking functions**: T-SQL provides four built-in masking functions - default, email, random, and custom string. The Azure portal also offers predefined masking categories such as credit card.
 
 ```mermaid
 flowchart LR
@@ -40,7 +40,7 @@ flowchart LR
 The default mask replaces the entire value with a standard mask based on the data type:
 - String columns: "XXXX" (or fewer X's if the column is shorter)
 - Numeric columns: 0
-- Date columns: 01-01-1900 00:00:00
+- Date columns: 1900-01-01 00:00:00
 - Binary columns: single byte of 0
 
 ### Email Mask
@@ -99,8 +99,8 @@ CREATE TABLE Customers (
     SSN CHAR(11) MASKED WITH (FUNCTION = 'partial(0, "XXX-XX-", 4)'),
     -- Random mask: replace with random number between 1000 and 9999
     CreditScore INT MASKED WITH (FUNCTION = 'random(1000, 9999)'),
-    -- Custom mask: show first 2 chars, pad with XXXX-XXXX-, show last 4
-    CreditCard CHAR(16) MASKED WITH (FUNCTION = 'partial(2, "XX-XXXX-XXXX-", 4)')
+    -- Custom mask: show first 2 chars, pad with XX-XXXX-XXXX-, show last 4
+    CreditCard CHAR(19) MASKED WITH (FUNCTION = 'partial(2, "XX-XXXX-XXXX-", 4)')
 );
 ```
 
@@ -110,8 +110,8 @@ Insert some sample data:
 -- Insert test data into the customers table
 INSERT INTO Customers (FirstName, LastName, Email, SSN, CreditScore, CreditCard)
 VALUES
-    ('John', 'Doe', 'john.doe@company.com', '123-45-6789', 750, '4111111111111111'),
-    ('Jane', 'Smith', 'jane.smith@company.com', '987-65-4321', 820, '5500000000000004');
+    ('John', 'Doe', 'john.doe@company.com', '123-45-6789', 750, '4111-1111-1111-1111'),
+    ('Jane', 'Smith', 'jane.smith@company.com', '987-65-4321', 820, '5500-0000-0000-0004');
 ```
 
 ## Adding Masks to Existing Columns
@@ -157,7 +157,7 @@ REVOKE UNMASK FROM [AnalystUser];
 You can also grant UNMASK at the schema, table, or column level for more granular control:
 
 ```sql
--- Grant UNMASK only on a specific table
+-- Grant UNMASK only on a specific schema
 GRANT UNMASK ON SCHEMA::[dbo] TO [ManagerUser];
 
 -- Grant UNMASK only on a specific column
@@ -183,8 +183,8 @@ The results for the TestAnalyst user would look like:
 
 | CustomerID | FirstName | LastName | Email | SSN | CreditScore | CreditCard |
 |---|---|---|---|---|---|---|
-| 1 | XXXX | XXXX | jXXX@XXXX.com | XXX-XX-6789 | 3847 | 2XX-XXXX-XXXX-1111 |
-| 2 | XXXX | XXXX | jXXX@XXXX.com | XXX-XX-4321 | 6152 | 5XX-XXXX-XXXX-0004 |
+| 1 | XXXX | XXXX | jXXX@XXXX.com | XXX-XX-6789 | 3847 | 41XX-XXXX-XXXX-1111 |
+| 2 | XXXX | XXXX | jXXX@XXXX.com | XXX-XX-4321 | 6152 | 55XX-XXXX-XXXX-0004 |
 
 ## Common Masking Patterns
 
@@ -192,31 +192,37 @@ Here are practical masking patterns for common data types.
 
 **Phone numbers**: Show last 4 digits.
 ```sql
+ALTER TABLE Employees
 ALTER COLUMN Phone ADD MASKED WITH (FUNCTION = 'partial(0, "XXX-XXX-", 4)')
 ```
 
 **Social Security Numbers**: Show last 4 digits.
 ```sql
+ALTER TABLE Employees
 ALTER COLUMN SSN ADD MASKED WITH (FUNCTION = 'partial(0, "XXX-XX-", 4)')
 ```
 
 **Credit card numbers**: Show first 2 and last 4 digits.
 ```sql
+ALTER TABLE Customers
 ALTER COLUMN CreditCard ADD MASKED WITH (FUNCTION = 'partial(2, "XX-XXXX-XXXX-", 4)')
 ```
 
 **Dates of birth**: Use default mask (returns 1900-01-01).
 ```sql
+ALTER TABLE Employees
 ALTER COLUMN DateOfBirth ADD MASKED WITH (FUNCTION = 'default()')
 ```
 
 **Salaries**: Use random mask to show realistic but fake values.
 ```sql
+ALTER TABLE Employees
 ALTER COLUMN Salary ADD MASKED WITH (FUNCTION = 'random(30000, 150000)')
 ```
 
-**IP addresses**: Show only the first octet.
+**IP addresses**: Show only the first three characters.
 ```sql
+ALTER TABLE NetworkLogs
 ALTER COLUMN IPAddress ADD MASKED WITH (FUNCTION = 'partial(3, ".XXX.XXX.XXX", 0)')
 ```
 
@@ -226,7 +232,7 @@ ALTER COLUMN IPAddress ADD MASKED WITH (FUNCTION = 'partial(3, ".XXX.XXX.XXX", 0
 
 **Computed columns**: You cannot mask computed columns, but you can mask the source columns.
 
-**Full-text search**: Masked columns participate in full-text search, so masked values could be exposed through search results.
+**Full-text search**: A column with data masking cannot be a key for a full-text index.
 
 **Import/Export**: BACPAC exports include the masking definitions. When you import the BACPAC, the masks are preserved.
 
@@ -245,4 +251,4 @@ In practice, many teams combine these features. For example, you might use Alway
 
 ## Summary
 
-Dynamic data masking is a quick and effective way to limit exposure of sensitive data in Azure SQL Database. It requires no application code changes, applies at the query result level, and supports four flexible masking functions. Set it up through the Azure Portal or T-SQL, manage access with the UNMASK permission, and combine it with other security features for defense in depth. Just remember that DDM is designed to prevent casual exposure, not to replace encryption for truly sensitive data.
+Dynamic data masking is a quick and effective way to limit exposure of sensitive data in Azure SQL Database. It requires no application code changes, applies at the query result level, and supports flexible masking functions. Set it up through the Azure Portal or T-SQL, manage access with the UNMASK permission, and combine it with other security features for defense in depth. Just remember that DDM is designed to prevent casual exposure, not to replace encryption for truly sensitive data.
