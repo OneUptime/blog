@@ -19,7 +19,7 @@ When you try to import a certificate into Key Vault, you might get an error sayi
 Key Vault supports two formats for import:
 
 - **PFX/PKCS#12**: A binary format that bundles the certificate, private key, and any intermediate certificates. This is the most common format for Key Vault imports.
-- **PEM**: A base64-encoded text format. Key Vault accepts PEM files that contain both the certificate and private key.
+- **PEM**: A base64-encoded text format. Key Vault accepts PEM files that contain both the certificate and an unencrypted PKCS#8 private key.
 
 **Fix**: Verify your certificate file format and convert if necessary:
 
@@ -49,9 +49,12 @@ az keyvault certificate import \
 If you have a PEM file, make sure it includes both the certificate and private key:
 
 ```bash
+# Convert the private key to unencrypted PKCS#8 format if needed
+openssl pkcs8 -topk8 -nocrypt -in private.key -out private-pkcs8.key
+
 # Create a combined PEM file with certificate and private key
 # The order matters: certificate first, then private key
-cat certificate.crt private.key > combined.pem
+cat certificate.crt private-pkcs8.key > combined.pem
 
 # Import PEM file into Key Vault
 az keyvault certificate import \
@@ -76,9 +79,9 @@ This happens when the PEM file has formatting issues. Common causes:
 openssl x509 -in certificate.crt -noout -text
 
 # Verify the private key is valid
-openssl rsa -in private.key -check
+openssl pkey -in private.key -check
 
-# Verify the key matches the certificate
+# Verify the key matches the certificate for RSA certificates
 # These two commands should output the same modulus hash
 openssl x509 -noout -modulus -in certificate.crt | openssl md5
 openssl rsa -noout -modulus -in private.key | openssl md5
@@ -88,7 +91,7 @@ If the modulus hashes do not match, the private key does not belong to the certi
 
 ## Common Error 3: Certificate Chain Validation Failures
 
-When importing a certificate that was signed by a Certificate Authority, Key Vault validates the certificate chain. If intermediate certificates are missing, the import might succeed but the certificate will not work correctly when used by Application Gateway, Front Door, or other services.
+When importing a certificate that was signed by a Certificate Authority, Key Vault stores the certificate material and chain you provide. If intermediate certificates are missing, the import might succeed but the certificate will not work correctly when used by Application Gateway, Front Door, or other services.
 
 **Fix**: Include the full certificate chain in your PFX or PEM file:
 
@@ -117,7 +120,7 @@ openssl verify -CAfile root.crt -untrusted intermediate.crt leaf.crt
 
 Even if a certificate imports successfully, your application might get "Forbidden" or "Access Denied" when trying to retrieve it. This is a Key Vault access policy issue.
 
-Key Vault has separate permissions for certificates, secrets, and keys. A certificate in Key Vault is actually three objects: a certificate, a secret (containing the PFX/PEM data), and a key. To fully use a certificate, the accessing identity needs permissions on all three.
+Key Vault has separate permissions for certificates, secrets, and keys. A certificate in Key Vault is actually three objects: a certificate, a secret (containing the PFX/PEM data), and a key. Depending on how the application uses the certificate, the accessing identity might need certificate, secret, and key permissions.
 
 **Fix**: Grant the appropriate permissions:
 
@@ -134,7 +137,7 @@ az keyvault set-policy \
 # Using RBAC (recommended for new deployments)
 az role assignment create \
   --assignee <principal-object-id> \
-  --role "Key Vault Certificates Officer" \
+  --role "Key Vault Certificate User" \
   --scope /subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.KeyVault/vaults/myKeyVault
 ```
 
@@ -185,20 +188,20 @@ Key Vault certificates have a content type that specifies whether the secret (do
 **Fix**: Set the correct content type during import:
 
 ```bash
-# Import with explicit PFX content type
+# Import with explicit PFX content type in the certificate policy
 az keyvault certificate import \
   --vault-name myKeyVault \
   --name myCertificate \
   --file mycert.pfx \
   --password MyPassword123 \
-  --content-type application/x-pkcs12
+  --policy '{"secret_props": {"contentType": "application/x-pkcs12"}}'
 
-# Import with PEM content type
+# Import with PEM content type in the certificate policy
 az keyvault certificate import \
   --vault-name myKeyVault \
   --name myCertificate \
   --file combined.pem \
-  --content-type application/x-pem-file
+  --policy '{"secret_props": {"contentType": "application/x-pem-file"}}'
 ```
 
 ## Common Error 7: Expired Certificates
@@ -220,15 +223,16 @@ az keyvault certificate create \
   --vault-name myKeyVault \
   --name myCertificate \
   --policy '{
-    "issuerParameters": {"name": "Self"},
-    "keyProperties": {"keySize": 2048, "keyType": "RSA"},
-    "lifetimeActions": [{
-      "action": {"actionType": "AutoRenew"},
-      "trigger": {"daysBeforeExpiry": 30}
+    "issuer": {"name": "Self"},
+    "key_props": {"key_size": 2048, "kty": "RSA"},
+    "lifetime_actions": [{
+      "action": {"action_type": "AutoRenew"},
+      "trigger": {"days_before_expiry": 30}
     }],
-    "x509CertificateProperties": {
+    "secret_props": {"contentType": "application/x-pkcs12"},
+    "x509_props": {
       "subject": "CN=myapp.example.com",
-      "validityInMonths": 12
+      "validity_months": 12
     }
   }'
 ```
@@ -245,8 +249,8 @@ az keyvault certificate show \
   --query "{
     name: name,
     thumbprint: x509ThumbprintHex,
-    subject: policy.x509CertificateProperties.subject,
-    issuer: policy.issuerParameters.name,
+    subject: policy.x509_props.subject,
+    issuer: policy.issuer.name,
     expires: attributes.expires,
     enabled: attributes.enabled,
     contentType: contentType
@@ -280,4 +284,4 @@ flowchart TD
 
 ## Summary
 
-Certificate validation errors in Azure Key Vault come down to a few categories: file format issues during import, missing certificate chain components, access permission gaps, and renewal failures. Always verify your certificate and key match before importing, include the full chain, and set the correct content type. For access issues, remember that a Key Vault certificate is actually three objects (cert, secret, key) and you need permissions on all three. Set up expiry monitoring so you catch renewal problems before they become outages.
+Certificate validation errors in Azure Key Vault come down to a few categories: file format issues during import, missing certificate chain components, access permission gaps, and renewal failures. Always verify your certificate and key match before importing, include the full chain, and set the correct content type. For access issues, remember that a Key Vault certificate is actually three objects (cert, secret, key) and check permissions for the object types your application reads or uses. Set up expiry monitoring so you catch renewal problems before they become outages.
