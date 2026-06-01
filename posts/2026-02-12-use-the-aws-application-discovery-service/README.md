@@ -10,7 +10,7 @@ Description: Learn how to use AWS Application Discovery Service to inventory you
 
 You cannot migrate what you do not understand. That is the fundamental problem AWS Application Discovery Service solves. Before moving any workload to AWS, you need a clear picture of your on-premises environment: what servers exist, what software runs on them, how they communicate with each other, and how much capacity they actually use. Discovery Service automates this inventory process and feeds the data into Migration Hub for planning.
 
-This guide covers both discovery methods, how to interpret the results, and how to use the data for migration planning.
+AWS Application Discovery Service is no longer open to new customers as of November 7, 2025. Existing customers can continue using it for current discovery projects; new projects should evaluate AWS Transform, which AWS recommends as the successor. This guide covers the Discovery Service workflows for existing customers, how to interpret the results, and how to use the data for migration planning.
 
 ## Two Approaches to Discovery
 
@@ -21,74 +21,67 @@ graph TD
     A[Discovery Method] --> B{Need deep insights?}
     B -->|Basic inventory| C[Agentless Discovery]
     B -->|Full details| D[Agent-Based Discovery]
-    C --> E[VMware vCenter Connector]
-    C --> F[VM inventory + basic performance]
+    C --> E[Agentless Collector for VMware vCenter]
+    C --> F[VM inventory + utilization + network data]
     D --> G[Discovery Agent on each server]
     D --> H[Processes + network + detailed performance]
 ```
 
-**Agentless Discovery** deploys a connector as a VMware virtual appliance in your vCenter environment. It collects VM inventory and basic performance metrics without touching individual servers.
+**Agentless Discovery** deploys the Application Discovery Service Agentless Collector as a VMware virtual appliance in your vCenter environment. It collects VM inventory, utilization metrics, database metadata, and network traffic data without touching individual servers.
 
 **Agent-Based Discovery** installs a lightweight agent on each server. It collects detailed performance data, running processes, and network connection information. This is what you need for dependency mapping.
 
 ## Setting Up Agentless Discovery
 
-The agentless connector is a pre-built OVA that you deploy to your VMware vCenter.
+The Agentless Collector is a pre-built OVA that you deploy to your VMware vCenter.
 
-### Step 1: Download and Deploy the Connector
+### Step 1: Download and Deploy the Collector
 
-Download the OVA from the AWS console and deploy it to vCenter like any other virtual appliance. The connector needs:
+Download the OVA from the Migration Hub console and deploy it to vCenter like any other virtual appliance. The collector needs:
 - Network access to vCenter API
 - Outbound HTTPS access to AWS endpoints
 - Credentials for vCenter with read-only access
 
-### Step 2: Configure the Connector
+### Step 2: Configure the Collector
 
-After deployment, access the connector's web console and configure:
+After deployment, access the collector's web console and configure:
 
 ```python
-# Verify connector is registered and start data collection
+# Verify collectors and agents are registered
 
 import boto3
 
 discovery = boto3.client('discovery')
 
-# List registered connectors
-response = discovery.describe_agents(
-    filters=[
-        {
-            'name': 'agentType',
-            'values': ['CONNECTOR'],
-            'condition': 'EQUALS'
-        }
-    ]
-)
+# List registered agents and collectors
+response = discovery.describe_agents()
 
-for connector in response['agentsInfo']:
-    print(f"Connector: {connector['agentId']}")
-    print(f"  Status: {connector['health']}")
-    print(f"  Hostname: {connector.get('hostName', 'N/A')}")
-    print(f"  Collection Status: {connector.get('collectionStatus', 'N/A')}")
+for agent in response['agentsInfo']:
+    print(f"Agent/Collector: {agent['agentId']}")
+    print(f"  Type: {agent.get('agentType', 'N/A')}")
+    print(f"  Status: {agent['health']}")
+    print(f"  Hostname: {agent.get('hostName', 'N/A')}")
+    print(f"  Collection Status: {agent.get('collectionStatus', 'N/A')}")
 ```
 
 ### Step 3: Start Data Collection
 
 ```python
-# Start data collection from the connector
+# Start data collection from an agent or collector
 import boto3
 
 discovery = boto3.client('discovery')
 
-connector_id = 'your-connector-id'
+agent_or_collector_id = 'your-agent-or-collector-id'
 
 response = discovery.start_data_collection_by_agent_ids(
-    agentIds=[connector_id]
+    agentIds=[agent_or_collector_id]
 )
 
-print(f"Data collection started for {len(response.get('agentsConfigurationStatus', []))} connectors")
+print(f"Data collection started for {len(response.get('agentsConfigurationStatus', []))} agents or collectors")
 ```
 
-The connector polls vCenter every few minutes and sends the data to AWS. Give it at least 24-48 hours to collect meaningful performance data.
+The collector polls vCenter and sends the data to AWS. Give it at least 24-48 hours to collect meaningful performance data.
 
 ## Setting Up Agent-Based Discovery
 
@@ -99,7 +92,7 @@ For deeper insights, install the Discovery Agent on your servers.
 ```bash
 # Download and install the Discovery Agent on Linux
 curl -o aws-discovery-agent.tar.gz \
-  https://s3-us-west-2.amazonaws.com/aws-discovery-agent.us-west-2/linux/latest/aws-discovery-agent.tar.gz
+  https://s3.us-east-1.amazonaws.com/aws-discovery-agent.us-east-1/linux/latest/aws-discovery-agent.tar.gz
 
 tar -xzf aws-discovery-agent.tar.gz
 
@@ -114,10 +107,10 @@ sudo bash install -r us-east-1 \
 ```powershell
 # Download and install the Discovery Agent on Windows
 # Run in PowerShell as Administrator
-Invoke-WebRequest -Uri "https://s3-us-west-2.amazonaws.com/aws-discovery-agent.us-west-2/windows/latest/AWSDiscoveryAgentInstaller.msi" -OutFile "AWSDiscoveryAgentInstaller.msi"
+Invoke-WebRequest -Uri "https://s3.us-east-1.amazonaws.com/aws-discovery-agent.us-east-1/windows/latest/AWSDiscoveryAgentInstaller.exe" -OutFile "AWSDiscoveryAgentInstaller.exe"
 
 # Install with parameters
-msiexec.exe /i AWSDiscoveryAgentInstaller.msi REGION="us-east-1" KEY_ID="YOUR_ACCESS_KEY_ID" KEY_SECRET="YOUR_SECRET_ACCESS_KEY" /q
+.\AWSDiscoveryAgentInstaller.exe REGION="us-east-1" KEY_ID="YOUR_ACCESS_KEY_ID" KEY_SECRET="YOUR_SECRET_ACCESS_KEY" /quiet
 ```
 
 ### Managing Agents at Scale
@@ -132,7 +125,7 @@ For large environments, use your configuration management tool (Ansible, Chef, P
   tasks:
     - name: Download Discovery Agent
       get_url:
-        url: https://s3-us-west-2.amazonaws.com/aws-discovery-agent.us-west-2/linux/latest/aws-discovery-agent.tar.gz
+        url: https://s3.us-east-1.amazonaws.com/aws-discovery-agent.us-east-1/linux/latest/aws-discovery-agent.tar.gz
         dest: /tmp/aws-discovery-agent.tar.gz
 
     - name: Extract agent
@@ -156,14 +149,14 @@ import boto3
 discovery = boto3.client('discovery')
 
 # List all discovered servers
-paginator = discovery.get_paginator('describe_configurations')
+paginator = discovery.get_paginator('list_configurations')
 
 for page in paginator.paginate(configurationType='SERVER'):
     for server in page['configurations']:
         print(f"\nServer: {server.get('server.hostName', 'Unknown')}")
         print(f"  OS: {server.get('server.osName', 'Unknown')} {server.get('server.osVersion', '')}")
-        print(f"  CPU: {server.get('server.cpuType', 'Unknown')}")
-        print(f"  RAM: {server.get('server.totalRamInMB', 'Unknown')} MB")
+        print(f"  Configuration ID: {server.get('server.configurationId', 'Unknown')}")
+        print(f"  Agent ID: {server.get('server.agentId', 'Unknown')}")
         print(f"  Type: {server.get('server.type', 'Unknown')}")
 ```
 
@@ -177,13 +170,16 @@ import boto3
 
 discovery = boto3.client('discovery')
 
-# Start a data export to S3
+# Start a detailed data export for a single Discovery Agent.
+# Use describe_agents() to find the agentId for the server you want to export.
+agent_id = 'o-0123456789abcdef0'
+
 response = discovery.start_export_task(
     exportDataFormat=['CSV'],
     filters=[
         {
-            'name': 'agentId',
-            'values': ['*'],
+            'name': 'agentIds',
+            'values': [agent_id],
             'condition': 'EQUALS'
         }
     ]
@@ -209,7 +205,7 @@ while True:
     time.sleep(30)
 ```
 
-The exported data includes network connection records showing source IP, destination IP, destination port, and bytes transferred. This lets you map out which servers talk to each other and on which ports.
+The exported ZIP includes connection CSV files such as `{account_id}_sourceProcessConnection.csv` and `{account_id}_destinationProcessConnection.csv`, with fields such as source IP, destination IP, destination port, and occurrence count. This lets you map out which servers talk to each other and on which ports.
 
 ## Building a Dependency Map
 
@@ -222,7 +218,7 @@ import collections
 
 dependencies = collections.defaultdict(set)
 
-with open('network_connections.csv', 'r') as f:
+with open('sourceProcessConnection.csv', 'r') as f:
     reader = csv.DictReader(f)
     for row in reader:
         source = row['sourceIp']
@@ -230,8 +226,8 @@ with open('network_connections.csv', 'r') as f:
         port = row['destinationPort']
 
         # Only include significant connections (filter out noise)
-        bytes_transferred = int(row.get('bytesTransferred', 0))
-        if bytes_transferred > 1000:
+        occurrence = int(row.get('occurrence', 0))
+        if occurrence > 1:
             dependencies[source].add(f"{dest}:{port}")
 
 # Print dependency map
@@ -253,29 +249,24 @@ import boto3
 
 discovery = boto3.client('discovery')
 
-# Get performance data for a specific server
+# Get configuration and performance data for a specific server
 server_id = 'd-server-abc123'
 
-response = discovery.list_configurations(
-    configurationType='SERVER',
-    filters=[
-        {
-            'name': 'configurationId',
-            'values': [server_id],
-            'condition': 'EQUALS'
-        }
-    ]
+response = discovery.describe_configurations(
+    configurationIds=[server_id]
 )
 
 for server in response['configurations']:
     hostname = server.get('server.hostName', 'Unknown')
-    cpu_cores = int(server.get('server.cpuNumberOfCores', 0))
-    ram_mb = int(server.get('server.totalRamInMB', 0))
+    cpu_cores = int(float(server.get('server.performance.numCores', 0)))
+    ram_kb = float(server.get('server.performance.totalRAMInKB', 0))
+    ram_mb = int(ram_kb / 1024)
 
     # Peak CPU and memory utilization from performance data
     peak_cpu = float(server.get('server.performance.maxCpuUsagePct', 0))
     avg_cpu = float(server.get('server.performance.avgCpuUsagePct', 0))
-    peak_ram = float(server.get('server.performance.maxRamUsagePct', 0))
+    min_free_ram_kb = float(server.get('server.performance.minFreeRAMInKB', 0))
+    peak_ram = ((ram_kb - min_free_ram_kb) / ram_kb * 100) if ram_kb else 0
 
     print(f"\n{hostname}:")
     print(f"  Current: {cpu_cores} cores, {ram_mb}MB RAM")
