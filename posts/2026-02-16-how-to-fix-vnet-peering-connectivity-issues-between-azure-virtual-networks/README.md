@@ -38,7 +38,7 @@ az network vnet peering show \
 The `peeringState` should be "Connected" on both sides. If it shows:
 
 - **Initiated**: The other side has not configured their peering yet. Create the peering link from the other VNet.
-- **Disconnected**: The peering was established but then broken, usually because one side was deleted or the VNet address space was changed. Delete both peering links and recreate them.
+- **Disconnected**: The peering was established but then broken, usually because one side was deleted. Delete both peering links and recreate them. If the VNet address space was changed and the peering is still Connected but routes are stale, sync the peering instead.
 
 ```bash
 # Create peering from VNet A to VNet B
@@ -149,21 +149,9 @@ az network nic show-effective-route-table \
   --output table
 ```
 
-Look for routes to the peered VNet's address space. You should see a route with the next hop type "VNetPeering" or "VNetGlobalPeering." If instead you see a UDR pointing to a firewall or other NVA, traffic will go through that device instead of directly through the peering.
+Look for routes to the peered VNet's address space. You should see a system route with the next hop type "Virtual network peering" or "VirtualNetworkPeering." If instead you see a UDR pointing to a firewall or other NVA, traffic will go through that device instead of directly through the peering.
 
-**Fix**: If traffic should go directly through peering (bypassing the firewall), either remove the UDR that overrides the peering route, or add a more specific route for the peered VNet's address space:
-
-```bash
-# Add a route that sends traffic to the peered VNet directly
-az network route-table route create \
-  --resource-group rgA \
-  --route-table-name myRouteTable \
-  --name DirectToPeeredVNet \
-  --address-prefix 10.1.0.0/16 \
-  --next-hop-type VirtualNetworkGateway
-```
-
-Wait, that is not right for peering. For VNet peering, you do not need to add routes - Azure adds them automatically. If a UDR is overriding the peering routes, you need to either adjust the UDR or accept that traffic goes through the firewall and make sure the firewall allows it.
+**Fix**: For VNet peering, you do not need to add routes - Azure adds them automatically. You also cannot specify virtual network peering as the next hop type in a UDR. If a UDR is overriding the peering route, you need to either remove or adjust the UDR, or accept that traffic goes through the firewall and make sure the firewall allows it.
 
 ## Step 6: Transitive Peering Does Not Work
 
@@ -204,7 +192,7 @@ By default, Azure-provided DNS does not resolve VM names across peered VNets. VM
 If you are peering VNets across different Azure regions (global peering), there are additional considerations:
 
 - Data transfer charges apply for cross-region traffic
-- You cannot use remote gateways over global peering with Basic SKU load balancers
+- Resources in one VNet cannot communicate with the front-end IP address of a Basic SKU load balancer in a globally peered VNet
 - Latency will be higher compared to local peering
 
 ```bash
