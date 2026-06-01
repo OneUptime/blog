@@ -12,13 +12,13 @@ The partition key is the single most important design decision you will make whe
 
 ## Why the Partition Key Matters So Much
 
-Azure Table Storage distributes data across storage nodes based on the partition key. All entities with the same partition key live on the same storage node. This means:
+Azure Table Storage distributes data across partitions based on the partition key. All entities with the same partition key live in the same partition, which cannot be load-balanced independently. This means:
 
-- Queries that filter on a specific partition key only hit one node, making them fast.
+- Queries that filter on a specific partition key scan a single partition, making them fast.
 - All entities in a partition can participate in entity group transactions (batch operations).
-- A single partition has a throughput limit of about 2,000 entities per second.
+- A single partition has a throughput target of up to about 2,000 1-KiB entities per second.
 
-That last point is crucial. If you put all your data into one partition, you are capping your throughput at 2,000 operations per second regardless of how much Azure scales behind the scenes. If you spread data across many partitions, Azure can distribute the load across multiple nodes.
+That last point is crucial. If you put all your data into one partition, you are capping your throughput at roughly that partition target regardless of how much Azure scales behind the scenes. If you spread data across many partitions, Azure can distribute the load across multiple nodes.
 
 The challenge is finding the sweet spot - enough partitions for scalability, but not so many that your queries become expensive table scans.
 
@@ -49,13 +49,16 @@ This works well when your queries naturally align with the grouping and the data
 For time-series data like logs or events, partitioning by time period is common. The granularity depends on your write rate and query patterns.
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
+from uuid import uuid4
 
 # Partition by date for log entries
 # Each day gets its own partition, keeping partition sizes manageable
+now = datetime.now(timezone.utc)
+
 log_entry = {
-    "PartitionKey": "2026-02-16",
-    "RowKey": f"{datetime.utcnow().isoformat()}_{generate_id()}",
+    "PartitionKey": now.strftime("%Y-%m-%d"),
+    "RowKey": f"{now.isoformat()}_{uuid4()}",
     "Level": "ERROR",
     "Message": "Connection timeout to database server",
     "Service": "payment-api"
@@ -67,13 +70,17 @@ table_client.create_entity(entity=log_entry)
 For high-throughput scenarios, daily partitions might still be too large. You can partition by hour or even by minute.
 
 ```python
+from datetime import datetime, timezone
+from uuid import uuid4
+
 # Hourly partitioning for high-throughput scenarios
 # Format: YYYY-MM-DD-HH
-partition_key = datetime.utcnow().strftime("%Y-%m-%d-%H")
+now = datetime.now(timezone.utc)
+partition_key = now.strftime("%Y-%m-%d-%H")
 
 event = {
     "PartitionKey": partition_key,
-    "RowKey": f"{datetime.utcnow().timestamp()}_{uuid4()}",
+    "RowKey": f"{now.timestamp()}_{uuid4()}",
     "EventType": "page_view",
     "UserId": "user-12345"
 }
@@ -84,6 +91,9 @@ event = {
 Sometimes a single attribute does not provide enough granularity. Combining two attributes gives you better distribution.
 
 ```python
+from datetime import datetime, timezone
+from uuid import uuid4
+
 # Combine tenant and date for a multi-tenant logging system
 # This keeps each tenant's daily logs in one partition
 # and prevents any single partition from getting too large
@@ -91,7 +101,7 @@ partition_key = f"tenant-42_2026-02-16"
 
 log = {
     "PartitionKey": partition_key,
-    "RowKey": f"{datetime.utcnow().isoformat()}",
+    "RowKey": f"{datetime.now(timezone.utc).isoformat()}_{uuid4()}",
     "Level": "INFO",
     "Message": "User login successful"
 }
@@ -111,7 +121,7 @@ def get_hash_partition(entity_id, num_partitions=16):
     Distribute entities across a fixed number of partitions using a hash.
     This ensures even distribution regardless of the entity ID pattern.
     """
-    hash_value = hashlib.md5(entity_id.encode()).hexdigest()
+    hash_value = hashlib.sha256(entity_id.encode()).hexdigest()
     partition_index = int(hash_value, 16) % num_partitions
     return f"partition-{partition_index:03d}"
 
@@ -132,14 +142,16 @@ For scenarios where you frequently query the most recent data, you can use an in
 
 ```python
 import time
+from uuid import uuid4
 
 def inverted_timestamp():
     """
     Create an inverted timestamp that sorts newest entries first.
-    Using max ticks minus current ticks ensures reverse chronological order.
+    Using a fixed-width max ticks value minus current ticks ensures reverse chronological order.
     """
-    max_ticks = 9999999999
-    return str(max_ticks - int(time.time()))
+    max_ticks = 9999999999999999999
+    current_ticks = int(time.time() * 10_000_000)
+    return f"{max_ticks - current_ticks:019d}_{uuid4()}"
 
 event = {
     "PartitionKey": "device-sensor-42",
@@ -153,11 +165,11 @@ event = {
 
 Here is what not to do.
 
-**Single partition for everything.** Using a constant partition key like "default" puts all data on one node. You will hit the 2,000 ops/sec limit quickly.
+**Single partition for everything.** Using a constant partition key like "default" puts all data in one partition. You can hit the single-partition throughput target quickly.
 
 **Too many small partitions.** If every entity has a unique partition key, you lose the ability to do efficient range queries within a partition, and batch operations become impossible.
 
-**Sequential partition keys.** Using auto-incrementing numbers as partition keys causes all new writes to go to the same storage node (the one handling the current range). Azure might not rebalance fast enough under load.
+**Sequential partition keys.** Using auto-incrementing numbers as partition keys can cause small, sequential partitions to be physically grouped on the same server. Azure might not rebalance fast enough under load.
 
 ```mermaid
 graph LR
@@ -179,17 +191,20 @@ Use this framework to pick your strategy.
 
 First, identify your primary query pattern. What is the most common question you ask the data? If it is "give me all records for customer X," then customer ID is probably your partition key.
 
-Second, estimate your write throughput per partition. If a single partition would receive more than 2,000 writes per second, you need to break it up further (add a time component, hash suffix, or bucket number).
+Second, estimate your write throughput per partition. If a single partition would approach 2,000 1-KiB entities per second, you need to break it up further (add a time component, hash suffix, or bucket number).
 
 Third, consider your batch operation needs. Batch operations only work within a single partition. If you need to insert 100 related entities atomically, they must share a partition key.
 
-Fourth, think about data lifecycle. If you regularly delete old data, time-based partition keys make cleanup easy - you can delete entire partitions instead of scanning for old entities.
+Fourth, think about data lifecycle. If you regularly delete old data, time-based partition keys make cleanup easier - you can query old partition key values and batch-delete matching entities instead of scanning the whole table.
 
 ## Real-World Example: Multi-Tenant SaaS Application
 
 Let me tie this together with a realistic example. Say you are building a SaaS application that stores audit logs for multiple tenants.
 
 ```python
+from datetime import datetime, timezone
+from uuid import uuid4
+
 def design_audit_log_key(tenant_id, event_time):
     """
     Partition by tenant and month for audit logs.
@@ -201,12 +216,13 @@ def design_audit_log_key(tenant_id, event_time):
     partition_key = f"{tenant_id}_{month}"
 
     # Inverted timestamp ensures newest entries sort first
-    max_ts = 9999999999
-    row_key = f"{max_ts - int(event_time.timestamp())}_{uuid4()}"
+    max_ticks = 9999999999999999999
+    event_ticks = int(event_time.timestamp() * 10_000_000)
+    row_key = f"{max_ticks - event_ticks:019d}_{uuid4()}"
 
     return partition_key, row_key
 
-pk, rk = design_audit_log_key("tenant-42", datetime.utcnow())
+pk, rk = design_audit_log_key("tenant-42", datetime.now(timezone.utc))
 
 audit_entry = {
     "PartitionKey": pk,
@@ -218,7 +234,7 @@ audit_entry = {
 }
 ```
 
-This design gives you fast per-tenant queries, manageable partition sizes, and easy cleanup of old data by deleting monthly partitions.
+This design gives you fast per-tenant queries, manageable partition sizes, and easier cleanup of old data by querying and batch-deleting monthly partition key values.
 
 ## Testing Your Strategy
 
