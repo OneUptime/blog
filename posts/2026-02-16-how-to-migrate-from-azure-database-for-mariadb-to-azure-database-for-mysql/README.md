@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, MariaDB, MySQL, Migration, Database Migration, Flexible Server, Cloud Database
 
-Description: Step-by-step guide to migrating from Azure Database for MariaDB to Azure Database for MySQL Flexible Server before MariaDB reaches end of life.
+Description: Step-by-step guide to migrating from Azure Database for MariaDB to Azure Database for MySQL Flexible Server after the MariaDB service retirement.
 
 ---
 
-Azure Database for MariaDB is on the retirement path. Microsoft has announced that the service will be retired, and customers need to migrate to Azure Database for MySQL Flexible Server. If you are running workloads on Azure Database for MariaDB, now is the time to plan and execute your migration.
+Azure Database for MariaDB was retired on September 19, 2025. Microsoft recommends Azure Database for MySQL Flexible Server as the migration target. If you still have access to a running Azure Database for MariaDB instance, an exported dump, or a restored backup, now is the time to plan and execute your migration.
 
 The good news is that MariaDB and MySQL share a common heritage, and for many workloads the migration is straightforward. The not-so-good news is that there are compatibility differences that can bite you if you do not plan for them. In this post, I will walk through the entire migration process - from assessment to cutover.
 
 ## Why the Migration Is Necessary
 
-Azure Database for MariaDB is being retired. After the retirement date, the service will no longer receive security patches, bug fixes, or support. Running on an unsupported service is a compliance and security risk you do not want to carry.
+Azure Database for MariaDB has been retired. Since the retirement date, the service no longer receives security patches, bug fixes, or support. Running on an unsupported service is a compliance and security risk you do not want to carry.
 
 Azure Database for MySQL Flexible Server is the recommended target. It offers:
 
@@ -54,7 +54,7 @@ MariaDB forked from MySQL in 2009, and while they share SQL syntax and wire prot
 SELECT VERSION();
 ```
 
-Azure Database for MariaDB runs MariaDB 10.2 or 10.3. Your target will be MySQL 8.0 on Flexible Server.
+Azure Database for MariaDB ran MariaDB 10.2 or 10.3. Your target will usually be MySQL 8.0 or MySQL 8.4 on Flexible Server; the examples below use MySQL 8.0.
 
 ### Step 2: Identify Incompatible Features
 
@@ -66,8 +66,10 @@ WHERE engine NOT IN ('InnoDB', 'MEMORY')
   AND table_schema NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys');
 
 -- Check for sequences (MariaDB-specific)
-SELECT * FROM information_schema.sequences
-WHERE sequence_schema NOT IN ('mysql', 'information_schema');
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_type = 'SEQUENCE'
+  AND table_schema NOT IN ('mysql', 'information_schema');
 
 -- Check for system-versioned tables
 SELECT table_schema, table_name
@@ -126,7 +128,7 @@ az mysql flexible-server create \
   --admin-password 'StrongPassword123!' \
   --sku-name Standard_D4ds_v4 \
   --tier GeneralPurpose \
-  --version 8.0.21 \
+  --version 8 \
   --storage-size 256 \
   --storage-auto-grow Enabled
 ```
@@ -335,4 +337,4 @@ Keep the MariaDB server running for one week after cutover as a rollback option.
 
 ## Summary
 
-Migrating from Azure Database for MariaDB to Azure Database for MySQL Flexible Server is necessary and, for most workloads, manageable. The key is thorough pre-migration assessment to catch compatibility issues before they become production problems. Use mysqldump for smaller databases and Azure DMS for larger ones. Test everything on the target before cutover, update your application's connection strings and drivers, and keep the old server running as a safety net. Do not wait until the last minute - start your migration planning now.
+Migrating from Azure Database for MariaDB to Azure Database for MySQL Flexible Server is necessary and, for most workloads, manageable. The key is thorough pre-migration assessment to catch compatibility issues before they become production problems. Use mysqldump for smaller databases and Azure DMS for larger ones. Test everything on the target before cutover, update your application's connection strings and drivers, and keep the old server running as a safety net if it is still available.
