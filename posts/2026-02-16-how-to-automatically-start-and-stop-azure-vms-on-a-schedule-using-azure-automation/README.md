@@ -45,7 +45,7 @@ foreach ($vm in $vms) {
 
     if ($powerState -eq 'VM running') {
         Write-Output "Stopping VM: $($vm.Name)"
-        # Use -Force to skip confirmation and -NoWait for parallel stop
+        # Use -Force to skip confirmation
         Stop-AzVM -ResourceGroupName $ResourceGroupName -Name $vm.Name -Force
         Write-Output "  Deallocated successfully"
         $stoppedCount++
@@ -94,43 +94,43 @@ Write-Output "Summary: Started $startedCount VMs"
 
 ### Create the Schedules
 
-```bash
+```powershell
 # Create the evening stop schedule - runs Monday-Friday at 7 PM
-az automation schedule create \
-  --resource-group rg-automation \
-  --automation-account-name aa-operations \
-  --name "Weekday-7PM-Stop" \
-  --frequency Week \
-  --interval 1 \
-  --start-time "2026-02-16T19:00:00" \
-  --time-zone "Eastern Standard Time" \
-  --description "Stop dev VMs at 7 PM on weekdays"
+New-AzAutomationSchedule `
+    -ResourceGroupName "rg-automation" `
+    -AutomationAccountName "aa-operations" `
+    -Name "Weekday-7PM-Stop" `
+    -StartTime "2026-02-16 19:00:00" `
+    -WeekInterval 1 `
+    -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday `
+    -TimeZone "Eastern Standard Time" `
+    -Description "Stop dev VMs at 7 PM on weekdays"
 
 # Create the morning start schedule - runs Monday-Friday at 7 AM
-az automation schedule create \
-  --resource-group rg-automation \
-  --automation-account-name aa-operations \
-  --name "Weekday-7AM-Start" \
-  --frequency Week \
-  --interval 1 \
-  --start-time "2026-02-17T07:00:00" \
-  --time-zone "Eastern Standard Time" \
-  --description "Start dev VMs at 7 AM on weekdays"
+New-AzAutomationSchedule `
+    -ResourceGroupName "rg-automation" `
+    -AutomationAccountName "aa-operations" `
+    -Name "Weekday-7AM-Start" `
+    -StartTime "2026-02-17 07:00:00" `
+    -WeekInterval 1 `
+    -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday `
+    -TimeZone "Eastern Standard Time" `
+    -Description "Start dev VMs at 7 AM on weekdays"
 ```
 
 Then link the schedules to the runbooks through the portal (Runbook > Schedules > Add a schedule), specifying the resource group name as a parameter.
 
 ## Approach 2: Tag-Based Start/Stop
 
-For larger environments with VMs spread across multiple resource groups, a tag-based approach is much more maintainable. Instead of hard-coding resource groups, you tag VMs with their desired schedule and the runbook dynamically discovers them.
+For larger environments with VMs spread across multiple resource groups, a tag-based approach is much more maintainable. Instead of hard-coding resource groups, you tag VMs for automatic management and the runbook dynamically discovers them.
 
 ### Tag Convention
 
 Add these tags to your VMs:
 
 - `AutoShutdown`: `true` - indicates this VM should be auto-managed
-- `ShutdownTime`: `19:00` - when to stop (optional, for fine-grained control)
-- `StartTime`: `07:00` - when to start (optional)
+- `ShutdownTime`: `19:00` - when to stop (optional, for documentation or future fine-grained logic)
+- `StartTime`: `07:00` - when to start (optional, for documentation or future fine-grained logic)
 
 ```bash
 # Tag a VM for auto-shutdown
@@ -233,17 +233,16 @@ if ($jobs.Count -gt 0) {
 For individual VMs, Azure has a built-in auto-shutdown feature that requires zero scripting:
 
 ```bash
-# Enable auto-shutdown on a single VM
+# Enable auto-shutdown on a single VM at 00:00 UTC
 # This uses the DevTest Labs shutdown schedule feature
 az vm auto-shutdown \
   --resource-group rg-dev \
   --name dev-api-server \
-  --time 1900 \
-  --timezone "Eastern Standard Time" \
+  --time 0000 \
   --email "dev-team@company.com"
 ```
 
-The limitation is that this only handles shutdown, not startup. And it works per VM, so managing it across dozens of VMs gets tedious. For anything beyond a handful of VMs, use the runbook approach.
+The limitation is that this only handles shutdown, not startup, and the Azure CLI `--time` value is specified in UTC. It also works per VM, so managing it across dozens of VMs gets tedious. For anything beyond a handful of VMs, use the runbook approach.
 
 ## Handling Exceptions
 
@@ -298,7 +297,7 @@ if ((Get-Date).DayOfWeek -in @('Saturday', 'Sunday')) {
 
 ## Calculating Your Savings
 
-A quick way to estimate savings: if a VM costs $200/month running 24/7 and you shut it down from 7 PM to 7 AM on weekdays plus all weekend, that is roughly 76% of the month it is off. Your savings would be approximately $152/month per VM. Multiply that across your dev and test fleet and the numbers add up quickly.
+A quick way to estimate savings: if a VM costs $200/month running 24/7 and you shut it down from 7 PM to 7 AM on weekdays plus all weekend, that is roughly 64% of the month it is off. Your savings would be approximately $128/month per VM. Multiply that across your dev and test fleet and the numbers add up quickly.
 
 ```bash
 # Quick way to check how much your running VMs cost per month
