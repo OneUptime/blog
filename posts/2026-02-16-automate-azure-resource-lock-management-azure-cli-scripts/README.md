@@ -122,7 +122,9 @@ Knowing what is and is not locked is just as important as applying locks. This s
 
 set -euo pipefail
 
-OUTPUT_FILE="lock-audit-report-$(date +%Y%m%d).csv"
+OUTPUT_DIR="lock-audit-report"
+OUTPUT_FILE="$OUTPUT_DIR/lock-audit-report-$(date +%Y%m%d).csv"
+mkdir -p "$OUTPUT_DIR"
 
 # CSV header
 echo "ResourceGroup,ResourceName,ResourceType,LockName,LockLevel,Notes" > "$OUTPUT_FILE"
@@ -131,26 +133,44 @@ echo "Generating lock audit report..."
 
 # Get all locks in the subscription
 locks_json=$(az lock list --query "[].{name:name, level:level, notes:notes, id:id}" -o json)
+echo "$locks_json" | python3 -c "
+import csv, json, re, sys
 
-# Get all resource group level locks
-resource_groups=$(az group list --query "[].name" -o tsv)
-for rg in $resource_groups; do
-    # Get locks at resource group level
-    rg_locks=$(az lock list \
-        --resource-group "$rg" \
-        --query "[].{name:name, level:level, notes:notes}" \
-        -o json 2>/dev/null || echo "[]")
-
-    lock_count=$(echo "$rg_locks" | python3 -c "import sys, json; print(len(json.load(sys.stdin)))")
-
-    if [ "$lock_count" -gt 0 ]; then
-        echo "$rg_locks" | python3 -c "
-import sys, json
 locks = json.load(sys.stdin)
+writer = csv.writer(open('$OUTPUT_FILE', 'a', newline=''))
+
 for lock in locks:
-    print(f\"$rg,ResourceGroup,Microsoft.Resources/resourceGroups,{lock['name']},{lock['level']},{lock.get('notes', '')}\")" >> "$OUTPUT_FILE"
-    fi
-done
+    lock_id = lock.get('id', '')
+    scope = re.sub(r'/providers/Microsoft.Authorization/locks/[^/]+$', '', lock_id)
+    parts = [p for p in scope.split('/') if p]
+
+    resource_group = ''
+    resource_name = 'Subscription'
+    resource_type = 'Microsoft.Resources/subscriptions'
+
+    if 'resourceGroups' in parts:
+        rg_index = parts.index('resourceGroups')
+        resource_group = parts[rg_index + 1]
+        resource_name = 'ResourceGroup'
+        resource_type = 'Microsoft.Resources/resourceGroups'
+
+        if 'providers' in parts[rg_index + 2:]:
+            provider_index = parts.index('providers', rg_index + 2)
+            namespace = parts[provider_index + 1]
+            type_parts = parts[provider_index + 2::2]
+            name_parts = parts[provider_index + 3::2]
+            resource_type = namespace + '/' + '/'.join(type_parts)
+            resource_name = '/'.join(name_parts)
+
+    writer.writerow([
+        resource_group,
+        resource_name,
+        resource_type,
+        lock.get('name', ''),
+        lock.get('level', ''),
+        lock.get('notes', '')
+    ])
+"
 
 echo "Report saved to: $OUTPUT_FILE"
 echo ""
@@ -253,12 +273,12 @@ echo "Tag-based lock application complete."
 
 ## Temporary Lock Removal for Maintenance
 
-Sometimes you need to temporarily remove locks for maintenance operations like scaling or configuration changes. This script removes locks, runs a maintenance command, and reapplies them.
+Sometimes you need to temporarily remove resource group-level locks for maintenance operations like scaling or configuration changes. This script removes locks, runs a maintenance command, and reapplies them.
 
 ```bash
 #!/bin/bash
 # maintenance-window.sh
-# Temporarily removes locks from a resource group, runs maintenance,
+# Temporarily removes resource group-level locks, runs maintenance,
 # and reapplies locks afterward
 
 set -euo pipefail
@@ -275,7 +295,7 @@ az lock list --resource-group "$RESOURCE_GROUP" -o json > "$LOCKS_BACKUP"
 lock_count=$(python3 -c "import json; print(len(json.load(open('$LOCKS_BACKUP'))))")
 echo "Found $lock_count locks to temporarily remove"
 
-# Remove all locks in the resource group
+# Remove all locks applied at the resource group scope
 az lock list --resource-group "$RESOURCE_GROUP" \
     --query "[].name" -o tsv | while read -r lock_name; do
     echo "Removing lock: $lock_name"
@@ -285,8 +305,10 @@ done
 echo "All locks removed. Running maintenance command..."
 
 # Run the maintenance command
+set +e
 eval "$MAINTENANCE_CMD"
 maintenance_exit_code=$?
+set -e
 
 echo "Maintenance command finished with exit code: $maintenance_exit_code"
 
@@ -306,7 +328,7 @@ for lock in locks:
         '--resource-group', '$RESOURCE_GROUP',
         '--lock-type', level,
         '--notes', notes
-    ])
+    ], check=True)
 "
 
 # Clean up backup file
@@ -341,13 +363,14 @@ steps:
     inputs:
       azureSubscription: "production-connection"
       scriptType: "bash"
+      scriptLocation: "scriptPath"
       scriptPath: "scripts/audit-locks.sh"
 
   - task: PublishBuildArtifacts@1
     displayName: "Publish Audit Report"
     inputs:
-      pathToPublish: "lock-audit-report-*.csv"
-      artifactName: "lock-audit"
+      PathtoPublish: "lock-audit-report"
+      ArtifactName: "lock-audit"
 ```
 
 ## Best Practices
