@@ -8,13 +8,13 @@ Description: A complete guide to implementing Service Control Policies in AWS Or
 
 ---
 
-Service Control Policies (SCPs) are the top-level security guardrails in AWS. They set the maximum permissions for every identity in an AWS account - including the root user. Unlike IAM policies that grant permissions, SCPs only restrict them. They're your organization's safety net, preventing anyone from doing things like disabling CloudTrail, leaving a region you don't operate in, or spinning up expensive instance types.
+Service Control Policies (SCPs) are the top-level security guardrails in AWS. They set the maximum permissions for every identity in a member AWS account - including the root user. Unlike IAM policies that grant permissions, SCPs only restrict them. They're your organization's safety net, preventing anyone from doing things like disabling CloudTrail, leaving a region you don't operate in, or spinning up expensive instance types.
 
 If you're running a multi-account AWS environment (and you should be), SCPs are essential. Let's go through how to create and apply them effectively.
 
 ## How SCPs Work
 
-SCPs are attached to organizational units (OUs) or individual accounts within AWS Organizations. They affect all IAM users and roles in those accounts - but they don't grant permissions themselves.
+SCPs are attached to the organization root, organizational units (OUs), or individual accounts within AWS Organizations. They affect all IAM users and roles in member accounts, except service-linked roles - but they don't grant permissions themselves.
 
 Think of it this way: IAM policies are the gas pedal. SCPs are the speed limiter. You can press the gas as hard as you want, but you can't go faster than the limiter allows.
 
@@ -41,7 +41,7 @@ aws organizations enable-policy-type \
   --policy-type SERVICE_CONTROL_POLICY
 ```
 
-By default, a `FullAWSAccess` policy is attached to every OU and account. This allows everything. SCPs work by restricting from this default.
+By default, a `FullAWSAccess` policy is attached to every root, OU, and account. This allows everything. SCPs work by restricting from this default.
 
 ## The Two SCP Strategies
 
@@ -155,9 +155,6 @@ Simple but important. If an attacker gains control of an account, they shouldn't
             "Condition": {
                 "StringNotEquals": {
                     "s3:x-amz-server-side-encryption": ["AES256", "aws:kms"]
-                },
-                "Null": {
-                    "s3:x-amz-server-side-encryption": "false"
                 }
             }
         },
@@ -188,7 +185,7 @@ Simple but important. If an attacker gains control of an account, they shouldn't
             "Action": "ec2:RunInstances",
             "Resource": "arn:aws:ec2:*:*:instance/*",
             "Condition": {
-                "ForAnyValue:StringLike": {
+                "StringLike": {
                     "ec2:InstanceType": [
                         "p4*",
                         "p5*",
@@ -278,13 +275,13 @@ resource "aws_organizations_policy_attachment" "production" {
 
 ## SCP Limits and Gotchas
 
-**Size limit:** Each SCP can be up to 5,120 characters. This fills up fast with complex policies. Use multiple smaller SCPs instead of one giant one.
+**Size limit:** Each SCP can be up to 10,240 characters. This fills up fast with complex policies. Use multiple smaller SCPs instead of one giant one.
 
 **Management account is exempt:** SCPs don't affect the management account (the one that created the organization). Never run workloads in the management account.
 
 **SCPs don't grant permissions:** They only restrict. You still need IAM policies to actually grant access.
 
-**Maximum 5 SCPs per target:** You can attach up to 5 SCPs to each OU or account (including the default FullAWSAccess). Plan your policies accordingly.
+**Maximum 10 SCPs per target:** You can attach up to 10 SCPs to each root, OU, or account (including the default FullAWSAccess). Plan your policies accordingly.
 
 **Inheritance:** SCPs are inherited down the OU tree. A deny at the root level affects every account in the organization. Be careful about what you apply at the root.
 
