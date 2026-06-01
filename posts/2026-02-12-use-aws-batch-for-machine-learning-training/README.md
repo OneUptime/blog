@@ -37,16 +37,23 @@ aws batch create-compute-environment \
     "allocationStrategy": "BEST_FIT_PROGRESSIVE",
     "minvCpus": 0,
     "maxvCpus": 256,
-    "instanceTypes": ["g5.xlarge", "g5.2xlarge", "g5.4xlarge", "g5.12xlarge", "p3.2xlarge", "p3.8xlarge"],
+    "instanceTypes": ["g5.xlarge", "g5.2xlarge", "g5.4xlarge", "g5.12xlarge", "g6.xlarge", "g6.2xlarge"],
     "subnets": ["subnet-0abc123", "subnet-0def456"],
     "securityGroupIds": ["sg-0abc123"],
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
     "ec2Configuration": [
-      {"imageType": "ECS_AL2_NVIDIA"}
+      {"imageType": "ECS_AL2023_NVIDIA"}
     ]
   }' \
   --service-role arn:aws:iam::123456789012:role/AWSBatchServiceRole \
   --state ENABLED
+
+# Create a job queue for the training jobs
+aws batch create-job-queue \
+  --job-queue-name ml-training-queue \
+  --state ENABLED \
+  --priority 10 \
+  --compute-environment-order order=1,computeEnvironment=ml-training-env
 ```
 
 For a detailed breakdown of GPU configuration, see our guide on [configuring AWS Batch for GPU workloads](https://oneuptime.com/blog/post/2026-02-12-configure-aws-batch-for-gpu-workloads/view).
@@ -84,7 +91,8 @@ COPY src/ /app/src/
 COPY configs/ /app/configs/
 
 WORKDIR /app
-ENTRYPOINT ["python3", "src/train.py"]
+ENTRYPOINT ["python3"]
+CMD ["src/train.py"]
 ```
 
 Push to ECR:
@@ -92,6 +100,8 @@ Push to ECR:
 ```bash
 # Build and push
 docker build -t ml-training .
+aws ecr describe-repositories --repository-names ml-training --region us-east-1 >/dev/null 2>&1 || \
+  aws ecr create-repository --repository-name ml-training --region us-east-1
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 docker tag ml-training:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/ml-training:latest
 docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/ml-training:latest
@@ -110,8 +120,19 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from datetime import datetime
+from urllib.parse import urlparse
+
+def load_sweep_config(s3, manifest_uri):
+    parsed = urlparse(manifest_uri)
+    manifest = json.loads(
+        s3.get_object(Bucket=parsed.netloc, Key=parsed.path.lstrip('/'))['Body'].read()
+    )
+    array_index = int(os.environ['AWS_BATCH_JOB_ARRAY_INDEX'])
+    return manifest[array_index]
 
 def main():
+    s3 = boto3.client('s3')
+
     # Read configuration from environment variables
     config = {
         'learning_rate': float(os.environ.get('LEARNING_RATE', '0.001')),
@@ -122,6 +143,9 @@ def main():
         's3_output_path': os.environ.get('S3_OUTPUT_PATH'),
         'job_id': os.environ.get('AWS_BATCH_JOB_ID', 'local'),
     }
+
+    if os.environ.get('SWEEP_MANIFEST'):
+        config.update(load_sweep_config(s3, os.environ['SWEEP_MANIFEST']))
 
     print(f"Training config: {json.dumps(config, indent=2)}")
 
@@ -134,7 +158,6 @@ def main():
         print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
 
     # Download training data from S3
-    s3 = boto3.client('s3')
     download_data(s3, config['s3_data_path'], '/tmp/data')
 
     # Create model and data loaders
@@ -184,6 +207,8 @@ def main():
             print(f"New best model saved (val accuracy: {val_accuracy:.2f}%)")
 
     # Upload model and metrics to S3
+    config['val_accuracy'] = best_val_accuracy
+    config['train_loss'] = avg_loss
     upload_results(s3, config['s3_output_path'], config)
     print(f"Training complete. Best validation accuracy: {best_val_accuracy:.2f}%")
 
@@ -336,7 +361,7 @@ aws batch register-job-definition \
     "linuxParameters": {
       "sharedMemorySize": 16384
     },
-    "command": ["--distributed", "--gpus", "4"]
+    "command": ["-m", "torch.distributed.run", "--standalone", "--nproc-per-node=4", "src/train.py", "--distributed"]
   }'
 ```
 
