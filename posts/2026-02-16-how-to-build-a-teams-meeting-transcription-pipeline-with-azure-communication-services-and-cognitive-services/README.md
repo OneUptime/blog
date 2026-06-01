@@ -10,7 +10,7 @@ Description: Build an automated meeting transcription pipeline that captures Tea
 
 Meeting transcription is one of those features that sounds simple but involves a surprising amount of plumbing. You need to capture the meeting audio, send it to a speech-to-text service, associate the text with speakers, format the output, and store it somewhere accessible. If you want to do this at scale for an organization, you need automation.
 
-In this guide, I will build a pipeline that captures audio from Microsoft Teams meetings using Azure Communication Services, transcribes it with Azure Cognitive Services Speech-to-Text, and stores the results for search and review.
+In this guide, I will build a pipeline that captures audio from Microsoft Teams meetings joined through Azure Communication Services, transcribes it with Azure Cognitive Services Speech-to-Text, and stores the results for search and review.
 
 ## Pipeline Architecture
 
@@ -27,11 +27,11 @@ graph TD
     H --> J[Azure Cognitive Search]
 ```
 
-When a meeting starts and recording is enabled, Azure Communication Services captures the audio. When the recording is saved to blob storage, an Event Grid event triggers an Azure Function that submits the audio to the Speech Service for batch transcription. The transcribed text is stored in Cosmos DB and indexed in Cognitive Search.
+After an Azure Communication Services participant or call workflow has joined the meeting and recording is started, Azure Communication Services captures the audio. When the recording is ready for download, an Event Grid event triggers an Azure Function that copies the recording into blob storage and submits the audio to the Speech Service for batch transcription. The transcribed text is stored in Cosmos DB and indexed in Cognitive Search.
 
 ## Setting Up Azure Communication Services
 
-Create the Communication Services resource and configure it for Teams integration:
+Create the Communication Services resource. Teams interoperability also depends on your Teams tenant and meeting settings; creating the resource does not by itself configure a Teams meeting:
 
 ```bash
 # Create Azure Communication Services resource
@@ -39,8 +39,8 @@ Create the Communication Services resource and configure it for Teams integratio
 az communication create \
   --name acs-meeting-transcription \
   --resource-group rg-transcription \
-  --location global \
-  --data-location unitedstates
+  --location "Global" \
+  --data-location "United States"
 
 # Get the connection string
 CONNECTION_STRING=$(az communication list-key \
@@ -51,7 +51,7 @@ CONNECTION_STRING=$(az communication list-key \
 
 ## Starting Call Recording
 
-When a Teams meeting begins, your application can start recording through the Call Recording API. This requires a server-side call to join the meeting and start recording:
+When a Teams meeting begins, your Azure Communication Services application can join the meeting through the Calling SDK. After the call exists, your server can start recording through the Call Recording API by using the `callConnectionId` or `serverCallId` for that call:
 
 ```csharp
 // Service that manages Teams meeting recording via Azure Communication Services
@@ -66,18 +66,18 @@ public class MeetingRecordingService
         _logger = logger;
     }
 
-    // Start recording a Teams meeting
-    public async Task<string> StartRecordingAsync(string meetingUrl)
+    // Start recording an active Azure Communication Services call
+    public async Task<string> StartRecordingAsync(
+        string callConnectionId,
+        Uri recordingStateCallbackUri)
     {
-        // Create a server call connection to the Teams meeting
-        var locator = new TeamsMeetingLinkLocator(meetingUrl);
-
         // Configure recording options
-        var recordingOptions = new StartRecordingOptions(new ServerCallLocator("serverCallId"))
+        var recordingOptions = new StartRecordingOptions(callConnectionId)
         {
             RecordingContent = RecordingContent.Audio, // Audio only for transcription
             RecordingChannel = RecordingChannel.Mixed, // Mix all participants
-            RecordingFormat = RecordingFormat.Wav       // WAV format for best quality
+            RecordingFormat = RecordingFormat.Wav,      // WAV format for best quality
+            RecordingStateCallbackUri = recordingStateCallbackUri
         };
 
         // Start the recording
@@ -142,7 +142,7 @@ public class RecordingEventHandler
 
         if (eventGridEvent.EventType == "Microsoft.Communication.RecordingFileStatusUpdated")
         {
-            var data = eventGridEvent.Data.ToObjectFromJson<RecordingFileStatusUpdatedEvent>();
+            var data = eventGridEvent.Data.ToObjectFromJson<AcsRecordingFileStatusUpdatedEventData>();
 
             if (data.RecordingStorageInfo?.RecordingChunks != null)
             {
@@ -156,7 +156,7 @@ public class RecordingEventHandler
                         "Recording chunk saved: {BlobUrl}", blobUrl);
 
                     // Trigger transcription
-                    await SubmitForTranscriptionAsync(blobUrl, data.RecordingId);
+                    await SubmitForTranscriptionAsync(blobUrl, eventGridEvent.Id);
                 }
             }
         }
