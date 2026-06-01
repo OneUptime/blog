@@ -69,8 +69,7 @@ aws route53profiles create-profile \
 aws route53profiles associate-resource-to-profile \
     --profile-id rp-0123456789abcdef0 \
     --name "internal-dns" \
-    --resource-arn "arn:aws:route53:::hostedzone/Z1234INTERNAL" \
-    --resource-properties '{"HostedZoneName": "internal.company.com"}'
+    --resource-arn "arn:aws:route53:::hostedzone/Z1234INTERNAL"
 ```
 
 This means that any VPC associated with this profile will automatically be able to resolve records in the internal.company.com private hosted zone.
@@ -82,6 +81,7 @@ Resolver rules tell Route 53 Resolver where to forward DNS queries for specific 
 ```bash
 # First, create a resolver rule if you do not have one
 aws route53resolver create-resolver-rule \
+    --creator-request-id "forward-onprem-20260212" \
     --name "forward-onprem" \
     --rule-type FORWARD \
     --domain-name "onprem.company.com" \
@@ -106,6 +106,7 @@ aws route53resolver create-firewall-rule-group \
 
 # Add rules to block specific domain lists
 aws route53resolver create-firewall-rule \
+    --creator-request-id "block-malware-20260212" \
     --firewall-rule-group-id rslvr-frg-0123456789abcdef0 \
     --firewall-domain-list-id rslvr-fdl-malware-list \
     --priority 100 \
@@ -118,7 +119,7 @@ aws route53profiles associate-resource-to-profile \
     --profile-id rp-0123456789abcdef0 \
     --name "dns-firewall" \
     --resource-arn "arn:aws:route53resolver:us-east-1:123456789012:firewall-rule-group/rslvr-frg-0123456789abcdef0" \
-    --resource-properties '{"Priority": 100}'
+    --resource-properties '{"priority": 100}'
 ```
 
 ## Step 3: Associate Profile with VPCs
@@ -128,18 +129,18 @@ aws route53profiles associate-resource-to-profile \
 aws route53profiles associate-profile \
     --profile-id rp-0123456789abcdef0 \
     --name "production-vpc" \
-    --resource-id vpc-production
+    --resource-id vpc-0aaa1111bbb2222cc
 
 # Associate with additional VPCs
 aws route53profiles associate-profile \
     --profile-id rp-0123456789abcdef0 \
     --name "development-vpc" \
-    --resource-id vpc-development
+    --resource-id vpc-0ddd3333eee4444ff
 
 aws route53profiles associate-profile \
     --profile-id rp-0123456789abcdef0 \
     --name "staging-vpc" \
-    --resource-id vpc-staging
+    --resource-id vpc-05555666677778888
 ```
 
 ## Sharing Profiles Across Accounts
@@ -165,7 +166,7 @@ aws route53profiles list-profiles
 aws route53profiles associate-profile \
     --profile-id rp-0123456789abcdef0 \
     --name "workload-vpc" \
-    --resource-id vpc-workload
+    --resource-id vpc-09999aaaabbbbcccc
 ```
 
 ## Managing Profile Updates
@@ -178,8 +179,7 @@ When you add or remove resources from a profile, the changes automatically propa
 aws route53profiles associate-resource-to-profile \
     --profile-id rp-0123456789abcdef0 \
     --name "new-service-dns" \
-    --resource-arn "arn:aws:route53:::hostedzone/Z5678NEWSERVICE" \
-    --resource-properties '{"HostedZoneName": "newservice.internal.company.com"}'
+    --resource-arn "arn:aws:route53:::hostedzone/Z5678NEWSERVICE"
 
 # Remove a resource from the profile
 aws route53profiles disassociate-resource-from-profile \
@@ -240,23 +240,23 @@ Profile: nonprod-dns
   - DNS Firewall: Moderate rules
 ```
 
-### Pattern 3: Layered Profiles
+### Pattern 3: Composed Profiles
 
-Base profile for all VPCs plus overlay profiles for specific needs:
+Include shared resources plus team-specific resources in the profile that applies to each VPC:
 
 ```text
-Profile: base-dns (applied to all VPCs)
+Profile: app-team-dns
   - DNS Firewall: Block malicious domains
   - Resolver Rule: Forward *.onprem.company.com
-
-Profile: app-team-dns (applied to app team VPCs)
   - Private HZ: app-services.internal.company.com
 
-Profile: data-team-dns (applied to data team VPCs)
+Profile: data-team-dns
+  - DNS Firewall: Block malicious domains
+  - Resolver Rule: Forward *.onprem.company.com
   - Private HZ: data-platform.internal.company.com
 ```
 
-Note: A VPC can only be associated with one profile. For layered configurations, include all required resources in the relevant profile.
+Note: A VPC can only be associated with one profile. For composed configurations, include all required resources in the relevant profile.
 
 ## Automation with Terraform
 
@@ -272,9 +272,6 @@ resource "aws_route53profiles_resource_association" "internal_hz" {
   profile_id   = aws_route53profiles_profile.standard.id
   name         = "internal-dns"
   resource_arn = aws_route53_zone.internal.arn
-  resource_properties = jsonencode({
-    HostedZoneName = "internal.company.com"
-  })
 }
 
 resource "aws_route53profiles_association" "production" {
