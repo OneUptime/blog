@@ -14,29 +14,29 @@ In this post, I will walk through how the data gateway works, how to install and
 
 ## How the On-Premises Data Gateway Works
 
-The gateway is a Windows service that you install on a machine inside your corporate network. It creates an outbound connection to Azure Service Bus, which acts as the relay. When a Logic App needs to access an on-premises resource, the request goes through Azure to the Service Bus relay, then down to the gateway, which executes the query or operation against your on-premises system and sends the result back.
+The gateway is a Windows service that you install on a machine inside your corporate network. It creates outbound connections to Azure Relay and Service Bus messaging, which act as the relay path. When a Logic App needs to access an on-premises resource, the request goes through Azure to the relay, then down to the gateway, which executes the query or operation against your on-premises system and sends the result back.
 
 ```mermaid
 graph LR
-    A[Azure Logic App] -->|HTTPS| B[Azure Service Bus Relay]
-    B -->|Outbound HTTPS from on-prem| C[On-Premises Data Gateway]
+    A[Azure Logic App] -->|Azure Relay / Service Bus messaging| B[Azure Relay]
+    B -->|Outbound connection from on-prem| C[On-Premises Data Gateway]
     C -->|Local Network| D[SQL Server]
     C -->|Local Network| E[File Share]
     C -->|Local Network| F[SAP System]
 ```
 
 Key points:
-- The gateway only makes outbound connections (HTTPS to Azure). No inbound firewall rules needed.
+- The gateway only makes outbound connections to Azure. No inbound firewall rules needed. Newer gateway installations default to HTTPS, and you can force HTTPS mode if your network requires it.
 - All data in transit is encrypted.
 - The gateway supports multiple concurrent Logic App connections.
 - One gateway installation can be used by multiple Logic Apps.
 
 ## Prerequisites
 
-- A machine running Windows Server 2016 or later (or Windows 10/11 for dev/test)
+- A machine running a 64-bit version of Windows Server 2019 or later (or 64-bit Windows 10/11 for dev/test)
 - .NET Framework 4.8 or later
 - The machine must have reliable network access to both your on-premises systems and the internet
-- At least 8 GB RAM and 2 CPU cores recommended
+- At least 8 GB RAM and 8 CPU cores recommended
 - A Microsoft work or school account (the same Azure AD tenant as your Azure subscription)
 
 ## Step 1: Install the Gateway Software
@@ -148,16 +148,20 @@ The gateway handles all the networking transparently. Your Logic App workflow do
 
 The on-premises data gateway supports these connectors in Logic Apps:
 
+- **Apache Impala** - connect to Impala data sources
 - **SQL Server** - query and modify data in on-premises SQL databases
 - **File System** - read, create, and manage files on network shares
-- **SharePoint** - interact with SharePoint on-premises lists and libraries
+- **HTTP with Microsoft Entra ID** - connect to HTTP endpoints that use Microsoft Entra ID
+- **SharePoint Server** - interact with SharePoint on-premises lists and libraries
 - **Oracle Database** - query Oracle databases
 - **SAP** - integrate with SAP ERP systems
 - **IBM DB2** - connect to DB2 databases
+- **IBM Informix** - connect to Informix databases
 - **IBM MQ** - send and receive messages from IBM MQ queues
 - **MySQL** - connect to on-premises MySQL databases
 - **PostgreSQL** - connect to on-premises PostgreSQL databases
 - **BizTalk Server** - integrate with BizTalk workflows
+- **Teradata** - connect to Teradata databases
 
 ## Working with the File System Connector
 
@@ -202,7 +206,7 @@ For production workloads, you do not want a single gateway machine as a point of
 
 When both are running, Logic Apps automatically distributes requests across them. If one goes down, all traffic routes to the other.
 
-You can add up to 7 machines to a single gateway cluster.
+You can add up to 10 machines to a single gateway cluster.
 
 ## Performance Tuning
 
@@ -218,9 +222,9 @@ The gateway machine should be dedicated to the gateway role. Do not run other he
 
 Place the gateway machine as close to the on-premises data source as possible. If your SQL Server is in a specific data center, run the gateway in that same data center, not across a WAN link.
 
-### Connection Pooling
+### Gateway Container Scaling
 
-The SQL Server connector reuses connections, but if you are running many concurrent workflows, you may need to increase the SQL Server connection pool size in the gateway configuration.
+Gateway releases starting in June 2019 automatically scale the container settings used by Logic Apps, Power Apps, Power Automate, and other workloads based on CPU capacity. If you manually tune these settings, adjust the gateway container settings in the gateway configuration file and monitor CPU and memory closely.
 
 ### Monitoring Gateway Health
 
@@ -230,19 +234,7 @@ Monitor the gateway through the portal:
 2. Select your gateway
 3. Check the status (online/offline), version, and cluster members
 
-Set up an alert so you know if the gateway goes offline:
-
-```bash
-# Create a simple availability check for the gateway
-# This queries the gateway resource status
-az monitor metrics alert create \
-  --resource-group rg-workflows \
-  --name "GatewayOffline" \
-  --scopes "/subscriptions/<sub-id>/resourceGroups/rg-workflows/providers/Microsoft.Web/connectionGateways/gw-datacenter-east" \
-  --description "Alert when on-premises data gateway goes offline" \
-  --condition "count status < 1" \
-  --action-group "/subscriptions/<sub-id>/resourceGroups/rg-monitoring/providers/Microsoft.Insights/actionGroups/ag-ops-team"
-```
+The Azure gateway resource exposes status in the portal, but it does not provide a built-in Azure Monitor metric named `status` that you can use directly in a metric alert. If you need alerting, monitor the gateway Windows service, use the gateway performance logs and admin monitoring tools, and alert on Logic App connector failures that depend on the gateway.
 
 ## Troubleshooting Common Issues
 
