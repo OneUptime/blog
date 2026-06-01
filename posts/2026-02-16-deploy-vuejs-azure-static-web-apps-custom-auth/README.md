@@ -8,13 +8,13 @@ Description: Deploy a Vue.js application to Azure Static Web Apps and implement 
 
 ---
 
-Vue.js applications benefit from the same Azure Static Web Apps features as React and Angular - global CDN, automatic deployments, and integrated APIs. But the authentication story deserves special attention. Azure Static Web Apps comes with built-in authentication providers (GitHub, Twitter, Azure AD), and you can also configure custom OpenID Connect providers. This means you can use Auth0, Okta, or any OIDC-compliant identity provider without writing authentication middleware yourself.
+Vue.js applications benefit from the same Azure Static Web Apps features as React and Angular - global CDN, automatic deployments, and integrated APIs. But the authentication story deserves special attention. Azure Static Web Apps comes with built-in authentication providers (GitHub and Microsoft Entra ID), and you can also configure custom OpenID Connect providers. This means you can use Auth0, Okta, or any OIDC-compliant identity provider without writing authentication middleware yourself.
 
 This guide covers deploying a Vue.js application with custom authentication, protected routes, and role-based access control.
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 20.19 or later, or Node.js 22.12 or later
 - Vue CLI or Vite
 - Azure account and CLI
 - GitHub account
@@ -53,7 +53,7 @@ sequenceDiagram
 
 ## Configuring the Custom Authentication Provider
 
-Create `staticwebapp.config.json` in your project root:
+Create `staticwebapp.config.json` in your project root. Custom authentication requires the Azure Static Web Apps Standard plan.
 
 ```json
 {
@@ -81,22 +81,22 @@ Create `staticwebapp.config.json` in your project root:
   "routes": [
     {
       "route": "/login",
-      "rewrite": "/.auth/login/auth0"
+      "redirect": "/.auth/login/auth0"
     },
     {
       "route": "/logout",
       "redirect": "/.auth/logout"
     },
     {
-      "route": "/admin/*",
+      "route": "/admin*",
       "allowedRoles": ["admin"]
     },
     {
-      "route": "/dashboard/*",
+      "route": "/dashboard*",
       "allowedRoles": ["authenticated"]
     },
     {
-      "route": "/api/admin/*",
+      "route": "/api/admin*",
       "allowedRoles": ["admin"]
     }
   ],
@@ -256,7 +256,8 @@ router.beforeEach(async (to) => {
 
     if (!data.clientPrincipal) {
       // Redirect to login if not authenticated
-      window.location.href = `/login?post_login_redirect_uri=${to.fullPath}`;
+      const redirectUri = new URL(to.fullPath, window.location.origin).toString();
+      window.location.href = `/login?post_login_redirect_uri=${encodeURIComponent(redirectUri)}`;
       return false;
     }
 
@@ -370,29 +371,36 @@ const { user, loading, userName, getClaim } = useAuth();
 
 ## Assigning Custom Roles
 
-Azure Static Web Apps lets you assign roles to users through the Azure portal or API. For programmatic role assignment, create an API endpoint:
+Azure Static Web Apps lets you assign roles to users through the Azure portal invitations system. For programmatic role assignment with custom authentication, configure a roles source function in `staticwebapp.config.json`:
+
+```json
+{
+  "auth": {
+    "rolesSource": "/api/GetRoles"
+  }
+}
+```
+
+Then create the matching API function. Static Web Apps calls this function after sign-in and expects a JSON response containing the custom roles to assign:
 
 ```javascript
-// api/src/functions/roles.js - Role assignment API
+// api/src/functions/getRoles.js - Role assignment function
 const { app } = require('@azure/functions');
 
-// Invitations endpoint for role assignment
-app.http('assignRole', {
+app.http('GetRoles', {
   methods: ['POST'],
   authLevel: 'anonymous',
-  route: 'admin/roles',
+  route: 'GetRoles',
   handler: async (request) => {
-    const { email, role } = await request.json();
+    const user = await request.json();
 
-    // In production, call the Azure Static Web Apps management API
-    // to create a role invitation
-    const managementUrl = `https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Web/staticSites/{site}/invitations`;
+    // Replace this with your own lookup against a database,
+    // claims, Microsoft Graph, or another authorization source.
+    const roles = user.userDetails === 'admin@example.com' ? ['admin'] : [];
 
-    // This is a simplified example
     return {
       jsonBody: {
-        success: true,
-        message: `Role ${role} assigned to ${email}`,
+        roles,
       },
     };
   },
@@ -416,6 +424,7 @@ az staticwebapp create \
   --source https://github.com/YOUR_USERNAME/vue-swa-auth \
   --location eastus \
   --branch main \
+  --sku Standard \
   --app-location "/" \
   --api-location "api" \
   --output-location "dist" \
@@ -424,4 +433,4 @@ az staticwebapp create \
 
 ## Wrapping Up
 
-Azure Static Web Apps gives Vue.js applications authentication without writing authentication code. The custom OpenID Connect provider support means you are not locked into Microsoft's identity providers - you can use Auth0, Okta, or any OIDC-compliant service. The route-level access control in `staticwebapp.config.json` protects both your frontend routes and API endpoints based on user roles. Combined with Vue Router's navigation guards for client-side protection, you get defense in depth without building an authentication system from scratch. The whole setup deploys automatically from GitHub, and staging environments let you test authentication flows on pull requests before merging to production.
+Azure Static Web Apps gives Vue.js applications authentication without writing authentication code. The custom OpenID Connect provider support means you are not locked into Microsoft's identity providers - you can use Auth0, Okta, or any OIDC-compliant service. The route-level access control in `staticwebapp.config.json` protects API endpoints and HTTP requests that match your route rules based on user roles. Combined with Vue Router's navigation guards for client-side protection, you get defense in depth without building an authentication system from scratch. The whole setup deploys automatically from GitHub, and staging environments let you test authentication flows on pull requests before merging to production.
