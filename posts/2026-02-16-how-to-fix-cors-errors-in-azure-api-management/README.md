@@ -137,11 +137,11 @@ Access-Control-Allow-Origin: https://myapp.com, https://myapp.com
 
 This is invalid and the browser rejects it. You need to pick one place to handle CORS - either APIM or the backend, not both.
 
-If you want APIM to handle CORS (recommended), tell your backend to stop adding CORS headers. Or use the `terminate-unmatched-request` attribute to have APIM handle preflight entirely without forwarding to the backend:
+If you want APIM to handle CORS (recommended), tell your backend to stop adding CORS headers. Put the `cors` policy at the API level or higher so APIM can answer matching preflight requests directly. You can also use the `terminate-unmatched-request` attribute to control what APIM does when the request origin, method, or headers do not match the policy:
 
 ```xml
-<!-- terminate-unmatched-request ensures APIM handles preflight directly -->
-<!-- without forwarding the OPTIONS request to the backend -->
+<!-- terminate-unmatched-request controls cross-origin requests -->
+<!-- that do not match the configured CORS policy -->
 <cors allow-credentials="true" terminate-unmatched-request="true">
     <allowed-origins>
         <origin>https://myapp.com</origin>
@@ -153,16 +153,18 @@ If you want APIM to handle CORS (recommended), tell your backend to stop adding 
         <method>DELETE</method>
     </allowed-methods>
     <allowed-headers>
-        <header>*</header>
+        <header>Content-Type</header>
+        <header>Authorization</header>
+        <header>Ocp-Apim-Subscription-Key</header>
     </allowed-headers>
 </cors>
 ```
 
 ### Mistake 4: Not Handling the OPTIONS Method
 
-Some APIM configurations have operations explicitly defined for GET, POST, PUT, etc. but not OPTIONS. When the browser sends a preflight OPTIONS request, APIM cannot match it to an operation and returns a 404 or 405.
+Some APIM configurations have operations explicitly defined for GET, POST, PUT, etc. but not OPTIONS. When the browser sends a preflight OPTIONS request and there is no API-level or higher `cors` policy, APIM might not match it to an operation and can return a 404 or 405.
 
-The `cors` policy with `terminate-unmatched-request="true"` handles this by intercepting the OPTIONS request before routing. But if you are not using that attribute, you might need to add an OPTIONS operation to your API or use a wildcard operation.
+An API-level or higher `cors` policy lets APIM handle matching preflight requests before the backend is called. If you explicitly define an OPTIONS operation, APIM treats it as custom preflight handling and the normal `cors` preflight logic will not run for that request.
 
 ### Mistake 5: Policy Scope Issues
 
@@ -183,22 +185,22 @@ Open the Network tab in your browser's developer tools. Look for the OPTIONS req
 
 ### Use APIM Tracing
 
-APIM has a built-in tracing feature that shows you exactly how policies are evaluated. Enable tracing by adding the `Ocp-Apim-Trace: true` header along with your subscription key.
+APIM has a built-in tracing feature that shows you exactly how policies are evaluated. The old `Ocp-Apim-Trace: true` header is no longer supported. For ad hoc debugging, use the Azure portal test console's **Trace** button, or generate a time-limited debug token with the API Management REST API and pass it in the `Apim-Debug-Authorization` header.
 
 ```bash
-# Send a request with tracing enabled
+# Send a request with tracing enabled after obtaining a debug token
 
-# The trace URL will be in the Ocp-Apim-Trace-Location response header
+# The trace ID will be in the Apim-Trace-Id response header
 curl -v -X OPTIONS \
   -H "Origin: https://myapp.com" \
   -H "Access-Control-Request-Method: POST" \
   -H "Access-Control-Request-Headers: Content-Type, Authorization" \
   -H "Ocp-Apim-Subscription-Key: your-subscription-key" \
-  -H "Ocp-Apim-Trace: true" \
+  -H "Apim-Debug-Authorization: your-debug-token" \
   https://myapi.azure-api.net/users
 ```
 
-The trace output shows you whether the CORS policy was triggered, what headers it added, and if it terminated the request or forwarded it to the backend.
+Use the returned trace ID with the gateway `listTrace` REST API to retrieve the trace output. The trace shows you whether the CORS policy was triggered, what headers it added, and if it terminated the request or forwarded it to the backend.
 
 ### Test Preflight Manually with curl
 
@@ -239,10 +241,14 @@ Here is a full APIM policy that handles CORS correctly for a typical single-page
                 <method>PATCH</method>
             </allowed-methods>
             <allowed-headers>
-                <header>*</header>
+                <header>Content-Type</header>
+                <header>Authorization</header>
+                <header>X-Requested-With</header>
+                <header>Ocp-Apim-Subscription-Key</header>
             </allowed-headers>
             <expose-headers>
-                <header>*</header>
+                <header>X-Total-Count</header>
+                <header>X-Page-Size</header>
             </expose-headers>
         </cors>
     </inbound>
@@ -260,4 +266,4 @@ Here is a full APIM policy that handles CORS correctly for a typical single-page
 
 ## Summary
 
-CORS errors in Azure API Management come down to three things: making sure the CORS policy exists, making sure it is at the right scope, and making sure the configuration matches what the browser expects. Use `terminate-unmatched-request="true"` to have APIM handle preflight requests directly. Do not let both APIM and your backend add CORS headers. And always test with browser dev tools and curl to verify the headers are correct before assuming the problem is elsewhere.
+CORS errors in Azure API Management come down to three things: making sure the CORS policy exists, making sure it is at the right scope, and making sure the configuration matches what the browser expects. Put the `cors` policy at the API level or higher so APIM can handle matching preflight requests directly. Do not let both APIM and your backend add CORS headers. And always test with browser dev tools and curl to verify the headers are correct before assuming the problem is elsewhere.
