@@ -26,21 +26,22 @@ Before diving in, let's cover the terminology:
 
 ## Getting Started from the Console
 
-Navigate to the VPC console and find "Network Access Analyzer" in the left sidebar. You'll see two options: "Network Access Scopes" and "Network Access Scope Analyses."
+Navigate to the Network Manager console and find "Network Access Analyzer" in the left sidebar. You'll see your Network Access Scopes and their analyses.
 
 First, create a scope. AWS provides several built-in scope templates:
 
-1. **AWS-VPC-Ingress** - Finds paths from internet gateways to your resources
-2. **AWS-VPC-Egress** - Finds paths from your resources to internet gateways
-3. **AWS-VPC-CrossVPC** - Finds paths between different VPCs
+1. **All-IGW-Ingress** - Finds inbound paths from internet gateways to network interfaces
+2. **AWS-IGW-Egress** - Finds outbound paths from network interfaces to internet gateways
+3. **AWS-VPC-Ingress** - Finds inbound paths from internet gateways, peering connections, VPC endpoints, VPNs, and transit gateways to VPCs
+4. **AWS-VPC-Egress** - Finds outbound paths from VPCs to internet gateways, peering connections, VPC endpoints, VPNs, and transit gateways
 
 You can also create custom scopes for more targeted analysis.
 
 ## Creating a Custom Scope
 
-Let's create a scope that identifies any network path from the internet to resources in private subnets. This is a common compliance requirement.
+Let's create a scope that identifies any network path from the internet to network interfaces. This is a common starting point for an internet exposure review.
 
-This scope definition looks for paths from internet gateways to any ENI, filtering by specific destination ports.
+This scope definition looks for paths from internet gateways to any ENI.
 
 ```json
 {
@@ -106,7 +107,7 @@ aws ec2 start-network-insights-access-scope-analysis \
   --network-insights-access-scope-id nis-0abc123def456789
 ```
 
-The analysis examines every VPC in the region and checks all possible paths against your scope conditions. This can take several minutes depending on the complexity of your network.
+The analysis examines supported network paths in the account and Region where you run it, and checks them against your scope conditions. This can take several minutes depending on the complexity of your network.
 
 ## Checking Results
 
@@ -118,7 +119,7 @@ This command gets all findings from the analysis, showing each network path that
 # Get analysis results
 aws ec2 get-network-insights-access-scope-analysis-findings \
   --network-insights-access-scope-analysis-id nisa-0abc123def456789 \
-  --max-results 50
+  --max-items 50
 ```
 
 Each finding includes the full path from source to destination, including every security group, route table, and NACL in between. This detail helps you understand exactly how the traffic flows and where to apply fixes.
@@ -334,7 +335,7 @@ This scope excludes paths that go through load balancers, since those are intent
 
 ## Pricing
 
-Network Access Analyzer charges based on the number of ENIs analyzed. The first analysis each month includes up to 1,000 ENIs free. After that, it's $0.002 per ENI per analysis. For a VPC with 500 ENIs, that's about $1 per analysis after the free tier.
+Network Access Analyzer charges based on the number of ENIs analyzed. AWS's pricing example uses $0.002 per ENI analysis: five assessments that each analyze 1,000 ENIs would cost $10.
 
 ## Best Practices
 
