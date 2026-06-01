@@ -8,19 +8,19 @@ Description: Deploy Python Azure Functions that use the Cosmos DB trigger to pro
 
 ---
 
-The Cosmos DB change feed is one of the most powerful features of Azure Cosmos DB. It provides an ordered log of every insert and update that happens in a container. When you combine it with Azure Functions, you get an event-driven processing pipeline where your code runs automatically every time data changes - no polling, no cron jobs, no infrastructure to manage.
+The Cosmos DB change feed is one of the most powerful features of Azure Cosmos DB. In the default latest-version mode used by Azure Functions triggers, it provides an ordered feed of inserts and updates that happen in a container. When you combine it with Azure Functions, you get an event-driven processing pipeline where your code runs automatically every time data changes - no polling, no cron jobs, no infrastructure to manage.
 
 In this post, we will build Python Azure Functions that process the Cosmos DB change feed for several real-world scenarios: materializing views, sending notifications, and syncing data to external systems.
 
 ## How the Change Feed Works
 
-Every time a document is created or updated in a Cosmos DB container, the change appears in the change feed. The feed is ordered by modification time within each partition. Azure Functions uses a lease container to track its position in the feed, so if your function goes down and comes back up, it picks up where it left off.
+When a document is created or updated in a Cosmos DB container, the latest version appears in the change feed. The feed is ordered by modification time within each partition. Azure Functions uses a lease container to track its position in the feed, so if your function goes down and comes back up, it picks up where it left off.
 
 Important details to know:
 
-- The change feed does not capture deletes (unless you enable soft delete)
+- The Azure Functions trigger reads the latest-version change feed, so deletes are not captured; use a soft-delete marker if your function needs to react to deletions
 - Each change contains the full document, not just the fields that changed
-- The feed is append-only and ordered per partition
+- The feed is ordered per partition
 - Multiple consumers can read the same feed independently using different lease containers
 
 ## Project Setup
@@ -28,16 +28,16 @@ Important details to know:
 ```bash
 # Create a new Azure Functions project
 
-func init cosmos-change-feed --python
+func init cosmos-change-feed --worker-runtime python --model V2
 cd cosmos-change-feed
 
 # Install dependencies
-pip install azure-functions azure-cosmos
+pip install azure-functions azure-cosmos requests
 ```
 
 ## Function 1: Materialize a View
 
-A common pattern is using the change feed to build a denormalized view of your data. For example, when an order is created or updated, update a customer summary document.
+A common pattern is using the change feed to build a denormalized view of your data. For example, when an order is created or updated, update a customer summary document with the recently changed orders from the current batch.
 
 ```python
 # function_app.py
@@ -63,11 +63,12 @@ app = func.FunctionApp()
     database_name="ECommerceDB",
     connection="CosmosDBConnection",
     create_if_not_exists=True,
+    partition_key="/customerId",
 )
 def materialize_customer_summary(documents: func.DocumentList, outputDoc: func.Out[func.Document]):
     """
     Triggered when orders are created or updated.
-    Materializes a customer summary document with order totals.
+    Materializes a customer summary document with recently changed orders.
     """
     if not documents:
         return
@@ -83,7 +84,7 @@ def materialize_customer_summary(documents: func.DocumentList, outputDoc: func.O
         if customer_id not in customer_updates:
             customer_updates[customer_id] = {
                 "orders": [],
-                "total_spent": 0,
+                "batch_total": 0,
             }
 
         customer_updates[customer_id]["orders"].append({
@@ -91,7 +92,7 @@ def materialize_customer_summary(documents: func.DocumentList, outputDoc: func.O
             "total": order.get("total", 0),
             "status": order.get("status", "unknown"),
         })
-        customer_updates[customer_id]["total_spent"] += order.get("total", 0)
+        customer_updates[customer_id]["batch_total"] += order.get("total", 0)
 
     # Write a summary document for each customer
     summaries = []
@@ -100,7 +101,7 @@ def materialize_customer_summary(documents: func.DocumentList, outputDoc: func.O
             "id": f"summary-{customer_id}",
             "customerId": customer_id,
             "recentOrders": data["orders"][-10:],  # Keep last 10 orders
-            "totalSpent": data["total_spent"],
+            "batchTotal": data["batch_total"],
             "lastUpdated": datetime.utcnow().isoformat(),
         }
         summaries.append(func.Document.from_dict(summary))
@@ -110,9 +111,9 @@ def materialize_customer_summary(documents: func.DocumentList, outputDoc: func.O
     logging.info(f"Updated summaries for {len(customer_updates)} customers")
 ```
 
-## Function 2: Send Notifications on Status Change
+## Function 2: Send Notifications for Status Values
 
-Trigger an email or push notification when an order status changes to "shipped" or "delivered".
+Trigger an email or push notification when an order appears in the feed with a status like "shipped" or "delivered".
 
 ```python
 @app.cosmos_db_trigger(
@@ -125,7 +126,7 @@ Trigger an email or push notification when an order status changes to "shipped" 
 )
 def send_order_notifications(documents: func.DocumentList):
     """
-    Watches for order status changes and sends notifications.
+    Watches for order status values and sends notifications.
     Uses a separate lease container so it processes the feed independently.
     """
     if not documents:
@@ -137,7 +138,7 @@ def send_order_notifications(documents: func.DocumentList):
         customer_id = order.get("customerId", "")
         order_id = order.get("id", "")
 
-        # Only send notifications for specific status changes
+        # Only send notifications for specific status values
         if status in ("shipped", "delivered", "cancelled"):
             notification = {
                 "customerId": customer_id,
@@ -217,13 +218,14 @@ def sync_to_search_index(documents: func.DocumentList):
 
         if search_endpoint:
             response = requests.post(
-                f"{search_endpoint}/indexes/products/docs/index",
+                f"{search_endpoint}/indexes('products')/docs/search.index?api-version=2025-09-01",
                 headers={
                     "Content-Type": "application/json",
                     "api-key": search_key,
                 },
                 json={"value": [{"@search.action": "mergeOrUpload", **doc} for doc in batch]},
             )
+            response.raise_for_status()
             logging.info(f"Search index response: {response.status_code}")
         else:
             logging.warning("SEARCH_ENDPOINT not configured, skipping sync")
@@ -259,6 +261,7 @@ az functionapp create \
   --runtime python \
   --runtime-version 3.11 \
   --functions-version 4 \
+  --os-type Linux \
   --name ecommerce-change-feed \
   --storage-account ecommercestorage
 
@@ -290,7 +293,8 @@ def process_with_dedup(documents):
     Process changes idempotently by checking a processed-events store.
     """
     for doc in documents:
-        event_id = f"{doc['id']}-{doc['_ts']}"  # Unique event identifier
+        item = doc.to_dict() if hasattr(doc, "to_dict") else doc
+        event_id = f"{item['id']}-{item['_ts']}"  # Unique event identifier
 
         # Check if we already processed this event
         if is_already_processed(event_id):
@@ -298,7 +302,7 @@ def process_with_dedup(documents):
             continue
 
         # Process the event
-        process_event(doc)
+        process_event(item)
 
         # Mark as processed
         mark_as_processed(event_id)
