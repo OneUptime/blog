@@ -79,8 +79,8 @@ Here is a policy JSON file that moves blobs through tiers and eventually deletes
             "blockBlob"
           ],
           "prefixMatch": [
-            "logs/",
-            "temp-data/"
+            "app-data/logs/",
+            "app-data/temp-data/"
           ]
         }
       }
@@ -155,7 +155,7 @@ resource lifecyclePolicy 'Microsoft.Storage/storageAccounts/managementPolicies@2
 
 You do not have to apply lifecycle rules to every blob in your account. Filters let you target specific subsets of data.
 
-**Prefix matching** lets you target blobs in specific containers or paths. For example, `logs/2024/` would only affect blobs under that path.
+**Prefix matching** lets you target blobs in specific containers or paths. The prefix must start with the container name. For example, `app-data/logs/2024/` would only affect blobs in the `app-data` container whose names start with `logs/2024/`.
 
 **Blob index tags** provide even more granular control. You can tag blobs with key-value pairs when you upload them, then write lifecycle rules that match on those tags.
 
@@ -197,7 +197,7 @@ For large storage accounts with millions of blobs, the process can take even lon
 
 ## Monitoring Policy Execution
 
-You can track what lifecycle management is doing through Azure Monitor. Enable diagnostic logging on your storage account and look for the `BlobTierChanged` and `BlobDeleted` events.
+You can track what lifecycle management is doing by subscribing to the `LifecyclePolicyCompleted` Event Grid event. You can also use Azure Monitor metrics and resource logs to diagnose failures, filtering for lifecycle operations such as `SetBlobTier` and `DeleteBlob` where the user agent is `ObjectLifeCycleScanner` or `OLCMScanner`.
 
 You can also check the `LastAccessTime` tracking property if you want to build rules based on when a blob was last read rather than when it was last modified. To use this, you need to enable last access time tracking on the storage account:
 
@@ -223,9 +223,9 @@ Then you can write rules using `daysAfterLastAccessTimeGreaterThan` instead of `
 
 Say you run an application that generates daily log files and weekly reports. You might set up a policy like this:
 
-- Log files (prefix `logs/`): Move to Cool after 7 days, Archive after 30 days, delete after 90 days
-- Reports (prefix `reports/`): Move to Cool after 30 days, Archive after 180 days, delete after 730 days (2 years)
-- Temp uploads (prefix `temp/`): Delete after 7 days
+- Log files (prefix `app-data/logs/`): Move to Cool after 7 days, Archive after 30 days, delete after 90 days
+- Reports (prefix `app-data/reports/`): Move to Cool after 30 days, Archive after 180 days, delete after 730 days (2 years)
+- Temp uploads (prefix `app-data/temp/`): Delete after 7 days
 
 This kind of tiered approach keeps your hot storage lean while preserving important data in cheaper tiers for as long as compliance or business needs require.
 
