@@ -31,6 +31,7 @@ The most basic check - is the file valid YAML or JSON?
 
 ```bash
 # Validate YAML syntax with Python
+# Requires PyYAML: pip install pyyaml
 
 python3 -c "import yaml; yaml.safe_load(open('template.yaml'))"
 
@@ -89,7 +90,7 @@ Template format error: Every Resources object must contain a Type member.
 Limitations of `validate-template`:
 - It doesn't check if resource property values are valid
 - It doesn't verify IAM permissions
-- It doesn't catch logical errors (wrong references, circular dependencies)
+- It doesn't catch every logical error (for example, circular dependencies)
 - Template must be under 51,200 bytes (or use S3)
 
 For templates larger than the direct upload limit:
@@ -137,10 +138,10 @@ Error levels:
 
 ### cfn-lint Configuration
 
-Create a `.cfn-lintrc` file for project-wide settings:
+Create a `.cfnlintrc` file for project-wide settings:
 
 ```yaml
-# .cfn-lintrc - cfn-lint configuration
+# .cfnlintrc - cfn-lint configuration
 templates:
   - templates/**/*.yaml
   - template.yaml
@@ -165,7 +166,7 @@ regions:
 
 ```bash
 # Only check for errors (skip warnings and info)
-cfn-lint template.yaml --include-checks E
+cfn-lint template.yaml --ignore-checks W I
 
 # Check a specific rule
 cfn-lint template.yaml --include-checks E3012
@@ -206,10 +207,12 @@ rule s3_encryption_required when %s3_buckets !empty {
 rule s3_no_public_access when %s3_buckets !empty {
     %s3_buckets.Properties.PublicAccessBlockConfiguration exists
     %s3_buckets.Properties.PublicAccessBlockConfiguration.BlockPublicAcls == true
+    %s3_buckets.Properties.PublicAccessBlockConfiguration.IgnorePublicAcls == true
     %s3_buckets.Properties.PublicAccessBlockConfiguration.BlockPublicPolicy == true
+    %s3_buckets.Properties.PublicAccessBlockConfiguration.RestrictPublicBuckets == true
 }
 
-# RDS instances must have encryption and multi-AZ in production
+# RDS instances must have storage encryption enabled
 let rds_instances = Resources.*[ Type == 'AWS::RDS::DBInstance' ]
 
 rule rds_encryption when %rds_instances !empty {
@@ -221,8 +224,10 @@ let security_groups = Resources.*[ Type == 'AWS::EC2::SecurityGroup' ]
 
 rule no_open_ssh when %security_groups !empty {
     %security_groups.Properties.SecurityGroupIngress[*] {
-        when FromPort == 22 or ToPort == 22 {
-            CidrIp != '0.0.0.0/0'
+        when FromPort <= 22 {
+            when ToPort >= 22 {
+                CidrIp != '0.0.0.0/0'
+            }
         }
     }
 }
@@ -247,6 +252,7 @@ aws cloudformation create-change-set \
   --stack-name my-app-stack \
   --template-body file://template.yaml \
   --change-set-name validation-check \
+  --change-set-type UPDATE \
   --parameters ParameterKey=Environment,ParameterValue=dev \
   --capabilities CAPABILITY_IAM
 
@@ -266,7 +272,9 @@ aws cloudformation delete-change-set \
   --change-set-name validation-check
 ```
 
-This catches issues that no linter can - like resource name conflicts, permission errors, and service limit violations. For more on change sets, see our [change sets guide](https://oneuptime.com/blog/post/2026-02-12-cloudformation-change-sets-safe-updates/view).
+For a new stack, use `--change-set-type CREATE` instead of `UPDATE`.
+
+This catches issues that no linter can - like insufficient capabilities, resource name conflicts, and some service quota issues. It still won't catch every runtime permission or service limit failure before execution. For more on change sets, see our [change sets guide](https://oneuptime.com/blog/post/2026-02-12-cloudformation-change-sets-safe-updates/view).
 
 ## CI/CD Pipeline Integration
 
@@ -300,12 +308,12 @@ jobs:
         run: |
           curl -Lo cfn-guard.tar.gz https://github.com/aws-cloudformation/cloudformation-guard/releases/latest/download/cfn-guard-v3-ubuntu-latest.tar.gz
           tar xzf cfn-guard.tar.gz
-          sudo mv cfn-guard /usr/local/bin/
+          sudo mv cfn-guard-v3-ubuntu-latest/cfn-guard /usr/local/bin/
 
       - name: Check policy compliance
         run: |
           cfn-guard validate \
-            --data templates/**/*.yaml \
+            --data templates \
             --rules policies/rules.guard
 
       - name: AWS CloudFormation validate
@@ -357,7 +365,7 @@ set -euo pipefail
 TEMPLATE="${1:?Usage: validate-cfn.sh TEMPLATE_FILE}"
 
 echo "=== Step 1: YAML Syntax ==="
-python3 -c "import yaml; yaml.safe_load(open('$TEMPLATE'))" && echo "PASS"
+python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$TEMPLATE" && echo "PASS"
 
 echo ""
 echo "=== Step 2: cfn-lint ==="
