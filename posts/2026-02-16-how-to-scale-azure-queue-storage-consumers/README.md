@@ -8,7 +8,7 @@ Description: Learn how to scale Azure Queue Storage consumers horizontally for h
 
 ---
 
-A single Azure Queue Storage consumer can process maybe a few hundred messages per second. That is fine for most workloads, but when you need to process thousands or tens of thousands of messages per second, you need to scale out. Azure Queue Storage is designed for this - it supports up to 20,000 messages per second per queue and allows unlimited concurrent consumers.
+A single Azure Queue Storage consumer can process maybe a few hundred messages per second. That is fine for most workloads, but when you need to process thousands or tens of thousands of messages per second, you need to scale out. Azure Queue Storage is designed for this - it supports up to 2,000 messages per second per queue and up to 20,000 messages per second per storage account for 1 KB messages, and allows many concurrent consumers.
 
 Scaling queue consumers is not just about adding more instances. You need to think about batch sizes, polling intervals, auto-scaling triggers, and how to avoid the various bottlenecks that appear at scale. This guide covers the practical aspects of building a high-throughput queue processing system.
 
@@ -78,7 +78,7 @@ class BatchQueueProcessor:
     def process_batch(self):
         """Receive and process a batch of messages."""
         messages = list(self.queue_client.receive_messages(
-            messages_per_page=self.batch_size,
+            max_messages=self.batch_size,
             visibility_timeout=self.visibility_timeout
         ))
 
@@ -158,7 +158,7 @@ class ParallelQueueProcessor:
         while True:
             # Receive a batch of messages
             messages = list(self.queue_client.receive_messages(
-                messages_per_page=32,
+                max_messages=32,
                 visibility_timeout=120
             ))
 
@@ -293,7 +293,7 @@ public class QueueProcessor
 }
 ```
 
-Azure Functions automatically scales to match queue depth. The scaling behavior is configured in the `host.json`:
+On elastic hosting plans such as Consumption and Premium, Azure Functions automatically scales based on queue depth. The queue trigger's per-instance polling and concurrency behavior is configured in the `host.json`:
 
 ```json
 {
@@ -455,7 +455,7 @@ If a single queue cannot handle your throughput (the 2,000 messages/second per-q
 import hashlib
 
 def get_queue_name(message_key, num_queues=4):
-    """Determine which queue a message should go to based on a consistent hash."""
+    """Determine which queue a message should go to based on a hash."""
     hash_value = int(hashlib.md5(message_key.encode()).hexdigest(), 16)
     queue_index = hash_value % num_queues
     return f"task-queue-{queue_index}"
@@ -467,7 +467,7 @@ for order in orders:
     queue_client.send_message(json.dumps(order))
 ```
 
-Each queue gets its own pool of consumers, effectively multiplying your throughput limit by the number of partitions.
+Each queue gets its own pool of consumers, effectively multiplying the per-queue throughput limit by the number of partitions until you reach the storage account throughput target.
 
 ## Monitoring at Scale
 
