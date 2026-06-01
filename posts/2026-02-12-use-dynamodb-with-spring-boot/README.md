@@ -20,12 +20,12 @@ Start by adding the AWS SDK dependencies to your `pom.xml`. We'll use the AWS SD
     <dependency>
         <groupId>software.amazon.awssdk</groupId>
         <artifactId>dynamodb</artifactId>
-        <version>2.25.16</version>
+        <version>2.44.12</version>
     </dependency>
     <dependency>
         <groupId>software.amazon.awssdk</groupId>
         <artifactId>dynamodb-enhanced</artifactId>
-        <version>2.25.16</version>
+        <version>2.44.12</version>
     </dependency>
     <dependency>
         <groupId>org.springframework.boot</groupId>
@@ -44,7 +44,9 @@ Create a configuration class that sets up the DynamoDB client and enhanced clien
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -67,7 +69,9 @@ public class DynamoDbConfig {
 
         // Allow endpoint override for local development with DynamoDB Local
         if (dynamoDbEndpoint != null && !dynamoDbEndpoint.isEmpty()) {
-            builder.endpointOverride(java.net.URI.create(dynamoDbEndpoint));
+            builder.endpointOverride(java.net.URI.create(dynamoDbEndpoint))
+                    .credentialsProvider(StaticCredentialsProvider.create(
+                            AwsBasicCredentials.create("dummy", "dummy")));
         }
 
         return builder.build();
@@ -184,7 +188,6 @@ Create a repository class that encapsulates all DynamoDB operations.
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.*;
 import software.amazon.awssdk.enhanced.dynamodb.model.*;
-import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 import java.time.Instant;
 import java.util.List;
@@ -247,11 +250,11 @@ public class UserRepository {
         return user;
     }
 
-    // Partial update using UpdateItem expression
+    // Partial update using UpdateItem
     public void updateEmail(String userId, String newEmail) {
         userTable.updateItem(UpdateItemEnhancedRequest.builder(User.class)
                 .item(buildPartialUser(userId, newEmail))
-                .ignoreNulls(true)  // Only update non-null fields
+                .ignoreNullsMode(IgnoreNullsMode.SCALAR_ONLY)  // Only update non-null scalar fields
                 .build());
     }
 
@@ -303,7 +306,7 @@ public class UserController {
     }
 
     @PostMapping
-    public ResponseEntity<User> createUser(@RequestBody CreateUserRequest request) {
+    public ResponseEntity<User> createUser(@RequestBody User request) {
         User user = new User();
         user.setName(request.getName());
         user.setEmail(request.getEmail());
@@ -349,7 +352,7 @@ For local development, use DynamoDB Local via Docker.
 docker run -d -p 8000:8000 amazon/dynamodb-local
 
 # Create the Users table locally
-aws dynamodb create-table \
+AWS_ACCESS_KEY_ID=dummy AWS_SECRET_ACCESS_KEY=dummy aws dynamodb create-table \
   --table-name Users \
   --attribute-definitions \
     AttributeName=user_id,AttributeType=S \
@@ -360,6 +363,7 @@ aws dynamodb create-table \
     'IndexName=email-index,KeySchema=[{AttributeName=email,KeyType=HASH}],Projection={ProjectionType=ALL}' \
     'IndexName=status-index,KeySchema=[{AttributeName=status,KeyType=HASH}],Projection={ProjectionType=ALL}' \
   --billing-mode PAY_PER_REQUEST \
+  --region us-east-1 \
   --endpoint-url http://localhost:8000
 ```
 
@@ -369,28 +373,31 @@ Add proper error handling for DynamoDB-specific exceptions.
 
 ```java
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.ProvisionedThroughputExceededException;
+import java.util.Collections;
+import java.util.Map;
 
 @RestControllerAdvice
 public class DynamoDbExceptionHandler {
 
     // Handle throttling - return 429 so clients can retry
     @ExceptionHandler(ProvisionedThroughputExceededException.class)
-    public ResponseEntity<ErrorResponse> handleThrottling(
+    public ResponseEntity<Map<String, String>> handleThrottling(
             ProvisionedThroughputExceededException ex) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                .body(new ErrorResponse("Service is busy, please retry"));
+                .body(Collections.singletonMap("message", "Service is busy, please retry"));
     }
 
     // Handle conditional check failures - return 409 Conflict
     @ExceptionHandler(ConditionalCheckFailedException.class)
-    public ResponseEntity<ErrorResponse> handleConflict(
+    public ResponseEntity<Map<String, String>> handleConflict(
             ConditionalCheckFailedException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new ErrorResponse("Item was modified by another request"));
+                .body(Collections.singletonMap("message", "Item was modified by another request"));
     }
 }
 ```
