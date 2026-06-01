@@ -268,7 +268,7 @@ Snapshots consume storage space and accumulate over time. Use lifecycle manageme
         },
         "filters": {
           "blobTypes": ["blockBlob"],
-          "prefixMatch": ["data/"]
+          "prefixMatch": ["mycontainer/data/"]
         }
       }
     }
@@ -276,7 +276,7 @@ Snapshots consume storage space and accumulate over time. Use lifecycle manageme
 }
 ```
 
-This automatically deletes snapshots older than 30 days for blobs under the `data/` prefix.
+This automatically deletes snapshots older than 30 days for blobs under the `data/` prefix in `mycontainer`.
 
 ## Snapshots vs. Versioning
 
@@ -287,7 +287,7 @@ This is a common point of confusion. Here is the key difference:
 | Trigger | Manual (you create them) | Automatic (on every write) |
 | Read-only | Yes | Yes (previous versions) |
 | Identified by | Timestamp | Version ID |
-| Cost | Only changed blocks | Only changed blocks |
+| Cost | Unique blocks/pages unless a tier is explicitly set | Unique blocks/pages unless a tier is explicitly set |
 | Cleanup | Manual or lifecycle policies | Lifecycle policies |
 
 **Use snapshots when:** You want explicit checkpoints at meaningful moments (before a migration, before a batch update, at the end of a business day).
@@ -298,7 +298,7 @@ You can use both features simultaneously. They work independently of each other.
 
 ## Snapshot Costs
 
-Snapshots are billed based on the unique data they hold. If a snapshot shares all its blocks with the base blob (because the base blob has not been modified since the snapshot), the snapshot costs almost nothing. As the base blob diverges from the snapshot, the snapshot starts holding unique blocks that count toward your storage bill.
+When the blob tier has not been explicitly set, snapshots are billed based on the unique data they hold. If a snapshot shares all its blocks with the base blob (because the base blob has not been modified since the snapshot), the snapshot adds little or no extra data storage cost. As the base blob diverges from the snapshot, the snapshot starts holding unique blocks that count toward your storage bill. If you explicitly set a tier on the base blob or snapshot, Azure may bill for the full content length of the object in that tier.
 
 You can estimate snapshot costs by looking at the incremental data between snapshots. Azure does not provide a direct "snapshot cost" metric, but you can track total storage capacity and subtract the base blob sizes.
 
