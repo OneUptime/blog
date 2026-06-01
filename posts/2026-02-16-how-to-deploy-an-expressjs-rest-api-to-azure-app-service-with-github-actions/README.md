@@ -352,14 +352,29 @@ graph LR
 For production applications, you want zero-downtime deployments. Deployment slots let you deploy to a staging environment, verify it works, and then swap it into production instantly.
 
 ```bash
+# Scale the App Service plan to a tier that supports deployment slots
+az appservice plan update \
+  --name task-api-plan \
+  --resource-group task-api-rg \
+  --sku S1
+
 # Create a staging deployment slot
 az webapp deployment slot create \
   --name my-task-api \
   --resource-group task-api-rg \
   --slot staging
+
+# Download the staging slot publish profile
+az webapp deployment list-publishing-profiles \
+  --name my-task-api \
+  --resource-group task-api-rg \
+  --slot staging \
+  --xml > publish-profile-staging.xml
 ```
 
 Update the GitHub Actions workflow to deploy to staging first, then swap.
+
+Add the staging publish profile as `AZURE_WEBAPP_PUBLISH_PROFILE_STAGING`. The swap step also needs Azure CLI authentication, so add a service principal secret named `AZURE_CREDENTIALS` or configure OIDC for `azure/login`.
 
 ```yaml
   deploy:
@@ -382,6 +397,12 @@ Update the GitHub Actions workflow to deploy to staging first, then swap.
           package: deploy.zip
           slot-name: staging
 
+      # Log in so the Azure CLI can swap slots
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       # Verify staging works
       - name: Verify Staging
         run: |
@@ -390,7 +411,7 @@ Update the GitHub Actions workflow to deploy to staging first, then swap.
 
       # Swap staging to production
       - name: Swap to Production
-        uses: azure/CLI@v1
+        uses: azure/cli@v2
         with:
           inlineScript: |
             az webapp deployment slot swap \
