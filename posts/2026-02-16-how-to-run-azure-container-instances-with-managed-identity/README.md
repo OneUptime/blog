@@ -10,7 +10,7 @@ Description: How to assign and use managed identities with Azure Container Insta
 
 Running containers that need to access other Azure services - storage accounts, Key Vault, databases, message queues - traditionally means embedding credentials in your container configuration. This is a security risk. Credentials in environment variables can be leaked through logs, process listings, or compromised containers.
 
-Managed Identity solves this by giving your container group an identity in Azure Active Directory. Your container can then request access tokens from the Azure metadata service and use them to authenticate to any Azure service that supports AAD authentication. No credentials stored anywhere.
+Managed Identity solves this by giving your container group an identity in Microsoft Entra ID. Your container can then request access tokens from the Azure metadata service and use them to authenticate to any Azure service that supports Microsoft Entra authentication. No credentials stored anywhere.
 
 This post covers how to set up managed identities for ACI, use them to access various Azure services, and handle the practical details.
 
@@ -33,7 +33,7 @@ Use system-assigned for simple cases where the identity lifecycle matches the co
 az container create \
     --resource-group my-resource-group \
     --name my-container \
-    --image myregistry.azurecr.io/my-app:latest \
+    --image mcr.microsoft.com/azuredocs/aci-helloworld:latest \
     --cpu 1 \
     --memory 2 \
     --assign-identity \
@@ -63,7 +63,7 @@ properties:
   containers:
     - name: app
       properties:
-        image: myregistry.azurecr.io/my-app:latest
+        image: mcr.microsoft.com/azuredocs/aci-helloworld:latest
         resources:
           requests:
             cpu: 1.0
@@ -108,7 +108,7 @@ PRINCIPAL_ID=$(az identity show \
 az container create \
     --resource-group my-resource-group \
     --name my-container \
-    --image myregistry.azurecr.io/my-app:latest \
+    --image mcr.microsoft.com/azuredocs/aci-helloworld:latest \
     --cpu 1 \
     --memory 2 \
     --assign-identity $IDENTITY_ID \
@@ -131,7 +131,7 @@ properties:
   containers:
     - name: app
       properties:
-        image: myregistry.azurecr.io/my-app:latest
+        image: mcr.microsoft.com/azuredocs/aci-helloworld:latest
         resources:
           requests:
             cpu: 1.0
@@ -209,6 +209,16 @@ az role assignment create \
     --assignee $PRINCIPAL_ID \
     --role "AcrPull" \
     --scope $ACR_ID
+
+# When deploying an image from ACR, also tell ACI which identity to use for the pull
+az container create \
+    --resource-group my-resource-group \
+    --name my-container \
+    --image myregistry.azurecr.io/my-app:latest \
+    --assign-identity $IDENTITY_ID \
+    --acr-identity $IDENTITY_ID \
+    --ports 8080 \
+    --ip-address Public
 ```
 
 ## Using Managed Identity in Application Code
@@ -348,7 +358,7 @@ properties:
   containers:
     - name: app
       properties:
-        image: myregistry.azurecr.io/my-app:latest
+        image: mcr.microsoft.com/azuredocs/aci-helloworld:latest
         resources:
           requests:
             cpu: 1.0
@@ -359,7 +369,7 @@ type: Microsoft.ContainerInstance/containerGroups
 
 ## Getting a Token Manually
 
-If you are not using the Azure SDK, you can request a token directly from the IMDS endpoint:
+If you are not using the Azure SDK in a Linux container, you can request a token directly from the IMDS endpoint:
 
 ```bash
 # From inside the container, request a token for Azure Key Vault
@@ -404,7 +414,7 @@ Role assignments can take a few minutes to propagate. If you just created the as
 
 ### Token request times out
 
-Make sure the container can reach the IMDS endpoint at `169.254.169.254`. This should work automatically in ACI, but VNet configurations or custom DNS settings might interfere.
+For Linux containers, make sure the container can reach the IMDS endpoint at `169.254.169.254`. This should work automatically in ACI, but VNet configurations or custom DNS settings might interfere. Windows containers use the `IDENTITY_ENDPOINT` and `IDENTITY_HEADER` environment variables instead of IMDS.
 
 ## Summary
 
