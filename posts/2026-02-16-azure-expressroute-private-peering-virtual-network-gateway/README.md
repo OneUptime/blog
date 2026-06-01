@@ -101,8 +101,8 @@ az network express-route peering create \
 Here is what each parameter means:
 
 - `--peer-asn 65001`: The BGP Autonomous System Number (ASN) of your on-premises network. This must be a private ASN (64512-65534 for 16-bit) unless you own a public ASN.
-- `--primary-peer-subnet 172.16.0.0/30`: A /30 subnet for the primary BGP link. Azure uses .1, your router uses .2.
-- `--secondary-peer-subnet 172.16.0.4/30`: A /30 subnet for the secondary (redundant) BGP link. Same allocation - Azure gets .5, you get .6.
+- `--primary-peer-subnet 172.16.0.0/30`: A /30 subnet for the primary BGP link. Your router uses .1, Azure uses .2.
+- `--secondary-peer-subnet 172.16.0.4/30`: A /30 subnet for the secondary (redundant) BGP link. Same allocation - your router gets .5, Azure gets .6.
 - `--vlan-id 100`: The VLAN tag for this peering. Coordinate this with your connectivity provider.
 - `--shared-key`: Optional MD5 authentication key for the BGP session.
 
@@ -134,22 +134,21 @@ The GatewaySubnet for ExpressRoute should be at least /27. Microsoft recommends 
 Create the virtual network gateway with the ExpressRoute type.
 
 ```bash
-# Create a public IP for the gateway (required even for private peering)
-az network public-ip create \
-  --resource-group rg-expressroute \
-  --name pip-ergw \
-  --sku Standard \
-  --allocation-method Static
-
 # Create the ExpressRoute gateway (takes 30-45 minutes)
+# Azure automatically creates and manages the required public IP
 az network vnet-gateway create \
   --resource-group rg-expressroute \
   --name ergw-main \
   --vnet vnet-main \
-  --public-ip-address pip-ergw \
   --gateway-type ExpressRoute \
   --sku ErGw1AZ \
   --no-wait
+
+# Wait for the gateway deployment to complete
+az network vnet-gateway wait \
+  --resource-group rg-expressroute \
+  --name ergw-main \
+  --created
 ```
 
 The `--sku ErGw1AZ` is the zone-redundant Standard SKU. Available SKUs are:
@@ -158,7 +157,7 @@ The `--sku ErGw1AZ` is the zone-redundant Standard SKU. Available SKUs are:
 - **High Performance (ErGw2AZ)**: Up to 2 Gbps, for bandwidth-intensive scenarios
 - **Ultra Performance (ErGw3AZ)**: Up to 10 Gbps, for extreme throughput requirements
 
-Choose the SKU based on your bandwidth needs. The gateway can be resized later without downtime (upgrading only, not downgrading).
+Choose the SKU based on your bandwidth needs. The gateway can be upgraded later without downtime within the same SKU family. Downgrades or switching between availability-zone and non-availability-zone gateway families requires deleting and recreating the gateway.
 
 ## Step 5: Connect the Gateway to the ExpressRoute Circuit
 
@@ -194,7 +193,7 @@ az network express-route peering show \
   --resource-group rg-expressroute \
   --circuit-name er-circuit-main \
   --name AzurePrivatePeering \
-  --query "{state:state, primaryPeerState:primaryAzurePort, secondaryPeerState:secondaryAzurePort}" \
+  --query "{provisioningState:provisioningState, peerAsn:peerAsn, vlanId:vlanId}" \
   --output table
 
 # Check the connection status
@@ -205,7 +204,7 @@ az network vpn-connection show \
   --output tsv
 ```
 
-The peering state should be "Connected" and the connection status should also show "Connected."
+The peering provisioning state should be "Succeeded" and the connection status should show "Connected."
 
 ## Verify BGP Route Learning
 
@@ -226,7 +225,7 @@ You should see your on-premises network prefixes in the learned routes. Similarl
 az network vnet-gateway list-advertised-routes \
   --resource-group rg-expressroute \
   --name ergw-main \
-  --peer 172.16.0.2 \
+  --peer 172.16.0.1 \
   --output table
 ```
 
@@ -265,16 +264,16 @@ Set up monitoring to track circuit health and bandwidth usage.
 
 ```bash
 # Check circuit statistics including bandwidth usage
-az network express-route show \
-  --resource-group rg-expressroute \
-  --name er-circuit-main \
-  --query "serviceProviderProperties" \
-  --output table
-
-# Get ARP table to verify Layer 2 connectivity
 az network express-route get-stats \
   --resource-group rg-expressroute \
   --name er-circuit-main
+
+# Get ARP table to verify Layer 2 connectivity
+az network express-route list-arp-tables \
+  --resource-group rg-expressroute \
+  --name er-circuit-main \
+  --path primary \
+  --peering-name AzurePrivatePeering
 ```
 
 ## Troubleshooting
