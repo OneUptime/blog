@@ -72,11 +72,13 @@ SSH into your instance and install OpenVPN along with Easy-RSA for certificate m
 Install the required packages:
 
 ```bash
-# Install EPEL repository (for OpenVPN on Amazon Linux)
-sudo yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+# Install packages on Amazon Linux 2023
+sudo dnf install -y openvpn iptables-services curl openssl tar
 
-# Install OpenVPN and Easy-RSA
-sudo yum install -y openvpn easy-rsa
+# Install Easy-RSA from the upstream OpenVPN release
+curl -LO https://github.com/OpenVPN/easy-rsa/releases/download/v3.2.6/EasyRSA-3.2.6.tgz
+tar xzf EasyRSA-3.2.6.tgz
+mv EasyRSA-3.2.6 ~/easy-rsa
 
 # On Ubuntu:
 # sudo apt install -y openvpn easy-rsa
@@ -89,9 +91,6 @@ VPN security relies on certificates. Easy-RSA provides the tools to create and m
 Initialize the PKI and create certificates:
 
 ```bash
-# Set up Easy-RSA
-mkdir -p ~/easy-rsa
-ln -s /usr/share/easy-rsa/3/* ~/easy-rsa/
 cd ~/easy-rsa
 
 # Initialize the PKI
@@ -120,7 +119,9 @@ Create the server configuration file.
 Write the OpenVPN server config:
 
 ```bash
-sudo cat > /etc/openvpn/server/server.conf << 'EOF'
+sudo mkdir -p /etc/openvpn/server /var/log/openvpn
+
+sudo tee /etc/openvpn/server/server.conf > /dev/null << 'EOF'
 # Server network settings
 port 1194
 proto udp
@@ -150,7 +151,7 @@ push "route 10.0.0.0 255.255.0.0"
 keepalive 10 120
 
 # Encryption settings
-cipher AES-256-GCM
+data-ciphers AES-256-GCM
 auth SHA256
 
 # Run as unprivileged user
@@ -169,9 +170,6 @@ verb 3
 # Max clients
 max-clients 20
 EOF
-
-# Create log directory
-sudo mkdir -p /var/log/openvpn
 ```
 
 ## Enabling IP Forwarding and NAT
@@ -185,11 +183,11 @@ Enable forwarding and NAT:
 sudo sysctl -w net.ipv4.ip_forward=1
 echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-vpn.conf
 
-# Set up NAT with iptables
-sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
+# Set up NAT for internet-bound VPN traffic. Adjust the VPC CIDR if needed.
+PRIMARY_IF=$(ip route show default | awk '{print $5; exit}')
+sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 ! -d 10.0.0.0/16 -o "$PRIMARY_IF" -j MASQUERADE
 
 # Make iptables rules persistent
-sudo yum install -y iptables-services
 sudo service iptables save
 sudo systemctl enable iptables
 ```
@@ -232,6 +230,7 @@ Build a complete .ovpn file that clients can import directly into their VPN clie
 Create a script to generate client configs:
 
 ```bash
+cat > /home/ec2-user/make-client-config.sh << 'SCRIPT'
 #!/bin/bash
 # /home/ec2-user/make-client-config.sh
 # Usage: ./make-client-config.sh client_name
@@ -253,7 +252,7 @@ nobind
 persist-key
 persist-tun
 remote-cert-tls server
-cipher AES-256-GCM
+data-ciphers AES-256-GCM
 auth SHA256
 key-direction 1
 verb 3
@@ -276,6 +275,7 @@ $(cat $PKI_DIR/ta.key)
 EOF
 
 echo "Client config created: $OUTPUT_DIR/$CLIENT.ovpn"
+SCRIPT
 ```
 
 Generate the config:
@@ -341,13 +341,13 @@ Check connected clients:
 sudo cat /var/log/openvpn/openvpn-status.log
 
 # Count active connections
-grep "^10.8.0" /var/log/openvpn/openvpn-status.log | wc -l
+grep -c "^CLIENT_LIST" /var/log/openvpn/openvpn-status.log
 ```
 
 Set up log rotation:
 
 ```bash
-sudo cat > /etc/logrotate.d/openvpn << 'EOF'
+sudo tee /etc/logrotate.d/openvpn > /dev/null << 'EOF'
 /var/log/openvpn/*.log {
     weekly
     missingok
@@ -365,4 +365,4 @@ For comprehensive VPN server monitoring, including connection counts, bandwidth 
 
 ## Wrapping Up
 
-Running your own OpenVPN server on EC2 gives you a secure, controlled VPN that you fully own. The setup involves creating a PKI, configuring the server, enabling NAT, and generating client configurations. The whole thing runs comfortably on a t3.micro instance and costs under $10/month. For teams that need secure access to AWS resources or a reliable VPN for remote work, it's a great self-hosted alternative to commercial VPN services.
+Running your own OpenVPN server on EC2 gives you a secure, controlled VPN that you fully own. The setup involves creating a PKI, configuring the server, enabling NAT, and generating client configurations. The whole thing runs comfortably on a t3.micro instance and usually costs around $10-12/month before data transfer, depending on the Region and public IPv4 charges. For teams that need secure access to AWS resources or a reliable VPN for remote work, it's a great self-hosted alternative to commercial VPN services.
