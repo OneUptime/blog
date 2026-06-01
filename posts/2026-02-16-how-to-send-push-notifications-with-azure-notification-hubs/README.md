@@ -64,16 +64,9 @@ Before you can send notifications, you need to configure the credentials for eac
 
 ### Configuring FCM for Android
 
-You need a Firebase project and its server key.
+You need a Firebase project and FCM v1 credentials from a Firebase service account. The older FCM legacy server key APIs are retired, so new hubs should use FCM v1 credentials.
 
-```bash
-# Configure FCM credentials
-az notification-hub credential gcm update \
-  --notification-hub-name my-notification-hub \
-  --namespace-name my-notification-ns \
-  --resource-group rg-notifications \
-  --google-api-key "YOUR_FCM_SERVER_KEY"
-```
+In the Azure portal, open the notification hub, go to Platform notification settings, select the FCM v1 option, and provide the Firebase service account project ID, client email, and private key.
 
 ### Configuring APNs for iOS
 
@@ -85,11 +78,11 @@ az notification-hub credential apns update \
   --notification-hub-name my-notification-hub \
   --namespace-name my-notification-ns \
   --resource-group rg-notifications \
-  --apns-certificate "YOUR_P8_KEY_CONTENT" \
+  --token "YOUR_P8_KEY_CONTENT" \
   --key-id "YOUR_KEY_ID" \
   --app-id "YOUR_TEAM_ID" \
   --app-name "YOUR_BUNDLE_ID" \
-  --endpoint "https://api.push.apple.com"
+  --endpoint "https://api.push.apple.com:443/3/device"
 ```
 
 ## Step 3: Register Devices
@@ -109,16 +102,10 @@ const client = new NotificationHubsClient(connectionString, hubName);
 
 // Register an Android device
 async function registerAndroidDevice(fcmToken, userId) {
-  const registration = {
+  const result = await client.createRegistration({
+    kind: 'FcmV1',
     // The FCM registration token from the device
-    gcmRegistrationId: fcmToken,
-    // Tags for targeting this device later
-    tags: [`user:${userId}`, 'platform:android']
-  };
-
-  const result = await client.createOrUpdateRegistration({
-    kind: 'Gcm',
-    gcmRegistrationId: fcmToken,
+    fcmV1RegistrationId: fcmToken,
     tags: [`user:${userId}`, 'platform:android']
   });
 
@@ -128,7 +115,7 @@ async function registerAndroidDevice(fcmToken, userId) {
 
 // Register an iOS device
 async function registerIosDevice(deviceToken, userId) {
-  const result = await client.createOrUpdateRegistration({
+  const result = await client.createRegistration({
     kind: 'Apple',
     deviceToken: deviceToken,
     tags: [`user:${userId}`, 'platform:ios']
@@ -147,7 +134,11 @@ Now comes the fun part. Let us send a notification to all registered devices.
 
 ```javascript
 // send-notification.js - Send push notifications through Notification Hubs
-const { NotificationHubsClient } = require('@azure/notification-hubs');
+const {
+  createAppleNotification,
+  createFcmV1Notification,
+  NotificationHubsClient
+} = require('@azure/notification-hubs');
 
 const connectionString = process.env.NOTIFICATION_HUB_CONNECTION_STRING;
 const hubName = 'my-notification-hub';
@@ -155,25 +146,24 @@ const client = new NotificationHubsClient(connectionString, hubName);
 
 // Send a notification to all Android devices
 async function sendAndroidNotification(title, body) {
-  const notification = {
-    body: JSON.stringify({
-      notification: {
-        title: title,
-        body: body
-      },
-      data: {
-        // Custom data payload that your app can process
-        action: 'open_dashboard',
-        priority: 'high'
+  const notification = createFcmV1Notification({
+    body: {
+      message: {
+        notification: {
+          title: title,
+          body: body
+        },
+        data: {
+          // Custom data payload that your app can process
+          action: 'open_dashboard',
+          priority: 'high'
+        }
       }
-    }),
-    headers: {
-      'Content-Type': 'application/json'
     }
-  };
+  });
 
-  const result = await client.sendNotification(
-    { kind: 'Gcm', ...notification },
+  const result = await client.sendBroadcastNotification(
+    notification,
     { enableTestSend: false }
   );
 
@@ -183,8 +173,8 @@ async function sendAndroidNotification(title, body) {
 
 // Send a notification to all iOS devices
 async function sendIosNotification(title, body) {
-  const notification = {
-    body: JSON.stringify({
+  const notification = createAppleNotification({
+    body: {
       aps: {
         alert: {
           title: title,
@@ -195,15 +185,15 @@ async function sendIosNotification(title, body) {
       },
       // Custom data for your app
       action: 'open_dashboard'
-    }),
+    },
     headers: {
       'apns-priority': '10',
       'apns-push-type': 'alert'
     }
-  };
+  });
 
-  const result = await client.sendNotification(
-    { kind: 'Apple', ...notification },
+  const result = await client.sendBroadcastNotification(
+    notification,
     { enableTestSend: false }
   );
 
@@ -222,15 +212,17 @@ Sending to all devices is fine for broadcast messages, but usually you want to t
 ```javascript
 // targeted-send.js - Send notifications to specific tags
 async function sendToUser(userId, title, body) {
-  const notification = {
-    body: JSON.stringify({
-      notification: { title, body }
-    })
-  };
+  const notification = createFcmV1Notification({
+    body: {
+      message: {
+        notification: { title, body }
+      }
+    }
+  });
 
   // Send to all devices registered with this user's tag
   const result = await client.sendNotification(
-    { kind: 'Gcm', ...notification },
+    notification,
     { tagExpression: `user:${userId}` }
   );
 
@@ -239,16 +231,21 @@ async function sendToUser(userId, title, body) {
 
 // Send to multiple tags with boolean expressions
 async function sendToTeam(team, title, body) {
-  const notification = {
-    body: JSON.stringify({
-      notification: { title, body }
-    })
-  };
+  const notification = createFcmV1Notification({
+    body: {
+      message: {
+        notification: {
+          title: title,
+          body: body
+        }
+      }
+    }
+  });
 
   // Tag expressions support AND (&&), OR (||), and NOT (!)
   // This sends to users who are in the engineering team AND on Android
   const result = await client.sendNotification(
-    { kind: 'Gcm', ...notification },
+    notification,
     { tagExpression: `team:${team} && platform:android` }
   );
 
@@ -263,18 +260,20 @@ During development, enable test send to get detailed feedback about the delivery
 ```javascript
 // test-send.js - Use test send mode for debugging
 async function testSend() {
-  const notification = {
-    body: JSON.stringify({
-      notification: {
-        title: 'Test',
-        body: 'This is a test notification'
+  const notification = createFcmV1Notification({
+    body: {
+      message: {
+        notification: {
+          title: 'Test',
+          body: 'This is a test notification'
+        }
       }
-    })
-  };
+    }
+  });
 
   // enableTestSend: true limits delivery to 10 devices but returns detailed results
-  const result = await client.sendNotification(
-    { kind: 'Gcm', ...notification },
+  const result = await client.sendBroadcastNotification(
+    notification,
     { enableTestSend: true }
   );
 
