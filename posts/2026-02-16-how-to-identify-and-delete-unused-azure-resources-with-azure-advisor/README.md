@@ -30,14 +30,13 @@ az advisor recommendation list \
   --output table
 ```
 
-Advisor typically identifies:
+Advisor cost recommendations can identify:
 
 - Underutilized VMs (low CPU, low network usage)
-- Idle ExpressRoute circuits
-- Unassociated public IP addresses
-- Unattached managed disks
-- Underutilized App Service Plans
-- Oversized database instances
+- Underutilized VM scale sets
+- Unused or empty App Service Plans
+- Idle or underutilized database and data services
+- ExpressRoute circuits with a provider status of Not Provisioned
 
 ## Step 2: Find Unattached Managed Disks
 
@@ -100,9 +99,9 @@ Several network resources cost money even when not actively used:
 Load balancers with no backend pool members are not doing anything useful but still incur charges:
 
 ```bash
-# Find load balancers with empty backend pools
+# Find load balancers with no backend pool members
 az network lb list \
-  --query "[?length(backendAddressPools)==\`0\` || backendAddressPools[0].backendIPConfigurations==null].{Name: name, RG: resourceGroup, SKU: sku.name}" \
+  --query "[?length(backendAddressPools)==\`0\` || length(backendAddressPools[?length(not_null(backendIPConfigurations, \`[]\`)) > \`0\` || length(not_null(loadBalancerBackendAddresses, \`[]\`)) > \`0\`]) == \`0\`].{Name: name, RG: resourceGroup, SKU: sku.name}" \
   --output table
 ```
 
@@ -124,7 +123,7 @@ Application Gateway v2 costs at least $175/month for the fixed cost alone:
 ```bash
 # Find Application Gateways with no backend pool members
 az network application-gateway list \
-  --query "[].{Name: name, RG: resourceGroup, BackendPools: backendAddressPools[*].name}" \
+  --query "[?length(backendAddressPools)==\`0\` || length(backendAddressPools[?length(not_null(backendAddresses, \`[]\`)) > \`0\` || length(not_null(backendIPConfigurations, \`[]\`)) > \`0\`]) == \`0\`].{Name: name, RG: resourceGroup, SKU: sku.name}" \
   --output table
 ```
 
