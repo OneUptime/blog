@@ -18,10 +18,10 @@ The Profiler runs as a lightweight agent alongside your application. It periodic
 
 The result is a flame graph that shows you where your application is spending time. Hot paths light up immediately. You do not need to reproduce the issue locally or attach a debugger.
 
-Supported platforms:
+Supported platforms include:
 
-- ASP.NET and ASP.NET Core running on Azure App Service
-- Azure Functions (.NET)
+- ASP.NET and ASP.NET Core running on Azure App Service (Basic tier or higher)
+- Azure Functions (.NET) on an App Service plan
 - Azure Cloud Services (web and worker roles)
 - Azure Service Fabric
 - Azure Virtual Machines and VM Scale Sets (with some additional setup)
@@ -33,9 +33,9 @@ If your application runs on Azure App Service, enabling the Profiler is straight
 In the Azure Portal:
 
 1. Navigate to your App Service
-2. Go to Settings > Application Insights
+2. Go to Monitoring > Application Insights
 3. Ensure Application Insights is enabled and connected to your resource
-4. Click on "Enable Profiler"
+4. Under Profiler and Code Optimizations, set Profiler to "On"
 
 Alternatively, enable it from the Application Insights resource:
 
@@ -53,7 +53,8 @@ For programmatic setup, you can enable it through application settings:
 az webapp config appsettings set \
   --resource-group myRG \
   --name myWebApp \
-  --settings APPINSIGHTS_PROFILERFEATURE_VERSION=1.0.0 \
+  --settings APPLICATIONINSIGHTS_CONNECTION_STRING="<your-connection-string>" \
+             APPINSIGHTS_PROFILERFEATURE_VERSION=1.0.0 \
              DiagnosticServices_EXTENSION_VERSION=~3
 ```
 
@@ -64,7 +65,8 @@ If you want more control over the Profiler configuration, you can add it directl
 First, install the NuGet package:
 
 ```bash
-# Install the Application Insights Profiler package
+# Install the Application Insights and Profiler packages
+dotnet add package Microsoft.ApplicationInsights.AspNetCore
 dotnet add package Microsoft.ApplicationInsights.Profiler.AspNetCore
 ```
 
@@ -93,15 +95,12 @@ You can customize the profiling behavior in appsettings.json:
     "IsDisabled": false,
     "Duration": "00:02:00",
     "InitialDelay": "00:00:30",
-    "CpuTriggerConfiguration": {
-      "CpuThreshold": 80,
-      "ThresholdCheckDuration": "00:00:15"
-    }
+    "CPUTriggerThreshold": 80
   }
 }
 ```
 
-The `CpuTriggerConfiguration` is useful - it tells the Profiler to start capturing when CPU usage exceeds a threshold, which helps catch performance issues that only happen under load.
+The `CPUTriggerThreshold` setting is useful - it tells the Profiler to start capturing when CPU usage stays above that threshold long enough to trigger profiling, which helps catch performance issues that only happen under load.
 
 ## Step 3: Trigger Profiling on Demand
 
@@ -111,10 +110,9 @@ In the Application Insights portal:
 
 1. Go to Performance > Profiler
 2. Click "Profile Now"
-3. Choose the duration (2 minutes is usually sufficient)
-4. Click Start
+3. Confirm the prompt to start the profiling session
 
-The profiler will run immediately and capture data during the specified window. Time this with your load test or during peak traffic to catch the performance issues you care about.
+The profiler will start a profiling session and capture data while it runs. Time this with your load test or during peak traffic to catch the performance issues you care about.
 
 ## Step 4: Read the Profiler Traces
 
@@ -151,25 +149,26 @@ Here is how to interpret what you see:
 
 ## Step 5: Configure Profiler for VMs and VMSS
 
-For applications running on VMs (not App Service), you need to install the Profiler site extension manually or use the standalone Profiler agent.
+For applications running on Azure VMs (not App Service), use the Azure Diagnostics extension and add the Profiler sink to its `WadCfg` configuration.
 
 For Windows VMs, install the Diagnostics extension with the Profiler sink:
 
 ```json
 {
-  "sink": [
-    {
-      "name": "ApplicationInsightsProfilerSink",
-      "ApplicationInsightsProfiler": {
-        "InstrumentationKey": "<your-ikey>",
-        "ConnectionString": "<your-connection-string>"
-      }
+  "WadCfg": {
+    "SinksConfig": {
+      "Sink": [
+        {
+          "name": "ApplicationInsightsProfilerSink",
+          "ApplicationInsightsProfiler": "<your-instrumentation-key>"
+        }
+      ]
     }
-  ]
+  }
 }
 ```
 
-For Linux VMs running .NET applications, the NuGet package approach (Step 2) works. Add the `Microsoft.ApplicationInsights.Profiler.AspNetCore` package to your project and deploy normally.
+For Linux environments running ASP.NET Core applications, the NuGet package approach (Step 2) works. Add the `Microsoft.ApplicationInsights.Profiler.AspNetCore` package to your project and deploy normally.
 
 ## Step 6: Correlate Profiler Traces with Requests
 
@@ -187,15 +186,14 @@ This end-to-end correlation means you do not have to guess which slow request th
 
 The Profiler is designed for production use, but it does add some overhead:
 
-- CPU overhead: roughly 2-5% during the profiling window
-- Memory overhead: minimal (a few MB for the trace buffer)
+- CPU and memory overhead: typically 5-15% while the Profiler is actively collecting traces
 - No overhead when profiling is not active
 
 To minimize impact:
 
 - Keep the default schedule (2 minutes per hour) for continuous monitoring
 - Use the CPU trigger to profile only during performance issues
-- Avoid profiling during critical low-latency operations if the 2-5% overhead matters
+- Avoid profiling during critical low-latency operations if the active collection overhead matters
 
 ## Troubleshooting Profiler Issues
 
