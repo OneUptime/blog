@@ -133,18 +133,20 @@ Use the acceleration endpoint for uploads.
 
 ```bash
 # Upload using the acceleration endpoint
-aws s3 cp large-file.zip s3://my-bucket/ --endpoint-url https://my-bucket.s3-accelerate.amazonaws.com
+aws configure set s3.addressing_style virtual
+aws s3 cp large-file.zip s3://my-bucket/ --endpoint-url https://s3-accelerate.amazonaws.com
 ```
 
 In code, configure the client to use the acceleration endpoint.
 
 ```python
 import boto3
+from botocore.config import Config
 
 # Create a client that uses transfer acceleration
 s3_accelerated = boto3.client(
     's3',
-    config=boto3.session.Config(
+    config=Config(
         s3={'use_accelerate_endpoint': True}
     )
 )
@@ -181,11 +183,11 @@ done
 
 A 200ms round-trip difference adds up quickly when you're making thousands of API calls.
 
-## Step 6: Fix Key Naming for High-Throughput
+## Step 6: Use Multiple Prefixes for High-Throughput
 
-S3 partitions data by key prefix. If all your uploads go to the same prefix, you might hit throughput limits on a single partition.
+S3 scales request performance per prefix. If all your uploads go to the same prefix and you exceed the documented per-prefix request rates, spread the workload across multiple prefixes.
 
-Bad pattern - all files start with the same prefix.
+Single-prefix pattern.
 
 ```text
 uploads/2026/02/12/file-001.csv
@@ -193,15 +195,15 @@ uploads/2026/02/12/file-002.csv
 uploads/2026/02/12/file-003.csv
 ```
 
-Better pattern - add randomness to distribute across partitions.
+Higher-throughput pattern - use multiple logical prefixes.
 
 ```text
-uploads/a3f2/2026/02/12/file-001.csv
-uploads/7b1c/2026/02/12/file-002.csv
-uploads/e9d4/2026/02/12/file-003.csv
+uploads/batch-a/2026/02/12/file-001.csv
+uploads/batch-b/2026/02/12/file-002.csv
+uploads/batch-c/2026/02/12/file-003.csv
 ```
 
-In practice, S3 automatically handles this for most workloads now (it was more of an issue historically). But if you're doing extremely high throughput (thousands of requests per second to the same prefix), it can still matter.
+In practice, S3 automatically handles sequential key names for most workloads now, and you don't need to randomize prefixes for performance. But if you're doing extremely high throughput beyond a single prefix's request rate, using more prefixes can still matter.
 
 ## Step 7: Optimize from EC2
 
