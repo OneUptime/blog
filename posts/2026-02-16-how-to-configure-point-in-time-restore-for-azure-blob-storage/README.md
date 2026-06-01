@@ -34,9 +34,9 @@ Before enabling point-in-time restore, be aware of these requirements:
 - Blob soft delete must be enabled
 - The account must NOT have hierarchical namespace enabled (no ADLS Gen2)
 - Only block blobs are supported (not append or page blobs)
-- The maximum restore window is 365 days
+- The restore window must be greater than 0 and less than the blob soft delete retention period
 
-Also, while a restore is in progress, you cannot perform any write operations on blobs in the affected containers. Plan restore operations during low-traffic windows if possible.
+Also, while a restore is in progress, you cannot perform read, write, or delete operations on blobs in the affected ranges in the primary location. Plan restore operations during low-traffic windows if possible.
 
 ## Step 1: Enable Required Features
 
@@ -56,11 +56,11 @@ az storage account blob-service-properties update \
   --resource-group rg-app \
   --enable-change-feed true
 
-# Enable soft delete with 14-day retention
+# Enable soft delete with 31-day retention
 az storage account blob-service-properties update \
   --account-name stappdata2026 \
   --resource-group rg-app \
-  --delete-retention-days 14 \
+  --delete-retention-days 31 \
   --enable-delete-retention true
 
 # Enable container soft delete as well
@@ -71,7 +71,7 @@ az storage account blob-service-properties update \
   --enable-container-delete-retention true
 ```
 
-These features start tracking changes immediately after being enabled. You cannot restore to a point in time before these features were active.
+These features start tracking changes after being enabled. The point-in-time restore retention period begins a few minutes after point-in-time restore is enabled, and you cannot restore to a point in time before the required features were active.
 
 ## Step 2: Enable Point-in-Time Restore
 
@@ -86,7 +86,7 @@ az storage account blob-service-properties update \
   --restore-days 30
 ```
 
-The `--restore-days` value determines how far back you can restore. The maximum is 365 days. Keep in mind that longer retention windows mean more versioned data is kept, which increases storage costs.
+The `--restore-days` value determines how far back you can restore. It must be less than the blob soft delete retention period, so the 30-day restore window above requires at least 31 days of blob soft delete retention. Keep in mind that longer retention windows mean more versioned data is kept, which increases storage costs.
 
 Verify the configuration:
 
@@ -158,10 +158,11 @@ az storage blob restore \
   --account-name stappdata2026 \
   --resource-group rg-app \
   --time-to-restore "2026-02-16T15:30:00Z" \
-  --blob-range '["pitr-test/","pitr-test0"]'
+  --blob-range pitr-test pitr-test-0 \
+  --no-wait
 ```
 
-The `--blob-range` parameter specifies which blobs to restore. The range is lexicographic (alphabetical). Using `"pitr-test/"` as the start and `"pitr-test0"` as the end effectively covers all blobs in the `pitr-test` container (since `0` comes after `/` in ASCII order).
+The `--blob-range` parameter specifies which blobs to restore. The range is lexicographic (alphabetical), the start is inclusive, and the end is exclusive. Using `pitr-test` as the start and `pitr-test-0` as the end covers all blobs in the `pitr-test` container.
 
 To restore all blobs across all containers:
 
@@ -171,7 +172,8 @@ az storage blob restore \
   --account-name stappdata2026 \
   --resource-group rg-app \
   --time-to-restore "2026-02-16T15:30:00Z" \
-  --blob-range '["",""]'
+  --blob-range "" "" \
+  --no-wait
 ```
 
 An empty start and end restores everything.
@@ -185,6 +187,7 @@ The restore operation runs asynchronously. Check its status:
 az storage account show \
   --name stappdata2026 \
   --resource-group rg-app \
+  --expand blobRestoreStatus \
   --query "blobRestoreStatus" \
   --output json
 ```
@@ -225,7 +228,8 @@ az storage blob restore \
   --account-name stappdata2026 \
   --resource-group rg-app \
   --time-to-restore "2026-02-16T15:30:00Z" \
-  --blob-range '["mycontainer/reports/","mycontainer/reports0"]'
+  --blob-range mycontainer/reports/ mycontainer/reports0 \
+  --no-wait
 ```
 
 You can also specify multiple non-overlapping ranges:
@@ -236,7 +240,9 @@ az storage blob restore \
   --account-name stappdata2026 \
   --resource-group rg-app \
   --time-to-restore "2026-02-16T15:30:00Z" \
-  --blob-range '["container1/logs/","container1/logs0"]' '["container2/data/","container2/data0"]'
+  --blob-range container1/logs/ container1/logs0 \
+  --blob-range container2/data/ container2/data0 \
+  --no-wait
 ```
 
 ## Cost Considerations
