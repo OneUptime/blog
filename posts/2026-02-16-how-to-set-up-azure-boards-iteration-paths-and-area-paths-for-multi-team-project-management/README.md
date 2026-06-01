@@ -45,14 +45,14 @@ Example iteration path hierarchy:
 ```text
 MyProject
   /2026-Q1
-    /2026-Q1/Sprint 1 (Jan 6 - Jan 17)
-    /2026-Q1/Sprint 2 (Jan 20 - Jan 31)
-    /2026-Q1/Sprint 3 (Feb 3 - Feb 14)
-    /2026-Q1/Sprint 4 (Feb 17 - Feb 28)
-    /2026-Q1/Sprint 5 (Mar 3 - Mar 14)
-    /2026-Q1/Sprint 6 (Mar 17 - Mar 28)
+    /2026-Q1/Sprint 1 (Jan 5 - Jan 16)
+    /2026-Q1/Sprint 2 (Jan 19 - Jan 30)
+    /2026-Q1/Sprint 3 (Feb 2 - Feb 13)
+    /2026-Q1/Sprint 4 (Feb 16 - Feb 27)
+    /2026-Q1/Sprint 5 (Mar 2 - Mar 13)
+    /2026-Q1/Sprint 6 (Mar 16 - Mar 27)
   /2026-Q2
-    /2026-Q2/Sprint 7 (Mar 31 - Apr 11)
+    /2026-Q2/Sprint 7 (Mar 30 - Apr 10)
     ...
 ```
 
@@ -96,19 +96,19 @@ az boards area project create \
 # Create child area paths
 az boards area project create \
   --name "API" \
-  --path "\\MyProject\\Backend" \
+  --path "\\MyProject\\Area\\Backend" \
   --project "MyProject" \
   --organization "https://dev.azure.com/myorg"
 
 az boards area project create \
   --name "Workers" \
-  --path "\\MyProject\\Backend" \
+  --path "\\MyProject\\Area\\Backend" \
   --project "MyProject" \
   --organization "https://dev.azure.com/myorg"
 
 az boards area project create \
   --name "Dashboard" \
-  --path "\\MyProject\\Frontend" \
+  --path "\\MyProject\\Area\\Frontend" \
   --project "MyProject" \
   --organization "https://dev.azure.com/myorg"
 ```
@@ -119,7 +119,7 @@ Under the same Project Configuration page, switch to the "Iterations" tab.
 
 ### Creating Iterations with Dates
 
-Each iteration needs a start date and end date to appear on the sprint board:
+Each sprint iteration should have a start date and end date so Azure Boards can schedule it correctly and calculate time-based sprint reporting:
 
 ```bash
 # Create a quarterly grouping
@@ -131,7 +131,7 @@ az boards iteration project create \
 # Create sprints within the quarter
 az boards iteration project create \
   --name "Sprint 1" \
-  --path "\\MyProject\\2026-Q1" \
+  --path "\\MyProject\\Iteration\\2026-Q1" \
   --start-date "2026-01-05" \
   --finish-date "2026-01-16" \
   --project "MyProject" \
@@ -139,7 +139,7 @@ az boards iteration project create \
 
 az boards iteration project create \
   --name "Sprint 2" \
-  --path "\\MyProject\\2026-Q1" \
+  --path "\\MyProject\\Iteration\\2026-Q1" \
   --start-date "2026-01-19" \
   --finish-date "2026-01-30" \
   --project "MyProject" \
@@ -147,7 +147,7 @@ az boards iteration project create \
 
 az boards iteration project create \
   --name "Sprint 3" \
-  --path "\\MyProject\\2026-Q1" \
+  --path "\\MyProject\\Iteration\\2026-Q1" \
   --start-date "2026-02-02" \
   --finish-date "2026-02-13" \
   --project "MyProject" \
@@ -183,7 +183,7 @@ for start in "${STARTS[@]}"; do
 
     az boards iteration project create \
       --name "Sprint $SPRINT_NUM" \
-      --path "\\$PROJECT\\$QUARTER" \
+      --path "\\$PROJECT\\Iteration\\$QUARTER" \
       --start-date "$start" \
       --finish-date "$end" \
       --project "$PROJECT" \
