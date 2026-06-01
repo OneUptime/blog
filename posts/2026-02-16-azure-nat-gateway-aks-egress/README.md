@@ -121,7 +121,7 @@ az network vnet subnet update \
   --nat-gateway natgw-aks
 ```
 
-The /20 subnet gives you 4,094 usable IPs, which is enough for a large AKS cluster with Azure CNI networking.
+The /20 subnet gives you 4,091 usable IPs after Azure reserves five addresses, which is enough for a large AKS cluster with Azure CNI networking.
 
 ## Step 4: Create the AKS Cluster with NAT Gateway Egress
 
@@ -237,16 +237,16 @@ az monitor metrics list \
   --aggregation Total \
   --output table
 
-# Check for dropped packets (indicates port exhaustion)
+# Check for dropped packets (can indicate failed outbound connections or port exhaustion)
 az monitor metrics list \
   --resource $(az network nat gateway show -g rg-aks -n natgw-aks --query id -o tsv) \
-  --metric "DroppedPacketCount" \
+  --metric "PacketDropCount" \
   --interval PT5M \
   --aggregation Total \
   --output table
 ```
 
-Create an alert for SNAT failures.
+Create an alert for dropped packets.
 
 ```bash
 # Alert when NAT Gateway starts dropping packets
@@ -254,11 +254,11 @@ az monitor metrics alert create \
   --resource-group rg-aks \
   --name alert-natgw-drops \
   --scopes $(az network nat gateway show -g rg-aks -n natgw-aks --query id -o tsv) \
-  --condition "total DroppedPacketCount > 0" \
+  --condition "total PacketDropCount > 0" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --severity 2 \
-  --description "NAT Gateway dropping packets - potential SNAT exhaustion"
+  --description "NAT Gateway dropping packets - potential outbound connectivity issue"
 ```
 
 ## Cost Considerations
