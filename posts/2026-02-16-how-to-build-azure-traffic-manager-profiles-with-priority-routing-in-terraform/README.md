@@ -8,7 +8,7 @@ Description: Learn how to deploy Azure Traffic Manager profiles with priority-ba
 
 ---
 
-Azure Traffic Manager is a DNS-based traffic load balancer that distributes traffic across Azure regions or external endpoints. Unlike Application Gateway or Azure Load Balancer, which operate at the network level, Traffic Manager works at the DNS level. When a client requests your domain, Traffic Manager resolves it to the IP address of the healthiest or most appropriate endpoint based on your routing method.
+Azure Traffic Manager is a DNS-based traffic load balancer that distributes traffic across Azure regions or external endpoints. Unlike Application Gateway, which operates at the application layer, or Azure Load Balancer, which operates at layer 4, Traffic Manager works at the DNS level. When a client requests your domain, Traffic Manager resolves it to the IP address of the healthiest or most appropriate endpoint based on your routing method.
 
 Priority routing is the simplest and most commonly used method for disaster recovery. It sends all traffic to a primary endpoint and automatically fails over to secondary endpoints when the primary goes down. Think of it as active-passive failover at the DNS layer.
 
@@ -186,16 +186,10 @@ resource "azurerm_traffic_manager_profile" "main" {
   monitor_config {
     protocol                     = "HTTPS"
     port                         = 443
-    path                         = "/health"        # Your health check endpoint
+    path                         = "/"              # Use your health check endpoint in production
     interval_in_seconds          = 10               # Check every 10 seconds
     timeout_in_seconds           = 5                # Wait 5 seconds for response
     tolerated_number_of_failures = 3                # Fail after 3 consecutive failures
-
-    # Custom headers for health checks (optional)
-    custom_header {
-      name  = "host"
-      value = "myapp.contoso.com"   # Send the correct Host header
-    }
 
     # Expected status code ranges
     expected_status_code_ranges = ["200-299"]
@@ -207,7 +201,7 @@ resource "azurerm_traffic_manager_profile" "main" {
 
 The DNS TTL is set to 30 seconds, which is a good balance between quick failover and DNS query volume. Lower TTLs mean faster failover but more DNS queries (and cost). In an emergency, 30 seconds is acceptable for most applications.
 
-The health check configuration is critical. Traffic Manager marks an endpoint as unhealthy after `tolerated_number_of_failures` consecutive failed probes. With the settings above, that is 3 failures at 10-second intervals, meaning failover kicks in about 30 seconds after the primary goes down, plus the DNS TTL propagation time.
+The health check configuration is critical. Traffic Manager marks an endpoint as unhealthy after `tolerated_number_of_failures` consecutive failed probes. With the settings above, that is 3 failures at 10-second intervals, meaning failover can start about 30 seconds after Traffic Manager detects the primary is down, plus the DNS TTL and any resolver or client caching time.
 
 ## Traffic Manager Endpoints
 
@@ -335,6 +329,12 @@ resource "azurerm_monitor_metric_alert" "endpoint_degraded" {
     aggregation      = "Maximum"
     operator         = "LessThan"
     threshold        = 1   # 0 means endpoint is degraded
+
+    dimension {
+      name     = "EndpointName"
+      operator = "Include"
+      values   = ["*"]
+    }
   }
 
   action {
@@ -378,8 +378,8 @@ nslookup tm-webapp-prod.trafficmanager.net
 # Stop the primary app to trigger failover
 az webapp stop --name app-webapp-prod-primary --resource-group rg-webapp-prod-tm
 
-# Wait 30-60 seconds for health checks to detect the failure
-sleep 60
+# Wait for health checks and DNS caches to reflect the change
+sleep 180
 
 # Check DNS again - should now resolve to the secondary
 nslookup tm-webapp-prod.trafficmanager.net
