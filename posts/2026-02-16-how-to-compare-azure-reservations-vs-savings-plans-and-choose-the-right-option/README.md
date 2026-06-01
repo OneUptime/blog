@@ -32,14 +32,14 @@ One thing that trips people up is instance size flexibility. For VMs, Azure allo
 
 ## What Are Azure Savings Plans?
 
-Azure Savings Plans work differently. Instead of committing to a specific resource, you commit to a fixed hourly spend amount (for example, $10/hour) for one or three years. Azure then applies the best available discount to your eligible compute usage, regardless of VM family, size, or region.
+Azure Savings Plans work differently. Instead of committing to a specific resource, you commit to a fixed hourly spend amount (for example, $10/hour). Compute savings plans are available for one or three years, while database savings plans are available for one year. Azure then applies the best available discount to your eligible usage.
 
-There are two types:
+There are two main types:
 
 - **Compute Savings Plan** - covers VMs, Azure Dedicated Hosts, Azure Container Instances, Azure Functions Premium, and Azure App Service. This is the broadest option and works across regions.
-- **Machine Learning Savings Plan** - specifically for Azure Machine Learning compute.
+- **Database Savings Plan** - covers eligible database services such as Azure SQL Database, Azure SQL Managed Instance, Azure Database for PostgreSQL, Azure Database for MySQL, and Azure Cosmos DB.
 
-The Compute Savings Plan is the one most teams care about because it gives you region and VM family flexibility that reservations simply cannot match.
+The Compute Savings Plan is the one most infrastructure teams care about because it gives you region and VM family flexibility that reservations simply cannot match.
 
 ## Side-by-Side Comparison
 
@@ -48,22 +48,22 @@ Here is a comparison table that captures the main differences:
 | Dimension | Reservations | Savings Plans |
 |---|---|---|
 | Commitment type | Specific resource type, size, region | Hourly dollar amount |
-| Flexibility | Limited to same series (with instance size flexibility) | Any eligible compute, any region |
+| Flexibility | Limited to same series (with instance size flexibility) | Any eligible savings plan usage |
 | Discount depth | Generally deeper (up to 72%) | Slightly less deep (up to 65%) |
-| Scope options | Single subscription, shared across subscriptions, resource group, management group | Single subscription, shared across subscriptions, management group |
-| Supported services | VMs, SQL, Cosmos DB, storage, and many more | Primarily compute (VMs, ACI, Functions Premium, App Service) |
-| Term | 1 year or 3 years | 1 year or 3 years |
-| Payment options | All upfront, monthly, or no upfront | All upfront, monthly, or no upfront |
-| Cancellation | Possible with early termination fee (12% of remaining amount) | Not cancellable |
-| Exchange | Can exchange for different reservation | Not exchangeable |
+| Scope options | Single subscription, shared across subscriptions, resource group, management group | Single subscription, shared across subscriptions, resource group, management group |
+| Supported services | VMs, SQL, Cosmos DB, storage, and many more | Compute and database services; not storage or most analytics services |
+| Term | 1 year or 3 years | 1 year or 3 years for compute; 1 year for databases |
+| Payment options | Upfront or monthly | Upfront or monthly |
+| Cancellation | Possible for eligible reservations; Microsoft currently does not charge the possible 12% early termination fee | Not cancellable or refundable |
+| Exchange | Can exchange eligible reservations within the same product family | Not exchangeable |
 
 ## When Reservations Make More Sense
 
 Reservations tend to be the better choice when your workloads are predictable and stable. Here are the scenarios where I would lean toward reservations:
 
-**Steady-state database workloads.** If you are running SQL Managed Instance or Cosmos DB with consistent throughput, reservations give you the deepest discounts on those services. Savings Plans do not cover database services at all.
+**Steady-state database workloads.** If you are running SQL Managed Instance or Cosmos DB with consistent throughput, compare database reservations with the database savings plan. Reservations can still be the better fit when the specific database commitment maps cleanly to your usage.
 
-**Non-compute services.** For things like Azure Storage reserved capacity, Azure Synapse, or Azure Data Explorer, reservations are your only commitment-based discount option. Savings Plans only cover compute.
+**Non-compute and non-database services.** For things like Azure Storage reserved capacity, Azure Synapse, or Azure Data Explorer, reservations are your main commitment-based discount option. Savings Plans do not cover storage and most analytics services.
 
 **Workloads locked to a region.** If your compliance requirements or architecture mean your VMs will always run in a single region on a single VM family, the deeper discount from reservations is worth the reduced flexibility.
 
@@ -77,7 +77,7 @@ Savings Plans shine when you need flexibility. Here are the scenarios that favor
 
 **Multi-region deployments.** If you run workloads across East US, West Europe, and Southeast Asia, a single savings plan covers all of them. With reservations, you would need separate purchases for each region.
 
-**Dynamic workloads.** If your compute usage fluctuates across different service types - some months heavy on VMs, other months heavy on ACI or Functions Premium - a savings plan adapts without any intervention on your part.
+**Dynamic workloads.** If your eligible usage fluctuates across different service types - some months heavy on VMs, other months heavy on ACI, Functions Premium, or eligible database services - a savings plan adapts without any intervention on your part.
 
 **Teams new to commitment-based discounts.** If you are just starting with FinOps and not yet confident in your forecasting, savings plans are more forgiving. You commit to a dollar amount rather than a specific resource, so the risk of buying something you do not use is lower.
 
@@ -87,8 +87,8 @@ Here is a simple flow you can follow:
 
 ```mermaid
 graph TD
-    A[Is the service compute-based?] -->|No| B[Use Reservations]
-    A -->|Yes| C[Is the workload stable in region and VM family?]
+    A[Is the service eligible for a savings plan?] -->|No| B[Use Reservations]
+    A -->|Yes| C[Is the workload stable in region and family?]
     C -->|Yes| D[Do you want the deepest possible discount?]
     C -->|No| E[Use Savings Plan]
     D -->|Yes| B
@@ -108,19 +108,16 @@ For savings plans, go to Cost Management + Billing, then Savings Plans. The reco
 You can also pull recommendations programmatically using the Azure CLI:
 
 ```bash
-# Get reservation recommendations for a subscription
-
-# The lookBackPeriod can be Last7Days, Last30Days, or Last60Days
-az consumption reservation recommendation list \
-  --scope "subscriptions/<your-subscription-id>" \
-  --look-back-period Last30Days \
-  --resource-type VirtualMachines
+# Get reservation recommendations for a subscription via the REST API
+az rest --method get \
+  --url "https://management.azure.com/subscriptions/<your-subscription-id>/providers/Microsoft.Consumption/reservationRecommendations?api-version=2024-08-01&\$filter=properties/resourceType%20eq%20'VirtualMachines'%20AND%20properties/lookBackPeriod%20eq%20'Last30Days'" \
+  --query "value[].{sku:sku,term:properties.term,recommendedQuantity:properties.recommendedQuantity,estimatedSavings:properties.netSavings}"
 
 # Get savings plan recommendations via the REST API
-# This uses the Benefit Utilization Summaries endpoint
+# This uses the Benefit Recommendations endpoint
 az rest --method get \
-  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.CostManagement/benefitRecommendations?api-version=2022-10-01" \
-  --query "value[].properties.{term:term,commitmentAmount:commitmentGranularity,savings:savingsAmount}"
+  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.CostManagement/benefitRecommendations?api-version=2025-03-01&\$filter=properties/lookBackPeriod%20eq%20'Last30Days'%20AND%20properties/term%20eq%20'P1Y'" \
+  --query "value[].properties.{term:term,commitmentGranularity:commitmentGranularity,commitmentAmount:recommendationDetails.commitmentAmount,savings:recommendationDetails.savingsAmount}"
 ```
 
 Compare the projected savings from both recommendations before committing.
@@ -129,7 +126,7 @@ Compare the projected savings from both recommendations before committing.
 
 The strategy I have seen work best for mid-to-large organizations looks like this:
 
-1. **Reserve your databases and storage first.** These services only support reservations, and the discounts are substantial.
+1. **Evaluate your databases and storage first.** Storage reservations remain a reservation-only area, while eligible database services should be compared across database reservations and database savings plans.
 2. **Identify your baseline compute.** Look at the last 90 days of VM usage and find the floor - the minimum number of vCPUs you always have running.
 3. **Cover the baseline with a savings plan.** Set the hourly commitment to match your baseline compute spend after reservation discounts are applied.
 4. **Use reservations for any remaining predictable, single-family VM workloads.** If you have a cluster of GPU VMs that never changes, a reservation on top of your savings plan can squeeze out additional savings.
@@ -149,7 +146,7 @@ Set up alerts if utilization drops below a threshold. You can do this through Az
 - Review recommendations monthly. Workloads change, and what was optimal 6 months ago might not be today.
 - Use management group scope for both reservations and savings plans in multi-subscription environments. This maximizes the chance that your commitment gets utilized.
 - Keep a spreadsheet or use Azure Cost Management exports to track your commitment purchases, their expiration dates, and projected renewals.
-- Factor in the cancellation policy. Reservations can be cancelled (with a fee). Savings plans cannot. If there is any chance your compute needs will drop significantly, the savings plan commitment is riskier.
+- Factor in the cancellation policy. Eligible reservations can be cancelled, subject to Microsoft's refund rules and possible future fees. Savings plans cannot. If there is any chance your compute needs will drop significantly, the savings plan commitment is riskier.
 
 ## Wrapping Up
 
