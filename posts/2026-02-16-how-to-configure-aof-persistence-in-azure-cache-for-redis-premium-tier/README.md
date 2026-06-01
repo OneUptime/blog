@@ -10,13 +10,15 @@ Description: Learn how to configure Append Only File (AOF) persistence in Azure 
 
 If you have ever lost cached data after a Redis restart and spent the next hour rebuilding warm caches, you know why persistence matters. Azure Cache for Redis Premium tier supports Append Only File (AOF) persistence, which logs every write operation so your data survives restarts, crashes, and maintenance windows. This guide walks you through setting it up, tuning it, and understanding what to expect in production.
 
+One important planning note: Microsoft has announced that Azure Cache for Redis Basic, Standard, and Premium tiers retire on September 30, 2028. If you are building a new workload, evaluate Azure Managed Redis as part of your design.
+
 ## What Is AOF Persistence?
 
 Redis offers two persistence models: RDB snapshots and AOF logs. RDB takes point-in-time snapshots at intervals you define. AOF, on the other hand, records every write command as it happens, appending each operation to a log file. When Redis restarts, it replays the AOF log to rebuild the dataset.
 
-The tradeoff is straightforward. RDB gives you smaller files and faster restarts, but you can lose data between snapshots. AOF gives you much better durability - you lose at most one second of writes in the worst case - but the log files are larger and replay takes longer.
+The tradeoff is straightforward. RDB gives you smaller files and faster restarts, but you can lose data between snapshots. AOF gives you much better durability because writes are saved to the log once per second in Azure Cache for Redis Premium, but the log files are larger and replay takes longer.
 
-In Azure Cache for Redis, AOF persistence is only available on the Premium tier. The Standard and Basic tiers do not support any form of persistence.
+In Azure Cache for Redis, AOF persistence is available on the Premium tier. The Standard and Basic tiers do not support persistence. Enterprise and Enterprise Flash tiers also support persistence in preview, but this guide focuses on Premium.
 
 ## Why Use AOF Over RDB?
 
@@ -35,7 +37,7 @@ Before you configure AOF persistence, make sure you have the following:
 
 - An Azure subscription with permissions to create or modify Redis resources
 - Azure Cache for Redis Premium tier (P1 or higher) - persistence is not available on lower tiers
-- An Azure Storage account in the same region as your Redis cache (required for storing AOF files)
+- An Azure Storage account in the same region as your Redis cache (required for storing AOF files on Premium)
 - Azure CLI or access to the Azure Portal
 
 ## Step 1: Create a Premium Tier Cache (If You Do Not Have One)
@@ -55,11 +57,10 @@ az redis create \
   --resource-group rg-redis-prod \
   --location eastus \
   --sku Premium \
-  --vm-size P1 \
-  --shard-count 0
+  --vm-size p1
 ```
 
-The `--shard-count 0` means no clustering. You can add shards later if you need horizontal scaling.
+Omitting `--shard-count` creates a non-clustered cache. You can add shards later if you need horizontal scaling.
 
 ## Step 2: Create a Storage Account for AOF Files
 
@@ -71,14 +72,14 @@ az storage account create \
   --name redisaofstorage2026 \
   --resource-group rg-redis-prod \
   --location eastus \
-  --sku Standard_LRS \
+  --sku Premium_LRS \
   --kind StorageV2
 ```
 
 A few things to keep in mind about the storage account:
 
-- Use Standard_LRS (locally redundant) for most cases. If you want geo-redundancy for the AOF files themselves, use Standard_GRS, but this adds cost.
-- Do not enable firewall rules on the storage account that would block the Redis service. Azure Cache for Redis needs direct access.
+- A Premium storage account is recommended because it has higher throughput for persistence writes. If you choose Standard storage, validate that its throughput limits can handle your write volume.
+- Firewall rules on the storage account can prevent persistence from working. If you need firewall restrictions, use managed identity based authentication and configure the storage account firewall exceptions carefully.
 - Do not use a storage account that has a hierarchical namespace enabled (Azure Data Lake Storage Gen2). It is not supported.
 
 ## Step 3: Enable AOF Persistence
@@ -90,8 +91,8 @@ Now configure the cache to use AOF persistence. You can do this through the Azur
 1. Navigate to your Azure Cache for Redis instance in the portal.
 2. Under Settings, click "Data persistence".
 3. Select "AOF" as the persistence type.
-4. Choose your AOF frequency: "Every second" (fsync every second) or "Every write" (fsync on every operation).
-5. Select the storage account you created.
+4. Select the storage account you created.
+5. Choose the storage account authentication method, such as Storage Key or Managed Identity.
 6. Click Save.
 
 **Using Azure CLI:**
@@ -103,28 +104,27 @@ STORAGE_CONN=$(az storage account show-connection-string \
   --resource-group rg-redis-prod \
   --query connectionString -o tsv)
 
-# Enable AOF persistence with fsync every second
+# Enable AOF persistence
 az redis update \
   --name my-redis-aof-cache \
   --resource-group rg-redis-prod \
-  --set "redisConfiguration.aof-backup-enabled=true" \
-  --set "redisConfiguration.aof-storage-connection-string-0=$STORAGE_CONN"
+  --set "redisConfiguration.aof-backup-enabled"="true" \
+        "redisConfiguration.aof-storage-connection-string-0"="$STORAGE_CONN"
 ```
 
-After enabling persistence, Redis will restart. Plan for a brief period of unavailability - typically 30 to 90 seconds depending on the size of your dataset.
+After enabling persistence, the cache performs a configuration update. Plan for a brief period of reduced availability or disruption while the update is applied.
 
-## Step 4: Choose Your Fsync Policy
+## Step 4: Understand the AOF Write Frequency
 
-The AOF fsync policy determines how often data is flushed from the OS buffer to disk. Azure Cache for Redis gives you two options:
+In Redis itself, the AOF fsync policy determines how often data is flushed from the OS buffer to disk. Redis supports policies such as `appendfsync everysec` and `appendfsync always`.
 
-- **Every second (everysec)**: Redis calls fsync once per second. This is the recommended default. You might lose up to one second of writes in a catastrophic failure, but performance impact is minimal.
-- **Every write (always)**: Redis calls fsync after every write command. This gives maximum durability but significantly impacts throughput - expect 30-50% lower write performance.
+Azure Cache for Redis Premium AOF persistence saves write operations to the Azure Storage account once per second. The "Always write" option is not a setting to use for Premium AOF persistence in the current Azure documentation, and Microsoft has retired the always-write option for Enterprise and Enterprise Flash tiers because of performance limitations.
 
-For most production workloads, "every second" is the right choice. The "every write" option should only be used when you truly cannot lose a single operation.
+For most production workloads, the once-per-second behavior is the balance Azure provides between durability and performance. If you truly cannot lose a single operation, Redis should not be the only system of record.
 
 ## Step 5: Verify Persistence Is Active
 
-After the cache restarts, verify that AOF persistence is running.
+After the configuration update completes, verify that AOF persistence is running.
 
 ```bash
 # Check the Redis configuration to confirm AOF is enabled
@@ -150,11 +150,11 @@ Look for `aof_enabled:1` in the output. You should also see `aof_current_size` g
 
 AOF persistence is not free from a performance perspective. Here is what to expect:
 
-**Write Latency**: With the "everysec" policy, you will see a small increase in P99 latency - typically 1-3 milliseconds. With "always", the increase is more significant and variable.
+**Throughput and Latency**: AOF persistence affects throughput and can increase latency because persistence runs on the primary and replica processes. Watch CPU and Server Load closely after enabling it.
 
-**Memory Overhead**: The AOF rewrite process (which compacts the log) temporarily requires extra memory. Azure recommends keeping memory usage below 80% to leave room for the rewrite buffer.
+**Memory and Rewrite Overhead**: The AOF rewrite process compacts the log and can make the cache reach performance limits sooner, especially with large datasets. Leave memory and CPU headroom.
 
-**Storage Costs**: AOF files can grow large, especially under heavy write loads. The rewrite process compacts them, but between rewrites, the file can be 2-5x the size of your actual dataset.
+**Storage Costs**: AOF files can grow large, especially under heavy write loads. The rewrite process compacts them, but persistence can still write frequently enough that storage costs matter, especially if blob soft delete is enabled.
 
 **Network**: AOF files are written to Azure Storage, which means there is network I/O involved. In the Premium tier, this happens over Azure backbone networks, so latency is low, but it is still something to be aware of.
 
@@ -162,9 +162,9 @@ AOF persistence is not free from a performance perspective. Here is what to expe
 
 Set up alerts to catch AOF issues before they become problems:
 
-- **Monitor `usedmemorypercentage`**: If this exceeds 80%, the AOF rewrite might fail due to insufficient memory.
-- **Monitor `cacheWrite` and `serverLoad`**: A spike in server load during AOF rewrites is normal, but sustained high load might indicate the cache is undersized.
-- **Check the storage account**: Verify that AOF files are being written. If the storage account runs out of space or becomes inaccessible, persistence silently stops.
+- **Monitor `usedmemorypercentage` and `usedmemoryRss`**: High memory usage or fragmentation can create memory pressure during persistence and normal cache operations.
+- **Monitor `allcacheWrite`, `serverLoad`, and `Errors`**: A spike in server load during AOF rewrites can happen, but sustained high load might indicate the cache is undersized. The `Errors` metric includes AOF-related persistence errors.
+- **Check the storage account**: Verify that AOF files are being written and that firewall, throughput, and soft delete settings are not interfering with persistence.
 
 You can set up these alerts in Azure Monitor:
 
@@ -176,24 +176,24 @@ az monitor metrics alert create \
   --scopes "/subscriptions/<sub-id>/resourceGroups/rg-redis-prod/providers/Microsoft.Cache/redis/my-redis-aof-cache" \
   --condition "avg usedmemorypercentage > 80" \
   --action "/subscriptions/<sub-id>/resourceGroups/rg-redis-prod/providers/Microsoft.Insights/actionGroups/ops-team" \
-  --description "Redis memory usage exceeds 80%, AOF rewrite may fail"
+  --description "Redis memory usage exceeds 80%; investigate memory pressure"
 ```
 
 ## Handling Failover and Recovery
 
-When a Premium tier cache with AOF persistence restarts or fails over, Redis replays the AOF log to restore data. The time this takes depends on the size of the log file. For a cache with 10 GB of data, expect recovery to take 3-8 minutes.
+When a Premium tier cache with AOF persistence recovers after a failure that takes down both the primary and replica, Redis replays the AOF log to restore data. The time this takes depends on the size of the log file and the amount of write activity it contains.
 
 During recovery, the cache is unavailable. Your application should handle this gracefully with retry logic and circuit breakers. Do not assume Redis is always there.
 
-If the AOF file becomes corrupted - which is rare but possible after a hard crash - Azure will attempt to use the last valid AOF checkpoint. In the worst case, you might fall back to the most recent RDB snapshot if one exists.
+Persistence is not a backup or point-in-time recovery feature. If corrupted data is written to Redis, the corrupted data is persisted too. Use the Export feature or another backup strategy when you need recoverable backups outside the cache.
 
 ## Common Mistakes
 
 1. **Using a storage account in a different region**: This causes high latency and can lead to persistence failures. Always co-locate.
-2. **Forgetting to monitor storage capacity**: AOF files grow. If the storage account fills up, persistence stops without a loud alarm.
-3. **Running memory at 95%+**: The AOF rewrite process needs memory headroom. Without it, the rewrite fails, the AOF file keeps growing, and eventually you hit problems.
+2. **Forgetting to monitor storage errors and costs**: AOF files grow and are written frequently. Soft delete and persistence writes can create unexpected storage costs.
+3. **Running memory and server load too high**: The AOF rewrite process needs headroom. Without it, rewrites take longer and latency can increase.
 4. **Enabling AOF on Basic or Standard tiers**: It simply does not work. You need Premium.
 
 ## Wrapping Up
 
-AOF persistence in Azure Cache for Redis Premium tier is a solid option when you need your cached data to survive restarts and failures. The setup is straightforward: create a storage account, flip the persistence setting to AOF, choose your fsync policy, and monitor the health metrics. For most workloads, the "every second" fsync policy gives the best balance of durability and performance. Just keep an eye on memory usage and storage capacity, and your persistent cache will serve you well.
+AOF persistence in Azure Cache for Redis Premium tier is a solid option when you need your cached data to survive restarts and failures. The setup is straightforward: create a storage account, flip the persistence setting to AOF, and monitor the health metrics. For most workloads, Azure's once-per-second AOF persistence gives a practical balance of durability and performance. Just keep an eye on memory usage, server load, persistence errors, and storage costs, and your persistent cache will serve you well.
