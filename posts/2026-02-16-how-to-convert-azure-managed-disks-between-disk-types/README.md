@@ -21,7 +21,9 @@ You can convert between these disk types:
 - Premium SSD to Standard HDD
 - Premium SSD to Standard SSD
 
-Ultra Disk and Premium SSD v2 have more limited conversion options. You generally cannot convert to or from these types directly - you would need to create a new disk and copy the data.
+Ultra Disk and Premium SSD v2 have more limited conversion options. You generally cannot convert to or from Ultra Disk directly - you would need to create a new disk from a snapshot. Eligible existing data disks can be converted to Premium SSD v2 directly, but Premium SSD v2 disks cannot be converted back to another disk type directly.
+
+Azure also limits disk type changes to twice per day, so avoid using conversions as a frequent scaling mechanism.
 
 ## Converting a Disk with Azure CLI
 
@@ -194,7 +196,7 @@ for vm_name in vms_to_convert:
 
 ## VM Size Compatibility
 
-Premium SSD disks require a Premium-storage-capable VM size. If you convert disks to Premium SSD but your VM does not support it, the disk will not mount.
+Premium SSD disks require a Premium-storage-capable VM size. If you want to convert disks to Premium SSD and your VM does not support it, resize the VM before starting it with Premium managed disks.
 
 ```bash
 # Check if your VM size supports Premium storage
@@ -204,12 +206,15 @@ az vm show \
   --query "hardwareProfile.vmSize" -o tsv
 
 # Check the capabilities of that VM size
-az vm list-sizes --location eastus \
-  --query "[?name=='Standard_B2s'].{Name:name, MaxDisks:maxDataDiskCount}" \
+az vm list-skus \
+  --location eastus \
+  --resource-type virtualMachines \
+  --size Standard_B2s \
+  --query "[].{Name:name, PremiumIO: capabilities[?name=='PremiumIO'].value | [0]}" \
   --output table
 ```
 
-If the VM size does not support Premium storage, you need to resize the VM first (which also requires deallocation).
+If the `PremiumIO` value is not `True`, you need to resize the VM first (which also requires deallocation).
 
 ## Cost Impact of Conversion
 
