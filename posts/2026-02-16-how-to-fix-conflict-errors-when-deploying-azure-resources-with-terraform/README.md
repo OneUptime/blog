@@ -48,7 +48,7 @@ az resource show \
   --output tsv
 
 # Import it into Terraform state
-terraform import azurerm_app_service.example /subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.Web/sites/my-web-app
+terraform import azurerm_linux_web_app.example /subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.Web/sites/my-web-app
 ```
 
 After importing, run `terraform plan` to see if there are differences between the actual resource configuration and your Terraform code. Update your `.tf` files to match the real state, or let Terraform modify the resource on the next apply.
@@ -237,7 +237,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"  # Update to the latest stable version
+      version = "~> 4.0"  # Update to the latest stable major version
     }
   }
 }
