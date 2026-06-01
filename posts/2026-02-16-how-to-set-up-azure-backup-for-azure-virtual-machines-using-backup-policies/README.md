@@ -14,16 +14,16 @@ This guide covers creating backup policies, applying them to VMs, and making sur
 
 ## How Azure VM Backup Works
 
-When Azure Backup runs for a VM, it takes an application-consistent snapshot using the VM's backup extension. The process looks like this:
+When Azure Backup runs for a VM, it takes a snapshot and, when possible, coordinates consistency using the VM's backup extension. Windows VMs can get application-consistent snapshots through VSS. Linux VMs are file-system consistent by default unless you configure pre/post scripts for application consistency. If the VM is shut down or offline, the recovery point is crash-consistent. The process looks like this:
 
 1. The Azure Backup service triggers the VM extension
-2. The extension coordinates with VSS (Windows) or filesystem freeze (Linux) to create an application-consistent snapshot
-3. The snapshot is stored as a recovery point in the Recovery Services vault
-4. Optionally, data is transferred from the snapshot to the vault for longer-term storage
+2. The extension coordinates with VSS (Windows), filesystem freeze (Linux), or Linux pre/post scripts if configured
+3. A snapshot-tier recovery point is created for Instant Restore
+4. Snapshot data is transferred to the vault for longer-term storage
 
 Azure Backup offers two tiers for recovery points:
 
-**Snapshot tier (Instant Restore)** - Recovery points are stored as snapshots of the VM's managed disks. Restores from this tier are very fast because you are restoring from local snapshots. Retained for 1-5 days.
+**Snapshot tier (Instant Restore)** - Recovery points are stored as snapshots with the VM disks. Restores from this tier are very fast because you are restoring from local snapshots. Retained for 1-5 days with Standard policies and 1-30 days with Enhanced policies.
 
 **Vault tier** - Snapshot data is transferred to the vault for longer-term retention. Restores take longer because data must be hydrated from the vault. Retained according to your policy (days, weeks, months, years).
 
@@ -41,7 +41,7 @@ flowchart LR
 - Azure VMs running Windows or Linux (supported OS versions)
 - A Recovery Services vault in the same region as the VMs
 - VMs must use managed disks
-- The VM must be running (or at least deallocated - not stopped from within the OS)
+- The VM can be running, shut down, or offline, but shut down or offline VMs are backed up with crash-consistent recovery points only
 
 ## Step 1: Create a Recovery Services Vault
 
@@ -84,10 +84,10 @@ For daily backups:
 - Choose the timezone
 
 For hourly backups (Enhanced policy):
-- Choose the frequency (every 4, 6, 8, or 12 hours)
+- Choose the frequency (every 4, 6, 8, 12, or 24 hours)
 - Set the start time and duration window
 
-**Instant Restore retention**: 1-5 days. This determines how long snapshot-tier recovery points are kept. More days means faster restores but higher snapshot storage costs.
+**Instant Restore retention**: 1-5 days for Standard policies and 1-30 days for Enhanced policies. This determines how long snapshot-tier recovery points are kept. More days means faster restores but higher snapshot storage costs.
 
 **Daily retention**: How many daily backup points to keep (7-9999 days)
 
@@ -109,56 +109,59 @@ az backup policy create \
     --name policy-production-vms \
     --backup-management-type AzureIaasVM \
     --policy '{
-        "schedulePolicy": {
-            "schedulePolicyType": "SimpleSchedulePolicy",
-            "scheduleRunFrequency": "Daily",
-            "scheduleRunTimes": ["2026-02-16T23:00:00Z"]
-        },
-        "retentionPolicy": {
-            "retentionPolicyType": "LongTermRetentionPolicy",
-            "dailySchedule": {
-                "retentionTimes": ["2026-02-16T23:00:00Z"],
-                "retentionDuration": {
-                    "count": 30,
-                    "durationType": "Days"
-                }
+        "properties": {
+            "backupManagementType": "AzureIaasVM",
+            "schedulePolicy": {
+                "schedulePolicyType": "SimpleSchedulePolicy",
+                "scheduleRunFrequency": "Daily",
+                "scheduleRunTimes": ["2026-02-16T23:00:00Z"]
             },
-            "weeklySchedule": {
-                "daysOfTheWeek": ["Sunday"],
-                "retentionTimes": ["2026-02-16T23:00:00Z"],
-                "retentionDuration": {
-                    "count": 12,
-                    "durationType": "Weeks"
-                }
-            },
-            "monthlySchedule": {
-                "retentionScheduleFormatType": "Weekly",
-                "retentionScheduleWeekly": {
-                    "daysOfTheWeek": ["Sunday"],
-                    "weeksOfTheMonth": ["First"]
+            "retentionPolicy": {
+                "retentionPolicyType": "LongTermRetentionPolicy",
+                "dailySchedule": {
+                    "retentionTimes": ["2026-02-16T23:00:00Z"],
+                    "retentionDuration": {
+                        "count": 30,
+                        "durationType": "Days"
+                    }
                 },
-                "retentionTimes": ["2026-02-16T23:00:00Z"],
-                "retentionDuration": {
-                    "count": 12,
-                    "durationType": "Months"
+                "weeklySchedule": {
+                    "daysOfTheWeek": ["Sunday"],
+                    "retentionTimes": ["2026-02-16T23:00:00Z"],
+                    "retentionDuration": {
+                        "count": 12,
+                        "durationType": "Weeks"
+                    }
+                },
+                "monthlySchedule": {
+                    "retentionScheduleFormatType": "Weekly",
+                    "retentionScheduleWeekly": {
+                        "daysOfTheWeek": ["Sunday"],
+                        "weeksOfTheMonth": ["First"]
+                    },
+                    "retentionTimes": ["2026-02-16T23:00:00Z"],
+                    "retentionDuration": {
+                        "count": 12,
+                        "durationType": "Months"
+                    }
+                },
+                "yearlySchedule": {
+                    "retentionScheduleFormatType": "Weekly",
+                    "retentionScheduleWeekly": {
+                        "daysOfTheWeek": ["Sunday"],
+                        "weeksOfTheMonth": ["First"]
+                    },
+                    "monthsOfYear": ["January"],
+                    "retentionTimes": ["2026-02-16T23:00:00Z"],
+                    "retentionDuration": {
+                        "count": 3,
+                        "durationType": "Years"
+                    }
                 }
             },
-            "yearlySchedule": {
-                "retentionScheduleFormatType": "Weekly",
-                "retentionScheduleWeekly": {
-                    "daysOfTheWeek": ["Sunday"],
-                    "weeksOfTheMonth": ["First"]
-                },
-                "monthsOfYear": ["January"],
-                "retentionTimes": ["2026-02-16T23:00:00Z"],
-                "retentionDuration": {
-                    "count": 3,
-                    "durationType": "Years"
-                }
-            }
-        },
-        "instantRpRetentionRangeInDays": 5,
-        "timeZone": "UTC"
+            "instantRpRetentionRangeInDays": 5,
+            "timeZone": "UTC"
+        }
     }'
 ```
 
@@ -213,7 +216,8 @@ az backup protection backup-now \
     --vault-name rsv-backup-eastus2-001 \
     --container-name "IaasVMContainer;V2;rg-production;vm-web-01" \
     --item-name "VM;iaasvmcontainerv2;rg-production;vm-web-01" \
-    --retain-until 2026-03-18
+    --backup-management-type AzureIaasVM \
+    --retain-until 18-03-2026
 ```
 
 ## Step 4: Monitor Backup Jobs
@@ -250,7 +254,7 @@ Configure alerts for failed backups so you are not caught off guard:
 2. Enable built-in alerts for:
    - Backup failure
    - Backup warning
-   - Delete protection data (someone attempting to remove backups)
+   - Delete backup data (someone attempting to remove backups)
 
 ## Step 5: Verify Backup Data
 
@@ -267,6 +271,7 @@ az backup recoverypoint list \
     --vault-name rsv-backup-eastus2-001 \
     --container-name "IaasVMContainer;V2;rg-production;vm-web-01" \
     --item-name "VM;iaasvmcontainerv2;rg-production;vm-web-01" \
+    --backup-management-type AzureIaasVM \
     --output table
 ```
 
