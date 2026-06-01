@@ -50,7 +50,7 @@ EC2 is usually the biggest line item. Here's how to estimate it accurately.
 - Instance hours (on-demand, reserved, or spot)
 - EBS volumes (type, size, IOPS)
 - Data transfer (inbound free, outbound charged)
-- Elastic IPs (free when attached, $3.60/month when not)
+- Public IPv4 addresses, including Elastic IPs (charged whether in use or idle)
 
 Here's a Python script that calculates EC2 costs for a typical setup:
 
@@ -73,10 +73,10 @@ def estimate_ec2_monthly_cost(
 
     # Data transfer out pricing (tiered)
     def data_transfer_cost(gb):
-        if gb <= 1:
-            return 0  # First 1GB free
+        if gb <= 100:
+            return 0  # First 100GB free across most AWS services
         cost = 0
-        remaining = gb - 1
+        remaining = gb - 100
         # First 10TB at $0.09/GB
         tier1 = min(remaining, 10240)
         cost += tier1 * 0.09
@@ -135,16 +135,16 @@ def estimate_rds_monthly_cost(
         instance_cost *= 2
 
     # Storage cost
-    storage_rates = {'gp2': 0.115, 'gp3': 0.08, 'io1': 0.125}
-    storage_cost = storage_gb * storage_rates.get(storage_type, 0.08)
+    storage_rates = {'gp2': 0.115, 'gp3': 0.115, 'io1': 0.125, 'io2': 0.125}
+    storage_cost = storage_gb * storage_rates.get(storage_type, 0.115)
     if multi_az:
         storage_cost *= 2
 
-    # Backup storage (first backup is free up to DB size)
+    # Backup storage (up to 100% of provisioned DB storage is free)
     backup_cost = max(0, (storage_gb * backup_retention_days / 7 - storage_gb)) * 0.095
 
     # Data transfer
-    transfer_cost = max(0, data_transfer_out_gb - 1) * 0.09
+    transfer_cost = max(0, data_transfer_out_gb - 100) * 0.09
 
     total = instance_cost + storage_cost + backup_cost + transfer_cost
 
@@ -187,7 +187,8 @@ def estimate_s3_monthly_cost(
         'STANDARD': 0.023,
         'STANDARD_IA': 0.0125,
         'INTELLIGENT_TIERING': 0.023,  # Frequent tier
-        'GLACIER': 0.004,
+        'GLACIER_INSTANT_RETRIEVAL': 0.004,
+        'GLACIER_FLEXIBLE_RETRIEVAL': 0.0036,
         'GLACIER_DEEP_ARCHIVE': 0.00099
     }
 
@@ -198,7 +199,7 @@ def estimate_s3_monthly_cost(
     storage_cost = storage_gb * storage_rates.get(storage_class, 0.023)
     put_cost = put_requests * put_rate
     get_cost = get_requests * get_rate
-    transfer_cost = max(0, data_transfer_out_gb - 1) * 0.09
+    transfer_cost = max(0, data_transfer_out_gb - 100) * 0.09
 
     total = storage_cost + put_cost + get_cost + transfer_cost
 
