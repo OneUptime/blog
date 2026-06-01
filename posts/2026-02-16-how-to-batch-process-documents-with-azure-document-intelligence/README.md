@@ -26,12 +26,12 @@ Batch processing makes sense in several scenarios:
 - An Azure Document Intelligence resource (S0 tier recommended for production workloads)
 - An Azure Storage account with a container holding your documents
 - Python 3.9+ with the `azure-ai-documentintelligence` package
-- Documents in supported formats (PDF, JPEG, PNG, TIFF, BMP, DOCX, XLSX, PPTX)
+- Documents in formats supported by the model you use (for example, PDF, JPEG/JPG, PNG, TIFF, BMP, and HEIF; the Read, Layout, and custom classification models also support Office and HTML files in v4.0)
 
 ```bash
 # Install the required packages
 
-pip install azure-ai-documentintelligence azure-storage-blob asyncio aiohttp
+pip install azure-ai-documentintelligence azure-storage-blob aiohttp pyodbc
 ```
 
 ## Understanding the Processing Models
@@ -56,23 +56,20 @@ The most flexible approach is to submit multiple documents in parallel using asy
 ```python
 # batch_processor.py - Process documents in parallel using async calls
 import asyncio
-import json
 from azure.ai.documentintelligence.aio import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
 from azure.core.credentials import AzureKeyCredential
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob.aio import ContainerClient
 
 class BatchDocumentProcessor:
     """Process multiple documents in parallel using Azure Document Intelligence."""
 
-    def __init__(self, endpoint: str, key: str, storage_conn_str: str):
+    def __init__(self, endpoint: str, key: str):
         # Initialize the Document Intelligence async client
         self.client = DocumentIntelligenceClient(
             endpoint=endpoint,
             credential=AzureKeyCredential(key)
         )
-        # Initialize the blob storage client for reading documents
-        self.blob_service = BlobServiceClient.from_connection_string(storage_conn_str)
         # Control concurrency to avoid hitting rate limits
         self.semaphore = asyncio.Semaphore(10)
 
@@ -114,15 +111,16 @@ class BatchDocumentProcessor:
                 fields = {}
                 for name, field in doc.fields.items():
                     # Extract the field value based on its type
-                    if field.value_type == "string":
+                    if field.type == "string":
                         fields[name] = field.value_string
-                    elif field.value_type == "number":
+                    elif field.type == "number":
                         fields[name] = field.value_number
-                    elif field.value_type == "date":
+                    elif field.type == "date":
                         fields[name] = str(field.value_date)
-                    elif field.value_type == "currency":
+                    elif field.type == "currency":
                         fields[name] = {
                             "amount": field.value_currency.amount,
+                            "code": field.value_currency.currency_code,
                             "symbol": field.value_currency.currency_symbol
                         }
                     else:
@@ -130,19 +128,18 @@ class BatchDocumentProcessor:
                 documents.append(fields)
         return documents
 
-    async def process_batch(self, container_name: str, model_id: str,
+    async def process_batch(self, container_sas_url: str, model_id: str,
                            prefix: str = None) -> list:
         """
-        Process all documents in a blob container (or those matching a prefix).
+        Process all documents in a blob container SAS URL (or those matching a prefix).
         Returns a list of results for each document.
         """
-        # List all blobs in the container
-        container_client = self.blob_service.get_container_client(container_name)
+        # List all blobs in the container and keep the SAS token on each blob URL
         blobs = []
-        for blob in container_client.list_blobs(name_starts_with=prefix):
-            # Build the full blob URL with SAS token or use managed identity
-            blob_url = f"{self.blob_service.url}{container_name}/{blob.name}"
-            blobs.append(blob_url)
+        async with ContainerClient.from_container_url(container_sas_url) as container_client:
+            async for blob in container_client.list_blobs(name_starts_with=prefix):
+                blob_client = container_client.get_blob_client(blob.name)
+                blobs.append(blob_client.url)
 
         print(f"Found {len(blobs)} documents to process")
 
@@ -173,18 +170,18 @@ Here is how to use the batch processor:
 # run_batch.py - Execute batch document processing
 import asyncio
 import json
+from batch_processor import BatchDocumentProcessor
 
 async def main():
     processor = BatchDocumentProcessor(
         endpoint="https://your-resource.cognitiveservices.azure.com/",
-        key="your-api-key",
-        storage_conn_str="DefaultEndpointsProtocol=https;AccountName=..."
+        key="your-api-key"
     )
 
     try:
         # Process all invoices in the 'invoices' container
         results = await processor.process_batch(
-            container_name="invoices",
+            container_sas_url="https://yourstorage.blob.core.windows.net/invoices?sv=...",
             model_id="prebuilt-invoice",
             prefix="2026/02/"  # Only process February 2026 invoices
         )
@@ -216,6 +213,10 @@ Azure Document Intelligence also provides a dedicated batch analysis endpoint th
 ```python
 # batch_api.py - Use the native Batch Analyze API
 from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.ai.documentintelligence.models import (
+    AnalyzeBatchDocumentsRequest,
+    AzureBlobContentSource,
+)
 from azure.core.credentials import AzureKeyCredential
 
 client = DocumentIntelligenceClient(
@@ -227,19 +228,20 @@ client = DocumentIntelligenceClient(
 # The source is a blob container with a SAS URL
 poller = client.begin_analyze_batch_documents(
     model_id="prebuilt-invoice",
-    analyze_batch_request={
-        "azureBlobSource": {
-            "containerUrl": "https://yourstorage.blob.core.windows.net/invoices?sv=...",
-            "prefix": "2026/02/"
-        },
-        "resultContainerUrl": "https://yourstorage.blob.core.windows.net/results?sv=...",
-        "resultPrefix": "invoice-results/"
-    }
+    analyze_batch_request=AnalyzeBatchDocumentsRequest(
+        azure_blob_source=AzureBlobContentSource(
+            container_url="https://yourstorage.blob.core.windows.net/invoices?sv=...",
+            prefix="2026/02/"
+        ),
+        result_container_url="https://yourstorage.blob.core.windows.net/results?sv=...",
+        result_prefix="invoice-results/",
+        overwrite_existing=True
+    )
 )
 
 # Wait for the batch to complete
 result = poller.result()
-print(f"Batch processing complete. Status: {result.status}")
+print("Batch processing complete.")
 print(f"Succeeded: {result.succeeded_count}")
 print(f"Failed: {result.failed_count}")
 print(f"Skipped: {result.skipped_count}")
@@ -249,7 +251,7 @@ The batch API writes results as JSON files to the specified result container. Ea
 
 ## Handling Rate Limits
 
-Azure Document Intelligence has rate limits based on your pricing tier. The S0 tier allows 15 concurrent requests per second. If you exceed this, you will get 429 (Too Many Requests) errors.
+Azure Document Intelligence has rate limits based on your pricing tier. The S0 tier allows 15 analyze transactions per second by default. If you exceed this, you will get 429 (Too Many Requests) errors.
 
 The semaphore in our async processor helps, but you should also add retry logic:
 
@@ -287,7 +289,6 @@ After batch processing, you typically want to load the extracted data into a dat
 ```python
 # save_results.py - Write extracted invoice data to Azure SQL Database
 import pyodbc
-import json
 
 def save_to_database(results: list, connection_string: str):
     """Save extracted invoice data to Azure SQL Database."""
@@ -327,7 +328,7 @@ def save_to_database(results: list, connection_string: str):
             doc.get("VendorName"),
             doc.get("InvoiceDate"),
             total.get("amount") if isinstance(total, dict) else None,
-            total.get("symbol") if isinstance(total, dict) else None
+            total.get("code") if isinstance(total, dict) else None
         )
 
     conn.commit()
