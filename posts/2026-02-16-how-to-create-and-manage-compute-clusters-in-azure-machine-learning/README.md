@@ -40,7 +40,7 @@ You will need to configure:
 
 ```python
 from azure.ai.ml import MLClient
-from azure.ai.ml.entities import AmlCompute
+from azure.ai.ml.entities import AmlCompute, NetworkSettings
 from azure.identity import DefaultAzureCredential
 
 # Connect to the workspace
@@ -56,7 +56,6 @@ ml_client = MLClient(
 # Define a CPU cluster for general-purpose training
 cpu_cluster = AmlCompute(
     name="cpu-training-cluster",
-    type="amlcompute",
     size="Standard_DS3_v2",       # VM size
     min_instances=0,               # Scale to zero when idle
     max_instances=4,               # Maximum 4 nodes
@@ -76,7 +75,6 @@ print(f"Cluster '{cpu_cluster.name}' created successfully")
 # Define a GPU cluster for deep learning
 gpu_cluster = AmlCompute(
     name="gpu-training-cluster",
-    type="amlcompute",
     size="Standard_NC6s_v3",       # V100 GPU
     min_instances=0,
     max_instances=2,
@@ -117,13 +115,12 @@ az ml compute create \
 
 ## Using Low-Priority VMs to Save Money
 
-Azure offers low-priority (spot) VMs at up to 80% discount compared to dedicated VMs. The trade-off is that Azure can reclaim these VMs at any time if it needs the capacity for dedicated customers.
+Azure offers low-priority (spot) VMs at a reduced price compared to dedicated VMs. The trade-off is that Azure can reclaim these VMs at any time if it needs the capacity for dedicated customers.
 
 ```python
 # Low-priority cluster for cost-sensitive workloads
 spot_cluster = AmlCompute(
     name="spot-training-cluster",
-    type="amlcompute",
     size="Standard_NC6s_v3",
     min_instances=0,
     max_instances=8,                # Can be larger since it is cheaper
@@ -154,20 +151,22 @@ For production workloads, you may need to place your compute cluster inside a vi
 # Cluster with VNet integration
 private_cluster = AmlCompute(
     name="private-training-cluster",
-    type="amlcompute",
     size="Standard_DS3_v2",
     min_instances=0,
     max_instances=4,
     # Network configuration
-    vnet_name="ml-vnet",
-    subnet_name="training-subnet",
+    network_settings=NetworkSettings(
+        vnet_name="ml-vnet",
+        subnet="training-subnet"
+    ),
+    enable_node_public_ip=False,
     description="Network-isolated cluster for sensitive data processing"
 )
 
 ml_client.compute.begin_create_or_update(private_cluster).result()
 ```
 
-When the cluster is in a VNet, the nodes cannot access the public internet by default. You may need to configure an Azure Firewall or NAT Gateway to allow outbound access for package installation.
+When the cluster is in a VNet with public IPs disabled or restrictive outbound rules, nodes may not be able to access the public internet. You may need to configure an Azure Firewall or NAT Gateway to allow outbound access for package installation.
 
 ## Monitoring Cluster Usage
 
@@ -178,9 +177,10 @@ Track how your clusters are being used so you can right-size them and control co
 ```python
 # Get current cluster status
 cluster = ml_client.compute.get("cpu-training-cluster")
+nodes = list(ml_client.compute.list_nodes("cpu-training-cluster"))
 print(f"Cluster: {cluster.name}")
 print(f"Provisioning state: {cluster.provisioning_state}")
-print(f"Current nodes: {cluster.size}")
+print(f"Current nodes: {len(nodes)}")
 print(f"VM size: {cluster.size}")
 ```
 
@@ -188,14 +188,13 @@ print(f"VM size: {cluster.size}")
 
 ```python
 # List all compute resources in the workspace
-computes = ml_client.compute.list()
+computes = ml_client.compute.list(compute_type="amlcompute")
 
 print("Compute resources:")
 for compute in computes:
-    if hasattr(compute, 'min_instances'):  # It is a cluster
-        print(f"  {compute.name} ({compute.size})")
-        print(f"    Min/Max instances: {compute.min_instances}/{compute.max_instances}")
-        print(f"    State: {compute.provisioning_state}")
+    print(f"  {compute.name} ({compute.size})")
+    print(f"    Min/Max instances: {compute.min_instances}/{compute.max_instances}")
+    print(f"    State: {compute.provisioning_state}")
 ```
 
 ### Set Up Cost Alerts
