@@ -1,14 +1,14 @@
-# Enable Microsoft Defender for Azure Cosmos DB to Detect NoSQL Injection Attacks
+# Enable Microsoft Defender for Azure Cosmos DB to Detect SQL Injection Attempts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Defender, Cosmos DB, NoSQL Injection, Database Security, Threat Detection, Cloud Security
+Tags: Azure, Microsoft Defender, Cosmos DB, SQL Injection, Database Security, Threat Detection, Cloud Security
 
-Description: Learn how to enable and configure Microsoft Defender for Azure Cosmos DB to detect NoSQL injection attempts and other database threats in real time.
+Description: Learn how to enable and configure Microsoft Defender for Azure Cosmos DB to detect SQL injection attempts and other database threats in real time.
 
 ---
 
-NoSQL injection is one of those attack vectors that gets less attention than its SQL counterpart, but it is just as dangerous. When you are running Azure Cosmos DB, attackers can craft malicious queries through your application to extract data, bypass authentication, or even modify records. Microsoft Defender for Azure Cosmos DB adds a layer of threat detection that specifically watches for these kinds of attacks, along with other suspicious database activity.
+Query injection against NoSQL databases gets less attention than classic SQL injection, but it can still be dangerous. When you are running Azure Cosmos DB for NoSQL, attackers can craft malicious SQL-style queries through your application to extract data or bypass authorization checks in vulnerable application code. Microsoft Defender for Azure Cosmos DB adds a layer of threat detection that specifically watches for these kinds of attacks, along with other suspicious database activity.
 
 In this post, I will walk through enabling Defender for Cosmos DB, explain what it actually detects, and show you how to configure alerts so your security team knows the moment something suspicious happens.
 
@@ -16,7 +16,7 @@ In this post, I will walk through enabling Defender for Cosmos DB, explain what 
 
 Before we set anything up, let us understand what we are getting. Defender for Cosmos DB uses behavioral analytics and threat intelligence to detect several categories of threats:
 
-**NoSQL injection attacks** - This is the headline feature. Defender analyzes the queries hitting your Cosmos DB account and flags patterns that look like injection attempts. This includes things like unusual operators in query predicates, attempts to manipulate query logic through embedded expressions, and queries that contain suspicious string patterns.
+**SQL injection attempts against the API for NoSQL** - This is the headline feature. Defender analyzes the queries hitting your Cosmos DB account and flags suspicious SQL statements. Many classic SQL injection attacks do not work against Azure Cosmos DB, but some variations can succeed and may lead to data exfiltration.
 
 **Anomalous access patterns** - If someone starts querying your database from an unusual location, at an unusual time, or with an unusual volume of requests, Defender will flag it.
 
@@ -24,9 +24,9 @@ Before we set anything up, let us understand what we are getting. Defender for C
 
 **Suspicious database activities** - This covers things like enumeration of containers, unusual metadata queries, and access patterns consistent with reconnaissance.
 
-## How NoSQL Injection Works in Cosmos DB
+## How Query Injection Works in Cosmos DB
 
-To understand why this protection matters, let us look at a quick example of a NoSQL injection vulnerability. Suppose you have an API endpoint that queries Cosmos DB based on user input.
+To understand why this protection matters, let us look at a quick example of a query injection vulnerability. Suppose you have an API endpoint that queries Cosmos DB based on user input.
 
 This is a vulnerable Node.js query where user input is directly concatenated into the query string:
 
@@ -47,7 +47,7 @@ app.get('/api/users', async (req, res) => {
 });
 ```
 
-An attacker could send a request like `/api/users?username=' OR 1=1 --` and potentially dump all user records. Defender for Cosmos DB is designed to catch these patterns at the database level, providing defense in depth even when application code has vulnerabilities.
+An attacker could send a request like `/api/users?username=' OR true OR c.username='` and potentially dump all user records. Defender for Cosmos DB is designed to catch these patterns at the database level, providing defense in depth even when application code has vulnerabilities.
 
 Of course, the correct approach is to use parameterized queries:
 
@@ -95,20 +95,19 @@ az security pricing show \
 
 If you prefer to enable protection on specific accounts only (maybe you want it on production but not development), you can do that at the resource level.
 
-This enables Defender for a specific Cosmos DB account using the resource ID:
+This enables Defender for a specific Cosmos DB account:
 
 ```bash
-# Get the resource ID of your Cosmos DB account
-COSMOS_ID=$(az cosmosdb show \
-  --name mycosmosaccount \
-  --resource-group rg-production \
-  --query id -o tsv)
-
 # Enable Defender for this specific account
-az security pricing create \
-  --name CosmosDbs \
-  --tier Standard \
-  --extensions "[{\"name\":\"CosmosDbs\",\"isEnabled\":\"True\"}]"
+az security atp cosmosdb update \
+  --resource-group rg-production \
+  --cosmosdb-account mycosmosaccount \
+  --is-enabled true
+
+# Verify it is enabled
+az security atp cosmosdb show \
+  --resource-group rg-production \
+  --cosmosdb-account mycosmosaccount
 ```
 
 Alternatively, you can enable it through the Azure portal. Navigate to your Cosmos DB account, click on "Microsoft Defender for Cloud" in the left menu under Security, and click "Enable Microsoft Defender for Azure Cosmos DB."
@@ -123,16 +122,16 @@ This configures email notifications for security alerts on your subscription:
 # Configure email notifications for security alerts
 az security contact create \
   --name default \
-  --email "security-team@yourcompany.com" \
-  --alert-notifications on \
-  --alerts-to-admins on
+  --emails "security-team@yourcompany.com" \
+  --alert-notifications '{"state":"On","minimalSeverity":"Low"}' \
+  --notifications-by-role '{"state":"On","roles":["Owner"]}'
 
 # You can also add multiple email addresses
 az security contact create \
   --name default \
-  --email "security-team@yourcompany.com;oncall@yourcompany.com" \
-  --alert-notifications on \
-  --alerts-to-admins on
+  --emails "security-team@yourcompany.com;oncall@yourcompany.com" \
+  --alert-notifications '{"state":"On","minimalSeverity":"Low"}' \
+  --notifications-by-role '{"state":"On","roles":["Owner"]}'
 ```
 
 For more sophisticated alerting, I recommend setting up an integration with Microsoft Sentinel or your SIEM of choice. Defender for Cloud alerts automatically flow into Sentinel if you have the connector enabled.
@@ -153,16 +152,21 @@ This KQL query in Azure Resource Graph finds all Cosmos DB security alerts from 
 
 ```kusto
 // Find all Cosmos DB related security alerts from the past week
-SecurityAlert
+SecurityResources
+| where type =~ "microsoft.security/locations/alerts"
+| extend
+    TimeGenerated = todatetime(coalesce(tostring(properties.timeGeneratedUtc), tostring(properties.TimeGenerated))),
+    AlertType = tostring(coalesce(properties.alertType, properties.AlertType))
 | where TimeGenerated > ago(7d)
-| where AlertType contains "Cosmos" or AlertType contains "NoSQL"
+| where AlertType contains "Cosmos"
+    or AlertType contains "SqlInjection"
 | project
     TimeGenerated,
-    AlertName,
-    AlertSeverity,
-    Description,
-    ResourceId,
-    RemediationSteps
+    AlertName = tostring(coalesce(properties.alertDisplayName, properties.AlertDisplayName)),
+    AlertSeverity = tostring(coalesce(properties.severity, properties.Severity)),
+    Description = tostring(coalesce(properties.description, properties.Description)),
+    ResourceId = tostring(coalesce(properties.resourceIdentifiers[0].azureResourceId, properties.ResourceIdentifiers[0].AzureResourceId)),
+    RemediationSteps = tostring(coalesce(properties.remediationSteps, properties.RemediationSteps))
 | order by TimeGenerated desc
 ```
 
@@ -194,9 +198,9 @@ A word of caution: be very selective with suppression rules. Every suppressed al
 
 ## Pricing and Cost Considerations
 
-Microsoft Defender for Cosmos DB is billed per Cosmos DB account per month. As of my last check, it costs around $10 per account per month, which is quite reasonable for the level of threat detection you get. There is also a 30-day free trial when you first enable it.
+Microsoft Defender for Cosmos DB is billed based on the Azure Cosmos DB request units (RUs) used by the protected account. There is also a 30-day free trial when you first enable it.
 
-The cost is per account, not per database or container, so a single account with 50 containers costs the same as one with a single container. Keep this in mind when planning your Cosmos DB account architecture.
+The cost is not per database or container, so review the current Defender for Cloud pricing page and estimate costs from your account's RU usage when planning your Cosmos DB account architecture.
 
 ## Best Practices for Cosmos DB Security
 
@@ -211,4 +215,4 @@ Enabling Defender is an important step, but it should be part of a broader secur
 
 ## Wrapping Up
 
-Enabling Microsoft Defender for Cosmos DB is a quick win that adds meaningful security to your NoSQL databases. The NoSQL injection detection alone justifies the modest cost, and the anomalous access pattern detection can catch compromised credentials before significant damage is done. It takes about five minutes to enable, and once it is running, you get continuous monitoring without any changes to your application code. Combine it with good coding practices like parameterized queries and proper access controls, and you have a solid defense-in-depth approach for your Cosmos DB workloads.
+Enabling Microsoft Defender for Cosmos DB is a quick win that adds meaningful security to your NoSQL databases. The SQL injection detection alone justifies the modest cost, and the anomalous access pattern detection can catch compromised credentials before significant damage is done. It takes about five minutes to enable, and once it is running, you get continuous monitoring without any changes to your application code. Combine it with good coding practices like parameterized queries and proper access controls, and you have a solid defense-in-depth approach for your Cosmos DB workloads.
