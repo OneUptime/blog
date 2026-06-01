@@ -8,7 +8,7 @@ Description: Step-by-step guide to installing and configuring a self-hosted inte
 
 ---
 
-Azure Data Factory runs activities using an integration runtime (IR), which is the compute infrastructure behind the scenes. The Azure-hosted integration runtime handles connections to cloud data stores just fine, but it cannot reach into your on-premises network or private VNet. That is where the self-hosted integration runtime comes in.
+Azure Data Factory runs activities using an integration runtime (IR), which is the compute infrastructure behind the scenes. The default Azure-hosted integration runtime handles connections to cloud data stores just fine, but it cannot reach into your on-premises network or private VNet unless you use features such as managed virtual network integration runtime. That is where the self-hosted integration runtime comes in.
 
 A self-hosted IR is a piece of software you install on a machine inside your network. It acts as a bridge between Azure Data Factory in the cloud and your on-premises data sources - SQL Server instances, file shares, Oracle databases, or anything else that is not publicly accessible. In this post, I will walk through the full setup process, from creating the IR in ADF to installing it on a machine and configuring it for production use.
 
@@ -40,7 +40,7 @@ flowchart LR
     style B fill:#ff8c00,color:white
 ```
 
-Important: the self-hosted IR initiates outbound HTTPS connections to Azure. It does not require any inbound firewall rules. This makes it much easier to deploy in locked-down corporate environments.
+Important: the self-hosted IR initiates outbound HTTPS connections to Azure, so you typically do not need inbound corporate firewall rules for Azure to reach the machine. Some local Windows Firewall configuration can still be required for multi-node setups or credential management. This makes it much easier to deploy in locked-down corporate environments.
 
 ## Prerequisites
 
@@ -71,11 +71,10 @@ You can also create it using the Azure CLI.
 ```bash
 # Create a self-hosted integration runtime using Azure CLI
 
-az datafactory integration-runtime create \
+az datafactory integration-runtime self-hosted create \
   --factory-name "my-data-factory" \
   --resource-group "my-resource-group" \
-  --name "SelfHostedIR" \
-  --type "SelfHosted"
+  --name "SelfHostedIR"
 ```
 
 To get the authentication keys:
@@ -117,20 +116,22 @@ You can also verify from the Integration Runtime Configuration Manager on the Wi
 When creating linked services for on-premises data sources, specify the self-hosted IR in the `connectVia` property.
 
 ```json
-// Linked service for on-premises SQL Server using self-hosted IR
 {
   "name": "ls_onprem_sqlserver",
   "properties": {
     "type": "SqlServer",
     "typeProperties": {
-      "connectionString": "Server=ONPREM-DB01;Database=SalesDB;",
+      "server": "ONPREM-DB01",
+      "database": "SalesDB",
+      "encrypt": "mandatory",
+      "trustServerCertificate": false,
+      "authenticationType": "SQL",
       "userName": "sqladmin",
       "password": {
         "type": "SecureString",
         "value": "<password>"
       }
     },
-    // This tells ADF to use the self-hosted IR for this connection
     "connectVia": {
       "referenceName": "SelfHostedIR",
       "type": "IntegrationRuntimeReference"
@@ -142,14 +143,16 @@ When creating linked services for on-premises data sources, specify the self-hos
 For Windows authentication (common in on-premises environments):
 
 ```json
-// Linked service using Windows authentication
 {
   "name": "ls_onprem_sqlserver_windows",
   "properties": {
     "type": "SqlServer",
     "typeProperties": {
-      "connectionString": "Server=ONPREM-DB01;Database=SalesDB;Integrated Security=True;",
-      // Windows domain credentials
+      "server": "ONPREM-DB01",
+      "database": "SalesDB",
+      "encrypt": "mandatory",
+      "trustServerCertificate": false,
+      "authenticationType": "Windows",
       "userName": "DOMAIN\\serviceaccount",
       "password": {
         "type": "SecureString",
@@ -169,8 +172,9 @@ For Windows authentication (common in on-premises environments):
 For production, a single IR node is a single point of failure. If the machine goes down, your pipelines stop. Set up high availability by adding additional nodes.
 
 1. Install the IR software on a second (and optionally third) Windows machine
-2. During registration, use the same authentication key from the same IR definition
-3. The new node automatically joins the existing IR cluster
+2. Before adding another node, enable **Remote access to intranet** on the first node in the Integration Runtime Configuration Manager
+3. During registration, choose to join an existing integration runtime and use the same authentication key from the same IR definition
+4. The new node automatically joins the existing IR cluster
 
 The nodes work together and ADF distributes the workload across them. If one node fails, the others continue processing.
 
@@ -189,12 +193,15 @@ You can have up to 4 nodes per self-hosted IR. Each node should be on a separate
 
 ## Network Requirements
 
-The self-hosted IR needs outbound internet access on the following ports:
+The self-hosted IR needs outbound internet access on the following ports and endpoints:
 
-| Port | Purpose |
-|------|---------|
-| 443 (HTTPS) | Communication with Azure Data Factory service |
-| 443 (HTTPS) | Downloading updates |
+| Endpoint | Port | Purpose |
+|----------|------|---------|
+| `{datafactory}.{region}.datafactory.azure.net` or `*.frontend.clouddatahub.net` | 443 | Communication with the Azure Data Factory service |
+| `*.servicebus.windows.net` | 443 | Azure Relay communication for interactive authoring, unless self-contained interactive authoring is enabled |
+| `download.microsoft.com` | 443 | Downloading updates |
+| Key Vault URL | 443 | Required if credentials are stored in Azure Key Vault |
+| `*.core.windows.net` | 443 | Required when using staged copy through Azure Storage |
 
 If your network requires a proxy, you can configure it in the IR Configuration Manager or in the `diahost.exe.config` file.
 
@@ -210,7 +217,7 @@ If your network requires a proxy, you can configure it in the IR Configuration M
 </system.net>
 ```
 
-The IR does not require any inbound ports to be opened. All communication is initiated outbound from the IR to Azure.
+The IR does not require inbound corporate firewall ports for Azure to initiate connections to the machine. If you enable remote access from the intranet for credential management or high availability, the IR machine may need local Windows Firewall access on port 8060 or the custom port you configure.
 
 ## Performance Tuning
 
@@ -218,7 +225,7 @@ The default settings work for most scenarios, but you can tune performance for h
 
 ### Concurrent Jobs
 
-By default, the number of concurrent jobs is auto-calculated based on the machine's resources. You can override this in the IR Configuration Manager.
+By default, the number of concurrent jobs is auto-calculated based on the machine's resources. You can override this in ADF Studio under **Manage** > **Integration runtimes** > your self-hosted IR > **Nodes**.
 
 A reasonable formula: for a machine with 8 cores and 16 GB RAM, you can typically handle 8-16 concurrent copy activities.
 
@@ -226,9 +233,9 @@ Resource Allocation
 
 If the IR machine runs other workloads, limit the resources available to the IR:
 
-1. Open the Integration Runtime Configuration Manager
-2. Go to the Diagnostics tab
-3. Adjust resource limits if needed
+1. Open ADF Studio
+2. Go to **Manage** > **Integration runtimes** > your self-hosted IR > **Nodes**
+3. Reduce the concurrent job limit per node if needed
 
 For best performance, dedicate the machine to the IR and do not run other heavy workloads on it.
 
@@ -236,7 +243,7 @@ For best performance, dedicate the machine to the IR and do not run other heavy 
 
 ### Auto-Update
 
-The self-hosted IR supports auto-update, which keeps it on the latest version. By default, auto-update is enabled and runs during a maintenance window (typically at 2 AM).
+The self-hosted IR supports auto-update, which keeps it on a Microsoft-managed update version. Microsoft may release newer manual-download versions before they are pushed through auto-update.
 
 You can configure the update window in ADF Studio:
 
