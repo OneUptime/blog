@@ -58,7 +58,7 @@ az eventhubs eventhub create \
   --namespace-name my-eventhubs-namespace \
   --name user-events \
   --partition-count 16 \
-  --message-retention 7
+  --retention-time 168  # 7 days
 ```
 
 ### Partition Key Strategy
@@ -177,7 +177,7 @@ az eventhubs namespace create \
 
 **Dedicated tier**: Provides a single-tenant cluster with capacity measured in Capacity Units (CUs). This is for extremely high-throughput scenarios.
 
-In the Premium tier, partition counts can be increased after creation (up to 1024 partitions per Event Hub), which removes the most significant planning constraint of the Standard tier.
+In the Premium tier, partition counts can be increased after creation (up to 100 partitions per Event Hub, subject to the namespace-level partition limit per PU), which removes the most significant planning constraint of the Standard tier. Dedicated clusters support higher partition limits.
 
 ## Monitoring and Alerts
 
@@ -220,7 +220,7 @@ The ideal configuration balances both:
 
 ```text
 Partitions >= Expected number of parallel consumers
-TUs >= (Peak ingress MB/s) with some headroom
+TUs >= max(Peak ingress MB/s, Peak ingress events/s / 1000, Peak egress MB/s / 2, Peak egress events/s / 4096) with some headroom
 ```
 
 ## Practical Sizing Guidelines
