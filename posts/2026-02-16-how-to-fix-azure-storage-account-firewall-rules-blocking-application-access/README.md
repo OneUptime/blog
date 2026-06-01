@@ -52,6 +52,13 @@ az webapp vnet-integration add \
   --vnet my-vnet \
   --subnet app-subnet
 
+# Route all outbound traffic through the VNet integration
+az resource update \
+  --resource-group my-rg \
+  --name my-web-app \
+  --resource-type "Microsoft.Web/sites" \
+  --set properties.outboundVnetRouting.allTraffic=true
+
 # Step 2: Enable the Microsoft.Storage service endpoint on the subnet
 az network vnet subnet update \
   --resource-group my-rg \
@@ -123,10 +130,18 @@ az functionapp vnet-integration add \
   --subnet func-subnet
 
 # Route all outbound traffic through the VNet
-az functionapp config appsettings set \
+az resource update \
   --resource-group my-rg \
   --name my-function-app \
-  --settings "WEBSITE_VNET_ROUTE_ALL=1"
+  --resource-type "Microsoft.Web/sites" \
+  --set properties.outboundVnetRouting.allTraffic=true
+
+# If the Function App uses Azure Files for its content share, route that traffic too
+az resource update \
+  --resource-group my-rg \
+  --name my-function-app \
+  --resource-type "Microsoft.Web/sites" \
+  --set properties.outboundVnetRouting.contentShareTraffic=true
 
 # Add the subnet to the storage firewall rules
 az network vnet subnet update \
@@ -142,7 +157,7 @@ az storage account network-rule add \
   --subnet func-subnet
 ```
 
-The `WEBSITE_VNET_ROUTE_ALL=1` setting is important. Without it, the Function App only routes RFC 1918 traffic through the VNet. Storage account traffic goes over the public network and gets blocked by the firewall.
+Routing outbound traffic through the VNet integration is important. Without it, storage account traffic can use the public route and get blocked by the firewall.
 
 ## Scenario 3: Local Development Machine Blocked
 
@@ -194,10 +209,10 @@ This setting allows a specific list of Microsoft first-party services to access 
 - Azure DevTest Labs
 - Azure Event Grid
 - Azure Event Hubs
-- Azure Networking (including Azure Monitor)
-- Azure Log Analytics
+- Azure Monitor
+- Azure networking services
 - Azure Synapse Analytics
-- Azure SQL Data Warehouse
+- Azure SQL Database / Azure SQL Servers
 
 Check the Microsoft documentation for the complete current list.
 
@@ -220,11 +235,10 @@ az storage account network-rule add \
   --resource-group my-rg \
   --account-name mystorageaccount \
   --vnet-name aks-vnet \
-  --subnet aks-subnet \
-  --resource-group-for-vnet aks-rg
+  --subnet "/subscriptions/<sub-id>/resourceGroups/aks-rg/providers/Microsoft.Network/virtualNetworks/aks-vnet/subnets/aks-subnet"
 ```
 
-Note the `--resource-group-for-vnet` parameter, which is needed when the VNet is in a different resource group than the storage account.
+Use the subnet resource ID when the VNet is in a different resource group than the storage account.
 
 ## Diagnosing Firewall Issues
 
@@ -273,7 +287,7 @@ A few things that trip people up:
 
 - **Service endpoints take a few minutes to activate.** After enabling them, wait 5-10 minutes before testing.
 - **Private endpoint DNS must be configured correctly.** If your application resolves the storage FQDN to the public IP instead of the private IP, the connection bypasses the private endpoint and hits the firewall.
-- **The Azure portal always works.** Microsoft's own portal IP ranges are always allowed, which can mislead you into thinking the firewall is not active.
+- **Some Azure portal operations can still work.** Storage firewall rules apply to data plane operations, not control plane operations, so parts of the portal can appear to work while application data access is still blocked.
 - **Storage account firewall rules apply to all services** (blobs, files, queues, tables). You cannot have different firewall rules for different services on the same account.
 - **Cross-subscription VNet rules are supported** but require the subnet to be in the same Azure AD tenant.
 
