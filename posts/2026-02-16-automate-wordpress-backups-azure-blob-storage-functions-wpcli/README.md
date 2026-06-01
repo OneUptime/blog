@@ -21,13 +21,13 @@ flowchart TD
     A[Azure Functions Timer Trigger] --> B[Connect to WordPress VM via SSH]
     B --> C[Run WP-CLI Database Export]
     C --> D[Compress WordPress Files]
-    D --> E[Upload to Azure Blob Storage]
-    E --> F[Verify Backup Integrity]
+    D --> E[Verify Backup Integrity]
+    E --> F[Upload to Azure Blob Storage]
     F --> G[Clean Up Temporary Files]
     G --> H[Send Notification on Success/Failure]
 
     I[Blob Storage Lifecycle Policy] --> J[Move to Cool Tier After 30 Days]
-    J --> K[Delete After 90 Days]
+    J --> K[Delete After 180 Days]
 ```
 
 ## Setting Up Azure Blob Storage for Backups
@@ -130,6 +130,7 @@ import paramiko
 import io
 import datetime
 import logging
+import os
 from azure.storage.blob import BlobServiceClient
 
 app = func.FunctionApp()
@@ -160,11 +161,15 @@ def backup_wordpress(timer: func.TimerRequest) -> None:
         # Step 2: Backup WordPress files
         files_backup_path = backup_files(ssh, wp_path, timestamp)
 
-        # Step 3: Download and upload to Blob Storage
+        # Step 3: Verify backup integrity before upload
+        verify_backup(ssh, db_backup_path, "database")
+        verify_backup(ssh, files_backup_path, "files")
+
+        # Step 4: Download and upload to Blob Storage
         upload_backup(ssh, db_backup_path, "db-backups", storage_conn, timestamp)
         upload_backup(ssh, files_backup_path, "backups", storage_conn, timestamp)
 
-        # Step 4: Clean up temporary files on the server
+        # Step 5: Clean up temporary files on the server
         cleanup(ssh, db_backup_path, files_backup_path)
 
         ssh.close()
@@ -256,6 +261,33 @@ def upload_backup(ssh, remote_path, container, storage_conn, timestamp):
     logging.info(f"Uploaded {blob_name} to {container}")
 
 
+def verify_backup(ssh, backup_path, backup_type):
+    """Verify that the backup file is valid."""
+    if backup_type == "database":
+        # Verify the gzipped SQL file can be read
+        command = f"gunzip -t {backup_path}"
+    else:
+        # Verify the tar archive is intact
+        command = f"tar -tzf {backup_path} > /dev/null"
+
+    stdin, stdout, stderr = ssh.exec_command(command)
+    exit_code = stdout.channel.recv_exit_status()
+
+    if exit_code != 0:
+        error = stderr.read().decode()
+        raise Exception(f"Backup verification failed: {error}")
+
+    # Check file size is reasonable (not empty)
+    command = f"stat -c%s {backup_path}"
+    stdin, stdout, stderr = ssh.exec_command(command)
+    size = int(stdout.read().decode().strip())
+
+    if size < 1024:  # Less than 1KB is suspicious
+        raise Exception(f"Backup file suspiciously small: {size} bytes")
+
+    logging.info(f"Backup verified: {backup_path} ({size} bytes)")
+
+
 def cleanup(ssh, *file_paths):
     """Remove temporary backup files from the server."""
     for path in file_paths:
@@ -292,6 +324,22 @@ az keyvault secret set \
 az functionapp identity assign \
   --name wp-backup-functions \
   --resource-group rg-wordpress
+
+principalId=$(az functionapp identity show \
+  --name wp-backup-functions \
+  --resource-group rg-wordpress \
+  --query principalId \
+  --output tsv)
+
+vaultId=$(az keyvault show \
+  --name wp-keyvault \
+  --query id \
+  --output tsv)
+
+az role assignment create \
+  --assignee "$principalId" \
+  --role "Key Vault Secrets User" \
+  --scope "$vaultId"
 
 # Add a Key Vault reference in the app settings
 az functionapp config appsettings set \
