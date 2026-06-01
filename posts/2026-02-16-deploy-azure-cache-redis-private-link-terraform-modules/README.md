@@ -8,7 +8,7 @@ Description: Deploy Azure Cache for Redis with Private Link connectivity using r
 
 ---
 
-Azure Cache for Redis is the go-to caching solution on Azure. It handles session storage, API response caching, real-time analytics, and message brokering. By default, Redis instances get a public endpoint, which works for development but is not acceptable for production workloads handling sensitive data. Private Link gives you a private IP address within your VNet, keeping all traffic off the public internet.
+Azure Cache for Redis is a managed caching solution on Azure. It handles session storage, API response caching, real-time analytics, and message brokering. Microsoft has announced that Azure Cache for Redis is retiring and recommends Azure Managed Redis for new deployments, so use this pattern only for existing Azure Cache for Redis environments that can still create Basic, Standard, or Premium caches during the retirement transition. By default, Redis instances get a public endpoint, which works for development but is not acceptable for production workloads handling sensitive data. Private Link gives you a private IP address within your VNet, keeping all traffic off the public internet.
 
 This post shows how to build a reusable Terraform module that deploys Azure Cache for Redis with Private Link, DNS integration, and proper access controls.
 
@@ -123,14 +123,20 @@ variable "virtual_network_id" {
 variable "redis_configuration" {
   description = "Additional Redis configuration settings"
   type = object({
-    maxmemory_policy       = optional(string, "allkeys-lru")
-    maxmemory_reserved     = optional(number, 125)
+    maxmemory_policy                = optional(string, "allkeys-lru")
+    maxmemory_reserved              = optional(number, 125)
     maxfragmentationmemory_reserved = optional(number, 125)
-    notify_keyspace_events = optional(string, "")
-    rdb_backup_enabled     = optional(bool, false)
-    rdb_backup_frequency   = optional(number, 60)
+    notify_keyspace_events          = optional(string, "")
+    rdb_backup_enabled              = optional(bool, false)
+    rdb_backup_frequency            = optional(number, 60)
+    rdb_storage_connection_string   = optional(string)
   })
   default = {}
+
+  validation {
+    condition     = !try(var.redis_configuration.rdb_backup_enabled, false) || try(var.redis_configuration.rdb_storage_connection_string, null) != null
+    error_message = "rdb_storage_connection_string is required when rdb_backup_enabled is true."
+  }
 }
 
 variable "tags" {
@@ -171,8 +177,9 @@ resource "azurerm_redis_cache" "main" {
     notify_keyspace_events              = var.redis_configuration.notify_keyspace_events
 
     # RDB persistence (Premium only)
-    rdb_backup_enabled    = var.sku_name == "Premium" ? var.redis_configuration.rdb_backup_enabled : null
-    rdb_backup_frequency  = var.sku_name == "Premium" && var.redis_configuration.rdb_backup_enabled ? var.redis_configuration.rdb_backup_frequency : null
+    rdb_backup_enabled            = var.sku_name == "Premium" ? var.redis_configuration.rdb_backup_enabled : null
+    rdb_backup_frequency          = var.sku_name == "Premium" && var.redis_configuration.rdb_backup_enabled ? var.redis_configuration.rdb_backup_frequency : null
+    rdb_storage_connection_string = var.sku_name == "Premium" && var.redis_configuration.rdb_backup_enabled ? var.redis_configuration.rdb_storage_connection_string : null
   }
 
   # Patch schedule for maintenance windows (Premium only)
@@ -311,6 +318,17 @@ provider "azurerm" {
   features {}
 }
 
+variable "redis_rdb_storage_connection_string" {
+  description = "Storage account connection string used by Azure Cache for Redis RDB persistence"
+  type        = string
+  sensitive   = true
+}
+
+variable "key_vault_id" {
+  description = "ID of the existing Key Vault where the Redis connection string will be stored"
+  type        = string
+}
+
 resource "azurerm_resource_group" "main" {
   name     = "rg-app-production"
   location = "eastus"
@@ -351,9 +369,10 @@ module "redis_cache" {
 
   # Redis settings
   redis_configuration = {
-    maxmemory_policy   = "allkeys-lru"
-    rdb_backup_enabled = true
-    rdb_backup_frequency = 60
+    maxmemory_policy              = "allkeys-lru"
+    rdb_backup_enabled            = true
+    rdb_backup_frequency          = 60
+    rdb_storage_connection_string = var.redis_rdb_storage_connection_string
   }
 
   tags = {
@@ -366,7 +385,7 @@ module "redis_cache" {
 resource "azurerm_key_vault_secret" "redis_connection" {
   name         = "redis-connection-string"
   value        = module.redis_cache.redis_primary_connection_string
-  key_vault_id = azurerm_key_vault.main.id
+  key_vault_id = var.key_vault_id
 }
 
 output "redis_private_ip" {
