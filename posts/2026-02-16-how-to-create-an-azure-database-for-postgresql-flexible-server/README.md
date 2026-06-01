@@ -8,7 +8,7 @@ Description: Step-by-step guide to creating and configuring an Azure Database fo
 
 ---
 
-Azure Database for PostgreSQL Flexible Server is Microsoft's current-generation managed PostgreSQL offering. It replaced the older Single Server and Hyperscale (Citus) deployment options as the recommended choice for all new PostgreSQL workloads on Azure. Whether you are building a small application or a large-scale production system, Flexible Server gives you the control and flexibility you need while offloading infrastructure management to Azure.
+Azure Database for PostgreSQL Flexible Server is Microsoft's current-generation managed PostgreSQL offering. It replaced the older Single Server option as the recommended choice for single-node PostgreSQL workloads on Azure. For distributed PostgreSQL workloads, Azure Database for PostgreSQL Elastic Clusters is the current direction. Whether you are building a small application or a large-scale production system, Flexible Server gives you the control and flexibility you need while offloading infrastructure management to Azure.
 
 This post walks through creating a Flexible Server, making the right configuration choices, and getting your first connection established.
 
@@ -20,11 +20,11 @@ If you have used the older Single Server, Flexible Server is a meaningful step f
 - Zone-redundant and same-zone high availability.
 - Customizable maintenance windows so you control when patching happens.
 - Better price-performance with burstable, general purpose, and memory-optimized compute tiers.
-- Support for major PostgreSQL versions (13, 14, 15, 16).
-- Built-in PgBouncer connection pooling.
+- Support for major PostgreSQL versions including 13, 14, 15, 16, 17, and 18.
+- Built-in PgBouncer connection pooling on General Purpose and Memory Optimized tiers.
 - Support for popular extensions out of the box.
 
-Single Server is on the deprecation path, so if you are starting fresh, Flexible Server is the only option worth considering.
+Single Server has been retired, so if you are starting fresh with a single-node PostgreSQL workload, Flexible Server is the option worth considering.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ You will need:
 
 - An Azure subscription with Contributor or Owner permissions.
 - A resource group (or the ability to create one).
-- Azure CLI installed (version 2.40.0 or later) if using the command line.
+- A current Azure CLI installation if using the command line.
 - A decision on networking: public access or VNet integration.
 
 ## Creating via the Azure Portal
@@ -47,23 +47,23 @@ Configure the essential settings:
 - **Resource group**: Choose existing or create new.
 - **Server name**: Globally unique. This becomes your hostname (e.g., `myserver.postgres.database.azure.com`).
 - **Region**: Pick the region closest to your application for lowest latency.
-- **PostgreSQL version**: Choose 16 for the latest features, or 15/14 if your application requires a specific version.
+- **PostgreSQL version**: Choose 18 for the latest features, or 17/16/15/14 if your application requires a specific version.
 - **Workload type**: Development (burstable), Production (general purpose), or Production (memory optimized).
 
 ### Compute and Storage
 
 Click "Configure server" to customize:
 
-| Tier | Best For | vCores | RAM Range |
+| Tier | Best For | vCores | Memory |
 |------|----------|--------|-----------|
-| Burstable (B-series) | Dev/test, low traffic | 1-20 | 2-80 GB |
-| General Purpose (D-series) | Most production workloads | 2-96 | 8-384 GB |
-| Memory Optimized (E-series) | Analytics, caching-heavy | 2-96 | 16-672 GB |
+| Burstable (B-series) | Dev/test, low traffic | 1, 2, 4, 8, 12, 16, 20 | Variable |
+| General Purpose (D-series) | Most production workloads | 2-192, depending on VM series | 4 GiB per vCore |
+| Memory Optimized (E-series) | Analytics, caching-heavy | 2-192, depending on VM series | 6.75-9.5 GiB per vCore |
 
 Storage options:
 
-- Size: 32 GB to 32 TB.
-- Performance tier: Configurable IOPS based on storage size.
+- Size: 32 GiB to 64 TiB, depending on storage type.
+- Performance tier and IOPS: Depends on storage type and size. Premium SSD v2 supports configurable IOPS and throughput.
 - Auto-grow: Enable this to avoid running out of space.
 
 ### Authentication
@@ -93,7 +93,7 @@ Enable zone-redundant HA for production workloads. This deploys a standby replic
 
 ### Backup
 
-Configure retention (1-35 days) and geo-redundant backup. Default is 7 days with locally redundant storage. For production, I recommend 14+ days with geo-redundant backup.
+Configure retention (7-35 days) and geo-redundant backup. Default is 7 days with locally redundant storage. For production, I recommend 14+ days with geo-redundant backup.
 
 ## Creating via Azure CLI
 
@@ -113,12 +113,12 @@ az postgres flexible-server create \
   --admin-password 'StrongPassword123!' \
   --sku-name Standard_D4ds_v4 \
   --tier GeneralPurpose \
-  --version 16 \
+  --version 18 \
   --storage-size 128 \
   --storage-auto-grow Enabled \
   --backup-retention 14 \
   --geo-redundant-backup Enabled \
-  --high-availability ZoneRedundant \
+  --zonal-resiliency Enabled \
   --zone 1 \
   --standby-zone 2
 ```
@@ -129,8 +129,8 @@ To add a firewall rule for public access:
 # Allow connections from your current IP
 az postgres flexible-server firewall-rule create \
   --resource-group myResourceGroup \
-  --name my-pg-flex-server \
-  --rule-name AllowMyIP \
+  --server-name my-pg-flex-server \
+  --name AllowMyIP \
   --start-ip-address 203.0.113.50 \
   --end-ip-address 203.0.113.50
 ```
@@ -147,7 +147,7 @@ az postgres flexible-server create \
   --admin-password 'StrongPassword123!' \
   --sku-name Standard_D4ds_v4 \
   --tier GeneralPurpose \
-  --version 16 \
+  --version 18 \
   --vnet myVNet \
   --subnet myDelegatedSubnet \
   --private-dns-zone myPrivateDnsZone
@@ -269,7 +269,7 @@ az monitor metrics alert create \
 - **Stop/Start**: Stop development servers when not in use. You pay only for storage while stopped.
 - **Reserved capacity**: 1-year or 3-year reservations save 30-60% on compute.
 - **Right-size storage**: Start with what you need and let auto-grow handle expansion. Storage cannot be shrunk.
-- **Built-in PgBouncer**: Use the built-in connection pooler instead of deploying a separate one.
+- **Built-in PgBouncer**: On General Purpose and Memory Optimized tiers, use the built-in connection pooler instead of deploying a separate one.
 
 ## Common Mistakes
 
