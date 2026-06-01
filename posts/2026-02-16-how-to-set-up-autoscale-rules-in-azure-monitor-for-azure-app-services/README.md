@@ -25,14 +25,14 @@ The autoscale engine evaluates rules every few minutes. When a scale-out conditi
 
 ## Prerequisites
 
-- An Azure App Service running on a **Standard** or **Premium** tier plan. The Free, Shared, and Basic tiers do not support autoscale.
+- An Azure App Service running on a **Standard**, **Premium**, or **Isolated** tier plan. The Free, Shared, and Basic tiers do not support autoscale.
 - Contributor access to the resource group containing the App Service plan.
 
 ## Step 1: Enable Autoscale in the Portal
 
 1. Navigate to your **App Service plan** in the Azure portal (not the App Service itself - scaling is done at the plan level).
 2. In the left menu, click **Scale out (App Service plan)** under **Settings**.
-3. You will see three options:
+3. You will see scale options such as:
    - **Manual scale** - Fixed instance count.
    - **Custom autoscale** - Rule-based or schedule-based scaling.
 4. Select **Custom autoscale**.
@@ -244,9 +244,9 @@ After enabling autoscale, you can track its decisions in the Activity Log. Filte
 # View recent autoscale events in the activity log
 az monitor activity-log list \
   --resource-group rg-web \
-  --caller "Microsoft.Insights/autoscaleSettings" \
+  --namespace "Microsoft.Insights" \
   --offset 24h \
-  --query "[].{Time:eventTimestamp, Operation:operationName.localizedValue, Status:status.localizedValue}" \
+  --query "[?category.localizedValue=='Autoscale'].{Time:eventTimestamp, Operation:operationName.localizedValue, Status:status.localizedValue}" \
   -o table
 ```
 
