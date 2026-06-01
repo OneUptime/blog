@@ -154,7 +154,7 @@ This is useful when you want snapshots for security-critical resources but don't
 
 ## Dealing with Dynamic Values
 
-CDK generates some values dynamically - like asset hashes, logical IDs that include hash suffixes, and timestamps. These change on every synthesis and break snapshot tests. You can strip them out before comparing.
+CDK generates some values dynamically - like asset hashes and logical IDs that include deterministic hash suffixes. These are usually stable for the same construct paths and asset contents, but they can change when code, bundling output, or construct paths change. Values from timestamps, random data, or environment-specific context can also make snapshots noisy. You can strip those values out before comparing.
 
 ```typescript
 // Sanitize dynamic values before snapshot comparison
@@ -211,8 +211,8 @@ npm test
 # If the change is intentional, update the snapshot
 npm test -- -u
 
-# Update only snapshots for a specific test file
-npm test -- --testPathPattern snapshot -u
+# Update only snapshots for matching test files
+npm test -- --testPathPatterns snapshot -u
 ```
 
 In your pull request, the snapshot diff shows exactly what changed in the CloudFormation template. Reviewers can verify that a "small change" to your CDK code doesn't have unexpected ripple effects.
