@@ -47,7 +47,7 @@ When you click "Create new", a side panel opens with these fields:
 
 - **Server name**: This must be globally unique across all of Azure. It becomes part of your connection string as `yourservername.database.windows.net`.
 - **Location**: Pick the region closest to your application. This matters for latency and also for compliance if you have data residency requirements.
-- **Authentication method**: You can choose SQL authentication, Azure Active Directory authentication, or both. For getting started, SQL authentication is simpler. Set an admin username and a strong password.
+- **Authentication method**: You can choose SQL authentication, Microsoft Entra authentication, or both. For getting started, SQL authentication is simpler. Set an admin username and a strong password.
 
 Click OK to confirm the server creation.
 
@@ -61,7 +61,7 @@ Click "Next: Networking" to move to the networking tab. This controls how your d
 
 **Connectivity method**: You have three options:
 - **No access**: The database is not accessible from any public endpoint.
-- **Public endpoint**: The database gets a public IP address and you control access through firewall rules.
+- **Public endpoint**: The logical server gets a public endpoint in the format `yourservername.database.windows.net`, and you control access through firewall rules.
 - **Private endpoint**: The database is accessible only through a private link within your virtual network.
 
 For getting started, select "Public endpoint". You can always change this later.
@@ -139,9 +139,9 @@ If you prefer a desktop tool, open SQL Server Management Studio (SSMS) and use t
 
 Make sure your client IP is in the firewall rules, otherwise the connection will be refused.
 
-## Connecting from Azure Data Studio
+## Connecting from Visual Studio Code
 
-Azure Data Studio is a cross-platform alternative to SSMS. The connection process is similar. Click "New Connection", enter the server name with `.database.windows.net` suffix, choose SQL Login, and enter your credentials.
+Azure Data Studio retired on February 28, 2026, so Microsoft recommends using Visual Studio Code with the MSSQL extension for cross-platform SQL development. The connection process is similar. Create a new connection, enter the server name with `.database.windows.net` suffix, choose SQL Login, and enter your credentials.
 
 ## Cost Management Tips
 
