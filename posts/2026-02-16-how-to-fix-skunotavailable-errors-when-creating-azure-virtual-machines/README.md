@@ -46,11 +46,11 @@ The first step is to find out which VM sizes are actually available in your targ
 ```bash
 # List all available VM sizes in a specific region
 
-# The --query filter removes SKUs with location restrictions
+# The --query filter keeps SKUs with no restrictions
 az vm list-skus \
   --location eastus \
   --resource-type virtualMachines \
-  --query "[?restrictions==null || restrictions[?type=='Location'] == null].{Name:name, Family:family, Zones:locationInfo[0].zones}" \
+  --query "[?length(restrictions)==\`0\`].{Name:name, Family:family, Zones:locationInfo[0].zones}" \
   --output table
 ```
 
@@ -63,6 +63,7 @@ To check a specific SKU:
 az vm list-skus \
   --location eastus \
   --size Standard_D4s_v3 \
+  --all \
   --output table
 ```
 
@@ -73,11 +74,12 @@ If the output shows a restriction of type "Zone" or "Location," that tells you e
 az vm list-skus \
   --location eastus \
   --size Standard_D4s_v3 \
-  --query "[].{Name:name, Restrictions:restrictions[*].{Type:type, Values:values[*].name, Reason:reasonCode}}" \
+  --all \
+  --query "[].{Name:name, Restrictions:restrictions[*].{Type:type, Values:values, Reason:reasonCode}}" \
   --output json
 ```
 
-The `reasonCode` field tells you whether the restriction is due to `NotAvailableForSubscription` (subscription-level block) or capacity constraints.
+The `reasonCode` field tells you whether the restriction is due to `NotAvailableForSubscription` (subscription-level block) or `QuotaId` (quota or feature requirement).
 
 ## Step 2: Try a Different Availability Zone
 
@@ -88,11 +90,12 @@ If the SKU is available in the region but not in your chosen zone, try a differe
 az vm list-skus \
   --location eastus \
   --size Standard_D4s_v3 \
-  --query "[].locationInfo[0].zones" \
-  --output json
+  --zone \
+  --all \
+  --output table
 ```
 
-If the output shows zones [1, 3] but not zone 2, deploy your VM to zone 1 or zone 3 instead.
+If the output shows zones [1, 3] but not zone 2, deploy your VM to zone 1 or zone 3 instead. If it lists a zone restriction for a zone, avoid that zone even if the SKU supports availability zones in the region.
 
 ## Step 3: Find an Equivalent VM Size
 
@@ -130,7 +133,7 @@ for region in eastus eastus2 centralus westus2 northcentralus; do
   az vm list-skus \
     --location $region \
     --size Standard_D4s_v3 \
-    --query "[?restrictions==null].name" \
+    --query "[?length(restrictions)==\`0\`].name" \
     --output tsv
 done
 ```
@@ -158,7 +161,7 @@ If your limit is 0, request an increase:
 
 ```bash
 # Request a quota increase for a specific VM family
-# This opens a support request
+# This submits a quota request for the specified compute resource
 az quota create \
   --resource-name "standardDSv3Family" \
   --scope "/subscriptions/<sub-id>/providers/Microsoft.Compute/locations/eastus" \
@@ -166,7 +169,7 @@ az quota create \
   --resource-type "dedicated"
 ```
 
-Most quota increases for standard VM families are approved automatically within 10-15 minutes. Specialized SKUs like GPUs may take longer and require justification.
+Adjustable quota increases can be requested directly. Non-adjustable quotas and specialized SKUs like GPUs may require a support request and justification.
 
 ## Step 6: Handle SkuNotAvailable in Automation
 
@@ -191,7 +194,7 @@ for size in "${VM_SIZES[@]}"; do
   available=$(az vm list-skus \
     --location $LOCATION \
     --size $size \
-    --query "[?restrictions==null].name" \
+    --query "[?length(restrictions)==\`0\`].name" \
     --output tsv)
 
   if [ -n "$available" ]; then
