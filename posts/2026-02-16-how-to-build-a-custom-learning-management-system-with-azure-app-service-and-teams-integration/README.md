@@ -20,7 +20,7 @@ graph TB
         A[Azure App Service - LMS Web App]
         B[Azure SQL Database - Course Data]
         C[Azure Blob Storage - Content Files]
-        D[Azure AD - Authentication]
+        D[Microsoft Entra ID - Authentication]
         E[Azure Functions - Background Jobs]
     end
     subgraph Microsoft 365
@@ -40,7 +40,7 @@ graph TB
     E --> B
 ```
 
-The LMS web app runs on App Service and stores course data in Azure SQL and content files in Blob Storage. Azure AD handles authentication. The Teams integration consists of custom tabs for in-Teams access and a bot for notifications and quick actions.
+The LMS web app runs on App Service and stores course data in Azure SQL and content files in Blob Storage. Microsoft Entra ID handles authentication. The Teams integration consists of custom tabs for in-Teams access and a bot for notifications and quick actions.
 
 ## Step 1 - Set Up the Azure Infrastructure
 
@@ -48,6 +48,8 @@ The LMS web app runs on App Service and stores course data in Azure SQL and cont
 # Create the resource group
 
 az group create --name lms-rg --location eastus
+
+# Replace web app, SQL server, and storage account names with globally unique values.
 
 # Create the App Service plan
 az appservice plan create \
@@ -61,7 +63,7 @@ az webapp create \
   --name custom-lms-app \
   --resource-group lms-rg \
   --plan lms-plan \
-  --runtime "NODE:18-lts"
+  --runtime "NODE:24-lts"
 
 # Create the SQL database
 az sql server create \
@@ -82,11 +84,15 @@ az storage account create \
   --name lmscontentstorage \
   --resource-group lms-rg \
   --sku Standard_LRS \
-  --location eastus
+  --location eastus \
+  --min-tls-version TLS1_2 \
+  --allow-blob-public-access false
 
+# The signed-in user needs Storage Blob Data Contributor on the storage account.
 az storage container create \
   --name course-content \
-  --account-name lmscontentstorage
+  --account-name lmscontentstorage \
+  --auth-mode login
 ```
 
 ## Step 2 - Build the Core LMS API
@@ -109,6 +115,17 @@ const pool = new sql.ConnectionPool({
     password: process.env.SQL_PASSWORD,
     options: { encrypt: true }
 });
+
+const poolConnect = pool.connect();
+pool.on('error', err => console.error('SQL pool error', err));
+
+app.use(async (req, res, next) => {
+    await poolConnect;
+    next();
+});
+
+// Add Microsoft Entra ID token validation middleware before these routes
+// and set req.user.id from the validated token's oid or sub claim.
 
 // Course management endpoints
 app.get('/api/courses', async (req, res) => {
@@ -244,11 +261,16 @@ Create a Teams app manifest that defines the tab.
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
   "manifestVersion": "1.16",
   "version": "1.0.0",
-  "id": "your-app-guid",
+  "id": "00000000-0000-0000-0000-000000000001",
   "name": {
     "short": "LMS",
     "full": "Custom Learning Management System"
   },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#2563EB",
   "description": {
     "short": "Access courses and assignments",
     "full": "View course content, submit assignments, and track your learning progress directly in Teams."
@@ -274,8 +296,33 @@ Create a Teams app manifest that defines the tab.
       "scopes": ["team", "groupchat"]
     }
   ],
+  "bots": [
+    {
+      "botId": "00000000-0000-0000-0000-000000000002",
+      "scopes": ["personal", "team"],
+      "commandLists": [
+        {
+          "scopes": ["personal", "team"],
+          "commands": [
+            {
+              "title": "my grades",
+              "description": "Show your recent grades"
+            },
+            {
+              "title": "upcoming deadlines",
+              "description": "Show assignments due this week"
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "permissions": ["identity", "messageTeamMembers"],
-  "validDomains": ["custom-lms-app.azurewebsites.net"]
+  "validDomains": ["custom-lms-app.azurewebsites.net"],
+  "webApplicationInfo": {
+    "id": "00000000-0000-0000-0000-000000000003",
+    "resource": "api://custom-lms-app.azurewebsites.net/00000000-0000-0000-0000-000000000003"
+  }
 }
 ```
 
@@ -324,10 +371,10 @@ function renderCourses(courses) {
 }
 
 function openCourse(courseId) {
-    // Open the course in a Teams task module (dialog)
-    microsoftTeams.dialog.open({
+    // Open the course in a Teams dialog
+    microsoftTeams.dialog.url.open({
         title: 'Course Content',
-        url: `/teams/course/${courseId}`,
+        url: `https://custom-lms-app.azurewebsites.net/teams/course/${courseId}`,
         size: { width: 800, height: 600 }
     });
 }
@@ -341,7 +388,6 @@ A Teams bot can proactively message students about upcoming deadlines, new grade
 
 ```javascript
 const { TeamsActivityHandler, TurnContext } = require('botbuilder');
-const { Client } = require('@microsoft/microsoft-graph-client');
 
 class LmsBot extends TeamsActivityHandler {
     constructor(conversationReferences) {
@@ -350,7 +396,12 @@ class LmsBot extends TeamsActivityHandler {
 
         // Handle incoming messages from students
         this.onMessage(async (context, next) => {
-            const text = context.activity.text.trim().toLowerCase();
+            const ref = TurnContext.getConversationReference(context.activity);
+            if (context.activity.from?.aadObjectId) {
+                this.conversationReferences[context.activity.from.aadObjectId] = ref;
+            }
+
+            const text = (context.activity.text || '').trim().toLowerCase();
 
             if (text === 'my grades') {
                 await this.showGrades(context);
@@ -370,7 +421,9 @@ class LmsBot extends TeamsActivityHandler {
         // Store conversation reference when users interact with the bot
         this.onConversationUpdate(async (context, next) => {
             const ref = TurnContext.getConversationReference(context.activity);
-            this.conversationReferences[ref.user.aadObjectId] = ref;
+            if (ref.user?.aadObjectId) {
+                this.conversationReferences[ref.user.aadObjectId] = ref;
+            }
             await next();
         });
     }
@@ -417,7 +470,7 @@ async function sendDeadlineReminder(adapter, conversationReferences, userId, ass
     if (!ref) return;  // User has not interacted with the bot yet
 
     await adapter.continueConversationAsync(
-        process.env.BOT_ID,
+        process.env.MicrosoftAppId,
         ref,
         async (context) => {
             await context.sendActivity({
@@ -464,4 +517,4 @@ Schedule deadline reminders with an Azure Function that runs hourly and checks f
 
 ## Wrapping Up
 
-A custom LMS on Azure App Service with Teams integration brings learning directly into the tool students already use. The web app handles course content, assignments, and grading. Teams tabs embed the experience inside Teams channels. The bot provides proactive notifications and quick queries. Azure AD ties authentication together across both platforms. Start with the core LMS functionality, add the Teams tab for in-channel access, and layer on the bot for notifications. Each piece adds value independently, so you can roll out incrementally.
+A custom LMS on Azure App Service with Teams integration brings learning directly into the tool students already use. The web app handles course content, assignments, and grading. Teams tabs embed the experience inside Teams channels. The bot provides proactive notifications and quick queries. Microsoft Entra ID ties authentication together across both platforms. Start with the core LMS functionality, add the Teams tab for in-channel access, and layer on the bot for notifications. Each piece adds value independently, so you can roll out incrementally.
