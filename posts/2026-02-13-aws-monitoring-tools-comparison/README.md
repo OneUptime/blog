@@ -19,7 +19,7 @@ flowchart TD
     subgraph "AWS Native Monitoring"
         CW[CloudWatch Metrics & Alarms]
         CWL[CloudWatch Logs]
-        CWI[CloudWatch Insights]
+        CWI[CloudWatch Metrics & Logs Insights]
         XR[X-Ray - Distributed Tracing]
         CWS[CloudWatch Synthetics]
         CWR[CloudWatch RUM]
@@ -33,13 +33,13 @@ flowchart TD
     CWR --> CW
 ```
 
-**CloudWatch** handles metrics, logs, and alarms. It is the default and everything AWS emits data into it automatically.
+**CloudWatch** handles metrics, logs, and alarms. It is the default destination for many AWS service metrics, while logs and custom telemetry usually need to be enabled or configured.
 
-**X-Ray** provides distributed tracing across services. It instruments your code to trace requests as they flow through Lambda, API Gateway, ECS, and downstream services.
+**X-Ray** provides distributed tracing across services. It traces requests as they flow through Lambda, API Gateway, ECS, and downstream services, typically through AWS Distro for OpenTelemetry or X-Ray SDK instrumentation.
 
 **CloudWatch Synthetics** runs canary scripts that probe your endpoints on a schedule, similar to synthetic monitoring from third-party tools.
 
-**DevOps Guru** uses machine learning to detect operational anomalies and recommend fixes. It is the newest addition and is still maturing.
+**DevOps Guru** uses machine learning to detect operational anomalies and recommend fixes. It can be useful for AWS-native workloads, but teams should evaluate it against newer CloudWatch features such as Application Signals and Internet Monitor.
 
 ## The Third-Party Landscape
 
@@ -58,7 +58,7 @@ The major players in AWS monitoring are Datadog, New Relic, Grafana Cloud, and D
 | ML-based anomaly detection | Anomaly Detection + DevOps Guru | Watchdog | Applied Intelligence | Limited |
 | Infrastructure maps | Limited | Yes | Yes | Limited |
 | Real user monitoring | CloudWatch RUM | RUM | Browser | Faro |
-| Pricing model | Pay per metric/API call | Per host + add-ons | Per GB ingested | Per metric + logs |
+| Pricing model | Pay per custom metric, alarm, log volume, query, and API usage | Per host + add-ons | Data ingest plus users or compute | Usage-based metrics, logs, traces, profiles, and users |
 
 ### Datadog
 
@@ -76,7 +76,7 @@ Where it struggles:
 
 ### New Relic
 
-New Relic repositioned itself with a consumption-based pricing model (pay per GB of data ingested). This makes costs more predictable for some workloads but can also become expensive with high log volumes.
+New Relic repositioned itself around usage-based pricing, primarily data ingest plus either users or compute depending on the plan. This makes costs more predictable for some workloads but can also become expensive with high log volumes or many billable users.
 
 Where New Relic shines:
 - Full-stack observability in one platform
@@ -109,22 +109,22 @@ Where it struggles:
 Pricing is where most teams get burned. Here is a realistic comparison for a mid-size deployment: 50 EC2 instances, 10 RDS databases, 20 Lambda functions, and moderate log volume (100 GB/month).
 
 ```mermaid
-bar chart
+xychart-beta
     title Estimated Monthly Cost (USD) - Mid-Size AWS Deployment
     x-axis ["CloudWatch", "Datadog", "New Relic", "Grafana Cloud"]
     y-axis "Monthly Cost (USD)" 0 --> 8000
     bar [800, 6500, 4000, 2500]
 ```
 
-These are rough estimates and actual costs vary significantly based on configuration choices. But the order of magnitude is representative.
+These are rough illustrative estimates and actual costs vary significantly based on configuration choices, committed-use discounts, user counts, ingestion volume, and which add-ons are enabled.
 
 **CloudWatch** is cheap for basic monitoring but costs add up with custom metrics, high-resolution metrics, and heavy Logs Insights usage.
 
 **Datadog** is the most expensive option for most deployments. The per-host pricing model plus add-ons for logs, APM, and other features compounds quickly.
 
-**New Relic** falls in the middle, but watch your data ingestion volume carefully. High-volume logging can push costs up.
+**New Relic** falls in the middle for some teams, but watch both data ingestion volume and billable user or compute usage carefully. High-volume logging can push costs up.
 
-**Grafana Cloud** is typically the most cost-effective third-party option, especially if you can self-host some components.
+**Grafana Cloud** can be one of the more cost-effective third-party options, especially if your usage fits its included tiers or you can self-host some components.
 
 ## When to Use What
 
