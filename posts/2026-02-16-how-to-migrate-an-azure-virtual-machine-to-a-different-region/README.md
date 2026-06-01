@@ -10,7 +10,7 @@ Description: A comprehensive guide to migrating Azure VMs between regions using 
 
 There are plenty of reasons to move a VM to a different Azure region. Maybe you are expanding to serve users in a new geography, consolidating infrastructure after an acquisition, or responding to compliance requirements that mandate data residency. Whatever the reason, Azure does not have a simple "move VM to region X" button. You need to use one of several approaches, each with its own trade-offs.
 
-In this guide, I will cover the three main methods: Azure Site Recovery (recommended for production), snapshot-based migration (good for one-off moves), and Azure Resource Mover.
+In this guide, I will cover the three main methods: Azure Site Recovery, snapshot-based migration (good for one-off moves), and Azure Resource Mover (Microsoft's recommended hub for region moves).
 
 ## Understanding the Challenge
 
@@ -25,13 +25,13 @@ An Azure VM is not a single resource. It is a collection of interconnected resou
 
 When you move to a new region, you need to recreate all of these in the target region. The disks need to be copied, and the networking needs to be set up fresh. No existing resource can simply be moved - everything is created new.
 
-## Method 1: Azure Site Recovery (Recommended)
+## Method 1: Azure Site Recovery
 
-Azure Site Recovery (ASR) is the recommended approach for migrating production VMs. It provides continuous replication, minimal downtime during cutover, and a tested failover process.
+Azure Site Recovery (ASR) is a solid approach for migrating production VMs when you want direct control of the replication and failover process. It provides continuous replication, minimal downtime during cutover, and a tested failover process.
 
 ### Setting Up Replication
 
-First, create a Recovery Services vault in the target region:
+First, create a Recovery Services vault in any supported region except the source region. Many teams place it in the target region:
 
 ```bash
 # Create a Recovery Services vault in the target region
@@ -47,7 +47,7 @@ Enable replication for your VM through the portal (the CLI support for ASR repli
 1. Navigate to your VM in the Azure portal.
 2. Click "Disaster recovery" under "Operations."
 3. Select the target region (e.g., West US 2).
-4. Review the target settings - Azure auto-generates a target resource group, virtual network, and storage account.
+4. Review the target settings - Azure can discover or create the target virtual network, but you should pre-create or select any other target resources you need.
 5. Customize if needed (target VM size, availability options, disk type).
 6. Click "Start replication."
 
@@ -59,9 +59,15 @@ Check the replication status:
 
 ```bash
 # Check replication health via the Recovery Services vault
-az resource list \
+FABRIC_NAME="your-fabric-name"
+CONTAINER_NAME="your-protection-container-name"
+
+az site-recovery protected-item list \
   --resource-group migrationRG \
-  --resource-type "Microsoft.RecoveryServices/vaults" \
+  --vault-name migrationVault \
+  --fabric-name $FABRIC_NAME \
+  --protection-container $CONTAINER_NAME \
+  --query "[].{name:name, health:properties.replicationHealth, state:properties.protectionState}" \
   --output table
 ```
 
@@ -73,14 +79,14 @@ Once replication is fully synced:
 
 1. In the Recovery Services vault, go to "Replicated items."
 2. Select your VM.
-3. Click "Migrate" (or "Failover" if using disaster recovery terminology).
-4. Choose "Latest processed" as the recovery point.
+3. Click "Failover."
+4. Choose "Latest" as the recovery point.
 5. Select "Shut down machine before beginning failover" to ensure data consistency.
 6. Click "OK."
 
-ASR creates the VM and all associated resources in the target region. After verifying everything works:
+ASR creates the replica VM in the target region, but you still need to verify and recreate any dependent resources such as load balancers, public IP configuration, and other networking components that are not created automatically. After verifying everything works:
 
-1. Click "Complete migration" to clean up the replication resources.
+1. Click "Commit" to finish the move process.
 2. Delete the original VM and its resources in the source region when you are confident the migration was successful.
 
 ## Method 2: Snapshot-Based Migration
@@ -145,6 +151,21 @@ az snapshot create \
   --name myVM-os-snapshot-copy \
   --source $SNAPSHOT_ID \
   --location westus2
+
+# Copy the data disk snapshots too
+for DISK in $DATA_DISKS; do
+  DATA_SNAPSHOT_ID=$(az snapshot show \
+    --resource-group myResourceGroup \
+    --name "${DISK}-snapshot" \
+    --query id \
+    --output tsv)
+
+  az snapshot create \
+    --resource-group targetResourceGroup \
+    --name "${DISK}-snapshot-copy" \
+    --source $DATA_SNAPSHOT_ID \
+    --location westus2
+done
 ```
 
 ### Step 4: Create Disks from Snapshots
@@ -157,6 +178,16 @@ az disk create \
   --source myVM-os-snapshot-copy \
   --location westus2 \
   --sku Premium_LRS
+
+# Create managed disks from the copied data disk snapshots
+for DISK in $DATA_DISKS; do
+  az disk create \
+    --resource-group targetResourceGroup \
+    --name "${DISK}-copy" \
+    --source "${DISK}-snapshot-copy" \
+    --location westus2 \
+    --sku Premium_LRS
+done
 ```
 
 ### Step 5: Create the VM in the Target Region
@@ -172,6 +203,7 @@ az network vnet create \
   --subnet-prefix 10.0.1.0/24
 
 # Create the VM using the copied OS disk
+# Use --os-type Windows instead if the original VM is a Windows VM.
 az vm create \
   --resource-group targetResourceGroup \
   --name myVM \
@@ -187,10 +219,12 @@ az vm create \
 
 ```bash
 # Attach any data disks you copied
-az vm disk attach \
-  --resource-group targetResourceGroup \
-  --vm-name myVM \
-  --name myVM-DataDisk
+for DISK in $DATA_DISKS; do
+  az vm disk attach \
+    --resource-group targetResourceGroup \
+    --vm-name myVM \
+    --name "${DISK}-copy"
+done
 ```
 
 ## Method 3: Azure Resource Mover
@@ -215,11 +249,20 @@ After the VM is running in the new region, there are several things to clean up:
 
 ```bash
 # Update an Azure DNS record
-az network dns record-set a update \
+NEW_IP="203.0.113.22"
+OLD_IP="203.0.113.11"
+
+az network dns record-set a add-record \
   --resource-group dnsResourceGroup \
   --zone-name example.com \
-  --name myapp \
-  --set aRecords[0].ipv4Address=<new-ip>
+  --record-set-name myapp \
+  --ipv4-address $NEW_IP
+
+az network dns record-set a remove-record \
+  --resource-group dnsResourceGroup \
+  --zone-name example.com \
+  --record-set-name myapp \
+  --ipv4-address $OLD_IP
 ```
 
 **Update application configurations**: Any hardcoded IP addresses or region-specific endpoints in your application need to be updated.
@@ -243,10 +286,10 @@ az group delete --name myResourceGroup --yes --no-wait
 | Complexity | Medium | Low | Low |
 | Automation | Good | Manual | Good |
 | Dependency handling | Manual | Manual | Automatic |
-| Best for | Production VMs | One-off migrations | Multiple resources |
+| Best for | Direct replication control | One-off migrations | Production region moves |
 
-For production workloads, use Azure Site Recovery. The near-zero downtime during cutover is worth the setup effort. For dev/test VMs or one-off migrations where downtime is acceptable, the snapshot method is simpler and faster to set up.
+For production workloads, start with Azure Resource Mover because it provides a guided move workflow with dependency handling and uses Site Recovery on the backend for VM replication. Use Azure Site Recovery directly when you want more control over the replication and failover process. For dev/test VMs or one-off migrations where downtime is acceptable, the snapshot method is simpler and faster to set up.
 
 ## Wrapping Up
 
-Migrating an Azure VM between regions is not a single-click operation, but it is well-supported with multiple approaches. Azure Site Recovery provides the smoothest production migration with minimal downtime. Snapshot-based migration gives you more control for simpler scenarios. And Azure Resource Mover wraps it all in a guided experience. Whichever method you choose, plan ahead, test in the target region before cutting over, and do not forget to clean up the source resources when you are done.
+Migrating an Azure VM between regions is not a single-click operation, but it is well-supported with multiple approaches. Azure Resource Mover provides the smoothest guided production migration with dependency handling. Azure Site Recovery gives you direct control over replication and failover, and snapshot-based migration gives you more control for simpler scenarios. Whichever method you choose, plan ahead, test in the target region before cutting over, and do not forget to clean up the source resources when you are done.
