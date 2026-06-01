@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure IoT Hub, Device Twin, Firmware Update, OTA Updates, IoT, Device Management, Embedded Systems
 
-Description: Learn how to implement over-the-air firmware updates for IoT devices using Azure IoT Hub device twins and direct methods for coordinated update management.
+Description: Learn how to implement over-the-air firmware updates for IoT devices using Azure IoT Hub device twins for coordinated update management.
 
 ---
 
-Deploying firmware updates to IoT devices in the field is one of the most critical (and most nerve-wracking) operations in IoT device management. Unlike server software, a bad firmware update on a remote sensor or edge device can brick it, and someone might need to physically visit the device to recover it. Azure IoT Hub provides device twins and direct methods that let you manage firmware updates reliably and at scale. This guide covers the architecture, the implementation, and the safety mechanisms you should build in.
+Deploying firmware updates to IoT devices in the field is one of the most critical (and most nerve-wracking) operations in IoT device management. Unlike server software, a bad firmware update on a remote sensor or edge device can brick it, and someone might need to physically visit the device to recover it. Azure IoT Hub provides device twins that let you manage firmware updates reliably and at scale. This guide covers the architecture, the implementation, and the safety mechanisms you should build in.
 
 ## How Device Twins Enable Firmware Updates
 
@@ -102,7 +102,7 @@ Here is a Python implementation for the device side that handles firmware update
 import asyncio
 import hashlib
 import os
-import sys
+from datetime import datetime, timezone
 import aiohttp
 from azure.iot.device.aio import IoTHubDeviceClient
 
@@ -119,7 +119,6 @@ async def download_firmware(url, target_path):
             if response.status != 200:
                 raise Exception(f"Download failed with status {response.status}")
 
-            total_size = int(response.headers.get("Content-Length", 0))
             downloaded = 0
 
             with open(target_path, "wb") as f:
@@ -162,7 +161,7 @@ async def report_status(client, status, version=None, error=None):
     reported = {
         "firmware": {
             "updateStatus": status,
-            "lastUpdateTime": asyncio.get_event_loop().time(),
+            "lastUpdateTime": datetime.now(timezone.utc).isoformat(),
         }
     }
     if version:
@@ -189,7 +188,8 @@ async def handle_twin_update(client, patch):
 
     # Get current firmware version from reported properties
     twin = await client.get_twin()
-    current_version = twin.get("reported", {}).get("firmware", {}).get("currentVersion", "1.0.0")
+    reported = twin.get("properties", {}).get("reported", {})
+    current_version = reported.get("firmware", {}).get("currentVersion", "1.0.0")
 
     if current_version == desired_version:
         print(f"Already running firmware {desired_version}, skipping update")
@@ -257,42 +257,44 @@ The backend service sets the desired properties on the device twin to initiate t
 # Backend service that triggers firmware updates via device twin
 import os
 from azure.iot.hub import IoTHubRegistryManager
+from azure.iot.hub.models import Twin, TwinProperties
 
 CONNECTION_STRING = os.environ["IOTHUB_CONNECTION_STRING"]
 
 def trigger_firmware_update(device_id, version, firmware_url, checksum):
     """Trigger a firmware update by setting desired properties on the device twin."""
-    registry_manager = IoTHubRegistryManager(CONNECTION_STRING)
+    registry_manager = IoTHubRegistryManager.from_connection_string(CONNECTION_STRING)
 
     # Get the current twin
     twin = registry_manager.get_twin(device_id)
 
     # Set the desired firmware properties
-    twin_patch = {
-        "properties": {
-            "desired": {
+    twin_patch = Twin(
+        properties=TwinProperties(
+            desired={
                 "firmware": {
                     "desiredVersion": version,
                     "firmwareUrl": firmware_url,
                     "checksum": checksum,
-                    "updateRequestTime": "2026-02-16T10:00:00Z"
+                    "updateRequestTime": "2026-02-16T10:00:00Z",
                 }
             }
-        }
-    }
+        )
+    )
 
     # Update the twin
     registry_manager.update_twin(device_id, twin_patch, twin.etag)
     print(f"Firmware update triggered for device {device_id}: version {version}")
 
 
-# Trigger an update for a single device
-trigger_firmware_update(
-    device_id="sensor-001",
-    version="2.1.0",
-    firmware_url="https://iotfirmware01.blob.core.windows.net/firmware/v2.1.0/firmware.bin?sv=...",
-    checksum="a1b2c3d4e5f6..."
-)
+if __name__ == "__main__":
+    # Trigger an update for a single device
+    trigger_firmware_update(
+        device_id="sensor-001",
+        version="2.1.0",
+        firmware_url="https://iotfirmware01.blob.core.windows.net/firmware/v2.1.0/firmware.bin?sv=...",
+        checksum="a1b2c3d4e5f6..."
+    )
 ```
 
 ## Step 4: Rolling Updates Across a Fleet
@@ -302,21 +304,32 @@ For updating multiple devices, use IoT Hub queries to target devices and roll ou
 ```python
 # fleet_update.py
 # Roll out firmware updates across a fleet of devices in stages
+import os
 import time
 from azure.iot.hub import IoTHubRegistryManager
+from azure.iot.hub.models import QuerySpecification
+
+from backend_trigger_update import trigger_firmware_update
 
 CONNECTION_STRING = os.environ["IOTHUB_CONNECTION_STRING"]
-registry_manager = IoTHubRegistryManager(CONNECTION_STRING)
+registry_manager = IoTHubRegistryManager.from_connection_string(CONNECTION_STRING)
 
 def get_devices_needing_update(target_version):
     """Query IoT Hub for devices not running the target firmware version."""
-    query = (
-        f"SELECT deviceId FROM devices "
+    query_spec = QuerySpecification(
+        query=f"SELECT * FROM devices "
         f"WHERE properties.reported.firmware.currentVersion != '{target_version}' "
         f"AND status = 'enabled'"
     )
-    result = registry_manager.query_iot_hub(query)
-    return [device["deviceId"] for device in result]
+    devices = []
+    continuation_token = None
+
+    while True:
+        result = registry_manager.query_iot_hub(query_spec, continuation_token, 100)
+        devices.extend(twin.device_id for twin in result.items)
+        continuation_token = result.continuation_token
+        if not continuation_token:
+            return devices
 
 
 def check_update_status(device_id):
