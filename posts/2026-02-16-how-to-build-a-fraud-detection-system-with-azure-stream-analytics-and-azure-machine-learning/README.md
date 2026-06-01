@@ -49,7 +49,7 @@ az eventhubs eventhub create \
   --namespace-name fraud-detect-ns \
   --resource-group fraud-rg \
   --partition-count 16 \
-  --message-retention 1
+  --retention-time 24
 ```
 
 Each transaction event should include the fields your ML model needs for scoring. Here is an example event schema.
@@ -70,7 +70,7 @@ Each transaction event should include the fields your ML model needs for scoring
 }
 ```
 
-Notice that we never include the actual card number. We use a hash for identity matching. This is important for PCI compliance since the fraud detection system should not need to see raw card data.
+Notice that we never include the actual card number. We use a hash for identity matching. This is important for PCI compliance since the fraud detection system should not need to see raw card data. The scoring query later assumes this event is enriched with the same feature columns used during training, such as rolling transaction counts, encoded merchant categories, and amount ratios.
 
 ## Step 2 - Train the Fraud Detection Model
 
@@ -143,14 +143,18 @@ def train_fraud_model(data_path: str):
     avg_precision = average_precision_score(y_test, y_scores)
     mlflow.log_metric("average_precision", avg_precision)
 
-    # Find the threshold that gives 95% recall
+    # Find the threshold that gives at least 95% recall
     precision, recall, thresholds = precision_recall_curve(y_test, y_scores)
-    target_recall_idx = np.argmin(np.abs(recall - 0.95))
+    candidate_idxs = np.where(recall[:-1] >= 0.95)[0]
+    target_recall_idx = candidate_idxs[np.argmax(precision[candidate_idxs])]
     optimal_threshold = thresholds[target_recall_idx]
     mlflow.log_metric("optimal_threshold", optimal_threshold)
 
     print(f"Average Precision: {avg_precision:.4f}")
     print(f"Threshold for 95% recall: {optimal_threshold:.4f}")
+
+    # Save an MLflow model folder that Azure ML can register and deploy without a custom scoring script
+    mlflow.lightgbm.save_model(model, "model")
 
     return model
 
@@ -168,27 +172,42 @@ Deploy the trained model to an Azure ML managed online endpoint. Stream Analytic
 az ml model create \
   --name fraud-detection-model \
   --version 1 \
+  --type mlflow_model \
   --path ./model \
   --resource-group fraud-rg \
   --workspace-name fraud-ml-ws
 
-# Create and deploy the endpoint
+# Create the endpoint
 az ml online-endpoint create \
   --name fraud-scoring \
-  --resource-group fraud-rg \
-  --workspace-name fraud-ml-ws
-
-az ml online-deployment create \
-  --name fraud-v1 \
-  --endpoint-name fraud-scoring \
-  --model azureml:fraud-detection-model:1 \
-  --instance-type Standard_DS3_v2 \
-  --instance-count 3 \
+  --auth-mode key \
   --resource-group fraud-rg \
   --workspace-name fraud-ml-ws
 ```
 
-Three instances provide enough capacity for real-time scoring and resilience if one instance fails. Scale this based on your transaction volume.
+Create a deployment specification file for the managed online endpoint.
+
+```yaml
+# deployment.yml
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: fraud-v1
+endpoint_name: fraud-scoring
+model: azureml:fraud-detection-model:1
+instance_type: Standard_DS3_v2
+instance_count: 3
+```
+
+Then deploy it and send all endpoint traffic to the deployment.
+
+```bash
+az ml online-deployment create \
+  --file deployment.yml \
+  --all-traffic \
+  --resource-group fraud-rg \
+  --workspace-name fraud-ml-ws
+```
+
+Three instances provide enough capacity for real-time scoring and resilience if one instance fails. Scale this based on your transaction volume. If Stream Analytics calls a managed online endpoint directly, keep public network access enabled for the endpoint.
 
 ## Step 4 - Configure Stream Analytics
 
@@ -200,7 +219,7 @@ Create the Stream Analytics job with the following query. This query reads trans
 -- Define the ML function reference
 -- This is configured in the Stream Analytics portal as an Azure ML function
 
--- Main scoring query
+-- Score all transactions and output them to Cosmos DB
 WITH ScoredTransactions AS (
     SELECT
         t.transactionId,
@@ -226,11 +245,33 @@ WITH ScoredTransactions AS (
         ) AS fraudScore
     FROM TransactionInput t
 )
-
--- Output all scored transactions to Cosmos DB
 SELECT * INTO CosmosOutput FROM ScoredTransactions
 
--- Route high-risk transactions to the alert queue
+-- Score transactions again and route high-risk ones to the alert queue
+WITH ScoredTransactions AS (
+    SELECT
+        t.transactionId,
+        t.cardHash,
+        t.merchantId,
+        t.amount,
+        t.timestamp,
+        t.isOnline,
+        udf.ScoreFraud(
+            t.amount_log,
+            t.hour_of_day,
+            t.day_of_week,
+            t.is_weekend,
+            t.merchantCategory_encoded,
+            t.isOnline,
+            t.distance_flag,
+            t.avg_txn_amount_30d,
+            t.txn_count_24h,
+            t.unique_merchants_7d,
+            t.time_since_last_txn_minutes,
+            t.amount_vs_avg_ratio
+        ) AS fraudScore
+    FROM TransactionInput t
+)
 SELECT * INTO AlertOutput
 FROM ScoredTransactions
 WHERE fraudScore > 0.85
@@ -258,7 +299,6 @@ When Stream Analytics identifies a high-risk transaction, the alert queue trigge
 import azure.functions as func
 import json
 import logging
-from azure.communication.email import EmailClient
 
 def main(msg: func.ServiceBusMessage):
     """Process fraud alerts from the Service Bus queue."""
