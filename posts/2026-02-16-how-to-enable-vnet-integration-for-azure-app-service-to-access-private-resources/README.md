@@ -14,17 +14,17 @@ VNet Integration solves this by giving your App Service a virtual presence insid
 
 ## How VNet Integration Works
 
-When you enable VNet Integration, Azure creates a network interface for your App Service in a delegated subnet within your VNet. Outbound connections from your app are routed through this subnet, getting a private IP address from the subnet's range. Resources in the VNet see the traffic as coming from within the network.
+When you enable VNet Integration, Azure mounts virtual interfaces for your App Service workers in a delegated subnet within your VNet. Outbound connections from your app are routed through this subnet, getting a private IP address from the subnet's range. Resources in the VNet see the traffic as coming from within the network.
 
 There are two types of VNet Integration:
 
-**Regional VNet Integration** (recommended): Connects your App Service to a VNet in the same region. Uses a delegated subnet and supports all VNet features including service endpoints, private endpoints, and NSG rules.
+**Regional VNet Integration** (recommended): Connects your App Service to a VNet in the same region. Uses a delegated subnet and supports access to resources in the VNet, peered VNets, service endpoint-secured services, and private endpoint-enabled services.
 
 **Gateway-required VNet Integration** (legacy): Uses a VPN gateway to connect to a VNet. Supports cross-region connectivity but is slower and more complex. I will focus on regional VNet Integration since it is the modern approach.
 
 ## Prerequisites
 
-- App Service plan must be Standard (S1) tier or higher
+- App Service plan must use a dedicated compute tier that supports VNet Integration, such as Basic, Standard, Premium, or Elastic Premium
 - The VNet must be in the same region as the App Service
 - A dedicated subnet for the App Service delegation (the subnet cannot be used by other resources)
 - The subnet needs at least a /28 address space (16 IPs), though /26 (64 IPs) or larger is recommended
@@ -76,14 +76,14 @@ az webapp vnet-integration list \
 
 ## Step 3: Configure Route All Traffic
 
-By default, only RFC1918 traffic (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) is routed through the VNet. All other traffic goes directly to the internet from the App Service. If you want all outbound traffic to go through the VNet (for firewall inspection, custom DNS, or force tunneling), enable the "Route All" setting:
+By default, only RFC1918 traffic (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and traffic to service endpoints configured on the integration subnet are routed through the VNet. All other traffic goes directly to the internet from the App Service. If you want all outbound traffic to go through the VNet (for firewall inspection, NAT Gateway, or force tunneling), enable the "Route All" setting:
 
 ```bash
 # Route all outbound traffic through the VNet
-az webapp config appsettings set \
+az webapp config set \
   --resource-group myAppRG \
   --name myapp \
-  --settings WEBSITE_VNET_ROUTE_ALL=1
+  --vnet-route-all-enabled true
 ```
 
 With Route All enabled, even calls to public internet addresses go through the VNet first. This is useful when you have a firewall appliance or NAT gateway in the VNet that you want all traffic to flow through.
@@ -122,7 +122,7 @@ az network private-endpoint dns-zone-group create \
   --endpoint-name postgres-private-endpoint \
   --name postgres-dns-group \
   --private-dns-zone privatelink.postgres.database.azure.com \
-  --zone-name postgresqlServer
+  --zone-name privatelink-postgres-database-azure-com
 ```
 
 Now your App Service can connect to the PostgreSQL server using its private endpoint hostname. The connection string in your application uses the standard hostname, and DNS resolution routes it to the private IP:
@@ -159,17 +159,18 @@ DNS is the trickiest part of VNet Integration with private endpoints. Your App S
 
 For Azure Private DNS zones (the approach shown above), everything works automatically as long as:
 1. The private DNS zone is linked to the VNet.
-2. The App Service has WEBSITE_VNET_ROUTE_ALL=1 or the DNS server is within the VNet.
-3. The App Service is configured to use Azure DNS (the default).
+2. The App Service is integrated with the VNet.
+3. The VNet uses Azure DNS (the default) or a custom DNS server that can resolve the private zone.
 
 If you are using custom DNS servers in the VNet, make sure they forward Azure Private DNS zone queries to 168.63.129.16:
 
 ```bash
-# Set the App Service to use VNet DNS
-az webapp config appsettings set \
+# Optional: override the app to use Azure DNS directly
+az resource update \
   --resource-group myAppRG \
   --name myapp \
-  --settings WEBSITE_DNS_SERVER=168.63.129.16
+  --resource-type "Microsoft.Web/sites" \
+  --set properties.dnsConfiguration.dnsServers="['168.63.129.16']"
 ```
 
 ## Using Service Endpoints
@@ -237,7 +238,7 @@ az network vnet subnet update \
 
 ## NAT Gateway for Static Outbound IP
 
-By default, VNet Integration uses the subnet's default outbound connectivity, which means the outbound IP can vary. If the target resource requires a known, static IP (for firewall allowlisting), attach a NAT Gateway to the integration subnet:
+For public internet destinations, App Service uses its own outbound addresses unless all outbound traffic is routed through the VNet. If the target resource requires a known, static IP (for firewall allowlisting), enable Route All and attach a NAT Gateway to the integration subnet:
 
 ```bash
 # Create a public IP for the NAT Gateway
@@ -279,15 +280,15 @@ Use the App Service console or Kudu to test connectivity from within the app:
 # Navigate to https://myapp.scm.azurewebsites.net/DebugConsole
 
 # Test DNS resolution
-nameresolver mypostgres.postgres.database.azure.com
+nameresolver.exe mypostgres.postgres.database.azure.com
 
 # Test TCP connectivity
-tcpping mypostgres.postgres.database.azure.com:5432
+tcpping.exe mypostgres.postgres.database.azure.com 5432
 ```
 
 ### Common Issues
 
-**Cannot resolve private endpoint hostname**: Check that the private DNS zone is linked to the VNet and that WEBSITE_VNET_ROUTE_ALL is set to 1.
+**Cannot resolve private endpoint hostname**: Check that the private DNS zone is linked to the VNet and that the app is using DNS servers that can resolve the private zone.
 
 **Connection timeout to private resource**: Verify the NSG on the integration subnet allows outbound traffic to the target. Check that the target resource's firewall allows traffic from the integration subnet's address range.
 
