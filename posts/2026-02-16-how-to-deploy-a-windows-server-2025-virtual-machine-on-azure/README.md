@@ -18,7 +18,7 @@ Azure marketplace offers several editions of Windows Server 2025:
 
 - **Windows Server 2025 Datacenter**: Full desktop experience with all features. Best for general-purpose servers with GUI management.
 - **Windows Server 2025 Datacenter - Server Core**: Minimal installation without a desktop UI. Smaller footprint, fewer patches, better security posture. Best for headless servers managed remotely.
-- **Windows Server 2025 Datacenter: Azure Edition**: Includes Azure-specific features like hotpatching (applying updates without reboots) and SMB over QUIC.
+- **Windows Server 2025 Datacenter: Azure Edition**: Includes Azure-specific features like hotpatching (applying updates without reboots). Windows Server 2025 also supports SMB over QUIC.
 
 For Azure deployments, the Azure Edition is usually the best choice because of hotpatching support, which significantly reduces reboot-related downtime.
 
@@ -49,11 +49,11 @@ Windows Server workloads generally need more resources than Linux due to the OS 
 - **Active Directory DC**: Standard_D2s_v5 (2 vCPUs, 8 GB RAM) is usually sufficient for small to medium environments
 - **File server**: Standard_L8s_v3 (storage optimized) for heavy I/O
 
-Check available sizes and pricing:
+Check available sizes:
 
 ```bash
 # List VM sizes available in your region
-az vm list-sizes --location eastus --output table
+az vm list-skus --location eastus --resource-type virtualMachines --output table
 ```
 
 ## Deploying the VM
@@ -126,10 +126,10 @@ Get-WindowsUpdate -Install -AcceptAll -AutoReboot
 
 ### Enable Hotpatching (Azure Edition)
 
-If you deployed the Azure Edition, hotpatching should be enabled by default. Verify:
+If you deployed the Azure Edition, hotpatching should be enabled by default. You can check recent installed updates after patching runs:
 
 ```powershell
-# Check hotpatching status
+# Check recently installed hotfixes
 Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 10
 ```
 
@@ -183,7 +183,7 @@ The default NSG rule allows RDP from anywhere. Restrict it immediately:
 az network nsg rule update \
   --resource-group myResourceGroup \
   --nsg-name winServer2025NSG \
-  --name rdp \
+  --name RDP \
   --source-address-prefixes '203.0.113.50/32'
 ```
 
@@ -198,7 +198,7 @@ az network nic ip-config update \
   --resource-group myResourceGroup \
   --nic-name $NIC_NAME \
   --name ipconfig1 \
-  --remove publicIpAddress
+  --remove PublicIpAddress
 ```
 
 ### Enable Azure Disk Encryption
@@ -218,12 +218,12 @@ az vm encryption enable \
   --resource-group myResourceGroup \
   --name winServer2025 \
   --disk-encryption-keyvault myEncryptionKV \
-  --volume-type All
+  --volume-type ALL
 ```
 
-### Enable Microsoft Defender for Endpoint
+### Check Microsoft Defender Antivirus
 
-Windows Server 2025 can onboard to Microsoft Defender for Endpoint for advanced threat protection:
+Windows Server 2025 includes Microsoft Defender Antivirus. Check that it is running and run a quick scan:
 
 ```powershell
 # Check if Defender is running
