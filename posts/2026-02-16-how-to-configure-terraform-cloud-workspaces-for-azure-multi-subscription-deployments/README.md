@@ -52,16 +52,14 @@ az account set --subscription "Production"
 az ad sp create-for-rbac \
   --name "sp-terraform-production" \
   --role "Contributor" \
-  --scopes "/subscriptions/$(az account show --query id -o tsv)" \
-  --sdk-auth
+  --scopes "/subscriptions/$(az account show --query id -o tsv)"
 
 # Create a service principal for the staging subscription
 az account set --subscription "Staging"
 az ad sp create-for-rbac \
   --name "sp-terraform-staging" \
   --role "Contributor" \
-  --scopes "/subscriptions/$(az account show --query id -o tsv)" \
-  --sdk-auth
+  --scopes "/subscriptions/$(az account show --query id -o tsv)"
 ```
 
 ## Creating Workspaces with Terraform
@@ -97,6 +95,11 @@ variable "azure_subscriptions" {
     tenant_id       = string
   }))
   sensitive = true
+}
+
+data "tfe_oauth_client" "github" {
+  organization     = var.tfc_organization
+  service_provider = "github"
 }
 
 # Define all workspaces as a local map
@@ -148,7 +151,7 @@ resource "tfe_workspace" "this" {
   vcs_repo {
     identifier     = "my-company/azure-infrastructure"
     branch         = each.value.vcs_branch
-    oauth_token_id = tfe_oauth_client.github.oauth_token_id
+    oauth_token_id = data.tfe_oauth_client.github.oauth_token_id
   }
 
   working_directory  = each.value.working_dir
