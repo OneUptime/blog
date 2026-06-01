@@ -26,7 +26,7 @@ You define test groups with sources, destinations, and test configurations. Conn
 ## Key Concepts
 
 - **Test Group:** A collection of sources, destinations, and test configurations
-- **Source:** An Azure VM, Azure VMSS, or on-premises machine with the Log Analytics agent
+- **Source:** An Azure VM, Azure VMSS, or Arc-enabled on-premises machine with a supported monitoring agent
 - **Destination:** Any IP, FQDN, URL, Azure VM, or Azure service endpoint
 - **Test Configuration:** Protocol (TCP, HTTP, ICMP), port, frequency, and success thresholds
 
@@ -46,7 +46,7 @@ graph TD
 
 1. Network Watcher enabled in the regions you are monitoring
 2. The Network Watcher extension installed on source VMs
-3. A Log Analytics workspace (for metric storage and alerting)
+3. A Log Analytics workspace (for log storage and log-based analysis)
 4. Source VMs must have outbound internet access for sending telemetry (or be able to reach the Azure Monitor endpoint)
 
 ## Step 1: Install the Network Watcher Extension
@@ -60,14 +60,16 @@ az vm extension set \
   --resource-group myResourceGroup \
   --vm-name sourceVM1 \
   --name NetworkWatcherAgentLinux \
-  --publisher Microsoft.Azure.NetworkWatcher
+  --publisher Microsoft.Azure.NetworkWatcher \
+  --extension-instance-name AzureNetworkWatcherExtension
 
 # Install on Windows VMs
 az vm extension set \
   --resource-group myResourceGroup \
   --vm-name sourceVM2 \
   --name NetworkWatcherAgentWindows \
-  --publisher Microsoft.Azure.NetworkWatcher
+  --publisher Microsoft.Azure.NetworkWatcher \
+  --extension-instance-name AzureNetworkWatcherExtension
 ```
 
 ## Step 2: Create a Connection Monitor
@@ -83,28 +85,38 @@ az network watcher connection-monitor create \
   --endpoint-source-name sourceVM1 \
   --endpoint-source-resource-id "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/sourceVM1" \
   --endpoint-dest-name sqlDatabase \
-  --endpoint-dest-address "mysqlserver.database.windows.net" \
-  --test-config-name tcpTest443 \
+  --endpoint-dest-address "myserver.database.windows.net" \
+  --test-config-name tcpTest1433 \
   --protocol Tcp \
-  --tcp-port 443 \
-  --test-config-frequency 30
+  --tcp-port 1433 \
+  --frequency 30
 ```
 
-This creates a monitor that tests TCP connectivity from sourceVM1 to your SQL Database on port 443 every 30 seconds.
+This creates a monitor that tests TCP connectivity from sourceVM1 to your Azure SQL Database on port 1433 every 30 seconds.
 
 ## Step 3: Add Multiple Endpoints and Tests
 
-Real-world monitoring involves multiple sources and destinations. You can define more elaborate configurations using a JSON template:
+Real-world monitoring involves multiple sources and destinations. You can add more test groups with additional sources, destinations, and test configurations:
 
 ```bash
-# Create a comprehensive connection monitor using JSON input
-az network watcher connection-monitor create \
-  --name comprehensiveMonitor \
+# Add another test group to the connection monitor
+az network watcher connection-monitor test-group add \
+  --connection-monitor myConnectionMonitor \
   --location eastus \
-  --notes "Monitors critical application dependencies"
+  --name appTierToExternalAPIs \
+  --endpoint-source-name appVM1 \
+  --endpoint-source-resource-id "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/appVM1" \
+  --endpoint-dest-name paymentAPI \
+  --endpoint-dest-address "api.example.com" \
+  --test-config-name httpTest443 \
+  --protocol Http \
+  --http-port 443 \
+  --http-method Get \
+  --http-valid-status-codes 200 \
+  --frequency 60
 ```
 
-For complex configurations, using an ARM template or the Azure Portal is more practical. Here is the structure of a connection monitor with multiple test groups:
+For complex configurations, using an ARM template, Azure CLI JSON arguments, or the Azure Portal is more practical. Here is the conceptual structure of a connection monitor with multiple test groups:
 
 ```json
 {
@@ -135,12 +147,13 @@ az network watcher connection-monitor test-configuration add \
   --connection-monitor myConnectionMonitor \
   --location eastus \
   --name httpHealthCheck \
+  --test-groups criticalServices \
   --protocol Http \
   --http-port 443 \
-  --http-method GET \
+  --http-method Get \
   --http-path "/api/health" \
-  --http-valid-status-codes 200 204 \
-  --test-frequency-sec 60
+  --http-valid-status-codes "200,204" \
+  --frequency 60
 ```
 
 HTTP tests let you detect issues that TCP tests miss. A service might accept TCP connections but return 500 errors. Only an HTTP test catches that.
@@ -155,8 +168,9 @@ az network watcher connection-monitor test-configuration add \
   --connection-monitor myConnectionMonitor \
   --location eastus \
   --name icmpTest \
+  --test-groups criticalServices \
   --protocol Icmp \
-  --test-frequency-sec 30
+  --frequency 30
 ```
 
 Note that ICMP tests require NSG rules to allow ICMP traffic. Many default NSG configurations block ICMP.
@@ -217,14 +231,14 @@ To see the network path and identify where failures occur:
 NWConnectionMonitorPathResult
 | where TimeGenerated > ago(1h)
 | where TestGroupName == "criticalServices"
-| project TimeGenerated, SourceName, DestinationName, PathHops
+| project TimeGenerated, SourceName, DestinationName, Hops
 ```
 
 ## Monitoring On-Premises Endpoints
 
-Connection Monitor can monitor connectivity to on-premises machines through ExpressRoute or VPN. The on-premises machine needs the Azure Monitor Agent installed and registered with a Log Analytics workspace.
+Connection Monitor can monitor connectivity to on-premises machines through ExpressRoute or VPN. The on-premises machine must be enabled with Azure Arc and use the Azure Monitor Agent.
 
-Once registered, add it as a source or destination in your test group. This gives you end-to-end monitoring from Azure to on-premises and vice versa.
+Once registered, add it as a source in your test group. On-premises destinations can also be monitored by address. This gives you end-to-end monitoring from Azure to on-premises and vice versa.
 
 ## Best Practices
 
@@ -242,8 +256,8 @@ Once registered, add it as a source or destination in your test group. This give
 
 - Maximum of 100 connection monitors per subscription per region
 - Maximum of 20 test groups per connection monitor
-- ICMP tests are not supported from VMSS sources
-- On-premises sources require the Azure Monitor Agent
+- Classic VMs are not supported
+- On-premises sources require Azure Arc and the Azure Monitor Agent
 
 ## Summary
 
