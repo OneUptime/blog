@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Digital Twins, Twin Graph, REST API, Graph Queries, Digital Twin SDK, IoT Modeling, Kusto Query
+Tags: Azure Digital Twins, Twin Graph, REST API, Graph Queries, Digital Twin SDK, IoT Modeling
 
 Description: A practical guide to creating digital twins, establishing relationships, and querying the twin graph in Azure Digital Twins using the REST API and SDKs.
 
@@ -20,7 +20,7 @@ You also need:
 
 - An Azure AD token with the "Azure Digital Twins Data Owner" role
 - The instance hostname (e.g., `my-digital-twins.api.eus.digitaltwins.azure.net`)
-- Python 3.8+ with the `azure-digitaltwins-core` and `azure-identity` packages installed
+- Python 3.9+ with the `azure-digitaltwins-core` and `azure-identity` packages installed
 
 ```bash
 pip install azure-digitaltwins-core azure-identity
@@ -34,10 +34,10 @@ The REST API for creating a twin uses a PUT request to the `/digitaltwins/{twin-
 # Set your variables
 
 ADT_HOST="https://my-digital-twins.api.eus.digitaltwins.azure.net"
-TOKEN=$(az account get-access-token --resource https://digitaltwins.azure.net --query accessToken -o tsv)
+TOKEN=$(az account get-access-token --resource 0b07f429-9f4b-4714-9392-cc5e8e80c8b0 --query accessToken -o tsv)
 
 # Create a Building twin
-curl -X PUT "${ADT_HOST}/digitaltwins/building-hq?api-version=2022-05-31" \
+curl -X PUT "${ADT_HOST}/digitaltwins/building-hq?api-version=2023-10-31" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -331,11 +331,11 @@ for twin in results:
     floor = twin.get("floor", {})
     print(f"Room: {room.get('name')} (Floor {floor.get('floorNumber')})")
 
-# Count sensors by type
+# Count sensors
 query = """
-    SELECT sensor.sensorType, COUNT()
+    SELECT COUNT()
     FROM digitaltwins sensor
-    WHERE IS_OF_MODEL('dtmi:com:example:Sensor;1')
+    WHERE IS_OF_MODEL(sensor, 'dtmi:com:example:Sensor;1')
 """
 
 results = client.query_twins(query)
@@ -348,7 +348,7 @@ for result in results:
 Update a twin's properties using a JSON Patch operation.
 
 ```python
-# Update the temperature reading for a room
+# Update the status for a room
 from azure.digitaltwins.core import DigitalTwinsClient
 from azure.identity import DefaultAzureCredential
 
@@ -362,8 +362,8 @@ client = DigitalTwinsClient(
 patch = [
     {
         "op": "replace",
-        "path": "/temperature",
-        "value": 24.5
+        "path": "/status",
+        "value": "occupied"
     }
 ]
 
@@ -377,7 +377,7 @@ You can also run queries directly through the REST API if you prefer.
 
 ```bash
 # Run a query via REST API
-curl -X POST "${ADT_HOST}/query?api-version=2022-05-31" \
+curl -X POST "${ADT_HOST}/query?api-version=2023-10-31" \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -405,4 +405,4 @@ print(f"Total twins: {count}")
 
 ## Wrapping Up
 
-The twin graph in Azure Digital Twins gives you a queryable, live model of your physical environment. Creating twins and relationships is straightforward through both the REST API and language SDKs. The query language supports graph traversal, property filtering, and aggregations that let you answer questions about your environment programmatically. Start by modeling your physical space hierarchy, then add equipment and sensor twins, connect everything with relationships, and build queries that power your application logic and dashboards.
+The twin graph in Azure Digital Twins gives you a queryable, live model of your physical environment. Creating twins and relationships is straightforward through both the REST API and language SDKs. The query language supports graph traversal, property filtering, and counting result sets so you can answer questions about your environment programmatically. Start by modeling your physical space hierarchy, then add equipment and sensor twins, connect everything with relationships, and build queries that power your application logic and dashboards.
