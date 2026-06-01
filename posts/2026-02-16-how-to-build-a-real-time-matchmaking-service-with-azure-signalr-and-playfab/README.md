@@ -18,14 +18,14 @@ PlayFab provides the matchmaking queue logic. Azure SignalR provides the real-ti
 graph LR
     A[Game Client] -->|Join Queue| B[Matchmaking API]
     B --> C[PlayFab Matchmaking]
-    C --> D[Match Found Event]
+    C --> D[Status Polling]
     D --> E[Azure Functions]
     E --> F[Azure SignalR Service]
     F -->|Real-Time Updates| A
     B --> F
 ```
 
-The game client calls the matchmaking API to join a queue. The API submits a ticket to PlayFab Matchmaking. Meanwhile, the client connects to Azure SignalR to receive real-time updates. When PlayFab finds a match, an Azure Function picks up the event and pushes the match details to all players in the group through SignalR.
+The game client calls the matchmaking API to join a queue. The API submits a ticket to PlayFab Matchmaking. Meanwhile, the client connects to Azure SignalR to receive real-time updates. An Azure Function polls PlayFab for ticket status and, when a match is found, pushes the match details to the players through SignalR.
 
 ## Step 1 - Set Up Azure SignalR Service
 
@@ -55,7 +55,7 @@ Configure the matchmaking queue in the PlayFab portal or via API.
 import requests
 
 TITLE_ID = "YOUR_TITLE_ID"
-SECRET_KEY = "YOUR_SECRET_KEY"
+ENTITY_TOKEN = "YOUR_ENTITY_TOKEN"
 
 def create_matchmaking_queue():
     """Create a matchmaking queue with skill-based rules."""
@@ -63,7 +63,7 @@ def create_matchmaking_queue():
 
     headers = {
         "Content-Type": "application/json",
-        "X-SecretKey": SECRET_KEY
+        "X-EntityToken": ENTITY_TOKEN
     }
 
     payload = {
@@ -76,22 +76,23 @@ def create_matchmaking_queue():
             "BuildId": "<your-build-id>",
             "RegionSelectionRule": {
                 "Name": "region_rule",
+                "Path": "Latencies",
                 "MaxLatency": 150,  # Maximum acceptable latency in ms
                 "Weight": 1.0
             },
-            "DifferenceRule": [
+            "DifferenceRules": [
                 {
                     "Name": "skill_rule",
                     "Attribute": {
                         "Path": "skill_rating",
                         "Source": "User"
                     },
+                    "Difference": 100,
                     "Weight": 2.0,
                     "MergeFunction": "Average",
                     "DefaultAttributeValue": 1000,
-                    "Expansion": {
-                        "Type": "Linear",
-                        "MaxDifference": 500,
+                    "LinearExpansion": {
+                        "Limit": 500,
                         "Delta": 50,
                         "SecondsBetweenExpansions": 10
                     }
@@ -106,7 +107,7 @@ def create_matchmaking_queue():
 create_matchmaking_queue()
 ```
 
-The skill rule is the most important part. It starts by trying to match players within a narrow skill range and gradually expands the acceptable difference every 10 seconds. After 100 seconds (10 expansions at 50 each), the maximum skill difference reaches 500. This balances match quality with wait times.
+The skill rule is the most important part. It starts by trying to match players within a narrow skill range and gradually expands the acceptable difference every 10 seconds until it reaches 500. This balances match quality with wait times.
 
 ## Step 3 - Build the Matchmaking API
 
@@ -117,15 +118,13 @@ import azure.functions as func
 import json
 import os
 import requests
-from azure.functions import SignalRConnectionInfo
-
 app = func.FunctionApp()
 
 TITLE_ID = os.environ["PLAYFAB_TITLE_ID"]
 
 @app.function_name("negotiate")
 @app.route(route="negotiate", methods=["POST"])
-@app.generic_output_binding(
+@app.generic_input_binding(
     arg_name="connectionInfo",
     type="signalRConnectionInfo",
     hub_name="matchmaking",
@@ -148,16 +147,21 @@ def create_ticket(req: func.HttpRequest, signalRMessages: func.Out[str]) -> func
     """Create a matchmaking ticket for a player."""
     body = req.get_json()
     player_id = body["playerId"]
+    entity_id = body["entityId"]
     entity_token = body["entityToken"]
     skill_rating = body.get("skillRating", 1000)
-    preferred_regions = body.get("regions", ["EastUs"])
+    latencies = body.get("latencies", [
+        {"region": "EastUs", "latency": 75},
+        {"region": "WestUs", "latency": 120}
+    ])
 
     # Submit ticket to PlayFab Matchmaking
     ticket = create_playfab_ticket(
         entity_token=entity_token,
+        entity_id=entity_id,
         queue_name="ranked_1v1",
         skill_rating=skill_rating,
-        preferred_regions=preferred_regions
+        latencies=latencies
     )
 
     if not ticket:
@@ -186,7 +190,7 @@ def create_ticket(req: func.HttpRequest, signalRMessages: func.Out[str]) -> func
         mimetype="application/json"
     )
 
-def create_playfab_ticket(entity_token: str, queue_name: str, skill_rating: int, preferred_regions: list) -> dict:
+def create_playfab_ticket(entity_token: str, entity_id: str, queue_name: str, skill_rating: int, latencies: list) -> dict:
     """Submit a matchmaking ticket to PlayFab."""
     url = f"https://{TITLE_ID}.playfabapi.com/Match/CreateMatchmakingTicket"
 
@@ -198,15 +202,17 @@ def create_playfab_ticket(entity_token: str, queue_name: str, skill_rating: int,
     payload = {
         "Creator": {
             "Entity": {
-                "Id": "",  # Filled from entity token
+                "Id": entity_id,
                 "Type": "title_player_account"
             },
             "Attributes": {
                 "DataObject": {
-                    "skill_rating": skill_rating
+                    "skill_rating": skill_rating,
+                    "Latencies": latencies
                 }
             }
         },
+        "MembersToMatchWith": [],
         "GiveUpAfterSeconds": 120,
         "QueueName": queue_name
     }
@@ -219,7 +225,7 @@ def create_playfab_ticket(entity_token: str, queue_name: str, skill_rating: int,
 
 ## Step 4 - Poll and Push Match Status
 
-PlayFab Matchmaking does not push events. You need to poll for ticket status. Use a timer-triggered Azure Function that checks active tickets and pushes updates to players through SignalR.
+In a simple Azure Functions integration, polling is a straightforward way to check ticket status. Use a timer-triggered Azure Function that checks active tickets and pushes updates to players through SignalR.
 
 ```python
 @app.function_name("pollMatchStatus")
@@ -301,7 +307,24 @@ def check_ticket_status(entity_token: str, queue_name: str, ticket_id: str) -> d
     }
     payload = {
         "TicketId": ticket_id,
-        "QueueName": queue_name
+        "QueueName": queue_name,
+        "EscapeObject": False
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    return response.json().get("data", {})
+
+def get_match_details(entity_token: str, queue_name: str, match_id: str) -> dict:
+    """Get the allocated match details from PlayFab."""
+    url = f"https://{TITLE_ID}.playfabapi.com/Match/GetMatch"
+    headers = {
+        "Content-Type": "application/json",
+        "X-EntityToken": entity_token
+    }
+    payload = {
+        "MatchId": match_id,
+        "QueueName": queue_name,
+        "EscapeObject": False,
+        "ReturnMemberAttributes": True
     }
     response = requests.post(url, headers=headers, json=payload)
     return response.json().get("data", {})
