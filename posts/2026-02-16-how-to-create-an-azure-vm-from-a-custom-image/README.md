@@ -90,10 +90,11 @@ az image create \
   --resource-group myResourceGroup \
   --name myCustomImage \
   --source myTemplateVM \
-  --location eastus
+  --location eastus \
+  --hyper-v-generation V2
 ```
 
-This creates a managed image resource. The original VM cannot be started again after this - it is effectively consumed by the imaging process.
+This creates a legacy managed image resource. The original VM cannot be started again after it is marked as generalized. If your source VM is Generation 1, use `V1` consistently for both the managed image and the gallery image definition.
 
 ## Using Azure Compute Gallery (Recommended)
 
@@ -176,7 +177,7 @@ You can also reference the latest version:
 az vm create \
   --resource-group myResourceGroup \
   --name myAppVM \
-  --image "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/galleries/myGallery/images/myAppImage/versions/latest" \
+  --image "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/galleries/myGallery/images/myAppImage" \
   --size Standard_D2s_v5 \
   --admin-username azureuser \
   --generate-ssh-keys
@@ -235,7 +236,7 @@ az sig image-version create \
 
 5. **Set lifecycle policies.** Delete old image versions that are no longer in use. Each version consumes storage, and the replication costs add up.
 
-6. **Use Gen2 images.** Generation 2 images support UEFI boot, larger OS disks, and faster boot times compared to Gen1.
+6. **Use Gen2 images when your OS and VM size support them.** Generation 2 images support UEFI boot, larger OS disks, and faster boot times compared to Gen1.
 
 ## Wrapping Up
 
