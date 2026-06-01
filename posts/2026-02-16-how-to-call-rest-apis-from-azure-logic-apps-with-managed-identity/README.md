@@ -37,12 +37,12 @@ Logic Apps supports both system-assigned and user-assigned managed identities.
 ```bash
 # Enable system-assigned managed identity on a Logic App Standard
 
-az logicapp identity assign \
+az webapp identity assign \
   --name logic-order-workflows \
   --resource-group rg-workflows
 
 # Get the principal ID (you will need this for role assignments)
-PRINCIPAL_ID=$(az logicapp identity show \
+PRINCIPAL_ID=$(az webapp identity show \
   --name logic-order-workflows \
   --resource-group rg-workflows \
   --query "principalId" \
@@ -68,7 +68,7 @@ IDENTITY_ID=$(az identity show \
   --output tsv)
 
 # Assign it to the Logic App
-az logicapp identity assign \
+az webapp identity assign \
   --name logic-order-workflows \
   --resource-group rg-workflows \
   --identities "$IDENTITY_ID"
@@ -125,15 +125,26 @@ APP_ID=$(az ad app create \
 az ad sp create --id "$APP_ID"
 ```
 
-Grant the Logic App's managed identity permission to call the API.
+Grant the Logic App's managed identity permission to call the API. For application-to-application calls from a managed identity, assign an app role exposed by the API's service principal.
 
 ```bash
-# Assign a role or API permission to the Logic App's identity
-# Option 1: App role assignment
-az ad app permission grant \
-  --id "$PRINCIPAL_ID" \
-  --api "$APP_ID" \
-  --scope "Orders.ReadWrite"
+# Create an application role on the API app registration
+APP_ROLE_ID=$(uuidgen)
+
+az ad app update \
+  --id "$APP_ID" \
+  --app-roles "[{\"allowedMemberTypes\":[\"Application\"],\"displayName\":\"Orders.ReadWrite\",\"id\":\"$APP_ROLE_ID\",\"isEnabled\":true,\"description\":\"Read and write orders.\",\"value\":\"Orders.ReadWrite\"}]"
+
+# Assign the API application role to the Logic App's managed identity
+API_SP_OBJECT_ID=$(az ad sp show \
+  --id "$APP_ID" \
+  --query "id" \
+  --output tsv)
+
+az rest \
+  --method POST \
+  --url "https://graph.microsoft.com/v1.0/servicePrincipals/$PRINCIPAL_ID/appRoleAssignments" \
+  --body "{\"principalId\":\"$PRINCIPAL_ID\",\"resourceId\":\"$API_SP_OBJECT_ID\",\"appRoleId\":\"$APP_ROLE_ID\"}"
 ```
 
 Now call the API from your workflow.
@@ -198,7 +209,8 @@ az role assignment create \
       "method": "GET",
       "uri": "https://stmyapp.blob.core.windows.net/documents?restype=container&comp=list",
       "headers": {
-        "x-ms-version": "2021-08-06"
+        "x-ms-version": "2021-08-06",
+        "x-ms-date": "@{utcNow('R')}"
       },
       "authentication": {
         "type": "ManagedServiceIdentity",
@@ -208,6 +220,15 @@ az role assignment create \
     "runAfter": {}
   }
 }
+```
+
+Grant the identity data-plane access first.
+
+```bash
+az role assignment create \
+  --assignee "$PRINCIPAL_ID" \
+  --role "Storage Blob Data Reader" \
+  --scope "/subscriptions/{sub-id}/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/stmyapp"
 ```
 
 ### Microsoft Graph API
@@ -229,7 +250,7 @@ az role assignment create \
 }
 ```
 
-For Graph API calls, you need to grant the managed identity the appropriate Graph API permissions (User.Read.All, Mail.Send, etc.) through Azure AD admin consent.
+For Graph API calls, assign the managed identity the appropriate Microsoft Graph application role (User.Read.All, Mail.Send, etc.) and grant tenant admin consent.
 
 ## Using User-Assigned Identity
 
@@ -298,7 +319,7 @@ resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' =
 
 If you get a 401 or 403 error when using managed identity, check these things.
 
-Verify the identity is enabled: `az logicapp identity show --name logic-order-workflows --resource-group rg-workflows`.
+Verify the identity is enabled: `az webapp identity show --name logic-order-workflows --resource-group rg-workflows`.
 
 Verify the role assignment exists: `az role assignment list --assignee "$PRINCIPAL_ID" --output table`.
 
