@@ -12,6 +12,8 @@ Getting the right message to the right user at the right time is the core challe
 
 Pinpoint handles email, SMS, push notifications, voice messages, and custom channels. It is not just a messaging service - it includes analytics, segmentation, campaign orchestration, and A/B testing. Think of it as a marketing automation platform built into AWS.
 
+As of May 20, 2025, Amazon Pinpoint no longer accepts new customers, and AWS will end support for Amazon Pinpoint engagement features on October 30, 2026. Existing Pinpoint customers can still use these features until then, while the SMS, voice, mobile push, OTP, and phone number validation APIs continue under AWS End User Messaging.
+
 ## Architecture Overview
 
 ```mermaid
@@ -101,7 +103,8 @@ aws pinpoint update-apns-channel \
 aws pinpoint update-gcm-channel \
   --application-id "APP_ID" \
   --gcm-channel-request '{
-    "ApiKey": "your-fcm-server-key",
+    "DefaultAuthenticationMethod": "TOKEN",
+    "ServiceJson": "{\"type\":\"service_account\",\"project_id\":\"your-firebase-project\",...}",
     "Enabled": true
   }'
 ```
@@ -179,7 +182,7 @@ aws pinpoint create-import-job \
 Segments define which users receive your campaigns. You can create segments based on endpoint attributes, user attributes, and behavior.
 
 ```bash
-# Create a segment of premium users who signed up in the last 30 days
+# Create a segment of premium users
 aws pinpoint create-segment \
   --application-id "APP_ID" \
   --write-segment-request '{
@@ -227,7 +230,7 @@ aws pinpoint create-campaign \
     "Schedule": {
       "StartTime": "2026-02-13T10:00:00Z",
       "Frequency": "ONCE",
-      "Timezone": "America/Los_Angeles"
+      "Timezone": "UTC"
     },
     "Limits": {
       "Daily": 1,
@@ -246,7 +249,8 @@ Journeys are multi-step, multi-channel engagement workflows. They are more power
 aws pinpoint create-journey \
   --application-id "APP_ID" \
   --write-journey-request '{
-    "Name": "New User Onboarding",
+    "Name": "New_User_Onboarding",
+    "StartActivity": "WelcomeEmail",
     "StartCondition": {
       "SegmentStartCondition": {
         "SegmentId": "new-users-segment-id"
@@ -259,17 +263,17 @@ aws pinpoint create-journey \
             "FromAddress": "welcome@yourapp.com"
           },
           "TemplateName": "welcome-email-template",
-          "TemplateVersion": "1"
-        },
-        "NextActivity": "Wait3Days"
+          "TemplateVersion": "1",
+          "NextActivity": "Wait3Days"
+        }
       },
       "Wait3Days": {
         "Wait": {
           "WaitTime": {
-            "WaitFor": "3d"
-          }
-        },
-        "NextActivity": "CheckEngagement"
+            "WaitFor": "P3D"
+          },
+          "NextActivity": "CheckEngagement"
+        }
       },
       "CheckEngagement": {
         "ConditionalSplit": {
@@ -280,7 +284,7 @@ aws pinpoint create-journey \
                   "MessageActivity": "WelcomeEmail",
                   "Dimensions": {
                     "EventType": {
-                      "Values": ["email.open"],
+                      "Values": ["_email.open"],
                       "DimensionType": "INCLUSIVE"
                     }
                   }
@@ -289,10 +293,25 @@ aws pinpoint create-journey \
             ]
           },
           "EvaluationWaitTime": {
-            "WaitFor": "1d"
+            "WaitFor": "P1D"
           },
           "TrueActivity": "EngagedFollowUp",
           "FalseActivity": "ReengagePush"
+        }
+      },
+      "EngagedFollowUp": {
+        "EMAIL": {
+          "MessageConfig": {
+            "FromAddress": "tips@yourapp.com"
+          },
+          "TemplateName": "advanced-tips-template",
+          "TemplateVersion": "1"
+        }
+      },
+      "ReengagePush": {
+        "PUSH": {
+          "TemplateName": "reengage-push-template",
+          "TemplateVersion": "1"
         }
       }
     },
@@ -318,6 +337,7 @@ aws pinpoint send-messages \
     },
     "MessageConfiguration": {
       "EmailMessage": {
+        "FromAddress": "support@yourapp.com",
         "SimpleEmail": {
           "Subject": {"Data": "Your password has been reset"},
           "HtmlPart": {"Data": "<p>Your password was successfully reset. If you did not make this change, contact support immediately.</p>"},
