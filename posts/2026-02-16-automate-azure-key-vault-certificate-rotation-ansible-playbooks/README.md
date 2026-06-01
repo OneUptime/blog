@@ -10,7 +10,7 @@ Description: Automate Azure Key Vault certificate rotation using Ansible playboo
 
 Certificate management is one of those critical tasks that everyone agrees is important and nobody wants to do manually. Expired certificates cause outages, security alerts, and panicked late-night calls. Azure Key Vault can issue and store certificates, but the rotation process - generating new certificates, deploying them to services, and verifying the swap - still needs orchestration. Ansible playbooks give you a repeatable, auditable way to handle the entire lifecycle.
 
-This post covers using Ansible to automate certificate rotation in Azure Key Vault, including generating certificates, deploying them to Azure services, and cleaning up old versions.
+This post covers using Ansible to automate certificate rotation in Azure Key Vault, including generating certificates, deploying them to Azure services, and notifying teams.
 
 ## Prerequisites and Setup
 
@@ -110,27 +110,23 @@ Here is a comprehensive playbook that handles the full rotation cycle.
     # Step 3: Generate new certificates
     - name: Create new certificate versions
       azure.azcollection.azure_rm_keyvaultcertificate:
-        certificate_name: "{{ item.name }}"
         vault_uri: "https://{{ key_vault_name }}.vault.azure.net"
-        certificate_policy:
-          issuer_parameters:
-            name: "Self"  # Use "Self" for self-signed or CA name for CA-issued
-          key_properties:
-            exportable: true
-            key_size: 4096
-            key_type: "RSA"
-            reuse_key: false
-          secret_properties:
-            content_type: "application/x-pem-certificate"
-          x509_certificate_properties:
-            subject: "{{ item.subject }}"
-            subject_alternative_names:
-              dns_names: "{{ item.dns_names }}"
-            validity_in_months: "{{ item.validity_months }}"
-            key_usage:
-              - digitalSignature
-              - keyEncipherment
-        state: present
+        name: "{{ item.name }}"
+        policy:
+          issuer_name: "Self"  # Use "Self" for self-signed or a configured CA issuer name
+          exportable: true
+          key_size: 4096
+          key_type: "RSA"
+          reuse_key: false
+          content_type: "application/x-pem-file"
+          subject: "{{ item.subject }}"
+          san_dns_names: "{{ item.dns_names }}"
+          validity_in_months: "{{ item.validity_months }}"
+          key_usage:
+            - digitalSignature
+            - keyEncipherment
+        enabled: true
+        state: generate
       register: new_certs
       loop: "{{ certs_to_rotate | default([]) }}"
       loop_control:
@@ -158,32 +154,54 @@ After generating new certificates, deploy them to the Azure services that use th
 
   vars:
     key_vault_name: kv-certs-prod
+    app_hostname: api.example.com
 
   tasks:
     # Deploy to App Service
-    - name: Get certificate from Key Vault for App Service
-      azure.azcollection.azure_rm_keyvaultcertificate_info:
-        vault_uri: "https://{{ key_vault_name }}.vault.azure.net"
-        name: "api-tls-cert"
-      register: api_cert
-
     - name: Import certificate to App Service
-      azure.azcollection.azure_rm_appservicecertificate:
-        name: "api-tls-cert"
-        resource_group: "rg-api"
-        location: "eastus"
-        key_vault_id: "/subscriptions/{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') }}/resourceGroups/rg-security/providers/Microsoft.KeyVault/vaults/{{ key_vault_name }}"
-        key_vault_secret_name: "api-tls-cert"
+      ansible.builtin.command:
+        argv:
+          - az
+          - webapp
+          - config
+          - ssl
+          - import
+          - --resource-group
+          - rg-api
+          - --name
+          - app-api-prod
+          - --key-vault
+          - "/subscriptions/{{ lookup('env', 'AZURE_SUBSCRIPTION_ID') }}/resourceGroups/rg-security/providers/Microsoft.KeyVault/vaults/{{ key_vault_name }}"
+          - --key-vault-certificate-name
+          - api-tls-cert
+          - --query
+          - thumbprint
+          - --output
+          - tsv
       register: app_cert
+      changed_when: app_cert.stdout | length > 0
 
     # Bind the certificate to the custom domain
     - name: Bind certificate to App Service custom domain
-      azure.azcollection.azure_rm_webapp:
-        resource_group: "rg-api"
-        name: "app-api-prod"
-        site_config:
-          min_tls_version: "1.2"
+      ansible.builtin.command:
+        argv:
+          - az
+          - webapp
+          - config
+          - ssl
+          - bind
+          - --resource-group
+          - rg-api
+          - --name
+          - app-api-prod
+          - --hostname
+          - "{{ app_hostname }}"
+          - --certificate-thumbprint
+          - "{{ app_cert.stdout }}"
+          - --ssl-type
+          - SNI
       register: binding_result
+      changed_when: binding_result.rc == 0
 
     - name: Log deployment result
       ansible.builtin.debug:
@@ -212,8 +230,8 @@ Add notification steps to keep teams informed about rotation status.
       set_fact:
         rotation_report: |
           Certificate Rotation Report
-          Date: {{ ansible_date_time.iso8601 | default(now(utc=true)) }}
-          Certificates Checked: {{ certificates | length }}
+          Date: {{ now(utc=true).isoformat() }}
+          Certificates Checked: {{ certificates | default([]) | length }}
           Certificates Rotated: {{ certs_to_rotate | default([]) | length }}
 
           {% for cert in certs_to_rotate | default([]) %}
@@ -239,7 +257,7 @@ Add notification steps to keep teams informed about rotation status.
     - name: Save rotation report
       ansible.builtin.copy:
         content: "{{ rotation_report }}"
-        dest: "/var/log/cert-rotation/report-{{ ansible_date_time.date | default('unknown') }}.txt"
+        dest: "/var/log/cert-rotation/report-{{ now(utc=true).strftime('%Y-%m-%d') }}.txt"
         mode: '0644'
       ignore_errors: true
 ```
@@ -306,7 +324,7 @@ A separate playbook to run on a schedule that checks certificate expiry dates an
       when: cert_status | default([]) | selectattr('status', 'equalto', 'CRITICAL') | list | length > 0
 ```
 
-## Scheduling with Cron or Ansible Tower
+## Scheduling with Cron or Ansible Automation Platform
 
 Run the monitoring check daily and the rotation weekly.
 
@@ -320,7 +338,7 @@ Run the monitoring check daily and the rotation weekly.
 0 3 * * 0 cd /opt/ansible && ansible-playbook rotate-certificates.yml >> /var/log/cert-rotation.log 2>&1
 ```
 
-If you use Ansible Tower or AWX, create a job template for each playbook and attach schedules through the UI.
+If you use Ansible Automation Platform automation controller or AWX, create a job template for each playbook and attach schedules through the UI.
 
 ## Handling CA-Issued Certificates
 
@@ -333,27 +351,24 @@ For production certificates issued by a trusted CA (like DigiCert or GlobalSign)
   tasks:
     - name: Create certificate with CA issuer
       azure.azcollection.azure_rm_keyvaultcertificate:
-        certificate_name: "production-tls"
         vault_uri: "https://{{ key_vault_name }}.vault.azure.net"
-        certificate_policy:
-          issuer_parameters:
-            # Name of the CA configured as an issuer in Key Vault
-            name: "DigiCertCA"
-          key_properties:
-            exportable: true
-            key_size: 4096
-            key_type: "RSA"
-          x509_certificate_properties:
-            subject: "CN=api.example.com,O=Example Corp,L=Seattle,ST=WA,C=US"
-            subject_alternative_names:
-              dns_names:
-                - api.example.com
-                - "*.api.example.com"
-            validity_in_months: 12
-        state: present
+        name: "production-tls"
+        policy:
+          # Name of the CA configured as an issuer in Key Vault
+          issuer_name: "DigiCertCA"
+          exportable: true
+          key_size: 4096
+          key_type: "RSA"
+          subject: "CN=api.example.com,O=Example Corp,L=Seattle,ST=WA,C=US"
+          san_dns_names:
+            - api.example.com
+            - "*.api.example.com"
+          validity_in_months: 12
+        enabled: true
+        state: generate
 ```
 
-When a CA issuer is configured in Key Vault, the certificate creation process is automated end-to-end. Key Vault generates the key pair, creates the CSR, submits it to the CA, and imports the signed certificate when the CA responds.
+When a supported CA issuer is configured in Key Vault, the certificate creation process can be automated end-to-end. Key Vault generates the key pair, creates the CSR, submits it to the CA, and imports the signed certificate when the CA responds.
 
 ## Summary
 
