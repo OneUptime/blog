@@ -25,7 +25,7 @@ Let's break down the two models.
 ### I/O-Optimized Pricing
 
 - Compute: per instance-hour (approximately 30% higher than standard)
-- Storage: per GB-month (approximately 2.5x higher than standard)
+- Storage: per GB-month (approximately 2.25x higher than standard)
 - I/O: $0 (included)
 
 ```mermaid
@@ -37,7 +37,7 @@ graph LR
     end
     subgraph I/O-Optimized
         E[Compute Cost +30%] --> H[Total Bill]
-        F[Storage Cost +2.5x] --> H
+        F[Storage Cost +2.25x] --> H
         G[I/O Cost = $0] --> H
     end
 ```
@@ -60,33 +60,44 @@ ce = boto3.client('ce')
 end_date = datetime.now().strftime('%Y-%m-01')
 start_date = (datetime.now().replace(day=1) - timedelta(days=1)).strftime('%Y-%m-01')
 
-response = ce.get_cost_and_usage(
-    TimePeriod={'Start': start_date, 'End': end_date},
-    Granularity='MONTHLY',
-    Metrics=['BlendedCost'],
-    Filter={
-        'Dimensions': {
-            'Key': 'SERVICE',
-            'Values': ['Amazon Relational Database Service']
-        }
-    },
-    GroupBy=[{'Type': 'DIMENSION', 'Key': 'USAGE_TYPE'}]
-)
-
 io_cost = 0
 compute_cost = 0
 storage_cost = 0
 
-for group in response['ResultsByTime'][0]['Groups']:
-    usage_type = group['Keys'][0]
-    cost = float(group['Metrics']['BlendedCost']['Amount'])
+next_token = None
 
-    if 'Aurora:StorageIOUsage' in usage_type:
-        io_cost += cost
-    elif 'Aurora:ServerlessV2' in usage_type or 'InstanceUsage' in usage_type:
-        compute_cost += cost
-    elif 'Aurora:StorageUsage' in usage_type:
-        storage_cost += cost
+while True:
+    params = {
+        'TimePeriod': {'Start': start_date, 'End': end_date},
+        'Granularity': 'MONTHLY',
+        'Metrics': ['BlendedCost'],
+        'Filter': {
+            'Dimensions': {
+                'Key': 'SERVICE',
+                'Values': ['Amazon Relational Database Service']
+            }
+        },
+        'GroupBy': [{'Type': 'DIMENSION', 'Key': 'USAGE_TYPE'}]
+    }
+    if next_token:
+        params['NextPageToken'] = next_token
+
+    response = ce.get_cost_and_usage(**params)
+
+    for group in response['ResultsByTime'][0]['Groups']:
+        usage_type = group['Keys'][0]
+        cost = float(group['Metrics']['BlendedCost']['Amount'])
+
+        if 'Aurora:StorageIOUsage' in usage_type:
+            io_cost += cost
+        elif 'Aurora:ServerlessV2' in usage_type or 'InstanceUsage' in usage_type:
+            compute_cost += cost
+        elif 'Aurora:StorageUsage' in usage_type:
+            storage_cost += cost
+
+    next_token = response.get('NextPageToken')
+    if not next_token:
+        break
 
 total = io_cost + compute_cost + storage_cost
 io_percentage = (io_cost / total * 100) if total > 0 else 0
@@ -101,7 +112,7 @@ print()
 
 # Estimate I/O-Optimized costs
 io_opt_compute = compute_cost * 1.30  # 30% higher compute
-io_opt_storage = storage_cost * 2.50  # 2.5x storage
+io_opt_storage = storage_cost * 2.25  # 2.25x storage
 io_opt_total = io_opt_compute + io_opt_storage
 
 savings = total - io_opt_total
@@ -130,21 +141,21 @@ If `StorageType` is `aurora` or empty, you are on Standard. If it is `aurora-iop
 
 ### Switch to I/O-Optimized
 
-The switch is a simple modify command with zero downtime.
+The switch is a simple modify command. For non-NVMe-based DB instances, there is no downtime.
 
 ```bash
-# Switch to I/O-Optimized storage - no downtime required
+# Switch to I/O-Optimized storage
 aws rds modify-db-cluster \
   --db-cluster-identifier my-aurora-cluster \
   --storage-type aurora-iopt1 \
   --apply-immediately
 ```
 
-The change takes effect within a few minutes. There is no restart, no failover, and no connection interruption.
+The change takes effect within a few minutes. For non-NVMe-based DB instances, there is no restart, no failover, and no connection interruption. For NVMe-based DB instances, switching storage configurations requires a database engine restart, which can cause a brief period of downtime.
 
 ### Switch Back to Standard
 
-If you find that I/O-Optimized is not saving you money, you can switch back. Note that you can only switch once every 30 days.
+If you find that I/O-Optimized is not saving you money, you can switch back to Standard at any time. Note that after you switch from Standard to I/O-Optimized, you can only switch to I/O-Optimized once every 30 days.
 
 ```bash
 # Switch back to Standard storage
@@ -168,9 +179,9 @@ Standard cost:
 
 I/O-Optimized cost:
 - Compute: $1,518/month
-- Storage: $125/month
+- Storage: $113/month
 - I/O: $0/month
-- Total: $1,643/month
+- Total: $1,631/month
 
 **Result:** I/O-Optimized costs more here. Standard is cheaper for moderate I/O workloads.
 
@@ -186,11 +197,11 @@ Standard cost:
 
 I/O-Optimized cost:
 - Compute: $3,037/month
-- Storage: $500/month
+- Storage: $450/month
 - I/O: $0/month
-- Total: $3,537/month
+- Total: $3,487/month
 
-**Result:** Almost break-even. At this I/O level, you get cost predictability without extra spend.
+**Result:** Slight savings. At this I/O level, you get cost predictability with a small reduction in spend.
 
 ### Scenario 3: Write-Heavy Application
 
@@ -204,23 +215,24 @@ Standard cost:
 
 I/O-Optimized cost:
 - Compute: $3,037/month
-- Storage: $1,250/month
+- Storage: $1,125/month
 - I/O: $0/month
-- Total: $4,287/month
+- Total: $4,162/month
 
-**Result:** I/O-Optimized saves $549/month (11.3%). The heavier your I/O, the more you save.
+**Result:** I/O-Optimized saves $674/month (13.9%). The heavier your I/O, the more you save.
 
 ## Monitoring After the Switch
 
-After switching, monitor your costs to verify the savings.
+After switching, monitor your costs to verify the savings. Billing alerts must be enabled first, and billing metric data is stored in US East (N. Virginia).
 
 ```bash
 # Set up a CloudWatch alarm to track Aurora costs via billing metrics
 aws cloudwatch put-metric-alarm \
+  --region us-east-1 \
   --alarm-name aurora-monthly-cost \
   --namespace AWS/Billing \
   --metric-name EstimatedCharges \
-  --dimensions Name=ServiceName,Value="Amazon Relational Database Service" \
+  --dimensions Name=ServiceName,Value="Amazon Relational Database Service" Name=Currency,Value=USD \
   --statistic Maximum \
   --period 86400 \
   --threshold 5000 \
@@ -232,7 +244,7 @@ aws cloudwatch put-metric-alarm \
 Also monitor your I/O metrics to understand workload patterns, even though you are no longer paying per I/O.
 
 ```bash
-# Check read and write IOPS to understand your workload patterns
+# Check read IOPS to understand your workload patterns
 aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name ReadIOPS \
