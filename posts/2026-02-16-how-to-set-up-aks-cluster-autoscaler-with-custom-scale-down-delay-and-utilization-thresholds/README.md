@@ -20,8 +20,8 @@ Consider an application that handles batch processing jobs every hour. With defa
 
 Before diving in, make sure you have the following ready:
 
-- An AKS cluster running Kubernetes 1.24 or later
-- Azure CLI version 2.40 or newer installed
+- An AKS cluster running a supported Kubernetes version
+- Azure CLI version 2.0.76 or newer installed
 - kubectl configured to point at your AKS cluster
 - Contributor or Owner role on the AKS resource
 
@@ -67,11 +67,8 @@ The following command sets the scale-down delay after add to 20 minutes and the 
 # scale-down-unneeded-time: node must be underutilized for 15 minutes before removal
 az aks update \
   --resource-group myResourceGroup \
-  --cluster-name myAKSCluster \
-  --cluster-autoscaler-profile \
-    scale-down-delay-after-add=20m \
-    scale-down-unneeded-time=15m \
-    scale-down-delay-after-failure=5m
+  --name myAKSCluster \
+  --cluster-autoscaler-profile scale-down-delay-after-add=20m,scale-down-unneeded-time=15m,scale-down-delay-after-failure=5m
 ```
 
 With these settings, the autoscaler waits 20 minutes after adding a node before it even considers removing any node. Once a node is flagged as underutilized, it must stay that way for 15 minutes before the autoscaler actually removes it.
@@ -87,9 +84,8 @@ For workloads that need headroom - like web applications that handle sudden traf
 # Nodes using less than 65% of requested resources become scale-down candidates
 az aks update \
   --resource-group myResourceGroup \
-  --cluster-name myAKSCluster \
-  --cluster-autoscaler-profile \
-    scale-down-utilization-threshold=0.65
+  --name myAKSCluster \
+  --cluster-autoscaler-profile scale-down-utilization-threshold=0.65
 ```
 
 Setting the threshold to 0.65 means nodes need to be less than 65% utilized before the autoscaler considers removing them. This is more aggressive about reclaiming unused capacity.
@@ -103,17 +99,8 @@ In practice, you will tune multiple parameters together. Here is a complete conf
 # Balances cost savings with stability for bursty traffic
 az aks update \
   --resource-group myResourceGroup \
-  --cluster-name myAKSCluster \
-  --cluster-autoscaler-profile \
-    scan-interval=30s \
-    scale-down-delay-after-add=15m \
-    scale-down-delay-after-delete=10s \
-    scale-down-delay-after-failure=5m \
-    scale-down-unneeded-time=10m \
-    scale-down-utilization-threshold=0.6 \
-    max-graceful-termination-sec=600 \
-    skip-nodes-with-local-storage=false \
-    skip-nodes-with-system-pods=true
+  --name myAKSCluster \
+  --cluster-autoscaler-profile scan-interval=30s,scale-down-delay-after-add=15m,scale-down-delay-after-delete=10s,scale-down-delay-after-failure=5m,scale-down-unneeded-time=10m,scale-down-utilization-threshold=0.6,max-graceful-termination-sec=600,skip-nodes-with-local-storage=false,skip-nodes-with-system-pods=true
 ```
 
 Breaking this down:
@@ -134,7 +121,7 @@ After updating the profile, verify that the settings took effect.
 # Check the current autoscaler profile settings
 az aks show \
   --resource-group myResourceGroup \
-  --cluster-name myAKSCluster \
+  --name myAKSCluster \
   --query "autoScalerProfile" \
   --output table
 ```
@@ -168,7 +155,7 @@ The status configmap includes details about scale-up and scale-down candidates, 
 
 **DaemonSet resource requests inflating utilization**: DaemonSet pods run on every node and their resource requests count toward utilization. If your DaemonSets request significant resources, the utilization calculation may never drop below your threshold. Account for DaemonSet overhead when setting the threshold.
 
-**System pods preventing node removal**: By default, the autoscaler will not remove nodes running kube-system pods. If you set `skip-nodes-with-system-pods=true`, some nodes may never scale down. Consider using pod anti-affinity rules to spread system pods across fewer nodes.
+**System pods preventing node removal**: By default, the autoscaler will not remove nodes running kube-system pods other than DaemonSet or mirror pods. If you leave `skip-nodes-with-system-pods=true`, some nodes may never scale down. Consider using a dedicated system node pool or scheduling rules that keep system pods off pools you expect to scale to zero.
 
 ## Tuning Tips for Specific Workload Types
 
@@ -176,7 +163,7 @@ For **web applications** with unpredictable traffic, use a lower utilization thr
 
 For **batch processing** workloads with predictable schedules, use a higher utilization threshold (0.7-0.8) and a shorter scale-down delay (5-10 minutes). Cost savings matter more than instant availability.
 
-For **mixed workloads**, use separate node pools with different autoscaler configurations. You can set the autoscaler min/max per node pool, and the cluster-level profile applies to all pools.
+For **mixed workloads**, use separate node pools with different min/max ranges and scheduling rules. You can set the autoscaler min/max per node pool, and the cluster-level profile applies to all pools.
 
 ## Wrapping Up
 
