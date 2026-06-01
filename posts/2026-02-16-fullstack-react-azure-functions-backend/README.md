@@ -14,7 +14,7 @@ This guide builds a complete expense tracker application with a React frontend a
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 22 or later
 - Azure Functions Core Tools v4
 - Azure CLI installed and authenticated
 - Basic React and TypeScript knowledge
@@ -31,7 +31,7 @@ expense-tracker/
   api/              # Azure Functions backend
     src/functions/
     package.json
-  package.json      # Root package.json for scripts
+  package.json      # Root package.json
 ```
 
 ```bash
@@ -44,8 +44,8 @@ npm init -y
 npm create vite@latest client -- --template react-ts
 
 # Create the Azure Functions backend
-mkdir -p api/src/functions
-cd api && func init --typescript && cd ..
+mkdir api
+cd api && func init --worker-runtime node --language typescript && cd ..
 ```
 
 ## Building the Azure Functions Backend
@@ -124,14 +124,16 @@ app.http('createExpense', {
     const body = (await request.json()) as any;
 
     // Validate required fields
-    if (!body.description || !body.amount || !body.category || !body.date) {
+    if (!body.description || body.amount === undefined || body.amount === null || !body.category || !body.date) {
       return {
         status: 400,
         jsonBody: { error: 'Missing required fields: description, amount, category, date' },
       };
     }
 
-    if (body.amount <= 0) {
+    const amount = Number(body.amount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
       return {
         status: 400,
         jsonBody: { error: 'Amount must be greater than zero' },
@@ -141,7 +143,7 @@ app.http('createExpense', {
     const newExpense = {
       id: Date.now().toString(),
       description: body.description,
-      amount: parseFloat(body.amount),
+      amount,
       category: body.category,
       date: body.date,
       createdBy: 'user1',
@@ -281,7 +283,7 @@ Build the main application component:
 
 ```typescript
 // client/src/App.tsx - Main expense tracker application
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Expense, getExpenses, createExpense, deleteExpense, getExpenseSummary, ExpenseSummary } from './api/expenses';
 
 const CATEGORIES = ['Food', 'Transport', 'Technology', 'Office', 'Entertainment', 'Other'];
@@ -321,7 +323,7 @@ function App() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     try {
       await createExpense({
@@ -468,20 +470,31 @@ Deploy the backend to Azure Functions and the frontend to Azure Static Web Apps 
 
 ```bash
 # Create a Function App for the backend
+az group create \
+  --name expense-tracker-rg \
+  --location eastus
+
+az storage account create \
+  --name expensetrackerstorage \
+  --resource-group expense-tracker-rg \
+  --location eastus \
+  --sku Standard_LRS
+
 az functionapp create \
   --resource-group expense-tracker-rg \
   --consumption-plan-location eastus \
+  --os-type Linux \
   --runtime node \
-  --runtime-version 18 \
+  --runtime-version 22 \
   --functions-version 4 \
   --name expense-tracker-api \
   --storage-account expensetrackerstorage
 
 # Deploy the functions
-cd api && func azure functionapp publish expense-tracker-api
+(cd api && func azure functionapp publish expense-tracker-api)
 
 # Build the React frontend
-cd client && npm run build
+(cd client && npm run build)
 
 # Deploy to Azure Static Web Apps or use the SWA approach
 ```
