@@ -8,13 +8,13 @@ Description: Learn how to query Application Load Balancer access logs with Amazo
 
 ---
 
-Application Load Balancer access logs capture every request that flows through your ALB. That's a goldmine of data - client IPs, request paths, response codes, latency breakdowns, backend targets, and more. The problem is that these logs land in S3 as compressed text files, and sifting through them manually is painful.
+Application Load Balancer access logs capture detailed information about requests that flow through your ALB. They're delivered on a best-effort basis, so use them for traffic analysis and troubleshooting rather than complete request accounting. That's still a goldmine of data - client IPs, request paths, response codes, latency breakdowns, backend targets, and more. The problem is that these logs land in S3 as compressed text files, and sifting through them manually is painful.
 
 Athena lets you query ALB logs with SQL, turning raw log files into actionable insights about your traffic patterns, error rates, and performance. Let's set it up.
 
 ## Enabling ALB Access Logs
 
-First, make sure access logging is turned on for your ALB:
+First, make sure your S3 bucket policy grants Elastic Load Balancing permission to write logs, then turn on access logging for your ALB:
 
 ```bash
 # Enable access logging for an Application Load Balancer
@@ -47,7 +47,10 @@ ssl_cipher ssl_protocol target_group_arn
 matched_rule_priority request_creation_time "actions_executed"
 "redirect_url" "error_reason" "target:port_list"
 "target_status_code_list" "classification" "classification_reason"
+conn_trace_id
 ```
+
+AWS can append newer fields to the end of the log entry, such as rewrite transform fields, so keep the trailing optional part of the regex in place.
 
 ## Creating the Athena Table
 
@@ -88,7 +91,8 @@ CREATE EXTERNAL TABLE alb_logs (
     target_port_list STRING,
     target_status_code_list STRING,
     classification STRING,
-    classification_reason STRING
+    classification_reason STRING,
+    conn_trace_id STRING
 )
 PARTITIONED BY (
     day STRING
@@ -96,7 +100,7 @@ PARTITIONED BY (
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
 WITH SERDEPROPERTIES (
     'serialization.format' = '1',
-    'input.regex' = '([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) \"([^ ]*) (.*) (- |[^ ]*)\" \"([^\"]*)\" ([A-Z0-9-_]+) ([A-Za-z0-9.-]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^\"]*)\" ([-.0-9]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^ ]*)\" \"([^\"]*)\" \"([^ ]*)\" \"([^ ]*)\" \"([^ ]*)\"'
+    'input.regex' = '([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) \"([^ ]*) (.*) (- |[^ ]*)\" \"([^\"]*)\" ([A-Z0-9-_]+) ([A-Za-z0-9.-]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^\"]*)\" ([-.0-9]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^ ]*)\" \"([^\\s]+?)\" \"([^\\s]+)\" \"([^ ]*)\" \"([^ ]*)\" ?([^ ]*)? ?( .*)?'
 )
 LOCATION 's3://my-alb-logs/alb-logs/AWSLogs/123456789012/elasticloadbalancing/us-east-1/'
 TBLPROPERTIES (
@@ -110,7 +114,7 @@ TBLPROPERTIES (
 );
 ```
 
-That regex is brutal to read but it correctly parses every field in the ALB log format. The partition projection on `day` means you never need to manually add partitions.
+That regex is brutal to read but it follows AWS's recommended Athena pattern for ALB access logs and tolerates additional trailing fields. The partition projection on `day` means you never need to manually add partitions.
 
 ## Traffic Analysis Queries
 
@@ -318,7 +322,7 @@ LIMIT 50;
 
 ## Automating Log Analysis
 
-For continuous monitoring, run these queries on a schedule and alert on thresholds. A Lambda function triggered by CloudWatch Events can execute Athena queries and send alerts via SNS when error rates spike or unusual traffic patterns appear.
+For continuous monitoring, run these queries on a schedule and alert on thresholds. A Lambda function triggered by Amazon EventBridge Scheduler can execute Athena queries and send alerts via SNS when error rates spike or unusual traffic patterns appear.
 
 For comprehensive application monitoring that includes uptime checks, incident management, and status pages alongside your log analysis, consider a platform like [OneUptime](https://oneuptime.com). It complements Athena-based log analysis with real-time alerting and incident workflows.
 
