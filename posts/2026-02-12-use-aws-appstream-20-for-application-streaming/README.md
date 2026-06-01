@@ -93,7 +93,7 @@ aws appstream create-fleet \
 
 Key fleet configurations:
 
-**Fleet type** - `ALWAYS_ON` keeps instances running for instant availability. `ON_DEMAND` starts instances when users connect (cheaper but slower startup). `ELASTIC` auto-scales based on demand.
+**Fleet type** - `ALWAYS_ON` keeps instances running for instant availability. `ON_DEMAND` starts instances when users connect (cheaper but slower startup). `ELASTIC` is AWS-managed capacity for applications delivered with app blocks, so you do not create your own scaling policies for it.
 
 **Stream view** - `APP` shows only the application window. `DESKTOP` shows a full Windows desktop with the application.
 
@@ -101,30 +101,38 @@ Key fleet configurations:
 
 **Idle disconnect timeout** - disconnects idle users after the specified time.
 
-### Auto-Scaling for Elastic Fleets
+### Auto-Scaling for On-Demand Fleets
 
 ```bash
-# Create an elastic fleet with auto-scaling
+# Create an on-demand fleet with auto-scaling
 aws appstream create-fleet \
   --name "ondemand-engineering-fleet" \
   --instance-type "stream.standard.large" \
-  --fleet-type "ELASTIC" \
+  --fleet-type "ON_DEMAND" \
   --image-name "engineering-apps-v1" \
   --compute-capacity '{"DesiredInstances": 2}' \
-  --max-concurrent-sessions 20 \
   --vpc-config '{
     "SubnetIds": ["subnet-abc123", "subnet-def456"],
     "SecurityGroupIds": ["sg-abc123"]
   }' \
-  --platform "WINDOWS_SERVER_2022" \
   --stream-view "APP"
 
-# Set up scaling policies
-aws appstream create-scaling-policy \
-  --fleet-name "ondemand-engineering-fleet" \
+# Register the fleet as an Application Auto Scaling target
+aws application-autoscaling register-scalable-target \
+  --service-namespace appstream \
+  --resource-id fleet/ondemand-engineering-fleet \
+  --scalable-dimension appstream:fleet:DesiredCapacity \
+  --min-capacity 2 \
+  --max-capacity 20
+
+# Set up a target tracking scaling policy
+aws application-autoscaling put-scaling-policy \
+  --service-namespace appstream \
+  --resource-id fleet/ondemand-engineering-fleet \
+  --scalable-dimension appstream:fleet:DesiredCapacity \
   --policy-name "scale-out" \
-  --policy-type "StepScaling" \
-  --scaling-target-tracking-configuration '{
+  --policy-type "TargetTrackingScaling" \
+  --target-tracking-scaling-policy-configuration '{
     "TargetValue": 75,
     "PredefinedMetricSpecification": {
       "PredefinedMetricType": "AppStreamAverageCapacityUtilization"
@@ -145,8 +153,7 @@ aws appstream create-stack \
   --description "Engineering application access" \
   --storage-connectors '[
     {
-      "ConnectorType": "HOMEFOLDERS",
-      "ResourceIdentifier": ""
+      "ConnectorType": "HOMEFOLDERS"
     },
     {
       "ConnectorType": "GOOGLE_DRIVE",
@@ -191,8 +198,8 @@ You can authenticate users via SAML (recommended for production) or create AppSt
 # This is typically done through the console by uploading
 # your IdP's SAML metadata document
 
-# The SAML assertion must include the stack name and other attributes
-# Your IdP needs to be configured with the AppStream 2.0 relay state URL
+# The SAML assertion must include the required Role and RoleSessionName attributes.
+# Your IdP also needs the AppStream 2.0 relay state URL for the stack.
 ```
 
 ### User Pool Authentication
@@ -277,4 +284,4 @@ aws cloudwatch put-metric-alarm \
 
 ## Wrapping Up
 
-AppStream 2.0 makes it possible to deliver any Windows application as a cloud-streamed service. It is simpler than full VDI when users only need specific apps, and it completely eliminates the installation and compatibility issues of traditional software deployment. The elastic fleet option with auto-scaling is particularly good for variable workloads like training sessions, software trials, or seasonal usage. Start with one application, test the user experience, and expand based on demand.
+AppStream 2.0 makes it possible to deliver any Windows application as a cloud-streamed service. It is simpler than full VDI when users only need specific apps, and it completely eliminates the installation and compatibility issues of traditional software deployment. On-Demand fleet auto scaling and Elastic fleets are particularly good for variable workloads like training sessions, software trials, or seasonal usage. Start with one application, test the user experience, and expand based on demand.
