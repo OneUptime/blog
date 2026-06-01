@@ -20,13 +20,15 @@ The flow involves three parties: the user's browser, your identity provider, and
 sequenceDiagram
     participant User as User Browser
     participant IdP as Identity Provider
-    participant AWS as AWS STS
+    participant AWS as AWS Sign-In
+    participant STS as AWS STS
     User->>IdP: Authenticate (username/password/MFA)
     IdP->>User: SAML assertion (signed XML)
-    User->>AWS: POST SAML assertion to STS
+    User->>AWS: POST SAML assertion to AWS sign-in endpoint
     AWS->>AWS: Validate signature, check trust
-    AWS->>User: Temporary AWS credentials
-    User->>User: Redirect to AWS Console
+    AWS->>STS: Call AssumeRoleWithSAML
+    STS->>AWS: Temporary AWS credentials
+    AWS->>User: Redirect to AWS Console
 ```
 
 The SAML assertion is a signed XML document that says "I'm Okta (or AD FS, or Azure AD), and I've verified that this user is alice@company.com, and she should get the AdminRole." AWS validates the signature against the IdP's certificate and, if everything checks out, issues temporary credentials.
@@ -71,7 +73,7 @@ Create roles that federated users will assume. The trust policy references the S
 }
 ```
 
-The condition checks that the SAML assertion's audience is the AWS sign-in endpoint. This prevents assertions meant for other services from being used with AWS.
+The condition checks that the SAML assertion's recipient is the AWS sign-in endpoint. This prevents assertions meant for other services from being used with AWS.
 
 Create the role:
 
@@ -137,7 +139,7 @@ urn:amazon:webservices
    - Name: `https://aws.amazon.com/SAML/Attributes/RoleSessionName`
    - Value: `user.email` (or whatever attribute uniquely identifies the user)
 
-3. **SessionDuration** (optional) - How long the session lasts:
+3. **SessionDuration** (optional) - How long the AWS Management Console session lasts:
    - Name: `https://aws.amazon.com/SAML/Attributes/SessionDuration`
    - Value: `28800` (8 hours, in seconds)
 
@@ -259,13 +261,11 @@ You can use SAML-specific condition keys for fine-grained control:
             "Action": "sts:AssumeRoleWithSAML",
             "Condition": {
                 "StringEquals": {
-                    "SAML:aud": "https://signin.aws.amazon.com/saml"
+                    "SAML:aud": "https://signin.aws.amazon.com/saml",
+                    "SAML:sub_type": "persistent"
                 },
-                "StringLike": {
-                    "SAML:sub": "*@company.com"
-                },
-                "NumericLessThan": {
-                    "SAML:authnContextClassRef": "2"
+                "ForAnyValue:StringLike": {
+                    "SAML:mail": "*@company.com"
                 }
             }
         }
@@ -273,7 +273,7 @@ You can use SAML-specific condition keys for fine-grained control:
 }
 ```
 
-The `SAML:sub` condition restricts access to users with company email addresses. This prevents the IdP from being misconfigured to allow external users.
+The `SAML:mail` condition restricts access to users with company email addresses, and `SAML:sub_type` requires a persistent subject identifier. This prevents the IdP from being misconfigured to allow external users.
 
 ## Updating the SAML Provider Certificate
 
