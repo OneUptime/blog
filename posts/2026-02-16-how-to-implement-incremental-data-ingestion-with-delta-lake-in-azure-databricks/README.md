@@ -108,7 +108,7 @@ else:
 
 ## Pattern 2: Delta Lake Change Data Feed
 
-Delta Lake's Change Data Feed (CDF) tracks row-level changes to a Delta table. When enabled, CDF records every insert, update, and delete operation, making it easy for downstream consumers to read only the changes.
+Delta Lake's Change Data Feed (CDF) tracks row-level changes to a Delta table. After it is enabled, CDF records insert, update, and delete operations, making it easy for downstream consumers to read only the changes.
 
 ### Enable Change Data Feed
 
@@ -134,6 +134,8 @@ Once CDF is enabled, you can read changes between versions or timestamps.
 
 ```python
 # read_changes.py - Read incremental changes from a Delta table's CDF
+
+from pyspark.sql import functions as F
 
 # Read changes since version 10
 changes = (
@@ -167,8 +169,8 @@ changes = (
     spark.read
     .format("delta")
     .option("readChangeFeed", "true")
-    .option("startingTimestamp", "2026-02-15T00:00:00")
-    .option("endingTimestamp", "2026-02-16T00:00:00")
+    .option("startingTimestamp", "2026-02-15 00:00:00")
+    .option("endingTimestamp", "2026-02-16 00:00:00")
     .table("silver.orders")
 )
 ```
@@ -179,6 +181,10 @@ Use CDF to build incremental pipelines between Delta tables.
 
 ```python
 # propagate_changes.py - Incrementally update a gold table from silver changes
+
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
+from delta.tables import DeltaTable
 
 # Track the last version we processed
 last_version = spark.sql(
@@ -199,10 +205,23 @@ if current_version > last_version:
         .table("silver.orders")
     )
 
+    latest_change = Window.partitionBy("order_id").orderBy(F.col("_commit_version").desc())
+    latest_changes = (
+        changes
+        .filter(F.col("_change_type").isin(["insert", "update_postimage", "delete"]))
+        .withColumn("_rank", F.row_number().over(latest_change))
+        .filter(F.col("_rank") == 1)
+        .drop("_rank")
+    )
+
     # Process inserts and updates
-    upserts = changes.filter(
+    upserts = latest_changes.filter(
         F.col("_change_type").isin(["insert", "update_postimage"])
     ).drop("_change_type", "_commit_version", "_commit_timestamp")
+
+    deletes = latest_changes.filter(
+        F.col("_change_type") == "delete"
+    ).select("order_id")
 
     # Merge into gold table
     gold = DeltaTable.forName(spark, "gold.order_summary")
@@ -211,6 +230,13 @@ if current_version > last_version:
         "target.order_id = source.order_id"
     ).whenMatchedUpdateAll() \
      .whenNotMatchedInsertAll() \
+     .execute()
+
+    # Apply deletes from the source table
+    gold.alias("target").merge(
+        deletes.alias("source"),
+        "target.order_id = source.order_id"
+    ).whenMatchedDelete() \
      .execute()
 
     # Log the processed version
@@ -265,7 +291,7 @@ stream_with_metadata = stream \
 
 - **File tracking** - uses a checkpoint to remember which files have been processed
 - **Schema inference** - automatically detects the schema from new files
-- **Schema evolution** - handles new columns appearing in source files
+- **Schema evolution** - handles new columns appearing in source files; with `addNewColumns`, the stream updates the schema and stops, then resumes with the new schema after restart
 - **Exactly-once processing** - each file is processed exactly once
 - **availableNow trigger** - processes all available new files and then stops (batch-style)
 
@@ -289,14 +315,20 @@ df = (
 For near-real-time requirements, use Structured Streaming to continuously process new data.
 
 ```python
-# continuous_ingestion.py - Streaming ingestion from Event Hubs or Kafka
+# continuous_ingestion.py - Streaming ingestion from Event Hubs
+
+# Requires the Azure Event Hubs Spark connector library on the cluster.
+connection_string = dbutils.secrets.get("eh-secrets", "connection-string")
+encrypted_connection_string = sc._jvm.org.apache.spark.eventhubs.EventHubsUtils.encrypt(
+    connection_string
+)
 
 # Read from Azure Event Hubs
 stream = (
     spark.readStream
     .format("eventhubs")
     .options(**{
-        "eventhubs.connectionString": dbutils.secrets.get("eh-secrets", "connection-string"),
+        "eventhubs.connectionString": encrypted_connection_string,
         "eventhubs.consumerGroup": "databricks-consumer",
         "eventhubs.startingPosition": '{"offset": "-1", "seqNo": -1, "enqueuedTime": null, "isInclusive": true}'
     })
@@ -320,7 +352,7 @@ parsed = (
     .select("parsed.*", F.col("enqueuedTime").alias("_enqueued_time"))
 )
 
-# Write to Delta table with continuous processing
+# Write to Delta table with a processing-time trigger
 (
     parsed.writeStream
     .format("delta")
