@@ -104,9 +104,9 @@ This is useful for scenarios where the initial webhook handler queues the event 
 
 ## Webhook Authentication with Azure AD
 
-For the strongest security, configure your webhook endpoint to require Azure AD (now Entra ID) authentication. Event Grid can authenticate using a service principal or managed identity when delivering events.
+For the strongest security, configure your webhook endpoint to require Azure AD (now Entra ID) authentication. Event Grid can include a Microsoft Entra bearer token when delivering events.
 
-First, register an application in Azure AD for your webhook endpoint.
+First, register an application in Azure AD for your webhook endpoint and authorize Event Grid to call it. Microsoft requires the subscription writer to be an owner of, or have an app role assignment on, the webhook application's service principal. The Event Grid role name used in the official setup is `AzureEventGridSecureWebhookSubscriber`.
 
 ```bash
 # Create an Azure AD application for your webhook
@@ -128,7 +128,6 @@ az eventgrid event-subscription create \
   --name sub-secure-orders \
   --source-resource-id "/subscriptions/{sub-id}/resourceGroups/rg-events/providers/Microsoft.EventGrid/topics/topic-orders" \
   --endpoint "https://myapp.azurewebsites.net/api/events" \
-  --delivery-attribute-mapping "Authorization" static "Bearer" false \
   --azure-active-directory-tenant-id "{tenant-id}" \
   --azure-active-directory-application-id-or-uri "$APP_ID"
 ```
@@ -137,24 +136,37 @@ Your webhook endpoint then validates the JWT token in the Authorization header.
 
 ```csharp
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using System.IdentityModel.Tokens.Jwt;
 
 public async Task<bool> ValidateToken(HttpRequestData req)
 {
     // Extract the Bearer token from the Authorization header
-    var authHeader = req.Headers.GetValues("Authorization").FirstOrDefault();
+    if (!req.Headers.TryGetValues("Authorization", out var authHeaders))
+        return false;
+
+    var authHeader = authHeaders.FirstOrDefault();
     if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
         return false;
 
     var token = authHeader.Substring("Bearer ".Length);
+
+    // Load signing keys from the Microsoft identity platform metadata endpoint
+    var authority = $"https://login.microsoftonline.com/{tenantId}/v2.0";
+    var configurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
+        $"{authority}/.well-known/openid-configuration",
+        new OpenIdConnectConfigurationRetriever());
+    var configuration = await configurationManager.GetConfigurationAsync(CancellationToken.None);
 
     // Validate the JWT token
     var tokenHandler = new JwtSecurityTokenHandler();
     var validationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
+        IssuerSigningKeys = configuration.SigningKeys,
         ValidateIssuer = true,
-        ValidIssuer = $"https://login.microsoftonline.com/{tenantId}/v2.0",
+        ValidIssuer = authority,
         ValidateAudience = true,
         ValidAudience = applicationId,
         ValidateLifetime = true
