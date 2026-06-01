@@ -106,7 +106,7 @@ resource "aws_vpc_peering_connection" "app_to_db" {
   }
 }
 
-# Enable DNS resolution across the peering connection
+# Resolve public DNS hostnames to private IPs across the peering connection
 resource "aws_vpc_peering_connection_options" "app_to_db" {
   vpc_peering_connection_id = aws_vpc_peering_connection.app_to_db.id
 
@@ -273,7 +273,7 @@ resource "aws_vpc_peering_connection_options" "cross_account_accepter" {
 }
 ```
 
-The peer account needs an IAM role that allows the requesting account to accept peering connections:
+The peer account needs an IAM role that allows the requesting account to accept peering connections, tag the accepted connection, and modify accepter-side options:
 
 ```hcl
 # In the peer account - IAM role for peering acceptance
@@ -303,7 +303,9 @@ resource "aws_iam_role_policy" "vpc_peering_policy" {
     Statement = [{
       Action = [
         "ec2:AcceptVpcPeeringConnection",
-        "ec2:DescribeVpcPeeringConnections"
+        "ec2:CreateTags",
+        "ec2:DescribeVpcPeeringConnections",
+        "ec2:ModifyVpcPeeringConnectionOptions"
       ]
       Effect   = "Allow"
       Resource = "*"
@@ -362,7 +364,7 @@ resource "aws_vpc_peering_connection_accepter" "cross_region" {
 }
 ```
 
-Note: DNS resolution across cross-region peering has some limitations. Private hosted zone associations don't automatically work across regions - you'll need to associate the hosted zone with the peer VPC manually.
+Note: VPC peering DNS settings control how public DNS hostnames resolve across the peering connection. Private hosted zone associations don't automatically work across regions - you'll need to associate the hosted zone with the peer VPC manually.
 
 ## Modular Approach for Multiple Peerings
 
@@ -439,7 +441,7 @@ aws ec2 describe-vpc-peering-connections \
 Test connectivity between peered VPCs:
 
 ```bash
-# From an instance in VPC A, ping an instance in VPC B
+# From an instance in VPC A, ping an instance in VPC B if ICMP is allowed
 ping 10.1.1.50
 
 # Test a specific port
