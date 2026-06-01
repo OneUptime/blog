@@ -19,9 +19,9 @@ With provisioned MSK, you choose instance types, broker counts, and storage size
 - No broker instances to manage
 - Storage scales automatically
 - Throughput scales automatically (up to account limits)
-- You pay per data in and out, not per broker-hour
+- You pay for cluster hours, partition hours, storage, and data in/out, not per broker-hour
 - Only IAM authentication is supported (no SASL/SCRAM)
-- Limited to 5 consumer groups per cluster initially (can be increased)
+- Limited by per-cluster quotas for throughput, partitions, consumer groups, and connections
 
 ## Creating an MSK Serverless Cluster
 
@@ -53,7 +53,7 @@ Get the cluster ARN from the response and check its state.
 
 ```bash
 aws kafka describe-cluster-v2 \
-  --cluster-arn arn:aws:kafka:us-east-1:123456789:cluster/serverless-kafka/abc-123 \
+  --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/serverless-kafka/abc-123 \
   --query 'ClusterInfo.State'
 ```
 
@@ -63,7 +63,7 @@ Once the cluster is ACTIVE, get the bootstrap broker endpoint.
 
 ```bash
 aws kafka get-bootstrap-brokers \
-  --cluster-arn arn:aws:kafka:us-east-1:123456789:cluster/serverless-kafka/abc-123
+  --cluster-arn arn:aws:kafka:us-east-1:123456789012:cluster/serverless-kafka/abc-123
 
 # Output will show the IAM bootstrap endpoint
 
@@ -89,7 +89,7 @@ This IAM policy grants topic-level read/write access for MSK Serverless.
         "kafka-cluster:DescribeCluster",
         "kafka-cluster:AlterCluster"
       ],
-      "Resource": "arn:aws:kafka:us-east-1:123456789:cluster/serverless-kafka/*"
+      "Resource": "arn:aws:kafka:us-east-1:123456789012:cluster/serverless-kafka/*"
     },
     {
       "Effect": "Allow",
@@ -101,7 +101,7 @@ This IAM policy grants topic-level read/write access for MSK Serverless.
         "kafka-cluster:AlterTopic",
         "kafka-cluster:DeleteTopic"
       ],
-      "Resource": "arn:aws:kafka:us-east-1:123456789:topic/serverless-kafka/*"
+      "Resource": "arn:aws:kafka:us-east-1:123456789012:topic/serverless-kafka/*"
     },
     {
       "Effect": "Allow",
@@ -110,7 +110,7 @@ This IAM policy grants topic-level read/write access for MSK Serverless.
         "kafka-cluster:DescribeGroup",
         "kafka-cluster:DeleteGroup"
       ],
-      "Resource": "arn:aws:kafka:us-east-1:123456789:group/serverless-kafka/*"
+      "Resource": "arn:aws:kafka:us-east-1:123456789012:group/serverless-kafka/*"
     }
   ]
 }
@@ -122,7 +122,7 @@ For stricter security, specify exact topic names instead of wildcards.
 {
   "Effect": "Allow",
   "Action": ["kafka-cluster:WriteData"],
-  "Resource": "arn:aws:kafka:us-east-1:123456789:topic/serverless-kafka/*/user-events"
+  "Resource": "arn:aws:kafka:us-east-1:123456789012:topic/serverless-kafka/*/user-events"
 }
 ```
 
@@ -134,11 +134,11 @@ This Python producer uses IAM authentication to send messages to MSK Serverless.
 
 ```python
 import json
-import os
 from kafka import KafkaProducer
+from kafka.sasl.oauth import AbstractTokenProvider
 from aws_msk_iam_sasl_signer import MSKAuthTokenProvider
 
-class MSKTokenProvider:
+class MSKTokenProvider(AbstractTokenProvider):
     def token(self):
         token, _ = MSKAuthTokenProvider.generate_auth_token('us-east-1')
         return token
@@ -186,10 +186,11 @@ print("All messages sent")
 
 ```python
 from kafka import KafkaConsumer
+from kafka.sasl.oauth import AbstractTokenProvider
 from aws_msk_iam_sasl_signer import MSKAuthTokenProvider
 import json
 
-class MSKTokenProvider:
+class MSKTokenProvider(AbstractTokenProvider):
     def token(self):
         token, _ = MSKAuthTokenProvider.generate_auth_token('us-east-1')
         return token
@@ -236,13 +237,13 @@ Maven dependency:
 <dependency>
     <groupId>software.amazon.msk</groupId>
     <artifactId>aws-msk-iam-auth</artifactId>
-    <version>2.0.3</version>
+    <version>2.3.6</version>
 </dependency>
 ```
 
 ## Creating Topics
 
-MSK Serverless supports auto topic creation, but for production you should create topics explicitly.
+MSK Serverless doesn't let you enable broker-level auto topic creation, so create topics explicitly.
 
 ```bash
 BOOTSTRAP="boot-abc123.c1.kafka-serverless.us-east-1.amazonaws.com:9098"
@@ -265,21 +266,21 @@ MSK Serverless has some important limits to know about:
 
 | Limit | Default Value |
 |-------|---------------|
-| Partitions per cluster | 120 |
-| Consumer groups per cluster | 5 (can request increase) |
-| Max message size | 8 MB |
+| Partitions per cluster | 2,400 for non-compacted topics, 120 for compacted topics |
+| Consumer groups per cluster | 500 |
+| Max message size | 8 MiB |
 | Max throughput per partition | 5 MB/sec in, 10 MB/sec out |
 | Max cluster throughput | 200 MB/sec in, 400 MB/sec out |
-| Retention | Up to 24 hours |
+| Retention | Unlimited, with a default of 7 days |
 
-The retention limit is significant. If you need retention longer than 24 hours, you'll need provisioned MSK.
+The compacted-topic partition limit is significant. If you need a large number of compacted partitions, you'll need provisioned MSK or a quota adjustment.
 
 ## Cost Model
 
 MSK Serverless pricing is based on:
 - **Cluster hours** - Per-hour charge for the cluster existing
 - **Partition hours** - Per partition-hour charge
-- **Storage** - Per GB-hour for data stored
+- **Storage** - Per GB-month for data stored
 - **Data in/out** - Per GB transferred
 
 For variable workloads, this can be much cheaper than provisioned MSK because you're not paying for idle brokers during low-traffic periods.
@@ -290,9 +291,10 @@ Here's a rough comparison for a moderate workload (5 MB/sec average, 12 partitio
 MSK Serverless:
 - Cluster: $0.75/hr x 730 = $547.50
 - Partitions: 12 x $0.0015/hr x 730 = $13.14
-- Storage: ~1.5 TB-hrs x $0.10 = $150
-- Data: ~13 TB in/out x $0.10 = $1,300
-Total: ~$2,010/month
+- Storage: ~432 GB-months with 24-hour retention x $0.10 = $43.20
+- Data in: ~13.1 TB x $0.10 = $1,314
+- Data out: ~13.1 TB x $0.05 = $657
+Total: ~$2,575/month
 
 Provisioned MSK (3x kafka.m5.large):
 - Brokers: 3 x $0.21/hr x 730 = $459.90
@@ -307,8 +309,8 @@ For this workload, provisioned MSK is cheaper. MSK Serverless wins when your tra
 If you're moving from provisioned MSK to serverless, the key changes are:
 
 1. **Authentication** - Switch to IAM. SASL/SCRAM isn't supported.
-2. **Topic configuration** - You can't set replication factor or most topic configs.
-3. **Retention** - Max 24 hours. Archive older data to S3 using Kafka Connect or Firehose.
+2. **Topic configuration** - You can't set replication factor, and only a limited set of topic configs can be modified.
+3. **Compacted partitions** - Serverless supports fewer compacted topic partitions than non-compacted topic partitions.
 4. **Client libraries** - Add the IAM auth library and update connection properties.
 
 For setting up a provisioned cluster, see our guide on [setting up Amazon MSK](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-msk/view). For connecting Lambda to your cluster, check out [connecting to MSK from Lambda](https://oneuptime.com/blog/post/2026-02-12-connect-to-msk-from-lambda/view).
@@ -322,11 +324,11 @@ MSK Serverless publishes metrics to CloudWatch. The important ones:
 aws cloudwatch get-metric-statistics \
   --namespace AWS/Kafka \
   --metric-name BytesInPerSec \
-  --dimensions Name=Cluster\ Name,Value=serverless-kafka \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
+  --dimensions Name=Cluster\ Name,Value=serverless-kafka Name=Topic,Value=user-events \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
   --statistics Sum
 ```
 
-MSK Serverless is the fastest way to get Kafka running on AWS. The trade-off is less control and a 24-hour retention limit. If those constraints work for your use case, you get a Kafka cluster that genuinely runs itself.
+MSK Serverless is the fastest way to get Kafka running on AWS. The trade-off is less control over broker and topic configuration. If those constraints work for your use case, you get a Kafka cluster that genuinely runs itself.
