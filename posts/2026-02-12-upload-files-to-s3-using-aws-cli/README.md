@@ -61,7 +61,7 @@ The `cp` command works just like the Unix `cp` command. The source is local, the
 
 ## Setting Content Type and Metadata
 
-S3 usually guesses the content type from the file extension, but sometimes it gets it wrong. You can set it explicitly.
+The AWS CLI usually guesses the content type from the file extension, but sometimes it gets it wrong. You can set it explicitly.
 
 Upload with specific content type and custom metadata:
 
@@ -149,7 +149,7 @@ aws configure set default.s3.multipart_chunksize 16MB
 aws configure get default.s3.max_concurrent_requests
 ```
 
-You can also set these per-command using a config file:
+You can also set these in the AWS CLI config file:
 
 ```bash
 # Create or edit ~/.aws/config
@@ -233,12 +233,15 @@ For files larger than about 100 MB, you'll want multipart upload for reliability
 Upload large files efficiently:
 
 ```bash
-# Upload a large file with explicit multipart settings
-aws s3 cp large-dataset.tar.gz s3://my-bucket/data/ \
-    --expected-size 5368709120
+# Upload a large local file; the CLI uses multipart upload automatically
+aws s3 cp large-dataset.tar.gz s3://my-bucket/data/
+
+# For streams larger than 50 GB, provide the expected size in bytes
+tar czf - /large/dataset/ | aws s3 cp - s3://my-bucket/data/large-dataset.tar.gz \
+    --expected-size 64424509440
 
 # If an upload fails partway through, the CLI will retry
-# For very large files (100GB+), use multipart upload directly
+# For very large files or advanced recovery, use multipart upload directly
 # See our guide on multipart uploads for more control
 ```
 
