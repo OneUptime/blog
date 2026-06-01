@@ -74,8 +74,8 @@ def post_data(workspace_id, shared_key, body, log_type):
     method = "POST"
     content_type = "application/json"
     resource = "/api/logs"
-    rfc1123date = datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
-    content_length = len(body)
+    rfc1123date = datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    content_length = len(body.encode("utf-8"))
 
     signature = build_signature(
         workspace_id, shared_key, rfc1123date,
@@ -130,7 +130,7 @@ body = json.dumps(log_records)
 post_data(workspace_id, shared_key, body, log_type)
 ```
 
-The data will appear in a table called `MyApplicationLogs_CL` in your workspace. The `_CL` suffix is automatically appended to custom log tables. Fields get a type suffix: `_s` for strings, `_d` for doubles, `_b` for booleans, `_t` for datetimes.
+The data will appear in a table called `MyApplicationLogs_CL` in your workspace. The `_CL` suffix is automatically appended to custom log tables. Fields get a type suffix: `_s` for strings, `_d` for doubles, `_b` for booleans, `_t` for datetimes, and `_g` for GUID values.
 
 ## Sending Data - Bash/curl Example
 
@@ -148,11 +148,11 @@ LOG_TYPE="MyApplicationLogs"
 BODY='[{"Timestamp":"2026-02-16T14:30:00Z","Level":"Error","Message":"Test error message"}]'
 
 # Calculate required values
-CONTENT_LENGTH=${#BODY}
+CONTENT_LENGTH=$(printf '%s' "$BODY" | wc -c | tr -d ' ')
 RFC1123DATE=$(date -u +"%a, %d %b %Y %H:%M:%S GMT")
 
 # Build the string to sign
-STRING_TO_SIGN="POST\n${CONTENT_LENGTH}\napplication/json\nx-ms-date:${RFC1123DATE}\n/api/logs"
+printf -v STRING_TO_SIGN 'POST\n%s\napplication/json\nx-ms-date:%s\n/api/logs' "$CONTENT_LENGTH" "$RFC1123DATE"
 
 # Calculate the HMAC-SHA256 signature
 DECODED_KEY=$(echo -n "$SHARED_KEY" | base64 --decode | xxd -p -c 256)
@@ -172,9 +172,12 @@ curl -s -X POST \
 ## Sending Data - C# Example
 
 ```csharp
+using System;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 
 // Helper class to send custom logs to Log Analytics
 public class LogAnalyticsSender
@@ -214,6 +217,7 @@ public class LogAnalyticsSender
         request.Headers.Add("x-ms-date", dateString);
         request.Headers.Add("time-generated-field", "Timestamp");
         request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
         var response = await _httpClient.SendAsync(request);
         Console.WriteLine($"Response: {response.StatusCode}");
@@ -229,16 +233,16 @@ public class LogAnalyticsSender
 
 ## Schema Management
 
-The first time you send data to a new log type, the API creates the table and infers the schema from your JSON fields. Subsequent sends can add new fields (the schema expands automatically), but you cannot remove fields or change their types.
+The first time you send data to a new log type, the API creates the table and infers the schema from your JSON fields. Subsequent sends can add new fields (the schema expands automatically), but you cannot remove fields or change existing field types.
 
-If a field was initially inferred as a string and you later send a number in that field, the value will be stored as a string. Plan your schema carefully before the first send.
+If you later send a value that does not match an existing field type and Azure Monitor cannot convert it, Azure Monitor creates a new property with the relevant type suffix instead of changing the existing field type. Plan your schema carefully before the first send.
 
 ## Rate Limits and Payload Limits
 
 - **Maximum payload size**: 30 MB per POST request.
 - **Maximum field value size**: 32 KB for individual field values.
-- **Maximum fields**: 500 custom fields per table.
-- **Rate limit**: The API is throttled at the workspace level. If you send too much data too fast, you will get HTTP 429 (Too Many Requests) responses. Implement exponential backoff in your client.
+- **Maximum fields**: Microsoft recommends no more than 50 fields for a given type, and Log Analytics workspace tables support up to 500 columns.
+- **Rate limit**: If you send too much data too fast, you can get HTTP 429 (Too Many Requests) responses. Implement exponential backoff in your client.
 
 For high-volume ingestion, batch your records into fewer, larger payloads rather than many small ones. A single POST with 1000 records is much more efficient than 1000 POSTs with 1 record each.
 
@@ -251,7 +255,7 @@ Microsoft has released a newer API called the Logs Ingestion API that works with
 - Sends data to both custom and standard tables.
 - Better rate limits and error handling.
 
-If you are starting a new integration, consider using the Logs Ingestion API instead. The HTTP Data Collector API is still supported but is considered the legacy option.
+If you are starting a new integration, consider using the Logs Ingestion API instead. The HTTP Data Collector API is still supported until September 14, 2026, but is considered the legacy option.
 
 ## Querying Custom Log Data
 
