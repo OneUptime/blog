@@ -42,7 +42,7 @@ cache:
   # Cache configuration
 ```
 
-The version must be `0.2`. Version `0.1` is deprecated and has a different structure.
+Use version `0.2` whenever possible. Version `0.1` is still supported, but it has a different structure and runs commands differently.
 
 ## Environment Variables
 
@@ -80,11 +80,11 @@ env:
   shell: bash
 ```
 
-For the `secrets-manager` syntax, the format is `secret-id:json-key`. If your secret value is a JSON object like `{"username": "admin", "password": "secret"}`, you'd reference it as `my-secret:password`.
+For the `secrets-manager` syntax, the common format is `secret-id:json-key`. The full format is `secret-id:json-key:version-stage:version-id`. If your secret value is a JSON object like `{"username": "admin", "password": "secret"}`, you'd reference it as `my-secret:password`.
 
 ## Build Phases In Detail
 
-Each phase runs sequentially. If any command in a phase fails (non-zero exit code), the build fails and skips remaining phases (unless you configure `on-failure`).
+Each phase runs sequentially. If any command in a phase fails (non-zero exit code), CodeBuild stops running the remaining commands in that phase, runs any `finally` commands for the phase, and then follows the configured `on-failure` behavior and normal phase transitions.
 
 ```yaml
 version: 0.2
@@ -97,7 +97,7 @@ phases:
       python: 3.12
 
     # What to do if this phase fails
-    on-failure: ABORT  # ABORT (default) or CONTINUE
+    on-failure: ABORT  # ABORT, CONTINUE, or RETRY variants
 
     commands:
       # Install system-level dependencies
@@ -156,7 +156,7 @@ Artifacts define what files CodeBuild uploads after the build.
 
 ```yaml
 artifacts:
-  # Upload multiple artifact sets
+  # Upload the primary artifact
   files:
     - "dist/**/*"
     - "package.json"
@@ -174,19 +174,19 @@ artifacts:
   name: "build-$(date +%Y%m%d)-$CODEBUILD_BUILD_NUMBER"
 
   # Secondary artifacts for multiple outputs
-secondary-artifacts:
-  test-reports:
-    files:
-      - "**/*"
-    base-directory: "coverage"
-    name: "test-coverage"
+  secondary-artifacts:
+    test-reports:
+      files:
+        - "**/*"
+      base-directory: "coverage"
+      name: "test-coverage"
 
-  deployment-package:
-    files:
-      - "dist/**/*"
-      - "appspec.yml"
-      - "scripts/**/*"
-    name: "deploy-package"
+    deployment-package:
+      files:
+        - "dist/**/*"
+        - "appspec.yml"
+        - "scripts/**/*"
+      name: "deploy-package"
 ```
 
 ## Caching for Faster Builds
@@ -421,9 +421,9 @@ phases:
 
 A few things that catch people repeatedly:
 
-- **Each command runs in its own shell.** If you `cd` into a directory in one command, you're back in the root for the next. Use `&&` or multi-line commands with `|` to chain them.
-- **Environment variables from `parameter-store` aren't available during `install`.** They're resolved after the install phase.
+- **Version `0.2` keeps commands in the same shell.** If you `cd` into a directory in one command, that working directory can carry into the next command in the same build. Use `cd ..`, `cd "$CODEBUILD_SRC_DIR"`, or multi-line commands with `|` to keep directory changes explicit.
+- **Environment variables from `parameter-store` replace existing values literally.** If you define `PATH` as `$PATH:/custom/bin`, CodeBuild sets it to that literal string instead of expanding the existing `PATH`.
 - **The build times out silently.** If your build hangs (maybe waiting for a database connection), it'll just time out with no helpful error. Set reasonable timeouts.
-- **Cache paths must use `**/*` glob.** Just `node_modules/` won't work; you need `node_modules/**/*`.
+- **Cache paths need the right glob for what you want to cache.** Use `node_modules/**/*` when you want every file under `node_modules`; a bare directory path will not recursively include its contents.
 
 For the full CodeBuild setup including project creation and source configuration, see our guide on [creating CodeBuild projects](https://oneuptime.com/blog/post/2026-02-12-create-aws-codebuild-projects/view).
