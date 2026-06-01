@@ -16,9 +16,9 @@ This guide focuses on project-level permissions and security groups, which is wh
 
 Azure DevOps uses a hierarchical permission model with three key concepts:
 
-1. **Security groups**: Collections of users and other groups. Permissions are assigned to groups, not individual users.
-2. **Permission states**: Allow, Deny, Not Set, and Inherited Allow/Deny. Deny always wins over Allow.
-3. **Inheritance**: Permissions flow from higher scopes (organization) to lower scopes (project, repo, branch).
+1. **Security groups**: Collections of users and other groups. Permissions can be assigned to users or groups, but assigning them to groups is easier to manage and audit.
+2. **Permission states**: Allow, Deny, Not Set, and Inherited Allow/Deny. Deny usually overrides Allow, especially when the same user gets conflicting permissions from multiple groups.
+3. **Inheritance**: Where inheritance is supported, permissions flow from higher scopes or parent objects to lower scopes or child objects, such as repository-level permissions inheriting to branches.
 
 ```mermaid
 flowchart TD
@@ -121,7 +121,8 @@ For the **Contributors** group (most developers):
 - Create branch: Allow
 - Create tag: Allow
 - Force push: Deny
-- Bypass policies: Deny (this is important)
+- Bypass policies when completing pull requests: Deny or Not Set
+- Bypass policies when pushing: Deny or Not Set
 - Manage permissions: Deny
 
 For the **Tech Leads** group:
@@ -139,18 +140,15 @@ For the **External Contractors** group:
 By default, all project members can see all repositories. To restrict access:
 
 ```bash
-# Remove the Contributors group from a sensitive repository
-# Then add only the specific group that should have access
-
-# First, set the default group to Deny on the sensitive repo
-# Then explicitly Allow the appropriate custom group
+# Set Read to Not Set or Deny for broad groups that should not see the sensitive repo
+# Then explicitly Allow Read for the specific group that should have access
 ```
 
-In the UI, go to Project Settings, then Repositories, select the repository, click Security, and set the "Read" permission to "Deny" for groups that should not access it. Then set "Allow" for the groups that should.
+In the UI, go to Project Settings, then Repositories, select the repository, click Security, and set the "Read" permission to "Not Set" for groups that should not inherit access, or "Deny" only when you need an explicit block. Then set "Allow" for the groups that should have access. Be careful with Deny: if a user is in both a denied group and an allowed group, the Deny wins.
 
 ## Configuring Pipeline Permissions
 
-Pipeline permissions control who can create, edit, and run pipelines, as well as who can manage service connections and agent pools.
+Pipeline permissions control who can create, edit, and run pipelines. Related pipeline resources, such as service connections and agent pools, use role-based security.
 
 ### Pipeline-Level Permissions
 
@@ -178,6 +176,7 @@ Go to Project Settings, then Agent pools. Select a pool and configure:
 
 - **Reader**: Can view the pool and agents
 - **User**: Can use the pool in pipelines
+- **Creator**: Can create and use project-level pools
 - **Administrator**: Can manage the pool, add/remove agents
 
 ## Configuring Board Permissions
@@ -185,8 +184,9 @@ Go to Project Settings, then Agent pools. Select a pool and configure:
 For Azure Boards, permissions control who can create and modify work items, manage area paths, and configure the board.
 
 Key permissions:
-- **Create work items**: Most team members need this
-- **Delete work items**: Restrict to leads and admins
+- **Add work items to a board or backlog**: Most team members need this
+- **Edit work items in this node**: Controls whether users can modify work items under an area path
+- **Delete and restore work items**: Restrict to leads and admins
 - **Move work items out of this project**: Restrict to admins
 - **Permanently delete work items**: Restrict to admins only
 
@@ -230,7 +230,7 @@ When Azure DevOps evaluates whether a user can perform an action, it checks:
 3. Inherited permissions from higher scopes
 
 The evaluation rules are:
-- Explicit Deny at any level always wins
+- Explicit Deny usually wins when a user receives conflicting permissions from multiple groups
 - If no Deny is found, an explicit Allow at any level grants access
 - If nothing is set, the permission is implicitly denied
 
