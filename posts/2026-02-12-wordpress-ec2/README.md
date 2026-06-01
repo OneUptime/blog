@@ -47,27 +47,28 @@ aws ec2 run-instances \
 
 ## Installing the LAMP Stack
 
-WordPress needs Apache, PHP, and MySQL. Let's install everything.
+WordPress needs Apache, PHP, and MariaDB or MySQL. Let's install everything.
 
 Install the complete stack:
 
 ```bash
 # Update system
-sudo yum update -y
+sudo dnf upgrade -y
 
 # Install Apache
-sudo yum install -y httpd
+sudo dnf install -y httpd
 sudo systemctl start httpd
 sudo systemctl enable httpd
 
 # Install MariaDB
-sudo yum install -y mariadb105-server
+sudo dnf install -y mariadb114-server
 sudo systemctl start mariadb
 sudo systemctl enable mariadb
 
-# Install PHP with WordPress-required extensions
-sudo yum install -y php php-mysqlnd php-gd php-xml php-mbstring \
-  php-json php-opcache php-zip php-curl php-intl php-imagick
+# Install PHP with common WordPress extensions
+sudo dnf install -y php8.4 php8.4-modphp php8.4-mysqlnd php8.4-gd \
+  php8.4-xml php8.4-mbstring php8.4-opcache php8.4-zip \
+  php8.4-intl php8.4-sodium
 ```
 
 For a more detailed walkthrough of the LAMP stack setup, see our guide on [setting up LAMP on EC2](https://oneuptime.com/blog/post/2026-02-12-lamp-stack-ec2/view).
@@ -79,11 +80,11 @@ Set up a dedicated database and user for WordPress.
 Create the database:
 
 ```bash
-# Secure the MySQL installation first
-sudo mysql_secure_installation
+# Secure the MariaDB installation first
+sudo mariadb-secure-installation
 
 # Create WordPress database and user
-sudo mysql -u root -p << 'EOF'
+sudo mariadb -u root -p << 'EOF'
 CREATE DATABASE wordpress;
 CREATE USER 'wp_user'@'localhost' IDENTIFIED BY 'your_strong_password';
 GRANT ALL PRIVILEGES ON wordpress.* TO 'wp_user'@'localhost';
@@ -126,12 +127,22 @@ cd /var/www/html
 sudo cp wp-config-sample.php wp-config.php
 
 # Generate security keys (use the WordPress API)
-SALT_KEYS=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
+curl -s https://api.wordpress.org/secret-key/1.1/salt/ | \
+  sudo tee /tmp/wp-salts.php > /dev/null
+sudo awk '
+  NR == FNR { salts = salts $0 ORS; next }
+  /AUTH_KEY/ { printf "%s", salts; skip = 1 }
+  /NONCE_SALT/ { skip = 0; next }
+  !skip { print }
+' /tmp/wp-salts.php wp-config.php | sudo tee wp-config.new > /dev/null
+sudo mv wp-config.new wp-config.php
+sudo rm /tmp/wp-salts.php
 
 # Update database settings
 sudo sed -i "s/database_name_here/wordpress/" wp-config.php
 sudo sed -i "s/username_here/wp_user/" wp-config.php
 sudo sed -i "s/password_here/your_strong_password/" wp-config.php
+sudo chown apache:apache wp-config.php
 ```
 
 You'll also want to add these performance and security settings to wp-config.php:
@@ -162,7 +173,7 @@ Configure Apache with pretty permalinks and proper caching.
 Create the Apache virtual host:
 
 ```bash
-sudo cat > /etc/httpd/conf.d/wordpress.conf << 'EOF'
+sudo tee /etc/httpd/conf.d/wordpress.conf > /dev/null << 'EOF'
 <VirtualHost *:80>
     ServerName yourdomain.com
     ServerAlias www.yourdomain.com
@@ -210,7 +221,7 @@ Install and configure SSL:
 
 ```bash
 # Install Certbot
-sudo yum install -y certbot python3-certbot-apache
+sudo dnf install -y certbot python3-certbot-apache
 
 # Obtain certificate
 sudo certbot --apache -d yourdomain.com -d www.yourdomain.com
@@ -238,7 +249,7 @@ Optimize PHP for WordPress performance.
 Create a custom PHP configuration:
 
 ```bash
-sudo cat > /etc/php.d/99-wordpress.ini << 'EOF'
+sudo tee /etc/php.d/99-wordpress.ini > /dev/null << 'EOF'
 ; Memory and limits
 memory_limit = 256M
 max_execution_time = 300
@@ -252,7 +263,6 @@ opcache.memory_consumption = 128
 opcache.interned_strings_buffer = 16
 opcache.max_accelerated_files = 10000
 opcache.revalidate_freq = 60
-opcache.fast_shutdown = 1
 opcache.save_comments = 1
 
 ; Disable display errors in production
@@ -271,7 +281,7 @@ Optimize MariaDB settings for WordPress workloads.
 Tune the database:
 
 ```bash
-sudo cat > /etc/my.cnf.d/wordpress.cnf << 'EOF'
+sudo tee /etc/my.cnf.d/wordpress.cnf > /dev/null << 'EOF'
 [mysqld]
 # InnoDB settings
 innodb_buffer_pool_size = 512M
@@ -305,7 +315,7 @@ Install and configure Redis:
 
 ```bash
 # Install Redis
-sudo yum install -y redis6
+sudo dnf install -y redis6
 sudo systemctl start redis6
 sudo systemctl enable redis6
 
@@ -334,27 +344,30 @@ Set up daily backups of both the database and files.
 Create a backup script:
 
 ```bash
+sudo tee /usr/local/bin/backup-wordpress.sh > /dev/null << 'EOF'
 #!/bin/bash
-# /usr/local/bin/backup-wordpress.sh
 BACKUP_DIR="/var/backups/wordpress"
 DATE=$(date +%Y%m%d)
 WP_DIR="/var/www/html"
 
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
 # Database backup
-mysqldump -u wp_user -p'your_strong_password' wordpress | \
-  gzip > $BACKUP_DIR/db_$DATE.sql.gz
+mariadb-dump -u wp_user -p'your_strong_password' wordpress | \
+  gzip > "$BACKUP_DIR/db_$DATE.sql.gz"
 
 # Files backup (uploads only - code should be in version control)
-tar -czf $BACKUP_DIR/uploads_$DATE.tar.gz \
-  -C $WP_DIR wp-content/uploads
+tar -czf "$BACKUP_DIR/uploads_$DATE.tar.gz" \
+  -C "$WP_DIR" wp-content/uploads
 
 # Sync to S3
-aws s3 sync $BACKUP_DIR s3://my-wp-backups/ --delete
+aws s3 sync "$BACKUP_DIR" s3://my-wp-backups/ --delete
 
 # Clean up local backups older than 3 days
-find $BACKUP_DIR -mtime +3 -delete
+find "$BACKUP_DIR" -mtime +3 -delete
+EOF
+
+sudo chmod 700 /usr/local/bin/backup-wordpress.sh
 ```
 
 Schedule it:
@@ -374,7 +387,7 @@ Essential security steps:
 sudo chmod 600 /var/www/html/wp-config.php
 
 # Block access to sensitive files via .htaccess
-sudo cat > /var/www/html/.htaccess << 'HTEOF'
+sudo tee /var/www/html/.htaccess > /dev/null << 'HTEOF'
 # WordPress permalink rules
 <IfModule mod_rewrite.c>
 RewriteEngine On
@@ -387,22 +400,19 @@ RewriteRule . /index.php [L]
 </IfModule>
 
 # Block access to wp-config.php
-<files wp-config.php>
-order allow,deny
-deny from all
-</files>
+<Files "wp-config.php">
+    Require all denied
+</Files>
 
 # Disable XML-RPC (common attack vector)
-<files xmlrpc.php>
-order allow,deny
-deny from all
-</files>
+<Files "xmlrpc.php">
+    Require all denied
+</Files>
 
 # Block access to .htaccess
-<files .htaccess>
-order allow,deny
-deny from all
-</files>
+<Files ".htaccess">
+    Require all denied
+</Files>
 HTEOF
 
 sudo chown apache:apache /var/www/html/.htaccess
