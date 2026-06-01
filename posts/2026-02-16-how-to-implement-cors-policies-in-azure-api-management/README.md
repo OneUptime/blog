@@ -16,7 +16,7 @@ In this post, I will explain how CORS works, why the gateway is the right place 
 
 CORS (Cross-Origin Resource Sharing) is a browser security mechanism. When JavaScript on `https://app.example.com` tries to call an API at `https://api.example.com`, the browser checks whether the API allows cross-origin requests from that domain.
 
-For simple requests (GET with standard headers), the browser sends the request and checks the `Access-Control-Allow-Origin` header on the response. If the header is missing or does not match the request's origin, the browser blocks the response.
+For simple requests (such as GET, HEAD, or POST requests that use only CORS-safelisted headers and content types), the browser sends the request and checks the `Access-Control-Allow-Origin` header on the response. If the header is missing or does not match the request's origin, the browser blocks the response.
 
 For complex requests (POST with JSON body, custom headers, etc.), the browser first sends a preflight OPTIONS request asking the API what is allowed. Only if the OPTIONS response includes the right CORS headers does the browser proceed with the actual request.
 
@@ -100,7 +100,7 @@ Also note that you cannot use wildcard origins (`*`) when `allow-credentials` is
 
 ## Handling Credentials (Cookies and Auth Headers)
 
-If your API needs to receive cookies or the Authorization header from the browser, set `allow-credentials` to `true`:
+If your API needs to receive cookies or other browser credentials on cross-origin requests, set `allow-credentials` to `true` and make sure the frontend opts in to credentialed requests. If you are sending an `Authorization` header from JavaScript, also list `Authorization` in `allowed-headers`:
 
 ```xml
 <!-- CORS with credentials support for cookie-based authentication -->
@@ -120,11 +120,11 @@ If your API needs to receive cookies or the Authorization header from the browse
 </cors>
 ```
 
-When `allow-credentials` is true, the browser sends cookies and authentication headers with cross-origin requests. This is needed for APIs that use cookie-based session authentication, but it also increases the security surface. Only enable it if you actually need it.
+When `allow-credentials` is true and the frontend sends a credentialed request, the browser can include credentials such as cookies and HTTP authentication data on cross-origin requests. This is needed for APIs that use cookie-based session authentication, but it also increases the security surface. Only enable it if you actually need it.
 
 ## Exposing Custom Response Headers
 
-By default, browsers only expose a small set of "safe" response headers to JavaScript (Cache-Control, Content-Language, Content-Type, Expires, Last-Modified, Pragma). If your API returns custom headers that the client needs to read, expose them explicitly:
+By default, browsers only expose a small set of "safe" response headers to JavaScript (Cache-Control, Content-Language, Content-Length, Content-Type, Expires, Last-Modified, Pragma). If your API returns custom headers that the client needs to read, expose them explicitly:
 
 ```xml
 <!-- Expose custom headers so the browser can read them in JavaScript -->
@@ -197,7 +197,7 @@ At the "All APIs" level, set a restrictive default:
 </cors>
 ```
 
-Then override it at the individual API level for your public API:
+Then use a different policy at the individual API level for your public API. If you configure `cors` at more than one APIM scope, check the effective policy order because generally only the first `cors` policy is applied:
 
 ```xml
 <!-- More permissive CORS for the public-facing API -->
