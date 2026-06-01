@@ -32,7 +32,7 @@ Here is a typical in-process project file.
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="4.2.0" />
+    <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="4.4.0" />
   </ItemGroup>
 </Project>
 ```
@@ -49,14 +49,16 @@ And here is what it looks like after migration.
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Replace the old SDK package with these three -->
+    <!-- Replace the old SDK package with these packages -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="1.21.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.16.4" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.17.2" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="1.2.1" />
     <!-- Add any other extension packages you need -->
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Storage.Queues" Version="5.3.0" />
     <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.22.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="1.2.0" />
   </ItemGroup>
 </Project>
 ```
@@ -283,26 +285,28 @@ There are several issues I have seen teams run into during this migration.
 
 First, **binding types change**. Some binding types that were available in-process have different names or namespaces in the isolated model. Check the extension package documentation for each binding type you use.
 
-Second, **ILogger injection changes**. You cannot use the `ILogger` method parameter anymore. You must use constructor injection with `ILogger<T>`.
+Second, **ILogger injection changes**. You cannot use the `ILogger` method parameter anymore. Use constructor injection with `ILogger<T>`, or add a `FunctionContext` parameter and call `GetLogger`.
 
 Third, **the Newtonsoft.Json vs System.Text.Json difference**. The isolated worker model uses System.Text.Json by default for serialization. If your code depends on Newtonsoft.Json attributes or behaviors, you need to configure the worker to use Newtonsoft.Json.
 
 ```csharp
 // Configure the worker to use Newtonsoft.Json if needed
+// Requires the Microsoft.Azure.Core.NewtonsoftJson package
 var host = new HostBuilder()
-    .ConfigureFunctionsWebApplication()
-    .ConfigureServices(services =>
+    .ConfigureFunctionsWebApplication(worker =>
     {
-        services.Configure<WorkerOptions>(options =>
+        worker.Services.Configure<WorkerOptions>(options =>
         {
-            options.Serializer = new JsonObjectSerializer(
-                new Newtonsoft.Json.JsonSerializerSettings());
+            var settings = NewtonsoftJsonObjectSerializer.CreateJsonSerializerSettings();
+            settings.NullValueHandling = NullValueHandling.Ignore;
+
+            options.Serializer = new NewtonsoftJsonObjectSerializer(settings);
         });
     })
     .Build();
 ```
 
-Fourth, **deployment considerations**. Make sure your CI/CD pipeline publishes the isolated worker project correctly. The output includes the `handler.exe` (or equivalent on Linux) that the Functions host launches. If the publish step is not configured properly, you will get startup failures.
+Fourth, **deployment considerations**. Make sure your CI/CD pipeline publishes the isolated worker project correctly. The output includes your function app executable and the generated Functions metadata that the Functions host uses to start the worker process. If the publish step is not configured properly, you will get startup failures.
 
 ## Testing Your Migration
 
