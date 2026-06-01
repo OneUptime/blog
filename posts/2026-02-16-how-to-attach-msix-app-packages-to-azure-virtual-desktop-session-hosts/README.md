@@ -16,7 +16,7 @@ This guide covers the full workflow: creating MSIX packages, setting up the file
 
 MSIX app attach uses a virtual disk (VHD, VHDX, or CIM) containing the MSIX package. At different stages of the user session, the app attach process performs four operations:
 
-1. **Stage** - The VHD is mounted on the session host and the MSIX package is registered with the OS. This happens when the VM starts.
+1. **Stage** - The disk image is mounted on the session host from the file share when the application is needed for an assigned user session.
 2. **Register** - The package is registered for the specific user at login. The application appears in the Start menu and file associations are configured.
 3. **Deregister** - When the user logs out, the package is deregistered from their profile.
 4. **Destage** - When the last user logs out (or the VM shuts down), the VHD is unmounted.
@@ -24,25 +24,26 @@ MSIX app attach uses a virtual disk (VHD, VHDX, or CIM) containing the MSIX pack
 ```mermaid
 sequenceDiagram
     participant VM as Session Host VM
-    participant Share as File Share (VHD)
+    participant Share as File Share (MSIX image)
     participant User as User Session
 
-    VM->>Share: Stage - Mount VHD at VM startup
+    VM->>Share: Stage - Mount app attach image
     Share-->>VM: MSIX image mounted
     User->>VM: User logs in
     VM->>User: Register - App appears in Start menu
     User->>VM: User logs out
     VM->>User: Deregister - App removed from profile
-    VM->>Share: Destage - Unmount VHD when no users
+    VM->>Share: Destage - Unmount image when no users
 ```
 
-This means applications are never installed on the base image, making image management simpler. You update an app by replacing the MSIX package on the share - no image rebuilds needed.
+This means applications are never installed on the base image, making image management simpler. You update an app by creating a new MSIX image and updating the app attach package configuration - no image rebuilds needed.
 
 ## Prerequisites
 
-- An Azure Virtual Desktop host pool with session hosts running Windows 11 Enterprise multi-session (21H2 or later).
-- An Azure Files share or SMB share accessible from session hosts.
+- An Azure Virtual Desktop host pool with session hosts running a supported Windows client or server operating system.
+- An Azure Files share or SMB share accessible from session hosts. The file share should be in the same Azure region as the session hosts.
 - The MSIX Packaging Tool (available from the Microsoft Store).
+- The Az.DesktopVirtualization PowerShell module version 4.2.1 or later.
 - A test application to package.
 - Session hosts must have certificates that match the MSIX package signing certificate.
 
@@ -74,7 +75,9 @@ The conversion template XML defines the input installer and output settings:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
-<MsixPackagingToolTemplate>
+<MsixPackagingToolTemplate
+    xmlns="http://schemas.microsoft.com/appx/msixpackagingtool/template/2018">
+  <SaveLocation PackagePath="C:\Output\MyApp.msix" />
   <Installer Path="C:\Installers\MyApp-Setup.msi" />
   <PackageInformation
     PackageName="com.company.myapp"
@@ -82,7 +85,6 @@ The conversion template XML defines the input installer and output settings:
     PublisherName="CN=MyCompany"
     PublisherDisplayName="My Company"
     Version="1.0.0.0" />
-  <SaveLocation PackagePath="C:\Output\MyApp.msix" />
 </MsixPackagingToolTemplate>
 ```
 
@@ -94,14 +96,19 @@ MSIX packages must be signed with a code signing certificate. For testing, creat
 # Create a self-signed certificate for MSIX signing (testing only)
 $cert = New-SelfSignedCertificate `
   -Type Custom `
-  -Subject "CN=MyCompany, O=MyCompany, C=US" `
+  -Subject "CN=MyCompany" `
   -KeyUsage DigitalSignature `
   -FriendlyName "MSIX Signing Certificate" `
   -CertStoreLocation "Cert:\CurrentUser\My" `
   -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
 
-# Export the certificate for distribution to session hosts
+# Export the public certificate for distribution to session hosts
+New-Item -Path "C:\Certs" -ItemType Directory -Force
 Export-Certificate -Cert $cert -FilePath "C:\Certs\MSIXSigning.cer"
+
+# Export the certificate with the private key for signing
+$password = ConvertTo-SecureString -String "certificate-password" -Force -AsPlainText
+Export-PfxCertificate -Cert $cert -FilePath "C:\Certs\MSIXSigning.pfx" -Password $password
 
 # Sign the MSIX package
 # Requires the Windows SDK SignTool
@@ -121,50 +128,32 @@ Install the signing certificate on all session hosts. For self-signed certificat
 Import-Certificate -FilePath "\\share\certs\MSIXSigning.cer" -CertStoreLocation "Cert:\LocalMachine\TrustedPeople"
 ```
 
-## Step 3: Create the VHD Image
+## Step 3: Create the VHDX Image
 
-Convert the MSIX package into a VHD image that can be mounted by app attach.
+Convert the MSIX package into a VHDX image that can be mounted by app attach.
 
 ```powershell
-# Create a new VHD for the MSIX package
-$vhdPath = "C:\AppAttach\MyApp.vhdx"
+# Create a new VHDX app attach image from the MSIX package
 $msixPath = "C:\Output\MyApp.msix"
-$vhdSize = 500MB
+$vhdPath = "C:\AppAttach\MyApp.vhdx"
+New-Item -Path "C:\AppAttach" -ItemType Directory -Force
 
-# Create and mount a new VHDX
-New-VHD -SizeBytes $vhdSize -Path $vhdPath -Dynamic
-$disk = Mount-VHD -Path $vhdPath -Passthru
-$diskNumber = $disk.DiskNumber
-
-# Initialize the disk and create a partition
-Initialize-Disk -Number $diskNumber -PartitionStyle GPT
-$partition = New-Partition -DiskNumber $diskNumber -UseMaximumSize -AssignDriveLetter
-Format-Volume -Partition $partition -FileSystem NTFS -NewFileSystemLabel "MSIXAppAttach" -Confirm:$false
-
-# Get the drive letter
-$driveLetter = $partition.DriveLetter
-
-# Create the parent directory for MSIX
-$msixDest = "$($driveLetter):\MSIXPackages"
-New-Item -Path $msixDest -ItemType Directory
-
-# Use msixmgr.exe to unpack the MSIX into the VHD
-# Download msixmgr.exe from Microsoft
+# Use msixmgr.exe to create the VHDX and unpack the MSIX into it
 & "C:\Tools\msixmgr\x64\msixmgr.exe" -Unpack `
   -packagePath $msixPath `
-  -destination "$msixDest\MyApp" `
-  -applyacls
-
-# Dismount the VHD
-Dismount-VHD -Path $vhdPath
+  -destination $vhdPath `
+  -applyACLs `
+  -create `
+  -fileType vhdx `
+  -rootDirectory apps
 ```
 
 ## Step 4: Upload to the File Share
 
-Copy the VHD image to a file share accessible by all session hosts.
+Copy the VHDX image to a file share accessible by all session hosts.
 
 ```bash
-# Upload the VHD to the Azure Files share used for app attach
+# Upload the VHDX to the Azure Files share used for app attach
 az storage file upload \
   --account-name avdappstorage \
   --share-name msix-packages \
@@ -189,55 +178,74 @@ Assign permissions so session host computer accounts can read the share.
 
 In the Azure portal, configure app attach for your host pool.
 
-1. Navigate to Azure Virtual Desktop > Host pools > your host pool.
-2. Under Manage, click "MSIX packages."
-3. Click "Add."
+1. Navigate to Azure Virtual Desktop > App Attach.
+2. Click "Create."
+3. Select the subscription, resource group, host pool, and region.
 4. Enter the image path: `\\avdappstorage.file.core.windows.net\msix-packages\MyApp.vhdx`
-5. Select the MSIX package from the discovered list.
+5. Select the MSIX package from the image.
 6. Configure:
-   - **Registration type**: On-demand (registers when user logs in) or Blocking (registers at stage time)
+   - **Registration type**: On-demand (partial registration at sign-in, full registration when the user starts the app) or Register at log on
    - **State**: Active
    - **Display name**: My Application
-7. Click Add.
+7. Assign the package to the host pool and to the users or groups that should receive the app.
+8. Click Add.
 
-Using the CLI:
+Using PowerShell:
 
-```bash
-# Add the MSIX package to the host pool
-az desktopvirtualization msix-package create \
-  --resource-group myResourceGroup \
-  --host-pool-name avd-pooled-hp \
-  --msix-package-full-name "com.company.myapp_1.0.0.0_x64__abcdef123456" \
-  --display-name "My Application" \
-  --image-path "\\\\avdappstorage.file.core.windows.net\\msix-packages\\MyApp.vhdx" \
-  --is-active true \
-  --is-regular-registration true \
-  --package-application "[{\"appId\": \"MyApp\", \"description\": \"My Application\", \"appUserModelId\": \"com.company.myapp\", \"friendlyName\": \"My Application\", \"iconImageName\": \"MyApp.png\"}]"
+```powershell
+# Add the MSIX image as an App Attach package
+Import-Module Az.DesktopVirtualization
+
+$imagePath = "\\avdappstorage.file.core.windows.net\msix-packages\MyApp.vhdx"
+$app = Import-AzWvdAppAttachPackageInfo `
+  -HostPoolName "avd-pooled-hp" `
+  -ResourceGroupName "myResourceGroup" `
+  -Path $imagePath
+
+New-AzWvdAppAttachPackage `
+  -Name "MyApp" `
+  -ResourceGroupName "myResourceGroup" `
+  -Location "eastus" `
+  -FailHealthCheckOnStagingFailure "NeedsAssistance" `
+  -ImageIsRegularRegistration $false `
+  -ImageDisplayName "My Application" `
+  -ImageIsActive $true `
+  -AppAttachPackage $app
+
+# Assign the package to the host pool
+$hostPoolId = (Get-AzWvdHostPool | Where-Object { $_.Name -eq "avd-pooled-hp" }).Id
+Update-AzWvdAppAttachPackage `
+  -Name "MyApp" `
+  -ResourceGroupName "myResourceGroup" `
+  -Location "eastus" `
+  -HostPoolReference @($hostPoolId)
 ```
 
 ## Step 6: Publish the Application
 
 Create a RemoteApp application group that references the MSIX package, or add the app to an existing application group.
 
-```bash
+```powershell
 # Create a RemoteApp application group if you do not have one
-az desktopvirtualization applicationgroup create \
-  --resource-group myResourceGroup \
-  --name avd-remoteapp-ag \
-  --host-pool-arm-path "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.DesktopVirtualization/hostpools/avd-pooled-hp" \
-  --application-group-type RemoteApp \
-  --location eastus
+New-AzWvdApplicationGroup `
+  -ResourceGroupName "myResourceGroup" `
+  -Name "avd-remoteapp-ag" `
+  -Location "eastus" `
+  -FriendlyName "Remote Apps" `
+  -Description "RemoteApp application group" `
+  -HostPoolArmPath "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.DesktopVirtualization/hostPools/avd-pooled-hp" `
+  -ApplicationGroupType "RemoteApp" `
+  -ShowInFeed
 
 # Add the MSIX app to the application group
-az desktopvirtualization application create \
-  --resource-group myResourceGroup \
-  --application-group-name avd-remoteapp-ag \
-  --name MyApplication \
-  --friendly-name "My Application" \
-  --msix-package-family-name "com.company.myapp_abcdef123456" \
-  --msix-package-application-id "MyApp" \
-  --command-line-setting DoNotAllow \
-  --show-in-portal true
+New-AzWvdApplication `
+  -ResourceGroupName "myResourceGroup" `
+  -GroupName "avd-remoteapp-ag" `
+  -Name "MyApplication" `
+  -ApplicationType "MsixApplication" `
+  -MsixPackageFamilyName $app.ImagePackageFamilyName `
+  -MsixPackageApplicationId "MyApp" `
+  -CommandLineSetting "DoNotAllow"
 ```
 
 ## Step 7: Test and Verify
@@ -260,14 +268,14 @@ Get-WinEvent -LogName "Microsoft-Windows-AppXDeploymentServer/Operational" -MaxE
 One of the biggest advantages of app attach is simplified updates. To update an application:
 
 1. Create a new MSIX package with an incremented version number.
-2. Create a new VHD image with the updated package.
+2. Create a new MSIX image with the updated package.
 3. Upload it to the file share.
-4. Update the MSIX package configuration in the host pool to point to the new VHD.
+4. Update the app attach package configuration to point to the new image.
 5. Users get the updated application at their next login - no image rebuilds.
 
 ## Troubleshooting Common Issues
 
-**App does not appear after login**: Check that the signing certificate is installed in the Trusted People store on the session host. Also verify the file share is accessible and the VHD path is correct.
+**App does not appear after login**: Check that the signing certificate is installed in the Trusted People store on the session host. Also verify the file share is accessible and the image path is correct.
 
 **Staging fails**: Check that the session host has access to the file share. Test SMB connectivity from the session host using `Test-Path "\\share\path"`.
 
@@ -277,4 +285,4 @@ One of the biggest advantages of app attach is simplified updates. To update an 
 
 ## Summary
 
-MSIX app attach separates application delivery from image management in Azure Virtual Desktop. Applications live on a file share as VHD images and are dynamically attached to session hosts when needed. This means you can maintain a lean base image and deliver applications independently, update apps without rebuilding images, and assign different apps to different user groups. The setup involves packaging applications as MSIX, expanding them into VHD images, hosting them on a file share, and configuring the host pool to use them. The result is a more flexible and maintainable AVD environment.
+MSIX app attach separates application delivery from image management in Azure Virtual Desktop. Applications live on a file share as app attach images and are dynamically attached to session hosts when needed. This means you can maintain a lean base image and deliver applications independently, update apps without rebuilding images, and assign different apps to different user groups. The setup involves packaging applications as MSIX, expanding them into app attach images, hosting them on a file share, and configuring the host pool to use them. The result is a more flexible and maintainable AVD environment.
