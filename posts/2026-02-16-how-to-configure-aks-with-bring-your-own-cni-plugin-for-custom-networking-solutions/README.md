@@ -8,7 +8,7 @@ Description: Learn how to deploy AKS clusters with the bring-your-own CNI option
 
 ---
 
-AKS ships with two built-in CNI options: Azure CNI and kubenet. Azure CNI gives every pod a VNet IP address, which is great for VNet integration but eats through IP addresses quickly. Kubenet uses a simpler overlay approach but lacks some enterprise features. Neither option fits every use case.
+AKS ships with managed networking options such as Azure CNI, Azure CNI Overlay, and Azure CNI Powered by Cilium. Azure CNI can give every pod a VNet IP address, which is great for VNet integration but can consume IP addresses quickly. Azure CNI Overlay conserves VNet IPs, but the managed options still do not fit every use case.
 
 The bring-your-own-CNI (BYOCNI) option lets you deploy an AKS cluster without any CNI plugin pre-installed. You then install whatever CNI you want - Cilium, Calico, Flannel, or anything else that implements the CNI specification. This gives you full control over your cluster's networking stack.
 
@@ -16,8 +16,8 @@ The bring-your-own-CNI (BYOCNI) option lets you deploy an AKS cluster without an
 
 There are several reasons teams choose BYOCNI:
 
-- **Advanced network policy**: Cilium's eBPF-based network policies are significantly more powerful and performant than what Azure CNI offers out of the box
-- **Service mesh integration**: Some CNI plugins (Cilium, Linkerd with its CNI plugin) offer built-in service mesh capabilities
+- **Advanced network policy**: Cilium's eBPF-based network policies are significantly more powerful than the standard Kubernetes NetworkPolicy API
+- **Service mesh integration**: Cilium can provide ingress, Gateway API, and service mesh capabilities as part of the networking layer
 - **IP address conservation**: Overlay-based CNIs like Cilium in overlay mode do not consume VNet IP addresses per pod
 - **Observability**: Cilium Hubble provides deep network observability that is not available with the built-in options
 - **Consistency across clouds**: If you run Kubernetes on multiple clouds, using the same CNI everywhere simplifies operations
@@ -44,6 +44,7 @@ az aks create \
   --resource-group myBYOCNIRG \
   --name myBYOCNICluster \
   --network-plugin none \
+  --pod-cidr "10.244.0.0/16" \
   --node-count 3 \
   --generate-ssh-keys
 ```
@@ -99,9 +100,9 @@ ipam:
     clusterPoolIPv4PodCIDRList:
       - "10.244.0.0/16"
     clusterPoolIPv4MaskSize: 24
-tunnel:
-  # Use VXLAN tunneling for pod-to-pod traffic
-  protocol: vxlan
+# Use VXLAN tunneling for pod-to-pod traffic
+routingMode: tunnel
+tunnelProtocol: vxlan
 hubble:
   # Enable Hubble for network observability
   enabled: true
@@ -112,15 +113,14 @@ hubble:
 operator:
   # Run the operator with 1 replica for smaller clusters
   replicas: 1
-kubeProxyReplacement:
-  # Let Cilium replace kube-proxy for better performance
-  true
+# Keep AKS-managed kube-proxy unless you have explicitly designed the cluster for kube-proxy-free Cilium
+kubeProxyReplacement: false
 ```
 
 ```bash
 # Install Cilium using the values file
 helm install cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.4 \
   --namespace kube-system \
   --values cilium-values.yaml
 ```
@@ -207,7 +207,7 @@ spec:
           path: "/api/v1/orders"
 ```
 
-This level of control is not possible with the built-in Azure CNI network policies.
+This level of control is not available from the standard Kubernetes NetworkPolicy features in the built-in Azure network policy options.
 
 ## Step 5: Enable Hubble Observability
 
@@ -238,27 +238,29 @@ hubble observe --namespace production --verdict DROPPED
 If you prefer Calico over Cilium, the process is similar. Create the cluster the same way with `--network-plugin none`, then install Calico.
 
 ```bash
-# Install Calico operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+# Install Calico CRDs and operator
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Create the Calico installation configuration
-kubectl apply -f - <<EOF
+kubectl create -f - <<EOF
 apiVersion: operator.tigera.io/v1
 kind: Installation
 metadata:
   name: default
 spec:
+  kubernetesProvider: AKS
+  cni:
+    type: Calico
   calicoNetwork:
     bgp: Disabled
     ipPools:
     - cidr: 10.244.0.0/16
       encapsulation: VXLAN
-      natOutgoing: Enabled
-      nodeSelector: all()
 EOF
 
 # Wait for Calico to be ready
-kubectl rollout status daemonset/calico-node -n calico-system --timeout=300s
+kubectl get tigerastatus
 ```
 
 ## Upgrading Your CNI
@@ -268,7 +270,7 @@ One important consideration with BYOCNI is that you are responsible for CNI upgr
 ```bash
 # Upgrade Cilium using Helm
 helm upgrade cilium cilium/cilium \
-  --version 1.16.0 \
+  --version 1.19.4 \
   --namespace kube-system \
   --values cilium-values.yaml
 
@@ -312,6 +314,6 @@ kubectl -n kube-system exec ds/cilium -- cilium node list
 
 ## Considerations Before Choosing BYOCNI
 
-BYOCNI gives you flexibility but adds operational responsibility. You need to handle CNI upgrades, monitor CNI health, and troubleshoot networking issues that Microsoft support may not be able to help with (since it is not their software). If you are comfortable with that tradeoff, BYOCNI with Cilium is arguably the best networking option for AKS. If you want a fully managed experience, stick with Azure CNI or Azure CNI Overlay.
+BYOCNI gives you flexibility but adds operational responsibility. You need to handle CNI upgrades, monitor CNI health, and troubleshoot networking issues that Microsoft support may not be able to help with (since it is not their software). If you are comfortable with that tradeoff, BYOCNI with Cilium can be a strong networking option for AKS. If you want a fully managed experience, stick with Azure CNI, Azure CNI Overlay, or Azure CNI Powered by Cilium.
 
-The decision ultimately comes down to whether the advanced features (eBPF-based networking, L7 policies, Hubble observability, kube-proxy replacement) justify the extra operational work. For most production clusters running complex microservice architectures, they absolutely do.
+The decision ultimately comes down to whether the advanced features (eBPF-based networking, L7 policies, Hubble observability, and optional kube-proxy replacement when planned explicitly) justify the extra operational work. For many production clusters running complex microservice architectures, they do.
