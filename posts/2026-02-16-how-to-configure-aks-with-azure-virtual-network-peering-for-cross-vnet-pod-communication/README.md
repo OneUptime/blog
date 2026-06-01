@@ -10,13 +10,13 @@ Description: Learn how to set up Azure Virtual Network peering with AKS clusters
 
 In enterprise Azure environments, resources are typically spread across multiple virtual networks. You might have an AKS cluster in one VNet, a database server in another, and a shared services cluster in a third. By default, resources in different VNets cannot communicate with each other - they are isolated by design.
 
-Azure Virtual Network peering connects two VNets so that resources in either network can communicate using private IP addresses, as if they were in the same network. When combined with AKS using Azure CNI (where pods get VNet IP addresses), this enables direct pod-to-service and even pod-to-pod communication across VNets without going through the public internet.
+Azure Virtual Network peering connects two VNets so that resources in either network can communicate using private IP addresses, as if they were in the same network. When combined with AKS using Azure CNI in a flat networking mode (where pods get VNet IP addresses), this enables direct pod-to-service and even pod-to-pod communication across VNets without going through the public internet.
 
 This guide covers setting up VNet peering between AKS clusters and other Azure resources, handling the networking details that trip people up, and testing cross-VNet connectivity.
 
 ## How VNet Peering Works with AKS
 
-When you create an AKS cluster with Azure CNI, every pod gets an IP address from the VNet subnet. If you peer this VNet with another VNet, pods in your AKS cluster can directly reach resources in the peered VNet using their private IPs, and vice versa.
+When you create an AKS cluster with Azure CNI Node Subnet or Azure CNI Pod Subnet, pods get IP addresses from a VNet subnet. If you peer this VNet with another VNet, pods in your AKS cluster can directly reach resources in the peered VNet using their private IPs, and vice versa.
 
 ```mermaid
 graph LR
@@ -37,7 +37,7 @@ There is one critical requirement: the address spaces of the peered VNets must n
 ## Prerequisites
 
 - Two or more VNets with non-overlapping address spaces
-- AKS clusters using Azure CNI (not kubenet - kubenet pods use a separate address space that is not directly routable)
+- AKS clusters using Azure CNI Node Subnet or Azure CNI Pod Subnet (not kubenet or Azure CNI Overlay - those use separate pod address spaces that are not directly reachable from peered VNets)
 - Azure CLI 2.50 or later
 - Network Contributor permissions on both VNets
 
@@ -74,7 +74,7 @@ az network vnet create \
   --subnet-name data-subnet \
   --subnet-prefix 10.3.0.0/24
 
-# Create AKS cluster in the prod VNet using Azure CNI
+# Create AKS cluster in the prod VNet using Azure CNI Node Subnet
 SUBNET_ID=$(az network vnet subnet show \
   --resource-group prodRG \
   --vnet-name VNet-AKS-Prod \
@@ -203,7 +203,7 @@ az network nsg rule create \
 
 ## Step 7: Peer Multiple AKS Clusters
 
-For cluster-to-cluster communication, peer the VNets and use Kubernetes services with external IPs.
+For cluster-to-cluster communication, peer the VNets and use Kubernetes LoadBalancer services, preferably internal load balancers for private cross-VNet access.
 
 ```bash
 # Peer the Prod AKS VNet with the Dev AKS VNet
@@ -280,7 +280,7 @@ graph TB
     H --- D[Shared Services VNet<br/>10.4.0.0/16]
 ```
 
-In this model, the hub VNet contains shared resources like firewalls, VPN gateways, and DNS resolvers. Traffic between spoke VNets routes through the hub.
+In this model, the hub VNet contains shared resources like firewalls, VPN gateways, and DNS resolvers. VNet peering is not transitive by itself, so traffic between spoke VNets routes through the hub only when you add routing through a network virtual appliance, Azure Firewall, or gateway transit where appropriate.
 
 ```bash
 # Enable gateway transit on the hub side (if using a VPN gateway)
@@ -302,7 +302,7 @@ az network vnet peering update \
 
 **Peering shows Connected but traffic does not flow**: Check NSG rules on both sides. VNet peering opens the path, but NSGs can still block specific traffic.
 
-**Pod IPs not reachable from peered VNet**: Make sure you are using Azure CNI. With kubenet, pod IPs are on a separate CIDR that is not advertised to peered VNets. With Azure CNI Overlay, you need User Defined Routes (UDR) to route pod traffic.
+**Pod IPs not reachable from peered VNet**: Make sure you are using Azure CNI Node Subnet or Azure CNI Pod Subnet. With kubenet and Azure CNI Overlay, pod IPs are on a separate CIDR that is not directly reachable from peered VNets. For Azure CNI Overlay, outbound traffic to the VNet is SNAT'd to the node IP, and inbound access should go through a Kubernetes service such as a load balancer.
 
 **DNS resolution fails across VNets**: Private DNS zones must be linked to each VNet that needs to resolve those names. Check the DNS zone links.
 
