@@ -18,7 +18,7 @@ AWS provides several managed rule groups, each targeting a different threat cate
 
 | Rule Group | What It Protects Against |
 |---|---|
-| `AWSManagedRulesCommonRuleSet` | OWASP Top 10 including SQLi, XSS, path traversal, SSRF |
+| `AWSManagedRulesCommonRuleSet` | Common web threats including XSS, path traversal/LFI, RFI, SSRF, and size restrictions |
 | `AWSManagedRulesSQLiRuleSet` | SQL injection attacks |
 | `AWSManagedRulesKnownBadInputsRuleSet` | Known bad request patterns (Log4j, etc.) |
 | `AWSManagedRulesAmazonIpReputationList` | IP addresses with poor reputation |
@@ -37,7 +37,7 @@ If you're not sure which rule groups to enable, start with these four. They cove
 
 ### 1. Common Rule Set (Core Protection)
 
-This is the most important managed rule group. It covers the OWASP Top 10 vulnerabilities.
+This is the most important managed rule group. It covers a wide range of common web application vulnerabilities, including some of the high-risk vulnerabilities described in OWASP publications.
 
 ```bash
 # Add the Common Rule Set to your Web ACL
@@ -75,9 +75,9 @@ aws wafv2 update-web-acl \
 
 The Common Rule Set includes rules for:
 - Cross-site scripting (XSS)
-- SQL injection patterns
-- Path traversal (../../../etc/passwd)
+- Path traversal and local file inclusion (../../../etc/passwd)
 - Server-side request forgery (SSRF)
+- Remote file inclusion (RFI)
 - Bad bot user agents
 - Request body size limits
 
@@ -135,11 +135,21 @@ Blocks traffic from anonymizing services like Tor, VPNs, and hosting providers. 
 {
   "Name": "AWSAnonymousIP",
   "Priority": 3,
-  "OverrideAction": {"Count": {}},
+  "OverrideAction": {"None": {}},
   "Statement": {
     "ManagedRuleGroupStatement": {
       "VendorName": "AWS",
-      "Name": "AWSManagedRulesAnonymousIpList"
+      "Name": "AWSManagedRulesAnonymousIpList",
+      "RuleActionOverrides": [
+        {
+          "Name": "AnonymousIPList",
+          "ActionToUse": {"Count": {}}
+        },
+        {
+          "Name": "HostingProviderIPList",
+          "ActionToUse": {"Count": {}}
+        }
+      ]
     }
   },
   "VisibilityConfig": {
@@ -150,7 +160,7 @@ Blocks traffic from anonymizing services like Tor, VPNs, and hosting providers. 
 }
 ```
 
-Notice the `OverrideAction` is set to `Count` here. This logs matches without blocking, letting you evaluate the impact before switching to block mode.
+Notice the individual rules are overridden to `Count` here. This logs matches without blocking, letting you evaluate the impact before switching those rules back to their default block actions.
 
 ## Overriding Individual Rules
 
@@ -165,9 +175,15 @@ Sometimes a managed rule group blocks legitimate traffic. Instead of removing th
     "ManagedRuleGroupStatement": {
       "VendorName": "AWS",
       "Name": "AWSManagedRulesCommonRuleSet",
-      "ExcludedRules": [
-        {"Name": "SizeRestrictions_BODY"},
-        {"Name": "GenericRFI_BODY"}
+      "RuleActionOverrides": [
+        {
+          "Name": "SizeRestrictions_BODY",
+          "ActionToUse": {"Count": {}}
+        },
+        {
+          "Name": "GenericRFI_BODY",
+          "ActionToUse": {"Count": {}}
+        }
       ]
     }
   },
@@ -179,7 +195,7 @@ Sometimes a managed rule group blocks legitimate traffic. Instead of removing th
 }
 ```
 
-The `ExcludedRules` list sets those specific rules to Count mode instead of Block. This is useful when a particular rule generates false positives for your application.
+The `RuleActionOverrides` list sets those specific rules to Count mode instead of Block. This is useful when a particular rule generates false positives for your application.
 
 You can also override rules to different actions.
 
@@ -399,10 +415,10 @@ You've got plenty of room for multiple managed rule groups plus custom rules.
 
 ## Deployment Best Practice
 
-1. **Deploy in Count mode first** - Set `OverrideAction` to `Count` for new rule groups
+1. **Deploy in Count mode first** - Use `RuleActionOverrides` to set managed rules to `Count` for new rule groups
 2. **Monitor for 1-2 weeks** - Review sampled requests to check for false positives
 3. **Exclude problematic rules** - Use rule overrides for rules that block legitimate traffic
-4. **Switch to Block mode** - Change `OverrideAction` to `None` (which means "use the rule's action")
+4. **Switch to Block mode** - Remove the `Count` rule action overrides and keep `OverrideAction` set to `None` (which means "use the rule's action")
 5. **Continue monitoring** - Keep sampled requests and CloudWatch metrics enabled
 
 For custom rules to complement managed groups, see [WAF rules for common web attacks](https://oneuptime.com/blog/post/2026-02-12-aws-waf-rules-common-web-attacks/view). Add [rate limiting](https://oneuptime.com/blog/post/2026-02-12-waf-rate-limiting-rules-prevent-ddos/view) for DDoS protection. And for global applications, deploy [WAF with CloudFront](https://oneuptime.com/blog/post/2026-02-12-waf-cloudfront-global-protection/view).
