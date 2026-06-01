@@ -45,7 +45,7 @@ az containerapp update \
   --resource-group my-rg \
   --set-env-vars "FEATURE_FLAG_NEW_UI=true" "CACHE_TTL=3600"
 
-# Remove an environment variable by setting it to empty
+# Remove an environment variable
 az containerapp update \
   --name my-api \
   --resource-group my-rg \
@@ -94,7 +94,6 @@ az containerapp secret list \
 Note that updating a secret does not automatically restart your replicas. The new value takes effect when:
 - A new revision is created
 - Replicas are restarted manually
-- The app scales up and new replicas are created
 
 To force an immediate update, create a new revision.
 
@@ -116,7 +115,22 @@ First, create a Key Vault and add your secrets.
 az keyvault create \
   --name my-keyvault \
   --resource-group my-rg \
-  --location eastus
+  --location eastus \
+  --enable-rbac-authorization true
+
+# Grant your account access to create secrets
+KEYVAULT_ID=$(az keyvault show \
+  --name my-keyvault \
+  --resource-group my-rg \
+  --query "id" -o tsv)
+
+CURRENT_USER_ID=$(az ad signed-in-user show \
+  --query "id" -o tsv)
+
+az role assignment create \
+  --assignee $CURRENT_USER_ID \
+  --role "Key Vault Secrets Officer" \
+  --scope $KEYVAULT_ID
 
 # Add secrets to Key Vault
 az keyvault secret set \
@@ -145,11 +159,11 @@ PRINCIPAL_ID=$(az containerapp identity show \
   --resource-group my-rg \
   --query "principalId" -o tsv)
 
-# Grant the identity access to Key Vault secrets
-az keyvault set-policy \
-  --name my-keyvault \
-  --object-id $PRINCIPAL_ID \
-  --secret-permissions get list
+# Grant the identity access to read Key Vault secrets
+az role assignment create \
+  --assignee $PRINCIPAL_ID \
+  --role "Key Vault Secrets User" \
+  --scope $KEYVAULT_ID
 ```
 
 Now configure the container app to pull secrets from Key Vault.
@@ -263,7 +277,7 @@ console.log(`Starting server in ${config.nodeEnv} mode on port ${config.port}`);
 
 **Use descriptive secret names.** Names like `db-password` are clearer than `secret1`. You will thank yourself when you have 20 secrets to manage.
 
-**Rotate secrets regularly.** When you update a secret in Key Vault, create a new revision of your container app to pick up the new value.
+**Rotate secrets regularly.** When you update an inline Container Apps secret, create a new revision or restart the existing revision to pick up the new value. With a versionless Key Vault secret URI, Container Apps automatically retrieves newer secret versions within 30 minutes and restarts active revisions that reference the secret in an environment variable.
 
 **Keep non-sensitive configuration as environment variables.** Not everything needs to be a secret. Log levels, feature flags, and port numbers can be plain environment variables. Overusing secrets adds unnecessary complexity.
 
@@ -271,7 +285,7 @@ console.log(`Starting server in ${config.nodeEnv} mode on port ${config.port}`);
 
 **Secret value not updating:** Remember that secret updates require a new revision or replica restart. Updating the secret alone does not affect running replicas.
 
-**Key Vault access denied:** Check that the managed identity has the `get` permission on Key Vault secrets. Also verify the Key Vault URL format includes the full path to the secret.
+**Key Vault access denied:** Check that the managed identity has the `Key Vault Secrets User` role on the Key Vault. Also verify the Key Vault URL format includes the full path to the secret.
 
 **Environment variable not available in container:** Verify the variable name is correct. Environment variable names are case-sensitive. Also check the revision to make sure the latest configuration is deployed.
 
