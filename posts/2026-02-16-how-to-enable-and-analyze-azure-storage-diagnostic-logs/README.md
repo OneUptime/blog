@@ -8,13 +8,13 @@ Description: Step-by-step guide to enabling Azure Storage diagnostic logging and
 
 ---
 
-When something goes wrong with Azure Storage, your first instinct is probably to check metrics. Metrics tell you that something happened, but logs tell you exactly what happened, who did it, and when. Azure Storage diagnostic logs capture every request made to your storage account, including the caller's IP, the operation performed, authentication details, and the latency of the response. This post shows you how to turn them on and get useful information out of them.
+When something goes wrong with Azure Storage, your first instinct is probably to check metrics. Metrics tell you that something happened, but logs tell you exactly what happened, who did it, and when. Azure Storage diagnostic logs capture detailed records for most requests made to your storage account, including the caller's IP, the operation performed, authentication details, and the latency of the response. This post shows you how to turn them on and get useful information out of them.
 
 ## Classic Diagnostic Logging vs. Azure Monitor Logs
 
 Azure Storage has two logging systems, and it is important to know the difference.
 
-**Classic Storage Analytics Logging** writes logs to a `$logs` container within the storage account itself. This is the older approach and has some limitations, like no support for Azure Data Lake Storage Gen2 and limited querying capabilities.
+**Classic Storage Analytics Logging** writes logs to a `$logs` container within the storage account itself. This is the older approach and has some limitations, like no support for Azure Files logging and limited querying capabilities.
 
 **Azure Monitor diagnostic logs** send logs to a Log Analytics workspace, Event Hub, or a separate storage account. This is the modern approach and integrates with the rest of Azure's monitoring ecosystem.
 
@@ -32,6 +32,7 @@ az monitor diagnostic-settings create \
   --name "StorageDiagnostics" \
   --resource "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.Storage/storageAccounts/mystorageaccount/blobServices/default" \
   --workspace "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.OperationalInsights/workspaces/myWorkspace" \
+  --export-to-resource-specific true \
   --logs '[
     {
       "category": "StorageRead",
@@ -79,6 +80,7 @@ for SERVICE in "${SERVICES[@]}"; do
     --name "StorageDiag-${SERVICE}" \
     --resource "${RESOURCE_ID}" \
     --workspace "${WORKSPACE_ID}" \
+    --export-to-resource-specific true \
     --logs '[{"category":"StorageRead","enabled":true},{"category":"StorageWrite","enabled":true},{"category":"StorageDelete","enabled":true}]' \
     --metrics '[{"category":"Transaction","enabled":true}]'
 
@@ -105,7 +107,7 @@ Each log entry captures a wealth of information. Here are the most useful fields
 
 ## Querying Logs with KQL
 
-Once logs start flowing to your Log Analytics workspace (give it 5-10 minutes after enabling), you can query them using KQL. Here are the queries I find most useful.
+Once logs start flowing to your Log Analytics workspace, you can query them using KQL. This often takes a few minutes, but Azure Monitor can take up to 90 minutes to start sending data after you create a diagnostic setting. Here are the queries I find most useful.
 
 ### Find Failed Requests
 
@@ -183,10 +185,10 @@ az monitor scheduled-query create \
   --name "StorageAuthFailureAlert" \
   --resource-group myRG \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.OperationalInsights/workspaces/myWorkspace" \
-  --condition "count 'StorageBlobLogs | where StatusCode == 403' > 50" \
-  --condition-query "StorageBlobLogs | where StatusCode == 403 | where TimeGenerated > ago(5m)" \
-  --window-size 5 \
-  --evaluation-frequency 5 \
+  --condition "count 'AuthFailures' > 50" \
+  --condition-query AuthFailures="StorageBlobLogs | where StatusCode == 403" \
+  --window-size 5m \
+  --evaluation-frequency 5m \
   --severity 2 \
   --action-groups "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.Insights/actionGroups/myTeam"
 ```
@@ -214,12 +216,12 @@ Diagnostic logging is not free. The costs come from two places:
 
 1. **Log ingestion**: Log Analytics charges per GB of data ingested. A busy storage account can generate significant log volume. For a storage account handling 10,000 requests per second, you might see several GB of logs per day.
 
-2. **Log retention**: Log Analytics charges for data retention beyond the default period (usually 30 days for free tier).
+2. **Log retention**: Log Analytics charges for data retention beyond the default period, which is 30 days for most tables.
 
 To manage costs, consider:
 
 - Only enable the log categories you need. If you only care about writes and deletes, skip StorageRead logs since read operations typically generate the most volume.
-- Set up data collection rules to filter out routine operations before they hit Log Analytics.
+- Use ingestion-time transformations for supported tables to filter out routine operations before they hit Log Analytics.
 - Use shorter retention periods for logs that are only needed for troubleshooting.
 
 ## Practical Tips
@@ -228,7 +230,7 @@ A few things I have learned from running diagnostic logging in production:
 
 - **Enable logging before you need it.** It is frustrating to have an incident and discover that logging was not enabled. The cost is usually minimal for moderate-traffic accounts.
 - **Correlate with metrics.** Use metrics for alerting (they are cheaper and faster) and logs for investigation. When a metric alert fires, switch to logs to understand the details.
-- **Watch for log latency.** There can be a 5-15 minute delay between a storage operation and the log appearing in Log Analytics. Do not panic if you do not see logs immediately after enabling the setting.
+- **Watch for log latency.** There can be a delay between a storage operation and the log appearing in Log Analytics, and data can take up to 90 minutes to start flowing after you create a diagnostic setting. Do not panic if you do not see logs immediately after enabling the setting.
 - **Use resource-specific tables.** When configuring diagnostic settings, choose the resource-specific destination table mode. This creates dedicated tables like `StorageBlobLogs` instead of dumping everything into the generic `AzureDiagnostics` table, making queries much simpler and more performant.
 
 Diagnostic logs are one of those things that seem like overkill until the day you need them. Getting them set up correctly takes 15 minutes and can save you hours during an incident.
