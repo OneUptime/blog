@@ -34,14 +34,14 @@ graph TD
 Azure Service Bus tracks how many times each message has been delivered. When a message's delivery count exceeds the queue's `MaxDeliveryCount` setting (default is 10), the message is automatically moved to the dead-letter queue.
 
 ```bash
-# Set the max delivery count when creating or updating a queue
+# Set the max delivery count when creating a queue
 
 az servicebus queue create \
   --name orders \
   --namespace-name my-servicebus \
   --resource-group my-rg \
   --max-delivery-count 5 \
-  --dead-lettering-on-message-expiration true
+  --enable-dead-lettering-on-message-expiration true
 ```
 
 Setting the max delivery count to 5 means a message gets 5 chances to be processed successfully. After the 5th failure, Service Bus moves it to the dead-letter sub-queue automatically.
@@ -53,6 +53,7 @@ The key to handling poison messages well is to distinguish between transient err
 ```csharp
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 public class OrderProcessor
 {
@@ -179,12 +180,13 @@ public class OrderProcessor
 
 ## Using Azure Functions with Service Bus Trigger
 
-If you are using Azure Functions instead of a standalone processor, the pattern is slightly different because the Functions runtime handles the PeekLock completion automatically.
+If you are using Azure Functions instead of a standalone processor, the pattern is slightly different because the Functions runtime can handle PeekLock completion automatically. When you settle messages explicitly with `ServiceBusMessageActions`, disable automatic completion on the trigger.
 
 ```csharp
 using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 public class OrderFunction
 {
@@ -197,11 +199,11 @@ public class OrderFunction
         _orderService = orderService;
     }
 
-    // The Functions runtime automatically completes the message on success
-    // and abandons it on failure (which increments the delivery count)
+    // Disable automatic completion because this function settles messages explicitly
     [Function("ProcessOrder")]
     public async Task Run(
-        [ServiceBusTrigger("orders", Connection = "ServiceBusConnection")]
+        [ServiceBusTrigger("orders", Connection = "ServiceBusConnection",
+            AutoCompleteMessages = false)]
         ServiceBusReceivedMessage message,
         ServiceBusMessageActions messageActions)
     {
@@ -249,6 +251,14 @@ public class DeadLetterProcessor
 {
     private readonly ServiceBusClient _client;
     private readonly ILogger<DeadLetterProcessor> _logger;
+
+    public DeadLetterProcessor(
+        ServiceBusClient client,
+        ILogger<DeadLetterProcessor> logger)
+    {
+        _client = client;
+        _logger = logger;
+    }
 
     public async Task ProcessDeadLettersAsync(string queueName)
     {
@@ -339,7 +349,7 @@ az monitor metrics alert create \
   --window-size 5m \
   --evaluation-frequency 5m \
   --severity 2 \
-  --action-group ops-team
+  --action ops-team
 ```
 
 ## Summary
