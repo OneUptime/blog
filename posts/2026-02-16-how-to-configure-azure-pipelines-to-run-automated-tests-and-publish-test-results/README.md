@@ -63,6 +63,7 @@ steps:
     inputs:
       command: 'test'
       projects: '**/*Tests.csproj'
+      publishTestResults: false
       arguments: >
         --configuration $(buildConfiguration)
         --no-build
@@ -90,7 +91,8 @@ steps:
 A few important details:
 
 - The `--logger trx` flag produces test results in TRX format, which Azure DevOps understands natively
-- `--collect:"XPlat Code Coverage"` uses the built-in coverage collector that works on all platforms
+- `publishTestResults: false` prevents the `DotNetCoreCLI` task from automatically publishing TRX results, since this example publishes them explicitly in the next step
+- `--collect:"XPlat Code Coverage"` uses the Coverlet data collector and requires the test project to reference `coverlet.collector` (current xUnit test templates include it by default)
 - The `condition: succeededOrFailed()` on the publish task ensures results are published even when tests fail. Without this, a failing test step would skip the publish step, and you would not see which tests failed in the Azure DevOps UI
 
 ## JavaScript/TypeScript Test Configuration
@@ -147,7 +149,7 @@ You need `jest-junit` as a dev dependency.
 npm install --save-dev jest-junit
 ```
 
-And add the reporter configuration to your `jest.config.js` or `package.json`.
+You can keep your test and coverage configuration in `jest.config.js` or `package.json`.
 
 ```javascript
 // jest.config.js - Configure Jest for CI
@@ -256,7 +258,7 @@ For large test suites, running tests sequentially is slow. Most test frameworks 
 For .NET:
 
 ```yaml
-# Run .NET tests in parallel across multiple agents
+# Run .NET tests in parallel on the current agent
 - task: DotNetCoreCLI@2
   displayName: 'Run tests in parallel'
   inputs:
@@ -293,11 +295,11 @@ Sometimes you want to fail the build not just when tests fail, but when coverage
 
 ## Test Impact Analysis
 
-Azure DevOps has a feature called Test Impact Analysis (TIA) that identifies which tests are affected by a code change and runs only those tests. This can dramatically speed up PR validation.
+Azure DevOps has a feature called Test Impact Analysis (TIA) that identifies which tests are affected by a code change and runs only those tests. This can dramatically speed up PR validation for supported Visual Studio Test scenarios.
 
 ```yaml
-# Enable Test Impact Analysis for .NET
-- task: VSTest@2
+# Enable Test Impact Analysis for supported .NET Framework VSTest scenarios
+- task: VSTest@3
   displayName: 'Run impacted tests'
   inputs:
     testSelector: 'testAssemblies'
@@ -306,7 +308,7 @@ Azure DevOps has a feature called Test Impact Analysis (TIA) that identifies whi
     runInParallel: true
 ```
 
-TIA works by instrumenting your test runs to build a map of which tests touch which source files. On subsequent runs, it uses this map to run only the tests that could be affected by the changed files.
+TIA works by instrumenting your test runs to build a map of which tests touch which source files. On subsequent runs, it uses this map to run only the tests that could be affected by the changed files. It is intended for managed .NET Framework tests running on the same machine as the application under test, and is not supported for .NET Core test runs.
 
 ## Viewing Test Analytics
 
