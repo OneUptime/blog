@@ -36,14 +36,11 @@ In ADF Studio:
 The equivalent JSON definition looks like this.
 
 ```json
-// Linked service definition for Azure Blob Storage
 {
   "name": "ls_azure_blob",
-  "type": "Microsoft.DataFactory/factories/linkedservices",
   "properties": {
     "type": "AzureBlobStorage",
     "typeProperties": {
-      // Use account key authentication
       "connectionString": "DefaultEndpointsProtocol=https;AccountName=mystorageacct;AccountKey=<key>;EndpointSuffix=core.windows.net"
     },
     "description": "Connection to the main data lake storage account"
@@ -54,13 +51,21 @@ The equivalent JSON definition looks like this.
 ### Creating a Linked Service for Azure SQL Database
 
 ```json
-// Linked service for Azure SQL Database with SQL authentication
 {
   "name": "ls_azure_sql",
   "properties": {
     "type": "AzureSqlDatabase",
     "typeProperties": {
-      "connectionString": "Server=tcp:myserver.database.windows.net,1433;Database=mydb;User ID=myadmin;Password=<password>;Encrypt=True;TrustServerCertificate=False;"
+      "server": "myserver.database.windows.net",
+      "database": "mydb",
+      "encrypt": "mandatory",
+      "trustServerCertificate": false,
+      "authenticationType": "SQL",
+      "userName": "myadmin",
+      "password": {
+        "type": "SecureString",
+        "value": "<password>"
+      }
     }
   }
 }
@@ -71,21 +76,22 @@ The equivalent JSON definition looks like this.
 Connecting to on-premises data requires a self-hosted integration runtime. The linked service references this runtime.
 
 ```json
-// Linked service for on-premises SQL Server
 {
   "name": "ls_onprem_sql",
   "properties": {
     "type": "SqlServer",
     "typeProperties": {
-      "connectionString": "Server=MYSERVER;Database=mydb;Integrated Security=True;",
-      // Optionally encrypt credentials
-      "userName": "myuser",
+      "server": "MYSERVER",
+      "database": "mydb",
+      "encrypt": "mandatory",
+      "trustServerCertificate": false,
+      "authenticationType": "Windows",
+      "userName": "DOMAIN\\myuser",
       "password": {
         "type": "SecureString",
         "value": "<password>"
       }
     },
-    // Reference to the self-hosted integration runtime
     "connectVia": {
       "referenceName": "SelfHostedIR",
       "type": "IntegrationRuntimeReference"
@@ -110,15 +116,18 @@ Most linked services support multiple authentication methods. Here are the commo
 For production environments, I strongly recommend using Azure Key Vault to store secrets and referencing them in your linked services.
 
 ```json
-// Using Key Vault for the connection password
 {
   "name": "ls_secure_sql",
   "properties": {
     "type": "AzureSqlDatabase",
     "typeProperties": {
-      "connectionString": "Server=tcp:myserver.database.windows.net,1433;Database=mydb;User ID=myadmin;Encrypt=True;",
+      "server": "myserver.database.windows.net",
+      "database": "mydb",
+      "encrypt": "mandatory",
+      "trustServerCertificate": false,
+      "authenticationType": "SQL",
+      "userName": "myadmin",
       "password": {
-        // Reference a secret stored in Azure Key Vault
         "type": "AzureKeyVaultSecret",
         "store": {
           "referenceName": "ls_key_vault",
@@ -131,7 +140,7 @@ For production environments, I strongly recommend using Azure Key Vault to store
 }
 ```
 
-This means you first need a linked service to Azure Key Vault itself (which uses managed identity authentication).
+This means you first need a linked service to Azure Key Vault itself and you need to grant the data factory managed identity access to the vault secrets.
 
 ## Datasets: Defining Your Data
 
@@ -144,7 +153,6 @@ A dataset in ADF represents a named reference to the data you want to work with.
 ### CSV File Dataset
 
 ```json
-// Dataset for a CSV file in Blob Storage
 {
   "name": "ds_csv_orders",
   "properties": {
@@ -156,12 +164,10 @@ A dataset in ADF represents a named reference to the data you want to work with.
     "typeProperties": {
       "location": {
         "type": "AzureBlobStorageLocation",
-        // Path to the file
         "container": "raw-data",
         "folderPath": "orders",
         "fileName": "orders_2026.csv"
       },
-      // CSV format settings
       "columnDelimiter": ",",
       "rowDelimiter": "\n",
       "quoteChar": "\"",
@@ -169,7 +175,6 @@ A dataset in ADF represents a named reference to the data you want to work with.
       "firstRowAsHeader": true,
       "encodingName": "UTF-8"
     },
-    // Optional: define the schema explicitly
     "schema": [
       { "name": "OrderId", "type": "String" },
       { "name": "CustomerId", "type": "String" },
@@ -185,7 +190,6 @@ A dataset in ADF represents a named reference to the data you want to work with.
 Parquet is a popular columnar format for analytics workloads.
 
 ```json
-// Dataset for Parquet files in Azure Data Lake Storage Gen2
 {
   "name": "ds_parquet_sales",
   "properties": {
@@ -209,7 +213,6 @@ Parquet is a popular columnar format for analytics workloads.
 ### SQL Table Dataset
 
 ```json
-// Dataset for a SQL table
 {
   "name": "ds_sql_customers",
   "properties": {
@@ -219,7 +222,6 @@ Parquet is a popular columnar format for analytics workloads.
       "type": "LinkedServiceReference"
     },
     "typeProperties": {
-      // Reference the specific table
       "tableName": "dbo.Customers"
     },
     "schema": [
@@ -237,7 +239,6 @@ Parquet is a popular columnar format for analytics workloads.
 One of the most powerful features of datasets is parameterization. Instead of creating a separate dataset for each file or table, you can create one parameterized dataset that accepts variables at runtime.
 
 ```json
-// Parameterized dataset - one dataset for any CSV file in any folder
 {
   "name": "ds_csv_parameterized",
   "properties": {
@@ -246,7 +247,6 @@ One of the most powerful features of datasets is parameterization. Instead of cr
       "referenceName": "ls_azure_blob",
       "type": "LinkedServiceReference"
     },
-    // Define parameters that can be passed at runtime
     "parameters": {
       "containerName": { "type": "String" },
       "folderPath": { "type": "String" },
@@ -255,7 +255,6 @@ One of the most powerful features of datasets is parameterization. Instead of cr
     "typeProperties": {
       "location": {
         "type": "AzureBlobStorageLocation",
-        // Use parameter expressions
         "container": { "value": "@dataset().containerName", "type": "Expression" },
         "folderPath": { "value": "@dataset().folderPath", "type": "Expression" },
         "fileName": { "value": "@dataset().fileName", "type": "Expression" }
@@ -270,14 +269,32 @@ One of the most powerful features of datasets is parameterization. Instead of cr
 When you use this dataset in a Copy activity, you pass the parameter values.
 
 ```json
-// Using the parameterized dataset in a pipeline activity
 {
-  "source": {
-    "type": "DelimitedTextSource",
-    "datasetParameters": {
-      "containerName": "raw-data",
-      "folderPath": "orders/2026/02",
-      "fileName": "daily_orders.csv"
+  "name": "CopyOrders",
+  "type": "Copy",
+  "inputs": [
+    {
+      "referenceName": "ds_csv_parameterized",
+      "type": "DatasetReference",
+      "parameters": {
+        "containerName": "raw-data",
+        "folderPath": "orders/2026/02",
+        "fileName": "daily_orders.csv"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "referenceName": "ds_sql_customers",
+      "type": "DatasetReference"
+    }
+  ],
+  "typeProperties": {
+    "source": {
+      "type": "DelimitedTextSource"
+    },
+    "sink": {
+      "type": "AzureSqlSink"
     }
   }
 }
