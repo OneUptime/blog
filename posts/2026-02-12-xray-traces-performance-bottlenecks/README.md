@@ -68,13 +68,13 @@ If you've added custom annotations (and you should), you can filter on them:
 aws xray get-trace-summaries \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
-  --filter-expression 'annotation.customerId = "cust-12345" AND responsetime > 2'
+  --filter-expression 'annotation[customerId] = "cust-12345" AND responsetime > 2'
 
 # Find all failed payment traces
 aws xray get-trace-summaries \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
-  --filter-expression 'annotation.paymentStatus = "failed"'
+  --filter-expression 'annotation[paymentStatus] = "failed"'
 ```
 
 ### Combining Filters
@@ -205,18 +205,19 @@ def analyze_latency(service_name, hours=1):
     end_time = datetime.utcnow()
     start_time = end_time - timedelta(hours=hours)
 
-    # Get trace summaries for the service
-    response = xray.get_trace_summaries(
+    latencies = []
+    paginator = xray.get_paginator('get_trace_summaries')
+
+    # Get all available trace summaries for the service in this time window
+    for page in paginator.paginate(
         StartTime=start_time,
         EndTime=end_time,
         FilterExpression=f'service("{service_name}")',
-        Sampling=False  # Get all traces, not just sampled
-    )
-
-    latencies = []
-    for trace in response.get('TraceSummaries', []):
-        duration = trace.get('Duration', 0)
-        latencies.append(duration)
+        Sampling=False
+    ):
+        for trace in page.get('TraceSummaries', []):
+            duration = trace.get('ResponseTime', trace.get('Duration', 0))
+            latencies.append(duration)
 
     if not latencies:
         print(f'No traces found for {service_name}')
@@ -263,28 +264,34 @@ def find_slow_subsegments(service_name, min_duration_ms=500):
     start_time = end_time - timedelta(hours=1)
 
     # Get slow trace IDs
-    summaries = xray.get_trace_summaries(
+    trace_ids = []
+    paginator = xray.get_paginator('get_trace_summaries')
+    pages = paginator.paginate(
         StartTime=start_time,
         EndTime=end_time,
         FilterExpression=f'service("{service_name}") AND responsetime > {min_duration_ms/1000}'
     )
-
-    trace_ids = [t['Id'] for t in summaries.get('TraceSummaries', [])[:50]]
+    for page in pages:
+        trace_ids.extend(t['Id'] for t in page.get('TraceSummaries', []))
+        if len(trace_ids) >= 50:
+            trace_ids = trace_ids[:50]
+            break
 
     if not trace_ids:
         print('No slow traces found')
         return
 
-    # Get full trace details
-    traces = xray.batch_get_traces(TraceIds=trace_ids)
-
     subsegment_times = defaultdict(list)
 
-    for trace in traces.get('Traces', []):
-        for segment in trace.get('Segments', []):
-            import json
-            doc = json.loads(segment['Document'])
-            process_subsegments(doc.get('subsegments', []), subsegment_times)
+    # BatchGetTraces accepts up to 5 trace IDs per request
+    for i in range(0, len(trace_ids), 5):
+        traces = xray.batch_get_traces(TraceIds=trace_ids[i:i + 5])
+
+        for trace in traces.get('Traces', []):
+            for segment in trace.get('Segments', []):
+                import json
+                doc = json.loads(segment['Document'])
+                process_subsegments(doc.get('subsegments', []), subsegment_times)
 
     # Print the slowest subsegments by average duration
     print(f'Slowest subsegments in {service_name}:')
@@ -318,15 +325,19 @@ find_slow_subsegments('order-service', min_duration_ms=1000)
 Once you know your baseline, set up alarms for when latency degrades:
 
 ```bash
-# Alarm on P99 latency using X-Ray metrics
+# Create a group for slow traces, then alarm when too many match it
+aws xray create-group \
+  --group-name "order-service-slow-traces" \
+  --filter-expression 'service("order-service") AND responsetime > 3'
+
 aws cloudwatch put-metric-alarm \
-  --alarm-name "OrderService-P99-Latency" \
-  --namespace "AWS/X-Ray" \
-  --metric-name "ResponseTime" \
-  --dimensions Name=ServiceName,Value=order-service \
-  --extended-statistic p99 \
+  --alarm-name "OrderService-Slow-Traces" \
+  --namespace "AWS/XRay" \
+  --metric-name "ApproximateTraceCount" \
+  --dimensions Name=GroupName,Value=order-service-slow-traces \
+  --statistic Sum \
   --period 300 \
-  --threshold 3 \
+  --threshold 10 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:perf-alerts
