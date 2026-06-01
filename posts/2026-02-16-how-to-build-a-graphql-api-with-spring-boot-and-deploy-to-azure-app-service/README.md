@@ -10,7 +10,7 @@ Description: Learn how to build a GraphQL API with Spring Boot using Spring for 
 
 GraphQL gives clients the power to request exactly the data they need, nothing more and nothing less. Instead of hitting multiple REST endpoints and stitching data together on the client side, a single GraphQL query returns a precisely shaped response. Spring for GraphQL integrates this capability directly into the Spring Boot ecosystem, using annotations and a schema-first approach that feels natural to Spring developers.
 
-In this post, we will build a GraphQL API with Spring Boot, implement queries, mutations, and subscriptions, and then deploy the whole thing to Azure App Service.
+In this post, we will build a GraphQL API with Spring Boot, implement queries and mutations, and then deploy the whole thing to Azure App Service.
 
 ## Why GraphQL Over REST?
 
@@ -27,7 +27,7 @@ Create a Spring Boot project with GraphQL support.
 <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.2.0</version>
+    <version>3.5.14</version>
 </parent>
 
 <dependencies>
@@ -53,6 +53,12 @@ Create a Spring Boot project with GraphQL support.
     <dependency>
         <groupId>com.h2database</groupId>
         <artifactId>h2</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+        <groupId>com.mysql</groupId>
+        <artifactId>mysql-connector-j</artifactId>
         <scope>runtime</scope>
     </dependency>
 
@@ -243,6 +249,35 @@ public class Review {
 }
 ```
 
+Define Spring Data repositories for the query and mutation methods used by the controller.
+
+```java
+// ProductRepository.java
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    List<Product> findByCategory(String category);
+    List<Product> findByCategoryAndPriceBetween(String category, Double minPrice, Double maxPrice);
+    List<Product> findByPriceBetween(Double minPrice, Double maxPrice);
+    List<Product> findByPriceGreaterThanEqual(Double minPrice);
+    List<Product> findByPriceLessThanEqual(Double maxPrice);
+    List<Product> findByNameContainingIgnoreCase(String keyword);
+}
+```
+
+```java
+// ReviewRepository.java
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface ReviewRepository extends JpaRepository<Review, Long> {
+    List<Review> findByProductId(Long productId);
+}
+```
+
 ## Implementing the GraphQL Controllers
 
 Spring for GraphQL uses `@Controller` classes with `@QueryMapping` and `@MutationMapping` annotations.
@@ -284,6 +319,15 @@ public class ProductController {
         }
         if (category != null) {
             return productRepository.findByCategory(category);
+        }
+        if (minPrice != null && maxPrice != null) {
+            return productRepository.findByPriceBetween(minPrice, maxPrice);
+        }
+        if (minPrice != null) {
+            return productRepository.findByPriceGreaterThanEqual(minPrice);
+        }
+        if (maxPrice != null) {
+            return productRepository.findByPriceLessThanEqual(maxPrice);
         }
         return productRepository.findAll();
     }
@@ -362,7 +406,8 @@ spring:
     schema:
       locations: classpath:graphql/
     # Enable the GraphQL endpoint
-    path: /graphql
+    http:
+      path: /graphql
 
   h2:
     console:
@@ -370,7 +415,6 @@ spring:
 
   datasource:
     url: jdbc:h2:mem:graphqldb
-    driver-class-name: org.h2.Driver
 
   jpa:
     hibernate:
@@ -428,39 +472,43 @@ query {
 Package the application and deploy using the Azure Maven plugin.
 
 ```xml
-<!-- Add to pom.xml -->
-<plugin>
-    <groupId>com.microsoft.azure</groupId>
-    <artifactId>azure-webapp-maven-plugin</artifactId>
-    <version>2.12.0</version>
-    <configuration>
-        <resourceGroup>graphql-demo-rg</resourceGroup>
-        <appName>my-graphql-api</appName>
-        <region>eastus</region>
-        <pricingTier>B1</pricingTier>
-        <runtime>
-            <os>Linux</os>
-            <javaVersion>Java 17</javaVersion>
-            <webContainer>Java SE</webContainer>
-        </runtime>
-        <appSettings>
-            <property>
-                <name>SPRING_PROFILES_ACTIVE</name>
-                <value>azure</value>
-            </property>
-        </appSettings>
-        <deployment>
-            <resources>
-                <resource>
-                    <directory>${project.basedir}/target</directory>
-                    <includes>
-                        <include>*.jar</include>
-                    </includes>
-                </resource>
-            </resources>
-        </deployment>
-    </configuration>
-</plugin>
+<!-- Add inside pom.xml -> build -> plugins -->
+<build>
+    <plugins>
+        <plugin>
+            <groupId>com.microsoft.azure</groupId>
+            <artifactId>azure-webapp-maven-plugin</artifactId>
+            <version>2.14.1</version>
+            <configuration>
+                <resourceGroup>graphql-demo-rg</resourceGroup>
+                <appName>my-graphql-api</appName>
+                <region>eastus</region>
+                <pricingTier>B1</pricingTier>
+                <runtime>
+                    <os>Linux</os>
+                    <javaVersion>Java 17</javaVersion>
+                    <webContainer>Java SE</webContainer>
+                </runtime>
+                <appSettings>
+                    <property>
+                        <name>SPRING_PROFILES_ACTIVE</name>
+                        <value>azure</value>
+                    </property>
+                </appSettings>
+                <deployment>
+                    <resources>
+                        <resource>
+                            <directory>${project.basedir}/target</directory>
+                            <includes>
+                                <include>*.jar</include>
+                            </includes>
+                        </resource>
+                    </resources>
+                </deployment>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
 ```
 
 Deploy with a single command.
