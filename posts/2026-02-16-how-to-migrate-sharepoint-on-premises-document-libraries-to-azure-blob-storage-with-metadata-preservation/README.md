@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: SharePoint, Azure Blob Storage, Migration, Metadata, On-Premise, Cloud Migration, PowerShell
 
-Description: Migrate SharePoint on-premises document libraries to Azure Blob Storage while preserving metadata, permissions, and folder structure.
+Description: Migrate SharePoint on-premises document libraries to Azure Blob Storage while preserving metadata and folder structure.
 
 ---
 
 Moving document libraries from SharePoint on-premises to Azure Blob Storage is a common step in cloud migration projects. Maybe you are decommissioning your SharePoint farm, or you need cheaper storage for archived documents, or you want to build new applications that access the documents through Azure services. Whatever the reason, the migration is not just about copying files - you need to preserve the metadata, timestamps, and folder hierarchy that give those documents context.
 
-In this guide, I will walk through the complete migration process, from connecting to your on-premises SharePoint farm to uploading documents to Azure Blob Storage with all their metadata intact.
+In this guide, I will walk through the migration process, from connecting to your on-premises SharePoint farm to uploading documents to Azure Blob Storage with their metadata intact.
 
 ## Migration Architecture
 
@@ -33,7 +33,9 @@ First, set up the connections to both SharePoint and Azure:
 ```powershell
 # Install required modules
 
-Install-Module -Name PnP.PowerShell -Force
+# For SharePoint Server 2019 on-premises, use the legacy Windows PowerShell module.
+# Use SharePointPnPPowerShell2016 or SharePointPnPPowerShell2013 for older farms.
+Install-Module -Name SharePointPnPPowerShell2019 -Force
 Install-Module -Name Az.Storage -Force
 Install-Module -Name Az.CosmosDB -Force
 
@@ -64,7 +66,8 @@ function Get-LibraryInventory {
         [string]$LibraryName
     )
 
-    $items = Get-PnPListItem -List $LibraryName -PageSize 500
+    $items = Get-PnPListItem -List $LibraryName -PageSize 500 |
+        Where-Object { $_.FileSystemObjectType -ne "Folder" }
 
     $inventory = @()
 
@@ -107,7 +110,7 @@ $inventory | Export-Csv -Path "migration-inventory.csv" -NoTypeInformation
 
 ## Building the Migration Script
 
-The main migration script processes documents in batches, preserving metadata as blob metadata and tags:
+The main migration script processes documents in batches, preserving metadata as blob metadata:
 
 ```powershell
 # Main migration function that moves documents from SharePoint to Azure Blob Storage
@@ -126,6 +129,11 @@ function Migrate-DocumentLibrary {
         New-AzStorageContainer -Name $ContainerName -Context $StorageContext -Permission Off
         Write-Host "Created container: $ContainerName"
     }
+
+    # Get the library root URL so the blob name preserves folders below the library
+    $list = Get-PnPList -Identity $LibraryName
+    $rootFolder = Get-PnPProperty -ClientObject $list -Property RootFolder
+    $libraryRootUrl = $rootFolder.ServerRelativeUrl.TrimEnd("/")
 
     # Get all items from the library
     $items = Get-PnPListItem -List $LibraryName -PageSize $BatchSize
@@ -146,7 +154,7 @@ function Migrate-DocumentLibrary {
 
         try {
             # Build the blob path preserving the folder structure
-            $relativePath = $fileRef -replace "^/sites/[^/]+/$LibraryName/", ""
+            $relativePath = $fileRef -replace ("^" + [regex]::Escape($libraryRootUrl) + "/"), ""
             $blobName = $relativePath
 
             # Download the file from SharePoint
@@ -227,7 +235,7 @@ function Migrate-DocumentLibrary {
 
 ## Storing Rich Metadata in Cosmos DB
 
-Azure Blob metadata has limitations - keys must be valid C# identifiers and values are limited to a certain size. For rich metadata, store a companion document in Cosmos DB:
+Azure Blob metadata has limitations - keys must be valid C# identifiers and the total metadata size is limited to 8 KiB. For rich metadata, store a companion document in Cosmos DB:
 
 ```csharp
 // Service that stores detailed document metadata in Cosmos DB
@@ -250,7 +258,7 @@ public class MetadataService
 
 public class DocumentMetadata
 {
-    public string Id { get; set; } // Blob name as the ID
+    public string id { get; set; } // Blob name as the Cosmos DB item ID
     public string LibraryName { get; set; }
     public string OriginalPath { get; set; }
     public string BlobUrl { get; set; }
@@ -275,6 +283,12 @@ public class DocumentMetadata
     public DateTime MigratedAt { get; set; }
     public string MigrationBatch { get; set; }
 }
+
+public class PermissionEntry
+{
+    public string Principal { get; set; }
+    public string Role { get; set; }
+}
 ```
 
 ## Preserving Version History
@@ -290,17 +304,31 @@ function Migrate-DocumentVersions {
         [object]$StorageContext
     )
 
-    # Get all versions of the file
-    $file = Get-PnPFile -Url $FileUrl -AsFileObject
-    $versions = Get-PnPFileVersion -Url $FileUrl
+    # Get all previous versions of the file through CSOM
+    $ctx = Get-PnPContext
+    $file = $ctx.Web.GetFileByServerRelativeUrl($FileUrl)
+    $ctx.Load($file)
+    $ctx.Load($file.Versions)
+    $ctx.ExecuteQuery()
+
+    $versions = $file.Versions
 
     foreach ($version in $versions) {
         $versionBlobName = "$FileUrl.v$($version.VersionLabel)"
 
         # Download the specific version
         $tempFile = [System.IO.Path]::GetTempFileName()
-        Get-PnPFile -Url $version.Url -Path ([System.IO.Path]::GetDirectoryName($tempFile)) `
-            -FileName ([System.IO.Path]::GetFileName($tempFile)) -AsFile -Force
+        $streamResult = $version.OpenBinaryStream()
+        $ctx.ExecuteQuery()
+
+        $fileStream = [System.IO.File]::Open($tempFile, [System.IO.FileMode]::Create)
+        try {
+            $streamResult.Value.CopyTo($fileStream)
+        }
+        finally {
+            $fileStream.Dispose()
+            $streamResult.Value.Dispose()
+        }
 
         $versionMetadata = @{
             "sp_version"    = $version.VersionLabel
@@ -336,6 +364,10 @@ function Test-Migration {
         [object]$StorageContext
     )
 
+    $list = Get-PnPList -Identity $LibraryName
+    $rootFolder = Get-PnPProperty -ClientObject $list -Property RootFolder
+    $libraryRootUrl = $rootFolder.ServerRelativeUrl.TrimEnd("/")
+
     $sourceItems = Get-PnPListItem -List $LibraryName -PageSize 500 |
         Where-Object { $_.FileSystemObjectType -ne "Folder" }
 
@@ -355,7 +387,7 @@ function Test-Migration {
     $mismatches = @()
     foreach ($item in $sourceItems) {
         $expectedSize = [long]$item.FieldValues["File_x0020_Size"]
-        $blobName = $item.FieldValues["FileRef"] -replace "^/sites/[^/]+/$LibraryName/", ""
+        $blobName = $item.FieldValues["FileRef"] -replace ("^" + [regex]::Escape($libraryRootUrl) + "/"), ""
 
         $blob = $blobs | Where-Object { $_.Name -eq $blobName }
 
