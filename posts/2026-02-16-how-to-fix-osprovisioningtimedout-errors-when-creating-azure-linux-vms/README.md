@@ -35,7 +35,7 @@ If step 5 does not happen within the timeout period (approximately 20 minutes fo
 
 ## Cause 1: Cloud-Init Taking Too Long
 
-Modern Azure Linux images use cloud-init for provisioning. If cloud-init is performing complex operations (package installations, large file downloads, custom scripts), it can exceed the provisioning timeout.
+Modern Azure Linux images use cloud-init for provisioning. If cloud-init custom data fails, hangs, or delays the core first-boot provisioning path, the VM can stay in the creating state long enough to hit OSProvisioningTimedOut. Azure's cloud-init documentation also notes that cloud-init configurations applied after the VM is provisioned do not have the same 40-minute deployment timeout as Azure Linux Agent custom-data execution, so focus first on anything that blocks the provisioning stages themselves.
 
 Check the cloud-init logs to see what is happening.
 
@@ -57,7 +57,7 @@ Common cloud-init slowdowns:
 - Custom scripts that download files from slow sources
 - Waiting for network configuration that is not completing
 
-Fix: Move heavy operations out of cloud-init and into a separate script that runs after provisioning. Use the Azure Custom Script Extension instead of cloud-init for operations that may take a long time.
+Fix: Keep the provisioning-critical cloud-init path lightweight, and move heavy operations into a separate step that runs after provisioning. Use the Azure Custom Script Extension or another post-provisioning workflow for operations that may take a long time.
 
 ```yaml
 # Minimal cloud-init that provisions quickly
@@ -77,26 +77,23 @@ runcmd:
 
 ## Cause 2: Network Connectivity Issues
 
-The provisioning agent needs outbound connectivity to communicate with the Azure platform. Specifically, it needs to reach the Azure wireserver at 168.63.129.16 on port 80 and the Azure Instance Metadata Service (IMDS) at 169.254.169.254.
+The provisioning agent needs connectivity to Azure platform endpoints. Specifically, the VM agent needs to reach the Azure wireserver at 168.63.129.16 on ports 80 and 32526, and cloud-init needs to reach the Azure Instance Metadata Service (IMDS) at 169.254.169.254.
 
-If NSG rules, route tables, or firewall configurations block this traffic, provisioning fails.
+Azure documents that 168.63.129.16 is not subject to user-defined routes, and VM agent traffic to ports 80 and 32526 is not subject to configured network security groups. IMDS is a non-routable link-local endpoint that is only reachable from inside the VM. Local OS firewall rules, proxy settings, broken DHCP, or incorrect primary NIC/IP configuration can still prevent the guest from reaching these endpoints.
 
 ```bash
-# Check NSG rules on the VM's network interface or subnet
-# Make sure outbound to 168.63.129.16 is allowed
-az network nsg rule list \
-  --resource-group myResourceGroup \
-  --nsg-name myNSG \
-  -o table
+# Test Azure wireserver connectivity from inside the VM
+curl -s http://168.63.129.16/?comp=versions
 
-# Verify UDR does not redirect wireserver traffic
-az network route-table route list \
-  --resource-group myResourceGroup \
-  --route-table-name myRouteTable \
-  -o table
+# Test IMDS from inside the VM; bypass proxies
+curl -s -H Metadata:true --noproxy "*" \
+  "http://169.254.169.254/metadata/instance?api-version=2025-04-07"
+
+# Confirm the VM has a route to the link-local IMDS endpoint
+ip route get 169.254.169.254
 ```
 
-If you are using Azure Firewall or an NVA, make sure there is a route or exception for 168.63.129.16 that goes directly to the VM's default gateway, not through the firewall.
+If you are using host firewalls, transparent proxies, VPN clients, or hardening scripts inside the guest OS, make sure they do not block or proxy requests to these platform endpoints.
 
 ## Cause 3: Waagent or Cloud-Init Not Installed
 
