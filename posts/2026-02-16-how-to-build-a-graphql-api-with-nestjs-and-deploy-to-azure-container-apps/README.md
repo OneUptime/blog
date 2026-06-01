@@ -25,15 +25,32 @@ npx @nestjs/cli new graphql-api
 cd graphql-api
 
 # Install GraphQL dependencies
-npm install @nestjs/graphql @nestjs/apollo @apollo/server graphql
+npm install @nestjs/graphql @nestjs/apollo @apollo/server @as-integrations/express5 graphql
 
 # Install additional utilities
-npm install class-validator class-transformer
+npm install class-validator class-transformer uuid
 ```
 
 ## Define the GraphQL Module
 
-First, configure the GraphQL module in the root app module.
+First, enable validation in the application bootstrap file so the `class-validator` decorators on your input types run for incoming GraphQL arguments.
+
+```typescript
+// src/main.ts
+// Bootstrap file that enables request validation
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  app.useGlobalPipes(new ValidationPipe());
+  await app.listen(process.env.PORT ?? 3000);
+}
+bootstrap();
+```
+
+Then configure the GraphQL module in the root app module.
 
 ```typescript
 // src/app.module.ts
@@ -48,7 +65,7 @@ import { RecipeModule } from './recipe/recipe.module';
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: true, // Auto-generate schema from code
-      playground: true,     // Enable GraphQL Playground
+      graphiql: true,       // Enable GraphiQL
       introspection: true,  // Allow schema introspection
       sortSchema: true,     // Sort the generated schema alphabetically
     }),
@@ -152,7 +169,7 @@ export class UpdateRecipeInput {
 
 ## Add Pagination
 
-Implement cursor-based pagination for the recipes list.
+Implement offset-based pagination for the recipes list.
 
 ```typescript
 // src/recipe/dto/pagination.args.ts
@@ -320,6 +337,18 @@ CMD ["node", "dist/main"]
 ## Deploy to Azure Container Apps
 
 ```bash
+# Create a resource group
+az group create \
+  --name recipe-rg \
+  --location eastus
+
+# Create an Azure Container Registry
+az acr create \
+  --name myrecipeacr \
+  --resource-group recipe-rg \
+  --sku Basic \
+  --admin-enabled true
+
 # Create a Container Apps environment
 az containerapp env create \
   --name recipe-env \
@@ -335,6 +364,9 @@ az containerapp create \
   --resource-group recipe-rg \
   --environment recipe-env \
   --image myrecipeacr.azurecr.io/recipe-graphql:v1 \
+  --registry-server myrecipeacr.azurecr.io \
+  --registry-username myrecipeacr \
+  --registry-password $(az acr credential show --name myrecipeacr --query "passwords[0].value" --output tsv) \
   --target-port 3000 \
   --ingress external \
   --min-replicas 1 \
@@ -353,7 +385,7 @@ az containerapp update \
 
 ## Testing the Deployed API
 
-Once deployed, you can access the GraphQL playground at the Container App's URL.
+Once deployed, you can access GraphiQL at the Container App's `/graphql` URL.
 
 ```graphql
 mutation {
