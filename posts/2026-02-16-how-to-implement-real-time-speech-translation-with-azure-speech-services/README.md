@@ -82,7 +82,7 @@ def create_translator():
         audio_config=audio_config
     )
 
-    print("Speak into your microphone. Say 'stop' to end.")
+    print("Speak one sentence into your microphone.")
     print("-" * 50)
 
     # Perform a single recognition (waits for one complete utterance)
@@ -227,7 +227,7 @@ To produce audio output in the translated language, configure voice synthesis on
 import azure.cognitiveservices.speech as speechsdk
 
 def translate_with_audio():
-    """Translate speech and play the translation as audio."""
+    """Translate speech and receive the synthesized translation audio."""
 
     config = speechsdk.translation.SpeechTranslationConfig(
         subscription="your-speech-key",
@@ -265,7 +265,7 @@ def translate_with_audio():
 
     recognizer.recognized.connect(on_recognized)
 
-    print("Speak in English. You will hear the Spanish translation.")
+    print("Speak in English. The SDK will return synthesized Spanish audio bytes.")
     recognizer.start_continuous_recognition()
 
     import time
@@ -286,6 +286,7 @@ For processing recorded audio (like meeting recordings), use a file-based audio 
 ```python
 # file_translator.py - Translate speech from an audio file
 import azure.cognitiveservices.speech as speechsdk
+import threading
 
 def translate_audio_file(file_path: str):
     """Translate speech from a WAV audio file."""
@@ -351,7 +352,7 @@ Azure Speech Translation supports over 70 languages for text translation and 40+
 | German | de | Yes |
 | Japanese | ja | Yes |
 | Chinese (Mandarin) | zh-Hans | Yes |
-| Portuguese (Brazil) | pt-BR | Yes |
+| Portuguese (Brazil) | pt | Yes |
 | Arabic | ar | Yes |
 | Hindi | hi | Yes |
 | Korean | ko | Yes |
@@ -360,7 +361,7 @@ Azure Speech Translation supports over 70 languages for text translation and 40+
 
 For production deployments, keep these points in mind:
 
-- **Latency**: The translation adds roughly 200-500ms on top of the speech recognition latency. For live conversations, this is generally acceptable.
+- **Latency**: Translation and optional synthesis add latency on top of speech recognition. Actual latency depends on audio quality, network conditions, region, and whether you synthesize translated speech.
 - **Audio quality**: Better audio input means better recognition. Use a quality microphone and minimize background noise.
 - **Connection stability**: Use continuous recognition with reconnection logic for long sessions. Network interruptions can break the WebSocket connection to the service.
 - **Concurrency**: Each translation session holds a WebSocket connection. Plan your capacity based on the number of concurrent sessions you expect.
