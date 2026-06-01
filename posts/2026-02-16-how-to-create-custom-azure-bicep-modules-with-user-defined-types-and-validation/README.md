@@ -33,27 +33,21 @@ modules/
 
 ## Defining User-Defined Types
 
-Start by defining the types your module needs. Bicep lets you define types directly in your module file or import them from another file.
+Start by defining the types your module needs. Bicep lets you define types directly in your module file or import exported types from another file.
 
 ```bicep
 // types.bicep - User-defined types for the App Service module
 
 // SKU configuration with allowed values
+@description('Allowed App Service Plan SKU names')
+@export()
+type skuName = 'B1' | 'B2' | 'B3' | 'S1' | 'S2' | 'S3' | 'P1v3' | 'P2v3' | 'P3v3'
+
 @description('App Service Plan SKU configuration')
+@export()
 type skuConfig = {
   @description('SKU name like B1, S1, P1v3')
-  @allowed([
-    'B1'
-    'B2'
-    'B3'
-    'S1'
-    'S2'
-    'S3'
-    'P1v3'
-    'P2v3'
-    'P3v3'
-  ])
-  name: string
+  name: skuName
 
   @description('Number of instances')
   @minValue(1)
@@ -62,19 +56,19 @@ type skuConfig = {
 }
 
 // Custom domain configuration
+@description('Allowed SSL binding states')
+@export()
+type sslBindingState = 'SniEnabled' | 'IpBasedEnabled' | 'Disabled'
+
 @description('Custom domain with optional SSL binding')
+@export()
 type customDomain = {
   @description('The fully qualified domain name')
   @minLength(3)
   hostname: string
 
   @description('Type of SSL binding')
-  @allowed([
-    'SniEnabled'
-    'IpBasedEnabled'
-    'Disabled'
-  ])
-  sslState: string
+  sslState: sslBindingState
 
   @description('Thumbprint of the SSL certificate - required if sslState is not Disabled')
   thumbprint: string?
@@ -82,6 +76,7 @@ type customDomain = {
 
 // Diagnostic settings configuration
 @description('Configuration for diagnostic log forwarding')
+@export()
 type diagnosticConfig = {
   @description('Whether to enable diagnostic settings')
   enabled: bool
@@ -99,6 +94,7 @@ type diagnosticConfig = {
 }
 
 // Individual log category toggle
+@export()
 type logCategory = {
   @description('Name of the log category')
   category: string
@@ -108,6 +104,7 @@ type logCategory = {
 }
 
 // Application settings as key-value pairs
+@export()
 type appSetting = {
   @description('Setting name')
   @minLength(1)
@@ -118,7 +115,7 @@ type appSetting = {
 }
 ```
 
-A few things to notice here. The `?` suffix makes a property optional. The `@allowed` decorator restricts values to a specific set. The `@minValue` and `@maxValue` decorators enforce numeric ranges. These validations run at compile time and during the preflight validation before deployment even starts.
+A few things to notice here. The `?` suffix makes a property optional. String literal union types restrict values to a specific set, and `@allowed` can do the same thing on parameters. The `@minValue` and `@maxValue` decorators enforce numeric ranges. These validations run at compile time and during the preflight validation before deployment even starts.
 
 ## Building the Module
 
@@ -144,7 +141,7 @@ param sku skuConfig
 
 @description('Runtime stack for the web app')
 @allowed([
-  'DOTNET|8.0'
+  'DOTNETCORE|8.0'
   'NODE|20-lts'
   'PYTHON|3.12'
   'JAVA|17-java17'
@@ -168,6 +165,33 @@ param tags object = {}
 
 // Parse runtime stack into components
 var linuxFxVersion = runtimeStack
+var customDiagnosticLogs = [for cat in diagnostics.logCategories ?? []: {
+  category: cat.category
+  enabled: cat.enabled
+  retentionPolicy: {
+    enabled: diagnostics.retentionDays != null
+    days: diagnostics.retentionDays ?? 30
+  }
+}]
+var defaultDiagnosticLogs = [
+  {
+    category: 'AppServiceHTTPLogs'
+    enabled: true
+    retentionPolicy: {
+      enabled: true
+      days: diagnostics.retentionDays ?? 30
+    }
+  }
+  {
+    category: 'AppServiceAppLogs'
+    enabled: true
+    retentionPolicy: {
+      enabled: true
+      days: diagnostics.retentionDays ?? 30
+    }
+  }
+]
+var diagnosticLogs = diagnostics.logCategories != null ? customDiagnosticLogs : defaultDiagnosticLogs
 
 // Create the App Service Plan
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
@@ -223,31 +247,7 @@ resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
   scope: webApp
   properties: {
     workspaceId: diagnostics.workspaceId!
-    logs: diagnostics.logCategories != null ? [for cat in diagnostics.logCategories!: {
-      category: cat.category
-      enabled: cat.enabled
-      retentionPolicy: {
-        enabled: diagnostics.retentionDays != null
-        days: diagnostics.retentionDays ?? 30
-      }
-    }] : [
-      {
-        category: 'AppServiceHTTPLogs'
-        enabled: true
-        retentionPolicy: {
-          enabled: true
-          days: diagnostics.retentionDays ?? 30
-        }
-      }
-      {
-        category: 'AppServiceAppLogs'
-        enabled: true
-        retentionPolicy: {
-          enabled: true
-          days: diagnostics.retentionDays ?? 30
-        }
-      }
-    ]
+    logs: diagnosticLogs
   }
 }
 
@@ -268,6 +268,9 @@ Here is what it looks like to call this module. Notice how the type system guide
 
 ```bicep
 // deploy.bicep - Consume the App Service module with type-safe parameters
+
+@description('Resource ID of the Log Analytics workspace')
+param logAnalyticsWorkspaceId string
 
 module webApp 'modules/app-service/main.bicep' = {
   name: 'deploy-webapp'
@@ -300,7 +303,7 @@ module webApp 'modules/app-service/main.bicep' = {
     // Enable diagnostics with specific log categories
     diagnostics: {
       enabled: true
-      workspaceId: logAnalytics.outputs.workspaceId
+      workspaceId: logAnalyticsWorkspaceId
       retentionDays: 90
       logCategories: [
         { category: 'AppServiceHTTPLogs', enabled: true }
@@ -330,6 +333,7 @@ Bicep also supports discriminated unions, which let you define types that change
 
 ```bicep
 // Discriminated union for different authentication types
+@discriminator('type')
 type authConfig = passwordAuth | certAuth | managedIdentityAuth
 
 type passwordAuth = {
