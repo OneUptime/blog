@@ -8,11 +8,11 @@ Description: Configure AWS Chatbot to send CloudWatch alarms, deployment notific
 
 ---
 
-Getting AWS notifications in Slack or Microsoft Teams is one of those small things that makes a huge difference for operations teams. Instead of checking email or logging into the AWS console, your team sees alerts where they're already working. AWS Chatbot bridges the gap between SNS topics and your chat channels.
+Getting AWS notifications in Slack or Microsoft Teams is one of those small things that makes a huge difference for operations teams. Instead of checking email or logging into the AWS console, your team sees alerts where they're already working. AWS Chatbot, now Amazon Q Developer in chat applications, bridges the gap between SNS topics and your chat channels.
 
 ## What AWS Chatbot Does
 
-AWS Chatbot isn't an AI chatbot. It's an integration service that:
+For notifications, AWS Chatbot isn't a general-purpose AI chatbot. It's an integration service that:
 
 1. Takes notifications from SNS topics
 2. Formats them into readable chat messages
@@ -25,7 +25,7 @@ It supports notifications from CloudWatch Alarms, AWS Health events, CloudFormat
 
 ### Step 1: Configure the Slack Workspace
 
-Go to the AWS Chatbot console and click "Configure new client." Choose Slack.
+Go to the Amazon Q Developer in chat applications console and click "Configure" under Slack.
 
 This opens a Slack authorization page. You need to be a Slack workspace admin to approve the connection. Once approved, AWS Chatbot has permission to post to your workspace.
 
@@ -36,15 +36,15 @@ This opens a Slack authorization page. You need to be a Slack workspace admin to
 
 aws chatbot create-slack-channel-configuration \
   --configuration-name "ops-alerts" \
-  --slack-workspace-id "T01XXXXXXXX" \
+  --slack-team-id "T01XXXXXXXX" \
   --slack-channel-id "C01XXXXXXXX" \
-  --sns-topic-arns "arn:aws:sns:us-east-1:123456789:ops-alerts" \
-  --iam-role-arn "arn:aws:iam::123456789:role/AWSChatbotRole" \
+  --sns-topic-arns "arn:aws:sns:us-east-1:123456789012:ops-alerts" \
+  --iam-role-arn "arn:aws:iam::123456789012:role/AWSChatbotRole" \
   --logging-level "INFO"
 ```
 
 You'll need:
-- **Slack Workspace ID** - found in Slack under workspace settings
+- **Slack Team ID** - the workspace ID authorized with AWS Chatbot
 - **Slack Channel ID** - right-click on the channel in Slack and copy the link to find it
 - **SNS Topic ARN** - the topic that will feed notifications to this channel
 - **IAM Role** - the role Chatbot assumes to read notifications
@@ -74,12 +74,7 @@ aws iam create-role \
   --role-name AWSChatbotRole \
   --assume-role-policy-document file://chatbot-trust-policy.json
 
-# Attach the AWS managed policy for Chatbot
-aws iam attach-role-policy \
-  --role-name AWSChatbotRole \
-  --policy-arn arn:aws:iam::aws:policy/AWSResourceExplorerReadOnlyAccess
-
-# Add CloudWatch read access so Chatbot can show alarm details
+# Attach CloudWatch read access so Chatbot can show alarm details
 aws iam attach-role-policy \
   --role-name AWSChatbotRole \
   --policy-arn arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
@@ -91,10 +86,10 @@ The Teams setup is similar but requires a few different steps.
 
 ### Step 1: Configure the Teams Client
 
-In the AWS Chatbot console, choose Microsoft Teams. You'll need to:
+In the Amazon Q Developer in chat applications console, choose Microsoft Teams. You'll need to:
 1. Sign in with a Teams admin account
-2. Approve the AWS Chatbot app in your Teams tenant
-3. Add the AWS Chatbot app to the Teams channel where you want notifications
+2. Approve the Amazon Q Developer app in your Teams tenant
+3. Add the Amazon Q Developer app to the Teams channel where you want notifications
 
 ### Step 2: Create the Channel Configuration
 
@@ -104,8 +99,8 @@ aws chatbot create-microsoft-teams-channel-configuration \
   --team-id "YOUR_TEAM_ID" \
   --tenant-id "YOUR_TENANT_ID" \
   --channel-id "YOUR_CHANNEL_ID" \
-  --sns-topic-arns "arn:aws:sns:us-east-1:123456789:ops-alerts" \
-  --iam-role-arn "arn:aws:iam::123456789:role/AWSChatbotRole" \
+  --sns-topic-arns "arn:aws:sns:us-east-1:123456789012:ops-alerts" \
+  --iam-role-arn "arn:aws:iam::123456789012:role/AWSChatbotRole" \
   --logging-level "INFO"
 ```
 
@@ -123,17 +118,17 @@ aws sns create-topic --name cost-alerts
 # Create Chatbot configurations for each
 aws chatbot create-slack-channel-configuration \
   --configuration-name "critical-alerts" \
-  --slack-workspace-id "T01XXXXXXXX" \
+  --slack-team-id "T01XXXXXXXX" \
   --slack-channel-id "C_CRITICAL_CHANNEL" \
-  --sns-topic-arns "arn:aws:sns:us-east-1:123456789:critical-alerts" \
-  --iam-role-arn "arn:aws:iam::123456789:role/AWSChatbotRole"
+  --sns-topic-arns "arn:aws:sns:us-east-1:123456789012:critical-alerts" \
+  --iam-role-arn "arn:aws:iam::123456789012:role/AWSChatbotRole"
 
 aws chatbot create-slack-channel-configuration \
   --configuration-name "deployments" \
-  --slack-workspace-id "T01XXXXXXXX" \
+  --slack-team-id "T01XXXXXXXX" \
   --slack-channel-id "C_DEPLOY_CHANNEL" \
-  --sns-topic-arns "arn:aws:sns:us-east-1:123456789:deployment-notifications" \
-  --iam-role-arn "arn:aws:iam::123456789:role/AWSChatbotRole"
+  --sns-topic-arns "arn:aws:sns:us-east-1:123456789012:deployment-notifications" \
+  --iam-role-arn "arn:aws:iam::123456789012:role/AWSChatbotRole"
 ```
 
 ## Sending CloudWatch Alarms to Chat
@@ -152,8 +147,8 @@ aws cloudwatch put-metric-alarm \
   --evaluation-periods 2 \
   --threshold 80 \
   --comparison-operator GreaterThanThreshold \
-  --alarm-actions "arn:aws:sns:us-east-1:123456789:critical-alerts" \
-  --ok-actions "arn:aws:sns:us-east-1:123456789:critical-alerts" \
+  --alarm-actions "arn:aws:sns:us-east-1:123456789012:critical-alerts" \
+  --ok-actions "arn:aws:sns:us-east-1:123456789012:critical-alerts" \
   --dimensions Name=InstanceId,Value=i-1234567890abcdef0
 ```
 
@@ -187,7 +182,7 @@ def send_deployment_notification(service, version, environment, status):
     }
 
     sns.publish(
-        TopicArn='arn:aws:sns:us-east-1:123456789:deployment-notifications',
+        TopicArn='arn:aws:sns:us-east-1:123456789012:deployment-notifications',
         Message=json.dumps(message),
         Subject=f'Deploy: {service} {version} to {environment}'
     )
@@ -203,13 +198,13 @@ send_deployment_notification(
 
 ## Running AWS CLI Commands from Chat
 
-One of the cooler features is running AWS commands directly from Slack. Type `@aws` followed by a CLI command.
+One of the cooler features is running AWS commands directly from Slack. Type `@Amazon Q` followed by a CLI command.
 
 For example, in Slack:
 ```text
-@aws cloudwatch describe-alarms --state-value ALARM
-@aws ecs list-services --cluster production
-@aws lambda list-functions
+@Amazon Q cloudwatch describe-alarms --state-value ALARM
+@Amazon Q ecs list-services --cluster production
+@Amazon Q lambda list-functions
 ```
 
 Chatbot executes the command using the IAM role you configured and posts the output back to the channel. This is great for quick checks during incidents without switching to a terminal.
@@ -239,17 +234,19 @@ To enable this, make sure the IAM role has the necessary permissions for the com
 
 ## Notification Filtering
 
-You can filter which notifications reach your channel by using SNS subscription filter policies.
+You can filter which notifications reach your channel by using SNS subscription filter policies. After Chatbot creates the SNS subscription for your channel, apply the filter to that subscription ARN.
 
 ```bash
 # Only forward ALARM state changes (not OK or INSUFFICIENT_DATA)
-aws sns subscribe \
-  --topic-arn arn:aws:sns:us-east-1:123456789:ops-alerts \
-  --protocol https \
-  --notification-endpoint https://global.sns-api.chatbot.amazonaws.com \
-  --attributes '{
-    "FilterPolicy": "{\"AlarmState\": [\"ALARM\"]}"
-  }'
+aws sns set-subscription-attributes \
+  --subscription-arn arn:aws:sns:us-east-1:123456789012:ops-alerts:subscription-id \
+  --attribute-name FilterPolicy \
+  --attribute-value '{"NewStateValue":["ALARM"]}'
+
+aws sns set-subscription-attributes \
+  --subscription-arn arn:aws:sns:us-east-1:123456789012:ops-alerts:subscription-id \
+  --attribute-name FilterPolicyScope \
+  --attribute-value MessageBody
 ```
 
 ## Integrating with SES Monitoring
@@ -260,10 +257,10 @@ If you're monitoring SES sending (bounces, complaints, delivery issues), route t
 # SES alerts to a dedicated email-ops channel
 aws chatbot create-slack-channel-configuration \
   --configuration-name "ses-monitoring" \
-  --slack-workspace-id "T01XXXXXXXX" \
+  --slack-team-id "T01XXXXXXXX" \
   --slack-channel-id "C_SES_CHANNEL" \
-  --sns-topic-arns "arn:aws:sns:us-east-1:123456789:ses-alerts" \
-  --iam-role-arn "arn:aws:iam::123456789:role/AWSChatbotRole"
+  --sns-topic-arns "arn:aws:sns:us-east-1:123456789012:ses-alerts" \
+  --iam-role-arn "arn:aws:iam::123456789012:role/AWSChatbotRole"
 ```
 
 ## Best Practices
@@ -276,4 +273,4 @@ aws chatbot create-slack-channel-configuration \
 
 ## Summary
 
-AWS Chatbot is the simplest way to get AWS notifications into Slack and Microsoft Teams. It takes about 15 minutes to set up and immediately improves your team's visibility into what's happening in your AWS environment. The key is being thoughtful about what you route to chat - not everything needs to be a notification. Focus on actionable alerts that require human attention, and keep informational logs in CloudWatch where they belong.
+AWS Chatbot, now Amazon Q Developer in chat applications, is the simplest way to get AWS notifications into Slack and Microsoft Teams. It takes about 15 minutes to set up and immediately improves your team's visibility into what's happening in your AWS environment. The key is being thoughtful about what you route to chat - not everything needs to be a notification. Focus on actionable alerts that require human attention, and keep informational logs in CloudWatch where they belong.
