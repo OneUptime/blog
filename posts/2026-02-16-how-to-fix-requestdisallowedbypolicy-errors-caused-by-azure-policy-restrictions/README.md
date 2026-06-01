@@ -49,7 +49,8 @@ If you do not have the policy definition name handy, check the Activity Log for 
 az monitor activity-log list \
   --resource-group my-rg \
   --start-time 2026-02-16T00:00:00Z \
-  --query "[?status.value == 'Failed' && properties.statusMessage contains 'RequestDisallowedByPolicy'].{Time:eventTimestamp, Message:properties.statusMessage}" \
+  --status Failed \
+  --query "[?contains(to_string(properties.statusMessage), 'RequestDisallowedByPolicy')].{Time:eventTimestamp, Message:properties.statusMessage}" \
   --output json
 ```
 
@@ -256,8 +257,7 @@ The compliance dashboard shows which resources are compliant and which are not, 
 ```bash
 # Check compliance state for a specific policy assignment
 az policy state list \
-  --policy-assignment "/subscriptions/<sub-id>/providers/Microsoft.Authorization/policyAssignments/<assignment-name>" \
-  --filter "complianceState eq 'NonCompliant'" \
+  --filter "policyAssignmentId eq '/subscriptions/<sub-id>/providers/Microsoft.Authorization/policyAssignments/<assignment-name>' and complianceState eq 'NonCompliant'" \
   --query "[].{Resource:resourceId, Policy:policyDefinitionName}" \
   --output table
 ```
