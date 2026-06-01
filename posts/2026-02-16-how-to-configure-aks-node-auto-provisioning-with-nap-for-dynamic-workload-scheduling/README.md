@@ -14,40 +14,24 @@ The cluster autoscaler in AKS has been around for years and it works fine for ba
 
 With the traditional cluster autoscaler, the flow is: pending pod -> find a node pool that can fit it -> scale that node pool up. If no node pool matches, the pod stays pending forever.
 
-With NAP, the flow is: pending pod -> analyze pod requirements (CPU, memory, GPU, architecture, topology) -> select the optimal VM size -> provision a new node. NAP does not need pre-defined node pools. It looks at what the pod needs and picks the best fit from the available Azure VM sizes, considering cost, availability, and resource efficiency.
+With NAP, the flow is: pending pod -> analyze pod requirements (CPU, memory, GPU, architecture, topology) -> select the optimal VM size -> provision a new node. NAP does not need pre-defined AKS node pools for every VM shape. It looks at what the pod needs and picks the best fit from the available Azure VM sizes, considering cost, availability, and resource efficiency.
 
 NAP is built on the Karpenter project, adapted for Azure. If you have used Karpenter on AWS, the concepts will feel very familiar.
 
 ## Prerequisites
 
-NAP is available on AKS clusters running Kubernetes 1.26 or later. You need Azure CLI 2.57 or later and the aks-preview extension. NAP requires the cluster to use Azure CNI with overlay networking and managed identity.
+You need Azure CLI 2.76.0 or later. NAP requires managed identity; service principals are not supported. When creating a NAP cluster with the Azure CLI, use Azure CNI with overlay networking and the Cilium data plane.
 
-## Step 1: Install the AKS Preview Extension
+## Step 1: Check Your Azure CLI Version
 
-NAP is still a preview feature, so you need the preview CLI extension.
+Make sure your Azure CLI version supports the current NAP flags.
 
 ```bash
-# Install or update the aks-preview extension
-
-az extension add --name aks-preview --allow-preview true
-az extension update --name aks-preview --allow-preview true
-
-# Register the NodeAutoProvisioningPreview feature flag
-az feature register \
-  --namespace Microsoft.ContainerService \
-  --name NodeAutoProvisioningPreview
-
-# Wait for registration to complete (check periodically)
-az feature show \
-  --namespace Microsoft.ContainerService \
-  --name NodeAutoProvisioningPreview \
-  --query "properties.state" -o tsv
-
-# Propagate the registration
-az provider register --namespace Microsoft.ContainerService
+# Check Azure CLI version
+az --version
 ```
 
-The feature registration can take several minutes. Wait until the state shows "Registered" before proceeding.
+Upgrade the Azure CLI before proceeding if the version is older than 2.76.0.
 
 ## Step 2: Create an AKS Cluster with NAP Enabled
 
@@ -62,9 +46,10 @@ az aks create \
   --resource-group nap-demo-rg \
   --name nap-cluster \
   --node-count 2 \
-  --enable-node-auto-provisioning \
+  --node-provisioning-mode Auto \
   --network-plugin azure \
   --network-plugin-mode overlay \
+  --network-dataplane cilium \
   --generate-ssh-keys
 ```
 
@@ -75,7 +60,7 @@ For existing clusters, enable NAP with an update command.
 az aks update \
   --resource-group nap-demo-rg \
   --name nap-cluster \
-  --enable-node-auto-provisioning
+  --node-provisioning-mode Auto
 ```
 
 ## Step 3: Create a NodePool Resource
@@ -85,7 +70,7 @@ NAP uses a new Kubernetes custom resource called `NodePool` (from the Karpenter 
 ```yaml
 # nodepool.yaml
 # Define constraints for auto-provisioned nodes
-apiVersion: karpenter.sh/v1alpha5
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: general-purpose
@@ -93,7 +78,7 @@ spec:
   template:
     spec:
       requirements:
-        # Allow both AMD and Intel architectures
+        # Use x86_64 nodes
         - key: kubernetes.io/arch
           operator: In
           values:
@@ -105,7 +90,7 @@ spec:
             - on-demand
             - spot
         # Limit to specific VM families for cost control
-        - key: node.kubernetes.io/instance-type
+        - key: karpenter.azure.com/sku-name
           operator: In
           values:
             - Standard_D2s_v5
@@ -116,10 +101,11 @@ spec:
             - Standard_D4as_v5
             - Standard_D8as_v5
       nodeClassRef:
+        apiVersion: karpenter.azure.com/v1beta1
+        kind: AKSNodeClass
         name: default
-  # Remove nodes that have been empty for 30 seconds
   disruption:
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
     expireAfter: 720h  # Replace nodes after 30 days
   # Maximum cluster size limit
   limits:
@@ -143,7 +129,7 @@ The AKSNodeClass defines Azure-specific configuration for the nodes that NAP pro
 ```yaml
 # aksnodeclass.yaml
 # Azure-specific settings for auto-provisioned nodes
-apiVersion: karpenter.azure.com/v1alpha2
+apiVersion: karpenter.azure.com/v1beta1
 kind: AKSNodeClass
 metadata:
   name: default
@@ -208,7 +194,7 @@ To optimize costs, configure NAP to prefer spot instances when available, fallin
 ```yaml
 # spot-nodepool.yaml
 # NodePool that prioritizes spot instances for cost savings
-apiVersion: karpenter.sh/v1alpha5
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: spot-priority
@@ -225,7 +211,8 @@ spec:
           operator: In
           values:
             - spot
-        - key: node.kubernetes.io/instance-type
+            - on-demand
+        - key: karpenter.azure.com/sku-name
           operator: In
           values:
             - Standard_D4s_v5
@@ -233,13 +220,15 @@ spec:
             - Standard_D4as_v5
             - Standard_D8as_v5
       nodeClassRef:
+        apiVersion: karpenter.azure.com/v1beta1
+        kind: AKSNodeClass
         name: default
   disruption:
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
   limits:
     cpu: "50"
     memory: 200Gi
-  # Lower weight means higher priority
+  # Higher weight means higher priority
   weight: 10
 ```
 
@@ -276,7 +265,7 @@ kubectl scale deployment inflate --replicas=2
 kubectl get nodes -w
 ```
 
-NAP will consolidate the remaining pods onto fewer nodes and terminate the extras. The `consolidationPolicy: WhenUnderutilized` setting in the NodePool controls this behavior.
+NAP will consolidate the remaining pods onto fewer nodes and terminate the extras. The `consolidationPolicy: WhenEmptyOrUnderutilized` setting in the NodePool controls this behavior.
 
 ## Step 8: GPU Workload Auto-Provisioning
 
@@ -285,7 +274,7 @@ NAP really shines with GPU workloads. Instead of maintaining an idle GPU node po
 ```yaml
 # gpu-nodepool.yaml
 # NodePool for GPU workloads - only provisions when needed
-apiVersion: karpenter.sh/v1alpha5
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: gpu-workloads
@@ -297,13 +286,15 @@ spec:
           operator: In
           values:
             - on-demand
-        - key: node.kubernetes.io/instance-type
+        - key: karpenter.azure.com/sku-name
           operator: In
           values:
             - Standard_NC6s_v3
             - Standard_NC12s_v3
             - Standard_NC24s_v3
       nodeClassRef:
+        apiVersion: karpenter.azure.com/v1beta1
+        kind: AKSNodeClass
         name: default
       taints:
         # Only GPU workloads should land on these nodes
