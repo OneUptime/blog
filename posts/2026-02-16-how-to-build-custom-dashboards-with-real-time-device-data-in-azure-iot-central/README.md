@@ -8,34 +8,32 @@ Description: A practical guide to building custom dashboards in Azure IoT Centra
 
 ---
 
-Dashboards are the primary way operators interact with an IoT system day to day. A well-designed dashboard surfaces the information that matters, hides the noise, and enables quick decisions. Azure IoT Central provides a flexible dashboard builder that lets you create application-level dashboards for fleet oversight and device-level views for drilling into individual devices. No coding is needed, but thoughtful design makes the difference between a dashboard people actually use and one they ignore.
+Dashboards are the primary way operators interact with an IoT system day to day. A well-designed dashboard surfaces the information that matters, hides the noise, and enables quick decisions. Azure IoT Central provides a flexible dashboard builder that lets you create organization dashboards for fleet oversight, personal dashboards for individual users, and device-level views for drilling into individual devices. No coding is needed, but thoughtful design makes the difference between a dashboard people actually use and one they ignore.
 
 This guide covers building both types of dashboards, selecting the right visualization tiles, and organizing everything for operational efficiency.
 
 ## Dashboard Types in IoT Central
 
-IoT Central supports two kinds of dashboards:
+IoT Central supports two kinds of application dashboards, plus device template views:
 
-1. **Application dashboards** - Shared dashboards visible to all users of the application. These show fleet-level data, cross-device comparisons, and aggregate metrics.
-2. **Device template views** - Per-device dashboards defined in the device template. These show up when an operator clicks on a specific device.
+1. **Organization dashboards** - Shared dashboards visible to users who have access to the associated organization. These show fleet-level data, cross-device comparisons, and aggregate metrics.
+2. **Personal dashboards** - Dashboards visible only to the user who creates them.
+3. **Device template views** - Per-device views defined in the device template. These show up when an operator clicks on a specific device.
 
-Both use the same tile-based builder, but they serve different purposes. Application dashboards answer "how is my fleet doing?" while device views answer "what is this specific device doing?"
+They use tile-based builders, but they serve different purposes. Organization and personal dashboards answer "how is my fleet doing?" while device views answer "what is this specific device doing?"
 
 ## Creating an Application Dashboard
 
-Navigate to your IoT Central application and click Dashboard in the left navigation. If this is your first custom dashboard, you will see the default dashboard. Click Edit to modify it, or create a new one by clicking New dashboard.
+Navigate to your IoT Central application and click Dashboard in the left navigation. If this is your first custom dashboard, you will see the default dashboard. Click Edit to modify it, or create a new one from the dashboard catalog by selecting Go to dashboard catalog and then +New.
 
 ### Adding a Fleet Overview Tile
 
-Start with a KPI tile that shows the total count of connected devices. Click Add tile, select the KPI type, and configure:
+Start with a Number of devices (Count) tile that shows the total count of devices in a device group. Click Add tile, select the count tile, and configure:
 
-- **Title:** "Connected Devices"
+- **Title:** "Fleet Devices"
 - **Device group:** All devices
-- **Telemetry:** Select any telemetry field
-- **Aggregation:** Count
-- **Time range:** Last 5 minutes
 
-This gives you an at-a-glance count of how many devices have sent data recently.
+This gives you an at-a-glance count of how many devices are in the selected device group.
 
 ### Adding a Telemetry Chart
 
@@ -46,9 +44,9 @@ For monitoring trends across your fleet, add a line chart tile.
 - **Telemetry:** Temperature
 - **Aggregation:** Average
 - **Time range:** Last 24 hours
-- **Group by:** Device name
+- **Devices:** Select the devices to show on the tile
 
-This shows temperature trends for each device on a single chart, making it easy to spot outliers.
+This shows temperature trends for selected devices on a single chart, making it easy to spot outliers.
 
 ### Adding a Map Tile
 
@@ -57,17 +55,16 @@ If your devices report location data, a map tile provides spatial context.
 - **Title:** "Device Locations"
 - **Device group:** All devices
 - **Location property:** Select the location property from your device template
-- **Color by:** You can color-code markers based on a telemetry value (e.g., temperature) to show hot spots
 
-### Adding a Property Grid
+### Adding a Property Tile
 
-A property grid shows tabular data for multiple devices. This is useful for fleet management tasks.
+A property tile shows the current values for properties and cloud properties for one or more devices. This is useful for fleet management tasks.
 
 - **Title:** "Device Status"
 - **Device group:** All devices
-- **Columns:** Device name, firmware version, last activity time, battery level
+- **Values:** Device name, firmware version, battery level, deployment location
 
-Operators can sort and filter this grid to find specific devices or identify patterns like a batch of devices running outdated firmware.
+Operators can use this tile to identify patterns like a batch of devices running outdated firmware. For sortable, query-driven tables, build a query in Data explorer and pin it to a dashboard.
 
 ## Designing Effective Dashboard Layouts
 
@@ -79,17 +76,17 @@ IoT Central's dashboard builder uses a grid layout where you can resize and posi
 
 ```mermaid
 graph TD
-    subgraph Top Row - KPIs
+    subgraph topRow[Top Row - KPIs]
         A[Connected Devices]
         B[Average Temperature]
         C[Alert Count]
         D[Battery Low Count]
     end
-    subgraph Middle Row - Charts
+    subgraph middleRow[Middle Row - Charts]
         E[Temperature Trend Chart]
         F[Device Map]
     end
-    subgraph Bottom Row - Details
+    subgraph bottomRow[Bottom Row - Details]
         G[Device Status Table]
     end
 ```
@@ -108,9 +105,9 @@ This is the default device dashboard. Add tiles that show the device's telemetry
 
 A good device view includes:
 
-**Temperature and humidity line chart** - Shows the primary sensor data over the last 24 hours. Dual-axis charts work well when the scales differ significantly.
+**Temperature and humidity line chart** - Shows the primary sensor data over the last 24 hours. If the scales differ significantly, consider separate chart tiles so each metric remains easy to read.
 
-**Air quality gauge** - A gauge or KPI tile showing the current AQI reading with color-coded thresholds. Set ranges like 0-50 (green), 51-100 (yellow), 101-200 (orange), 201+ (red).
+**Air quality KPI** - A KPI or last-known-value tile showing the current AQI reading with color-coded thresholds. Set ranges like 0-50 (green), 51-100 (yellow), 101-200 (orange), 201+ (red).
 
 **Battery level indicator** - A simple last-known-value tile with a warning threshold at 20%.
 
@@ -159,10 +156,10 @@ Conditional formatting turns your dashboard into an at-a-glance status board whe
 
 ## Using Device Groups for Dashboard Filtering
 
-Device groups let you segment your fleet by any property or cloud property. Create groups like:
+Device groups let you segment your fleet by device template and matching properties. Create groups like:
 
 - "Building A Sensors" - filtered by a cloud property for building assignment
-- "Low Battery Devices" - filtered by battery level < 20%
+- "Low Battery Devices" - filtered by a battery-level property or cloud property < 20%
 - "Firmware v1.x" - filtered by firmware version property
 - "High Priority" - filtered by a priority cloud property
 
@@ -170,21 +167,21 @@ Each dashboard tile can be scoped to a specific device group. This lets you crea
 
 ## Real-Time vs. Historical Data
 
-IoT Central tiles can show data in two modes:
+IoT Central dashboard tiles can show latest values or time-windowed data:
 
-**Real-time** - Data updates as new telemetry arrives. Use this for operational dashboards where operators need to see current conditions. The refresh rate depends on how frequently devices send telemetry.
+**Latest values** - Last-known-value and property tiles show the most recent telemetry or property values. Use this for operational dashboards where operators need to see current conditions. The freshness depends on how frequently devices send telemetry or report property changes.
 
-**Historical** - Data shows trends over a configurable time window (last hour, last 24 hours, last 7 days, etc.). Use this for trend analysis and capacity planning dashboards.
+**Historical** - Chart and KPI tiles show aggregate values over a configurable time window. Use this for trend analysis and capacity planning dashboards.
 
-A good operational dashboard typically mixes both: real-time KPIs at the top showing current state, and historical charts below showing trends.
+A good operational dashboard typically mixes both: latest-value tiles at the top showing current state, and historical charts below showing trends.
 
 ## Sharing and Access Control
 
-Application dashboards are visible to all users by default. IoT Central supports role-based access with three built-in roles:
+Organization dashboards are visible to users with access to the associated organization, and personal dashboards are visible only to their creator. IoT Central supports role-based access with three built-in application roles:
 
-- **Administrator** - Full access, can edit dashboards
-- **Builder** - Can create and edit dashboards and device templates
-- **Operator** - Can view dashboards and interact with devices, but cannot modify templates or dashboard layouts
+- **App Administrator** - Full access to every part of the application, including billing
+- **App Builder** - Can manage most of the app, but cannot make changes on the Application or Data Export tabs
+- **App Operator** - Can monitor device health and status, add and delete devices, manage device sets, and run analytics and jobs, but cannot modify templates or administer the application
 
 For external stakeholders who need visibility but should not modify anything, create custom roles with read-only dashboard access.
 
@@ -193,7 +190,7 @@ For external stakeholders who need visibility but should not modify anything, cr
 Sometimes a dashboard is not enough and operators need the underlying data. IoT Central supports continuous data export to destinations like:
 
 - Azure Event Hubs
-- Azure Service Bus
+- Azure Service Bus queues and topics
 - Webhook endpoints
 - Azure Data Explorer
 - Blob Storage
