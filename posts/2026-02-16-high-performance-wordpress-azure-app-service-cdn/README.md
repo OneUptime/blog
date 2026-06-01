@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, WordPress, App Service, CDN, Performance, Web Hosting
 
-Description: Deploy a fast WordPress site on Azure App Service and accelerate it with Azure CDN for global content delivery and optimal page load times.
+Description: Deploy a fast WordPress site on Azure App Service and accelerate it with Azure Front Door for global content delivery and optimal page load times.
 
 ---
 
-WordPress powers a huge percentage of the web, but it is not exactly known for blazing performance out of the box. A stock WordPress installation on a basic hosting plan can easily take 3-5 seconds to render a page. By deploying WordPress on Azure App Service and putting Azure CDN in front of it, you can cut that down significantly - often under a second for cached content.
+WordPress powers a huge percentage of the web, but it is not exactly known for blazing performance out of the box. A stock WordPress installation on a basic hosting plan can easily take 3-5 seconds to render a page. By deploying WordPress on Azure App Service and putting Azure Front Door in front of it as the CDN layer, you can cut that down significantly - often under a second for cached content.
 
-This guide covers the full setup: deploying WordPress on App Service, configuring the database, setting up Azure CDN, and tuning everything for performance.
+This guide covers the full setup: deploying WordPress on App Service, configuring the database, setting up Azure Front Door, and tuning everything for performance.
 
 ## Creating the App Service Plan
 
@@ -21,12 +21,12 @@ Azure App Service runs your WordPress PHP application in a managed environment. 
 
 az group create --name rg-wordpress --location eastus
 
-# Create an App Service plan (B2 is a good starting point for WordPress)
+# Create an App Service plan (S2 is a good starting point for WordPress with autoscale)
 az appservice plan create \
   --name plan-wordpress \
   --resource-group rg-wordpress \
   --location eastus \
-  --sku B2 \
+  --sku S2 \
   --is-linux
 
 # Create the web app with PHP 8.2 runtime
@@ -37,7 +37,7 @@ az webapp create \
   --runtime "PHP:8.2"
 ```
 
-I recommend at least a B2 plan for WordPress. The B1 plan works for testing, but WordPress with a caching plugin and a moderate traffic load needs at least 2 cores and 3.5 GB of RAM.
+I recommend at least an S2 plan for WordPress if you want autoscale. The S1 plan works for testing, but WordPress with a caching plugin and a moderate traffic load needs at least 2 cores and 3.5 GB of RAM.
 
 ## Setting Up the Database
 
@@ -62,7 +62,7 @@ az mysql flexible-server db create \
   --server-name wp-mysql-server \
   --database-name wordpress
 
-# Allow Azure services to connect (needed for App Service)
+# Allow Azure services to connect for this public-access example
 az mysql flexible-server firewall-rule create \
   --resource-group rg-wordpress \
   --name wp-mysql-server \
@@ -124,66 +124,100 @@ az webapp deploy \
   --type zip
 ```
 
-## Configuring Azure CDN
+## Configuring Azure Front Door
 
-Now let us put Azure CDN in front of the App Service to cache static assets and accelerate page delivery worldwide.
+Now let us put Azure Front Door in front of the App Service to cache static assets and accelerate page delivery worldwide. Azure CDN Standard from Microsoft (classic) is on a retirement path, so Azure Front Door is the current Microsoft CDN service to use for new deployments.
 
 ```bash
-# Create a CDN profile (Standard Microsoft tier is cost-effective)
-az cdn profile create \
-  --name cdn-wordpress \
+# Create an Azure Front Door Standard profile
+az afd profile create \
+  --profile-name afd-wordpress \
   --resource-group rg-wordpress \
-  --location eastus \
-  --sku Standard_Microsoft
+  --sku Standard_AzureFrontDoor
 
-# Create a CDN endpoint pointing to your App Service
-az cdn endpoint create \
-  --name wp-cdn-endpoint \
+# Create a Front Door endpoint
+az afd endpoint create \
+  --endpoint-name wp-frontdoor-endpoint \
   --resource-group rg-wordpress \
-  --profile-name cdn-wordpress \
-  --origin my-wordpress-site.azurewebsites.net \
+  --profile-name afd-wordpress \
+  --enabled-state Enabled
+
+# Create an origin group and add the App Service as the origin
+az afd origin-group create \
+  --origin-group-name wordpress-origin-group \
+  --resource-group rg-wordpress \
+  --profile-name afd-wordpress \
+  --probe-request-type GET \
+  --probe-protocol Https \
+  --probe-interval-in-seconds 60 \
+  --probe-path /
+
+az afd origin create \
+  --origin-name wordpress-app \
+  --resource-group rg-wordpress \
+  --profile-name afd-wordpress \
+  --origin-group-name wordpress-origin-group \
+  --host-name my-wordpress-site.azurewebsites.net \
   --origin-host-header my-wordpress-site.azurewebsites.net \
+  --priority 1 \
+  --weight 1000 \
+  --enabled-state Enabled \
+  --http-port 80 \
+  --https-port 443
+
+# Create a route with caching and compression enabled
+az afd route create \
+  --route-name wordpress-route \
+  --resource-group rg-wordpress \
+  --profile-name afd-wordpress \
+  --endpoint-name wp-frontdoor-endpoint \
+  --origin-group wordpress-origin-group \
+  --supported-protocols Http Https \
+  --forwarding-protocol HttpsOnly \
+  --https-redirect Enabled \
+  --link-to-default-domain Enabled \
+  --enable-caching true \
   --enable-compression true \
+  --query-string-caching-behavior IgnoreQueryString \
   --content-types-to-compress "text/html" "text/css" "application/javascript" "text/javascript" "application/json" "image/svg+xml"
 ```
 
-The CDN endpoint URL will be something like `wp-cdn-endpoint.azureedge.net`. You can also configure a custom domain.
+The Front Door endpoint URL will be something like `wp-frontdoor-endpoint-<hash>.z01.azurefd.net`. You can also configure a custom domain.
 
 ```bash
-# Add a custom domain to the CDN endpoint
-az cdn custom-domain create \
-  --name www \
+# Add a custom domain to the Front Door profile with a managed certificate
+az afd custom-domain create \
+  --custom-domain-name www \
   --resource-group rg-wordpress \
-  --profile-name cdn-wordpress \
-  --endpoint-name wp-cdn-endpoint \
-  --hostname www.yourdomain.com
+  --profile-name afd-wordpress \
+  --host-name www.yourdomain.com \
+  --minimum-tls-version TLS12 \
+  --certificate-type ManagedCertificate
 
-# Enable HTTPS on the custom domain
-az cdn custom-domain enable-https \
-  --name www \
+# Associate the custom domain with the route after DNS validation
+az afd route update \
+  --route-name wordpress-route \
   --resource-group rg-wordpress \
-  --profile-name cdn-wordpress \
-  --endpoint-name wp-cdn-endpoint
+  --profile-name afd-wordpress \
+  --endpoint-name wp-frontdoor-endpoint \
+  --custom-domains www
 ```
 
 ## Configuring CDN Caching Rules
 
-By default, CDN respects the cache headers from your origin (App Service). WordPress does not send great cache headers by default, so you should configure caching rules on the CDN.
+Azure Front Door respects the cache headers from your origin (App Service). WordPress does not send great cache headers by default, so start by enabling caching on the route and use a caching plugin or response header rules to set appropriate TTLs for static assets.
 
 ```bash
-# Set global caching rules - cache everything for 1 day by default
-az cdn endpoint rule add \
+# Enable caching on the route and compress common text responses
+az afd route update \
   --resource-group rg-wordpress \
-  --profile-name cdn-wordpress \
-  --endpoint-name wp-cdn-endpoint \
-  --order 1 \
-  --rule-name "CacheStaticAssets" \
-  --match-variable UrlFileExtension \
-  --operator Contains \
-  --match-values "css" "js" "jpg" "jpeg" "png" "gif" "svg" "woff" "woff2" "ttf" \
-  --action-name CacheExpiration \
-  --cache-behavior Override \
-  --cache-duration "7.00:00:00"
+  --profile-name afd-wordpress \
+  --endpoint-name wp-frontdoor-endpoint \
+  --route-name wordpress-route \
+  --enable-caching true \
+  --enable-compression true \
+  --query-string-caching-behavior IgnoreQueryString \
+  --content-types-to-compress "text/html" "text/css" "application/javascript" "text/javascript" "application/json" "image/svg+xml"
 ```
 
 For dynamic pages, you want shorter cache durations or bypass caching entirely for logged-in users.
@@ -209,7 +243,7 @@ Here is how the full stack works together.
 
 ```mermaid
 flowchart TD
-    A[User Request] --> B[Azure CDN Edge]
+    A[User Request] --> B[Azure Front Door Edge]
     B --> C{Content Cached?}
     C -->|Yes| D[Serve from CDN Cache]
     C -->|No| E[Azure App Service]
@@ -226,7 +260,7 @@ flowchart TD
     H --> B
 ```
 
-With this architecture, most requests are served directly from the CDN edge location closest to the user. Cache misses go to App Service, where the caching plugin often serves a static HTML file without touching the database. Only truly dynamic requests (logged-in users, admin pages, form submissions) hit PHP and MySQL.
+With this architecture, most cacheable requests are served directly from the Front Door edge location closest to the user. Cache misses go to App Service, where the caching plugin often serves a static HTML file without touching the database. Only truly dynamic requests (logged-in users, admin pages, form submissions) hit PHP and MySQL.
 
 ## App Service Configuration Tweaks
 
@@ -239,7 +273,7 @@ az webapp config appsettings set \
   --resource-group rg-wordpress \
   --settings \
     PHP_INI_SCAN_DIR="/usr/local/etc/php/conf.d:/home/site/ini" \
-    WEBSITE_DYNAMIC_CACHE=0
+    WEBSITE_DYNAMIC_CACHE=2
 
 # Enable HTTP/2
 az webapp config set \
@@ -269,9 +303,9 @@ memory_limit=256M
 
 ## Monitoring Performance
 
-Use Azure Application Insights to monitor your WordPress performance. You can track page load times, database query performance, and CDN hit rates.
+Use Azure Application Insights to monitor your WordPress performance. You can track request performance and failures, and add WordPress-specific instrumentation if you need database query details.
 
-The CDN analytics in the Azure portal show you cache hit ratios, bandwidth savings, and geographic distribution of requests. Aim for a CDN cache hit ratio above 80% for a content-heavy WordPress site.
+Azure Front Door metrics in Azure Monitor show cache hit ratio, request count, latency, and geographic distribution of requests. Aim for a cache hit ratio above 80% for a content-heavy WordPress site.
 
 ## Scaling for Traffic Spikes
 
@@ -298,4 +332,4 @@ az monitor autoscale rule create \
 
 ## Wrapping Up
 
-Azure App Service with CDN gives you a WordPress hosting setup that rivals dedicated WordPress hosting platforms. The CDN handles global distribution and static asset caching, the caching plugin generates static HTML to minimize PHP execution, and App Service provides managed scaling. The result is a WordPress site that loads fast worldwide without the operational overhead of managing your own servers. For most WordPress sites, this architecture handles traffic well into the hundreds of thousands of monthly visitors without breaking a sweat.
+Azure App Service with Azure Front Door gives you a WordPress hosting setup that rivals dedicated WordPress hosting platforms. Front Door handles global distribution and static asset caching, the caching plugin generates static HTML to minimize PHP execution, and App Service provides managed scaling. The result is a WordPress site that loads fast worldwide without the operational overhead of managing your own servers. For most WordPress sites, this architecture handles traffic well into the hundreds of thousands of monthly visitors without breaking a sweat.
