@@ -21,17 +21,14 @@ The scaling rules are evaluated on an aggregation window (typically 5 minutes), 
 Configure an autoscale setting for your application.
 
 ```bash
-# Get the resource ID of the Spring Apps app
+# Get the resource ID of the active Spring Apps deployment
 
-APP_RESOURCE_ID=$(az spring app show \
-  --name order-service \
-  --service my-spring-service \
-  --resource-group spring-rg \
-  --query "id" -o tsv)
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+DEPLOYMENT_RESOURCE_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/spring-rg/providers/Microsoft.AppPlatform/Spring/my-spring-service/apps/order-service/deployments/default"
 
 # Create an autoscale setting with CPU-based rules
 az monitor autoscale create \
-  --resource $APP_RESOURCE_ID \
+  --resource $DEPLOYMENT_RESOURCE_ID \
   --resource-group spring-rg \
   --name order-service-autoscale \
   --min-count 2 \
@@ -48,18 +45,18 @@ CPU usage is the most common trigger for scaling Spring Boot applications.
 ```bash
 # Scale out when average CPU exceeds 70% over 5 minutes
 az monitor autoscale rule create \
-  --resource $APP_RESOURCE_ID \
+  --resource $DEPLOYMENT_RESOURCE_ID \
   --autoscale-name order-service-autoscale \
   --resource-group spring-rg \
-  --condition "CpuUsage > 70 avg 5m" \
+  --condition "PodCpuUsage > 0.7 avg 5m where AppName == order-service and Deployment == default" \
   --scale out 2
 
 # Scale in when average CPU drops below 30% over 10 minutes
 az monitor autoscale rule create \
-  --resource $APP_RESOURCE_ID \
+  --resource $DEPLOYMENT_RESOURCE_ID \
   --autoscale-name order-service-autoscale \
   --resource-group spring-rg \
-  --condition "CpuUsage < 30 avg 10m" \
+  --condition "PodCpuUsage < 0.3 avg 10m where AppName == order-service and Deployment == default" \
   --scale in 1
 ```
 
@@ -72,18 +69,18 @@ For memory-intensive Spring Boot applications, scale based on memory usage.
 ```bash
 # Scale out when memory exceeds 80%
 az monitor autoscale rule create \
-  --resource $APP_RESOURCE_ID \
+  --resource $DEPLOYMENT_RESOURCE_ID \
   --autoscale-name order-service-autoscale \
   --resource-group spring-rg \
-  --condition "MemoryUsage > 80 avg 5m" \
+  --condition "PodMemoryUsage > 0.8 avg 5m where AppName == order-service and Deployment == default" \
   --scale out 1
 
 # Scale in when memory drops below 40%
 az monitor autoscale rule create \
-  --resource $APP_RESOURCE_ID \
+  --resource $DEPLOYMENT_RESOURCE_ID \
   --autoscale-name order-service-autoscale \
   --resource-group spring-rg \
-  --condition "MemoryUsage < 40 avg 10m" \
+  --condition "PodMemoryUsage < 0.4 avg 10m where AppName == order-service and Deployment == default" \
   --scale in 1
 ```
 
@@ -94,18 +91,18 @@ For web applications, scaling based on the number of incoming HTTP requests is o
 ```bash
 # Scale out when request count exceeds 1000 per instance over 5 minutes
 az monitor autoscale rule create \
-  --resource $APP_RESOURCE_ID \
+  --resource $DEPLOYMENT_RESOURCE_ID \
   --autoscale-name order-service-autoscale \
   --resource-group spring-rg \
-  --condition "IngressBytesReceived > 1048576 avg 5m" \
+  --condition "tomcat.global.request.total.count > 1000 total 5m where AppName == order-service and Deployment == default" \
   --scale out 2
 
 # Scale in when request count drops below 200 per instance
 az monitor autoscale rule create \
-  --resource $APP_RESOURCE_ID \
+  --resource $DEPLOYMENT_RESOURCE_ID \
   --autoscale-name order-service-autoscale \
   --resource-group spring-rg \
-  --condition "IngressBytesReceived < 204800 avg 10m" \
+  --condition "tomcat.global.request.total.count < 200 total 10m where AppName == order-service and Deployment == default" \
   --scale in 1
 ```
 
@@ -116,34 +113,32 @@ If your application has predictable traffic patterns, combine metric-based scali
 ```bash
 # Create a profile for business hours (more capacity)
 az monitor autoscale profile create \
-  --resource $APP_RESOURCE_ID \
   --autoscale-name order-service-autoscale \
   --resource-group spring-rg \
   --name "business-hours" \
+  --copy-rules default \
   --min-count 4 \
   --max-count 15 \
   --count 5 \
   --recurrence week Mon Tue Wed Thu Fri \
   --start "08:00" \
   --end "18:00" \
-  --timezone "America/New_York"
+  --timezone "Eastern Standard Time"
 
-# Create a profile for nights and weekends (less capacity)
+# Create a profile for weekends (less capacity)
 az monitor autoscale profile create \
-  --resource $APP_RESOURCE_ID \
   --autoscale-name order-service-autoscale \
   --resource-group spring-rg \
-  --name "off-hours" \
+  --name "weekends" \
+  --copy-rules default \
   --min-count 1 \
   --max-count 5 \
   --count 2 \
-  --recurrence week Mon Tue Wed Thu Fri \
-  --start "18:00" \
-  --end "08:00" \
-  --timezone "America/New_York"
+  --recurrence week Sat Sun \
+  --timezone "Eastern Standard Time"
 ```
 
-Schedule-based profiles set different minimum and maximum thresholds for different time periods. Metric-based rules still apply within each profile.
+Schedule-based profiles set different minimum and maximum thresholds for different time periods. Copying the default rules keeps the metric-based rules active within each profile. Outside the scheduled profiles, the default profile created earlier still applies.
 
 ## Step 6: Configure Using Spring Boot Actuator Metrics
 
@@ -172,10 +167,12 @@ Create a custom metric in your application.
 public class OrderController {
 
     private final MeterRegistry meterRegistry;
+    private final OrderService orderService;
     private final AtomicInteger activeOrders;
 
-    public OrderController(MeterRegistry meterRegistry) {
+    public OrderController(MeterRegistry meterRegistry, OrderService orderService) {
         this.meterRegistry = meterRegistry;
+        this.orderService = orderService;
         // Register a gauge that tracks active orders
         this.activeOrders = new AtomicInteger(0);
         meterRegistry.gauge("orders.active", activeOrders);
@@ -245,7 +242,7 @@ az monitor autoscale show \
 # View recent autoscale activity logs
 az monitor activity-log list \
   --resource-group spring-rg \
-  --caller "Microsoft.Insights/autoscaleSettings" \
+  --namespace Microsoft.Insights \
   --start-time "2026-02-15T00:00:00Z" \
   --output table
 ```
@@ -257,8 +254,8 @@ You can also set up alerts for scaling events.
 az monitor metrics alert create \
   --name scale-out-alert \
   --resource-group spring-rg \
-  --scopes $APP_RESOURCE_ID \
-  --condition "avg CpuUsage > 85" \
+  --scopes $DEPLOYMENT_RESOURCE_ID \
+  --condition "avg PodCpuUsage > 0.85 where AppName includes order-service and Deployment includes default" \
   --description "App is scaling out due to high CPU"
 ```
 
