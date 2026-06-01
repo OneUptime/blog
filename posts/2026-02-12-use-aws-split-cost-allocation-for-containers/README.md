@@ -14,9 +14,9 @@ This guide covers enabling split cost allocation, understanding how costs are di
 
 ## What Is Split Cost Allocation?
 
-Split Cost Allocation is an AWS Cost Management feature that automatically divides the cost of shared container infrastructure (EC2 instances, Fargate compute) among the individual containers running on that infrastructure. Instead of seeing one line item for an EC2 instance, you see the cost attributed to each ECS task or EKS pod that ran on it.
+Split Cost Allocation is an AWS Cost Management feature that automatically divides the cost of shared container infrastructure among the individual containers running on that infrastructure. Instead of seeing only the EC2 instance-level cost, you get additional cost and usage records for each ECS task or EKS pod.
 
-The allocation is based on actual resource usage (CPU and memory) as a proportion of the total available resources on the host.
+The allocation is based on CPU and memory usage, reservations, or Kubernetes requests, depending on the platform and the measurement option you choose.
 
 ## How It Works
 
@@ -29,61 +29,38 @@ graph TD
 ```
 
 For each container host, AWS measures:
-- The CPU and memory reserved or consumed by each task/pod
+- The CPU and memory reserved, requested, or consumed by each task/pod
 - The total CPU and memory available on the host
 - The proportion each container uses
 
-This proportion is then applied to the host's cost. If a task uses 40% of an instance's resources, it gets allocated 40% of the instance's cost.
+This proportion is then applied to the host's cost. If a task is allocated 40% of an instance's resources for the billing period, it gets allocated 40% of the applicable instance cost.
 
 ## Supported Platforms
 
 Split Cost Allocation works with:
 
 - **Amazon ECS on EC2** - Tasks running on EC2 container instances
-- **Amazon ECS on Fargate** - Fargate tasks (already per-task, but split cost adds tag-based allocation)
+- **Amazon ECS on Fargate** - Fargate tasks
+- **AWS Batch** - Batch jobs
 - **Amazon EKS on EC2** - Pods running on EC2 worker nodes
-- **Amazon EKS on Fargate** - Fargate pods
 
 ## Prerequisites
 
 - AWS Cost and Usage Report (CUR) or CUR 2.0 enabled
-- Container workloads running on ECS or EKS
+- Container workloads running on ECS, EKS, or AWS Batch
 - Cost allocation tags activated (for tag-based attribution)
 
 ## Step 1: Enable Split Cost Allocation
 
-Enable the feature in the AWS Billing console or via the CLI:
+Enable the feature in the AWS Billing and Cost Management console under **Cost Management preferences**. In the **Split cost allocation data** section, opt in to Amazon ECS, Amazon EKS, or both.
 
-```bash
-# Enable split cost allocation for ECS
+For EKS, choose one of the available measurement options:
 
-aws ce update-cost-allocation-tags-status \
-  --cost-allocation-tags-status '[
-    {
-      "TagKey": "aws:ecs:clusterName",
-      "Status": "Active"
-    },
-    {
-      "TagKey": "aws:ecs:serviceName",
-      "Status": "Active"
-    }
-  ]'
-```
+- **Resource requests** - Allocates EC2 costs by Kubernetes pod CPU and memory requests.
+- **Amazon Managed Service for Prometheus** - Allocates EC2 costs by the higher of pod requests and actual utilization.
+- **Amazon CloudWatch Container Insights** - Uses EKS observability metrics such as pod CPU and memory usage.
 
-For EKS, you need to install the AWS Split Cost Allocation Data Agent:
-
-```bash
-# Install the EKS cost allocation agent via Helm
-helm repo add aws-cost-allocation https://aws.github.io/split-cost-allocation-data
-
-helm install split-cost-allocation \
-  aws-cost-allocation/split-cost-allocation-data \
-  --namespace amazon-cloudwatch \
-  --create-namespace \
-  --set clusterName=my-eks-cluster \
-  --set region=us-east-1 \
-  --set serviceAccount.create=true
-```
+Activating cost allocation tags is still useful for reporting, but it does not enable split cost allocation by itself.
 
 ## Step 2: Configure CUR to Include Split Cost Data
 
@@ -95,7 +72,7 @@ aws bcm-data-exports create-export \
   --export '{
     "Name": "container-cost-report",
     "DataQuery": {
-      "QueryStatement": "SELECT identity_line_item_id, bill_payer_account_id, line_item_usage_account_id, line_item_product_code, line_item_resource_id, line_item_usage_amount, line_item_unblended_cost, split_line_item_task_id, split_line_item_parent_resource_id, split_line_item_public_on_demand_split_cost, split_line_item_reserved_usage_split_cost, split_line_item_actual_usage, resource_tags FROM COST_AND_USAGE_REPORT",
+      "QueryStatement": "SELECT identity_line_item_id, bill_payer_account_id, line_item_usage_account_id, line_item_product_code, line_item_resource_id, line_item_usage_amount, line_item_unblended_cost, split_line_item_parent_resource_id, split_line_item_public_on_demand_split_cost, split_line_item_split_cost, split_line_item_unused_cost, split_line_item_actual_usage, split_line_item_split_usage, resource_tags FROM COST_AND_USAGE_REPORT",
       "TableConfigurations": {
         "COST_AND_USAGE_REPORT": {
           "TIME_GRANULARITY": "DAILY",
@@ -129,11 +106,13 @@ The CUR with split cost allocation adds these key columns:
 
 | Column | Description |
 |--------|-------------|
-| `split_line_item_task_id` | ECS task ID or EKS pod name |
+| `line_item_resource_id` | ECS task ID, EKS pod resource ID, or other resource ID for the split line item |
 | `split_line_item_parent_resource_id` | The EC2 instance hosting the container |
 | `split_line_item_public_on_demand_split_cost` | On-demand cost attributed to this container |
-| `split_line_item_reserved_usage_split_cost` | Reserved instance cost attributed to this container |
+| `split_line_item_split_cost` | Cost attributed to this container, including amortized reservations or Savings Plans where applicable |
+| `split_line_item_unused_cost` | Unused cost attributed to this container |
 | `split_line_item_actual_usage` | Actual resource usage by this container |
+| `split_line_item_split_usage` | Allocated usage, defined as the maximum of reserved usage and actual usage |
 
 ## Step 4: Query Split Cost Data with Athena
 
@@ -144,15 +123,15 @@ Cost per ECS service:
 ```sql
 -- Cost per ECS service for the current month
 SELECT
-    resource_tags_aws_ecs_service_name AS service_name,
-    resource_tags_aws_ecs_cluster_name AS cluster,
-    ROUND(SUM(split_line_item_public_on_demand_split_cost), 2) AS total_cost,
-    COUNT(DISTINCT split_line_item_task_id) AS task_count
+    resource_tags['aws:ecs:serviceName'] AS service_name,
+    resource_tags['aws:ecs:clusterName'] AS cluster,
+    ROUND(SUM(split_line_item_split_cost), 2) AS total_cost,
+    COUNT(DISTINCT line_item_resource_id) AS task_count
 FROM container_billing
 WHERE bill_billing_period_start_date = '2026-02-01'
-    AND split_line_item_task_id IS NOT NULL
-GROUP BY resource_tags_aws_ecs_service_name,
-         resource_tags_aws_ecs_cluster_name
+    AND split_line_item_split_cost IS NOT NULL
+GROUP BY resource_tags['aws:ecs:serviceName'],
+         resource_tags['aws:ecs:clusterName']
 ORDER BY total_cost DESC;
 ```
 
@@ -161,15 +140,15 @@ Cost per EKS namespace:
 ```sql
 -- Cost per Kubernetes namespace
 SELECT
-    resource_tags_aws_eks_namespace AS namespace,
-    resource_tags_aws_eks_cluster_name AS cluster,
-    ROUND(SUM(split_line_item_public_on_demand_split_cost), 2) AS total_cost,
-    COUNT(DISTINCT split_line_item_task_id) AS pod_count
+    resource_tags['aws:eks:namespace'] AS namespace,
+    resource_tags['aws:eks:cluster-name'] AS cluster,
+    ROUND(SUM(split_line_item_split_cost), 2) AS total_cost,
+    COUNT(DISTINCT line_item_resource_id) AS pod_count
 FROM container_billing
 WHERE bill_billing_period_start_date = '2026-02-01'
-    AND resource_tags_aws_eks_namespace IS NOT NULL
-GROUP BY resource_tags_aws_eks_namespace,
-         resource_tags_aws_eks_cluster_name
+    AND resource_tags['aws:eks:namespace'] IS NOT NULL
+GROUP BY resource_tags['aws:eks:namespace'],
+         resource_tags['aws:eks:cluster-name']
 ORDER BY total_cost DESC;
 ```
 
@@ -179,40 +158,33 @@ Daily container cost trend:
 -- Daily cost trend per service
 SELECT
     DATE(line_item_usage_start_date) AS usage_date,
-    resource_tags_aws_ecs_service_name AS service_name,
-    ROUND(SUM(split_line_item_public_on_demand_split_cost), 2) AS daily_cost
+    resource_tags['aws:ecs:serviceName'] AS service_name,
+    ROUND(SUM(split_line_item_split_cost), 2) AS daily_cost
 FROM container_billing
 WHERE bill_billing_period_start_date = '2026-02-01'
-    AND split_line_item_task_id IS NOT NULL
+    AND split_line_item_split_cost IS NOT NULL
 GROUP BY DATE(line_item_usage_start_date),
-         resource_tags_aws_ecs_service_name
+         resource_tags['aws:ecs:serviceName']
 ORDER BY usage_date, daily_cost DESC;
 ```
 
-## Step 5: Handle Unallocated Costs
+## Step 5: Handle Unused Costs
 
-Not all container host costs can be attributed to specific containers. Idle capacity, system overhead, and daemonsets create "unallocated" costs. Split Cost Allocation reports these separately.
+Not all container host capacity is used by application workloads. Split Cost Allocation exposes this as unused cost columns, such as `split_line_item_unused_cost`, and applies unused costs proportionately to tasks or pods based on split usage.
 
 ```sql
--- Find unallocated costs per cluster
+-- Find unused costs per ECS cluster
 SELECT
-    resource_tags_aws_ecs_cluster_name AS cluster,
-    ROUND(SUM(CASE
-        WHEN split_line_item_task_id IS NULL
-        THEN line_item_unblended_cost
-        ELSE 0
-    END), 2) AS unallocated_cost,
-    ROUND(SUM(CASE
-        WHEN split_line_item_task_id IS NOT NULL
-        THEN split_line_item_public_on_demand_split_cost
-        ELSE 0
-    END), 2) AS allocated_cost
+    resource_tags['aws:ecs:clusterName'] AS cluster,
+    ROUND(SUM(split_line_item_unused_cost), 2) AS unused_cost,
+    ROUND(SUM(split_line_item_split_cost), 2) AS allocated_cost
 FROM container_billing
 WHERE bill_billing_period_start_date = '2026-02-01'
-GROUP BY resource_tags_aws_ecs_cluster_name;
+    AND split_line_item_split_cost IS NOT NULL
+GROUP BY resource_tags['aws:ecs:clusterName'];
 ```
 
-High unallocated costs indicate over-provisioned clusters with idle capacity. This is a signal to right-size your container hosts.
+High unused costs indicate over-provisioned clusters with idle capacity. This is a signal to right-size your container hosts.
 
 ## Step 6: Build a Chargeback Dashboard
 
@@ -221,27 +193,27 @@ Combine the split cost data with your application metadata to create team-level 
 ```sql
 -- Team-level chargeback report
 SELECT
-    resource_tags_team AS team,
-    resource_tags_environment AS environment,
-    resource_tags_aws_ecs_service_name AS service,
-    ROUND(SUM(split_line_item_public_on_demand_split_cost), 2) AS monthly_cost,
-    ROUND(SUM(split_line_item_actual_usage), 2) AS total_usage_hours
+    resource_tags['team'] AS team,
+    resource_tags['environment'] AS environment,
+    resource_tags['aws:ecs:serviceName'] AS service,
+    ROUND(SUM(split_line_item_split_cost), 2) AS monthly_cost,
+    ROUND(SUM(split_line_item_actual_usage), 2) AS total_usage
 FROM container_billing
 WHERE bill_billing_period_start_date = '2026-02-01'
-    AND split_line_item_task_id IS NOT NULL
-GROUP BY resource_tags_team,
-         resource_tags_environment,
-         resource_tags_aws_ecs_service_name
+    AND split_line_item_split_cost IS NOT NULL
+GROUP BY resource_tags['team'],
+         resource_tags['environment'],
+         resource_tags['aws:ecs:serviceName']
 ORDER BY team, monthly_cost DESC;
 ```
 
 ## Best Practices
 
-1. **Tag your containers consistently.** Split cost allocation leverages tags for grouping. Make sure every ECS service and EKS deployment has team, application, and environment tags.
+1. **Tag and label your workloads consistently.** Split cost allocation leverages tags for grouping. Make sure every ECS service and EKS workload has consistent team, application, and environment metadata.
 
-2. **Monitor unallocated costs.** High unallocated percentages mean wasted capacity. Use this signal to optimize cluster sizing.
+2. **Monitor unused costs.** High unused percentages mean wasted capacity. Use this signal to optimize cluster sizing.
 
-3. **Combine with Savings Plans data.** Split cost allocation shows how Reserved Instance and Savings Plans discounts are distributed across containers, giving you accurate effective costs.
+3. **Use split cost and net split cost for effective costs.** `split_line_item_split_cost` includes amortized reservations and Savings Plans where applicable, and `split_line_item_net_split_cost` shows effective cost after discounts when that column is present.
 
 4. **Use namespace-based allocation for EKS.** Kubernetes namespaces map well to cost centers. Structure your namespaces to align with your billing structure.
 
@@ -251,4 +223,4 @@ For more on building custom billing reports, check out our guide on [creating cu
 
 ## Wrapping Up
 
-AWS Split Cost Allocation for containers brings transparency to the previously opaque world of shared container infrastructure costs. By automatically dividing host costs among individual tasks and pods based on actual resource usage, it gives you the data you need for accurate chargeback, capacity optimization, and cost anomaly detection. Enable it in your CUR, install the EKS agent if needed, and start querying. The insights you gain will change how your teams think about container resource usage.
+AWS Split Cost Allocation for containers brings transparency to the previously opaque world of shared container infrastructure costs. By dividing host costs among individual tasks and pods based on resource usage, reservations, or requests, it gives you the data you need for accurate chargeback, capacity optimization, and cost anomaly detection. Opt in through Cost Management preferences, include split cost allocation data in your CUR, and start querying. The insights you gain will change how your teams think about container resource usage.
