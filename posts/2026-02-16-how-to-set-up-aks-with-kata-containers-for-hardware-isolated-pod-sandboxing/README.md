@@ -18,7 +18,7 @@ On AKS, Kata Containers use Cloud Hypervisor as the lightweight VMM (Virtual Mac
 
 1. Kubelet calls the Kata runtime instead of the standard containerd runtime.
 2. Kata launches a lightweight VM using Cloud Hypervisor.
-3. The VM boots a minimal Linux kernel (in about 100ms).
+3. The VM boots a minimal Linux kernel.
 4. The container image is mounted inside the VM.
 5. The application process starts inside the VM.
 
@@ -45,20 +45,20 @@ graph TB
 
 ## Prerequisites
 
-Kata Containers on AKS require nested virtualization support, which means you need VM sizes that support it.
+Kata Containers on AKS require Azure CLI 2.80.0 or later, Kubernetes 1.27.0 or later, Azure Linux node pools, and VM sizes that are generation 2 VMs with nested virtualization support.
 
 ```bash
-# VM sizes that support nested virtualization (Dv3, Dsv3, Ev3, Esv3 and newer)
+# Example VM sizes with nested virtualization support include Dsv3/Esv3 and newer generation 2 sizes
 
 # Standard_D4s_v3, Standard_D8s_v5, Standard_E4s_v5, etc.
 
-# Verify your cluster can support Kata
+# Check whether matching VM sizes are available in your target region
 az vm list-sizes --location eastus -o table | grep -E "Standard_D[0-9]+s_v[3-5]"
 ```
 
 ## Creating an AKS Cluster with Kata Containers
 
-You can enable Kata Containers by creating a node pool with the `KataMshvVmIsolation` workload runtime.
+You can enable Kata Containers by creating a node pool with the `KataVmIsolation` workload runtime.
 
 ```bash
 # Create the AKS cluster with a standard system pool
@@ -79,14 +79,24 @@ az aks nodepool add \
   --node-count 3 \
   --node-vm-size Standard_D4s_v5 \
   --os-sku AzureLinux \
-  --workload-runtime KataMshvVmIsolation \
+  --workload-runtime KataVmIsolation \
   --labels workload-runtime=kata
+
+# Enable pod sandboxing on the cluster after adding the pool
+az aks update \
+  --resource-group myRG \
+  --name kata-cluster
+
+# Get cluster credentials for kubectl
+az aks get-credentials \
+  --resource-group myRG \
+  --name kata-cluster
 
 # Verify the runtime class was created
 kubectl get runtimeclass
 ```
 
-You should see a `kata-mshv-vm-isolation` runtime class listed.
+You should see a `kata-vm-isolation` runtime class listed.
 
 ## Deploying a Pod with Kata Isolation
 
@@ -103,7 +113,7 @@ metadata:
     app: isolated-workload
 spec:
   # This is the key setting - tells Kubernetes to use Kata runtime
-  runtimeClassName: kata-mshv-vm-isolation
+  runtimeClassName: kata-vm-isolation
   # Schedule on the Kata-capable node pool
   nodeSelector:
     workload-runtime: kata
@@ -139,6 +149,11 @@ For production workloads, use Deployments as usual. The runtime class applies to
 ```yaml
 # kata-deployment.yaml
 # Deployment running all pods in Kata Containers
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: untrusted-workloads
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -154,7 +169,7 @@ spec:
       labels:
         app: sandboxed-api
     spec:
-      runtimeClassName: kata-mshv-vm-isolation
+      runtimeClassName: kata-vm-isolation
       nodeSelector:
         workload-runtime: kata
       containers:
@@ -217,7 +232,7 @@ spec:
         app: tenant-app
         tenant: abc
     spec:
-      runtimeClassName: kata-mshv-vm-isolation
+      runtimeClassName: kata-vm-isolation
       nodeSelector:
         workload-runtime: kata
       containers:
@@ -232,17 +247,17 @@ spec:
 
 ### CI/CD Build Environments
 
-Running CI/CD builds (especially Docker builds) inside a cluster is risky with standard containers. Kata Containers let you run builds with full isolation.
+Running CI/CD builds inside a cluster is risky with standard containers. Kata Containers let you run build workloads with a stronger VM isolation boundary.
 
 ```yaml
 # ci-build-pod.yaml
-# CI build pod that runs Docker-in-Docker safely with Kata isolation
+# CI build pod that runs a container build tool with Kata isolation
 apiVersion: v1
 kind: Pod
 metadata:
   name: ci-build
 spec:
-  runtimeClassName: kata-mshv-vm-isolation
+  runtimeClassName: kata-vm-isolation
   nodeSelector:
     workload-runtime: kata
   containers:
@@ -252,11 +267,12 @@ spec:
         - /bin/sh
         - -c
         - |
-          # Build commands run inside the Kata VM
-          # Even if the build tries to escape the container,
-          # it is contained within the VM boundary
-          docker build -t myapp:latest .
-          docker push myacr.azurecr.io/myapp:latest
+          # Build commands run inside the Kata VM.
+          buildctl build \
+            --frontend dockerfile.v0 \
+            --local context=. \
+            --local dockerfile=. \
+            --output type=image,name=myacr.azurecr.io/myapp:latest,push=true
       resources:
         limits:
           cpu: 4
@@ -277,7 +293,7 @@ metadata:
 spec:
   template:
     spec:
-      runtimeClassName: kata-mshv-vm-isolation
+      runtimeClassName: kata-vm-isolation
       nodeSelector:
         workload-runtime: kata
       containers:
@@ -305,7 +321,7 @@ Kata Containers add some overhead compared to standard containers. Here is what 
 
 **Startup time**: 1-3 seconds additional startup time for the VM boot. The minimal Linux kernel boots quickly, but it is not instant like a standard container.
 
-**Memory overhead**: Each Kata pod consumes approximately 128-256MB of additional memory for the guest kernel and VM management layer. This is on top of the memory requested by the container.
+**Memory overhead**: Each Kata pod's memory limit defines the Pod VM memory size, which includes the workload and guest components such as the guest kernel and Kata agent. AKS also accounts for RuntimeClass overhead for host-side components such as the Kata shim, Cloud Hypervisor, and virtiofsd. The default `kata-vm-isolation` runtime class uses a default Pod VM size of 512Mi and a runtime overhead of 600Mi when you do not tune these values.
 
 **CPU overhead**: Minimal for compute-bound workloads. The hardware virtualization extensions (VT-x) make CPU operations nearly native speed.
 
@@ -313,13 +329,17 @@ Kata Containers add some overhead compared to standard containers. Here is what 
 
 ```bash
 # Compare startup times between standard and Kata pods
-time kubectl run standard-pod --image=nginx --restart=Never
-time kubectl run kata-pod --image=nginx --restart=Never --overrides='{"spec":{"runtimeClassName":"kata-mshv-vm-isolation","nodeSelector":{"workload-runtime":"kata"}}}'
+kubectl delete pod standard-pod kata-pod --ignore-not-found
+kubectl run standard-pod --image=nginx --restart=Never
+time kubectl wait --for=condition=Ready pod/standard-pod --timeout=120s
+
+kubectl run kata-pod --image=nginx --restart=Never --overrides='{"spec":{"runtimeClassName":"kata-vm-isolation","nodeSelector":{"workload-runtime":"kata"}}}'
+time kubectl wait --for=condition=Ready pod/kata-pod --timeout=120s
 ```
 
 ## Networking with Kata Containers
 
-Networking works transparently. Kata pods get the same networking behavior as standard pods - they get an IP from the CNI, can communicate with other pods, and work with Services and NetworkPolicies.
+Networking works transparently for normal pod networking. Kata pods get an IP from the CNI, can communicate with other pods, and work with Services and NetworkPolicies. Direct host-network access from inside the Kata VM is not supported.
 
 ```bash
 # Verify networking works between a standard pod and a Kata pod
