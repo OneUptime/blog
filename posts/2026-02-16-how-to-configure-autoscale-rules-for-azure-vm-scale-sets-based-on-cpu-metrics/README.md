@@ -14,7 +14,7 @@ But getting autoscale right is trickier than it seems. Set the thresholds too ag
 
 ## How Azure Autoscale Works
 
-Azure Autoscale evaluates metrics at regular intervals (by default, every minute) and compares them against your rules. When a rule condition is met for the specified duration, the autoscale engine triggers a scale action.
+Azure Autoscale evaluates metrics at regular intervals (every 30 to 60 seconds, depending on the resource type) and compares them against your rules. When a rule condition is met for the specified duration, the autoscale engine triggers a scale action.
 
 The key components of an autoscale rule:
 
@@ -75,7 +75,7 @@ The 70% scale-out threshold is a common default, but the right number depends on
 
 The scale-in threshold should be well below the scale-out threshold. A gap between 30% and 70% is common. This gap prevents flapping, where a scale-out drops the average CPU (because there are now more instances), which triggers a scale-in, which raises the average CPU, which triggers a scale-out again.
 
-A helpful rule of thumb: after scaling out by one instance, the average CPU should drop below the scale-in threshold. If your scale-out threshold is 70% and you add one instance to a set of three (going from 3 to 4), the CPU per instance drops to roughly 52% (70% * 3/4). Since 52% is above the 30% scale-in threshold, you will not immediately trigger a scale-in. That is the behavior you want.
+A helpful rule of thumb: after scaling out by one instance, the average CPU should stay above the scale-in threshold. If your scale-out threshold is 70% and you add one instance to a set of three (going from 3 to 4), the CPU per instance drops to roughly 52% (70% * 3/4). Since 52% is above the 30% scale-in threshold, you will not immediately trigger a scale-in. That is the behavior you want.
 
 ## Advanced Scaling Rules
 
@@ -89,14 +89,14 @@ az monitor autoscale rule create \
   --resource-group myResourceGroup \
   --autoscale-name cpu-autoscale \
   --condition "Percentage CPU > 80 avg 5m" \
-  --scale out 50 --type PercentChangeCount
+  --scale out 50%
 
 # Scale in by 25% when CPU drops below 25% for 15 minutes
 az monitor autoscale rule create \
   --resource-group myResourceGroup \
   --autoscale-name cpu-autoscale \
   --condition "Percentage CPU < 25 avg 15m" \
-  --scale in 25 --type PercentChangeCount
+  --scale in 25%
 ```
 
 ### Multi-Step Scaling
@@ -130,7 +130,7 @@ When multiple rules are triggered simultaneously, Azure uses the rule that resul
 
 ## Configuring Cooldown Periods
 
-The cooldown period prevents rapid successive scale actions. After a scale-out or scale-in event, the autoscale engine waits for the cooldown period before evaluating rules again.
+The cooldown period prevents rapid successive scale actions. After a scale-out or scale-in event, the autoscale engine waits for the cooldown period before it scales again.
 
 ```bash
 # Set a 5-minute cooldown on a scale-out rule
@@ -158,7 +158,7 @@ For production deployments, define autoscale rules in an ARM template:
 
 ```json
 {
-  "type": "Microsoft.Insights/autoscaleSettings",
+  "type": "Microsoft.Insights/autoscalesettings",
   "apiVersion": "2022-10-01",
   "name": "cpu-autoscale",
   "location": "eastus",
@@ -230,6 +230,7 @@ az monitor autoscale profile create \
   --min-count 5 \
   --max-count 20 \
   --count 5 \
+  --copy-rules default \
   --recurrence week Mon Tue Wed Thu Fri \
   --start "08:00" \
   --end "20:00" \
