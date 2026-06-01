@@ -17,8 +17,8 @@ The foundation of Purview Data Map is the register-and-scan workflow: you regist
 Before you start registering data sources, make sure you have:
 
 - A Microsoft Purview account (formerly Azure Purview)
-- The Data Source Administrator role in your Purview account
-- Appropriate permissions on the data sources you want to scan (typically Reader access)
+- The Data Source Administrator and Data Reader roles in your Purview account
+- Appropriate permissions on the data sources you want to scan (typically Reader access in Azure RBAC plus source-specific read permissions)
 - A self-hosted integration runtime if you need to scan on-premises data sources
 
 ## Understanding the Registration Process
@@ -50,6 +50,8 @@ import requests
 # First, get an access token using your service principal
 purview_account = "my-purview-account"
 base_url = f"https://{purview_account}.purview.azure.com"
+api_version = "2023-09-01"
+access_token = "<access-token>"
 
 headers = {
     "Authorization": f"Bearer {access_token}",
@@ -75,7 +77,7 @@ registration_payload = {
 
 # Register the source
 response = requests.put(
-    f"{base_url}/scan/datasources/production-orders-db?api-version=2022-07-01-preview",
+    f"{base_url}/scan/datasources/production-orders-db?api-version={api_version}",
     headers=headers,
     json=registration_payload
 )
@@ -84,7 +86,7 @@ print(f"Registration status: {response.status_code}")
 
 ## Registering an Azure Storage Account
 
-For Azure Blob Storage or ADLS Gen2:
+For Azure Blob Storage:
 
 ```python
 # Register an Azure Storage account
@@ -104,7 +106,7 @@ storage_payload = {
 }
 
 response = requests.put(
-    f"{base_url}/scan/datasources/data-lake-raw?api-version=2022-07-01-preview",
+    f"{base_url}/scan/datasources/data-lake-raw?api-version={api_version}",
     headers=headers,
     json=storage_payload
 )
@@ -140,7 +142,7 @@ Before scanning, you need to set up authentication so Purview can access your da
 Grant the Purview managed identity access to your data source:
 
 ```bash
-# Grant Purview's managed identity Reader access to a SQL Database
+# Grant Purview's managed identity Reader access to a SQL Database in Azure RBAC
 # First, get the Purview managed identity object ID from the Azure portal
 
 # For Azure SQL Database, add the Purview identity as a database user
@@ -163,6 +165,7 @@ For Azure Storage, assign the Storage Blob Data Reader role:
 az role assignment create \
   --role "Storage Blob Data Reader" \
   --assignee-object-id "<purview-managed-identity-object-id>" \
+  --assignee-principal-type ServicePrincipal \
   --scope "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.Storage/storageAccounts/mydatalake"
 ```
 
@@ -187,13 +190,9 @@ Here is the API approach:
 ```python
 # Configure a scan for the registered SQL Database
 scan_payload = {
-    "kind": "AzureSqlDatabaseCredential",
+    "kind": "AzureSqlDatabaseMsi",
     "name": "weekly-full-scan",
     "properties": {
-        "credential": {
-            "referenceName": "purview-managed-identity",
-            "credentialType": "ManagedIdentity"
-        },
         "serverEndpoint": "myserver.database.windows.net",
         "databaseName": "orders-db",
         "scanRulesetName": "AzureSqlDatabase",
@@ -207,7 +206,7 @@ scan_payload = {
 
 # Create the scan
 response = requests.put(
-    f"{base_url}/scan/datasources/production-orders-db/scans/weekly-full-scan?api-version=2022-07-01-preview",
+    f"{base_url}/scan/datasources/production-orders-db/scans/weekly-full-scan?api-version={api_version}",
     headers=headers,
     json=scan_payload
 )
@@ -231,7 +230,7 @@ trigger_payload = {
 }
 
 response = requests.put(
-    f"{base_url}/scan/datasources/production-orders-db/scans/weekly-full-scan/triggers/default?api-version=2022-07-01-preview",
+    f"{base_url}/scan/datasources/production-orders-db/scans/weekly-full-scan/triggers/default?api-version={api_version}",
     headers=headers,
     json=trigger_payload
 )
@@ -244,13 +243,9 @@ Storage scans discover files, their formats, and apply classification rules to d
 ```python
 # Configure a scan for the Azure Storage account
 storage_scan_payload = {
-    "kind": "AzureStorageCredential",
+    "kind": "AzureStorageMsi",
     "name": "daily-incremental-scan",
     "properties": {
-        "credential": {
-            "referenceName": "purview-managed-identity",
-            "credentialType": "ManagedIdentity"
-        },
         "scanRulesetName": "AzureStorage",
         "scanRulesetType": "System",
         "collection": {
@@ -271,7 +266,7 @@ When a scan runs, Purview extracts several types of metadata:
 
 **Relationships**: For SQL databases, Purview discovers foreign key relationships between tables. For storage accounts, it identifies the hierarchical structure of containers and folders.
 
-**Data sampling**: Purview samples a small amount of data from each source to power classification. It does not copy or store your actual data - only metadata and sample values.
+**Data sampling**: Purview samples a small amount of data from each source to power classification. It stores scan metadata, schema, and classifications in the Data Map rather than copying your source data into the catalog.
 
 ## Organizing Sources with Collections
 
@@ -299,7 +294,7 @@ Track scan progress and troubleshoot failures:
 ```python
 # Check the status of a scan run
 response = requests.get(
-    f"{base_url}/scan/datasources/production-orders-db/scans/weekly-full-scan/runs?api-version=2022-07-01-preview",
+    f"{base_url}/scan/datasources/production-orders-db/scans/weekly-full-scan/runs?api-version={api_version}",
     headers=headers
 )
 
@@ -309,7 +304,7 @@ for run in scan_runs.get("value", []):
     print(f"Status: {run['status']}")
     print(f"Start time: {run.get('startTime', 'N/A')}")
     print(f"End time: {run.get('endTime', 'N/A')}")
-    print(f"Assets discovered: {run.get('lastUpdatedAssetsCount', 0)}")
+    print(f"Last updated: {run.get('lastUpdatedAt', 'N/A')}")
     print("---")
 ```
 
