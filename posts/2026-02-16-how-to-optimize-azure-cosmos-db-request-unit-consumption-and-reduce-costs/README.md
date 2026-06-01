@@ -8,7 +8,7 @@ Description: Practical techniques for reducing Azure Cosmos DB request unit cons
 
 ---
 
-Cosmos DB pricing revolves around Request Units (RUs). Every read, write, and query operation consumes a certain number of RUs, and you pay for the RUs you provision. The problem is that RU consumption can be wildly different depending on how you structure your data, write your queries, and configure your indexes. I have seen teams reduce their Cosmos DB costs by 60-80% without any loss in functionality just by optimizing their RU consumption.
+Cosmos DB pricing revolves around Request Units (RUs). Every read, write, and query operation consumes a certain number of RUs, and in provisioned throughput mode you pay for the RU/s you provision. The problem is that RU consumption can be wildly different depending on how you structure your data, write your queries, and configure your indexes. I have seen teams reduce their Cosmos DB costs by 60-80% without any loss in functionality just by optimizing their RU consumption.
 
 Let me walk you through the most impactful optimizations.
 
@@ -26,12 +26,12 @@ The first step in optimization is understanding where your RUs are going. Enable
 ```javascript
 // Node.js example: Check RU cost of each operation
 // The x-ms-request-charge header tells you exactly how many RUs were consumed
-const { resource, headers } = await container.items
+const { resources, headers } = await container.items
   .query("SELECT * FROM c WHERE c.category = 'electronics'")
   .fetchAll();
 
 console.log(`Query consumed ${headers['x-ms-request-charge']} RUs`);
-console.log(`Returned ${resource.length} documents`);
+console.log(`Returned ${resources.length} documents`);
 ```
 
 ## Optimize Partition Key Selection
@@ -50,7 +50,7 @@ A common anti-pattern is using a status field like "active" or "pending" as a pa
 // Most documents have status "active", creating a hot partition
 {
   "id": "order-123",
-  "partitionKey": "active",  // Don't do this
+  "status": "active",  // Don't do this as the partition key
   "customerId": "cust-456"
 }
 
@@ -58,7 +58,7 @@ A common anti-pattern is using a status field like "active" or "pending" as a pa
 // Distributes evenly across customers
 {
   "id": "order-123",
-  "partitionKey": "cust-456",  // Customer ID as partition key
+  "customerId": "cust-456",  // Customer ID as partition key
   "status": "active"
 }
 ```
@@ -78,8 +78,11 @@ const { resource } = await container.item("order-123", "cust-456").read();
 // Even a simple query costs more than a point read
 const { resources } = await container.items
   .query({
-    query: "SELECT * FROM c WHERE c.id = @id",
-    parameters: [{ name: "@id", value: "order-123" }]
+    query: "SELECT * FROM c WHERE c.id = @id AND c.customerId = @customerId",
+    parameters: [
+      { name: "@id", value: "order-123" },
+      { name: "@customerId", value: "cust-456" }
+    ]
   })
   .fetchAll();
 ```
@@ -154,9 +157,9 @@ Cosmos DB offers five consistency levels, each with different RU cost implicatio
 - **Bounded staleness**: 2x the RU cost of eventual consistency
 - **Session**: 1x (the default)
 - **Consistent prefix**: 1x
-- **Eventual**: 1x (cheapest reads)
+- **Eventual**: 1x
 
-If your application can tolerate eventual consistency for some operations, you can halve the read RU cost for those operations by overriding the default consistency level per request.
+If your account uses strong or bounded staleness consistency and your application can tolerate eventual consistency for some operations, you can reduce the read RU cost for those operations by overriding the consistency level per request.
 
 ```javascript
 // Override consistency level for a specific read operation
@@ -175,7 +178,7 @@ If you are using provisioned throughput, review your actual RU consumption again
 
 az monitor metrics list \
   --resource "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.DocumentDB/databaseAccounts/myCosmosDB" \
-  --metric "TotalRequestUnits" \
+  --metrics "TotalRequestUnits" "ProvisionedThroughput" \
   --interval PT1H \
   --aggregation Total \
   --start-time 2026-02-09T00:00:00Z \
@@ -191,31 +194,37 @@ Autoscale automatically adjusts between 10% and 100% of a maximum RU/s value. Yo
 
 For development environments, proof-of-concept projects, or low-traffic applications that consume fewer than a few hundred thousand RUs per day, the serverless tier is significantly cheaper. You pay per RU consumed with no hourly provisioning cost.
 
-The serverless tier has some limitations (5 GB per partition, no geo-replication, no dedicated throughput guarantees), but for appropriate workloads, the cost savings are substantial.
+The serverless tier has some limitations (20 GB per logical partition, single-region accounts, no provisioned throughput), but for appropriate workloads, the cost savings are substantial.
 
 ## Bulk Operations
 
-If you need to insert or update many documents at once, use bulk mode in the SDK. Bulk operations batch multiple requests together, reducing the per-operation overhead and improving throughput.
+If you need to insert or update many documents at once, use bulk operations in the SDK. Bulk operations optimize concurrency and retry handling for large batches. The total RU charge still depends on the operations and documents being written, but bulk execution can improve throughput and reduce client-side overhead.
 
 ```javascript
 // Enable bulk mode for high-volume operations
-// This batches requests and optimizes RU consumption
+// This optimizes execution for large batches
+const { BulkOperationType } = require("@azure/cosmos");
 const container = database.container("orders");
 
 const operations = documents.map(doc => ({
-  operationType: "Create",
+  operationType: BulkOperationType.Create,
   resourceBody: doc,
   partitionKey: doc.customerId
 }));
 
 // Bulk execute - more efficient than individual creates
-const response = await container.items.bulk(operations);
-console.log(`Bulk operation consumed ${response.headers['x-ms-request-charge']} RUs`);
+const responses = await container.items.executeBulkOperations(operations);
+const totalRequestCharge = responses.reduce(
+  (total, operation) => total + operation.response.requestCharge,
+  0
+);
+
+console.log(`Bulk operation consumed ${totalRequestCharge} RUs`);
 ```
 
 ## TTL for Automatic Cleanup
 
-If you have data that is only needed for a limited time (logs, session data, temporary records), set a time-to-live (TTL) on the container or individual documents. Cosmos DB automatically deletes expired documents without consuming RUs from your provisioned throughput.
+If you have data that is only needed for a limited time (logs, session data, temporary records), set a time-to-live (TTL) on the container or individual documents. Cosmos DB automatically deletes expired documents without explicit delete operations from your application. In provisioned throughput accounts, TTL deletion uses leftover RUs that are not being consumed by user requests.
 
 ```json
 {
