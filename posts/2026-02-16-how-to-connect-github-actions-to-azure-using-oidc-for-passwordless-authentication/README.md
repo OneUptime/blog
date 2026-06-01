@@ -115,7 +115,8 @@ SUBSCRIPTION_ID=$(az account show --query "id" -o tsv)
 
 # Assign Contributor role at the resource group level
 az role assignment create \
-  --assignee $APP_ID \
+  --assignee-object-id $SP_OBJECT_ID \
+  --assignee-principal-type ServicePrincipal \
   --role "Contributor" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/my-resource-group"
 ```
@@ -162,7 +163,7 @@ jobs:
 
       # Authenticate to Azure using OIDC
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -207,7 +208,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -224,7 +225,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
