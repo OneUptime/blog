@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AKS, Private Cluster, Azure Private Link, Private DNS, Kubernetes, Security, Networking
 
-Description: How to deploy a fully private AKS cluster with Private Link and Private DNS zones to keep the API server and cluster traffic off the public internet.
+Description: How to deploy a private AKS cluster with Private Link and Private DNS zones to keep API server traffic off the public internet.
 
 ---
 
@@ -16,8 +16,8 @@ In a private AKS cluster:
 
 - The Kubernetes API server gets a private IP address instead of a public one.
 - The API server is accessible only from within the VNet (or connected networks).
-- Communication between the API server and node pools goes through private endpoints.
-- No public endpoint exists for the API server (or you can optionally keep a restricted public endpoint).
+- Communication between the API server and node pools goes through a private endpoint.
+- The API server has no public IP address. AKS can still create a public DNS name for the private endpoint unless you disable the public FQDN.
 
 ```mermaid
 graph TD
@@ -32,14 +32,14 @@ graph TD
 ## Prerequisites
 
 - Azure CLI 2.40+
-- A VNet with at least two subnets (one for AKS nodes, one for private endpoints)
+- A VNet with at least two subnets (one for AKS nodes, one for management VMs or other private endpoints)
 - DNS infrastructure that can resolve private DNS zones (or Azure Private DNS)
 - A jump box, VPN connection, or Azure DevOps self-hosted agent inside the VNet for kubectl access
 
 ## Step 1: Create the VNet and Subnets
 
 ```bash
-# Create a VNet with subnets for AKS and private endpoints
+# Create a VNet with subnets for AKS and management access
 
 az network vnet create \
   --resource-group myResourceGroup \
@@ -48,7 +48,7 @@ az network vnet create \
   --subnet-name aks-subnet \
   --subnet-prefixes 10.240.0.0/16
 
-# Add a subnet for private endpoints and management VMs
+# Add a subnet for management VMs or other private endpoints
 az network vnet subnet create \
   --resource-group myResourceGroup \
   --vnet-name myVNet \
@@ -165,7 +165,7 @@ az network vnet-gateway create \
   --vpn-gateway-generation Generation1
 ```
 
-After the VPN is set up, connect from your local machine and run kubectl as if you were on the VNet.
+After the VPN gateway is created, configure point-to-site settings such as the client address pool, tunnel type, authentication method, and client certificate or Entra ID authentication. Once the client is connected, run kubectl as if you were on the VNet.
 
 ### Option C: Azure Bastion
 
@@ -178,6 +178,13 @@ az network vnet subnet create \
   --vnet-name myVNet \
   --name AzureBastionSubnet \
   --address-prefixes 10.243.0.0/26
+
+# Create a public IP for Azure Bastion
+az network public-ip create \
+  --resource-group myResourceGroup \
+  --name bastion-ip \
+  --sku Standard \
+  --allocation-method Static
 
 # Create Azure Bastion
 az network bastion create \
@@ -220,6 +227,11 @@ Deploy a self-hosted DevOps agent inside the VNet.
 ```yaml
 # agent-deployment.yaml
 # Azure DevOps self-hosted agent running in the private VNet
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -250,25 +262,19 @@ spec:
           value: "AKS-Agents"
 ```
 
-## Step 7: Optional - Add a Restricted Public Endpoint
+## Step 7: Optional - Disable the Public FQDN
 
-If you need public API server access for specific scenarios but want to restrict it, you can authorize specific IP ranges.
+Private AKS clusters do not support API server authorized IP ranges. If you want AKS to publish only the private FQDN for the API server, disable the public FQDN.
 
 ```bash
-# Enable a restricted public endpoint alongside the private endpoint
+# Disable the public FQDN and use only the private FQDN
 az aks update \
   --resource-group myResourceGroup \
   --name myPrivateAKS \
-  --enable-public-fqdn
-
-# Authorize specific IP ranges
-az aks update \
-  --resource-group myResourceGroup \
-  --name myPrivateAKS \
-  --api-server-authorized-ip-ranges "203.0.113.0/24,198.51.100.10/32"
+  --disable-public-fqdn
 ```
 
-This creates a public FQDN for the API server but restricts access to the specified IP ranges. The private endpoint still works for VNet access.
+If you need a public API server with authorized IP ranges, create a public AKS cluster and configure `--api-server-authorized-ip-ranges` there instead. The private endpoint still works for VNet access when the public FQDN is disabled.
 
 ## Step 8: Connect to Azure Services Privately
 
@@ -310,6 +316,33 @@ az network private-dns link vnet create \
   --name acr-dns-link \
   --virtual-network myVNet \
   --registration-enabled false
+
+# Create private DNS zone for Key Vault
+az network private-dns zone create \
+  --resource-group myResourceGroup \
+  --name "privatelink.vaultcore.azure.net"
+
+az network private-dns link vnet create \
+  --resource-group myResourceGroup \
+  --zone-name "privatelink.vaultcore.azure.net" \
+  --name kv-dns-link \
+  --virtual-network myVNet \
+  --registration-enabled false
+
+# Associate the private endpoints with their private DNS zones
+az network private-endpoint dns-zone-group create \
+  --resource-group myResourceGroup \
+  --endpoint-name acr-private-endpoint \
+  --name acr-zone-group \
+  --private-dns-zone "privatelink.azurecr.io" \
+  --zone-name acr
+
+az network private-endpoint dns-zone-group create \
+  --resource-group myResourceGroup \
+  --endpoint-name kv-private-endpoint \
+  --name kv-zone-group \
+  --private-dns-zone "privatelink.vaultcore.azure.net" \
+  --zone-name vault
 ```
 
 ## Troubleshooting
@@ -324,4 +357,4 @@ az network private-dns link vnet create \
 
 ## Summary
 
-Private AKS clusters keep your Kubernetes API server off the public internet, accessible only through private endpoints in your VNet. The setup requires careful planning for DNS resolution, VNet connectivity, and CI/CD access. Use jump boxes, VPN gateways, or Azure Bastion for interactive access, and self-hosted agents for CI/CD pipelines. Combine with private endpoints for ACR, Key Vault, and other Azure services to create a fully private cluster environment where no management or data traffic traverses the public internet.
+Private AKS clusters keep your Kubernetes API server off the public internet, accessible through a private endpoint in your VNet. The setup requires careful planning for DNS resolution, VNet connectivity, and CI/CD access. Use jump boxes, VPN gateways, or Azure Bastion for interactive access, and self-hosted agents for CI/CD pipelines. Combine with private endpoints for ACR, Key Vault, and other Azure services to keep supported service traffic on private connectivity.
