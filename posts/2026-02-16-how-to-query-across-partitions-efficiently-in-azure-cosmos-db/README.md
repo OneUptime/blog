@@ -8,11 +8,11 @@ Description: Strategies and techniques to minimize the cost and latency of cross
 
 ---
 
-In Azure Cosmos DB, the most efficient queries are single-partition queries - those that include the partition key in the WHERE clause and target just one logical partition. But real applications often need to query across all partitions. Search features, administrative dashboards, analytics, and reporting all require cross-partition queries. These queries fan out to every physical partition, which multiplies both the RU cost and the latency. This guide covers how to make cross-partition queries as efficient as possible.
+In Azure Cosmos DB, the most efficient queries are single-partition queries - those that include the partition key in the WHERE clause and target just one logical partition. But real applications often need to query across all partitions. Search features, administrative dashboards, analytics, and reporting all require cross-partition queries. Full fan-out queries visit every physical partition, which multiplies both the RU cost and the latency. This guide covers how to make cross-partition queries as efficient as possible.
 
 ## Why Cross-Partition Queries Are Expensive
 
-When you run a query without specifying a partition key, Cosmos DB sends the query to every physical partition in parallel. Each partition runs the query independently and returns its results. The gateway then merges and returns the combined results.
+When you run a query without specifying a partition key, Cosmos DB sends the query to every physical partition. Each partition runs the query independently and returns its results. The SDK and query engine then merge and return the combined results.
 
 ```mermaid
 graph TD
@@ -36,24 +36,23 @@ The costs multiply because:
 
 A query that costs 5 RUs on a single partition might cost 50+ RUs across 10 partitions.
 
-## Technique 1: Enable Cross-Partition Queries Explicitly
+## Technique 1: Make Cross-Partition Queries Intentional
 
-By default, the SDK will throw an error if you run a query without a partition key and have not explicitly enabled cross-partition queries. Enable it explicitly so you are intentional about it:
+In the current Azure Cosmos DB for NoSQL .NET SDK, cross-partition queries run when you do not provide a partition key value. Configure query options deliberately so you are intentional about the client resources and latency tradeoffs:
 
 ```csharp
-// Explicitly enable cross-partition queries in the request options
+// Configure cross-partition query execution deliberately
 var queryOptions = new QueryRequestOptions
 {
-    // This tells the SDK to fan out the query across all partitions
-    // Without this, queries without a partition key will fail
-    MaxConcurrency = -1  // -1 means maximum parallelism
+    // Let the SDK choose the parallelism for visiting partitions
+    MaxConcurrency = -1
 };
 
 var query = new QueryDefinition(
     "SELECT * FROM c WHERE c.status = 'active' AND c.category = 'electronics'"
 );
 
-// Execute with cross-partition options
+// Execute without a PartitionKey option, so the SDK can fan out as needed
 FeedIterator<Product> iterator = container.GetItemQueryIterator<Product>(
     query, requestOptions: queryOptions);
 
@@ -70,16 +69,16 @@ while (iterator.HasMoreResults)
 Console.WriteLine($"Found {allResults.Count} results, cost: {totalRUs} RUs");
 ```
 
-## Technique 2: Maximize Parallelism
+## Technique 2: Tune Parallelism
 
-The MaxConcurrency setting controls how many partitions are queried in parallel. Higher concurrency reduces total latency but uses more client-side resources:
+The MaxConcurrency setting controls how many operations can run in parallel during query execution. Higher concurrency can reduce total latency but uses more client-side resources:
 
 ```csharp
 // Tune parallelism based on your needs
 var queryOptions = new QueryRequestOptions
 {
-    // Maximum number of partitions queried in parallel
-    // -1 = no limit (fastest, uses most resources)
+    // Maximum number of concurrent query operations
+    // -1 = let the SDK choose the concurrency
     // 1 = sequential (slowest, least resources)
     // N = specific number of parallel queries
     MaxConcurrency = -1,
@@ -103,7 +102,7 @@ var lightQuery = new QueryDefinition(
     "SELECT c.id, c.name, c.price, c.category FROM c WHERE c.category = 'electronics'"
 );
 
-// Compare RU costs
+// Compare RU costs for the first returned page
 var heavyResult = await container.GetItemQueryIterator<dynamic>(heavyQuery, requestOptions: queryOptions).ReadNextAsync();
 Console.WriteLine($"All fields: {heavyResult.RequestCharge} RUs, {heavyResult.Count} items");
 
@@ -135,8 +134,7 @@ var selective = new QueryDefinition(
 Avoid fetching all results when you only need a page:
 
 ```csharp
-// Paginate cross-partition results efficiently
-// Use OFFSET LIMIT when you need specific pages
+// Use OFFSET LIMIT when you need to jump to a specific page number
 int pageSize = 20;
 int pageNumber = 3;
 
@@ -232,7 +230,7 @@ If your cross-partition queries always include a higher-level grouping, hierarch
 
 ```csharp
 // With hierarchical partition key: /tenantId/userId
-// Querying all users for a tenant is NOT a cross-partition query
+// Querying all users for a tenant is a targeted cross-partition query
 // because tenantId is the first level of the hierarchy
 
 ContainerProperties props = new ContainerProperties(
@@ -240,7 +238,7 @@ ContainerProperties props = new ContainerProperties(
     partitionKeyPaths: new List<string> { "/tenantId", "/userId" }
 );
 
-// This query is efficiently scoped to one tenant's data
+// This query is efficiently routed to the physical partitions that contain the tenant's data
 var tenantQuery = new QueryDefinition(
     "SELECT * FROM c WHERE c.tenantId = @tenantId AND c.status = 'active'"
 ).WithParameter("@tenantId", "tenant-42");
