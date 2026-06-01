@@ -10,7 +10,7 @@ Description: Learn how to enable anonymous pull access on Azure Container Regist
 
 Not every container image needs to be private. If you publish open-source software, client SDKs, or public tools as container images, you want people to pull them without jumping through authentication hoops. Docker Hub handles this transparently for public images, but Azure Container Registry defaults to requiring authentication for all operations.
 
-ACR anonymous pull enables unauthenticated read access to your registry. Anyone can pull images without logging in - just `docker pull myregistry.azurecr.io/myapp:latest` and it works. The registry remains private for push operations (you still need to authenticate to write), but reads are open. This guide covers enabling anonymous pull, controlling which repositories are accessible, and the security considerations.
+ACR anonymous pull enables unauthenticated read access to your registry. Anyone can pull images without logging in - just `docker pull myregistry.azurecr.io/myapp:latest` and it works. The registry remains private for push operations (you still need to authenticate to write), but reads are open. This guide covers enabling anonymous pull, structuring public and private registries, and the security considerations.
 
 ## When to Use Anonymous Pull
 
@@ -30,7 +30,7 @@ It is not the right choice when:
 ## Prerequisites
 
 - Azure Container Registry on the Standard or Premium SKU (anonymous pull is not available on Basic)
-- Azure CLI 2.50 or later
+- Azure CLI 2.21.0 or later
 - Some container images already pushed to the registry
 
 ## Step 1: Enable Anonymous Pull
@@ -93,7 +93,14 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       imagePullSecrets:
       - name: acr-pull-secret
@@ -168,7 +175,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Azure Login
-      uses: azure/login@v1
+      uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -244,7 +251,7 @@ ContainerRegistryRepositoryEvents
 ContainerRegistryRepositoryEvents
 | where OperationName == "Pull"
 | where TimeGenerated > ago(24h)
-| summarize PullCount = count() by CallerIPAddress
+| summarize PullCount = count() by CallerIpAddress
 | order by PullCount desc
 | take 20
 ```
@@ -253,10 +260,10 @@ ContainerRegistryRepositoryEvents
 
 Anonymous access means anyone can pull from your registry. While ACR does not have built-in per-IP rate limiting for anonymous pulls, the registry has overall throughput limits based on the SKU tier:
 
-| SKU | Reads per minute | Bandwidth |
-|-----|-------------------|-----------|
-| Standard | 1,000 | 60 MBps |
-| Premium | 10,000 | 100 MBps |
+| SKU | ReadOps per minute | Download bandwidth |
+|-----|---------------------|--------------------|
+| Standard | 3,000 | 60 Mbps |
+| Premium | 10,000 | 100 Mbps |
 
 If you expect high pull volumes, use Premium SKU with geo-replication.
 
@@ -314,7 +321,7 @@ curl -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
 
 **No per-user audit trail.** Since pulls are anonymous, you cannot track which specific user or organization pulled an image. You can only see source IP addresses in the diagnostic logs.
 
-**Consider signing images.** When distributing public images, sign them with Notary or Cosign so consumers can verify authenticity.
+**Consider signing images.** When distributing public images, sign them with Notation or Cosign so consumers can verify authenticity.
 
 ```bash
 # Sign an image with Cosign
