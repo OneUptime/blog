@@ -34,7 +34,7 @@ Before starting, you need:
 - An Azure IoT Hub with registered devices sending telemetry
 - An Azure Digital Twins instance with models and twins already created
 - Azure Functions Core Tools installed locally for development
-- Python 3.9+ or Node.js 18+ (we will use Python in this guide)
+- Python 3.10+ and Azurite or an Azure Storage account for local development (we will use Python in this guide)
 
 ## Step 1: Create the Azure Function Project
 
@@ -43,12 +43,20 @@ Start by creating a new Functions project locally.
 ```bash
 # Create the function project
 
-func init iot-to-adt --python
+func init iot-to-adt --worker-runtime python --model V2
 
 cd iot-to-adt
 
 # Create the function triggered by IoT Hub events
 func new --name IngestTelemetry --template "Azure Event Hub trigger"
+```
+
+Add the required Python packages to `requirements.txt`.
+
+```text
+azure-functions
+azure-digitaltwins-core
+azure-identity
 ```
 
 ## Step 2: Configure the IoT Hub Connection
@@ -71,7 +79,7 @@ Add this to your `local.settings.json` for local development.
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "python",
-    "IoTHubConnectionString": "Endpoint=sb://ihsuprodbyres123.servicebus.windows.net/;SharedAccessKeyName=iothubowner;SharedAccessKey=...;EntityPath=my-iot-hub",
+    "IoTHubConnectionString": "Endpoint=sb://ihsuprodbyres123.servicebus.windows.net/;SharedAccessKeyName=iothubowner;SharedAccessKey=...;EntityPath=iothub-ehub-my-iot-hub-123456",
     "ADT_URL": "https://my-digital-twins.api.eus.digitaltwins.azure.net"
   }
 }
@@ -144,8 +152,8 @@ def ingest_telemetry(events: list[func.EventHubEvent]):
                 client.update_digital_twin(twin_id, patch)
                 logging.info(f"Updated twin {twin_id} with {len(patch)} operations")
 
-                # Also publish the telemetry through the twin for event routing
-                client.publish_telemetry(twin_id, telemetry)
+            # Also publish the telemetry through the twin for event routing
+            client.publish_telemetry(twin_id, telemetry)
 
         except Exception as e:
             # Log but don't throw - we don't want one bad message to block the batch
@@ -159,8 +167,7 @@ def map_device_to_twin(device_id: str) -> str:
     For this example, we use a simple prefix convention: device 'temp-sensor-01'
     maps to twin 'sensor-temp-sensor-01'.
     """
-    # Simple mapping - device ID is the same as twin ID
-    # Adjust this to match your naming convention
+    # Prefix-based mapping - adjust this to match your naming convention
     return f"sensor-{device_id}"
 
 
@@ -174,9 +181,9 @@ def build_twin_patch(telemetry: dict) -> list:
 
     # Map telemetry fields to twin properties
     property_mappings = {
-        "temperature": "/reading",
-        "humidity": "/reading",
-        "pressure": "/reading",
+        "temperature": "/temperature",
+        "humidity": "/humidity",
+        "pressure": "/pressure",
         "batteryVoltage": "/batteryLevel",
         "batteryLevel": "/batteryLevel"
     }
@@ -184,7 +191,7 @@ def build_twin_patch(telemetry: dict) -> list:
     for telemetry_field, twin_path in property_mappings.items():
         if telemetry_field in telemetry:
             patch.append({
-                "op": "replace",
+                "op": "add",
                 "path": twin_path,
                 "value": telemetry[telemetry_field]
             })
@@ -235,7 +242,7 @@ def normalize_telemetry(raw_body: str, device_id: str) -> dict:
 
 ## Step 5: Device-to-Twin Mapping Strategies
 
-The simplest mapping uses the device ID directly as the twin ID. But in practice, you often need more flexibility. Here are three approaches.
+The simplest mapping uses the device ID directly as the twin ID. But in practice, you often need more flexibility. Here are four approaches.
 
 **Direct mapping** - The device ID is the twin ID. Simple but requires coordination between device provisioning and twin creation.
 
@@ -272,7 +279,8 @@ def lookup_mapping(device_id: str) -> str:
 # Strategy 4: Query the twin graph for the mapping
 def graph_mapping(client, device_id: str) -> str:
     """Find the twin that has a matching IoT Hub device ID property."""
-    query = f"SELECT T.$dtId FROM digitaltwins T WHERE T.iotDeviceId = '{device_id}'"
+    escaped_device_id = device_id.replace("\\", "\\\\").replace("'", "\\'")
+    query = f"SELECT T.$dtId FROM digitaltwins T WHERE T.iotDeviceId = '{escaped_device_id}'"
     results = list(client.query_twins(query))
     if results:
         return results[0]["$dtId"]
