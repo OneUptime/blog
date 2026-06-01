@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Communication Services, Email, Transactional Email, SMTP, Email API, Cloud Communication, Notification
 
-Description: Learn how to send transactional emails like order confirmations and password resets using Azure Communication Services Email with the SDK and REST API.
+Description: Learn how to send transactional emails like order confirmations and password resets using Azure Communication Services Email with the SDK.
 
 ---
 
@@ -40,11 +40,11 @@ For a custom domain, add these DNS records:
 | Type | Name | Value |
 |---|---|---|
 | TXT | @ | Verification value from Azure |
-| CNAME | selector1._domainkey | DKIM key from Azure |
-| CNAME | selector2._domainkey | DKIM key from Azure |
+| CNAME | selector1-azurecomm-prod-net._domainkey | DKIM key from Azure |
+| CNAME | selector2-azurecomm-prod-net._domainkey | DKIM key from Azure |
 | TXT | @ | SPF record: `v=spf1 include:spf.protection.outlook.com -all` |
 
-After adding the DNS records, verify the domain in the Azure portal under your Email Communication Service resource.
+The exact DNS record names depend on whether your DNS zone is the root domain or a subdomain, so copy the generated values from the Azure portal. After adding the DNS records, verify the domain in the Azure portal under your Email Communication Service resource.
 
 ### Link to Your ACS Resource
 
@@ -228,6 +228,10 @@ def send_verification_email(to: str, code: str) -> dict:
 ```javascript
 // send-with-attachment.js - Email with file attachments
 const fs = require('fs');
+const { EmailClient } = require('@azure/communication-email');
+
+const connectionString = 'endpoint=https://my-acs-resource.communication.azure.com/;accesskey=...';
+const emailClient = new EmailClient(connectionString);
 
 async function sendEmailWithAttachment(to, subject, htmlBody, filePath, fileName) {
     // Read the file and convert to base64
@@ -315,17 +319,17 @@ sequenceDiagram
     participant Inbox as Recipient Inbox
 
     App->>ACS: Send email via SDK
-    ACS->>DNS: DKIM sign message
-    ACS->>Provider: Deliver via SMTP
+    ACS->>ACS: Sign message with DKIM
+    ACS->>Provider: Send message for delivery
     Provider->>DNS: Verify SPF and DKIM
     Provider->>Provider: Check reputation
     Provider->>Inbox: Deliver to inbox
-    ACS->>App: Delivery status update
+    ACS->>App: Send operation status
 ```
 
 ## Handling Delivery Status
 
-The `beginSend` method returns a poller that tracks the email through the delivery pipeline. The status progresses through several stages.
+The `beginSend` method returns a poller that tracks the Azure email send operation. A `Succeeded` result means Azure Communication Services sent the message out for delivery; recipient-side delivery details require Azure Monitor or Event Grid email events.
 
 ```javascript
 async function sendAndTrack(message) {
@@ -337,11 +341,10 @@ async function sendAndTrack(message) {
         console.log(`Current status: ${status.status}`);
 
         // Status values:
-        // - NotStarted: Queued but not processing yet
+        // - NotStarted: Not currently sent by the service
         // - Running: Being processed by the email service
-        // - Succeeded: Accepted by the recipient's mail server
-        // - Failed: Delivery failed
-        // - Canceled: Send was canceled
+        // - Succeeded: Sent out for delivery
+        // - Failed: The email was not sent
 
         await poller.poll();
     }
@@ -365,13 +368,13 @@ Getting emails to the inbox instead of the spam folder requires attention to sev
 
 **Monitor bounce rates.** High bounce rates (invalid email addresses) damage your sender reputation. Remove invalid addresses from your database promptly.
 
-## Rate Limits
+## Service Limits
 
-ACS Email has rate limits based on your subscription tier. The default limits are:
+ACS Email has service limits based on your subscription tier. The documented limits include:
 
-- 100 emails per minute
-- 1,000 emails per hour
-- Total attachment size: 10 MB per email
+- 50 recipients per email
+- Total email request size, including attachments and Base64 encoding: 10 MB
+- Maximum authenticated connections per subscription: 250
 
 For higher volume needs, contact Azure support to increase your limits.
 
