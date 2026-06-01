@@ -8,13 +8,13 @@ Description: Use CloudTrail Lake to run SQL queries against your AWS API activit
 
 ---
 
-CloudTrail is the standard way to log API activity in your AWS account. Every API call, console login, and SDK operation gets recorded. But querying those logs has traditionally been painful. You either download JSON files from S3 and parse them manually, or set up Athena tables with proper partitioning. CloudTrail Lake simplifies this by providing a managed event data store with a built-in SQL query engine.
+CloudTrail is the standard way to log supported API activity in your AWS account. API calls, console logins, and SDK operations for supported services get recorded. But querying those logs has traditionally been painful. You either download JSON files from S3 and parse them manually, or set up Athena tables with proper partitioning. CloudTrail Lake simplifies this by providing a managed event data store with a built-in SQL query engine.
 
 You can run queries like "show me all IAM policy changes in the last 90 days" or "which principal made the most S3 API calls last week" without any ETL pipeline.
 
 ## What Is CloudTrail Lake?
 
-CloudTrail Lake is a managed, immutable data store for CloudTrail events. It ingests events from one or more AWS accounts and regions, stores them in a columnar format optimized for querying, and lets you run SQL queries directly through the console or API.
+CloudTrail Lake is a managed, immutable data store for CloudTrail events. It ingests events from one or more AWS accounts and regions, stores them in Apache ORC columnar format optimized for querying, and lets you run SQL queries directly through the console or API. As of June 1, 2026, CloudTrail Lake is available only to existing customers who signed up before May 31, 2026; existing customers can continue using the service.
 
 ```mermaid
 flowchart LR
@@ -30,13 +30,13 @@ The key advantages over the traditional S3-plus-Athena approach:
 
 - No S3 buckets to manage
 - No table partitioning to configure
-- Built-in retention management (up to 7 years)
+- Built-in retention management (up to 10 years, depending on the pricing option)
 - Supports organization-wide event collection
 - Immutable storage for compliance
 
 ## Prerequisites
 
-- An AWS account with CloudTrail enabled
+- An AWS account with existing CloudTrail Lake access
 - IAM permissions for CloudTrail Lake operations
 - AWS CLI v2 or the AWS Console
 
@@ -64,7 +64,7 @@ aws cloudtrail create-event-data-store \
 
 Let's break down the options:
 
-- **retention-period**: How many days to keep events (1 to 2557, which is 7 years)
+- **retention-period**: How many days to keep events (7 to 3653 days, depending on the billing mode)
 - **multi-region-enabled**: Collect events from all regions, not just the current one
 - **organization-enabled**: Collect events from all accounts in your AWS Organization
 - **advanced-event-selectors**: Control which event types to include
@@ -219,16 +219,9 @@ Queries run asynchronously. For large datasets, they can take seconds to minutes
 
 ## Step 6: Save Queries for Reuse
 
-CloudTrail Lake lets you save queries so your team can reuse them without rewriting SQL each time.
+CloudTrail Lake lets you save queries in the console so you can reuse them without rewriting SQL each time.
 
-```bash
-# Save a query for reuse
-aws cloudtrail create-saved-query \
-  --name "daily-iam-changes" \
-  --query-statement "SELECT eventTime, userIdentity.arn, eventName FROM abc123_event_data_store WHERE eventSource = 'iam.amazonaws.com' AND eventTime > '2026-02-11' ORDER BY eventTime DESC"
-```
-
-Saved queries show up in the CloudTrail Lake console and can be run by any team member with the right permissions.
+To save a query, open the CloudTrail Lake query editor, write or edit your SQL, and choose **Save as**. Saved queries are tied to the browser where you saved them, so they are useful for personal reuse rather than team-wide sharing.
 
 ## Step 7: Set Up Scheduled Queries
 
@@ -247,7 +240,7 @@ def handler(event, context):
             SELECT eventTime, userIdentity.arn, eventName, sourceIPAddress
             FROM abc123_event_data_store
             WHERE errorCode = 'AccessDenied'
-            AND eventTime > DATEADD(DAY, -1, CURRENT_TIMESTAMP)
+            AND eventTime > date_add('day', -1, current_timestamp)
             ORDER BY eventTime DESC
         """
     )
@@ -262,10 +255,11 @@ Pair this with a second Lambda that checks query status and sends results to Sla
 
 ## Cost Considerations
 
-CloudTrail Lake pricing is based on two factors:
+CloudTrail Lake pricing is based on three factors:
 
-- **Ingestion**: You pay per GB of data ingested
-- **Scanning**: You pay per GB of data scanned by queries
+- **Ingestion**: You pay based on the amount of uncompressed data ingested
+- **Storage**: Storage is included during the default retention period, but extended retention can add storage charges
+- **Scanning**: You pay per GB of optimized and compressed data scanned by queries
 
 To control costs:
 
@@ -281,9 +275,9 @@ Both can query CloudTrail logs, but they serve different needs:
 |---|---|---|
 | Setup complexity | Low | Medium (partitioning, Glue) |
 | Query latency | Seconds to minutes | Seconds to minutes |
-| Retention | Built-in (up to 7 years) | Manual (S3 lifecycle policies) |
+| Retention | Built-in (up to 10 years, depending on pricing option) | Manual (S3 lifecycle policies) |
 | Cross-account | Built-in with Organizations | Requires cross-account S3 access |
-| Cost model | Ingestion + scan | Storage + scan |
+| Cost model | Ingestion + storage for extended retention + scan | Storage + scan |
 | Immutability | Built-in | Depends on S3 configuration |
 
 For security and compliance use cases, CloudTrail Lake's immutability and built-in retention make it the better choice. For cost-optimized analytics on very large datasets, Athena might be cheaper.
