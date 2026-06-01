@@ -22,7 +22,7 @@ You need an Azure Maps account. Create one through the Azure portal or CLI.
 az maps account create \
   --name my-maps-account \
   --resource-group maps-rg \
-  --sku S1 \
+  --sku G2 \
   --kind Gen2
 
 # Get the subscription key
@@ -281,7 +281,6 @@ function addSymbolLayer(map) {
             // Use a built-in icon
             image: 'pin-round-darkblue',
             size: 0.8,
-            // Color based on status property
             allowOverlap: true
         },
         textOptions: {
@@ -398,7 +397,7 @@ function addClusteredLayer(map) {
 
 ## Authentication Best Practices
 
-For production applications, do not embed the subscription key in client-side code. Use Azure Active Directory authentication instead.
+For production applications, do not embed the subscription key in client-side code. Use Microsoft Entra ID authentication instead.
 
 ```javascript
 // Use AAD authentication for production
@@ -407,8 +406,8 @@ const map = new atlas.Map('myMap', {
     zoom: 12,
     authOptions: {
         authType: 'aad',
-        clientId: 'YOUR_AAD_APP_CLIENT_ID',
-        aadAppId: 'YOUR_AZURE_MAPS_CLIENT_ID',
+        clientId: 'YOUR_AZURE_MAPS_CLIENT_ID',
+        aadAppId: 'YOUR_AAD_APP_CLIENT_ID',
         aadTenant: 'YOUR_AAD_TENANT_ID',
         aadInstance: 'https://login.microsoftonline.com/'
     }
