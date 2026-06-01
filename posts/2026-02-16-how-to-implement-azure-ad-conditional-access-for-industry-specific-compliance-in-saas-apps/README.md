@@ -10,7 +10,7 @@ Description: Implement Azure AD Conditional Access policies for industry-specifi
 
 Different industries have different security requirements for accessing cloud applications. A healthcare organization handling patient data must comply with HIPAA. A financial services company needs to meet SOX and PCI DSS requirements. A government contractor must follow FedRAMP and NIST guidelines. These regulations translate into specific access control requirements: where users can sign in from, what devices they can use, and how strongly they must authenticate.
 
-Azure AD Conditional Access lets you define policies that enforce these requirements at the identity layer. Before a user gets a token for your SaaS application, Conditional Access evaluates the context - who is the user, what device are they on, where are they, and what application are they accessing - and makes an allow, block, or require-MFA decision. In this guide, I will build Conditional Access policies for several industry compliance scenarios.
+Microsoft Entra Conditional Access, formerly Azure AD Conditional Access, lets you define policies that enforce these requirements at the identity layer. Before a user gets a token for your SaaS application, Conditional Access evaluates the context - who is the user, what device are they on, where are they, and what application are they accessing - and makes an allow, block, or require-MFA decision. In this guide, I will build Conditional Access policies for several industry compliance scenarios.
 
 ## How Conditional Access Works
 
@@ -57,6 +57,7 @@ az rest --method POST \
     "displayName": "HIPAA - Require MFA for ePHI Access",
     "state": "enabled",
     "conditions": {
+      "clientAppTypes": ["all"],
       "applications": {
         "includeApplications": ["<your-saas-app-id>"]
       },
@@ -98,6 +99,7 @@ az rest --method POST \
     "displayName": "HIPAA - Block Untrusted Locations",
     "state": "enabled",
     "conditions": {
+      "clientAppTypes": ["all"],
       "applications": {
         "includeApplications": ["<your-saas-app-id>"]
       },
@@ -116,20 +118,21 @@ az rest --method POST \
   }'
 ```
 
-### Policy 3: Enforce Session Timeout
+### Policy 3: Enforce Reauthentication
 
-HIPAA requires automatic logoff after a period of inactivity. Configure a session control that limits the sign-in frequency.
+HIPAA includes an addressable automatic logoff implementation specification. Conditional Access sign-in frequency is a reauthentication control rather than a true application idle timeout, so pair it with an application-level idle timeout for automatic logoff. Because the persistent browser session control works best when all apps are selected, target this policy to all applications for the healthcare group.
 
 ```bash
 az rest --method POST \
   --url "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies" \
   --headers "Content-Type=application/json" \
   --body '{
-    "displayName": "HIPAA - Session Timeout 30 Minutes",
+    "displayName": "HIPAA - Reauthenticate Every Hour",
     "state": "enabled",
     "conditions": {
+      "clientAppTypes": ["all"],
       "applications": {
-        "includeApplications": ["<your-saas-app-id>"]
+        "includeApplications": ["All"]
       },
       "users": {
         "includeGroups": ["<healthcare-users-group-id>"]
@@ -137,8 +140,8 @@ az rest --method POST \
     },
     "sessionControls": {
       "signInFrequency": {
-        "value": 30,
-        "type": "minutes",
+        "value": 1,
+        "type": "hours",
         "isEnabled": true
       },
       "persistentBrowser": {
@@ -149,7 +152,7 @@ az rest --method POST \
   }'
 ```
 
-The `persistentBrowser: never` setting ensures users cannot check "stay signed in" and must re-authenticate after 30 minutes of inactivity. This directly satisfies the HIPAA automatic logoff requirement.
+The `persistentBrowser: never` setting prevents persistent browser cookies, while sign-in frequency requires users to reauthenticate after the configured period. Microsoft recommends targeting all apps when using the persistent browser session control.
 
 ## Financial Services - SOX and PCI DSS Compliance
 
@@ -167,6 +170,7 @@ az rest --method POST \
     "displayName": "Financial - Require Compliant Device",
     "state": "enabled",
     "conditions": {
+      "clientAppTypes": ["all"],
       "applications": {
         "includeApplications": ["<your-saas-app-id>"]
       },
@@ -188,7 +192,7 @@ Using the AND operator means users must satisfy both MFA and device compliance. 
 
 ### Policy 5: Block High-Risk Sign-Ins
 
-Azure AD Identity Protection detects risky sign-ins based on impossible travel, anonymous IP addresses, malware-linked IPs, and unusual sign-in patterns. For financial services, block high-risk sign-ins outright.
+Microsoft Entra ID Protection detects risky sign-ins based on impossible travel, anonymous IP addresses, malware-linked IPs, and unusual sign-in patterns. For financial services, block high-risk sign-ins outright.
 
 ```bash
 az rest --method POST \
@@ -198,6 +202,7 @@ az rest --method POST \
     "displayName": "Financial - Block High Risk Sign-Ins",
     "state": "enabled",
     "conditions": {
+      "clientAppTypes": ["all"],
       "applications": {
         "includeApplications": ["<your-saas-app-id>"]
       },
@@ -223,6 +228,7 @@ az rest --method POST \
     "displayName": "Financial - MFA for Medium Risk Sign-Ins",
     "state": "enabled",
     "conditions": {
+      "clientAppTypes": ["all"],
       "applications": {
         "includeApplications": ["<your-saas-app-id>"]
       },
@@ -240,7 +246,7 @@ az rest --method POST \
 
 ## Government - FedRAMP and NIST 800-53
 
-Government contractors and agencies follow NIST 800-53 controls, which are comprehensive. Key Conditional Access controls include PIV/smart card authentication, geographic restrictions, and session recording.
+Government contractors and agencies follow NIST 800-53 controls, which are comprehensive. Key Conditional Access controls include PIV/smart card authentication, geographic restrictions, and session restrictions.
 
 ### Policy 6: Require Phishing-Resistant MFA
 
@@ -254,6 +260,7 @@ az rest --method POST \
     "displayName": "Government - Require Phishing-Resistant MFA",
     "state": "enabled",
     "conditions": {
+      "clientAppTypes": ["all"],
       "applications": {
         "includeApplications": ["<your-saas-app-id>"]
       },
@@ -296,6 +303,7 @@ az rest --method POST \
     "displayName": "Government - US Only Access",
     "state": "enabled",
     "conditions": {
+      "clientAppTypes": ["all"],
       "applications": {
         "includeApplications": ["<your-saas-app-id>"]
       },
@@ -316,15 +324,15 @@ az rest --method POST \
 
 ## Implementing in Your SaaS Application
 
-Your SaaS application needs to handle the scenarios where Conditional Access blocks or challenges a user. When Conditional Access requires MFA and the user has not completed it, the token request fails with a specific error that your application should handle gracefully.
+Your SaaS application needs to handle the scenarios where Conditional Access blocks or challenges a user. When Conditional Access requires more claims, a protected API can return a claims challenge that your application should pass back to MSAL so the user can satisfy the policy.
 
 ```python
 from msal import ConfidentialClientApplication
 
 def handle_conditional_access_challenge(error_response):
-    """Handle Conditional Access challenges during token acquisition."""
+    """Handle Conditional Access challenges during protected API access."""
     if "claims" in error_response:
-        # Azure AD is requesting additional claims (like MFA)
+        # Microsoft Entra ID is requesting additional claims (like MFA)
         # Redirect the user to re-authenticate with the required claims
         claims_challenge = error_response["claims"]
 
@@ -349,7 +357,7 @@ def handle_conditional_access_challenge(error_response):
 
 Always test policies in report-only mode before enforcing them. Report-only mode logs what the policy would do without actually blocking or challenging users.
 
-Set the policy state to "enabledForReportingButNotEnforced" during testing. Review the sign-in logs in Azure AD to see which sign-ins would have been affected. Once you are confident the policy targets the right users and scenarios, switch to "enabled."
+Set the policy state to "enabledForReportingButNotEnforced" during testing. Review the sign-in logs in Microsoft Entra ID to see which sign-ins would have been affected. Once you are confident the policy targets the right users and scenarios, switch to "enabled."
 
 ## Wrapping Up
 
