@@ -149,6 +149,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 One important constraint: EF Core's retry logic does not automatically wrap user-initiated transactions. If a retry happens mid-transaction, the entire transaction needs to be replayed. Use the `CreateExecutionStrategy` method for explicit transactions:
 
+When a service needs to create a fresh context for each retry attempt, register `IDbContextFactory<AppDbContext>` with the same `UseSqlServer` options you use for your regular DbContext.
+
 ```csharp
 // Services/OrderService.cs - Resilient transaction handling
 using Microsoft.EntityFrameworkCore;
@@ -157,25 +159,29 @@ namespace MigrationDemo.Services;
 
 public class OrderService
 {
-    private readonly AppDbContext _context;
+    private readonly IDbContextFactory<AppDbContext> _contextFactory;
 
-    public OrderService(AppDbContext context)
+    public OrderService(IDbContextFactory<AppDbContext> contextFactory)
     {
-        _context = context;
+        _contextFactory = contextFactory;
     }
 
     // Create an order with items in a resilient transaction
     public async Task<Order> CreateOrderAsync(CreateOrderDto dto)
     {
+        await using var strategyContext = await _contextFactory.CreateDbContextAsync();
+
         // Get the execution strategy
-        var strategy = _context.Database.CreateExecutionStrategy();
+        var strategy = strategyContext.Database.CreateExecutionStrategy();
 
         // Execute the entire operation within the strategy
         // If a transient failure occurs, the whole block is retried
         return await strategy.ExecuteAsync(async () =>
         {
+            await using var context = await _contextFactory.CreateDbContextAsync();
+
             // Start a transaction
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            await using var transaction = await context.Database.BeginTransactionAsync();
 
             try
             {
@@ -187,13 +193,13 @@ public class OrderService
                     Status = "Pending",
                 };
 
-                _context.Orders.Add(order);
-                await _context.SaveChangesAsync();
+                context.Orders.Add(order);
+                await context.SaveChangesAsync();
 
                 // Add order items and update stock
                 foreach (var item in dto.Items)
                 {
-                    var product = await _context.Products.FindAsync(item.ProductId);
+                    var product = await context.Products.FindAsync(item.ProductId);
                     if (product == null)
                         throw new InvalidOperationException($"Product {item.ProductId} not found");
 
@@ -204,7 +210,7 @@ public class OrderService
                     product.StockQuantity -= item.Quantity;
 
                     // Add the line item
-                    _context.OrderItems.Add(new OrderItem
+                    context.OrderItems.Add(new OrderItem
                     {
                         OrderId = order.Id,
                         ProductId = item.ProductId,
@@ -213,7 +219,7 @@ public class OrderService
                     });
                 }
 
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
                 return order;
@@ -228,12 +234,16 @@ public class OrderService
 }
 ```
 
+If a connection failure happens while a transaction is being committed, the final transaction state is unknown. For operations that use store-generated keys, design the operation to be idempotent or add a verification step before retrying writes that could otherwise be duplicated.
+
 ## Connection Pool Configuration
 
 Retry logic helps with transient failures, but proper connection pool settings prevent many issues from happening in the first place:
 
 ```csharp
 // Program.cs - Optimized connection string for Azure SQL
+using Microsoft.Data.SqlClient;
+
 var connectionString = new SqlConnectionStringBuilder(
     builder.Configuration.GetConnectionString("DefaultConnection"))
 {
@@ -248,9 +258,9 @@ var connectionString = new SqlConnectionStringBuilder(
     TrustServerCertificate = false,
     MultipleActiveResultSets = true,
 
-    // Connection resiliency
-    ConnectRetryCount = 3,     // ADO.NET level retries
-    ConnectRetryInterval = 10, // Seconds between ADO.NET retries
+    // SqlClient idle connection resiliency
+    ConnectRetryCount = 3,     // Reconnection attempts after an idle connection failure
+    ConnectRetryInterval = 10, // Seconds between SqlClient reconnection attempts
 }.ConnectionString;
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -267,13 +277,24 @@ For cases where the database is down for an extended period, add a circuit break
 
 ```csharp
 // Services/ResilientDbService.cs - Circuit breaker for database operations
-using System.Collections.Concurrent;
+using Microsoft.Data.SqlClient;
 
 namespace MigrationDemo.Services;
 
 public class CircuitBreaker
 {
     private enum State { Closed, Open, HalfOpen }
+
+    private static readonly HashSet<int> TransientSqlErrorNumbers = new()
+    {
+        40197,  // The service encountered an error processing your request
+        40501,  // The service is currently busy
+        40613,  // Database is not currently available
+        49918,  // Not enough resources to process request
+        49919,  // Too many create or update operations
+        49920,  // Too many operations in progress
+        11001,  // DNS or host resolution failure
+    };
 
     private State _state = State.Closed;
     private int _failureCount;
@@ -321,7 +342,7 @@ public class CircuitBreaker
 
             return result;
         }
-        catch (Exception)
+        catch (Exception ex) when (IsTransientDatabaseFailure(ex))
         {
             lock (_lock)
             {
@@ -337,15 +358,37 @@ public class CircuitBreaker
             throw;
         }
     }
+
+    private static bool IsTransientDatabaseFailure(Exception exception)
+    {
+        if (exception is TimeoutException)
+        {
+            return true;
+        }
+
+        if (exception is SqlException sqlException)
+        {
+            foreach (SqlError error in sqlException.Errors)
+            {
+                if (TransientSqlErrorNumbers.Contains(error.Number))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 }
 ```
 
 ## Monitoring Retries
 
-Track retry events to understand how often transient failures occur:
+Track failed commands alongside EF Core's execution-strategy logs to understand how often transient failures occur:
 
 ```csharp
-// Interceptors/RetryLoggingInterceptor.cs - Log retries for monitoring
+// Interceptors/RetryLoggingInterceptor.cs - Log failed commands for monitoring
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging;
 
