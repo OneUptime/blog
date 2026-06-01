@@ -33,7 +33,7 @@ az aks update \
   --api-server-authorized-ip-ranges "203.0.113.50/32,198.51.100.0/24"
 ```
 
-Once enabled, only requests from the specified IP ranges can reach the API server. Requests from any other IP get a connection refused error - they cannot even reach the authentication layer.
+Once enabled, only requests from the specified IP ranges can reach the API server. Requests from any other IP are blocked before they can reach the authentication layer.
 
 ## Finding Your Current IP Address
 
@@ -87,9 +87,9 @@ Your CI/CD system (Azure DevOps, GitHub Actions, Jenkins) needs API server acces
 # Check: https://api.github.com/meta for the "actions" key
 ```
 
-### AKS Node Subnet
+### AKS Cluster Egress IP
 
-The AKS nodes themselves communicate with the API server. If you are using standard load balancer with outbound rules, you need to include the outbound IP of the nodes.
+The AKS nodes themselves communicate with the API server. Include the cluster egress IP address, such as the outbound IP of a standard load balancer, NAT gateway, or firewall, depending on your outbound type.
 
 ```bash
 # Get the outbound IPs used by the AKS cluster
@@ -103,7 +103,7 @@ for IP_ID in $OUTBOUND_IPS; do
 done
 ```
 
-AKS automatically includes the node outbound IPs in the authorized ranges, so you typically do not need to add them manually. But if you change the outbound configuration, verify this.
+When you enable authorized IP ranges during cluster creation with a standard load balancer, AKS automatically allows the load balancer outbound public IP. If you change the outbound configuration later, verify the cluster egress IP is still allowed.
 
 ## Building the Complete IP Range List
 
@@ -123,8 +123,8 @@ OFFICE="203.0.113.0/28"
 # VPN exit IPs
 VPN="198.51.100.10/32,198.51.100.11/32"
 
-# CI/CD agents (self-hosted)
-CICD="10.0.1.50/32"
+# CI/CD agents (self-hosted public egress IP)
+CICD="203.0.113.60/32"
 
 # Monitoring (if external tools need API access)
 MONITORING="192.0.2.100/32"
@@ -151,7 +151,7 @@ CURRENT_RANGES=$(az aks show \
   --name myAKS \
   --query "apiServerAccessProfile.authorizedIpRanges" -o tsv | tr '\t' ',')
 
-NEW_IP="10.20.30.40/32"
+NEW_IP="203.0.113.75/32"
 
 az aks update \
   --resource-group myRG \
@@ -193,12 +193,12 @@ JUMPBOX_IP=$(az network public-ip show \
 az aks update \
   --resource-group myRG \
   --name myAKS \
-  --api-server-authorized-ip-ranges "${JUMPBOX_IP}/32,${OFFICE}"
+  --api-server-authorized-ip-ranges "${JUMPBOX_IP}/32,203.0.113.0/28"
 ```
 
 ### Option 3: Azure Cloud Shell
 
-Azure Cloud Shell runs within Microsoft's network and can access the API server. However, the Cloud Shell IP ranges change, so you would need to include a broader Microsoft IP range.
+Azure Cloud Shell is useful for Azure CLI management-plane operations, such as updating the authorized ranges if you are locked out. For kubectl access, its source IP is not a stable single address to whitelist, so avoid solving this by allowing broad Microsoft IP ranges unless your risk model accepts it.
 
 ### Option 4: Temporary Access Script
 
@@ -272,7 +272,8 @@ az monitor diagnostic-settings create \
   --resource "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.ContainerService/managedClusters/myAKS" \
   --name "api-audit-logs" \
   --workspace "<log-analytics-workspace-id>" \
-  --logs '[{"category": "kube-audit", "enabled": true}]'
+  --logs '[{"category": "kube-audit", "enabled": true}]' \
+  --export-to-resource-specific true
 ```
 
 ## Monitoring Access Attempts
@@ -281,9 +282,9 @@ With audit logging enabled, you can monitor who is accessing the API server and 
 
 ```text
 // KQL query for Azure Monitor - API server access by source IP
-AzureDiagnostics
-| where Category == "kube-audit"
-| extend sourceIP = extract("sourceIPs\":\\[\"([^\"]+)\"", 1, log_s)
+AKSAudit
+| mv-expand SourceIps
+| extend sourceIP = tostring(SourceIps)
 | summarize count() by sourceIP, bin(TimeGenerated, 1h)
 | order by count_ desc
 ```
@@ -305,9 +306,9 @@ az aks update \
 There are some limitations to be aware of.
 
 - Maximum of 200 IP ranges can be specified.
-- Changes take 2-5 minutes to propagate.
-- You cannot use private IP ranges (RFC 1918 addresses) unless you are using a private cluster.
-- The feature does not affect traffic between nodes and the API server (which goes through the internal network).
+- Rules can take up to two minutes to propagate.
+- You must use public IP ranges, and this feature is not compatible with private clusters.
+- You should include the cluster egress IP address. If you use node public IPs, the node pools must use public IP prefixes and you must add those prefixes as authorized ranges.
 - Azure DevOps hosted agents have a wide range of IPs that change periodically, making them difficult to whitelist precisely.
 
 ## Wrapping Up
