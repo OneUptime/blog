@@ -23,7 +23,7 @@ Before writing any code, agree on which tags are required and what values are ac
 | Owner | Contact email for the resource owner | Yes | team-platform@company.com |
 | Application | Name of the application or workload | Yes | order-service, data-pipeline |
 | ManagedBy | How the resource is managed | Yes | Terraform, Bicep, Manual |
-| CreatedDate | When the resource was created | Auto | 2026-02-16 |
+| CreatedDate | When the tag was added, normally at resource creation | Auto | 2026-02-16T12:34:56.0000000Z |
 
 ## Policy 1: Require Tags on Resource Creation
 
@@ -35,11 +35,12 @@ The first policy prevents resource creation if required tags are missing:
 # Define one policy per required tag for flexibility
 
 resource "azurerm_policy_definition" "require_environment_tag" {
-  name         = "require-environment-tag"
-  display_name = "Require Environment tag on resources"
-  description  = "Resources must have an Environment tag with an allowed value"
-  policy_type  = "Custom"
-  mode         = "Indexed"
+  name                = "require-environment-tag"
+  display_name        = "Require Environment tag on resources"
+  description         = "Resources must have an Environment tag with an allowed value"
+  policy_type         = "Custom"
+  mode                = "Indexed"
+  management_group_id = data.azurerm_management_group.root.id
 
   metadata = jsonencode({
     version  = "1.0.0"
@@ -79,11 +80,12 @@ resource "azurerm_policy_definition" "require_environment_tag" {
 
 # Same pattern for other required tags
 resource "azurerm_policy_definition" "require_cost_center_tag" {
-  name         = "require-costcenter-tag"
-  display_name = "Require CostCenter tag on resources"
-  description  = "Resources must have a CostCenter tag matching the pattern CC-XXXX"
-  policy_type  = "Custom"
-  mode         = "Indexed"
+  name                = "require-costcenter-tag"
+  display_name        = "Require CostCenter tag on resources"
+  description         = "Resources must have a CostCenter tag matching the pattern CC-XXXX"
+  policy_type         = "Custom"
+  mode                = "Indexed"
+  management_group_id = data.azurerm_management_group.root.id
 
   metadata = jsonencode({
     version  = "1.0.0"
@@ -111,11 +113,12 @@ resource "azurerm_policy_definition" "require_cost_center_tag" {
 }
 
 resource "azurerm_policy_definition" "require_owner_tag" {
-  name         = "require-owner-tag"
-  display_name = "Require Owner tag on resources"
-  description  = "Resources must have an Owner tag with a valid email address"
-  policy_type  = "Custom"
-  mode         = "Indexed"
+  name                = "require-owner-tag"
+  display_name        = "Require Owner tag on resources"
+  description         = "Resources must have an Owner tag containing an email-style value"
+  policy_type         = "Custom"
+  mode                = "Indexed"
+  management_group_id = data.azurerm_management_group.root.id
 
   metadata = jsonencode({
     version  = "1.0.0"
@@ -130,8 +133,8 @@ resource "azurerm_policy_definition" "require_owner_tag" {
           exists = "false"
         },
         {
-          field    = "tags['Owner']"
-          notLike  = "*@*.*"  # Basic email pattern check
+          field       = "tags['Owner']"
+          notContains = "@"  # Basic email-style check
         }
       ]
     }
@@ -153,11 +156,12 @@ Resources should inherit tags from their parent resource group. This is especial
 resource "azurerm_policy_definition" "inherit_tag" {
   for_each = toset(["Environment", "CostCenter", "Owner", "Application"])
 
-  name         = "inherit-${lower(each.key)}-from-rg"
-  display_name = "Inherit ${each.key} tag from resource group"
-  description  = "Adds or replaces the ${each.key} tag with the value from the parent resource group"
-  policy_type  = "Custom"
-  mode         = "Indexed"
+  name                = "inherit-${lower(each.key)}-from-rg"
+  display_name        = "Inherit ${each.key} tag from resource group"
+  description         = "Adds or replaces the ${each.key} tag with the value from the parent resource group"
+  policy_type         = "Custom"
+  mode                = "Indexed"
+  management_group_id = data.azurerm_management_group.root.id
 
   metadata = jsonencode({
     version  = "1.0.0"
@@ -202,17 +206,18 @@ resource "azurerm_policy_definition" "inherit_tag" {
 
 ## Policy 3: Add CreatedDate Tag Automatically
 
-Automatically stamp resources with the date they were created:
+Automatically stamp resources with the current UTC timestamp when the policy runs. For new resources, that is the creation request; for remediated existing resources, it is the remediation time:
 
 ```hcl
 # policies/add-created-date.tf - Auto-add CreatedDate tag on resource creation
 
 resource "azurerm_policy_definition" "add_created_date" {
-  name         = "add-created-date-tag"
-  display_name = "Add CreatedDate tag if missing"
-  description  = "Automatically adds a CreatedDate tag with the current UTC date when a resource is created"
-  policy_type  = "Custom"
-  mode         = "Indexed"
+  name                = "add-created-date-tag"
+  display_name        = "Add CreatedDate tag if missing"
+  description         = "Automatically adds a CreatedDate tag with the current UTC timestamp when the policy runs"
+  policy_type         = "Custom"
+  mode                = "Indexed"
+  management_group_id = data.azurerm_management_group.root.id
 
   metadata = jsonencode({
     version  = "1.0.0"
@@ -234,7 +239,7 @@ resource "azurerm_policy_definition" "add_created_date" {
           {
             operation = "addOrReplace"
             field     = "tags['CreatedDate']"
-            value     = "[utcNow('yyyy-MM-dd')]"
+            value     = "[utcNow()]"
           }
         ]
       }
@@ -250,11 +255,12 @@ Bundle all tagging policies into a single initiative for easier assignment:
 ```hcl
 # policies/tagging-initiative.tf - Group all tag policies into one initiative
 
-resource "azurerm_policy_set_definition" "tagging" {
-  name         = "tagging-governance"
-  display_name = "Tagging Governance Initiative"
-  description  = "Comprehensive tagging policies for enforcement and auto-remediation"
-  policy_type  = "Custom"
+resource "azurerm_management_group_policy_set_definition" "tagging" {
+  name                = "tagging-governance"
+  display_name        = "Tagging Governance Initiative"
+  description         = "Comprehensive tagging policies for enforcement and auto-remediation"
+  policy_type         = "Custom"
+  management_group_id = data.azurerm_management_group.root.id
 
   metadata = jsonencode({
     version  = "2.0.0"
@@ -319,7 +325,7 @@ data "azurerm_management_group" "root" {
 resource "azurerm_management_group_policy_assignment" "tagging" {
   name                 = "tagging-governance"
   display_name         = "Tagging Governance"
-  policy_definition_id = azurerm_policy_set_definition.tagging.id
+  policy_definition_id = azurerm_management_group_policy_set_definition.tagging.id
   management_group_id  = data.azurerm_management_group.root.id
 
   # Managed identity needed for modify policies
@@ -347,7 +353,7 @@ resource "azurerm_management_group_policy_assignment" "tagging" {
   }
 
   non_compliance_message {
-    content                        = "Resource must have an Owner tag with a valid email address"
+    content                        = "Resource must have an Owner tag containing an email-style value"
     policy_definition_reference_id = "RequireOwnerTag"
   }
 }
@@ -391,6 +397,8 @@ To make sure your Terraform-managed resources always have the right tags, create
 # tags.tf - Standard tag set for all Terraform-managed resources
 
 locals {
+  storage_account_name = substr(lower(replace("st${var.application_name}${var.environment}", "-", "")), 0, 24)
+
   common_tags = {
     Environment = var.environment
     CostCenter  = var.cost_center
@@ -408,7 +416,7 @@ resource "azurerm_resource_group" "main" {
 }
 
 resource "azurerm_storage_account" "main" {
-  name                = "st${var.application_name}${var.environment}"
+  name                = local.storage_account_name
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   account_tier        = "Standard"
