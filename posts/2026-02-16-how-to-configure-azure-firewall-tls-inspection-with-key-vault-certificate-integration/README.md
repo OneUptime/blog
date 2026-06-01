@@ -36,13 +36,13 @@ sequenceDiagram
     FW-->>Client: Generated Certificate + Re-encrypted Content
 ```
 
-For this to work, the client must trust your intermediate CA. You need to deploy the CA certificate to all machines behind the firewall.
+For this to work, the client must trust the CA chain that signs the generated certificates. In this guide, you deploy the root CA certificate to all machines behind the firewall.
 
 ## Prerequisites
 
 - Azure Firewall Premium SKU (Standard does not support TLS inspection)
 - Azure Key Vault for certificate storage
-- An intermediate CA certificate (not a self-signed certificate - must be an intermediate CA)
+- An intermediate CA certificate with an RSA private key of at least 4096 bits (not a root CA certificate)
 - The ability to deploy the CA certificate to client machines (via Group Policy, MDM, etc.)
 
 ## Step 1: Create an Intermediate CA Certificate
@@ -84,16 +84,15 @@ openssl x509 -req \
   -out intermediateCA.pem \
   -days 1825 \
   -sha256 \
-  -extfile <(printf "basicConstraints=CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign")
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:1\nkeyUsage=critical,digitalSignature,keyCertSign,cRLSign")
 
 # Create a PFX file containing the intermediate CA cert and private key
-# Azure Key Vault expects PFX format for import
+# Azure Firewall expects a passwordless PFX with a single certificate, not the full chain
 openssl pkcs12 -export \
   -out intermediateCA.pfx \
   -inkey intermediateCA.key \
   -in intermediateCA.pem \
-  -certfile rootCA.pem \
-  -passout pass:YourSecurePassword123
+  -passout pass:
 ```
 
 ## Step 2: Import the Certificate to Azure Key Vault
@@ -112,8 +111,7 @@ az keyvault create \
 az keyvault certificate import \
   --vault-name myFirewallCertVault \
   --name "firewall-intermediate-ca" \
-  --file intermediateCA.pfx \
-  --password "YourSecurePassword123"
+  --file intermediateCA.pfx
 
 # Verify the certificate was imported
 az keyvault certificate show \
@@ -125,39 +123,31 @@ az keyvault certificate show \
 
 ## Step 3: Grant Azure Firewall Access to Key Vault
 
-Azure Firewall needs to read the certificate from Key Vault. Create a managed identity for the firewall and grant it access:
+Azure Firewall needs to read the certificate secret from Key Vault. Create a user-assigned managed identity for the firewall policy and grant it secret permissions:
 
 ```bash
-# The Azure Firewall should already have a system-assigned managed identity
-# If not, enable it
-az network firewall update \
-  --name myFirewallPremium \
+# Create a user-assigned managed identity for the firewall policy
+az identity create \
+  --name myFirewallPolicyIdentity \
   --resource-group myResourceGroup \
-  --identity-type SystemAssigned
+  --location eastus
 
-# Get the firewall's managed identity principal ID
-FIREWALL_IDENTITY=$(az network firewall show \
-  --name myFirewallPremium \
+# Get the managed identity resource ID and principal ID
+FIREWALL_POLICY_IDENTITY_ID=$(az identity show \
+  --name myFirewallPolicyIdentity \
   --resource-group myResourceGroup \
-  --query "identity.principalId" --output tsv)
+  --query "id" --output tsv)
 
-# Grant the firewall Key Vault Secrets User and Key Vault Certificate User roles
-az role assignment create \
-  --assignee $FIREWALL_IDENTITY \
-  --role "Key Vault Secrets User" \
-  --scope "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.KeyVault/vaults/myFirewallCertVault"
+FIREWALL_POLICY_PRINCIPAL_ID=$(az identity show \
+  --name myFirewallPolicyIdentity \
+  --resource-group myResourceGroup \
+  --query "principalId" --output tsv)
 
-az role assignment create \
-  --assignee $FIREWALL_IDENTITY \
-  --role "Key Vault Certificate User" \
-  --scope "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.KeyVault/vaults/myFirewallCertVault"
-
-# If using Key Vault access policies instead of RBAC
+# Grant the managed identity Get and List permissions for secrets
 az keyvault set-policy \
   --name myFirewallCertVault \
-  --object-id $FIREWALL_IDENTITY \
-  --secret-permissions get list \
-  --certificate-permissions get list
+  --object-id $FIREWALL_POLICY_PRINCIPAL_ID \
+  --secret-permissions get list
 ```
 
 ## Step 4: Configure TLS Inspection in the Firewall Policy
@@ -165,14 +155,20 @@ az keyvault set-policy \
 TLS inspection is configured at the firewall policy level (Premium tier only):
 
 ```bash
+# Get the Key Vault secret ID created for the imported certificate
+CERT_SECRET_ID=$(az keyvault certificate show \
+  --vault-name myFirewallCertVault \
+  --name "firewall-intermediate-ca" \
+  --query "sid" --output tsv)
+
 # Create or update a Premium firewall policy with TLS inspection
 az network firewall policy create \
   --name myPremiumPolicy \
   --resource-group myResourceGroup \
   --location eastus \
   --sku Premium \
-  --key-vault-secret-id "https://myFirewallCertVault.vault.azure.net/secrets/firewall-intermediate-ca" \
-  --identity-type SystemAssigned
+  --identity $FIREWALL_POLICY_IDENTITY_ID \
+  --key-vault-secret-id $CERT_SECRET_ID
 ```
 
 If you already have a firewall policy, update it:
@@ -182,7 +178,8 @@ If you already have a firewall policy, update it:
 az network firewall policy update \
   --name myPremiumPolicy \
   --resource-group myResourceGroup \
-  --key-vault-secret-id "https://myFirewallCertVault.vault.azure.net/secrets/firewall-intermediate-ca"
+  --identity $FIREWALL_POLICY_IDENTITY_ID \
+  --key-vault-secret-id $CERT_SECRET_ID
 ```
 
 ## Step 5: Create Application Rules with TLS Inspection Enabled
@@ -276,9 +273,9 @@ sudo security add-trusted-cert -d -r trustRoot \
 
 **Applications breaking:** Some applications use certificate pinning and will refuse connections when the certificate is intercepted. Add these to the bypass list.
 
-**Performance impact:** TLS inspection adds CPU overhead to the firewall. Monitor the firewall's health metrics and consider scaling if latency increases. The Premium SKU handles TLS inspection better than Standard.
+**Performance impact:** TLS inspection adds CPU overhead to the firewall. Monitor the firewall's health metrics and consider scaling if latency increases. TLS inspection requires the Premium SKU.
 
-**Specific websites failing:** Some sites use HSTS preloading or certificate transparency (CT) logs that may conflict with intercepted certificates. Add problematic sites to the bypass list.
+**Specific websites failing:** Some sites or applications use certificate pinning, mutual TLS, or TLS behavior that does not work with interception. Add problematic destinations to the bypass list.
 
 Check the firewall logs for TLS-related issues:
 
@@ -298,7 +295,7 @@ The intermediate CA certificate has an expiration date. Plan for rotation before
 
 1. Generate a new intermediate CA certificate (signed by the same root CA)
 2. Import the new certificate to Key Vault as a new version of the same certificate name
-3. The firewall automatically picks up the new version (it checks Key Vault periodically)
+3. Get the new certificate secret ID and update the firewall policy TLS inspection setting
 4. No changes needed on client machines since the root CA stays the same
 
 ```bash
@@ -306,8 +303,17 @@ The intermediate CA certificate has an expiration date. Plan for rotation before
 az keyvault certificate import \
   --vault-name myFirewallCertVault \
   --name "firewall-intermediate-ca" \
-  --file new-intermediateCA.pfx \
-  --password "NewSecurePassword456"
+  --file new-intermediateCA.pfx
+
+NEW_CERT_SECRET_ID=$(az keyvault certificate show \
+  --vault-name myFirewallCertVault \
+  --name "firewall-intermediate-ca" \
+  --query "sid" --output tsv)
+
+az network firewall policy update \
+  --name myPremiumPolicy \
+  --resource-group myResourceGroup \
+  --key-vault-secret-id $NEW_CERT_SECRET_ID
 ```
 
 ## IDPS Integration with TLS Inspection
@@ -317,16 +323,16 @@ TLS inspection pairs with Azure Firewall's Intrusion Detection and Prevention Sy
 Enable IDPS in the firewall policy:
 
 ```bash
-# Enable IDPS in Alert and Deny mode
-az network firewall policy intrusion-detection update \
-  --policy-name myPremiumPolicy \
+# Enable IDPS in Alert mode
+az network firewall policy update \
+  --name myPremiumPolicy \
   --resource-group myResourceGroup \
-  --mode "Alert"
+  --idps-mode Alert
 ```
 
 ## Best Practices
 
-- Start with TLS inspection in audit mode (if available) or on a limited scope. Monitor for broken applications before expanding.
+- Start with TLS inspection on a limited scope. Monitor for broken applications before expanding.
 - Maintain a comprehensive bypass list. Certificate pinning is common in mobile apps, IoT devices, and certain desktop applications.
 - Use an intermediate CA, not a root CA. This limits the scope of what the intercepting certificate can sign.
 - Monitor the intermediate CA certificate expiration and rotate proactively.
