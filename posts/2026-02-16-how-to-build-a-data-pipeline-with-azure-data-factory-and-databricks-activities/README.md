@@ -17,11 +17,10 @@ In this guide, I will build a data pipeline that uses ADF to orchestrate Databri
 ```mermaid
 graph LR
     A[Azure Blob Storage<br>Raw Data] --> B[Azure Data Factory<br>Pipeline]
-    B --> C[Copy Activity<br>Stage Data to DBFS]
-    C --> D[Databricks Notebook<br>Transform Data]
-    D --> E[Databricks Notebook<br>Data Quality Checks]
-    E --> F[Copy Activity<br>Load to SQL]
-    F --> G[Azure SQL Database<br>Curated Data]
+    B --> C[Databricks Notebook<br>Transform Data]
+    C --> D[Databricks Notebook<br>Data Quality Checks]
+    D --> E[Copy Activity<br>Load to SQL]
+    E --> F[Azure SQL Database<br>Curated Data]
 ```
 
 ## Prerequisites
@@ -152,6 +151,8 @@ data_path = dbutils.widgets.get("data_path")
 df = spark.read.format("parquet").load(data_path)
 
 # Define quality checks
+from pyspark.sql import functions as F
+
 quality_results = []
 
 # Check 1: No null order IDs
@@ -200,8 +201,8 @@ for result in quality_results:
 
 # Fail the notebook if any check fails (this causes ADF to mark the activity as failed)
 if not all_passed:
-    dbutils.notebook.exit("FAILED: Data quality checks did not pass")
-    raise Exception("Data quality checks failed")
+    failed_checks = [result["check"] for result in quality_results if not result["passed"]]
+    raise Exception(f"Data quality checks failed: {', '.join(failed_checks)}")
 
 dbutils.notebook.exit(f"SUCCESS: All {len(quality_results)} quality checks passed")
 ```
@@ -267,6 +268,18 @@ Now create the ADF pipeline that orchestrates everything. In ADF Studio, create 
                     {
                         "activity": "DataQualityChecks",
                         "dependencyConditions": ["Succeeded"]
+                    }
+                ],
+                "inputs": [
+                    {
+                        "referenceName": "TransformedSalesParquetDataset",
+                        "type": "DatasetReference"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "CuratedSalesSqlDataset",
+                        "type": "DatasetReference"
                     }
                 ],
                 "typeProperties": {
