@@ -10,7 +10,7 @@ Description: A step-by-step guide to configuring URL path-based routing on Azure
 
 Most web applications are not monolithic. You have an API serving JSON at `/api/*`, a static frontend at `/app/*`, and maybe an image service at `/images/*`. Each of these might run on different backend servers optimized for their specific workload. URL path-based routing on Azure Application Gateway lets you route requests to different backend pools based on the URL path, all through a single public endpoint.
 
-Instead of deploying multiple load balancers or using DNS-based routing, you configure one Application Gateway that inspects the URL path of each request and forwards it to the appropriate backend. This simplifies your architecture and gives you a single point for SSL termination, WAF, and monitoring.
+Instead of deploying multiple load balancers or using DNS-based routing, you configure one Application Gateway that inspects the URL path of each request and forwards it to the appropriate backend. This simplifies your architecture and gives you a single point for SSL termination, monitoring, and WAF if you use a WAF SKU.
 
 ## How Path-Based Routing Works
 
@@ -290,7 +290,7 @@ Understanding how path matching works is important:
 
 - Paths are matched in order. The first matching rule wins.
 - Patterns support wildcards: `/api/*` matches `/api/users`, `/api/v2/orders`, etc.
-- Path matching is case-sensitive by default.
+- Path matching is case-insensitive.
 - If no path rule matches, the default backend pool handles the request.
 
 ```mermaid
@@ -320,7 +320,7 @@ flowchart TD
 
 **404 errors.** The backend might not recognize the full path. If your API backend expects `/users` but the Application Gateway sends `/api/users`, you need to configure path override in the HTTP settings or use URL rewrite rules.
 
-**Inconsistent behavior.** Remember that path matching is case-sensitive. `/API/users` will not match `/api/*`.
+**Inconsistent behavior.** Remember that path matching is case-insensitive. `/API/users` can match `/api/*`, so check rule order and backend behavior if uppercase paths are handled differently by your application.
 
 ## Cleanup
 
