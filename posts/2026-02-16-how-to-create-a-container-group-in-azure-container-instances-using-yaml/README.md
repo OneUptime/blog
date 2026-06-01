@@ -25,7 +25,7 @@ Here is the simplest possible container group YAML:
 ```yaml
 # simple-container.yaml - A basic single-container group
 
-apiVersion: '2021-09-01'
+apiVersion: '2021-10-01'
 location: eastus
 name: my-container-group
 properties:
@@ -36,7 +36,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 1.5
+            memoryInGB: 1.5
         ports:
           - port: 80
             protocol: TCP
@@ -51,7 +51,7 @@ type: Microsoft.ContainerInstance/containerGroups
 
 Let me break down the key fields:
 
-- `apiVersion` - The ACI API version. Use `2021-09-01` or later for the latest features.
+- `apiVersion` - The ACI API version. Use `2021-10-01` for the current YAML reference.
 - `location` - The Azure region where the container group runs.
 - `name` - The name of the container group (must be unique within the resource group).
 - `properties.containers` - A list of containers in the group.
@@ -88,7 +88,7 @@ Here is a more realistic example with two containers - a web application and a R
 
 ```yaml
 # multi-container.yaml - Web app with Redis sidecar
-apiVersion: '2021-09-01'
+apiVersion: '2021-10-01'
 location: eastus
 name: web-app-group
 properties:
@@ -100,10 +100,10 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 1.5
+            memoryInGB: 1.5
           limits:
             cpu: 2.0
-            memoryInGb: 3.0
+            memoryInGB: 3.0
         ports:
           - port: 80
             protocol: TCP
@@ -125,7 +125,7 @@ properties:
         resources:
           requests:
             cpu: 0.5
-            memoryInGb: 0.5
+            memoryInGB: 0.5
         ports:
           - port: 6379
             protocol: TCP
@@ -162,7 +162,7 @@ You can mount Azure File Shares as volumes for persistent storage:
 
 ```yaml
 # container-with-volumes.yaml - Container group with mounted storage
-apiVersion: '2021-09-01'
+apiVersion: '2021-10-01'
 location: eastus
 name: app-with-storage
 properties:
@@ -173,7 +173,7 @@ properties:
         resources:
           requests:
             cpu: 2.0
-            memoryInGb: 4.0
+            memoryInGB: 4.0
         volumeMounts:
           # Mount the Azure File Share into the container
           - name: data-volume
@@ -210,7 +210,7 @@ If your images are in Azure Container Registry or another private registry:
 
 ```yaml
 # private-registry.yaml - Pulling from a private registry
-apiVersion: '2021-09-01'
+apiVersion: '2021-10-01'
 location: eastus
 name: private-app
 properties:
@@ -221,7 +221,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 2.0
+            memoryInGB: 2.0
         ports:
           - port: 8080
             protocol: TCP
@@ -256,7 +256,7 @@ containers:
       resources:
         requests:
           cpu: 1.0
-          memoryInGb: 1.5
+          memoryInGB: 1.5
       ports:
         - port: 80
           protocol: TCP
@@ -338,7 +338,7 @@ Note that some properties cannot be updated in place (like OS type). In those ca
 
 ## Tips for Production Use
 
-1. **Always specify resource limits** - Without limits, a runaway container can consume all available resources.
+1. **Set resource requests deliberately** - Requests determine the resources allocated to the container group. Add limits when you want a container to use more than its request, up to the limit you set.
 2. **Use secureValue for secrets** - Never put sensitive values in plain `value` fields.
 3. **Pin image tags** - Use specific version tags (`:v1.2.3`) instead of `:latest` for reproducible deployments.
 4. **Set appropriate restart policies** - Use `Always` for long-running services, `OnFailure` for batch jobs, and `Never` for one-shot tasks.
