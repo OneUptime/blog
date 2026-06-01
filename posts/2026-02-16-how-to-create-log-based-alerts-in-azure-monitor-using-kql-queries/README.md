@@ -34,7 +34,7 @@ Here is an example query that detects a high rate of HTTP 500 errors in the last
 AppRequests
 | where TimeGenerated > ago(15m)
 | where ResultCode == "500"
-| summarize ErrorCount = count() by Url = Name
+| summarize ErrorCount = count() by Url
 | where ErrorCount > 10
 | order by ErrorCount desc
 ```
@@ -66,7 +66,7 @@ Under the **Condition** tab:
 - **Aggregation type**: For table rows, this is typically "Count". For metric measurement, choose avg, min, max, sum, etc.
 - **Threshold value**: Set the number that triggers the alert (e.g., greater than 0 for "any results")
 - **Frequency of evaluation**: How often the query runs. 5 minutes is common for critical alerts. Use 15 or 30 minutes for less urgent checks.
-- **Lookback period**: The time window the query covers. This should match the `ago()` value in your query.
+- **Aggregation granularity (window size)**: The time window the alert evaluates. If your query includes an explicit time filter such as `ago(15m)`, keep it aligned with this window.
 
 ## Step 3: Create the Alert Rule Using Azure CLI
 
@@ -79,8 +79,8 @@ az monitor scheduled-query create \
   --name "High-500-Error-Rate" \
   --resource-group myResourceGroup \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myWorkspace" \
-  --condition "count 'AppRequests | where TimeGenerated > ago(15m) | where ResultCode == \"500\"' > 10" \
-  --condition-query "AppRequests | where TimeGenerated > ago(15m) | where ResultCode == '500' | summarize AggregatedValue = count()" \
+  --condition "count 'Http500Errors' > 10" \
+  --condition-query Http500Errors="AppRequests | where TimeGenerated > ago(15m) | where ResultCode == '500'" \
   --evaluation-frequency 5m \
   --window-size 15m \
   --severity 2 \
@@ -94,7 +94,7 @@ Action groups define what happens when an alert fires. You can reuse the same ac
 Common action types include:
 
 - **Email/SMS**: Notify on-call engineers directly
-- **Webhook**: POST alert data to a custom endpoint, Slack, or PagerDuty
+- **Webhook**: POST alert data to a custom endpoint or an integration that forwards to Slack or PagerDuty
 - **Azure Function**: Run serverless code for automated remediation
 - **Logic App**: Trigger a workflow for complex response procedures
 - **Runbook**: Execute an Azure Automation runbook
@@ -108,7 +108,7 @@ az monitor action-group create \
   --name CriticalAlerts \
   --short-name CritAlert \
   --action email admin-email admin@company.com \
-  --action webhook slack-hook https://hooks.slack.com/services/T00/B00/xxxx
+  --action webhook incident-webhook https://alerts.example.com/azure-monitor
 ```
 
 ## Step 5: Use Dimensions for Granular Alerting
@@ -122,7 +122,7 @@ In the alert condition, set the "Dimension" to split by a column from your query
 AppRequests
 | where TimeGenerated > ago(15m)
 | where ResultCode startswith "5"
-| summarize ErrorCount = count() by ServiceName = cloud_RoleName
+| summarize ErrorCount = count() by ServiceName = AppRoleName
 ```
 
 When you configure the alert rule, set the dimension to `ServiceName`. Now if both "payment-service" and "order-service" breach the threshold, you get two separate alerts - each with the service name in the alert payload.
@@ -143,14 +143,15 @@ Alert fatigue is real, and log alerts can be noisy if you are not careful. Here 
 
 Sometimes alert rules themselves fail - maybe the query has a syntax error after a schema change, or the Log Analytics workspace is throttled. Check the health of your alert rules by navigating to Azure Monitor > Alerts > Alert rules and looking at the status column.
 
-You can also query the alert rule execution status:
+You can also query Activity Log entries for scheduled query rule changes, such as rules that Azure Monitor disabled after repeated evaluation failures:
 
 ```kql
-// Check for alert rule execution failures
-_LogOperation
-| where Category == "Alert"
-| where Level == "Error"
-| project TimeGenerated, Detail, _ResourceId
+// Check for scheduled query rules disabled by Azure Monitor
+AzureActivity
+| where ResourceProviderValue =~ "MICROSOFT.INSIGHTS"
+| where ResourceId has "/scheduledqueryrules/"
+| where OperationNameValue =~ "Microsoft.Insights/ScheduledQueryRules/disable/action"
+| project TimeGenerated, OperationNameValue, ActivityStatusValue, Caller, ResourceId, Properties
 | order by TimeGenerated desc
 ```
 
@@ -193,7 +194,7 @@ AzureActivity
 
 ## Cost Considerations
 
-Log alert rules are billed per evaluation. A rule that runs every 5 minutes costs more than one that runs every 15 minutes. The KQL query itself also consumes Log Analytics query units.
+Log alert rule cost increases with lower evaluation frequencies, and rules that split by dimensions can cost more because each dimension combination creates a separate time series. Log Analytics data ingestion and retention are billed separately.
 
 To keep costs reasonable:
 - Use the longest evaluation frequency that still meets your response time requirements
