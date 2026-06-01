@@ -27,7 +27,7 @@ graph TD
     C --> D[CodeBuild - Deploy]
     D --> E{Target Type}
     E -->|OU-level| F[CloudFormation StackSets]
-    E -->|Account-level| G[CloudFormation Stacks]
+    E -->|Account-level| G[CloudFormation StackSet Instances]
     F --> H[Account 1]
     F --> I[Account 2]
     F --> J[Account N]
@@ -36,7 +36,7 @@ graph TD
     L --> M[Applied to OUs]
 ```
 
-The pipeline watches an S3 bucket or CodeCommit repository for changes to your configuration. When you push updates, it packages your templates and deploys them through CloudFormation StackSets.
+The pipeline watches an S3 bucket, CodeCommit repository, or GitHub repository for changes to your configuration. When you push updates, it packages your templates and deploys them through CloudFormation StackSets.
 
 ## Prerequisites
 
@@ -47,18 +47,18 @@ The pipeline watches an S3 bucket or CodeCommit repository for changes to your c
 
 ## Step 1: Deploy the CfCT Solution
 
-CfCT is deployed via a CloudFormation template provided by AWS. You can launch it from the AWS Solutions Library.
+CfCT is deployed via a CloudFormation template provided by AWS. You can download the template from the AWS Solutions GitHub repository and launch it with AWS CloudFormation.
 
 ```bash
-# Download the CfCT CloudFormation template
+curl -O https://raw.githubusercontent.com/aws-solutions/aws-control-tower-customizations/main/customizations-for-aws-control-tower.template
 
 aws cloudformation create-stack \
   --stack-name customizations-for-control-tower \
-  --template-url https://s3.amazonaws.com/solutions-reference/customizations-for-aws-control-tower/latest/custom-control-tower-initiation.template \
+  --template-body file://customizations-for-aws-control-tower.template \
   --parameters \
     ParameterKey=PipelineApprovalStage,ParameterValue=No \
     ParameterKey=PipelineApprovalEmail,ParameterValue=admin@yourcompany.com \
-    ParameterKey=CodePipelineSource,ParameterValue=Amazon_S3 \
+    ParameterKey=CodePipelineSource,ParameterValue="Amazon S3" \
   --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
 ```
 
@@ -164,18 +164,6 @@ Resources:
       Tags:
         ManagedBy: CfCT
 
-  # Configure IAM password policy
-  IAMPasswordPolicy:
-    Type: AWS::IAM::AccountPasswordPolicy
-    Properties:
-      MinimumPasswordLength: 14
-      RequireSymbols: true
-      RequireNumbers: true
-      RequireUppercaseCharacters: true
-      RequireLowercaseCharacters: true
-      MaxPasswordAge: 90
-      PasswordReusePrevention: 24
-
   # Create cross-account security audit role
   SecurityAuditRole:
     Type: AWS::IAM::Role
@@ -255,7 +243,7 @@ zip -r ../custom-control-tower-configuration.zip .
 
 # Upload to the CfCT configuration bucket
 aws s3 cp ../custom-control-tower-configuration.zip \
-  s3://custom-control-tower-config-ACCOUNT_ID-REGION/custom-control-tower-configuration.zip
+  s3://custom-control-tower-configuration-ACCOUNT_ID-REGION/custom-control-tower-configuration.zip
 ```
 
 The upload triggers the CodePipeline, which processes your manifest and deploys the resources. You can monitor progress in the CodePipeline console.
@@ -285,7 +273,7 @@ This means you never need to manually apply baselines to new accounts. The autom
 
 3. **Use parameters for account-specific values.** Never hardcode account IDs or environment-specific values in your templates.
 
-4. **Version your configuration in Git.** Even though CfCT uses S3, maintain your source of truth in a Git repository with proper code review.
+4. **Version your configuration in Git.** If you use S3 as the pipeline source, maintain your source of truth in a Git repository with proper code review.
 
 5. **Monitor the pipeline.** Set up notifications for pipeline failures so you catch deployment issues quickly.
 
