@@ -8,24 +8,22 @@ Description: Eliminate connection string passwords by connecting Azure Functions
 
 ---
 
-Storing database passwords in connection strings is a security liability. Even when you put them in Azure Key Vault, you still have a secret to manage, rotate, and worry about. Managed identity eliminates this problem entirely by letting your Azure Function authenticate to Azure SQL Database using its Azure AD identity - no passwords involved.
+Storing database passwords in connection strings is a security liability. Even when you put them in Azure Key Vault, you still have a secret to manage, rotate, and worry about. Managed identity eliminates this problem entirely by letting your Azure Function authenticate to Azure SQL Database using its Microsoft Entra ID identity - no passwords involved.
 
 In this post, I will walk through the complete setup from enabling managed identity on your function app to writing the code that uses it.
 
 ## How Managed Identity Authentication Works
 
-When you enable managed identity on an Azure Function, Azure creates an identity for your function app in Azure Active Directory. Your function can then request an access token from Azure AD for any service that supports Azure AD authentication, including Azure SQL Database. The token is short-lived (usually 1 hour) and automatically refreshed by the runtime.
+When you enable managed identity on an Azure Function, Azure creates an identity for your function app in Microsoft Entra ID. Your function can then request an access token from Microsoft Entra ID for any service that supports Microsoft Entra authentication, including Azure SQL Database. The token is short-lived (usually 1 hour), and the SqlClient authentication provider requests tokens as needed.
 
 ```mermaid
 sequenceDiagram
     participant Func as Azure Function
-    participant AAD as Azure AD
+    participant Entra as Microsoft Entra ID
     participant SQL as Azure SQL
-    Func->>AAD: Request token for database.windows.net
-    AAD->>Func: Access token (JWT)
+    Func->>Entra: Request token for database.windows.net
+    Entra->>Func: Access token (JWT)
     Func->>SQL: Connect with access token
-    SQL->>AAD: Validate token
-    AAD->>SQL: Token is valid
     SQL->>Func: Connection established
 ```
 
@@ -42,7 +40,7 @@ az functionapp identity assign \
   --name my-function-app \
   --resource-group my-resource-group
 
-# The output includes the principal ID - save this for the next step
+# The output includes the principal ID, which is useful for confirming the identity
 # Example output:
 # {
 #   "principalId": "abcd1234-5678-9012-3456-789012345678",
@@ -51,13 +49,13 @@ az functionapp identity assign \
 # }
 ```
 
-Note the `principalId` from the output. You will need it to grant database access.
+Note the managed identity's display name. For a system-assigned identity, this is usually the function app name, and you will use it to create the database user.
 
 ## Step 2: Grant Database Access
 
 This is the step that trips up most people. You need to create a user in the SQL database that maps to the managed identity, and then grant that user the appropriate permissions.
 
-Connect to your Azure SQL Database using a tool like Azure Data Studio or sqlcmd. You need to connect as an Azure AD admin for this step.
+Connect to your Azure SQL Database using a tool like Azure Data Studio or sqlcmd. You need to connect as a Microsoft Entra admin, or as a Microsoft Entra user with permission to create database users, for this step.
 
 ```sql
 -- Run these commands in the target database (not master)
@@ -75,15 +73,15 @@ ALTER ROLE db_datawriter ADD MEMBER [my-function-app];
 GRANT EXECUTE TO [my-function-app];
 ```
 
-For this to work, your SQL server must have an Azure AD administrator configured.
+For this to work, your SQL server must have a Microsoft Entra administrator configured.
 
 ```bash
-# Set an Azure AD admin on the SQL server
+# Set a Microsoft Entra admin on the SQL server
 az sql server ad-admin create \
   --server-name my-sql-server \
   --resource-group my-resource-group \
   --display-name "SQL Admin" \
-  --object-id <YOUR_AAD_USER_OBJECT_ID>
+  --object-id <YOUR_ENTRA_USER_OBJECT_ID>
 ```
 
 ## Step 3: Update the Connection String
@@ -92,7 +90,7 @@ The connection string changes when you switch to managed identity. You remove th
 
 ```bash
 # Set the connection string in your function app settings
-# Note: no password, no User ID - just the server and database
+# For a system-assigned managed identity: no password, no User ID - just the server and database
 az functionapp config appsettings set \
   --name my-function-app \
   --resource-group my-resource-group \
@@ -100,6 +98,10 @@ az functionapp config appsettings set \
 ```
 
 The `Authentication=Active Directory Default` setting tells the Microsoft.Data.SqlClient driver to use the `DefaultAzureCredential` chain, which automatically picks up the managed identity when running in Azure and your developer credentials when running locally.
+
+If you are using a user-assigned managed identity, include its client ID in the connection string as `User Id=<CLIENT_ID_OF_USER_ASSIGNED_IDENTITY>;`.
+
+If your app uses Microsoft.Data.SqlClient 7.0 or later, add the `Microsoft.Data.SqlClient.Extensions.Azure` NuGet package so the driver-provided Microsoft Entra authentication modes are available.
 
 ## Step 4: Write the Function Code
 
@@ -109,8 +111,8 @@ Here is a complete example of a function that queries Azure SQL using managed id
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 
 public class UserApi
 {
@@ -156,6 +158,13 @@ public class UserApi
         await response.WriteAsJsonAsync(users);
         return response;
     }
+}
+
+public record User
+{
+    public int Id { get; init; }
+    public string Name { get; init; } = "";
+    public string Email { get; init; } = "";
 }
 ```
 
@@ -249,7 +258,7 @@ ALTER ROLE db_datawriter ADD MEMBER [developer@company.com];
 
 The most common error is "Login failed for user 'NT AUTHORITY\ANONYMOUS LOGON'." This usually means the managed identity user has not been created in the database, or the function app name in the `CREATE USER` statement does not match exactly.
 
-Another common issue is the token cache. If you recently enabled managed identity and the connection fails, wait a few minutes for the identity to propagate through Azure AD.
+Another common issue is identity propagation. If you recently enabled managed identity and the connection fails, wait a few minutes for the identity to propagate through Microsoft Entra ID.
 
 If you are using VNET integration with a private SQL endpoint, make sure the DNS resolution is working correctly. The function app needs to resolve the SQL server hostname to its private IP address.
 
@@ -261,7 +270,7 @@ nameresolver my-sql-server.database.windows.net
 
 ## Security Benefits
 
-Switching to managed identity provides several concrete security improvements. There are no passwords to leak in source code, logs, or configuration files. There is no secret rotation to manage. Access can be audited through Azure AD sign-in logs. And you can use Conditional Access policies to add additional security controls.
+Switching to managed identity provides several concrete security improvements. There are no passwords to leak in source code, logs, or configuration files. There is no secret rotation to manage. Access can be audited through Microsoft Entra managed identity sign-in logs, and access is managed centrally through Microsoft Entra and database permissions.
 
 This approach works with other Azure services too - Cosmos DB, Key Vault, Storage, Event Hubs, and Service Bus all support managed identity authentication. Once you start using it for SQL, you will likely want to adopt it across your entire Azure infrastructure.
 
