@@ -51,12 +51,14 @@ You can create these columns through the SharePoint UI or through a PowerShell s
 ```powershell
 # Connect to SharePoint Online
 
-Connect-PnPOnline -Url "https://yourcompany.sharepoint.com/sites/documents" -Interactive
+Connect-PnPOnline -Url "https://yourcompany.sharepoint.com/sites/documents" -Interactive -ClientId "<your-entra-app-client-id>"
 
 # Add approval workflow columns to the library
 Add-PnPField -List "Documents" -DisplayName "Approval Status" -InternalName "ApprovalStatus" `
-    -Type Choice -Choices "Draft","Pending Approval","Approved","Rejected","Needs Revision" `
-    -DefaultValue "Draft"
+    -Type Choice -Choices "Draft","Pending Approval","Approved","Rejected","Needs Revision"
+
+Set-PnPField -List "Documents" -Identity "ApprovalStatus" `
+    -Values @{DefaultValue = "Draft"}
 
 Add-PnPField -List "Documents" -DisplayName "Document Type" -InternalName "DocumentType" `
     -Type Choice -Choices "Contract","Policy","Marketing Material","Technical Document"
@@ -137,11 +139,46 @@ The critical piece is dynamically resolving which Azure AD group should approve 
 
 ```json
 {
+    "Initialize_Approval_GroupId": {
+        "type": "InitializeVariable",
+        "inputs": {
+            "variables": [
+                {
+                    "name": "approvalGroupId",
+                    "type": "string"
+                }
+            ]
+        }
+    },
+    "Initialize_RouteName": {
+        "type": "InitializeVariable",
+        "inputs": {
+            "variables": [
+                {
+                    "name": "routeName",
+                    "type": "string"
+                }
+            ]
+        }
+    },
+    "Initialize_Approver_Emails": {
+        "type": "InitializeVariable",
+        "inputs": {
+            "variables": [
+                {
+                    "name": "approverEmails",
+                    "type": "array",
+                    "value": []
+                }
+            ]
+        }
+    },
     "Determine_Approval_Group": {
         "type": "Switch",
         "expression": "@triggerOutputs()?['body/DocumentType/Value']",
         "cases": {
-            "Contract": {
+            "Case_Contract": {
+                "case": "Contract",
                 "actions": {
                     "Set_GroupId_Legal": {
                         "type": "SetVariable",
@@ -159,7 +196,8 @@ The critical piece is dynamically resolving which Azure AD group should approve 
                     }
                 }
             },
-            "Policy": {
+            "Case_Policy": {
+                "case": "Policy",
                 "actions": {
                     "Set_GroupId_Management": {
                         "type": "SetVariable",
@@ -167,16 +205,45 @@ The critical piece is dynamically resolving which Azure AD group should approve 
                             "name": "approvalGroupId",
                             "value": "management-group-object-id"
                         }
+                    },
+                    "Set_RouteName_Management": {
+                        "type": "SetVariable",
+                        "inputs": {
+                            "name": "routeName",
+                            "value": "Management Review"
+                        }
                     }
                 }
             },
-            "Marketing_Material": {
+            "Case_Marketing_Material": {
+                "case": "Marketing Material",
                 "actions": {
                     "Set_GroupId_Brand": {
                         "type": "SetVariable",
                         "inputs": {
                             "name": "approvalGroupId",
                             "value": "brand-group-object-id"
+                        }
+                    },
+                    "Set_RouteName_Brand": {
+                        "type": "SetVariable",
+                        "inputs": {
+                            "name": "routeName",
+                            "value": "Brand Review"
+                        }
+                    }
+                }
+            }
+        },
+        "default": {
+            "actions": {
+                "Terminate_Unsupported_Document_Type": {
+                    "type": "Terminate",
+                    "inputs": {
+                        "runStatus": "Failed",
+                        "runError": {
+                            "code": "UnsupportedDocumentType",
+                            "message": "No approval route is configured for this document type."
                         }
                     }
                 }
@@ -190,26 +257,32 @@ The critical piece is dynamically resolving which Azure AD group should approve 
                 "connection": { "name": "@parameters('$connections')['microsoftgraph']['connectionId']" }
             },
             "method": "get",
-            "path": "/v1.0/groups/@{variables('approvalGroupId')}/members"
+            "path": "/v1.0/groups/@{variables('approvalGroupId')}/members/microsoft.graph.user?$select=mail,userPrincipalName"
         }
     },
     "Build_Approver_List": {
-        "type": "Select",
-        "inputs": {
-            "from": "@body('Get_Group_Members')?['value']",
-            "select": "@item()?['mail']"
+        "type": "Foreach",
+        "foreach": "@body('Get_Group_Members')?['value']",
+        "actions": {
+            "Append_Approver_Email": {
+                "type": "AppendToArrayVariable",
+                "inputs": {
+                    "name": "approverEmails",
+                    "value": "@coalesce(item()?['mail'], item()?['userPrincipalName'])"
+                }
+            }
         }
     },
     "Join_Approver_Emails": {
         "type": "Compose",
-        "inputs": "@join(body('Build_Approver_List'), ';')"
+        "inputs": "@join(variables('approverEmails'), ';')"
     }
 }
 ```
 
 ## Creating the Approval Request
 
-Now create the actual approval request and send it to the resolved group members:
+Now create the actual approval request and send it to the resolved group members. Use **Start and wait for an approval**, not **Create an approval**, because later steps need the outcome, responder, and comments:
 
 ```json
 {
@@ -228,7 +301,12 @@ Now create the actual approval request and send it to the resolved group members
                 "itemLink": "@{triggerOutputs()?['body/{Link}']}",
                 "itemLinkDescription": "Open Document",
                 "enableNotifications": true,
-                "responseOptions": "Approve, Reject, Request Changes"
+                "approvalType": "Custom Responses - Wait for one response",
+                "responseOptions": [
+                    "Approve",
+                    "Reject",
+                    "Request Changes"
+                ]
             }
         }
     }
@@ -245,7 +323,8 @@ After the approver responds, update the SharePoint document with the result:
         "type": "Switch",
         "expression": "@body('Start_Approval')?['outcome']",
         "cases": {
-            "Approve": {
+            "Case_Approve": {
+                "case": "Approve",
                 "actions": {
                     "Update_Status_Approved": {
                         "type": "ApiConnection",
@@ -274,7 +353,8 @@ After the approver responds, update the SharePoint document with the result:
                     }
                 }
             },
-            "Reject": {
+            "Case_Reject": {
+                "case": "Reject",
                 "actions": {
                     "Update_Status_Rejected": {
                         "type": "ApiConnection",
@@ -289,12 +369,14 @@ After the approver responds, update the SharePoint document with the result:
                     }
                 }
             },
-            "Request_Changes": {
+            "Case_Request_Changes": {
+                "case": "Request Changes",
                 "actions": {
                     "Update_Status_Revision": {
                         "type": "ApiConnection",
                         "inputs": {
                             "method": "patch",
+                            "path": "/datasets/{site-url}/tables/{library-id}/items/@{triggerOutputs()?['body/ID']}",
                             "body": {
                                 "ApprovalStatus": { "Value": "Needs Revision" },
                                 "ApproverComments": "@{body('Start_Approval')?['responses'][0]?['comments']}"
@@ -343,43 +425,31 @@ Configure the approval to have a timeout with automatic escalation:
 
 ```json
 {
-    "Approval_With_Timeout": {
-        "type": "Scope",
-        "actions": {
-            "Start_Approval_With_Timeout": {
-                "type": "ApiConnection",
-                "inputs": {
-                    "body": {
-                        "title": "Document Approval (3 day deadline): @{triggerOutputs()?['body/{FilenameWithExtension}']}",
-                        "assignedTo": "@{outputs('Join_Approver_Emails')}",
-                        "enableNotifications": true
-                    }
-                }
-            },
-            "Wait_For_Response": {
-                "type": "Delay",
-                "inputs": {
-                    "interval": {
-                        "count": 3,
-                        "unit": "Day"
-                    }
-                }
+    "Start_Approval_With_Timeout": {
+        "type": "ApiConnection",
+        "inputs": {
+            "body": {
+                "title": "Document Approval (3 day deadline): @{triggerOutputs()?['body/{FilenameWithExtension}']}",
+                "assignedTo": "@{outputs('Join_Approver_Emails')}",
+                "enableNotifications": true
             }
+        },
+        "limit": {
+            "timeout": "P3D"
         }
     },
-    "Check_If_Timed_Out": {
-        "type": "If",
-        "expression": "@equals(body('Start_Approval_With_Timeout')?['outcome'], null)",
-        "actions": {
-            "Escalate_To_Manager": {
-                "type": "ApiConnection",
-                "inputs": {
-                    "body": {
-                        "title": "ESCALATED: Document Approval - @{triggerOutputs()?['body/{FilenameWithExtension}']}",
-                        "assignedTo": "department.manager@yourcompany.com",
-                        "details": "This approval has been pending for 3 days without a response. Please review and respond."
-                    }
-                }
+    "Escalate_To_Manager": {
+        "type": "ApiConnection",
+        "runAfter": {
+            "Start_Approval_With_Timeout": [
+                "TimedOut"
+            ]
+        },
+        "inputs": {
+            "body": {
+                "title": "ESCALATED: Document Approval - @{triggerOutputs()?['body/{FilenameWithExtension}']}",
+                "assignedTo": "department.manager@yourcompany.com",
+                "details": "This approval has been pending for 3 days without a response. Please review and respond."
             }
         }
     }
