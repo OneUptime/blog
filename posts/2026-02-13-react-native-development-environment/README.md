@@ -10,13 +10,13 @@ Description: A step-by-step guide to setting up a React Native development envir
 
 Getting a React Native development environment working is the first real obstacle most mobile developers face. The framework itself is straightforward, but the toolchain involves Node.js, Watchman, Xcode (macOS only), Android Studio, Java Development Kit, platform-specific SDKs, and emulators. Any one of these pieces being misconfigured will produce cryptic error messages.
 
-This guide walks through the setup for both macOS and Windows, targeting the React Native CLI (not Expo). Expo simplifies the setup considerably but limits your access to native modules, so this guide covers the full native setup.
+This guide walks through the setup for both macOS and Windows, targeting the React Native CLI (not Expo). Expo simplifies the setup considerably, but this guide covers the full native setup when you want direct control over the iOS and Android projects.
 
 ## Prerequisites
 
 Before installing anything React Native-specific, you need:
 
-- **Node.js** (version 18 or later)
+- **Node.js** (version 22.11.0 or later)
 - **npm** or **yarn** (npm comes with Node)
 - **A code editor** (VS Code is the most popular choice for React Native)
 
@@ -25,7 +25,7 @@ graph TD
     A[React Native Setup] --> B[Common Tools]
     A --> C[iOS Tools - macOS Only]
     A --> D[Android Tools - macOS and Windows]
-    B --> E[Node.js 18+]
+    B --> E[Node.js 22.11.0+]
     B --> F[Watchman]
     B --> G[React Native CLI]
     C --> H[Xcode]
@@ -61,7 +61,7 @@ Verify the installations:
 
 ```bash
 # Confirm versions are correct
-node --version    # Should show v18.x or later
+node --version    # Should show v22.11.0 or later
 watchman --version
 ```
 
@@ -123,10 +123,11 @@ brew install --cask android-studio
 
 When you first open Android Studio, the setup wizard will guide you through installing the Android SDK. Make sure you install:
 
-- Android SDK Platform 34 (or the latest stable)
-- Android SDK Build-Tools 34.0.0
+- Android SDK Platform 35
+- Android SDK Build-Tools 36.0.0
 - Android Emulator
 - Android SDK Platform-Tools
+- Android SDK Command-line Tools (latest)
 
 After installation, add the Android SDK paths to your shell profile:
 
@@ -135,8 +136,6 @@ After installation, add the Android SDK paths to your shell profile:
 export ANDROID_HOME=$HOME/Library/Android/sdk
 export PATH=$PATH:$ANDROID_HOME/emulator
 export PATH=$PATH:$ANDROID_HOME/platform-tools
-export PATH=$PATH:$ANDROID_HOME/tools
-export PATH=$PATH:$ANDROID_HOME/tools/bin
 ```
 
 Reload your shell profile:
@@ -172,10 +171,12 @@ Download Android Studio from the official website and run the installer. During 
 - Android SDK Platform
 - Android Virtual Device
 
+After installation, use the SDK Manager to install Android SDK Platform 35, Android SDK Build-Tools 36.0.0, Android SDK Command-line Tools (latest), and a compatible system image.
+
 After installation, set the environment variables. Open System Properties, go to Environment Variables, and add:
 
 - `ANDROID_HOME` = `C:\Users\<YourUsername>\AppData\Local\Android\Sdk`
-- Add to PATH: `%ANDROID_HOME%\platform-tools`, `%ANDROID_HOME%\emulator`, `%ANDROID_HOME%\tools`, `%ANDROID_HOME%\tools\bin`
+- Add to PATH: `%ANDROID_HOME%\platform-tools`
 
 Windows cannot build iOS apps natively. For iOS development on Windows, you need a macOS machine or a cloud-based Mac service.
 
@@ -185,7 +186,7 @@ With the environment set up, create a new React Native project:
 
 ```bash
 # Create a new React Native project using the CLI
-npx @react-native-community/cli init MyApp
+npx @react-native-community/cli@latest init MyApp
 ```
 
 This scaffolds a complete project with both iOS and Android configurations.
@@ -198,7 +199,7 @@ cd MyApp
 cd ios && pod install && cd ..
 
 # Start the Metro bundler and run on iOS simulator
-npx react-native run-ios
+npm run ios
 ```
 
 The first build takes several minutes as Xcode compiles all native dependencies. Subsequent builds are much faster thanks to caching.
@@ -207,7 +208,7 @@ To run on a specific simulator:
 
 ```bash
 # Run on a specific iPhone simulator model
-npx react-native run-ios --simulator="iPhone 15 Pro"
+npm run ios -- --simulator="iPhone 15 Pro"
 ```
 
 ## Running on Android
@@ -218,14 +219,14 @@ First, create an Android Virtual Device (AVD) through Android Studio:
 2. Go to Tools, then Device Manager
 3. Click "Create Device"
 4. Select a phone (Pixel 7 is a good default)
-5. Download and select a system image (API 34 recommended)
+5. Download and select a system image (API 35 recommended)
 6. Finish the wizard and start the emulator
 
 Then run the app:
 
 ```bash
 # Start the Metro bundler and run on Android emulator
-npx react-native run-android
+npm run android
 ```
 
 ## Running on a Physical Device
@@ -248,7 +249,7 @@ Enable Developer Options and USB Debugging on your Android device, then connect 
 adb devices
 
 # Run on the connected Android device
-npx react-native run-android
+npm run android
 ```
 
 ## Common Troubleshooting
