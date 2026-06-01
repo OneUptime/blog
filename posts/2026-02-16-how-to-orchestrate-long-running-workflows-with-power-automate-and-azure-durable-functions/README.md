@@ -52,7 +52,7 @@ Set up a .NET Azure Functions project with the Durable Functions extension. Here
 ```bash
 # Create the project
 
-func init LongRunningWorkflow --dotnet
+func init LongRunningWorkflow --worker-runtime dotnet
 cd LongRunningWorkflow
 
 # Add the Durable Functions extension
@@ -71,6 +71,9 @@ using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using System.IO;
+using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 public static class HttpStarter
@@ -111,7 +114,9 @@ This is the brain of the workflow. It coordinates the activity functions.
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 public static class DataProcessingOrchestrator
@@ -156,6 +161,10 @@ public static class DataProcessingOrchestrator
             "GenerateReport", batchResults);
 
         // Step 4: Wait for human approval (with a 7-day timeout)
+        context.SetCustomStatus(new {
+            Step = "WaitingForApproval"
+        });
+
         using (var cts = new CancellationTokenSource())
         {
             var approvalTimeout = context.CurrentUtcDateTime.AddDays(7);
@@ -179,6 +188,10 @@ public static class DataProcessingOrchestrator
         // Step 5: If approved, finalize
         if (result.Approved)
         {
+            context.SetCustomStatus(new {
+                Step = "Finalizing"
+            });
+
             await context.CallActivityAsync("FinalizeProcessing", result);
             result.Status = "Completed";
         }
@@ -197,47 +210,56 @@ public static class DataProcessingOrchestrator
 These do the actual work. Each activity runs independently and can be retried.
 
 ```csharp
-// Activity function for data validation
-// Activities contain the actual business logic and can do I/O
-[FunctionName("ValidateData")]
-public static ValidationResult ValidateData(
-    [ActivityTrigger] WorkflowInput input,
-    ILogger log)
+using Microsoft.Azure.WebJobs;
+using Microsoft.Azure.WebJobs.Extensions.DurableTask;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Threading.Tasks;
+
+public static class WorkflowActivities
 {
-    log.LogInformation($"Validating data for {input.DataSource}");
-
-    var result = new ValidationResult { IsValid = true };
-
-    // Check data source accessibility
-    if (string.IsNullOrEmpty(input.DataSource))
+    // Activity function for data validation
+    // Activities contain the actual business logic and can do I/O
+    [FunctionName("ValidateData")]
+    public static ValidationResult ValidateData(
+        [ActivityTrigger] WorkflowInput input,
+        ILogger log)
     {
-        result.IsValid = false;
-        result.Errors.Add("Data source URL is required");
+        log.LogInformation($"Validating data for {input.DataSource}");
+
+        var result = new ValidationResult { IsValid = true };
+
+        // Check data source accessibility
+        if (string.IsNullOrEmpty(input.DataSource))
+        {
+            result.IsValid = false;
+            result.Errors.Add("Data source URL is required");
+        }
+
+        // Add more validation as needed
+        return result;
     }
 
-    // Add more validation as needed
-    return result;
-}
-
-// Activity function for batch processing
-// Each batch runs independently and can be retried on failure
-[FunctionName("ProcessBatch")]
-public static async Task<BatchResult> ProcessBatch(
-    [ActivityTrigger] DataBatch batch,
-    ILogger log)
-{
-    log.LogInformation($"Processing batch {batch.BatchId} with {batch.RecordCount} records");
-
-    var result = new BatchResult { BatchId = batch.BatchId };
-
-    foreach (var record in batch.Records)
+    // Activity function for batch processing
+    // Each batch runs independently and can be retried on failure
+    [FunctionName("ProcessBatch")]
+    public static async Task<BatchResult> ProcessBatch(
+        [ActivityTrigger] DataBatch batch,
+        ILogger log)
     {
-        // Process each record
-        await ProcessRecord(record);
-        result.ProcessedCount++;
-    }
+        log.LogInformation($"Processing batch {batch.BatchId} with {batch.RecordCount} records");
 
-    return result;
+        var result = new BatchResult { BatchId = batch.BatchId };
+
+        foreach (var record in batch.Records)
+        {
+            // Process each record
+            await ProcessRecord(record);
+            result.ProcessedCount++;
+        }
+
+        return result;
+    }
 }
 ```
 
@@ -300,7 +322,7 @@ Store `statusQueryGetUri` and `sendEventPostUri` in variables - you will need th
 Use a "Do until" loop to poll the orchestration status:
 
 1. Add a "Do until" loop.
-2. Condition: `@equals(variables('orchestrationStatus'), 'Completed')` OR the status is Failed/Terminated.
+2. Condition: `@equals(variables('orchestrationStatus'), 'Completed')` OR the status is Failed/Terminated OR `customStatus.Step` is `WaitingForApproval`.
 3. Inside the loop:
    - Add a Delay of 5 minutes (adjust based on expected duration).
    - Add an HTTP GET to the `statusQueryGetUri`.
@@ -315,7 +337,7 @@ The status response includes:
 
 When the orchestration reaches the approval wait step, send an approval from Power Automate:
 
-1. After the polling loop detects `customStatus` is "WaitingForApproval", break out.
+1. After the polling loop detects `customStatus.Step` is "WaitingForApproval", send an approval request.
 2. Use the Power Automate Approvals connector to send an approval request.
 3. When the approver responds, send the event to the orchestration:
 
@@ -326,6 +348,8 @@ true
 ```
 
 Or `false` if rejected.
+
+After sending the event, continue polling `statusQueryGetUri` until the orchestration reaches Completed, Failed, or Terminated.
 
 ## Step 4: Error Handling
 
@@ -379,8 +403,7 @@ Set custom status in the orchestrator to give Power Automate more detail:
 ```csharp
 // Update the custom status so Power Automate knows the current step
 context.SetCustomStatus(new {
-    Step = "ProcessingBatches",
-    Progress = $"{completedBatches}/{totalBatches}"
+    Step = "WaitingForApproval"
 });
 ```
 
