@@ -12,7 +12,7 @@ REST APIs are fine until your frontend team starts asking for different combinat
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 22 or later
 - Azure Functions Core Tools v4
 - An Azure account
 - Azure CLI installed and authenticated
@@ -27,14 +27,14 @@ Create a new Azure Functions project with the Apollo Server integration:
 
 mkdir graphql-azure-functions && cd graphql-azure-functions
 
-# Initialize Azure Functions project with TypeScript
-func init --typescript
+# Initialize Azure Functions project with TypeScript using the v4 programming model
+func init --worker-runtime typescript --model V4
 
 # Create an HTTP trigger function
 func new --name graphql --template "HTTP trigger" --authlevel anonymous
 
 # Install Apollo Server and GraphQL dependencies
-npm install @apollo/server @as-integrations/azure-functions graphql
+npm install @apollo/server @as-integrations/azure-functions @azure/functions graphql
 ```
 
 ## Defining the Schema
@@ -120,7 +120,10 @@ const authors = [
   { id: '3', name: 'Isaac Asimov', bio: 'Prolific writer known for Foundation and Robot series' },
 ];
 
-const books = [
+const books: Array<{
+  id: string; title: string; authorId: string; genre: string;
+  publishedYear?: number; rating: number;
+}> = [
   { id: '1', title: 'Dune', authorId: '1', genre: 'Science Fiction', publishedYear: 1965, rating: 4.8 },
   { id: '2', title: 'The Left Hand of Darkness', authorId: '2', genre: 'Science Fiction', publishedYear: 1969, rating: 4.5 },
   { id: '3', title: 'Foundation', authorId: '3', genre: 'Science Fiction', publishedYear: 1951, rating: 4.6 },
@@ -324,7 +327,6 @@ In a real application you want to pass authentication information to your resolv
 // src/functions/graphql.ts - With authentication context
 import { ApolloServer } from '@apollo/server';
 import { startServerAndCreateHandler } from '@as-integrations/azure-functions';
-import { HttpRequest } from '@azure/functions';
 
 // Define the context type
 interface Context {
@@ -339,7 +341,7 @@ const server = new ApolloServer<Context>({
 
 const graphqlHandler = startServerAndCreateHandler(server, {
   // Extract user information from the request headers
-  context: async ({ req }: { req: HttpRequest }): Promise<Context> => {
+  context: async ({ req }): Promise<Context> => {
     const authHeader = req.headers.get('authorization') || '';
     const token = authHeader.replace('Bearer ', '');
 
@@ -350,10 +352,9 @@ const graphqlHandler = startServerAndCreateHandler(server, {
     // Validate the token and extract user info
     // In production, verify against Azure AD or your auth provider
     const user = await validateToken(token);
-    return {
-      userId: user?.id,
-      roles: user?.roles || [],
-    };
+    return user
+      ? { userId: user.id, roles: user.roles || [] }
+      : { roles: [] };
   },
 });
 ```
@@ -368,7 +369,7 @@ az functionapp create \
   --resource-group graphql-demo-rg \
   --consumption-plan-location eastus \
   --runtime node \
-  --runtime-version 18 \
+  --runtime-version 22 \
   --functions-version 4 \
   --name my-graphql-api \
   --storage-account mystorageaccount
@@ -391,6 +392,17 @@ For response caching, Apollo Server supports cache control directives that you c
 
 ```graphql
 # Add caching hints to your type definitions
+enum CacheControlScope {
+  PUBLIC
+  PRIVATE
+}
+
+directive @cacheControl(
+  maxAge: Int
+  scope: CacheControlScope
+  inheritMaxAge: Boolean
+) on FIELD_DEFINITION | OBJECT | INTERFACE | UNION
+
 type Book @cacheControl(maxAge: 300) {
   id: ID!
   title: String!
