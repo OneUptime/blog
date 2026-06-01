@@ -176,6 +176,8 @@ Apply this to each tenant namespace.
 
 Network policies are the critical piece that prevents cross-tenant traffic. Start with a deny-all policy, then add specific allow rules.
 
+Make sure your AKS cluster has a network policy engine enabled, such as Azure CNI Powered by Cilium, Azure Network Policy Manager, or Calico. Kubernetes lets you create NetworkPolicy objects without an engine, but they are not enforced until a network policy engine is installed.
+
 ### Default Deny All Traffic
 
 ```yaml
@@ -235,7 +237,12 @@ spec:
   - Egress
   egress:
   - to:
-    - namespaceSelector: {}
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
     ports:
     - protocol: UDP
       port: 53
@@ -258,13 +265,15 @@ spec:
   policyTypes:
   - Egress
   egress:
-  # Allow traffic to IPs outside the cluster CIDR
+  # Allow traffic to IPs outside the cluster pod and service CIDRs.
+  # Replace these example CIDRs with your AKS cluster's actual ranges.
   - to:
     - ipBlock:
         cidr: 0.0.0.0/0
         except:
-        # Block access to other pods (cluster pod CIDR)
+        # Block access to other pods and service IPs
         - 10.244.0.0/16
+        - 10.0.0.0/16
 ```
 
 ### Allow Ingress from Shared Services
@@ -287,8 +296,8 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          purpose: shared-services
-    - podSelector:
+          kubernetes.io/metadata.name: shared
+      podSelector:
         matchLabels:
           app: ingress-nginx
     ports:
@@ -324,10 +333,9 @@ rules:
 - apiGroups: ["", "apps", "batch", "networking.k8s.io"]
   resources: ["*"]
   verbs: ["*"]
-- apiGroups: [""]
-  resources: ["namespaces", "nodes"]
-  verbs: ["get", "list"]
 ```
+
+If tenants need read-only access to cluster-scoped resources such as nodes, grant that separately with a tightly scoped ClusterRole and ClusterRoleBinding.
 
 ```yaml
 # tenant-rolebinding.yaml
