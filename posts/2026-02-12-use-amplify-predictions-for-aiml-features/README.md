@@ -10,7 +10,7 @@ Description: Add AI and ML features to your app using Amplify Predictions for im
 
 Adding AI and ML features to your application usually means figuring out which AWS service to use (Rekognition? Comprehend? Textract?), setting up IAM permissions, and writing integration code. Amplify Predictions wraps all of that behind a clean API. You can add image labeling, text extraction, language translation, and sentiment analysis to your frontend app with a few lines of code.
 
-Under the hood, Predictions uses Amazon Rekognition, Amazon Textract, Amazon Translate, Amazon Polly, and Amazon Comprehend. You get the power of these services without managing the infrastructure.
+Under the hood, Predictions uses Amazon Rekognition, Amazon Textract, Amazon Translate, Amazon Polly, Amazon Transcribe, and Amazon Comprehend. You get the power of these services without managing the infrastructure.
 
 ## What Amplify Predictions Offers
 
@@ -110,7 +110,7 @@ Amplify.configure({
         region: 'us-east-1',
         proxy: false,
         defaults: {
-          VoiceId: 'Joanna',
+          voiceId: 'Joanna',
         },
       },
     },
@@ -119,7 +119,7 @@ Amplify.configure({
         region: 'us-east-1',
         proxy: false,
         defaults: {
-          type: 'ALL',
+          type: 'all',
         },
       },
     },
@@ -146,10 +146,12 @@ async function detectLabels(imageFile: File) {
       },
     });
 
-    // result.labels contains detected labels with confidence scores
+    // result.labels contains detected labels with confidence scores in metadata
     console.log('Detected labels:');
-    result.labels.forEach((label) => {
-      console.log(`  ${label.name}: ${label.confidence.toFixed(1)}%`);
+    result.labels?.forEach((label) => {
+      const confidence = (label.metadata as { confidence?: number } | undefined)?.confidence;
+      const confidenceText = confidence !== undefined ? `: ${confidence.toFixed(1)}%` : '';
+      console.log(`  ${label.name}${confidenceText}`);
     });
 
     return result.labels;
@@ -168,7 +170,7 @@ import React, { useState } from 'react';
 import { Predictions } from '@aws-amplify/predictions';
 
 function ImageAnalyzer() {
-  const [labels, setLabels] = useState<Array<{name: string; confidence: number}>>([]);
+  const [labels, setLabels] = useState<Array<{name?: string; metadata?: {confidence?: number}}>>([]);
   const [loading, setLoading] = useState(false);
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -199,7 +201,9 @@ function ImageAnalyzer() {
         <ul>
           {labels.map((label, i) => (
             <li key={i}>
-              {label.name} - {label.confidence.toFixed(1)}% confidence
+              {label.name}
+              {label.metadata?.confidence !== undefined &&
+                ` - ${label.metadata.confidence.toFixed(1)}% confidence`}
             </li>
           ))}
         </ul>
@@ -230,9 +234,11 @@ async function extractText(imageFile: File) {
   // result.text.fullText contains all extracted text
   console.log('Extracted text:', result.text.fullText);
 
-  // result.text.lines contains individual lines with bounding boxes
-  result.text.lines.forEach((line) => {
-    console.log(`Line: "${line.text}" at position (${line.boundingBox.left}, ${line.boundingBox.top})`);
+  // result.text.linesDetailed contains individual lines with bounding boxes
+  result.text.linesDetailed.forEach((line) => {
+    const left = line.boundingBox?.left;
+    const top = line.boundingBox?.top;
+    console.log(`Line: "${line.text}" at position (${left}, ${top})`);
   });
 
   return result.text;
@@ -252,7 +258,7 @@ async function extractFormData(imageFile: File) {
   });
 
   // Key-value pairs from the form
-  result.text.keyValues.forEach((kv) => {
+  result.text.keyValues?.forEach((kv) => {
     console.log(`${kv.key}: ${kv.value.text}`);
   });
 
@@ -296,12 +302,15 @@ async function analyzeSentiment(text: string) {
   const result = await Predictions.interpret({
     text: {
       source: { text },
-      type: 'ALL', // Gets sentiment, entities, key phrases, language
+      type: 'all', // Gets sentiment, entities, key phrases, language
     },
   });
 
   // Sentiment analysis
   const sentiment = result.textInterpretation.sentiment;
+  if (!sentiment) {
+    throw new Error('Sentiment analysis was not returned');
+  }
   console.log(`Sentiment: ${sentiment.predominant}`);
   console.log(`  Positive: ${(sentiment.positive * 100).toFixed(1)}%`);
   console.log(`  Negative: ${(sentiment.negative * 100).toFixed(1)}%`);
@@ -309,11 +318,11 @@ async function analyzeSentiment(text: string) {
   console.log(`  Mixed: ${(sentiment.mixed * 100).toFixed(1)}%`);
 
   // Key phrases
-  const phrases = result.textInterpretation.keyPhrases;
+  const phrases = result.textInterpretation.keyPhrases || [];
   console.log('Key phrases:', phrases.map((p) => p.text).join(', '));
 
   // Named entities
-  const entities = result.textInterpretation.entities;
+  const entities = result.textInterpretation.textEntities || [];
   entities.forEach((e) => {
     console.log(`Entity: ${e.text} (${e.type})`);
   });
@@ -337,7 +346,7 @@ async function textToSpeech(text: string) {
   });
 
   // result.speech.url contains a URL to the audio file
-  // result.speech.audioStream contains the raw audio data
+  // result.audioStream contains the raw audio data
 
   // Play the audio in the browser
   const audio = new Audio(result.speech.url);
@@ -358,7 +367,7 @@ async function analyzeReview(reviewText: string) {
   const interpretation = await Predictions.interpret({
     text: {
       source: { text: reviewText },
-      type: 'ALL',
+      type: 'all',
     },
   });
 
@@ -368,7 +377,7 @@ async function analyzeReview(reviewText: string) {
 
   // Step 2: If not in English, translate it
   let englishText = reviewText;
-  if (language !== 'en') {
+  if (language && language !== 'en') {
     const translation = await Predictions.convert({
       translateText: {
         source: { text: reviewText, language },
@@ -382,13 +391,13 @@ async function analyzeReview(reviewText: string) {
     originalText: reviewText,
     translatedText: englishText,
     language,
-    sentiment: sentiment.predominant,
+    sentiment: sentiment?.predominant,
     sentimentScores: {
-      positive: sentiment.positive,
-      negative: sentiment.negative,
-      neutral: sentiment.neutral,
+      positive: sentiment?.positive,
+      negative: sentiment?.negative,
+      neutral: sentiment?.neutral,
     },
-    keyPhrases: keyPhrases.map((p) => p.text),
+    keyPhrases: (keyPhrases || []).map((p) => p.text),
   };
 }
 ```
@@ -398,7 +407,6 @@ async function analyzeReview(reviewText: string) {
 The Identity Pool role needs permissions for each service. Here is a policy that covers all predictions categories:
 
 ```json
-// IAM policy for Amplify Predictions
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -406,6 +414,7 @@ The Identity Pool role needs permissions for each service. Here is a policy that
       "Effect": "Allow",
       "Action": [
         "rekognition:DetectLabels",
+        "rekognition:DetectModerationLabels",
         "rekognition:DetectFaces",
         "rekognition:DetectText",
         "rekognition:RecognizeCelebrities"
@@ -427,12 +436,17 @@ The Identity Pool role needs permissions for each service. Here is a policy that
     },
     {
       "Effect": "Allow",
-      "Action": ["comprehend:DetectSentiment", "comprehend:DetectEntities", "comprehend:DetectKeyPhrases", "comprehend:DetectDominantLanguage"],
+      "Action": ["comprehend:DetectSentiment", "comprehend:DetectEntities", "comprehend:DetectKeyPhrases", "comprehend:DetectDominantLanguage", "comprehend:DetectSyntax"],
       "Resource": "*"
     },
     {
       "Effect": "Allow",
       "Action": ["polly:SynthesizeSpeech"],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["transcribe:StartStreamTranscriptionWebSocket"],
       "Resource": "*"
     }
   ]
