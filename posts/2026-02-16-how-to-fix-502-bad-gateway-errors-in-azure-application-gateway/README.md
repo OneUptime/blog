@@ -34,7 +34,7 @@ If backends show as Unhealthy, the 502 is almost certainly caused by failed heal
 
 Misconfigured health probes are the number one cause of 502 errors I have seen in production. Here is what to check:
 
-**Probe path**: Make sure the probe path actually returns a 200 OK on your backend. A common mistake is using a path like `/health` when the application does not have that endpoint, or using `/` when the app redirects to `/login` with a 302.
+**Probe path**: Make sure the probe path returns a status code that your probe considers healthy. Application Gateway treats 200-399 as healthy by default, but a common mistake is using a path like `/health` when the application does not have that endpoint, or using `/` when the app redirects to a protected page that eventually returns a 401 or 403.
 
 **Probe protocol and port**: If your backend runs on port 8080 with HTTP but the probe is configured for HTTPS on port 443, the probe will fail.
 
@@ -87,7 +87,7 @@ The backend server certificate must meet these requirements:
 
 - It must not be expired.
 - If it is self-signed, the root certificate must be uploaded to the Application Gateway trusted root certificates (for v2 SKU) or authentication certificates (for v1 SKU).
-- The Common Name (CN) or Subject Alternative Name (SAN) must match the hostname the gateway uses to reach the backend.
+- The Common Name (CN) or Subject Alternative Name (SAN) must match the Server Name Indication (SNI) value the gateway sends to the backend. By default, this is based on the incoming Host header unless you override the backend host name or SNI setting.
 - The full certificate chain must be presented by the backend server.
 
 You can check the certificate from within the VNet:
@@ -100,7 +100,7 @@ openssl s_client -connect 10.0.1.4:443 -servername mybackend.example.com < /dev/
 
 ## Step 5: Look at Connection Timeouts
 
-Application Gateway has a request timeout setting (default 20 seconds for v1, 20 seconds for v2). If your backend takes longer than this to respond, the gateway closes the connection and returns a 502.
+Application Gateway has a request timeout setting with a default value of 20 seconds. If your backend takes longer than this to respond, v1 returns a 502. In v2, the gateway retries another backend pool member and returns a 504 if that retry also fails.
 
 This is especially common with:
 
@@ -142,10 +142,11 @@ Check the following on your backend servers:
 
 ## Step 8: Review Application Gateway Diagnostics Logs
 
-Enable diagnostics logging if you have not already. The Access log and Performance log give you detailed information about every request, including backend response codes and latency.
+Enable diagnostics logging if you have not already. The Access log gives you detailed information about every request, including backend response codes and latency. For performance data, use the Performance log for v1 gateways and Azure Monitor metrics for v2 gateways.
 
 ```bash
-# Enable diagnostics logging for the Application Gateway
+# Enable diagnostics logging for the Application Gateway.
+# Include ApplicationGatewayPerformanceLog for v1 gateways; use metrics for v2 performance data.
 az monitor diagnostic-settings create \
   --resource /subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Network/applicationGateways/myAppGw \
   --name myDiagSettings \
@@ -160,7 +161,7 @@ Once logs are flowing into Log Analytics, you can query for 502 errors specifica
 AzureDiagnostics
 | where ResourceType == "APPLICATIONGATEWAYS"
 | where httpStatus_d == 502
-| project TimeGenerated, requestUri_s, backendAddress_s, backendResponseCode_d, timeTaken_d
+| project TimeGenerated, requestUri_s, serverRouted_s, serverStatus_s, timeTaken_d, error_info_s
 | order by TimeGenerated desc
 | take 50
 ```
@@ -169,7 +170,7 @@ AzureDiagnostics
 
 Application Gateway v2 requires a dedicated subnet, and it needs enough IP addresses for the number of instances plus any private frontend IPs. If the subnet is too small (like a /29), the gateway might not be able to scale out, leading to intermittent 502 errors under load.
 
-Microsoft recommends a /24 subnet for Application Gateway v2, which gives you room to grow. A /26 is the minimum practical size.
+Microsoft recommends a /24 subnet for Application Gateway v2, which gives you room to grow for autoscaling and maintenance upgrades. A /26 is the recommended minimum for the v1 Standard or WAF SKU, not for v2.
 
 ## Quick Troubleshooting Flowchart
 
