@@ -40,7 +40,7 @@ You need the Azure Ansible collection and proper authentication configured.
 ansible-galaxy collection install azure.azcollection
 
 # Install the required Python dependencies
-pip install azure-identity azure-mgmt-compute azure-mgmt-network azure-mgmt-resource
+pip install -r ~/.ansible/collections/ansible_collections/azure/azcollection/requirements.txt
 
 # Verify the installation
 ansible-inventory --list -i azure_rm.yml
@@ -72,7 +72,7 @@ plugin: azure.azcollection.azure_rm
 # Authentication (if not using environment variables)
 # auth_source: auto  # auto, cli, msi, env, credential_file
 
-# Only include resources from specific subscriptions
+# Only include resources from specific resource groups
 include_vm_resource_groups:
   - "rg-webservers-prod"
   - "rg-webservers-staging"
@@ -90,9 +90,9 @@ hostvar_expressions:
 # Connection settings
 conditional_groups:
   # Group Linux VMs together
-  linux: "'linux' in image.offer | lower or 'ubuntu' in image.offer | lower or 'rhel' in image.offer | lower"
+  linux: "os_profile.system == 'linux'"
   # Group Windows VMs together
-  windows: "'windows' in image.offer | lower"
+  windows: "os_profile.system == 'windows'"
 
 # Group VMs by their tags
 keyed_groups:
@@ -110,7 +110,7 @@ keyed_groups:
     key: location
   # Group by VMSS name (important for scale sets)
   - prefix: vmss
-    key: virtual_machine_scale_set | default('')
+    key: vmss.name | default('standalone')
     separator: "_"
 ```
 
@@ -130,9 +130,11 @@ include_vmss_resource_groups:
 # Exclude regular VMs, only include VMSS instances
 include_vm_resource_groups: []
 
-# Filter by tags - only include instances with the 'Managed' tag
-# This uses Jinja2 templating
 plain_host_names: true
+
+# Filter by tags - only include instances with the 'Managed' tag
+include_host_filters:
+  - tags['Managed'] is defined and tags['Managed'] == 'true'
 
 # Use private IPs since VMSS instances typically do not have public IPs
 hostvar_expressions:
@@ -142,14 +144,15 @@ hostvar_expressions:
 
 # Custom host naming - use VMSS name + instance ID instead of the Azure resource name
 # This makes it easier to identify which scale set an instance belongs to
-hostvar_expressions:
-  ansible_host: private_ipv4_addresses[0] | default("")
+hostnames:
+  - (vmss.name | default('standalone')) ~ '_' ~ name
+  - default
 
 # Create useful groups
 keyed_groups:
   # Group by VMSS name - each scale set becomes a group
   - prefix: vmss
-    key: virtual_machine_scale_set | default('standalone')
+    key: vmss.name | default('standalone')
 
   # Group by environment tag
   - prefix: env
@@ -179,7 +182,7 @@ ansible-inventory -i vmss-inventory.azure_rm.yml --graph
 ansible -i vmss-inventory.azure_rm.yml vmss_web_servers -m ping
 
 # Show variables for a specific host
-ansible-inventory -i vmss-inventory.azure_rm.yml --host vmss_web_000001
+ansible-inventory -i vmss-inventory.azure_rm.yml --host web-servers-prod_1
 ```
 
 Sample output from `--graph`:
@@ -187,22 +190,22 @@ Sample output from `--graph`:
 ```text
 @all:
   |--@env_prod:
-  |  |--vmss-web-prod_000000
-  |  |--vmss-web-prod_000001
-  |  |--vmss-web-prod_000002
+  |  |--web-servers-prod_0
+  |  |--web-servers-prod_1
+  |  |--web-servers-prod_2
   |--@env_staging:
-  |  |--vmss-web-staging_000000
-  |  |--vmss-web-staging_000001
+  |  |--web-servers-staging_0
+  |  |--web-servers-staging_1
   |--@vmss_web_servers_prod:
-  |  |--vmss-web-prod_000000
-  |  |--vmss-web-prod_000001
-  |  |--vmss-web-prod_000002
+  |  |--web-servers-prod_0
+  |  |--web-servers-prod_1
+  |  |--web-servers-prod_2
   |--@tier_web:
-  |  |--vmss-web-prod_000000
-  |  |--vmss-web-prod_000001
-  |  |--vmss-web-prod_000002
-  |  |--vmss-web-staging_000000
-  |  |--vmss-web-staging_000001
+  |  |--web-servers-prod_0
+  |  |--web-servers-prod_1
+  |  |--web-servers-prod_2
+  |  |--web-servers-staging_0
+  |  |--web-servers-staging_1
 ```
 
 ## Writing Playbooks for VMSS
