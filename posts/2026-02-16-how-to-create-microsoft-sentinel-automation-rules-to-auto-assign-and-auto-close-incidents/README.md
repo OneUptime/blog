@@ -14,7 +14,7 @@ In this guide, I will walk through creating automation rules that handle two com
 
 ## Why Automation Rules Matter
 
-Before Sentinel automation rules existed, the only way to automate incident handling was through Logic Apps playbooks. While playbooks are powerful, they require more setup and cost money per execution. Automation rules are lightweight, run at no additional cost, and execute before playbooks in the processing pipeline. They are ideal for simple triage operations like:
+Before Sentinel automation rules existed, the only way to automate incident handling was through Logic Apps playbooks. While playbooks are powerful, they require more setup and cost money per execution. Automation rules are lightweight, run at no additional cost, and can run playbooks as ordered actions when you need more advanced workflow logic. They are ideal for simple triage operations like:
 
 - Assigning incidents to specific team members or groups based on the alert source
 - Changing severity levels based on entity attributes
@@ -22,7 +22,7 @@ Before Sentinel automation rules existed, the only way to automate incident hand
 - Closing incidents that match known false positive signatures
 - Triggering playbooks with pre-filtered conditions
 
-The processing order matters here. Automation rules run first, in the order you define, and then any playbook triggers fire. This means you can use automation rules to enrich an incident with tags before a playbook picks it up.
+The processing order matters here. Automation rules run sequentially, in the order you define, and actions within a rule, including Run playbook actions, also run in the order they are defined. This means you can use an earlier action or rule to enrich an incident with tags before a later action or rule picks it up.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ You need a few things in place before creating automation rules:
 - An active Microsoft Sentinel workspace connected to a Log Analytics workspace
 - Microsoft Sentinel Contributor or higher role on the resource group
 - At least one analytics rule generating incidents (so you can test your automation)
-- If you plan to auto-assign, know the Azure AD object IDs of your analysts
+- If you plan to auto-assign by API or template, know the Microsoft Entra object IDs of your analysts
 
 ## Creating an Auto-Assignment Automation Rule
 
@@ -53,12 +53,13 @@ You can stack multiple conditions with AND/OR logic. For instance, you might wan
 
 Here is the equivalent if you want to create automation rules through the Sentinel REST API. This uses an ARM template approach:
 
-```json
+```jsonc
 {
   // ARM template for Sentinel automation rule
   // This rule auto-assigns firewall-related incidents
   "type": "Microsoft.SecurityInsights/automationRules",
-  "apiVersion": "2023-02-01",
+  "scope": "Microsoft.OperationalInsights/workspaces/{workspace-name}",
+  "apiVersion": "2025-09-01",
   "name": "auto-assign-firewall-incidents",
   "properties": {
     "displayName": "Auto-assign firewall alerts to Network Team",
@@ -75,7 +76,7 @@ Here is the equivalent if you want to create automation rules through the Sentin
             "propertyName": "IncidentRelatedAnalyticRuleIds",
             // Replace with your actual analytics rule resource ID
             "propertyValues": [
-              "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.SecurityInsights/alertRules/{rule-id}"
+              "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{workspace-name}/providers/Microsoft.SecurityInsights/alertRules/{rule-id}"
             ],
             "operator": "Contains"
           }
@@ -87,8 +88,9 @@ Here is the equivalent if you want to create automation rules through the Sentin
         "actionType": "ModifyProperties",
         "actionConfiguration": {
           "owner": {
-            // Azure AD object ID of the assigned analyst
-            "objectId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            // Microsoft Entra object ID of the assigned analyst
+            "objectId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "ownerType": "User"
           },
           "status": "Active"
         },
@@ -118,12 +120,11 @@ Create another automation rule with these settings:
 
 The classification reason is important. When you auto-close incidents, auditors and team leads need to understand why. Sentinel tracks closure classifications in its metrics, so setting the right one keeps your dashboards accurate.
 
-Here is a PowerShell script that creates an auto-close rule using the Az.SecurityInsights module:
+Here is an Az PowerShell script that creates an auto-close rule with the automation rule ARM resource:
 
 ```powershell
 # Install the module if you haven't already
-
-# Install-Module -Name Az.SecurityInsights -Force
+# Install-Module -Name Az.Resources -Force
 
 # Connect to Azure (interactive login)
 Connect-AzAccount
@@ -131,40 +132,50 @@ Connect-AzAccount
 # Define the automation rule parameters
 $workspaceName = "your-sentinel-workspace"
 $resourceGroup = "your-resource-group"
+$subscriptionId = (Get-AzContext).Subscription.Id
+$workspaceResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.OperationalInsights/workspaces/$workspaceName"
+$automationRuleId = (New-Guid).Guid
 
-# Create the condition - match incidents with specific title pattern
-$condition = @{
-    ConditionType = "Property"
-    ConditionProperties = @{
-        PropertyName = "IncidentTitle"
-        Operator = "Contains"
-        PropertyValues = @("VPN Exit Node - Known Region")
+# Define the automation rule properties
+$properties = @{
+    displayName = "Auto-close known VPN exit node alerts"
+    order = 2
+    triggeringLogic = @{
+        isEnabled = $true
+        triggersOn = "Incidents"
+        triggersWhen = "Created"
+        conditions = @(
+            @{
+                conditionType = "Property"
+                conditionProperties = @{
+                    propertyName = "IncidentTitle"
+                    operator = "Contains"
+                    propertyValues = @("VPN Exit Node - Known Region")
+                }
+            }
+        )
     }
-}
-
-# Create the close action with classification
-$action = @{
-    ActionType = "ModifyProperties"
-    ActionConfiguration = @{
-        Status = "Closed"
-        Classification = "BenignPositive"
-        ClassificationReason = "ConfirmedBenign"
-        # Comment explains the auto-closure for audit trail
-        ClassificationComment = "Auto-closed: Known VPN exit node from approved region"
-    }
-    Order = 1
+    actions = @(
+        @{
+            actionType = "ModifyProperties"
+            actionConfiguration = @{
+                status = "Closed"
+                classification = "BenignPositive"
+                classificationReason = "SuspiciousButExpected"
+                # Comment explains the auto-closure for audit trail
+                classificationComment = "Auto-closed: Known VPN exit node from approved region"
+            }
+            order = 1
+        }
+    )
 }
 
 # Create the automation rule
-New-AzSentinelAutomationRule `
-    -WorkspaceName $workspaceName `
-    -ResourceGroupName $resourceGroup `
-    -DisplayName "Auto-close known VPN exit node alerts" `
-    -Order 2 `
-    -TriggerOn "Incidents" `
-    -TriggerWhen "Created" `
-    -Condition $condition `
-    -Action $action
+New-AzResource `
+    -ResourceId "$workspaceResourceId/providers/Microsoft.SecurityInsights/automationRules/$automationRuleId" `
+    -ApiVersion "2025-09-01" `
+    -Properties $properties `
+    -Force
 ```
 
 ## Rule Ordering and Execution Flow
@@ -191,7 +202,7 @@ A common pattern is routing incidents by severity to different tiers of your SOC
 
 For each rule, use the severity condition. Select "Incident severity" as the condition property, choose "Equals," and select the severity level. Then set the owner in the action.
 
-You can also assign to a group instead of an individual. Use the Azure AD group object ID in the owner field, and Sentinel will show the group as the owner. Note that Sentinel does not do round-robin assignment natively within a group - it just labels the group as the owner.
+You can also assign to a group instead of an individual. Use the Microsoft Entra group object ID in the owner field, set `ownerType` to `Group` when using the API, and Sentinel will show the group as the owner. Note that Sentinel does not do round-robin assignment natively within a group - it just labels the group as the owner.
 
 ## Handling Updates with Automation Rules
 
@@ -212,7 +223,7 @@ Check the automation rule health by going to the Automation blade and looking at
 1. The rule is enabled
 2. The conditions actually match the incidents being generated
 3. The rule order is not causing a previous rule to change the incident in a way that prevents your rule from matching
-4. You have not hit the maximum actions limit (automation rules support up to 20 rules per workspace)
+4. You have not hit the maximum limit for automation rule actions (up to 20 actions per automation rule)
 
 ## Best Practices
 
