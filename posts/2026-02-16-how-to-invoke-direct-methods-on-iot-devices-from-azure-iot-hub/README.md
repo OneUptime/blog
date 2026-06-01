@@ -10,7 +10,7 @@ Description: Learn how to invoke direct methods on IoT devices from Azure IoT Hu
 
 Device twins are great for configuration management, but sometimes you need to tell a device to do something right now and get an immediate response. Reboot the device. Run a diagnostic. Open a valve. Lock a door. These are action-oriented commands that do not fit the desired/reported property model. Azure IoT Hub direct methods are built for exactly this use case.
 
-A direct method is a synchronous request-response interaction between the cloud and a device. You invoke a method, the device executes it, and returns a result - all within a configurable timeout. If the device is offline, the call fails immediately rather than queuing, which is the right behavior for real-time commands.
+A direct method is a synchronous request-response interaction between the cloud and a device. You invoke a method, the device executes it, and returns a result - all within a configurable timeout. If the device is offline, the call fails instead of queuing; by default the service does not wait for the device to come online, though a connect timeout can be configured.
 
 ## How Direct Methods Work
 
@@ -39,7 +39,7 @@ Key characteristics:
 
 ## Prerequisites
 
-- An Azure IoT Hub with at least one registered device
+- A Standard-tier Azure IoT Hub with at least one registered device
 - The device must be connected and have a handler registered for the method name
 - Azure CLI with the IoT extension, or an SDK-based application
 
@@ -258,7 +258,7 @@ The CLI is perfect for manual invocations and testing:
 
 ```bash
 # Invoke the getStatus method on a specific device
-# --method-response-timeout specifies how long to wait for the device response
+# --timeout specifies how long to wait for the device response
 az iot hub invoke-device-method \
     --hub-name iothub-production-001 \
     --device-id sensor-temp-042 \
@@ -296,6 +296,7 @@ For application-level integration, use the service SDK:
 // Cloud-side code to invoke a direct method on a device
 // This runs in your backend application or Azure Function
 using Microsoft.Azure.Devices;
+using Microsoft.Azure.Devices.Common.Exceptions;
 using System.Text.Json;
 
 // Create the service client
@@ -370,7 +371,7 @@ Proper error handling is essential for direct methods:
 | Pattern | Request-response | Configuration sync | Fire-and-forget |
 | Timeout | 5-300 seconds | N/A | Up to 48 hours in queue |
 | Offline support | No | Yes | Yes (queued) |
-| Max payload | 128 KB | 32 KB total | 256 KB |
+| Max payload | 128 KB | 32 KB each for desired and reported properties | 64 KB |
 | Feedback | Immediate | Eventual | Delivery acknowledgment |
 | Use case | Actions, commands | Config, state | Notifications, commands |
 
