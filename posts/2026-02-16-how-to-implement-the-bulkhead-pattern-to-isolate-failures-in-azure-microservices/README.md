@@ -14,33 +14,34 @@ Without bulkheads, a single slow database query or an unresponsive external API 
 
 ## The Problem Without Bulkheads
 
-Consider a web application that calls three backend services: an order service, a recommendation engine, and a notification service. All three share the same HTTP client thread pool.
+Consider a web application that calls three backend services: an order service, a recommendation engine, and a notification service. All three share the same outbound request capacity.
 
-If the recommendation engine becomes slow and starts timing out, all threads in the shared pool get tied up waiting for responses. Now requests to the perfectly healthy order service also fail because there are no threads available to handle them.
+If the recommendation engine becomes slow and starts timing out, all available concurrency can get tied up waiting for responses. Now requests to the perfectly healthy order service also fail because there is no capacity available to handle them.
 
 ```mermaid
 flowchart TD
     subgraph "Without Bulkhead"
-        A[Shared Thread Pool - 100 threads] --> B[Order Service - Healthy]
+        A[Shared Request Capacity - 100 slots] --> B[Order Service - Healthy]
         A --> C[Recommendation Engine - Slow]
         A --> D[Notification Service - Healthy]
 
-        C -->|90 threads stuck| E[Thread Pool Exhausted]
-        E -->|No threads for| B
-        E -->|No threads for| D
+        C -->|90 slots waiting| E[Shared Capacity Exhausted]
+        E -->|No capacity for| B
+        E -->|No capacity for| D
     end
 ```
 
-## Implementing Thread Pool Isolation with Polly
+## Implementing Concurrency Isolation with Polly
 
-In .NET applications on Azure, the Polly library provides a bulkhead isolation policy. Here is how to set it up:
+In .NET applications on Azure, the Polly library provides a bulkhead isolation policy in its v7-style API. Here is how to set it up:
 
 ```csharp
 using Polly;
 using Polly.Bulkhead;
+using Polly.Extensions.Http;
 
 // Create separate bulkhead policies for each downstream service
-// Each has its own isolated thread pool
+// Each has its own isolated concurrency budget
 
 // Order service - critical path, more capacity
 var orderBulkhead = Policy.BulkheadAsync<HttpResponseMessage>(
@@ -192,8 +193,8 @@ When running microservices on AKS, you can implement bulkheads at the infrastruc
 ```yaml
 # Each service deployment has resource limits that act as a bulkhead
 
-# If the recommendation service consumes all its CPU allocation,
-# it cannot steal CPU from other services
+# If the recommendation service reaches its CPU limit,
+# Kubernetes throttles it instead of letting it consume more CPU
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -213,7 +214,7 @@ spec:
         - name: recommendation-engine
           image: myacr.azurecr.io/recommendation-engine:v1.0
           resources:
-            # Requests guarantee minimum resources
+            # Requests reserve scheduling capacity
             requests:
               cpu: "500m"
               memory: "512Mi"
@@ -319,12 +320,12 @@ public class BulkheadMetricsMiddleware
         var telemetry = context.RequestServices
             .GetRequiredService<TelemetryClient>();
 
-        telemetry.TrackMetric("BulkheadUtilization.OrderService", orderUsed);
-        telemetry.TrackMetric("BulkheadUtilization.RecommendationService", recoUsed);
+        telemetry.GetMetric("BulkheadUtilization.OrderService").TrackValue(orderUsed);
+        telemetry.GetMetric("BulkheadUtilization.RecommendationService").TrackValue(recoUsed);
 
         // Track queue depth too
-        telemetry.TrackMetric("BulkheadQueue.OrderService",
-            orderBulkhead.QueuedCount);
+        telemetry.GetMetric("BulkheadQueue.OrderService")
+            .TrackValue(10 - orderBulkhead.QueueAvailableCount);
 
         await _next(context);
     }
@@ -337,7 +338,7 @@ The hardest part is choosing the right size for each bulkhead. Here are some gui
 
 - **Start with observed traffic patterns.** If the order service handles 100 requests per second with an average latency of 50ms, you need about 5 concurrent slots under normal load. Set the bulkhead to 3-4x that for headroom.
 - **Non-critical services get smaller bulkheads.** If the recommendation engine is down, users can still place orders. Give it a small bulkhead.
-- **Consider the total capacity.** If your application server has 200 threads, do not allocate 150 to one service. Leave capacity for other work.
+- **Consider the total capacity.** If your application server can handle 200 concurrent outbound calls comfortably, do not allocate 150 slots to one service. Leave capacity for other work.
 - **Monitor and adjust.** Watch bulkhead rejection rates. If a service frequently hits its limit under normal load, increase the capacity.
 
 ## Summary
