@@ -14,7 +14,7 @@ In this post, I will walk through implementing Azure Policy effectively, from bu
 
 ## How Azure Policy Works
 
-Every time a resource is created or modified in Azure, the Azure Resource Manager (ARM) checks it against all applicable policies before the operation completes. Depending on the policy effect, the operation might be denied, the resource might be audited as non-compliant, or the resource might be automatically modified to comply.
+When a resource is created or modified in Azure, Azure Resource Manager (ARM) checks it against applicable policies. Depending on the policy effect, the operation might be denied, modified before it reaches the resource provider, audited as non-compliant, or followed by a deployment that brings a related resource into compliance. Existing resources are evaluated during compliance scans and can be fixed with remediation tasks.
 
 The evaluation flow looks like this:
 
@@ -24,7 +24,8 @@ flowchart TD
     B -->|Effect: Deny| C[Request Denied]
     B -->|Effect: Audit| D[Request Allowed, Logged as Non-Compliant]
     B -->|Effect: Modify| E[Resource Modified to Comply]
-    B -->|Effect: DeployIfNotExists| F[Remediation Task Created]
+    B -->|Effect: DeployIfNotExists| F[Related Deployment Triggered After Success]
+    H[Existing Resource Compliance Scan] --> I[Remediation Task for Modify or DeployIfNotExists]
     B -->|No Matching Policy| G[Request Allowed]
 ```
 
@@ -54,19 +55,22 @@ az policy assignment create \
 az policy assignment create \
   --name "require-https-storage" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9"
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9" \
+  --params '{"effect": {"value": "Deny"}}'
 
-# 4. Deny public network access for Key Vaults
+# 4. Require Key Vault firewalls or disabled public network access
 az policy assignment create \
   --name "deny-public-keyvault" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso-landing-zones" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/55615ac9-af46-4a59-874e-391cc3dfb490"
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/55615ac9-af46-4a59-874e-391cc3dfb490" \
+  --params '{"effect": {"value": "Deny"}}'
 
 # 5. Require TLS 1.2 minimum for Azure SQL
 az policy assignment create \
   --name "require-tls12-sql" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/32e6bbec-16b6-44c2-be37-c5b672d103cf"
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/32e6bbec-16b6-44c2-be37-c5b672d103cf" \
+  --params '{"effect": {"value": "Deny"}}'
 ```
 
 ## Policy Initiatives (Policy Sets)
@@ -74,10 +78,10 @@ az policy assignment create \
 Individual policies are useful, but managing dozens of them individually is tedious. Policy initiatives group related policies into a single assignment:
 
 ```bash
-# Assign the Azure Security Benchmark initiative
+# Assign the Microsoft cloud security benchmark initiative
 # This includes hundreds of security-related policies
 az policy assignment create \
-  --name "azure-security-benchmark" \
+  --name "microsoft-cloud-security-benchmark" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso" \
   --policy-set-definition "/providers/Microsoft.Authorization/policySetDefinitions/1f3afdf9-d0c9-4c3d-847f-89da613e70a8" \
   --mi-system-assigned \
@@ -95,24 +99,28 @@ You can also create custom initiatives that bundle your organization's specific 
     "policyDefinitions": [
       {
         "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025",
+        "policyDefinitionReferenceId": "requireCostCenterTag",
         "parameters": {
           "tagName": { "value": "CostCenter" }
         }
       },
       {
         "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025",
+        "policyDefinitionReferenceId": "requireOwnerTag",
         "parameters": {
           "tagName": { "value": "Owner" }
         }
       },
       {
         "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025",
+        "policyDefinitionReferenceId": "requireEnvironmentTag",
         "parameters": {
           "tagName": { "value": "Environment" }
         }
       },
       {
         "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c",
+        "policyDefinitionReferenceId": "allowedLocations",
         "parameters": {
           "listOfAllowedLocations": {
             "value": "[parameters('allowedLocations')]"
@@ -139,36 +147,36 @@ When built-in policies do not cover your specific requirements, write custom one
 
 ```json
 {
-  "mode": "All",
-  "displayName": "Require naming convention for resource groups",
-  "description": "Resource groups must follow the pattern rg-{workload}-{environment}-{region}",
-  "policyRule": {
-    "if": {
-      "allOf": [
-        {
-          "field": "type",
-          "equals": "Microsoft.Resources/subscriptions/resourceGroups"
-        },
-        {
-          "not": {
+  "properties": {
+    "mode": "All",
+    "displayName": "Require naming convention for resource groups",
+    "description": "Resource group names must start with rg-",
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.Resources/subscriptions/resourceGroups"
+          },
+          {
             "field": "name",
-            "match": "rg-*-*-*"
+            "notLike": "rg-*"
           }
-        }
-      ]
+        ]
+      },
+      "then": {
+        "effect": "[parameters('effect')]"
+      }
     },
-    "then": {
-      "effect": "[parameters('effect')]"
-    }
-  },
-  "parameters": {
-    "effect": {
-      "type": "String",
-      "allowedValues": ["Audit", "Deny"],
-      "defaultValue": "Audit",
-      "metadata": {
-        "displayName": "Effect",
-        "description": "Audit or Deny non-compliant resource groups"
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "allowedValues": ["Audit", "Deny"],
+        "defaultValue": "Audit",
+        "metadata": {
+          "displayName": "Effect",
+          "description": "Audit or Deny non-compliant resource groups"
+        }
       }
     }
   }
@@ -179,47 +187,87 @@ Here is another custom policy that ensures all SQL databases have auditing enabl
 
 ```json
 {
-  "mode": "All",
-  "displayName": "Ensure SQL database auditing is enabled",
-  "description": "Deploys SQL database auditing to a central storage account if not configured",
-  "policyRule": {
-    "if": {
-      "field": "type",
-      "equals": "Microsoft.Sql/servers/databases"
-    },
-    "then": {
-      "effect": "DeployIfNotExists",
-      "details": {
-        "type": "Microsoft.Sql/servers/databases/auditingSettings",
-        "name": "default",
-        "existenceCondition": {
-          "field": "Microsoft.Sql/servers/databases/auditingSettings/state",
-          "equals": "Enabled"
-        },
-        "roleDefinitionIds": [
-          "/providers/Microsoft.Authorization/roleDefinitions/056cd41c-7e88-42e1-933e-a3ba3b6e6caa"
-        ],
-        "deployment": {
-          "properties": {
-            "mode": "incremental",
-            "template": {
-              "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-              "contentVersion": "1.0.0.0",
-              "resources": [
-                {
-                  "type": "Microsoft.Sql/servers/databases/auditingSettings",
-                  "apiVersion": "2021-11-01",
-                  "name": "[concat(field('fullName'), '/default')]",
-                  "properties": {
-                    "state": "Enabled",
-                    "storageEndpoint": "[parameters('storageEndpoint')]",
-                    "storageAccountAccessKey": "[parameters('storageAccountKey')]",
-                    "retentionDays": 90
+  "properties": {
+    "mode": "All",
+    "displayName": "Ensure SQL database auditing is enabled",
+    "description": "Deploys SQL database auditing to a central storage account if not configured",
+    "policyRule": {
+      "if": {
+        "field": "type",
+        "equals": "Microsoft.Sql/servers/databases"
+      },
+      "then": {
+        "effect": "DeployIfNotExists",
+        "details": {
+          "type": "Microsoft.Sql/servers/databases/auditingSettings",
+          "name": "default",
+          "existenceCondition": {
+            "field": "Microsoft.Sql/servers/databases/auditingSettings/state",
+            "equals": "Enabled"
+          },
+          "roleDefinitionIds": [
+            "/providers/Microsoft.Authorization/roleDefinitions/056cd41c-7e88-42e1-933e-a3ba3b6e6caa"
+          ],
+          "deployment": {
+            "properties": {
+              "mode": "incremental",
+              "template": {
+                "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                "contentVersion": "1.0.0.0",
+                "parameters": {
+                  "fullDbName": {
+                    "type": "string"
+                  },
+                  "storageEndpoint": {
+                    "type": "string"
+                  },
+                  "storageAccountKey": {
+                    "type": "secureString"
                   }
+                },
+                "resources": [
+                  {
+                    "type": "Microsoft.Sql/servers/databases/auditingSettings",
+                    "apiVersion": "2021-11-01",
+                    "name": "[concat(parameters('fullDbName'), '/default')]",
+                    "properties": {
+                      "state": "Enabled",
+                      "storageEndpoint": "[parameters('storageEndpoint')]",
+                      "storageAccountAccessKey": "[parameters('storageAccountKey')]",
+                      "retentionDays": 90
+                    }
+                  }
+                ]
+              },
+              "parameters": {
+                "fullDbName": {
+                  "value": "[field('fullName')]"
+                },
+                "storageEndpoint": {
+                  "value": "[parameters('storageEndpoint')]"
+                },
+                "storageAccountKey": {
+                  "value": "[parameters('storageAccountKey')]"
                 }
-              ]
+              }
             }
           }
+        }
+      }
+    },
+    "parameters": {
+      "storageEndpoint": {
+        "type": "String",
+        "metadata": {
+          "displayName": "Storage endpoint",
+          "description": "Blob service endpoint for the auditing storage account"
+        }
+      },
+      "storageAccountKey": {
+        "type": "String",
+        "metadata": {
+          "displayName": "Storage account key",
+          "description": "Access key for the auditing storage account"
         }
       }
     }
@@ -229,20 +277,20 @@ Here is another custom policy that ensures all SQL databases have auditing enabl
 
 ## Remediation Tasks
 
-Policies with `DeployIfNotExists` or `Modify` effects can automatically fix non-compliant resources through remediation tasks:
+Policies with `DeployIfNotExists` or `Modify` effects can fix existing non-compliant resources through remediation tasks:
 
 ```bash
 # Create a remediation task for existing non-compliant resources
 az policy remediation create \
   --name "remediate-sql-auditing" \
   --policy-assignment "ensure-sql-auditing" \
-  --scope "/providers/Microsoft.Management/managementGroups/contoso-landing-zones" \
+  --management-group "contoso-landing-zones" \
   --resource-discovery-mode ReEvaluateCompliance
 
 # Check remediation progress
 az policy remediation show \
   --name "remediate-sql-auditing" \
-  --scope "/providers/Microsoft.Management/managementGroups/contoso-landing-zones" \
+  --management-group "contoso-landing-zones" \
   --query "{status: provisioningState, succeeded: deploymentStatus.totalDeployments, failed: deploymentStatus.failedDeployments}"
 ```
 
@@ -275,8 +323,8 @@ Monitor compliance across all subscriptions:
 az policy state summarize \
   --management-group "contoso" \
   --query "{
-    totalPolicies: results.policyAssignments | length(@),
-    compliantResources: results.resourceDetails[?complianceState=='Compliant'] | length(@),
+    totalPolicyAssignments: policyAssignments | length(@),
+    compliantResources: results.resourceDetails[?complianceState=='compliant'].count | [0],
     nonCompliantResources: results.nonCompliantResources
   }"
 
