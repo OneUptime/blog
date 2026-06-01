@@ -20,9 +20,9 @@ The key insight is that the event timestamp (when something actually happened) a
 
 ## Understanding Watermarks in Stream Analytics
 
-A watermark in Azure Stream Analytics represents a point in event time up to which the system believes it has received all events. It is essentially the system saying, "I am confident that no events with a timestamp earlier than this watermark will arrive." The watermark advances as new events come in, and it drives when windowed computations produce their results.
+A watermark in Azure Stream Analytics represents a point in event time up to which the system believes it has ingested events. It is essentially the system saying, "I am confident that results up to this point can be produced repeatably." The watermark advances as new events come in, and it drives when windowed computations produce their results.
 
-The watermark is computed as the minimum of the latest event time across all input partitions, minus the late arrival tolerance window. This means the slowest partition determines your overall watermark progress. If one partition goes quiet while others keep producing events, the watermark will stall until that silent partition either produces an event or the late arrival tolerance window kicks in.
+When you use `TIMESTAMP BY`, Azure Stream Analytics generates a heuristic watermark for each input partition. When events are arriving, the watermark is based on the largest event time seen so far minus the out-of-order tolerance window. When no events arrive, it is based on the estimated arrival time minus the late arrival tolerance window. When partitions are combined, the slowest partition determines your overall watermark progress. If one partition goes quiet while others keep producing events, output can be delayed until that silent partition either produces an event or the late arrival tolerance window lets time move forward.
 
 ## Configuring Event Ordering Policies
 
@@ -30,7 +30,7 @@ Azure Stream Analytics provides two key tolerance windows that control how late 
 
 ### Late Arrival Tolerance Window
 
-This window defines how long the system waits for late events before giving up. The default is 5 seconds, but you can set it anywhere from 0 seconds up to 20 days. Here is how to configure it in the Azure portal:
+This window defines how much delay the system tolerates between the event timestamp and the time the event reaches the input source. The default is 5 seconds, but you can set it up to the documented maximum for your deployment method. Here is how to configure it in the Azure portal:
 
 1. Open your Stream Analytics job in the Azure portal
 2. Navigate to "Event ordering" under the Configure section
@@ -41,11 +41,11 @@ You can also set this through an ARM template or Azure CLI. Here is the Azure CL
 ```bash
 # Update the Stream Analytics job with a 10-minute late arrival tolerance
 
-# The value is specified in the ISO 8601 duration format
+# The value is specified in seconds
 az stream-analytics job update \
   --resource-group my-resource-group \
   --name my-stream-job \
-  --late-arrival-max-delay-time "00:10:00"
+  --arrival-max-delay 600
 ```
 
 ### Out-of-Order Tolerance Window
@@ -57,10 +57,10 @@ This window controls how far out of order events can be and still be processed n
 az stream-analytics job update \
   --resource-group my-resource-group \
   --name my-stream-job \
-  --out-of-order-max-delay-time "00:00:30"
+  --order-max-delay 30
 ```
 
-## Drop vs. Adjust - Choosing an Output Policy
+## Drop vs. Adjust - Choosing an Event Ordering Policy
 
 When an event arrives outside the tolerance window, Azure Stream Analytics can do one of two things:
 
@@ -100,7 +100,7 @@ GROUP BY
 
 With a late arrival tolerance of 10 minutes, here is what happens:
 
-- Events arriving within 10 minutes of their event timestamp are processed normally
+- Events that reach the input source within 10 minutes of their event timestamp are processed normally
 - The window for 12:00-12:05 will not finalize until the watermark passes 12:05
 - If a device goes offline for 8 minutes and then sends a burst of readings, those readings still get included in the correct windows
 - If a reading for 12:02 arrives at 12:20 (18 minutes late), it exceeds the 10-minute tolerance and gets either dropped or adjusted
@@ -110,7 +110,7 @@ With a late arrival tolerance of 10 minutes, here is what happens:
 You can monitor how many late events your job encounters using Azure metrics. The key metrics to watch are:
 
 - **Late Input Events**: Count of events arriving outside the late arrival tolerance window
-- **Out-of-Order Events**: Count of events received out of order (within the tolerance window, so they were reordered successfully)
+- **Out-of-Order Events**: Count of events received out of order that were either dropped or given an adjusted timestamp
 - **Watermark Delay**: How far behind real time your watermark is
 
 Set up alerts on these metrics so you know when your tolerance windows need adjustment:
@@ -143,7 +143,7 @@ A good approach is to start with a small tolerance (a few seconds to a few minut
 
 When your input has multiple partitions (as is common with Event Hubs), the watermark tracks each partition independently. The overall job watermark is the minimum across all partitions. This has a practical implication: if you have a partition that receives very little traffic, it can hold back your entire watermark.
 
-One strategy to mitigate this is to ensure even distribution of events across partitions. Another is to use the "Last Event Time" arrival policy, which adjusts the watermark when a partition has been idle for a period.
+One strategy to mitigate this is to ensure even distribution of events across partitions. Another is to use a `PARTITION BY PartitionId` query pattern where it fits your workload, so partitions can progress independently instead of being combined into one timeline.
 
 ## Summary
 
