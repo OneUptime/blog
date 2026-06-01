@@ -8,7 +8,7 @@ Description: A hands-on guide to creating Azure RBAC custom roles with least-pri
 
 ---
 
-Azure's built-in RBAC roles cover a lot of ground, but they are often too broad or too narrow for real-world development team needs. The Contributor role gives too much access - it can delete resources, modify networking, and manage role assignments. The Reader role gives too little - teams cannot deploy or manage their own applications. Custom roles let you define exactly the permissions each team needs, scoped to their resource group, following the principle of least privilege.
+Azure's built-in RBAC roles cover a lot of ground, but they are often too broad or too narrow for real-world development team needs. The Contributor role gives too much access - it can delete resources and modify networking, although it cannot assign roles in Azure RBAC. The Reader role gives too little - teams cannot deploy or manage their own applications. Custom roles let you define exactly the permissions each team needs, scoped to their resource group, following the principle of least privilege.
 
 In this guide, I will walk through designing, creating, and managing custom roles for development teams in a shared Azure subscription.
 
@@ -21,7 +21,7 @@ In a typical enterprise setup, multiple development teams share a subscription. 
 - Each team can deploy and manage the specific Azure services they use
 - No team can assign roles to other users (preventing privilege escalation)
 
-The built-in Contributor role fails here because it includes permissions like `Microsoft.Authorization/roleAssignments/write` (through inherited assignments at higher scopes) and access to resources in other resource groups if assigned at the subscription level.
+The built-in Contributor role fails here because it includes broad resource management permissions and access to resources in other resource groups if assigned at the subscription level. It does not include `Microsoft.Authorization/roleAssignments/write`, but it still grants more resource permissions than many development teams need.
 
 ## Understanding Custom Role Structure
 
@@ -32,23 +32,19 @@ An Azure custom role definition has these key components:
   "Name": "Role display name",
   "Description": "What this role is for",
   "Actions": [
-    // Management plane operations allowed
-    // e.g., "Microsoft.Compute/virtualMachines/read"
+    "Microsoft.Compute/virtualMachines/read"
   ],
   "NotActions": [
-    // Operations explicitly denied
-    // Subtracts from Actions
+    "Microsoft.Compute/virtualMachines/delete"
   ],
   "DataActions": [
-    // Data plane operations allowed
-    // e.g., "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read"
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read"
   ],
   "NotDataActions": [
-    // Data plane operations denied
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/delete"
   ],
   "AssignableScopes": [
-    // Where this role can be assigned
-    // e.g., "/subscriptions/{sub-id}/resourceGroups/{rg}"
+    "/subscriptions/{sub-id}/resourceGroups/{rg}"
   ]
 }
 ```
@@ -85,70 +81,47 @@ Here is a custom role for a web application development team:
   "IsCustom": true,
   "Description": "Can deploy and manage web applications, databases, and supporting services within assigned resource groups",
   "Actions": [
-    // App Service permissions
     "Microsoft.Web/sites/*",
     "Microsoft.Web/serverfarms/*",
     "Microsoft.Web/certificates/*",
-
-    // Azure SQL permissions
     "Microsoft.Sql/servers/read",
     "Microsoft.Sql/servers/databases/*",
-    "Microsoft.Sql/servers/firewallRules/*",
-
-    // Storage permissions (management plane)
     "Microsoft.Storage/storageAccounts/*",
-
-    // Key Vault permissions (management plane only)
     "Microsoft.KeyVault/vaults/read",
     "Microsoft.KeyVault/vaults/deploy/action",
-
-    // Application Insights / Monitoring
     "Microsoft.Insights/components/*",
     "Microsoft.Insights/alertRules/*",
     "Microsoft.Insights/metricAlerts/*",
     "Microsoft.Insights/diagnosticSettings/*",
-
-    // Resource group level read access
     "Microsoft.Resources/subscriptions/resourceGroups/read",
     "Microsoft.Resources/deployments/*",
-
-    // General resource operations
     "Microsoft.Resources/tags/*",
     "Microsoft.OperationalInsights/workspaces/read",
     "Microsoft.OperationalInsights/workspaces/sharedKeys/read",
-
-    // Cache for Redis
     "Microsoft.Cache/redis/*",
-
-    // Managed Identity (for App Service)
     "Microsoft.ManagedIdentity/userAssignedIdentities/*"
   ],
   "NotActions": [
-    // Prevent role assignment changes (no privilege escalation)
-    "Microsoft.Authorization/*/Write",
-    "Microsoft.Authorization/*/Delete",
-
-    // Prevent resource group deletion
+    "Microsoft.Authorization/*/write",
+    "Microsoft.Authorization/*/delete",
     "Microsoft.Resources/subscriptions/resourceGroups/delete",
-
-    // Prevent network changes
     "Microsoft.Network/*",
-
-    // Prevent policy changes
-    "Microsoft.PolicyInsights/*",
-
-    // Prevent changes to locks
+    "Microsoft.Authorization/policyAssignments/*",
+    "Microsoft.Authorization/policyDefinitions/*",
+    "Microsoft.Authorization/policySetDefinitions/*",
+    "Microsoft.Authorization/policyExemptions/*",
     "Microsoft.Authorization/locks/*"
   ],
   "DataActions": [
-    // Blob storage data access
     "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/*",
-    "Microsoft.Storage/storageAccounts/queueServices/queues/messages/*"
+    "Microsoft.Storage/storageAccounts/queueServices/queues/messages/*",
+    "Microsoft.KeyVault/vaults/secrets/readMetadata/action",
+    "Microsoft.KeyVault/vaults/secrets/getSecret/action",
+    "Microsoft.KeyVault/vaults/secrets/setSecret/action",
+    "Microsoft.KeyVault/vaults/secrets/update/action"
   ],
   "NotDataActions": [],
   "AssignableScopes": [
-    // Scope to a specific subscription
-    // When assigned, it will be at the resource group level
     "/subscriptions/your-subscription-id"
   ]
 }
@@ -192,8 +165,8 @@ az role definition create --role-definition '{
     "Microsoft.Insights/diagnosticSettings/*"
   ],
   "NotActions": [
-    "Microsoft.Authorization/*/Write",
-    "Microsoft.Authorization/*/Delete",
+    "Microsoft.Authorization/*/write",
+    "Microsoft.Authorization/*/delete",
     "Microsoft.Resources/subscriptions/resourceGroups/delete",
     "Microsoft.Network/*"
   ],
@@ -227,8 +200,8 @@ az role definition create --role-definition '{
     "Microsoft.ManagedIdentity/*"
   ],
   "NotActions": [
-    "Microsoft.Authorization/*/Write",
-    "Microsoft.Authorization/*/Delete",
+    "Microsoft.Authorization/*/write",
+    "Microsoft.Authorization/*/delete",
     "Microsoft.Resources/subscriptions/resourceGroups/delete"
   ],
   "DataActions": [],
@@ -282,8 +255,11 @@ az storage account create --name teamalphastorage --resource-group rg-team-alpha
 az webapp list --resource-group rg-team-beta
 # Expected: Authorization error
 
-# These should fail (excluded by NotActions)
-az role assignment create --assignee someone@contoso.com --role Reader --resource-group rg-team-alpha
+# These should fail (not granted by this role)
+az role assignment create \
+  --assignee someone@contoso.com \
+  --role Reader \
+  --scope "/subscriptions/{sub-id}/resourceGroups/rg-team-alpha"
 # Expected: Authorization error - cannot assign roles
 
 # This should fail (cannot delete resource group)
