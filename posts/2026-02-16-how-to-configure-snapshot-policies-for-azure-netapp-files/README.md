@@ -8,7 +8,7 @@ Description: Learn how to create and manage automated snapshot policies for Azur
 
 ---
 
-Snapshots in Azure NetApp Files are incredibly fast. They take less than a second to create regardless of volume size because they leverage the underlying WAFL (Write Anywhere File Layout) technology - snapshots only record metadata pointers, not actual data copies. But creating snapshots manually is not sustainable for production workloads. You need automated snapshot policies that create, retain, and clean up snapshots on a schedule.
+Snapshots in Azure NetApp Files are incredibly fast. They take only a few seconds to create regardless of volume size because they leverage the underlying NetApp volume virtualization technology - snapshots only record metadata pointers, not actual data copies. But creating snapshots manually is not sustainable for production workloads. You need automated snapshot policies that create, retain, and clean up snapshots on a schedule.
 
 This guide covers how to configure snapshot policies, assign them to volumes, and use snapshots for data recovery.
 
@@ -18,7 +18,7 @@ Unlike traditional backup copies, Azure NetApp Files snapshots are not full copi
 
 This has several practical implications:
 
-- **Snapshots are instant**: Creation time is under a second for any volume size
+- **Snapshots are near-instantaneous**: Creation time is only a few seconds for any volume size
 - **Space efficient**: A fresh snapshot consumes almost zero additional space. Space consumption grows only as data changes.
 - **Performance impact**: Near zero. Snapshots do not affect volume performance.
 - **Recovery**: You can restore individual files from a snapshot, or revert an entire volume.
@@ -46,16 +46,16 @@ az netappfiles snapshot policy create \
   --weekly-hour 1 \
   --weekly-minute 0 \
   --monthly-snapshots 12 \
-  --monthly-days-of-month "1" \
+  --monthly-days "1" \
   --monthly-hour 2 \
   --monthly-minute 0
 ```
 
 This policy creates:
 - **Hourly**: A snapshot every hour at minute 0, keeping the last 6
-- **Daily**: A snapshot every day at 11:30 PM, keeping the last 7
-- **Weekly**: A snapshot every Monday at 1:00 AM, keeping the last 4
-- **Monthly**: A snapshot on the 1st of each month at 2:00 AM, keeping the last 12
+- **Daily**: A snapshot every day at 11:30 PM UTC, keeping the last 7
+- **Weekly**: A snapshot every Monday at 1:00 AM UTC, keeping the last 4
+- **Monthly**: A snapshot on the 1st of each month at 2:00 AM UTC, keeping the last 12
 
 The retention count determines how many snapshots of each type are kept. When a new snapshot is created and the count exceeds the limit, the oldest snapshot of that type is deleted.
 
@@ -152,7 +152,7 @@ az netappfiles snapshot show \
 
 ## Step 6: Restore Files from Snapshots
 
-For NFS volumes, snapshots are accessible through a hidden `.snapshot` directory at the volume root. Users can restore files themselves without administrator intervention.
+For NFS volumes, snapshots are accessible through a `.snapshot` directory at the volume root when the snapshot path is visible. Users with appropriate permissions can restore files themselves without administrator intervention.
 
 ```bash
 # List available snapshots from a mounted NFS volume
@@ -174,7 +174,7 @@ cp -r /mnt/netapp-volume/.snapshot/daily.2026-02-15_2330/data/reports/ \
       /mnt/netapp-volume/data/reports/
 ```
 
-For SMB volumes, the equivalent is the "Previous Versions" tab in Windows Explorer. Right-click on a file or folder, select Properties, and then the Previous Versions tab. Snapshots appear as available versions.
+For SMB volumes, the equivalent is the "Previous Versions" tab in Windows Explorer, or the `~snapshot` directory when the snapshot path is visible. Right-click on a file or folder, select Properties, and then the Previous Versions tab. Snapshots appear as available versions.
 
 ## Step 7: Revert an Entire Volume
 
@@ -258,7 +258,7 @@ When designing your snapshot policy, consider these factors:
 
 **Recovery Point Objective (RPO)**: How much data can you afford to lose? If your RPO is 1 hour, you need at minimum hourly snapshots.
 
-**Recovery Time Objective (RTO)**: How fast do you need to recover? Individual file restores from snapshots are nearly instant. Full volume reverts take seconds.
+**Recovery Time Objective (RTO)**: How fast do you need to recover? Individual file restores from snapshots are nearly instant. Full volume reverts typically take only a few seconds.
 
 **Data change rate**: High change rates mean snapshots consume more space. Monitor snapshot space and adjust retention accordingly.
 
