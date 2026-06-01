@@ -18,12 +18,12 @@ Azure Event Grid and Azure Functions make a solid foundation for this listener. 
    - The resource to watch (e.g., `/users` or `/me/messages`)
    - The type of changes to watch (created, updated, deleted)
    - A notification URL (your webhook endpoint)
-   - An expiration time (max 3 days for most resources)
+   - An expiration time (the maximum varies by resource)
 2. Graph validates your endpoint by sending a validation request.
 3. When a matching change occurs, Graph sends a POST request to your endpoint with notification data.
-4. Your endpoint processes the notification and returns 202 Accepted within 3 seconds.
+4. Your endpoint processes or queues the notification and returns a 2xx response quickly.
 
-The 3-second response time requirement is critical. If your processing takes longer than that, Graph marks the delivery as failed. This is why decoupling with Event Grid is valuable - receive the notification quickly, push it to Event Grid, and process it asynchronously.
+The response time guidance is critical. If you process the notification within 3 seconds, Microsoft Graph recommends returning 200 OK. If processing might take longer, queue the notification and return 202 Accepted before the 10-second response window. This is why decoupling with Event Grid is valuable - receive the notification quickly, push it to Event Grid, and process it asynchronously.
 
 ```mermaid
 sequenceDiagram
@@ -34,16 +34,16 @@ sequenceDiagram
 
     Graph->>Func: POST notification
     Func->>EG: Publish event
-    Func->>Graph: 202 Accepted (within 3s)
+    Func->>Graph: 202 Accepted
     EG->>Proc: Deliver event
     Proc->>Proc: Process change
 ```
 
-## Step 1: Register the Azure AD Application
+## Step 1: Register the Microsoft Entra ID Application
 
 Create an app registration with the permissions needed for your subscription:
 
-1. Go to Azure portal > Azure AD > App registrations > New registration.
+1. Go to Azure portal > Microsoft Entra ID > App registrations > New registration.
 2. Name it "Graph Webhook Listener".
 3. Add API permissions based on what you are monitoring:
    - `Mail.Read` - for mail notifications
@@ -80,8 +80,11 @@ using Microsoft.Extensions.Logging;
 using Azure.Messaging.EventGrid;
 using Azure;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.IO;
 using System.Threading.Tasks;
+using System;
+using System.Collections.Generic;
 
 public static class GraphWebhookReceiver
 {
@@ -119,8 +122,18 @@ public static class GraphWebhookReceiver
 
         // Step 3: Forward each notification to Event Grid
         var events = new List<EventGridEvent>();
+        string expectedClientState = Environment.GetEnvironmentVariable("WebhookClientState");
+
         foreach (var notification in notifications.Value)
         {
+            if (notification.ClientState != expectedClientState)
+            {
+                log.LogWarning(
+                    $"Invalid clientState in notification for {notification.Resource}"
+                );
+                continue;
+            }
+
             events.Add(new EventGridEvent(
                 subject: notification.Resource,
                 eventType: $"Graph.{notification.ChangeType}",
@@ -137,10 +150,13 @@ public static class GraphWebhookReceiver
             ));
         }
 
-        // Publish to Event Grid asynchronously
-        await _eventGridClient.SendEventsAsync(events);
+        // Publish valid notifications to Event Grid asynchronously
+        if (events.Count > 0)
+        {
+            await _eventGridClient.SendEventsAsync(events);
+        }
 
-        // Return 202 quickly to satisfy Graph's 3-second requirement
+        // Return 202 quickly after queueing the notification
         return new AcceptedResult();
     }
 }
@@ -148,15 +164,25 @@ public static class GraphWebhookReceiver
 // Models for deserializing Graph notification payloads
 public class GraphNotificationPayload
 {
+    [JsonPropertyName("value")]
     public List<GraphNotification> Value { get; set; }
 }
 
 public class GraphNotification
 {
+    [JsonPropertyName("subscriptionId")]
     public string SubscriptionId { get; set; }
+
+    [JsonPropertyName("changeType")]
     public string ChangeType { get; set; }
+
+    [JsonPropertyName("resource")]
     public string Resource { get; set; }
+
+    [JsonPropertyName("resourceData")]
     public JsonElement ResourceData { get; set; }
+
+    [JsonPropertyName("clientState")]
     public string ClientState { get; set; }
 }
 ```
@@ -174,6 +200,7 @@ using Azure.Messaging.EventGrid;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System;
 
 public static class NotificationProcessor
 {
@@ -231,6 +258,16 @@ public static class NotificationProcessor
         await Task.CompletedTask;
     }
 }
+
+public class NotificationData
+{
+    public string SubscriptionId { get; set; }
+    public string ChangeType { get; set; }
+    public string Resource { get; set; }
+    public JsonElement ResourceData { get; set; }
+    public string ClientState { get; set; }
+    public DateTime ReceivedAt { get; set; }
+}
 ```
 
 ## Step 5: Create and Manage Subscriptions
@@ -259,8 +296,8 @@ public static async Task<IActionResult> Run(
         // Client state for validation (should be a secret)
         ClientState = Environment.GetEnvironmentVariable("WebhookClientState"),
 
-        // Expiration - max 3 days for most resources
-        // You need to renew before expiration
+        // Expiration - maximum lifetime depends on the resource.
+        // Two days is a conservative value for this user subscription.
         ExpirationDateTime = DateTimeOffset.UtcNow.AddDays(2)
     };
 
@@ -344,11 +381,11 @@ When creating the subscription, add:
 ```csharp
 var subscription = new Subscription
 {
-    Resource = "/users",
-    ChangeType = "updated",
+    Resource = "/users/{user-id}/messages?$select=id,subject,from,receivedDateTime",
+    ChangeType = "created,updated",
     NotificationUrl = webhookUrl,
     ClientState = clientState,
-    ExpirationDateTime = DateTimeOffset.UtcNow.AddDays(2),
+    ExpirationDateTime = DateTimeOffset.UtcNow.AddHours(23),
     // Include the changed resource data in the notification
     IncludeResourceData = true,
     // Encryption certificate is required for rich notifications
