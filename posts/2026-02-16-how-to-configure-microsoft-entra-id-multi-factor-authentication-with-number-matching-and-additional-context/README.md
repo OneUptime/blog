@@ -58,52 +58,32 @@ If an attacker triggers the push, the user sees a prompt asking for a number but
 
 ## Step 1: Enable Number Matching
 
-As of mid-2023, Microsoft made number matching the default for all Microsoft Authenticator push notifications. However, you should verify this is configured correctly in your tenant.
+Microsoft made number matching the default for all Microsoft Authenticator push notifications. Users cannot opt out of number matching, and administrators do not need to enable it separately. However, you should verify that Microsoft Authenticator push notifications are enabled for the users who need to use them.
 
 1. Sign in to the Microsoft Entra admin center at entra.microsoft.com.
-2. Navigate to Protection, then Authentication methods, then Policies.
-3. Click on Microsoft Authenticator.
-4. Under the Configure tab, make sure the authentication mode is set to Push or Any.
-5. Click on the Configure tab for Microsoft Authenticator settings.
-6. Under Require number matching for push notifications, verify it is set to Enabled with the target set to All users.
+2. Navigate to Entra ID, then Authentication methods, then Microsoft Authenticator.
+3. On the Basics tab, make sure Enable is set to Yes and the target includes the users who should use Authenticator.
+4. Make sure the authentication mode is set to Push or Any.
 
-You can also configure this using PowerShell:
+You can also verify the Microsoft Authenticator policy using PowerShell:
 
 ```powershell
 # Connect to Microsoft Graph with the required scopes
 
-Connect-MgGraph -Scopes "Policy.ReadWrite.AuthenticationMethod"
+Connect-MgGraph -Scopes "Policy.Read.All"
 
 # Get the current Microsoft Authenticator authentication method configuration
 $authMethod = Get-MgPolicyAuthenticationMethodPolicyAuthenticationMethodConfiguration `
     -AuthenticationMethodConfigurationId "MicrosoftAuthenticator"
 
-# Update the configuration to require number matching
-# The 'enabled' state with 'all' target applies to all users
-$params = @{
-    "@odata.type" = "#microsoft.graph.microsoftAuthenticatorAuthenticationMethodConfiguration"
-    FeatureSettings = @{
-        NumberMatchingRequiredState = @{
-            State = "enabled"
-            IncludeTarget = @{
-                TargetType = "group"
-                Id = "all_users"
-            }
-        }
-    }
-}
-
-Update-MgPolicyAuthenticationMethodPolicyAuthenticationMethodConfiguration `
-    -AuthenticationMethodConfigurationId "MicrosoftAuthenticator" `
-    -BodyParameter $params
+$authMethod
 ```
 
 ## Step 2: Enable Additional Context (Show Application Name)
 
 Additional context shows the user which application is requesting the authentication and from what location. This gives users the information they need to recognize illegitimate requests.
 
-1. In the Microsoft Entra admin center, go to Protection, then Authentication methods, then Policies.
-2. Click on Microsoft Authenticator.
+1. In the Microsoft Entra admin center, go to Entra ID, then Authentication methods, then Microsoft Authenticator.
 3. Under the Configure tab, find Show application name in push and passwordless notifications.
 4. Set it to Enabled and target All users.
 
@@ -125,29 +105,29 @@ Connect-MgGraph -Scopes "Policy.ReadWrite.AuthenticationMethod"
 # Enable both application name and geographic location in push notifications
 $params = @{
     "@odata.type" = "#microsoft.graph.microsoftAuthenticatorAuthenticationMethodConfiguration"
-    FeatureSettings = @{
+    "featureSettings" = @{
         # Show application name in the push notification
-        DisplayAppInformationRequiredState = @{
-            State = "enabled"
-            IncludeTarget = @{
-                TargetType = "group"
-                Id = "all_users"
+        "displayAppInformationRequiredState" = @{
+            "state" = "enabled"
+            "includeTarget" = @{
+                "targetType" = "group"
+                "id" = "all_users"
+            }
+            "excludeTarget" = @{
+                "targetType" = "group"
+                "id" = "00000000-0000-0000-0000-000000000000"
             }
         }
         # Show the geographic location of the sign-in attempt
-        DisplayLocationInformationRequiredState = @{
-            State = "enabled"
-            IncludeTarget = @{
-                TargetType = "group"
-                Id = "all_users"
+        "displayLocationInformationRequiredState" = @{
+            "state" = "enabled"
+            "includeTarget" = @{
+                "targetType" = "group"
+                "id" = "all_users"
             }
-        }
-        # Ensure number matching is also enabled
-        NumberMatchingRequiredState = @{
-            State = "enabled"
-            IncludeTarget = @{
-                TargetType = "group"
-                Id = "all_users"
+            "excludeTarget" = @{
+                "targetType" = "group"
+                "id" = "00000000-0000-0000-0000-000000000000"
             }
         }
     }
@@ -157,18 +137,18 @@ Update-MgPolicyAuthenticationMethodPolicyAuthenticationMethodConfiguration `
     -AuthenticationMethodConfigurationId "MicrosoftAuthenticator" `
     -BodyParameter $params
 
-Write-Host "Number matching and additional context features enabled successfully."
+Write-Host "Additional context features enabled successfully."
 ```
 
 ## Step 4: Configure Companion App Settings
 
-If your organization uses the companion app for Apple Watch or other wearable devices, be aware that number matching may not work on all companion devices. You should test this in your environment and consider whether to allow companion app approvals.
+If your organization previously used Microsoft Authenticator on Apple Watch or other wearable devices, be aware that number matching does not work on wearable devices.
 
-In the Microsoft Authenticator settings, you can find the option to disable companion app notifications if needed. This forces users to approve from their phone where the full number matching and context experience is available.
+Apple Watch is not supported for Microsoft Authenticator, and number matching is not supported for push notifications on Apple Watch or Android wearable devices. Wearable users need to use Authenticator on their phone to approve notifications when number matching is required.
 
 ## Step 5: Test the Configuration
 
-Before rolling this out to the entire organization, test with a pilot group:
+Before rolling out additional context to the entire organization, test with a pilot group:
 
 1. Create a security group in Microsoft Entra ID for your pilot users.
 2. Instead of targeting All users, target this specific group initially.
@@ -178,13 +158,13 @@ Before rolling this out to the entire organization, test with a pilot group:
 
 During testing, watch for these common issues:
 
-- Users with older versions of the Authenticator app may not see the number matching prompt. They need to update the app.
+- Users with older versions of the Authenticator app that do not support number matching need to update the app before they can use it for sign-in.
 - Users who have the Authenticator app installed but are not registered for push notifications will not be affected by these settings.
 - Some users may confuse number matching with a password prompt. Clear communication helps.
 
 ## Step 6: Communicate the Change to Users
 
-Rolling out number matching without telling users is a recipe for confusion and help desk tickets. Send a communication that explains:
+Rolling out additional context, or moving more users to Authenticator push notifications, without telling users is a recipe for confusion and help desk tickets. Send a communication that explains:
 
 - What will change in the sign-in experience
 - Why the change is being made (to protect against phishing and MFA fatigue)
@@ -203,8 +183,9 @@ After enabling these features, monitor the sign-in logs for any issues:
 SigninLogs
 | where TimeGenerated > ago(7d)
 | where AuthenticationRequirement == "multiFactorAuthentication"
-| extend AuthMethod = tostring(AuthenticationDetails[1].authenticationMethod)
-| extend AuthDetail = tostring(AuthenticationDetails[1].authenticationStepResultDetail)
+| mv-expand AuthenticationDetails
+| extend AuthMethod = tostring(AuthenticationDetails.authenticationMethod)
+| extend AuthDetail = tostring(AuthenticationDetails.authenticationStepResultDetail)
 | summarize Count = count() by AuthMethod, AuthDetail, ResultType
 | sort by Count desc
 ```
