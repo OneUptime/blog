@@ -8,7 +8,7 @@ Description: Learn how to monitor Azure Cache for Redis performance metrics, mem
 
 ---
 
-A Redis cache that you do not monitor is a Redis cache that will eventually surprise you. Maybe it will run out of memory at 3 AM. Maybe latency will creep up during peak hours and nobody will notice until customers start complaining. Azure Cache for Redis exposes a rich set of metrics through Azure Monitor, and this guide shows you how to use them effectively.
+A Redis cache that you do not monitor is a Redis cache that will eventually surprise you. Maybe it will run out of memory at 3 AM. Maybe latency will creep up during peak hours and nobody will notice until customers start complaining. Azure Cache for Redis exposes a rich set of metrics through Azure Monitor, and this guide shows you how to use them effectively. Microsoft has announced retirement timelines for Azure Cache for Redis, so plan migrations to Azure Managed Redis while continuing to monitor existing Azure Cache for Redis instances.
 
 ## Key Metrics You Should Track
 
@@ -18,8 +18,8 @@ Azure Cache for Redis exposes dozens of metrics, but not all of them are equally
 
 - **Used Memory (usedmemory)**: The actual amount of memory consumed by your data in bytes. This is the most direct indicator of how full your cache is.
 - **Used Memory Percentage (usedmemorypercentage)**: Used memory as a percentage of the total available memory for your cache tier. When this hits 100%, Redis starts evicting keys (if eviction is enabled) or rejecting writes (if eviction is disabled).
-- **Used Memory RSS (usedmemory_rss)**: The amount of physical memory allocated to the Redis process by the OS. This is typically higher than usedmemory due to memory fragmentation.
-- **Memory Fragmentation Ratio**: RSS divided by used memory. A ratio significantly above 1.0 means fragmentation is wasting memory.
+- **Used Memory RSS (usedmemoryRss)**: The amount of physical memory allocated to the Redis process by the OS. This is typically higher than usedmemory due to memory fragmentation.
+- **Memory Fragmentation Ratio**: RSS divided by used memory, or the `mem_fragmentation_ratio` field from `INFO memory`. A ratio significantly above 1.0 means fragmentation and process overhead are using memory.
 
 ### Performance Metrics
 
@@ -69,7 +69,7 @@ az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Cache/redis/<cache-name>" \
   --metric "usedmemorypercentage" \
   --interval PT1M \
-  --start-time "$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)" \
+  --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --aggregation Average \
   --output table
 
@@ -78,7 +78,7 @@ az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Cache/redis/<cache-name>" \
   --metric "operationsPerSecond" \
   --interval PT5M \
-  --start-time "$(date -u -v-6H +%Y-%m-%dT%H:%M:%SZ)" \
+  --start-time "$(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --aggregation Average \
   --output table
 
@@ -87,7 +87,7 @@ az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Cache/redis/<cache-name>" \
   --metric "evictedkeys" \
   --interval PT1H \
-  --start-time "$(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ)" \
+  --start-time "$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --aggregation Total \
   --output table
 ```
@@ -127,7 +127,7 @@ Metrics without alerts are just pretty charts. Set up alerts for the conditions 
 
 ### Critical: Memory Usage Above 85%
 
-When memory usage exceeds 85%, you are entering dangerous territory. Evictions start, performance degrades, and you might hit OOM errors.
+When memory usage exceeds 85%, you are entering dangerous territory. You have less headroom for growth, and if memory continues rising Redis can evict keys or reject writes depending on the maxmemory policy.
 
 ```bash
 # Create an alert for high memory usage
@@ -210,7 +210,7 @@ Create a custom Azure Dashboard to get a single-pane view of your cache health.
 # 4. Operations Per Second (line chart, last 24 hours)
 # 5. Connected Clients (line chart, last 24 hours)
 # 6. Evicted Keys (bar chart, last 7 days)
-# 7. Cache Latency P99 (line chart, last 24 hours)
+# 7. 99th Percentile Latency / LatencyP99 (line chart, last 24 hours)
 ```
 
 You can also use Azure Workbooks for more advanced visualizations. Here is a KQL query you can use in a Workbook to calculate cache hit ratio over time:
