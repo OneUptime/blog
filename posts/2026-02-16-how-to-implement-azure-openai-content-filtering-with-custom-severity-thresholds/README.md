@@ -46,7 +46,7 @@ graph LR
 ## Prerequisites
 
 - An Azure OpenAI resource
-- Access to Azure OpenAI Studio (https://oai.azure.com)
+- Access to Azure AI Foundry (https://ai.azure.com)
 - Sufficient permissions to create content filter configurations (Cognitive Services Contributor or Owner role)
 
 ## Step 1: Understand the Default Content Filter
@@ -97,7 +97,7 @@ The response includes `content_filter_results` that show the severity assessment
 
 ## Step 2: Create a Custom Content Filter Policy
 
-In Azure OpenAI Studio, navigate to "Content filters" in the left menu. Click "Create content filter" to start building a custom policy.
+In Azure AI Foundry, navigate to "Guardrails + controls" and open the "Content filters" tab. Click "Create content filter" to start building a custom policy.
 
 Name your policy descriptively - for example, "healthcare-relaxed-policy" or "children-strict-policy."
 
@@ -107,7 +107,7 @@ For the input (prompt) filters, set the threshold for each category. The thresho
 
 | Threshold Setting | What Gets Through | What Gets Blocked |
 |-------------------|-------------------|-------------------|
-| Allow all | Everything | Nothing |
+| Allow all (requires approval) | Everything | Nothing |
 | Low and above | Only Safe content | Low, Medium, High |
 | Medium and above | Safe and Low | Medium and High (default) |
 | High only | Safe, Low, Medium | Only High |
@@ -144,101 +144,108 @@ You can also create content filter policies programmatically:
 # create_filter_policy.py - Create a custom content filter policy via REST API
 import requests
 
-endpoint = "https://your-resource.openai.azure.com"
-api_key = "your-api-key"
-api_version = "2024-06-01"
+subscription_id = "your-subscription-id"
+resource_group = "your-resource-group"
+account_name = "your-azure-openai-resource-name"
+access_token = "your-azure-management-token"
+api_version = "2025-06-01"
 
 headers = {
-    "api-key": api_key,
+    "Authorization": f"Bearer {access_token}",
     "Content-Type": "application/json"
 }
 
 # Define the custom content filter policy
 policy = {
-    "name": "healthcare-policy",
-    "description": "Relaxed filtering for healthcare applications that need to discuss medical conditions",
-    "basePolicyName": "Microsoft.DefaultV2",
-    "contentFilters": [
-        {
-            "name": "hate",
-            "blocking": True,
-            "enabled": True,
-            "source": "Prompt",
-            "severityThreshold": "Medium"  # Block Medium and above
-        },
-        {
-            "name": "violence",
-            "blocking": True,
-            "enabled": True,
-            "source": "Prompt",
-            "severityThreshold": "High"  # Only block High (allow medical descriptions)
-        },
-        {
-            "name": "sexual",
-            "blocking": True,
-            "enabled": True,
-            "source": "Prompt",
-            "severityThreshold": "Medium"
-        },
-        {
-            "name": "self_harm",
-            "blocking": True,
-            "enabled": True,
-            "source": "Prompt",
-            "severityThreshold": "High"  # Only block High (allow clinical discussions)
-        },
-        {
-            "name": "hate",
-            "blocking": True,
-            "enabled": True,
-            "source": "Completion",
-            "severityThreshold": "Medium"
-        },
-        {
-            "name": "violence",
-            "blocking": True,
-            "enabled": True,
-            "source": "Completion",
-            "severityThreshold": "High"
-        },
-        {
-            "name": "sexual",
-            "blocking": True,
-            "enabled": True,
-            "source": "Completion",
-            "severityThreshold": "Medium"
-        },
-        {
-            "name": "self_harm",
-            "blocking": True,
-            "enabled": True,
-            "source": "Completion",
-            "severityThreshold": "High"
-        }
-    ]
+    "properties": {
+        "basePolicyName": "Microsoft.Default",
+        "mode": "Blocking",
+        "contentFilters": [
+            {
+                "name": "Hate",
+                "blocking": True,
+                "enabled": True,
+                "source": "Prompt",
+                "severityThreshold": "Medium"  # Block Medium and above
+            },
+            {
+                "name": "Violence",
+                "blocking": True,
+                "enabled": True,
+                "source": "Prompt",
+                "severityThreshold": "High"  # Only block High (allow medical descriptions)
+            },
+            {
+                "name": "Sexual",
+                "blocking": True,
+                "enabled": True,
+                "source": "Prompt",
+                "severityThreshold": "Medium"
+            },
+            {
+                "name": "Selfharm",
+                "blocking": True,
+                "enabled": True,
+                "source": "Prompt",
+                "severityThreshold": "High"  # Only block High (allow clinical discussions)
+            },
+            {
+                "name": "Hate",
+                "blocking": True,
+                "enabled": True,
+                "source": "Completion",
+                "severityThreshold": "Medium"
+            },
+            {
+                "name": "Violence",
+                "blocking": True,
+                "enabled": True,
+                "source": "Completion",
+                "severityThreshold": "High"
+            },
+            {
+                "name": "Sexual",
+                "blocking": True,
+                "enabled": True,
+                "source": "Completion",
+                "severityThreshold": "Medium"
+            },
+            {
+                "name": "Selfharm",
+                "blocking": True,
+                "enabled": True,
+                "source": "Completion",
+                "severityThreshold": "High"
+            }
+        ]
+    }
 }
 
 # Create the policy
+policy_name = "healthcare-policy"
 response = requests.put(
-    f"{endpoint}/openai/content-filters/{policy['name']}?api-version={api_version}",
+    "https://management.azure.com/"
+    f"subscriptions/{subscription_id}/resourceGroups/{resource_group}/"
+    f"providers/Microsoft.CognitiveServices/accounts/{account_name}/"
+    f"raiPolicies/{policy_name}?api-version={api_version}",
     headers=headers,
     json=policy
 )
 
-if response.status_code == 200:
-    print(f"Policy '{policy['name']}' created successfully")
+if response.status_code in (200, 201):
+    print(f"Policy '{policy_name}' created successfully")
 else:
     print(f"Error: {response.status_code} - {response.text}")
 ```
 
 ## Step 4: Assign the Policy to a Deployment
 
-A content filter policy only takes effect when assigned to a model deployment. You can do this in Azure OpenAI Studio or via the API.
+A content filter policy only takes effect when assigned to a model deployment. You can do this in Azure AI Foundry or via the API.
 
-In Azure OpenAI Studio:
-1. Go to "Deployments"
+In Azure AI Foundry:
+1. Go to "Models + endpoints"
 2. Select your deployment (or create a new one)
-3. Under "Content filter," select your custom policy instead of "DefaultV2"
+3. Under "Content filter," select your custom policy instead of the default filter
 4. Save the deployment
 
 Via the REST API:
@@ -256,20 +263,21 @@ deployment_config = {
         "capacity": 10
     },
     "properties": {
-        "contentFilter": {
-            "policyName": "healthcare-policy"  # Your custom policy name
-        }
+        "raiPolicyName": "healthcare-policy"  # Your custom policy name
     }
 }
 
 # Create or update the deployment with the custom filter
 response = requests.put(
-    f"{endpoint}/openai/deployments/gpt4o-healthcare?api-version={api_version}",
+    "https://management.azure.com/"
+    f"subscriptions/{subscription_id}/resourceGroups/{resource_group}/"
+    f"providers/Microsoft.CognitiveServices/accounts/{account_name}/"
+    f"deployments/gpt4o-healthcare?api-version={api_version}",
     headers=headers,
     json=deployment_config
 )
 
-if response.status_code == 200:
+if response.status_code in (200, 201):
     print("Deployment updated with custom content filter")
 else:
     print(f"Error: {response.status_code} - {response.text}")
@@ -281,7 +289,7 @@ When content is blocked, the API returns a specific error. Your application shou
 
 ```python
 # handle_filtering.py - Gracefully handle content filter blocks
-from openai import AzureOpenAI, APIError
+from openai import AzureOpenAI, APIStatusError
 
 client = AzureOpenAI(
     azure_endpoint="https://your-resource.openai.azure.com/",
@@ -308,8 +316,14 @@ def safe_completion(messages: list, deployment: str = "gpt4o-healthcare") -> dic
         filtered_categories = []
         if filter_results:
             for category in ["hate", "violence", "sexual", "self_harm"]:
-                cat_result = getattr(filter_results, category, None)
-                if cat_result and cat_result.filtered:
+                if isinstance(filter_results, dict):
+                    cat_result = filter_results.get(category)
+                    filtered = cat_result.get("filtered") if cat_result else False
+                else:
+                    cat_result = getattr(filter_results, category, None)
+                    filtered = getattr(cat_result, "filtered", False) if cat_result else False
+
+                if filtered:
                     filtered_categories.append(category)
 
         return {
@@ -319,7 +333,7 @@ def safe_completion(messages: list, deployment: str = "gpt4o-healthcare") -> dic
             "finish_reason": choice.finish_reason
         }
 
-    except APIError as e:
+    except APIStatusError as e:
         # Check if the error is a content filter block
         if e.status_code == 400 and "content_filter" in str(e):
             return {
@@ -360,21 +374,27 @@ Beyond the four severity categories, Azure OpenAI offers additional protection f
 **Groundedness detection**: Checks if the model's response is grounded in the provided context (useful for RAG applications).
 
 ```python
-# Additional protections in the filter policy
-additional_protections = {
-    "jailbreak": {
+# Additional protections in the filter policy's contentFilters list
+additional_protections = [
+    {
+        "name": "Jailbreak",
         "enabled": True,
-        "blocking": True  # Block detected jailbreak attempts
+        "blocking": True,  # Block detected jailbreak attempts
+        "source": "Prompt"
     },
-    "protectedMaterialText": {
+    {
+        "name": "Protected Material Text",
         "enabled": True,
-        "blocking": True  # Block content matching protected material
+        "blocking": True,  # Block content matching protected material
+        "source": "Completion"
     },
-    "protectedMaterialCode": {
+    {
+        "name": "Protected Material Code",
         "enabled": True,
-        "blocking": False  # Detect but do not block (log for review)
+        "blocking": False,  # Detect but do not block (log for review)
+        "source": "Completion"
     }
-}
+]
 ```
 
 ## Step 7: Monitor Content Filter Activity
@@ -384,7 +404,7 @@ Track how often content is being filtered to understand your application's safet
 ```python
 # monitor_filtering.py - Log and analyze content filter events
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Set up a dedicated logger for content filter events
 filter_logger = logging.getLogger("content_filter")
@@ -396,7 +416,7 @@ def log_filter_event(request_id: str, direction: str, category: str,
                      severity: str, blocked: bool, user_id: str = None):
     """Log a content filter event for monitoring and analysis."""
     event = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "request_id": request_id,
         "direction": direction,  # "input" or "output"
         "category": category,
