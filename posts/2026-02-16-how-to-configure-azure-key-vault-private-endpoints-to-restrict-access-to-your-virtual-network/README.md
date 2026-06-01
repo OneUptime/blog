@@ -30,7 +30,7 @@ graph LR
     end
 ```
 
-After creating the private endpoint, the Key Vault's public FQDN (e.g., mykeyvault.vault.azure.net) resolves to the private IP address when queried from within the VNet. From outside the VNet, it either resolves to nothing (if public access is disabled) or to the public IP (if public access is still enabled).
+After creating the private endpoint and configuring private DNS, the Key Vault's public FQDN (e.g., mykeyvault.vault.azure.net) resolves to the private IP address when queried from within the VNet. From outside the VNet, the name can still resolve through public DNS even if public network access is disabled, but the Key Vault service rejects data-plane requests that do not arrive through an allowed path.
 
 ## Prerequisites
 
@@ -72,12 +72,12 @@ $keyVault = Get-AzKeyVault -VaultName "mykeyvault" -ResourceGroupName "myapp-rg"
 $vnet = Get-AzVirtualNetwork -Name "app-vnet" -ResourceGroupName "networking-rg"
 $subnet = $vnet.Subnets | Where-Object { $_.Name -eq "private-endpoints-subnet" }
 
-# Step 2: Disable private endpoint network policies on the subnet
-# This is required for private endpoints to work
+# Step 2: Check private endpoint network policies on the subnet
+# Keep this disabled unless you need NSGs or route tables to apply to private endpoint traffic
 $subnet.PrivateEndpointNetworkPolicies = "Disabled"
 $vnet | Set-AzVirtualNetwork
 
-Write-Host "Private endpoint network policies disabled on subnet."
+Write-Host "Private endpoint network policies set on subnet."
 
 # Step 3: Create the private link service connection
 $privateLinkConnection = New-AzPrivateLinkServiceConnection `
@@ -204,7 +204,7 @@ Update-AzKeyVault `
 Write-Host "Public network access disabled. Key Vault is only accessible via private endpoint."
 ```
 
-Be careful with this step. Make sure all your applications, pipelines, and administrators can access the Key Vault through the private endpoint before disabling public access. If you lock yourself out, you can re-enable public access from the portal or CLI using a network that still has access.
+Be careful with this step. Make sure all your applications, pipelines, and administrators can access the Key Vault through the private endpoint before disabling public access. If you lock yourself out of data-plane access, you can re-enable public access from the portal, CLI, or PowerShell with sufficient management-plane permissions.
 
 ## Step 4: Configure Key Vault Firewall Exceptions
 
@@ -216,7 +216,7 @@ In some cases, you need to allow specific public access alongside the private en
 Update-AzKeyVaultNetworkRuleSet `
     -VaultName "mykeyvault" `
     -DefaultAction Deny `
-    -Bypass AzureServices `  # Allow trusted Azure services
+    -Bypass AzureServices `
     -IpAddressRange @(
         "203.0.113.50/32",   # Admin office IP
         "198.51.100.0/24"    # CI/CD pipeline IPs
@@ -225,7 +225,7 @@ Update-AzKeyVaultNetworkRuleSet `
 Write-Host "Firewall configured with selective public access."
 ```
 
-The "AzureServices" bypass is important if you have Azure services outside your VNet that need to access the Key Vault (like Azure Backup, Azure Policy, or Defender for Cloud).
+The "AzureServices" bypass is important if you have trusted Microsoft services outside your VNet that need to access the Key Vault. The trusted services list does not include every Azure service, so verify that your specific service and scenario are supported.
 
 ## Step 5: Connect Multiple VNets
 
