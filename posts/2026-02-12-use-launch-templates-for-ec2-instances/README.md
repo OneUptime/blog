@@ -255,7 +255,7 @@ aws autoscaling create-auto-scaling-group \
             "Overrides": [
                 {"InstanceType": "m7g.large"},
                 {"InstanceType": "m6g.large"},
-                {"InstanceType": "m5.large"},
+                {"InstanceType": "c6g.large"},
                 {"InstanceType": "c7g.large"}
             ]
         },
@@ -386,7 +386,7 @@ aws ec2 delete-launch-template \
     --launch-template-name webapp-template
 ```
 
-You can't delete a template version if it's the default or if an ASG is using it.
+You can't delete the default template version. If an ASG references a specific version, update the ASG before deleting that version so future launches don't fail.
 
 ## Security Best Practices
 
