@@ -28,7 +28,7 @@ For most production workloads, Premium SSD is the sweet spot between cost and pe
 
 You can create a managed disk independently and then attach it, or you can create and attach it in a single step. Let me show both approaches.
 
-First, the standalone creation approach:
+First, the standalone creation approach. Use the same region as the VM; if the VM is zonal, the disk must be in a compatible zone.
 
 ```bash
 # Create a 128 GB Premium SSD managed disk
@@ -49,7 +49,7 @@ The `--sku` parameter determines the disk type. The options are:
 - `UltraSSD_LRS` for Ultra Disk
 - `PremiumV2_LRS` for Premium SSD v2
 
-The `LRS` suffix stands for Locally Redundant Storage, meaning three copies of your data are kept within a single datacenter.
+The `LRS` suffix stands for Locally Redundant Storage, meaning three copies of your data are kept within a single physical location in the primary region.
 
 ## Attaching the Disk to a VM
 
@@ -93,9 +93,9 @@ Find the new disk:
 lsblk
 ```
 
-You should see something like `/dev/sdc` with no partitions. The exact device name depends on how many disks are already attached. Look for the one that matches the size you specified.
+On SCSI-based VMs, you should see something like `/dev/sdc` with no partitions. On newer VM sizes that use NVMe, the disk might appear as something like `/dev/nvme1n1` instead. The exact device name depends on the VM size and how many disks are already attached. Look for the one that matches the size you specified.
 
-Create a partition:
+Create a partition. The examples below assume the new disk is `/dev/sdc`; replace it with the actual device name from `lsblk`. For NVMe disks, the partition name will usually look like `/dev/nvme1n1p1`.
 
 ```bash
 # Create a single partition spanning the entire disk
@@ -159,16 +159,16 @@ The disk number might be different on your VM. Check the output of `Get-Disk` to
 
 ## Setting Disk Caching
 
-Azure lets you configure caching for each data disk. The caching policy affects performance depending on your workload:
+Azure lets you configure caching for many data disks, although Ultra Disk and Premium SSD v2 do not support host caching. The caching policy affects performance depending on your workload:
 
 - **None**: No caching. Best for write-heavy workloads like databases with their own caching layer.
 - **ReadOnly**: Caches reads in local storage. Good for read-heavy workloads.
 - **ReadWrite**: Caches both reads and writes. Good for the OS disk but risky for data disks because cached writes can be lost during a crash.
 
-Set the caching policy on an attached disk:
+Set the caching policy when attaching a disk:
 
 ```bash
-# Set read-only caching on a data disk
+# Attach the data disk with read-only caching
 az vm disk attach \
   --resource-group myResourceGroup \
   --vm-name myVM \
