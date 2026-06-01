@@ -8,23 +8,23 @@ Description: Learn how to configure Azure CNI with dynamic IP allocation on AKS 
 
 ---
 
-Running large AKS clusters with Azure CNI has traditionally meant a painful IP planning exercise. The standard Azure CNI mode pre-allocates IPs for the maximum number of pods on every node at startup. With a default of 30 pods per node and 100 nodes, you need 3,000 IPs just for pods - and those IPs are reserved whether the pods exist or not. Azure CNI dynamic IP allocation changes this by allocating IPs on demand as pods are created and releasing them when pods are deleted. In this post, I will explain how it works and walk through the setup for large-scale AKS clusters.
+Running large AKS clusters with Azure CNI has traditionally meant a painful IP planning exercise. The standard Azure CNI mode pre-allocates IPs for the maximum number of pods on every node at startup. With a default of 30 pods per node and 100 nodes, you need 3,000 IPs just for pods - and those IPs are reserved whether the pods exist or not. Azure CNI Pod Subnet dynamic IP allocation changes this by allocating pod IPs from a separate subnet in batches as nodes need them. In this post, I will explain how it works and walk through the setup for large-scale AKS clusters.
 
 ## The Problem with Static IP Allocation
 
-In the standard Azure CNI mode, when a node joins the cluster, it pre-allocates a block of IPs equal to the maximum pods per node setting. If you set max-pods to 110 (the maximum), each node reserves 110 IPs from your subnet. Most of those IPs will sit unused because most nodes do not run 110 pods. For a 100-node cluster with max-pods at 110, you need a subnet that can hold 11,000 IPs - that is a /18 subnet just for pod IPs.
+In the standard Azure CNI mode, when a node joins the cluster, it pre-allocates a block of IPs equal to the maximum pods per node setting. If you set max-pods to 110, each node reserves 110 IPs from your subnet. Most of those IPs will sit unused because most nodes do not run 110 pods. For a 100-node cluster with max-pods at 110, you need a subnet that can hold 11,000 IPs - that is a /18 subnet just for pod IPs.
 
 This wastes IP space and makes it difficult to fit AKS into existing VNets that have limited address ranges. It also means you can easily hit the subnet size limit and be unable to scale your cluster.
 
 ## How Dynamic IP Allocation Solves This
 
-With dynamic IP allocation, IPs are allocated from the subnet only when pods are actually scheduled. A node with 5 running pods uses 5 IPs (plus 1 for the node itself). When a pod is deleted, its IP is released back to the subnet. This dramatically reduces IP consumption and lets you run larger clusters in smaller subnets.
+With dynamic IP allocation, pod IPs are allocated from the pod subnet in batches of 16 per node. A node requests 16 IPs on startup and requests another batch of 16 when fewer than 8 unallocated IPs remain in its allotment. This dramatically reduces IP consumption compared to reserving the maximum pod count for every node and lets you run larger clusters in smaller subnets.
 
 Dynamic IP allocation uses a separate subnet for pod IPs, keeping them separate from node IPs. This gives you additional flexibility in IP planning since you can size the pod subnet and node subnet independently.
 
 ## Prerequisites
 
-You need Azure CLI 2.48 or later, a VNet with two subnets (one for nodes, one for pods), and the ability to create or update an AKS cluster.
+You need Azure CLI 2.37.0 or later, a VNet with two subnets (one for nodes, one for pods), and the ability to create or update an AKS cluster.
 
 ## Step 1: Create the VNet and Subnets
 
@@ -39,29 +39,29 @@ az group create --name large-aks-rg --location eastus
 az network vnet create \
   --resource-group large-aks-rg \
   --name aks-vnet \
-  --address-prefix 10.0.0.0/8
+  --address-prefixes 10.0.0.0/8
 
 # Create the node subnet - sized for node IPs only
 az network vnet subnet create \
   --resource-group large-aks-rg \
   --vnet-name aks-vnet \
   --name node-subnet \
-  --address-prefix 10.240.0.0/16
+  --address-prefixes 10.240.0.0/16
 
 # Create the pod subnet - sized for pod IPs
-# A /16 gives you 65,534 usable IPs for pods
+# A /16 gives you 65,531 usable IPs for pods in Azure
 az network vnet subnet create \
   --resource-group large-aks-rg \
   --vnet-name aks-vnet \
   --name pod-subnet \
-  --address-prefix 10.241.0.0/16
+  --address-prefixes 10.241.0.0/16
 ```
 
-The node subnet needs one IP per node. A /16 supports up to 65,534 nodes, which is far more than you will need. The pod subnet needs enough IPs for the total number of pods across all nodes.
+The node subnet needs one IP per node. A /16 supports up to 65,531 usable IPs in Azure, which is far more than you will need. The pod subnet needs enough IPs for the total number of pods across all nodes, plus the extra IPs held in each node's current allocation batch.
 
 ## Step 2: Create the AKS Cluster with Dynamic IP Allocation
 
-Create the cluster using Azure CNI with the overlay networking mode, which supports dynamic IP allocation.
+Create the cluster using Azure CNI Pod Subnet with dynamic IP allocation.
 
 ```bash
 # Get the subnet resource IDs
@@ -89,9 +89,9 @@ az aks create \
   --generate-ssh-keys
 ```
 
-The key parameter here is `--pod-subnet-id`. When you specify a separate pod subnet, AKS automatically uses dynamic IP allocation. IPs will be assigned from the pod subnet as pods are created, rather than being pre-allocated at node startup.
+The key parameter here is `--pod-subnet-id`. When you specify a separate pod subnet with Azure CNI, AKS uses pod subnet IP allocation. IPs will be assigned from the pod subnet in small batches as nodes need them, rather than pre-allocating the full maximum pod count for every node at startup.
 
-The `--max-pods 250` setting is now practical because IPs are not pre-allocated. Even with 250 max pods per node, a node with only 20 running pods consumes only 20 IPs from the pod subnet.
+The `--max-pods 250` setting is now practical because AKS does not pre-allocate 250 pod IPs for every node. Even with 250 max pods per node, a node with only 20 running pods consumes far fewer than 250 IPs from the pod subnet.
 
 ## Step 3: Add Node Pools with Dynamic IP Allocation
 
@@ -105,6 +105,7 @@ az aks nodepool add \
   --name gpupool \
   --node-count 3 \
   --node-vm-size Standard_NC6s_v3 \
+  --vnet-subnet-id $NODE_SUBNET_ID \
   --pod-subnet-id $POD_SUBNET_ID \
   --max-pods 30
 
@@ -113,7 +114,7 @@ az network vnet subnet create \
   --resource-group large-aks-rg \
   --vnet-name aks-vnet \
   --name gpu-pod-subnet \
-  --address-prefix 10.242.0.0/20
+  --address-prefixes 10.242.0.0/20
 
 GPU_POD_SUBNET_ID=$(az network vnet subnet show \
   --resource-group large-aks-rg \
@@ -127,6 +128,7 @@ az aks nodepool add \
   --cluster-name large-aks-cluster \
   --name isolatedpool \
   --node-count 2 \
+  --vnet-subnet-id $NODE_SUBNET_ID \
   --pod-subnet-id $GPU_POD_SUBNET_ID
 ```
 
@@ -138,7 +140,10 @@ Check how IPs are being allocated across your nodes.
 
 ```bash
 # Check pod IP ranges on each node
-kubectl get pods -A -o wide | awk '{print $8}' | sort -t. -k3,3n -k4,4n
+kubectl get pods -A -o wide --no-headers | awk '{print $7}' | sort -t. -k3,3n -k4,4n
+
+# Check the NodeNetworkConfiguration objects that track node IP allocation
+kubectl get nodenetworkconfigs -n kube-system -o wide
 
 # Check the subnet IP usage in Azure
 az network vnet subnet show \
@@ -148,7 +153,7 @@ az network vnet subnet show \
   --query "ipConfigurations | length(@)" -o tsv
 ```
 
-You should see that IPs are spread across the pod subnet and the count matches your actual pod count (plus some overhead for the node IPs on the node subnet).
+You should see that pod IPs come from the pod subnet. The Azure subnet count reflects allocated pod IP configurations, which are held in batches and won't match the exact number of currently running pods.
 
 ## IP Planning for Large Clusters
 
@@ -160,11 +165,11 @@ graph LR
     A --> C[Avg Pods per Node]
     B --> D[Node Subnet Size]
     C --> E[Pod Subnet Size]
-    D --> F[/24 = 254 nodes]
-    D --> G[/20 = 4094 nodes]
-    E --> H[/20 = 4094 pods]
-    E --> I[/16 = 65534 pods]
-    E --> J[/14 = 262142 pods]
+    D --> F[/24 = 251 usable Azure IPs]
+    D --> G[/20 = 4091 usable Azure IPs]
+    E --> H[/20 = 4091 usable Azure IPs]
+    E --> I[/16 = 65531 usable Azure IPs]
+    E --> J[/14 = 262139 usable Azure IPs]
 ```
 
 A practical planning table:
@@ -176,7 +181,7 @@ A practical planning table:
 | Large | 200 | 80 | 16,000 | /18 |
 | Very Large | 500 | 100 | 50,000 | /16 |
 
-Always add 20-30% headroom for scaling and rolling updates that temporarily run extra pods.
+Always add 20-30% headroom for scaling, rolling updates that temporarily run extra pods, and the 16-IP allocation batches held by each node.
 
 ## Step 5: Configure Network Policies
 
@@ -231,24 +236,24 @@ az network vnet subnet show \
   --name pod-subnet \
   --query "{addressPrefix: addressPrefix, ipConfCount: length(ipConfigurations || [])}" -o json
 
-# Set up an Azure Monitor alert for IP exhaustion
-az monitor metrics alert create \
+# Enable Container Insights if it is not already enabled
+az aks enable-addons \
   --resource-group large-aks-rg \
-  --name "pod-subnet-ip-alert" \
-  --scopes "/subscriptions/<sub-id>/resourceGroups/large-aks-rg/providers/Microsoft.Network/virtualNetworks/aks-vnet" \
-  --condition "avg SubnetUsagePercentage > 80" \
-  --description "Pod subnet IP usage exceeds 80%"
+  --name large-aks-cluster \
+  --addons monitoring
 ```
+
+To monitor subnet usage over time, enable the `azure_subnet_ip_usage` setting in the Container Insights agent configuration and use the Subnet IP Usage workbook in Azure Monitor.
 
 ## Comparison: Static vs Dynamic IP Allocation
 
 | Feature | Static (Default CNI) | Dynamic (Pod Subnet) |
 |---------|---------------------|---------------------|
-| IP allocation | At node startup | At pod creation |
+| IP allocation | Full max-pods reservation at node startup | Dynamic batches from the pod subnet |
 | Unused IP waste | High | Minimal |
-| Max pods per node | Limited by subnet | Up to 250 |
-| Subnet planning | Must account for max pods x nodes | Only active pods |
-| Node startup time | Slightly slower (IP reservation) | Faster |
+| Max pods per node | Up to 250, but consumes more subnet IPs | Up to 250 |
+| Subnet planning | Must account for max pods x nodes | Must account for active pods and allocation batch headroom |
+| Pod subnet scaling | Nodes and pods share subnet capacity | Node and pod subnets scale independently |
 | Pod subnet required | No | Yes |
 
 ## Troubleshooting
