@@ -70,6 +70,21 @@ az role assignment create \
   --assignee "$SP_OBJECT_ID" \
   --role "Contributor" \
   --scope "/subscriptions/$SUBSCRIPTION_ID"
+
+# If you use an Azure Storage backend with Azure AD authentication,
+# grant data-plane access to the state storage account as well.
+STATE_RESOURCE_GROUP="rg-terraform-state"
+STATE_STORAGE_ACCOUNT="sttfstate"
+STATE_STORAGE_SCOPE=$(az storage account show \
+  --name "$STATE_STORAGE_ACCOUNT" \
+  --resource-group "$STATE_RESOURCE_GROUP" \
+  --query id \
+  --output tsv)
+
+az role assignment create \
+  --assignee "$SP_OBJECT_ID" \
+  --role "Storage Blob Data Contributor" \
+  --scope "$STATE_STORAGE_SCOPE"
 ```
 
 ## Creating the Federated Credential
@@ -138,6 +153,7 @@ terraform {
     container_name       = "tfstate"
     key                  = "infra.tfstate"
     use_oidc             = true   # Use OIDC for backend authentication too
+    use_azuread_auth     = true   # Authenticate to the storage data plane with Azure AD
   }
 }
 
@@ -152,7 +168,7 @@ provider "azurerm" {
   subscription_id = var.azure_subscription_id
 
   # The OIDC token is automatically picked up from the
-  # ARM_OIDC_TOKEN environment variable
+  # GitHub Actions runtime or from ARM_OIDC_TOKEN if you set it explicitly
 }
 
 variable "azure_client_id" {
@@ -171,7 +187,7 @@ variable "azure_subscription_id" {
 }
 ```
 
-The `use_oidc = true` flag tells the provider to look for an OIDC token in the `ARM_OIDC_TOKEN` environment variable. When running in GitHub Actions, this token is provided automatically by the actions/azure-login action.
+The `use_oidc = true` flag tells the provider to use workload identity federation. In GitHub Actions, the provider can request a token from the GitHub Actions runtime through the `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` environment variables. For other systems, you can pass a token explicitly with `ARM_OIDC_TOKEN` or the provider's OIDC request URL and token settings.
 
 ## GitHub Actions Workflow
 
@@ -278,7 +294,7 @@ The `permissions.id-token: write` setting is what enables the workflow to reques
 
 ## Setting Up for Azure DevOps
 
-If you use Azure DevOps instead of GitHub Actions, the setup is similar but with a different issuer and subject format.
+If you use Azure DevOps instead of GitHub Actions, the setup is similar but with a different issuer and subject format. Create a workload identity federation service connection first, then copy the generated issuer and subject identifier into the federated credential. New Azure DevOps service connections use a Microsoft Entra issuer that starts with `https://login.microsoftonline.com/`.
 
 ```bash
 # Create federated credential for Azure DevOps
@@ -286,8 +302,8 @@ az ad app federated-credential create \
   --id "$APP_ID" \
   --parameters '{
     "name": "azure-devops-pipeline",
-    "issuer": "https://vstoken.dev.azure.com/<AZURE_DEVOPS_ORG_ID>",
-    "subject": "sc://your-org/your-project/your-service-connection",
+    "issuer": "<ISSUER_FROM_AZURE_DEVOPS_SERVICE_CONNECTION>",
+    "subject": "<SUBJECT_IDENTIFIER_FROM_AZURE_DEVOPS_SERVICE_CONNECTION>",
     "description": "Azure DevOps Pipeline",
     "audiences": ["api://AzureADTokenExchange"]
   }'
@@ -310,6 +326,7 @@ steps:
         export ARM_CLIENT_ID=$servicePrincipalId
         export ARM_TENANT_ID=$tenantId
         export ARM_OIDC_TOKEN=$idToken
+        export ARM_ADO_PIPELINE_SERVICE_CONNECTION_ID=$AZURESUBSCRIPTION_SERVICE_CONNECTION_ID
         export ARM_USE_OIDC=true
 
         terraform init
@@ -365,7 +382,7 @@ When things go wrong with workload identity federation, the error messages are n
 
 **Missing permissions** - The GitHub Actions workflow needs `permissions.id-token: write`. This is not set by default.
 
-**Backend authentication** - Remember to set `use_oidc = true` in the backend configuration as well. The backend and provider authentication are separate.
+**Backend authentication** - Remember to set `use_oidc = true` in the backend configuration as well. If you authenticate to the storage data plane with Azure AD, also set `use_azuread_auth = true` and grant the service principal a storage data-plane role such as `Storage Blob Data Contributor`. The backend and provider authentication are separate.
 
 ## Wrapping Up
 
