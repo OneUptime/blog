@@ -8,25 +8,25 @@ Description: A step-by-step guide to configuring Azure DDoS Protection with tele
 
 ---
 
-Distributed denial-of-service attacks are not a matter of if but when. Any public-facing Azure resource is a potential target. Azure provides two tiers of DDoS protection: the basic tier (free, always-on, protects Azure infrastructure) and the DDoS Network Protection tier (paid, protects your specific resources with adaptive tuning, telemetry, and alerting).
+Distributed denial-of-service attacks are not a matter of if but when. Any public-facing Azure resource is a potential target. Azure includes infrastructure-level DDoS protection at no additional cost, and offers paid DDoS Protection tiers: DDoS IP Protection for individual public IP resources and DDoS Network Protection for resources in protected VNets.
 
-The basic tier handles volumetric attacks at the platform level, but it does not give you visibility into what is happening. You will not know you are under attack until your service degrades. DDoS Network Protection adds the telemetry, diagnostics, and alerting that let you see attacks in real time and respond accordingly.
+The infrastructure-level protection handles attacks at the platform level, but it does not give you workload-specific visibility into what is happening. You will not know you are under attack until your service degrades. DDoS Network Protection adds the telemetry, diagnostics, and alerting that let you see attacks in real time and respond accordingly.
 
 In this post, I will walk through enabling DDoS Protection, configuring telemetry, setting up alerts, and integrating with your monitoring workflow.
 
 ## DDoS Protection Tiers Compared
 
-| Feature | Basic (Free) | Network Protection |
-|---------|-------------|-------------------|
-| Always-on monitoring | Yes | Yes |
-| Automatic attack mitigation | Yes | Yes |
-| Adaptive tuning to your traffic | No | Yes |
-| Attack telemetry and metrics | No | Yes |
-| Diagnostic logs | No | Yes |
-| Alert notifications | No | Yes |
-| DDoS Rapid Response support | No | Yes |
-| Cost protection (credits for scaling during attack) | No | Yes |
-| WAF discount | No | Yes |
+| Feature | Infrastructure protection | IP Protection | Network Protection |
+|---------|---------------------------|---------------|-------------------|
+| Always-on monitoring | Yes | Yes | Yes |
+| Automatic attack mitigation | Yes | Yes | Yes |
+| Adaptive tuning to your traffic | No | Yes | Yes |
+| Attack telemetry and metrics | No | Yes | Yes |
+| Diagnostic logs | No | Yes | Yes |
+| Alert notifications | No | Yes | Yes |
+| DDoS Rapid Response support | No | No | Yes |
+| Cost protection (credits for scaling during attack) | No | No | Yes |
+| WAF discount | No | No | Yes |
 
 For any production workload, DDoS Network Protection is worth the investment. The adaptive tuning alone makes a significant difference because it learns your normal traffic patterns and sets mitigation thresholds accordingly.
 
@@ -54,7 +54,7 @@ az network vnet update \
   --ddos-protection-plan myDDoSPlan
 ```
 
-After this, all public IP addresses in the VNet are protected by DDoS Network Protection. The protection applies to Standard SKU public IPs automatically.
+After this, eligible public IP resources in the VNet are protected by DDoS Network Protection.
 
 ## Step 3: Verify Protected Resources
 
@@ -68,7 +68,7 @@ az network public-ip list \
   --output table
 ```
 
-Only Standard SKU public IPs receive DDoS Network Protection. Basic SKU IPs are not eligible.
+For public IPs protected through the VNet-level DDoS Network Protection plan, `VirtualNetworkInherited` indicates the IP inherits protection from the VNet. DDoS IP Protection, which is enabled directly on a public IP resource, supports only Standard SKU public IPs.
 
 ## Step 4: Enable Diagnostic Logging
 
@@ -110,16 +110,16 @@ View metrics from the CLI:
 # Check if currently under attack
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/publicIPAddresses/myPublicIP" \
-  --metric "IfUnderDDoSAttack" \
+  --metrics "IfUnderDDoSAttack" \
   --interval PT1M \
   --output table
 
 # Check inbound packets dropped during mitigation
 az monitor metrics list \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/publicIPAddresses/myPublicIP" \
-  --metric "DDoSDroppedPackets" \
+  --metrics "PacketsDroppedDDoS" \
   --interval PT5M \
-  --aggregation Total \
+  --aggregation Maximum \
   --output table
 ```
 
@@ -136,7 +136,7 @@ az monitor metrics alert create \
   --condition "max IfUnderDDoSAttack > 0" \
   --window-size 5m \
   --evaluation-frequency 1m \
-  --action-group securityTeam \
+  --action securityTeam \
   --severity 1 \
   --description "DDoS attack detected on myPublicIP"
 ```
@@ -144,17 +144,17 @@ az monitor metrics alert create \
 Set up additional alerts for traffic volume:
 
 ```bash
-# Alert when dropped packets exceed a threshold
+# Alert when the dropped-packet rate exceeds a threshold
 az monitor metrics alert create \
   --resource-group myResourceGroup \
   --name ddosDroppedPacketsAlert \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/publicIPAddresses/myPublicIP" \
-  --condition "total DDoSDroppedPackets > 10000" \
+  --condition "max PacketsDroppedDDoS > 10000" \
   --window-size 5m \
   --evaluation-frequency 1m \
-  --action-group securityTeam \
+  --action securityTeam \
   --severity 2 \
-  --description "High volume of DDoS-dropped packets on myPublicIP"
+  --description "High rate of DDoS-dropped packets on myPublicIP"
 ```
 
 ## Step 7: Create a DDoS Monitoring Dashboard
@@ -167,18 +167,22 @@ AzureDiagnostics
 | where Category == "DDoSProtectionNotifications"
 | project
     TimeGenerated,
-    publicIpAddress_s,
-    type_s,
-    message_s
+    PublicIpAddress,
+    Type,
+    Message
 | order by TimeGenerated desc
 
 // KQL query for active mitigation details
 AzureDiagnostics
 | where Category == "DDoSMitigationFlowLogs"
-| summarize
-    TotalPacketsDropped = sum(toint(droppedPackets_s)),
-    TotalPacketsForwarded = sum(toint(forwardedPackets_s))
-    by bin(TimeGenerated, 5m), publicIpAddress_s
+| project
+    TimeGenerated,
+    SourcePublicIpAddress,
+    SourcePort,
+    DestPublicIpAddress,
+    DestPort,
+    Protocol,
+    Message
 | order by TimeGenerated desc
 
 // KQL query for post-attack report
@@ -186,11 +190,14 @@ AzureDiagnostics
 | where Category == "DDoSMitigationReports"
 | project
     TimeGenerated,
-    publicIpAddress_s,
-    attackVectors_s,
-    maxPacketsPerSecond_d,
-    totalPackets_d,
-    totalBytes_d
+    IPAddress,
+    ReportType,
+    MitigationPeriodStart,
+    MitigationPeriodEnd,
+    AttackVectors,
+    TrafficOverview,
+    Protocols,
+    DropReasons
 | order by TimeGenerated desc
 ```
 
@@ -198,12 +205,12 @@ AzureDiagnostics
 
 DDoS Network Protection learns your application's normal traffic patterns over time. It uses this baseline to set mitigation thresholds. For example, if your application normally receives 10,000 packets per second, a sudden spike to 100,000 packets per second triggers mitigation.
 
-The adaptive tuning period is typically 7-14 days after enabling protection. During this learning period, the service uses conservative thresholds. After learning, the thresholds become more tailored to your traffic patterns, reducing false positives.
+Adaptive tuning profiles your traffic over time and updates the mitigation profile as your traffic patterns change. As the profile becomes more tailored to your workload, it helps reduce false positives.
 
 ```mermaid
 graph TD
-    A[Enable DDoS Protection] --> B[Learning Period: 7-14 days]
-    B --> C[Baseline Established]
+    A[Enable DDoS Protection] --> B[Traffic Profiling Over Time]
+    B --> C[Mitigation Profile Tuned]
     C --> D{Traffic Anomaly Detected?}
     D -->|Yes| E[Activate Mitigation]
     D -->|No| F[Normal Operation]
@@ -237,7 +244,7 @@ For organizations using a SIEM (Security Information and Event Management) tool,
 az monitor diagnostic-settings create \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/publicIPAddresses/myPublicIP" \
   --name ddosSIEMExport \
-  --event-hub-name ddosEvents \
+  --event-hub ddosEvents \
   --event-hub-rule "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.EventHub/namespaces/myEventHubNamespace/authorizationrules/RootManageSharedAccessKey" \
   --logs '[
     {"category":"DDoSProtectionNotifications","enabled":true},
@@ -260,7 +267,7 @@ When a DDoS alert fires, here is a practical response workflow:
 
 ## Cost Considerations
 
-DDoS Network Protection has a fixed monthly cost (approximately $2,944/month as of early 2026) plus per-resource charges. This covers up to 100 public IP resources. Additional public IPs are charged per resource.
+DDoS Network Protection has a fixed monthly cost plus per-resource charges for protected resources above the included allowance. This covers up to 100 public IP resources. Additional public IPs are charged per resource.
 
 The cost protection benefit offsets costs incurred during an attack (like autoscaling compute resources to absorb traffic). If an attack causes your VMs or App Services to scale up, Microsoft provides credits to cover the additional infrastructure cost.
 
@@ -268,9 +275,9 @@ The cost protection benefit offsets costs incurred during an attack (like autosc
 
 **Alerts not firing.** Verify diagnostic settings are configured on each protected public IP individually. The DDoS plan protects the resources, but diagnostics must be enabled per public IP.
 
-**False positives during legitimate traffic spikes.** This can happen during the learning period or after traffic pattern changes. DDoS Rapid Response can help tune the mitigation thresholds.
+**False positives during legitimate traffic spikes.** This can happen soon after enablement or after traffic pattern changes. DDoS Rapid Response can help tune the mitigation thresholds.
 
-**Basic SKU IPs not protected.** Only Standard SKU public IPs receive DDoS Network Protection. Upgrade your public IPs to Standard SKU.
+**Confusing public IP SKU eligibility.** DDoS Network Protection supports both Standard and Basic public IP tiers, while DDoS IP Protection supports only Standard SKU public IPs. For new deployments, use Standard SKU public IPs unless you have a specific legacy requirement.
 
 ## Summary
 
