@@ -8,7 +8,7 @@ Description: Build a student assignment submission portal using Power Apps for t
 
 ---
 
-Schools and universities need a straightforward way for students to submit assignments and for instructors to review and grade them. Many institutions already have Microsoft 365 licenses, which means they have access to Power Apps and SharePoint without additional cost. Building a submission portal with these tools is fast, requires minimal coding, and integrates with the existing Microsoft ecosystem.
+Schools and universities need a straightforward way for students to submit assignments and for instructors to review and grade them. Many institutions already have Microsoft 365 licenses that include Power Apps and SharePoint standard connectors. Building a submission portal with these tools is fast, requires minimal coding, and integrates with the existing Microsoft ecosystem.
 
 In this guide, I will build a complete assignment submission portal. Power Apps provides the student-facing interface. SharePoint stores the files and metadata. Power Automate handles notifications and workflow automation. Everything runs on your existing Microsoft 365 tenant backed by Azure infrastructure.
 
@@ -43,6 +43,14 @@ Navigate to your SharePoint admin center and create a new team site called "Assi
 | Semester | Choice | Fall 2025, Spring 2026, etc. |
 | IsActive | Yes/No | Whether the course is currently active |
 
+**Enrollments List** - Stores which students are enrolled in each course.
+
+| Column Name | Type | Notes |
+|---|---|---|
+| Title | Single line of text | Auto-generated: StudentName - CourseCode |
+| Course | Lookup | Links to Courses list |
+| Student | Person | The enrolled student |
+
 **Assignments List** - Stores assignment definitions.
 
 | Column Name | Type | Notes |
@@ -74,27 +82,41 @@ Create these lists using the SharePoint REST API or PnP PowerShell.
 ```powershell
 # Connect to the SharePoint site
 
-Connect-PnPOnline -Url "https://yourtenent.sharepoint.com/sites/AssignmentPortal" -Interactive
+Connect-PnPOnline -Url "https://yourtenant.sharepoint.com/sites/AssignmentPortal" -Interactive
 
 # Create the Courses list
 New-PnPList -Title "Courses" -Template GenericList
 Add-PnPField -List "Courses" -DisplayName "CourseCode" -InternalName "CourseCode" -Type Text
+Add-PnPField -List "Courses" -DisplayName "Instructor" -InternalName "Instructor" -Type User
 Add-PnPField -List "Courses" -DisplayName "Semester" -InternalName "Semester" -Type Choice -Choices "Fall 2025","Spring 2026","Summer 2026"
 Add-PnPField -List "Courses" -DisplayName "IsActive" -InternalName "IsActive" -Type Boolean
+$coursesList = Get-PnPList -Identity "Courses"
+
+# Create the Enrollments list
+New-PnPList -Title "Enrollments" -Template GenericList
+Add-PnPFieldFromXml -List "Enrollments" -FieldXml "<Field Type='Lookup' DisplayName='Course' Name='Course' StaticName='Course' List='{$($coursesList.Id)}' ShowField='Title' />"
+Add-PnPField -List "Enrollments" -DisplayName "Student" -InternalName "Student" -Type User
 
 # Create the Assignments list
 New-PnPList -Title "Assignments" -Template GenericList
+Add-PnPFieldFromXml -List "Assignments" -FieldXml "<Field Type='Lookup' DisplayName='Course' Name='Course' StaticName='Course' List='{$($coursesList.Id)}' ShowField='Title' />"
 Add-PnPField -List "Assignments" -DisplayName "Description" -InternalName "Description" -Type Note
 Add-PnPField -List "Assignments" -DisplayName "DueDate" -InternalName "DueDate" -Type DateTime
 Add-PnPField -List "Assignments" -DisplayName "MaxPoints" -InternalName "MaxPoints" -Type Number
 Add-PnPField -List "Assignments" -DisplayName "AcceptLateSubmissions" -InternalName "AcceptLateSubmissions" -Type Boolean
+Add-PnPField -List "Assignments" -DisplayName "LatePenaltyPerDay" -InternalName "LatePenaltyPerDay" -Type Number
+$assignmentsList = Get-PnPList -Identity "Assignments"
 
 # Create the Submissions list
 New-PnPList -Title "Submissions" -Template GenericList
+Add-PnPFieldFromXml -List "Submissions" -FieldXml "<Field Type='Lookup' DisplayName='Assignment' Name='Assignment' StaticName='Assignment' List='{$($assignmentsList.Id)}' ShowField='Title' />"
+Add-PnPField -List "Submissions" -DisplayName "Student" -InternalName "Student" -Type User
 Add-PnPField -List "Submissions" -DisplayName "SubmittedDate" -InternalName "SubmittedDate" -Type DateTime
 Add-PnPField -List "Submissions" -DisplayName "Status" -InternalName "Status" -Type Choice -Choices "Submitted","Graded","Returned","Late"
 Add-PnPField -List "Submissions" -DisplayName "Score" -InternalName "Score" -Type Number
 Add-PnPField -List "Submissions" -DisplayName "Feedback" -InternalName "Feedback" -Type Note
+Add-PnPField -List "Submissions" -DisplayName "FilePath" -InternalName "FilePath" -Type URL
+Add-PnPField -List "Submissions" -DisplayName "IsLate" -InternalName "IsLate" -Type Boolean
 
 # Create the document library for submitted files
 New-PnPList -Title "SubmittedFiles" -Template DocumentLibrary
@@ -112,7 +134,10 @@ The courses screen shows only courses the current student is enrolled in.
 Filter(
     Courses,
     IsActive = true,
-    User().Email in Enrollments.StudentEmail
+    ID in Filter(
+        Enrollments,
+        Student.Email = User().Email
+    ).Course.Id
 )
 ```
 
@@ -124,28 +149,28 @@ The assignment list screen shows assignments for a selected course with their st
 SortByColumns(
     AddColumns(
         Filter(
-            Assignments,
-            Course.Value = SelectedCourse.Title
-        ),
+            Assignments As assignment,
+            assignment.Course.Id = SelectedCourse.ID
+        ) As assignment,
         "MySubmission",
         LookUp(
-            Submissions,
-            Assignment.Value = ThisRecord.Title &&
-            Student.Email = User().Email
+            Submissions As submission,
+            submission.Assignment.Id = assignment.ID &&
+            submission.Student.Email = User().Email
         ),
         "DaysUntilDue",
-        DateDiff(Today(), DueDate, TimeUnit.Days)
+        DateDiff(Today(), assignment.DueDate, TimeUnit.Days)
     ),
     "DueDate",
     SortOrder.Ascending
 )
 ```
 
-For the submission screen, create a form with a file upload control and a text area for comments.
+For the submission screen, create a form with an attachment control and a text area for comments. A canvas app cannot upload this file to an arbitrary SharePoint document library with `Patch` alone, so create a Power Automate flow such as `UploadSubmissionFile` with a Power Apps trigger and a SharePoint "Create file" action. The example below assumes that flow accepts the submission ID, folder path, file name, and file content, then returns the created file URL as `fileUrl`.
 
 ```text
 // Submit button OnSelect formula
-// Create a submission record and upload the file
+// Create a submission record
 Set(
     varSubmission,
     Patch(
@@ -160,7 +185,10 @@ Set(
             Student: {
                 Claims: "i:0#.f|membership|" & User().Email,
                 DisplayName: User().FullName,
-                Email: User().Email
+                Email: User().Email,
+                Department: "",
+                JobTitle: "",
+                Picture: ""
             },
             SubmittedDate: Now(),
             Status: {Value: If(
@@ -173,7 +201,7 @@ Set(
     )
 );
 
-// Upload the file to SharePoint document library
+// Upload the file to the SharePoint document library through Power Automate
 // Folder path: CourseCode/AssignmentTitle/StudentName/
 Set(
     varFilePath,
@@ -182,6 +210,24 @@ Set(
         SelectedAssignment.Title, "/",
         User().FullName, "/"
     )
+);
+
+Set(
+    varUploadedFile,
+    UploadSubmissionFile.Run(
+        varSubmission.ID,
+        varFilePath,
+        First(AttachmentControl.Attachments).Name,
+        First(AttachmentControl.Attachments).Value
+    )
+);
+
+Patch(
+    Submissions,
+    varSubmission,
+    {
+        FilePath: varUploadedFile.fileUrl
+    }
 );
 
 // Notify the student
@@ -201,15 +247,15 @@ The instructor app shows pending submissions and provides a grading interface.
 // Gallery Items for pending submissions
 // Show all ungraded submissions for courses the instructor teaches
 Filter(
-    Submissions,
-    Status.Value = "Submitted" || Status.Value = "Late",
-    Assignment.Value in Filter(
-        Assignments,
-        Course.Value in Filter(
-            Courses,
-            Instructor.Email = User().Email
-        ).Title
-    ).Title
+    Submissions As submission,
+    submission.Status.Value = "Submitted" || submission.Status.Value = "Late",
+    submission.Assignment.Id in Filter(
+        Assignments As assignment,
+        assignment.Course.Id in Filter(
+            Courses As course,
+            course.Instructor.Email = User().Email
+        ).ID
+    ).ID
 )
 ```
 
@@ -265,7 +311,7 @@ Create a new automated flow with the trigger "When an item is created" pointing 
 
 The email template should include the student name, assignment title, submission time, and whether it is late.
 
-**Flow 2: Grade Posted Notification** - When a submission status changes to "Graded," notify the student.
+**Flow 2: Grade Posted Notification** - When a submission status changes to "Graded," notify the student. The following JSON is a conceptual outline of the trigger condition and actions, not an importable Power Automate flow definition.
 
 ```json
 {
@@ -290,7 +336,7 @@ The email template should include the student name, assignment title, submission
 }
 ```
 
-**Flow 3: Due Date Reminder** - A scheduled flow that runs daily and sends reminders for assignments due within 48 hours.
+**Flow 3: Due Date Reminder** - A scheduled flow that runs daily and sends reminders for assignments due within 48 hours. This JSON is also a conceptual outline; configure the recurrence trigger, SharePoint "Get items" action, conditions, and email actions in Power Automate.
 
 ```json
 {
@@ -340,9 +386,9 @@ The Power BI connection to SharePoint is straightforward. In Power BI Desktop, c
 
 ## Permissions and Security
 
-Set up the SharePoint permissions so students can only see their own submissions while instructors see all submissions for their courses. Use SharePoint item-level permissions or filtered views in the Power App to enforce this separation.
+Set up the SharePoint permissions so students can only see their own submissions while instructors see all submissions for their courses. Use SharePoint item-level permissions, separate libraries, or a Power Automate process that breaks permission inheritance on submitted files and items after creation.
 
-In the Power App, every data query should include a filter for the current user to prevent students from seeing other students' grades. This is enforced at the app level since SharePoint list-level permissions can be complex to manage at scale.
+In the Power App, every data query should include a filter for the current user so the interface only shows relevant rows. Treat these filters as usability logic, not as the security boundary; SharePoint permissions must enforce access to the underlying list items and files.
 
 ## Wrapping Up
 
