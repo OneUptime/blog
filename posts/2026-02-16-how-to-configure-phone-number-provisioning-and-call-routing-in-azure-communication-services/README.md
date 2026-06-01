@@ -17,7 +17,7 @@ ACS provides several voice-related capabilities:
 - **Phone number provisioning**: Buy toll-free and local phone numbers in supported countries
 - **PSTN calling**: Make and receive calls to/from regular phone numbers
 - **VoIP calling**: Voice over IP between ACS users (no phone number needed)
-- **Call routing**: Direct inbound calls to specific endpoints, queues, or applications
+- **Call routing**: Send inbound call events to applications that answer, transfer, or redirect calls
 - **Call recording**: Record calls for compliance and quality assurance
 - **Call automation**: Build IVR systems and automated call flows
 
@@ -26,7 +26,7 @@ ACS provides several voice-related capabilities:
 - An Azure Communication Services resource
 - Azure CLI installed
 - A supported country for phone number provisioning (US, UK, Canada, and others)
-- Node.js 18+ or Python 3.8+ for the SDK examples
+- Python 3.8+ for the SDK examples
 
 ## Step 1: Create an Azure Communication Services Resource
 
@@ -35,7 +35,8 @@ ACS provides several voice-related capabilities:
 
 RESOURCE_GROUP="rg-communications"
 ACS_NAME="acs-voice-prod"
-LOCATION="unitedstates"
+LOCATION="Global"
+DATA_LOCATION="United States"
 
 az group create --name $RESOURCE_GROUP --location eastus
 
@@ -43,10 +44,10 @@ az communication create \
     --name $ACS_NAME \
     --resource-group $RESOURCE_GROUP \
     --location $LOCATION \
-    --data-location "unitedstates"
+    --data-location "$DATA_LOCATION"
 
 # Get the connection string
-ACS_CONNECTION=$(az communication list-key \
+export ACS_CONNECTION_STRING=$(az communication list-key \
     --name $ACS_NAME \
     --resource-group $RESOURCE_GROUP \
     --query "primaryConnectionString" -o tsv)
@@ -165,9 +166,8 @@ az eventgrid event-subscription create \
 from flask import Flask, request, jsonify
 from azure.communication.callautomation import (
     CallAutomationClient,
-    CallInvite,
+    FileSource,
     PhoneNumberIdentifier,
-    CommunicationUserIdentifier,
 )
 import os
 
@@ -192,7 +192,8 @@ def handle_incoming_call():
         # Handle incoming call
         if event.get("eventType") == "Microsoft.Communication.IncomingCall":
             incoming_context = event["data"]["incomingCallContext"]
-            caller = event["data"]["from"]["phoneNumber"]["value"]
+            from_identifier = event["data"].get("from", {})
+            caller = from_identifier.get("phoneNumber", {}).get("value") or from_identifier.get("rawId")
 
             print(f"Incoming call from: {caller}")
 
@@ -224,7 +225,7 @@ def handle_call_events():
 
             # Play a welcome message
             play_source = FileSource(url="https://myapp.example.com/audio/welcome.wav")
-            call_connection.play_media(play_source)
+            call_connection.play_media_to_all(play_source)
 
         elif event_type == "Microsoft.Communication.CallDisconnected":
             print(f"Call disconnected")
@@ -239,7 +240,6 @@ def handle_call_events():
 # Make an outbound PSTN call using Azure Communication Services
 from azure.communication.callautomation import (
     CallAutomationClient,
-    CallInvite,
     PhoneNumberIdentifier,
 )
 import os
@@ -251,16 +251,11 @@ target_number = "+12065559876"  # The number to call
 
 client = CallAutomationClient.from_connection_string(connection_string)
 
-# Create the call invite
-call_invite = CallInvite(
-    target=PhoneNumberIdentifier(target_number),
-    source_caller_id_number=PhoneNumberIdentifier(source_number),
-)
-
 # Place the call
 call_result = client.create_call(
-    target_participant=call_invite,
+    target_participant=PhoneNumberIdentifier(target_number),
     callback_url=f"{callback_url}/api/calls/events",
+    source_caller_id_number=PhoneNumberIdentifier(source_number),
 )
 
 print(f"Call placed. Connection ID: {call_result.call_connection_id}")
@@ -281,7 +276,7 @@ from azure.communication.callautomation import (
     PhoneNumberIdentifier,
 )
 
-def handle_call_connected(call_connection):
+def handle_call_connected(call_connection, caller_number):
     """When the call connects, play the IVR menu and listen for input."""
     # Play the IVR menu using text-to-speech
     menu_text = TextSource(
@@ -303,13 +298,13 @@ def handle_call_connected(call_connection):
     )
 
 
-def handle_recognize_completed(event, call_connection):
+def handle_recognize_completed(event, call_connection, caller_number):
     """Handle the DTMF input from the caller."""
     tones = event["data"]["dtmfResult"]["tones"]
 
     if not tones:
         # No input received, replay the menu
-        handle_call_connected(call_connection)
+        handle_call_connected(call_connection, caller_number)
         return
 
     selection = tones[0]
@@ -335,8 +330,8 @@ def handle_recognize_completed(event, call_connection):
             text="Invalid selection. Please try again.",
             voice_name="en-US-JennyNeural"
         )
-        call_connection.play_media(invalid_text)
-        handle_call_connected(call_connection)
+        call_connection.play_media_to_all(invalid_text)
+        handle_call_connected(call_connection, caller_number)
 ```
 
 ## Step 7: Monitor Call Quality and Usage
@@ -350,14 +345,17 @@ ACS_RESOURCE_ID=$(az communication show \
     --resource-group $RESOURCE_GROUP \
     --query id -o tsv)
 
+LOG_ANALYTICS_WORKSPACE_ID=$(az monitor log-analytics workspace show \
+    --resource-group $RESOURCE_GROUP \
+    --workspace-name law-communications \
+    --query id -o tsv)
+
 az monitor diagnostic-settings create \
     --name call-analytics \
     --resource "$ACS_RESOURCE_ID" \
-    --workspace law-communications \
+    --workspace "$LOG_ANALYTICS_WORKSPACE_ID" \
     --logs '[
-        {"category": "CallSummaryLogs", "enabled": true},
-        {"category": "CallDiagnosticLogs", "enabled": true},
-        {"category": "CallAutomationMediaSummary", "enabled": true}
+        {"categoryGroup": "allLogs", "enabled": true}
     ]'
 ```
 
@@ -368,11 +366,16 @@ Query call data in Log Analytics:
 ACSCallSummary
 | where TimeGenerated > ago(7d)
 | summarize
-    TotalCalls = count(),
+    CallDuration = max(CallDuration),
+    CallType = any(CallType),
+    CallStartTime = min(CallStartTime)
+    by CorrelationId
+| summarize
+    TotalCalls = dcount(CorrelationId),
     AvgDurationSeconds = avg(CallDuration),
     TotalMinutes = sum(CallDuration) / 60
-    by bin(TimeGenerated, 1d), CallType
-| order by TimeGenerated asc
+    by bin(CallStartTime, 1d), CallType
+| order by CallStartTime asc
 ```
 
 ## Pricing Considerations
@@ -382,7 +385,7 @@ ACS phone number pricing has several components:
 - Per-minute charges for inbound and outbound PSTN calls
 - No charge for VoIP-to-VoIP calls between ACS users
 
-For US toll-free numbers, expect roughly $2/month for the number plus $0.013/minute for inbound and $0.013/minute for outbound calls. Local numbers are cheaper to rent but may have higher per-minute rates depending on the destination.
+For US toll-free numbers, expect roughly $2/month for the number plus $0.022/minute for inbound calls and outbound calls starting at $0.013/minute. Local numbers are cheaper to rent, and per-minute rates vary by call direction and destination.
 
 ## Summary
 
