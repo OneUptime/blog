@@ -141,7 +141,7 @@ A cleaner approach is using APIM's managed identity to authenticate with the Fun
 <policies>
     <inbound>
         <base />
-        <authentication-managed-identity resource="https://my-function-app.azurewebsites.net" />
+        <authentication-managed-identity resource="<function-app-application-id>" />
     </inbound>
     <backend>
         <base />
@@ -152,7 +152,7 @@ A cleaner approach is using APIM's managed identity to authenticate with the Fun
 </policies>
 ```
 
-This requires configuring the Function App to accept tokens from the APIM managed identity.
+This requires configuring the Function App to use Microsoft Entra authentication and accept tokens issued for that application from the APIM managed identity.
 
 ## Step 4: Add API Policies
 
@@ -210,7 +210,7 @@ Cache GET responses to reduce function invocations.
     <inbound>
         <base />
         <cache-lookup vary-by-developer="false" vary-by-developer-groups="false">
-            <vary-by-query-parameter>page,limit</vary-by-query-parameter>
+            <vary-by-query-parameter>page;limit</vary-by-query-parameter>
         </cache-lookup>
     </inbound>
     <outbound>
@@ -275,7 +275,7 @@ az apim product create \
   --resource-group rg-api \
   --service-name my-api-gateway \
   --product-id "standard" \
-  --display-name "Standard" \
+  --product-name "Standard" \
   --description "Standard API access" \
   --subscription-required true \
   --approval-required false \
