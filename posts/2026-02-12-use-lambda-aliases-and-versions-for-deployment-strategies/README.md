@@ -175,14 +175,14 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: my-api
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: index.handler
       Role: !GetAtt LambdaRole.Arn
       Code:
         S3Bucket: my-deploy-bucket
         S3Key: function-v2.3.1.zip
 
-  # Publish a new version each time the code changes
+  # Publish a version for this deployment. Update this resource for each release.
   FunctionVersion:
     Type: AWS::Lambda::Version
     Properties:
@@ -199,7 +199,7 @@ Resources:
       # Optional: traffic shifting configuration
       RoutingConfig:
         AdditionalVersionWeights:
-          - FunctionVersion: !Ref PreviousVersion
+          - FunctionVersion: '5'
             FunctionWeight: 0.1
 
   # API Gateway points to the alias, not the function directly
@@ -208,8 +208,12 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       IntegrationType: AWS_PROXY
-      # Use the alias ARN so we can shift traffic without changing the API
-      IntegrationUri: !Ref ProductionAlias
+      IntegrationMethod: POST
+      PayloadFormatVersion: '2.0'
+      # Use the alias ARN in the Lambda invocation URI so we can shift traffic without changing the API
+      IntegrationUri: !Sub
+        - arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AliasArn}/invocations
+        - AliasArn: !Ref ProductionAlias
 ```
 
 ## Automated Version Cleanup
@@ -253,7 +257,7 @@ exports.handler = async (event) => {
 
 ## Provisioned Concurrency with Aliases
 
-You can configure provisioned concurrency on an alias to keep a specific number of execution environments warm:
+You can configure provisioned concurrency on a version or alias to keep a specific number of execution environments warm:
 
 ```bash
 # Keep 10 warm instances for the production alias
@@ -263,7 +267,7 @@ aws lambda put-provisioned-concurrency-config \
   --provisioned-concurrent-executions 10
 ```
 
-This is especially useful during traffic shifts - you can pre-warm the new version before sending it traffic.
+This is especially useful during traffic shifts - make sure the version or alias that receives traffic has provisioned concurrency configured before sending it traffic.
 
 ## Best Practices
 
