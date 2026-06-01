@@ -28,14 +28,13 @@ param namespaceName string = 'sb-orders-prod-001'
 
 @description('The SKU tier - must be Standard or Premium for topics')
 @allowed([
-  'Basic'
   'Standard'
   'Premium'
 ])
 param skuName string = 'Standard'
 
 // Service Bus namespace - Standard tier required for topics
-resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
+resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2026-01-01' = {
   name: namespaceName
   location: location
   sku: {
@@ -43,8 +42,8 @@ resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview
     tier: skuName
   }
   properties: {
-    // Disable local auth to enforce Azure AD authentication
-    disableLocalAuth: false
+    // Disable SAS authentication to enforce Microsoft Entra ID authentication
+    disableLocalAuth: true
     // Enable zone redundancy for Premium tier
     zoneRedundant: skuName == 'Premium' ? true : false
   }
@@ -54,7 +53,7 @@ resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview
   }
 }
 
-// Output the connection string for applications to use
+// Output namespace identifiers for applications and other modules to use
 output namespaceId string = serviceBusNamespace.id
 output namespaceName string = serviceBusNamespace.name
 ```
@@ -73,7 +72,7 @@ Topics are the publish side of pub/sub. Publishers send messages to a topic, and
 param namespaceName string
 
 // Order events topic - receives all order-related events
-resource ordersTopic 'Microsoft.ServiceBus/namespaces/topics@2022-10-01-preview' = {
+resource ordersTopic 'Microsoft.ServiceBus/namespaces/topics@2026-01-01' = {
   name: '${namespaceName}/orders'
   properties: {
     // Maximum size of the topic in MB
@@ -85,13 +84,13 @@ resource ordersTopic 'Microsoft.ServiceBus/namespaces/topics@2022-10-01-preview'
     duplicateDetectionHistoryTimeWindow: 'PT10M'
     // Enable batched operations for better throughput
     enableBatchedOperations: true
-    // Support ordering within sessions
+    // Forward messages to subscriptions in order
     supportOrdering: true
   }
 }
 
 // Notification events topic - for email, SMS, push notifications
-resource notificationsTopic 'Microsoft.ServiceBus/namespaces/topics@2022-10-01-preview' = {
+resource notificationsTopic 'Microsoft.ServiceBus/namespaces/topics@2026-01-01' = {
   name: '${namespaceName}/notifications'
   properties: {
     maxSizeInMegabytes: 1024
@@ -102,7 +101,7 @@ resource notificationsTopic 'Microsoft.ServiceBus/namespaces/topics@2022-10-01-p
 }
 
 // Audit events topic - for compliance and logging
-resource auditTopic 'Microsoft.ServiceBus/namespaces/topics@2022-10-01-preview' = {
+resource auditTopic 'Microsoft.ServiceBus/namespaces/topics@2026-01-01' = {
   name: '${namespaceName}/audit-events'
   properties: {
     maxSizeInMegabytes: 10240
@@ -131,7 +130,7 @@ Subscriptions are the consumer side. Each subscription on a topic receives a cop
 param namespaceName string
 
 // Subscription for the fulfillment service
-resource fulfillmentSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2022-10-01-preview' = {
+resource fulfillmentSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2026-01-01' = {
   name: '${namespaceName}/orders/fulfillment-service'
   properties: {
     // How long to keep messages in the subscription
@@ -149,8 +148,8 @@ resource fulfillmentSubscription 'Microsoft.ServiceBus/namespaces/topics/subscri
   }
 }
 
-// Subscription for the analytics service - needs all order events
-resource analyticsSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2022-10-01-preview' = {
+// Subscription for the analytics service - needs JSON events from order-api
+resource analyticsSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2026-01-01' = {
   name: '${namespaceName}/orders/analytics-service'
   properties: {
     defaultMessageTimeToLive: 'P3D'
@@ -162,7 +161,7 @@ resource analyticsSubscription 'Microsoft.ServiceBus/namespaces/topics/subscript
 }
 
 // Subscription for the email notification service
-resource emailSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2022-10-01-preview' = {
+resource emailSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2026-01-01' = {
   name: '${namespaceName}/orders/email-notifications'
   properties: {
     defaultMessageTimeToLive: 'P1D'
@@ -179,6 +178,7 @@ The `maxDeliveryCount` setting is crucial. When a consumer fails to process a me
 ## Adding Subscription Filter Rules
 
 Filters let subscriptions receive only the messages they care about. This is where things get really powerful.
+Each newly created subscription starts with a default rule that selects every message. The examples below update that `$Default` rule so the custom filter is the rule that controls delivery.
 
 ```bicep
 // rules.bicep
@@ -188,8 +188,8 @@ Filters let subscriptions receive only the messages they care about. This is whe
 param namespaceName string
 
 // Fulfillment only cares about new orders and cancellations
-resource fulfillmentRule 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2022-10-01-preview' = {
-  name: '${namespaceName}/orders/fulfillment-service/order-events-filter'
+resource fulfillmentRule 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2026-01-01' = {
+  name: '${namespaceName}/orders/fulfillment-service/$Default'
   properties: {
     filterType: 'SqlFilter'
     sqlFilter: {
@@ -204,8 +204,8 @@ resource fulfillmentRule 'Microsoft.ServiceBus/namespaces/topics/subscriptions/r
 }
 
 // Email notifications only for completed orders above a certain value
-resource emailRule 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2022-10-01-preview' = {
-  name: '${namespaceName}/orders/email-notifications/high-value-completed'
+resource emailRule 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2026-01-01' = {
+  name: '${namespaceName}/orders/email-notifications/$Default'
   properties: {
     filterType: 'SqlFilter'
     sqlFilter: {
@@ -215,8 +215,8 @@ resource emailRule 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2
 }
 
 // Correlation filter - matches on message properties directly
-resource correlationRule 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2022-10-01-preview' = {
-  name: '${namespaceName}/orders/analytics-service/all-events'
+resource correlationRule 'Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2026-01-01' = {
+  name: '${namespaceName}/orders/analytics-service/$Default'
   properties: {
     filterType: 'CorrelationFilter'
     correlationFilter: {
@@ -290,10 +290,12 @@ az deployment group create \
 
 ## Monitoring Considerations
 
-After deploying, set up monitoring for dead-letter queue depth and active message counts. A growing dead-letter queue means something is wrong with your consumers. Bicep does not cover the monitoring side directly, but you can add diagnostic settings to ship Service Bus metrics to Log Analytics.
+After deploying, set up monitoring for dead-letter queue depth and active message counts. A growing dead-letter queue means something is wrong with your consumers. The core Service Bus topology above does not cover the monitoring side directly, but you can add diagnostic settings to ship Service Bus metrics to Log Analytics.
 
 ```bicep
 // Enable diagnostic settings for the namespace
+param logAnalyticsWorkspaceId string
+
 resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'sb-diagnostics'
   scope: serviceBusNamespace
