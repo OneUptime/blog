@@ -24,8 +24,8 @@ Azure Machine Learning has its own managed compute options (compute instances, c
 
 ## Prerequisites
 
-- An AKS cluster running Kubernetes 1.25 or later
-- Azure CLI with the `k8s-extension` and `ml` extensions
+- An AKS cluster running a supported Kubernetes version
+- Azure CLI 2.51.0 or later with the `k8s-extension` 1.2.3 or later and `ml` extensions
 - An Azure Machine Learning workspace
 - For GPU workloads: a node pool with GPU-enabled VMs (NC, ND, or NV series)
 
@@ -60,9 +60,7 @@ az k8s-extension create \
   --cluster-name myAKSCluster \
   --resource-group myResourceGroup \
   --scope cluster \
-  --configuration-settings \
-    enableTraining=True \
-    enableInference=False
+  --config enableTraining=True
 ```
 
 For both training and inference:
@@ -77,11 +75,12 @@ az k8s-extension create \
   --cluster-name myAKSCluster \
   --resource-group myResourceGroup \
   --scope cluster \
-  --configuration-settings \
+  --config \
     enableTraining=True \
     enableInference=True \
-    inferenceRouterServiceType=LoadBalancer \
-    allowInsecureConnections=True
+    inferenceRouterServiceType=loadBalancer \
+    allowInsecureConnections=True \
+    inferenceRouterHA=False
 ```
 
 For production inference with SSL:
@@ -95,10 +94,12 @@ az k8s-extension create \
   --cluster-name myAKSCluster \
   --resource-group myResourceGroup \
   --scope cluster \
-  --configuration-settings \
+  --config \
     enableTraining=True \
     enableInference=True \
-    inferenceRouterServiceType=LoadBalancer \
+    inferenceRouterServiceType=loadBalancer \
+    sslCname=<ssl-cname> \
+  --config-protected \
     sslCertPemFile=<path-to-cert> \
     sslKeyPemFile=<path-to-key>
 ```
@@ -146,12 +147,15 @@ CLUSTER_ID=$(az aks show \
   --query id -o tsv)
 
 # Attach the cluster to the ML workspace
+kubectl create namespace azureml-workloads --dry-run=client -o yaml | kubectl apply -f -
+
 az ml compute attach \
   --resource-group myMLResourceGroup \
   --workspace-name myMLWorkspace \
   --type Kubernetes \
   --name aks-compute \
   --resource-id $CLUSTER_ID \
+  --identity-type SystemAssigned \
   --namespace azureml-workloads
 ```
 
@@ -222,7 +226,7 @@ spec:
       nvidia.com/gpu: "1"
   nodeSelector:
     # Schedule GPU workloads on GPU node pool
-    agentpool: gpupool
+    kubernetes.azure.com/agentpool: gpupool
 ```
 
 Apply the instance types:
@@ -246,7 +250,7 @@ compute: azureml:aks-compute
 resources:
   instance_type: gpu-training
 environment:
-  image: mcr.microsoft.com/azureml/curated/pytorch-2.0-cuda11.8:latest
+  image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.0-cuda11.7:latest
 command: >
   python train.py
   --data-path ${{inputs.training_data}}
@@ -289,7 +293,7 @@ name: blue
 endpoint_name: my-model-endpoint
 model: azureml:my-model:1
 environment:
-  image: mcr.microsoft.com/azureml/curated/minimal-ubuntu20.04-py38-cpu-inference:latest
+  image: mcr.microsoft.com/azureml/minimal-ubuntu22.04-py39-cpu-inference:latest
 code_configuration:
   code: ./score
   scoring_script: score.py
@@ -366,8 +370,8 @@ Common issues when running Azure ML on AKS:
 
 **Inference endpoint returns 503**: The model may be failing to load. Check the deployment pod logs in the `azureml-workloads` namespace.
 
-**Extension installation fails**: Make sure the cluster has enough resources for the extension components. The extension itself needs about 4 CPU cores and 8 GB of memory across its pods.
+**Extension installation fails**: Make sure the cluster has enough resources for the extension components. For production, Microsoft recommends at least 4 vCPU cores and 14 GB of memory for the Kubernetes cluster.
 
-**GPU not detected**: Ensure the NVIDIA device plugin is installed on your GPU node pool. AKS installs it automatically on GPU node pools, but verify with `kubectl get ds -n kube-system | grep nvidia`.
+**GPU not detected**: Ensure the NVIDIA device plugin is installed on your GPU node pool. AKS installs NVIDIA drivers by default on GPU-capable nodes, but the device plugin still needs to be installed unless you use an option such as AKS-managed GPU node pools or the NVIDIA GPU Operator. Verify with `kubectl get ds -A | grep nvidia`.
 
 Running Azure ML workloads on AKS gives you the best of both worlds - the managed ML lifecycle from Azure ML and the infrastructure control from Kubernetes. It is especially valuable for teams that already have significant AKS infrastructure and want to avoid the cost and complexity of maintaining separate compute for ML.
