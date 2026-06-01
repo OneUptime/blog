@@ -21,6 +21,7 @@ Service Bus transactions allow you to group the following operations into a sing
 - Defer a message
 - Dead-letter a message
 - Abandon a message (within the same transaction)
+- Renew a message lock
 
 All of these operations can be mixed in a single transaction. Either all of them succeed, or none of them take effect.
 
@@ -41,7 +42,7 @@ graph LR
 
 Transactions in Service Bus are scoped to a single namespace. You cannot span a transaction across different Service Bus namespaces, and you cannot combine Service Bus operations with database operations in the same transaction. For cross-service consistency, you need patterns like the Outbox pattern or Saga pattern.
 
-Within a namespace, all entities participating in the transaction must share the same "via" connection for send operations to be part of the receive transaction.
+Within a namespace, cross-entity sends and message settlement can participate in the same transaction when the `ServiceBusClient` is created with `EnableCrossEntityTransactions = true`.
 
 ## Basic Transaction: Receive, Process, and Forward
 
@@ -63,6 +64,8 @@ public class TransactionalProcessor
 
     public async Task ProcessTransactionallyAsync()
     {
+        // The ServiceBusClient must be configured with
+        // EnableCrossEntityTransactions = true for this cross-queue transaction.
         // Create receivers and senders
         var receiver = _client.CreateReceiver("input-queue");
         var outputSender = _client.CreateSender("output-queue");
@@ -124,7 +127,7 @@ public class TransactionalProcessor
             _logger.LogError(ex,
                 "Transaction failed for message {Id} - all operations rolled back",
                 message.MessageId);
-            // The message will be abandoned and redelivered
+            // The message will be redelivered when the lock expires
         }
         finally
         {
@@ -136,9 +139,9 @@ public class TransactionalProcessor
 }
 ```
 
-## Using the ServiceBusTransactionGroup
+## Enabling Cross-Entity Transactions
 
-The newer Azure.Messaging.ServiceBus SDK provides the `ServiceBusTransactionGroup` pattern using the via-entity approach for cross-entity transactions.
+The `Azure.Messaging.ServiceBus` SDK supports cross-entity transactions when the client is configured with `EnableCrossEntityTransactions`.
 
 ```csharp
 public class CrossEntityTransaction
@@ -146,10 +149,18 @@ public class CrossEntityTransaction
     private readonly ServiceBusClient _client;
     private readonly ILogger<CrossEntityTransaction> _logger;
 
+    public CrossEntityTransaction(string connectionString, ILogger<CrossEntityTransaction> logger)
+    {
+        _client = new ServiceBusClient(
+            connectionString,
+            new ServiceBusClientOptions { EnableCrossEntityTransactions = true });
+        _logger = logger;
+    }
+
     public async Task ProcessWithCrossEntityTransactionAsync()
     {
-        // For cross-entity transactions, senders need to use the "via" pattern
-        // This sends to the target queue through the source queue's connection
+        // For cross-entity transactions, the client must be configured with
+        // EnableCrossEntityTransactions = true.
         var receiver = _client.CreateReceiver("orders");
 
         // Create senders that participate in the transaction
@@ -215,6 +226,9 @@ public async Task HandleInvalidMessageTransactionally(
     ServiceBusReceivedMessage message,
     string validationError)
 {
+    // The ServiceBusClient used to create this sender and receiver must be
+    // configured with EnableCrossEntityTransactions = true.
+
     // Create an alert message about the invalid message
     var alertSender = _client.CreateSender("alerts");
     var alertMessage = new ServiceBusMessage(
@@ -255,6 +269,7 @@ public async Task HandleInvalidMessageTransactionally(
 ## Transaction in Azure Functions
 
 In Azure Functions, you can use the `ServiceBusMessageActions` to participate in transactions.
+Set `AutoCompleteMessages = false` when manually completing the trigger message, and set `enableCrossEntityTransactions` to `true` in `host.json` when the transaction spans multiple Service Bus entities.
 
 ```csharp
 public class TransactionalFunction
@@ -270,7 +285,7 @@ public class TransactionalFunction
 
     [Function("TransactionalOrderProcessor")]
     public async Task Run(
-        [ServiceBusTrigger("orders", Connection = "ServiceBusConnection")]
+        [ServiceBusTrigger("orders", Connection = "ServiceBusConnection", AutoCompleteMessages = false)]
         ServiceBusReceivedMessage message,
         ServiceBusMessageActions messageActions)
     {
