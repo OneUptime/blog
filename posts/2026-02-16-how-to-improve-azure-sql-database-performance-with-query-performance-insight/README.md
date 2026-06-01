@@ -18,8 +18,8 @@ Query Performance Insight is a monitoring feature built into Azure SQL Database 
 
 - The top queries by CPU consumption, duration, and execution count
 - Resource utilization trends over time
-- Individual query execution plans
-- Performance regression detection
+- Query text and resource utilization history for individual queries
+- Performance recommendation annotations
 
 It requires Query Store to be enabled (it is enabled by default on Azure SQL Database).
 
@@ -27,17 +27,15 @@ It requires Query Store to be enabled (it is enabled by default on Azure SQL Dat
 
 Navigate to your Azure SQL Database in the portal, then go to **Intelligent Performance > Query Performance Insight**.
 
-You can also check Query Store status from the CLI:
+You can also confirm that you are targeting the right database from the CLI:
 
 ```bash
-# Verify Query Store is enabled
-
 az sql db show \
   --resource-group myResourceGroup \
   --server myserver \
   --name mydatabase \
-  --query "currentServiceObjectiveName" \
-  --output tsv
+  --query "{name:name,id:id,currentServiceObjectiveName:currentServiceObjectiveName}" \
+  --output table
 ```
 
 And query the database directly:
@@ -68,23 +66,27 @@ SET QUERY_STORE = ON (
 The Query Performance Insight dashboard shows the top 5 queries by default, but you can dig deeper with T-SQL:
 
 ```sql
--- Find the top 20 queries by average CPU time in the last 24 hours
+-- Find the top 20 queries by total CPU impact in the last 24 hours
 SELECT TOP 20
     q.query_id,
-    qt.query_sql_text,
-    rs.avg_cpu_time / 1000.0 AS avg_cpu_ms,
-    rs.avg_duration / 1000.0 AS avg_duration_ms,
-    rs.count_executions,
-    rs.avg_logical_io_reads,
-    rs.avg_rowcount,
-    -- Calculate total CPU impact
-    (rs.avg_cpu_time / 1000.0) * rs.count_executions AS total_cpu_impact_ms
+    MAX(qt.query_sql_text) AS query_sql_text,
+    SUM(CONVERT(decimal(38, 2), rs.avg_cpu_time) * rs.count_executions) /
+        NULLIF(SUM(rs.count_executions), 0) / 1000.0 AS avg_cpu_ms,
+    SUM(CONVERT(decimal(38, 2), rs.avg_duration) * rs.count_executions) /
+        NULLIF(SUM(rs.count_executions), 0) / 1000.0 AS avg_duration_ms,
+    SUM(rs.count_executions) AS count_executions,
+    SUM(CONVERT(decimal(38, 2), rs.avg_logical_io_reads) * rs.count_executions) /
+        NULLIF(SUM(rs.count_executions), 0) AS avg_logical_io_reads,
+    SUM(CONVERT(decimal(38, 2), rs.avg_rowcount) * rs.count_executions) /
+        NULLIF(SUM(rs.count_executions), 0) AS avg_rowcount,
+    SUM(CONVERT(decimal(38, 2), rs.avg_cpu_time) * rs.count_executions) / 1000.0 AS total_cpu_impact_ms
 FROM sys.query_store_query q
 JOIN sys.query_store_query_text qt ON q.query_text_id = qt.query_text_id
 JOIN sys.query_store_plan p ON q.query_id = p.query_id
 JOIN sys.query_store_runtime_stats rs ON p.plan_id = rs.plan_id
 JOIN sys.query_store_runtime_stats_interval rsi ON rs.runtime_stats_interval_id = rsi.runtime_stats_interval_id
 WHERE rsi.start_time > DATEADD(HOUR, -24, GETUTCDATE())
+GROUP BY q.query_id
 ORDER BY total_cpu_impact_ms DESC;
 ```
 
@@ -117,16 +119,16 @@ Common execution plan problems:
 
 - **Table scans**: The query reads every row in a table instead of using an index.
 - **Key lookups**: The query finds rows via an index but then has to look up additional columns from the clustered index.
-- **Hash/Merge joins on large tables**: Inefficient join strategies due to missing indexes.
+- **Unexpected expensive joins on large tables**: Join work that is higher than expected because of missing indexes, stale statistics, or inaccurate row estimates.
 - **Implicit conversions**: Data type mismatches force the engine to convert data on every row.
 - **Large sorts/spills**: The query sorts more data than fits in memory, spilling to tempdb.
 
 ## Step 4: Fix Missing Indexes
 
-The Query Store and execution plans often show missing index recommendations. Check for them:
+Execution plans and missing index DMVs often show missing index recommendations. Check for them:
 
 ```sql
--- Find missing index recommendations from Query Store
+-- Find missing index recommendations from missing index DMVs
 -- These are indexes that would improve query performance
 SELECT
     mig.index_group_handle,
@@ -188,17 +190,22 @@ SET AUTOMATIC_TUNING (
 );
 ```
 
-Or via CLI:
+Or through the documented REST resource with the Azure CLI:
 
 ```bash
-# Enable automatic tuning recommendations
-az sql db update \
-  --resource-group myResourceGroup \
-  --server myserver \
-  --name mydatabase \
-  --set "automaticTuning.createIndex=On" \
-  --set "automaticTuning.dropIndex=On" \
-  --set "automaticTuning.forceLastGoodPlan=On"
+# Enable automatic tuning recommendations through the ARM REST API
+az rest --method patch \
+  --uri "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Sql/servers/myserver/databases/mydatabase/automaticTuning/current?api-version=2023-08-01" \
+  --body '{
+    "properties": {
+      "desiredState": "Custom",
+      "options": {
+        "createIndex": { "desiredState": "On" },
+        "dropIndex": { "desiredState": "On" },
+        "forceLastGoodPlan": { "desiredState": "On" }
+      }
+    }
+  }'
 ```
 
 The three automatic tuning options:
