@@ -12,7 +12,7 @@ Every application needs secrets - database passwords, API keys, connection strin
 
 ## How Managed Identity Works
 
-Managed identity is an Azure AD feature that gives your application an identity without you having to manage credentials. When your Spring Boot app runs in Azure Spring Apps, the platform automatically provides a token that the app can use to authenticate to Azure services like Key Vault.
+Managed identity is a Microsoft Entra ID feature that gives your application an identity without you having to manage credentials. When your Spring Boot app runs in Azure Spring Apps, the platform provides a managed identity endpoint that the app can use to request tokens for Azure services like Key Vault.
 
 There are two types:
 
@@ -25,7 +25,7 @@ For most scenarios, system-assigned managed identity is simpler and sufficient.
 sequenceDiagram
     participant App as Spring Boot App
     participant ASA as Azure Spring Apps
-    participant AAD as Azure AD
+    participant AAD as Microsoft Entra ID
     participant KV as Azure Key Vault
 
     App->>ASA: Request token (via MSI endpoint)
@@ -39,7 +39,7 @@ sequenceDiagram
 
 ## Prerequisites
 
-- Azure Spring Apps instance (Standard or Enterprise tier)
+- Azure Spring Apps instance (Standard or Enterprise tier) for an existing Azure Spring Apps customer. Azure Spring Apps is in its retirement period and is no longer available to new customers.
 - Azure Key Vault
 - Azure CLI with the spring extension
 - A Spring Boot application
@@ -85,7 +85,7 @@ az keyvault create \
     --enable-rbac-authorization true
 ```
 
-I strongly recommend using RBAC authorization mode over the legacy access policies. RBAC integrates with Azure AD and provides more granular control.
+I strongly recommend using RBAC authorization mode over the legacy access policies. RBAC integrates with Microsoft Entra ID and provides more granular control.
 
 ## Step 3: Grant Key Vault Access to the Managed Identity
 
@@ -179,7 +179,7 @@ This approach automatically maps Key Vault secrets to Spring configuration prope
         <dependency>
             <groupId>com.azure.spring</groupId>
             <artifactId>spring-cloud-azure-dependencies</artifactId>
-            <version>5.8.0</version>
+            <version>5.25.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -197,8 +197,12 @@ spring:
     azure:
       keyvault:
         secret:
-          endpoint: https://kv-spring-secrets.vault.azure.net/
-          # No credentials needed - managed identity handles authentication
+          property-sources:
+            - name: keyvault-secrets
+              endpoint: https://kv-spring-secrets.vault.azure.net/
+              credential:
+                managed-identity-enabled: true
+              # No credentials needed - managed identity handles authentication
 ```
 
 That is it for configuration. The starter automatically discovers all secrets in Key Vault and makes them available as Spring properties. Secret names in Key Vault are mapped to property names using a simple convention: hyphens in secret names become dots in property names.
@@ -222,7 +226,7 @@ For more control over when and how secrets are accessed:
 
 ```java
 // KeyVaultService.java - Direct access to Key Vault secrets
-import com.azure.identity.ManagedIdentityCredentialBuilder;
+import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.security.keyvault.secrets.SecretClient;
 import com.azure.security.keyvault.secrets.SecretClientBuilder;
 import org.springframework.stereotype.Service;
@@ -233,11 +237,11 @@ public class KeyVaultService {
     private final SecretClient secretClient;
 
     public KeyVaultService() {
-        // Build the client using managed identity
-        // No credentials needed - the ManagedIdentityCredential handles it
+        // Build the client using DefaultAzureCredential.
+        // It uses managed identity in Azure and developer credentials locally.
         this.secretClient = new SecretClientBuilder()
             .vaultUrl("https://kv-spring-secrets.vault.azure.net/")
-            .credential(new ManagedIdentityCredentialBuilder().build())
+            .credential(new DefaultAzureCredentialBuilder().build())
             .buildClient();
     }
 
@@ -291,10 +295,11 @@ spring:
     azure:
       keyvault:
         secret:
-          endpoint: https://kv-spring-secrets.vault.azure.net/
           property-sources:
             - name: keyvault-secrets
               endpoint: https://kv-spring-secrets.vault.azure.net/
+              credential:
+                managed-identity-enabled: true
               # Refresh secrets every 30 minutes
               refresh-interval: 30m
 ```
@@ -330,10 +335,12 @@ spring:
     azure:
       keyvault:
         secret:
-          endpoint: https://kv-spring-secrets.vault.azure.net/
+          property-sources:
+            - name: keyvault-secrets
+              endpoint: https://kv-spring-secrets.vault.azure.net/
 ```
 
-As long as you are logged into the Azure CLI (`az login`) and your Azure AD account has the "Key Vault Secrets User" role on the vault, the Spring Cloud Azure starter will authenticate using your CLI credentials locally and managed identity in Azure Spring Apps.
+As long as you are logged into the Azure CLI (`az login`) and your Microsoft Entra account has the "Key Vault Secrets User" role on the vault, the Spring Cloud Azure starter will authenticate using your CLI credentials locally and managed identity in Azure Spring Apps.
 
 ## Step 8: Monitoring and Auditing
 
@@ -341,10 +348,15 @@ Key Vault logs every access in its diagnostic logs. Enable them for security aud
 
 ```bash
 # Enable diagnostic logging on Key Vault
+LAW_ID=$(az monitor log-analytics workspace show \
+    --resource-group $RESOURCE_GROUP \
+    --workspace-name law-security-monitoring \
+    --query id -o tsv)
+
 az monitor diagnostic-settings create \
     --name kv-audit-logs \
     --resource $KV_ID \
-    --workspace law-security-monitoring \
+    --workspace $LAW_ID \
     --logs '[{"category": "AuditEvent", "enabled": true}]'
 ```
 
