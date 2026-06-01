@@ -30,7 +30,7 @@ flowchart TD
     end
 ```
 
-BGP handles the routing intelligence. Both gateways advertise routes to the VNet, and the effective route table determines which gateway handles traffic. ExpressRoute routes are preferred over VPN routes by default (ExpressRoute has a shorter AS path), so traffic uses ExpressRoute when it is available and fails over to VPN when it is not.
+BGP handles the routing intelligence. Both gateways advertise routes to the VNet, and the effective route table determines which gateway handles traffic. ExpressRoute routes are preferred over VPN routes by default when the prefixes are the same, so traffic uses ExpressRoute when it is available and fails over to VPN when it is not.
 
 ## Prerequisites
 
@@ -113,12 +113,13 @@ az network local-gateway create \
   --resource-group rg-hybrid \
   --name lgw-onprem \
   --gateway-ip-address 203.0.113.100 \
-  --local-address-prefixes 192.168.0.0/16 \
   --asn 65001 \
   --bgp-peering-address 192.168.1.1
 ```
 
 If you are using BGP (which you should be for coexistence), include the `--asn` and `--bgp-peering-address` parameters. The ASN is your on-premises network's BGP ASN, and the BGP peering address is the IP on your on-premises router that will establish the BGP session.
+
+You can leave `--local-address-prefixes` empty when BGP is enabled. Any prefixes you add there are treated as static routes in addition to the routes learned through BGP.
 
 ## Step 4: Create the VPN Connection
 
@@ -238,7 +239,7 @@ az network express-route peering update \
   --resource-group rg-hybrid \
   --circuit-name er-circuit-main \
   --name AzurePrivatePeering \
-  --state Disabled
+  --set state=Disabled
 ```
 
 After disabling, check the effective routes again. The on-premises routes should now show as coming through the VPN gateway instead of the ExpressRoute gateway.
@@ -259,7 +260,7 @@ az network express-route peering update \
   --resource-group rg-hybrid \
   --circuit-name er-circuit-main \
   --name AzurePrivatePeering \
-  --state Enabled
+  --set state=Enabled
 ```
 
 ## Monitoring Both Connections
@@ -267,17 +268,17 @@ az network express-route peering update \
 Set up alerts for both connections so you know immediately when one fails.
 
 ```bash
-# Alert on VPN connection status change
+# Alert when the VPN gateway BGP peer is down
 az monitor metrics alert create \
   --resource-group rg-hybrid \
   --name alert-vpn-status \
-  --scopes $(az network vpn-connection show \
-    -g rg-hybrid -n conn-vpn-onprem --query id -o tsv) \
-  --condition "avg TunnelAverageBandwidth < 1" \
+  --scopes $(az network vnet-gateway show \
+    -g rg-hybrid -n vpngw-backup --query id -o tsv) \
+  --condition "avg BgpPeerStatus < 1" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --severity 2 \
-  --description "VPN tunnel bandwidth dropped to zero"
+  --description "VPN gateway BGP peer is down"
 ```
 
 ## Performance Expectations
@@ -285,7 +286,7 @@ az monitor metrics alert create \
 When traffic fails over from ExpressRoute to VPN:
 
 - **Latency increases**: ExpressRoute provides lower latency than VPN over the internet. Expect 10-50ms additional latency depending on the internet path.
-- **Bandwidth decreases**: ExpressRoute circuits are typically 1-10 Gbps. VPN gateway throughput maxes out at 1.25 Gbps (VpnGw3) to 10 Gbps (VpnGw5).
+- **Bandwidth decreases**: ExpressRoute circuits are often sized at multiple Gbps. VPN gateway throughput depends on SKU and generation, from 1.25 Gbps for VpnGw2AZ/Generation 2 to 10 Gbps for VpnGw5 or VpnGw5AZ.
 - **Jitter increases**: Internet paths have more variable latency than dedicated circuits.
 
 For most applications, VPN performance is adequate as a temporary backup. For bandwidth-intensive applications, consider a redundant ExpressRoute circuit instead of (or in addition to) VPN.
