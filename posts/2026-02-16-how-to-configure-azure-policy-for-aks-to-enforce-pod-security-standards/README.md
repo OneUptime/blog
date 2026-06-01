@@ -18,7 +18,7 @@ The nice thing about using Azure Policy instead of managing Gatekeeper directly 
 
 ## Prerequisites
 
-You need an AKS cluster, Azure CLI installed, and the ability to assign Azure Policies at the subscription or resource group level. You also need the AKS cluster to be running Kubernetes 1.25 or later for the Pod Security Standards to apply properly.
+You need an AKS cluster, Azure CLI installed, and the ability to assign Azure Policies at the subscription or resource group level. You also need the AKS cluster to be on a supported AKS Kubernetes version; recent Azure Policy add-on versions require Kubernetes 1.27 or later.
 
 ## Step 1: Enable the Azure Policy Add-on
 
@@ -65,7 +65,7 @@ Kubernetes defines three levels of Pod Security Standards:
 
 **Baseline** - Prevents known privilege escalations. Blocks things like hostNetwork, hostPID, privileged containers, and certain dangerous volume types. This is a good starting point for most workloads.
 
-**Restricted** - The most locked-down profile. Requires non-root containers, read-only root filesystems, drops all capabilities, and enforces seccomp profiles. This is the target for security-conscious production environments.
+**Restricted** - The most locked-down profile. Requires non-root containers, prevents privilege escalation, requires dropping all capabilities, limits volume types, and enforces seccomp profiles. This is the target for security-conscious production environments.
 
 ## Step 3: Assign the Pod Security Standards Initiative
 
@@ -88,7 +88,7 @@ az policy assignment create \
   --location eastus
 ```
 
-The policy set definition ID above is for the Kubernetes cluster pods should only use approved capabilities initiative. To find the exact IDs for the policies you want, check the Azure Policy built-in definitions for Kubernetes.
+The policy set definition ID above is for the Kubernetes cluster pod security baseline standards for Linux-based workloads initiative. To find the exact IDs for the policies you want, check the Azure Policy built-in definitions for Kubernetes.
 
 ## Step 4: Apply Individual Security Policies
 
@@ -262,9 +262,14 @@ Sometimes a workload legitimately needs elevated privileges. Use policy exemptio
 
 ```bash
 # Create an exemption for a specific deployment
+POLICY_ASSIGNMENT_ID=$(az policy assignment show \
+  --name "no-privileged-containers" \
+  --scope $RG_ID \
+  --query id -o tsv)
+
 az policy exemption create \
   --name "monitoring-agent-exemption" \
-  --policy-assignment "no-privileged-containers" \
+  --policy-assignment "$POLICY_ASSIGNMENT_ID" \
   --scope "$RG_ID/providers/Microsoft.ContainerService/managedClusters/myAKSCluster" \
   --exemption-category "Waiver" \
   --description "Monitoring agent requires privileged access for host metrics"
