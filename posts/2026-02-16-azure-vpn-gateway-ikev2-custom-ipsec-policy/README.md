@@ -14,13 +14,13 @@ In this guide, I will cover how to set up an Azure VPN Gateway with IKEv2 and a 
 
 ## Understanding IKE and IPsec Parameters
 
-Before we configure anything, let us understand what we are setting. IKEv2 negotiation happens in two phases:
+Before we configure anything, let us understand what we are setting. Azure groups IKEv2/IPsec policy settings into two sets:
 
 **Phase 1 (IKE SA)** - Also called Main Mode. This establishes a secure channel between the two VPN peers. Parameters include:
 - Encryption algorithm (AES-256, AES-128, etc.)
 - Integrity/hash algorithm (SHA-256, SHA-384, etc.)
 - Diffie-Hellman group (DHGroup14, DHGroup24, etc.)
-- SA lifetime
+- SA lifetime (fixed at 28,800 seconds on Azure VPN gateways)
 
 **Phase 2 (IPsec SA)** - Also called Quick Mode. This negotiates the actual tunnel parameters for data traffic. Parameters include:
 - IPsec encryption algorithm
@@ -81,8 +81,14 @@ az network vnet-gateway create \
   --gateway-type Vpn \
   --vpn-type RouteBased \
   --sku VpnGw2 \
-  --generation Generation2 \
+  --vpn-gateway-generation Generation2 \
   --no-wait
+
+# Wait for the VPN gateway to finish provisioning before creating the connection
+az network vnet-gateway wait \
+  --resource-group rg-vpn \
+  --name vpngw-main \
+  --created
 ```
 
 The `--no-wait` flag lets the command return immediately while the gateway deploys in the background. VPN gateway creation typically takes 30-45 minutes.
@@ -114,8 +120,7 @@ az network vpn-connection create \
   --name conn-to-onprem \
   --vnet-gateway1 vpngw-main \
   --local-gateway2 lgw-onprem \
-  --shared-key "YourSuperSecretPreSharedKey123!" \
-  --enable-bgp false
+  --shared-key "YourSuperSecretPreSharedKey123!"
 ```
 
 Now apply the custom IPsec policy to the connection.
@@ -144,24 +149,24 @@ Let me break down each parameter:
 - `--ipsec-encryption AES256`: Phase 2 uses AES-256 for data encryption
 - `--ipsec-integrity SHA256`: Phase 2 uses SHA-256 for data integrity
 - `--pfs-group PFS2048`: Perfect Forward Secrecy uses 2048-bit MODP group
-- `--sa-lifetime 28800`: Security association lifetime of 28,800 seconds (8 hours)
+- `--sa-lifetime 28800`: IPsec security association lifetime of 28,800 seconds (8 hours)
 - `--sa-max-size 102400000`: Rekey after 102 GB of data transfer
 
 ## Available Algorithm Options
 
 Here are all the supported algorithms you can choose from:
 
-**IKE Encryption**: AES256, AES192, AES128, DES3, DES
+**IKE Encryption**: GCMAES256, GCMAES128, AES256, AES192, AES128
 
 **IKE Integrity**: SHA384, SHA256, SHA1, MD5
 
-**DH Groups**: DHGroup24, DHGroup14, DHGroup2048, DHGroup2, DHGroup1, ECP384, ECP256
+**DH Groups**: DHGroup24, ECP384, ECP256, DHGroup14, DHGroup2048, DHGroup2, DHGroup1, None
 
 **IPsec Encryption**: GCMAES256, GCMAES192, GCMAES128, AES256, AES192, AES128, DES3, DES, None
 
 **IPsec Integrity**: GCMAES256, GCMAES192, GCMAES128, SHA256, SHA1, MD5
 
-**PFS Groups**: PFS24, PFSMM, PFS2048, PFS2, PFS1, ECP384, ECP256, None
+**PFS Groups**: PFS24, ECP384, ECP256, PFS2048, PFS2, PFS1, None
 
 For the strongest security, a common recommended configuration is:
 
@@ -207,7 +212,7 @@ az network vpn-connection show \
 
 ## Matching On-Premises Configuration
 
-The custom policy you set on Azure must exactly match what your on-premises device is configured with. If there is a mismatch, the IKE negotiation will fail and the tunnel will not come up.
+The custom policy you set on Azure must match, or be accepted by, what your on-premises device is configured with. If the cryptographic proposals are incompatible, the IKE negotiation will fail and the tunnel will not come up.
 
 Here is an example configuration for a Cisco IOS device that matches our Azure policy.
 
@@ -232,13 +237,13 @@ crypto ipsec profile azure-profile
   set security-association lifetime kilobytes 102400000
 ```
 
-For other device vendors (Fortinet, Palo Alto, Juniper, etc.), consult their documentation for the equivalent configuration syntax. The algorithm selections must be identical on both sides.
+For other device vendors (Fortinet, Palo Alto, Juniper, etc.), consult their documentation for the equivalent configuration syntax. The algorithm selections must be compatible on both sides.
 
 ## Troubleshooting Connection Issues
 
 If the tunnel is not coming up, here are the common culprits:
 
-**Algorithm mismatch**: This is the most common problem. Double-check that every parameter matches between Azure and the on-premises device. Even one difference will cause negotiation failure.
+**Algorithm mismatch**: This is the most common problem. Double-check that the encryption, integrity, DH, and PFS settings match between Azure and the on-premises device. Even one incompatible proposal can cause negotiation failure.
 
 **Pre-shared key mismatch**: The shared key must be identical on both sides. Copy-paste it to avoid typos.
 
@@ -253,7 +258,7 @@ You can use Azure Network Watcher VPN diagnostics to get detailed error logs.
 az network watcher troubleshooting start \
   --resource-group rg-vpn \
   --resource vpngw-main \
-  --resource-type vpnGateway \
+  --resource-type vnetGateway \
   --storage-account stvpndiag \
   --storage-path "https://stvpndiag.blob.core.windows.net/vpndiag"
 ```
@@ -269,7 +274,7 @@ az network vpn-connection ipsec-policy clear \
   --connection-name conn-to-onprem
 ```
 
-## SA Lifetime Recommendations
+## IPsec SA Lifetime Recommendations
 
 The SA lifetime controls how often the tunnel rekeying occurs. Shorter lifetimes are more secure but increase overhead.
 
@@ -277,6 +282,6 @@ The SA lifetime controls how often the tunnel rekeying occurs. Shorter lifetimes
 - **High security**: 4-8 hours (14400-28800 seconds)
 - **Maximum security**: 1-4 hours (3600-14400 seconds)
 
-Both sides must agree on the lifetime. If they are different, the shorter value is used.
+SA lifetimes are local specifications and do not need to match exactly. If they are different, the shorter value is used.
 
-Custom IPsec policies on Azure VPN Gateway give you the control you need to meet compliance requirements and interoperate with a wide variety of on-premises VPN devices. The key is making sure both sides of the tunnel have perfectly matching configurations and using the strongest algorithms your devices support.
+Custom IPsec policies on Azure VPN Gateway give you the control you need to meet compliance requirements and interoperate with a wide variety of on-premises VPN devices. The key is making sure both sides of the tunnel have compatible configurations and using the strongest algorithms your devices support.
