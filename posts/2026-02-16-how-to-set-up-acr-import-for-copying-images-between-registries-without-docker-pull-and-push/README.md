@@ -10,7 +10,7 @@ Description: Learn how to use ACR import to copy container images between regist
 
 The traditional way to copy a container image from one registry to another is to pull it locally and push it to the destination. For a small image, this works fine. For a 2 GB machine learning image, you are downloading gigabytes to your laptop only to upload them again. It wastes bandwidth, takes forever, and your CI/CD pipeline grinds to a halt while it shuffles bytes through a bottleneck that does not need to exist.
 
-ACR import solves this by copying images server-side. The image goes directly from the source registry to the destination ACR without passing through your local machine. It works with Docker Hub, GitHub Container Registry, other ACR instances, and any OCI-compliant registry. It is faster, more reliable, and does not require Docker to be installed.
+ACR import solves this by copying images server-side. The image goes directly from the source registry to the destination ACR without passing through your local machine. It works with Docker Hub, GitHub Container Registry, other ACR instances, and many OCI-compatible registries that support HTTP range requests. It is faster, more reliable, and does not require Docker to be installed.
 
 ## The Basic Import Command
 
@@ -31,13 +31,16 @@ az acr import \
   --image myapp:v2.0
 
 # Import from another ACR
+SOURCE_REGISTRY_ID=$(az acr show --name sourceacr --query id -o tsv)
+
 az acr import \
   --name myacr \
-  --source sourceacr.azurecr.io/myapp:latest \
-  --image myapp:latest
+  --source myapp:latest \
+  --image myapp:latest \
+  --registry "$SOURCE_REGISTRY_ID"
 ```
 
-The `--source` is the fully qualified image reference in the source registry. The `--image` is the repository and tag you want in your ACR. They do not have to match - you can rename images during import.
+The `--source` is the fully qualified image reference in the source registry, unless you use `--registry` for an ACR source. With `--registry`, `--source` is only the source repository and tag. The `--image` is the repository and tag you want in your ACR. They do not have to match - you can rename images during import.
 
 ## Importing from Docker Hub
 
@@ -91,20 +94,23 @@ If both registries are in the same Azure subscription, the import is straightfor
 
 ```bash
 # Import from dev ACR to prod ACR
+SOURCE_REGISTRY_ID=$(az acr show --name devacr --query id -o tsv)
+
 az acr import \
   --name prodacr \
-  --source devacr.azurecr.io/myapp:v2.0 \
-  --image myapp:v2.0
+  --source myapp:v2.0 \
+  --image myapp:v2.0 \
+  --registry "$SOURCE_REGISTRY_ID"
 ```
 
-ACR uses the managed identity or your Azure AD credentials to authenticate with the source registry. No additional credentials needed.
+ACR uses your Microsoft Entra permissions when you identify the source ACR with `--registry`. Your identity needs import permissions on the target registry and read/pull permissions on the source registry, so no registry username and password are needed.
 
 ### Different Subscriptions
 
 For cross-subscription imports, you need to provide the source registry's resource ID or credentials.
 
 ```bash
-# Option 1: Use the source registry's resource ID (requires Reader role on source)
+# Option 1: Use the source registry's resource ID
 SOURCE_REGISTRY_ID=$(az acr show \
   --name sourceacr \
   --subscription source-subscription-id \
@@ -112,7 +118,7 @@ SOURCE_REGISTRY_ID=$(az acr show \
 
 az acr import \
   --name destacr \
-  --source sourceacr.azurecr.io/myapp:v2.0 \
+  --source myapp:v2.0 \
   --image myapp:v2.0 \
   --registry "$SOURCE_REGISTRY_ID"
 
@@ -168,7 +174,7 @@ while IFS=' ' read -r SOURCE DEST; do
     --no-wait
 done < images.txt
 
-echo "All imports submitted. Check status with: az acr import --name $ACR_NAME --source ... --image ... (without --no-wait)"
+echo "All imports submitted. Confirm results with: az acr repository show-tags --name $ACR_NAME --repository <repository>"
 ```
 
 ## Importing by Digest
@@ -183,7 +189,7 @@ az acr import \
   --image nginx:pinned-v1
 
 # Find the digest of an image
-az acr manifest show \
+az acr manifest show-metadata \
   --registry sourceacr \
   --name myapp:v2.0 \
   --query digest -o tsv
@@ -253,18 +259,21 @@ steps:
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
+        SOURCE_REGISTRY_ID=$(az acr show --name devacr --query id -o tsv)
+
         # Import the tested image from dev to prod
         az acr import \
           --name prodacr \
-          --source devacr.azurecr.io/myapp:$(Build.BuildId) \
+          --source myapp:$(Build.BuildId) \
           --image myapp:$(Build.BuildId) \
           --image myapp:latest \
+          --registry "$SOURCE_REGISTRY_ID" \
           --force
 ```
 
 ### Avoiding Docker Hub Rate Limits
 
-Docker Hub limits anonymous pulls to 100 per 6 hours and authenticated pulls to 200 per 6 hours. By importing images into ACR, your AKS nodes pull from ACR (with no rate limits) instead of Docker Hub.
+Docker Hub limits anonymous pulls to 100 per 6 hours and Docker Personal authenticated pulls to 200 per 6 hours. By importing images into ACR, your AKS nodes pull from ACR instead of consuming Docker Hub pull rate limits.
 
 ```bash
 # Import commonly used images to avoid rate limits
@@ -290,7 +299,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Azure Login
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -323,7 +332,7 @@ az acr show --name sourceacr --query id -o tsv
 
 ### Network Timeouts
 
-Large images may time out during import. There is no way to increase the timeout, but retrying usually works.
+Large images may outlive your CLI wait. Queue the import with `--no-wait`, then confirm the tag appears in the target repository.
 
 ```bash
 # Retry with --no-wait and check status later
