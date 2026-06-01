@@ -51,6 +51,10 @@ terraform {
 }
 
 provider "azurerm" {
+  # Required when shared key access is disabled and Terraform manages
+  # blob containers through Azure AD instead of storage account keys.
+  storage_use_azuread = true
+
   features {
     key_vault {
       purge_soft_delete_on_destroy = false
@@ -106,6 +110,11 @@ resource "azurerm_storage_account" "state" {
     bypass         = ["AzureServices"]
   }
 
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.storage.id]
+  }
+
   tags = {
     purpose    = "terraform-state"
     encryption = "customer-managed"
@@ -151,7 +160,7 @@ resource "azurerm_key_vault" "state_encryption" {
 resource "azurerm_key_vault_key" "state_encryption" {
   name         = "terraform-state-encryption-key"
   key_vault_id = azurerm_key_vault.state_encryption.id
-  key_type     = "RSA"
+  key_type     = "RSA-HSM"
   key_size     = 2048
 
   key_opts = [
@@ -193,10 +202,14 @@ resource "azurerm_storage_account_customer_managed_key" "state" {
   key_vault_id              = azurerm_key_vault.state_encryption.id
   key_name                  = azurerm_key_vault_key.state_encryption.name
   user_assigned_identity_id = azurerm_user_assigned_identity.storage.id
+
+  depends_on = [
+    azurerm_role_assignment.storage_key_vault,
+  ]
 }
 ```
 
-With purge protection enabled on the Key Vault, nobody can permanently delete the encryption key, even by accident. The rotation policy ensures the key is rotated automatically, which many compliance frameworks require.
+With purge protection enabled on the Key Vault, nobody can permanently delete the encryption key until the purge protection retention period has passed. The rotation policy ensures new key versions are generated automatically, which many compliance frameworks require.
 
 ## Configuring RBAC for State Access
 
@@ -208,14 +221,14 @@ Since we disabled shared key access, all Terraform operations need to authentica
 
 # CI/CD service principal needs full access
 resource "azurerm_role_assignment" "cicd_state_access" {
-  scope                = azurerm_storage_account.state.id
+  scope                = azurerm_storage_container.tfstate.resource_manager_id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = var.cicd_service_principal_id
 }
 
 # Developers get read-only access to state
 resource "azurerm_role_assignment" "dev_state_read" {
-  scope                = azurerm_storage_account.state.id
+  scope                = azurerm_storage_container.tfstate.resource_manager_id
   role_definition_name = "Storage Blob Data Reader"
   principal_id         = var.developers_group_id
 }
@@ -237,11 +250,12 @@ terraform {
 
     # Use Azure AD instead of storage account keys
     use_azuread_auth = true
+    use_cli          = true
   }
 }
 ```
 
-When running Terraform, authenticate with Azure CLI or a service principal. The backend will use your Azure AD identity to access the storage account.
+When running Terraform from your workstation, authenticate with Azure CLI. The backend will use your Azure AD identity to access the storage account. For CI/CD, use the corresponding backend authentication options for a service principal, OIDC, or managed identity instead of `use_cli`.
 
 ```bash
 # Login to Azure with your identity
@@ -305,6 +319,13 @@ az storage blob show \
 
 # Break a stuck lock (use with caution)
 terraform force-unlock LOCK_ID
+
+# Break the underlying Azure blob lease if Terraform cannot release it
+az storage blob lease break \
+  --account-name stterraformstate001 \
+  --container-name tfstate \
+  --blob-name production.tfstate \
+  --auth-mode login
 ```
 
 ## Summary
