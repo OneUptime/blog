@@ -62,22 +62,24 @@ DECLARE
     count_val BIGINT;
 BEGIN
     CREATE TEMP TABLE IF NOT EXISTS row_counts (
+        schema_name TEXT,
         table_name TEXT,
         row_count BIGINT
     );
+    TRUNCATE row_counts;
 
     FOR rec IN
-        SELECT tablename
+        SELECT schemaname, tablename
         FROM pg_tables
         WHERE schemaname = 'public'
         ORDER BY tablename
     LOOP
-        EXECUTE format('SELECT count(*) FROM %I', rec.tablename) INTO count_val;
-        INSERT INTO row_counts VALUES (rec.tablename, count_val);
+        EXECUTE format('SELECT count(*) FROM %I.%I', rec.schemaname, rec.tablename) INTO count_val;
+        INSERT INTO row_counts VALUES (rec.schemaname, rec.tablename, count_val);
     END LOOP;
 END $$;
 
-SELECT * FROM row_counts ORDER BY table_name;
+SELECT * FROM row_counts ORDER BY schema_name, table_name;
 ```
 
 ### File System Validation
@@ -87,7 +89,6 @@ If you migrated files to S3 or EFS, verify counts and sizes:
 ```python
 import os
 import boto3
-from collections import defaultdict
 
 def count_local_files(directory):
     """Count files and total size in a local directory."""
@@ -161,10 +162,14 @@ SELECT
     tc.constraint_type,
     kcu.column_name
 FROM information_schema.table_constraints tc
-JOIN information_schema.key_column_usage kcu
-    ON tc.constraint_name = kcu.constraint_name
+LEFT JOIN information_schema.key_column_usage kcu
+    ON tc.constraint_catalog = kcu.constraint_catalog
+    AND tc.constraint_schema = kcu.constraint_schema
+    AND tc.constraint_name = kcu.constraint_name
+    AND tc.table_schema = kcu.table_schema
+    AND tc.table_name = kcu.table_name
 WHERE tc.table_schema = 'public'
-ORDER BY tc.table_name, tc.constraint_name;
+ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position;
 ```
 
 ## Layer 3: Content Checks
@@ -185,30 +190,38 @@ FROM orders t;
 For large tables, sampling is more practical:
 
 ```python
-import hashlib
 import psycopg2
+from psycopg2 import sql
 
 def sample_checksum(conn_params, table, id_column, sample_size=10000):
     """
-    Generate a checksum from a random sample of rows.
-    Use the same seed on both source and target for deterministic sampling.
+    Generate a checksum from a deterministic sample of rows.
+    Use the same table, ID column, and sample size on both source and target.
     """
     conn = psycopg2.connect(**conn_params)
     cur = conn.cursor()
 
     # Get deterministic sample using modulo on ID
-    query = f"""
+    query = sql.SQL("""
+        WITH stride AS (
+            SELECT GREATEST(COUNT(*) / %s, 1) AS step FROM {table}
+        )
         SELECT MD5(STRING_AGG(row_data, '|' ORDER BY {id_column}))
         FROM (
             SELECT {id_column},
                    MD5(t::text) as row_data
             FROM {table} t
-            WHERE MOD({id_column}, (SELECT COUNT(*) / {sample_size} FROM {table})) = 0
-            LIMIT {sample_size}
+            CROSS JOIN stride
+            WHERE MOD({id_column}::bigint, stride.step) = 0
+            ORDER BY {id_column}
+            LIMIT %s
         ) sample
-    """
+    """).format(
+        table=sql.Identifier(table),
+        id_column=sql.Identifier(id_column)
+    )
 
-    cur.execute(query)
+    cur.execute(query, (sample_size, sample_size))
     result = cur.fetchone()[0]
     cur.close()
     conn.close()
@@ -242,11 +255,11 @@ UNION ALL
 -- Records around potential problem boundaries
 -- (large IDs, year boundaries, NULL-heavy records)
 SELECT * FROM orders WHERE id IN (
-    SELECT id FROM orders ORDER BY id ASC LIMIT 5
+    (SELECT id FROM orders ORDER BY id ASC LIMIT 5)
     UNION
-    SELECT id FROM orders ORDER BY id DESC LIMIT 5
+    (SELECT id FROM orders ORDER BY id DESC LIMIT 5)
     UNION
-    SELECT MIN(id) FROM orders WHERE created_at >= '2026-01-01'
+    (SELECT MIN(id) FROM orders WHERE created_at >= '2026-01-01')
 );
 ```
 
