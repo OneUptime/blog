@@ -93,8 +93,8 @@ You can also add it through the Windows GUI:
 If the MSI installer gave you trouble, try alternative installation methods that tend to handle PATH configuration more reliably.
 
 ```powershell
-# Using winget (built into Windows 10/11)
-winget install Microsoft.AzureCLI
+# Using winget (built into Windows 11 and modern versions of Windows 10)
+winget install --exact --id Microsoft.AzureCLI
 
 # Using Chocolatey
 choco install azure-cli
@@ -144,21 +144,21 @@ If you want to use the Windows installation from WSL (not recommended but possib
 alias az='/mnt/c/Program\ Files/Microsoft\ SDKs/Azure/CLI2/wbin/az.cmd'
 ```
 
-## Fix 7: PowerShell Execution Policy
+## Fix 7: PowerShell Profile or Script Wrapper Issues
 
-In some cases, PowerShell's execution policy prevents running the `az.cmd` script. This usually produces a slightly different error about script execution being disabled, but it can sometimes manifest as "not recognized" in certain configurations.
+PowerShell's execution policy does not normally block `az.cmd` directly. But if your PowerShell profile or a custom wrapper script is trying to load Azure CLI and you see an error about script execution being disabled, check the current policy.
 
 ```powershell
 # Check current execution policy
 Get-ExecutionPolicy
 
-# If it is 'Restricted', change it to allow scripts
+# If your profile or wrapper script is being blocked, allow local scripts for your user
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 ## Fix 8: Conflicting az Aliases
 
-PowerShell defines built-in aliases that might conflict. Check if something is shadowing the `az` command:
+A custom PowerShell alias or function can shadow the real `az` command. Check if something is intercepting it:
 
 ```powershell
 # Check if 'az' is aliased to something else
@@ -212,7 +212,7 @@ If you encounter the "not recognized" error in a CI/CD pipeline (Azure DevOps, G
 
 For Azure DevOps hosted agents, Azure CLI is pre-installed. Use the `AzureCLI@2` task rather than trying to run `az` directly in a script task.
 
-For GitHub Actions, use the `azure/cli@v2` action, which handles installation and authentication.
+For GitHub Actions, use `azure/login@v2` for authentication and `azure/cli@v2` to run Azure CLI scripts. The CLI action handles Azure CLI availability, but authentication is usually handled by the login action.
 
 For self-hosted agents, make sure Azure CLI is installed on the agent machine and the service account running the agent has the correct PATH configuration. Service accounts sometimes have different environment variables than interactive users.
 
