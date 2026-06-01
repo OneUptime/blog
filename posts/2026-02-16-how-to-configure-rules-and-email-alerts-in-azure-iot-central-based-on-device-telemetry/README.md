@@ -8,7 +8,7 @@ Description: Learn how to set up rules and email alerts in Azure IoT Central tha
 
 ---
 
-One of the biggest advantages of Azure IoT Central over building your own IoT platform from scratch is the built-in rules engine. You can set up alerts that fire when device telemetry crosses a threshold, when a device stops sending data, or when a combination of conditions is met. The rules are configured entirely through the portal - no code required for basic scenarios - and they can trigger email notifications, webhooks, or integrations with Power Automate and Logic Apps.
+One of the biggest advantages of Azure IoT Central over building your own IoT platform from scratch is the built-in rules engine. You can set up alerts that fire when device telemetry crosses a threshold or when a combination of conditions is met. The rules are configured entirely through the portal - no code required for basic scenarios - and they can trigger email notifications, webhooks, Azure Monitor action groups, or integrations with Power Automate and Logic Apps.
 
 This guide shows you how to configure rules and email alerts based on device telemetry, starting with simple threshold alerts and building up to more sophisticated multi-condition rules.
 
@@ -18,18 +18,18 @@ Before setting up rules, you need:
 
 - An Azure IoT Central application with at least one device template defined
 - At least one device connected and sending telemetry
-- The email addresses of the people who should receive alerts
+- The email addresses of the application users who should receive alerts. Email recipients must be users in the IoT Central application and must have signed in at least once.
 
 If you do not have a device template yet, check out our guide on creating custom device templates in Azure IoT Central.
 
 ## Understanding the Rules Engine
 
-The rules engine in IoT Central evaluates incoming telemetry against conditions you define. When all conditions in a rule are met, the rule fires and executes the configured actions. Here is the key behavior to understand:
+The rules engine in IoT Central evaluates incoming telemetry against conditions you define. When the rule's condition logic is met, the rule fires and executes the configured actions. Here is the key behavior to understand:
 
 - Rules evaluate on a per-device basis. A rule that checks "temperature > 30" fires independently for each device that exceeds that threshold.
 - Rules operate on the most recent telemetry value. They do not aggregate over time windows by default (though you can configure time aggregation).
-- Once a rule fires, it has a cooldown period to prevent alert storms. The default is 5 minutes.
-- Rules can only evaluate telemetry defined in the device template. You cannot create rules on arbitrary JSON fields.
+- Rule actions have delivery-rate limits to prevent alert storms. For example, email actions are limited to one alert every minute per rule, while webhook, Power Automate, Logic Apps, and Azure Monitor action group actions are limited to one alert every 10 seconds per action.
+- Rules can only evaluate telemetry and properties defined in the device template. You cannot create rules on arbitrary JSON fields.
 
 ## Creating a Simple Threshold Rule
 
@@ -62,7 +62,7 @@ This means the rule fires whenever any device using this template reports a temp
 Click "Add action" and select "Email." Fill in:
 
 - **Display name:** "Temperature Alert Email"
-- **To:** Enter the email addresses of the recipients (comma-separated)
+- **To:** Enter the email addresses of the recipients. Each recipient must be a user in the IoT Central application and must have signed in at least once.
 - **Note:** Add optional text like "A device has reported a temperature above 35C. Please investigate."
 
 Click Save. The rule is now active.
@@ -79,7 +79,7 @@ Edit the rule and modify the condition:
 - **Operator:** is greater than
 - **Value:** 35
 
-Now the rule fires only when the 5-minute rolling average of temperature exceeds 35 degrees. This eliminates false positives from transient spikes.
+Now the rule fires only when the 5-minute average of temperature exceeds 35 degrees. This eliminates false positives from transient spikes.
 
 Available aggregation functions:
 
@@ -109,26 +109,17 @@ Create a rule with multiple conditions:
 - Operator: is greater than
 - Value: 80
 
-Both conditions must be true simultaneously for the rule to fire. This is an AND logic - IoT Central does not support OR logic within a single rule. If you need OR behavior, create separate rules.
+Configure the rule to fire when all conditions are met if you want AND logic, or when any condition is met if you want OR logic. If you use time aggregation with multiple conditions, all telemetry values in those conditions must use aggregation.
 
-## Device State-Based Rules
+## Property-Based Rules
 
-Beyond telemetry thresholds, you can create rules based on device property values. This is useful for alerting on device health conditions.
+Beyond telemetry thresholds, you can create rules based on device property values. This is useful when a device reports health-related values as properties.
 
 For example, trigger an alert when battery level drops below 20%:
 
-- **Telemetry:** Battery Level
+- **Property:** Battery Level
 - **Operator:** is less than
 - **Value:** 20
-
-Or alert when a device has not sent telemetry for a period:
-
-- **Telemetry:** Any telemetry field
-- **Aggregation:** Count over 15 minutes
-- **Operator:** is less than
-- **Value:** 1
-
-This "silence detection" pattern is particularly useful for catching devices that have gone offline without a clean disconnection event.
 
 ## Configuring Webhook Actions
 
@@ -143,21 +134,43 @@ The webhook payload looks like this:
 
 ```json
 {
-  "id": "rule-id-here",
-  "displayName": "High Temperature Alert",
   "timestamp": "2026-02-16T14:30:00.000Z",
-  "device": {
-    "id": "sensor-device-01",
-    "displayName": "Warehouse Sensor 1",
-    "templateId": "dtmi:myorg:EnvironmentalSensor;1"
-  },
-  "telemetry": {
-    "temperature": 37.2,
-    "humidity": 82.5
+  "action": {
+    "id": "webhook-action-id",
+    "type": "WebhookAction",
+    "rules": [
+      "rule-id-here"
+    ],
+    "displayName": "Temperature Alert Webhook",
+    "url": "https://api.example.com/iot-alerts"
   },
   "application": {
     "id": "your-app-id",
-    "displayName": "Environmental Monitoring"
+    "displayName": "Environmental Monitoring",
+    "subdomain": "environmental-monitoring",
+    "host": "environmental-monitoring.azureiotcentral.com"
+  },
+  "device": {
+    "id": "sensor-device-01",
+    "displayName": "Warehouse Sensor 1",
+    "instanceOf": "dtmi:myorg:EnvironmentalSensor;1",
+    "simulated": false,
+    "provisioned": true,
+    "approved": true,
+    "telemetry": {
+      "sensors": {
+        "temperature": {
+          "value": 37.2
+        },
+        "humidity": {
+          "value": 82.5
+        }
+      }
+    }
+  },
+  "rule": {
+    "id": "rule-id-here",
+    "displayName": "High Temperature Alert"
   }
 }
 ```
@@ -173,7 +186,7 @@ For more sophisticated automation, connect rules to Power Automate flows. This l
 - Update a SharePoint list for tracking
 - Call a custom API with enriched data
 
-In the rule action section, select "Power Automate" and you will be redirected to Power Automate to build a flow triggered by the IoT Central rule.
+In Power Automate, create a flow from the Azure IoT Central V3 connector and choose the "When a rule is fired" trigger. Then select your IoT Central application and the rule that should start the flow.
 
 ## Best Practices for Rule Design
 
@@ -193,9 +206,6 @@ graph TD
     A --> E{Temperature > 40?}
     E -->|Yes| F[Critical Webhook + Email]
     E -->|No| G[No Action]
-    A --> H{No data for 15 min?}
-    H -->|Yes| I[Device Offline Alert]
-    H -->|No| J[No Action]
 ```
 
 **Test rules with simulated data.** Before deploying rules to production, use IoT Central's device simulation feature or send test telemetry from a script to verify that rules fire correctly and emails arrive as expected.
@@ -206,7 +216,7 @@ graph TD
 
 The fastest way to make alerts useless is to send too many of them. If your team gets 50 emails a day from IoT Central, they will start ignoring all of them. Here are strategies to keep alerts actionable:
 
-- Use the minimum cooldown period wisely. The default 5 minutes means you get at most 12 alerts per hour per device per rule. Increase it for non-critical rules.
+- Use action-rate limits and aggregation windows deliberately. Email actions are limited to one alert every minute per rule, while webhook, Power Automate, Logic Apps, and Azure Monitor action group actions are limited to one alert every 10 seconds per action. Aggregation windows also limit how often a rule evaluates aggregated telemetry.
 - Scope rules to specific device groups rather than all devices. Not every device needs every rule.
 - Review and tune thresholds monthly. As you collect more data, you will learn what "normal" looks like for your environment and can tighten or loosen thresholds accordingly.
 
