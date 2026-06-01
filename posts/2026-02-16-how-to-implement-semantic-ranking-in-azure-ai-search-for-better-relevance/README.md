@@ -34,7 +34,7 @@ Note that semantic ranking is billed separately. Check Azure's pricing page for 
 
 ## Step 1: Enable Semantic Ranking on Your Service
 
-First, make sure semantic ranking is enabled at the service level. Go to the Azure portal, open your Azure AI Search resource, and navigate to **Settings > Semantic ranker**. Set it to either the Free plan (limited queries per month) or the Standard plan.
+First, make sure semantic ranking is enabled at the service level. Go to the Azure portal, open your Azure AI Search resource, and navigate to **Settings > Premium features**. Set semantic ranker billing to either the Free plan (limited queries per month) or the Standard plan.
 
 You can also enable it via the Management REST API.
 
@@ -42,7 +42,7 @@ You can also enable it via the Management REST API.
 # Enable semantic ranking on your search service using the Azure CLI
 
 az rest --method PATCH \
-  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Search/searchServices/<service-name>?api-version=2024-06-01-preview" \
+  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Search/searchServices/<service-name>?api-version=2026-03-01-preview" \
   --body '{"properties": {"semanticSearch": "standard"}}'
 ```
 
@@ -52,9 +52,13 @@ A semantic configuration tells the ranker which fields in your index contain the
 
 You define a semantic configuration as part of your index definition.
 
+PUT to update your index definition with a semantic configuration:
+
+```http
+https://<search-service>.search.windows.net/indexes/my-index?api-version=2024-07-01
+```
+
 ```json
-// PUT to update your index definition with a semantic configuration
-// https://<search-service>.search.windows.net/indexes/my-index?api-version=2024-07-01
 {
   "name": "my-index",
   "fields": [
@@ -67,17 +71,14 @@ You define a semantic configuration as part of your index definition.
     "configurations": [
       {
         "name": "my-semantic-config",
-        // Tell the ranker which field is the title
         "prioritizedFields": {
           "titleField": {
             "fieldName": "title"
           },
-          // These fields contain the main content to analyze
-          "contentFields": [
+          "prioritizedContentFields": [
             { "fieldName": "content" }
           ],
-          // Optional keyword fields help with context
-          "keywordsFields": [
+          "prioritizedKeywordsFields": [
             { "fieldName": "category" }
           ]
         }
@@ -93,16 +94,19 @@ You can define multiple semantic configurations on the same index. This is usefu
 
 To use semantic ranking at query time, you add the `queryType` and `semanticConfiguration` parameters to your search request.
 
+POST your query to the search endpoint:
+
+```http
+https://<search-service>.search.windows.net/indexes/my-index/docs/search?api-version=2024-07-01
+```
+
 ```json
-// POST to https://<search-service>.search.windows.net/indexes/my-index/docs/search?api-version=2024-07-01
 {
   "search": "how do I fix a slow database",
   "queryType": "semantic",
   "semanticConfiguration": "my-semantic-config",
-  // Request captions and answers
   "captions": "extractive",
   "answers": "extractive|count-3",
-  // Number of results to consider for re-ranking
   "top": 10
 }
 ```
@@ -183,7 +187,8 @@ Semantic ranking works on top of any filters you apply. Use filters to narrow do
   "semanticConfiguration": "my-semantic-config",
   "filter": "category eq 'database'",
   "captions": "extractive",
-  "answers": "extractive"
+  "answers": "extractive",
+  "top": 10
 }
 ```
 
@@ -205,7 +210,7 @@ Semantic ranking works well alongside other Azure AI Search features:
 
 ## Cost Considerations
 
-Semantic ranking adds a per-query cost on top of your base search service pricing. The free tier gives you 1,000 semantic queries per month, which is fine for development and testing. For production workloads, the standard plan charges per 1,000 queries.
+Semantic ranking adds a per-query cost on top of your base search service pricing. The free semantic ranker plan gives you a monthly free request allowance, which is fine for development and testing. For production workloads, the standard semantic ranker plan charges per 1,000 queries after the free allowance is consumed.
 
 To manage costs:
 - Only enable semantic ranking on queries that need it (not every query benefits from it)
