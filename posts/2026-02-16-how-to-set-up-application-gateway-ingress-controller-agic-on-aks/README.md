@@ -14,7 +14,7 @@ Azure Application Gateway is a Layer 7 load balancer that provides SSL offloadin
 
 AGIC has some advantages over in-cluster ingress controllers:
 
-- **WAF integration**: Application Gateway v2 includes a built-in Web Application Firewall based on OWASP ModSecurity rules.
+- **WAF integration**: Application Gateway WAF_v2 includes a built-in Web Application Firewall with managed rule sets such as OWASP CRS and Microsoft DRS.
 - **Native Azure integration**: TLS certificates from Key Vault, Azure Monitor metrics, and diagnostic logging are built in.
 - **No in-cluster resource usage**: The load balancing happens outside the cluster, so you do not consume pod CPU/memory for traffic handling.
 - **Autoscaling**: Application Gateway v2 scales automatically based on traffic.
@@ -48,11 +48,13 @@ AKS_VNET_RG=$(az aks show \
   --output tsv | cut -d'/' -f5)
 
 # Create a subnet for Application Gateway
-az network vnet subnet create \
+APPGW_SUBNET_ID=$(az network vnet subnet create \
   --resource-group "$AKS_VNET_RG" \
   --vnet-name "$AKS_VNET" \
   --name appgw-subnet \
-  --address-prefixes 10.225.0.0/24
+  --address-prefixes 10.225.0.0/24 \
+  --query id \
+  --output tsv)
 
 # Create a public IP for Application Gateway
 az network public-ip create \
@@ -67,8 +69,7 @@ az network application-gateway create \
   --name myAppGateway \
   --sku Standard_v2 \
   --public-ip-address appgw-public-ip \
-  --vnet-name "$AKS_VNET" \
-  --subnet appgw-subnet \
+  --subnet "$APPGW_SUBNET_ID" \
   --priority 100
 ```
 
@@ -186,7 +187,7 @@ The ADDRESS field should show the Application Gateway's public IP.
 
 ## Step 5: Configure TLS with Application Gateway
 
-AGIC supports TLS termination using Kubernetes secrets or Azure Key Vault references.
+AGIC supports TLS termination using Kubernetes secrets or certificates configured on Application Gateway, including certificates stored in Azure Key Vault.
 
 ### Using a Kubernetes TLS Secret
 
@@ -224,7 +225,7 @@ spec:
 
 ```yaml
 # ingress-kv-tls.yaml
-# Reference a certificate stored in Azure Key Vault
+# Reference a certificate already configured on Application Gateway from Azure Key Vault
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -233,7 +234,7 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: azure/application-gateway
     appgw.ingress.kubernetes.io/ssl-redirect: "true"
-    # Reference to Key Vault certificate
+    # Reference to the Application Gateway SSL certificate name
     appgw.ingress.kubernetes.io/appgw-ssl-certificate: "myapp-cert"
 spec:
   rules:
@@ -262,6 +263,7 @@ az network application-gateway waf-config set \
   --gateway-name myAppGateway \
   --enabled true \
   --firewall-mode Prevention \
+  --rule-set-type OWASP \
   --rule-set-version 3.2
 ```
 
@@ -322,7 +324,7 @@ spec:
 
 ## Step 8: Health Probes
 
-AGIC automatically creates health probes based on your pod readiness probes. You can also customize them with annotations.
+AGIC automatically creates health probes based on your pod readiness or liveness HTTP probes. You can also customize them with annotations.
 
 ```yaml
 # Custom health probe configuration
