@@ -104,11 +104,13 @@ public class ChatHub : Hub
     public async Task LeaveRoom(string roomName)
     {
         string userName;
+        string joinedRoom;
         lock (_lock)
         {
             if (_connectedUsers.TryGetValue(Context.ConnectionId, out var user))
             {
                 userName = user.UserName;
+                joinedRoom = user.Room;
                 _connectedUsers.Remove(Context.ConnectionId);
             }
             else
@@ -117,12 +119,12 @@ public class ChatHub : Hub
             }
         }
 
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomName);
-        await Clients.Group(roomName).SendAsync("userLeft", new
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, joinedRoom);
+        await Clients.Group(joinedRoom).SendAsync("userLeft", new
         {
             userName,
             timestamp = DateTime.UtcNow,
-            activeUsers = GetUsersInRoom(roomName)
+            activeUsers = GetUsersInRoom(joinedRoom)
         });
     }
 
@@ -136,6 +138,11 @@ public class ChatHub : Hub
             {
                 return;
             }
+        }
+
+        if (sender.Room != roomName)
+        {
+            return;
         }
 
         var message = new ChatMessage
@@ -166,6 +173,11 @@ public class ChatHub : Hub
             }
         }
 
+        if (sender.Room != roomName)
+        {
+            return;
+        }
+
         // Send to everyone in the room except the sender
         await Clients.OthersInGroup(roomName).SendAsync("userTyping", new
         {
@@ -185,6 +197,11 @@ public class ChatHub : Hub
             }
         }
 
+        if (sender.Room != roomName)
+        {
+            return;
+        }
+
         await Clients.OthersInGroup(roomName).SendAsync("userTyping", new
         {
             userName = sender.UserName,
@@ -193,7 +210,7 @@ public class ChatHub : Hub
     }
 
     // Handle disconnection (browser close, network drop, etc.)
-    public override async Task OnDisconnectedAsync(Exception exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         UserInfo user;
         lock (_lock)
@@ -483,8 +500,20 @@ function appendMessage(sender, content, timestamp) {
     const time = new Date(timestamp).toLocaleTimeString();
     const div = document.createElement("div");
     div.className = "message";
-    div.innerHTML = '<span class="sender">' + sender + '</span> ' +
-                    '<span class="time">' + time + '</span><br/>' + content;
+
+    const senderSpan = document.createElement("span");
+    senderSpan.className = "sender";
+    senderSpan.textContent = sender;
+
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "time";
+    timeSpan.textContent = " " + time;
+
+    div.appendChild(senderSpan);
+    div.appendChild(timeSpan);
+    div.appendChild(document.createElement("br"));
+    div.appendChild(document.createTextNode(content));
+
     messagesDiv.appendChild(div);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
@@ -500,7 +529,12 @@ function appendSystemMessage(text) {
 
 function updateUserList(users) {
     const usersList = document.getElementById("users");
-    usersList.innerHTML = users.map(u => "<li>" + u + "</li>").join("");
+    usersList.innerHTML = "";
+    users.forEach(user => {
+        const li = document.createElement("li");
+        li.textContent = user;
+        usersList.appendChild(li);
+    });
 }
 ```
 
@@ -510,6 +544,7 @@ Set the Azure SignalR connection string in your app settings:
 
 ```bash
 # Set the connection string (use user secrets for development)
+dotnet user-secrets init
 dotnet user-secrets set "Azure:SignalR:ConnectionString" "Endpoint=https://your-signalr.service.signalr.net;AccessKey=your-key;Version=1.0;"
 
 # Run the application
