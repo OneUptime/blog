@@ -72,7 +72,7 @@ aws vpc-lattice create-service-network \
 
 ## Service Network Auth Policies
 
-Auth policies on the service network act as a coarse-grained access control. They're evaluated before individual service auth policies, so they're your first line of defense.
+Auth policies on the service network act as a coarse-grained access control. They're evaluated together with individual service auth policies, so they're your first line of defense.
 
 Set a service network auth policy:
 
@@ -117,7 +117,7 @@ This policy allows only two specific AWS accounts and restricts access to reques
 
 ## VPC Associations
 
-Each VPC that needs to access services must be associated with the service network. The association includes a security group that controls network-level access.
+Each VPC that needs to access services must be associated with the service network. The association can include a security group that controls which clients in the VPC can access the service network.
 
 Create a security group and associate VPCs:
 
@@ -128,12 +128,12 @@ aws ec2 create-security-group \
   --description "Security group for VPC Lattice production network" \
   --vpc-id vpc-frontend001
 
-# Allow HTTPS outbound to Lattice
-aws ec2 authorize-security-group-egress \
+# Allow clients from the VPC CIDR to reach HTTPS listeners through Lattice
+aws ec2 authorize-security-group-ingress \
   --group-id sg-lattice123 \
   --protocol tcp \
   --port 443 \
-  --cidr-block 169.254.171.0/24
+  --cidr 10.0.0.0/16
 
 # Associate the VPC
 aws vpc-lattice create-service-network-vpc-association \
@@ -142,7 +142,7 @@ aws vpc-lattice create-service-network-vpc-association \
   --security-group-ids sg-lattice123
 ```
 
-The CIDR `169.254.171.0/24` is used by VPC Lattice's data plane. Your security group needs to allow traffic to this range for the association to work.
+If client instance security groups have restrictive outbound rules, allow outbound traffic to the AWS-managed VPC Lattice prefix list for the listener ports and protocols. Avoid hard-coding individual link-local addresses from the prefix list; use the managed prefix list ID for your Region.
 
 ## Cross-Account Sharing with RAM
 
@@ -181,6 +181,9 @@ Parameters:
     AllowedValues: [production, staging, development]
   VpcId:
     Type: AWS::EC2::VPC::Id
+  ClientVpcCidr:
+    Type: String
+    Description: CIDR range for clients that should access the service network
 
 Resources:
   ServiceNetwork:
@@ -197,12 +200,12 @@ Resources:
     Properties:
       GroupDescription: !Sub "VPC Lattice ${EnvironmentName} SG"
       VpcId: !Ref VpcId
-      SecurityGroupEgress:
+      SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIp: 169.254.171.0/24
-          Description: VPC Lattice data plane
+          CidrIp: !Ref ClientVpcCidr
+          Description: Allow clients to access HTTPS services through VPC Lattice
 
   VpcAssociation:
     Type: AWS::VpcLattice::ServiceNetworkVpcAssociation
@@ -238,7 +241,7 @@ Outputs:
 
 ## Access Logging
 
-Enabling access logs on your service network gives you visibility into every request flowing through it. You can send logs to CloudWatch, S3, or Kinesis Data Firehose.
+Enabling access logs on your service network gives you visibility into requests flowing through it. You can send logs to CloudWatch, S3, or Kinesis Data Firehose.
 
 Enable access logging:
 
@@ -254,11 +257,11 @@ aws vpc-lattice create-access-log-subscription \
   --destination-arn arn:aws:s3:::vpc-lattice-logs-bucket
 ```
 
-Access logs include the source VPC, source IP, target service, HTTP status code, latency, and the IAM principal that made the request. This is invaluable for debugging auth issues and understanding traffic patterns.
+Access logs include fields such as the source VPC, source IP and port, target service, HTTP response code, duration, and the resolved IAM principal when authentication is enabled. This is invaluable for debugging auth issues and understanding traffic patterns.
 
 ## DNS Configuration
 
-When you associate a VPC with a service network, VPC Lattice automatically configures Route 53 Resolver rules so that service DNS names resolve to the Lattice data plane endpoint. You don't need to manage any DNS records manually.
+When you associate a VPC with a service network, service DNS names resolve through the VPC DNS resolver to the VPC Lattice endpoint. You don't need to manage DNS records manually for the generated VPC Lattice service names.
 
 However, if you want custom domain names for your services, you can configure them.
 
@@ -277,22 +280,22 @@ You'll need an ACM certificate for the custom domain and a CNAME record pointing
 
 ## Monitoring Service Networks
 
-Track the health of your service network with CloudWatch metrics.
+Track the health of services and target groups in your service network with CloudWatch metrics.
 
 Key metrics to monitor:
 
 ```bash
-# Active connections across the service network
+# Total requests for a service in the service network
 aws cloudwatch get-metric-data \
   --metric-data-queries '[{
-    "Id": "activeConnections",
+    "Id": "totalRequests",
     "MetricStat": {
       "Metric": {
         "Namespace": "AWS/VpcLattice",
-        "MetricName": "ActiveConnectionCount",
+        "MetricName": "TotalRequestCount",
         "Dimensions": [{
-          "Name": "ServiceNetworkId",
-          "Value": "sn-prod123"
+          "Name": "Service",
+          "Value": "svc-0123456789abcdef0"
         }]
       },
       "Period": 300,
