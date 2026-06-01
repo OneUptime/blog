@@ -8,24 +8,24 @@ Description: A practical guide to creating and configuring clusters in Azure Dat
 
 ---
 
-Clusters are the compute backbone of Azure Databricks. Every notebook, job, and query runs on a cluster. Choosing the right cluster configuration directly impacts performance, cost, and reliability. Get it wrong and you will either burn through your budget with oversized clusters or waste hours waiting for undersized ones to finish processing.
+Compute is the backbone of Azure Databricks. Notebooks, jobs, and queries run on compute resources such as all-purpose compute, jobs compute, serverless compute, or SQL warehouses. Choosing the right classic compute configuration directly impacts performance, cost, and reliability. Get it wrong and you will either burn through your budget with oversized clusters or waste hours waiting for undersized ones to finish processing.
 
 In this post, I will walk through creating and configuring clusters in Azure Databricks, explain the key settings and what they mean, and share configurations that work well for different workload types.
 
 ## Cluster Types
 
-Azure Databricks offers two types of clusters:
+For classic Spark compute, Azure Databricks offers two common cluster types:
 
-- **All-Purpose clusters** - interactive clusters for development, exploration, and collaboration. Multiple users can attach notebooks to the same cluster. They stay running until you manually terminate them or they auto-terminate after an idle period.
+- **All-purpose compute** - interactive clusters for development, exploration, and collaboration. Multiple users can attach notebooks to the same cluster. They stay running until you manually terminate them or they auto-terminate after an idle period.
 
-- **Job clusters** - created automatically when a job runs and terminated when the job completes. They are ephemeral and cost-effective for scheduled production workloads.
+- **Jobs compute** - created automatically when a job runs and terminated when the job completes. They are ephemeral and cost-effective for scheduled production workloads.
 
-For development work, you will use all-purpose clusters. For production pipelines, always use job clusters.
+For development work, you will often use all-purpose compute. For production pipelines that need classic Spark clusters, use jobs compute rather than all-purpose compute.
 
-## Step 1: Create an All-Purpose Cluster
+## Step 1: Create All-Purpose Compute
 
 1. In the Azure Databricks workspace, click **Compute** in the left sidebar
-2. Click **Create Cluster**
+2. Click **Create compute**
 3. Give your cluster a descriptive name (e.g., `dev-analytics-team`)
 
 Now configure the settings.
@@ -36,7 +36,7 @@ The runtime version determines which version of Apache Spark, Delta Lake, and ot
 
 - **Standard Runtime** - base Spark + Delta Lake
 - **ML Runtime** - adds machine learning libraries (PyTorch, TensorFlow, scikit-learn, MLflow)
-- **Photon Runtime** - adds Photon, a C++ query engine that accelerates Spark SQL and DataFrame operations
+- **Photon** - a vectorized query engine that accelerates Spark SQL and DataFrame operations. For all-purpose and jobs compute, enable it with the **Use Photon Acceleration** checkbox or the `runtime_engine` API field.
 
 For general data engineering, use the latest LTS (Long Term Support) standard runtime. For ML workloads, use the ML runtime. For SQL-heavy workloads, consider Photon.
 
@@ -126,19 +126,20 @@ Init scripts run when a cluster starts, before any user code. They are useful fo
 apt-get update && apt-get install -y jq
 ```
 
-Store init scripts in DBFS or a cloud storage location and reference them in the cluster configuration.
+Store init scripts in Unity Catalog volumes, workspace files, or a cloud storage location and reference them in the cluster configuration. Avoid storing init scripts in the DBFS root, which is deprecated.
 
 ### Cluster Policies
 
 Cluster policies let administrators define constraints on cluster configurations. This prevents users from creating overly expensive clusters.
 
+Cluster policy example - limit max workers and node types:
+
 ```json
-// Cluster policy example - limit max workers and node types
 {
   "spark_version": {
     "type": "regex",
-    "pattern": "14\\..*",
-    "defaultValue": "14.3.x-scala2.12"
+    "pattern": "17\\..*",
+    "defaultValue": "17.3.x-scala2.13"
   },
   "node_type_id": {
     "type": "allowlist",
@@ -163,13 +164,15 @@ Cluster policies let administrators define constraints on cluster configurations
 
 Job clusters are defined as part of a job configuration, not created separately. Here is what the configuration looks like.
 
+Job cluster configuration for a production ETL job:
+
 ```json
-// Job cluster configuration for a production ETL job
 {
   "new_cluster": {
-    "spark_version": "14.3.x-scala2.12",
+    "spark_version": "17.3.x-scala2.13",
     "node_type_id": "Standard_DS4_v2",
     "num_workers": 4,
+    "runtime_engine": "PHOTON",
     "spark_conf": {
       "spark.sql.adaptive.enabled": "true",
       "spark.sql.shuffle.partitions": "200",
@@ -177,10 +180,9 @@ Job clusters are defined as part of a job configuration, not created separately.
     },
     "azure_attributes": {
       "first_on_demand": 1,
-      "availability": "ON_DEMAND_AZURE",
+      "availability": "SPOT_WITH_FALLBACK_AZURE",
       "spot_bid_max_price": -1
     },
-    // Use spot instances for cost savings
     "policy_id": "<cluster-policy-id>"
   }
 }
@@ -208,7 +210,7 @@ Here are some configurations I have used in production.
 ### Small Development Cluster
 
 ```text
-Runtime: 14.3.x LTS
+Runtime: 17.3.x LTS
 Driver: Standard_DS3_v2 (14 GB, 4 cores)
 Workers: 1-2, Standard_DS3_v2
 Auto-terminate: 30 minutes
@@ -218,7 +220,7 @@ Spot instances: All workers
 ### Medium ETL Cluster
 
 ```text
-Runtime: 14.3.x LTS with Photon
+Runtime: 17.3.x LTS with Photon
 Driver: Standard_DS4_v2 (28 GB, 8 cores)
 Workers: 2-8, Standard_DS4_v2
 Auto-terminate: 60 minutes (if interactive)
@@ -228,7 +230,7 @@ Spot instances: Workers only
 ### Large ML Training Cluster
 
 ```text
-Runtime: 14.3.x ML
+Runtime: 17.3.x ML
 Driver: Standard_E8s_v3 (64 GB, 8 cores)
 Workers: 4-16, Standard_E8s_v3
 Auto-terminate: 120 minutes
@@ -239,11 +241,11 @@ Spot instances: Workers only (training can tolerate restarts with checkpointing)
 
 Track cluster costs and utilization to optimize your spending.
 
-1. **Cluster metrics** - in the Databricks workspace, click on a running cluster to see CPU, memory, and disk usage
-2. **Ganglia UI** - available on running clusters for detailed resource monitoring
+1. **Compute metrics** - in the Databricks workspace, click on a running compute resource and open the **Metrics** tab to see CPU, memory, disk, Spark, and GPU metrics where available
+2. **System tables** - use compute system tables such as `system.compute.clusters` and `system.compute.node_timeline` for account-level usage and utilization analysis
 3. **Azure Cost Management** - track Databricks spending at the subscription level
 4. **Cluster tags** - add tags like `team`, `project`, and `environment` to clusters for cost allocation
 
 ## Wrapping Up
 
-Cluster configuration in Azure Databricks is about matching compute resources to your workload requirements while keeping costs under control. Use all-purpose clusters with autoscaling and auto-termination for development. Use job clusters with spot instances for production workloads. Apply cluster policies to enforce guardrails across your team. And monitor utilization to continuously right-size your clusters. Getting this right from the start saves both time and money as your Databricks usage grows.
+Cluster configuration in Azure Databricks is about matching compute resources to your workload requirements while keeping costs under control. Use all-purpose compute with autoscaling and auto-termination for development. Use jobs compute with spot instances for production workloads that need classic Spark clusters. Apply cluster policies to enforce guardrails across your team. And monitor utilization to continuously right-size your clusters. Getting this right from the start saves both time and money as your Databricks usage grows.
