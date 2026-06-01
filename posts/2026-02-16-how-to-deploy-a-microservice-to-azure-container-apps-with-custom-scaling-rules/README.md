@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Container Apps, Microservice, Scaling, Cloud, DevOps, Serverless
 
-Description: Learn how to deploy a microservice to Azure Container Apps and configure custom scaling rules based on HTTP traffic, CPU, and external metrics.
+Description: Learn how to deploy a microservice to Azure Container Apps and configure custom scaling rules based on HTTP traffic and queue metrics.
 
 ---
 
@@ -15,7 +15,7 @@ Azure Container Apps is a fully managed serverless container platform that lets 
 Before you start, make sure you have the following ready:
 
 - An Azure subscription
-- Azure CLI installed (version 2.45 or later)
+- Azure CLI installed
 - A container image pushed to Azure Container Registry (ACR) or Docker Hub
 - Basic familiarity with the command line
 
@@ -80,11 +80,20 @@ With this rule, if there are 200 concurrent requests, the platform will scale to
 
 HTTP scaling is great, but many microservices process work from queues. Azure Container Apps supports KEDA scalers, which means you can scale based on Azure Storage Queue length, Service Bus queue depth, and many other triggers.
 
-Here is an example using an Azure Storage Queue scaler. The container app will create new replicas when the queue length exceeds 5 messages per replica.
+Here is an example using an Azure Storage Queue scaler. The rule uses a target of 5 messages per replica.
 
 ```json
 {
   "properties": {
+    "configuration": {
+      "activeRevisionsMode": "single",
+      "secrets": [
+        {
+          "name": "storage-connection",
+          "value": "<AZURE_STORAGE_CONNECTION_STRING>"
+        }
+      ]
+    },
     "template": {
       "scale": {
         "minReplicas": 0,
@@ -123,6 +132,15 @@ You are not limited to a single scaling rule. You can combine HTTP and custom sc
 ```json
 {
   "properties": {
+    "configuration": {
+      "activeRevisionsMode": "single",
+      "secrets": [
+        {
+          "name": "storage-connection",
+          "value": "<AZURE_STORAGE_CONNECTION_STRING>"
+        }
+      ]
+    },
     "template": {
       "scale": {
         "minReplicas": 1,
@@ -174,8 +192,7 @@ After deploying, you can check the current replica count and revision status.
 # Check the current replica count
 az containerapp replica list \
   --name order-service \
-  --resource-group my-rg \
-  --revision order-service--revision-name
+  --resource-group my-rg
 
 # View the scaling configuration
 az containerapp show \
@@ -194,9 +211,9 @@ Here are some patterns I have found useful in production:
 
 **Fixed minimum for APIs:** For user-facing APIs, keep `minReplicas` at 1 or higher. Cold starts from zero can add noticeable latency (a few seconds depending on image size).
 
-**Aggressive scaling for batch processing:** If your workload is bursty, lower the `queueLength` threshold. Setting it to 1 means each message gets its own replica, which is great for CPU-heavy tasks.
+**Aggressive scaling for batch processing:** If your workload is bursty, lower the `queueLength` threshold. Setting it to 1 targets roughly one replica per queued message, up to `maxReplicas`, which can be useful for CPU-heavy tasks.
 
-**Conservative scaling for stateful services:** If your service holds in-memory state or connections, increase the stabilization window by setting higher thresholds so replicas are not churned frequently.
+**Conservative scaling for stateful services:** If your service holds in-memory state or connections, use higher thresholds and keep enough minimum replicas running so replicas are not churned frequently.
 
 ## Troubleshooting
 
