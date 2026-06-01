@@ -8,11 +8,11 @@ Description: Practical guide to implementing Calico network policies on AKS to r
 
 ---
 
-By default, every pod in a Kubernetes cluster can talk to every other pod. There are no firewalls between namespaces, no access controls between services. A compromised pod can reach the database, the secrets store, and every other service in the cluster. Network policies fix this by acting as firewalls at the pod level, and Calico is the most capable network policy engine available for AKS.
+By default, every pod in a Kubernetes cluster can talk to every other pod. There are no firewalls between namespaces, no access controls between services. A compromised pod can reach the database, the secrets store, and every other service in the cluster. Network policies fix this by acting as firewalls at the pod level, and Calico is a capable network policy engine available for AKS.
 
-## Why Calico Over Azure Network Policies
+## Network Policy Options on AKS
 
-AKS supports two network policy engines: Azure Network Policies and Calico. Azure Network Policies handle basic ingress rules but have significant limitations - they do not support egress policies, deny rules, or policy ordering. Calico supports all of these plus global policies, DNS-based rules, and rich label selectors. For any serious network segmentation, Calico is the better choice.
+AKS supports multiple network policy engines, including Azure Network Policies, Calico, and Azure CNI powered by Cilium. Azure Network Policies and Kubernetes NetworkPolicy resources support standard ingress and egress allow rules, but Kubernetes NetworkPolicy does not support explicit deny rules or policy ordering. Calico also has its own extended policy resources for features such as policy ordering and global policies, although this guide sticks to the standard Kubernetes NetworkPolicy API supported by AKS.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ AKS supports two network policy engines: Azure Network Policies and Calico. Azur
 - kubectl configured for the cluster
 - Understanding of Kubernetes labels and selectors
 
-If your cluster was not created with Calico, you can enable it during cluster creation.
+You can enable Calico during cluster creation.
 
 ```bash
 # Create an AKS cluster with Calico network policy
@@ -34,7 +34,7 @@ az aks create \
   --generate-ssh-keys
 ```
 
-Note: You cannot switch an existing cluster from Azure network policy to Calico. If you need Calico, you must create a new cluster or recreate the cluster with the Calico policy engine.
+Note: AKS also supports changing the network policy engine on an existing cluster by using `az aks update --network-policy`. Review the current AKS networking requirements and limitations before changing an existing production cluster.
 
 ## Understanding Network Policy Basics
 
@@ -102,8 +102,11 @@ spec:
         tier: backend
     spec:
       containers:
-      - name: nginx
-        image: nginx:1.25
+      - name: backend
+        image: hashicorp/http-echo:1.0
+        args:
+        - "-listen=:8080"
+        - "-text=backend"
         ports:
         - containerPort: 8080
 ---
@@ -197,7 +200,8 @@ The empty `podSelector: {}` selects all pods in the namespace. After applying th
 kubectl apply -f default-deny.yaml
 
 # Test - this should fail now
-kubectl exec -n app deployment/frontend -- curl -s --max-time 3 http://backend:8080
+kubectl run frontend-test -n app --rm -it --image=curlimages/curl --labels=app=frontend --restart=Never -- \
+  curl -s --max-time 3 http://backend:8080
 ```
 
 ## Step 3: Allow DNS Resolution
@@ -337,14 +341,17 @@ Test that the allowed paths work and the denied paths are blocked.
 
 ```bash
 # Frontend to backend should work
-kubectl exec -n app deployment/frontend -- curl -s --max-time 3 http://backend:8080
+kubectl run frontend-test -n app --rm -it --image=curlimages/curl --labels=app=frontend --restart=Never -- \
+  curl -s --max-time 3 http://backend:8080
 
 # Frontend to database should be blocked
-kubectl exec -n app deployment/frontend -- curl -s --max-time 3 http://database:5432
+kubectl run frontend-test -n app --rm -it --image=curlimages/curl --labels=app=frontend --restart=Never -- \
+  curl -s --max-time 3 http://database:5432
 # This should time out
 
 # Backend to database should work
-kubectl exec -n app deployment/backend -- curl -s --max-time 3 http://database:5432
+kubectl run backend-test -n app --rm -it --image=postgres:15 --labels=app=backend --restart=Never -- \
+  pg_isready -h database -p 5432
 
 # Any pod from another namespace should be blocked
 kubectl run test --rm -it --image=curlimages/curl -n default -- \
