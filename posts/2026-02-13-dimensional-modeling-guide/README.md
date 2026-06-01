@@ -68,10 +68,10 @@ erDiagram
         string store_type
     }
 
-    FACT_SALES ||--o{ DIM_DATE : "date_key"
-    FACT_SALES ||--o{ DIM_PRODUCT : "product_key"
-    FACT_SALES ||--o{ DIM_CUSTOMER : "customer_key"
-    FACT_SALES ||--o{ DIM_STORE : "store_key"
+    DIM_DATE ||--o{ FACT_SALES : "date_key"
+    DIM_PRODUCT ||--o{ FACT_SALES : "product_key"
+    DIM_CUSTOMER ||--o{ FACT_SALES : "customer_key"
+    DIM_STORE ||--o{ FACT_SALES : "store_key"
 ```
 
 This is a star schema. The fact table sits in the center, connected to dimension tables through foreign keys. It is called a "star" because the diagram looks like one.
@@ -102,9 +102,9 @@ erDiagram
         string category_name
     }
 
-    FACT_SALES ||--o{ DIM_PRODUCT : "product_key"
-    DIM_PRODUCT ||--o{ DIM_SUBCATEGORY : "subcategory_key"
-    DIM_SUBCATEGORY ||--o{ DIM_CATEGORY : "category_key"
+    DIM_PRODUCT ||--o{ FACT_SALES : "product_key"
+    DIM_SUBCATEGORY ||--o{ DIM_PRODUCT : "subcategory_key"
+    DIM_CATEGORY ||--o{ DIM_SUBCATEGORY : "category_key"
 ```
 
 Snowflake schemas save storage by eliminating repeated strings, but they require more joins at query time. In a modern columnar data warehouse (BigQuery, Snowflake, Redshift), the storage savings are negligible because compression handles repeated values efficiently. The additional joins, however, make queries more complex and can hurt performance.
@@ -115,7 +115,7 @@ Snowflake schemas save storage by eliminating repeated strings, but they require
 
 Every warehouse needs a date dimension. It seems redundant (why not just use a date column?), but a proper date dimension makes queries far more convenient.
 
-This SQL creates a date dimension table with fiscal calendar, holiday flags, and common grouping columns pre-computed.
+This Snowflake SQL creates a date dimension table with fiscal calendar, weekend flags, and common grouping columns pre-computed.
 
 ```sql
 -- Create and populate a date dimension for calendar years 2020-2030
@@ -123,7 +123,7 @@ CREATE TABLE dim_date AS
 WITH date_spine AS (
     SELECT
         dateadd(day, seq4(), '2020-01-01'::date) AS full_date
-    FROM table(generator(rowcount => 4018))
+    FROM table(generator(rowcount => 4016))
 )
 SELECT
     -- Surrogate key in YYYYMMDD format for easy filtering
@@ -133,13 +133,13 @@ SELECT
     extract(quarter FROM full_date)               AS quarter,
     extract(month FROM full_date)                 AS month,
     extract(day FROM full_date)                   AS day_of_month,
-    extract(dayofweek FROM full_date)             AS day_of_week,
+    extract(dayofweekiso FROM full_date)          AS day_of_week,
     to_char(full_date, 'YYYY-Q')                  AS year_quarter,
     to_char(full_date, 'YYYY-MM')                 AS year_month,
     to_char(full_date, 'Day')                     AS day_name,
     to_char(full_date, 'Month')                   AS month_name,
     CASE
-        WHEN extract(dayofweek FROM full_date) IN (0, 6) THEN TRUE
+        WHEN extract(dayofweekiso FROM full_date) IN (6, 7) THEN TRUE
         ELSE FALSE
     END                                           AS is_weekend,
     -- Fiscal calendar (assuming fiscal year starts in April)
@@ -272,7 +272,7 @@ VALUES (next_surrogate_key(), 42, 'Jane Smith',
         'San Francisco', 'CA', current_date, '9999-12-31', TRUE);
 ```
 
-Type 2 preserves full history. A sale from 2024 correctly associates with the customer's 2024 address, even though they moved in 2025. The trade-off is dimension table growth: every change creates a new row.
+Type 2 preserves full history. When the fact table stores the version's surrogate key, a sale from 2024 correctly associates with the customer's 2024 address, even though they moved in 2025. The trade-off is dimension table growth: every change creates a new row.
 
 ### Type 3: Track Limited History with New Columns
 
@@ -317,7 +317,7 @@ Always include the natural key in the dimension table so you can trace back to t
 
 ## Practical Tips
 
-**Keep fact tables narrow.** Only store foreign keys and additive measures. Do not denormalize dimension attributes into the fact table. It seems like it would be faster, but it makes updates painful and bloats the table.
+**Keep fact tables narrow.** Store foreign keys, degenerate identifiers when needed, and measures at the declared grain. Do not denormalize dimension attributes into the fact table. It seems like it would be faster, but it makes updates painful and bloats the table.
 
 **Make dimensions wide.** Put every useful attribute in the dimension. Adding a column to a dimension is cheap. Users should be able to filter and group by any attribute without writing subqueries.
 
