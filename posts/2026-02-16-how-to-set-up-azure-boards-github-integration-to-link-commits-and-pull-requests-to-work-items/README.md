@@ -10,7 +10,7 @@ Description: Learn how to connect Azure Boards to GitHub repositories so that co
 
 Many teams use Azure Boards for project management but keep their code on GitHub. This split creates a traceability gap. Product managers track work in Azure Boards, developers write code on GitHub, and connecting the two requires manual effort that nobody remembers to do. The Azure Boards GitHub integration closes this gap by automatically linking GitHub commits, pull requests, and branches to Azure Boards work items.
 
-Once configured, a developer mentions a work item ID in a commit message or PR title, and Azure Boards creates a link between them. You can see which commits belong to which work item, which PRs resolved which bugs, and which deployments shipped which features. This is the kind of traceability that auditors love and that actually helps teams understand what shipped.
+Once configured, a developer mentions a work item ID in a commit message or PR description, and Azure Boards creates a link between them. You can see which commits belong to which work item, which PRs resolved which bugs, and which deployments shipped which features. This is the kind of traceability that auditors love and that actually helps teams understand what shipped.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ The integration works through a GitHub app, not OAuth tokens or webhooks. This i
 
 Go to the GitHub Marketplace and search for "Azure Boards." Click Install, then choose whether to install it for all repositories or select specific ones. You will be redirected to Azure DevOps to complete the connection.
 
-Alternatively, you can start from Azure DevOps. Go to your project settings, navigate to Boards, then GitHub connections. Click "Connect your GitHub account" and follow the authorization flow.
+Alternatively, you can start from Azure DevOps. Go to your project settings, then GitHub connections. Click "Connect your GitHub account" and follow the authorization flow.
 
 ```mermaid
 graph TD
@@ -42,7 +42,7 @@ graph TD
 
 After installing the GitHub app, you need to connect specific repositories to your Azure DevOps project.
 
-In Azure DevOps, go to Project Settings, then Boards, then GitHub connections. You should see the GitHub account or organization you authorized. Select "Add repositories" and pick the repos you want to connect.
+In Azure DevOps, go to Project Settings, then GitHub connections. You should see the GitHub account or organization you authorized. Select "Add repositories" and pick the repos you want to connect.
 
 Each connected repository will show up in the list with its connection status. You can add or remove repositories at any time without affecting existing links.
 
@@ -69,11 +69,11 @@ When GitHub processes this commit, the Azure Boards integration picks up the `AB
 
 ## Linking Pull Requests to Work Items
 
-Pull requests work the same way. Include `AB#<id>` in the PR title or description, and the integration creates a link.
+Pull requests work the same way, but the work item reference must be in the PR description. Include `AB#<id>` in the PR description, and the integration creates a link.
 
 ```markdown
 ## Pull Request Title
-Fix authentication timeout issue AB#1234
+Fix authentication timeout issue
 
 ## Pull Request Description
 This PR resolves the authentication timeout that users experience when
@@ -89,23 +89,23 @@ Related work items:
 - Added retry logic for failed authentication calls
 ```
 
-The work item in Azure Boards will show the PR status (open, merged, closed) and update automatically as the PR progresses through its lifecycle.
+The work item in Azure Boards will show the linked PR and status details, and those details update automatically as the PR progresses through its lifecycle.
 
 ## Automating Work Item State Changes
 
-One of the most powerful features is automatically transitioning work items based on PR activity. You can configure Azure Boards to move a work item to a specific state when a linked PR is merged.
+One of the most powerful features is automatically completing work items based on PR activity. When you complete a linked PR, Azure Boards can complete the associated work items or move them to a specific workflow state.
 
-In your Azure Boards project settings, go to Board Settings, then configure the column-to-state mapping. For example, you might set up the following transitions:
+When completing the PR, select "Complete linked work items after merging" to let Azure Boards move linked work items to the appropriate completed state. If you need a specific workflow state, put the state name before the work item reference in the PR description. For example:
 
-- When a PR is created that references a work item, move it to "In Review"
-- When the PR is merged, move it to "Done"
-- When the PR is closed without merging, move it back to "Active"
+- `Resolved AB#1234`
+- `Closed AB#1234`
+- `Review AB#1234`
 
-This is configured at the board level. Navigate to your board, click the gear icon, and configure the "Auto-complete work items with PR" settings.
+Automatic completion depends on the work item workflow and repository settings. If the work item is already complete, workflow rules block the transition, or commit mention work item resolution is disabled for the repository, Azure Boards will not update the state.
 
 ## Branch Naming with Work Item References
 
-Some teams adopt a branch naming convention that includes the work item ID. While this does not automatically create links (the integration relies on commit and PR content), it helps with organization.
+Some teams adopt a branch naming convention that includes the work item ID. Azure Boards can create and link a GitHub branch directly from a work item, and pull requests created from linked branches update the work item's Development section. Even when you create branches manually, including the work item ID still helps with organization.
 
 ```bash
 # Create a branch with the work item ID in the name
@@ -115,13 +115,13 @@ git checkout -b feature/AB1234-add-user-search
 git checkout -b users/nawazdhandala/AB1234-authentication-fix
 ```
 
-You can then configure branch policies in your GitHub repository to require that branch names match a pattern that includes a work item reference.
+You can then configure branch rulesets in your GitHub repository to require that branch names match a pattern that includes a work item reference.
 
 ## Querying Linked Items
 
 Once you have links established, you can query them in Azure Boards to see the development status of your work items.
 
-In Azure Boards, create a query with the "Development" link type. This lets you find work items that have (or lack) linked commits, PRs, or branches.
+In Azure Boards, use link-count fields such as "External Link Count" or "Remote Link Count" to find work items that have or lack development links. For more detailed link analysis, create a "Work items and direct links" query or use the REST API.
 
 ```text
 Query: Work items with linked PRs
@@ -129,7 +129,7 @@ Type: Flat list of work items
 Filters:
   - Work Item Type = User Story
   - State = Active
-  - Development Link = Pull Request (exists)
+  - External Link Count > 0
 ```
 
 You can also use the Azure DevOps REST API to query development links programmatically.
@@ -157,7 +157,7 @@ for rel in data.get('relations', []):
 
 ## Setting Up Status Badges
 
-You can add Azure Boards status badges to your GitHub repository README to show the status of work items or sprints.
+You can add Azure Boards status badges to your GitHub repository README to show the status of board columns.
 
 ```markdown
 <!-- Add to your GitHub repository README.md -->
@@ -181,7 +181,7 @@ For permission issues, verify that the Azure Boards app has access to the specif
 
 ## Best Practices for the Integration
 
-Establish a team convention for work item references. The simplest approach is to always include the work item ID in the PR title. This is visible in the GitHub PR list and makes it easy to find the associated work item.
+Establish a team convention for work item references. The simplest approach is to always include the work item ID in the PR description. You can also include it in the PR title for human scanning, but Azure Boards creates the work item link from the PR description.
 
 Use the integration as your traceability backbone. When someone asks "what went into this release," you can answer by querying Azure Boards for all work items completed in the sprint, then following the development links to see every commit and PR.
 
