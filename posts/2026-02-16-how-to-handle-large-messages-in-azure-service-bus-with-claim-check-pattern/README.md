@@ -8,7 +8,7 @@ Description: Learn how to handle messages that exceed Azure Service Bus size lim
 
 ---
 
-Azure Service Bus has a message size limit. On the Standard tier, it is 256 KB. On the Premium tier, it can go up to 100 MB. But even 100 MB is not enough for some workloads - think PDF processing pipelines, image analysis services, or batch data transfers. The claim check pattern solves this problem elegantly without bending the messaging infrastructure in ways it was not designed for.
+Azure Service Bus has a message size limit. On the Standard tier, it is 256 KB. On the Premium tier, a single AMQP message can go up to 100 MB when the entity is configured for larger messages. But even 100 MB is not enough for some workloads - think PDF processing pipelines, image analysis services, or batch data transfers. The claim check pattern solves this problem elegantly without bending the messaging infrastructure in ways it was not designed for.
 
 ## What Is the Claim Check Pattern?
 
@@ -50,6 +50,7 @@ You need a Service Bus namespace, a queue (or topic), and a Blob Storage account
 ```bicep
 // Bicep template for the claim check infrastructure
 param location string = resourceGroup().location
+param serviceBusNamespaceName string = 'sb-claimcheck-${uniqueString(resourceGroup().id)}'
 
 // Storage account for large payloads
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
@@ -68,14 +69,14 @@ resource blobContainer 'Microsoft.Storage/storageAccounts/blobServices/container
 }
 
 // Service Bus namespace
-resource sbNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
-  name: 'sb-claimcheck-demo'
+resource sbNamespace 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
+  name: serviceBusNamespaceName
   location: location
   sku: { name: 'Standard', tier: 'Standard' }
 }
 
 // Queue for claim check messages
-resource queue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
+resource queue 'Microsoft.ServiceBus/namespaces/queues@2024-01-01' = {
   parent: sbNamespace
   name: 'documents'
   properties: {
@@ -262,6 +263,8 @@ Blob cleanup is the trickiest part of this pattern. If the consumer deletes the 
 Instead of giving consumers full access to your storage account, generate a SAS token scoped to just the specific blob. Include it in the claim check message so the consumer can download without needing storage account credentials.
 
 ```csharp
+using Azure.Storage.Sas;
+
 // Generate a SAS token that only allows reading this specific blob
 var sasBuilder = new BlobSasBuilder
 {
