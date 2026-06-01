@@ -36,7 +36,7 @@ kendra = boto3.client('kendra', region_name='us-east-1')
 response = kendra.create_index(
     Name='company-knowledge-base',
     RoleArn='arn:aws:iam::YOUR_ACCOUNT_ID:role/KendraIndexRole',
-    Edition='DEVELOPER_EDITION',  # Use ENTERPRISE_EDITION for production
+    Edition='DEVELOPER_EDITION',  # Use GEN_AI_ENTERPRISE_EDITION or ENTERPRISE_EDITION for production
     Description='Internal company knowledge base search'
 )
 
@@ -44,10 +44,11 @@ index_id = response['Id']
 print(f"Index ID: {index_id}")
 ```
 
-There are two editions:
+There are three index types:
 
 - **Developer Edition** - Up to 10,000 documents, good for testing and small deployments
-- **Enterprise Edition** - Up to 500,000 documents, higher availability, and more capacity
+- **Enterprise Edition** - Starts with capacity for up to 100,000 documents, supports additional capacity units, and is suitable for production workloads
+- **GenAI Enterprise Edition** - Starts with capacity for up to 20,000 documents and uses newer retrieval models for generative AI and RAG use cases
 
 The index takes about 15-30 minutes to become active:
 
@@ -137,7 +138,7 @@ faq_response = kendra.create_faq(
         'Key': 'faq/company-faq.csv'
     },
     RoleArn='arn:aws:iam::YOUR_ACCOUNT_ID:role/KendraS3DataSourceRole',
-    FileFormat='CSV'
+    FileFormat='CSV_WITH_HEADER'
 )
 ```
 
@@ -178,6 +179,8 @@ You can filter results based on document attributes:
 
 ```python
 # Query with attribute filters to narrow results
+from datetime import datetime, timezone
+
 response = kendra.query(
     IndexId=index_id,
     QueryText='security best practices',
@@ -192,7 +195,7 @@ response = kendra.query(
             {
                 'GreaterThan': {
                     'Key': '_last_updated_at',
-                    'Value': {'DateValue': '2025-01-01T00:00:00Z'}
+                    'Value': {'DateValue': datetime(2025, 1, 1, tzinfo=timezone.utc)}
                 }
             }
         ]
@@ -272,7 +275,6 @@ kendra.update_index(
             'Type': 'DATE_VALUE',
             'Relevance': {
                 'Freshness': True,  # Boost newer documents
-                'RankOrder': 'DESCENDING',
                 'Duration': '2592000s'  # 30-day freshness window
             }
         }
@@ -327,7 +329,7 @@ Kendra is not cheap. Developer Edition starts around $800/month and Enterprise E
 
 - `IndexQueryCount` - Number of queries
 - `DocumentsIndexed` - Total documents in the index
-- `DataSourceSyncJobsSucceeded/Failed` - Sync job health
+- `DocumentsSubmittedForIndexing` and `DocumentsSubmittedForIndexingFailed` - Sync job indexing health
 
 For your overall AWS monitoring needs, including Kendra and every other service, consider a unified observability platform. Check out how [Amazon DevOps Guru can surface operational insights](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view) across your infrastructure.
 
