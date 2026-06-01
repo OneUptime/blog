@@ -8,7 +8,7 @@ Description: Learn practical techniques to optimize KQL query performance and co
 
 ---
 
-Azure Data Explorer can scan billions of rows in seconds, but that does not mean every query will be fast by default. Poorly written queries, missing indexes, suboptimal table designs, and incorrect caching policies can turn a sub-second query into one that takes minutes. The good news is that ADX provides excellent diagnostics and a set of straightforward optimization techniques that can dramatically improve performance.
+Azure Data Explorer can scan billions of rows in seconds, but that does not mean every query will be fast by default. Poorly written queries, inefficient use of indexes, suboptimal table designs, and incorrect caching policies can turn a sub-second query into one that takes minutes. The good news is that ADX provides excellent diagnostics and a set of straightforward optimization techniques that can dramatically improve performance.
 
 In this post, we will cover the most impactful query optimization techniques, caching and retention configuration, table partitioning, materialized views, and diagnostic tools for identifying slow queries.
 
@@ -18,9 +18,9 @@ To optimize queries, it helps to understand how ADX stores data:
 
 - Data is stored in **extents** (also called data shards), which are columnar storage units
 - Each extent contains data for all columns, compressed and indexed
-- Extents have **metadata** including min/max values for each column, which enables extent pruning
+- Extents have **metadata** including creation time and optional tags, which helps ADX manage caching, retention, and extent operations
 - **Hot cache** keeps data on local SSD for fast access
-- **Cold storage** keeps data in Azure Blob Storage (slower to query)
+- **Cold storage** keeps data in reliable storage such as Azure Blob Storage (slower to query)
 
 Query performance depends on two main factors: how much data the query needs to scan and how quickly it can read that data.
 
@@ -62,7 +62,7 @@ AppLogs
 | extend CumulativeSizeGB = round(CumulativeSize / 1073741824.0, 2)
 ```
 
-If 95% of your queries look at the last 7 days and that data is 500GB, make sure your cluster has at least 500GB of SSD cache across all nodes and set the hot cache to 7 days.
+If 95% of your queries look at the last 7 days and that data is 500GB, make sure your cluster has enough SSD cache capacity across all nodes, with headroom for ADX's cache management, and set the hot cache to 7 days.
 
 ## Query Optimization Techniques
 
@@ -87,7 +87,7 @@ AppLogs
 | where Hour between(9 .. 17)
 ```
 
-Time-based filters are especially important because ADX orders extents by ingestion time, so a time filter can skip entire extents without reading them.
+Time-based filters are especially important because ADX tracks extent creation time and uses it for caching and retention decisions. If your table's time column aligns with ingestion time, time filters can significantly reduce the amount of data that must be scanned.
 
 ### 2. Use has Instead of contains for String Matching
 
@@ -139,7 +139,7 @@ AppLogs
     by Service
 
 // Better: only compute expensive aggregations when needed
-// Use hll for approximate distinct counts if exact is not required
+// dcount() is already approximate; use count_distinct() only when exact counts are required
 AppLogs
 | where Timestamp > ago(24h)
 | summarize
@@ -199,41 +199,44 @@ Materialized views are especially valuable for dashboard queries that run every 
 
 ```kql
 // Check the lag of materialized views
-.show materialized-view HourlyServiceErrors extents
-| summarize MaxIngestionTime = max(MaxCreatedOn)
-| extend Lag = now() - MaxIngestionTime
+.show materialized-view HourlyServiceErrors
+| project Name, MaterializedTo, LastRun, LastRunResult, IsHealthy, Lag = now() - MaterializedTo
 
-// Show materialized view statistics
-.show materialized-view HourlyServiceErrors statistics
+// Show detailed materialized view properties
+.show materialized-view HourlyServiceErrors details
 ```
 
 ## Table Partitioning
 
 For very large tables, partitioning can improve query performance by enabling data to be physically organized by a query-relevant column:
 
-```kql
+````kql
 // Create a partition policy on the Service column
 // This physically groups data by service, making service-filtered queries faster
-.alter table AppLogs policy partitioning @'{'
-'  "partitionBy": ['
-'    {'
-'      "column": "Service",'
-'      "kind": "Hash",'
-'      "properties": {'
-'        "function": "XxHash64",'
-'        "maxPartitionCount": 64,'
-'        "seed": 1'
-'      }'
-'    }'
-'  ],'
-'  "effectiveDateTime": "2026-02-16"'
-'}'
+.alter table AppLogs policy partitioning
 ```
+{
+  "PartitionKeys": [
+    {
+      "ColumnName": "Service",
+      "Kind": "Hash",
+      "Properties": {
+        "Function": "XxHash64",
+        "MaxPartitionCount": 128,
+        "Seed": 1,
+        "PartitionAssignmentMode": "Uniform"
+      }
+    }
+  ],
+  "EffectiveDateTime": "2026-02-16T00:00:00Z"
+}
+```
+````
 
 Partitioning is most beneficial when:
-- You frequently filter by a specific column (like Service or Region)
+- Most queries use equality filters, joins, or aggregations on a specific string or GUID column (like Service or Region)
 - The table is very large (billions of rows)
-- The column has moderate cardinality (tens to hundreds of values)
+- The column has high cardinality and the table is under heavy concurrent query load
 
 ## Query Diagnostics
 
@@ -247,22 +250,20 @@ ADX captures detailed statistics for every query. Use them to identify slow quer
 | where StartedOn > ago(24h)
 | where State == "Completed"
 | where Duration > 10s
-| project StartedOn, Duration, User, Text, TotalCPU, MemoryPeak
+| project StartedOn, Duration, User, Text, TotalCpu, MemoryPeak
 | sort by Duration desc
 | take 20
 ```
 
-### Explain and Profile
+### Query Statistics
 
-Use `explain` to see the query plan without executing the query:
+After running a query in the Azure Data Explorer web UI, review the query statistics such as duration, CPU, memory usage, and data scanned:
 
 ```kql
-// Show the execution plan
 AppLogs
 | where Timestamp > ago(1h)
 | where Service == "api-gateway"
 | summarize count() by Level
-| explain
 ```
 
 ### Extent Statistics
@@ -299,16 +300,11 @@ Configure data retention to automatically remove old data and free up resources:
 
 ## Extent Merge Policy
 
-ADX continuously merges small extents into larger ones for better query performance. You can tune the merge behavior:
+ADX continuously merges small extents into larger ones for better query performance. You should usually keep the default merge policy and consult Microsoft support before changing it:
 
 ```kql
 // Check current merge policy
 .show table AppLogs policy merge
-
-// Configure merge policy for a table with streaming ingestion
-// Streaming ingestion creates many small extents that need aggressive merging
-.alter table LiveTelemetry policy merge
-@'{"MaxExtentsToMerge": 50, "LoopPeriod": "00:05:00"}'
 ```
 
 ## Best Practices Summary
@@ -323,7 +319,7 @@ Here is a checklist for optimal ADX query performance:
 6. **Use materialized views**: Pre-compute frequently used aggregations
 7. **Monitor slow queries**: Regularly check the query log for performance regressions
 8. **Partition large tables**: Use hash partitioning on frequently filtered columns
-9. **Tune merge policy**: Especially for tables with streaming ingestion
+9. **Review merge policy carefully**: Consult Microsoft support before changing extents merge settings
 10. **Set appropriate retention**: Remove old data to keep the dataset manageable
 
 ## Summary
