@@ -93,14 +93,13 @@ Before creating Spot VMs, check the current pricing to see how much you will sav
 
 ```bash
 # Check the current spot price for a VM size in a region
-az rest \
-  --method GET \
-  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.Compute/locations/eastus/spotPriceHistory?api-version=2024-07-01" \
-  --query "value[?contains(vmSize, 'Standard_D4s_v5')].{VMSize: vmSize, Price: retailPrice, OS: osType}" \
-  --output table
+curl -G "https://prices.azure.com/api/retail/prices" \
+  --data-urlencode "api-version=2023-01-01-preview" \
+  --data-urlencode "\$filter=armRegionName eq 'eastus' and armSkuName eq 'Standard_D4s_v5' and priceType eq 'Consumption' and contains(meterName, 'Spot')" \
+  | jq '.Items[] | {VMSize: .armSkuName, Price: .retailPrice, Meter: .meterName, Product: .productName}'
 ```
 
-You can also view historical Spot pricing in the Azure portal under **Virtual Machines > Pricing > Spot**. This helps you understand the price volatility and set a reasonable max price.
+You can also view historical Spot pricing and eviction rates in the Azure portal when selecting a VM size, by choosing **View pricing history** or **See all sizes**. This helps you understand the price volatility and set a reasonable max price.
 
 ## Step 4: Handle Evictions Gracefully
 
@@ -170,6 +169,7 @@ For batch processing, implement checkpointing so you can resume from the last sa
 ```python
 # Example: Batch processing with checkpointing to Azure Blob Storage
 import json
+import time
 from azure.storage.blob import BlobServiceClient
 
 def save_checkpoint(blob_client, job_id, progress):
@@ -222,8 +222,7 @@ az vmss create \
 You can also mix Spot and regular VMs in a VMSS to ensure a minimum baseline capacity:
 
 ```bash
-# Create a VMSS with a mix of regular and Spot instances
-# Use the orchestration mode Flexible for more control
+# Create a VMSS with a mix of regular and Spot instances using Spot Priority Mix
 az vmss create \
   --resource-group myResourceGroup \
   --name myMixedVMSS \
@@ -232,15 +231,14 @@ az vmss create \
   --image Ubuntu2204 \
   --admin-username azureuser \
   --generate-ssh-keys \
-  --instance-count 5 \
-  --priority Regular \
-  --orchestration-mode Flexible
-
-# Add Spot instances to the same VMSS
-az vmss update \
-  --resource-group myResourceGroup \
-  --name myMixedVMSS \
-  --set "virtualMachineProfile.priority=Spot"
+  --instance-count 10 \
+  --priority Spot \
+  --orchestration-mode Flexible \
+  --regular-priority-count 2 \
+  --regular-priority-percentage 25 \
+  --eviction-policy Deallocate \
+  --max-price -1 \
+  --single-placement-group false
 ```
 
 ## Step 6: Use Azure Batch for Managed Spot Processing
@@ -266,11 +264,15 @@ In Azure Batch terminology, "low-priority nodes" are Spot VMs. The `target-dedic
 Track eviction rates to understand how reliable Spot VMs are for your chosen size and region:
 
 ```bash
-# Check eviction history for your Spot VMs
-az monitor activity-log list \
-  --resource-group myResourceGroup \
-  --query "[?operationName.value=='Microsoft.Compute/virtualMachines/preempt/action'].{VM: resourceId, Time: eventTimestamp}" \
-  --output table
+# Check historical eviction rates for Spot VM sizes in a region
+az graph query -q "
+SpotResources
+| where type =~ 'microsoft.compute/skuspotevictionrate/location'
+| where sku.name =~ 'standard_d4s_v5'
+| where location =~ 'eastus'
+| project skuName = tostring(sku.name), location, spotEvictionRate = tostring(properties.evictionRate)
+| order by skuName asc
+"
 ```
 
 Some VM sizes and regions have lower eviction rates than others. Less popular VM sizes in less congested regions tend to have better availability.
@@ -281,10 +283,10 @@ Here is what Spot pricing looks like for some common VM sizes (prices are approx
 
 | VM Size | Pay-as-you-go | Spot Price | Savings |
 |---------|--------------|-----------|---------|
-| Standard_D4s_v5 | $0.192/hr | $0.019/hr | 90% |
-| Standard_D8s_v5 | $0.384/hr | $0.042/hr | 89% |
-| Standard_F4s_v2 | $0.169/hr | $0.034/hr | 80% |
-| Standard_E4s_v5 | $0.252/hr | $0.028/hr | 89% |
+| Standard_D4s_v5 | $0.192/hr | $0.041/hr | 79% |
+| Standard_D8s_v5 | $0.384/hr | $0.081/hr | 79% |
+| Standard_F4s_v2 | $0.169/hr | $0.038/hr | 78% |
+| Standard_E4s_v5 | $0.252/hr | $0.053/hr | 79% |
 
 At 90% savings, a workload that costs $1,000/month on regular VMs would cost $100/month on Spot VMs.
 
