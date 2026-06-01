@@ -68,7 +68,7 @@ azure.cosmos.database=productdb
 # Optional: set the default consistency level
 azure.cosmos.consistency-level=SESSION
 
-# Enable response diagnostics for debugging (disable in production)
+# Enable query metrics for debugging (disable in production)
 azure.cosmos.populate-query-metrics=true
 ```
 
@@ -76,6 +76,7 @@ Create a configuration class that sets up the Cosmos DB client.
 
 ```java
 import com.azure.cosmos.CosmosClientBuilder;
+import com.azure.cosmos.ConsistencyLevel;
 import com.azure.spring.data.cosmos.config.AbstractCosmosConfiguration;
 import com.azure.spring.data.cosmos.config.CosmosConfig;
 import com.azure.spring.data.cosmos.repository.config.EnableCosmosRepositories;
@@ -96,12 +97,19 @@ public class CosmosConfiguration extends AbstractCosmosConfiguration {
     @Value("${azure.cosmos.database}")
     private String cosmosDatabase;
 
+    @Value("${azure.cosmos.consistency-level:SESSION}")
+    private String consistencyLevel;
+
+    @Value("${azure.cosmos.populate-query-metrics:true}")
+    private boolean populateQueryMetrics;
+
     // Build the Cosmos client with connection settings
     @Bean
     public CosmosClientBuilder cosmosClientBuilder() {
         return new CosmosClientBuilder()
             .endpoint(cosmosUri)
             .key(cosmosKey)
+            .consistencyLevel(ConsistencyLevel.valueOf(consistencyLevel))
             .directMode();  // Use Direct mode for better performance
     }
 
@@ -109,7 +117,7 @@ public class CosmosConfiguration extends AbstractCosmosConfiguration {
     @Bean
     public CosmosConfig cosmosConfig() {
         return CosmosConfig.builder()
-            .enableQueryMetrics(true)  // Track query performance metrics
+            .enableQueryMetrics(populateQueryMetrics)  // Track query performance metrics
             .build();
     }
 
@@ -222,6 +230,7 @@ public interface ProductRepository extends CosmosRepository<Product, String> {
 Create a controller that exposes the product operations as a REST API.
 
 ```java
+import com.azure.cosmos.models.PartitionKey;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -250,10 +259,12 @@ public class ProductController {
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
-    // Get a product by ID (requires partition key for efficient lookup)
-    @GetMapping("/{id}")
-    public ResponseEntity<Product> getProduct(@PathVariable String id) {
-        Optional<Product> product = productRepository.findById(id);
+    // Get a product by ID and partition key for an efficient point read
+    @GetMapping("/category/{category}/{id}")
+    public ResponseEntity<Product> getProduct(
+            @PathVariable String category,
+            @PathVariable String id) {
+        Optional<Product> product = productRepository.findById(id, new PartitionKey(category));
         return product.map(ResponseEntity::ok)
                       .orElse(ResponseEntity.notFound().build());
     }
@@ -279,22 +290,26 @@ public class ProductController {
     }
 
     // Update a product
-    @PutMapping("/{id}")
+    @PutMapping("/category/{category}/{id}")
     public ResponseEntity<Product> updateProduct(
+            @PathVariable String category,
             @PathVariable String id,
             @RequestBody Product product) {
-        if (!productRepository.existsById(id)) {
+        if (productRepository.findById(id, new PartitionKey(category)).isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         product.setId(id);
+        product.setCategory(category);
         Product updated = productRepository.save(product);
         return ResponseEntity.ok(updated);
     }
 
     // Delete a product
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProduct(@PathVariable String id) {
-        productRepository.deleteById(id);
+    @DeleteMapping("/category/{category}/{id}")
+    public ResponseEntity<Void> deleteProduct(
+            @PathVariable String category,
+            @PathVariable String id) {
+        productRepository.deleteById(id, new PartitionKey(category));
         return ResponseEntity.noContent().build();
     }
 }
@@ -352,6 +367,7 @@ azure.cosmos.database=productdb
 ```
 
 The emulator runs locally and provides the same API as the real service. Use it for development and testing to avoid Azure costs.
+Because the emulator uses a self-signed HTTPS certificate, import its certificate into the Java trusted certificate store before connecting from a Java application.
 
 ## Wrapping Up
 
