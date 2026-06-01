@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CodePipeline, CI/CD, DevOps, Pipeline, Automation
 
-Description: Learn how to use AWS CodePipeline V2 advanced features including pipeline triggers, variables, parallel stages, and rollback configurations.
+Description: Learn how to use AWS CodePipeline V2 advanced features including pipeline triggers, variables, execution modes, and rollback configurations.
 
 ---
 
-AWS CodePipeline has been a solid CI/CD orchestration tool for years, but the V1 pipeline type had limitations that frustrated teams building complex deployment workflows. CodePipeline V2 addresses these with significant improvements: git-based triggers with filtering, pipeline-level variables, parallel execution within stages, rollback capabilities, and a fundamentally different execution model. If you are still using V1 pipelines, it is time to upgrade.
+AWS CodePipeline has been a solid CI/CD orchestration tool for years, but the V1 pipeline type had limitations that frustrated teams building complex deployment workflows. CodePipeline V2 addresses these with significant improvements: git-based triggers with filtering, pipeline-level variables, stage rollback capabilities, and additional execution modes. If you are still using V1 pipelines, it is time to evaluate an upgrade.
 
 This guide covers the key V2 features, how to configure them, and practical examples of advanced pipeline patterns.
 
@@ -18,9 +18,9 @@ Here are the headline differences:
 
 | Feature | V1 | V2 |
 |---------|----|----|
-| Trigger filtering | Basic (branch only) | Git tags, file paths, PR events |
-| Variables | Limited | Pipeline, stage, and action variables |
-| Stage execution | Sequential only | Parallel actions within stages |
+| Trigger filtering | Basic source change detection | Git tags, branches, file paths, PR events |
+| Variables | Limited | Pipeline-level variables and action output variables |
+| Stage actions | Serial or parallel actions with run orders | Same stage action model |
 | Rollback | Manual | Automated with conditions |
 | Execution mode | Superseded | Queued, Superseded, or Parallel |
 | Pipeline type | Standard | V2 type |
@@ -29,7 +29,7 @@ Here are the headline differences:
 ## Prerequisites
 
 - AWS account with CodePipeline permissions
-- Source code in CodeCommit, GitHub, or S3
+- Source code in CodeCommit, GitHub, Bitbucket, GitLab, or S3
 - Build and deployment targets (CodeBuild, CodeDeploy, ECS, etc.)
 
 ## Step 1: Create a V2 Pipeline
@@ -114,14 +114,10 @@ aws codepipeline create-pipeline \
 
 ## Step 2: Configure Advanced Triggers
 
-V2 pipelines support sophisticated trigger conditions:
+V2 pipelines support sophisticated trigger conditions for connection-backed Git providers such as GitHub, Bitbucket, and GitLab. When you update an existing pipeline with `aws codepipeline update-pipeline`, provide the full pipeline declaration, including the existing `roleArn`, artifact store, and stages. The relevant `triggers` block looks like this:
 
-```bash
-# Update pipeline with git tag triggers and file path filters
-aws codepipeline update-pipeline \
-  --pipeline '{
-    "name": "my-service-pipeline",
-    "pipelineType": "V2",
+```json
+{
     "triggers": [
       {
         "providerType": "CodeStarSourceConnection",
@@ -137,16 +133,18 @@ aws codepipeline update-pipeline \
                 "includes": ["src/**", "package.json"],
                 "excludes": ["docs/**", "*.md"]
               }
+            },
+            {
+              "tags": {
+                "includes": ["v*"],
+                "excludes": ["v*-rc*"]
+              }
             }
-          ],
-          "tags": {
-            "includes": ["v*"],
-            "excludes": ["v*-rc*"]
-          }
+          ]
         }
       }
     ]
-  }'
+}
 ```
 
 This trigger configuration means:
@@ -240,23 +238,23 @@ phases:
       - docker push $IMAGE_URI
 ```
 
-Reference the exported variable in a later action:
+Assign a namespace to the CodeBuild action that exports the variables:
 
 ```json
 {
-  "name": "DeployAction",
+  "name": "BuildAction",
   "configuration": {
-    "FileName": "imagedefinitions.json"
+    "ProjectName": "my-service-build"
   },
   "namespace": "BuildVariables"
 }
 ```
 
-Then use `#{BuildVariables.IMAGE_URI}` in subsequent actions.
+Then use `#{BuildVariables.IMAGE_URI}` in a subsequent action configuration field that supports variable substitution.
 
 ## Step 4: Configure Parallel Actions
 
-V2 pipelines support running actions in parallel within a stage using run orders:
+CodePipeline supports running actions in parallel within a stage using run orders:
 
 ```json
 {
@@ -342,7 +340,7 @@ graph LR
 
 ## Step 5: Set Up Rollback Configuration
 
-V2 pipelines support automatic rollback based on conditions:
+V2 pipelines support automatic rollback based on conditions. For example, an `onSuccess` condition can monitor a CloudWatch alarm after a deployment stage succeeds and roll the stage back if the alarm goes into alarm state:
 
 ```json
 {
@@ -362,8 +360,7 @@ V2 pipelines support automatic rollback based on conditions:
       }
     }
   ],
-  "onFailure": {
-    "result": "ROLLBACK",
+  "onSuccess": {
     "conditions": [
       {
         "result": "ROLLBACK",
@@ -388,7 +385,7 @@ V2 pipelines support automatic rollback based on conditions:
 }
 ```
 
-This monitors a CloudWatch alarm after deployment. If the error rate goes high within 5 minutes, the pipeline automatically rolls back.
+This monitors a CloudWatch alarm after deployment. If the error rate goes high within 5 minutes, the pipeline automatically rolls back to a previous successful execution of the same stage, if one is available in the current pipeline structure version.
 
 ## Step 6: Configure Execution Modes
 
@@ -414,6 +411,8 @@ V2 pipelines offer three execution modes:
   "executionMode": "PARALLEL"
 }
 ```
+
+Stage rollback is not available for pipelines running in `PARALLEL` execution mode.
 
 ## Step 7: CloudFormation Template for a Complete V2 Pipeline
 
@@ -597,11 +596,11 @@ Resources:
 
 ## Best Practices
 
-1. **Use V2 for all new pipelines.** The pricing model (per execution minute) is usually cheaper than V1 (per pipeline per month), and you get all the advanced features.
+1. **Use V2 when you need V2-only features.** The pricing model (per action execution minute) can be cheaper than V1 (per active pipeline per month), depending on how often the pipeline runs and how long its actions take.
 
 2. **Filter triggers aggressively.** Use file path filters to avoid running pipelines when only documentation changes. This saves time and money.
 
-3. **Parallelize test stages.** Run unit tests, integration tests, and security scans in parallel to reduce pipeline duration.
+3. **Parallelize test actions.** Run unit tests, integration tests, and security scans in parallel to reduce pipeline duration.
 
 4. **Use variables for environment configuration.** Pipeline variables make it easy to pass configuration between stages without hardcoding values.
 
@@ -611,4 +610,4 @@ Resources:
 
 ## Wrapping Up
 
-CodePipeline V2 is a substantial upgrade that addresses the most common pain points teams had with V1. Git trigger filtering alone saves countless unnecessary pipeline runs, and pipeline variables eliminate the awkward workarounds teams used to pass data between stages. If you are running V1 pipelines today, plan your migration to V2. The new features and the execution-based pricing model make it a straightforward improvement.
+CodePipeline V2 is a substantial upgrade that addresses the most common pain points teams had with V1. Git trigger filtering alone can save unnecessary pipeline runs, and pipeline variables eliminate the awkward workarounds teams used to pass execution-time configuration between stages. If you are running V1 pipelines today, plan your migration to V2. The new features and the execution-based pricing model can make it a straightforward improvement.
