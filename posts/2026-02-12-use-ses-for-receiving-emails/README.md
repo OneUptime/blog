@@ -18,12 +18,13 @@ When SES receives an email, it matches it against receipt rules you've defined. 
 - Trigger a Lambda function
 - Forward the notification to an SNS topic
 - Send the email to Amazon WorkMail
-- Stop processing (reject the email)
+- Stop processing
+- Reject the email with a bounce response
 - Add headers
 
 You can chain multiple actions together. For example, store the raw email in S3 and then trigger a Lambda function to process it.
 
-One important limitation: SES email receiving is only available in specific AWS regions - US East (N. Virginia), US West (Oregon), and Europe (Ireland). Make sure you're working in one of these regions.
+One important limitation: SES email receiving is only available in specific AWS regions. Check the AWS Email Receiving endpoints table and make sure you're working in a region that supports inbound SES.
 
 ## Setting Up Your Domain
 
@@ -75,7 +76,8 @@ The bucket policy needs to grant SES write access.
       "Resource": "arn:aws:s3:::my-incoming-emails/*",
       "Condition": {
         "StringEquals": {
-          "AWS:SourceAccount": "123456789012"
+          "AWS:SourceAccount": "123456789012",
+          "AWS:SourceArn": "arn:aws:ses:us-east-1:123456789012:receipt-rule-set/my-rules:receipt-rule/process-support-emails"
         }
       }
     }
@@ -134,7 +136,7 @@ aws ses create-receipt-rule \
 
 The `ScanEnabled` flag tells SES to run spam and virus scanning on incoming emails. Always keep this on.
 
-If you leave `Recipients` empty, the rule matches all incoming emails for your domain. You can also specify multiple addresses to catch emails to different addresses with the same rule.
+If you omit `Recipients`, the rule matches all incoming emails for your verified domains. You can also specify multiple addresses to catch emails to different addresses with the same rule.
 
 ## Processing Emails with Lambda
 
@@ -159,7 +161,7 @@ def lambda_handler(event, context):
     # Basic info from the notification
     message_id = mail['messageId']
     sender = mail['source']
-    subject = mail['commonHeaders']['subject']
+    subject = mail.get('commonHeaders', {}).get('subject', '(no subject)')
     recipients = mail['destination']
 
     # Spam/virus check results
@@ -177,10 +179,10 @@ def lambda_handler(event, context):
     key = f'support/{message_id}'
 
     response = s3_client.get_object(Bucket=bucket, Key=key)
-    raw_email = response['Body'].read().decode('utf-8')
+    raw_email = response['Body'].read()
 
     # Parse the email using Python's email library
-    msg = email.message_from_string(raw_email, policy=policy.default)
+    msg = email.message_from_bytes(raw_email, policy=policy.default)
 
     # Extract the body
     body = get_email_body(msg)
@@ -234,12 +236,13 @@ aws lambda add-permission \
   --statement-id ses-invoke \
   --action lambda:InvokeFunction \
   --principal ses.amazonaws.com \
-  --source-account 123456789012
+  --source-account 123456789012 \
+  --source-arn arn:aws:ses:us-east-1:123456789012:receipt-rule-set/my-rules:receipt-rule/process-support-emails
 ```
 
 ## Handling Multiple Email Addresses
 
-You can create multiple receipt rules to handle different addresses differently. Rules are evaluated in order, and processing stops at the first match (unless you configure otherwise).
+You can create multiple receipt rules to handle different addresses differently. Rules are evaluated in order, and SES continues through matching rules unless you add a stop action or return a stop disposition from a synchronous Lambda action.
 
 ```bash
 # Rule for support emails - store and process
