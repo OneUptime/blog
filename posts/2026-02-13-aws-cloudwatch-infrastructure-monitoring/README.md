@@ -121,7 +121,7 @@ flowchart TD
     end
 ```
 
-BurstBalance is a metric many teams overlook. If you are running on gp2 or gp3 storage and your burst balance drops to zero, your disk I/O performance drops to baseline, which can cause severe latency spikes.
+BurstBalance is a metric many teams overlook. If you are running on gp2 storage and your burst balance drops to zero, your disk I/O performance drops to baseline, which can cause severe latency spikes.
 
 This CloudFormation snippet creates an alarm for low burst balance, giving you early warning before performance degrades.
 
@@ -174,17 +174,14 @@ The metrics you need:
 - **ConcurrentExecutions**: How close you are to your concurrency limit.
 - **IteratorAge**: For stream-based triggers (Kinesis, DynamoDB Streams), this shows processing lag.
 
-This Metrics Insights query finds the Lambda functions with the highest error rates across your account, which is useful for triaging issues.
+This Metrics Insights query finds the Lambda functions with the highest error counts across your account, which is useful for triaging issues. To calculate an error rate, graph `Errors` and `Invocations` together and divide `Errors` by `Invocations` with CloudWatch metric math.
 
 ```sql
--- Find Lambda functions with the highest error rates
-SELECT FunctionName,
-       SUM(Errors) / SUM(Invocations) * 100 AS error_rate,
-       SUM(Invocations) AS total_invocations
+-- Find Lambda functions with the highest error counts
+SELECT SUM(Errors)
 FROM SCHEMA("AWS/Lambda", FunctionName)
-WHERE Invocations > 0
 GROUP BY FunctionName
-ORDER BY error_rate DESC
+ORDER BY SUM() DESC
 LIMIT 10
 ```
 
@@ -222,7 +219,7 @@ This Python snippet publishes a custom metric for order processing latency. Embe
 
 ```python
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Publish custom metric: order processing latency
 cloudwatch = boto3.client("cloudwatch")
@@ -234,7 +231,7 @@ cloudwatch.put_metric_data(
             "MetricName": "ProcessingLatencyMs",
             "Value": 142.5,
             "Unit": "Milliseconds",
-            "Timestamp": datetime.utcnow(),
+            "Timestamp": datetime.now(timezone.utc),
             "Dimensions": [
                 {"Name": "Environment", "Value": "production"},
                 {"Name": "Service", "Value": "order-processor"},
@@ -248,8 +245,6 @@ For high-throughput applications, use the Embedded Metric Format (EMF) instead o
 
 ```python
 import json
-import sys
-
 # Emit metric using Embedded Metric Format (EMF) via stdout
 # CloudWatch Logs automatically extracts the metric
 emf_payload = {
@@ -313,10 +308,10 @@ This is especially useful for organizations running separate AWS accounts for de
 
 CloudWatch pricing has several dimensions:
 
-- **Metrics**: First 10 free per account, then $0.30/metric/month
-- **Dashboards**: First 3 free, then $3/dashboard/month
-- **Alarms**: First 10 free, then $0.10/alarm/month (standard) or $0.30/alarm/month (anomaly detection)
-- **API calls**: GetMetricData at $0.01 per 1,000 metrics requested
+- **Metrics**: Basic monitoring metrics from AWS services are free. The free tier includes 10 custom or detailed monitoring metrics, and paid custom metrics start at $0.30/metric/month for the first 10,000 metrics in US East regions, with volume tiers after that
+- **Dashboards**: First 3 custom dashboards are free when each references up to 50 metrics, then $3/dashboard/month
+- **Alarms**: First 10 standard-resolution alarm metrics are free, then $0.10/alarm metric/month for standard-resolution alarms. Standard-resolution anomaly detection alarms evaluate three metrics per alarm, so they are typically $0.30/alarm/month
+- **API calls**: Most API requests include 1 million requests in the free tier, but GetMetricData, GetInsightRuleReport, and GetMetricWidgetImage are always charged. Metrics Insights queries run programmatically are charged by metrics analyzed
 
 Custom metrics are where costs can surprise you. Each unique combination of metric name, namespace, and dimensions counts as a separate metric. A custom metric published with 5 dimension values creates 5 separate metrics, not 1.
 
