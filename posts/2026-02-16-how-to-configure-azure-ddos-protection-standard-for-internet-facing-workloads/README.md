@@ -1,32 +1,32 @@
-# How to Configure Azure DDoS Protection Standard for Internet-Facing Workloads
+# How to Configure Azure DDoS Network Protection for Internet-Facing Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, DDoS Protection, Network Security, Internet-Facing, Azure Networking, Security, Infrastructure Protection
 
-Description: Configure Azure DDoS Protection Standard to defend internet-facing workloads against volumetric, protocol, and application-layer DDoS attacks.
+Description: Configure Azure DDoS Network Protection to defend internet-facing workloads against volumetric and protocol DDoS attacks, and pair it with WAF for application-layer protection.
 
 ---
 
-Every internet-facing workload is a potential DDoS target. It is not a matter of if but when. Azure provides basic DDoS protection for free on all public IPs, but this basic tier only mitigates common volumetric attacks. For workloads that matter to your business, Azure DDoS Protection Standard provides significantly more comprehensive protection, including adaptive tuning, attack analytics, and a cost protection guarantee.
+Every internet-facing workload is a potential DDoS target. It is not a matter of if but when. Azure provides infrastructure-level DDoS protection at no extra cost for Azure services that use public IPv4 and IPv6 addresses, but this default protection is not tuned to your specific workload. For workloads that matter to your business, Azure DDoS Network Protection provides significantly more comprehensive protection, including adaptive tuning, attack analytics, and a cost protection guarantee.
 
-I have helped several organizations configure DDoS Protection Standard after experiencing attacks that the basic tier could not mitigate. Setting it up is straightforward, but configuring it correctly for your specific workload requires understanding what types of attacks you need to defend against and how the protection mechanisms work.
+I have helped several organizations configure DDoS Network Protection after experiencing attacks that the default infrastructure protection could not mitigate. Setting it up is straightforward, but configuring it correctly for your specific workload requires understanding what types of attacks you need to defend against and how the protection mechanisms work.
 
-## Basic vs Standard DDoS Protection
+## Infrastructure vs Network DDoS Protection
 
-Azure DDoS Basic protection is automatically enabled for all Azure public IP addresses at no extra cost. It provides platform-level protection against common volumetric attacks (large volumes of traffic designed to overwhelm your network bandwidth).
+Azure DDoS infrastructure protection is automatically enabled for Azure services that use public IPv4 and IPv6 addresses at no extra cost. It provides platform-level protection against common network-layer attacks.
 
-DDoS Protection Standard adds:
+DDoS Network Protection adds:
 - **Adaptive tuning**: Learns your traffic patterns and tunes detection thresholds specifically for your workload
 - **Attack analytics**: Detailed telemetry and reporting on attacks
 - **DDoS Rapid Response (DRR)**: Access to Microsoft's DDoS experts during active attacks
 - **Cost protection**: Credit for Azure resources that scale up during an attack
-- **WAF integration**: Works with Azure Web Application Firewall for application-layer protection
+- **WAF discount and integration**: Works with Azure Web Application Firewall for application-layer protection
 - **Alert integration**: Native integration with Azure Monitor for attack notifications
 
-## Enabling DDoS Protection Standard
+## Enabling DDoS Network Protection
 
-DDoS Protection Standard is enabled at the Virtual Network level through a DDoS Protection Plan. One plan can protect multiple VNets across subscriptions.
+DDoS Network Protection is enabled at the Virtual Network level through a DDoS Protection Plan. One plan can protect multiple VNets across subscriptions in the same tenant.
 
 ```bash
 # Create a DDoS Protection Plan
@@ -44,17 +44,17 @@ az network vnet update \
   --ddos-protection true
 ```
 
-Once the plan is associated with a VNet, all public IP resources within that VNet are protected. This includes public IPs on VMs, load balancers, Application Gateways, Azure Firewall, and VPN Gateways.
+Once the plan is associated with a VNet, supported public IP resources within that VNet are protected. This includes public IPs on VMs, load balancers, Application Gateways, Azure Firewall, and VPN Gateways. VPN gateways are protected by a DDoS policy, but adaptive tuning is not supported for them.
 
-## Understanding What DDoS Protection Standard Covers
+## Understanding What DDoS Network Protection Covers
 
-DDoS attacks come in three categories, and Standard protects against all of them:
+DDoS attacks come in three categories. DDoS Network Protection protects against Layer 3 and Layer 4 attacks; for Layer 7 application attacks, combine it with a WAF.
 
-**Volumetric attacks** (Layer 3/4) flood your network with massive amounts of traffic. Examples include UDP floods, ICMP floods, and amplification attacks. These aim to saturate your network bandwidth. DDoS Protection Standard mitigates these by absorbing the attack traffic at the Azure network edge before it reaches your resources.
+**Volumetric attacks** (Layer 3/4) flood your network with massive amounts of traffic. Examples include UDP floods, ICMP floods, and amplification attacks. These aim to saturate your network bandwidth. DDoS Network Protection mitigates these by absorbing the attack traffic at the Azure network edge before it reaches your resources.
 
-**Protocol attacks** (Layer 3/4) exploit weaknesses in network protocols. SYN floods, ping-of-death attacks, and fragmented packet attacks fall into this category. Standard protection detects and drops these malicious packets while allowing legitimate traffic through.
+**Protocol attacks** (Layer 3/4) exploit weaknesses in network protocols. SYN floods, ping-of-death attacks, and fragmented packet attacks fall into this category. Network Protection detects and drops these malicious packets while allowing legitimate traffic through.
 
-**Application-layer attacks** (Layer 7) target specific application endpoints with seemingly legitimate requests. HTTP floods and slow-rate attacks are examples. DDoS Protection Standard provides some Layer 7 protection, but for comprehensive application-layer defense, you should combine it with Azure Web Application Firewall (WAF).
+**Application-layer attacks** (Layer 7) target specific application endpoints with seemingly legitimate requests. HTTP floods and slow-rate attacks are examples. DDoS Network Protection does not inspect application-layer payloads, so for application-layer defense, you should combine it with Azure Web Application Firewall (WAF).
 
 ```mermaid
 graph TD
@@ -94,7 +94,7 @@ az monitor metrics alert create \
   --name "ddos-high-packet-rate" \
   --resource-group rg-security \
   --scopes "/subscriptions/{sub-id}/resourceGroups/rg-production/providers/Microsoft.Network/publicIPAddresses/pip-app-gateway" \
-  --condition "max PacketCount > 1000000" \
+  --condition "total PacketCount > 1000000" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --severity 2 \
@@ -126,58 +126,59 @@ AzureDiagnostics
 | where Category == "DDoSMitigationFlowLogs"
 | where TimeGenerated > ago(1h)
 | summarize
-    TotalPackets = sum(toint(packetCount_d)),
-    DroppedPackets = sumif(toint(packetCount_d), action_s == "Dropped")
-  by bin(TimeGenerated, 1m), sourceIP_s
-| order by TotalPackets desc
+    FlowLogRecords = count(),
+    Protocols = make_set(Protocol, 10),
+    DestinationPorts = make_set(DestPort, 20)
+  by bin(TimeGenerated, 1m), SourcePublicIpAddress, DestPublicIpAddress
+| order by FlowLogRecords desc
 | take 50
 ```
 
 ## Combining DDoS Protection with WAF
 
-For complete protection, deploy Azure Web Application Firewall (WAF) on Application Gateway or Front Door in front of your application, and enable DDoS Protection Standard on the VNet.
+For complete protection, deploy Azure Web Application Firewall (WAF) on Application Gateway or Front Door in front of your application, and enable DDoS Network Protection on the VNet that hosts the public origin resources.
 
-DDoS Protection Standard handles the volumetric and protocol attacks. WAF handles the application-layer attacks. Together, they provide defense in depth.
+DDoS Network Protection handles the volumetric and protocol attacks. WAF handles the application-layer attacks. Together, they provide defense in depth.
 
 ```bash
 # The architecture: Public IP -> DDoS Protection -> Application Gateway with WAF -> Backend
-# DDoS Protection is automatic once the VNet is associated with a DDoS Plan
+# DDoS Network Protection is automatic once the VNet is associated with a DDoS Plan
 # WAF needs to be configured on the Application Gateway
 
 # Verify Application Gateway has WAF enabled
 az network application-gateway show \
   --resource-group rg-production \
   --name appgw-production \
-  --query "{sku:sku.name, wafEnabled:webApplicationFirewallConfiguration.enabled}" \
+  --query "{sku:sku.name, tier:sku.tier, wafEnabled:webApplicationFirewallConfiguration.enabled, firewallPolicy:firewallPolicy.id}" \
   -o json
 ```
 
 ## Adaptive Tuning and Traffic Profiling
 
-DDoS Protection Standard continuously profiles your traffic to establish a baseline of normal activity. When traffic deviates significantly from this baseline, mitigation is triggered.
+DDoS Network Protection continuously profiles your traffic to establish a baseline of normal activity. When traffic exceeds the automatically tuned policy thresholds, mitigation is triggered.
 
-The profiling takes about 30 days to build an accurate baseline. During this period, the system uses conservative thresholds that may result in either false positives (legitimate traffic incorrectly mitigated) or false negatives (attack traffic not caught).
+The service uses machine learning-based traffic profiling to tune TCP SYN, TCP, and UDP mitigation policies for each protected public IP. Protection starts immediately, and the profile adjusts as traffic changes over time.
 
 To help the system learn your traffic patterns:
 - Enable DDoS Protection before you expect an attack, not during one
-- Ensure your normal traffic patterns are representative during the profiling period
-- If you have planned traffic spikes (marketing campaigns, product launches), consider adjusting the policy thresholds temporarily
+- Ensure your normal traffic patterns are represented as the traffic profile evolves
+- If you have planned traffic spikes (marketing campaigns, product launches), plan capacity and WAF/rate-limit rules ahead of time
 
 ## Cost Protection
 
-DDoS Protection Standard includes a cost protection guarantee. If your Azure resources scale up during a DDoS attack (for example, autoscaling adds more VMs), Microsoft credits the incremental cost. To take advantage of this:
+DDoS Network Protection includes a cost protection guarantee. If your Azure resources scale up during a documented DDoS attack (for example, autoscaling adds more VMs), Microsoft credits eligible incremental costs. To take advantage of this:
 
-1. You must have DDoS Protection Standard enabled before the attack
-2. You must file a cost protection claim within 30 days of the attack
+1. You must have DDoS Network Protection enabled before the attack
+2. You must have diagnostic evidence that the scale-out was caused by the attack
 3. Azure Rapid Response team must confirm it was a DDoS attack
 
 ## Pricing Considerations
 
-DDoS Protection Standard is not cheap. The plan costs approximately $2,944 per month (as of early 2026), plus additional charges per protected public IP and data processing. This is a fixed monthly cost regardless of whether you experience an attack.
+DDoS Network Protection is not cheap. It has a fixed monthly plan charge that includes protection for 100 public IP resources, with monthly overage charges for protected public IP resources beyond that included amount. Pricing varies by agreement, region, and currency, so verify the current price in the Azure pricing calculator before committing.
 
 For cost-sensitive organizations, consider:
-- Using one DDoS Protection Plan across multiple subscriptions and VNets
+- Using one DDoS Protection Plan across multiple subscriptions and VNets in the same tenant
 - Only associating VNets that contain internet-facing resources with the plan
-- Using Azure Front Door with built-in DDoS protection instead of DDoS Protection Standard for web-only workloads
+- Using Azure Front Door with built-in DDoS protection instead of DDoS Network Protection for web-only workloads
 
-DDoS Protection Standard is essential for any workload where a DDoS attack would cause significant business impact. The cost is high, but it is a fraction of the cost of a successful DDoS attack that takes your services offline. Configure it proactively, set up alerts and diagnostics, and combine it with WAF for comprehensive protection.
+DDoS Network Protection is essential for any workload where a DDoS attack would cause significant business impact. The cost is high, but it is a fraction of the cost of a successful DDoS attack that takes your services offline. Configure it proactively, set up alerts and diagnostics, and combine it with WAF for comprehensive protection.
