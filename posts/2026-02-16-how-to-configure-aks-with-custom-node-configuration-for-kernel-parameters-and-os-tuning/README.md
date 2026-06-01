@@ -37,7 +37,7 @@ Here is a configuration optimized for high-performance networking workloads:
     "netIpv4TcpFinTimeout": 15,
     "netIpv4TcpKeepaliveTime": 300,
     "netIpv4TcpKeepaliveProbes": 5,
-    "netIpv4TcpKeepaliveIntvl": 15,
+    "netIpv4TcpkeepaliveIntvl": 15,
     "netIpv4TcpTwReuse": true,
     "netIpv4IpLocalPortRange": "1024 65535",
     "netIpv4TcpMaxTwBuckets": 262144,
@@ -60,7 +60,7 @@ Save this as `linux-config.json`. Let me explain the key parameters:
 - **netIpv4TcpMaxSynBacklog (65535)**: Maximum number of queued SYN packets. Prevents SYN flood issues under high connection rates.
 - **vmMaxMapCount (262144)**: Maximum number of memory map areas. Required by Elasticsearch and other memory-mapped applications.
 - **vmSwappiness (10)**: How aggressively the kernel swaps memory to disk. Lower values prefer keeping data in RAM.
-- **fsFileMax (2097152)**: Maximum number of file descriptors system-wide. Essential for workloads with many open files or connections.
+- **fsNrOpen (1048576)**: Maximum number of file handles a single process can allocate. Essential for workloads with many open files or connections.
 
 ## Step 2: Create a Custom Kubelet Configuration
 
@@ -207,7 +207,7 @@ spec:
     "netCoreSomaxconn": 4096,
     "netIpv4TcpKeepaliveTime": 600,
     "netIpv4TcpKeepaliveProbes": 9,
-    "netIpv4TcpKeepaliveIntvl": 75
+    "netIpv4TcpkeepaliveIntvl": 75
   },
   "transparentHugePageEnabled": "never",
   "transparentHugePageDefrag": "never"
