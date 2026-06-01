@@ -40,7 +40,8 @@ Both organizations need:
 
 - Microsoft 365 Business Basic (or higher) licenses with Teams enabled
 - Microsoft Entra ID P1 or P2 (for cross-tenant access settings)
-- Teams administrator and Global Administrator roles
+- Teams administrator and a Microsoft Entra role that can manage cross-tenant access settings, such as Security Administrator or Global Administrator
+- Guest access enabled for SharePoint and Microsoft 365 Groups
 - Agreement between both organizations to establish the trust relationship
 
 Both sides must configure their cross-tenant access settings. This is not a one-way setup - both organizations must explicitly enable inbound and outbound B2B Direct Connect.
@@ -210,7 +211,10 @@ You can also check the sign-in logs for B2B Direct Connect authentication events
 
 ```powershell
 # Query sign-in logs for B2B Direct Connect events
-Get-MgAuditLogSignIn -Filter "crossTenantAccessType eq 'b2bDirectConnect'" -Top 10 |
+Connect-MgGraph -Scopes "AuditLog.Read.All"
+Import-Module Microsoft.Graph.Beta.Reports
+
+Get-MgBetaAuditLogSignIn -Filter "crossTenantAccessType eq 'b2bDirectConnect'" -Top 10 |
     Select-Object UserDisplayName, AppDisplayName, CreatedDateTime, Status
 ```
 
@@ -222,6 +226,8 @@ Create a Conditional Access policy targeting external users.
 
 ```powershell
 # Create a Conditional Access policy for B2B Direct Connect users
+Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess", "Application.Read.All"
+
 $caPolicy = @{
     DisplayName = "Require MFA for B2B Direct Connect Users"
     State = "enabled"
@@ -328,7 +334,7 @@ Update-MgPolicyCrossTenantAccessPolicyPartner `
 
 **MFA prompts are excessive**: Configure inbound trust settings to accept MFA claims from the partner tenant. This prevents double MFA prompts.
 
-**Shared channel files are inaccessible**: Files in shared channels are stored in the hosting tenant's SharePoint. Make sure the B2B Direct Connect settings include the SharePoint application.
+**Shared channel files are inaccessible**: Files in shared channels are stored in the hosting tenant's SharePoint. Make sure guest access is enabled for SharePoint and Microsoft 365 Groups, and that the B2B Direct Connect settings allow the Office 365 application suite.
 
 **Channel sharing option is greyed out**: The Teams channel policy must allow sharing to external users, and the team owner must have the correct policy assigned.
 
