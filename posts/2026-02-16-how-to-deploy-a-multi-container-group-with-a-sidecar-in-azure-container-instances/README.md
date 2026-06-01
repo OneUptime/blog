@@ -92,7 +92,8 @@ properties:
     # Fluent Bit configuration
     - name: fluent-config
       secret:
-        # Base64 encoded Fluent Bit configuration
+        # Base64 encoded Fluent Bit configuration.
+        # This minimal sample writes matching log lines to stdout; replace the OUTPUT section for your logging backend.
         fluent-bit.conf: 'W1NFUlZJQ0VdCiAgICBGbHVzaCAgICAgICAgMQogICAgTG9nX0xldmVsICAgIGluZm8KCltJTlBVVF0KICAgIE5hbWUgICAgICAgICB0YWlsCiAgICBQYXRoICAgICAgICAgL3Zhci9sb2cvYXBwLyoubG9nCiAgICBUYWcgICAgICAgICAgYXBwLioKCltPVVRQVVRdCiAgICBOYW1lICAgICAgICAgc3Rkb3V0CiAgICBNYXRjaCAgICAgICAgKg=='
 
   osType: Linux
@@ -104,7 +105,7 @@ properties:
 type: Microsoft.ContainerInstance/containerGroups
 ```
 
-In this setup, the web app writes logs to `/var/log/app`, and the Fluent Bit sidecar reads from the same directory and forwards the logs to your logging backend. The `emptyDir` volume is shared between both containers but does not persist after the container group is deleted.
+In this setup, the web app writes logs to `/var/log/app`, and the Fluent Bit sidecar reads from the same directory. The sample configuration writes matching log lines to stdout; replace the Fluent Bit output configuration when you want to forward logs to your logging backend. The `emptyDir` volume is shared between both containers but does not persist after the container group is deleted.
 
 ## Example 2: Application with an Nginx Reverse Proxy
 
@@ -250,7 +251,8 @@ graph LR
 All containers in a group start and stop together. This has implications for sidecars:
 
 - If the main container exits, the sidecar continues running (the group stays active)
-- If you want the group to stop when the main container finishes, use restart policy `Never` or `OnFailure`
+- If you want run-once containers to stay terminated after they finish, use restart policy `Never` or `OnFailure`
+- For a batch-style sidecar, make sure the sidecar also exits when its work is complete; a long-running sidecar keeps the group active
 - Sidecars should be designed to handle the main container restarting
 
 For batch jobs, this means your sidecar should handle the case where the main container finishes its work:
@@ -303,7 +305,7 @@ Keep sidecars lightweight. They should use minimal resources since they are auxi
 - Reverse proxies: 0.25-0.5 CPU, 256-512 MB memory
 - Metrics exporters: 0.1-0.25 CPU, 128-256 MB memory
 
-Remember that ACI has a maximum of 4 CPU cores and 16 GB memory per container group, and you are billed for the total requested resources.
+Remember that ACI bills for the total requested resources. Standard container groups currently support up to 31 vCPUs and 240 GB of memory, subject to regional availability; deployments over 4 vCPUs and 16 GB can still fail in constrained regions unless additional capacity is available.
 
 ## Summary
 
