@@ -17,9 +17,9 @@ In this post, I will show you how to enable CLR, create and deploy CLR assemblie
 CLR integration embeds the .NET Common Language Runtime directly into the SQL Server database engine. This lets you:
 
 - Write stored procedures, functions, triggers, user-defined types, and user-defined aggregates in C# or VB.NET
-- Access the full .NET Framework class library (with some restrictions)
+- Use supported .NET Framework class libraries inside the SQL Server hosted CLR environment
 - Perform operations that T-SQL handles poorly, like complex string parsing or mathematical computations
-- Call external web services or APIs from within the database (with EXTERNAL_ACCESS or UNSAFE permissions)
+- Call external web services or APIs from within the database (with EXTERNAL_ACCESS or UNSAFE permissions, subject to Managed Instance networking and security restrictions)
 
 The CLR assembly (a compiled .NET DLL) is stored inside the database and executed within the SQL Server process.
 
@@ -38,15 +38,15 @@ flowchart LR
 
 CLR assemblies have three permission levels:
 
-**SAFE**: The most restrictive. The code can only access data within the database using the SQL Server managed provider. No file system access, no network access, no registry access. This is the default and recommended level.
+**SAFE**: The most restrictive permission set. The code is intended for in-database computation and data access through the SQL Server managed provider. This is the default and recommended level, but on modern SQL Server versions and Azure SQL Managed Instance, CLR strict security treats SAFE and EXTERNAL_ACCESS assemblies as UNSAFE at run time unless they are trusted or signed.
 
-**EXTERNAL_ACCESS**: Allows the code to access external resources like file systems, network endpoints, and environment variables. Requires the database to be trustworthy or the assembly to be signed with a certificate.
+**EXTERNAL_ACCESS**: Allows the code to access external resources like network endpoints and environment variables. In SQL Server this can include file system access, but Azure SQL Managed Instance cannot access file shares or Windows folders. EXTERNAL_ACCESS requires the database to be trustworthy with an owner that has UNSAFE ASSEMBLY permission, or the assembly to be signed with a certificate or asymmetric key and mapped to a login with UNSAFE ASSEMBLY permission.
 
 **UNSAFE**: Full, unrestricted access, including calling unmanaged code. This is a significant security risk and should be avoided unless absolutely necessary.
 
 ## Enabling CLR Integration
 
-In Azure SQL Managed Instance, CLR integration is enabled by default at the instance level. You can verify this:
+In Azure SQL Managed Instance, CLR integration is disabled by default at the instance level. You can verify this:
 
 ```sql
 -- Check if CLR is enabled on the instance
@@ -64,15 +64,16 @@ EXEC sp_configure 'clr enabled', 1;
 RECONFIGURE;
 ```
 
-Additionally, for assemblies with EXTERNAL_ACCESS or UNSAFE permission, you need to configure the database:
+Additionally, CLR strict security is enforced in Azure SQL Managed Instance, so unsigned SAFE and EXTERNAL_ACCESS assemblies are treated like UNSAFE assemblies. For assemblies that are not signed or added to the trusted assembly list, you need to configure the database and owner carefully:
 
 ```sql
 -- Allow EXTERNAL_ACCESS and UNSAFE assemblies
 -- Method 1: Set the database as trustworthy (simpler but less secure)
+-- The database owner must be a login with UNSAFE ASSEMBLY permission
 ALTER DATABASE [MyDatabase] SET TRUSTWORTHY ON;
 ```
 
-A more secure approach uses certificate-based signing, which I will cover later.
+A more secure approach uses certificate- or asymmetric-key-based signing, which I will cover later.
 
 ## Creating a CLR Assembly
 
@@ -84,6 +85,7 @@ Create a C# class library project targeting .NET Framework 4.x:
 
 ```csharp
 using System;
+using System.Data.SqlClient;
 using System.Data.SqlTypes;
 using System.Text.RegularExpressions;
 using Microsoft.SqlServer.Server;
@@ -160,19 +162,7 @@ FROM 0x4D5A90000300000004000000FFFF0000...  -- (actual binary content of the DLL
 WITH PERMISSION_SET = SAFE;
 ```
 
-Alternatively, you can deploy from Azure Blob Storage:
-
-```sql
--- Create a credential to access Azure Blob Storage
-CREATE CREDENTIAL [https://mystorageaccount.blob.core.windows.net/assemblies]
-WITH IDENTITY = 'SHARED ACCESS SIGNATURE',
-SECRET = 'your-sas-token';
-
--- Deploy the assembly from Blob Storage
-CREATE ASSEMBLY [StringUtilities]
-FROM 'https://mystorageaccount.blob.core.windows.net/assemblies/StringUtilities.dll'
-WITH PERMISSION_SET = SAFE;
-```
+Azure SQL Managed Instance does not support `CREATE ASSEMBLY FROM FILE`, including a file path or URL, so use the binary form for deployment.
 
 ### Step 4: Create SQL Functions That Map to CLR Methods
 
@@ -226,7 +216,7 @@ WHERE dbo.RegexMatch(Phone, '^\+1-\d{3}-\d{3}-\d{4}$') = 1;
 -- Extract domain names from email addresses
 SELECT
     Email,
-    dbo.RegexExtract(Email, '@(.+)$') AS Domain
+    dbo.RegexExtract(Email, '(?<=@).+$') AS Domain
 FROM Customers;
 
 -- Clean up formatting in a column
@@ -323,7 +313,7 @@ DROP ASSEMBLY [StringUtilities];
 
 **Use SAFE permission level whenever possible.** Most CLR use cases (regex, string manipulation, custom math) work fine with SAFE. Only elevate to EXTERNAL_ACCESS or UNSAFE when absolutely necessary.
 
-**Sign assemblies with certificates.** Instead of setting TRUSTWORTHY ON, sign your assembly with a certificate and create a corresponding login with the appropriate permissions. This is more secure.
+**Sign assemblies with certificates or asymmetric keys.** Instead of setting TRUSTWORTHY ON, sign your assembly and create a corresponding login with UNSAFE ASSEMBLY permission. Because CLR strict security is enforced in Azure SQL Managed Instance, even SAFE and EXTERNAL_ACCESS assemblies should be signed or explicitly trusted.
 
 **Audit CLR usage.** Monitor which assemblies are deployed and who deployed them. CLR code runs inside the database engine process, so malicious or buggy code can impact the entire instance.
 
@@ -336,7 +326,7 @@ DROP ASSEMBLY [StringUtilities];
 CLR functions are faster than T-SQL for certain operations (regex, complex math, string parsing) but slower for simple set-based operations. The overhead of crossing between T-SQL and CLR execution contexts is small but measurable.
 
 For best performance:
-- Mark functions as IsDeterministic = true when applicable (enables caching)
+- Mark functions as IsDeterministic = true only when they always return the same result for the same input and database state
 - Avoid row-by-row processing in CLR when set-based T-SQL would work
 - Keep CLR functions focused and lightweight
 - Precompile regex patterns if used repeatedly
