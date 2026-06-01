@@ -8,7 +8,7 @@ Description: Handle Azure Service Bus dead letter queue messages in a Spring Boo
 
 ---
 
-Dead letter queues (DLQs) are where messages go to die - or more accurately, where they go when they cannot be processed. Every Azure Service Bus queue and subscription has an associated dead letter queue. Messages end up there when they exceed the maximum delivery count, when they expire, or when your application explicitly dead-letters them. Ignoring the DLQ means silently losing data.
+Dead letter queues (DLQs) are where messages go to die - or more accurately, where they go when they cannot be processed. Every Azure Service Bus queue and subscription has an associated dead letter queue. Messages end up there when they exceed the maximum delivery count, when they expire and dead-lettering on message expiration is enabled, or when your application explicitly dead-letters them. Ignoring the DLQ means silently losing data.
 
 In this post, we will build a Spring Boot application that handles dead letter queue messages properly. We will cover reading from the DLQ, inspecting why messages failed, reprocessing them, and setting up monitoring so you know when messages are accumulating.
 
@@ -17,9 +17,9 @@ In this post, we will build a Spring Boot application that handles dead letter q
 There are several reasons a message gets dead-lettered:
 
 1. **Max delivery count exceeded**: The message was delivered and abandoned (not completed) more times than the queue's max delivery count (default: 10).
-2. **TTL expired**: The message sat in the queue longer than its time-to-live.
+2. **TTL expired**: The message sat in the queue longer than its time-to-live, and dead-lettering on message expiration was enabled for the queue or subscription.
 3. **Explicit dead-lettering**: Your application code called `deadLetter()` on the message because it could not be processed (e.g., invalid format, business rule violation).
-4. **Subscription filter evaluation failure**: A topic subscription's filter could not evaluate the message.
+4. **Subscription filter evaluation failure**: A topic subscription's SQL filter could not evaluate the message, and dead-lettering on filter evaluation exceptions was enabled.
 
 Each dead-lettered message includes properties that tell you why it was dead-lettered: `DeadLetterReason` and `DeadLetterErrorDescription`.
 
@@ -32,16 +32,31 @@ Each dead-lettered message includes properties that tell you why it was dead-let
 ```
 
 ```xml
+<!-- pom.xml dependency management -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.azure.spring</groupId>
+            <artifactId>spring-cloud-azure-dependencies</artifactId>
+            <version>5.25.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <!-- pom.xml dependencies -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
 <dependency>
     <groupId>com.azure.spring</groupId>
     <artifactId>spring-cloud-azure-starter-servicebus</artifactId>
-    <version>5.8.0</version>
-</dependency>
-<dependency>
-    <groupId>com.azure</groupId>
-    <artifactId>azure-messaging-servicebus</artifactId>
-    <version>7.15.0</version>
 </dependency>
 ```
 
@@ -74,6 +89,7 @@ First, build the normal message processor that handles messages from the main qu
 package com.example.messaging;
 
 import com.azure.messaging.servicebus.*;
+import com.azure.messaging.servicebus.models.DeadLetterOptions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -114,11 +130,20 @@ public class OrderProcessor {
             context.complete();
             log.info("Successfully processed order {}", event.getOrderId());
 
-        } catch (TransientException e) {
-            // Transient error - abandon the message so it gets retried
-            log.warn("Transient error processing message {}, abandoning for retry",
-                message.getMessageId(), e);
-            context.abandon();
+        } catch (ServiceBusException e) {
+            if (e.isTransient()) {
+                // Transient error - abandon the message so it gets retried
+                log.warn("Transient error processing message {}, abandoning for retry",
+                    message.getMessageId(), e);
+                context.abandon();
+            } else {
+                log.error("Service Bus error processing message {}", message.getMessageId(), e);
+                context.deadLetter(
+                    new DeadLetterOptions()
+                        .setDeadLetterReason("ProcessingError")
+                        .setDeadLetterErrorDescription(e.getMessage())
+                );
+            }
 
         } catch (Exception e) {
             // Permanent error - dead letter with the error details
@@ -157,8 +182,6 @@ import org.springframework.stereotype.Component;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Component
 public class DeadLetterHandler {
@@ -228,8 +251,8 @@ public class DeadLetterHandler {
 
             case ALERT_AND_HOLD:
                 sendAlert(message, reason, description);
-                // Do not complete - leave it in DLQ for manual inspection
-                context.abandon();
+                // Defer instead of abandoning to avoid immediate redelivery loops
+                context.defer();
                 log.warn("Alert sent for message {}, leaving in DLQ", message.getMessageId());
                 break;
 
@@ -251,14 +274,14 @@ public class DeadLetterHandler {
         if ("MaxDeliveryCountExceeded".equals(reason)) {
             // These might be transient failures - try resubmitting once
             Object retryCount = message.getApplicationProperties().get("dlq_retry_count");
-            int retries = retryCount != null ? (int) retryCount : 0;
+            int retries = retryCount instanceof Number ? ((Number) retryCount).intValue() : 0;
             if (retries < 1) {
                 return DeadLetterAction.RESUBMIT;
             }
             return DeadLetterAction.ALERT_AND_HOLD;
         }
 
-        if ("TTLExpired".equals(reason)) {
+        if ("TTLExpiredException".equals(reason)) {
             // Expired messages are usually stale - discard them
             return DeadLetterAction.LOG_AND_DISCARD;
         }
@@ -285,7 +308,7 @@ public class DeadLetterHandler {
 
         // Increment the retry count
         Object retryCount = deadLetter.getApplicationProperties().get("dlq_retry_count");
-        int retries = retryCount != null ? (int) retryCount : 0;
+        int retries = retryCount instanceof Number ? ((Number) retryCount).intValue() : 0;
         newMessage.getApplicationProperties().put("dlq_retry_count", retries + 1);
 
         sender.sendMessage(newMessage);
@@ -331,6 +354,9 @@ Build an API for operators to inspect and manage dead letter messages.
 package com.example.controller;
 
 import com.azure.messaging.servicebus.*;
+import com.azure.messaging.servicebus.administration.ServiceBusAdministrationClient;
+import com.azure.messaging.servicebus.administration.ServiceBusAdministrationClientBuilder;
+import com.azure.messaging.servicebus.administration.models.QueueRuntimeProperties;
 import com.azure.messaging.servicebus.models.SubQueue;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -381,24 +407,15 @@ public class DlqController {
     // Get the count of messages in the DLQ
     @GetMapping("/count")
     public Map<String, Object> getCount() {
-        // Use the management client or runtime info to get the count
-        ServiceBusReceiverClient receiver = new ServiceBusClientBuilder()
+        ServiceBusAdministrationClient adminClient = new ServiceBusAdministrationClientBuilder()
             .connectionString(connectionString)
-            .receiver()
-            .queueName(queueName)
-            .subQueue(SubQueue.DEAD_LETTER_QUEUE)
             .buildClient();
 
-        // Peek to count (not ideal for large queues, but works for monitoring)
-        int count = 0;
-        for (ServiceBusReceivedMessage msg : receiver.peekMessages(1000)) {
-            count++;
-        }
+        QueueRuntimeProperties runtimeProperties = adminClient.getQueueRuntimeProperties(queueName);
 
-        receiver.close();
         return Map.of(
             "queueName", queueName,
-            "deadLetterCount", count,
+            "deadLetterCount", runtimeProperties.getDeadLetterMessageCount(),
             "checkedAt", new Date()
         );
     }
@@ -414,6 +431,9 @@ Add a health check that alerts when the DLQ has too many messages.
 // Health indicator that checks the DLQ message count
 package com.example.health;
 
+import com.azure.messaging.servicebus.administration.ServiceBusAdministrationClient;
+import com.azure.messaging.servicebus.administration.ServiceBusAdministrationClientBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
@@ -423,6 +443,18 @@ public class DlqHealthIndicator implements HealthIndicator {
 
     private static final int WARNING_THRESHOLD = 10;
     private static final int CRITICAL_THRESHOLD = 100;
+
+    private final ServiceBusAdministrationClient adminClient;
+    private final String queueName;
+
+    public DlqHealthIndicator(
+            @Value("${spring.cloud.azure.servicebus.connection-string}") String connectionString,
+            @Value("${app.servicebus.queue-name}") String queueName) {
+        this.adminClient = new ServiceBusAdministrationClientBuilder()
+            .connectionString(connectionString)
+            .buildClient();
+        this.queueName = queueName;
+    }
 
     @Override
     public Health health() {
@@ -451,8 +483,7 @@ public class DlqHealthIndicator implements HealthIndicator {
     }
 
     private int getDlqCount() {
-        // Implement DLQ count retrieval
-        return 0;
+        return adminClient.getQueueRuntimeProperties(queueName).getDeadLetterMessageCount();
     }
 }
 ```
@@ -467,4 +498,4 @@ public class DlqHealthIndicator implements HealthIndicator {
 
 ## Summary
 
-Dead letter queue handling is not optional - it is a critical part of any Service Bus-based architecture. Without it, failed messages disappear silently, and you have no way to know what went wrong or recover the data. The pattern we built categorizes dead letters, automatically resubmits transient failures, discards invalid messages, and alerts operators for unknown issues. Combined with health checks and monitoring, this gives you full visibility into your messaging pipeline's failure modes.
+Dead letter queue handling is not optional - it is a critical part of any Service Bus-based architecture. Without it, failed messages can sit unnoticed, and you have no way to know what went wrong or recover the data. The pattern we built categorizes dead letters, automatically resubmits transient failures, discards invalid messages, and alerts operators for unknown issues. Combined with health checks and monitoring, this gives you full visibility into your messaging pipeline's failure modes.
