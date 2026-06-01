@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Bastion, Kerberos, Active Directory, Authentication, RDP, Security
 
-Description: Configure Azure Bastion to use Kerberos authentication for single sign-on RDP access to domain-joined Windows VMs without entering credentials manually.
+Description: Configure Azure Bastion to use Kerberos authentication for RDP access to domain-joined Windows VMs using UPN-based domain sign-in.
 
 ---
 
-If you manage domain-joined Windows VMs in Azure, you know the drill: connect via Bastion, type in your domain credentials, wait for authentication. Azure Bastion's Kerberos authentication feature streamlines this by using your existing Azure AD credentials to automatically authenticate you to domain-joined VMs via Kerberos. No more typing domain\username and passwords every time you connect - Bastion handles the Kerberos ticket exchange behind the scenes.
+If you manage domain-joined Windows VMs in Azure, you know the drill: connect via Bastion, type in your domain credentials, wait for authentication. Azure Bastion's Kerberos authentication feature lets Bastion use Kerberos instead of falling back to NTLM when you sign in to domain-joined VMs with a user principal name (UPN). Bastion handles the Kerberos exchange behind the scenes.
 
-This guide walks through setting up Kerberos authentication with Azure Bastion, including the Azure AD DS or AD DS prerequisites, Bastion configuration, and troubleshooting the auth flow.
+This guide walks through setting up Kerberos authentication with Azure Bastion, including the AD DS prerequisites, Bastion configuration, and troubleshooting the auth flow.
 
 ## How Kerberos Authentication Works with Bastion
 
@@ -18,13 +18,13 @@ In a standard Bastion RDP session, you provide your username and password in the
 
 ```mermaid
 sequenceDiagram
-    participant User as User (Azure AD)
+    participant User as User
     participant Portal as Azure Portal
     participant Bastion as Azure Bastion
     participant DC as Domain Controller
     participant VM as Domain-Joined VM
-    User->>Portal: Authenticate with Azure AD
-    Portal->>Bastion: Initiate RDP (with user context)
+    User->>Portal: Sign in and start Bastion connection
+    Portal->>Bastion: Initiate RDP with UPN credentials
     Bastion->>DC: Request Kerberos TGT
     DC->>Bastion: Issue TGT
     Bastion->>DC: Request Service Ticket for VM
@@ -33,42 +33,37 @@ sequenceDiagram
     VM->>VM: Validate ticket, grant access
 ```
 
-The user authenticates to Azure AD once (portal login), and Bastion uses that identity to obtain Kerberos tickets from the domain controller. The VM receives a Kerberos service ticket and grants access without any manual credential entry.
+The user signs in through the Azure portal and then uses a UPN, such as `user@mycompany.com`, for the Bastion connection. Bastion uses Kerberos with the domain controller instead of NTLM. The VM receives a Kerberos service ticket and grants access when the domain credentials and permissions are valid.
 
 ## Prerequisites
 
 This setup requires several components to be in place:
 
-- **Azure Bastion Standard SKU** (Kerberos requires Standard or higher)
-- **Azure AD joined or hybrid Azure AD joined client** (the machine you are connecting from)
-- **Domain-joined target VMs** (joined to Azure AD DS or on-premises AD synced to Azure AD)
-- **Azure AD DS** (managed domain service) or **on-premises AD DS with Azure AD Connect** configured for password hash synchronization
-- **Azure AD Premium P1 or P2 license** for Kerberos-based SSO
+- **Azure Bastion Basic SKU or higher** (Kerberos isn't available on the Developer SKU)
+- **Domain-joined target VMs** joined to the same AD DS domain that Bastion can use for Kerberos
+- **An AD DS domain controller running on an Azure VM in the same virtual network as the Bastion deployment**
+- **VNet DNS configured to use the domain controller IP address before Bastion is deployed or redeployed**
+- **NSG rules that allow DNS, Kerberos, LDAP, Kerberos password change, and LDAPS traffic** on ports 53, 88, 389, 464, and 636 between Bastion, the domain controller, and the target VMs
 
-## Step 1: Set Up Azure AD DS (If Not Already in Place)
+## Step 1: Set Up AD DS and VNet DNS (If Not Already in Place)
 
-If you are using Azure AD Domain Services as your domain controller, set it up first:
+For Azure Bastion Kerberos, the domain controller must be an Azure-hosted VM in the same virtual network where Bastion is deployed. Configure the VNet DNS settings to point to that domain controller before creating or redeploying Bastion:
 
 ```bash
-# Create Azure AD DS managed domain
-
-az ad ds create \
-  --name "mycompany.onmicrosoft.com" \
+# Point the VNet to the Azure-hosted domain controller
+az network vnet update \
+  --name myVNet \
   --resource-group myResourceGroup \
-  --location eastus \
-  --domain-name "mycompany.com" \
-  --vnet-name myVNet \
-  --subnet-name aadds-subnet \
-  --sku Standard
+  --dns-servers 10.0.2.4
 ```
 
-Azure AD DS takes 30-45 minutes to provision. Once ready, it provides domain controllers that Azure VMs can join.
+After the VNet DNS configuration is in place, join the target Windows VMs to the AD DS domain.
 
-If you are using on-premises AD DS, ensure Azure AD Connect is configured with password hash synchronization enabled, and that your on-premises domain controllers are reachable from the Azure VNet (via VPN or ExpressRoute).
+If you change the VNet DNS servers after Bastion has already been deployed, delete and re-create the Bastion resource so the updated DNS settings are picked up.
 
-## Step 2: Deploy Azure Bastion with Standard SKU
+## Step 2: Deploy Azure Bastion with Kerberos Enabled
 
-Kerberos authentication requires Azure Bastion Standard SKU:
+Kerberos authentication requires Azure Bastion Basic SKU or higher:
 
 ```bash
 # Create the AzureBastionSubnet
@@ -94,10 +89,10 @@ az network bastion create \
   --vnet-name myVNet \
   --public-ip-address bastion-pip \
   --sku Standard \
-  --enable-kerberos true
+  --kerberos true
 ```
 
-The `--enable-kerberos true` flag activates Kerberos authentication support on the Bastion host.
+The `--kerberos true` flag activates Kerberos authentication support on the Bastion host.
 
 ## Step 3: Enable Kerberos on an Existing Bastion
 
@@ -108,31 +103,31 @@ If you already have a Bastion deployment, upgrade it and enable Kerberos:
 az network bastion update \
   --name myBastion \
   --resource-group myResourceGroup \
-  --sku Standard \
-  --enable-kerberos true
+  --location eastus \
+  --sku name=Standard \
+  --kerberos true
 ```
 
 ## Step 4: Configure the Domain-Joined VMs
 
 Your target VMs need to be joined to the domain and have the correct network configuration to reach the domain controllers.
 
-For VMs joining Azure AD DS:
+For VMs joining the AD DS domain:
 
 ```powershell
-# Join a Windows VM to the Azure AD DS managed domain
-# Run this on the VM after DNS is configured to point to Azure AD DS
+# Join a Windows VM to the AD DS domain
+# Run this on the VM after VNet DNS is configured to point to the domain controller
 
-# Set DNS to Azure AD DS domain controller IPs
+# Verify the VM resolves the domain through the VNet DNS configuration
 $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"}
-Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex `
-  -ServerAddresses "10.0.2.4","10.0.2.5"
+Get-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex
 
 # Join the domain
 $credential = Get-Credential -Message "Enter domain admin credentials"
 Add-Computer -DomainName "mycompany.com" -Credential $credential -Restart
 ```
 
-For VMs using on-premises AD through VPN/ExpressRoute, ensure the VMs can resolve and reach the on-premises domain controllers:
+Ensure the VMs can resolve and reach the Azure-hosted domain controller:
 
 ```powershell
 # Verify domain controller connectivity
@@ -142,51 +137,34 @@ nltest /dsgetdc:mycompany.com
 nslookup _ldap._tcp.dc._msdcs.mycompany.com
 ```
 
-## Step 5: Configure Azure AD for Kerberos SSO
+## Step 5: Confirm Kerberos Support on Bastion
 
-For Kerberos authentication to work through Bastion, Azure AD needs to be configured to issue Kerberos tickets. This involves registering the Kerberos server object in Azure AD:
+For Bastion Kerberos, you don't create a Microsoft Entra Kerberos server object. Confirm that the Bastion resource has Kerberos enabled:
 
-```powershell
-# Install the Azure AD Kerberos PowerShell module
-Install-Module -Name AzureADHybridAuthenticationManagement -AllowClobber
-
-# Connect to Azure AD
-Connect-AzureAD
-
-# Create the Kerberos server object
-# This enables Azure AD to issue Kerberos tickets for the domain
-Set-AzureADKerberosServer -Domain "mycompany.com" `
-  -UserPrincipalName "admin@mycompany.com" `
-  -DomainCredential (Get-Credential -Message "Enter on-premises domain admin credentials")
+```bash
+# Verify the Bastion Kerberos setting
+az network bastion show \
+  --name myBastion \
+  --resource-group myResourceGroup \
+  --query enableKerberos
 ```
 
-Verify the Kerberos server object was created:
+If this returns `true`, the Bastion resource is configured for Kerberos authentication.
+
+## Step 6: Prevent NTLM Fallback for Validation
+
+To verify that Bastion is really using Kerberos, configure the target VM to deny incoming NTLM authentication for domain accounts:
 
 ```powershell
-# Verify the Kerberos server configuration
-Get-AzureADKerberosServer -Domain "mycompany.com" `
-  -UserPrincipalName "admin@mycompany.com" `
-  -DomainCredential (Get-Credential)
+# Group Policy Path:
+# Computer Configuration > Windows Settings > Security Settings >
+# Local Policies > Security Options >
+# Network security: Restrict NTLM: Incoming NTLM traffic
+#
+# Set this policy to: Deny all domain accounts
 ```
 
-## Step 6: Configure Group Policy for Kerberos
-
-On the target VMs (or via domain Group Policy), ensure the following settings are in place:
-
-```powershell
-# Configure the VM to allow Kerberos authentication from Bastion
-# These settings should be applied via Group Policy for consistency
-
-# Allow delegating fresh credentials with NTLM-only server authentication
-# Group Policy Path: Computer Configuration > Administrative Templates >
-#   System > Credentials Delegation > Allow delegating fresh credentials
-#   with NTLM-only server authentication
-
-# Set the SPN list to include the Bastion host
-# wsman/mybastion.mycompany.com
-```
-
-For Azure AD DS environments, the Group Policy Objects are managed through the AADDC Computers OU. You can create and link GPOs using the Group Policy Management Console from a management VM.
+This policy is useful for validation because Bastion can otherwise fall back to NTLM if Kerberos doesn't work.
 
 ## Step 7: Test the Kerberos Connection
 
@@ -194,10 +172,10 @@ Connect to a domain-joined VM through Bastion using the Azure portal:
 
 1. Navigate to the target VM in the Azure portal
 2. Click **Connect** > **Bastion**
-3. In the authentication type, select **Azure AD** instead of providing local credentials
+3. Enter the domain account in UPN format, such as `user@mycompany.com`
 4. Click **Connect**
 
-If Kerberos is working correctly, you should be connected to the VM without entering any credentials. The portal uses your Azure AD session to obtain the Kerberos ticket automatically.
+If Kerberos is working correctly and NTLM fallback is denied, you should be connected to the VM. You must use the UPN format for Kerberos sign-in.
 
 ## Step 8: Verify the Authentication Method
 
@@ -208,9 +186,9 @@ After connecting, verify that Kerberos was used for authentication:
 # Run this in the RDP session
 klist
 
-# This should show Kerberos tickets:
-# #0> Client: user@MYCOMPANY.COM
-#    Server: krbtgt/MYCOMPANY.COM
+# This should show Kerberos tickets, such as:
+# #0> Client: user @ MYCOMPANY.COM
+#    Server: krbtgt/MYCOMPANY.COM @ MYCOMPANY.COM
 #    KerbTicket Encryption Type: AES-256-CTS-HMAC-SHA1-96
 ```
 
@@ -255,23 +233,24 @@ MicrosoftAzureBastionAuditLogs
 **Kerberos falls back to NTLM**: If the connection succeeds but uses NTLM instead of Kerberos, check that:
 - The VM's clock is synchronized with the domain controller (Kerberos is time-sensitive, max skew is 5 minutes)
 - DNS resolution works correctly for the domain name
-- The Azure AD Kerberos server object exists and is current
+- The domain controller is an Azure-hosted VM in the same VNet as Bastion
+- Bastion was redeployed after any VNet DNS server changes
 
-**Connection fails with authentication error**: Verify that the user account exists in both Azure AD and the on-premises/Azure AD DS domain. Password hash synchronization must be working for the account.
+**Connection fails with authentication error**: Verify that the domain account exists, that you entered it in UPN format, and that the account has permission to sign in to the target VM.
 
-**"Cannot find domain controller" errors**: Check that the VM's DNS settings point to the domain controllers and that NSG rules allow DNS (UDP/TCP 53) and Kerberos (TCP 88, UDP 88) traffic between the VM and domain controllers.
+**"Cannot find domain controller" errors**: Check that the VNet's DNS settings point to the domain controller and that NSG rules allow ports 53, 88, 389, 464, and 636 between Bastion, the VM, and the domain controller.
 
-**Bastion shows "Kerberos not available"**: Ensure the Bastion host is Standard SKU and that `--enable-kerberos true` was set. Also verify that the browser you are using supports the Azure AD Kerberos extension.
+**Bastion shows "Kerberos not available"**: Ensure the Bastion host is Basic SKU or higher and that Kerberos authentication is enabled on the Bastion resource.
 
 ## Security Benefits
 
 Kerberos authentication through Bastion provides several security advantages:
 
-- **No password exposure**: Users never type their domain passwords into the Bastion portal. Kerberos tickets are used instead.
-- **Single sign-on**: One Azure AD authentication gets you into all domain-joined VMs.
-- **MFA integration**: Azure AD conditional access policies (including MFA) are enforced at the portal login, adding an extra layer of security.
+- **Kerberos instead of NTLM**: Domain sign-in can use Kerberos rather than NTLM.
+- **Reduced NTLM exposure**: You can deny incoming NTLM traffic for domain accounts and still validate Bastion access with Kerberos.
+- **Portal access control**: Azure role assignments and portal access controls still govern who can start Bastion sessions.
 - **Ticket expiration**: Kerberos tickets have limited lifetimes, reducing the window for credential theft.
 
 ## Wrapping Up
 
-Azure Bastion with Kerberos authentication creates a smooth, secure workflow for accessing domain-joined VMs. Users authenticate to Azure AD once, and Bastion handles the Kerberos ticket exchange to give them RDP access without additional credential prompts. The setup requires Azure AD DS or hybrid AD with password hash sync, Bastion Standard SKU with Kerberos enabled, and proper DNS and network configuration between the VMs and domain controllers. Once working, it significantly improves the daily experience for teams that manage large numbers of domain-joined VMs.
+Azure Bastion with Kerberos authentication creates a smooth, secure workflow for accessing domain-joined VMs. Users sign in with a UPN, and Bastion handles the Kerberos ticket exchange to give them RDP access without falling back to NTLM. The setup requires an Azure-hosted AD DS domain controller in the same VNet as Bastion, Bastion Basic SKU or higher with Kerberos enabled, and proper DNS and network configuration between Bastion, the VMs, and the domain controller. Once working, it significantly improves the daily experience for teams that manage large numbers of domain-joined VMs.
