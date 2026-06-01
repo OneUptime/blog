@@ -8,7 +8,7 @@ Description: Configure retention policies in Azure Artifacts to automatically cl
 
 ---
 
-Azure Artifacts is one of those services that starts cheap and slowly gets expensive if you are not paying attention. Every time a CI pipeline publishes a new package version, it adds to your storage. For a typical project publishing npm, NuGet, or Universal Packages on every build, you can accumulate hundreds or thousands of package versions in a matter of months. Azure DevOps gives you 2 GB of storage for free, and after that, each additional GB costs money.
+Azure Artifacts is one of those services that starts cheap and slowly gets expensive if you are not paying attention. Every time a CI pipeline publishes a new package version, it adds to your storage. For a typical project publishing npm, NuGet, or Universal Packages on every build, you can accumulate hundreds or thousands of package versions in a matter of months. Azure DevOps gives you 2 GiB of Azure Artifacts storage for free per organization, and after that, each additional GiB costs money.
 
 Retention policies let you automatically clean up old package versions so your storage usage stays reasonable. This guide covers how to configure them and the strategies that work in practice.
 
@@ -17,19 +17,17 @@ Retention policies let you automatically clean up old package versions so your s
 Before setting up retention, it helps to understand what counts toward your storage:
 
 - All package versions across all feeds in your organization
-- All package types: npm, NuGet, Maven, Python, and Universal Packages
+- All package types: npm, NuGet, Maven, Python, Cargo, and Universal Packages
 - Deleted packages still count until they are permanently purged (soft delete has a recycle bin)
 - Upstream packages cached from public registries also count
 
 You can check your current usage in Organization Settings under Billing:
 
 ```bash
-# There is no direct CLI command for storage usage, but you can check
-
-# feed-level package counts to estimate
-az artifacts feed list \
-  --organization "https://dev.azure.com/myorg" \
-  --output table
+# There is no direct CLI command for storage usage, but you can list feeds
+# and package counts through the Azure DevOps REST API.
+curl -u :$PAT \
+  "https://feeds.dev.azure.com/myorg/MyProject/_apis/packaging/feeds?api-version=7.1"
 ```
 
 ## How Retention Policies Work
@@ -37,17 +35,17 @@ az artifacts feed list \
 Azure Artifacts retention policies work at the feed level. When you configure a retention policy, you specify:
 
 1. **Maximum number of versions to keep per package**: Older versions beyond this count are candidates for deletion
-2. **Days to keep recently published versions**: Versions newer than this threshold are never deleted, regardless of the count
+2. **Days to keep recently downloaded versions**: Versions downloaded within this threshold are not deleted, regardless of the count
 
-When the retention policy runs, it evaluates each package in the feed. For each package, it keeps the newest versions up to your configured maximum. Versions that exceed the count and are older than the age threshold get deleted.
+When the retention policy runs, it evaluates each package in the feed. A package version is deleted only when the package has reached the maximum version count and that version has not been downloaded within the configured retention window.
 
 ```mermaid
 flowchart TD
     A[Package: my-library] --> B{Has more versions than max?}
     B -->|No| C[Keep all versions]
-    B -->|Yes| D{Is version older than retention days?}
-    D -->|No| E[Keep - too recent to delete]
-    D -->|Yes| F{Is version promoted to a view?}
+    B -->|Yes| D{Downloaded within retention days?}
+    D -->|Yes| E[Keep - recently downloaded]
+    D -->|No| F{Is version promoted to a view?}
     F -->|Yes| G[Keep - promoted versions are protected]
     F -->|No| H[Delete]
 ```
@@ -56,11 +54,11 @@ Important: Versions that have been promoted to a view (like @release or @prerele
 
 ## Configuring Retention Through the UI
 
-Go to Azure Artifacts in your project, select the feed you want to configure, click the gear icon for feed settings, and select "Retention."
+Go to Azure Artifacts in your project, select the feed you want to configure, click the gear icon for feed settings, and select "Feed details."
 
 Configure:
 - **Maximum number of versions per package**: A good starting point is 10-25 for development feeds, 50-100 for release feeds
-- **Days to keep recently created packages**: 30 days is a reasonable default
+- **Days to keep recently downloaded packages**: 30 days is a reasonable default
 
 ## Configuring Retention Through the REST API
 
@@ -68,14 +66,14 @@ For automation, use the REST API:
 
 ```bash
 # Set retention policy on a feed
-# Keep max 20 versions per package, protect anything newer than 30 days
+# Keep max 20 versions per package, protect anything downloaded in the last 30 days
 curl -u :$PAT \
-  -X PATCH \
+  -X PUT \
   -H "Content-Type: application/json" \
-  "https://feeds.dev.azure.com/{org}/{project}/_apis/packaging/feeds/{feedId}/retentionpolicies?api-version=7.0" \
+  "https://feeds.dev.azure.com/{org}/{project}/_apis/packaging/feeds/{feedId}/retentionpolicies?api-version=7.1" \
   -d '{
     "countLimit": 20,
-    "daysToKeepRecentlyCreatedPackages": 30
+    "daysToKeepRecentlyDownloadedPackages": 30
   }'
 ```
 
@@ -84,7 +82,7 @@ To check the current retention policy:
 ```bash
 # Get the current retention policy for a feed
 curl -u :$PAT \
-  "https://feeds.dev.azure.com/{org}/{project}/_apis/packaging/feeds/{feedId}/retentionpolicies?api-version=7.0"
+  "https://feeds.dev.azure.com/{org}/{project}/_apis/packaging/feeds/{feedId}/retentionpolicies?api-version=7.1"
 ```
 
 ## Strategy 1: Separate Feeds for Dev and Release
@@ -103,18 +101,24 @@ The most effective approach is to use separate feeds with different retention po
 
 ```bash
 # Create a development feed with aggressive retention
-az artifacts feed create \
-  --name "dev-packages" \
-  --description "Development packages - aggressive retention" \
-  --project "MyProject" \
-  --organization "https://dev.azure.com/myorg"
+curl -u :$PAT \
+  -X POST \
+  -H "Content-Type: application/json" \
+  "https://feeds.dev.azure.com/myorg/MyProject/_apis/packaging/feeds?api-version=7.1" \
+  -d '{
+    "name": "dev-packages",
+    "description": "Development packages - aggressive retention"
+  }'
 
 # Create a release feed with conservative retention
-az artifacts feed create \
-  --name "release-packages" \
-  --description "Release packages - long retention" \
-  --project "MyProject" \
-  --organization "https://dev.azure.com/myorg"
+curl -u :$PAT \
+  -X POST \
+  -H "Content-Type: application/json" \
+  "https://feeds.dev.azure.com/myorg/MyProject/_apis/packaging/feeds?api-version=7.1" \
+  -d '{
+    "name": "release-packages",
+    "description": "Release packages - long retention"
+  }'
 ```
 
 In your CI pipeline, publish to the dev feed on every build and to the release feed only for tagged releases:
@@ -150,7 +154,7 @@ If you prefer a single feed, use views to protect versions that matter:
 curl -u :$PAT \
   -X PATCH \
   -H "Content-Type: application/json" \
-  "https://pkgs.dev.azure.com/{org}/{project}/_apis/packaging/feeds/{feedId}/nuget/packages/{packageName}/versions/{version}?api-version=7.0" \
+  "https://pkgs.dev.azure.com/{org}/{project}/_apis/packaging/feeds/{feedId}/nuget/packages/{packageName}/versions/{version}?api-version=7.1" \
   -d '{
     "views": {
       "op": "add",
@@ -164,16 +168,14 @@ In your release pipeline, promote packages after successful deployment:
 
 ```yaml
 # After successful deployment, promote the package to @release view
-- task: AzureCLI@2
-  inputs:
-    azureSubscription: 'my-connection'
-    scriptType: 'bash'
-    scriptLocation: 'inlineScript'
-    inlineScript: |
-      # Promote the deployed version to the release view
-      az rest --method patch \
-        --url "https://pkgs.dev.azure.com/myorg/MyProject/_apis/packaging/feeds/main-feed/nuget/packages/MyPackage/versions/$(packageVersion)?api-version=7.0" \
-        --body '{"views": {"op": "add", "path": "/views/-", "value": "@release"}}'
+- script: |
+    curl -u :$SYSTEM_ACCESSTOKEN \
+      -X PATCH \
+      -H "Content-Type: application/json" \
+      "https://pkgs.dev.azure.com/myorg/MyProject/_apis/packaging/feeds/main-feed/nuget/packages/MyPackage/versions/$(packageVersion)?api-version=7.1" \
+      -d '{"views": {"op": "add", "path": "/views/-", "value": "@release"}}'
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
   displayName: 'Promote package to release view'
 ```
 
@@ -183,10 +185,10 @@ For more control, run a cleanup script on a schedule:
 
 ```powershell
 # cleanup-old-packages.ps1
-# Delete package versions older than 60 days that are not in a release view
+# Delete NuGet package versions older than 60 days that are not in a release view
 
 param(
-    [string]$Organization = "https://dev.azure.com/myorg",
+    [string]$Organization = "myorg",
     [string]$Project = "MyProject",
     [string]$FeedName = "dev-packages",
     [int]$MaxAgeDays = 60
@@ -197,8 +199,8 @@ $headers = @{
     "Content-Type" = "application/json"
 }
 
-# Get all packages in the feed
-$feedUrl = "$Organization/$Project/_apis/packaging/feeds/$FeedName/packages?api-version=7.0"
+# Get all NuGet packages in the feed
+$feedUrl = "https://feeds.dev.azure.com/$Organization/$Project/_apis/packaging/feeds/$FeedName/packages?protocolType=NuGet&api-version=7.1"
 $packages = (Invoke-RestMethod -Uri $feedUrl -Headers $headers).value
 
 $cutoffDate = (Get-Date).AddDays(-$MaxAgeDays)
@@ -206,7 +208,7 @@ $deletedCount = 0
 
 foreach ($package in $packages) {
     # Get versions for this package
-    $versionsUrl = "$Organization/$Project/_apis/packaging/feeds/$FeedName/packages/$($package.id)/versions?api-version=7.0"
+    $versionsUrl = "https://feeds.dev.azure.com/$Organization/$Project/_apis/packaging/feeds/$FeedName/packages/$($package.id)/versions?api-version=7.1"
     $versions = (Invoke-RestMethod -Uri $versionsUrl -Headers $headers).value
 
     foreach ($version in $versions) {
@@ -221,8 +223,11 @@ foreach ($package in $packages) {
             continue
         }
 
+        $packageName = [uri]::EscapeDataString($package.name)
+        $packageVersion = [uri]::EscapeDataString($version.version)
+
         # Delete the old version
-        $deleteUrl = "$Organization/$Project/_apis/packaging/feeds/$FeedName/packages/$($package.id)/versions/$($version.id)?api-version=7.0"
+        $deleteUrl = "https://pkgs.dev.azure.com/$Organization/$Project/_apis/packaging/feeds/$FeedName/nuget/packages/$packageName/versions/$packageVersion`?api-version=7.1"
         Invoke-RestMethod -Uri $deleteUrl -Method Delete -Headers $headers
         $deletedCount++
 
@@ -276,15 +281,13 @@ Set up a simple monitoring script that tracks storage trends:
 
 ```bash
 # Get package count per feed (rough proxy for storage usage)
-feeds=$(az artifacts feed list \
-  --organization "https://dev.azure.com/myorg" \
-  --query "[].name" -o tsv)
+feeds=$(curl -s -u :$PAT \
+  "https://feeds.dev.azure.com/myorg/MyProject/_apis/packaging/feeds?api-version=7.1")
 
-for feed in $feeds; do
-    count=$(az artifacts package list \
-      --feed "$feed" \
-      --organization "https://dev.azure.com/myorg" \
-      --query "length(@)" -o tsv 2>/dev/null)
+echo "$feeds" | jq -r '.value[].name' | while read -r feed; do
+    count=$(curl -s -u :$PAT \
+      "https://feeds.dev.azure.com/myorg/MyProject/_apis/packaging/feeds/$feed/packages?api-version=7.1" \
+      | jq '.count')
     echo "Feed: $feed - Packages: ${count:-0}"
 done
 ```
