@@ -10,7 +10,7 @@ Description: Configure Azure Pipelines path-based triggers to build only the ser
 
 Monorepos are popular for good reasons. They simplify dependency management, make cross-service changes atomic, and give you a single place for all your code. But they create a problem for CI/CD: when someone changes a file in the frontend, you do not want to rebuild and test the backend, the mobile app, and the infrastructure templates. That wastes time and pipeline minutes.
 
-Azure Pipelines supports path-based triggers that let you define which directories should trigger which pipelines. When a push only changes files under `/services/api`, only the API pipeline runs. This guide covers how to configure path triggers, handle edge cases, and set up a monorepo pipeline structure that scales.
+Azure Pipelines supports path-based triggers that let you define which directories should trigger which pipelines. When a push only changes files under `services/api`, only the API pipeline runs. This guide covers how to configure path triggers, handle edge cases, and set up a monorepo pipeline structure that scales.
 
 ## Basic Path Triggers
 
@@ -188,7 +188,7 @@ steps:
 
 ## Path Triggers for Pull Requests
 
-Path triggers also work for PR validation pipelines. Use the `pr` section instead of `trigger`:
+Path triggers also work for YAML PR validation pipelines in GitHub and Bitbucket Cloud repositories. Use the `pr` section instead of `trigger`. For Azure Repos Git, configure PR build validation with branch policies instead of the YAML `pr` trigger.
 
 ```yaml
 # Only run PR validation when relevant files change
@@ -324,25 +324,25 @@ jobs:
 
 ### Initial Pipeline Run
 
-When you first create a pipeline or when there is no previous commit to compare against, path triggers will run the pipeline. This is expected and correct behavior.
+When you first create a pipeline, you usually run it manually to validate the YAML. For automatic CI on a newly pushed branch, Azure Pipelines applies the path filters: if the branch matches the branch filters, a pipeline with path filters runs only when the branch contains changes that match those paths.
 
 ### Multiple Path Matches
 
-If a single commit changes files in multiple service directories, all matching pipelines will trigger independently. They run in parallel by default, which is the desired behavior.
+If a single commit changes files in multiple service directories, all matching pipelines will trigger independently. They can run concurrently, subject to the available parallel jobs in your Azure DevOps organization.
 
 ### Pipeline File Changes
 
-Changes to the pipeline YAML file itself always trigger the pipeline, regardless of path filters. This is important because you want to validate pipeline changes.
+Changes to the pipeline YAML file itself do not bypass path filters. If you want pipeline definition changes to trigger a service pipeline, include the pipeline file path in that pipeline's path filters.
 
 ### Merge Commits
 
-When merging branches, Azure Pipelines evaluates the path filter against the diff between the merge commit and its first parent. This means all files changed in the merged branch are evaluated, not just the merge commit itself.
+When merging branches, Azure Pipelines evaluates CI triggers for the push to the target branch. For PR validation, the evaluated YAML version and validation behavior depend on the repository type: Azure Repos uses branch policies, while GitHub and Bitbucket Cloud can use YAML `pr` triggers.
 
 ## Performance Considerations
 
 ### Shallow Clones
 
-For monorepos, the default full clone can be slow. Use shallow clones to speed things up:
+For monorepos, fetching full history can be slow. If your pipeline is not already using shallow fetch, configure a shallow clone to speed things up:
 
 ```yaml
 steps:
@@ -354,20 +354,16 @@ But be careful: if your change detection script uses `git diff HEAD~1`, a fetch 
 
 ### Sparse Checkout
 
-For very large monorepos, you can use sparse checkout to only fetch the files your pipeline needs:
+For very large monorepos, you can use sparse checkout to only check out the directories your pipeline needs:
 
 ```yaml
 steps:
   - checkout: self
     fetchDepth: 1
-
-  - script: |
-      git sparse-checkout init --cone
-      git sparse-checkout set services/api shared
-    displayName: 'Sparse checkout API and shared code'
+    sparseCheckoutDirectories: services/api shared
 ```
 
-This dramatically reduces clone time for repos with many large directories.
+This checks out only the directories the job needs. Azure Pipelines supports `sparseCheckoutDirectories` on agent version 3.253.0/4.253.0 or later with Git 2.25 or later.
 
 ## A Complete Monorepo Pipeline Template
 
@@ -418,7 +414,7 @@ trigger:
       - shared/**
 
 extends:
-  template: templates/service-ci.yml
+  template: ../templates/service-ci.yml
   parameters:
     serviceName: 'web'
     servicePath: 'services/web'
