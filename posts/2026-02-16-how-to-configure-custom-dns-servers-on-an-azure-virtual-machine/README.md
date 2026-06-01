@@ -67,7 +67,7 @@ az network nic update \
 az network nic update \
   --resource-group myResourceGroup \
   --name myVM-nic \
-  --dns-servers ""
+  --dns-servers null
 ```
 
 This is useful when you have a VM that needs to resolve a different set of internal domains or when testing DNS configuration changes on a single machine before rolling them out to the entire VNet.
@@ -135,9 +135,26 @@ app2    IN      A       10.0.2.11
 db1     IN      A       10.0.3.10
 DBEOF
 
+sudo tee /etc/bind/zones/db.10.0 > /dev/null << 'PTREOF'
+$TTL    604800
+@       IN      SOA     ns1.internal.mycompany.com. admin.internal.mycompany.com. (
+                     2026021601         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+
+@       IN      NS      ns1.internal.mycompany.com.
+4.1     IN      PTR     ns1.internal.mycompany.com.
+10.2    IN      PTR     app1.internal.mycompany.com.
+11.2    IN      PTR     app2.internal.mycompany.com.
+10.3    IN      PTR     db1.internal.mycompany.com.
+PTREOF
+
 # Verify the configuration
 sudo named-checkconf
 sudo named-checkzone internal.mycompany.com /etc/bind/zones/db.internal.mycompany.com
+sudo named-checkzone 0.10.in-addr.arpa /etc/bind/zones/db.10.0
 
 # Restart BIND
 sudo systemctl restart bind9
@@ -203,7 +220,7 @@ az dns-resolver inbound-endpoint create \
   --dns-resolver-name myDnsResolver \
   --name inbound-ep \
   --location eastus \
-  --ip-configurations "[{\"privateIpAllocationMethod\":\"Dynamic\",\"subnet\":{\"id\":\"/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/virtualNetworks/myVNet/subnets/dns-inbound-subnet\"}}]"
+  --ip-configurations "[{private-ip-address:'',private-ip-allocation-method:'Dynamic',id:'/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/virtualNetworks/myVNet/subnets/dns-inbound-subnet'}]"
 
 # Create an outbound endpoint (for Azure VMs to resolve on-prem names)
 az dns-resolver outbound-endpoint create \
@@ -211,7 +228,7 @@ az dns-resolver outbound-endpoint create \
   --dns-resolver-name myDnsResolver \
   --name outbound-ep \
   --location eastus \
-  --subnet-id "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/virtualNetworks/myVNet/subnets/dns-outbound-subnet"
+  --id "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/virtualNetworks/myVNet/subnets/dns-outbound-subnet"
 ```
 
 ## Troubleshooting DNS Issues
@@ -261,7 +278,7 @@ Resolve-DnsName app1.internal.mycompany.com -Server 10.0.1.4
 
 **NSG blocking DNS traffic**: Make sure your NSG allows UDP and TCP port 53 between VMs and DNS servers. This is easy to miss if you have restrictive outbound NSG rules.
 
-**DNS server not forwarding to Azure DNS**: If your custom DNS server does not forward to 168.63.129.16, VMs will lose the ability to resolve Azure internal names, Azure service endpoints, and Azure Private Link DNS names.
+**DNS server not forwarding to Azure DNS**: If your custom DNS server does not forward to 168.63.129.16, VMs will lose the ability to resolve Azure-provided internal names and Azure Private DNS zones linked to the VNet, including Private Link records hosted in those zones.
 
 **Stale DNS cache**: After changing DNS settings, VMs might cache old results. Clear the cache in the guest OS and restart the DNS client service.
 
