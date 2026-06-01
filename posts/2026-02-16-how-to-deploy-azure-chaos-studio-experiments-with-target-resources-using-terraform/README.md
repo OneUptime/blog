@@ -46,12 +46,18 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.80"
     }
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 2.0"
+    }
   }
 }
 
 provider "azurerm" {
   features {}
 }
+
+provider "azapi" {}
 
 variable "location" {
   type    = string
@@ -75,7 +81,7 @@ locals {
 
 ## Infrastructure Under Test
 
-First, create some infrastructure that we will target with chaos experiments. This example uses a VM scale set behind a load balancer, which is a common target for resilience testing.
+First, create some infrastructure that we will target with chaos experiments. This example uses a VM scale set, which is a common target for resilience testing.
 
 ```hcl
 # Resource group
@@ -99,6 +105,13 @@ resource "azurerm_subnet" "main" {
   resource_group_name  = azurerm_resource_group.chaos.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.1.0/24"]
+}
+
+resource "azurerm_user_assigned_identity" "chaos_agent" {
+  name                = "id-${local.name_prefix}-agent"
+  resource_group_name = azurerm_resource_group.chaos.name
+  location            = azurerm_resource_group.chaos.location
+  tags                = local.tags
 }
 
 # VM Scale Set - the target for chaos experiments
@@ -138,7 +151,8 @@ resource "azurerm_linux_virtual_machine_scale_set" "target" {
   }
 
   identity {
-    type = "SystemAssigned"
+    type         = "SystemAssigned, UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.chaos_agent.id]
   }
 
   tags = local.tags
@@ -154,7 +168,7 @@ Before Chaos Studio can inject faults into a resource, you need to onboard it as
 
 ```hcl
 # Onboard the VMSS as a service-direct target
-# This enables control-plane faults like shutdown and restart
+# This enables control-plane faults like VMSS shutdown
 resource "azurerm_chaos_studio_target" "vmss_service_direct" {
   location           = azurerm_resource_group.chaos.location
   target_resource_id = azurerm_linux_virtual_machine_scale_set.target.id
@@ -170,9 +184,31 @@ resource "azurerm_chaos_studio_capability" "vmss_shutdown" {
 }
 ```
 
-For agent-based faults, you need to install the Chaos Agent extension on the VMs and onboard them differently.
+For agent-based faults, you need to create a `Microsoft-Agent` target with a user-assigned managed identity, then install the Chaos Agent extension on the VMs.
 
 ```hcl
+# Onboard the VMSS as an agent-based target
+resource "azapi_resource" "vmss_agent_target" {
+  type      = "Microsoft.Chaos/targets@2024-01-01"
+  name      = "Microsoft-Agent"
+  parent_id = azurerm_linux_virtual_machine_scale_set.target.id
+  location  = azurerm_resource_group.chaos.location
+
+  body = {
+    properties = {
+      identities = [
+        {
+          clientId = azurerm_user_assigned_identity.chaos_agent.client_id
+          tenantId = azurerm_user_assigned_identity.chaos_agent.tenant_id
+          type     = "AzureManagedIdentity"
+        }
+      ]
+    }
+  }
+
+  response_export_values = ["properties.agentProfileId"]
+}
+
 # Install the Chaos Agent on the VMSS
 resource "azurerm_virtual_machine_scale_set_extension" "chaos_agent" {
   name                         = "ChaosAgent"
@@ -183,35 +219,30 @@ resource "azurerm_virtual_machine_scale_set_extension" "chaos_agent" {
   auto_upgrade_minor_version   = true
 
   settings = jsonencode({
-    profile = {
-      appInsightsKey = ""   # Optional: Application Insights key for agent telemetry
-    }
-    auth = {
-      managedIdentity = {
-        enabled    = true
-        clientId   = azurerm_linux_virtual_machine_scale_set.target.identity[0].principal_id
-      }
-    }
+    profile             = azapi_resource.vmss_agent_target.output.properties.agentProfileId
+    "auth.msi.clientid" = azurerm_user_assigned_identity.chaos_agent.client_id
+    appInsightsKey      = ""   # Optional: Application Insights instrumentation key for agent telemetry
   })
 }
 
-# Onboard the VMSS as an agent-based target
-resource "azurerm_chaos_studio_target" "vmss_agent" {
-  location           = azurerm_resource_group.chaos.location
-  target_resource_id = azurerm_linux_virtual_machine_scale_set.target.id
-  target_type        = "Microsoft-Agent"
-}
-
 # Enable CPU pressure capability (agent-based)
-resource "azurerm_chaos_studio_capability" "vmss_cpu_pressure" {
-  chaos_studio_target_id = azurerm_chaos_studio_target.vmss_agent.id
-  capability_type        = "CPUPressure-1.0"
+resource "azapi_resource" "vmss_cpu_pressure" {
+  type      = "Microsoft.Chaos/targets/capabilities@2024-01-01"
+  name      = "CPUPressure-1.0"
+  parent_id = azapi_resource.vmss_agent_target.id
+  body      = { properties = {} }
+
+  response_export_values = ["properties.urn"]
 }
 
 # Enable network disconnect capability (agent-based)
-resource "azurerm_chaos_studio_capability" "vmss_network_disconnect" {
-  chaos_studio_target_id = azurerm_chaos_studio_target.vmss_agent.id
-  capability_type        = "NetworkDisconnect-1.0"
+resource "azapi_resource" "vmss_network_disconnect" {
+  type      = "Microsoft.Chaos/targets/capabilities@2024-01-01"
+  name      = "NetworkDisconnect-1.2"
+  parent_id = azapi_resource.vmss_agent_target.id
+  body      = { properties = {} }
+
+  response_export_values = ["properties.urn"]
 }
 ```
 
@@ -232,43 +263,52 @@ resource "azurerm_chaos_studio_experiment" "resilience_test" {
   }
 
   # Step 1: Test CPU pressure handling
-  step {
+  steps {
     name = "cpu-stress-test"
     branch {
       name = "cpu-branch"
-      action {
+      actions {
+        urn         = azapi_resource.vmss_cpu_pressure.output.properties.urn
         action_type = "continuous"
-        name        = "cpu-pressure-action"
         duration    = "PT10M"    # Run for 10 minutes
-        parameters = jsonencode({
-          pressureLevel = 80   # 80% CPU utilization
-        })
-        selector_name = "vmss-targets"
+        parameters = {
+          pressureLevel                   = "80"       # 80% CPU utilization
+          virtualMachineScaleSetInstances = "[0,1,2]"  # Uniform VMSS instance IDs
+        }
+        selector_name = "vmss-agent-targets"
       }
     }
   }
 
   # Step 2: Test instance shutdown recovery (runs after Step 1)
-  step {
+  steps {
     name = "shutdown-recovery-test"
     branch {
       name = "shutdown-branch"
-      action {
-        action_type = "discrete"
-        name        = "vmss-shutdown-action"
-        parameters = jsonencode({
+      actions {
+        urn         = azurerm_chaos_studio_capability.vmss_shutdown.urn
+        action_type = "continuous"
+        duration    = "PT10M"    # Shut down instances for 10 minutes
+        parameters = {
           abruptShutdown = "true"   # Simulate a sudden failure
-        })
-        selector_name = "vmss-targets"
+        }
+        selector_name = "vmss-service-targets"
       }
     }
   }
 
   # Target selector - defines which resources to target
   selectors {
-    name = "vmss-targets"
+    name = "vmss-service-targets"
     chaos_studio_target_ids = [
       azurerm_chaos_studio_target.vmss_service_direct.id
+    ]
+  }
+
+  selectors {
+    name = "vmss-agent-targets"
+    chaos_studio_target_ids = [
+      azapi_resource.vmss_agent_target.id
     ]
   }
 
@@ -287,6 +327,13 @@ resource "azurerm_role_assignment" "experiment_vmss_contributor" {
   role_definition_name = "Virtual Machine Contributor"
   principal_id         = azurerm_chaos_studio_experiment.resilience_test.identity[0].principal_id
 }
+
+# Grant the experiment permission to run agent-based faults
+resource "azurerm_role_assignment" "experiment_vmss_reader" {
+  scope                = azurerm_linux_virtual_machine_scale_set.target.id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_chaos_studio_experiment.resilience_test.identity[0].principal_id
+}
 ```
 
 ## Running the Experiment
@@ -294,21 +341,21 @@ resource "azurerm_role_assignment" "experiment_vmss_contributor" {
 After deploying the infrastructure, trigger the experiment.
 
 ```bash
-# Start the chaos experiment
-az chaos experiment start \
-  --resource-group rg-chaos-staging \
-  --name exp-chaos-staging-resilience
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-# Check experiment status
-az chaos experiment show \
-  --resource-group rg-chaos-staging \
-  --name exp-chaos-staging-resilience \
+# Start the chaos experiment
+az rest --method post \
+  --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/rg-chaos-staging/providers/Microsoft.Chaos/experiments/exp-chaos-staging-resilience/start?api-version=2024-01-01"
+
+# Check experiment provisioning state
+az rest --method get \
+  --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/rg-chaos-staging/providers/Microsoft.Chaos/experiments/exp-chaos-staging-resilience?api-version=2024-01-01" \
   --query "properties.provisioningState"
 
 # List experiment execution history
-az chaos experiment execution list \
-  --resource-group rg-chaos-staging \
-  --experiment-name exp-chaos-staging-resilience \
+az rest --method get \
+  --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/rg-chaos-staging/providers/Microsoft.Chaos/experiments/exp-chaos-staging-resilience/executions?api-version=2024-01-01" \
+  --query "value[].{name:name,status:properties.status,startedAt:properties.startedAt,stoppedAt:properties.stoppedAt}" \
   --output table
 ```
 
@@ -328,18 +375,18 @@ resource "azurerm_chaos_studio_experiment" "network_test" {
   }
 
   # Simulate network partition
-  step {
+  steps {
     name = "network-disconnect"
     branch {
       name = "disconnect-branch"
-      action {
+      actions {
+        urn         = azapi_resource.vmss_network_disconnect.output.properties.urn
         action_type = "continuous"
-        name        = "network-disconnect-action"
         duration    = "PT5M"    # 5 minutes of network disconnection
-        parameters = jsonencode({
-          destinationAddresses = ["10.0.2.0/24"]   # Block traffic to backend subnet
-          direction            = "Outbound"
-        })
+        parameters = {
+          destinationFilters             = "[{\"address\":\"10.0.2.0\",\"subnetMask\":\"255.255.255.0\"}]" # Block traffic to backend subnet
+          virtualMachineScaleSetInstances = "[0,1,2]"                                                       # Uniform VMSS instance IDs
+        }
         selector_name = "web-tier"
       }
     }
@@ -348,11 +395,17 @@ resource "azurerm_chaos_studio_experiment" "network_test" {
   selectors {
     name = "web-tier"
     chaos_studio_target_ids = [
-      azurerm_chaos_studio_target.vmss_agent.id
+      azapi_resource.vmss_agent_target.id
     ]
   }
 
   tags = local.tags
+}
+
+resource "azurerm_role_assignment" "network_test_vmss_reader" {
+  scope                = azurerm_linux_virtual_machine_scale_set.target.id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_chaos_studio_experiment.network_test.identity[0].principal_id
 }
 ```
 
@@ -368,6 +421,10 @@ on:
     workflows: ["Deploy to Staging"]
     types: [completed]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   chaos-test:
     runs-on: ubuntu-latest
@@ -382,18 +439,18 @@ jobs:
 
       - name: Run Chaos Experiment
         run: |
+          SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
           # Start the experiment
-          az chaos experiment start \
-            --resource-group rg-chaos-staging \
-            --name exp-chaos-staging-resilience
+          az rest --method post \
+            --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/rg-chaos-staging/providers/Microsoft.Chaos/experiments/exp-chaos-staging-resilience/start?api-version=2024-01-01"
 
           # Wait and check results
           sleep 900  # Wait for the experiment duration
 
-          STATUS=$(az chaos experiment execution list \
-            --resource-group rg-chaos-staging \
-            --experiment-name exp-chaos-staging-resilience \
-            --query "[0].properties.status" -o tsv)
+          STATUS=$(az rest --method get \
+            --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/rg-chaos-staging/providers/Microsoft.Chaos/experiments/exp-chaos-staging-resilience/executions?api-version=2024-01-01" \
+            --query "value | sort_by(@, &properties.startedAt)[-1].properties.status" -o tsv)
 
           if [ "$STATUS" != "Success" ]; then
             echo "Chaos experiment did not complete successfully: $STATUS"
