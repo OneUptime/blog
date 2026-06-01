@@ -59,13 +59,15 @@ terraform {
     storage_account_name = "tfstatecompany"
     container_name       = "tfstate"
     key                  = "infrastructure.tfstate"
-    # Workspaces are stored as separate blobs: env:/dev/infrastructure.tfstate
+    # Non-default workspaces are stored as separate blobs: infrastructure.tfstateenv:dev
   }
 }
 
 provider "azurerm" {
   features {}
 }
+
+data "azurerm_client_config" "current" {}
 
 # Environment-specific configuration map
 locals {
@@ -193,7 +195,7 @@ resource "azurerm_postgresql_flexible_server" "main" {
   resource_group_name = azurerm_resource_group.main.name
   sku_name            = local.config.db_sku
   storage_mb          = local.config.db_storage_mb
-  version             = "16"
+  version             = "15"
 
   # Only enable geo-redundant backup for production
   geo_redundant_backup_enabled = local.env == "production"
@@ -201,6 +203,7 @@ resource "azurerm_postgresql_flexible_server" "main" {
   authentication {
     active_directory_auth_enabled = true
     password_auth_enabled         = false
+    tenant_id                     = data.azurerm_client_config.current.tenant_id
   }
 }
 
@@ -236,7 +239,7 @@ terraform plan -out=prod.tfplan
 terraform apply prod.tfplan
 ```
 
-Each workspace maintains its own state, so applying in dev has zero impact on production. The state files are stored separately in the backend - with Azure Blob Storage, they are stored as `env:/dev/infrastructure.tfstate`, `env:/staging/infrastructure.tfstate`, and so on.
+Each workspace maintains its own state, so applying in dev has zero impact on production. The state files are stored separately in the backend - with Azure Blob Storage and the `key` above, the non-default workspace blobs are named `infrastructure.tfstateenv:dev`, `infrastructure.tfstateenv:staging`, and so on.
 
 ## CI/CD Integration
 
@@ -302,11 +305,17 @@ Add a validation check at the top of your configuration to prevent deploying wit
 # Validate that we are in a known workspace
 locals {
   valid_workspaces = ["dev", "staging", "production"]
-  validate_workspace = (
-    contains(local.valid_workspaces, terraform.workspace)
-    ? true
-    : tobool("ERROR: Unknown workspace '${terraform.workspace}'. Valid workspaces: ${join(", ", local.valid_workspaces)}")
-  )
+}
+
+resource "terraform_data" "validate_workspace" {
+  input = terraform.workspace
+
+  lifecycle {
+    precondition {
+      condition     = contains(local.valid_workspaces, terraform.workspace)
+      error_message = "Unknown workspace '${terraform.workspace}'. Valid workspaces: ${join(", ", local.valid_workspaces)}"
+    }
+  }
 }
 ```
 
