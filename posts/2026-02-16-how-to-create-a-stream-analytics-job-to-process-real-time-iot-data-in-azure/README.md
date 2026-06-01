@@ -10,7 +10,7 @@ Description: A step-by-step guide to creating an Azure Stream Analytics job that
 
 IoT devices generate data continuously - temperature readings, sensor measurements, GPS coordinates, machine telemetry. Processing this data in real time lets you detect anomalies as they happen, trigger alerts before problems escalate, and build live dashboards that show what is happening right now. Azure Stream Analytics is purpose-built for this kind of real-time data processing.
 
-Stream Analytics is a fully managed service that lets you write SQL-like queries to process streaming data. You define inputs (where data comes from), a query (how to transform it), and outputs (where results go). The service handles scaling, fault tolerance, and exactly-once processing.
+Stream Analytics is a fully managed service that lets you write SQL-like queries to process streaming data. You define inputs (where data comes from), a query (how to transform it), and outputs (where results go). The service handles scaling, fault tolerance, and exactly-once event processing with at-least-once delivery to output sinks.
 
 In this post, I will walk through creating a complete Stream Analytics job that ingests IoT telemetry from Azure IoT Hub, processes it in real time, and sends results to multiple outputs.
 
@@ -51,7 +51,7 @@ If you do not have IoT Hub set up yet, you can use Azure Event Hubs as the input
 
 4. Click "Create"
 
-Streaming units determine the processing capacity. 1 SU provides roughly 1 MB/s of throughput. You can scale up to hundreds of SUs for high-volume scenarios.
+Streaming units determine the processing capacity. Each SU can process roughly 7 MB/s of input, though actual throughput depends on your query complexity, partitions, and outputs. You can scale up for high-volume scenarios.
 
 ## Step 2: Configure the Input
 
@@ -67,7 +67,6 @@ The input tells Stream Analytics where to read data from.
    - **Serialization**: JSON with UTF-8 encoding
 
 ```json
-// Input configuration (JSON representation)
 {
   "name": "iot-input",
   "properties": {
@@ -144,7 +143,7 @@ This is where the real processing happens. Stream Analytics uses a SQL-like quer
 -- Query 1: Calculate average temperature per device every 5 minutes
 -- and write to SQL database
 SELECT
-    IoTHub.ConnectionDeviceId AS DeviceId,
+    telemetry.IoTHub.ConnectionDeviceId AS DeviceId,
     ref.DeviceName,
     ref.Location,
     AVG(temperature) AS AvgTemperature,
@@ -161,7 +160,7 @@ LEFT JOIN [device-reference] AS ref
     ON telemetry.IoTHub.ConnectionDeviceId = ref.DeviceId
 -- Group by device in 5-minute tumbling windows
 GROUP BY
-    IoTHub.ConnectionDeviceId,
+    telemetry.IoTHub.ConnectionDeviceId,
     ref.DeviceName,
     ref.Location,
     TumblingWindow(minute, 5)
@@ -275,8 +274,8 @@ Events that arrive within the late arrival window are included in the correct ti
 
 If your input volume grows, scale the job by increasing Streaming Units.
 
-- 1 SU handles roughly 1 MB/s throughput
-- Scale in increments of 1, 3, or 6 SUs
+- Each SU handles roughly 7 MB/s of input, depending on the query and outputs
+- With the recommended SU V2 model, scale from fractional options such as 1/3 and 2/3 SU up to 1, 2, 3, and higher SU counts as needed
 - The query complexity affects how much data each SU can handle
 - Partition your input for better parallelism
 
@@ -290,8 +289,8 @@ SELECT
     System.Timestamp() AS WindowEnd
 INTO [sql-output]
 FROM [iot-input]
-TIMESTAMP BY EventEnqueuedUtcTime
 PARTITION BY IoTHub.ConnectionDeviceId
+TIMESTAMP BY EventEnqueuedUtcTime
 GROUP BY
     IoTHub.ConnectionDeviceId,
     TumblingWindow(minute, 5)
@@ -299,4 +298,4 @@ GROUP BY
 
 ## Wrapping Up
 
-Azure Stream Analytics makes it straightforward to process real-time IoT data without managing infrastructure. Define your input (IoT Hub or Event Hubs), write SQL queries to filter, aggregate, and enrich the data, and route results to one or more outputs. The service handles scaling, fault tolerance, and exactly-once processing. Start with a small number of streaming units, monitor utilization, and scale up as your device fleet and data volume grow. For IoT scenarios, the combination of IoT Hub for ingestion, Stream Analytics for processing, and Power BI or SQL Database for consumption gives you an end-to-end real-time analytics pipeline with minimal operational overhead.
+Azure Stream Analytics makes it straightforward to process real-time IoT data without managing infrastructure. Define your input (IoT Hub or Event Hubs), write SQL queries to filter, aggregate, and enrich the data, and route results to one or more outputs. The service handles scaling, fault tolerance, and exactly-once event processing with at-least-once delivery to output sinks. Start with a small number of streaming units, monitor utilization, and scale up as your device fleet and data volume grow. For IoT scenarios, the combination of IoT Hub for ingestion, Stream Analytics for processing, and Power BI or SQL Database for consumption gives you an end-to-end real-time analytics pipeline with minimal operational overhead.
