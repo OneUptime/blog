@@ -169,8 +169,9 @@ To run the pipeline automatically, create a trigger.
 
 For a daily copy job, use a schedule trigger.
 
+Example schedule trigger configuration:
+
 ```json
-// Example schedule trigger configuration
 {
   "name": "daily_midnight_trigger",
   "type": "ScheduleTrigger",
@@ -181,7 +182,16 @@ For a daily copy job, use a schedule trigger.
       "startTime": "2026-02-16T00:00:00Z",
       "timeZone": "UTC"
     }
-  }
+  },
+  "pipelines": [
+    {
+      "pipelineReference": {
+        "type": "PipelineReference",
+        "referenceName": "pl_copy_blob_to_sql"
+      },
+      "parameters": {}
+    }
+  ]
 }
 ```
 
@@ -221,25 +231,38 @@ Pipelines can accept parameters, making them reusable. Instead of hardcoding fil
 
 If you prefer defining your pipelines in code rather than the UI, ADF supports ARM templates and Terraform. You can also use Git integration to version control your pipeline definitions.
 
+Simplified ARM template for a copy pipeline:
+
 ```json
-// Simplified ARM template for a copy pipeline
 {
-  "name": "pl_copy_blob_to_sql",
-  "type": "Microsoft.DataFactory/factories/pipelines",
-  "properties": {
-    "activities": [
-      {
-        "name": "CopyCSVtoSQL",
-        "type": "Copy",
-        "inputs": [{ "referenceName": "ds_source_csv", "type": "DatasetReference" }],
-        "outputs": [{ "referenceName": "ds_sink_sql", "type": "DatasetReference" }],
-        "typeProperties": {
-          "source": { "type": "DelimitedTextSource" },
-          "sink": { "type": "AzureSqlSink", "writeBehavior": "insert" }
-        }
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "factoryName": {
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "name": "[concat(parameters('factoryName'), '/pl_copy_blob_to_sql')]",
+      "type": "Microsoft.DataFactory/factories/pipelines",
+      "apiVersion": "2018-06-01",
+      "properties": {
+        "activities": [
+          {
+            "name": "CopyCSVtoSQL",
+            "type": "Copy",
+            "inputs": [{ "referenceName": "ds_source_csv", "type": "DatasetReference" }],
+            "outputs": [{ "referenceName": "ds_sink_sql", "type": "DatasetReference" }],
+            "typeProperties": {
+              "source": { "type": "DelimitedTextSource" },
+              "sink": { "type": "AzureSqlSink", "writeBehavior": "insert" }
+            }
+          }
+        ]
       }
-    ]
-  }
+    }
+  ]
 }
 ```
 
