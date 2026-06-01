@@ -8,13 +8,13 @@ Description: Configure Azure Functions Premium plan with VNET integration for se
 
 ---
 
-The Azure Functions Consumption plan is great for simple workloads, but it falls short when you need to access resources inside a virtual network - think private databases, internal APIs, or on-premises systems connected through VPN. The Premium plan bridges this gap by giving you VNET integration alongside automatic scaling, pre-warmed instances, and no cold starts.
+The classic Azure Functions Consumption plan is great for simple workloads, but it falls short when you need to access resources inside a virtual network - think private databases, internal APIs, or on-premises systems connected through VPN. The Premium plan bridges this gap by giving you VNET integration alongside automatic scaling, pre-warmed instances, and reduced cold starts.
 
 In this post, I will show you how to set up a Premium plan function app with VNET integration, configure the networking correctly, and tune the scaling behavior.
 
 ## Why Premium Plan with VNET?
 
-Many organizations have a private network topology where databases, caches, and internal services are not exposed to the public internet. They sit behind private endpoints or inside a VNET. On the Consumption plan, your function runs on shared infrastructure and cannot reach those private resources. The Premium plan solves this by letting you inject your function into a subnet of your VNET.
+Many organizations have a private network topology where databases, caches, and internal services are not exposed to the public internet. They sit behind private endpoints or inside a VNET. On the classic Consumption plan, your function runs on shared infrastructure and cannot use regional VNET integration to reach those private resources. The Premium plan solves this by letting your function app integrate with a subnet of your VNET for outbound access.
 
 Common scenarios where this matters:
 
@@ -44,7 +44,7 @@ az network vnet create \
   --address-prefix 10.0.0.0/16
 
 # The function app subnet needs to be delegated to the App Service plan
-# Size it appropriately - each function instance uses one IP address
+# Size it appropriately - each App Service plan instance uses one IP address
 az network vnet subnet create \
   --name subnet-functions \
   --vnet-name vnet-functions \
@@ -70,6 +70,7 @@ az functionapp plan create \
   --resource-group rg-functions-premium \
   --location eastus2 \
   --sku EP1 \
+  --is-linux true \
   --min-instances 1 \
   --max-burst 10
 
@@ -104,21 +105,22 @@ az functionapp vnet-integration add \
   --subnet subnet-functions
 
 # Route all outbound traffic through the VNET
-# Without this, only RFC1918 traffic goes through the VNET
-az functionapp config appsettings set \
+# Without this, only RFC1918 traffic and service endpoint traffic go through the VNET
+az resource update \
   --name func-app-premium-demo \
   --resource-group rg-functions-premium \
-  --settings "WEBSITE_VNET_ROUTE_ALL=1"
+  --resource-type "Microsoft.Web/sites" \
+  --set properties.outboundVnetRouting.allTraffic=true
 
-# Use the VNET's DNS servers for name resolution
-# This is important if you are using private DNS zones
+# Use Azure DNS for name resolution when you are using Azure Private DNS zones.
+# If your VNET uses custom DNS servers, use one of those DNS server IP addresses instead.
 az functionapp config appsettings set \
   --name func-app-premium-demo \
   --resource-group rg-functions-premium \
   --settings "WEBSITE_DNS_SERVER=168.63.129.16"
 ```
 
-The `WEBSITE_VNET_ROUTE_ALL=1` setting is critical. By default, only traffic destined for RFC1918 addresses (10.x, 172.16.x, 192.168.x) gets routed through the VNET. If you are using private endpoints (which use private DNS resolution), you need all traffic to go through the VNET.
+The `properties.outboundVnetRouting.allTraffic=true` site setting is critical. By default, only traffic destined for RFC1918 addresses (10.x, 172.16.x, 192.168.x) and service endpoints configured on the integration subnet gets routed through the VNET. If you want NSGs, route tables, a NAT gateway, or a firewall on the integration subnet to apply to all outbound traffic, you need all traffic to go through the VNET.
 
 ## Connecting to a Private Database
 
@@ -191,7 +193,7 @@ az functionapp plan update \
 
 The `min-instances` setting keeps that many instances always warm and running. You pay for these instances even when there is no traffic. The `max-burst` setting caps how many instances the platform will scale to during traffic spikes.
 
-You can also configure per-function scaling limits in the `host.json` file.
+You can also configure trigger concurrency settings in the `host.json` file.
 
 ```json
 {
@@ -217,19 +219,19 @@ You can also configure per-function scaling limits in the `host.json` file.
 
 ## Subnet Sizing Considerations
 
-A common mistake is making the function subnet too small. Each function instance consumes one IP address from the subnet. If you have a /28 subnet (14 usable IPs), you can only scale to 14 instances. Azure also reserves some addresses in each subnet.
+A common mistake is making the function subnet too small. Azure reserves five addresses in each subnet, and each App Service plan instance consumes one IP address from the integration subnet. During scale operations, IP usage can temporarily double, so you should leave enough headroom for both the target instance count and scale transitions.
 
 Here is a quick reference for subnet sizing.
 
-| Subnet Size | Usable IPs | Max Function Instances |
-|-------------|-----------|----------------------|
-| /28         | 11        | 11                   |
-| /27         | 27        | 27                   |
-| /26         | 59        | 59                   |
-| /25         | 123       | 123                  |
-| /24         | 251       | 251                  |
+| Subnet Size | Available IPs | Practical Max Instances During Scaling |
+|-------------|---------------|----------------------------------------|
+| /28         | 11            | 5                                      |
+| /27         | 27            | 13                                     |
+| /26         | 59            | 29                                     |
+| /25         | 123           | 61                                     |
+| /24         | 251           | 125                                    |
 
-I recommend at least a /26 for production workloads. If you are running multiple function apps in the same VNET, each one needs its own dedicated subnet.
+I recommend at least a /26 for production workloads. If you are running multiple function apps in the same App Service plan, they can use the same VNET integration subnet. Function apps in different App Service plans generally need separate integration subnets unless you use multi-plan subnet join, which requires a /26 or larger subnet.
 
 ## Monitoring Scale Events
 
