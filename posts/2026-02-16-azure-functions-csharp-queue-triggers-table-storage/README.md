@@ -19,7 +19,7 @@ Create an Azure Functions project using the isolated worker model.
 ```bash
 # Create the project
 
-func init QueueFunctions --dotnet-isolated --target-framework net8.0
+func init QueueFunctions --worker-runtime dotnet-isolated --target-framework net8.0
 cd QueueFunctions
 
 # Add required packages
@@ -27,6 +27,8 @@ dotnet add package Microsoft.Azure.Functions.Worker
 dotnet add package Microsoft.Azure.Functions.Worker.Extensions.Storage.Queues
 dotnet add package Microsoft.Azure.Functions.Worker.Extensions.Tables
 dotnet add package Microsoft.Azure.Functions.Worker.Extensions.Http
+dotnet add package Microsoft.ApplicationInsights.WorkerService
+dotnet add package Microsoft.Azure.Functions.Worker.ApplicationInsights
 ```
 
 ## Basic Queue Trigger
@@ -92,7 +94,6 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using System.Net;
-using System.Text.Json;
 
 public class OrderReceiver
 {
@@ -108,10 +109,10 @@ public class OrderReceiver
     /// The queue output binding handles serialization and delivery.
     /// </summary>
     [Function("ReceiveOrder")]
-    public OrderReceiverOutput ReceiveOrder(
+    public async Task<OrderReceiverOutput> ReceiveOrder(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "orders")] HttpRequestData req)
     {
-        var order = req.ReadFromJsonAsync<Order>().Result;
+        var order = await req.ReadFromJsonAsync<Order>();
 
         if (order == null || string.IsNullOrEmpty(order.OrderId))
         {
@@ -124,7 +125,7 @@ public class OrderReceiver
         _logger.LogInformation("Order {OrderId} queued for processing", order.OrderId);
 
         var response = req.CreateResponse(HttpStatusCode.Accepted);
-        response.WriteAsJsonAsync(new { message = "Order accepted", orderId = order.OrderId });
+        await response.WriteAsJsonAsync(new { message = "Order accepted", orderId = order.OrderId });
 
         return new OrderReceiverOutput
         {
@@ -140,7 +141,6 @@ public class OrderReceiver
 /// </summary>
 public class OrderReceiverOutput
 {
-    [HttpResult]
     public HttpResponseData HttpResponse { get; set; } = null!;
 
     [QueueOutput("orders", Connection = "AzureWebJobsStorage")]
@@ -237,7 +237,7 @@ public class OrderLookup
     /// The input binding retrieves the entity using PartitionKey and RowKey.
     /// </summary>
     [Function("GetOrder")]
-    public HttpResponseData GetOrder(
+    public async Task<HttpResponseData> GetOrder(
         [HttpTrigger(AuthorizationLevel.Function, "get", Route = "orders/{customerId}/{orderId}")] HttpRequestData req,
         [TableInput("ProcessedOrders", "{customerId}", "{orderId}", Connection = "AzureWebJobsStorage")] ProcessedOrderEntity? entity)
     {
@@ -248,7 +248,7 @@ public class OrderLookup
         }
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        response.WriteAsJsonAsync(new
+        await response.WriteAsJsonAsync(new
         {
             orderId = entity.RowKey,
             customerId = entity.PartitionKey,
@@ -354,6 +354,10 @@ When a queue message fails processing repeatedly, it goes to a poison queue. Han
 
 ```csharp
 // Functions/PoisonMessageHandler.cs
+using Azure.Data.Tables;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
+
 public class PoisonMessageHandler
 {
     private readonly ILogger<PoisonMessageHandler> _logger;
@@ -419,10 +423,16 @@ azurite --silent --location /tmp/azurite
 # Start the functions
 func start
 
-# Send a test message to the queue
+# In another terminal, create the queue and send a base64-encoded test message
+az storage queue create \
+    --name orders \
+    --connection-string "UseDevelopmentStorage=true"
+
+message=$(printf '%s' '{"OrderId":"TEST-001","CustomerId":"CUST-1","Total":99.99,"Items":[{"ProductName":"Widget","Quantity":2,"Price":49.99}]}' | base64 | tr -d '\n')
+
 az storage message put \
     --queue-name orders \
-    --content '{"OrderId":"TEST-001","CustomerId":"CUST-1","Total":99.99,"Items":[{"ProductName":"Widget","Quantity":2,"Price":49.99}]}' \
+    --content "$message" \
     --connection-string "UseDevelopmentStorage=true"
 ```
 
@@ -436,6 +446,7 @@ az functionapp create \
     --storage-account myfuncstorage \
     --consumption-plan-location eastus \
     --runtime dotnet-isolated \
+    --runtime-version 8 \
     --functions-version 4
 
 # Deploy
