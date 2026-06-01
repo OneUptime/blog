@@ -49,12 +49,11 @@ First, generate a Personal Access Token (PAT) with Packaging (Read & Write) perm
 For better security, you can encrypt the PAT using Maven's built-in password encryption:
 
 ```bash
-# Generate a master password and store it securely
-
-mvn --encrypt-master-password YourMasterPassword
+# Generate a master password and store the output in ~/.m2/settings-security.xml
+mvn --encrypt-master-password
 
 # Then encrypt your PAT with the master password
-mvn --encrypt-password YourPATHere
+mvn --encrypt-password
 ```
 
 ## Configuring pom.xml for the Feed
@@ -180,9 +179,9 @@ The `MavenAuthenticate` task handles authentication automatically in the pipelin
 
 When publishing to Azure Artifacts, you need a versioning strategy. Here are the common approaches:
 
-For release versions, use semantic versioning (e.g., `1.2.3`). Azure Artifacts won't let you overwrite a release version once it's published, which is exactly what you want for reproducibility.
+For release versions, use semantic versioning (e.g., `1.2.3`). Azure Artifacts won't let you overwrite a version once it's published, which is exactly what you want for reproducibility.
 
-For development builds, use SNAPSHOT versions (e.g., `1.3.0-SNAPSHOT`). Snapshots can be overwritten, so every build on the develop branch can publish without changing the version number.
+For development builds, use SNAPSHOT versions (e.g., `1.3.0-SNAPSHOT`). Maven publishes timestamped snapshot builds under the snapshot version, and Azure Artifacts keeps only a limited number of Maven snapshots in the feed.
 
 You can automate version bumping in your pipeline:
 
@@ -209,7 +208,7 @@ You can also delete old versions through the REST API:
 # Delete a specific package version via the API
 curl -X DELETE \
   -H "Authorization: Basic $(echo -n :$PAT | base64)" \
-  "https://pkgs.dev.azure.com/myorg/_apis/packaging/feeds/java-internal/maven/groups/com.mycompany.services/artifacts/shared-utils/versions/1.0.0?api-version=7.1"
+  "https://pkgs.dev.azure.com/myorg/myproject/_apis/packaging/feeds/java-internal/maven/groups/com.mycompany.services/artifacts/shared-utils/versions/1.0.0?api-version=7.1-preview.1"
 ```
 
 ## Gradle Configuration
@@ -218,6 +217,11 @@ If your team uses Gradle instead of Maven, the setup is similar. Here is the Gra
 
 ```groovy
 // build.gradle - repository configuration for Azure Artifacts
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
 repositories {
     maven {
         url "https://pkgs.dev.azure.com/myorg/myproject/_packaging/java-internal/maven/v1"
@@ -253,12 +257,12 @@ publishing {
 
 Azure Artifacts feeds have their own permission model. You can control who can read from and publish to a feed:
 
-- Readers can download packages but not publish
-- Collaborators can publish new packages and versions
-- Contributors have full control including deleting packages
-- Feed administrators can manage settings and permissions
+- Feed Readers can download packages but not publish
+- Feed and Upstream Readers (Collaborators) can download packages and save packages from upstream sources
+- Feed Publishers (Contributors) can publish new packages and versions
+- Feed Owners can delete packages, manage upstream sources, and edit feed settings
 
-For most teams, developers should be Collaborators (so they can publish during local development) and the build service account should also be a Collaborator. Only leads or DevOps engineers need Administrator access.
+For most teams, developers who need to publish during local development should be Feed Publishers (Contributors), and the build service account should also be a Feed Publisher if the pipeline publishes packages. Only leads or DevOps engineers need Feed Owner access.
 
 ## Wrapping Up
 
