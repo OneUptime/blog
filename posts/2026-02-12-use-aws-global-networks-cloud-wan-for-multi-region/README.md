@@ -14,7 +14,7 @@ Building multi-region networking on AWS used to mean stitching together Transit 
 
 Cloud WAN is a managed service that lets you build, manage, and monitor a global wide-area network. It connects your VPCs across regions, your on-premises data centers, and your branch offices through a unified control plane.
 
-Under the hood, Cloud WAN builds on Transit Gateway infrastructure, but it adds a policy-driven management layer that handles cross-region connectivity automatically.
+Cloud WAN core network edges are similar to Transit Gateways, but AWS manages them through a policy-driven control plane that handles cross-region connectivity automatically.
 
 ```mermaid
 graph TD
@@ -36,7 +36,7 @@ graph TD
 
 ## Key Concepts
 
-**Global Network**: The top-level container. You have one global network that spans all regions.
+**Global Network**: The top-level container for your Network Manager resources. In this design, one global network contains the Cloud WAN core network that spans your selected regions.
 
 **Core Network**: Defines the network topology through policies. This is where you specify which regions are included, how segments are configured, and what connectivity is allowed.
 
@@ -93,7 +93,7 @@ The core network policy is a JSON document that describes your desired network t
             "name": "development",
             "description": "Development and testing",
             "require-attachment-acceptance": false,
-            "isolate-attachments": true
+            "isolate-attachments": false
         },
         {
             "name": "shared-services",
@@ -188,19 +188,19 @@ Once the core network is active, attach your VPCs. The attachment policy you def
 # Attach a production VPC in us-east-1
 aws networkmanager create-vpc-attachment \
     --core-network-id core-network-0123456789abcdef0 \
-    --vpc-arn arn:aws:ec2:us-east-1:123456789012:vpc/vpc-prod-us \
+    --vpc-arn arn:aws:ec2:us-east-1:123456789012:vpc/vpc-0a1b2c3d4e5f67890 \
     --subnet-arns \
-        "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-prod-1a" \
-        "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-prod-1b" \
+        "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-0a1b2c3d4e5f67890" \
+        "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-0123456789abcdef0" \
     --tags 'Key=segment,Value=production'
 
 # Attach a production VPC in eu-west-1
 aws networkmanager create-vpc-attachment \
     --core-network-id core-network-0123456789abcdef0 \
-    --vpc-arn arn:aws:ec2:eu-west-1:123456789012:vpc/vpc-prod-eu \
+    --vpc-arn arn:aws:ec2:eu-west-1:123456789012:vpc/vpc-0123abcd4567ef890 \
     --subnet-arns \
-        "arn:aws:ec2:eu-west-1:123456789012:subnet/subnet-prod-eu-1a" \
-        "arn:aws:ec2:eu-west-1:123456789012:subnet/subnet-prod-eu-1b" \
+        "arn:aws:ec2:eu-west-1:123456789012:subnet/subnet-0fedcba9876543210" \
+        "arn:aws:ec2:eu-west-1:123456789012:subnet/subnet-00112233445566778" \
     --tags 'Key=segment,Value=production'
 ```
 
@@ -235,7 +235,7 @@ aws networkmanager create-site-to-site-vpn-attachment \
 ## Step 5: Verify Connectivity
 
 ```bash
-# Check the core network routing table
+# Check the live core network policy
 aws networkmanager get-core-network-policy \
     --core-network-id core-network-0123456789abcdef0
 
@@ -253,7 +253,7 @@ aws networkmanager list-attachments \
 
 # Check network routes
 aws networkmanager get-network-routes \
-    --core-network-id core-network-0123456789abcdef0 \
+    --global-network-id global-network-0123456789abcdef0 \
     --route-table-identifier '{
         "CoreNetworkSegmentEdge": {
             "CoreNetworkId": "core-network-0123456789abcdef0",
@@ -323,9 +323,10 @@ Cloud WAN pricing includes:
 - Data processing per GB
 - VPC attachment per hour
 - VPN attachment per hour
-- Peering per hour for cross-region traffic
+- Direct Connect gateway attachment per hour
+- Peering per hour when connecting a core network edge to a Transit Gateway
 
-For a small deployment (3 regions, 6 VPCs, moderate traffic), expect costs in the range of $1,500-3,000/month. This compares favorably to managing individual Transit Gateways with peering in each region.
+For a small deployment (3 regions, 6 VPCs, moderate traffic), expect costs to vary based on attachment type, traffic volume, and regional data transfer. Use the AWS Pricing Calculator for your traffic profile before comparing it with individual Transit Gateways and peering in each region.
 
 ## Conclusion
 
