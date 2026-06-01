@@ -211,17 +211,17 @@ If you have on-premises DNS servers and need them to resolve your Azure private 
 # Create an Azure DNS Private Resolver for hybrid DNS forwarding
 az dns-resolver create \
   --resource-group rg-dns \
-  --resolver-name resolver-main \
+  --name resolver-main \
   --location eastus \
   --id /subscriptions/<sub-id>/resourceGroups/rg-network/providers/Microsoft.Network/virtualNetworks/vnet-hub
 
 # Create an inbound endpoint (on-premises forwards queries here)
 az dns-resolver inbound-endpoint create \
   --resource-group rg-dns \
-  --resolver-name resolver-main \
+  --dns-resolver-name resolver-main \
   --inbound-endpoint-name inbound \
   --location eastus \
-  --ip-configurations "[{\"privateIpAllocationMethod\":\"Dynamic\",\"subnet\":{\"id\":\"/subscriptions/<sub-id>/resourceGroups/rg-network/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-dns-inbound\"}}]"
+  --ip-configurations "[{private-ip-allocation-method:Dynamic,id:/subscriptions/<sub-id>/resourceGroups/rg-network/providers/Microsoft.Network/virtualNetworks/vnet-hub/subnets/snet-dns-inbound}]"
 ```
 
 Configure your on-premises DNS server to conditionally forward queries for `example.com` to the inbound endpoint's IP address. This lets on-premises users also get the private IP resolution.
