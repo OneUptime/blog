@@ -20,7 +20,7 @@ Common use cases include:
 
 - Syncing new content (emails, messages, articles)
 - Updating cached data
-- Triggering a location update
+- Refreshing location-dependent data when the app is allowed to run in the background
 - Invalidating a local cache when server data changes
 - Preloading content for faster app launch
 
@@ -32,7 +32,12 @@ For iOS, a silent push notification is called a "background update notification.
 
 ```javascript
 // silent-ios.js - Send a silent push notification to iOS devices
-const { NotificationHubsClient } = require('@azure/notification-hubs');
+const {
+  NotificationHubsClient,
+  createAppleNotification,
+  createFcmV1Notification,
+  createTemplateNotification
+} = require('@azure/notification-hubs');
 
 const client = new NotificationHubsClient(
   process.env.NOTIFICATION_HUB_CONNECTION_STRING,
@@ -51,14 +56,13 @@ async function sendSilentIos(tagExpression, customData) {
   };
 
   const result = await client.sendNotification(
-    {
-      kind: 'Apple',
+    createAppleNotification({
       body: JSON.stringify(payload),
       headers: {
         'apns-push-type': 'background', // Required for silent pushes on iOS 13+
         'apns-priority': '5'            // Must be 5 (not 10) for background pushes
       }
-    },
+    }),
     { tagExpression }
   );
 
@@ -81,27 +85,28 @@ Two critical details for iOS silent pushes:
 
 ## Silent Push on Android via FCM
 
-On Android, silent notifications are called "data messages." You send a payload with only a `data` field and no `notification` field. When FCM receives a data-only message, it delivers it directly to your app's message handler without showing any UI.
+On Android, silent notifications are called "data messages." With FCM v1, you send a payload with a `message.data` field and no `message.notification` field. When FCM receives a data-only message, it delivers it directly to your app's message handler without showing any UI.
 
 ```javascript
 // silent-android.js - Send a silent push notification to Android devices
 async function sendSilentAndroid(tagExpression, data) {
   // FCM data-only message - no notification field means no UI shown
   const payload = {
-    data: {
-      action: data.action,
-      resource: data.resource,
-      since: data.since,
-      // All values must be strings in FCM data messages
-      priority: String(data.priority || 'normal')
+    message: {
+      data: {
+        action: data.action,
+        resource: data.resource,
+        // All values must be strings in FCM data messages
+        since: String(data.since)
+      },
+      android: {
+        priority: data.priority || 'normal'
+      }
     }
   };
 
   const result = await client.sendNotification(
-    {
-      kind: 'Gcm',
-      body: JSON.stringify(payload)
-    },
+    createFcmV1Notification({ body: JSON.stringify(payload) }),
     { tagExpression }
   );
 
@@ -137,13 +142,13 @@ async function registerIosSilentTemplate(deviceToken, userId) {
     since: '$(since)'
   });
 
-  await client.createOrUpdateRegistration({
+  await client.createRegistration({
     kind: 'AppleTemplate',
     deviceToken: deviceToken,
     bodyTemplate: template,
     templateName: 'silent',
     tags: [`user:${userId}`, 'platform:ios', 'type:silent'],
-    headers: {
+    apnsHeaders: {
       'apns-push-type': 'background',
       'apns-priority': '5'
     }
@@ -153,16 +158,21 @@ async function registerIosSilentTemplate(deviceToken, userId) {
 // Android silent template
 async function registerAndroidSilentTemplate(fcmToken, userId) {
   const template = JSON.stringify({
-    data: {
-      action: '$(action)',
-      resource: '$(resource)',
-      since: '$(since)'
+    message: {
+      data: {
+        action: '$(action)',
+        resource: '$(resource)',
+        since: '$(since)'
+      },
+      android: {
+        priority: 'normal'
+      }
     }
   });
 
-  await client.createOrUpdateRegistration({
-    kind: 'GcmTemplate',
-    gcmRegistrationId: fcmToken,
+  await client.createRegistration({
+    kind: 'FcmV1Template',
+    fcmV1RegistrationId: fcmToken,
     bodyTemplate: template,
     templateName: 'silent',
     tags: [`user:${userId}`, 'platform:android', 'type:silent']
@@ -176,14 +186,13 @@ Now you can send a single template notification that silently reaches both platf
 // send-silent-template.js - Cross-platform silent notification
 async function sendSilentSync(userId, resource) {
   const result = await client.sendNotification(
-    {
-      kind: 'Template',
-      body: JSON.stringify({
+    createTemplateNotification({
+      body: {
         action: 'sync',
         resource: resource,
         since: new Date().toISOString()
-      })
-    },
+      }
+    }),
     { tagExpression: `user:${userId} && type:silent` }
   );
 
@@ -196,7 +205,7 @@ sendSilentSync('user-123', 'conversations');
 
 ## Handling Silent Push in Your Mobile App
 
-On the mobile side, you need to handle the silent notification and perform the background work.
+On the mobile side, you need to handle the silent notification and perform the background work. For iOS, enable the Remote notifications background mode for the app target so the system can wake your app for background pushes.
 
 ### iOS (Swift)
 
