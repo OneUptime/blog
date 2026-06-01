@@ -204,7 +204,7 @@ knowledge_base = [
     "Azure Virtual Machines let you run Windows or Linux VMs in the cloud.",
     "Azure Functions is a serverless compute service for running event-driven code.",
     "Azure Cosmos DB is a globally distributed NoSQL database service.",
-    "Azure Active Directory provides identity and access management for cloud applications.",
+    "Microsoft Entra ID, formerly Azure Active Directory, provides identity and access management for cloud applications.",
     "Azure DevOps provides developer services for build, test, and deployment pipelines.",
 ]
 
@@ -222,11 +222,11 @@ The query "Where should I put my Docker containers?" does not contain the word "
 
 Azure OpenAI offers several embedding models:
 
-| Model | Dimensions | Best For |
-|-------|-----------|----------|
+| Model | Default Dimensions | Best For |
+|-------|-------------------|----------|
 | text-embedding-ada-002 | 1536 | General purpose, good balance of quality and cost |
-| text-embedding-3-small | 512-1536 | Cost-effective, configurable dimensions |
-| text-embedding-3-large | 256-3072 | Highest quality, best for precision-critical use cases |
+| text-embedding-3-small | 1536 | Cost-effective, configurable dimensions |
+| text-embedding-3-large | 3072 | Highest quality, best for precision-critical use cases |
 
 The newer text-embedding-3 models support configurable dimensions. You can request fewer dimensions to reduce storage costs and speed up similarity calculations at the expense of some accuracy.
 
@@ -235,7 +235,7 @@ The newer text-embedding-3 models support configurable dimensions. You can reque
 The in-memory approach above works for small datasets, but for production systems with millions of documents, you need a proper vector database. Options on Azure include:
 
 - **Azure AI Search**: Native vector search support with hybrid (keyword + vector) search capabilities.
-- **Azure Cosmos DB for MongoDB vCore**: Supports vector search with the IVF and HNSW indexing algorithms.
+- **Azure Cosmos DB for MongoDB vCore**: Supports vector search with the IVF, HNSW, and DiskANN indexing algorithms.
 - **Azure Database for PostgreSQL**: Supports vector search through the pgvector extension.
 
 Each of these services handles the indexing, storage, and efficient nearest-neighbor search that you would otherwise need to build yourself.
