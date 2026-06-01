@@ -14,16 +14,16 @@ This guide covers connecting CodeBuild to both GitHub and Bitbucket, setting up 
 
 ## Connecting CodeBuild to GitHub
 
-There are two ways to connect: OAuth (personal access) and a CodeStar Connections connection (recommended for organizations).
+There are two ways to connect: OAuth (personal access) and a CodeConnections connection (recommended for organizations).
 
-### Method 1: CodeStar Connection (Recommended)
+### Method 1: CodeConnections Connection (Recommended)
 
-CodeStar Connections provides a managed OAuth connection that your whole team can share.
+CodeConnections provides a managed OAuth connection that your whole team can share.
 
 ```bash
 # Create a connection to GitHub
 
-aws codestar-connections create-connection \
+aws codeconnections create-connection \
   --provider-type GitHub \
   --connection-name github-org-connection
 
@@ -37,14 +37,14 @@ After completing the handshake in the console, verify the connection is active.
 
 ```bash
 # Check connection status
-aws codestar-connections get-connection \
-  --connection-arn "arn:aws:codestar-connections:us-east-1:123456789012:connection/abc-123"
+aws codeconnections get-connection \
+  --connection-arn "arn:aws:codeconnections:us-east-1:123456789012:connection/abc-123"
 ```
 
 Now create a CodeBuild project using this connection.
 
 ```bash
-# Create a CodeBuild project with GitHub source via CodeStar Connection
+# Create a CodeBuild project with GitHub source via CodeConnections
 aws codebuild create-project \
   --name github-app-build \
   --source '{
@@ -54,13 +54,13 @@ aws codebuild create-project \
     "buildspec": "buildspec.yml",
     "auth": {
       "type": "CODECONNECTIONS",
-      "resource": "arn:aws:codestar-connections:us-east-1:123456789012:connection/abc-123"
+      "resource": "arn:aws:codeconnections:us-east-1:123456789012:connection/abc-123"
     },
     "reportBuildStatus": true
   }' \
   --environment '{
     "type": "LINUX_CONTAINER",
-    "image": "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+    "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
     "computeType": "BUILD_GENERAL1_MEDIUM"
   }' \
   --artifacts '{"type": "NO_ARTIFACTS"}' \
@@ -92,14 +92,14 @@ aws codebuild create-project \
   }' \
   --environment '{
     "type": "LINUX_CONTAINER",
-    "image": "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+    "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
     "computeType": "BUILD_GENERAL1_MEDIUM"
   }' \
   --artifacts '{"type": "NO_ARTIFACTS"}' \
   --service-role "arn:aws:iam::123456789012:role/CodeBuildServiceRole"
 ```
 
-Your GitHub token needs these scopes: `repo` (for private repos) and `admin:repo_hook` (for webhooks).
+Your GitHub token needs these scopes: `repo` (for private repos), `repo:status` (for build status updates), and `admin:repo_hook` (for webhooks, unless the token already has `repo`).
 
 ## Setting Up Webhooks for Automatic Builds
 
@@ -207,8 +207,8 @@ aws codebuild create-webhook \
 The process for Bitbucket is very similar.
 
 ```bash
-# Create a CodeStar connection to Bitbucket
-aws codestar-connections create-connection \
+# Create a CodeConnections connection to Bitbucket
+aws codeconnections create-connection \
   --provider-type Bitbucket \
   --connection-name bitbucket-org-connection
 
@@ -224,13 +224,13 @@ aws codebuild create-project \
     "buildspec": "buildspec.yml",
     "auth": {
       "type": "CODECONNECTIONS",
-      "resource": "arn:aws:codestar-connections:us-east-1:123456789012:connection/def-456"
+      "resource": "arn:aws:codeconnections:us-east-1:123456789012:connection/def-456"
     },
     "reportBuildStatus": true
   }' \
   --environment '{
     "type": "LINUX_CONTAINER",
-    "image": "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+    "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
     "computeType": "BUILD_GENERAL1_MEDIUM"
   }' \
   --artifacts '{"type": "NO_ARTIFACTS"}' \
@@ -270,7 +270,7 @@ aws codebuild batch-get-projects \
 Add the badge to your README.md.
 
 ```markdown
-![Build Status](https://codebuild.us-east-1.amazonaws.com/badges?uuid=YOUR_BADGE_UUID&branch=main)
+![Build Status](https://codebuild.us-east-1.amazon.com/badges?uuid=YOUR_BADGE_UUID&branch=main)
 ```
 
 ## Pull Request Builds with Status Checks
@@ -313,7 +313,7 @@ phases:
       # Only run full e2e tests on main branch pushes, not PRs
       - |
         if [ "$CODEBUILD_WEBHOOK_EVENT" = "PUSH" ] && \
-           echo "$CODEBUILD_WEBHOOK_HEAD_REF" | grep -q "refs/heads/main"; then
+           [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ]; then
           echo "Running E2E tests for main branch..."
           npm run test:e2e
         else
@@ -358,7 +358,7 @@ aws codebuild create-project \
   ]' \
   --environment '{
     "type": "LINUX_CONTAINER",
-    "image": "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+    "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
     "computeType": "BUILD_GENERAL1_MEDIUM"
   }' \
   --artifacts '{"type": "NO_ARTIFACTS"}' \
