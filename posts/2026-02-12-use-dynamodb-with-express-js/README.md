@@ -21,7 +21,7 @@ mkdir dynamodb-express-api && cd dynamodb-express-api
 npm init -y
 
 # Install Express and the AWS SDK v3 DynamoDB modules
-npm install express @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb uuid
+npm install express @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
 
 # Install dev dependencies
 npm install -D nodemon
@@ -51,6 +51,8 @@ dynamodb-express-api/
 ## DynamoDB Client Configuration
 
 Set up the DynamoDB client with the Document Client wrapper.
+
+Before running the examples, create a DynamoDB table named `Users` (or set `USERS_TABLE`) with a string partition key named `user_id`. The optional `findByStatus` helper also expects a global secondary index named `status-index` with `status` as its partition key.
 
 ```javascript
 // src/config/dynamodb.js
@@ -82,7 +84,7 @@ Create a model that encapsulates all DynamoDB operations for the User entity.
 
 ```javascript
 // src/models/user.js
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const {
   PutCommand,
   GetCommand,
@@ -100,7 +102,7 @@ class UserModel {
   static async create({ name, email }) {
     const now = new Date().toISOString();
     const user = {
-      user_id: uuidv4(),
+      user_id: randomUUID(),
       name,
       email,
       status: 'active',
