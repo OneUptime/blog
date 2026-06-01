@@ -147,6 +147,8 @@ provider "azurerm" {
   features {}
 }
 
+data "azurerm_client_config" "current" {}
+
 # Create a resource group
 resource "azurerm_resource_group" "ml" {
   name     = "ml-project-rg"
@@ -215,7 +217,7 @@ Assign the appropriate roles to your team members in the Azure Portal under Acce
 
 ### Configure Default Datastore
 
-The workspace comes with a default datastore pointing to the associated storage account. You can add additional datastores that connect to Azure Blob Storage, Azure Data Lake, Azure SQL Database, or other data sources.
+The workspace comes with a default datastore pointing to the associated storage account. You can add additional datastores that connect to Azure Blob Storage, Azure Data Lake Storage Gen2, Azure Files, OneLake, or other supported storage services.
 
 ### Set Up Compute
 
