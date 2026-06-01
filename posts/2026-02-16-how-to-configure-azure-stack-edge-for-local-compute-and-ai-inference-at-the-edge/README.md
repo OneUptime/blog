@@ -17,8 +17,8 @@ This guide covers configuring Azure Stack Edge for local compute workloads and d
 Azure Stack Edge is a physical appliance shipped by Microsoft that you rack in your data center or edge location. Depending on the model, it includes:
 
 - **Azure Stack Edge Pro with GPU** - Includes 1 or 2 NVIDIA T4 GPUs for AI/ML inference.
-- **Azure Stack Edge Pro with FPGA** - Includes an FPGA for specific acceleration scenarios.
-- **Azure Stack Edge Mini R** - A ruggedized, portable form factor for harsh environments.
+- **Azure Stack Edge Pro 2** - Available in models with no GPU, 1 NVIDIA A2 GPU, or 2 NVIDIA A2 GPUs.
+- **Azure Stack Edge Mini R** - A ruggedized, portable form factor with an Intel Movidius Myriad X VPU for computer vision workloads in harsh environments.
 
 The device runs an Azure-managed operating system, supports Kubernetes and IoT Edge for containerized workloads, and provides local storage with automatic tiering to Azure Blob Storage.
 
@@ -43,7 +43,7 @@ graph TD
 - An Azure Stack Edge resource created in your Azure subscription.
 - Network cables and rack space at the edge location.
 - A management computer with a web browser for initial setup.
-- For GPU workloads: familiarity with NVIDIA container toolkit and GPU-accelerated containers.
+- For GPU workloads: familiarity with NVIDIA GPU-enabled containers.
 
 ## Step 1: Physical Setup and Activation
 
@@ -59,7 +59,7 @@ Connect your management computer to Port 1. The device has a default IP of `http
 
 ## Step 2: Configure the Device Through Local Web UI
 
-Log in to the local web UI with the device password (found on a label attached to the device).
+Log in to the local web UI with the default password `Password1`, then change the administrator password when prompted.
 
 ### Network Configuration
 
@@ -92,17 +92,18 @@ Activation links the physical device to your Azure resource, enabling remote man
 
 ## Step 3: Enable Compute
 
-After activation, enable the compute role on a network interface. This deploys a Kubernetes cluster and IoT Edge runtime on the device.
+After activation, enable the compute role. This deploys the Kubernetes components on the device and, for older managed IoT Edge deployments, creates the associated IoT Hub and IoT Edge device. For Azure Stack Edge 2301 and later, deploy the current IoT Edge runtime on an Ubuntu VM instead of using managed IoT Edge directly on the appliance.
 
-1. In the Azure portal, navigate to your Azure Stack Edge resource.
-2. Under "Edge compute," click "Configure compute."
-3. Select the network interface for compute traffic (Port 3 recommended for 25 GbE throughput).
-4. Assign Kubernetes service IPs:
+1. In the local web UI, go to "Compute."
+2. Select the network interface for compute traffic (Port 3 is a common choice for 25 GbE throughput).
+3. Assign Kubernetes IP ranges:
    - **External service IP range**: 10.0.1.200 - 10.0.1.220
    - **Kubernetes node IPs**: Assigned from the interface subnet
-5. Click "Apply."
+4. Click "Apply."
+5. In the Azure portal, navigate to your Azure Stack Edge resource.
+6. From "Overview," select "Kubernetes for Azure Stack Edge" and click "Add."
 
-The compute configuration takes 15-20 minutes. It deploys IoT Edge, creates a Kubernetes cluster, and configures the GPU passthrough if applicable.
+The compute configuration takes 20-30 minutes. It creates the Kubernetes cluster and the supporting virtual machines, and configures access to GPU resources if applicable.
 
 Verify the compute setup via the local UI or CLI.
 
@@ -145,23 +146,7 @@ For GPU-accelerated AI inference, deploy a container that uses the NVIDIA T4 GPU
             "restartPolicy": "always",
             "settings": {
               "image": "myregistry.azurecr.io/defect-detection:v1.0",
-              "createOptions": {
-                "HostConfig": {
-                  "DeviceRequests": [
-                    {
-                      "Count": 1,
-                      "Capabilities": [["gpu"]]
-                    }
-                  ],
-                  "Binds": [
-                    "/home/input:/app/input",
-                    "/home/output:/app/output"
-                  ],
-                  "PortBindings": {
-                    "5000/tcp": [{"HostPort": "5000"}]
-                  }
-                }
-              }
+              "createOptions": "{\"HostConfig\":{\"DeviceRequests\":[{\"Count\":1,\"Capabilities\":[[\"gpu\"]]}],\"Binds\":[\"/home/input:/app/input\",\"/home/output:/app/output\"],\"PortBindings\":{\"5000/tcp\":[{\"HostPort\":\"5000\"}]}}}"
             },
             "env": {
               "MODEL_PATH": {"value": "/app/models/defect_model.onnx"},
@@ -196,7 +181,7 @@ Build a container that runs your trained model on the GPU. Here is an example Do
 
 ```dockerfile
 # Use the NVIDIA CUDA base image for GPU support
-FROM nvcr.io/nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
 
 # Install Python and required packages
 RUN apt-get update && apt-get install -y python3 python3-pip
@@ -301,15 +286,18 @@ Azure Stack Edge provides local storage that can tier data to Azure Blob Storage
 
 1. In the Azure portal, go to your Azure Stack Edge resource.
 2. Under "Cloud storage gateway," click "Shares."
-3. Click "Add share."
+3. Click "+ Add share."
 4. Configure:
    - **Name**: inference-data
-   - **Type**: Edge local share (data stays on device) or Block blob (tiers to cloud)
+   - **Type**: SMB or NFS
    - **Storage account**: Select or create an Azure Storage account
+   - **Storage service**: Block blob for cloud-tiered data
    - **Container**: inference-results
+   - **Use with Edge compute**: Enabled if containers need the local mount point
+   - **Configure as Edge local share**: Enabled only if the data should stay on the device
 5. Click Create.
 
-Edge local shares keep data entirely on the device for low-latency access. Block blob shares upload data to Azure Storage on a schedule, which is useful for sending inference results to the cloud for further analysis.
+Edge local shares keep data entirely on the device for low-latency access. Cloud shares configured with Block blob storage automatically upload data to Azure Storage, which is useful for sending inference results to the cloud for further analysis.
 
 ## Step 7: Monitor the Device
 
