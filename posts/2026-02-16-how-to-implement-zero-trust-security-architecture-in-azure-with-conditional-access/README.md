@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Zero Trust, Conditional Access, Security, Identity, Azure AD, Cloud Security
+Tags: Azure, Zero Trust, Conditional Access, Security, Identity, Microsoft Entra ID, Cloud Security
 
 Description: Step-by-step guide to implementing Zero Trust security architecture in Azure using Conditional Access policies, identity verification, and network controls.
 
@@ -20,21 +20,21 @@ Zero Trust is built on three principles:
 2. Use least privilege access - limit user access with just-in-time and just-enough-access policies
 3. Assume breach - minimize blast radius and segment access, verify end-to-end encryption, and use analytics to detect threats
 
-In Azure, these principles map to specific services and configurations. Azure AD handles identity verification, Conditional Access enforces access policies, Microsoft Defender products detect threats, and Azure networking features provide segmentation.
+In Azure, these principles map to specific services and configurations. Microsoft Entra ID (formerly Azure AD) handles identity verification, Conditional Access enforces access policies, Microsoft Defender products detect threats, and Azure networking features provide segmentation.
 
 ## Start with Identity as the Control Plane
 
 In a Zero Trust model, identity is the new perimeter. Every access decision starts with verifying who (or what) is making the request.
 
-Make sure your Azure AD tenant is configured with these baseline settings:
+Make sure your Microsoft Entra ID tenant is configured with these baseline settings:
 
 - Security defaults enabled (or better, Conditional Access policies that replace them)
 - Multi-factor authentication required for all users
 - Legacy authentication protocols blocked
 - Self-service password reset enabled with strong methods
-- Azure AD Identity Protection configured to detect risky sign-ins
+- Microsoft Entra ID Protection configured to detect risky sign-ins
 
-If you are still running on-premises Active Directory, set up Azure AD Connect with password hash sync. This gives Azure AD the ability to detect leaked credentials and risky sign-ins even for synced accounts.
+If you are still running on-premises Active Directory, set up Microsoft Entra Connect Sync with password hash synchronization. This gives Microsoft Entra ID the ability to detect leaked credentials and risky sign-ins even for synced accounts.
 
 ## Building Conditional Access Policies
 
@@ -46,7 +46,7 @@ Here is a practical set of policies to start with.
 
 This is your foundation. Every user, every app, every sign-in should require multi-factor authentication.
 
-In the Azure portal, navigate to Azure AD, then Security, then Conditional Access. Create a new policy with these settings:
+In the Microsoft Entra admin center, browse to Entra ID, then Conditional Access. Create a new policy with these settings:
 
 - Users: All users (exclude emergency access accounts)
 - Cloud apps: All cloud apps
@@ -71,23 +71,23 @@ For applications that handle sensitive data, require that the device connecting 
 - Conditions: Any platform
 - Grant: Require device to be marked as compliant
 
-### Policy 4: Block Access from High-Risk Locations
+### Policy 4: Block Access from High-Risk Sign-Ins
 
-If Azure AD Identity Protection flags a sign-in as high risk, block it outright.
+If Microsoft Entra ID Protection flags a sign-in as high risk, block it outright.
 
 - Users: All users
 - Cloud apps: All cloud apps
 - Conditions: Sign-in risk level - High
 - Grant: Block access
 
-### Policy 5: Require Password Change for Risky Users
+### Policy 5: Require Risk Remediation for Risky Users
 
-When Identity Protection flags a user account as compromised, force a password change with MFA.
+When Microsoft Entra ID Protection flags a user account as compromised, require risk remediation so the user is sent through the appropriate secure remediation flow.
 
 - Users: All users
 - Cloud apps: All cloud apps
 - Conditions: User risk level - High
-- Grant: Require password change and require multi-factor authentication
+- Grant: Require risk remediation
 
 ## Implementing with Terraform
 
@@ -155,7 +155,7 @@ Use Microsoft Intune to define device compliance policies. These policies check 
 
 When Intune marks a device as compliant, Conditional Access can use that signal to make access decisions. Non-compliant devices get blocked or redirected to a remediation page.
 
-For unmanaged devices (BYOD scenarios), use Azure AD App Proxy or Microsoft Defender for Cloud Apps to provide session-level controls. Users can access applications through a browser, but they cannot download files or copy data to the local device.
+For unmanaged devices (BYOD scenarios), use Microsoft Defender for Cloud Apps Conditional Access App Control to provide session-level controls. For on-premises web apps, Microsoft Entra application proxy can publish the app through Microsoft Entra ID so those controls can be applied. Users can access applications through a browser, but they cannot download files or copy data to the local device.
 
 ## Network Segmentation and Micro-Segmentation
 
@@ -187,7 +187,7 @@ Zero Trust assumes breach, which means you need to be watching for signs of comp
 
 Set up these monitoring components:
 
-- Azure AD sign-in logs and audit logs sent to a Log Analytics workspace
+- Microsoft Entra sign-in logs and audit logs sent to a Log Analytics workspace
 - Microsoft Sentinel for SIEM and SOAR capabilities
 - Microsoft Defender for Cloud for workload protection
 - Microsoft Defender for Identity for on-premises AD monitoring
@@ -212,11 +212,11 @@ flowchart LR
 
 ## Privileged Access Management
 
-Administrative accounts are high-value targets. Protect them with Azure AD Privileged Identity Management (PIM).
+Administrative accounts are high-value targets. Protect them with Microsoft Entra Privileged Identity Management (PIM).
 
 PIM provides just-in-time role activation. Instead of having permanent Global Administrator accounts, users activate the role when they need it, for a limited time, with approval workflows and MFA verification.
 
-Configure PIM for all Azure AD roles and Azure resource roles. Set activation durations to the minimum practical period - typically one to four hours. Require justification and approval for high-privilege roles.
+Configure PIM for all Microsoft Entra roles and Azure resource roles. Set activation durations to the minimum practical period - typically one to four hours. Require justification and approval for high-privilege roles.
 
 ## Measuring Your Zero Trust Maturity
 
@@ -233,6 +233,6 @@ A few things to watch out for:
 - Always maintain at least two emergency access (break-glass) accounts that are excluded from Conditional Access policies. Store their credentials securely and monitor their use.
 - Do not enable policies without testing in report-only mode first. A misconfigured policy can lock out your entire organization.
 - Remember that Conditional Access only evaluates at sign-in time (and token refresh). Long-lived sessions can bypass new policies until the token expires. Use continuous access evaluation to address this.
-- Service principals and managed identities may need separate consideration. Not all Conditional Access controls apply to non-interactive sign-ins.
+- Service principals and managed identities need separate consideration. Conditional Access for workload identities can target service principals with the appropriate licensing, but managed identities are not covered by those policies.
 
 Zero Trust is a journey, not a destination. Start with Conditional Access and MFA, build from there, and continuously tighten your security posture as your organization matures.
