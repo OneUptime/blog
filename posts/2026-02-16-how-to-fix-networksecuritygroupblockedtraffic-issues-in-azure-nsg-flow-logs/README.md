@@ -18,16 +18,16 @@ NSG flow logs record information about every IP flow through a Network Security 
 
 - Source and destination IP
 - Source and destination port
-- Protocol (TCP, UDP, or Other)
+- Protocol (TCP or UDP)
 - Direction (Inbound or Outbound)
 - Action (Allow or Deny)
 - The NSG rule that matched
 
 Flow logs are stored in a Storage Account and can be analyzed through Azure Monitor, Log Analytics, or third-party tools.
 
-## Step 1: Enable NSG Flow Logs
+## Step 1: Enable Flow Logs
 
-If you have not enabled flow logs yet, do that first:
+NSG flow logs are being retired on September 30, 2027, and Azure no longer allows creating new NSG flow logs after June 30, 2025. If you already have NSG flow logs enabled, you can still use the existing data while you plan a migration to virtual network flow logs. For new logging, enable virtual network flow logs instead:
 
 ```bash
 # Create a storage account for flow logs if you do not already have one
@@ -38,19 +38,18 @@ az storage account create \
   --location eastus \
   --sku Standard_LRS
 
-# Enable flow logs for an NSG
+# Enable flow logs for a virtual network
 az network watcher flow-log create \
   --resource-group myResourceGroup \
-  --nsg myNSG \
+  --vnet myVNet \
   --storage-account mynsgflowlogs \
   --enabled true \
-  --log-version 2 \
   --retention 30 \
-  --name myFlowLog \
+  --name myVNetFlowLog \
   --location eastus
 ```
 
-Version 2 flow logs include additional information like bytes transferred and flow state, which helps with deeper analysis.
+If you are troubleshooting existing NSG flow logs, version 2 records include additional information like bytes transferred and flow state, which helps with deeper analysis.
 
 ## Step 2: Read the Flow Log Data
 
@@ -69,7 +68,7 @@ timestamp,sourceIP,destIP,sourcePort,destPort,protocol,trafficFlow,trafficDecisi
 Where:
 - trafficFlow: I (Inbound) or O (Outbound)
 - trafficDecision: A (Allow) or D (Deny)
-- protocol: T (TCP), U (UDP), O (Other)
+- protocol: T (TCP), U (UDP)
 
 ## Step 3: Query Flow Logs in Log Analytics
 
@@ -97,14 +96,14 @@ Or if you are using the newer traffic analytics schema:
 NTANetAnalytics
 | where TimeGenerated > ago(1h)
 | where FlowStatus == "D"
-| project TimeGenerated, SrcIp, DestIp, DestPort, Protocol, NSGRuleMatched = NSGRule, FlowDirection
+| project TimeGenerated, SrcIp, DestIp, DestPort, L4Protocol, NSGRuleMatched = AclRule, FlowDirection
 | order by TimeGenerated desc
 | take 100
 ```
 
 ## Step 4: Identify Which NSG Rule Is Blocking Traffic
 
-The flow log entry tells you which NSG rule matched. The rule name is in the format `{NSG-Name}/{RuleName}`. If the matching rule is `DefaultRule_DenyAllInBound`, it means no custom allow rule matched and the default deny kicked in.
+The flow log entry tells you which NSG rule matched. In raw NSG flow logs, the rule appears in the `rule` property for a group of flow tuples. In Traffic Analytics, the rule and NSG are exposed as separate fields, such as `NSGRule_s` and `NSGList_s` in the legacy NSG schema or `AclRule` and `AclGroup` in the newer schema. If the matching rule is `DefaultRule_DenyAllInBound`, it means no custom allow rule matched and the default deny kicked in.
 
 List the rules in your NSG to understand the current configuration:
 
@@ -194,7 +193,7 @@ Better yet, use Azure Bastion to connect without opening SSH/RDP ports at all.
 
 ## Step 6: Use IP Flow Verify for Quick Tests
 
-Azure Network Watcher has an "IP Flow Verify" tool that simulates a flow and tells you whether it would be allowed or denied, and which rule matches:
+Azure Network Watcher has an "IP Flow Verify" tool that simulates a flow and tells you whether it would be allowed or denied, and which security rule matches:
 
 ```bash
 # Test if traffic from a specific source to a destination would be allowed
@@ -208,7 +207,7 @@ az network watcher test-ip-flow \
   --output json
 ```
 
-This returns the access decision (Allow/Deny) and the name of the NSG rule that matched. It is much faster than deploying flow logs and waiting for data.
+This returns the access decision (Allow/Deny) and the name of the security rule that matched. It evaluates NSG rules and Azure Virtual Network Manager admin rules that apply to the VM. It is much faster than waiting for flow log data.
 
 ## Step 7: Check for Multiple NSGs
 
@@ -285,4 +284,4 @@ flowchart TD
 
 ## Summary
 
-NSG flow log analysis is the most reliable way to diagnose blocked traffic in Azure. Enable flow logs on all NSGs, use Log Analytics for querying, and use IP Flow Verify for quick ad-hoc tests. Remember to check both subnet-level and NIC-level NSGs. Use service tags instead of raw IP addresses for cleaner and more maintainable rules. And always document why each NSG rule exists so the next person does not accidentally remove it.
+Flow log analysis is one of the most reliable ways to diagnose blocked traffic in Azure. Use existing NSG flow logs while they are still supported, migrate new logging to virtual network flow logs, use Log Analytics for querying, and use IP Flow Verify for quick ad-hoc tests. Remember to check both subnet-level and NIC-level NSGs. Use service tags instead of raw IP addresses for cleaner and more maintainable rules. And always document why each NSG rule exists so the next person does not accidentally remove it.
