@@ -8,7 +8,7 @@ Description: Configure Azure Notification Hubs to work with the Firebase Cloud M
 
 ---
 
-Google deprecated the legacy FCM HTTP API and moved to the FCM v1 API. This matters for anyone using Azure Notification Hubs to send push notifications to Android devices because the authentication method and payload format are different. The legacy API used a simple server key, while FCM v1 uses OAuth 2.0 with a service account. If you have not migrated yet, now is the time.
+Google stopped supporting the legacy FCM HTTP API and moved to the FCM v1 API. This matters for anyone using Azure Notification Hubs to send push notifications to Android devices because the authentication method and payload format are different. The legacy API used a simple server key, while FCM v1 uses OAuth 2.0 with a service account. If you have not migrated yet, now is the time.
 
 In this post, I will walk through configuring Azure Notification Hubs to work with FCM v1, including setting up the Firebase service account, updating your notification hub configuration, and adjusting your notification payloads.
 
@@ -55,9 +55,9 @@ Update your notification hub to use FCM v1 credentials instead of the legacy ser
 ### Using the Azure Portal
 
 1. Open your notification hub in the Azure portal.
-2. Go to Settings and then Platform notification settings (or "Google (GCM/FCM)").
-3. Switch to the "FCM v1" option.
-4. Paste the contents of your service account JSON file.
+2. Go to Settings and then "Google (FCM v1)".
+3. Enter the Project ID, Private Key, and Client Email values from your service account JSON file.
+4. Make sure the Firebase Cloud Messaging API (V1) is enabled for the Firebase project.
 5. Save the configuration.
 
 ### Using the Azure CLI
@@ -65,16 +65,30 @@ Update your notification hub to use FCM v1 credentials instead of the legacy ser
 ```bash
 # Update the notification hub with FCM v1 credentials
 
-az notification-hub credential gcm update \
-  --notification-hub-name my-notification-hub \
-  --namespace-name my-notification-ns \
-  --resource-group rg-notifications \
-  --google-api-key @service-account.json
+az rest --method patch \
+  --url "https://management.azure.com/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/rg-notifications/providers/Microsoft.NotificationHubs/namespaces/my-notification-ns/notificationHubs/my-notification-hub?api-version=2023-10-01-preview" \
+  --body @notification-hub-fcmv1.json
 ```
 
-### Using the REST API
+Where `notification-hub-fcmv1.json` contains the FCM v1 credential fields Azure expects:
 
-If you need to automate this, you can use the Azure REST API directly.
+```json
+{
+  "properties": {
+    "fcmV1Credential": {
+      "properties": {
+        "projectId": "your-project-id",
+        "privateKey": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+        "clientEmail": "firebase-adminsdk-xxxxx@your-project-id.iam.gserviceaccount.com"
+      }
+    }
+  }
+}
+```
+
+### Using the Management SDK
+
+If you need to automate this, you can use a version of the Azure management SDK that includes FCM v1 credential support, such as `@azure/arm-notificationhubs@3.0.0-beta.1`.
 
 ```javascript
 // update-fcm-config.js - Programmatically update FCM v1 credentials
@@ -87,19 +101,24 @@ async function updateFcmV1Config(serviceAccountJson) {
 
   const mgmtClient = new NotificationHubsManagementClient(credential, subscriptionId);
 
+  const hub = await mgmtClient.notificationHubs.get(
+    'rg-notifications',
+    'my-notification-ns',
+    'my-notification-hub'
+  );
+
+  hub.fcmV1Credential = {
+    projectId: serviceAccountJson.project_id,
+    privateKey: serviceAccountJson.private_key,
+    clientEmail: serviceAccountJson.client_email
+  };
+
   // Update the notification hub with FCM v1 credentials
   await mgmtClient.notificationHubs.createOrUpdate(
     'rg-notifications',          // resource group
     'my-notification-ns',         // namespace
     'my-notification-hub',        // hub name
-    {
-      location: 'eastus',
-      gcmCredential: {
-        // For FCM v1, provide the service account JSON
-        googleApiKey: JSON.stringify(serviceAccountJson),
-        gcmEndpoint: 'https://fcm.googleapis.com/fcm/send' // This is still used as a reference
-      }
-    }
+    hub
   );
 
   console.log('FCM v1 credentials updated');
@@ -112,7 +131,10 @@ The FCM v1 payload format is different from the legacy format. Here is how to se
 
 ```javascript
 // send-fcm-v1.js - Send notifications using FCM v1 payload format
-const { NotificationHubsClient } = require('@azure/notification-hubs');
+const {
+  NotificationHubsClient,
+  createFcmV1Notification
+} = require('@azure/notification-hubs');
 
 const client = new NotificationHubsClient(
   process.env.NOTIFICATION_HUB_CONNECTION_STRING,
@@ -141,12 +163,11 @@ async function sendAndroidNotification(title, body, data) {
     }
   };
 
-  const result = await client.sendNotification(
-    {
-      kind: 'FcmV1',
-      body: JSON.stringify(payload)
-    }
-  );
+  const notification = createFcmV1Notification({
+    body: JSON.stringify(payload)
+  });
+
+  const result = await client.sendBroadcastNotification(notification);
 
   console.log('Sent FCM v1 notification:', result.trackingId);
   return result;
@@ -166,12 +187,14 @@ sendAndroidNotification(
 
 ## Migrating Existing Registrations
 
-If you have existing device registrations using the legacy GCM/FCM format, you do not need to re-register all devices. The device tokens (registration IDs) are the same for both the legacy and v1 APIs. What changes is how your server authenticates with FCM and the payload format.
+If you have existing device registrations using the legacy GCM/FCM format, you do not need to request new device tokens from Firebase. The device tokens are the same for both the legacy and v1 APIs. However, Azure Notification Hubs treats FCM v1 as a separate platform, so existing GCM registrations or installations must be updated or recreated as FCM v1 registrations or installations.
 
 However, if you are using template registrations, you may need to update the templates to match the v1 payload structure.
 
 ```javascript
 // migrate-templates.js - Update templates from legacy to v1 format
+const { createFcmV1TemplateRegistrationDescription } = require('@azure/notification-hubs');
+
 async function migrateTemplates() {
   const registrations = client.listRegistrations();
 
@@ -189,9 +212,16 @@ async function migrateTemplates() {
           }
         };
 
-        // Update the registration with the v1 template
-        reg.bodyTemplate = JSON.stringify(v1Template);
-        await client.createOrUpdateRegistration(reg);
+        // Update the registration as an FCM v1 template registration
+        const fcmV1Registration = createFcmV1TemplateRegistrationDescription({
+          registrationId: reg.registrationId,
+          fcmV1RegistrationId: reg.gcmRegistrationId,
+          tags: reg.tags,
+          templateName: reg.templateName,
+          bodyTemplate: JSON.stringify(v1Template)
+        });
+
+        await client.createOrUpdateRegistration(fcmV1Registration);
         console.log(`Migrated template for registration ${reg.registrationId}`);
       }
     }
@@ -201,46 +231,31 @@ async function migrateTemplates() {
 
 ## Handling the Transition Period
 
-During migration, you might have a mix of devices registered with legacy templates and v1 templates. Here is a strategy for handling this gracefully.
+During migration, you might have a mix of devices registered with legacy templates and v1 templates. Since the legacy FCM HTTP API is retired, prioritize moving registrations to FCM v1 and send only to registrations you have already migrated.
 
 ```javascript
-// dual-send.js - Send to both legacy and v1 registrations during migration
-async function sendDualFormat(title, body, tagExpression) {
+// send-migrated.js - Send to FCM v1 registrations during migration
+async function sendMigratedFormat(title, body, tagExpression) {
   // Send using FCM v1 format for updated registrations
   try {
-    await client.sendNotification(
-      {
-        kind: 'FcmV1',
-        body: JSON.stringify({
-          message: {
-            notification: { title, body }
-          }
-        })
-      },
-      { tagExpression: `${tagExpression} && fcm:v1` }
-    );
+    const notification = createFcmV1Notification({
+      body: JSON.stringify({
+        message: {
+          notification: { title, body }
+        }
+      })
+    });
+
+    await client.sendNotification(notification, {
+      tagExpression: `${tagExpression} && fcm:v1`
+    });
   } catch (err) {
     console.error('FCM v1 send failed:', err.message);
-  }
-
-  // Send using legacy format for devices not yet migrated
-  try {
-    await client.sendNotification(
-      {
-        kind: 'Gcm',
-        body: JSON.stringify({
-          notification: { title, body }
-        })
-      },
-      { tagExpression: `${tagExpression} && !fcm:v1` }
-    );
-  } catch (err) {
-    console.error('Legacy FCM send failed:', err.message);
   }
 }
 ```
 
-Add a `fcm:v1` tag to devices as they update their registration to the v1 format. Once all devices have migrated, you can remove the legacy send path.
+Add a `fcm:v1` tag to devices as they update their registration to the v1 format. Once all devices have migrated, you can remove the migration-specific tag filter.
 
 ## Testing the Configuration
 
@@ -249,18 +264,19 @@ After updating your configuration, test that notifications are being delivered c
 ```javascript
 // test-fcm-v1.js - Test FCM v1 configuration
 async function testFcmV1() {
-  const result = await client.sendNotification(
-    {
-      kind: 'FcmV1',
-      body: JSON.stringify({
-        message: {
-          notification: {
-            title: 'FCM v1 Test',
-            body: 'If you see this, FCM v1 is working!'
-          }
+  const notification = createFcmV1Notification({
+    body: JSON.stringify({
+      message: {
+        notification: {
+          title: 'FCM v1 Test',
+          body: 'If you see this, FCM v1 is working!'
         }
-      })
-    },
+      }
+    })
+  });
+
+  const result = await client.sendBroadcastNotification(
+    notification,
     { enableTestSend: true } // Use test send for detailed feedback
   );
 
@@ -274,9 +290,9 @@ Test sends return detailed information about the delivery attempt, including whe
 
 ## Common Migration Issues
 
-**Invalid service account JSON.** Make sure you are using the complete JSON file downloaded from Firebase, not just the private key. The entire file is needed for authentication.
+**Invalid service account JSON.** Make sure you are using the correct values from the JSON file downloaded from Firebase. Azure Notification Hubs needs the project ID, private key, and client email.
 
-**Permission errors.** The service account needs the `cloudmessaging.messages.create` permission. This is included in the "Firebase Cloud Messaging API Admin" role, which is typically assigned automatically when you generate the key.
+**Permission errors.** The service account needs the `cloudmessaging.messages.create` permission. This is included in the "Firebase Cloud Messaging API Admin" role, or in an equivalent Firebase role with permission to send FCM messages.
 
 **Payload format mismatch.** The v1 format wraps everything in a `message` object. If you forget this wrapper, FCM will reject the payload. Double-check that your JSON starts with `{"message": {...}}`.
 
@@ -284,4 +300,4 @@ Test sends return detailed information about the delivery attempt, including whe
 
 ## Wrapping Up
 
-Migrating from the legacy FCM API to FCM v1 in Azure Notification Hubs is primarily a configuration change. You update the credentials from a server key to a service account JSON, adjust your payload format to use the v1 structure, and optionally update your template registrations. The device tokens remain the same, so you do not need to re-register devices. Get the service account set up, test with a small group of devices, and then roll out the change across your fleet.
+Migrating from the legacy FCM API to FCM v1 in Azure Notification Hubs is primarily a configuration and registration update. You update the credentials from a server key to service account fields, adjust your payload format to use the v1 structure, and update your registrations or template registrations to the FCM v1 platform. The device tokens remain the same, so you do not need to request new tokens from Firebase. Get the service account set up, test with a small group of devices, and then roll out the change across your fleet.
