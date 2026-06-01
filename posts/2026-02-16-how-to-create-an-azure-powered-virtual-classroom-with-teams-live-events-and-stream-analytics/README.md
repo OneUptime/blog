@@ -45,15 +45,15 @@ graph TB
     F --> K
 ```
 
-Teams Live Events handles the video broadcast. Engagement events (joins, leaves, chat messages, poll responses) flow into Event Hub. Stream Analytics processes these events in real time for the instructor dashboard. Azure Functions generates reports and triggers follow-up actions after the session ends.
+Teams Live Events handles the video broadcast. Engagement events (joins, leaves, chat messages, poll responses) are collected by your classroom app or Microsoft Graph integration and sent to Event Hub. Stream Analytics processes these events in real time for the instructor dashboard. Azure Functions generates reports and triggers follow-up actions after the session ends.
 
 ## Step 1 - Configure Teams Live Events
 
-Teams Live Events supports broadcasts to up to 20,000 attendees, which is more than enough for any classroom. Configure the event programmatically using the Microsoft Graph API.
+Teams Live Events supports broadcasts to up to 20,000 attendees, which is more than enough for any classroom. Configure the event programmatically using the Microsoft Graph API while you are still using Live Events. Microsoft has deprecated Live Events creation through the `isBroadcast` property and plans to remove it from Microsoft Graph v1.0 on June 30, 2026, so new builds should plan a migration path to Teams town halls or webinars.
 
 ```python
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def create_virtual_classroom(
     title: str,
@@ -63,19 +63,24 @@ def create_virtual_classroom(
     access_token: str = ""
 ):
     """Create a Teams Live Event for a virtual classroom session."""
-    url = "https://graph.microsoft.com/v1.0/communications/onlineMeetings"
+    instructor_id = get_user_id(instructor_email, access_token)
+    url = f"https://graph.microsoft.com/v1.0/users/{instructor_id}/onlineMeetings"
 
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
 
-    end_time = start_time + timedelta(hours=duration_hours)
+    if start_time.tzinfo is None:
+        start_utc = start_time.replace(tzinfo=timezone.utc)
+    else:
+        start_utc = start_time.astimezone(timezone.utc)
+    end_time = start_utc + timedelta(hours=duration_hours)
 
     payload = {
         "subject": title,
-        "startDateTime": start_time.isoformat() + "Z",
-        "endDateTime": end_time.isoformat() + "Z",
+        "startDateTime": start_utc.isoformat(),
+        "endDateTime": end_time.isoformat(),
         "isBroadcast": True,
         "broadcastSettings": {
             "allowedAudience": "organization",  # Restrict to your tenant
@@ -84,44 +89,29 @@ def create_virtual_classroom(
             "isQuestionAndAnswerEnabled": True,
             "isVideoOnDemandEnabled": True  # Allows replay after the session
         },
-        "participants": {
-            "organizer": {
-                "identity": {
-                    "user": {
-                        "id": get_user_id(instructor_email, access_token),
-                        "displayName": get_display_name(instructor_email, access_token)
-                    }
-                },
-                "role": "presenter"
-            }
-        },
         "lobbyBypassSettings": {
             "scope": "organization"  # Organization members skip the lobby
         }
     }
 
     response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
     meeting = response.json()
 
     return {
         "meetingId": meeting["id"],
         "joinUrl": meeting["joinWebUrl"],
-        "attendeeUrl": meeting.get("attendeeUrl", meeting["joinWebUrl"]),
         "recordingEnabled": True,
-        "startTime": start_time.isoformat()
+        "startTime": start_utc.isoformat()
     }
 
 def get_user_id(email: str, token: str) -> str:
     """Look up a user's Azure AD object ID by email."""
     url = f"https://graph.microsoft.com/v1.0/users/{email}"
     response = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+    response.raise_for_status()
     return response.json()["id"]
 
-def get_display_name(email: str, token: str) -> str:
-    """Get the display name for a user."""
-    url = f"https://graph.microsoft.com/v1.0/users/{email}"
-    response = requests.get(url, headers={"Authorization": f"Bearer {token}"})
-    return response.json()["displayName"]
 ```
 
 ## Step 2 - Track Engagement Events
@@ -131,7 +121,8 @@ During a live session, you want to track when students join, leave, ask question
 ```python
 from azure.eventhub import EventHubProducerClient, EventData
 import json
-from datetime import datetime
+import os
+from datetime import datetime, timezone
 
 # Event Hub client for publishing engagement events
 
@@ -147,11 +138,21 @@ def track_student_join(session_id: str, student_id: str, student_name: str):
         "sessionId": session_id,
         "studentId": student_id,
         "studentName": student_name,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "metadata": {
             "device": "web",
             "browser": "Chrome"
         }
+    }
+    send_event(event)
+
+def track_student_leave(session_id: str, student_id: str):
+    """Record when a student leaves the virtual classroom."""
+    event = {
+        "eventType": "student_left",
+        "sessionId": session_id,
+        "studentId": student_id,
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     send_event(event)
 
@@ -162,7 +163,7 @@ def track_chat_message(session_id: str, student_id: str, message_type: str):
         "sessionId": session_id,
         "studentId": student_id,
         "messageType": message_type,  # "question", "answer", "comment"
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     send_event(event)
 
@@ -174,7 +175,7 @@ def track_poll_response(session_id: str, student_id: str, poll_id: str, response
         "studentId": student_id,
         "pollId": poll_id,
         "responseTimeSeconds": response_time_seconds,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     send_event(event)
 
@@ -211,20 +212,20 @@ INTO EngagementScoreOutput
 FROM ClassroomEvents TIMESTAMP BY timestamp
 GROUP BY sessionId, studentId, TumblingWindow(minute, 10)
 
--- Detect students who joined but have not participated in 15 minutes
+-- Detect students with no chat or poll activity in the last 15-minute window
 SELECT
     sessionId,
     studentId,
     MAX(timestamp) as lastActivity,
-    DATEDIFF(minute, MAX(timestamp), System.Timestamp()) as inactiveMinutes
+    SUM(CASE WHEN eventType IN ('chat_message', 'poll_response') THEN 1 ELSE 0 END) as participationEvents
 INTO InactiveStudentsOutput
 FROM ClassroomEvents TIMESTAMP BY timestamp
-GROUP BY sessionId, studentId, SlidingWindow(minute, 15)
-HAVING DATEDIFF(minute, MAX(timestamp), System.Timestamp()) > 15
-    AND COUNT(*) = 1  -- Only the join event
+GROUP BY sessionId, studentId, HoppingWindow(minute, 15, 1)
+HAVING COUNT(*) > 0
+    AND SUM(CASE WHEN eventType IN ('chat_message', 'poll_response') THEN 1 ELSE 0 END) = 0
 ```
 
-The inactive student detection is particularly useful. If a student joins but never participates - no chat messages, no poll responses - the instructor sees them flagged on the dashboard and can call on them directly.
+The inactive student detection is particularly useful. If a student is present in the recent activity window but has no chat messages or poll responses, the instructor sees them flagged on the dashboard and can call on them directly.
 
 ## Step 4 - Build the Instructor Dashboard
 
@@ -243,7 +244,7 @@ class InstructorDashboard {
     async connect() {
         // Connect to SignalR for real-time updates
         this.connection = new signalR.HubConnectionBuilder()
-            .withUrl('/api/signalr/negotiate')
+            .withUrl('/api')
             .withAutomaticReconnect()
             .build();
 
@@ -303,8 +304,10 @@ After the class ends, generate attendance reports and send summary emails to bot
 
 ```python
 import azure.functions as func
-from datetime import datetime
 
+app = func.FunctionApp()
+
+@app.function_name(name="generate_session_reports")
 @app.timer_trigger(schedule="0 */15 * * * *", arg_name="timer")
 def generate_session_reports(timer: func.TimerRequest):
     """Check for ended sessions and generate reports."""
@@ -326,7 +329,7 @@ def generate_session_reports(timer: func.TimerRequest):
             "duration": session["duration"],
             "enrolledStudents": attendance["enrolled"],
             "attendedStudents": attendance["attended"],
-            "attendanceRate": round(attendance["attended"] / attendance["enrolled"] * 100, 1),
+            "attendanceRate": round(attendance["attended"] / attendance["enrolled"] * 100, 1) if attendance["enrolled"] else 0,
             "averageEngagementScore": engagement["averageScore"],
             "questionsAsked": engagement["totalQuestions"],
             "pollParticipationRate": engagement["pollParticipation"],
