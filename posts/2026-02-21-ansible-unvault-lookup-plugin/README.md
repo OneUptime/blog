@@ -8,11 +8,11 @@ Description: Learn how to use the Ansible unvault lookup plugin to decrypt vault
 
 ---
 
-Ansible Vault lets you encrypt sensitive data like passwords, API keys, and certificates so you can store them safely in version control. Normally, Ansible decrypts vault files automatically when they are included as variable files. But what about vault-encrypted files that are not variable files, such as encrypted certificates, license keys, or arbitrary text? The `unvault` lookup plugin decrypts any vault-encrypted file and returns its raw contents as a string.
+Ansible Vault lets you encrypt sensitive data like passwords, API keys, and certificates so you can store them safely in version control. Normally, Ansible decrypts vault files automatically when they are included as variable files. But what about vault-encrypted files that are not variable files, such as encrypted certificates, license keys, or arbitrary text? The `unvault` lookup plugin reads vault-encrypted files and returns their decrypted contents.
 
 ## What the unvault Lookup Does
 
-The `unvault` lookup reads a file that has been encrypted with `ansible-vault encrypt`, decrypts it using the configured vault password, and returns the plaintext contents. Unlike `include_vars` which expects YAML format, `unvault` returns the raw decrypted contents as-is, making it suitable for any file type.
+The `unvault` lookup reads a file that has been encrypted with `ansible-vault encrypt`, decrypts it using the configured vault password, and returns the plaintext contents as bytes. Unlike `include_vars` which expects YAML format, `unvault` returns the raw decrypted contents as-is, making it suitable for any file type. When you use the result as text, cast it to a string in the template expression.
 
 ## Encrypting Files for Use with unvault
 
@@ -47,12 +47,12 @@ This playbook reads a vault-encrypted API key:
   tasks:
     - name: Display decrypted API key
       ansible.builtin.debug:
-        msg: "API Key: {{ lookup('unvault', 'secrets/api_key.txt') }}"
+        msg: "API Key: {{ lookup('unvault', 'secrets/api_key.txt') | string }}"
       no_log: true
 
     - name: Deploy API key to application config
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', 'secrets/api_key.txt') }}"
+        content: "{{ lookup('unvault', 'secrets/api_key.txt') | string }}"
         dest: /etc/myapp/api_key
         mode: '0600'
         owner: myapp
@@ -81,7 +81,7 @@ SSL certificates and private keys are ideal candidates for vault encryption.
   tasks:
     - name: Deploy SSL certificate
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', 'secrets/ssl/' + inventory_hostname + '.crt') }}"
+        content: "{{ lookup('unvault', 'secrets/ssl/' + inventory_hostname + '.crt') | string }}"
         dest: /etc/ssl/certs/server.crt
         mode: '0644'
         owner: root
@@ -89,7 +89,7 @@ SSL certificates and private keys are ideal candidates for vault encryption.
 
     - name: Deploy SSL private key
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', 'secrets/ssl/' + inventory_hostname + '.key') }}"
+        content: "{{ lookup('unvault', 'secrets/ssl/' + inventory_hostname + '.key') | string }}"
         dest: /etc/ssl/private/server.key
         mode: '0600'
         owner: root
@@ -98,7 +98,7 @@ SSL certificates and private keys are ideal candidates for vault encryption.
 
     - name: Deploy CA bundle
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', 'secrets/ssl/ca-bundle.crt') }}"
+        content: "{{ lookup('unvault', 'secrets/ssl/ca-bundle.crt') | string }}"
         dest: /etc/ssl/certs/ca-bundle.crt
         mode: '0644'
       notify: reload nginx
@@ -116,7 +116,7 @@ When you have entire configuration files that contain secrets and should be encr
   tasks:
     - name: Deploy database configuration (contains credentials)
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', 'secrets/configs/database.yml') }}"
+        content: "{{ lookup('unvault', 'secrets/configs/database.yml') | string }}"
         dest: /etc/myapp/database.yml
         mode: '0600'
         owner: myapp
@@ -125,7 +125,7 @@ When you have entire configuration files that contain secrets and should be encr
 
     - name: Deploy Redis configuration (contains password)
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', 'secrets/configs/redis.conf') }}"
+        content: "{{ lookup('unvault', 'secrets/configs/redis.conf') | string }}"
         dest: /etc/redis/redis.conf
         mode: '0600'
         owner: redis
@@ -163,7 +163,7 @@ secrets/
   tasks:
     - name: Deploy database config
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', secrets_dir + '/database.conf') }}"
+        content: "{{ lookup('unvault', secrets_dir + '/database.conf') | string }}"
         dest: /etc/myapp/database.conf
         mode: '0600'
         owner: myapp
@@ -171,7 +171,7 @@ secrets/
 
     - name: Deploy JWT secret
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', secrets_dir + '/jwt_secret.txt') | trim }}"
+        content: "{{ lookup('unvault', secrets_dir + '/jwt_secret.txt') | string | trim }}"
         dest: /etc/myapp/jwt_secret
         mode: '0600'
         owner: myapp
@@ -188,8 +188,8 @@ You can use decrypted content within Jinja2 templates by passing it as a variabl
 - name: Generate configs with vault secrets
   hosts: appservers
   vars:
-    db_password: "{{ lookup('unvault', 'secrets/db_password.txt') | trim }}"
-    api_secret: "{{ lookup('unvault', 'secrets/api_secret.txt') | trim }}"
+    db_password: "{{ lookup('unvault', 'secrets/db_password.txt') | string | trim }}"
+    api_secret: "{{ lookup('unvault', 'secrets/api_secret.txt') | string | trim }}"
   tasks:
     - name: Template application config with secrets
       ansible.builtin.template:
@@ -234,7 +234,7 @@ ansible-playbook playbook.yml \
   --vault-id staging@staging_vault_pass
 ```
 
-Ansible automatically determines which vault ID to use for decryption based on the vault ID stored in the encrypted file header.
+By default, Ansible treats vault ID labels as hints: it tries the password with the matching label first, then tries the other provided vault secrets in command-line order unless strict vault ID matching is configured.
 
 ## Difference Between unvault and file Lookups
 
@@ -255,7 +255,7 @@ Here is how `unvault` compares to the regular `file` lookup:
     # unvault lookup: decrypts and returns plaintext
     - name: Read with unvault lookup (shows decrypted content)
       ansible.builtin.debug:
-        msg: "{{ lookup('unvault', 'secrets/api_key.txt') }}"
+        msg: "{{ lookup('unvault', 'secrets/api_key.txt') | string }}"
       no_log: true
       # This shows the actual API key value
 ```
@@ -272,7 +272,7 @@ Deploy vault-encrypted SSH keys to servers:
   tasks:
     - name: Deploy deploy user private key
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', 'secrets/ssh/deploy_id_rsa') }}"
+        content: "{{ lookup('unvault', 'secrets/ssh/deploy_id_rsa') | string }}"
         dest: /home/deploy/.ssh/id_rsa
         mode: '0600'
         owner: deploy
@@ -281,7 +281,7 @@ Deploy vault-encrypted SSH keys to servers:
 
     - name: Deploy deploy user public key
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', 'secrets/ssh/deploy_id_rsa.pub') }}"
+        content: "{{ lookup('unvault', 'secrets/ssh/deploy_id_rsa.pub') | string }}"
         dest: /home/deploy/.ssh/id_rsa.pub
         mode: '0644'
         owner: deploy
@@ -290,7 +290,7 @@ Deploy vault-encrypted SSH keys to servers:
 
 ## Working with Binary Files
 
-Be cautious with binary files. The `unvault` lookup returns the content as a string, which can corrupt binary data. For binary files, consider using the `copy` module with `decrypt: yes` instead:
+Be cautious with binary files. The `unvault` lookup returns bytes, but using that result in text-oriented template expressions can corrupt binary data. For binary files, consider using the `copy` module with `decrypt: yes` instead:
 
 ```yaml
 # playbook.yml - Handling binary vs text vault files
@@ -301,7 +301,7 @@ Be cautious with binary files. The `unvault` lookup returns the content as a str
     # For text files: unvault works well
     - name: Deploy text-based secret
       ansible.builtin.copy:
-        content: "{{ lookup('unvault', 'secrets/text_config.conf') }}"
+        content: "{{ lookup('unvault', 'secrets/text_config.conf') | string }}"
         dest: /etc/myapp/config.conf
         mode: '0600'
 
@@ -320,7 +320,7 @@ Be cautious with binary files. The `unvault` lookup returns the content as a str
 
 2. **Vault password management**: Never store your vault password in the repository. Use a password file outside the repo, an environment variable, or a script that retrieves it from a secrets manager.
 
-3. **Encrypt at the file level**: Rather than encrypting individual strings within YAML files (inline vault), encrypting entire files with `unvault` gives you a clearer audit trail of which files contain secrets.
+3. **Encrypt at the file level**: Rather than encrypting individual strings within YAML files (inline vault), encrypting entire files for use with `unvault` gives you a clearer audit trail of which files contain secrets.
 
 4. **Git history**: Once a file is encrypted, make sure it was never committed in plaintext. Check your git history.
 
