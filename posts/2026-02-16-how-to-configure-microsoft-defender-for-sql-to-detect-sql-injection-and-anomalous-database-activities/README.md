@@ -22,13 +22,13 @@ Microsoft Defender for SQL uses behavioral analytics and machine learning to ide
 
 **Anomalous Database Access**: Flags unusual patterns like access from a new geographic location, access from an unusual Azure data center, or access from an unfamiliar principal. If a database that normally receives queries from your app servers suddenly gets queries from an unknown IP in a different country, Defender catches that.
 
-**Data Exfiltration Indicators**: Detects queries that retrieve unusually large amounts of data, which could indicate someone is dumping the database.
+**Suspicious Database Activity**: Detects activity that could indicate an attempt to exploit or misuse the database, such as suspicious query patterns or access from a potentially harmful application.
 
-**Unsafe SQL Commands**: Flags execution of dangerous commands like `xp_cmdshell` or `OPENROWSET` that could indicate post-exploitation activity.
+**Suspicious Shell or OS Command Activity**: For SQL Server on machines, flags activity such as suspicious use of SQL features that can execute operating system commands, like `xp_cmdshell`, which could indicate post-exploitation activity.
 
 ## Step 1: Enable Defender for SQL on Azure SQL Database
 
-The quickest way to enable protection is at the subscription level, which covers all SQL resources automatically.
+The quickest way to enable protection is at the subscription level, which automatically protects resources covered by the selected Defender for SQL plan.
 
 ```bash
 # Enable Microsoft Defender for SQL at the subscription level
@@ -49,7 +49,7 @@ You can also enable it on a specific server if you do not want subscription-wide
 # Enable Defender for SQL on a specific Azure SQL server
 az sql server advanced-threat-protection-setting update \
   --resource-group myResourceGroup \
-  --server-name myserver \
+  --name myserver \
   --state Enabled
 ```
 
@@ -59,32 +59,15 @@ Verify that it is enabled.
 # Check the Defender status for a SQL server
 az sql server advanced-threat-protection-setting show \
   --resource-group myResourceGroup \
-  --server-name myserver \
-  --query '{state: state, creationTime: creationTime}'
+  --name myserver \
+  --query '{state: state}'
 ```
 
 ## Step 2: Configure Vulnerability Assessment
 
-Defender for SQL includes a vulnerability assessment feature that scans your database configuration for security weaknesses. This is separate from the threat detection but equally important.
+Defender for SQL includes a vulnerability assessment feature that scans your database configuration for security weaknesses. This is separate from the threat detection but equally important. For Azure SQL Database, Microsoft now recommends express configuration, where Defender for Cloud manages the storage for vulnerability assessment results and no customer-managed storage account is required.
 
-```bash
-# Enable vulnerability assessment on the SQL server
-# First, create a storage account for scan results
-az storage account create \
-  --name sqlvascans \
-  --resource-group myResourceGroup \
-  --location eastus \
-  --sku Standard_LRS
-
-# Enable vulnerability assessment with recurring scans
-az sql server va-setting update \
-  --resource-group myResourceGroup \
-  --server-name myserver \
-  --storage-account sqlvascans \
-  --state Enabled \
-  --recurring-scans-enabled true \
-  --email-admins true
-```
+When you enable Microsoft Defender for SQL at the subscription or server level, vulnerability assessment is available from the Defender for Cloud recommendations and the SQL resource's Microsoft Defender for Cloud page. If you need classic configuration with a customer-managed storage account, use the Azure portal, PowerShell, or the SQL Vulnerability Assessment REST API rather than the retired Azure CLI `az sql server va-setting` command group.
 
 The vulnerability assessment checks for things like:
 - Excessive permissions granted to database users
@@ -101,15 +84,14 @@ Defender for SQL generates alerts in Microsoft Defender for Cloud, but you proba
 
 ```bash
 # Set up email notifications for SQL threat detection alerts
-az sql server threat-policy update \
-  --resource-group myResourceGroup \
-  --server-name myserver \
-  --state Enabled \
-  --email-addresses "soc-team@contoso.com;dba-team@contoso.com" \
-  --email-account-admins true
+az security contact create \
+  --name default \
+  --emails "soc-team@contoso.com;dba-team@contoso.com" \
+  --notifications-by-role '{"state":"On","roles":["Owner"]}' \
+  --alert-notifications '{"state":"On","minimalSeverity":"Medium"}'
 ```
 
-The `--email-account-admins true` flag sends alerts to the SQL Server administrators in addition to the specified email addresses. This ensures that the people closest to the database are notified alongside the security team.
+The `--notifications-by-role` setting sends alerts to the selected subscription roles in addition to the specified email addresses. This ensures that the people closest to the database are notified alongside the security team.
 
 ## Step 4: Review and Investigate Alerts
 
@@ -139,7 +121,7 @@ Alerts without automated responses just become noise. Here are two practical app
 
 **Approach 1: Logic App for Automated Blocking**
 
-Create a Logic App that triggers on Defender for Cloud alerts and automatically adds the attacking IP to the SQL Server firewall deny list.
+Create a Logic App that triggers on Defender for Cloud alerts and calls a function or runbook to update your network controls. Azure SQL firewall rules are allow rules rather than deny rules, so an automated response usually removes a risky temporary allow rule, blocks traffic at an upstream firewall, or opens a high-priority ticket for review.
 
 ```json
 {
@@ -175,7 +157,7 @@ az sentinel data-connector create \
   --resource-group sentinel-rg \
   --workspace-name sentinel-workspace \
   --data-connector-id "MicrosoftDefenderForCloud" \
-  --kind "AzureSecurityCenter"
+  --azure-security-center '{"dataTypes":{"alerts":{"state":"Enabled"}}}'
 ```
 
 ## Step 6: Tune Alert Sensitivity
@@ -191,12 +173,12 @@ You can suppress specific alert types if they are consistently false positives i
 
 ```bash
 # Create an alert suppression rule for a specific alert type
-az security alerts-suppression-rule create \
-  --name "SuppressAnomAccessFromCorpVPN" \
+az security alerts-suppression-rule update \
+  --rule-name "SuppressAnomAccessFromCorpVPN" \
   --alert-type "Sql.VM_AnomalousAccess" \
   --reason "Our corporate VPN exit IPs trigger this consistently" \
   --state Enabled \
-  --expiration-date "2026-06-01"
+  --expiration-date-utc "2026-07-01T00:00:00Z"
 ```
 
 Always set an expiration date on suppression rules so they do not silently hide real threats indefinitely.
@@ -209,7 +191,7 @@ Defender alerts tell you something happened, but SQL auditing gives you the full
 # Enable SQL auditing to a Log Analytics workspace
 az sql server audit-policy update \
   --resource-group myResourceGroup \
-  --server-name myserver \
+  --name myserver \
   --state Enabled \
   --lats Enabled \
   --lawri "/subscriptions/YOUR_SUB/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/your-workspace"
@@ -230,7 +212,7 @@ AzureDiagnostics
 
 ## Protecting SQL Server on Azure VMs
 
-Defender for SQL is not just for Azure SQL Database. If you run SQL Server on Azure VMs, you get the same detection capabilities.
+Defender for SQL is not just for Azure SQL Database. If you run SQL Server on Azure VMs, you can use the Defender for SQL servers on machines plan.
 
 Enable the SQL Server extension on your VMs.
 
@@ -239,8 +221,7 @@ Enable the SQL Server extension on your VMs.
 az sql vm create \
   --name my-sql-vm \
   --resource-group myResourceGroup \
-  --license-type PAYG \
-  --sql-mgmt-type Full
+  --license-type PAYG
 
 # Enable Defender for SQL on the VM
 az security pricing create \
@@ -248,11 +229,11 @@ az security pricing create \
   --tier Standard
 ```
 
-The SQL IaaS Agent collects query patterns and authentication events from the SQL Server instance and sends them to Defender for analysis. The detection capabilities are the same as Azure SQL Database.
+Defender for SQL servers on machines extends Defender for SQL protections to SQL Server on Azure VMs and other machine-based SQL Server deployments. The alert categories overlap with Azure SQL Database, but the exact detections and prerequisites differ by environment and extension configuration.
 
 ## Cost Considerations
 
-Microsoft Defender for SQL is charged per SQL Server instance per month. As of 2026, the pricing is approximately $15 per server per month for Azure SQL Database and $15 per SQL Server instance for VMs. This covers both threat detection and vulnerability assessment.
+Microsoft Defender for SQL is charged according to the Microsoft Defender for Cloud pricing page. Pricing depends on the protected SQL resource type, region, and agreement, and it covers both threat detection and vulnerability assessment for supported SQL resources.
 
 For most organizations, this is a small cost compared to the impact of a SQL injection breach. A single data breach can cost millions in remediation, legal fees, and reputation damage.
 
