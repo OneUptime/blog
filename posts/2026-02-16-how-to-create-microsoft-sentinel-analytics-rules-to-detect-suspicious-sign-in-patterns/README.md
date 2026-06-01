@@ -18,7 +18,7 @@ Sentinel analytics rules are scheduled KQL queries that run at regular intervals
 
 ```mermaid
 graph LR
-    A[Scheduled Query Rule] -->|Runs every 5-60 min| B[KQL Query Against Logs]
+    A[Scheduled Query Rule] -->|Runs on configured interval| B[KQL Query Against Logs]
     B -->|Results Found| C[Alert Created]
     B -->|No Results| D[No Action]
     C --> E[Alert Grouping Logic]
@@ -38,7 +38,7 @@ Each rule has:
 
 You need:
 - Microsoft Sentinel workspace with Microsoft Entra ID sign-in logs connected
-- Security Contributor or Sentinel Contributor role
+- Microsoft Sentinel Contributor role, or equivalent write permissions on the Log Analytics workspace and its resource group
 - Familiarity with KQL basics
 
 ## Rule 1: Impossible Travel Detection
@@ -110,8 +110,8 @@ To create this as a scheduled rule:
    - Run query every: 15 minutes
    - Lookup data from the last: 1 hour
 5. Configure entity mapping:
-   - Account: UserPrincipalName
-   - IP: CurrentIP
+   - Account: map the `FullName` identifier to `UserPrincipalName`
+   - IP: map the `Address` identifier to `CurrentIP`
 6. On Alert grouping, group alerts by UserPrincipalName within a 24-hour window.
 7. Review and create.
 
@@ -209,7 +209,7 @@ let failThreshold = 5;
 let failedAccounts =
     SigninLogs
     | where TimeGenerated > ago(lookback)
-    | where ResultType == "50126"  // Bad password
+    | where ResultType == "50126"  // Invalid username or password
     | summarize
         FailCount = count(),
         FailIPs = make_set(IPAddress),
@@ -270,9 +270,9 @@ SigninLogs
 Entity mappings are critical for effective investigation. They tell Sentinel which fields in your query results correspond to specific entity types:
 
 For sign-in detections, always map:
-- **Account entity**: Map `UserPrincipalName` to the Account entity
-- **IP entity**: Map `IPAddress` to the IP entity
-- **Host entity**: Map the device name if available
+- **Account entity**: Map `UserPrincipalName` to the Account entity's `FullName` identifier, or split the UPN into `Name` and `UPNSuffix`
+- **IP entity**: Map `IPAddress` to the IP entity's `Address` identifier
+- **Host entity**: Map the device name to the Host entity's `HostName` identifier if available
 
 These mappings enable the investigation graph, allow playbooks to take action on specific entities, and link related incidents together.
 
