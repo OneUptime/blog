@@ -8,7 +8,7 @@ Description: Learn how to orchestrate Databricks notebooks as production workflo
 
 ---
 
-Running notebooks interactively is fine for development and exploration, but production data pipelines need something more structured. Databricks Workflows (formerly Jobs) lets you orchestrate notebooks into multi-step pipelines with scheduling, task dependencies, retry logic, and monitoring. It is the built-in way to run production workloads in Databricks without needing an external orchestrator.
+Running notebooks interactively is fine for development and exploration, but production data pipelines need something more structured. Databricks Workflows, now documented as Lakeflow Jobs, lets you orchestrate notebooks into multi-step pipelines with scheduling, task dependencies, retry logic, and monitoring. It is the built-in way to run production workloads in Databricks without needing an external orchestrator.
 
 In this post, I will show you how to build a complete workflow that orchestrates multiple notebooks, configure scheduling, handle failures, and monitor execution.
 
@@ -67,17 +67,21 @@ df = spark.read.format("json").load(full_path)
 # Write to Delta table with append mode
 df.write.format("delta").mode("append").saveAsTable(target_table)
 
-# Return a status for downstream tasks
-dbutils.notebook.exit(f"Ingested {df.count()} rows")
+row_count = df.count()
+
+# Set a task value for downstream tasks and return a status for the run output
+dbutils.jobs.taskValues.set(key="ingested_row_count", value=row_count)
+dbutils.notebook.exit(f"Ingested {row_count} rows")
 ```
 
 ### Pass Values Between Notebooks
 
-Notebooks can return values using `dbutils.notebook.exit()`. Downstream tasks can access these values.
+Notebooks can return a run output string using `dbutils.notebook.exit()`. For values that downstream tasks need to consume, use task values with `dbutils.jobs.taskValues.set()` and reference them in task parameters with dynamic value syntax such as `{{tasks.ingest_raw_data.values.ingested_row_count}}`.
 
 ```python
 # 05_data_quality_checks.py - Run data quality checks
 
+dbutils.widgets.text("target_table", "gold.daily_summary")
 target_table = dbutils.widgets.get("target_table")
 
 # Run quality checks
@@ -99,7 +103,7 @@ dbutils.notebook.exit(f"PASSED: {row_count} rows")
 
 ### Using the UI
 
-1. In the Databricks workspace, click **Workflows** in the left sidebar
+1. In the Databricks workspace, click **Jobs & Pipelines** in the left sidebar
 2. Click **Create Job**
 3. Give the job a name (e.g., `etl_daily_pipeline`)
 
@@ -133,6 +137,7 @@ Each task in a workflow represents a notebook to run. Add tasks and define their
 - Task name: `data_quality_checks`
 - Depends on: `aggregate_to_gold`
 - Source: `/Repos/production/etl-pipeline/05_data_quality_checks.py`
+- Parameters: `{"target_table": "gold.daily_summary"}`
 
 The dependency graph looks like this.
 
@@ -149,9 +154,18 @@ flowchart TD
 You can also create workflows programmatically.
 
 ```json
-// POST to https://<databricks-instance>/api/2.1/jobs/create
 {
   "name": "etl_daily_pipeline",
+  "job_clusters": [
+    {
+      "job_cluster_key": "shared_etl_cluster",
+      "new_cluster": {
+        "spark_version": "14.3.x-scala2.12",
+        "node_type_id": "Standard_DS4_v2",
+        "num_workers": 4
+      }
+    }
+  ],
   "tasks": [
     {
       "task_key": "ingest_raw_data",
@@ -163,11 +177,7 @@ You can also create workflows programmatically.
           "processing_date": "{{job.start_time.iso_date}}"
         }
       },
-      "new_cluster": {
-        "spark_version": "14.3.x-scala2.12",
-        "node_type_id": "Standard_DS3_v2",
-        "num_workers": 2
-      }
+      "job_cluster_key": "shared_etl_cluster"
     },
     {
       "task_key": "clean_and_validate",
@@ -175,11 +185,7 @@ You can also create workflows programmatically.
       "notebook_task": {
         "notebook_path": "/Repos/production/etl-pipeline/02_clean_and_validate"
       },
-      "new_cluster": {
-        "spark_version": "14.3.x-scala2.12",
-        "node_type_id": "Standard_DS3_v2",
-        "num_workers": 2
-      }
+      "job_cluster_key": "shared_etl_cluster"
     },
     {
       "task_key": "transform_to_silver",
@@ -187,11 +193,7 @@ You can also create workflows programmatically.
       "notebook_task": {
         "notebook_path": "/Repos/production/etl-pipeline/03_transform_to_silver"
       },
-      "new_cluster": {
-        "spark_version": "14.3.x-scala2.12",
-        "node_type_id": "Standard_DS4_v2",
-        "num_workers": 4
-      }
+      "job_cluster_key": "shared_etl_cluster"
     },
     {
       "task_key": "aggregate_to_gold",
@@ -199,19 +201,24 @@ You can also create workflows programmatically.
       "notebook_task": {
         "notebook_path": "/Repos/production/etl-pipeline/04_aggregate_to_gold"
       },
-      "existing_cluster_id": "same-as-previous"
+      "job_cluster_key": "shared_etl_cluster"
     },
     {
       "task_key": "data_quality_checks",
       "depends_on": [{"task_key": "aggregate_to_gold"}],
       "notebook_task": {
-        "notebook_path": "/Repos/production/etl-pipeline/05_data_quality_checks"
+        "notebook_path": "/Repos/production/etl-pipeline/05_data_quality_checks",
+        "base_parameters": {
+          "target_table": "gold.daily_summary"
+        }
       },
-      "existing_cluster_id": "same-as-previous"
+      "job_cluster_key": "shared_etl_cluster"
     }
   ]
 }
 ```
+
+POST this payload to `https://<databricks-instance>/api/2.2/jobs/create`.
 
 ## Step 3: Configure Scheduling
 
@@ -223,7 +230,6 @@ In the Workflows UI:
 3. Configure the cron expression
 
 ```json
-// Schedule configuration
 {
   "quartz_cron_expression": "0 0 6 * * ?",
   "timezone_id": "UTC",
@@ -244,7 +250,6 @@ Common cron expressions:
 Set retry policies on individual tasks to handle transient failures.
 
 ```json
-// Task with retry configuration
 {
   "task_key": "ingest_raw_data",
   "retry_on_timeout": true,
@@ -259,15 +264,15 @@ Set retry policies on individual tasks to handle transient failures.
 Run specific tasks only when upstream tasks fail.
 
 ```json
-// Alert task that runs only on failure
 {
   "task_key": "send_failure_alert",
   "depends_on": [
     {
-      "task_key": "data_quality_checks",
-      "outcome": "failed"
+      "task_key": "data_quality_checks"
     }
   ],
+  "run_if": "AT_LEAST_ONE_FAILED",
+  "job_cluster_key": "shared_etl_cluster",
   "notebook_task": {
     "notebook_path": "/Repos/production/etl-pipeline/send_alert",
     "base_parameters": {
@@ -282,12 +287,13 @@ Run specific tasks only when upstream tasks fail.
 Configure email notifications for job success, failure, or both.
 
 ```json
-// Notification configuration
 {
   "email_notifications": {
     "on_start": ["team@company.com"],
     "on_success": ["team@company.com"],
-    "on_failure": ["oncall@company.com", "team@company.com"],
+    "on_failure": ["oncall@company.com", "team@company.com"]
+  },
+  "notification_settings": {
     "no_alert_for_skipped_runs": true
   }
 }
@@ -309,7 +315,7 @@ Use the REST API to check job run status.
 
 ```bash
 # List recent runs for a job
-curl -X GET "https://<databricks-instance>/api/2.1/jobs/runs/list?job_id=12345&limit=5" \
+curl -X GET "https://<databricks-instance>/api/2.2/jobs/runs/list?job_id=12345&limit=5" \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -318,7 +324,6 @@ curl -X GET "https://<databricks-instance>/api/2.1/jobs/runs/list?job_id=12345&l
 For cost efficiency, multiple tasks can share a single job cluster instead of each spinning up its own.
 
 ```json
-// Define a shared job cluster
 {
   "job_clusters": [
     {
