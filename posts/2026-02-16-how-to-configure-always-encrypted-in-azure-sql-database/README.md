@@ -121,20 +121,27 @@ WITH (
 This step requires PowerShell because the CEK must be encrypted with the CMK, which is in Key Vault.
 
 ```powershell
-# Import the SqlServer module
+# Import the required modules
+Import-Module Az.Accounts
 Import-Module SqlServer
 
 # Define connection parameters
 $serverName = "myserver.database.windows.net"
 $databaseName = "mydb"
 $connStr = "Server=$serverName;Database=$databaseName;Integrated Security=False;User ID=sqladmin;Password=YourPassword123!"
+$database = Get-SqlDatabase -ConnectionString $connStr
+
+# Authenticate to Azure Key Vault so the cmdlets can wrap and unwrap the CEK
+Connect-AzAccount
+$keyVaultAccessToken = (Get-AzAccessToken -ResourceUrl https://vault.azure.net).Token
 
 # Create the Column Encryption Key encrypted by the CMK
 # The CEK is generated and wrapped with the CMK in Key Vault
 New-SqlColumnEncryptionKey `
     -Name "CEK_1" `
-    -InputObject (Get-SqlDatabase -ConnectionString $connStr) `
-    -ColumnMasterKeyName "CMK_KeyVault"
+    -InputObject $database `
+    -ColumnMasterKeyName "CMK_KeyVault" `
+    -KeyVaultAccessToken $keyVaultAccessToken
 ```
 
 ### Step 4: Encrypt Columns
@@ -159,8 +166,9 @@ $encryptionChanges += New-SqlColumnEncryptionSettings `
 
 # Apply the encryption
 Set-SqlColumnEncryption `
-    -InputObject (Get-SqlDatabase -ConnectionString $connStr) `
-    -ColumnEncryptionSettings $encryptionChanges
+    -InputObject $database `
+    -ColumnEncryptionSettings $encryptionChanges `
+    -KeyVaultAccessToken $keyVaultAccessToken
 ```
 
 ## Connecting from an Application
@@ -229,6 +237,7 @@ Always Encrypted has specific limitations on what you can do with encrypted colu
 - INSERT and SELECT only
 
 **General limitations**:
+- Values for encrypted columns must be supplied as query parameters; comparing encrypted columns to plaintext literals or inserting plaintext literals directly is not supported
 - Cannot use encrypted columns in computed columns
 - Full-text search does not work on encrypted columns
 - Triggers cannot reference plaintext of encrypted columns
