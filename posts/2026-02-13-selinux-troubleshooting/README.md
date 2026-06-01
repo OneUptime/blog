@@ -168,7 +168,7 @@ sudo setsebool -P httpd_can_sendmail on
 sudo setsebool -P httpd_can_network_connect_db on
 
 # Allow httpd to read user home directories
-sudo setsebool -P httpd_read_user_content on
+sudo setsebool -P httpd_enable_homedirs on
 ```
 
 The `-P` flag makes the change persistent across reboots. Without it, the boolean reverts on the next boot.
@@ -181,15 +181,15 @@ SELinux restricts which ports a service can bind to. If your application listens
 # Check which ports httpd is allowed to use
 sudo semanage port -l | grep http_port_t
 
-# Add port 8443 to the list of allowed HTTP ports
-sudo semanage port -a -t http_port_t -p tcp 8443
+# Add port 9876 to the list of allowed HTTP ports
+sudo semanage port -a -t http_port_t -p tcp 9876
 ```
 
 If the port is already assigned to another type, you may need to modify instead of add:
 
 ```bash
 # Modify an existing port label assignment
-sudo semanage port -m -t http_port_t -p tcp 8443
+sudo semanage port -m -t http_port_t -p tcp 9876
 ```
 
 ## Step 7: Create Custom Policy Modules
@@ -277,7 +277,7 @@ graph TD
 
 A few habits that reduce SELinux troubleshooting:
 
-**Copy files instead of moving them.** When you `cp` a file, it inherits the label of the destination directory. When you `mv` a file, it keeps its original label. This is the single most common source of file context problems.
+**Copy files instead of moving them.** A normal `cp` creates a new file whose label is based on the destination directory, while context-preserving copy options and `mv` can keep the original label. Moving files from a home directory into a web root is a common source of file context problems.
 
 **Use `matchpathcon` to check expected labels.** Before deploying files to a new location, verify what label SELinux expects:
 
