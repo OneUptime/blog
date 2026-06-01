@@ -56,14 +56,16 @@ This returns a snapshot timestamp that uniquely identifies the snapshot. Save th
 ### PowerShell
 
 ```powershell
-# Get the storage account context
-$storageContext = New-AzStorageContext `
-  -StorageAccountName "myfilesaccount" `
-  -StorageAccountKey "your-storage-key"
+# Get the storage account
+$storageAccount = Get-AzStorageAccount `
+  -ResourceGroupName "myresourcegroup" `
+  -Name "myfilesaccount"
 
 # Create a snapshot of the file share
-$snapshot = Get-AzStorageShare -Context $storageContext -Name "myfileshare" | `
-  New-AzStorageShareSnapshot
+$snapshot = New-AzRmStorageShare `
+  -StorageAccount $storageAccount `
+  -Name "myfileshare" `
+  -Snapshot
 
 # Display the snapshot timestamp
 Write-Host "Snapshot created: $($snapshot.SnapshotTime)"
@@ -95,7 +97,7 @@ print(f"Snapshot created at: {snapshot_time}")
 az storage share list \
   --account-name myfilesaccount \
   --include-snapshots \
-  --query "[?snapshot != null]" \
+  --query "[?name == 'myfileshare' && snapshot != null]" \
   --output table
 ```
 
@@ -103,10 +105,11 @@ az storage share list \
 
 ```powershell
 # List all snapshots for a file share
-$context = New-AzStorageContext -StorageAccountName "myfilesaccount" -StorageAccountKey "your-key"
-Get-AzStorageShare -Context $context -Name "myfileshare" -SnapshotTime * |
+$storageAccount = Get-AzStorageAccount -ResourceGroupName "myresourcegroup" -Name "myfilesaccount"
+Get-AzRmStorageShare -StorageAccount $storageAccount -IncludeSnapshot |
+  Where-Object { $_.Name -eq "myfileshare" } |
   Where-Object { $_.SnapshotTime -ne $null } |
-  Format-Table Name, SnapshotTime, LastModified
+  Format-Table Name, SnapshotTime
 ```
 
 ## Browsing Snapshot Contents
@@ -233,7 +236,7 @@ az storage file download-batch \
   --source myfileshare \
   --snapshot "2026-02-16T10:30:00.0000000Z" \
   --pattern "documents/*" \
-  --dest "./restored-documents/"
+  --destination "./restored-documents/"
 ```
 
 Then upload the restored directory back:
@@ -273,7 +276,7 @@ Note that you cannot delete a file share that has snapshots unless you include t
 
 ## Automating Snapshot Creation
 
-Azure does not have a built-in snapshot scheduler for file shares. You can automate it using Azure Functions, Logic Apps, or simple scripts with cron/Task Scheduler.
+Azure Backup can schedule and manage file share snapshots for SMB file shares. If you are managing snapshots yourself, you can automate them using Azure Automation, Azure Functions, Logic Apps, or simple scripts with cron/Task Scheduler.
 
 ### Using Azure Automation
 
@@ -291,22 +294,24 @@ param(
 # Connect using the Automation Account's managed identity
 Connect-AzAccount -Identity
 
-# Get the storage account context
+# Get the storage account
 $storageAccount = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -Name $StorageAccountName
-$context = $storageAccount.Context
 
 # Create a new snapshot
-$share = Get-AzStorageShare -Context $context -Name $ShareName
-$snapshot = $share | New-AzStorageShareSnapshot
+$snapshot = New-AzRmStorageShare -StorageAccount $storageAccount -Name $ShareName -Snapshot
 Write-Output "Created snapshot: $($snapshot.SnapshotTime)"
 
 # Clean up old snapshots
 $cutoffDate = (Get-Date).AddDays(-$RetainDays)
-$allSnapshots = Get-AzStorageShare -Context $context -Name $ShareName -SnapshotTime * |
-  Where-Object { $_.SnapshotTime -ne $null -and $_.SnapshotTime -lt $cutoffDate }
+$allSnapshots = Get-AzRmStorageShare -StorageAccount $storageAccount -IncludeSnapshot |
+  Where-Object { $_.Name -eq $ShareName -and $_.SnapshotTime -ne $null -and $_.SnapshotTime -lt $cutoffDate }
 
 foreach ($oldSnapshot in $allSnapshots) {
-    Remove-AzStorageShare -Share $oldSnapshot -Force
+    Remove-AzRmStorageShare `
+      -StorageAccount $storageAccount `
+      -Name $ShareName `
+      -SnapshotTime $oldSnapshot.SnapshotTime `
+      -Force
     Write-Output "Deleted old snapshot: $($oldSnapshot.SnapshotTime)"
 }
 ```
@@ -316,7 +321,7 @@ foreach ($oldSnapshot in $allSnapshots) {
 - Maximum 200 snapshots per file share
 - Snapshots are billed based on the incremental data they hold (only changed data counts)
 - You cannot create a snapshot if you are at the 200-snapshot limit - delete old ones first
-- Snapshot data counts toward the share's quota
+- Snapshots do not count toward the maximum share size limit, but storage account limits still apply
 
 For a share that does not change much between snapshots, the incremental cost per snapshot is minimal. For shares with heavy churn, each snapshot can hold significant data.
 
