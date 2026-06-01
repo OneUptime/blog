@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Arc, Data Services, Kubernetes, SQL Managed Instance, PostgreSQL, Hybrid Cloud
+Tags: Azure, Azure Arc, Data Services, Kubernetes, SQL Managed Instance, Hybrid Cloud
 
-Description: Learn how to deploy Azure Arc-enabled data services like SQL Managed Instance and PostgreSQL on any Kubernetes cluster running anywhere.
+Description: Learn how to deploy Azure Arc-enabled SQL Managed Instance on any supported Kubernetes cluster running anywhere.
 
 ---
 
-Azure Arc-enabled data services bring Azure's managed database experience to any Kubernetes cluster. Whether your cluster runs on-premises, at the edge, or in another cloud, you can deploy SQL Managed Instance and PostgreSQL with the same Azure management experience you get in the cloud. You get elastic scaling, automated patching, point-in-time restore, and Azure Portal integration, all running on your own infrastructure.
+Azure Arc-enabled data services bring Azure's managed database experience to supported Kubernetes clusters. Whether your cluster runs on-premises, at the edge, or in another cloud, you can deploy SQL Managed Instance with the same Azure management experience you get in the cloud. You get elastic scaling, automated patching, point-in-time restore, and Azure Portal integration, all running on your own infrastructure.
 
 In this post, I will walk through deploying Arc-enabled data services from scratch, starting with the data controller and then deploying a SQL Managed Instance.
 
@@ -18,7 +18,7 @@ Arc-enabled data services consist of several components:
 
 **Data Controller** - The management plane that runs in your Kubernetes cluster. It handles provisioning, scaling, patching, and monitoring of data service instances. Think of it as a local control plane for Azure data services.
 
-**Data Service Instances** - The actual databases (SQL Managed Instance, PostgreSQL). These run as pods in your Kubernetes cluster and are managed by the data controller.
+**Data Service Instances** - The actual databases, such as SQL Managed Instance enabled by Azure Arc. These run as pods in your Kubernetes cluster and are managed by the data controller. Azure Arc-enabled PostgreSQL server retired in July 2025.
 
 **Monitoring Stack** - Grafana and Kibana dashboards that run locally, plus the ability to export metrics and logs to Azure Monitor.
 
@@ -32,20 +32,23 @@ The data controller communicates with Azure for billing, telemetry, and (optiona
 Before deploying, you need:
 
 **Kubernetes cluster requirements:**
-- Kubernetes 1.24 or later
+- Kubernetes 1.21 or later
 - At least 4 nodes with 16 GB RAM and 4 CPU cores each (for a production-like setup)
 - A default StorageClass configured
 - The cluster must be connected to Azure Arc (see my guide on connecting clusters)
 - LoadBalancer or NodePort service type support
 
 **Tools:**
-- Azure CLI with the `arcdata` extension
+- Azure CLI with the `arcdata`, `connectedk8s`, `k8s-extension`, and `customlocation` extensions
 - kubectl configured for your cluster
 
 ```bash
 # Install the arcdata extension
 
 az extension add --name arcdata --upgrade
+az extension add --name connectedk8s --upgrade
+az extension add --name k8s-extension --upgrade
+az extension add --name customlocation --upgrade
 
 # Verify your cluster meets the requirements
 kubectl get nodes -o wide
@@ -63,7 +66,17 @@ The data controller is the first thing you deploy. It sets up the management inf
 az connectedk8s enable-features \
     --name "my-arc-cluster" \
     --resource-group "arc-k8s-rg" \
-    --features custom-locations
+    --features cluster-connect custom-locations
+
+# Install the Azure Arc data services extension
+az k8s-extension create \
+    --name "arc-data-services" \
+    --cluster-name "my-arc-cluster" \
+    --resource-group "arc-k8s-rg" \
+    --cluster-type connectedClusters \
+    --extension-type microsoft.arcdataservices \
+    --scope cluster \
+    --release-namespace "arc-data"
 
 # Create the custom location
 az customlocation create \
@@ -116,13 +129,11 @@ The configuration file at `./dc-config/control.json` lets you customize many asp
     },
     "storage": {
       "data": {
-        // Storage class for data files
         "className": "managed-premium",
         "accessMode": "ReadWriteOnce",
         "size": "50Gi"
       },
       "logs": {
-        // Storage class for log files
         "className": "managed-premium",
         "accessMode": "ReadWriteOnce",
         "size": "10Gi"
@@ -131,7 +142,6 @@ The configuration file at `./dc-config/control.json` lets you customize many asp
     "services": [
       {
         "name": "controller",
-        // Use LoadBalancer for external access, ClusterIP for internal
         "serviceType": "LoadBalancer",
         "port": 30080
       }
@@ -206,10 +216,11 @@ Once the instance is running, you can connect to it using any SQL client:
 
 ```bash
 # Get the external endpoint
-ENDPOINT=$(az sql mi-arc show \
+ENDPOINT=$(az sql mi-arc endpoint list \
     --name "my-sql-instance" \
-    --resource-group "arc-data-rg" \
-    --query "properties.k8sRaw.status.endpoints.primary" \
+    --k8s-namespace "arc-data" \
+    --use-k8s \
+    --query "[?name=='primary'].endpoint | [0]" \
     --output tsv)
 
 echo "Connection string: $ENDPOINT"
@@ -229,12 +240,14 @@ az sql mi-arc update \
     --resource-group "arc-data-rg" \
     --retention-days 14
 
-# Perform a point-in-time restore
-az sql mi-arc restore \
-    --name "my-sql-instance" \
-    --resource-group "arc-data-rg" \
-    --dest-name "my-sql-restored" \
-    --time "2026-02-15T10:00:00Z"
+# Perform a point-in-time restore of a database
+az sql midb-arc restore \
+    --managed-instance "my-sql-instance" \
+    --name "my-database" \
+    --dest-name "my-database-restored" \
+    --k8s-namespace "arc-data" \
+    --time "2026-02-15T10:00:00Z" \
+    --use-k8s
 ```
 
 For high availability, deploy the Business Critical tier which uses Always On availability groups:
@@ -290,11 +303,9 @@ az sql mi-arc update \
     --memory-limit 64Gi \
     --memory-request 32Gi
 
-# Scale storage (only expansion is supported)
-az sql mi-arc update \
-    --name "my-sql-instance" \
-    --resource-group "arc-data-rg" \
-    --volume-size-data 200Gi
+# To scale storage, expand the SQL Managed Instance data PVCs.
+# The Azure CLI create command supports --volume-size-data,
+# but az sql mi-arc update does not expose a volume-size-data option.
 ```
 
 ## Upgrading Data Services
@@ -334,4 +345,4 @@ Storage is the most critical infrastructure decision for Arc data services. Here
 
 ## Summary
 
-Azure Arc-enabled data services bring the Azure managed database experience to your own infrastructure. The data controller provides the management plane, while SQL Managed Instance and PostgreSQL run as first-class Kubernetes workloads. With support for automated backups, point-in-time restore, high availability, elastic scaling, and Azure Portal integration, you get the best of both worlds - the control of running on your own infrastructure with the management experience of Azure PaaS services. Start with a development deployment to get familiar with the components, then plan your production deployment around your storage, networking, and availability requirements.
+Azure Arc-enabled data services bring the Azure managed database experience to your own infrastructure. The data controller provides the management plane, while SQL Managed Instance runs as a first-class Kubernetes workload. With support for automated backups, point-in-time restore, high availability, elastic scaling, and Azure Portal integration, you get the best of both worlds - the control of running on your own infrastructure with the management experience of Azure PaaS services. Start with a development deployment to get familiar with the components, then plan your production deployment around your storage, networking, and availability requirements.
