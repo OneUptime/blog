@@ -153,22 +153,53 @@ In Serverless mode with Azure Functions, authentication happens in the negotiate
 ```typescript
 // Negotiate function with JWT validation
 // Extracts user identity from the Authorization header
-import { app, HttpRequest, HttpResponseInit, input, InvocationContext } from "@azure/functions";
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
 import * as jwt from "jsonwebtoken";
 import * as jwksClient from "jwks-rsa";
 
-const signalRInput = input.generic({
-    type: "signalRConnectionInfo",
-    name: "connectionInfo",
-    hubName: "notifications",
-    // Use the validated user ID from the request processing
-    userId: "{userId}"
+const signalRConnectionString = process.env.AzureSignalRConnectionString!;
+const endpoint = /Endpoint=(.*?);/.exec(signalRConnectionString)?.[1]!;
+const accessKey = /AccessKey=(.*?);/.exec(signalRConnectionString)?.[1]!;
+const hubName = "notifications";
+const tenantId = "YOUR_TENANT_ID";
+const audience = "api://your-api-client-id";
+const issuer = `https://login.microsoftonline.com/${tenantId}/v2.0`;
+const client = jwksClient({
+    jwksUri: `https://login.microsoftonline.com/${tenantId}/discovery/v2.0/keys`
 });
+
+function getSigningKey(header: jwt.JwtHeader, callback: jwt.SigningKeyCallback) {
+    if (!header.kid) {
+        callback(new Error("Token header does not contain a key ID"));
+        return;
+    }
+
+    client.getSigningKey(header.kid, (error, key) => {
+        callback(error, key?.getPublicKey());
+    });
+}
+
+function validateToken(token: string): Promise<jwt.JwtPayload & { sub: string }> {
+    return new Promise((resolve, reject) => {
+        jwt.verify(
+            token,
+            getSigningKey,
+            { audience, issuer },
+            (error, decoded) => {
+                if (error || typeof decoded === "string" || !decoded?.sub) {
+                    reject(error ?? new Error("Token does not contain a subject claim"));
+                    return;
+                }
+
+                resolve(decoded as jwt.JwtPayload & { sub: string });
+            }
+        );
+    });
+}
 
 app.http("negotiate", {
     methods: ["POST"],
     authLevel: "anonymous",
-    extraInputs: [signalRInput],
     handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
         // Extract and validate the JWT token
         const authHeader = request.headers.get("Authorization");
@@ -179,22 +210,30 @@ app.http("negotiate", {
         const token = authHeader.substring(7);
 
         try {
-            // Validate the token (simplified - use a proper JWT validation library)
+            // Validate the token against your identity provider
             const decoded = await validateToken(token);
+            const userId = decoded.sub;
 
-            // Pass the user ID to the SignalR connection info binding
-            // The binding uses this to associate the connection with the user
-            const connectionInfo = context.extraInputs.get(signalRInput);
+            // Generate a SignalR Service access token that identifies this user
+            const url = `${endpoint}/client/?hub=${hubName}`;
+            const accessToken = jwt.sign(
+                { aud: url, nameid: userId },
+                accessKey,
+                { expiresIn: "1h" }
+            );
 
             return {
-                jsonBody: connectionInfo
+                jsonBody: { url, accessToken }
             };
         } catch (error) {
+            context.log(error);
             return { status: 401, body: "Invalid token" };
         }
     }
 });
 ```
+
+The `signalRConnectionInfo` input binding is still a good fit when the user ID is already available as HTTP binding data, such as an Easy Auth header. If you validate the JWT inside the function handler and compute the user ID there, generate the negotiation response after validation (as shown above) or use the Azure SignalR Service Management SDK.
 
 For Azure Functions with App Service Authentication (Easy Auth) enabled, the user identity is automatically available in the request headers:
 
@@ -328,10 +367,10 @@ public override async Task OnConnectedAsync()
 JWT tokens expire, but SignalR connections are long-lived. There is an important distinction:
 
 - The token is validated when the connection is established (during negotiation).
-- Once connected, the WebSocket connection persists even after the token expires.
+- By default, a WebSocket connection persists even after the token expires.
 - If the connection drops and reconnects, the token is re-validated.
 
-This means a user with a revoked token keeps their existing connection until it drops. To handle this, you can:
+ASP.NET Core SignalR can also close connections when the authentication token expires by setting `CloseOnAuthenticationExpiration`, but the default is `false`. This means a user with a revoked token keeps their existing connection until it drops unless you add explicit handling. To handle this, you can:
 
 1. Set short token expiration times (5-15 minutes) to limit exposure
 2. Implement server-side connection termination for revoked users
