@@ -14,7 +14,7 @@ Lambda Insights is a CloudWatch extension that collects system-level performance
 
 ## What Lambda Insights Provides
 
-Lambda Insights collects these additional metrics that standard Lambda monitoring doesn't:
+Lambda Insights collects these additional metrics and log fields that standard Lambda monitoring doesn't:
 
 | Metric | Description |
 |---|---|
@@ -25,11 +25,11 @@ Lambda Insights collects these additional metrics that standard Lambda monitorin
 | rx_bytes | Network bytes received |
 | tx_bytes | Network bytes transmitted |
 | tmp_used | Bytes used in /tmp storage |
-| tmp_max | Total /tmp capacity |
+| tmp_free | Bytes available in /tmp storage |
 | init_duration | Cold start initialization time |
 | fd_use | File descriptors in use |
 | fd_max | Maximum file descriptors available |
-| threads | Number of threads |
+| threads_max | Maximum number of threads in use |
 
 These metrics help you answer questions like "Should I increase the memory allocation?" and "Is my function CPU-bound or I/O-bound?"
 
@@ -42,10 +42,10 @@ Using the AWS CLI:
 ```bash
 # Step 1: Add the Lambda Insights layer to your function
 
-# The layer ARN varies by region - this is for us-east-1
+# The layer ARN varies by region and architecture - this is for x86-64 in us-east-1
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers "arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:49"
+  --layers "arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:64"
 
 # Step 2: Add the CloudWatch Lambda Insights managed policy to the execution role
 aws iam attach-role-policy \
@@ -57,6 +57,12 @@ Using CloudFormation:
 
 ```yaml
 # Enable Lambda Insights via CloudFormation
+Parameters:
+  LambdaInsightsLayerArn:
+    Type: String
+    Default: arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:64
+    Description: Lambda Insights extension layer ARN for your Region and architecture
+
 Resources:
   MyFunction:
     Type: AWS::Lambda::Function
@@ -69,7 +75,7 @@ Resources:
       Timeout: 30
       Layers:
         # Lambda Insights extension layer
-        - !Sub "arn:aws:lambda:${AWS::Region}:580247275435:layer:LambdaInsightsExtension:49"
+        - !Ref LambdaInsightsLayerArn
       Code:
         ZipFile: |
           exports.handler = async (event) => {
@@ -95,11 +101,17 @@ Using SAM:
 
 ```yaml
 # SAM makes it even simpler with a global setting
+Parameters:
+  LambdaInsightsLayerArn:
+    Type: String
+    Default: arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:64
+    Description: Lambda Insights extension layer ARN for your Region and architecture
+
 Globals:
   Function:
     Tracing: Active
     Layers:
-      - !Sub "arn:aws:lambda:${AWS::Region}:580247275435:layer:LambdaInsightsExtension:49"
+      - !Ref LambdaInsightsLayerArn
 
 Resources:
   MyFunction:
@@ -142,7 +154,7 @@ aws cloudwatch get-metric-statistics \
   --namespace LambdaInsights \
   --metric-name memory_utilization \
   --dimensions "Name=function_name,Value=my-function" \
-  --start-time "$(date -u -v-1H '+%Y-%m-%dT%H:%M:%SZ')" \
+  --start-time "$(date -u -d '1 hour ago' '+%Y-%m-%dT%H:%M:%SZ')" \
   --end-time "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
   --period 300 \
   --statistics Average Maximum
@@ -232,7 +244,7 @@ aws cloudwatch put-metric-alarm \
   --statistic Maximum \
   --period 300 \
   --evaluation-periods 1 \
-  --threshold 500000000 \  # 500 MB
+  --threshold 500000000 \
   --comparison-operator GreaterThanThreshold \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:alerts"
 ```
@@ -247,7 +259,7 @@ aws cloudwatch get-metric-statistics \
   --namespace LambdaInsights \
   --metric-name used_memory_max \
   --dimensions "Name=function_name,Value=my-function" \
-  --start-time "$(date -u -v-7d '+%Y-%m-%dT%H:%M:%SZ')" \
+  --start-time "$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ')" \
   --end-time "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
   --period 86400 \
   --statistics Maximum Average
