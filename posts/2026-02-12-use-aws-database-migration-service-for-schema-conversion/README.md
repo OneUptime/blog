@@ -39,52 +39,45 @@ The workflow is:
 
 ### Installing SCT
 
-Download the AWS Schema Conversion Tool from the AWS website. It's a desktop application that runs on Windows, macOS, and Linux.
+Download the AWS Schema Conversion Tool from the AWS website. It's a desktop application that runs on Microsoft Windows, Fedora Linux, and Ubuntu Linux on 64-bit operating systems.
 
 After installation, configure database drivers.
 
 ```text
-# Download required JDBC drivers:
+# Download compatible JDBC drivers:
 
 # Oracle: ojdbc8.jar
-# SQL Server: mssql-jdbc-12.4.2.jre11.jar
-# PostgreSQL: postgresql-42.7.1.jar
-# MySQL: mysql-connector-j-8.2.0.jar
+# SQL Server: mssql-jdbc-10.2.jar
+# PostgreSQL: postgresql-42.2.19.jar or later
+# MySQL: mysql-connector-java-8.0.15.jar or later
 
-# Place drivers in the SCT drivers directory
-# macOS: ~/AWS Schema Conversion Tool/drivers/
-# Windows: C:\Program Files\AWS Schema Conversion Tool\drivers\
+# In AWS SCT, open Settings > Global Settings > Drivers
+# and add the file path for each source and target JDBC driver.
 ```
 
 ### Creating a Migration Project
 
 Create an SCT project and connect to your source and target databases.
 
-```python
-# You can also use SCT via CLI for automation
-# sct-cli.py - Automate schema conversion
+```text
+# You can also use the AWS SCT CLI for automation.
+# The CLI uses .scts scenario files rather than AWS CLI-style flags.
 
-# Step 1: Create the project
-# sct-cli --create-project \
-#   --project-name "oracle-to-postgres" \
-#   --source-engine oracle \
-#   --target-engine postgresql
+# Step 1: Start interactive mode and download a conversion template
+cd "C:\Program Files\AWS Schema Conversion Tool\app"
+java -jar AWSSchemaConversionToolBatch.jar -type interactive
 
-# Step 2: Connect to source
-# sct-cli --connect-source \
-#   --server oracle-prod.example.com \
-#   --port 1521 \
-#   --database PRODDB \
-#   --user migration_user \
-#   --password <password>
+GetCliScenario -type: 'ConversionApply' -directory: 'C:\SCT\Templates'
+/
 
-# Step 3: Connect to target
-# sct-cli --connect-target \
-#   --server mydb.abc123.us-east-1.rds.amazonaws.com \
-#   --port 5432 \
-#   --database proddb \
-#   --user admin \
-#   --password <password>
+# Step 2: Edit ConversionTemplate.scts with your source and target
+# database connection details, driver paths, mapping rules, and objects.
+
+# Step 3: Run the edited scenario
+RunSCTBatch.cmd --pathtoscts "C:\SCT\Templates\ConversionTemplate.scts"
+
+# On Linux, use RunSCTBatch.sh from the AWS SCT app directory:
+RunSCTBatch.sh --pathtoscts "/home/user/SCT/Templates/ConversionTemplate.scts"
 ```
 
 ## Running Schema Conversion
@@ -204,8 +197,7 @@ After reviewing and fixing conversion issues, apply the schema to the target.
 # This can be done through SCT's "Apply to database" button
 # or by exporting the SQL and running it manually
 
-# Export converted SQL
-# sct-cli --export-converted-schema --output-file converted_schema.sql
+# Save the converted SQL from AWS SCT before applying it manually.
 
 # Apply to target
 psql -h mydb.abc123.us-east-1.rds.amazonaws.com \
@@ -354,13 +346,12 @@ DMS can validate that the data in the target matches the source.
         "EnableValidation": true,
         "ThreadCount": 5,
         "ValidationOnly": false,
-        "HandleCollationDiff": true,
-        "RecordSuspendEnabled": false
+        "HandleCollationDiff": true
     }
 }
 ```
 
-Add this to your task settings to enable row-level validation.
+Add this to your task settings to enable data validation.
 
 ## Wrapping Up
 
