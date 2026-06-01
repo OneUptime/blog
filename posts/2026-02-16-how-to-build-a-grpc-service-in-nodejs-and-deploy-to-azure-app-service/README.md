@@ -23,7 +23,7 @@ mkdir grpc-node-service && cd grpc-node-service
 npm init -y
 
 # Install gRPC dependencies
-npm install @grpc/grpc-js @grpc/proto-loader
+npm install @grpc/grpc-js @grpc/proto-loader grpc-health-check
 
 # Install dev dependencies
 npm install -D typescript @types/node ts-node
@@ -82,9 +82,10 @@ Now build the server that loads the proto definition and implements the service 
 ```javascript
 // server.js
 // gRPC server implementation for the TaskService
+const http = require('http');
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 // Load the proto file with these options for better compatibility
 const packageDefinition = protoLoader.loadSync('./proto/task.proto', {
@@ -115,7 +116,7 @@ function getTask(call, callback) {
 
 // Implementation of the CreateTask RPC method
 function createTask(call, callback) {
-  const id = uuidv4();
+  const id = randomUUID();
   const task = {
     id,
     title: call.request.title,
@@ -132,6 +133,24 @@ function listTasks(call, callback) {
   callback(null, { tasks: allTasks });
 }
 
+// App Service custom containers that use gRPC must also answer HTTP/1.1
+function startHttpHealthServer(port) {
+  http
+    .createServer((req, res) => {
+      if (req.url === '/health') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok' }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    })
+    .listen(port, '0.0.0.0', () => {
+      console.log(`HTTP health server running on port ${port}`);
+    });
+}
+
 // Start the gRPC server
 function main() {
   const server = new grpc.Server();
@@ -143,10 +162,16 @@ function main() {
     listTasks,
   });
 
-  // Bind to the port from the environment variable or default to 50051
-  const port = process.env.PORT || 50051;
+  // Bind gRPC to the HTTP/2 port from App Service or default to 50051 locally
+  const grpcPort = process.env.HTTP20_ONLY_PORT || 50051;
+  const httpPort = process.env.WEBSITES_PORT || process.env.PORT;
+
+  if (httpPort && httpPort !== String(grpcPort)) {
+    startHttpHealthServer(httpPort);
+  }
+
   server.bindAsync(
-    `0.0.0.0:${port}`,
+    `0.0.0.0:${grpcPort}`,
     grpc.ServerCredentials.createInsecure(),
     (err, boundPort) => {
       if (err) {
@@ -216,7 +241,6 @@ Run the server in one terminal and the client in another to confirm it works.
 node server.js
 
 # Terminal 2 - run the client
-npm install uuid  # needed for the server
 node client.js
 ```
 
@@ -232,14 +256,14 @@ WORKDIR /app
 
 # Copy package files first for better layer caching
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy the application code and proto files
 COPY server.js ./
 COPY proto/ ./proto/
 
-# Expose the gRPC port
-EXPOSE 50051
+# Expose the HTTP/1.1 health port and the gRPC HTTP/2 port
+EXPOSE 8080 50051
 
 # Start the server
 CMD ["node", "server.js"]
@@ -279,18 +303,44 @@ az webapp create \
   --name grpc-task-service \
   --deployment-container-image-name mygrpcregistry.azurecr.io/grpc-task-service:v1
 
-# Configure the app to use ACR credentials
+# Configure the app to pull from ACR with a managed identity
+az webapp identity assign \
+  --name grpc-task-service \
+  --resource-group myResourceGroup
+
+ACR_ID=$(az acr show \
+  --name mygrpcregistry \
+  --resource-group myResourceGroup \
+  --query id \
+  --output tsv)
+
+PRINCIPAL_ID=$(az webapp identity show \
+  --name grpc-task-service \
+  --resource-group myResourceGroup \
+  --query principalId \
+  --output tsv)
+
+az role assignment create \
+  --assignee $PRINCIPAL_ID \
+  --scope $ACR_ID \
+  --role AcrPull
+
 az webapp config container set \
   --name grpc-task-service \
   --resource-group myResourceGroup \
   --docker-custom-image-name mygrpcregistry.azurecr.io/grpc-task-service:v1 \
   --docker-registry-server-url https://mygrpcregistry.azurecr.io
 
-# Set the PORT environment variable
+az webapp config set \
+  --name grpc-task-service \
+  --resource-group myResourceGroup \
+  --generic-configurations '{"acrUseManagedIdentityCreds": true}'
+
+# Set the container and gRPC HTTP/2 port settings
 az webapp config appsettings set \
   --name grpc-task-service \
   --resource-group myResourceGroup \
-  --settings PORT=50051
+  --settings WEBSITES_PORT=8080 HTTP20_ONLY_PORT=50051
 ```
 
 ## Important: HTTP/2 Configuration
@@ -303,6 +353,17 @@ az webapp config set \
   --name grpc-task-service \
   --resource-group myResourceGroup \
   --http20-enabled true
+
+# Configure the HTTP/2 proxy for gRPC traffic
+APP_CONFIG_ID=$(az webapp config show \
+  --name grpc-task-service \
+  --resource-group myResourceGroup \
+  --query id \
+  --output tsv)
+
+az resource update \
+  --ids $APP_CONFIG_ID \
+  --set properties.http20ProxyFlag=2
 
 # Also set the minimum TLS version for security
 az webapp config set \
@@ -318,27 +379,17 @@ For production deployments, add a health check endpoint. The simplest approach i
 ```javascript
 // health.js
 // Implements the standard gRPC health checking protocol
-const grpc = require('@grpc/grpc-js');
-const protoLoader = require('@grpc/proto-loader');
+const { HealthImplementation } = require('grpc-health-check');
 
-// Load the standard health check proto
-const healthProtoPath = require.resolve(
-  'grpc-health-check/src/proto/health.proto'
-);
-const packageDefinition = protoLoader.loadSync(healthProtoPath);
-const healthProto =
-  grpc.loadPackageDefinition(packageDefinition).grpc.health.v1;
+const healthImpl = new HealthImplementation({
+  '': 'SERVING',
+  'taskservice.TaskService': 'SERVING',
+});
 
-// Health check implementation
-function check(call, callback) {
-  callback(null, { status: 'SERVING' });
-}
+// In server.js, after creating the server:
+// healthImpl.addToServer(server);
 
-function watch(call) {
-  call.write({ status: 'SERVING' });
-}
-
-module.exports = { check, watch, healthProto };
+module.exports = { healthImpl };
 ```
 
 ## Error Handling and Logging
@@ -348,37 +399,38 @@ In production, you want structured logging and proper error handling. Here is ho
 ```javascript
 // interceptor.js
 // Logs all incoming gRPC calls with timing information
-function loggingInterceptor(methodDescriptor, nextCall) {
-  return function (metadata, listener, next) {
-    const startTime = Date.now();
-    const method = methodDescriptor.path;
+const grpc = require('@grpc/grpc-js');
 
-    console.log(JSON.stringify({
-      level: 'info',
-      message: 'gRPC call started',
-      method,
-      timestamp: new Date().toISOString(),
-    }));
+function loggingInterceptor(methodDescriptor, call) {
+  const startTime = Date.now();
+  const method = methodDescriptor.path;
 
-    // Wrap the listener to log when the call completes
-    const wrappedListener = {
-      ...listener,
-      onReceiveStatus: (status) => {
-        const duration = Date.now() - startTime;
-        console.log(JSON.stringify({
-          level: status.code === grpc.status.OK ? 'info' : 'error',
-          message: 'gRPC call completed',
-          method,
-          statusCode: status.code,
-          durationMs: duration,
-        }));
-        listener.onReceiveStatus(status);
-      },
-    };
+  console.log(JSON.stringify({
+    level: 'info',
+    message: 'gRPC call started',
+    method,
+    timestamp: new Date().toISOString(),
+  }));
 
-    next(metadata, wrappedListener);
-  };
+  const responder = new grpc.ResponderBuilder()
+    .withSendStatus((status, next) => {
+      const duration = Date.now() - startTime;
+      console.log(JSON.stringify({
+        level: status.code === grpc.status.OK ? 'info' : 'error',
+        message: 'gRPC call completed',
+        method,
+        statusCode: status.code,
+        durationMs: duration,
+      }));
+      next(status);
+    })
+    .build();
+
+  return new grpc.ServerInterceptingCall(call, responder);
 }
+
+// Use it when creating the server:
+// const server = new grpc.Server({ interceptors: [loggingInterceptor] });
 
 module.exports = { loggingInterceptor };
 ```
