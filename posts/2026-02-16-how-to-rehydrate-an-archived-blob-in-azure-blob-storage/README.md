@@ -8,7 +8,7 @@ Description: Learn how to rehydrate blobs from Azure Blob Storage Archive tier u
 
 ---
 
-When you move a blob to the Archive tier in Azure Blob Storage, you get the cheapest storage rate available. The tradeoff is that archived blobs are offline - you cannot read their content directly. To access the data, you first need to rehydrate it, which means moving it back to an online tier (Hot, Cool, or Cold). This process takes time, and depending on the priority you choose, it can take anywhere from under an hour to up to 15 hours.
+When you move a blob to the Archive tier in Azure Blob Storage, you get the cheapest storage rate available. The tradeoff is that archived blobs are offline - you cannot read their content directly. To access the data, you first need to rehydrate it, which means moving it back to an online tier (Hot, Cool, or Cold). This process takes time, and depending on the priority you choose, it can take anywhere from under an hour to several hours.
 
 If you have ever needed to pull data out of archive storage on short notice, you know how important it is to understand the rehydration process before you actually need it. Let me walk through how it works and the options available to you.
 
@@ -66,7 +66,7 @@ The advantage of this method is that the original archived blob stays in Archive
 
 Azure offers two rehydration priorities:
 
-**Standard priority** - The rehydration starts and completes within up to 15 hours. This is the default and the cheaper option. Azure does not guarantee a specific time within that window; it depends on the blob size and current demand.
+**Standard priority** - The rehydration request is processed in the order it was received and may take up to 15 hours for objects under 10 GB. This is the default and the cheaper option. Azure does not guarantee a specific time within that window; it depends on the blob size and current demand.
 
 **High priority** - The rehydration is prioritized and may complete in under an hour for blobs smaller than 10 GB. Larger blobs may still take longer. This costs more per GB but is worth it when you need the data urgently.
 
@@ -122,14 +122,15 @@ az storage blob show \
   --account-name mystorageaccount \
   --container-name mycontainer \
   --name archived-report.pdf \
-  --query "{Tier:properties.blobTier, ArchiveStatus:properties.archiveStatus, RehydratePriority:properties.rehydratePriority}" \
+  --query "{Tier:properties.blobTier, RehydrationStatus:properties.rehydrationStatus, RehydratePriority:rehydratePriority}" \
   --output table
 ```
 
-The `archiveStatus` field shows one of:
+The `rehydrationStatus` field shows one of:
 
 - `rehydrate-pending-to-hot` - Rehydrating to Hot tier
 - `rehydrate-pending-to-cool` - Rehydrating to Cool tier
+- `rehydrate-pending-to-cold` - Rehydrating to Cold tier
 - `null` - Not currently rehydrating (either already online or still archived)
 
 ### Python SDK Status Check
@@ -201,20 +202,21 @@ for i, blob_name in enumerate(blobs_to_rehydrate):
 print(f"Rehydration started for all {len(blobs_to_rehydrate)} blobs")
 ```
 
-## Canceling a Rehydration
+## Changing a Pending Rehydration
 
-You can cancel an in-progress rehydration by setting the blob tier back to Archive:
+You cannot cancel an in-progress rehydration started with `Set Blob Tier`. If you started a standard-priority rehydration and need it sooner, you can change the pending operation from Standard to High priority by setting the same target tier again:
 
 ```bash
-# Cancel rehydration by setting the tier back to Archive
+# Change a pending rehydration to high priority
 az storage blob set-tier \
   --account-name mystorageaccount \
   --container-name mycontainer \
   --name archived-report.pdf \
-  --tier Archive
+  --tier Hot \
+  --rehydrate-priority High
 ```
 
-This stops the rehydration process. However, you will still be charged for the rehydration operations that were already performed.
+You cannot lower the priority from High back to Standard while the operation is pending. Changing the priority may affect billing.
 
 ## Cost Considerations
 
@@ -232,14 +234,14 @@ To minimize rehydration costs:
 
 1. Rehydrate to Cool instead of Hot if you only need to read the data a few times.
 2. Use standard priority unless the data is urgently needed.
-3. Consider whether you need to rehydrate the entire blob or if copying specific sections would work.
+3. Consider whether a copy operation is better than changing the original blob's tier, especially if you want to avoid early deletion fees on the archived source.
 4. Plan ahead - if you know you will need archived data, start rehydration early so standard priority has time to complete.
 
 ## Rehydration Timing
 
-In my experience, standard priority rehydration usually completes within a few hours, not the full 15-hour window. But Azure makes no guarantees, so do not plan around optimistic timing. High priority typically completes within 1 hour for blobs under 10 GB.
+In my experience, standard priority rehydration usually completes within a few hours, not the full 15-hour window for objects under 10 GB. But Azure makes no guarantees, so do not plan around optimistic timing. High priority typically completes within 1 hour for blobs under 10 GB.
 
-For large blobs (hundreds of GB or more), even high-priority rehydration can take longer than an hour. Plan accordingly for large data volumes.
+For large blobs (hundreds of GB or more), or when rehydrating many blobs in the same storage account, even high-priority rehydration can take longer than an hour. Plan accordingly for large data volumes.
 
 ## Best Practices
 
