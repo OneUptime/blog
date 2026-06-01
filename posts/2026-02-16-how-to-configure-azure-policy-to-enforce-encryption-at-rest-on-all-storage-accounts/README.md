@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring Azure Policy definitions and assi
 
 ---
 
-Azure Storage accounts encrypt data at rest by default using Microsoft-managed keys, but that default behavior can be changed or weakened depending on how resources are provisioned. If your organization has compliance requirements like PCI DSS, HIPAA, or SOC 2 that mandate encryption at rest, you need a way to enforce it consistently. Azure Policy is the tool for that job.
+Azure Storage accounts encrypt data at rest by default using Microsoft-managed keys, and Azure Storage encryption cannot be disabled. If your organization has compliance requirements like PCI DSS, HIPAA, or SOC 2 that mandate customer-managed keys or double encryption, you need a way to enforce those stronger settings consistently. Azure Policy is the tool for that job.
 
 In this post, I will walk through setting up Azure Policy to audit and enforce encryption settings on storage accounts, including using both built-in and custom policy definitions.
 
@@ -20,13 +20,13 @@ Azure Storage supports several encryption configurations:
 - **Customer-managed keys (CMK):** You provide the encryption key through Azure Key Vault. This gives you control over key rotation and the ability to revoke access.
 - **Infrastructure encryption:** A second layer of encryption at the storage infrastructure level, using a different algorithm.
 
-For most compliance frameworks, the minimum requirement is that encryption at rest is enabled. Some stricter frameworks require customer-managed keys. Azure Policy can enforce either level.
+For most compliance frameworks, the minimum requirement is that encryption at rest is enabled, which Azure Storage provides by default. Some stricter frameworks require customer-managed keys or infrastructure encryption. Azure Policy can enforce those stronger levels.
 
 ## Built-In Policies for Storage Encryption
 
 Microsoft provides several built-in policy definitions related to storage encryption. You do not need to write custom JSON for the most common scenarios. Here are the key ones:
 
-1. **"Storage accounts should use customer-managed key for encryption"** - Audits or denies storage accounts not using CMK
+1. **"Storage accounts should use customer-managed key for encryption"** - Audits storage accounts not using CMK
 2. **"Storage accounts should have infrastructure encryption"** - Ensures the double-encryption layer is enabled
 3. **"Storage accounts should restrict network access"** - Not directly encryption, but often bundled with encryption policies for compliance
 
@@ -44,9 +44,9 @@ Click "Assign" to create an assignment. Fill in the following:
 
 **Exclusions:** If you have storage accounts that legitimately cannot use CMK (like diagnostic storage accounts), add their resource group as an exclusion.
 
-**Policy enforcement:** Set to "Enabled." If you choose "Disabled," the policy only audits without blocking.
+**Policy enforcement:** Set to "Enabled." If you choose "Disabled," Azure Policy evaluates compliance but does not enforce the effect during resource create or update operations.
 
-**Effect:** The built-in policy typically supports "Audit" and "Deny." Start with "Audit" to see what would be affected, then switch to "Deny" once you have confirmed the blast radius.
+**Effect:** This built-in policy supports "Audit" and "Disabled." Use it to identify storage accounts that are not using CMK. If you need to block new non-compliant storage accounts, use a custom "Deny" policy like the one in the next section.
 
 Here is how to do the same assignment using Azure CLI:
 
@@ -54,7 +54,7 @@ Here is how to do the same assignment using Azure CLI:
 # First, find the policy definition ID for the storage encryption policy
 
 az policy definition list \
-  --query "[?contains(displayName, 'customer-managed key')].{Name:name, DisplayName:displayName}" \
+  --query "[?displayName=='Storage accounts should use customer-managed key for encryption'].{Name:name, DisplayName:displayName}" \
   --output table
 
 # Assign the policy to a subscription
@@ -72,46 +72,24 @@ az policy assignment create \
 
 Sometimes the built-in policies do not cover your exact requirements. For example, you might want to enforce that all storage accounts use a specific key vault for their CMK, or that the minimum TLS version is set alongside encryption. In that case, you write a custom policy definition.
 
-Here is a custom policy definition that denies the creation of storage accounts without encryption using customer-managed keys:
+Here is a custom policy rule that denies the creation of storage accounts without encryption using customer-managed keys:
 
 ```json
 {
-  // Custom policy: deny storage accounts without CMK encryption
-  "mode": "All",
-  "policyRule": {
-    "if": {
-      "allOf": [
-        {
-          // Only apply to storage account resources
-          "field": "type",
-          "equals": "Microsoft.Storage/storageAccounts"
-        },
-        {
-          // Check if encryption key source is not Microsoft.Keyvault
-          "field": "Microsoft.Storage/storageAccounts/encryption.keySource",
-          "notEquals": "Microsoft.Keyvault"
-        }
-      ]
-    },
-    // Deny the deployment if conditions match
-    "then": {
-      "effect": "[parameters('effect')]"
-    }
-  },
-  "parameters": {
-    "effect": {
-      "type": "String",
-      "metadata": {
-        "displayName": "Effect",
-        "description": "The effect to apply when the policy is violated"
+  "if": {
+    "allOf": [
+      {
+        "field": "type",
+        "equals": "Microsoft.Storage/storageAccounts"
       },
-      "allowedValues": [
-        "Audit",
-        "Deny",
-        "Disabled"
-      ],
-      "defaultValue": "Audit"
-    }
+      {
+        "field": "Microsoft.Storage/storageAccounts/encryption.keySource",
+        "notEquals": "Microsoft.Keyvault"
+      }
+    ]
+  },
+  "then": {
+    "effect": "deny"
   }
 }
 ```
@@ -131,38 +109,26 @@ az policy definition create \
 
 ## Enforcing Infrastructure Encryption
 
-Infrastructure encryption adds a second layer of encryption at the hardware level. It uses AES-256 encryption and a different key than the service-level encryption. This is required by some government and financial sector compliance standards.
+Infrastructure encryption adds a second layer of encryption at the storage infrastructure level. It uses a different algorithm and a different key than the service-level encryption. This is required by some government and financial sector compliance standards.
 
-Here is a custom policy that enforces infrastructure encryption:
+Here is a custom policy rule that enforces infrastructure encryption:
 
 ```json
 {
-  // Custom policy: require infrastructure encryption on storage accounts
-  "mode": "All",
-  "policyRule": {
-    "if": {
-      "allOf": [
-        {
-          "field": "type",
-          "equals": "Microsoft.Storage/storageAccounts"
-        },
-        {
-          // Check if infrastructure encryption is not enabled
-          "field": "Microsoft.Storage/storageAccounts/encryption.requireInfrastructureEncryption",
-          "notEquals": true
-        }
-      ]
-    },
-    "then": {
-      "effect": "[parameters('effect')]"
-    }
+  "if": {
+    "allOf": [
+      {
+        "field": "type",
+        "equals": "Microsoft.Storage/storageAccounts"
+      },
+      {
+        "field": "Microsoft.Storage/storageAccounts/encryption.requireInfrastructureEncryption",
+        "notEquals": "true"
+      }
+    ]
   },
-  "parameters": {
-    "effect": {
-      "type": "String",
-      "allowedValues": ["Audit", "Deny", "Disabled"],
-      "defaultValue": "Audit"
-    }
+  "then": {
+    "effect": "deny"
   }
 }
 ```
