@@ -14,7 +14,7 @@ Personalize uses the same technology that powers Amazon.com's recommendation eng
 
 ## How Amazon Personalize Works
 
-The workflow has four main stages:
+The workflow has five main stages:
 
 ```mermaid
 graph LR
@@ -26,14 +26,14 @@ graph LR
 
 1. **Data preparation** - Format your interaction data, item metadata, and user metadata
 2. **Dataset group** - Import your data into Personalize
-3. **Solution** - Train a model using one of the built-in recipes
+3. **Solution** - Configure model training using one of the built-in recipes
 4. **Campaign** - Deploy the model for real-time inference
 
 Let's walk through each step.
 
 ## Preparing Your Data
 
-Personalize works with three types of datasets:
+For item recommendations, Personalize typically uses three types of datasets:
 
 **Interactions (required)** - Records of users interacting with items. This is your bread and butter - clicks, purchases, views, ratings.
 
@@ -41,7 +41,7 @@ Personalize works with three types of datasets:
 
 **Users (optional)** - Metadata about your users like age group, membership tier, location.
 
-The interactions dataset is the minimum requirement. Here's what it looks like as a CSV:
+The interactions dataset is the minimum requirement. For the User-Personalization-v2 recipe, you need at least 1,000 item interactions to train a model. Here's a small excerpt of what the CSV looks like:
 
 ```csv
 USER_ID,ITEM_ID,TIMESTAMP,EVENT_TYPE
@@ -146,38 +146,30 @@ Recipes are pre-built algorithms optimized for different use cases:
 
 | Recipe | Use Case |
 |--------|----------|
-| `aws-user-personalization` | Personalized recommendations for each user |
+| `aws-user-personalization-v2` | Personalized recommendations for each user |
 | `aws-similar-items` | "Customers who liked X also liked Y" |
-| `aws-personalized-ranking` | Re-rank a list of items for a specific user |
+| `aws-personalized-ranking-v2` | Re-rank a list of items for a specific user |
 | `aws-trending-now` | Currently popular items |
 | `aws-popularity-count` | Most popular items overall (baseline) |
 
-For most recommendation engines, `aws-user-personalization` is the go-to recipe. It balances exploitation (recommending items similar to what the user has interacted with) and exploration (surfacing new items to gather data).
+For most recommendation engines, `aws-user-personalization-v2` is the go-to recipe. It trains on larger item catalogs than the older User-Personalization recipe and generally provides more relevant recommendations with lower latency.
 
 ## Training a Solution
 
-A "solution" in Personalize terminology is a trained model:
+A "solution" in Personalize terminology is the training configuration. The trained model is a solution version:
 
 ```python
-# Create a solution using the user-personalization recipe
+# Create a solution using the User-Personalization-v2 recipe
 solution_response = personalize.create_solution(
     name='ecommerce-user-personalization',
     datasetGroupArn=dataset_group_arn,
-    recipeArn='arn:aws:personalize:::recipe/aws-user-personalization',
-    solutionConfig={
-        'eventValueThreshold': '0.5',
-        'hpoConfig': {
-            'hpoObjective': {
-                'type': 'MAXIMIZE',
-                'metricName': 'precision_at_25'
-            }
-        }
-    }
+    recipeArn='arn:aws:personalize:::recipe/aws-user-personalization-v2',
+    performAutoTraining=False
 )
 
 solution_arn = solution_response['solutionArn']
 
-# Create a solution version (this triggers the actual training)
+# After the solution is ACTIVE, create a solution version to trigger training
 version_response = personalize.create_solution_version(
     solutionArn=solution_arn,
     trainingMode='FULL'
@@ -231,7 +223,7 @@ campaign_response = personalize.create_campaign(
 campaign_arn = campaign_response['campaignArn']
 ```
 
-The `minProvisionedTPS` controls the minimum throughput. Start low and increase as needed - you're billed based on this plus actual usage.
+The `minProvisionedTPS` controls the minimum throughput. Start low and increase as needed - for active campaigns, you're billed for the greater of the minimum provisioned TPS and the actual recommendation request volume.
 
 ## Getting Recommendations
 
@@ -284,18 +276,18 @@ personalize_events.put_events(
 )
 ```
 
-These events are incorporated into recommendations within about two seconds, so the user sees updated suggestions almost immediately.
+For recipes that support real-time personalization, these events are incorporated into recommendations within seconds, so the user sees updated suggestions almost immediately.
 
 ## Cost Considerations
 
-Personalize pricing has several components:
+Personalize pricing has several components, and the exact model depends on the recipe family:
 
 - **Data ingestion** - Per GB of data processed
-- **Training** - Per training hour
-- **Real-time inference** - Per TPS-hour for campaigns
-- **Batch inference** - Per recommendation
+- **Training** - Per interaction ingested for v2 recipes, or per training hour for other custom solutions
+- **Real-time inference** - Per recommendation request, with a minimum TPS charge for active campaigns
+- **Batch inference** - Per recommendation request
 
-For small to medium workloads, the campaign cost is usually the biggest line item. If you don't need real-time recommendations, consider batch inference instead - it's significantly cheaper.
+For small to medium workloads, the campaign cost is usually the biggest line item. If you don't need real-time recommendations, consider batch inference instead so you don't keep an active campaign running.
 
 ## Monitoring
 
@@ -307,4 +299,4 @@ For end-to-end monitoring of your recommendation pipeline, from data ingestion t
 
 Amazon Personalize takes what would normally be months of ML engineering and turns it into a manageable workflow: import data, train a model, deploy a campaign, get recommendations. The hardest part is usually getting your interaction data clean and comprehensive enough.
 
-Start with the `aws-user-personalization` recipe, measure your metrics, and iterate. As you add more interaction data over time, retrain your solution versions to keep recommendations accurate and relevant.
+Start with the `aws-user-personalization-v2` recipe, measure your metrics, and iterate. As you add more interaction data over time, retrain your solution versions to keep recommendations accurate and relevant.
