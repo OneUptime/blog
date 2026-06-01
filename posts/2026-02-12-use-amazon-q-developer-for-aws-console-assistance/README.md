@@ -14,7 +14,7 @@ Unlike the IDE version that helps you write code, the console version of Amazon 
 
 ## Accessing Amazon Q in the Console
 
-Amazon Q is available in the AWS Console as a chat panel. Look for the Amazon Q icon in the bottom-right corner of the console, or press Ctrl+Q (Cmd+Q on Mac) to open it.
+Amazon Q is available in the AWS Console as a chat panel. Look for the Amazon Q icon in the Unified Navigation bar to open it.
 
 ```mermaid
 graph LR
@@ -26,24 +26,36 @@ graph LR
     B --> G[Get Recommendations]
 ```
 
-No additional setup is required. If your IAM user or role has permission to use Amazon Q, the chat panel is available across all console pages.
+No additional setup is required in the console UI. If your IAM user or role has permission to use Amazon Q, the chat panel is available across AWS console pages.
 
 ### IAM Permissions
 
 To use Amazon Q in the console, your IAM identity needs the appropriate permissions:
 
 ```json
-// IAM policy to allow Amazon Q console access
 {
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "AllowAmazonQPassRequest",
       "Effect": "Allow",
       "Action": [
-        "q:SendMessage",
         "q:StartConversation",
+        "q:SendMessage",
         "q:GetConversation",
-        "q:ListConversations"
+        "q:ListConversations",
+        "q:UpdateConversation",
+        "q:DeleteConversation",
+        "q:PassRequest"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowCloudControlReadAccess",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:GetResource",
+        "cloudformation:ListResources"
       ],
       "Resource": "*"
     }
@@ -54,7 +66,6 @@ To use Amazon Q in the console, your IAM identity needs the appropriate permissi
 For administrators who want to control access:
 
 ```json
-// Deny policy to restrict Amazon Q access
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -143,7 +154,7 @@ aws s3api put-bucket-encryption \
       {
         "ApplyServerSideEncryptionByDefault": {
           "SSEAlgorithm": "aws:kms",
-          "KMSMasterKeyID": "alias/my-key"
+          "KMSMasterKeyID": "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
         },
         "BucketKeyEnabled": true
       }
@@ -152,6 +163,8 @@ aws s3api put-bucket-encryption \
 ```
 
 ### 4. Cost Analysis
+
+For account-specific cost questions, Cost Explorer must be enabled. Resource-level cost questions also require resource-level data in Cost Management preferences.
 
 ```text
 You: What are my highest cost EC2 instances this month?
@@ -191,7 +204,7 @@ settings prevent any accidental public exposure even if a policy
 or ACL change were made.
 
 However, I notice the bucket does not have:
-- Default encryption configured
+- Customer managed KMS default encryption configured
 - Versioning enabled
 - Access logging enabled
 
@@ -301,7 +314,7 @@ aws cloudformation create-stack --stack-name web-app-stack \
 
 Amazon Q in the console has some limitations to be aware of:
 
-- It cannot make changes to your resources directly (it can only suggest actions)
+- It can only perform AWS API actions on your behalf if `q:PassRequest` and the underlying service permissions allow them; otherwise it can only suggest actions
 - Response quality depends on the specificity of your question
 - It may not have real-time data for very recent changes (there can be a small delay)
 - Complex multi-service architectures may require multiple questions to fully diagnose
