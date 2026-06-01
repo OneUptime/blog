@@ -56,9 +56,9 @@ az aks get-credentials --resource-group prod-west-rg --name prod-west-aks --cont
 az aks get-credentials --resource-group staging-rg --name staging-aks --context staging
 
 # Register clusters with ArgoCD
-argocd cluster add prod-east --name prod-east-aks -y
-argocd cluster add prod-west --name prod-west-aks -y
-argocd cluster add staging --name staging-aks -y
+argocd cluster add prod-east --name prod-east --label environment=production -y
+argocd cluster add prod-west --name prod-west --label environment=production -y
+argocd cluster add staging --name staging --label environment=staging -y
 
 # Verify registered clusters
 argocd cluster list
@@ -125,17 +125,17 @@ spec:
   generators:
     - list:
         elements:
-          - cluster: prod-east-aks
+          - cluster: prod-east
             url: https://prod-east-api-server-url
             region: eastus
             replicas: "5"
             environment: production
-          - cluster: prod-west-aks
+          - cluster: prod-west
             url: https://prod-west-api-server-url
             region: westus2
             replicas: "3"
             environment: production
-          - cluster: staging-aks
+          - cluster: staging
             url: https://staging-api-server-url
             region: eastus
             replicas: "1"
@@ -243,7 +243,7 @@ spec:
         targetRevision: main
         path: '{{path}}'
       destination:
-        server: 'https://{{path.basename}}-api-server-url'
+        name: '{{path.basename}}'
         namespace: default
       syncPolicy:
         automated:
