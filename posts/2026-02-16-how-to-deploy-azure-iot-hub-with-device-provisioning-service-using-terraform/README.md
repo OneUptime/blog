@@ -22,7 +22,6 @@ graph LR
     B -->|Assigns to| C[IoT Hub]
     A -->|Telemetry| C
     C -->|Routes messages| D[Storage Account]
-    C -->|Routes messages| E[Event Hub]
     C -->|Built-in endpoint| F[Consumer Group]
 ```
 
@@ -230,14 +229,14 @@ resource "azurerm_iothub_dps" "main" {
 
   # Link to the IoT Hub - DPS will register devices here
   linked_hub {
-    connection_string       = azurerm_iothub.main.shared_access_policy[0].primary_connection_string
+    connection_string       = azurerm_iothub_shared_access_policy.service.primary_connection_string
     location                = azurerm_resource_group.iot.location
     allocation_weight       = 100    # Weight for balanced allocation
     apply_allocation_policy = true
   }
 
   # Allocation policy determines how devices are assigned to hubs
-  allocation_policy = "Hashed"   # Options: Hashed, GeoLatency, Static, Custom
+  allocation_policy = "Hashed"   # Options: Hashed, GeoLatency, Static
 
   tags = local.tags
 }
@@ -248,14 +247,13 @@ The `allocation_policy` setting controls how DPS distributes devices when multip
 - **Hashed** - Distributes devices evenly across linked hubs using consistent hashing
 - **GeoLatency** - Assigns devices to the geographically closest hub
 - **Static** - You configure a specific hub per enrollment
-- **Custom** - Uses an Azure Function for custom allocation logic
 
-## DPS Enrollment Groups
+## DPS Access Policies and Certificates
 
-Enrollment groups define how groups of devices authenticate with DPS. The most common approach is symmetric key enrollment for development and X.509 certificates for production.
+DPS access policies control who can manage enrollments and registrations. Enrollment groups themselves are data-plane objects; the AzureRM resources below create a DPS management policy and upload an X.509 certificate that enrollment groups can use.
 
 ```hcl
-# Symmetric key enrollment group for development and testing
+# DPS shared access policy for managing enrollments and registrations
 resource "azurerm_iothub_dps_shared_access_policy" "enrollment" {
   name                = "enrollment-policy"
   resource_group_name = azurerm_resource_group.iot.name
@@ -375,8 +373,8 @@ output "dps_id_scope" {
   description = "DPS ID Scope - devices need this to register"
 }
 
-output "dps_service_endpoint" {
-  value       = "https://${azurerm_iothub_dps.main.name}.azure-devices-provisioning.net"
+output "dps_device_endpoint" {
+  value       = "https://global.azure-devices-provisioning.net"
   description = "DPS global endpoint for device registration"
 }
 
@@ -401,4 +399,4 @@ terraform apply tfplan
 
 ## Wrapping Up
 
-Deploying IoT Hub and DPS together with Terraform gives you a solid, repeatable foundation for IoT solutions. The key pieces are the IoT Hub itself with proper message routing, the Device Provisioning Service linked to the hub, consumer groups for downstream processing, and diagnostic settings for monitoring. From here, you can extend the setup with additional IoT Hubs in other regions, custom allocation functions for DPS, and integration with Stream Analytics or Azure Functions for real-time processing.
+Deploying IoT Hub and DPS together with Terraform gives you a solid, repeatable foundation for IoT solutions. The key pieces are the IoT Hub itself with proper message routing, the Device Provisioning Service linked to the hub, consumer groups for downstream processing, and diagnostic settings for monitoring. From here, you can extend the setup with additional IoT Hubs in other regions and integration with Stream Analytics or Azure Functions for real-time processing.
