@@ -55,14 +55,16 @@ Linked services are connections to external data sources and targets. You need t
 
 The workspace's primary storage account is automatically available as a linked service called `<workspace-name>-WorkspaceDefaultStorage`.
 
-You can also create linked services via pipeline JSON definitions:
+You can also create linked services via artifact JSON definitions:
 
 ```json
 {
     "name": "AzureSqlSource",
-    "type": "AzureSqlDatabase",
-    "typeProperties": {
-        "connectionString": "Server=tcp:source-server.database.windows.net;Database=SourceDB;User ID=reader;Password=<password>;Encrypt=True;"
+    "properties": {
+        "type": "AzureSqlDatabase",
+        "typeProperties": {
+            "connectionString": "Server=tcp:source-server.database.windows.net;Database=SourceDB;User ID=reader;Password=<password>;Encrypt=True;"
+        }
     }
 }
 ```
@@ -93,7 +95,7 @@ SELECT
     Quantity * UnitPrice AS TotalAmount,
     LastModified
 FROM dbo.Orders
-WHERE LastModified >= @{pipeline().parameters.LastRunTimestamp}
+WHERE LastModified >= CONVERT(datetime2, '@{pipeline().parameters.LastRunTimestamp}', 127)
 ```
 
 5. Configure the sink:
@@ -162,9 +164,9 @@ enriched_sales = (
     .withColumn("ProcessedTimestamp", current_timestamp())
 )
 
-# Write to curated zone in Delta Lake format for ACID guarantees
+# Write to curated zone in Parquet format for loading into a dedicated SQL pool
 enriched_sales.write \
-    .format("delta") \
+    .format("parquet") \
     .mode("append") \
     .partitionBy("OrderDate") \
     .save("abfss://synapse-data@synapsedatalake2026.dfs.core.windows.net/curated/sales/")
@@ -177,7 +179,7 @@ Load the curated data into the dedicated SQL pool for high-performance analytics
 **Using the Copy Data activity with PolyBase:**
 
 1. Add another Copy Data activity to the pipeline.
-2. Source: Data Lake (curated zone, Parquet or Delta files).
+2. Source: Data Lake (curated zone, Parquet files).
 3. Sink: Dedicated SQL Pool table.
 4. Under sink settings, select "PolyBase" as the copy method for fastest bulk loading.
 
@@ -242,7 +244,7 @@ Make your pipeline reusable by adding parameters.
             },
             "TargetDate": {
                 "type": "string",
-                "defaultValue": "@utcnow()"
+                "defaultValue": "2026-02-16"
             }
         }
     }
@@ -276,16 +278,24 @@ Use tumbling window triggers when each pipeline run processes a specific time wi
 ```json
 {
     "name": "DailySalesTrigger",
-    "type": "TumblingWindowTrigger",
-    "typeProperties": {
-        "frequency": "Hour",
-        "interval": 24,
-        "startTime": "2026-02-16T02:00:00Z",
-        "delay": "00:15:00",
-        "maxConcurrency": 1,
-        "retryPolicy": {
-            "count": 3,
-            "intervalInSeconds": 300
+    "properties": {
+        "type": "TumblingWindowTrigger",
+        "typeProperties": {
+            "frequency": "Hour",
+            "interval": 24,
+            "startTime": "2026-02-16T02:00:00Z",
+            "delay": "00:15:00",
+            "maxConcurrency": 1,
+            "retryPolicy": {
+                "count": 3,
+                "intervalInSeconds": 300
+            }
+        },
+        "pipeline": {
+            "pipelineReference": {
+                "type": "PipelineReference",
+                "referenceName": "ETL_Sales_Full"
+            }
         }
     }
 }
@@ -303,19 +313,22 @@ Synapse Studio provides built-in monitoring for pipeline executions.
 Set up alerts for pipeline failures:
 
 ```bash
-# Create an alert for pipeline failures using Azure Monitor
-az monitor activity-log alert create \
+# Create an alert for failed pipeline runs using Azure Monitor metrics
+az monitor metrics alert create \
   --name synapse-pipeline-failure \
   --resource-group rg-synapse \
-  --condition category=Administrative and operationName="Microsoft.Synapse/workspaces/pipelines/runs/write" and status=Failed \
-  --action-group ops-team-alerts
+  --scopes /subscriptions/<subscription-id>/resourceGroups/rg-synapse/providers/Microsoft.Synapse/workspaces/<workspace-name> \
+  --condition "total IntegrationPipelineRunsEnded > 0 where Result includes Failed" \
+  --window-size 5m \
+  --evaluation-frequency 1m \
+  --action /subscriptions/<subscription-id>/resourceGroups/rg-synapse/providers/Microsoft.Insights/actionGroups/ops-team-alerts
 ```
 
 ## Best Practices
 
 1. **Use incremental loading**: Extract only new/changed records using watermark columns (like LastModified) instead of full table reloads.
 2. **Partition your data lake files**: Use date-based partitions for time-series data. This enables partition pruning during queries and transformations.
-3. **Use Delta Lake format**: Delta provides ACID transactions, schema enforcement, and time travel over your data lake files.
+3. **Use Delta Lake format where supported**: Delta provides ACID transactions, schema enforcement, and time travel over your data lake files. For dedicated SQL pool loads, export or maintain a Parquet snapshot because dedicated SQL pool does not query Delta Lake format directly.
 4. **Separate extraction from transformation**: Keep the raw zone as a faithful copy of the source. Apply transformations in a separate stage.
 5. **Idempotent pipeline design**: Design pipelines so they can be re-run safely without creating duplicates. Use merge/upsert operations.
 6. **Test with small datasets first**: Before running against production data, test your pipeline with a subset.
