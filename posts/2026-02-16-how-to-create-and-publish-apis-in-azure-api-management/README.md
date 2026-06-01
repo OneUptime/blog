@@ -37,13 +37,14 @@ Provisioning takes a while, sometimes up to 30-45 minutes for the Developer tier
 Once your APIM instance is ready, go to the APIs blade in the left navigation. You will see several options for how to add an API:
 
 - **OpenAPI** - Import from a Swagger/OpenAPI specification
-- **WADL** - For older SOAP-style definitions
-- **Manually defined** - Build the API definition by hand
+- **WADL** - Import from a WADL definition
+- **WSDL** - Import a SOAP API
+- **HTTP** - Define an API by hand and point it at a backend URL
 - **Azure Resources** - Import directly from Azure Functions, App Services, Logic Apps, etc.
 
 For this walkthrough, let us create one manually so you understand every piece.
 
-Click "Add API" and select "Blank API." Fill in the form:
+Click "Add API" and select "HTTP." Fill in the form:
 
 - **Display name**: Something human-readable, like "Order Service API"
 - **Name**: Auto-generated from the display name, used internally
@@ -145,7 +146,7 @@ If the key is missing or invalid, APIM returns a 401 before the request ever rea
 
 The developer portal is a customizable website that APIM generates for you. It includes interactive API documentation (generated from your operation definitions), subscription management, and code samples in multiple languages.
 
-To customize it, go to the Developer Portal blade and click "Developer portal" to open the visual editor. You can change the layout, add pages, update branding, and configure authentication providers (Azure AD, B2C, basic username/password).
+To customize it, go to the Developer Portal blade and click "Developer portal" to open the visual editor. You can change the layout, add pages, update branding, and configure authentication providers (Microsoft Entra ID, Microsoft Entra External ID, or username/password).
 
 Once you are happy with the customizations, click "Publish" inside the portal editor. This pushes your changes live.
 
