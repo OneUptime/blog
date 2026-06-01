@@ -35,7 +35,7 @@ A patient has studies (imaging exams), each study contains series (groups of rel
 - An Azure Health Data Services workspace (see the FHIR deployment guide if you need to create one)
 - Azure CLI installed
 - A DICOM file for testing (you can download sample DICOM files from public datasets)
-- Python 3.8+ with the `dicomweb-client` library (for the Python examples)
+- Python 3.8+ with the `dicomweb-client`, `pydicom`, and `azure-identity` libraries (for the Python examples)
 
 ## Step 1: Create the DICOM Service
 
@@ -49,7 +49,7 @@ WORKSPACE_NAME="healthworkspace01"
 DICOM_SERVICE_NAME="dicom-radiology"
 
 # Create the DICOM service
-az healthcareapis dicom-service create \
+az healthcareapis workspace dicom-service create \
     --name $DICOM_SERVICE_NAME \
     --workspace-name $WORKSPACE_NAME \
     --resource-group $RESOURCE_GROUP \
@@ -61,11 +61,11 @@ The service URL will be:
 
 ## Step 2: Configure Authentication
 
-Like the FHIR service, DICOM uses Azure AD authentication:
+Like the FHIR service, DICOM uses Microsoft Entra ID (formerly Azure AD) authentication:
 
 ```bash
 # Assign the DICOM Data Owner role to your application or user
-DICOM_ID=$(az healthcareapis dicom-service show \
+DICOM_ID=$(az healthcareapis workspace dicom-service show \
     --name $DICOM_SERVICE_NAME \
     --workspace-name $WORKSPACE_NAME \
     --resource-group $RESOURCE_GROUP \
@@ -123,7 +123,8 @@ import os
 import glob
 from azure.identity import ClientSecretCredential
 from dicomweb_client import DICOMwebClient
-from dicomweb_client.session_utils import create_session_from_user
+from pydicom import dcmread
+from requests import Session
 
 # Authentication setup
 tenant_id = os.environ["AZURE_TENANT_ID"]
@@ -140,8 +141,6 @@ credential = ClientSecretCredential(
 
 token = credential.get_token(f"{dicom_url}/.default")
 
-# Create a DICOMweb client session
-from requests import Session
 session = Session()
 session.headers.update({
     "Authorization": f"Bearer {token.token}"
@@ -157,13 +156,12 @@ client = DICOMwebClient(
 dicom_files = glob.glob("/path/to/dicom/files/*.dcm")
 
 for dcm_file in dicom_files:
-    with open(dcm_file, "rb") as f:
-        # Read the DICOM file as bytes
-        dicom_data = f.read()
+    # Read the DICOM file as a pydicom Dataset
+    dataset = dcmread(dcm_file)
 
     # Store the instance using STOW-RS
     try:
-        client.store_instances(datasets=[dicom_data])
+        client.store_instances(datasets=[dataset])
         print(f"Uploaded: {dcm_file}")
     except Exception as e:
         print(f"Failed to upload {dcm_file}: {e}")
@@ -218,17 +216,17 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 WADO-RS (Web Access to DICOM Objects) is used to retrieve images:
 
 ```bash
-# Retrieve an entire study (all series and instances)
+# Retrieve an entire study (all series and instances) as a multipart response
 curl -s -H "Authorization: Bearer $TOKEN" \
-    -H "Accept: multipart/related; type=application/dicom" \
+    -H "Accept: multipart/related; type=\"application/dicom\"; transfer-syntax=*" \
     "${DICOM_URL}/v1/studies/${STUDY_UID}" \
-    --output study.dcm
+    --output study.multipart
 
 # Retrieve a single instance
 INSTANCE_UID="1.2.840.113619.2.55.3.604688.111222333"
 
 curl -s -H "Authorization: Bearer $TOKEN" \
-    -H "Accept: application/dicom" \
+    -H "Accept: application/dicom; transfer-syntax=*" \
     "${DICOM_URL}/v1/studies/${STUDY_UID}/series/${SERIES_UID}/instances/${INSTANCE_UID}" \
     --output single-image.dcm
 
@@ -252,9 +250,9 @@ curl -X POST \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d '[{
-        "path": "00080090",
-        "vr": "PN",
-        "level": "Study"
+        "Path": "00080090",
+        "VR": "PN",
+        "Level": "Study"
     }]'
 
 # Check the indexing status of the new tag
@@ -314,4 +312,4 @@ Medical imaging data is large. Here are some practical considerations:
 
 ## Summary
 
-The DICOM service in Azure Health Data Services provides a managed, standards-compliant platform for medical imaging data. You upload images using STOW-RS, query metadata using QIDO-RS, and retrieve images using WADO-RS - all standard DICOMweb operations. Combined with Azure AD authentication, private networking, and integration with the FHIR service, it forms a comprehensive platform for healthcare data management. Whether you are building a cloud-native radiology workflow or migrating from an on-premises PACS, the DICOM service handles the infrastructure complexity so you can focus on clinical applications.
+The DICOM service in Azure Health Data Services provides a managed, standards-compliant platform for medical imaging data. You upload images using STOW-RS, query metadata using QIDO-RS, and retrieve images using WADO-RS - all standard DICOMweb operations. Combined with Microsoft Entra ID authentication, private networking, and integration with the FHIR service, it forms a comprehensive platform for healthcare data management. Whether you are building a cloud-native radiology workflow or migrating from an on-premises PACS, the DICOM service handles the infrastructure complexity so you can focus on clinical applications.
