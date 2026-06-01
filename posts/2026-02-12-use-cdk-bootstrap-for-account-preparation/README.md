@@ -70,10 +70,10 @@ cdk bootstrap --template bootstrap-template.yaml
 
 Common customizations include:
 
-### Restricting the S3 Bucket Policy
+### Customizing the S3 Bucket
 
 ```yaml
-# In the bootstrap template, modify the bucket policy
+# In the bootstrap template, modify the bucket resource
 StagingBucket:
   Type: AWS::S3::Bucket
   Properties:
@@ -81,7 +81,7 @@ StagingBucket:
       ServerSideEncryptionConfiguration:
         - ServerSideEncryptionByDefault:
             SSEAlgorithm: aws:kms
-            KMSMasterKeyID: !Ref FileAssetsBucketKmsKey
+            KMSMasterKeyID: !GetAtt FileAssetsBucketEncryptionKey.Arn
     # Add lifecycle rules to clean up old assets
     LifecycleConfiguration:
       Rules:
@@ -243,10 +243,10 @@ aws cloudformation describe-stack-events --stack-name CDKToolkit \
   --query "StackEvents[?ResourceStatus=='CREATE_FAILED']"
 ```
 
-If the bootstrap stack is in a broken state, you can delete and recreate it.
+If the bootstrap stack is in a broken state during initial setup, you can delete and recreate it. If the environment has already been used for deployments, try updating the stack first; deleting the bootstrap stack also deletes the CDK support resources that deployments and pipelines rely on.
 
 ```bash
-# Delete the broken bootstrap stack (be careful in shared accounts!)
+# Delete the broken bootstrap stack (only if nothing depends on it!)
 aws cloudformation delete-stack --stack-name CDKToolkit
 # Wait for deletion
 aws cloudformation wait stack-delete-complete --stack-name CDKToolkit
