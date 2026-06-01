@@ -28,7 +28,7 @@ You write:
 Source: ipgroup-web-servers
 ```
 
-IP Groups support up to 5,000 individual IP addresses or prefixes per group. A single firewall policy can reference up to 200 unique IP Groups across all its rules.
+IP Groups support up to 5,000 individual IP addresses or prefixes per group. A single firewall policy can reference up to 600 unique IP Groups across all its rules.
 
 ## Step 1: Create IP Groups
 
@@ -171,17 +171,11 @@ az network firewall policy rule-collection-group collection add-filter-collectio
 When infrastructure changes, update the IP Groups. All rules referencing the group automatically pick up the changes.
 
 ```bash
-# Add a new web server to the group
+# Remove an old server that was decommissioned and add a new web server
 az network ip-group update \
   --resource-group rg-firewall \
   --name ipgroup-web-servers \
-  --add ipAddresses 10.0.1.8
-
-# Remove an old server that was decommissioned
-az network ip-group update \
-  --resource-group rg-firewall \
-  --name ipgroup-web-servers \
-  --remove ipAddresses 10.0.1.4
+  --ip-addresses 10.0.1.5 10.0.1.6 10.0.1.7 10.0.1.8
 ```
 
 You can also replace the entire IP list at once.
@@ -194,7 +188,7 @@ az network ip-group update \
   --ip-addresses 10.0.1.5 10.0.1.6 10.0.1.7 10.0.1.8 10.0.1.9
 ```
 
-This operation is atomic - the IP Group is updated all at once, so there is no window where the group is partially updated.
+This sends the replacement list in a single update request. Changes still need to propagate to the firewall, so traffic might be evaluated against the previous IP list for a short time.
 
 ## Organizing IP Groups for Enterprise Environments
 
@@ -293,13 +287,13 @@ Reference them in firewall rules using the `resourceId` function:
 
 **Size limits**: Each IP Group supports up to 5,000 individual IP addresses or prefixes. If you need more, split into multiple groups.
 
-**Policy limits**: A single firewall policy can reference up to 200 unique IP Groups across all rules. Plan your grouping strategy to stay within this limit.
+**Policy limits**: A single firewall policy can reference up to 600 unique IP Groups across all rules. Plan your grouping strategy to stay within this limit.
 
 **Update propagation**: Changes to IP Groups propagate to the firewall within minutes. During this window, traffic might be evaluated against the old IP list.
 
 **Shared across policies**: IP Groups are standalone resources. They can be referenced by multiple firewall policies, which is useful if you have different policies for different environments that share common IP sets.
 
-**Cross-subscription support**: IP Groups must be in the same subscription as the firewall policy that references them.
+**Cross-subscription support**: IP Groups can be reused across regions and subscriptions. Use the full resource ID when referencing an IP Group outside the current resource group or subscription context.
 
 ## Best Practices
 
