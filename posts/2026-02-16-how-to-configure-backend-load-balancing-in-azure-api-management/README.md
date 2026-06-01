@@ -35,20 +35,20 @@ The most straightforward approach is round-robin distribution using a policy exp
 <!-- Uses the request ID hash to distribute requests evenly -->
 <inbound>
     <base />
-    <set-variable name="backendUrl" value="@{
+    <set-variable name="backendUrl" value='@{
         // Use a hash of the request ID for consistent distribution
         var backends = new[] {
             "https://orders-east.azurewebsites.net",
             "https://orders-west.azurewebsites.net"
         };
-        var index = Math.Abs(context.RequestId.GetHashCode()) % backends.Length;
+        var index = Math.Abs(context.RequestId.GetHashCode() % backends.Length);
         return backends[index];
-    }" />
-    <set-backend-service base-url="@((string)context.Variables["backendUrl"])" />
+    }' />
+    <set-backend-service base-url='@((string)context.Variables["backendUrl"])' />
 </inbound>
 ```
 
-This hashes the request ID and uses the modulo operator to pick a backend. Since request IDs are random GUIDs, the distribution is roughly even.
+This hashes the request ID and uses the modulo operator to pick a backend. Since request IDs are unique GUIDs, the distribution is roughly even.
 
 ## Weighted Load Balancing
 
@@ -59,12 +59,11 @@ Sometimes you want to send more traffic to one backend than another - maybe you 
 <!-- Useful for gradual migrations or capacity-based routing -->
 <inbound>
     <base />
-    <set-variable name="backendUrl" value="@{
-        var random = new Random(context.RequestId.GetHashCode());
-        var roll = random.Next(1, 101);
+    <set-variable name="backendUrl" value='@{
+        var roll = Math.Abs(context.RequestId.GetHashCode() % 100) + 1;
 
         // 70% chance of primary, 30% chance of secondary
-        if (roll <= 70)
+        if (roll &lt;= 70)
         {
             return "https://orders-primary.azurewebsites.net";
         }
@@ -72,8 +71,8 @@ Sometimes you want to send more traffic to one backend than another - maybe you 
         {
             return "https://orders-secondary.azurewebsites.net";
         }
-    }" />
-    <set-backend-service base-url="@((string)context.Variables["backendUrl"])" />
+    }' />
+    <set-backend-service base-url='@((string)context.Variables["backendUrl"])' />
 </inbound>
 ```
 
@@ -88,15 +87,17 @@ Create a backend pool that groups multiple backend entities:
     "properties": {
         "title": "Order Service Pool",
         "description": "Load-balanced pool of order service instances",
-        "type": "pool",
+        "type": "Pool",
         "pool": {
             "services": [
                 {
-                    "id": "/backends/order-service-east",
+                    "id": "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ApiManagement/service/<apim-name>/backends/order-service-east",
+                    "priority": 1,
                     "weight": 50
                 },
                 {
-                    "id": "/backends/order-service-west",
+                    "id": "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ApiManagement/service/<apim-name>/backends/order-service-west",
+                    "priority": 1,
                     "weight": 50
                 }
             ]
@@ -119,50 +120,41 @@ APIM handles the distribution automatically based on the weights you configured.
 
 ## Active-Passive Failover
 
-For disaster recovery, you might want an active-passive setup where traffic goes to the primary backend unless it is down, in which case it fails over to the secondary. Implement this with a `send-request` health check or by catching errors:
+For disaster recovery, you might want an active-passive setup where traffic goes to the primary backend unless it is down, in which case it fails over to the secondary. Implement this with the `retry` policy and a secondary backend:
 
 ```xml
 <!-- Active-passive failover: try primary first, fall back to secondary -->
-<!-- If the primary returns an error, retry against the secondary backend -->
 <inbound>
     <base />
-    <set-backend-service base-url="https://orders-primary.azurewebsites.net" />
+    <set-variable name="attempt-count" value="0" />
 </inbound>
 <backend>
-    <forward-request timeout="10" />
+    <retry condition="@(context.Response != null &amp;&amp; context.Response.StatusCode >= 500)" count="1" interval="1" first-fast-retry="true">
+        <set-variable name="attempt-count" value='@(context.Variables.GetValueOrDefault&lt;int&gt;("attempt-count", 0) + 1)' />
+        <set-backend-service base-url='@(context.Variables.GetValueOrDefault&lt;int&gt;("attempt-count") &lt; 2 ? "https://orders-primary.azurewebsites.net" : "https://orders-secondary.azurewebsites.net")' />
+        <forward-request timeout="10" buffer-request-body="true" />
+    </retry>
 </backend>
-<outbound>
-    <base />
-    <choose>
-        <!-- If primary failed with 5xx, retry on secondary -->
-        <when condition="@(context.Response.StatusCode >= 500)">
-            <send-request mode="copy" response-variable-name="fallbackResponse" timeout="10">
-                <set-url>@($"https://orders-secondary.azurewebsites.net{context.Request.Url.Path}{context.Request.Url.QueryString}")</set-url>
-            </send-request>
-            <return-response response-variable-name="fallbackResponse" />
-        </when>
-    </choose>
-</outbound>
 ```
 
-This approach adds latency on failure (because the primary request has to time out first), but it ensures that the secondary only receives traffic when the primary is genuinely down.
+This approach adds latency on failure because the primary request has to return an error before the retry runs, but it ensures that the secondary only receives traffic when the primary returns a server-side failure.
 
 ## Health-Based Routing
 
-A more sophisticated approach is to proactively check backend health and route traffic only to healthy instances. You can implement this with a scheduled health check using `send-request`:
+A more sophisticated approach is to proactively check backend health and route traffic only to healthy instances. You can implement this by routing from cached health status:
 
 ```xml
 <!-- Check backend health and route only to healthy instances -->
 <!-- The health status is cached for 30 seconds to avoid excessive checks -->
 <inbound>
     <base />
-    <cache-lookup-value key="east-health" variable-name="eastHealthy" default-value="true" />
-    <cache-lookup-value key="west-health" variable-name="westHealthy" default-value="true" />
+    <cache-lookup-value key="east-health" variable-name="eastHealthy" />
+    <cache-lookup-value key="west-health" variable-name="westHealthy" />
     <choose>
-        <when condition="@((string)context.Variables["eastHealthy"] == "true")">
+        <when condition='@(context.Variables.GetValueOrDefault&lt;string&gt;("eastHealthy", "true") == "true")'>
             <set-backend-service base-url="https://orders-east.azurewebsites.net" />
         </when>
-        <when condition="@((string)context.Variables["westHealthy"] == "true")">
+        <when condition='@(context.Variables.GetValueOrDefault&lt;string&gt;("westHealthy", "true") == "true")'>
             <set-backend-service base-url="https://orders-west.azurewebsites.net" />
         </when>
         <otherwise>
@@ -175,7 +167,7 @@ A more sophisticated approach is to proactively check backend health and route t
 </inbound>
 ```
 
-You would update the health cache values from a separate scheduled policy or an Azure Function that pings each backend periodically.
+You would update the health cache values from an Azure Function, Logic App, or other scheduled job that pings each backend periodically.
 
 ## Geographic Routing
 
@@ -187,10 +179,10 @@ If your backends are deployed in multiple regions and your APIM instance is in a
 <inbound>
     <base />
     <choose>
-        <when condition="@(context.Request.Headers.GetValueOrDefault("X-Client-Region","").StartsWith("eu"))">
+        <when condition='@(context.Request.Headers.GetValueOrDefault("X-Client-Region","").StartsWith("eu"))'>
             <set-backend-service base-url="https://orders-eu.azurewebsites.net" />
         </when>
-        <when condition="@(context.Request.Headers.GetValueOrDefault("X-Client-Region","").StartsWith("ap"))">
+        <when condition='@(context.Request.Headers.GetValueOrDefault("X-Client-Region","").StartsWith("ap"))'>
             <set-backend-service base-url="https://orders-apac.azurewebsites.net" />
         </when>
         <otherwise>
@@ -211,7 +203,7 @@ Some backends maintain session state and need requests from the same client to g
 <!-- Uses the subscription ID as the affinity key -->
 <inbound>
     <base />
-    <set-variable name="backendUrl" value="@{
+    <set-variable name="backendUrl" value='@{
         var backends = new[] {
             "https://orders-instance-1.azurewebsites.net",
             "https://orders-instance-2.azurewebsites.net",
@@ -219,10 +211,10 @@ Some backends maintain session state and need requests from the same client to g
         };
         // Hash the subscription ID for consistent routing
         var key = context.Subscription?.Id ?? context.Request.IpAddress;
-        var index = Math.Abs(key.GetHashCode()) % backends.Length;
+        var index = Math.Abs(key.GetHashCode() % backends.Length);
         return backends[index];
-    }" />
-    <set-backend-service base-url="@((string)context.Variables["backendUrl"])" />
+    }' />
+    <set-backend-service base-url='@((string)context.Variables["backendUrl"])' />
 </inbound>
 ```
 
