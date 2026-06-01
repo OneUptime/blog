@@ -10,11 +10,11 @@ Description: A practical guide to using AWS Reachability Analyzer to diagnose ne
 
 Network troubleshooting in AWS can feel like detective work. You have security groups, NACLs, route tables, internet gateways, NAT gateways, VPC peering connections, and transit gateways all playing a role. When something does not connect, figuring out which component is blocking traffic can take hours of manual inspection.
 
-AWS Reachability Analyzer changes this. It analyzes your network configuration and tells you whether a path exists between two endpoints - and if not, exactly where it breaks. Best of all, it does this without sending a single packet.
+AWS Reachability Analyzer changes this. It analyzes your network configuration and tells you whether a path exists between two endpoints - and if not, which component or combination of components is blocking the path. Best of all, it does this without sending a single packet.
 
 ## What Is Reachability Analyzer?
 
-Reachability Analyzer is a configuration analysis tool built into the VPC console. You give it a source, a destination, and optional protocol/port information. It then walks through every networking component in the path and tells you whether traffic can flow.
+Reachability Analyzer is a static configuration analysis tool for VPC networking. You give it a source, a destination, and optional protocol/port information. It then walks through every networking component in the path and tells you whether traffic can flow.
 
 ```mermaid
 graph LR
@@ -33,11 +33,11 @@ graph LR
     style H fill:#f9f,stroke:#333
 ```
 
-Each component in the path is evaluated. If any component blocks the traffic, Reachability Analyzer tells you exactly which one and why.
+Each component in the path is evaluated. If a component or combination of components blocks the traffic, Reachability Analyzer shows the relevant explanation codes.
 
 ## Supported Resource Types
 
-You can test connectivity between many different AWS resource types:
+You can test connectivity between many different AWS resource types as sources and destinations:
 
 - EC2 instances
 - Network interfaces (ENIs)
@@ -47,8 +47,10 @@ You can test connectivity between many different AWS resource types:
 - Transit gateways
 - Transit gateway attachments
 - VPC endpoints
-- Network Load Balancers
-- Application Load Balancers
+- VPC endpoint services
+- IP addresses as destinations
+
+Reachability Analyzer can also include load balancers, NAT gateways, AWS Network Firewall, transit gateways, transit gateway attachments, and VPC peering connections as intermediate components in a path.
 
 ## Creating a Network Insights Path
 
@@ -86,7 +88,7 @@ aws ec2 describe-network-insights-analyses \
   --query 'NetworkInsightsAnalyses[0].{Status:Status,Reachable:NetworkPathFound,Explanations:Explanations}'
 ```
 
-If the path is not reachable, the `Explanations` array tells you exactly what went wrong.
+If the path is not reachable, the `Explanations` array shows the relevant blocking components and explanation codes.
 
 ## Common Troubleshooting Scenarios
 
@@ -94,7 +96,7 @@ If the path is not reachable, the `Explanations` array tells you exactly what we
 
 One of the most common issues. The analysis result will look something like this.
 
-```json
+```jsonc
 // Example output when a security group blocks the traffic
 {
   "NetworkPathFound": false,
@@ -105,7 +107,7 @@ One of the most common issues. The analysis result will look something like this
         "Id": "sg-0abc123",
         "Name": "api-server-sg"
       },
-      "ExplanationCode": "SECURITY_GROUP_MISSING_ALLOW_RULE",
+      "ExplanationCode": "ENI_SG_RULES_MISMATCH",
       "Port": 443,
       "Protocol": "tcp"
     }
@@ -128,7 +130,7 @@ aws ec2 authorize-security-group-ingress \
 
 When a route table does not have an entry for the destination CIDR, you will see something like this.
 
-```json
+```jsonc
 // Example output when there is no route to the destination
 {
   "NetworkPathFound": false,
@@ -158,7 +160,7 @@ aws ec2 create-route \
 
 NACLs are stateless, so you need both inbound and outbound rules. This is a common gotcha.
 
-```json
+```jsonc
 // NACL blocking traffic - often forgotten because security groups are stateful
 {
   "NetworkPathFound": false,
@@ -168,7 +170,7 @@ NACLs are stateless, so you need both inbound and outbound rules. This is a comm
         "Id": "acl-0abc123"
       },
       "Direction": "egress",
-      "ExplanationCode": "NETWORK_ACL_MISSING_ALLOW_RULE",
+      "ExplanationCode": "SUBNET_ACL_RESTRICTION",
       "Port": 443,
       "Protocol": "tcp"
     }
@@ -219,9 +221,9 @@ def check_reachability(path_id):
 
 # Define paths to check - these should be pre-created
 paths = [
-    'nip-web-to-api',
-    'nip-api-to-database',
-    'nip-api-to-cache',
+    'nip-0abc123def456789a',
+    'nip-0abc123def456789b',
+    'nip-0abc123def456789c',
 ]
 
 all_reachable = True
@@ -267,11 +269,12 @@ Resources:
 
 Reachability Analyzer charges per analysis run. As of early 2026, each analysis costs $0.10. This is trivial compared to the time saved debugging network issues manually.
 
-There are some limits to be aware of:
+There are some quotas to be aware of:
 
-- Maximum of 100 Network Insights Paths per account per Region
-- Maximum of 10 concurrent analyses
-- Analysis results are retained for 30 days
+- Maximum of 1,000 Network Insights Paths per account per Region by default
+- Maximum of 10,000 analyses per account per Region by default
+- Maximum of 100 concurrent analyses by default
+- Analysis results are retained for 120 days
 
 ## When to Use Reachability Analyzer vs. VPC Flow Logs
 
@@ -284,6 +287,6 @@ If something is not connecting, start with Reachability Analyzer. If the configu
 
 ## Summary
 
-Reachability Analyzer removes the guesswork from network troubleshooting in AWS. Instead of manually inspecting every security group, NACL, and route table, you point it at two endpoints and it tells you exactly where the path breaks. Combined with automation through the CLI or SDK, you can build connectivity validation into your deployment pipeline and catch issues before they cause outages.
+Reachability Analyzer removes the guesswork from network troubleshooting in AWS. Instead of manually inspecting every security group, NACL, and route table, you point it at two endpoints and it identifies the component or combination of components that blocks the path. Combined with automation through the CLI or SDK, you can build connectivity validation into your deployment pipeline and catch issues before they cause outages.
 
 The tool pays for itself the first time it saves you an hour of manual debugging. Make it part of your standard troubleshooting toolkit alongside [VPC Flow Logs](https://oneuptime.com/blog/post/2026-02-12-monitor-network-performance-with-vpc-flow-logs/view) and [Site-to-Site VPN monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-site-to-site-vpn-with-bgp-routing/view).
