@@ -90,7 +90,7 @@ az vmware private-cloud create \
 
 Key parameters explained:
 
-- **sku**: `AV36` is the standard host type with 36 cores, 576 GB RAM, and 15.2 TB NVMe storage per host. `AV36P` and `AV52` offer more resources.
+- **sku**: `AV36` is the standard host type with 36 cores, 576 GB RAM, 3.2 TB raw NVMe cache tier, and 15.2 TB raw SSD capacity tier per host. `AV36P` and `AV52` offer more resources.
 - **cluster-size**: Minimum 3 hosts. You can scale up to 16 hosts per cluster later.
 - **network-block**: The /22 CIDR block for management. Choose carefully - this cannot be changed.
 
@@ -146,7 +146,7 @@ AVS includes a managed ExpressRoute circuit. Connect it to your existing Express
 CIRCUIT_ID=$(az vmware private-cloud show \
   --resource-group myResourceGroup \
   --name myAVSPrivateCloud \
-  --query "circuit.expressRouteId" \
+  --query "circuit.expressRouteID" \
   --output tsv)
 
 # Create an authorization key
@@ -183,7 +183,7 @@ NSX-T provides the network segments where your VMs will run. Create at least one
 az vmware workload-network dhcp server create \
   --resource-group myResourceGroup \
   --private-cloud myAVSPrivateCloud \
-  --dhcp-id myDhcpServer \
+  --dhcp myDhcpServer \
   --display-name "Workload DHCP" \
   --server-address "10.180.0.1/24" \
   --lease-time 86400
@@ -192,10 +192,11 @@ az vmware workload-network dhcp server create \
 az vmware workload-network segment create \
   --resource-group myResourceGroup \
   --private-cloud myAVSPrivateCloud \
-  --segment-id workload-segment-1 \
+  --segment workload-segment-1 \
   --display-name "Workload Segment 1" \
   --connected-gateway "/infra/tier-1s/TNT##-T1" \
-  --subnet dhcp-range="10.180.1.10-10.180.1.200" gateway-address="10.180.1.1/24"
+  --dhcp-ranges "[10.180.1.10-10.180.1.200]" \
+  --gateway-address "10.180.1.1/24"
 ```
 
 Plan your network segments based on workload isolation requirements. Each segment can have its own DHCP scope, DNS settings, and firewall rules.
@@ -205,14 +206,24 @@ Plan your network segments based on workload isolation requirements. Each segmen
 Set up DNS forwarding so that VMs in the private cloud can resolve names in your on-premises domain and Azure private DNS zones.
 
 ```bash
-# Configure DNS forwarder in the private cloud
+# Create a DNS zone for the domain you want to forward
+az vmware workload-network dns-zone create \
+  --resource-group myResourceGroup \
+  --private-cloud myAVSPrivateCloud \
+  --dns-zone corp-dns-zone \
+  --display-name "Corporate DNS Zone" \
+  --domain "[corp.example.com]" \
+  --dns-server-ips "[10.10.0.10,10.10.0.11]" \
+  --source-ip "10.180.0.10"
+
+# Configure the DNS service in the private cloud
 az vmware workload-network dns-service create \
   --resource-group myResourceGroup \
   --private-cloud myAVSPrivateCloud \
-  --dns-service-id myDnsService \
+  --dns-service myDnsService \
   --display-name "Workload DNS" \
-  --default-dns-zone "default" \
-  --fqdn-zones "corp.example.com" \
+  --default-dns-zone "corp-dns-zone" \
+  --fqdn-zones "[corp-dns-zone]" \
   --dns-service-ip "10.180.0.10" \
   --log-level "INFO"
 ```
@@ -236,14 +247,11 @@ In the vSphere client, you should see:
 
 ## Cost Considerations
 
-AVS pricing is per-host, per-hour. As of writing:
-
-- **AV36**: Approximately $9.50 per host per hour.
-- A minimum 3-host cluster costs roughly $20,500 per month.
+AVS pricing is per-host, per-hour and varies by region, host SKU, licensing model, agreement, and reservation term. Use the Azure pricing page or pricing calculator for the current rate in your target region.
 
 This is a significant commitment, so right-size your cluster based on actual workload requirements. You can start with 3 hosts and scale up, but you cannot scale below 3.
 
-Azure offers reserved instances (1-year and 3-year) with significant discounts - up to 57% for a 3-year commitment.
+Azure offers reserved instances with 1-year and 3-year terms that can significantly reduce the effective host cost.
 
 ## Summary
 
