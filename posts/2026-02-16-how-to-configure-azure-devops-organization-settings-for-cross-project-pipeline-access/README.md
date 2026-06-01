@@ -10,7 +10,7 @@ Description: Learn how to configure Azure DevOps organization-level settings to 
 
 When your Azure DevOps organization grows beyond a single project, teams inevitably need to share resources across project boundaries. A pipeline in Project A needs to check out code from a repository in Project B. A build in the Platform project needs to push packages to a feed in the Shared Services project. A deployment pipeline needs to access service connections defined in another project.
 
-By default, Azure DevOps restricts pipeline access to resources within the same project. This is a good security default, but it means you need to explicitly configure cross-project access when it is needed. In this post, I will walk through the organization and project settings that control cross-project pipeline access, how to set them up securely, and the common scenarios that require them.
+Azure DevOps controls pipeline access with job access tokens, build service identities, and resource permissions. Depending on your organization and project settings, a pipeline can run with either a collection-scoped identity or a project-scoped identity. For secure cross-project access, use project-scoped identities and explicitly grant the needed permissions in the target project. In this post, I will walk through the organization and project settings that control cross-project pipeline access, how to set them up securely, and the common scenarios that require them.
 
 ## Understanding the Security Model
 
@@ -19,14 +19,14 @@ Azure DevOps pipelines run under a build service identity. Each project has its 
 - **Project Collection Build Service** - organization-level identity
 - **Project Name Build Service** - project-level identity
 
-When a pipeline tries to access a resource in another project, it needs the appropriate permissions granted to its build service identity in the target project. This is a two-step process:
+When a pipeline tries to access a resource in another project, it needs the appropriate permissions granted to its build service identity in the target project. This is usually a two-step process:
 
-1. The organization setting must allow cross-project access
-2. The specific resource in the target project must grant permissions to the requesting project's build identity
+1. The pipeline's job authorization scope and repository protection settings must allow the pipeline to request the resource
+2. The target project and the specific resource must grant permissions to the requesting project's build identity
 
 ```mermaid
 flowchart LR
-    A[Pipeline in Project A] -->|Requests access| B{Organization Setting}
+    A[Pipeline in Project A] -->|Requests access| B{Job Scope and Repository Settings}
     B -->|Allowed| C{Resource Permission in Project B}
     C -->|Granted| D[Access Approved]
     B -->|Blocked| E[Access Denied]
@@ -39,33 +39,34 @@ Several organization-level settings affect cross-project pipeline behavior. Navi
 
 ### Limit Job Authorization Scope
 
-This is the primary setting that controls cross-project access. Go to Organization Settings, then Pipelines, then Settings.
+This is the primary setting that controls which identity a pipeline uses and how broadly its job access token can reach. Go to Organization Settings, then Pipelines, then Settings.
 
 You will find these options:
 
-- **Limit job authorization scope to current project for non-release pipelines**: When enabled, YAML pipelines and classic build pipelines can only access resources in their own project. When disabled, they can access resources across projects.
+- **Limit job authorization scope to current project for non-release pipelines**: When enabled, YAML pipelines and classic build pipelines use a project-scoped job access token. Cross-project access then requires explicit permissions for that project-scoped build identity in the target project. When disabled, pipelines can use a collection-scoped token, which has broader access.
 
 - **Limit job authorization scope to current project for release pipelines**: Same as above but for classic release pipelines.
 
-- **Limit job authorization scope to referenced Azure DevOps repositories**: When enabled, pipelines can only access repositories that are explicitly declared as resources in the YAML.
+- **Protect access to repositories in YAML pipelines**: When enabled, YAML pipelines can only access Azure Repos repositories that are explicitly referenced by a `checkout` step or `uses` statement.
 
-For cross-project access, you might need to disable the first two settings at the organization level. However, a more secure approach is to leave them enabled at the org level and disable them selectively at the project level.
+For secure cross-project access, leave the job authorization scope limited to the current project when possible and grant the project-scoped build identity only the permissions it needs in the target project.
 
 ### Project-Level Override
 
-Each project can override the organization-level setting. Go to Project Settings, then Pipelines, then Settings. Here you can:
+Each project can configure these settings only when they are not already enforced at the organization level. If the organization-level setting is enabled, it cannot be disabled in a project. Go to Project Settings, then Pipelines, then Settings. Here you can:
 
-- Disable "Limit job authorization scope to current project" for just this project
-- This allows pipelines in this specific project to access resources in other projects, without opening up the whole organization
+- Enable "Limit job authorization scope to current project" for just this project
+- Keep pipelines in this project on a project-scoped identity, then grant that identity access only to the target resources it needs
 
 ```bash
 # You can also manage these settings via the Azure DevOps CLI
 
-# Check current organization-level pipeline settings
+# Check current build general settings for a project
 az devops invoke \
   --area build \
   --resource generalSettings \
   --org https://dev.azure.com/myorg \
+  --route-parameters project=ProjectA \
   --http-method GET
 ```
 
@@ -82,6 +83,8 @@ In the target project (the one that contains the repository you want to access):
 3. Click on Security
 4. Find the build service identity of the source project. It will be named like "Project A Build Service (MyOrganization)"
 5. Grant it "Read" permission
+
+If the source pipeline uses a project-scoped identity, also grant that identity **View project-level information** in the target project. Without that project-level permission, repository-level Read permission alone may not be enough.
 
 ### Step 2: Declare the Repository in Your Pipeline
 
@@ -121,21 +124,21 @@ If your pipeline needs to publish to or consume from an Azure Artifacts feed in 
 1. Go to the target project's Artifacts section
 2. Open the feed settings
 3. Click on Permissions
-4. Add the source project's build service identity as a Collaborator (for publish) or Reader (for consume)
+4. Add the source project's build service identity as a Feed Publisher (Contributor) for publish, or Feed Reader for consume. Use Feed and Upstream Reader (Collaborator) when the pipeline only needs read access plus the ability to save packages from upstream sources.
 
 ```yaml
 # Pipeline that publishes to a feed in another project
 steps:
   - task: NuGetAuthenticate@1
-    inputs:
-      nuGetServiceConnections: 'feed-in-other-project'
 
   - script: |
       dotnet nuget push ./output/*.nupkg \
         --source "https://pkgs.dev.azure.com/myorg/OtherProject/_packaging/shared-feed/nuget/v3/index.json" \
-        --api-key az
+        --api-key AzureArtifacts
     displayName: 'Push to cross-project feed'
 ```
+
+For Azure Artifacts feeds in the same organization, `NuGetAuthenticate@1` automatically authenticates matching feed URLs. The `nuGetServiceConnections` input is for feeds outside the organization or authenticated third-party package repositories.
 
 ## Sharing Service Connections Across Projects
 
@@ -147,7 +150,7 @@ Service connections (Azure subscriptions, Docker registries, Kubernetes clusters
 4. Click the three dots menu and select "Security"
 5. Under "Project permissions," add the other projects that should have access
 
-Alternatively, you can make a service connection organization-scoped when creating it, which makes it available to all projects.
+After a service connection is shared with a project, use its pipeline permissions to allow all pipelines in that project or restrict access to selected pipelines.
 
 ```yaml
 # Pipeline using a service connection from another project
@@ -163,14 +166,14 @@ steps:
     displayName: 'Use shared service connection'
 ```
 
-## Sharing Environments Across Projects
+## Environments Across Projects
 
-Environments with approval gates can also be shared across projects. This is useful when you have a centralized "production" environment with approvals that multiple project pipelines deploy to:
+Azure DevOps environments are project-scoped YAML pipeline resources. You can secure an environment with user permissions and pipeline permissions inside the project that owns it, but it is not shared across projects in the same way a service connection can be shared. If multiple projects need the same approval model, either centralize the deployment pipelines in one project or create matching environments and checks in each project.
 
-1. In the project that owns the environment, go to Pipelines, then Environments
+1. In each project that needs the environment, go to Pipelines, then Environments
 2. Select the environment
 3. Go to Security
-4. Add the build service identities from other projects with appropriate roles
+4. Configure user permissions, checks, and pipeline permissions for that project's pipelines
 
 ## Agent Pool Access
 
@@ -179,9 +182,9 @@ If you use self-hosted agent pools, you need to grant access for cross-project u
 1. Go to Organization Settings, then Agent pools
 2. Select the pool
 3. Click on Security
-4. Under "Pipeline permissions," add the pipelines or projects that need access
+4. Grant the target project or group the User role as needed, and use "Pipeline permissions" to open access for all pipelines in a project or restrict the pool to selected YAML pipelines
 
-For organization-scoped pools, access is typically more open. For project-scoped pools, you need to explicitly grant cross-project access.
+Use organization-scoped pools when the same self-hosted capacity must be available to multiple projects. Project-scoped pools are available only inside the project where they are created.
 
 ## Variable Groups Across Projects
 
@@ -214,7 +217,7 @@ Opening up cross-project access increases your attack surface. Here are some gui
 
 **Principle of least privilege.** Only grant the minimum permissions needed. If a pipeline only needs to read from a repository, grant Read permission, not Contribute.
 
-**Use project-level overrides instead of organization-wide settings.** Only disable the job authorization scope limit for projects that actually need cross-project access, not the entire organization.
+**Prefer project-scoped job authorization.** Keep the job authorization scope limited to the current project and grant explicit target-project permissions instead of relying on broad collection-scoped tokens.
 
 **Audit cross-project access regularly.** Review which build service identities have access to which resources. Remove permissions that are no longer needed.
 
