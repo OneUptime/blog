@@ -125,7 +125,9 @@ The raw HTTP approach works, but the Dapr SDKs provide a cleaner abstraction. He
 // Using the Dapr SDK for cleaner service invocation
 const { DaprClient, HttpMethod } = require('@dapr/dapr');
 
-const client = new DaprClient();
+const daprHost = '127.0.0.1';
+const daprPort = process.env.DAPR_HTTP_PORT || '3500';
+const client = new DaprClient({ daprHost, daprPort });
 
 async function processPayment(orderId, amount) {
   // The SDK handles URL construction and sidecar communication
@@ -148,7 +150,7 @@ async function processPayment(orderId, amount) {
 
 By default, any Dapr-enabled app can invoke any other Dapr-enabled app. In production, you should restrict this with access control policies.
 
-Create a Dapr configuration component that specifies which apps can call which.
+Create a Dapr Configuration resource that specifies which apps can call which.
 
 ```yaml
 # dapr-config.yaml - Access control policy
@@ -161,13 +163,13 @@ spec:
     defaultAction: deny
     policies:
       - appId: order-service
-        defaultAction: allow
+        defaultAction: deny
         operations:
           - name: /api/payments
             httpVerb: ["POST"]
             action: allow
       - appId: refund-service
-        defaultAction: allow
+        defaultAction: deny
         operations:
           - name: /api/refunds
             httpVerb: ["POST"]
@@ -231,16 +233,16 @@ This configuration retries failed calls to the payment service up to 3 times wit
 
 ## Step 6: Monitor Service Invocations
 
-Dapr automatically generates distributed traces for all service invocations. In Azure Container Apps, these traces are sent to Azure Monitor.
+Dapr can generate distributed traces for service invocations when Azure Container Apps OpenTelemetry or Application Insights tracing is configured. Dapr sidecar logs are available in Azure Monitor Log Analytics.
 
-You can query them in Log Analytics.
+If you enable Dapr API logging with `--dapr-enable-api-logging`, you can query invocation-related sidecar logs in Log Analytics.
 
 ```kusto
-// View all Dapr service invocation calls
-ContainerAppConsoleLogs_CL
-| where Log_s contains "dapr"
-| where Log_s contains "invoke"
-| project TimeGenerated, ContainerAppName_s, Log_s
+// View Dapr service invocation log lines
+ContainerAppConsoleLogs
+| where ContainerName has "daprd" or Log contains "dapr"
+| where Log contains "invoke"
+| project TimeGenerated, ContainerAppName, ContainerName, Log
 | order by TimeGenerated desc
 | take 50
 ```
