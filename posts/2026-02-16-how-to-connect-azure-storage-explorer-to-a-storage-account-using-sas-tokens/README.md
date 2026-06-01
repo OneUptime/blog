@@ -71,8 +71,8 @@ az storage container generate-sas \
 For the most secure option, generate a User Delegation SAS that does not require the account key:
 
 ```bash
-# First, get a user delegation key (requires Azure AD login)
-# Then generate the SAS signed with the delegation key
+# Azure CLI gets a user delegation key implicitly (requires Azure AD login)
+# Then it generates the SAS signed with the delegation key
 az storage blob generate-sas \
   --account-name mystorageaccount \
   --container-name my-container \
@@ -106,13 +106,13 @@ The container appears in the left panel under "Attached & Local" with the displa
 
 ### Connect with an Account SAS
 
-If you have an account-level SAS that grants access to the entire storage account:
+If you have an account-level SAS that grants access to the entire storage account, use the SAS connection string from the portal or build one from the account endpoints and the SAS token:
 
 1. Open the "Add a resource" dialog
-2. Select "Storage account or service"
+2. Select "Storage account"
 3. Select "Shared access signature (SAS)"
-4. Paste the SAS token (just the token part, not the full URL)
-5. Enter the storage account name
+4. Enter a display name
+5. Paste the SAS connection string
 6. Click Connect
 
 This gives you access to all the services and resources that the SAS token permits.
@@ -133,7 +133,7 @@ Generating SAS tokens is easy, but using them securely requires some thought.
 
 ### Use Short Expiry Times
 
-Do not create SAS tokens that last for months or years. A leaked token with a long expiry is a security incident waiting to happen. For one-off file sharing, 24 hours is usually enough. For ongoing access, use stored access policies that you can revoke.
+Do not create SAS tokens that last for months or years. A leaked token with a long expiry is a security incident waiting to happen. For one-off file sharing, 24 hours is usually enough. For ongoing service SAS access, use stored access policies that you can revoke.
 
 ### Apply Least Privilege
 
@@ -152,7 +152,7 @@ Only grant the permissions that are actually needed. If someone only needs to do
 
 ### Use Stored Access Policies for Revocable Access
 
-A stored access policy is a set of constraints defined on a container, queue, table, or file share. When you create a SAS token that references a stored access policy, you can revoke the token by deleting or modifying the policy.
+A stored access policy is a set of constraints defined on a container, queue, table, or file share. When you create a service SAS token that references a stored access policy, you can revoke the token by deleting or modifying the policy.
 
 ```bash
 # Create a stored access policy on a container
@@ -175,7 +175,7 @@ If you need to revoke access, just delete the policy:
 
 ```bash
 # Revoke access by deleting the stored access policy
-# All SAS tokens referencing this policy become invalid immediately
+# All service SAS tokens referencing this policy become invalid after the change propagates
 az storage container policy delete \
   --account-name mystorageaccount \
   --container-name shared-reports \
@@ -187,8 +187,8 @@ az storage container policy delete \
 When possible, use User Delegation SAS tokens. They are signed with Azure AD credentials instead of the storage account key, which means:
 
 - The account key is never exposed
-- Token creation is audited through Azure AD
-- Permissions are tied to the Azure AD identity's RBAC roles
+- The user delegation key is requested with Microsoft Entra credentials
+- Creating the SAS requires an Azure RBAC role that can generate a user delegation key
 
 ### Restrict by IP Address
 
