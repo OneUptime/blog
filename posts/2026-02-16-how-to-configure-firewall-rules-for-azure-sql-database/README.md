@@ -19,17 +19,17 @@ Azure SQL Database uses a two-level firewall system:
 1. **Server-level firewall rules** apply to all databases on the logical SQL server. They control which IP addresses can reach the server at all.
 2. **Database-level firewall rules** apply to individual databases. They provide finer-grained control when you need different access policies for different databases on the same server.
 
-When a connection request arrives, Azure checks the server-level rules first. If the IP is allowed at the server level, the connection proceeds. If not, Azure checks the database-level rules for the specific database being accessed. If neither set of rules allows the IP, the connection is refused.
+When a connection request arrives, Azure checks the database-level rules for the specific database first. If the IP is allowed at the database level, the connection proceeds to that database. If not, Azure checks the server-level rules. If neither set of rules allows the IP, the connection is refused.
 
 There is also a special toggle called "Allow Azure services and resources to access this server" which, when enabled, permits traffic from any Azure service, including services in other subscriptions. Use this with caution.
 
 ```mermaid
 flowchart TD
-    A[Connection Request] --> B{Server-level rule matches?}
-    B -->|Yes| D[Connection Allowed]
-    B -->|No| C{Database-level rule matches?}
+    A[Connection Request] --> C{Database-level rule matches?}
     C -->|Yes| D
-    C -->|No| E[Connection Denied]
+    C -->|No| B{Server-level rule matches?}
+    B -->|Yes| D[Connection Allowed]
+    B -->|No| E[Connection Denied]
 ```
 
 ## Configuring Server-Level Firewall Rules via Azure Portal
@@ -224,7 +224,7 @@ If you cannot connect to your Azure SQL Database, check these things in order:
 2. Confirm that the firewall rule is on the correct server. If you have multiple logical servers, make sure you added the rule to the right one.
 3. Check if public network access is disabled. If it is, only private endpoints will work.
 4. Look at the error message. Error 40615 means the firewall is blocking you. The message usually includes the client IP that was rejected.
-5. Wait a moment after adding a rule. Changes typically take effect within a few seconds, but occasionally there is a short delay.
+5. Wait a moment after adding a rule. Firewall and related security changes can take up to five minutes to take effect.
 
 ## Summary
 
