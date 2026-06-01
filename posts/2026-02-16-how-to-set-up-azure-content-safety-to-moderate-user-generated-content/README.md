@@ -19,11 +19,11 @@ Azure Content Safety analyzes both text and images across four harm categories:
 - **Violence**: Descriptions or depictions of physical violence, threats, or glorification of violent acts.
 - **Self-harm**: Content that promotes, encourages, or provides instructions for self-harm or suicide.
 
-Each category is rated on a severity scale from 0 to 6:
+By default, each category is rated on a four-level severity scale:
 
-- **0-1**: Safe content
-- **2-3**: Low severity
-- **4-5**: Medium severity
+- **0**: Safe content
+- **2**: Low severity
+- **4**: Medium severity
 - **6**: High severity
 
 You choose the threshold for each category based on your application's needs.
@@ -129,7 +129,7 @@ class ContentModerator:
             "Hate": 2,        # Flag for review at low severity
             "Sexual": 2,
             "Violence": 2,
-            "SelfHarm": 1     # Flag at any detection
+            "SelfHarm": 2     # Flag at low severity and above
         }
 
     def moderate(self, text):
@@ -231,21 +231,17 @@ Azure Content Safety also analyzes images for harmful content.
 
 ```python
 from azure.ai.contentsafety.models import AnalyzeImageOptions, ImageData
-import base64
 
 def moderate_image(image_path):
     """
     Analyze an image for harmful content.
-    Accepts local file paths - the image is sent as base64.
+    Accepts local file paths.
     """
     with open(image_path, "rb") as f:
         image_bytes = f.read()
 
-    # Encode image as base64
-    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-
     request = AnalyzeImageOptions(
-        image=ImageData(content=image_base64)
+        image=ImageData(content=image_bytes)
     )
 
     response = client.analyze_image(request)
@@ -271,11 +267,14 @@ for category, info in image_result["categories"].items():
 Sometimes you need to block specific terms that are not inherently harmful but are inappropriate for your context (competitor names, internal jargon used inappropriately, etc.). Custom blocklists handle this.
 
 ```python
+from azure.ai.contentsafety import BlocklistClient
 from azure.ai.contentsafety.models import (
     TextBlocklist,
     AddOrUpdateTextBlocklistItemsOptions,
     TextBlocklistItem
 )
+
+blocklist_client = BlocklistClient(endpoint, AzureKeyCredential(key))
 
 def create_blocklist(blocklist_name, description):
     """Create a custom blocklist for domain-specific terms."""
@@ -283,7 +282,7 @@ def create_blocklist(blocklist_name, description):
         blocklist_name=blocklist_name,
         description=description
     )
-    client.create_or_update_text_blocklist(
+    blocklist_client.create_or_update_text_blocklist(
         blocklist_name=blocklist_name,
         options=blocklist
     )
@@ -293,7 +292,7 @@ def add_terms_to_blocklist(blocklist_name, terms):
     """Add terms to an existing blocklist."""
     items = [TextBlocklistItem(text=term) for term in terms]
     options = AddOrUpdateTextBlocklistItemsOptions(blocklist_items=items)
-    client.add_or_update_blocklist_items(blocklist_name, options=options)
+    blocklist_client.add_or_update_blocklist_items(blocklist_name, options=options)
     print(f"Added {len(terms)} terms to '{blocklist_name}'")
 
 
