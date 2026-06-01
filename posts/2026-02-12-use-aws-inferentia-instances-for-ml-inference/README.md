@@ -8,7 +8,7 @@ Description: Guide to deploying machine learning models on AWS Inferentia-powere
 
 ---
 
-AWS Inferentia is Amazon's first-generation custom ML inference chip. While the newer Inferentia2 (Inf2 instances) gets most of the attention now, the original Inf1 instances remain a solid, cost-effective choice for many inference workloads. They are cheaper than Inf2, widely available, and work well for models that fit within their capabilities.
+AWS Inferentia is Amazon's first-generation custom ML inference chip. While the newer Inferentia2 (Inf2 instances) gets most of the attention now, the original Inf1 instances remain a cost-effective choice for legacy inference workloads. Treat Inf1 as a legacy platform: it can work well for models that fit within its capabilities, but new projects should also evaluate Inf2 and the current Neuron SDK support matrix.
 
 Inf1 instances deliver up to 2.3x higher throughput and up to 70% lower cost-per-inference compared to GPU instances for supported models. If you are running production inference for standard model architectures and cost is your primary concern, Inf1 deserves consideration.
 
@@ -29,7 +29,7 @@ Each first-generation Inferentia chip has 4 NeuronCores (compared to 2 NeuronCor
 # Launch an Inf1 instance with the Neuron Deep Learning AMI
 
 aws ec2 run-instances \
-  --image-id ami-0abc123-neuron-dlami \
+  --image-id resolve:ssm:/aws/service/neuron/dlami/pytorch-1.13/amazon-linux-2/latest/image_id \
   --instance-type inf1.xlarge \
   --count 1 \
   --key-name my-key \
@@ -49,7 +49,7 @@ neuron-ls
 # Should show Inferentia devices
 
 # Activate the pre-installed Neuron PyTorch environment
-source /opt/aws_neuron_venv_pytorch/bin/activate
+source activate aws_neuron_pytorch_p36
 
 # Verify the setup
 python3 -c "import torch; import torch_neuron; print('Neuron SDK ready')"
@@ -65,10 +65,19 @@ import torch
 import torch_neuron
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
+
+class SentimentModel(torch.nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, input_ids, attention_mask):
+        return self.model(input_ids=input_ids, attention_mask=attention_mask).logits
+
 # Load a pre-trained model
 model_name = "distilbert-base-uncased-finetuned-sst-2-english"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name)
+model = SentimentModel(AutoModelForSequenceClassification.from_pretrained(model_name))
 model.eval()
 
 # Create example inputs matching your expected input shape
@@ -84,8 +93,9 @@ example_inputs = tokenizer(
 print("Compiling model for Inferentia...")
 neuron_model = torch.neuron.trace(
     model,
-    [example_inputs['input_ids'], example_inputs['attention_mask']],
-    compiler_args=['--neuroncore-pipeline-cores', '1']
+    (example_inputs['input_ids'], example_inputs['attention_mask']),
+    compiler_args=['--neuroncore-pipeline-cores', '1'],
+    dynamic_batch_size=True
 )
 
 # Save the compiled model
@@ -135,7 +145,7 @@ for text in texts:
     latency_ms = (time.time() - start) * 1000
     latencies.append(latency_ms)
 
-    logits = output[0]
+    logits = output
     prediction = torch.argmax(logits, dim=1).item()
     label = "Positive" if prediction == 1 else "Negative"
     print(f"[{latency_ms:.1f}ms] {label}: {text[:60]}")
@@ -177,7 +187,7 @@ def batch_predict(texts, batch_size=8):
         with torch.no_grad():
             outputs = model(inputs['input_ids'], inputs['attention_mask'])
 
-        predictions = torch.argmax(outputs[0], dim=1).tolist()
+        predictions = torch.argmax(outputs, dim=1).tolist()
         labels = ["Positive" if p == 1 else "Negative" for p in predictions]
         results.extend(labels)
 
@@ -204,11 +214,16 @@ On an inf1.6xlarge with 16 NeuronCores, you can run multiple model instances in 
 # multi_core_server.py
 import torch
 import torch_neuron
-from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI
-import uvicorn
+from pydantic import BaseModel
+from transformers import AutoTokenizer
 
 app = FastAPI()
+tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+
+
+class PredictionRequest(BaseModel):
+    text: str
 
 # Load the model on multiple NeuronCores
 NUM_MODELS = 4  # One per NeuronCore group
@@ -221,20 +236,20 @@ for i in range(NUM_MODELS):
 request_counter = 0
 
 @app.post("/predict")
-async def predict(text: str):
+async def predict(request: PredictionRequest):
     global request_counter
     model_idx = request_counter % NUM_MODELS
     request_counter += 1
 
     model = models[model_idx]
 
-    inputs = tokenizer(text, return_tensors="pt", max_length=128,
+    inputs = tokenizer(request.text, return_tensors="pt", max_length=128,
                        padding="max_length", truncation=True)
 
     with torch.no_grad():
         output = model(inputs['input_ids'], inputs['attention_mask'])
 
-    prediction = torch.argmax(output[0], dim=1).item()
+    prediction = torch.argmax(output, dim=1).item()
     return {"label": "Positive" if prediction == 1 else "Negative"}
 ```
 
@@ -263,19 +278,21 @@ For a deeper look at Inf2, see our guide on [setting up EC2 Inf2 instances for M
 
 ## Deployment with SageMaker
 
-For production deployments with auto-scaling, you can use Inf1 with SageMaker.
+For production deployments with auto-scaling, you can use Inf1 with SageMaker. Compile for the same target instance family you deploy to, such as `ml_inf1`.
 
 ```python
 import sagemaker
 from sagemaker.pytorch import PyTorchModel
 
-# Create a SageMaker model from your compiled artifact
+# Create a SageMaker model from your SageMaker Neo-compiled artifact
 model = PyTorchModel(
-    model_data="s3://my-models/distilbert_neuron.tar.gz",
+    model_data="s3://my-models/distilbert_neo_compiled.tar.gz",
     role="arn:aws:iam::123456789012:role/SageMakerRole",
-    framework_version="1.13.1",
-    py_version="py39",
+    framework_version="1.5",
+    py_version="py3",
     entry_point="inference.py",
+    source_dir="code",
+    image_uri="<pytorch-neo-inference-image-uri>"
 )
 
 # Deploy to an Inf1 endpoint
@@ -307,4 +324,4 @@ ls /var/tmp/neuron-compile-cache/
 
 ## Wrapping Up
 
-AWS Inferentia Inf1 instances remain one of the most cost-effective ways to run inference for common ML model architectures. While Inf2 offers more capabilities for larger models, Inf1's lower price point and wide availability make it a strong choice for teams running standard transformer or CNN models at scale. The compilation step adds some friction to your deployment pipeline, but the ongoing cost savings typically justify the upfront effort many times over.
+AWS Inferentia Inf1 instances can still be a cost-effective way to run inference for common ML model architectures that already fit the legacy Inf1 software and hardware constraints. While Inf2 offers more capabilities for larger models, Inf1's lower price point can still make sense for teams running standard transformer or CNN models at scale. The compilation step adds some friction to your deployment pipeline, so validate model support, accuracy, and current Neuron SDK support before committing to Inf1 for a new deployment.
