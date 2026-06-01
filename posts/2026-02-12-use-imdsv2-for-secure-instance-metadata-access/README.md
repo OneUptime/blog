@@ -56,7 +56,7 @@ curl -H "X-aws-ec2-metadata-token: $TOKEN" \
     http://169.254.169.254/latest/meta-data/instance-id
 ```
 
-Additionally, IMDSv2 has a default hop limit of 1 for the PUT request, which means the token request can't be forwarded through network hops (preventing attacks from containers or instances behind a proxy).
+Additionally, IMDSv2 has a default hop limit of 1 for the response to the PUT request, which means the token response can't travel through additional network hops (preventing attacks from containers or instances behind a proxy).
 
 ## Enabling IMDSv2
 
@@ -75,7 +75,7 @@ aws ec2 run-instances \
 
 The key parameter is `HttpTokens=required`. This means only IMDSv2 requests (with a token) will work. IMDSv1 requests will be rejected.
 
-Setting `HttpPutResponseHopLimit=2` is important if you're running containers (like Docker) on the instance. The default of 1 prevents containers from reaching the metadata service for the token request. Setting it to 2 allows one network hop, which is enough for containers.
+Setting `HttpPutResponseHopLimit=2` is important if you're running containers (like Docker) on the instance. The default of 1 can prevent containers from receiving the token response through the Docker bridge network. Setting it to 2 allows one additional network hop, which is enough for many container setups.
 
 ### For Existing Instances
 
@@ -195,7 +195,7 @@ print(f"Running on {instance_id} in {region}")
 
 ### AWS SDKs Handle It Automatically
 
-If you're using the AWS SDK (boto3, aws-sdk-js, etc.), you don't need to change anything. The SDKs automatically use IMDSv2 when fetching credentials. They handle the token request transparently.
+If you're using a current, supported AWS SDK (boto3, aws-sdk-js, etc.), you usually don't need to change anything. The SDKs use IMDSv2 by default when fetching credentials from IMDS and handle the token request transparently. If IMDSv2 fails with certain non-retryable errors, some SDKs can fall back to IMDSv1 unless you disable IMDSv1 fallback or require IMDSv2 on the instance.
 
 ```python
 import boto3
@@ -301,7 +301,7 @@ Set the account-level default and use AWS Config or Service Control Policies (SC
 
 ## Docker and Container Considerations
 
-When running containers on EC2, there's a networking subtlety. The default hop limit of 1 means the token PUT request can't traverse the Docker bridge network. You have two options:
+When running containers on EC2, there's a networking subtlety. The default hop limit of 1 means the token response might not traverse the Docker bridge network. You have two options:
 
 **Option 1: Increase the hop limit to 2**
 
@@ -327,6 +327,7 @@ aws cloudwatch put-metric-alarm \
     --alarm-name "IMDSv1-Usage-Detected" \
     --metric-name MetadataNoToken \
     --namespace AWS/EC2 \
+    --dimensions Name=InstanceId,Value=i-0123456789abcdef0 \
     --statistic Sum \
     --period 300 \
     --threshold 1 \
