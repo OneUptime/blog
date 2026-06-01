@@ -16,8 +16,8 @@ If you are looking for a way to run lightweight, event-driven workloads on Kuber
 
 Traditional containers package an entire OS userspace along with your application. Even a "minimal" container image based on Alpine or distroless is tens of megabytes. A WASM module is just your compiled code - typically a few hundred kilobytes to a few megabytes. This translates to:
 
-- **Sub-millisecond cold starts**: No OS to boot, no runtime to initialize
-- **Lower memory footprint**: A WASM workload uses 10-100x less memory than an equivalent container
+- **Millisecond cold starts**: No container image filesystem to unpack and less runtime overhead to initialize
+- **Lower memory footprint**: A WASM workload can use significantly less memory than an equivalent container
 - **Stronger sandboxing**: WASM modules are sandboxed by default with no filesystem or network access unless explicitly granted
 - **Language flexibility**: Compile from Rust, Go, C, C++, JavaScript, Python, and many other languages
 
@@ -28,7 +28,7 @@ The tradeoff is that WASM workloads are best suited for stateless, compute-focus
 - An AKS cluster running Kubernetes 1.27 or later
 - Azure CLI with the aks-preview extension
 - The Spin CLI for building WASM applications
-- Rust toolchain (for building Spin applications in Rust) or another supported language
+- Rust toolchain with the `wasm32-wasip1` target (for building Spin applications in Rust) or another supported language
 
 ## Step 1: Install the aks-preview Extension
 
@@ -82,12 +82,32 @@ az aks nodepool show \
   --query "workloadRuntime" -o tsv
 
 # Check that the nodes are ready
-kubectl get nodes -l kubernetes.azure.com/wasmtime-spin-v2=true
+kubectl get nodes -l kubernetes.azure.com/wasmtime-spin-v1=true
+```
+
+Create the RuntimeClass for Spin workloads:
+
+```yaml
+# wasm-runtimeclass.yaml
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: "wasmtime-spin-v1"
+handler: "spin"
+scheduling:
+  nodeSelector:
+    "kubernetes.azure.com/wasmtime-spin-v1": "true"
+```
+
+Apply it:
+
+```bash
+kubectl apply -f wasm-runtimeclass.yaml
 ```
 
 ## Step 3: Install the Spin CLI
 
-Spin is a framework from Fermyon for building and running WASM applications. It is the most popular way to build WASM workloads for Kubernetes.
+Spin is a framework from Fermyon for building and running WASM applications. It is a common way to build WASM workloads for Kubernetes.
 
 ```bash
 # Install the Spin CLI
@@ -114,6 +134,9 @@ Create a simple HTTP handler using Spin with Rust.
 # Create a new Spin application from template
 spin new -t http-rust my-wasm-app
 cd my-wasm-app
+
+# Ensure the Rust WASI preview 1 target is installed
+rustup target add wasm32-wasip1
 ```
 
 This generates a project structure. The main source file handles HTTP requests:
@@ -164,10 +187,10 @@ route = "/..."
 component = "my-wasm-app"
 
 [component.my-wasm-app]
-source = "target/wasm32-wasi/release/my_wasm_app.wasm"
+source = "target/wasm32-wasip1/release/my_wasm_app.wasm"
 allowed_outbound_hosts = []
 [component.my-wasm-app.build]
-command = "cargo build --target wasm32-wasi --release"
+command = "cargo build --target wasm32-wasip1 --release"
 ```
 
 Build the application:
@@ -186,11 +209,18 @@ spin up
 WASM modules are distributed as OCI artifacts, just like container images. Push to your ACR.
 
 ```bash
-# Login to ACR
-az acr login --name myRegistry
+# Get an ACR access token and login server
+ACR_LOGIN_SERVER=$(az acr show --name myregistry --query loginServer -o tsv)
+ACR_ACCESS_TOKEN=$(az acr login --name myregistry --expose-token --query accessToken -o tsv)
+
+# Authenticate the Spin CLI to ACR
+spin registry login \
+  --username 00000000-0000-0000-0000-000000000000 \
+  --password "$ACR_ACCESS_TOKEN" \
+  "$ACR_LOGIN_SERVER"
 
 # Push the WASM module to ACR as an OCI artifact
-spin registry push myregistry.azurecr.io/my-wasm-app:v1
+spin registry push "$ACR_LOGIN_SERVER/my-wasm-app:v1"
 ```
 
 ## Step 6: Deploy to AKS
@@ -215,10 +245,10 @@ spec:
         app: my-wasm-app
     spec:
       # Use the Spin runtime class for WASM execution
-      runtimeClassName: wasmtime-spin-v2
+      runtimeClassName: wasmtime-spin-v1
       # Schedule on WASI-enabled nodes
       nodeSelector:
-        kubernetes.azure.com/wasmtime-spin-v2: "true"
+        kubernetes.azure.com/wasmtime-spin-v1: "true"
       containers:
       - name: my-wasm-app
         # Reference the WASM OCI artifact
@@ -250,6 +280,12 @@ spec:
 Deploy and verify:
 
 ```bash
+# Give the AKS cluster permission to pull from ACR if it is not already attached
+az aks update \
+  --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --attach-acr myregistry
+
 # Apply the deployment
 kubectl apply -f wasm-deployment.yaml
 
@@ -289,13 +325,13 @@ spec:
 
 ## Step 8: Scale and Performance Test
 
-One of WASM's biggest advantages is scaling. Because modules start in milliseconds, scaling from 0 to many replicas is nearly instantaneous.
+One of WASM's biggest advantages is scaling. Because modules start in milliseconds, adding replicas can be faster and lighter than starting equivalent container workloads.
 
 ```bash
 # Scale the deployment
 kubectl scale deployment my-wasm-app --replicas=20
 
-# Watch pods start (they should be Running almost immediately)
+# Watch pods start
 kubectl get pods -l app=my-wasm-app -w
 
 # Run a load test to see performance
@@ -308,11 +344,11 @@ Compare the startup time and resource usage with a traditional container:
 ```bash
 # Check resource usage of WASM pods vs container pods
 kubectl top pods -l app=my-wasm-app
-# WASM pods typically use 5-20MB of memory
+# WASM pods often use less memory than equivalent containerized services
 
 # Compare with a similar container deployment
 kubectl top pods -l app=my-container-app
-# Container pods typically use 50-200MB+
+# Container pod usage depends on the application and base image
 ```
 
 ## When to Use WASM vs Containers
@@ -325,7 +361,7 @@ WASM works best for:
 - Lightweight microservices with minimal state
 
 Stick with containers for:
-- Applications that need filesystem access
+- Applications that need broad host filesystem access
 - Workloads that depend on system libraries (databases, ML inference with GPU)
 - Long-running stateful services
 - Applications with complex networking requirements
