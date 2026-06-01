@@ -16,7 +16,7 @@ In this post, I will show you how to connect Azure Functions to on-premises reso
 
 There are two ways to use Hybrid Connections with Azure Functions:
 
-1. **App Service Hybrid Connections** - A built-in feature of the Azure Functions hosting platform. You configure a hybrid connection in the portal, install a Hybrid Connection Manager on-premises, and your function can make TCP connections to on-premises endpoints as if they were local. This is the simpler approach.
+1. **App Service Hybrid Connections** - A built-in feature of the Azure Functions hosting platform for Windows function apps on supported plans. You configure a hybrid connection in the portal, install a Hybrid Connection Manager on-premises, and your function can make TCP connections to on-premises endpoints as if they were local. This is the simpler approach.
 
 2. **Azure Relay SDK** - You write the relay logic yourself using the Azure Relay SDK. This gives you more control but requires more code. Use this when you need custom logic in the relay layer.
 
@@ -26,7 +26,7 @@ This is the easiest path. The Azure Functions platform handles the relay for you
 
 ### Setting Up the Hybrid Connection Manager
 
-The Hybrid Connection Manager (HCM) is a lightweight agent that runs on a Windows machine inside your corporate network. It maintains the outbound connection to Azure Relay.
+The Hybrid Connection Manager (HCM) is a lightweight agent that runs on a Windows or Linux machine inside your corporate network. It maintains the outbound connection to Azure Relay.
 
 1. In the Azure portal, navigate to your Function App.
 2. Under Networking, select Hybrid Connections.
@@ -88,8 +88,8 @@ const config = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   options: {
-    encrypt: false,  // Internal connection, encryption handled by relay
-    trustServerCertificate: true
+    encrypt: true,  // Use SQL Server TLS; the relay does not replace database encryption
+    trustServerCertificate: false
   }
 };
 
@@ -127,7 +127,7 @@ First, set up a listener on your internal network that proxies requests to the t
 
 ```javascript
 // on-prem-listener.js - Relay listener that proxies to an internal API
-const { RelayedServer } = require('hyco-https');
+const relayHttps = require('hyco-https');
 const axios = require('axios');
 
 const relayNamespace = process.env.RELAY_NAMESPACE;
@@ -137,13 +137,14 @@ const key = process.env.RELAY_KEY;
 
 const INTERNAL_API_BASE = 'http://localhost:8080';
 
-const server = RelayedServer.createRelayedServer(
+const listenUri = relayHttps.createRelayListenUri(relayNamespace, hybridConnectionName);
+
+const server = relayHttps.createRelayedServer(
   {
-    server: relayNamespace,
-    path: hybridConnectionName,
+    server: listenUri,
     token: () => {
-      return RelayedServer.createRelayToken(
-        `https://${relayNamespace}/${hybridConnectionName}`,
+      return relayHttps.createRelayToken(
+        listenUri,
         keyName,
         key
       );
@@ -184,32 +185,21 @@ server.listen(() => {
 
 ### Azure Function Using the Relay SDK
 
-The function sends requests through the relay using the sender connection string.
+The function sends requests through the relay using a Shared Access Signature token.
 
 ```javascript
 // function-sdk-approach.js - Azure Function using the Relay SDK directly
 const https = require('https');
-const crypto = require('crypto');
+const relayHttps = require('hyco-https');
 
 const RELAY_NAMESPACE = process.env.RELAY_NAMESPACE;
 const HYBRID_CONNECTION = 'functions-bridge';
 const RELAY_KEY_NAME = process.env.RELAY_KEY_NAME;
 const RELAY_KEY = process.env.RELAY_KEY;
 
-function createSasToken(uri, keyName, key) {
-  const encoded = encodeURIComponent(uri);
-  const expiry = Math.ceil(Date.now() / 1000) + 3600;
-  const signature = crypto
-    .createHmac('sha256', key)
-    .update(`${encoded}\n${expiry}`)
-    .digest('base64');
-
-  return `SharedAccessSignature sr=${encoded}&sig=${encodeURIComponent(signature)}&se=${expiry}&skn=${keyName}`;
-}
-
 async function callOnPremises(method, path, data) {
-  const uri = `https://${RELAY_NAMESPACE}/${HYBRID_CONNECTION}`;
-  const token = createSasToken(uri, RELAY_KEY_NAME, RELAY_KEY);
+  const uri = relayHttps.createRelayHttpsUri(RELAY_NAMESPACE, HYBRID_CONNECTION);
+  const token = relayHttps.createRelayToken(uri, RELAY_KEY_NAME, RELAY_KEY);
 
   return new Promise((resolve, reject) => {
     const payload = data ? JSON.stringify(data) : '';
@@ -260,15 +250,14 @@ module.exports = async function (context, req) {
 ## Which Approach to Use?
 
 **Use App Service Hybrid Connections when:**
-- You are on the App Service plan (Premium or dedicated)
+- Your function app runs on Windows in a supported plan (Premium, Dedicated, or App Service Environment)
 - You want the simplest setup with no relay code
 - You need TCP-level connectivity (databases, custom protocols)
-- You have a Windows machine available for the Hybrid Connection Manager
+- You have a Windows or Linux machine available for the Hybrid Connection Manager
 
 **Use the Azure Relay SDK when:**
 - You need custom logic in the relay layer (filtering, transformation)
-- You are running functions in containers or on Kubernetes
-- You need to support Linux on-premises machines (HCM is Windows-only)
+- You are running functions on Linux, in containers, or on Kubernetes
 - You want to relay between multiple internal services through a single connection
 
 ## Handling Timeouts and Retries
