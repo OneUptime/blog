@@ -14,7 +14,7 @@ I have run WAF security assessments on dozens of Azure environments over the yea
 
 ## What the Security Pillar Covers
 
-The security pillar of the Azure Well-Architected Framework focuses on five key areas: identity management, infrastructure protection, application security, data protection, and security operations. Each area has specific recommendations and best practices that you evaluate your workload against.
+The security pillar of the Azure Well-Architected Framework focuses on areas such as identity and access management, segmentation and network controls, application security, data protection, secrets management, monitoring, and incident response. Each area has specific recommendations and best practices that you evaluate your workload against.
 
 Think of it as a checklist, but one that is contextual. Not every recommendation applies to every workload. A batch processing system has different security needs than a public-facing web application. The assessment helps you figure out which recommendations matter for your specific scenario.
 
@@ -36,7 +36,7 @@ Answer these questions honestly. The temptation is to give the answer you think 
 
 Identity is the new perimeter. If someone compromises a privileged identity, network firewalls and NSGs will not save you. Start your assessment by looking at how you manage identities in your Azure environment.
 
-Check whether you are using Azure Active Directory (now Entra ID) for authentication across all services. Look at whether managed identities are being used instead of service principals with secrets. Review your Conditional Access policies to make sure they enforce MFA for administrative access at minimum.
+Check whether you are using Microsoft Entra ID, formerly Azure Active Directory, for authentication across all services. Look at whether managed identities are being used instead of service principals with secrets. Review your Conditional Access policies to make sure they enforce MFA for administrative access at minimum.
 
 Here is a quick way to check which resources are still using key-based authentication instead of managed identities using the Azure CLI.
 
@@ -57,7 +57,7 @@ Pay special attention to overprivileged accounts. Run a review of role assignmen
 
 Network security assessment involves reviewing your virtual network architecture, NSG rules, and any network virtual appliances or firewalls. The WAF security pillar recommends a zero-trust network approach where you assume breach and verify every connection.
 
-Look at your NSG flow logs. Are they enabled? Are they being sent to a Log Analytics workspace for analysis? Many teams enable NSGs but never look at the logs, which defeats the purpose.
+Look at your virtual network flow logs. Are they enabled? Are traffic analytics and a Log Analytics workspace configured for analysis? If you still have older NSG flow logs, plan the migration because new NSG flow logs can no longer be created and the feature is scheduled for retirement. Many teams enable network controls but never look at the logs, which defeats the purpose.
 
 Review your use of private endpoints. Any Azure PaaS service that supports private endpoints should be using them if the service handles sensitive data. Public endpoints for storage accounts, SQL databases, and Key Vaults are a common finding in WAF assessments.
 
@@ -80,7 +80,7 @@ Look at your Azure Key Vault configuration. Are soft delete and purge protection
 
 ## Threat Detection and Response
 
-The security operations aspect of the assessment focuses on how you detect and respond to threats. Azure Defender (now Microsoft Defender for Cloud) should be enabled for all resource types in your environment.
+The security operations aspect of the assessment focuses on how you detect and respond to threats. Microsoft Defender for Cloud should be enabled, and relevant Defender plans should be turned on for the resource types in your environment.
 
 Check your Defender for Cloud secure score. This gives you a quantified view of your security posture. Each recommendation that you remediate improves the score. Focus on the high-severity recommendations first.
 
