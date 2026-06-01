@@ -29,11 +29,11 @@ When you run a runbook in Azure Automation normally, it executes in an Azure-man
 
 ## Types of Hybrid Runbook Workers
 
-There are two types:
+There have been two installation platforms:
 
 **User Hybrid Runbook Worker (extension-based)** - this is the recommended approach. You install the Hybrid Worker extension on an Azure Arc-enabled server or an Azure VM. The extension manages the agent lifecycle for you.
 
-**User Hybrid Runbook Worker (agent-based)** - the older approach where you manually install the Log Analytics agent and the Hybrid Worker component. Microsoft is moving away from this in favor of the extension-based approach, so I recommend using the extension method for new deployments.
+**User Hybrid Runbook Worker (agent-based)** - the older approach where you manually installed the Log Analytics agent and the Hybrid Worker component. This platform retired on August 31, 2024, and jobs on agent-based Hybrid Workers stopped running on April 1, 2025. Use the extension method for new deployments.
 
 ## Prerequisites
 
@@ -41,9 +41,11 @@ For the extension-based approach, you need:
 
 - An Azure Automation account
 - The on-premises machine must be onboarded to Azure Arc (this makes it visible to Azure Resource Manager)
+- The machine needs at least two cores and 4 GB of RAM
+- A system-assigned managed identity must be enabled on the Arc-enabled server
 - The machine needs outbound HTTPS connectivity to Azure (port 443)
-- PowerShell 7.2 or later for PowerShell runbooks (or PowerShell 5.1 for older scripts)
-- .NET Framework 4.7.2 or later on Windows machines
+- Windows PowerShell 5.1 and .NET Framework 4.6.2 or later on Windows machines
+- PowerShell 7.2 or later installed and configured on the worker if you plan to run PowerShell 7 runbooks
 
 ## Step 1: Onboard Your On-Premises Machine to Azure Arc
 
@@ -97,7 +99,7 @@ Hybrid Workers are organized into groups. A group can contain one or more worker
 az automation hrwg create \
   --resource-group rg-automation \
   --automation-account-name aa-operations \
-  --hybrid-runbook-worker-group-name "on-prem-datacenter-1"
+  --name "on-prem-datacenter-1"
 ```
 
 ## Step 3: Install the Hybrid Worker Extension
@@ -106,17 +108,19 @@ Now install the Hybrid Worker extension on your Arc-enabled machine:
 
 ```bash
 # Install the Hybrid Worker extension on an Azure Arc-enabled server
-# This registers the machine as a worker in the specified group
+# Step 4 adds the machine to the worker group
 az connectedmachine extension create \
   --resource-group rg-hybrid-workers \
   --machine-name "on-prem-server-01" \
   --name HybridWorkerExtension \
   --publisher Microsoft.Azure.Automation.HybridWorker \
   --type HybridWorkerForWindows \
+  --type-handler-version 1.1 \
   --location eastus \
   --settings '{
-    "AutomationAccountURL": "https://eus2-agentservice-prod-1.azure-automation.net/accounts/<automation-account-id>"
-  }'
+    "AutomationAccountURL": "<automation-hybrid-service-url>"
+  }' \
+  --enable-auto-upgrade true
 ```
 
 For Linux machines, use `HybridWorkerForLinux` as the type:
@@ -129,23 +133,28 @@ az connectedmachine extension create \
   --name HybridWorkerExtension \
   --publisher Microsoft.Azure.Automation.HybridWorker \
   --type HybridWorkerForLinux \
+  --type-handler-version 1.1 \
   --location eastus \
   --settings '{
-    "AutomationAccountURL": "https://eus2-agentservice-prod-1.azure-automation.net/accounts/<automation-account-id>"
-  }'
+    "AutomationAccountURL": "<automation-hybrid-service-url>"
+  }' \
+  --enable-auto-upgrade true
 ```
 
-You can find the Automation Account URL in the portal under your Automation Account > Properties > URL.
+Use the Automation Hybrid Service URL from the portal under your Automation Account > Properties > Automation hybrid service URL.
 
 ## Step 4: Add the Worker to the Group
 
 ```bash
+# Generate a GUID to use as the Hybrid Runbook Worker ID
+worker_id=$(uuidgen)
+
 # Add the Arc-enabled machine as a worker in the group
 az automation hrwg hrw create \
   --resource-group rg-automation \
   --automation-account-name aa-operations \
   --hybrid-runbook-worker-group-name "on-prem-datacenter-1" \
-  --hybrid-runbook-worker-name "on-prem-server-01" \
+  --hybrid-runbook-worker-id "$worker_id" \
   --vm-resource-id "/subscriptions/<sub-id>/resourceGroups/rg-hybrid-workers/providers/Microsoft.HybridCompute/machines/on-prem-server-01"
 ```
 
@@ -237,10 +246,11 @@ param(
 Import-Module ActiveDirectory
 
 $cutoffDate = (Get-Date).AddDays(-$InactiveDays)
+$cutoffFileTime = $cutoffDate.ToFileTime()
 
 # Find users who haven't logged in since the cutoff date
 $inactiveUsers = Get-ADUser -Filter {
-    LastLogonTimestamp -lt $cutoffDate -and Enabled -eq $true
+    LastLogonTimestamp -lt $cutoffFileTime -and Enabled -eq $true
 } -Properties LastLogonTimestamp, DisplayName
 
 Write-Output "Found $($inactiveUsers.Count) inactive users (no login in $InactiveDays days)"
