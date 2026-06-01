@@ -74,16 +74,20 @@ function getTableClient(tableName) {
 
 // Ensure a table exists
 async function ensureTable(tableName) {
-  try {
-    await serviceClient.createTable(tableName);
-    console.log(`Table '${tableName}' created`);
-  } catch (err) {
-    if (err.statusCode === 409) {
-      // Table already exists, that is fine
-      console.log(`Table '${tableName}' already exists`);
-    } else {
-      throw err;
+  let alreadyExists = false;
+
+  await serviceClient.createTable(tableName, {
+    onResponse: (response) => {
+      if (response.status === 409) {
+        alreadyExists = true;
+      }
     }
+  });
+
+  if (alreadyExists) {
+    console.log(`Table '${tableName}' already exists`);
+  } else {
+    console.log(`Table '${tableName}' created`);
   }
 }
 
@@ -97,6 +101,7 @@ Here is a complete example for managing user settings in Table Storage.
 ```javascript
 // src/user-settings.js
 // CRUD operations for user settings stored in Azure Table Storage
+const { odata } = require('@azure/data-tables');
 const { getTableClient, ensureTable } = require('./table-client');
 
 const TABLE_NAME = 'UserSettings';
@@ -148,7 +153,7 @@ async function getAllSettings(userId) {
   // Query all entities with the given partition key
   const entities = tableClient.listEntities({
     queryOptions: {
-      filter: `PartitionKey eq '${userId}'`,
+      filter: odata`PartitionKey eq ${userId}`,
     },
   });
 
@@ -196,7 +201,7 @@ async function deleteSetting(userId, settingName) {
 async function deleteAllSettings(userId) {
   const entities = tableClient.listEntities({
     queryOptions: {
-      filter: `PartitionKey eq '${userId}'`,
+      filter: odata`PartitionKey eq ${userId}`,
     },
   });
 
@@ -280,18 +285,20 @@ Table Storage supports OData filter expressions for querying entities.
 ```javascript
 // src/queries.js
 // Query patterns for Azure Table Storage
+const { odata } = require('@azure/data-tables');
 const { getTableClient } = require('./table-client');
 
 async function queryByDateRange(tableName, partitionKey, startDate, endDate) {
   /**
    * Query entities within a date range.
+   * Pass startDate and endDate as Date objects.
    * The Timestamp property is automatically maintained.
    */
   const tableClient = getTableClient(tableName);
 
   const entities = tableClient.listEntities({
     queryOptions: {
-      filter: `PartitionKey eq '${partitionKey}' and Timestamp ge datetime'${startDate}' and Timestamp le datetime'${endDate}'`,
+      filter: odata`PartitionKey eq ${partitionKey} and Timestamp ge ${startDate} and Timestamp le ${endDate}`,
     },
   });
 
@@ -311,7 +318,7 @@ async function queryWithSelect(tableName, partitionKey, selectFields) {
 
   const entities = tableClient.listEntities({
     queryOptions: {
-      filter: `PartitionKey eq '${partitionKey}'`,
+      filter: odata`PartitionKey eq ${partitionKey}`,
       select: selectFields,  // e.g., ['rowKey', 'value', 'updatedAt']
     },
   });
@@ -331,7 +338,7 @@ async function queryWithPagination(tableName, partitionKey, pageSize = 100) {
 
   const pages = tableClient.listEntities({
     queryOptions: {
-      filter: `PartitionKey eq '${partitionKey}'`,
+      filter: odata`PartitionKey eq ${partitionKey}`,
     },
   }).byPage({ maxPageSize: pageSize });
 
@@ -357,7 +364,7 @@ async function queryTopN(tableName, partitionKey, n) {
 
   const entities = tableClient.listEntities({
     queryOptions: {
-      filter: `PartitionKey eq '${partitionKey}'`,
+      filter: odata`PartitionKey eq ${partitionKey}`,
     },
   });
 
