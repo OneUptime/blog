@@ -8,7 +8,7 @@ Description: A complete guide to deploying an Azure Stack HCI cluster on your ow
 
 ---
 
-Azure Stack HCI is Microsoft's hyperconverged infrastructure operating system. It runs on your own hardware in your own data center but connects to Azure for management, billing, updates, and hybrid services. Think of it as bringing Azure capabilities to hardware you control, which is useful when workloads need to stay on-premises for latency, data sovereignty, or regulatory reasons.
+Azure Stack HCI is Microsoft's hyperconverged infrastructure operating system and is now part of Azure Local. It runs on your own hardware in your own data center but connects to Azure for management, billing, updates, and hybrid services. Think of it as bringing Azure capabilities to hardware you control, which is useful when workloads need to stay on-premises for latency, data sovereignty, or regulatory reasons.
 
 This guide covers deploying a two-node or multi-node Azure Stack HCI cluster and registering it with Azure to unlock hybrid capabilities.
 
@@ -52,7 +52,7 @@ graph TD
 
 - Azure Stack HCI OS ISO (downloadable from the Azure portal).
 - An Azure subscription.
-- Azure AD Global Administrator or Contributor role.
+- Microsoft Entra ID tenant access and Azure permissions to create resources in the target subscription or resource group and register Azure Local machines with Azure Arc.
 - Internet connectivity from the cluster nodes to Azure endpoints.
 
 ## Step 1: Install the Azure Stack HCI OS
@@ -203,11 +203,11 @@ Verify the registration.
 
 ```powershell
 # Check registration status
-Get-AzStackHCI
+Get-AzStackHciCluster -ResourceGroupName "myResourceGroup" -Name "HCI-Cluster"
 
 # Expected output shows:
-# ClusterStatus: Connected
-# RegistrationStatus: Registered
+# ConnectivityStatus: Connected
+# ProvisioningState: Succeeded
 ```
 
 You can also verify in the Azure portal. Navigate to Azure Stack HCI > your cluster. It should show as Connected with all nodes reporting.
@@ -236,27 +236,29 @@ With registration complete, enable additional Azure services.
 Install-Module -Name Az.ConnectedMachine -Force
 
 # Install the Azure Monitor agent extension
-az connectedmachine extension create \
-  --machine-name "HCI-Node01" \
-  --resource-group myResourceGroup \
-  --name "AzureMonitorWindowsAgent" \
-  --type "AzureMonitorWindowsAgent" \
-  --publisher "Microsoft.Azure.Monitor" \
-  --location "eastus"
+New-AzConnectedMachineExtension `
+  -MachineName "HCI-Node01" `
+  -ResourceGroupName "myResourceGroup" `
+  -Name "AzureMonitorWindowsAgent" `
+  -ExtensionType "AzureMonitorWindowsAgent" `
+  -Publisher "Microsoft.Azure.Monitor" `
+  -Location "eastus"
 ```
 
-Enable Azure Update Management for keeping the cluster nodes patched.
+Use Azure Update Manager or PowerShell solution update cmdlets for keeping the cluster nodes patched.
 
-```bash
-# Enable update management through Azure CLI
-az stack-hci update run \
-  --resource-group myResourceGroup \
-  --cluster-name HCI-Cluster
+```powershell
+# Discover updates that are ready to install
+Get-SolutionUpdate | Where-Object { $_.State -like "Ready*" } |
+  Format-List DisplayName, ResourceId, State, PackageType
+
+# Start an update by ResourceId
+Get-SolutionUpdate -Id "<ResourceId>" | Start-SolutionUpdate
 ```
 
 ## Maintaining the Cluster
 
-**Updates**: Azure Stack HCI receives monthly quality updates and annual feature updates. Use Windows Admin Center or Azure Update Management to install them.
+**Updates**: Azure Stack HCI receives regular solution updates. Use the Azure portal or PowerShell solution update cmdlets to install them.
 
 **Scaling**: Add nodes to the cluster by installing the OS, joining the domain, and adding to the cluster.
 
