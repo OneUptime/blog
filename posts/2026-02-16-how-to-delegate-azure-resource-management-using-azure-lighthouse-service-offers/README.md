@@ -10,26 +10,27 @@ Description: Learn how to create and publish Azure Lighthouse service offers to 
 
 Azure Lighthouse service offers give managed service providers a scalable way to onboard customers. Instead of manually deploying ARM templates for each customer, you can publish a service offer to the Azure Marketplace or use a private plan that customers can accept with a few clicks. This approach is cleaner, more professional, and easier to manage at scale.
 
-In this post, I will walk you through how to create Azure Lighthouse service offers, the difference between public and private offers, and how the delegation flow works from both the provider and customer perspectives.
+In this post, I will walk you through how to create Azure Lighthouse service offers, the difference between public and private plans, and how the delegation flow works from both the provider and customer perspectives.
 
 ## Public vs. Private Service Offers
 
-There are two types of Lighthouse service offers you can publish through Partner Center:
+Managed Service offers can include two types of plans that you publish through Partner Center:
 
-**Public offers** are visible to anyone in the Azure Marketplace. Any Azure customer can discover your offer and accept it. This is the typical approach for MSPs who want to attract new customers.
+**Public plans** are visible to anyone in the Azure Marketplace. Any Azure customer can discover your offer and accept it. This is the typical approach for MSPs who want to attract new customers.
 
-**Private offers** are only visible to specific tenants that you designate. This is useful when you have an existing customer relationship and want a streamlined onboarding experience, or when you are an internal team managing resources across multiple tenants within the same organization.
+**Private plans** are only visible to the specific Azure subscription IDs that you designate. This is useful when you have an existing customer relationship and want a streamlined onboarding experience, or when you are an internal team managing resources across multiple tenants within the same organization.
 
-Both types go through the same publishing process, but private offers have an additional step where you specify the tenant IDs that can see the offer.
+Both types go through the same publishing process, but private plans have an additional step where you specify the subscription IDs that can see the plan.
 
 ## Prerequisites for Publishing Service Offers
 
 Before you can publish a Lighthouse service offer, you need:
 
-1. A Microsoft Partner Network (MPN) membership
-2. A Partner Center account linked to your Azure AD tenant
-3. A commercial marketplace publisher account in Partner Center
-4. Your managing tenant must have the Azure Active Directory Premium P1 or P2 license (for Conditional Access integration, which is recommended)
+1. Membership in the Microsoft AI Cloud Partner Program
+2. Solutions Partner designation for Infrastructure (Azure) or Security
+3. A Microsoft Marketplace account in Partner Center, enrolled in the Microsoft Marketplace program
+4. Your managing tenant ID and the principal IDs for the Microsoft Entra users, groups, or service principals that will receive access
+5. A Microsoft Entra ID Governance license in the managing tenant if you plan to use eligible authorizations with Privileged Identity Management
 
 If you are an enterprise team managing internal tenants (not an MSP), you can skip the marketplace route and use ARM template-based onboarding instead. The service offer approach is primarily designed for the MSP scenario.
 
@@ -45,7 +46,7 @@ You will need to fill in several sections:
 
 **Offer listing** - Write a compelling description of what your managed service includes. Add links to your support documentation and privacy policy.
 
-**Preview audience** - Specify tenant IDs that can see the offer before it goes live. This is your chance to test the offer with a friendly customer before publishing it widely.
+**Preview audience** - Specify Azure subscription IDs that can see the offer before it goes live. This is your chance to test the offer with a friendly customer before publishing it widely.
 
 ## Step 2: Define the Authorization Plan
 
@@ -57,37 +58,33 @@ Here is what a typical plan manifest looks like conceptually:
 
 ```json
 {
-  // Your managing tenant where your operations team lives
   "managedByTenantId": "11111111-2222-3333-4444-555555555555",
   "authorizations": [
     {
-      // Operations team group in your Azure AD
       "principalId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       "principalIdDisplayName": "MSP Operations Team",
-      // Contributor - can manage resources but not access control
       "roleDefinitionId": "b24988ac-6180-42a0-ab88-20f7382dd24c"
     },
     {
-      // Monitoring team - read only access
       "principalId": "ffffffff-1111-2222-3333-444444444444",
       "principalIdDisplayName": "MSP Monitoring Team",
-      // Reader - view only
       "roleDefinitionId": "acdd72a7-3385-48ef-bd42-f606fba81ae7"
     },
     {
-      // Admin group that can remove the delegation if needed
       "principalId": "99999999-aaaa-bbbb-cccc-dddddddddddd",
       "principalIdDisplayName": "MSP Admin Team",
-      // Managed Services Registration Assignment Delete
       "roleDefinitionId": "91c1777a-f3dc-4fae-b103-61d183457e46"
+    },
+    {
+      "principalId": "eeeeeeee-ffff-0000-1111-222222222222",
+      "principalIdDisplayName": "MSP Elevated Ops",
+      "roleDefinitionId": "acdd72a7-3385-48ef-bd42-f606fba81ae7"
     }
   ],
   "eligibleAuthorizations": [
     {
-      // JIT access for elevated operations
       "principalId": "eeeeeeee-ffff-0000-1111-222222222222",
       "principalIdDisplayName": "MSP Elevated Ops",
-      // Contributor - but only when activated through PIM
       "roleDefinitionId": "b24988ac-6180-42a0-ab88-20f7382dd24c",
       "justInTimeAccessPolicy": {
         "multiFactorAuthProvider": "Azure",
@@ -98,11 +95,11 @@ Here is what a typical plan manifest looks like conceptually:
 }
 ```
 
-Notice the `eligibleAuthorizations` section. This is a powerful feature that integrates with Azure AD Privileged Identity Management (PIM). Instead of giving your team permanent Contributor access, you can make it eligible, meaning team members have to activate the role before using it. The activation can require MFA and has a maximum duration (4 hours in this example).
+Notice the `eligibleAuthorizations` section. This is a powerful feature that integrates with Microsoft Entra Privileged Identity Management (PIM). Instead of giving your team permanent Contributor access, you can make it eligible, meaning team members have to activate the role before using it. The activation can require MFA and has a maximum duration (4 hours in this example).
 
 ## Step 3: Configure the Plan Visibility
 
-If you want a public offer, simply leave the visibility settings at their defaults. For a private plan, go to the plan's "Pricing and availability" section and add the specific tenant IDs that should be able to see this plan.
+If you want a public plan, simply leave the visibility settings at their defaults. For a private plan, go to the plan's availability settings and add the specific Azure subscription IDs that should be able to see this plan.
 
 You can have multiple plans within a single offer. A common pattern is to have different service tiers:
 
@@ -121,16 +118,16 @@ Before publishing, Partner Center will run validation checks on your offer. Comm
 - Principal IDs that do not exist in your managing tenant
 - Duplicate role assignments for the same principal
 
-Once validation passes, you can publish the offer. For public offers, the review process typically takes a few business days. Private offers are usually available faster.
+Once validation passes, you can publish the offer. For public plans, the review process typically takes a few business days. Private plan availability changes can be synced without republishing the entire offer.
 
 ## The Customer Acceptance Flow
 
 Once your offer is published, here is what the customer experience looks like:
 
-1. The customer navigates to the Azure Marketplace (or receives a direct link to your private offer)
+1. The customer navigates to the Azure Marketplace (or receives a direct link to your private plan)
 2. They review the offer details, including exactly which roles will be granted to which principals
 3. They select the subscription or resource group they want to delegate
-4. They click "Subscribe" to accept the delegation
+4. They create the offer and delegate the selected resources
 
 The entire process is transparent to the customer. They can see exactly what access they are granting before they accept.
 
@@ -152,8 +149,8 @@ Get-AzManagedServicesAssignment -Scope "/subscriptions/customer-sub-id"
 $customers = Get-AzManagedServicesAssignment
 foreach ($customer in $customers) {
     # Display customer delegation details
-    Write-Output "Scope: $($customer.Properties.Scope)"
-    Write-Output "Definition: $($customer.Properties.RegistrationDefinitionId)"
+    Write-Output "Assignment: $($customer.Id)"
+    Write-Output "Definition: $($customer.RegistrationDefinitionId)"
     Write-Output "---"
 }
 ```
@@ -166,7 +163,7 @@ This is an important distinction from ARM template-based onboarding, where you w
 
 ## Best Practices for Service Offers
 
-**Use Azure AD groups, not individual users.** This is the single most important recommendation. If you use individual user IDs, you will need to update the offer every time someone joins or leaves your team.
+**Use Microsoft Entra groups, not individual users.** This is the single most important recommendation. If you use individual user IDs, you will need to update the offer every time someone joins or leaves your team.
 
 **Implement eligible authorizations for sensitive roles.** The PIM integration is one of the best features of Lighthouse. Use it for any role that could modify resources.
 
@@ -174,7 +171,7 @@ This is an important distinction from ARM template-based onboarding, where you w
 
 **Keep your offer listing up to date.** Customers see this information when deciding whether to accept your delegation. Make sure it accurately reflects your current services.
 
-**Test with the preview audience first.** Always test new offers or updates with a preview tenant before publishing to all customers.
+**Test with the preview audience first.** Always test new offers or updates with a preview subscription before publishing to all customers.
 
 ## Revoking Delegations
 
