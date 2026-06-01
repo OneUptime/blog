@@ -16,7 +16,7 @@ This guide shows how to integrate Application Insights into a React application 
 
 - An Azure account
 - A React application (we will create one)
-- Node.js 18 or later
+- Node.js 20.19+ or 22.12+
 - Basic React knowledge
 
 ## Creating the Application Insights Resource
@@ -46,8 +46,9 @@ az monitor app-insights component show \
 
 ```bash
 # Create a React app
-npx create-react-app react-insights-demo --template typescript
+npm create vite@latest react-insights-demo -- --template react-ts
 cd react-insights-demo
+npm install
 
 # Install the Application Insights SDK
 npm install @microsoft/applicationinsights-web @microsoft/applicationinsights-react-js
@@ -69,7 +70,7 @@ const reactPlugin = new ReactPlugin();
 const appInsights = new ApplicationInsights({
   config: {
     // Your Application Insights connection string
-    connectionString: process.env.REACT_APP_APPINSIGHTS_CONNECTION_STRING,
+    connectionString: import.meta.env.VITE_APPINSIGHTS_CONNECTION_STRING,
     // Extensions including the React plugin
     extensions: [reactPlugin],
     // Enable automatic tracking features
@@ -77,7 +78,7 @@ const appInsights = new ApplicationInsights({
     // Track unhandled exceptions
     enableUnhandledPromiseRejectionTracking: true,
     // Disable telemetry in development if desired
-    disableTelemetry: process.env.NODE_ENV === 'development',
+    disableTelemetry: import.meta.env.DEV,
     // Sample percentage (100 = all requests, 50 = half)
     samplingPercentage: 100,
     // Maximum number of AJAX calls tracked per page view
@@ -101,7 +102,7 @@ export { reactPlugin, appInsights };
 Wrap your application with the Application Insights provider:
 
 ```typescript
-// src/index.tsx - App entry point with telemetry
+// src/main.tsx - App entry point with telemetry
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppInsightsContext } from '@microsoft/applicationinsights-react-js';
@@ -231,7 +232,7 @@ Create an error boundary that reports uncaught React errors to Application Insig
 
 ```typescript
 // src/components/ErrorBoundary.tsx - Error boundary with telemetry
-import React, { Component, ErrorInfo } from 'react';
+import React, { Component, type ErrorInfo } from 'react';
 import { appInsights } from '../telemetry/appInsights';
 
 interface Props {
@@ -392,11 +393,11 @@ Create a `.env` file for local development:
 
 ```env
 # Application Insights connection string
-REACT_APP_APPINSIGHTS_CONNECTION_STRING="InstrumentationKey=xxx;IngestionEndpoint=https://eastus-8.in.applicationinsights.azure.com/"
+VITE_APPINSIGHTS_CONNECTION_STRING="InstrumentationKey=xxx;IngestionEndpoint=https://eastus-8.in.applicationinsights.azure.com/"
 ```
 
 For production, set this value in your deployment pipeline or hosting platform configuration.
 
 ## Wrapping Up
 
-Application Insights gives you visibility into what your users actually experience. Page load times, JavaScript errors, failed API calls, and custom business events all show up in a single dashboard. The React integration is lightweight - the SDK adds about 30KB gzipped to your bundle - and the telemetry it provides is invaluable for diagnosing issues that only happen in production. The custom event tracking hooks shown here make it easy to instrument your components without cluttering your business logic. Start with automatic tracking (page views, exceptions, and AJAX calls) and add custom events as you learn which metrics matter most for your application.
+Application Insights gives you visibility into what your users actually experience. Page load times, JavaScript errors, failed API calls, and custom business events all show up in a single dashboard. The React integration is lightweight, though the exact bundle impact depends on your build configuration and imported SDK features, and the telemetry it provides is invaluable for diagnosing issues that only happen in production. The custom event tracking hooks shown here make it easy to instrument your components without cluttering your business logic. Start with automatic tracking (page views, exceptions, and AJAX calls) and add custom events as you learn which metrics matter most for your application.
