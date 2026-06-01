@@ -28,7 +28,7 @@ DefaultEndpointsProtocol=https;AccountName=stmyapp;AccountKey=base64encodedkey==
 DefaultEndpointsProtocol=https;AccountName=stmyapp;AccountKey=base64encodedkey==;TableEndpoint=https://stmyapp.table.core.windows.net
 ```
 
-**Connection string for Azure Storage Emulator (local development)**:
+**Connection string shortcut for Azurite (local development)**:
 
 ```text
 UseDevelopmentStorage=true
@@ -52,8 +52,9 @@ The most common approach is to use environment-specific configuration files comb
 
 For a .NET application, use `appsettings.{Environment}.json`:
 
+`appsettings.Development.json`:
+
 ```json
-// appsettings.Development.json
 {
   "Storage": {
     "TableStorage": {
@@ -64,8 +65,9 @@ For a .NET application, use `appsettings.{Environment}.json`:
 }
 ```
 
+`appsettings.Staging.json`:
+
 ```json
-// appsettings.Staging.json
 {
   "Storage": {
     "TableStorage": {
@@ -76,8 +78,9 @@ For a .NET application, use `appsettings.{Environment}.json`:
 }
 ```
 
+`appsettings.Production.json`:
+
 ```json
-// appsettings.Production.json
 {
   "Storage": {
     "TableStorage": {
@@ -109,7 +112,7 @@ builder.Services.AddSingleton(new TableServiceClient(connectionString));
 
 Never put production connection strings in configuration files that get committed to source control. Use environment variables instead.
 
-For local development, use a `.env` file (add `.env` to your `.gitignore`):
+For local development, set the environment variable directly, or use a `.env` file if your local tooling loads it (add `.env` to your `.gitignore`):
 
 ```bash
 # .env (DO NOT commit this file)
@@ -117,22 +120,20 @@ For local development, use a `.env` file (add `.env` to your `.gitignore`):
 AZURE_TABLE_STORAGE_CONNECTION_STRING="UseDevelopmentStorage=true"
 ```
 
-For Azure App Service, set the connection string as an app setting:
+For Azure App Service, set the connection string as an app setting so it is available as the `AZURE_TABLE_STORAGE_CONNECTION_STRING` environment variable:
 
 ```bash
 # Set connection string for staging
-az webapp config connection-string set \
+az webapp config appsettings set \
   --resource-group rg-app-staging \
   --name myapp-staging \
-  --connection-string-type Custom \
-  --settings "AzureTableStorage=DefaultEndpointsProtocol=https;AccountName=ststaging2026;AccountKey=<staging-key>;EndpointSuffix=core.windows.net"
+  --settings "AZURE_TABLE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=ststaging2026;AccountKey=<staging-key>;EndpointSuffix=core.windows.net"
 
 # Set connection string for production
-az webapp config connection-string set \
+az webapp config appsettings set \
   --resource-group rg-app-prod \
   --name myapp-prod \
-  --connection-string-type Custom \
-  --settings "AzureTableStorage=DefaultEndpointsProtocol=https;AccountName=stprod2026;AccountKey=<prod-key>;EndpointSuffix=core.windows.net"
+  --settings "AZURE_TABLE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=stprod2026;AccountKey=<prod-key>;EndpointSuffix=core.windows.net"
 ```
 
 For Kubernetes deployments, use secrets:
@@ -170,7 +171,7 @@ spec:
 
 ## Step 3: Use Azure Key Vault for Production
 
-For production environments, store connection strings in Azure Key Vault. This provides audit logging, access control, and automatic rotation capabilities.
+For production environments, store connection strings in Azure Key Vault. This provides audit logging, access control, and options for automating rotation.
 
 Store the connection string in Key Vault:
 
@@ -261,15 +262,19 @@ az role assignment create \
 
 With this approach, your configuration per environment is just the endpoint URL - no secrets to manage:
 
+`appsettings.Development.json`:
+
 ```json
-// appsettings.Development.json
 {
   "Storage": {
     "TableEndpoint": "http://127.0.0.1:10002/devstoreaccount1"
   }
 }
+```
 
-// appsettings.Production.json
+`appsettings.Production.json`:
+
+```json
 {
   "Storage": {
     "TableEndpoint": "https://stprod2026.table.core.windows.net"
