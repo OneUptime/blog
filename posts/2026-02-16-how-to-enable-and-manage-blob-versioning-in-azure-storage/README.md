@@ -8,15 +8,15 @@ Description: Learn how to enable blob versioning in Azure Storage to automatical
 
 ---
 
-Overwriting a blob in Azure Storage is permanent by default. If someone uploads a new version of a file or an application bug corrupts data, the previous content is gone. Blob versioning changes that by automatically keeping every previous version of a blob whenever it gets modified or deleted. Think of it as automatic version control for your storage account.
+Overwriting a blob in Azure Storage is permanent if you do not have data protection features such as blob versioning or soft delete enabled. If someone uploads a new version of a file or an application bug corrupts data, the previous content can be gone. Blob versioning changes that by automatically keeping previous versions of a blob whenever it gets modified or deleted. Think of it as automatic version control for your storage account.
 
 This guide covers how to enable versioning, how to work with versions, and the cost and operational considerations you should keep in mind.
 
 ## How Blob Versioning Works
 
-When versioning is enabled on a storage account, Azure automatically creates a new version every time a blob is overwritten or deleted. Each version gets a unique version ID, which is a timestamp-based identifier.
+When versioning is enabled on a storage account, Azure automatically creates a new version when a blob is first created and each time it is subsequently modified. When a blob is deleted, the current version becomes a previous version and there is no longer a current version. Each version gets a unique version ID, which is a timestamp-based identifier.
 
-The current version of a blob is what you get when you access it by name without specifying a version ID. Previous versions are accessible by appending the version ID to the request.
+The current version of a blob is what you get when you access it by name without specifying a version ID. Previous versions are accessible by appending the `versionid` query parameter to the request.
 
 Here is the flow:
 
@@ -30,7 +30,7 @@ sequenceDiagram
     Note over Azure Storage: v1 becomes a previous version<br/>v2 is the current version
     Client->>Azure Storage: Delete file.txt
     Note over Azure Storage: v2 becomes a previous version<br/>No current version exists
-    Client->>Azure Storage: Access file.txt?versionId=v1
+    Client->>Azure Storage: Access file.txt?versionid=v1
     Azure Storage->>Client: Returns v1 content
 ```
 
@@ -38,7 +38,7 @@ The key thing to understand is that previous versions are read-only. You cannot 
 
 ## Enabling Blob Versioning
 
-You can enable versioning at the storage account level. It applies to all containers in the account.
+You can enable versioning at the storage account level. It applies to all containers in the account. Blob versioning is not supported for storage accounts that have hierarchical namespace enabled.
 
 ### Using the Azure Portal
 
@@ -228,7 +228,7 @@ For most use cases, versioning is the better choice because it requires no chang
 
 ## Cost Implications
 
-Every version stored counts toward your total storage. If you have a 100 MB file that gets updated 10 times, you have 1 GB of versioned data plus the current version.
+Every version stored can add to your total storage. If you have a 100 MB file that gets fully replaced 10 times, you can have up to 1 GB of previous-version data plus the current version. If the blob tier has not been explicitly set, Azure bills for unique blocks or pages across the blob and its versions rather than blindly charging the full size of every version.
 
 The costs come from:
 
@@ -244,7 +244,7 @@ To manage costs:
 
 ## Versioning with Soft Delete
 
-Blob versioning works alongside soft delete. When both are enabled and you delete a blob, the current version becomes a previous version with a deleted state. During the soft delete retention period, you can undelete it. After the retention period, it gets permanently removed.
+Blob versioning works alongside soft delete. When both are enabled and you delete a blob without specifying a version ID, the current version becomes a previous version and there is no longer a current version. The soft delete retention period is not applied to that deleted base blob. If you delete a specific blob version, soft delete protects that version during the retention period before it is permanently removed.
 
 Combining versioning with soft delete gives you the strongest data protection story - you can recover from both accidental overwrites (versioning) and accidental deletes (soft delete).
 
