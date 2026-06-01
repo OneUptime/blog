@@ -20,17 +20,19 @@ Azure Managed Grafana has two distinct access control layers:
 
 **Grafana-native permissions** - Controls what specific dashboards, folders, and data sources each user or team can access within Grafana. This is configured within the Grafana UI.
 
-Both layers work together. Azure RBAC determines the maximum access level, and Grafana-native permissions can further restrict it.
+Both layers work together. Azure RBAC determines the default access level for the workspace, and Grafana-native permissions can adjust it for specific dashboards, folders, and data sources.
 
 ## Azure RBAC Roles for Managed Grafana
 
-Microsoft provides three built-in roles for Managed Grafana:
+Microsoft provides four built-in roles for Managed Grafana:
 
 **Grafana Admin** - Full access to the Grafana instance, including managing users, teams, organizations, plugins, and all dashboards.
 
 **Grafana Editor** - Can create, edit, and delete dashboards and alerting rules. Cannot manage users or change Grafana settings.
 
 **Grafana Viewer** - Can only view dashboards. Cannot create or edit anything.
+
+**Grafana Limited Viewer** - Can access the Grafana home page but has no permissions assigned by default. Use folder, dashboard, or data source permissions to grant only the specific access the user needs.
 
 Here is how to assign these roles:
 
@@ -48,7 +50,7 @@ az role assignment create \
     --role "Grafana Editor" \
     --scope "/subscriptions/sub-id/resourceGroups/grafana-rg/providers/Microsoft.Dashboard/grafana/my-grafana-workspace"
 
-# Grant Grafana Viewer role to all authenticated users in the tenant
+# Grant Grafana Viewer role to a Microsoft Entra group
 az role assignment create \
     --assignee "ffffffff-1111-2222-3333-444444444444" \
     --role "Grafana Viewer" \
@@ -66,7 +68,7 @@ Once users have access through Azure RBAC, you can organize them into teams with
 
 ### Creating Teams
 
-In the Grafana UI, navigate to Configuration > Teams.
+In the Grafana UI, navigate to Administration > Teams.
 
 Click "New Team" and create teams that match your organizational structure:
 
@@ -78,7 +80,7 @@ Click "New Team" and create teams that match your organizational structure:
 
 ### Adding Members to Teams
 
-You can add members to teams through the Grafana UI or using the Grafana API:
+You can add members to teams through the Grafana UI or using the Grafana HTTP API with a service account token:
 
 ```bash
 # Using the Grafana API to add a member to a team
@@ -88,30 +90,30 @@ GRAFANA_URL=$(az grafana show \
     --query "properties.endpoint" \
     --output tsv)
 
+GRAFANA_TOKEN="<service-account-token>"
+
 # Get the team ID first
-az grafana api-call \
-    --name "my-grafana-workspace" \
-    --resource-group "grafana-rg" \
-    --api-path "/api/teams/search?name=Platform Engineering"
+curl -H "Authorization: Bearer ${GRAFANA_TOKEN}" \
+    "${GRAFANA_URL}/api/teams/search?name=Platform%20Engineering"
 
 # Add a user to the team (you need the userId and teamId)
-az grafana api-call \
-    --name "my-grafana-workspace" \
-    --resource-group "grafana-rg" \
-    --api-path "/api/teams/1/members" \
-    --method post \
-    --body '{"userId": 2}'
+curl -X POST \
+    -H "Authorization: Bearer ${GRAFANA_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{"userId": 2}' \
+    "${GRAFANA_URL}/api/teams/1/members"
 ```
 
-### Syncing Teams with Azure AD Groups
+### Syncing Teams with Microsoft Entra Groups
 
-For larger organizations, manually managing team membership is not practical. You can sync Grafana teams with Azure AD groups. This is done through the Grafana configuration:
+For larger organizations, manually managing team membership is not practical. You can sync Grafana teams with Microsoft Entra groups. This is done through the Azure portal:
 
-1. In the Grafana settings, enable Azure AD group sync
-2. Map Azure AD groups to Grafana teams
-3. Team membership is automatically updated when users log in
+1. In the Azure portal, open your Grafana workspace and go to Settings > Configuration
+2. Open Microsoft Entra Team Sync Settings
+3. Create a Grafana team and map Microsoft Entra groups to it
+4. Team membership is automatically updated when users log in
 
-This ensures that when someone is added to or removed from an Azure AD group, their Grafana team membership follows.
+This ensures that when someone is added to or removed from a Microsoft Entra group, their Grafana team membership follows.
 
 ## Dashboard Folder Permissions
 
@@ -170,12 +172,18 @@ az grafana folder list \
     --resource-group "grafana-rg"
 
 # Update folder permissions
-az grafana api-call \
+GRAFANA_URL=$(az grafana show \
     --name "my-grafana-workspace" \
     --resource-group "grafana-rg" \
-    --api-path "/api/folders/infrastructure-uid/permissions" \
-    --method post \
-    --body '{
+    --query "properties.endpoint" \
+    --output tsv)
+
+GRAFANA_TOKEN="<service-account-token>"
+
+curl -X POST \
+    -H "Authorization: Bearer ${GRAFANA_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{
         "items": [
             {
                 "teamId": 1,
@@ -186,18 +194,19 @@ az grafana api-call \
                 "permission": 1
             }
         ]
-    }'
+    }' \
+    "${GRAFANA_URL}/api/folders/infrastructure-uid/permissions"
 ```
 
 Permission values: 1 = Viewer, 2 = Editor, 4 = Admin.
 
 ## Data Source Permissions
 
-In Grafana Enterprise features (available in Azure Managed Grafana Standard tier), you can restrict which data sources each team can query. This is important when you have data sources that contain sensitive data.
+In Grafana Enterprise features, which can be enabled for Azure Managed Grafana Standard tier with licensing costs, you can restrict which data sources each team can query. This is important when you have data sources that contain sensitive data.
 
 For example, you might have a Log Analytics workspace that contains security logs. You want the Security team to query it but not the Application teams.
 
-Navigate to Configuration > Data sources, select the data source, and go to the Permissions tab. Add team-specific permissions there.
+Navigate to Connections > Data sources, select the data source, and go to the Permissions tab. Add team-specific permissions there.
 
 ## Practical Access Control Patterns
 
@@ -269,14 +278,15 @@ Store the token securely in Azure Key Vault and use it in your deployment pipeli
 
 ## Auditing Access
 
-Monitor who is accessing your Grafana instance and what they are doing:
+Monitor who is accessing your Grafana instance by sending Azure Managed Grafana logs to Log Analytics with diagnostic settings:
 
 ```bash
-# View Grafana audit logs (available in Standard tier)
-az grafana api-call \
-    --name "my-grafana-workspace" \
-    --resource-group "grafana-rg" \
-    --api-path "/api/admin/settings"
+# Send Grafana login events to a Log Analytics workspace
+az monitor diagnostic-settings create \
+    --name "grafana-login-events" \
+    --resource "/subscriptions/sub-id/resourceGroups/grafana-rg/providers/Microsoft.Dashboard/grafana/my-grafana-workspace" \
+    --workspace "/subscriptions/sub-id/resourceGroups/monitoring-rg/providers/Microsoft.OperationalInsights/workspaces/my-law" \
+    --logs '[{"category":"GrafanaLoginEvents","enabled":true}]'
 ```
 
 For Azure-level auditing, check the Activity Log for role assignment changes:
@@ -292,7 +302,7 @@ az monitor activity-log list \
 
 ## Best Practices
 
-**Use Azure AD groups for role assignments.** Assign Azure RBAC roles to groups, not individuals. This makes onboarding and offboarding seamless.
+**Use Microsoft Entra groups for role assignments.** Assign Azure RBAC roles to groups, not individuals. This makes onboarding and offboarding seamless.
 
 **Use folders for permission boundaries.** Every dashboard should be in a folder. Dashboards in the General folder inherit the default permissions, which is often too permissive.
 
