@@ -8,17 +8,19 @@ Description: A practical guide to implementing rate limiting and throttling poli
 
 ---
 
-Every API you expose to the outside world needs rate limiting. Without it, a single misbehaving client can saturate your backend, drive up your cloud bill, and degrade the experience for every other consumer. Azure API Management gives you two distinct throttling mechanisms out of the box: `rate-limit` and `rate-limit-by-key`. Understanding the difference between them and knowing when to use each one is essential for running a healthy API platform.
+Every API you expose to the outside world needs rate limiting. Without it, a single misbehaving client can saturate your backend, drive up your cloud bill, and degrade the experience for every other consumer. Azure API Management gives you two distinct request rate limiting mechanisms out of the box: `rate-limit` and `rate-limit-by-key`. Understanding the difference between them and knowing when to use each one is essential for running a healthy API platform.
 
 In this guide, I will cover both approaches, show you how to configure them with real policy XML, and walk through the edge cases you need to handle in production.
 
 ## Understanding the Two Throttling Policies
 
-APIM offers two throttling policies, and they work differently under the hood.
+APIM offers two request rate limiting policies, and they work differently under the hood.
 
-**rate-limit** (also called `rate-limit` or the fixed-window policy) counts requests per subscription. Every subscription key gets its own counter. When a subscription exceeds the limit, APIM returns a 429 Too Many Requests response without forwarding the request to your backend.
+**rate-limit** counts requests per subscription. Every subscription key gets its own counter. When a subscription exceeds the limit, APIM returns a 429 Too Many Requests response without forwarding the request to your backend.
 
 **rate-limit-by-key** lets you define a custom counter key. You can throttle by IP address, by a custom header, by a JWT claim, or by any expression you can extract from the request. This gives you much finer control.
+
+The `rate-limit-by-key` and `quota-by-key` policies are not available in the Consumption tier.
 
 There is also **quota** and **quota-by-key**, which work similarly but enforce limits over longer periods (hours, days, weeks) and track cumulative usage rather than burst rates.
 
@@ -37,7 +39,7 @@ Go to your API in the Azure Portal, click on "All operations" under the Design t
 </inbound>
 ```
 
-This allows 100 requests per 60-second window for each subscription key. The counters are maintained in memory on the APIM gateway nodes. When a subscription hits the limit, it gets a 429 response with a `Retry-After` header indicating how many seconds to wait.
+This allows 100 requests per 60-second window for each subscription key. The counters are maintained by the APIM gateway, and because throttling is distributed, the exact count can vary slightly under load. When a subscription hits the limit, it gets a 429 response with a `Retry-After` header indicating how many seconds to wait.
 
 You can also set different limits per product. If you have a "Free" and a "Premium" product, apply different rate-limit policies at the product level rather than the API level.
 
@@ -66,13 +68,20 @@ The `counter-key` is a C# expression that APIM evaluates for each request. You c
 <rate-limit-by-key
     calls="200"
     renewal-period="60"
-    counter-key="@(context.Request.Headers.GetValueOrDefault("X-Tenant-Id", "anonymous"))" />
+    counter-key="@(context.Request.Headers.GetValueOrDefault(&quot;X-Tenant-Id&quot;, &quot;anonymous&quot;))" />
 
 <!-- Throttle by a JWT claim (user's email) -->
 <rate-limit-by-key
     calls="30"
     renewal-period="60"
-    counter-key="@(context.Request.Headers.GetValueOrDefault("Authorization", "").AsJwt()?.Claims["email"]?.FirstOrDefault() ?? "unknown")" />
+    counter-key="@{
+        var auth = context.Request.Headers.GetValueOrDefault(&quot;Authorization&quot;, &quot;&quot;);
+        if (auth.StartsWith(&quot;Bearer &quot;, StringComparison.OrdinalIgnoreCase))
+        {
+            auth = auth.Substring(&quot;Bearer &quot;.Length);
+        }
+        return auth.AsJwt()?.Claims.GetValueOrDefault(&quot;email&quot;, &quot;unknown&quot;) ?? &quot;unknown&quot;;
+    }" />
 ```
 
 ## Combining Rate Limits and Quotas
@@ -135,12 +144,12 @@ Good API design means telling your clients how close they are to their limits be
         <value>100</value>
     </set-header>
     <set-header name="X-RateLimit-Remaining" exists-action="override">
-        <value>@(context.Variables.GetValueOrDefault<string>("remainingCalls", "unknown"))</value>
+        <value>@(context.Variables.GetValueOrDefault&lt;string&gt;("remainingCalls", "unknown"))</value>
     </set-header>
 </outbound>
 ```
 
-Getting the actual remaining count requires using the `remaining-calls-variable-name` attribute on the `rate-limit-by-key` policy:
+Getting the actual remaining count requires using the `remaining-calls-variable-name` attribute on the `rate-limit` or `rate-limit-by-key` policy:
 
 ```xml
 <!-- Track remaining calls in a variable for use in outbound headers -->
@@ -153,15 +162,15 @@ Getting the actual remaining count requires using the `remaining-calls-variable-
 
 ## Multi-Region Considerations
 
-If you are running APIM in multiple regions (Premium tier with multi-region deployment), be aware that rate limit counters are local to each gateway node by default. A client with a 100-call limit could potentially make 100 calls to each region.
+If you are running APIM in multiple regions (Premium tier with multi-region deployment), be aware that rate limit counters are tracked independently at each regional gateway. A client with a 100-call limit could potentially make 100 calls to each region.
 
-For strict global rate limiting, you have a few options:
+For stricter global control, you have a few options:
 
-1. Use the `rate-limit` policy (subscription-based), which synchronizes counters across regions periodically.
+1. Use `quota` or `quota-by-key` for global usage caps over longer periods.
 2. Implement an external rate limiting store using Redis and a `send-request` policy to check counters before processing.
 3. Accept the approximate nature of distributed rate limiting and set your limits slightly lower to account for the window.
 
-Option 1 is the simplest but introduces slight lag in counter synchronization. Option 2 is the most accurate but adds latency to every request.
+Option 1 is the simplest for usage caps, but it is not a burst rate limit. Option 2 is the most accurate for strict global rate limiting but adds latency to every request.
 
 ## Tiered Rate Limiting Strategy
 
@@ -172,11 +181,11 @@ A common pattern is to offer different rate limits for different tiers of servic
 <inbound>
     <base />
     <choose>
-        <when condition="@(context.Product.Name == "Premium")">
+        <when condition="@(context.Product.Name == &quot;Premium&quot;)">
             <rate-limit-by-key calls="1000" renewal-period="60"
                 counter-key="@(context.Subscription.Id)" />
         </when>
-        <when condition="@(context.Product.Name == "Standard")">
+        <when condition="@(context.Product.Name == &quot;Standard&quot;)">
             <rate-limit-by-key calls="100" renewal-period="60"
                 counter-key="@(context.Subscription.Id)" />
         </when>
