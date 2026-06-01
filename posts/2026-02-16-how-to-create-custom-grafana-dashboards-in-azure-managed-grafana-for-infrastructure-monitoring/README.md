@@ -75,7 +75,7 @@ Use Azure Resource Graph to show the total number of VMs:
 ```kusto
 resources
 | where type == "microsoft.compute/virtualmachines"
-| where subscriptionId == "$subscription"
+| where subscriptionId in (${subscription:singlequote})
 | summarize count()
 ```
 
@@ -96,9 +96,9 @@ Configure the gauge thresholds:
 
 **Panel 3: Total Network Traffic (Stat Panel)**
 
-- Metric: Network In Total + Network Out Total
-- Aggregation: Sum
-- Unit: bytes/sec
+- Metric: Network In Total and Network Out Total
+- Aggregation: Total
+- Unit: bytes
 
 ### Row 2: CPU and Memory Time Series
 
@@ -128,6 +128,8 @@ If your VMs have the Azure Monitor agent installed, you can also query from Log 
 ```kusto
 // Memory utilization from Log Analytics
 InsightsMetrics
+| where $__timeFilter(TimeGenerated)
+| where Origin == "vm.azm.ms"
 | where Namespace == "Memory"
 | where Name == "AvailableMB"
 | where Computer == "$vmName"
@@ -161,17 +163,19 @@ Set a threshold on the Y-axis - anything consistently above 2 usually indicates 
 
 ```text
 Metric: Network In Total, Network Out Total
-Aggregation: Average
-Unit: bytes/sec
+Aggregation: Total
+Unit: bytes
 ```
 
-**Panel 9: Network Errors (Time Series)**
+**Panel 9: Network Adapter Throughput (Time Series)**
 
 If you are collecting network data through the Azure Monitor agent:
 
 ```kusto
-// Network errors from Log Analytics
+// Network adapter throughput from Log Analytics
 InsightsMetrics
+| where $__timeFilter(TimeGenerated)
+| where Origin == "vm.azm.ms"
 | where Namespace == "Network"
 | where Name == "WriteBytesPerSecond" or Name == "ReadBytesPerSecond"
 | where Computer == "$vmName"
@@ -221,16 +225,19 @@ Showing both end-to-end and server latency on the same chart helps you distingui
 
 ### NSG Flow Log Analysis
 
-If you are sending NSG flow logs to Log Analytics:
+If you are already sending NSG flow logs to Log Analytics:
 
 ```kusto
 // Top talkers by bytes transferred
 AzureNetworkAnalytics_CL
 | where TimeGenerated > ago(1h)
+| where SubType_s == "FlowLog"
 | where FlowStatus_s == "A"
 | summarize TotalBytes = sum(InboundBytes_d + OutboundBytes_d) by SrcIP_s
 | top 10 by TotalBytes desc
 ```
+
+NSG flow logs are being retired, so use virtual network flow logs for new deployments.
 
 ### Virtual Network Gateway Throughput
 
@@ -256,6 +263,7 @@ To add Azure deployment annotations:
 ```kusto
 // Azure deployment events
 AzureActivity
+| where $__timeFilter(TimeGenerated)
 | where OperationNameValue contains "deployments/write"
 | where ActivityStatusValue == "Success"
 | project TimeGenerated, Text = strcat("Deployment: ", OperationName)
@@ -286,7 +294,7 @@ Always export your dashboards to JSON and store them in version control:
 az grafana dashboard show \
     --name "my-grafana-workspace" \
     --resource-group "grafana-rg" \
-    --dashboard "vm-monitoring-dashboard" \
+    --dashboard "vm-monitoring-dashboard-uid" \
     --output json > dashboards/vm-monitoring.json
 ```
 
@@ -300,13 +308,15 @@ az grafana dashboard import \
     --definition @dashboards/vm-monitoring.json
 ```
 
+If you are importing the dashboard as a new copy rather than restoring the same dashboard, remove instance-specific fields such as `id` and `uid` from the exported JSON before importing.
+
 ## Dashboard Performance Tips
 
 **Use time range efficiently.** Do not default to "Last 30 days" for high-resolution metrics. Use "Last 6 hours" or "Last 24 hours" as defaults.
 
 **Reduce query frequency.** Set the dashboard refresh interval to 1-5 minutes, not 5 seconds. Real-time is rarely needed for infrastructure monitoring.
 
-**Use shared queries.** If multiple panels use the same query, create a "Mixed" data source panel and reuse query results.
+**Use shared queries.** If multiple panels use the same query, create a source panel and use Grafana's "Dashboard" data source to reuse its query results.
 
 **Limit the use of mv-expand.** KQL queries with mv-expand against large datasets can be slow. Pre-aggregate where possible.
 
