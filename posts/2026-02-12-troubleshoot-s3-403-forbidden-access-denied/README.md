@@ -93,7 +93,7 @@ Common deny patterns that cause issues.
   "Effect": "Deny",
   "Principal": "*",
   "Action": "s3:*",
-  "Resource": "arn:aws:s3:::my-bucket/*",
+  "Resource": ["arn:aws:s3:::my-bucket", "arn:aws:s3:::my-bucket/*"],
   "Condition": {
     "Bool": {
       "aws:SecureTransport": "false"
@@ -135,7 +135,7 @@ aws s3api get-public-access-block --bucket my-bucket
 aws s3control get-public-access-block --account-id 123456789012
 ```
 
-If `BlockPublicPolicy` is true and your bucket policy grants access to `"Principal": "*"`, the policy gets overridden.
+If `BlockPublicPolicy` is true, S3 rejects new or updated bucket policies that grant public access. If `RestrictPublicBuckets` is true and the bucket has a public policy, S3 restricts public and cross-account access to the bucket.
 
 ## Check 4: Object Ownership and ACLs
 
@@ -149,7 +149,7 @@ aws s3api get-bucket-ownership-controls --bucket my-bucket
 aws s3api get-object-acl --bucket my-bucket --key problematic-file.txt
 ```
 
-If the object is owned by a different account and ACLs don't grant you access, you'll get 403. The fix is to copy the object back to itself with the proper ownership, or switch to [bucket owner enforced](https://oneuptime.com/blog/post/2026-02-12-s3-bucket-ownership-controls/view).
+If the object is owned by a different account and ACLs don't grant you access, you'll get 403. The fix is to have the object owner copy or re-upload the object with the proper ownership, or switch to [bucket owner enforced](https://oneuptime.com/blog/post/2026-02-12-s3-bucket-ownership-controls/view).
 
 ## Check 5: KMS Encryption
 
@@ -203,11 +203,13 @@ A default VPC endpoint allows all S3 access. But if someone restricted it to spe
 If you're in an AWS Organization, SCPs from parent OUs can restrict S3 access even if the IAM policy allows it.
 
 ```bash
-# List SCPs affecting the account
+# List SCPs attached directly to the account
 aws organizations list-policies-for-target \
   --target-id ACCOUNT_ID \
   --filter SERVICE_CONTROL_POLICY
 ```
+
+This command doesn't include SCPs inherited from parent OUs or the organization root, so check those parent attachments too.
 
 ## Check 8: Requester Pays
 
@@ -241,12 +243,12 @@ The simulator tells you which policy statement resulted in the allow or deny dec
 
 ## Using CloudTrail for Diagnosis
 
-CloudTrail logs every S3 API call, including the error code. This is your definitive diagnostic tool.
+CloudTrail logs S3 bucket-level management events by default, including the error code. For object-level calls like `GetObject`, `PutObject`, and `DeleteObject`, you need S3 data events enabled on the trail or event data store.
 
 ```bash
-# Search CloudTrail for access denied events
+# Search recent CloudTrail management events for access denied errors
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=EventName,AttributeValue=GetObject \
+  --lookup-attributes AttributeKey=EventSource,AttributeValue=s3.amazonaws.com \
   --max-results 10 \
   --query 'Events[?contains(CloudTrailEvent, `AccessDenied`)]'
 ```
