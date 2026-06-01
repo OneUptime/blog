@@ -91,7 +91,7 @@ az iot hub update \
   properties.messagingEndpoints.fileNotifications.maxDeliveryCount=10
 ```
 
-These notifications arrive on a built-in endpoint that you can consume with Event Hubs-compatible readers or route to a custom endpoint.
+These notifications arrive on a service-facing file upload notification endpoint that you can consume with the IoT Hub service SDK over AMQP or AMQP over WebSockets.
 
 ## Step 4: Upload a File from the Device
 
@@ -168,7 +168,9 @@ async function main() {
   console.log('Listening for file upload notifications...');
 
   // Handle incoming notifications
-  receiver.on('message', (notification) => {
+  receiver.on('message', (message) => {
+    const notification = JSON.parse(message.getData().toString('utf8'));
+
     console.log('File upload notification received:');
     console.log(`  Device ID: ${notification.deviceId}`);
     console.log(`  Blob URI: ${notification.blobUri}`);
@@ -176,7 +178,7 @@ async function main() {
     console.log(`  Enqueued: ${notification.enqueuedTimeUtc}`);
 
     // Complete the notification so it is removed from the queue
-    receiver.complete(notification, (err) => {
+    receiver.complete(message, (err) => {
       if (err) {
         console.error('Failed to complete notification:', err.message);
       }
@@ -223,7 +225,7 @@ For additional security, consider enabling managed identity on your IoT Hub and 
 
 ## Cost Implications
 
-File uploads do not count against your IoT Hub message quota. The device-to-hub messages for the SAS request and upload notification are small and count as two messages. The actual data transfer cost is on the Blob Storage side. If your IoT Hub and storage account are in the same region, there are no data transfer charges, only the standard blob storage and transaction costs.
+The file transfer itself is not metered by IoT Hub, but the file upload initiation and completion messages count against your IoT Hub message quota. In a typical successful upload, that is two messages. The actual data transfer and storage cost is on the Blob Storage side. If your IoT Hub and storage account are in the same region, there are no data transfer charges, only the standard blob storage and transaction costs.
 
 ## Wrapping Up
 
