@@ -8,7 +8,7 @@ Description: A guide to enabling and using PostgreSQL extensions in Azure Databa
 
 ---
 
-One of PostgreSQL's greatest strengths is its extension ecosystem. Extensions let you add functionality to your database without forking the source code or writing custom C modules. Need geospatial queries? PostGIS. Full-text search in multiple languages? pg_trgm. Query performance tracking? pg_stat_statements. Azure Database for PostgreSQL Flexible Server supports a wide range of these extensions, and enabling them is straightforward.
+One of PostgreSQL's greatest strengths is its extension ecosystem. Extensions let you add functionality to your database without forking the source code or writing custom C modules. Need geospatial queries? PostGIS. Fuzzy text search? pg_trgm. Query performance tracking? pg_stat_statements. Azure Database for PostgreSQL Flexible Server supports a wide range of these extensions, and enabling them is straightforward.
 
 This post covers which extensions are available, how to enable them, and practical examples of the most useful ones.
 
@@ -49,25 +49,16 @@ Here are the extensions I find myself enabling on almost every PostgreSQL deploy
 
 This is the single most useful extension for performance monitoring. It tracks execution statistics for all SQL statements.
 
-First, add it to shared preload libraries:
+First, allowlist it. Azure Database for PostgreSQL Flexible Server preloads `pg_stat_statements` in `shared_preload_libraries` by default:
 
 ```bash
-# Add pg_stat_statements to shared_preload_libraries
+# Allow pg_stat_statements
 
 az postgres flexible-server parameter set \
   --resource-group myResourceGroup \
   --server-name my-pg-server \
-  --name shared_preload_libraries \
+  --name azure.extensions \
   --value pg_stat_statements
-```
-
-This requires a server restart:
-
-```bash
-# Restart the server to load the library
-az postgres flexible-server restart \
-  --resource-group myResourceGroup \
-  --name my-pg-server
 ```
 
 Then enable it in your database:
@@ -237,7 +228,8 @@ For managing time-based or serial-based partitions:
 
 ```sql
 -- Enable pg_partman
-CREATE EXTENSION IF NOT EXISTS pg_partman;
+CREATE SCHEMA IF NOT EXISTS partman;
+CREATE EXTENSION IF NOT EXISTS pg_partman WITH SCHEMA partman;
 
 -- Create a partitioned table
 CREATE TABLE events (
@@ -251,7 +243,7 @@ CREATE TABLE events (
 SELECT partman.create_parent(
     p_parent_table := 'public.events',
     p_control := 'created_at',
-    p_type := 'native',
+    p_type := 'range',
     p_interval := '1 month',
     p_premake := 3  -- Create 3 future partitions
 );
@@ -273,7 +265,7 @@ az postgres flexible-server parameter set \
   --resource-group myResourceGroup \
   --server-name my-pg-server \
   --name azure.extensions \
-  --value "pg_stat_statements,postgis,uuid-ossp,pgcrypto,pg_trgm,hstore"
+  --value "pg_stat_statements,postgis,uuid-ossp,pgcrypto,pg_trgm,hstore,pg_partman"
 ```
 
 ## Extensions Requiring shared_preload_libraries
@@ -284,7 +276,6 @@ Some extensions must be loaded at server startup. These require adding them to `
 - `pg_cron`
 - `pg_partman_bgw`
 - `auto_explain`
-- `pg_qs` (Query Store)
 
 ```bash
 # Add multiple libraries to shared_preload_libraries
@@ -292,7 +283,7 @@ az postgres flexible-server parameter set \
   --resource-group myResourceGroup \
   --server-name my-pg-server \
   --name shared_preload_libraries \
-  --value "pg_stat_statements,pg_cron,auto_explain"
+  --value "pg_stat_statements,pg_cron,pg_partman_bgw,auto_explain"
 
 # Restart required
 az postgres flexible-server restart \
