@@ -55,7 +55,7 @@ az container create \
     --memory 1.5 \
     --registry-login-server docker.io \
     --registry-username myusername \
-    --registry-password "my-docker-hub-password" \
+    --registry-password "my-docker-hub-access-token" \
     --ports 8080 \
     --ip-address Public
 ```
@@ -77,7 +77,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 2.0
+            memoryInGB: 2.0
         ports:
           - port: 80
             protocol: TCP
@@ -158,7 +158,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 2.0
+            memoryInGB: 2.0
         ports:
           - port: 80
             protocol: TCP
@@ -226,7 +226,7 @@ properties:
         resources:
           requests:
             cpu: 1.0
-            memoryInGb: 1.5
+            memoryInGB: 1.5
         ports:
           - port: 80
             protocol: TCP
@@ -237,7 +237,7 @@ properties:
         resources:
           requests:
             cpu: 0.5
-            memoryInGb: 0.5
+            memoryInGB: 0.5
 
   # Provide credentials for each registry
   imageRegistryCredentials:
@@ -276,7 +276,7 @@ az container create \
     --ip-address Public
 ```
 
-Make sure your self-hosted registry is accessible from Azure. If it is behind a firewall, you need to allow inbound connections from Azure's IP ranges.
+Make sure your self-hosted registry is accessible from Azure. If it is behind a firewall, allow inbound connections from the public IP addresses your container instance uses, such as the NAT gateway public IP for an ACI deployment in a virtual network.
 
 ## Troubleshooting Image Pull Failures
 
@@ -318,16 +318,16 @@ DNS resolution failed. Check that the registry URL is correct and accessible fro
 
 ### "toomanyrequests: rate limit exceeded"
 
-Docker Hub has rate limits for anonymous and free accounts. Either authenticate to get a higher limit or switch to ACR which has no pull rate limits within Azure.
+Docker Hub has rate limits for anonymous and free accounts. Either authenticate to get a higher limit or switch to ACR to avoid Docker Hub pull rate limits.
 
 ## Security Best Practices
 
 1. **Prefer managed identity over credentials** - No secrets to manage or leak
 2. **Use AcrPull role, not admin** - The admin account has full access to the registry
 3. **Never commit credentials to source control** - Use Key Vault or CI/CD secrets
-4. **Scan images for vulnerabilities** - ACR has built-in vulnerability scanning with Microsoft Defender
+4. **Scan images for vulnerabilities** - Azure Container Registry can integrate with Microsoft Defender for Cloud to scan images
 5. **Pin image tags** - Use specific version tags rather than `latest` to ensure reproducible deployments
-6. **Enable content trust** - Sign your images to verify they have not been tampered with
+6. **Sign your images** - Docker Content Trust for ACR is being deprecated, so use current image signing and verification tooling for new deployments
 
 ## Summary
 
