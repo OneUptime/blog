@@ -8,7 +8,7 @@ Description: Configure Azure ExpressRoute to establish a dedicated private conne
 
 ---
 
-When a Site-to-Site VPN is not enough - when you need more bandwidth, lower latency, or a connection that does not traverse the public internet - Azure ExpressRoute is the answer. ExpressRoute provides a dedicated, private connection between your on-premises infrastructure and Azure through a connectivity provider. Traffic never touches the public internet, giving you predictable performance, higher security, and bandwidth options up to 100 Gbps.
+When a Site-to-Site VPN is not enough - when you need more bandwidth, lower latency, or a connection that does not traverse the public internet - Azure ExpressRoute is the answer. ExpressRoute provides a dedicated, private connection between your on-premises infrastructure and Azure through a connectivity provider. Traffic never touches the public internet, giving you predictable performance, higher security, and provider circuit bandwidth options up to 10 Gbps. For higher port speeds, ExpressRoute Direct supports dedicated 10 Gbps, 100 Gbps, and 400 Gbps ports.
 
 In this post, I will cover the end-to-end process of setting up ExpressRoute, from choosing a provider and circuit to configuring peering and connecting it to your Azure virtual networks.
 
@@ -54,7 +54,7 @@ The circuit determines bandwidth and pricing. Common bandwidth tiers are:
 | 200 Mbps | Medium workloads, database replication |
 | 1 Gbps | Large enterprise with significant cloud traffic |
 | 10 Gbps | Data-intensive workloads, big data, migration |
-| 100 Gbps | Ultra-high bandwidth requirements |
+| 100 Gbps ExpressRoute Direct port | Ultra-high bandwidth requirements |
 
 You can choose between metered (pay per GB of outbound data) and unlimited (flat rate) data plans. For consistent, high-volume traffic, unlimited is usually more cost-effective.
 
@@ -145,17 +145,13 @@ To connect your ExpressRoute circuit to Azure virtual networks, you need an Expr
 ```bash
 # Create the ExpressRoute Gateway
 # The gateway subnet should already exist in your hub VNet
-az network public-ip create \
-  --resource-group network-rg \
-  --name er-gateway-pip \
-  --allocation-method Static \
-  --sku Standard
+# Azure now automatically provisions and manages the public IP
+# for an ExpressRoute virtual network gateway
 
 az network vnet-gateway create \
   --resource-group network-rg \
   --name hub-er-gateway \
   --vnet hub-vnet \
-  --public-ip-addresses er-gateway-pip \
   --gateway-type ExpressRoute \
   --sku ErGw2AZ \
   --no-wait
@@ -195,21 +191,20 @@ az network route-filter create \
   --name ms-peering-filter \
   --location eastus
 
-# Add a rule to allow Azure Storage routes
+# Add a rule to allow East US Azure Storage routes
 az network route-filter rule create \
   --resource-group network-rg \
   --filter-name ms-peering-filter \
-  --name allow-azure-storage \
+  --name allow-eastus-azure-services \
   --access Allow \
-  --communities "12076:5040"
+  --communities "12076:52004"
 
-# Add a rule for Azure SQL
-az network route-filter rule create \
+# Add East US Azure SQL routes to the same rule
+az network route-filter rule update \
   --resource-group network-rg \
   --filter-name ms-peering-filter \
-  --name allow-azure-sql \
-  --access Allow \
-  --communities "12076:5030"
+  --name allow-eastus-azure-services \
+  --add communities "12076:53004"
 
 # Attach the route filter to Microsoft Peering
 az network express-route peering update \
@@ -275,6 +270,12 @@ A common pattern is to use a Site-to-Site VPN as a failover for ExpressRoute. If
 ```bash
 # Deploy a VPN gateway alongside the ExpressRoute gateway
 # Both can coexist in the same GatewaySubnet
+az network public-ip create \
+  --resource-group network-rg \
+  --name vpn-pip \
+  --allocation-method Static \
+  --sku Standard
+
 az network vnet-gateway create \
   --resource-group network-rg \
   --name hub-vpn-gateway \
@@ -286,7 +287,7 @@ az network vnet-gateway create \
   --no-wait
 ```
 
-Azure automatically prefers ExpressRoute over VPN because ExpressRoute routes have a shorter AS path. If the ExpressRoute circuit fails, BGP withdraws those routes, and traffic falls back to the VPN tunnel.
+When the same prefixes are advertised over both paths, Azure prefers ExpressRoute over Site-to-Site VPN. If the ExpressRoute circuit fails, BGP withdraws those routes, and traffic falls back to the VPN tunnel. On your on-premises routers, set local preference or another BGP policy so Azure prefixes learned over ExpressRoute are preferred over the VPN path during normal operation.
 
 ## Summary
 
