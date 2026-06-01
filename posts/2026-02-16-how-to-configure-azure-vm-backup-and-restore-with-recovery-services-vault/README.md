@@ -8,7 +8,7 @@ Description: How to set up Azure VM backup using Recovery Services Vault, config
 
 ---
 
-Backups are one of those things that feel unnecessary until you need them. A misconfigured script that wipes data, a ransomware attack, or a botched deployment can all lead to data loss. Azure Backup with Recovery Services Vault provides application-consistent backups of your VMs with configurable retention, point-in-time recovery, and cross-region restore capabilities.
+Backups are one of those things that feel unnecessary until you need them. A misconfigured script that wipes data, a ransomware attack, or a botched deployment can all lead to data loss. Azure Backup with Recovery Services Vault provides VM-level backups with configurable retention, point-in-time recovery, and cross-region restore capabilities.
 
 In this guide, I will walk through setting up backups from scratch, configuring retention policies, and restoring a VM when disaster strikes.
 
@@ -54,9 +54,6 @@ az backup protection enable-for-vm \
 
 The DefaultPolicy backs up daily at a set time and retains:
 - Daily backups for 30 days
-- Weekly backups for 12 weeks
-- Monthly backups for 12 months
-- Yearly backups for 10 years (optional)
 
 ## Creating a Custom Backup Policy
 
@@ -70,42 +67,46 @@ az backup policy create \
   --name ProductionPolicy \
   --backup-management-type AzureIaasVM \
   --policy '{
-    "schedulePolicy": {
-      "schedulePolicyType": "SimpleSchedulePolicy",
-      "scheduleRunFrequency": "Daily",
-      "scheduleRunTimes": ["2026-02-16T02:00:00Z"]
-    },
-    "retentionPolicy": {
-      "retentionPolicyType": "LongTermRetentionPolicy",
-      "dailySchedule": {
-        "retentionTimes": ["2026-02-16T02:00:00Z"],
-        "retentionDuration": {
-          "count": 30,
-          "durationType": "Days"
-        }
+    "properties": {
+      "backupManagementType": "AzureIaasVM",
+      "schedulePolicy": {
+        "schedulePolicyType": "SimpleSchedulePolicy",
+        "scheduleRunFrequency": "Daily",
+        "scheduleRunTimes": ["2026-02-16T02:00:00Z"]
       },
-      "weeklySchedule": {
-        "daysOfTheWeek": ["Sunday"],
-        "retentionTimes": ["2026-02-16T02:00:00Z"],
-        "retentionDuration": {
-          "count": 12,
-          "durationType": "Weeks"
-        }
-      },
-      "monthlySchedule": {
-        "retentionScheduleFormatType": "Weekly",
-        "retentionScheduleWeekly": {
-          "daysOfTheWeek": ["Sunday"],
-          "weeksOfTheMonth": ["First"]
+      "retentionPolicy": {
+        "retentionPolicyType": "LongTermRetentionPolicy",
+        "dailySchedule": {
+          "retentionTimes": ["2026-02-16T02:00:00Z"],
+          "retentionDuration": {
+            "count": 30,
+            "durationType": "Days"
+          }
         },
-        "retentionTimes": ["2026-02-16T02:00:00Z"],
-        "retentionDuration": {
-          "count": 12,
-          "durationType": "Months"
+        "weeklySchedule": {
+          "daysOfTheWeek": ["Sunday"],
+          "retentionTimes": ["2026-02-16T02:00:00Z"],
+          "retentionDuration": {
+            "count": 12,
+            "durationType": "Weeks"
+          }
+        },
+        "monthlySchedule": {
+          "retentionScheduleFormatType": "Weekly",
+          "retentionScheduleWeekly": {
+            "daysOfTheWeek": ["Sunday"],
+            "weeksOfTheMonth": ["First"]
+          },
+          "retentionTimes": ["2026-02-16T02:00:00Z"],
+          "retentionDuration": {
+            "count": 12,
+            "durationType": "Months"
+          }
         }
-      }
-    },
-    "timeZone": "Eastern Standard Time"
+      },
+      "timeZone": "Eastern Standard Time",
+      "protectedItemsCount": 0
+    }
   }'
 ```
 
@@ -153,7 +154,7 @@ az backup protection backup-now \
   --vault-name myRecoveryVault \
   --container-name $CONTAINER \
   --item-name $ITEM \
-  --retain-until $(date -u -v+30d +%Y-%m-%d) \
+  --retain-until $(date -u -d "+30 days" +%d-%m-%Y) \
   --backup-management-type AzureIaasVM
 ```
 
@@ -250,9 +251,8 @@ az backup restore restore-disks \
   --container-name $CONTAINER \
   --item-name $ITEM \
   --rp-name $RP_NAME \
-  --restore-mode AlternateLocation \
-  --storage-account mystorageaccount \
-  --target-resource-group myResourceGroup
+  --restore-mode OriginalLocation \
+  --storage-account mystorageaccount
 ```
 
 ### Option 3: Restore Individual Files
@@ -263,7 +263,7 @@ If you only need specific files, Azure Backup lets you mount the recovery point 
 2. Click "Backup Items" > "Azure Virtual Machine."
 3. Select the VM and click "File Recovery."
 4. Select a recovery point.
-5. Download and run the provided script on any machine.
+5. Download and run the provided script on a machine with a compatible OS and filesystem support.
 6. The script mounts the backup as a drive, letting you browse and copy individual files.
 7. Unmount when done.
 
@@ -278,24 +278,21 @@ For disaster recovery scenarios, you can enable cross-region restore on the vaul
 az backup vault backup-properties set \
   --resource-group myResourceGroup \
   --name myRecoveryVault \
-  --cross-region-restore-flag true
+  --cross-region-restore-flag True
 ```
 
-With cross-region restore enabled, backup data is replicated to the Azure paired region. You can restore VMs in the secondary region if the primary region is unavailable. This doubles the storage cost for backups but provides geographic protection.
+With cross-region restore enabled on a geo-redundant vault, backup data is available in the Azure paired region. You can restore VMs in the secondary region even before Azure declares an outage in the primary region. Geo-redundant storage costs more than locally redundant storage but provides geographic protection.
 
 ## Setting Up Backup Alerts
 
 Configure alerts for backup failures:
 
 ```bash
-# Create an alert for failed backup jobs
-az monitor metrics alert create \
+# Enable built-in Azure Monitor alerts for failed backup jobs
+az backup vault backup-properties set \
   --resource-group myResourceGroup \
-  --name "Backup Failure Alert" \
-  --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.RecoveryServices/vaults/myRecoveryVault" \
-  --condition "count BackupHealthEvent > 0" \
-  --action "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/microsoft.insights/actionGroups/myActionGroup" \
-  --description "Alert when backup jobs fail"
+  --name myRecoveryVault \
+  --job-failure-alerts Enable
 ```
 
 In the portal, go to the vault > "Backup Alerts" to see any failed or warning-level jobs.
@@ -309,7 +306,7 @@ Azure Backup pricing has two components:
 
 To estimate costs:
 - A 100 GB VM with daily backups and 30-day retention typically costs $10-20/month.
-- Enabling cross-region restore roughly doubles the storage cost.
+- Using geo-redundant storage for cross-region restore costs more than locally redundant storage.
 - Longer retention periods mean more stored data and higher costs.
 
 ## Best Practices
