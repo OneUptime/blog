@@ -34,7 +34,7 @@ graph TD
 - An Azure subscription
 - An Azure Synapse workspace (we will create one if you do not have it)
 - Azure CLI or Azure Portal access
-- Appropriate RBAC permissions (Contributor or Synapse Administrator)
+- Appropriate Azure RBAC permissions to create resources and role assignments (Contributor plus User Access Administrator, or Owner)
 
 ## Step 1: Create a Synapse Workspace
 
@@ -69,6 +69,25 @@ az synapse workspace create \
   --file-system synapse-data \
   --sql-admin-login-user sqladmin \
   --sql-admin-login-password '<StrongPassword123!>'
+
+# Grant the workspace managed identity access to the data lake
+WORKSPACE_ID=$(az synapse workspace show \
+  --name my-synapse-workspace \
+  --resource-group rg-synapse \
+  --query identity.principalId \
+  --output tsv)
+
+STORAGE_ID=$(az storage account show \
+  --name synapsedatalake2026 \
+  --resource-group rg-synapse \
+  --query id \
+  --output tsv)
+
+az role assignment create \
+  --assignee-object-id $WORKSPACE_ID \
+  --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Contributor" \
+  --scope $STORAGE_ID
 ```
 
 The workspace takes a few minutes to provision. The `--sql-admin-login-user` and `--sql-admin-login-password` will be the admin credentials for your dedicated SQL pool.
@@ -96,8 +115,8 @@ DWU (Data Warehouse Units) determines the compute power of your pool. Higher DWU
 | DW200c | 1 | 8 | Small workloads |
 | DW500c | 1 | 20 | Medium workloads |
 | DW1000c | 2 | 32 | Production - moderate |
-| DW2000c | 4 | 32 | Production - heavy |
-| DW5000c | 10 | 32 | Large-scale analytics |
+| DW2000c | 4 | 48 | Production - heavy |
+| DW5000c | 10 | 64 | Large-scale analytics |
 | DW30000c | 60 | 128 | Maximum performance |
 
 Start with DW100c for development and scale up for production. You can change the DWU level at any time without losing data.
@@ -178,7 +197,7 @@ CREATE TABLE dbo.DimProduct (
 )
 WITH (
     DISTRIBUTION = REPLICATE,         -- Copy to all compute nodes
-    CLUSTERED COLUMNSTORE INDEX
+    HEAP                              -- Often better for small replicated dimensions
 );
 
 -- Create another dimension table
@@ -192,7 +211,7 @@ CREATE TABLE dbo.DimCustomer (
 )
 WITH (
     DISTRIBUTION = REPLICATE,
-    CLUSTERED COLUMNSTORE INDEX
+    HEAP
 );
 
 -- Create a staging table with round-robin distribution
@@ -216,7 +235,7 @@ WITH (
 Choosing the right distribution is crucial for query performance:
 
 - **HASH**: Distribute rows based on a column value. Use for large fact tables. Choose a column with high cardinality that is frequently used in JOIN and GROUP BY clauses.
-- **REPLICATE**: Copy the entire table to every compute node. Use for small dimension tables (under a few hundred MB). Eliminates data movement during joins.
+- **REPLICATE**: Copy the entire table to every compute node. Use for small dimension tables (typically under 2 GB compressed). Eliminates data movement during joins.
 - **ROUND_ROBIN**: Distribute rows evenly across all distributions without using a specific column. Use for staging tables or when no good hash column exists. Default if you do not specify a distribution.
 
 ## Step 6: Load Sample Data
@@ -291,7 +310,7 @@ Scaling takes a few minutes. Existing connections will be dropped during the sca
 
 3. **Not pausing development pools**: A DW100c pool costs money every hour it runs. Pause it when you are not using it.
 
-4. **Using row store indexes for analytics**: Clustered columnstore indexes compress data 10x and are dramatically faster for analytical queries. Use them on all tables except small staging tables.
+4. **Using row store indexes for large analytical tables**: Clustered columnstore indexes provide high compression and are dramatically faster for many analytical queries on large tables. For small or transient tables, a heap or rowstore index may be a better fit.
 
 5. **Running too many concurrent queries at low DWU**: DW100c only supports 4 concurrent queries. If you need more concurrency, scale up.
 
