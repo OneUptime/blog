@@ -52,10 +52,20 @@ const df = require('durable-functions');
 module.exports = df.orchestrator(function* (context) {
   const order = context.df.getInput();
   const completedSteps = []; // Track completed steps for compensation
+  const log = (message) => {
+    if (!context.df.isReplaying) {
+      context.log(message);
+    }
+  };
+  const logError = (message) => {
+    if (!context.df.isReplaying) {
+      context.log.error(message);
+    }
+  };
 
   try {
     // Step 1: Reserve inventory
-    context.log(`Saga: Reserving inventory for order ${order.orderId}`);
+    log(`Saga: Reserving inventory for order ${order.orderId}`);
     const reservationId = yield context.df.callActivity('ReserveInventory', {
       orderId: order.orderId,
       items: order.items
@@ -63,7 +73,7 @@ module.exports = df.orchestrator(function* (context) {
     completedSteps.push({ step: 'inventory', reservationId });
 
     // Step 2: Process payment
-    context.log(`Saga: Processing payment for order ${order.orderId}`);
+    log(`Saga: Processing payment for order ${order.orderId}`);
     const paymentId = yield context.df.callActivity('ProcessPayment', {
       orderId: order.orderId,
       amount: order.totalAmount,
@@ -72,7 +82,7 @@ module.exports = df.orchestrator(function* (context) {
     completedSteps.push({ step: 'payment', paymentId });
 
     // Step 3: Create shipment
-    context.log(`Saga: Creating shipment for order ${order.orderId}`);
+    log(`Saga: Creating shipment for order ${order.orderId}`);
     const shipmentId = yield context.df.callActivity('CreateShipment', {
       orderId: order.orderId,
       address: order.shippingAddress,
@@ -99,8 +109,8 @@ module.exports = df.orchestrator(function* (context) {
 
   } catch (error) {
     // A step failed - run compensating actions in reverse order
-    context.log.error(`Saga failed at step: ${error.message}`);
-    context.log(`Running ${completedSteps.length} compensation(s)`);
+    logError(`Saga failed at step: ${error.message}`);
+    log(`Running ${completedSteps.length} compensation(s)`);
 
     // Reverse the completed steps and compensate
     for (let i = completedSteps.length - 1; i >= 0; i--) {
@@ -113,7 +123,7 @@ module.exports = df.orchestrator(function* (context) {
               orderId: order.orderId,
               shipmentId: step.shipmentId
             });
-            context.log('Compensated: shipment canceled');
+            log('Compensated: shipment canceled');
             break;
 
           case 'payment':
@@ -121,7 +131,7 @@ module.exports = df.orchestrator(function* (context) {
               orderId: order.orderId,
               paymentId: step.paymentId
             });
-            context.log('Compensated: payment refunded');
+            log('Compensated: payment refunded');
             break;
 
           case 'inventory':
@@ -129,12 +139,12 @@ module.exports = df.orchestrator(function* (context) {
               orderId: order.orderId,
               reservationId: step.reservationId
             });
-            context.log('Compensated: inventory released');
+            log('Compensated: inventory released');
             break;
         }
       } catch (compensationError) {
         // Compensation failed - log for manual resolution
-        context.log.error(
+        logError(
           `CRITICAL: Compensation for ${step.step} failed: ${compensationError.message}`
         );
       }
@@ -239,32 +249,47 @@ module.exports = df.orchestrator(function* (context) {
   const { steps, input } = context.df.getInput();
   const completedSteps = [];
   let result = { ...input };
+  const log = (message) => {
+    if (!context.df.isReplaying) {
+      context.log(message);
+    }
+  };
+  const logError = (message) => {
+    if (!context.df.isReplaying) {
+      context.log.error(message);
+    }
+  };
 
   try {
     for (const step of steps) {
-      context.log(`Executing step: ${step.name}`);
+      log(`Executing step: ${step.name}`);
 
       // Run the step activity, passing accumulated result
       const stepResult = yield context.df.callActivity(step.activity, {
         ...result,
         stepName: step.name
       });
+      const stepData = step.resultKey
+        ? { [step.resultKey]: stepResult }
+        : (stepResult && typeof stepResult === 'object' && !Array.isArray(stepResult)
+          ? stepResult
+          : { [`${step.name}Result`]: stepResult });
 
       // Merge step result into accumulated result
-      result = { ...result, ...stepResult };
+      result = { ...result, ...stepData };
 
       // Track the completed step with its compensation activity
       completedSteps.push({
         name: step.name,
         compensationActivity: step.compensation,
-        result: stepResult
+        result: stepData
       });
     }
 
     return { success: true, result };
 
   } catch (error) {
-    context.log.error(`Saga failed: ${error.message}`);
+    logError(`Saga failed: ${error.message}`);
 
     // Run compensations in reverse order
     const compensationResults = [];
@@ -304,14 +329,20 @@ Usage:
 // Start a saga with the generic executor
 const sagaInput = {
   steps: [
-    { name: 'reserve', activity: 'ReserveInventory', compensation: 'ReleaseInventory' },
-    { name: 'pay', activity: 'ProcessPayment', compensation: 'RefundPayment' },
-    { name: 'ship', activity: 'CreateShipment', compensation: 'CancelShipment' }
+    { name: 'reserve', activity: 'ReserveInventory', compensation: 'ReleaseInventory', resultKey: 'reservationId' },
+    { name: 'pay', activity: 'ProcessPayment', compensation: 'RefundPayment', resultKey: 'paymentId' },
+    { name: 'ship', activity: 'CreateShipment', compensation: 'CancelShipment', resultKey: 'shipmentId' }
   ],
   input: {
     orderId: 'order-123',
     items: [{ productId: 'prod-1', quantity: 2 }],
-    totalAmount: 49.99
+    amount: 49.99,
+    paymentMethod: 'card-token',
+    address: {
+      line1: '1 Example Street',
+      city: 'London',
+      postalCode: 'SW1A 1AA'
+    }
   }
 };
 
@@ -324,15 +355,22 @@ Some failures are transient. Before giving up and compensating, retry the failed
 
 ```javascript
 // saga-with-retry.js - Saga steps with retry policies
-const retryOptions = new df.RetryOptions(5000, 3); // 5s interval, 3 attempts
-retryOptions.backoffCoefficient = 2; // Exponential backoff
+const df = require('durable-functions');
 
-// In the orchestrator, use callActivityWithRetry
-const paymentId = yield context.df.callActivityWithRetry(
-  'ProcessPayment',
-  retryOptions,
-  { orderId: order.orderId, amount: order.totalAmount }
-);
+module.exports = df.orchestrator(function* (context) {
+  const order = context.df.getInput();
+  const retryOptions = new df.RetryOptions(5000, 3); // 5s interval, 3 attempts
+  retryOptions.backoffCoefficient = 2; // Exponential backoff
+
+  // In the orchestrator, use callActivityWithRetry
+  const paymentId = yield context.df.callActivityWithRetry(
+    'ProcessPayment',
+    retryOptions,
+    { orderId: order.orderId, amount: order.totalAmount }
+  );
+
+  return paymentId;
+});
 ```
 
 This way, transient failures (network timeouts, temporary service unavailability) are handled automatically. The saga only compensates when the retry policy is exhausted.
