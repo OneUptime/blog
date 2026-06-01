@@ -18,22 +18,22 @@ The Consumption plan is the original Logic Apps model. Each Logic App is a singl
 
 ### Standard (Single-Tenant)
 
-The Standard plan runs on the Azure App Service platform (specifically the Azure Functions runtime). A single Standard Logic App resource can contain multiple workflows. You pay for a dedicated compute plan (similar to an App Service plan) rather than per-execution pricing.
+The Standard plan runs on the single-tenant Azure Logic Apps runtime, which is hosted as an extension on the Azure Functions runtime. A single Standard Logic App resource can contain multiple workflows. You pay for reserved compute through a Workflow Service Plan or App Service Environment v3 rather than per-execution pricing.
 
 ## Side-by-Side Comparison
 
 | Feature | Consumption | Standard |
 |---|---|---|
-| Pricing model | Pay-per-execution | App Service plan (fixed compute) |
+| Pricing model | Pay-per-execution | Workflow Service Plan or ASE v3 reserved compute |
 | Workflows per resource | 1 | Multiple |
-| Designer | Azure portal only | Azure portal + VS Code |
+| Designer | Azure portal + VS Code code-first tools | Azure portal + VS Code |
 | Local development | No | Yes (VS Code with extension) |
 | Source control | ARM template export | Native file-based project |
 | VNet integration | Limited (ISE retired) | Full VNet integration |
 | Built-in connectors | Shared pricing | Run locally, no per-call cost |
 | Managed connectors | Per-call pricing | Per-call pricing |
 | Stateful and stateless | Stateful only | Both stateful and stateless |
-| Minimum cost | $0 (pay only for what you use) | Starts at ~$150/month (WS1 plan) |
+| Minimum cost | $0 (pay only for what you use) | Starts at roughly $180/month in East US (WS1 plan) |
 | Scale model | Automatic, managed by Azure | Scale out based on plan size |
 | SLA | 99.9% | 99.95% |
 | Run history | Azure-managed | Stored in associated storage account |
@@ -43,7 +43,7 @@ The Standard plan runs on the Azure App Service platform (specifically the Azure
 
 ### Low-Volume, Sporadic Workflows
 
-If your workflow runs a few times a day or even a few times an hour, the Consumption plan's per-execution pricing is hard to beat. At $0.000025 per action execution for standard connectors and $0.000125 per enterprise connector call, a workflow that runs 100 times a day with 10 actions each costs roughly $0.75 per month.
+If your workflow runs a few times a day or even a few times an hour, the Consumption plan's per-execution pricing is hard to beat. At $0.000025 per built-in action execution, $0.000125 per Standard connector call, and $0.001 per Enterprise connector call in East US, a workflow that runs 100 times a day with 10 built-in actions costs roughly $0.75 per month.
 
 ### Quick Prototypes and Simple Integrations
 
@@ -61,21 +61,21 @@ For small-scale usage, the Consumption plan's cost is directly proportional to u
 
 ### High-Volume Workflows
 
-If your workflows execute thousands of times per day, the per-execution cost of the Consumption plan adds up. A workflow that fires 10,000 times per day with 15 actions each costs about $112 per month on Consumption. A Standard WS1 plan at $150 per month handles that volume and much more, and it can host multiple workflows.
+If your workflows execute thousands of times per day, the per-execution cost of the Consumption plan adds up. A workflow that fires 10,000 times per day with 15 built-in actions costs about $112 per month on Consumption. A Standard WS1 plan at roughly $180 per month in East US handles that volume and much more, and it can host multiple workflows.
 
 Here is a rough break-even calculation:
 
 ```text
-Consumption cost per action: $0.000025 (standard connector)
-Standard WS1 monthly cost: ~$150
+Consumption cost per built-in action: $0.000025
+Standard WS1 monthly cost: ~$180
 
 Break-even point:
-$150 / $0.000025 = 6,000,000 actions per month
-That is roughly 200,000 actions per day
-Or about 13,000 workflow runs per day at 15 actions each
+$180 / $0.000025 = 7,200,000 actions per month
+That is roughly 240,000 actions per day
+Or about 16,000 workflow runs per day at 15 actions each
 ```
 
-If your total action count across all workflows exceeds roughly 6 million per month, Standard starts winning on cost.
+If your total built-in action count across all workflows exceeds roughly 7 million per month, Standard starts winning on compute cost. Managed connector calls still have per-call charges in Standard, so include those separately in your estimate.
 
 ### VNet Integration Requirements
 
@@ -114,7 +114,7 @@ Let me walk through three realistic scenarios.
 - Monthly cost: 24,000 x $0.000025 = $0.60
 
 **Standard cost:**
-- Minimum WS1 plan: ~$150/month
+- Minimum WS1 plan: roughly $180/month in East US
 
 **Winner: Consumption** - by a huge margin at this scale.
 
@@ -129,15 +129,15 @@ Let me walk through three realistic scenarios.
 - Average 12 actions per run
 - Daily actions: 50,000 x 12 = 600,000
 - Monthly actions: 600,000 x 30 = 18,000,000
-- Standard connector actions: ~15,000,000 x $0.000025 = $375
-- Enterprise connector actions: ~3,000,000 x $0.000125 = $375
-- Monthly cost: ~$750
+- Standard connector actions: ~15,000,000 x $0.000125 = $1,875
+- Enterprise connector actions: ~3,000,000 x $0.001 = $3,000
+- Monthly cost: ~$4,875
 
 **Standard cost:**
-- WS2 plan (for the volume): ~$300/month
+- WS2 plan (for the volume): roughly $360/month in East US
 - Built-in connector actions: $0 (run locally)
-- Enterprise connector actions still apply
-- Monthly cost: ~$300 + managed connector costs
+- Managed connector actions still apply
+- Monthly cost: roughly $360 + managed connector costs
 
 **Winner: Standard** - especially since Consumption cannot do VNet integration.
 
@@ -173,7 +173,7 @@ graph TD
     A[Do you need VNet integration?] -->|Yes| B[Standard]
     A -->|No| C[Do you need local development and CI/CD?]
     C -->|Yes| B
-    C -->|No| D[Will total actions exceed 6M per month?]
+    C -->|No| D[Will built-in actions exceed 7M per month?]
     D -->|Yes| B
     D -->|No| E[Consumption]
 ```
