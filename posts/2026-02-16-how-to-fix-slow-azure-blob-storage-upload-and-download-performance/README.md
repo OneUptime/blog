@@ -16,8 +16,8 @@ This post covers the most impactful optimizations for both upload and download p
 
 Before optimizing, know the limits you are working with:
 
-- A single blob can handle up to 60 MiB/s for reads and writes
-- A single storage account can handle 20 Gbps ingress and 50 Gbps egress (standard)
+- A single block blob can scale up to the storage account ingress and egress limits; page blobs have a target throughput of up to 60 MiB/s
+- Standard general-purpose v2 storage accounts have regional bandwidth targets, such as 60 Gbps ingress and 200 Gbps egress in many major regions, and 25 Gbps ingress and 50 Gbps egress in others
 - Premium block blob storage accounts offer higher IOPS and lower latency
 - Block blobs can be up to 190.7 TiB with blocks up to 4000 MiB each
 
@@ -30,6 +30,7 @@ The single biggest performance improvement comes from parallel uploads and downl
 ### .NET SDK Example
 
 ```csharp
+using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 
@@ -76,18 +77,21 @@ await blobClient.DownloadToAsync("local-file.zip", downloadOptions);
 ```python
 from azure.storage.blob import BlobServiceClient
 
-blob_service_client = BlobServiceClient.from_connection_string(conn_str)
+blob_service_client = BlobServiceClient.from_connection_string(
+    conn_str,
+    max_block_size=8*1024*1024,       # 8 MiB blocks
+    max_single_put_size=8*1024*1024
+)
 blob_client = blob_service_client.get_blob_client("my-container", "large-file.zip")
 
 # Upload with parallel transfers
 
 # max_concurrency controls parallel block uploads
-# max_block_size controls the size of each block
+# max_block_size controls the size of each block and is configured on the client
 with open("large-file.zip", "rb") as data:
     blob_client.upload_blob(
         data,
         max_concurrency=8,        # 8 parallel uploads
-        max_block_size=8*1024*1024, # 8 MiB blocks
         overwrite=True
     )
 ```
@@ -115,7 +119,7 @@ Block size affects both parallelism and overhead. Smaller blocks mean more paral
 
 General guidelines:
 
-- **Files under 256 MiB**: Upload as a single put (no blocks needed)
+- **Files under the SDK's single-upload threshold**: Upload as a single put (no blocks needed)
 - **Files 256 MiB to 4 GiB**: Use 4-8 MiB blocks
 - **Files over 4 GiB**: Use 16-100 MiB blocks
 - **Very large files (100+ GiB)**: Use 100 MiB blocks with high concurrency
@@ -184,11 +188,11 @@ az storage account show \
 
 For applications running in Azure (App Service, VMs, AKS), always deploy the storage account in the same region.
 
-For multi-region applications, use Azure Blob Storage geo-replication with read-access (RA-GRS or RA-GZRS) and point readers to the secondary endpoint in the nearest region.
+For multi-region applications, use separate storage accounts per region, object replication, or Azure Front Door/CDN to move content closer to readers. Read-access geo-replication (RA-GRS or RA-GZRS) can serve reads from the paired secondary region, but it is not a general nearest-region routing feature.
 
 ## Optimization 5: Use Private Endpoints
 
-When your application and storage account are in the same region but connected over the public internet, traffic goes out to the internet and back. Private endpoints keep traffic on the Azure backbone network, which reduces latency and increases throughput.
+When your application and storage account are in the same region but using the public endpoint, traffic is still exposed through the public storage endpoint. Private endpoints route traffic through your virtual network and Azure Private Link on the Microsoft backbone network, which improves network isolation and can reduce latency in some scenarios.
 
 ```bash
 # Create a private endpoint for blob storage
@@ -212,6 +216,7 @@ Strategies for small file workloads:
 
 ```python
 import concurrent.futures
+import os
 from azure.storage.blob import BlobServiceClient
 
 blob_service = BlobServiceClient.from_connection_string(conn_str)
@@ -233,7 +238,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
 
 **Zip and upload**: If the files are always used together, compress them into an archive and upload a single blob.
 
-**Use HTTP/2**: Modern Azure Storage SDKs support HTTP/2, which multiplexes multiple requests over a single connection. Make sure your SDK version supports it.
+**Reuse clients and connections**: Create Azure Storage clients once and reuse them so the SDK can reuse underlying HTTP connections. Avoid creating a new client for every small file.
 
 ## Optimization 7: Enable Client-Side Caching
 
