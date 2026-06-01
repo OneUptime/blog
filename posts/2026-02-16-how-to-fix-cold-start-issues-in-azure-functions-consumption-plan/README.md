@@ -26,7 +26,7 @@ requests
 | where timestamp > ago(7d)
 | where cloud_RoleName == "your-function-app-name"
 | order by timestamp asc
-| extend timeSincePrevious = timestamp - prev(timestamp)
+| serialize timeSincePrevious = timestamp - prev(timestamp)
 | where timeSincePrevious > 20m or isnull(timeSincePrevious)
 | project timestamp, duration, name, timeSincePrevious
 | order by duration desc
@@ -36,7 +36,7 @@ This query finds requests that came in after a gap of 20 minutes or more, which 
 
 ## Strategy 1: Reduce Your Package Size
 
-The single biggest factor in cold start time (after runtime choice) is the size of your deployment package. Azure has to download and extract your function app before it can run. A 500 MB deployment package with hundreds of unused dependencies will cold start much slower than a lean 10 MB package.
+The single biggest factor in cold start time (after runtime choice) is the size of your deployment package. Azure has to load your function app package before it can run. A 500 MB deployment package with hundreds of unused dependencies will cold start much slower than a lean 10 MB package.
 
 For Python functions, audit your `requirements.txt` and remove anything you are not using. Consider using lightweight alternatives - for example, `httpx` instead of `requests` if you only need basic HTTP calls, or skip `pandas` entirely if you are only doing simple data transformations.
 
@@ -68,19 +68,19 @@ esbuild.build({
 }).catch(() => process.exit(1));
 ```
 
-## Strategy 2: Use the Pre-Warmed Instance Pool
+## Strategy 2: Use the Platform Cold Start Optimizations
 
-Azure introduced pre-warmed instances for the Consumption plan. When your function app scales down, Azure keeps one instance in a "warmed" state so it can respond to the next request without a full cold start. This is enabled by default on newer function apps, but you should verify it is working by checking the `WEBSITE_CONTENTAZUREFILECONNECTIONSTRING` app setting exists and that your function app is using the latest runtime version.
+Azure has platform optimizations for the Consumption plan, including pre-warmed placeholder workers that already have the host and language process running. These are not the same as a dedicated warm instance for your app, and you cannot configure an always-ready instance count on the classic Consumption plan.
 
-You can also set the `FUNCTIONS_EXTENSION_VERSION` to `~4` to make sure you are on the latest host version, which has the best pre-warming behavior.
+You can set `FUNCTIONS_EXTENSION_VERSION` to `~4` to make sure you are on the current Azure Functions host version. If you need configurable warm capacity, use Flex Consumption with always-ready instances or Elastic Premium with always-ready and pre-warmed instances.
 
 ## Strategy 3: Keep Your Functions Warm with a Timer Trigger
 
-The simplest workaround is to prevent your function from going cold in the first place. You can create a lightweight timer trigger that runs every 15 minutes to keep the instance alive.
+The simplest workaround is to reduce the chance that your function goes cold in the first place. You can create a lightweight timer trigger that runs every 15 minutes to keep the app active.
 
 ```csharp
 // A simple keep-alive function that runs every 15 minutes
-// This prevents the Consumption plan from deallocating your instance
+// This helps reduce idle periods on the Consumption plan
 [Function("KeepAlive")]
 public void Run([TimerTrigger("0 */15 * * * *")] TimerInfo timerInfo, FunctionContext context)
 {
@@ -107,7 +107,8 @@ public async Task<HttpResponseData> Run(
     // ...
 }
 
-// Good: Use dependency injection with a singleton HttpClient
+// Good: Use dependency injection with IHttpClientFactory
+// Register it once in Program.cs with builder.Services.AddHttpClient()
 public class GetData
 {
     private readonly HttpClient _client;
@@ -133,6 +134,7 @@ In Python, you can use module-level variables to cache expensive objects.
 ```python
 import azure.functions as func
 import logging
+import os
 import pyodbc
 
 # Initialize the connection at module level so it persists across invocations
@@ -160,13 +162,9 @@ If cold starts are genuinely unacceptable for your workload - for example, you a
 
 The Premium plan also supports a minimum instance count, so you can guarantee that a certain number of instances are always ready to handle traffic.
 
-```json
-{
-  "properties": {
-    "minimumElasticInstanceCount": 2,
-    "maximumElasticWorkerCount": 10
-  }
-}
+```bash
+az functionapp update -g <RESOURCE_GROUP> -n <FUNCTION_APP_NAME> --set siteConfig.minimumElasticInstanceCount=2
+az functionapp plan update -g <RESOURCE_GROUP> -n <PREMIUM_PLAN_NAME> --max-burst 10
 ```
 
 ## Strategy 6: Use Lazy Loading for Heavy Dependencies
