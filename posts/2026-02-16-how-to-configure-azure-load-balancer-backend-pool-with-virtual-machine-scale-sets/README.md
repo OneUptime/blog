@@ -153,6 +153,7 @@ az vmss create \
   --backend-pool-name vmssBackendPool \
   --upgrade-policy-mode Rolling \
   --health-probe httpHealthProbe \
+  --terminate-notification-time 10 \
   --custom-data cloud-init.txt
 ```
 
@@ -162,6 +163,7 @@ Key parameters:
 - **backend-pool-name**: Specifies which backend pool to join
 - **upgrade-policy-mode Rolling**: Enables rolling upgrades for zero-downtime deployments
 - **health-probe**: Associates the health probe for rolling upgrade decisions
+- **terminate-notification-time**: Enables VMSS terminate notifications so instances have time to shut down gracefully during scale-in
 - **custom-data**: Cloud-init script to configure your application on each instance
 
 ## Step 5: Configure Auto-Scaling Rules
@@ -198,19 +200,20 @@ When VMSS scales out, new instances automatically join the Load Balancer backend
 
 ## Step 6: Configure NAT Rules for Management Access
 
-If you need SSH or RDP access to individual VMSS instances, create inbound NAT rules:
+If you need SSH or RDP access to individual VMSS instances, create an inbound NAT rule that targets the backend pool:
 
 ```bash
-# Create an inbound NAT pool for SSH access
+# Create an inbound NAT rule for SSH access
 # This maps a range of frontend ports to port 22 on each backend instance
-az network lb inbound-nat-pool create \
-  --name sshNatPool \
+az network lb inbound-nat-rule create \
+  --name sshNatRule \
   --resource-group myResourceGroup \
   --lb-name myLoadBalancer \
   --frontend-ip-name myFrontend \
   --protocol Tcp \
   --frontend-port-range-start 50000 \
   --frontend-port-range-end 50099 \
+  --backend-pool-name vmssBackendPool \
   --backend-port 22
 ```
 
@@ -255,7 +258,7 @@ az monitor metrics alert create \
   --name "VMSS-UnhealthyInstances" \
   --resource-group myResourceGroup \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Network/loadBalancers/myLoadBalancer" \
-  --condition "avg HealthProbeStatus < 100" \
+  --condition "avg DipAvailability < 100" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --action myActionGroup \
@@ -265,16 +268,16 @@ az monitor metrics alert create \
 
 Key metrics to monitor:
 
-- **HealthProbeStatus**: Percentage of healthy backend instances
+- **DipAvailability**: Health probe status for backend instances
 - **SYNCount**: Number of SYN packets (new connections)
 - **PacketCount**: Total packets processed
 - **ByteCount**: Total bytes processed
 
 ## Handling Scale-In Gracefully
 
-When VMSS scales in, it removes instances from the Load Balancer pool and then deletes them. To handle in-flight requests gracefully, implement connection draining:
+When VMSS scales in, it removes instances from the Load Balancer pool and then deletes them. To handle in-flight requests gracefully, enable terminate notifications and implement application-level graceful shutdown:
 
-The Load Balancer does not have a built-in connection draining feature like Application Gateway, but you can implement it at the application level:
+Standard Load Balancer can stop sending new connections to unhealthy or administratively drained backends, but your application still needs to stop accepting new requests and finish in-flight work before the instance is deleted:
 
 ```python
 # Example: Graceful shutdown handler in Python
@@ -288,7 +291,7 @@ import time
 in_flight_count = 0
 
 def shutdown_handler(signum, frame):
-    """Handle SIGTERM from VMSS scale-in."""
+    """Handle a shutdown signal from your process supervisor."""
     print("Received shutdown signal, draining connections...")
 
     # Stop accepting new requests
