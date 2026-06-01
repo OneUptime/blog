@@ -41,7 +41,7 @@ aws batch create-compute-environment \
   --type MANAGED \
   --compute-resources '{
     "type": "SPOT",
-    "allocationStrategy": "SPOT_CAPACITY_OPTIMIZED",
+    "allocationStrategy": "SPOT_PRICE_CAPACITY_OPTIMIZED",
     "minvCpus": 0,
     "maxvCpus": 1024,
     "instanceTypes": [
@@ -55,8 +55,7 @@ aws batch create-compute-environment \
     "subnets": ["subnet-0abc123", "subnet-0def456", "subnet-0ghi789"],
     "securityGroupIds": ["sg-0abc123"],
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
-    "spotIamFleetRole": "arn:aws:iam::123456789012:role/AmazonEC2SpotFleetRole",
-    "bidPercentage": 100
+    "spotIamFleetRole": "arn:aws:iam::123456789012:role/AmazonEC2SpotFleetTaggingRole"
   }' \
   --service-role arn:aws:iam::123456789012:role/AWSBatchServiceRole \
   --state ENABLED
@@ -64,10 +63,10 @@ aws batch create-compute-environment \
 
 Several things are intentional here:
 
-- **allocationStrategy: SPOT_CAPACITY_OPTIMIZED** - This is the most important setting. It tells Batch to pick instance types from the pools with the most available capacity, which reduces the chance of interruption. Do not use BEST_FIT for Spot - it picks the cheapest instance but that pool is often the most contested.
+- **allocationStrategy: SPOT_PRICE_CAPACITY_OPTIMIZED** - This is the most important setting. It tells Batch to balance price and available capacity, choosing Spot pools that are less likely to be interrupted while still keeping prices low. `SPOT_CAPACITY_OPTIMIZED` is also a good choice when interruption avoidance matters more than price. Do not use BEST_FIT for Spot - it picks the lowest-cost fitting instance type and can limit scaling when that capacity is not available.
 - **Wide instance type selection** - The more instance types you list, the more Spot pools Batch can draw from. This dramatically reduces interruption rates.
 - **Multiple subnets** - Each subnet is in a different AZ, giving Batch access to capacity across the region.
-- **bidPercentage: 100** - This means you are willing to pay up to 100% of On-Demand price. In practice, Spot prices are usually 60-90% below On-Demand, but setting this ensures you never miss capacity because of a price cap.
+- **No bidPercentage cap** - If you leave `bidPercentage` empty, Batch uses the default cap of 100% of the On-Demand price. In practice, Spot prices are usually 60-90% below On-Demand, and leaving the default avoids losing capacity because of an artificially low price cap.
 
 ## Step 2: Create a Mixed Job Queue
 
@@ -128,11 +127,11 @@ aws batch register-job-definition \
         "action": "RETRY"
       },
       {
-        "onStatusReason": "Cannot pull container*",
+        "onStatusReason": "CannotPullContainerError*",
         "action": "RETRY"
       },
       {
-        "onReason": "*spot*",
+        "onExitCode": "143",
         "action": "RETRY"
       },
       {
@@ -140,6 +139,7 @@ aws batch register-job-definition \
         "action": "EXIT"
       },
       {
+        "onReason": "*",
         "action": "EXIT"
       }
     ]
@@ -162,6 +162,7 @@ import sys
 s3 = boto3.client('s3')
 CHECKPOINT_BUCKET = os.environ.get('CHECKPOINT_BUCKET', 'my-checkpoint-bucket')
 JOB_ID = os.environ.get('AWS_BATCH_JOB_ID', 'local')
+current_state = {'items_processed': 0, 'last_offset': 0}
 
 def save_checkpoint(state):
     """Save processing state to S3 so we can resume after interruption"""
@@ -189,7 +190,7 @@ def handle_sigterm(signum, frame):
     """Handle SIGTERM gracefully - save checkpoint before exit"""
     print("Received SIGTERM (likely Spot interruption). Saving checkpoint...")
     save_checkpoint(current_state)
-    sys.exit(0)
+    sys.exit(143)
 
 # Register signal handler for graceful shutdown
 signal.signal(signal.SIGTERM, handle_sigterm)
@@ -213,7 +214,7 @@ print(f"Done! Processed {current_state['items_processed']} items total")
 Key patterns here:
 
 - **Checkpointing to S3** - Save progress periodically so you can resume after interruption instead of starting over
-- **SIGTERM handler** - AWS sends SIGTERM before terminating Spot Instances. Use this signal to save your state
+- **SIGTERM handler** - When your container is stopped during a Spot interruption, it receives SIGTERM. Use this signal to save your state and exit non-zero so AWS Batch retries the job
 - **Idempotent processing** - Make sure reprocessing an item does not cause duplicates or errors
 
 ## Cost Comparison
@@ -230,10 +231,10 @@ The mixed approach costs slightly more but gives you guaranteed capacity for tim
 
 ## Spot Instance Best Practices for Batch
 
-1. **Use SPOT_CAPACITY_OPTIMIZED** - Always. It picks from the deepest pools.
+1. **Use SPOT_PRICE_CAPACITY_OPTIMIZED** - This is the recommended default for most Spot workloads because it considers both price and interruption risk. Use `SPOT_CAPACITY_OPTIMIZED` when minimizing interruptions is more important than price.
 2. **Diversify instance types** - List at least 10-15 types across multiple families and sizes.
 3. **Use multiple AZs** - More AZs means more capacity pools.
-4. **Set bidPercentage to 100** - Spot prices rarely approach On-Demand, and a low cap just means you lose capacity.
+4. **Leave bidPercentage empty for most workloads** - The default is 100% of On-Demand, and a low cap just means you lose capacity.
 5. **Implement checkpointing** - For jobs longer than 10 minutes, save progress so interruptions cost minutes, not hours.
 6. **Use retry strategies** - At least 3 attempts for any Spot workload.
 7. **Keep jobs short** - Break long-running work into smaller chunks. A 10-minute job has much less to lose than a 10-hour job.
@@ -244,9 +245,11 @@ Track your Spot savings and interruption rates.
 
 ```bash
 # Check Spot Instance interruption notices in the last 24 hours
+SINCE=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+
 aws ec2 describe-spot-instance-requests \
   --filters "Name=state,Values=closed" "Name=status-code,Values=instance-terminated-by-price,instance-terminated-by-service,instance-terminated-no-capacity" \
-  --query 'SpotInstanceRequests[?CreateTime>=`2026-02-11`].{Id:InstanceId,Status:Status.Code,Time:Status.UpdateTime}'
+  --query "SpotInstanceRequests[?CreateTime>=\`${SINCE}\`].{Id:InstanceId,Status:Status.Code,Time:Status.UpdateTime}"
 ```
 
 For comprehensive job monitoring, see [monitoring AWS Batch with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-aws-batch-jobs-with-cloudwatch/view).
