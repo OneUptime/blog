@@ -10,11 +10,11 @@ Description: Learn how to build Crossplane Compositions that let developers self
 
 Crossplane brings infrastructure management into Kubernetes. Instead of writing Terraform modules and running pipelines, your developers create Kubernetes resources and Crossplane provisions the cloud infrastructure. The real power comes from Compositions - abstractions that let platform teams define opinionated infrastructure templates that developers consume through simple custom resources.
 
-This post walks through building a Crossplane Composition for Azure database provisioning. We will create a Composite Resource Definition (XRD) that exposes a simple API, and a Composition that provisions an Azure SQL Server, database, firewall rules, and diagnostic settings behind the scenes.
+This post walks through building a Crossplane Composition for Azure database provisioning. We will create a Composite Resource Definition (XRD) that exposes a simple API, and a Composition that provisions an Azure SQL Server, database, and firewall rules behind the scenes.
 
 ## Why Crossplane for Databases
 
-Platform teams typically want to standardize how databases get provisioned. Every database should have diagnostic settings enabled, specific firewall rules, a certain SKU tier, and proper tagging. Developers just want a database with a connection string - they should not need to know about all those operational details.
+Platform teams typically want to standardize how databases get provisioned. Every database should have specific firewall rules, a certain SKU tier, and proper tagging. Developers just want a database with connection details - they should not need to know about all those operational details.
 
 Crossplane Compositions solve this by creating an abstraction layer. The platform team defines the Composition (the "how"), and developers interact with a simplified API (the "what").
 
@@ -25,9 +25,8 @@ graph TB
     C -->|Provisions| D[Azure SQL Server]
     C -->|Provisions| E[Azure SQL Database]
     C -->|Provisions| F[Firewall Rules]
-    C -->|Provisions| G[Diagnostic Settings]
-    C -->|Creates| H[Connection Secret]
-    H --> A
+    C -->|Creates| G[Connection Secret]
+    G --> A
 ```
 
 ## Prerequisites
@@ -52,6 +51,21 @@ metadata:
 spec:
   package: xpkg.upbound.io/upbound/provider-azure-sql:v1.1.0
 EOF
+
+# Install the patch-and-transform composition function
+kubectl apply -f - <<EOF
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.10.0
+EOF
+
+# Create the administrator password secret referenced by the SQL Server
+kubectl create secret generic sql-admin-password \
+  --namespace crossplane-system \
+  --from-literal=password='ChangeThisPassword123!'
 ```
 
 ## Defining the Composite Resource Definition (XRD)
@@ -73,6 +87,9 @@ spec:
   claimNames:
     kind: DatabaseClaim
     plural: databaseclaims
+  connectionSecretKeys:
+    - endpoint
+    - username
   versions:
     - name: v1alpha1
       served: true
@@ -136,117 +153,145 @@ spec:
     apiVersion: platform.example.com/v1alpha1
     kind: XDatabase
   writeConnectionSecretsToNamespace: crossplane-system
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        writeConnectionSecretToRef:
+          patches:
+            - type: FromCompositeFieldPath
+              fromFieldPath: spec.writeConnectionSecretToRef.name
+              toFieldPath: name
 
-  resources:
-    # Resource Group for the database resources
-    - name: resource-group
-      base:
-        apiVersion: azure.upbound.io/v1beta1
-        kind: ResourceGroup
-        spec:
-          forProvider:
-            location: eastus
-            tags:
-              managed-by: crossplane
-      patches:
-        # Patch the location from the claim
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.region
-          toFieldPath: spec.forProvider.location
-        # Patch the environment tag
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.environment
-          toFieldPath: spec.forProvider.tags.environment
+        resources:
+          # Resource Group for the database resources
+          - name: resource-group
+            base:
+              apiVersion: azure.upbound.io/v1beta1
+              kind: ResourceGroup
+              spec:
+                forProvider:
+                  location: eastus
+                  tags:
+                    managed-by: crossplane
+            patches:
+              # Patch the location from the claim
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.location
+              # Patch the environment tag
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.environment
+                toFieldPath: spec.forProvider.tags.environment
 
-    # SQL Server
-    - name: sql-server
-      base:
-        apiVersion: sql.azure.upbound.io/v1beta1
-        kind: MSSQLServer
-        spec:
-          forProvider:
-            resourceGroupNameSelector:
-              matchControllerRef: true
-            location: eastus
-            version: "12.0"
-            administratorLogin: sqladmin
-            administratorLoginPasswordSecretRef:
-              namespace: crossplane-system
-              key: password
-            minimumTlsVersion: "1.2"
-            tags:
-              managed-by: crossplane
-          writeConnectionSecretToRef:
-            namespace: crossplane-system
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.region
-          toFieldPath: spec.forProvider.location
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.environment
-          toFieldPath: spec.forProvider.tags.environment
-        # Set the connection secret name based on the claim
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.uid
-          toFieldPath: spec.writeConnectionSecretToRef.name
-          transforms:
-            - type: string
-              string:
-                fmt: "sql-server-%s"
+          # SQL Server
+          - name: sql-server
+            base:
+              apiVersion: sql.azure.upbound.io/v1beta1
+              kind: MSSQLServer
+              spec:
+                forProvider:
+                  resourceGroupNameSelector:
+                    matchControllerRef: true
+                  location: eastus
+                  version: "12.0"
+                  administratorLogin: sqladmin
+                  administratorLoginPasswordSecretRef:
+                    namespace: crossplane-system
+                    name: sql-admin-password
+                    key: password
+                  minimumTlsVersion: "1.2"
+                  tags:
+                    managed-by: crossplane
+                writeConnectionSecretToRef:
+                  namespace: crossplane-system
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.location
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.environment
+                toFieldPath: spec.forProvider.tags.environment
+              # Set the composed resource secret name based on the claim
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.uid
+                toFieldPath: spec.writeConnectionSecretToRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "sql-server-%s"
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.fullyQualifiedDomainName
+                toFieldPath: status.serverFqdn
+            connectionDetails:
+              - name: endpoint
+                type: FromFieldPath
+                fromFieldPath: status.atProvider.fullyQualifiedDomainName
+              - name: username
+                type: FromFieldPath
+                fromFieldPath: spec.forProvider.administratorLogin
 
-    # SQL Database with size-based SKU mapping
-    - name: sql-database
-      base:
-        apiVersion: sql.azure.upbound.io/v1beta1
-        kind: MSSQLDatabase
-        spec:
-          forProvider:
-            serverIdSelector:
-              matchControllerRef: true
-            collation: "SQL_Latin1_General_CP1_CI_AS"
-            maxSizeGb: 32
-            skuName: S0
-            tags:
-              managed-by: crossplane
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.databaseName
-          toFieldPath: metadata.annotations[crossplane.io/external-name]
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.environment
-          toFieldPath: spec.forProvider.tags.environment
-        # Map the size parameter to actual SKU and storage settings
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.size
-          toFieldPath: spec.forProvider.skuName
-          transforms:
-            - type: map
-              map:
-                small: S0
-                medium: S3
-                large: P2
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.size
-          toFieldPath: spec.forProvider.maxSizeGb
-          transforms:
-            - type: map
-              map:
-                small: "32"
-                medium: "256"
-                large: "1024"
+          # SQL Database with size-based SKU mapping
+          - name: sql-database
+            base:
+              apiVersion: sql.azure.upbound.io/v1beta1
+              kind: MSSQLDatabase
+              spec:
+                forProvider:
+                  serverIdSelector:
+                    matchControllerRef: true
+                  collation: "SQL_Latin1_General_CP1_CI_AS"
+                  maxSizeGb: 32
+                  skuName: S0
+                  tags:
+                    managed-by: crossplane
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.databaseName
+                toFieldPath: metadata.annotations["crossplane.io/external-name"]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.environment
+                toFieldPath: spec.forProvider.tags.environment
+              # Map the size parameter to actual SKU and storage settings
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.size
+                toFieldPath: spec.forProvider.skuName
+                transforms:
+                  - type: map
+                    map:
+                      small: S0
+                      medium: S3
+                      large: P2
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.size
+                toFieldPath: spec.forProvider.maxSizeGb
+                transforms:
+                  - type: map
+                    map:
+                      small: 32
+                      medium: 256
+                      large: 1024
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.id
+                toFieldPath: status.databaseId
 
-    # Firewall rule to allow Azure services
-    - name: firewall-rule-azure
-      base:
-        apiVersion: sql.azure.upbound.io/v1beta1
-        kind: MSSQLFirewallRule
-        spec:
-          forProvider:
-            serverIdSelector:
-              matchControllerRef: true
-            startIpAddress: "0.0.0.0"
-            endIpAddress: "0.0.0.0"
-      patches: []
+          # Firewall rule to allow Azure services
+          - name: firewall-rule-azure
+            base:
+              apiVersion: sql.azure.upbound.io/v1beta1
+              kind: MSSQLFirewallRule
+              spec:
+                forProvider:
+                  serverIdSelector:
+                    matchControllerRef: true
+                  startIpAddress: "0.0.0.0"
+                  endIpAddress: "0.0.0.0"
+            patches: []
 ```
 
 ## Size Mapping Strategy
@@ -285,7 +330,7 @@ spec:
     name: orders-db-connection
 ```
 
-After applying this, Crossplane will provision the resource group, SQL Server, database, and firewall rules. The connection details will be stored in a Kubernetes secret called `orders-db-connection` in the `orders-team` namespace.
+After applying this, Crossplane will provision the resource group, SQL Server, database, and firewall rules. The connection details exposed by the Composition will be stored in a Kubernetes secret called `orders-db-connection` in the `orders-team` namespace.
 
 ## Checking the Status
 
@@ -296,7 +341,7 @@ Developers can check the status of their database provisioning.
 kubectl get databaseclaim orders-db -n orders-team
 
 # Check the composite resource status
-kubectl get xdatabase -o wide
+kubectl get xdatabases -o wide
 
 # Check individual managed resources
 kubectl get mssqlserver,mssqldatabase,mssqlfirewallrule
@@ -306,13 +351,13 @@ kubectl get mssqlserver,mssqldatabase,mssqlfirewallrule
 
 You can create different Compositions for different environments. A dev Composition might use cheaper SKUs and skip geo-replication, while a prod Composition might include failover groups and longer backup retention.
 
-Use composition selectors and labels to route claims to the right Composition based on the environment parameter.
+Use composition selectors and labels to route claims to the right Composition for each environment.
 
 ## Cleanup and Lifecycle
 
 When a developer deletes their DatabaseClaim, Crossplane will delete all the underlying Azure resources. This is one of the main benefits - there are no orphaned resources to clean up manually.
 
-For production databases, you might want to set a deletion policy of `Orphan` on the Composition resources so that deleting the Kubernetes resources does not delete the actual databases.
+For production databases, you might want to set a deletion policy of `Orphan` on the managed resource templates in the Composition so that deleting the Kubernetes resources does not delete the actual databases.
 
 ## Conclusion
 
