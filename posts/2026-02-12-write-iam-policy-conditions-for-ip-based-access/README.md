@@ -65,7 +65,7 @@ The `/24` is CIDR notation covering all IPs from 203.0.113.0 to 203.0.113.255. Y
 
 ## Multiple IP Ranges
 
-Most organizations have multiple offices, VPN endpoints, or known IP ranges. You can specify multiple values:
+Most organizations have multiple offices, VPN endpoints, or known public egress IP ranges. You can specify multiple values:
 
 ```json
 {
@@ -81,8 +81,7 @@ Most organizations have multiple offices, VPN endpoints, or known IP ranges. You
                     "aws:SourceIp": [
                         "203.0.113.0/24",
                         "198.51.100.0/24",
-                        "192.0.2.0/24",
-                        "10.0.0.0/8"
+                        "192.0.2.0/24"
                     ]
                 }
             }
@@ -113,8 +112,9 @@ Instead of allowing only from certain IPs, it's often better to deny from everyw
                         "198.51.100.0/24"
                     ]
                 },
-                "Bool": {
-                    "aws:ViaAWSService": "false"
+                "BoolIfExists": {
+                    "aws:ViaAWSService": "false",
+                    "aws:PrincipalIsAWSService": "false"
                 }
             }
         }
@@ -124,7 +124,7 @@ Instead of allowing only from certain IPs, it's often better to deny from everyw
 
 Let's unpack this. The `NotIpAddress` condition matches when the source IP is NOT in the listed ranges. Combined with `Effect: Deny`, this means "deny everything from IPs not in our known ranges."
 
-The `aws:ViaAWSService` condition is critical and often overlooked. When AWS services make requests on your behalf (like S3 replication or CloudFormation creating resources), the source IP is an AWS internal IP, not your corporate IP. Without this condition, those service-to-service calls would be denied.
+The `aws:ViaAWSService` and `aws:PrincipalIsAWSService` conditions are critical and often overlooked. When AWS services make requests on your behalf using forward access sessions, the original source IP is not preserved. Some AWS services also call your resources directly as service principals. Without these exceptions, those service-to-service calls can be denied.
 
 ## IPv6 Support
 
@@ -163,8 +163,9 @@ Here's where things get tricky. When requests come through a VPC endpoint, `aws:
                 "StringNotEquals": {
                     "aws:SourceVpce": "vpce-1234567890abcdef0"
                 },
-                "Bool": {
-                    "aws:ViaAWSService": "false"
+                "BoolIfExists": {
+                    "aws:ViaAWSService": "false",
+                    "aws:PrincipalIsAWSService": "false"
                 }
             }
         }
@@ -194,13 +195,14 @@ For account-wide IP restrictions, attach the policy as a Service Control Policy 
                         "198.51.100.0/24"
                     ]
                 },
-                "Bool": {
-                    "aws:ViaAWSService": "false"
+                "BoolIfExists": {
+                    "aws:ViaAWSService": "false",
+                    "aws:PrincipalIsAWSService": "false"
                 },
                 "StringNotLike": {
                     "aws:PrincipalArn": [
                         "arn:aws:iam::*:role/OrganizationAccountAccessRole",
-                        "arn:aws:iam::*:role/AWSServiceRole*"
+                        "arn:aws:iam::*:role/aws-service-role/*/AWSServiceRoleFor*"
                     ]
                 }
             }
@@ -238,14 +240,14 @@ aws iam simulate-custom-policy \
 
 ## Common Mistakes
 
-**Forgetting `aws:ViaAWSService`.** Without it, service-to-service calls fail. Your Lambda functions, CloudFormation stacks, and S3 replication will break.
+**Forgetting service-call exceptions.** Without conditions such as `aws:ViaAWSService` for forward access sessions and `aws:PrincipalIsAWSService` for direct service-principal calls, service-to-service calls can fail. Workloads such as Lambda functions may also need their NAT gateway, VPC endpoint, or other egress path accounted for explicitly.
 
 **Using Allow instead of Deny.** If any other policy grants broader access, an allow-based IP restriction is bypassed. Deny-based restrictions are much more robust.
 
 **Not accounting for VPN and remote workers.** If your team uses a VPN, make sure the VPN's exit IP is in your allowed list. If people work from home without a VPN, IP-based restrictions might lock them out.
 
-**Overlooking IPv6.** Some AWS SDKs and tools prefer IPv6 when available. If your condition only lists IPv4 ranges, IPv6 requests get denied.
+**Overlooking IPv6.** Some AWS services support IPv6. If your condition only lists IPv4 ranges, IPv6 requests to those services get denied.
 
 ## Wrapping Up
 
-IP-based conditions add a strong layer of defense to your IAM policies. The deny-based approach is more resilient than allow-based, and you should always include the `aws:ViaAWSService` exception. Test thoroughly with the Policy Simulator before deploying, and remember to account for VPC endpoints, IPv6, and service-to-service calls. Combined with MFA requirements and proper role design, IP restrictions significantly reduce your attack surface.
+IP-based conditions add a strong layer of defense to your IAM policies. The deny-based approach is more resilient than allow-based, and you should include exceptions for AWS service calls where appropriate. Test thoroughly with the Policy Simulator before deploying, and remember to account for VPC endpoints, IPv6, and service-to-service calls. Combined with MFA requirements and proper role design, IP restrictions significantly reduce your attack surface.
