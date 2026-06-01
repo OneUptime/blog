@@ -42,12 +42,6 @@ resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   properties: {
     adminUserEnabled: false  // Use Azure AD auth, not admin credentials
     publicNetworkAccess: 'Enabled'  // Enable for module pulls from CI/CD
-    policies: {
-      retentionPolicy: {
-        status: 'enabled'
-        days: 90  // Retain untagged manifests for 90 days
-      }
-    }
   }
   tags: {
     purpose: 'bicep-module-registry'
@@ -113,7 +107,6 @@ param location string = resourceGroup().location
 @description('The storage account tier')
 @allowed([
   'Standard'
-  'Premium'
 ])
 param accountTier string = 'Standard'
 
@@ -234,6 +227,7 @@ module appStorage 'br:acrbicepmodules001.azurecr.io/modules/storage-account:1.0.
   params: {
     storageAccountName: 'stapp${environment}001'
     location: resourceGroup().location
+    accountTier: 'Standard'
     replicationType: environment == 'production' ? 'GRS' : 'LRS'
     enableVersioning: true
     tags: {
@@ -268,10 +262,20 @@ Now you can reference modules with a shorter syntax.
 
 ```bicep
 // Before: full registry URL
-module storage 'br:acrbicepmodules001.azurecr.io/modules/storage-account:1.0.0' = { ... }
+module storage 'br:acrbicepmodules001.azurecr.io/modules/storage-account:1.0.0' = {
+  name: 'deploy-storage'
+  params: {
+    storageAccountName: 'stapp${environment}001'
+  }
+}
 
 // After: using the alias
-module storage 'br/modules:storage-account:1.0.0' = { ... }
+module storage 'br/modules:storage-account:1.0.0' = {
+  name: 'deploy-storage'
+  params: {
+    storageAccountName: 'stapp${environment}001'
+  }
+}
 ```
 
 ## CI/CD Pipeline for Module Publishing
