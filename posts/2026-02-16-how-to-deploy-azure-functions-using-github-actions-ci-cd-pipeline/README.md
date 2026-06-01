@@ -22,7 +22,7 @@ Before we start, make sure you have the following in place:
 
 ## Step 1: Create a Service Principal for GitHub
 
-GitHub Actions needs credentials to deploy to your Azure subscription. The cleanest way to handle this is with a service principal and a federated identity credential (OIDC), which avoids storing long-lived secrets in GitHub.
+GitHub Actions needs credentials to deploy to your Azure subscription. One way to handle this is with a service principal secret. If you want to avoid long-lived secrets in GitHub, use the OIDC option later in this post instead.
 
 ```bash
 # Create a service principal with Contributor access to your resource group
@@ -32,14 +32,14 @@ az ad sp create-for-rbac \
   --name "github-deploy-functions" \
   --role Contributor \
   --scopes /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP> \
-  --sdk-auth
+  --json-auth
 ```
 
 Copy the JSON output. You will store this as a GitHub secret in the next step.
 
 Go to your GitHub repository, navigate to Settings, then Secrets and variables, then Actions. Create a new secret called `AZURE_CREDENTIALS` and paste the JSON.
 
-You will also want to store your function app name as a secret or variable. Create a variable called `AZURE_FUNCTION_APP_NAME` with your function app's name.
+You will also want to store your function app name as a secret or variable. Create a variable called `AZURE_FUNCTION_APP_NAME` with your function app's name, and create a secret called `AZURE_RESOURCE_GROUP` with the resource group name.
 
 ## Step 2: Set Up the Workflow File for a .NET Function
 
@@ -88,7 +88,7 @@ jobs:
 
       # Run unit tests
       - name: Run tests
-        run: dotnet test --configuration Release --no-build --verbosity normal
+        run: dotnet test --configuration Release --verbosity normal
         working-directory: tests/FunctionApp.Tests
 
       # Publish the function app for deployment
@@ -120,7 +120,7 @@ jobs:
 
       # Authenticate with Azure using the service principal
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -140,7 +140,7 @@ jobs:
     steps:
       # Authenticate with Azure
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -162,11 +162,11 @@ The **build-and-test** job runs on every push and pull request. It restores depe
 
 The **deploy-staging** job only runs on pushes to the main branch. It downloads the artifact from the build job and deploys it to a staging deployment slot. Using deployment slots gives you a chance to validate the deployment before it hits production.
 
-The **deploy-production** job performs a slot swap. This is a zero-downtime operation because Azure warms up the staging slot first, then swaps the routing. If something goes wrong, you can swap back in seconds.
+The **deploy-production** job performs a slot swap. Azure warms up the staging slot first, then swaps the routing without dropping new requests, although currently running function executions can be terminated during the swap. If something goes wrong, you can swap back in seconds.
 
 ## Setting Up Deployment Slots
 
-Deployment slots require the Standard plan or higher. If you are on the Consumption plan, you can skip the slot-based deployment and deploy directly to production.
+Deployment slot support depends on the hosting plan. The Consumption plan supports one extra deployment slot, the Premium plan supports two extra deployment slots, Dedicated App Service plans support more slots depending on the tier, and Flex Consumption does not currently support deployment slots. If your plan does not support the staging slot you want to use, deploy directly to production or use a supported plan.
 
 ```bash
 # Create a staging deployment slot for your function app
@@ -193,6 +193,7 @@ build-and-test:
       with:
         node-version: '20'
         cache: 'npm'
+        cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/package-lock.json
 
     # Install dependencies
     - name: Install dependencies
@@ -211,7 +212,7 @@ build-and-test:
 
     # Prune dev dependencies before packaging
     - name: Prune dev dependencies
-      run: npm prune --production
+      run: npm prune --omit=dev
       working-directory: ${{ env.WORKING_DIRECTORY }}
 
     # Upload the entire working directory as the deployment package
@@ -243,11 +244,13 @@ build-and-test:
       run: |
         pip install --target=".python_packages/lib/site-packages" \
           -r requirements.txt
+      working-directory: ${{ env.WORKING_DIRECTORY }}
 
     - name: Run tests
       run: |
         pip install -r requirements-dev.txt
         pytest tests/
+      working-directory: ${{ env.WORKING_DIRECTORY }}
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -271,7 +274,7 @@ A good pipeline does not just deploy and walk away. Add a health check step afte
 
     # Hit the health check endpoint and verify a 200 response
     STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-      "https://${{ env.AZURE_FUNCTION_APP_NAME }}.azurewebsites.net/api/health")
+      "https://${{ env.AZURE_FUNCTION_APP_NAME }}-staging.azurewebsites.net/api/health")
 
     if [ "$STATUS" != "200" ]; then
       echo "Health check failed with status $STATUS"
@@ -286,13 +289,18 @@ A good pipeline does not just deploy and walk away. Add a health check step afte
 For better security, you can switch to OpenID Connect (OIDC) authentication, which eliminates the need for long-lived credentials stored in GitHub secrets.
 
 ```yaml
-# Replace the azure/login step with OIDC authentication
-- name: Login to Azure with OIDC
-  uses: azure/login@v2
-  with:
-    client-id: ${{ secrets.AZURE_CLIENT_ID }}
-    tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-    subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+# Add this to the job that logs in with OIDC
+permissions:
+  id-token: write
+  contents: read
+
+steps:
+  - name: Login to Azure with OIDC
+    uses: azure/login@v3
+    with:
+      client-id: ${{ secrets.AZURE_CLIENT_ID }}
+      tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+      subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 ```
 
 This requires setting up a federated identity credential on your Azure AD app registration, but it is significantly more secure because there are no secrets to rotate or leak.
