@@ -140,12 +140,12 @@ az monitor scheduled-query create \
   --resource-group monitoring-rg \
   --name app-exceptions-alert \
   --scopes "/subscriptions/<sub-id>/resourceGroups/prod-rg/providers/Microsoft.Insights/components/my-app-insights" \
-  --condition-query "exceptions | where timestamp > ago(5m) | summarize count()" \
-  --condition "count > 50" \
+  --condition-query ExceptionsQuery="exceptions | where timestamp > ago(5m)" \
+  --condition "count 'ExceptionsQuery' > 50" \
   --severity 2 \
   --evaluation-frequency PT5M \
   --window-size PT5M \
-  --action "/subscriptions/<sub-id>/resourceGroups/monitoring-rg/providers/Microsoft.Insights/actionGroups/ops-team-alerts"
+  --action-groups "/subscriptions/<sub-id>/resourceGroups/monitoring-rg/providers/Microsoft.Insights/actionGroups/ops-team-alerts"
 ```
 
 ### Failed Login Attempts Alert
@@ -167,9 +167,8 @@ SigninLogs
 // Alert when a critical background job has not run in the expected time window
 customEvents
 | where name == "BackgroundJobCompleted"
-| where timestamp > ago(1h)
 | summarize LastRun = max(timestamp)
-| where LastRun < ago(30m)
+| where isnull(LastRun) or LastRun < ago(30m)
 ```
 
 ## Step 4: Create Activity Log Alerts
@@ -247,9 +246,9 @@ Alerts are useless if they do not work when you need them. Test regularly.
 # Test an action group to verify notifications are delivered
 az monitor action-group test-notifications create \
   --resource-group monitoring-rg \
-  --action-group-name ops-team-alerts \
-  --alert-type metric \
-  --notifications "[{\"notificationType\":\"Email\",\"emailAddress\":\"ops-lead@company.com\"}]"
+  --action-group ops-team-alerts \
+  --alert-type metricstaticthreshold \
+  --add-action email ops-lead ops-lead@company.com
 ```
 
 Also run periodic fire drills. Intentionally trigger alerts by, for example, running a CPU stress test on a non-production VM, and verify that the right people receive notifications through the right channels.
@@ -269,9 +268,8 @@ az monitor alert-processing-rule create \
   --name maintenance-suppression \
   --scopes "/subscriptions/<sub-id>/resourceGroups/prod-rg" \
   --rule-type RemoveAllActionGroups \
-  --schedule-start-datetime "2026-02-20T00:00:00" \
-  --schedule-end-datetime "2026-02-20T06:00:00" \
-  --schedule-recurrence-type Once \
+  --schedule-start-datetime "2026-02-20 00:00:00" \
+  --schedule-end-datetime "2026-02-20 06:00:00" \
   --schedule-time-zone "Eastern Standard Time"
 ```
 
