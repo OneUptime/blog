@@ -18,23 +18,23 @@ There are several ways to migrate to SQL Managed Instance. Each has different tr
 
 | Method | Max DB Size | Downtime | Complexity |
 |--------|------------|----------|------------|
-| Backup and restore via URL | 2 TB | Hours (offline) | Low |
-| Azure Database Migration Service (DMS) | No limit | Minutes (online) | Medium |
-| Log replay service | No limit | Minutes (online) | Medium |
+| Backup and restore via URL | Target restore limits apply | Hours (offline) | Low |
+| Azure Database Migration Service (DMS) | Target restore limits apply | Minutes (online) | Medium |
+| Log replay service | Target restore limits apply | Minutes (online) | Medium |
 | Transactional replication | Varies | Minutes | High |
 
 ```mermaid
 flowchart TD
     A[Choose Migration Method] --> B{Database size?}
-    B -->|Under 2 TB| C{Downtime tolerance?}
-    B -->|Over 2 TB| D[DMS or Log Replay Service]
+    B -->|Fits native restore limits| C{Downtime tolerance?}
+    B -->|Does not fit native restore limits| D[DMS, MI link, or another migration method]
     C -->|Hours OK| E[Backup/Restore via URL]
     C -->|Minutes only| F[DMS Online Migration]
 ```
 
 ## Method 1: Backup and Restore via URL
 
-This is the simplest migration method and works well for databases under 2 TB where you can tolerate some downtime.
+This is the simplest migration method and works well for databases that fit SQL Managed Instance restore limits where you can tolerate some downtime.
 
 ### Step 1: Create an Azure Storage Account
 
@@ -117,8 +117,7 @@ SECRET = 'your-sas-token-here';
 ```sql
 -- Restore the database on Managed Instance
 RESTORE DATABASE [MyDatabase]
-FROM URL = 'https://mymigrationstore.blob.core.windows.net/backups/MyDatabase.bak'
-WITH STATS = 10;
+FROM URL = 'https://mymigrationstore.blob.core.windows.net/backups/MyDatabase.bak';
 ```
 
 For striped backups:
@@ -129,8 +128,7 @@ RESTORE DATABASE [MyDatabase]
 FROM URL = 'https://mymigrationstore.blob.core.windows.net/backups/MyDatabase_1.bak',
      URL = 'https://mymigrationstore.blob.core.windows.net/backups/MyDatabase_2.bak',
      URL = 'https://mymigrationstore.blob.core.windows.net/backups/MyDatabase_3.bak',
-     URL = 'https://mymigrationstore.blob.core.windows.net/backups/MyDatabase_4.bak'
-WITH STATS = 10;
+     URL = 'https://mymigrationstore.blob.core.windows.net/backups/MyDatabase_4.bak';
 ```
 
 ## Method 2: Azure Database Migration Service (DMS)
@@ -139,11 +137,11 @@ DMS supports online migrations with minimal downtime. It handles the initial dat
 
 ### Step 1: Assess Compatibility
 
-Before migrating, run the Azure SQL Migration extension in Azure Data Studio or the Data Migration Assistant (DMA) to check for compatibility issues.
+Before migrating, run an Azure SQL migration assessment in the Azure portal for SQL Server enabled by Azure Arc, SSMS, or another supported migration assessment tool to check for compatibility issues.
 
 ```bash
-# Install the Azure SQL Migration extension in Azure Data Studio
-# Then run an assessment against your source database
+# Run an assessment against your source SQL Server instance
+# from a supported Azure SQL migration assessment tool
 ```
 
 The assessment identifies:
@@ -154,14 +152,7 @@ The assessment identifies:
 
 ### Step 2: Create a DMS Instance
 
-```bash
-# Create a DMS instance
-az dms create \
-    --resource-group myResourceGroup \
-    --name myDMS \
-    --location eastus \
-    --sku-name Premium_4vCores
-```
+Create or select the Database Migration Service instance from the supported migration workflow, such as the Azure portal SQL migration experience or the migration wizard in SSMS. The legacy `az dms create` command creates Azure Database Migration Service (classic), which is retired for SQL Server scenarios.
 
 ### Step 3: Create a Migration Project
 
@@ -176,13 +167,13 @@ In the Azure Portal:
 
 Provide connection details for both the source SQL Server and the target Managed Instance. DMS needs network connectivity to both.
 
-### Step 5: Select Databases and Tables
+### Step 5: Select Databases
 
 Choose which databases to migrate. You can migrate multiple databases in a single project.
 
 ### Step 6: Run the Migration
 
-DMS performs:
+DMS performs or orchestrates:
 1. Full backup of selected databases
 2. Restore on Managed Instance
 3. Continuous log shipping to keep the target in sync
@@ -209,14 +200,16 @@ LRS is a managed log shipping service specifically for Managed Instance migratio
 3. You continue taking log backups on the source and uploading them.
 4. When ready, you stop the source and let LRS apply the final log backup.
 
+For LRS, place each database's backup chain in its own folder and use a SAS token with only read and list permissions.
+
 ```bash
 # Start the Log Replay Service for a database
 az sql midb log-replay start \
     --resource-group myResourceGroup \
     --managed-instance myMI \
     --name MyDatabase \
-    --storage-uri "https://mymigrationstore.blob.core.windows.net/backups" \
-    --storage-sas "your-sas-token"
+    --storage-uri "https://mymigrationstore.blob.core.windows.net/backups/MyDatabase" \
+    --storage-sas "your-read-list-sas-token"
 ```
 
 Monitor the progress:
@@ -248,7 +241,7 @@ Before starting any migration, work through this checklist:
 2. **Size the Managed Instance**: Ensure the target has enough vCores, memory, and storage for your workload.
 3. **Network connectivity**: Verify that your source server can reach Azure Blob Storage, and that DMS (if used) can reach both source and target.
 4. **Application compatibility**: Test your application against the Managed Instance. While compatibility is high, some edge cases exist.
-5. **Logins and users**: Plan how to migrate SQL logins. Managed Instance supports both SQL and Azure AD authentication.
+5. **Logins and users**: Plan how to migrate SQL logins. Managed Instance supports both SQL and Microsoft Entra ID authentication.
 6. **Agent jobs**: Inventory all SQL Agent jobs that need to be migrated.
 7. **Linked servers**: Document any linked server connections that need to be recreated.
 8. **SSIS packages**: Plan for migrating any Integration Services packages.
@@ -258,7 +251,7 @@ Before starting any migration, work through this checklist:
 After the migration completes:
 
 1. **Verify data integrity**: Run row counts and checksums on critical tables.
-2. **Migrate SQL logins**: Recreate logins on the Managed Instance or switch to Azure AD.
+2. **Migrate SQL logins**: Recreate logins on the Managed Instance or switch to Microsoft Entra ID.
 3. **Recreate SQL Agent jobs**: Set up the scheduled jobs on the new instance.
 4. **Configure linked servers**: Recreate any linked server connections.
 5. **Update connection strings**: Point all applications to the Managed Instance endpoint.
@@ -269,7 +262,7 @@ After the migration completes:
 ## Choosing the Right Method
 
 **Use backup/restore via URL** when:
-- Database is under 2 TB
+- Database fits SQL Managed Instance restore limits
 - You can tolerate a few hours of downtime
 - You want the simplest possible process
 
