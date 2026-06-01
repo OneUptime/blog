@@ -45,6 +45,7 @@ You will need:
 
 - An Azure subscription.
 - A deployed Azure Static Web App.
+- The Standard plan if you are using the custom authentication configuration shown below.
 - Access to Azure Active Directory (you need permission to register applications).
 
 ## Step 1: Register an Azure AD Application
@@ -71,7 +72,7 @@ After registration, note down the **Application (client) ID** and **Directory (t
 
 ## Step 3: Configure the Static Web App
 
-Create or update the `staticwebapp.config.json` file in your app's source directory. This file configures the authentication provider.
+Create or update the `staticwebapp.config.json` file in your app's source directory, and make sure it is copied to the root of your build output. This file configures the authentication provider.
 
 ```json
 {
@@ -188,25 +189,20 @@ For fine-grained access control, you can assign custom roles to specific users t
 
 Send the link to the user. When they click it and authenticate, they receive the assigned role.
 
-For programmatic role assignment, you can use a custom function. Create an API endpoint that returns roles based on user claims.
+For programmatic role assignment, you can use a custom function. This works with custom authentication, and when it is enabled, role assignments from the built-in invitations system are ignored. Create an API endpoint that returns custom roles based on the user information passed to the function.
 
 ```javascript
 // api/get-roles/index.js
 // This function assigns roles based on the user's identity claims
 module.exports = async function (context, req) {
-  const clientPrincipal = req.headers['x-ms-client-principal'];
+  const principal = req.body;
 
-  if (!clientPrincipal) {
+  if (!principal) {
     context.res = { status: 401 };
     return;
   }
 
-  // Decode the client principal from the header
-  const principal = JSON.parse(
-    Buffer.from(clientPrincipal, 'base64').toString('utf8')
-  );
-
-  const roles = ['authenticated'];
+  const roles = [];
 
   // Assign admin role to specific users
   const adminEmails = ['admin@yourcompany.com', 'teamlead@yourcompany.com'];
