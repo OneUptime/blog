@@ -101,7 +101,7 @@ Now define where to send events:
 # Create an API Destination pointing to a Slack webhook
 aws events create-api-destination \
   --name slack-alerts-destination \
-  --connection-arn arn:aws:events:us-east-1:123456789012:connection/slack-webhook-connection \
+  --connection-arn arn:aws:events:us-east-1:123456789012:connection/slack-webhook-connection/11111111-2222-3333-4444-555555555555 \
   --invocation-endpoint https://slack.com/api/chat.postMessage \
   --http-method POST \
   --invocation-rate-limit-per-second 10
@@ -137,7 +137,7 @@ aws events put-targets \
   --rule ec2-state-to-slack \
   --targets '[{
     "Id": "slack-target",
-    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/slack-alerts-destination",
+    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/slack-alerts-destination/11111111-2222-3333-4444-555555555555",
     "RoleArn": "arn:aws:iam::123456789012:role/eventbridge-api-dest-role",
     "InputTransformer": {
       "InputPathsMap": {
@@ -174,7 +174,7 @@ aws events put-targets \
   --rule alarms-to-pagerduty \
   --targets '[{
     "Id": "pagerduty-target",
-    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/pagerduty-destination",
+    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/pagerduty-destination/11111111-2222-3333-4444-555555555555",
     "RoleArn": "arn:aws:iam::123456789012:role/eventbridge-api-dest-role",
     "InputTransformer": {
       "InputPathsMap": {
@@ -192,7 +192,6 @@ aws events put-targets \
 EventBridge needs an IAM role to invoke API Destinations:
 
 ```json
-// IAM policy allowing EventBridge to invoke API Destinations
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -222,7 +221,7 @@ aws events put-targets \
   --rule ec2-state-to-slack \
   --targets '[{
     "Id": "slack-target",
-    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/slack-alerts-destination",
+    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/slack-alerts-destination/11111111-2222-3333-4444-555555555555",
     "RoleArn": "arn:aws:iam::123456789012:role/eventbridge-api-dest-role",
     "RetryPolicy": {
       "MaximumEventAgeInSeconds": 7200,
@@ -239,7 +238,7 @@ aws events put-targets \
   --rule ec2-state-to-slack \
   --targets '[{
     "Id": "slack-target",
-    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/slack-alerts-destination",
+    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/slack-alerts-destination/11111111-2222-3333-4444-555555555555",
     "RoleArn": "arn:aws:iam::123456789012:role/eventbridge-api-dest-role",
     "DeadLetterConfig": {
       "Arn": "arn:aws:sqs:us-east-1:123456789012:webhook-dlq"
@@ -251,10 +250,10 @@ aws events put-targets \
 
 Track these CloudWatch metrics to monitor your webhook integrations:
 
-- `Invocations` - Total number of API calls made
-- `InvocationAttempts` - Including retries
+- `Invocations` - Target invocations by a rule, including successful and failed invocations
+- `InvocationAttempts` - Attempts to invoke the target
 - `TriggeredRules` - Rules that matched events
-- `FailedInvocations` - Calls that failed after all retries
+- `FailedInvocations` - Invocations that failed permanently
 
 Set up alarms on `FailedInvocations` to catch problems early:
 
