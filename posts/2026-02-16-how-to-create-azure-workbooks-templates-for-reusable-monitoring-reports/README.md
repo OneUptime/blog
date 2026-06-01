@@ -120,11 +120,12 @@ The warning only appears when there are actually VMs with high CPU.
 
 ## Step 5: Create a Multi-Tab Layout
 
-For complex Workbooks, organize content into tabs using groups:
+For complex Workbooks, organize content into tabs using links and groups:
 
-1. Add a Group step
-2. Set the group style to "Tabs"
-3. Add sub-groups for each tab:
+1. Add a Links/Tabs step
+2. Set the style to "Tabs"
+3. Configure each tab to set a parameter value, such as `SelectedTab`
+4. Add groups for each tab's content and make each group conditionally visible based on the selected tab:
    - Tab 1: "Overview" - summary metrics and health status
    - Tab 2: "Compute" - CPU, memory, disk metrics
    - Tab 3: "Network" - bandwidth, packet drops, latency
@@ -161,10 +162,11 @@ To export the template as an ARM resource for deployment across subscriptions:
 ```bash
 # Export the Workbook template as JSON
 
-az monitor workbook show \
+az monitor app-insights workbook show \
   --resource-group myRG \
-  --name "<workbook-resource-name>" \
-  --query "properties.serializedData" \
+  --name "<workbook-resource-guid>" \
+  --can-fetch-content true \
+  --query "serializedData" \
   -o tsv > workbook-template.json
 ```
 
@@ -181,7 +183,7 @@ Deploy it to other subscriptions using an ARM template:
     "galleries": [
       {
         "name": "VM Performance Report",
-        "category": "Infrastructure",
+        "category": "workbook",
         "type": "workbook",
         "resourceType": "Azure Monitor",
         "order": 100
@@ -194,7 +196,7 @@ Deploy it to other subscriptions using an ARM template:
 
 ## Step 8: Create a Library of Reusable Queries
 
-Define frequently used queries as Workbook functions that can be referenced across steps:
+Within a query step, define reusable KQL functions for repeated logic:
 
 ```kql
 // Reusable function: Get top resource consumers
@@ -220,7 +222,7 @@ A template designed for use during incidents. Parameters include a time range ce
 - Resource health changes
 - Alert history
 - Performance anomalies
-- Dependency map from Service Map
+- Dependency data from VM insights, if your environment still collects it. The older Azure Service Map product retired on September 30, 2025, and the VM insights Map feature and Dependency Agent are deprecated.
 
 **Monthly Capacity Report**:
 
@@ -267,11 +269,11 @@ Use Terraform or Bicep to deploy Workbooks as part of your infrastructure code:
 ```hcl
 # Terraform resource for deploying a Workbook
 resource "azurerm_application_insights_workbook" "vm_report" {
-  name                = "vm-performance-report"
+  name                = "85b3e8bb-fc93-40be-83f2-98f6bec18ba0"
   resource_group_name = azurerm_resource_group.monitoring.name
   location            = azurerm_resource_group.monitoring.location
   display_name        = "VM Performance Report"
-  category            = "Infrastructure"
+  category            = "workbook"
 
   data_json = file("${path.module}/workbook-templates/vm-performance.json")
 
