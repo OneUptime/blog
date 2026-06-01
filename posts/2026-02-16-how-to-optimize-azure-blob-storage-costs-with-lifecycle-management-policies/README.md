@@ -23,6 +23,8 @@ Azure Blob Storage has four access tiers, each with different storage and access
 | Cold | ~$0.0036 | ~$0.010 | Rarely accessed (90+ days) |
 | Archive | ~$0.002 | ~$5.00 (rehydrate) | Long-term retention, rarely retrieved |
 
+Prices vary by region, redundancy option, and operation type, so treat these numbers as estimates and check the Azure pricing page for your account's region.
+
 The tradeoff is clear: lower storage cost means higher access cost. For data you read often, Hot is cheapest overall. For data you store but rarely read, Archive can save you 90% compared to Hot.
 
 ## Step 1: Analyze Your Current Storage Usage
@@ -57,7 +59,7 @@ az monitor metrics list \
   --output table
 ```
 
-Look at the `LastAccessTime` tracking if it is enabled. This tells you when each blob was last read:
+Look at the `LastAccessTime` tracking if it is enabled. This tells you when each blob was last read or written; to reduce latency impact, Azure updates the property on the first read in a 24-hour period:
 
 ```bash
 # Enable last access time tracking (required for access-time-based policies)
@@ -94,7 +96,7 @@ az storage account management-policy create \
   --policy @lifecycle-policy.json
 ```
 
-And here is the policy JSON file with rules for different data types:
+And here is the policy JSON file with rules for different data types. `prefixMatch` values must include the container name; these examples assume containers named `logs`, `diagnostics`, and `backups`:
 
 ```json
 {
@@ -209,7 +211,7 @@ Modification-time based policies are simple, but access-time based policies are 
 }
 ```
 
-The `enableAutoTierToHotFromCool` setting is important - it automatically moves a blob back to the Hot tier when it is accessed while in Cool tier. This prevents you from paying high Cool-tier read costs when data gets accessed again.
+The `enableAutoTierToHotFromCool` setting is important - it automatically moves a blob back to the Hot tier when it is accessed while in Cool tier. The first access is still billed as a Cool-tier read, but this reduces repeated Cool-tier read costs when data becomes active again.
 
 Note: Access-time tracking must be enabled on the storage account (Step 1) for these rules to work.
 
@@ -217,7 +219,7 @@ Note: Access-time tracking must be enabled on the storage account (Step 1) for t
 
 The Archive tier is the cheapest for storage but has important limitations:
 
-- **Rehydration time**: It takes hours to read data from Archive. Standard rehydration takes up to 15 hours; high-priority takes under 1 hour but costs significantly more.
+- **Rehydration time**: It takes hours to read data from Archive. Standard rehydration takes up to 15 hours; high-priority may complete in under 1 hour for blobs under 10 GB but costs significantly more.
 - **Minimum retention**: You are charged for a minimum of 180 days. If you delete or move data out of Archive before 180 days, you still pay for the full 180 days.
 - **Read costs**: Rehydrating data from Archive is expensive ($5 per 10,000 read operations plus per-GB rehydration fees).
 
@@ -235,7 +237,7 @@ az storage blob set-tier \
 
 ## Step 6: Monitor Policy Execution
 
-Lifecycle policies run once per day. Azure processes the rules and moves or deletes blobs that match the criteria. You can monitor execution through:
+Lifecycle policies run periodically. When you add or edit rules, it can take up to 24 hours for changes to go into effect and for the first execution to start. Azure processes the rules and moves or deletes blobs that match the criteria. You can monitor execution through:
 
 ```bash
 # Check if the lifecycle policy is set correctly
@@ -275,7 +277,7 @@ Savings: $101/month, or **55%**. Scale this to petabytes and the savings are mas
 
 1. **Start with modification-time rules if you do not have access tracking enabled.** Access-time rules are better but require the feature to be turned on.
 
-2. **Use blob prefixes to apply different rules to different data types.** Logs, backups, and media files have different access patterns.
+2. **Use blob prefixes to apply different rules to different data types.** Logs, backups, and media files have different access patterns. Remember that lifecycle `prefixMatch` values start with the container name.
 
 3. **Do not archive data you might need quickly.** Rehydration takes hours and costs money.
 
