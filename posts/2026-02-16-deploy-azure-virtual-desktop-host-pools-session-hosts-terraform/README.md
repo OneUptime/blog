@@ -53,6 +53,8 @@ provider "azurerm" {
   features {}
 }
 
+data "azurerm_client_config" "current" {}
+
 resource "azurerm_resource_group" "avd" {
   name     = "rg-avd-production"
   location = "eastus"
@@ -216,6 +218,7 @@ resource "azurerm_windows_virtual_machine" "session_host" {
   size                = "Standard_D4s_v5"  # 4 vCPU, 16GB RAM
   admin_username      = "avdadmin"
   admin_password      = var.admin_password
+  license_type        = "Windows_Client"
 
   network_interface_ids = [
     azurerm_network_interface.session_host[count.index].id,
@@ -262,7 +265,7 @@ resource "azurerm_virtual_machine_extension" "avd_register" {
   count                = var.session_host_count
   name                 = "AVDRegistration"
   virtual_machine_id   = azurerm_windows_virtual_machine.session_host[count.index].id
-  publisher            = "Microsoft.PowerShell"
+  publisher            = "Microsoft.Powershell"
   type                 = "DSC"
   type_handler_version = "2.73"
 
@@ -270,9 +273,14 @@ resource "azurerm_virtual_machine_extension" "avd_register" {
     modulesUrl            = "https://wvdportalstorageblob.blob.core.windows.net/galleryartifacts/Configuration_1.0.02714.342.zip"
     configurationFunction = "Configuration.ps1\\AddSessionHost"
     properties = {
-      hostPoolName          = azurerm_virtual_desktop_host_pool.main.name
+      hostPoolName = azurerm_virtual_desktop_host_pool.main.name
+      aadJoin      = true
+    }
+  })
+
+  protected_settings = jsonencode({
+    properties = {
       registrationInfoToken = azurerm_virtual_desktop_host_pool_registration_info.main.token
-      aadJoin               = true
     }
   })
 
@@ -338,6 +346,16 @@ Assign users to application groups using Azure AD role assignments.
 # access.tf
 # Grant users access to the virtual desktop
 
+variable "desktop_users_group_id" {
+  description = "Object ID of the Microsoft Entra ID group for full desktop users"
+  type        = string
+}
+
+variable "app_users_group_id" {
+  description = "Object ID of the Microsoft Entra ID group for RemoteApp users"
+  type        = string
+}
+
 # Desktop Users group gets full desktop access
 resource "azurerm_role_assignment" "desktop_users" {
   scope                = azurerm_virtual_desktop_application_group.desktop.id
@@ -369,6 +387,17 @@ AVD supports automatic scaling to reduce costs during off-hours.
 # scaling.tf
 # Automatic scaling for session hosts
 
+data "azuread_service_principal" "avd" {
+  application_id = "9cdead84-a844-4324-93f2-b2e6bb768d07"
+}
+
+# Required for Start VM on Connect and scaling plans to start and stop session hosts
+resource "azurerm_role_assignment" "avd_power" {
+  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  role_definition_name = "Desktop Virtualization Power On Off Contributor"
+  principal_id         = data.azuread_service_principal.avd.object_id
+}
+
 resource "azurerm_virtual_desktop_scaling_plan" "main" {
   name                = "sp-avd-production"
   location            = azurerm_resource_group.avd.location
@@ -392,6 +421,7 @@ resource "azurerm_virtual_desktop_scaling_plan" "main" {
     ramp_down_force_logoff_users         = false
     ramp_down_notification_message       = "Your session will end in 15 minutes. Please save your work."
     ramp_down_wait_time_minutes          = 15
+    ramp_down_stop_hosts_when            = "ZeroSessions"
     off_peak_start_time                  = "20:00"
     off_peak_load_balancing_algorithm    = "DepthFirst"
   }
@@ -400,6 +430,10 @@ resource "azurerm_virtual_desktop_scaling_plan" "main" {
     hostpool_id          = azurerm_virtual_desktop_host_pool.main.id
     scaling_plan_enabled = true
   }
+
+  depends_on = [
+    azurerm_role_assignment.avd_power,
+  ]
 }
 ```
 
