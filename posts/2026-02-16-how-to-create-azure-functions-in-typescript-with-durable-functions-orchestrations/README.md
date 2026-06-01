@@ -38,7 +38,7 @@ Create a new Azure Functions project with TypeScript and Durable Functions suppo
 ```bash
 # Create the project
 
-func init durable-demo --typescript --model V4
+func init durable-demo --worker-runtime typescript --model V4
 cd durable-demo
 
 # Install Durable Functions package
@@ -351,8 +351,7 @@ const approvalOrchestrator: OrchestrationHandler = function* (context: Orchestra
 
     // Step 2: Wait for the approval event with a timeout
     // Create a timer for the deadline
-    const deadline = context.df.currentUtcDateTime;
-    deadline.setHours(deadline.getHours() + 72);  // 72-hour timeout
+    const deadline = new Date(context.df.currentUtcDateTime.getTime() + 72 * 60 * 60 * 1000);  // 72-hour timeout
 
     const approvalEvent = context.df.waitForExternalEvent("ApprovalResponse");
     const timeout = context.df.createTimer(deadline);
