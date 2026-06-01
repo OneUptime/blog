@@ -16,7 +16,7 @@ In this guide, I will walk through setting up Azure Notification Hubs from scrat
 
 Before we dig into the setup, let me explain why Notification Hubs is worth using over rolling your own solution. The core problem with push notifications at scale is device registration management. Every time a user installs your app, the device gets a platform-specific token. These tokens change over time - APNs tokens rotate, FCM tokens can expire. You need to maintain a registry of all active tokens and route messages to the correct platform notification service.
 
-Azure Notification Hubs handles all of this. It manages device registrations, deduplicates tokens, handles token refresh, and provides a single API for sending to all platforms. It also supports tagging, which lets you target specific user segments without building your own routing logic.
+Azure Notification Hubs handles much of this. It manages device registrations, lets you update tokens as they change, and provides a single API for sending to all platforms. It also supports tagging, which lets you target specific user segments without building your own routing logic.
 
 The free tier supports up to 1 million pushes per month and 500 active devices, which is enough for development and small apps.
 
@@ -59,28 +59,22 @@ az notification-hub credential apns update \
   --resource-group rg-notifications \
   --namespace-name my-app-notifications-ns \
   --notification-hub-name my-app-hub \
-  --apns-certificate "/path/to/key.p8" \
+  --token "$(cat /path/to/AuthKey_KEYID.p8)" \
   --key-id YOUR_KEY_ID \
-  --app-id YOUR_BUNDLE_ID \
-  --token
+  --app-id YOUR_TEAM_ID \
+  --app-name YOUR_BUNDLE_ID \
+  --endpoint https://api.development.push.apple.com:443/3/device
 ```
 
-Set the endpoint to `gateway.sandbox.push.apple.com` for development and `gateway.push.apple.com` for production.
+Set the endpoint to `https://api.development.push.apple.com:443/3/device` for development and `https://api.push.apple.com:443/3/device` for production when using token authentication.
 
 ## Configuring FCM for Android
 
-For Android, you need a Firebase project. Go to the Firebase Console, create a project (or use an existing one), and navigate to Project Settings. Under Cloud Messaging, you will find your Server Key and Sender ID.
+For Android, you need a Firebase project. Go to the Firebase Console, create a project (or use an existing one), and make sure Firebase Cloud Messaging API (V1) is enabled. Then create or select a service account and download its JSON key file.
 
-```bash
-# Configure FCM (GCM) credentials
-az notification-hub credential gcm update \
-  --resource-group rg-notifications \
-  --namespace-name my-app-notifications-ns \
-  --notification-hub-name my-app-hub \
-  --google-api-key YOUR_SERVER_KEY
-```
+In the Azure portal, open your notification hub, select **Google (FCMv1)**, and enter the Private Key, Project ID, and Client Email values from the Firebase service account JSON file.
 
-Note that Azure Notification Hubs still refers to this as GCM in some APIs, but it works with FCM. Google has maintained backward compatibility.
+Older Azure Notification Hubs APIs and CLI commands still refer to GCM or legacy FCM in some places, but FCM legacy APIs are no longer supported. Use FCM v1 for new Android integrations.
 
 ## Configuring WNS for Windows
 
@@ -119,7 +113,9 @@ sequenceDiagram
 On the backend side, you use the Azure Notification Hubs SDK to create a registration. Here is an example using the .NET SDK.
 
 ```csharp
-// Install: dotnet add package Microsoft.Azure.NotificationHubs
+// Install: dotnet add package Microsoft.Azure.NotificationHubs --version 4.2.0
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.Azure.NotificationHubs;
 
 // Create the hub client with the connection string from Azure portal
@@ -129,7 +125,7 @@ var hub = NotificationHubClient.CreateClientFromConnectionString(
 );
 
 // Register an iOS device
-public async Task<string> RegisterIosDevice(string deviceToken, string userId)
+async Task<string> RegisterIosDevice(string deviceToken, string userId)
 {
     // Create an APNs native registration with tags
     var registration = new AppleRegistrationDescription(deviceToken);
@@ -140,13 +136,12 @@ public async Task<string> RegisterIosDevice(string deviceToken, string userId)
 }
 
 // Register an Android device
-public async Task<string> RegisterAndroidDevice(string fcmToken, string userId)
+async Task<string> RegisterAndroidDevice(string fcmToken, string userId)
 {
-    // Create an FCM native registration with tags
-    var registration = new FcmRegistrationDescription(fcmToken);
-    registration.Tags = new HashSet<string> { $"user:{userId}", "platform:android" };
+    // Create an FCM v1 native registration with tags
+    var tags = new HashSet<string> { $"user:{userId}", "platform:android" };
 
-    var result = await hub.CreateOrUpdateRegistrationAsync(registration);
+    var result = await hub.CreateFcmV1NativeRegistrationAsync(fcmToken, tags);
     return result.RegistrationId;
 }
 ```
@@ -165,8 +160,8 @@ var iosPayload = @"{""aps"":{""alert"":""You have a new message!"",""sound"":""d
 await hub.SendAppleNativeNotificationAsync(iosPayload);
 
 // Send a notification to all Android devices
-var androidPayload = @"{""notification"":{""title"":""New Message"",""body"":""You have a new message!""}}";
-await hub.SendFcmNativeNotificationAsync(androidPayload);
+var androidPayload = @"{""message"":{""notification"":{""title"":""New Message"",""body"":""You have a new message!""}}}";
+await hub.SendNotificationAsync(new FcmV1Notification(androidPayload));
 ```
 
 To send to a specific user across all their devices (regardless of platform), use tag expressions.
@@ -174,19 +169,19 @@ To send to a specific user across all their devices (regardless of platform), us
 ```csharp
 // Send to a specific user on all their devices
 var iosPayload = @"{""aps"":{""alert"":""Your order has shipped!"",""sound"":""default""}}";
-var androidPayload = @"{""notification"":{""title"":""Order Update"",""body"":""Your order has shipped!""}}";
+var androidPayload = @"{""message"":{""notification"":{""title"":""Order Update"",""body"":""Your order has shipped!""}}}";
 
 // The tag expression targets all devices registered with this user tag
 await hub.SendAppleNativeNotificationAsync(iosPayload, "user:456");
-await hub.SendFcmNativeNotificationAsync(androidPayload, "user:456");
+await hub.SendNotificationAsync(new FcmV1Notification(androidPayload), "user:456");
 ```
 
 ## Monitoring and Debugging
 
-Azure Notification Hubs provides telemetry through the Azure portal. You can see metrics like successful sends, failed sends, and registration counts. For debugging, enable per-message telemetry.
+Azure Notification Hubs provides telemetry through the Azure portal. You can see metrics like successful sends, failed sends, and registration counts. For debugging on the Standard tier, use per-message telemetry.
 
 ```csharp
-// Enable per-message telemetry for debugging
+// Send a notification and inspect per-message telemetry
 var outcome = await hub.SendAppleNativeNotificationAsync(iosPayload, "user:456");
 
 // Check the notification outcome
@@ -198,7 +193,7 @@ if (outcome.State == NotificationOutcomeState.Completed)
 }
 ```
 
-Common issues include expired device tokens (Notification Hubs handles cleanup automatically), incorrect platform credentials, and payload format errors. The Test Send feature in the Azure portal is invaluable for validating your setup before writing code.
+Common issues include expired device tokens, incorrect platform credentials, and payload format errors. The Test Send feature in the Azure portal is invaluable for validating your setup before writing code.
 
 ## Scaling Considerations
 
