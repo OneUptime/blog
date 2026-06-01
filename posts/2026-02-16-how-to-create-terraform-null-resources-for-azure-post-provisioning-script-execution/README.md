@@ -99,7 +99,7 @@ resource "null_resource" "db_init" {
       sleep 30
 
       # Run the schema initialization script
-      PGPASSWORD='${var.db_admin_password}' psql \
+      psql \
         -h ${azurerm_postgresql_flexible_server.main.fqdn} \
         -U ${var.db_admin_username} \
         -d ${azurerm_postgresql_flexible_server_database.app.name} \
