@@ -24,7 +24,7 @@ graph LR
     Lambda -->|VPC Lattice| ECS2[ECS Inventory Service]
 ```
 
-Both the ECS services and the Lambda function are registered as VPC Lattice services, so any of them can call any other through the service network.
+Both the ECS services and the Lambda function are fronted by VPC Lattice services, so any of them can call any other through the service network.
 
 ## Setting Up ECS as a VPC Lattice Target
 
@@ -42,7 +42,7 @@ aws vpc-lattice create-target-group \
     "port": 8080,
     "protocol": "HTTP",
     "protocolVersion": "HTTP1",
-    "vpcIdentifier": "vpc-ecs001",
+    "vpcIdentifier": "vpc-0abc1234",
     "ipAddressType": "IPV4",
     "healthCheck": {
       "enabled": true,
@@ -58,88 +58,35 @@ aws vpc-lattice create-target-group \
   }'
 ```
 
-Now you need to register ECS task IPs as targets. The trick is that ECS tasks have ephemeral IPs - they change every time a task restarts. You handle this by integrating with ECS service discovery or using a Lambda function triggered by ECS task state changes.
+Now attach the target group to the ECS service. ECS automatically registers and deregisters the service's tasks with the VPC Lattice target group as tasks start and stop.
 
-Lambda function to auto-register ECS tasks with VPC Lattice:
+Create an ECS service with a VPC Lattice configuration:
 
-```python
-import boto3
-import json
-
-lattice_client = boto3.client('vpc-lattice')
-ecs_client = boto3.client('ecs')
-
-TARGET_GROUP_ID = 'tg-ecs-order123'
-
-def handler(event, context):
-    """
-    Triggered by ECS task state change events.
-    Registers running tasks and deregisters stopped tasks.
-    """
-    detail = event['detail']
-    task_arn = detail['taskArn']
-    last_status = detail['lastStatus']
-    cluster_arn = detail['clusterArn']
-
-    if last_status == 'RUNNING':
-        # Get task details to find the IP
-        task_response = ecs_client.describe_tasks(
-            cluster=cluster_arn,
-            tasks=[task_arn]
-        )
-
-        for task in task_response['tasks']:
-            for attachment in task['attachments']:
-                if attachment['type'] == 'ElasticNetworkInterface':
-                    for detail_item in attachment['details']:
-                        if detail_item['name'] == 'privateIPv4Address':
-                            ip = detail_item['value']
-                            # Register the task IP
-                            lattice_client.register_targets(
-                                targetGroupIdentifier=TARGET_GROUP_ID,
-                                targets=[{'id': ip, 'port': 8080}]
-                            )
-                            print(f"Registered target: {ip}:8080")
-
-    elif last_status == 'STOPPED':
-        # We need the IP from the stopped event details
-        for attachment in detail.get('attachments', []):
-            if attachment['type'] == 'ElasticNetworkInterface':
-                for detail_item in attachment['details']:
-                    if detail_item['name'] == 'privateIPv4Address':
-                        ip = detail_item['value']
-                        lattice_client.deregister_targets(
-                            targetGroupIdentifier=TARGET_GROUP_ID,
-                            targets=[{'id': ip, 'port': 8080}]
-                        )
-                        print(f"Deregistered target: {ip}:8080")
-
-    return {'statusCode': 200}
+```json
+{
+  "serviceName": "order-service",
+  "taskDefinition": "order-task-def",
+  "vpcLatticeConfigurations": [
+    {
+      "targetGroupArn": "arn:aws:vpc-lattice:us-east-1:123456789012:targetgroup/tg-0abc123def4567890",
+      "portName": "order-http",
+      "roleArn": "arn:aws:iam::123456789012:role/ecsInfrastructureRoleVpcLattice"
+    }
+  ],
+  "desiredCount": 3,
+  "role": "ecsServiceRole"
+}
 ```
 
-Set up the EventBridge rule to trigger this function:
+Then create the service:
 
 ```bash
-# Create EventBridge rule for ECS task state changes
-aws events put-rule \
-  --name "ecs-task-state-change" \
-  --event-pattern '{
-    "source": ["aws.ecs"],
-    "detail-type": ["ECS Task State Change"],
-    "detail": {
-      "clusterArn": ["arn:aws:ecs:us-east-1:123456789012:cluster/production"],
-      "group": ["service:order-service"]
-    }
-  }'
-
-# Add Lambda as the target
-aws events put-targets \
-  --rule "ecs-task-state-change" \
-  --targets '[{
-    "Id": "lattice-registration",
-    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:lattice-ecs-registrar"
-  }]'
+aws ecs create-service \
+  --cluster production \
+  --cli-input-json file://ecs-service-vpc-lattice.json
 ```
+
+Make sure the ECS task security group allows inbound traffic from the VPC Lattice managed prefix list, or task and health check traffic can fail.
 
 ## Setting Up Lambda as a VPC Lattice Target
 
@@ -151,11 +98,14 @@ Create a Lambda target group:
 # Create a Lambda target group
 aws vpc-lattice create-target-group \
   --name "processor-lambda" \
-  --type LAMBDA
+  --type LAMBDA \
+  --config '{
+    "lambdaEventStructureVersion": "V2"
+  }'
 
 # Register the Lambda function as a target
 aws vpc-lattice register-targets \
-  --target-group-identifier tg-lambda-proc123 \
+  --target-group-identifier tg-0fedcba9876543210 \
   --targets id=arn:aws:lambda:us-east-1:123456789012:function:order-processor
 ```
 
@@ -165,6 +115,7 @@ Lambda function that receives VPC Lattice requests:
 
 ```python
 import json
+from urllib.parse import urlsplit
 
 def handler(event, context):
     """
@@ -173,7 +124,7 @@ def handler(event, context):
     """
     # Extract request details
     method = event.get('method', 'GET')
-    path = event.get('path', '/')
+    path = urlsplit(event.get('path', '/')).path
     headers = event.get('headers', {})
     body = event.get('body', '')
     query_params = event.get('queryStringParameters', {})
@@ -184,6 +135,7 @@ def handler(event, context):
         result = process_order(order_data)
 
         return {
+            'isBase64Encoded': False,
             'statusCode': 200,
             'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({
@@ -193,6 +145,7 @@ def handler(event, context):
         }
 
     return {
+        'isBase64Encoded': False,
         'statusCode': 404,
         'body': json.dumps({'error': 'Not found'})
     }
@@ -216,14 +169,14 @@ aws vpc-lattice create-service \
   --auth-type AWS_IAM
 
 aws vpc-lattice create-listener \
-  --service-identifier svc-order123 \
+  --service-identifier svc-0abc123def4567890 \
   --name "http" \
   --protocol HTTP \
   --port 80 \
   --default-action '{
     "forward": {
       "targetGroups": [
-        {"targetGroupIdentifier": "tg-ecs-order123", "weight": 100}
+        {"targetGroupIdentifier": "tg-0abc123def4567890", "weight": 100}
       ]
     }
   }'
@@ -234,26 +187,26 @@ aws vpc-lattice create-service \
   --auth-type AWS_IAM
 
 aws vpc-lattice create-listener \
-  --service-identifier svc-processor456 \
+  --service-identifier svc-0fedcba9876543210 \
   --name "http" \
   --protocol HTTP \
   --port 80 \
   --default-action '{
     "forward": {
       "targetGroups": [
-        {"targetGroupIdentifier": "tg-lambda-proc123", "weight": 100}
+        {"targetGroupIdentifier": "tg-0fedcba9876543210", "weight": 100}
       ]
     }
   }'
 
 # Associate both services with the service network
 aws vpc-lattice create-service-network-service-association \
-  --service-network-identifier sn-prod123 \
-  --service-identifier svc-order123
+  --service-network-identifier sn-0123456789abcdef0 \
+  --service-identifier svc-0abc123def4567890
 
 aws vpc-lattice create-service-network-service-association \
-  --service-network-identifier sn-prod123 \
-  --service-identifier svc-processor456
+  --service-network-identifier sn-0123456789abcdef0 \
+  --service-identifier svc-0fedcba9876543210
 ```
 
 ## Calling Services from ECS
@@ -263,7 +216,7 @@ Your ECS tasks need to call VPC Lattice services using SigV4-signed requests. He
 ECS application calling a Lattice service (Node.js):
 
 ```javascript
-const { SignatureV4 } = require('@aws-sdk/signature-v4');
+const { SignatureV4 } = require('@smithy/signature-v4');
 const { Sha256 } = require('@aws-crypto/sha256-js');
 const { defaultProvider } = require('@aws-sdk/credential-provider-node');
 const https = require('https');
@@ -276,17 +229,20 @@ async function callProcessorService(orderData) {
     sha256: Sha256
   });
 
-  const url = new URL('https://processor-service.production.vpc-lattice.us-east-1.on.aws/process');
+  const url = new URL('https://processor-service-svc-0fedcba9876543210.7d67968.vpc-lattice-svcs.us-east-1.on.aws/process');
+  const body = JSON.stringify(orderData);
 
   const request = {
     method: 'POST',
+    protocol: url.protocol,
     hostname: url.hostname,
     path: url.pathname,
     headers: {
       'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
       host: url.hostname
     },
-    body: JSON.stringify(orderData)
+    body
   };
 
   // Sign the request
@@ -326,8 +282,8 @@ IAM policy for the ECS task role:
       "Effect": "Allow",
       "Action": "vpc-lattice-svcs:Invoke",
       "Resource": [
-        "arn:aws:vpc-lattice:us-east-1:123456789012:service/svc-processor456",
-        "arn:aws:vpc-lattice:us-east-1:123456789012:service/svc-processor456/*"
+        "arn:aws:vpc-lattice:us-east-1:123456789012:service/svc-0fedcba9876543210",
+        "arn:aws:vpc-lattice:us-east-1:123456789012:service/svc-0fedcba9876543210/*"
       ]
     }
   ]
@@ -347,6 +303,8 @@ Resources:
     Properties:
       Name: processor-lambda-tg
       Type: LAMBDA
+      Config:
+        LambdaEventStructureVersion: V2
       Targets:
         - Id: !GetAtt ProcessorFunction.Arn
 
@@ -385,15 +343,14 @@ A common use case is migrating from ECS to Lambda (or vice versa). VPC Lattice m
 
 ```bash
 # Start with 100% ECS, then gradually shift to Lambda
-aws vpc-lattice update-rule \
-  --service-identifier svc-order123 \
-  --listener-identifier listener-abc \
-  --rule-identifier rule-default \
-  --action '{
+aws vpc-lattice update-listener \
+  --service-identifier svc-0abc123def4567890 \
+  --listener-identifier listener-0abc123def4567890 \
+  --default-action '{
     "forward": {
       "targetGroups": [
-        {"targetGroupIdentifier": "tg-ecs-order123", "weight": 80},
-        {"targetGroupIdentifier": "tg-lambda-order456", "weight": 20}
+        {"targetGroupIdentifier": "tg-0abc123def4567890", "weight": 80},
+        {"targetGroupIdentifier": "tg-0fedcba9876543210", "weight": 20}
       ]
     }
   }'
