@@ -8,21 +8,21 @@ Description: Learn how to create custom AKS storage classes with Azure Disk perf
 
 ---
 
-AKS comes with a few built-in storage classes, but they use default settings that may not fit your workload requirements. If you need NVMe-backed storage for a database, server-side encryption with your own keys, or specific IOPS guarantees, you need custom storage classes. In this post, I will walk through creating AKS storage classes that leverage Azure Disk performance tiers, configure encryption, and give your persistent volumes the performance characteristics your applications need.
+AKS comes with a few built-in storage classes, but they use default settings that may not fit your workload requirements. If you need high-performance storage for a database, server-side encryption with your own keys, or specific IOPS guarantees, you need custom storage classes. In this post, I will walk through creating AKS storage classes that use Azure Disk SKUs, configure encryption, and give your persistent volumes the performance characteristics your applications need.
 
 ## Understanding Azure Disk Types
 
 Azure offers several managed disk types, each with different performance and cost profiles:
 
-**Standard HDD (Standard_LRS)** - Cheapest option. Good for backups, dev/test, and infrequently accessed data. Up to 500 IOPS.
+**Standard HDD (Standard_LRS)** - Cheapest option. Good for backups, dev/test, and infrequently accessed data. Up to 2,000 IOPS.
 
 **Standard SSD (StandardSSD_LRS)** - Better consistency than HDD. Good for web servers and lightly used databases. Up to 6,000 IOPS.
 
-**Premium SSD (Premium_LRS)** - Production-grade. Provides guaranteed IOPS based on disk size. Up to 20,000 IOPS for a P50 disk.
+**Premium SSD (Premium_LRS)** - Production-grade. Provides guaranteed IOPS based on disk size. Up to 20,000 base IOPS for a P80 disk.
 
 **Premium SSD v2 (PremiumV2_LRS)** - Decouples IOPS, throughput, and capacity. You pay for what you provision independently.
 
-**Ultra Disk (UltraSSD_LRS)** - Highest performance. Up to 160,000 IOPS and 4,000 MB/s throughput. For the most demanding database workloads.
+**Ultra Disk (UltraSSD_LRS)** - Highest performance. Up to 400,000 IOPS and 10,000 MB/s throughput. For the most demanding database workloads.
 
 ## Built-in Storage Classes
 
@@ -34,15 +34,15 @@ AKS comes with these default storage classes.
 kubectl get storageclass
 ```
 
-You will see `managed-csi` (Premium SSD) and `managed-csi-premium` among others. These work fine for basic use cases, but they do not let you configure performance tiers, encryption, or other advanced settings.
+You will see `managed-csi` (Standard SSD) and `managed-csi-premium` (Premium SSD) among others. These work fine for basic use cases, but they do not let you configure customer-managed key encryption or Premium SSD v2 and Ultra Disk performance settings.
 
-## Step 1: Create a Premium SSD Storage Class with Specific Performance
+## Step 1: Create a Premium SSD Storage Class
 
-Create a storage class that provisions Premium SSD disks with a specific performance tier.
+Create a storage class that provisions Premium SSD disks. With Premium SSD, the baseline performance tier is selected from the requested PVC size.
 
 ```yaml
 # premium-ssd-storageclass.yaml
-# Storage class for Premium SSD with specific performance tier
+# Storage class for Premium SSD
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -52,9 +52,6 @@ provisioner: disk.csi.azure.com
 parameters:
   # Premium SSD disk type
   skuName: Premium_LRS
-  # Performance tier - P30 provides 5,000 IOPS and 200 MB/s
-  # Available tiers: P1, P2, P3, P4, P6, P10, P15, P20, P30, P40, P50, P60, P70, P80
-  perfProfile: "P30"
   # Cache settings for the disk
   cachingMode: ReadOnly
   # Disk filesystem type
@@ -116,9 +113,9 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: UltraSSD_LRS
-  # Ultra Disk allows custom IOPS up to 160,000
+  # AKS Azure Disk CSI parameters support custom IOPS up to 160,000
   DiskIOPSReadWrite: "50000"
-  # Throughput up to 4,000 MB/s
+  # Throughput up to 2,000 MB/s through the AKS StorageClass parameters
   DiskMBpsReadWrite: "1000"
   cachingMode: None
   fsType: ext4
@@ -190,7 +187,18 @@ DES_PRINCIPAL=$(az disk-encryption-set show \
 az keyvault set-policy \
   --vault-name myencryptionkv \
   --object-id $DES_PRINCIPAL \
-  --key-permissions wrapKey unwrapKey get
+  --key-permissions wrapkey unwrapkey get
+
+# Grant the AKS cluster identity access to the Disk Encryption Set
+AKS_PRINCIPAL=$(az aks show \
+  --resource-group myResourceGroup \
+  --name myCluster \
+  --query identity.principalId -o tsv)
+
+az role assignment create \
+  --role "Contributor" \
+  --assignee $AKS_PRINCIPAL \
+  --scope $DES_ID
 ```
 
 Now create a storage class that uses customer-managed key encryption.
@@ -232,8 +240,8 @@ spec:
   storageClassName: premium-ssd-high-perf
   resources:
     requests:
-      # Request 256GB - this determines the performance tier
-      storage: 256Gi
+      # Request 1Ti - this gives the disk the P30 baseline performance tier
+      storage: 1Ti
 ---
 # PVC using encrypted storage for sensitive data
 apiVersion: v1
@@ -291,31 +299,30 @@ spec:
 
 ## Performance Tier Overview
 
-Here is a reference for Azure Premium SSD performance tiers.
+Here is a reference for common Azure Premium SSD performance tiers.
 
 | Tier | Size | IOPS | Throughput (MB/s) | Monthly Cost (approx) |
 |------|------|------|-------------------|----------------------|
-| P4 | 32 GB | 120 | 25 | $5 |
-| P10 | 128 GB | 500 | 100 | $19 |
-| P15 | 256 GB | 1,100 | 125 | $37 |
-| P20 | 512 GB | 2,300 | 150 | $73 |
-| P30 | 1 TB | 5,000 | 200 | $135 |
-| P40 | 2 TB | 7,500 | 250 | $260 |
-| P50 | 4 TB | 7,500 | 250 | $491 |
+| P4 | 32 GiB | 120 | 25 | $5 |
+| P10 | 128 GiB | 500 | 100 | $19 |
+| P15 | 256 GiB | 1,100 | 125 | $37 |
+| P20 | 512 GiB | 2,300 | 150 | $73 |
+| P30 | 1 TiB | 5,000 | 200 | $135 |
+| P40 | 2 TiB | 7,500 | 250 | $260 |
+| P50 | 4 TiB | 7,500 | 250 | $491 |
 
 ## Step 6: Volume Expansion
 
 When you need more space, expand the PVC. The storage class must have `allowVolumeExpansion: true`.
 
 ```bash
-# Expand a PVC from 256Gi to 512Gi
-kubectl patch pvc database-data -p '{"spec": {"resources": {"requests": {"storage": "512Gi"}}}}'
+# Expand a PVC from 1Ti to 2Ti
+kubectl patch pvc database-data -p '{"spec": {"resources": {"requests": {"storage": "2Ti"}}}}'
 
 # Check the PVC status - it may show "FileSystemResizePending"
 kubectl get pvc database-data
 
-# The filesystem resize happens automatically when the pod restarts
-# For online resize, the CSI driver handles it without pod restart
+# The Azure Disk CSI driver supports resizing persistent volumes without downtime
 ```
 
 ## Step 7: Snapshot and Backup
@@ -351,7 +358,7 @@ spec:
   storageClassName: premium-ssd-high-perf
   resources:
     requests:
-      storage: 256Gi
+      storage: 1Ti
   dataSource:
     name: database-snapshot
     kind: VolumeSnapshot
@@ -364,7 +371,7 @@ spec:
 
 **Set the reclaim policy based on data importance.** Use `Retain` for production databases where accidental PVC deletion should not destroy data. Use `Delete` for ephemeral or reproducible data.
 
-**Right-size your disks.** Premium SSD performance scales with disk size. A 64GB P6 disk only provides 240 IOPS, while a 256GB P15 provides 1,100. If you need more IOPS, sometimes the cheapest option is a larger disk.
+**Right-size your disks.** Premium SSD performance scales with disk size. A 64 GiB P6 disk only provides 240 IOPS, while a 256 GiB P15 provides 1,100. If you need more IOPS, sometimes the cheapest option is a larger disk.
 
 **Use Premium SSD v2 for databases.** The ability to independently set IOPS and throughput means you do not have to overprovision capacity just to get the performance you need.
 
