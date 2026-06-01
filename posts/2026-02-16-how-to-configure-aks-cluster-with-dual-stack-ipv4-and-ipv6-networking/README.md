@@ -23,7 +23,7 @@ Dual-stack does not mean abandoning IPv4. It means your services can handle both
 
 ## Prerequisites
 
-Dual-stack AKS requires Kubernetes 1.27 or later, Azure CNI (overlay mode is recommended), and a VNet configured with both IPv4 and IPv6 address spaces. You need Azure CLI 2.48 or later.
+Dual-stack AKS requires Kubernetes 1.26.3 or later, Azure CNI Overlay, and a VNet configured with both IPv4 and IPv6 address spaces. Dual-stack LoadBalancer services require AKS 1.27 or later. You need Azure CLI 2.48 or later.
 
 ## Step 1: Create a Dual-Stack VNet
 
@@ -62,11 +62,12 @@ az aks create \
   --resource-group dualstack-rg \
   --name dualstack-cluster \
   --network-plugin azure \
+  --network-plugin-mode overlay \
   --vnet-subnet-id $SUBNET_ID \
   --pod-cidrs 10.244.0.0/16,fd12:3456:789a::/48 \
   --service-cidrs 10.0.4.0/24,fd12:3456:789b::/108 \
   --dns-service-ip 10.0.4.10 \
-  --ip-families IPv4,IPv6 \
+  --ip-families ipv4,ipv6 \
   --node-count 3 \
   --generate-ssh-keys
 ```
@@ -75,7 +76,8 @@ Key parameters to understand:
 
 - `--pod-cidrs` takes two CIDR ranges - one for IPv4 pods and one for IPv6 pods
 - `--service-cidrs` takes two ranges for service ClusterIPs
-- `--ip-families IPv4,IPv6` enables dual-stack with IPv4 as the primary family
+- `--network-plugin-mode overlay` enables Azure CNI Overlay, which is required for this AKS dual-stack setup
+- `--ip-families ipv4,ipv6` enables dual-stack with IPv4 as the primary family
 - The order of IP families matters - the first one is the primary
 
 ## Step 3: Verify Dual-Stack Configuration
@@ -202,11 +204,15 @@ Apply and verify.
 # Create all three services
 kubectl apply -f dual-stack-services.yaml
 
-# Check ClusterIPs for each service
+# Check the primary ClusterIP for each service
 kubectl get svc dual-stack-svc ipv4-only-svc ipv6-only-svc
+
+# Check all ClusterIPs assigned to each service
+kubectl get svc dual-stack-svc ipv4-only-svc ipv6-only-svc \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.clusterIPs}{"\n"}{end}'
 ```
 
-The dual-stack service should show two ClusterIPs (one IPv4, one IPv6). The single-stack services show only one each.
+The dual-stack service should have two entries in `spec.clusterIPs` (one IPv4, one IPv6). The single-stack services show only one each.
 
 ## Step 6: Expose Dual-Stack Services Externally
 
@@ -220,11 +226,9 @@ kind: Service
 metadata:
   name: dual-stack-lb
   namespace: default
-  annotations:
-    # Request a dual-stack Azure Load Balancer
-    service.beta.kubernetes.io/azure-load-balancer-ipv6: "true"
 spec:
   type: LoadBalancer
+  externalTrafficPolicy: Local
   ipFamilyPolicy: RequireDualStack
   ipFamilies:
     - IPv4
@@ -289,17 +293,21 @@ Then create your ingress resources as usual. NGINX will accept connections on bo
 Verify that pods can communicate using both protocols.
 
 ```bash
-# Deploy a test pod
-kubectl run test-client --image=busybox:1.36 --rm -it -- /bin/sh
+# Get the service ClusterIPs
+IPV4_CLUSTER_IP=$(kubectl get svc dual-stack-svc -o jsonpath='{.spec.clusterIPs[0]}')
+IPV6_CLUSTER_IP=$(kubectl get svc dual-stack-svc -o jsonpath='{.spec.clusterIPs[1]}')
 
-# Inside the test pod, test IPv4 connectivity
-wget -qO- http://10.0.4.100  # IPv4 ClusterIP
+# Test IPv4 connectivity
+kubectl run test-client-ipv4 --image=busybox:1.36 --rm -it --restart=Never -- \
+  wget -qO- "http://$IPV4_CLUSTER_IP"
 
 # Test IPv6 connectivity
-wget -qO- http://[fd12:3456:789b::100]  # IPv6 ClusterIP
+kubectl run test-client-ipv6 --image=busybox:1.36 --rm -it --restart=Never -- \
+  wget -qO- "http://[$IPV6_CLUSTER_IP]"
 
 # Test DNS resolution (should return both A and AAAA records)
-nslookup dual-stack-svc.default.svc.cluster.local
+kubectl run test-client-dns --image=busybox:1.36 --rm -it --restart=Never -- \
+  nslookup dual-stack-svc.default.svc.cluster.local
 ```
 
 ## Troubleshooting
@@ -315,7 +323,7 @@ nslookup dual-stack-svc.default.svc.cluster.local
 ## Limitations to Be Aware Of
 
 - Not all Azure regions support IPv6 for all VM sizes
-- Azure network policies have limited IPv6 support; consider using Calico instead
+- Azure and Calico network policies are not supported with AKS dual-stack networking
 - Some Azure PaaS services do not yet support IPv6 connectivity
 - Windows node pools have limited dual-stack support
 
