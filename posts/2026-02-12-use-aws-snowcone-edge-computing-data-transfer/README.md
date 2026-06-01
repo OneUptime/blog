@@ -8,15 +8,15 @@ Description: Learn to use AWS Snowcone for lightweight edge computing and data t
 
 ---
 
-Not every data transfer problem needs a 80 TB Snowball Edge. Sometimes you're dealing with a few terabytes at a remote location with limited network connectivity - a construction site, a ship at sea, a field research station, or a small branch office. AWS Snowcone is built for exactly these scenarios.
+Not every data transfer problem needs a large Snowball Edge. Sometimes you're dealing with a few terabytes at a remote location with limited network connectivity - a construction site, a ship at sea, a field research station, or a small branch office. AWS Snowcone was built for exactly these scenarios.
 
-Snowcone is the smallest member of the AWS Snow Family. It weighs 4.5 pounds, has 14 TB of usable storage (or 14 TB SSD with Snowcone SSD), and can run EC2 instances and AWS IoT Greengrass for edge computing. You can ship it back to AWS for data import or use AWS DataSync to transfer data online when connectivity is available.
+Snowcone is the smallest member of the AWS Snow Family. It weighs about 4-4.5 pounds, has 8 TB of usable HDD storage or 14 TB of usable SSD storage with Snowcone SSD, and can run EC2 instances and AWS IoT Greengrass for edge computing. You can ship it back to AWS for data import or use AWS DataSync to transfer data online when connectivity is available. As of November 7, 2025, AWS Snowball Edge devices, including Snowcone workflows, are available only to existing customers.
 
 ## Snowcone vs. Snowball Edge
 
 Here's when to pick Snowcone:
 
-- **Small data volumes** (up to 14 TB)
+- **Small data volumes** (up to 8 TB on Snowcone HDD or 14 TB on Snowcone SSD)
 - **Tight spaces** where a full Snowball Edge won't fit
 - **Remote or harsh environments** (it's ruggedized and can operate without a climate-controlled room)
 - **Edge computing** with lightweight workloads
@@ -36,7 +36,7 @@ graph TD
 
 ## Step 1: Order a Snowcone
 
-Create a Snowcone job through the CLI:
+If you're an existing AWS Snow Family customer in a supported Region, create a Snowcone job through the CLI:
 
 ```bash
 # Create an import job for Snowcone
@@ -45,12 +45,11 @@ aws snowball create-job \
   --job-type IMPORT \
   --resources '{
     "S3Resources": [{
-      "BucketArn": "arn:aws:s3:::field-data-bucket",
-      "KeyRange": {}
+      "BucketArn": "arn:aws:s3:::field-data-bucket"
     }]
   }' \
   --description "Field research station - monthly data collection" \
-  --address-id "ADID-12345678-1234-1234-1234-123456789012" \
+  --address-id "ADID12345678-1234-1234-1234-123456789012" \
   --role-arn "arn:aws:iam::123456789012:role/SnowconeImportRole" \
   --snowball-type "SNC1_SSD" \
   --shipping-option "SECOND_DAY"
@@ -60,9 +59,9 @@ The `SNC1_SSD` type is the Snowcone with SSD storage. For HDD storage (cheaper b
 
 ## Step 2: Set Up the Snowcone
 
-When the device arrives, it's surprisingly small - about the size of a tissue box. Power it using the included power adapter or a USB-C power source.
+When the device arrives, it's surprisingly small - about the size of a tissue box. Power it using a 45W+ USB-C power adapter or a compatible USB-C battery.
 
-Connect it to your network via the built-in ethernet ports (10GbE RJ45 or Wi-Fi):
+Connect it to your network via the built-in 1/10 GbE RJ45 ports, or by Wi-Fi if Wi-Fi was enabled for the device:
 
 ```bash
 # Download and install the Snowball Edge client
@@ -102,6 +101,7 @@ snowballEdge get-secret-access-key \
 aws configure set profile.snowcone.aws_access_key_id AKIA...
 aws configure set profile.snowcone.aws_secret_access_key SECRET...
 aws configure set profile.snowcone.region snow
+aws configure set profile.snowcone.ca_bundle /path/to/snowcone-ca-bundle.pem
 
 # Copy data to the Snowcone
 aws s3 sync /data/sensor-readings/ s3://field-data-bucket/readings/ \
@@ -134,41 +134,37 @@ Snowcone can run EC2 instances for local processing. This is useful for filterin
 
 ```bash
 # List available AMIs on the device
-snowballEdge describe-device \
-  --endpoint https://192.168.1.50 \
-  --manifest-file manifest.bin \
-  --unlock-code "12345-abcde-12345-abcde-12345"
+aws ec2 describe-images \
+  --profile snowcone \
+  --endpoint-url http://192.168.1.50:8008
 
 # Launch an EC2 instance on the Snowcone
 aws ec2 run-instances \
   --image-id s.ami-0123456789abcdef0 \
   --instance-type snc1.micro \
   --profile snowcone \
-  --endpoint-url https://192.168.1.50:8008
+  --endpoint-url http://192.168.1.50:8008
 
 # The instance has access to the local S3 endpoint
 # Your application can read sensor data, process it,
 # and write results back to S3 on the device
 ```
 
-Available instance types on Snowcone are limited due to the device's resources (2 vCPUs, 4 GB RAM available for compute). The `snc1.micro` type gives you 1 vCPU and 1 GB RAM, while `snc1.small` gives you 1 vCPU and 2 GB RAM.
+Available instance types on Snowcone are limited due to the device's resources (2 vCPUs and 4 GB RAM). The `snc1.micro` type gives you 1 vCPU and 1 GB RAM, `snc1.small` gives you 1 vCPU and 2 GB RAM, and `snc1.medium` gives you 2 vCPUs and 4 GB RAM.
 
 ## Step 5: Use DataSync for Online Transfer
 
 If you have some network connectivity (even intermittent), you can use DataSync to transfer data from the Snowcone to S3 while still in the field:
 
 ```bash
-# Start the DataSync agent on the Snowcone
-snowballEdge start-service datasync \
-  --endpoint https://192.168.1.50 \
-  --manifest-file manifest.bin \
-  --unlock-code "12345-abcde-12345-abcde-12345"
-
 # Get the DataSync agent's virtual network interface
 snowballEdge describe-virtual-network-interfaces \
   --endpoint https://192.168.1.50 \
   --manifest-file manifest.bin \
   --unlock-code "12345-abcde-12345-abcde-12345"
+
+# Get an activation key from the DataSync agent
+curl "http://192.168.1.50/?gatewayType=SYNC&activationRegion=us-east-1&no_redirect"
 
 # Activate the DataSync agent (from a machine with internet access)
 aws datasync create-agent \
@@ -214,21 +210,22 @@ aws s3 ls s3://field-data-bucket/ --recursive --summarize \
   --profile snowcone \
   --endpoint-url https://192.168.1.50:8443
 
-# Power off the device
-snowballEdge stop-service s3 \
+# If you used NFS, stop that service after buffered writes have completed
+snowballEdge stop-service \
+  --service-id fileinterface \
   --endpoint https://192.168.1.50 \
   --manifest-file manifest.bin \
   --unlock-code "12345-abcde-12345-abcde-12345"
 ```
 
-Ship the device back using the prepaid shipping label. Alternatively, if you used DataSync to transfer all the data online, you can return the device empty and save the import time.
+Power off the device from its power button or AWS OpsHub, then ship it back using the return shipping information shown on the E Ink display. Alternatively, if you used DataSync to transfer all the data online, you can return the device empty and save the import time.
 
 ## Step 7: Monitor the Import Job
 
 ```bash
 # Track job progress
 aws snowball describe-job \
-  --job-id JID-12345678-1234-1234-1234-123456789012 \
+  --job-id JID12345678-1234-1234-1234-123456789012 \
   --query '{
     Status: JobMetadata.JobState,
     Progress: JobMetadata.DataTransferProgress
@@ -247,6 +244,6 @@ Snowcone shines in scenarios that bigger devices can't handle:
 
 ## Cost
 
-Snowcone pricing includes a per-job fee (about $60 for Snowcone SSD) plus daily usage charges ($6/day with the first 5 days included). Shipping is included. For the amount of convenience and flexibility you get in remote or disconnected environments, it's remarkably affordable.
+Snowcone pricing has changed over time and depends on Region, device type, job type, and whether you are using on-demand or committed pricing. Check the current AWS Snowball pricing page and shipping terms before planning a project.
 
 The combination of small form factor, edge compute, and flexible data transfer options makes Snowcone a unique tool in the AWS toolkit. It's not the answer for every data transfer challenge, but for the scenarios it was designed for, there's really nothing else like it.
