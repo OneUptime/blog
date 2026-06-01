@@ -28,9 +28,9 @@ set -euo pipefail
 
 Here is what each option does:
 
-- `set -e`: Exit immediately if a command fails. Without this, the script keeps running after errors, often making things worse.
+- `set -e`: Exit immediately if a command fails in most simple command contexts. Without this, the script keeps running after many errors, often making things worse.
 - `set -u`: Treat unset variables as errors. Catches typos in variable names that would otherwise silently expand to empty strings.
-- `set -o pipefail`: A pipeline's exit code is the last non-zero exit code in the chain, not just the last command. Without this, `failing_command | grep something` reports success if grep succeeds, hiding the failure.
+- `set -o pipefail`: A pipeline's exit code is the rightmost non-zero exit code in the chain, not just the last command. Without this, `failing_command | grep something` reports success if grep succeeds, hiding the failure.
 
 ## Quote Everything
 
@@ -43,7 +43,7 @@ This example shows why unquoted variables break in the presence of spaces and sp
 file="my report (final).txt"
 rm $file
 # Bash expands this to: rm my report (final).txt
-# That is 4 separate arguments, not 1
+# That is 3 separate arguments, not 1
 
 # GOOD: Always quote variables
 rm "$file"
@@ -103,7 +103,9 @@ When ShellCheck flags something you intentionally want to keep, disable the spec
 ```bash
 # Intentionally unquoted because we want glob expansion here
 # shellcheck disable=SC2086
-files=$pattern
+for file in $pattern; do
+    process_file "$file"
+done
 ```
 
 ## Handle Errors Gracefully
@@ -323,7 +325,7 @@ release_lock() {
 
 # Acquire lock at start, release on exit
 acquire_lock
-trap 'release_lock; cleanup' EXIT
+trap release_lock EXIT
 ```
 
 Using `mkdir` for locking is an atomic operation on most filesystems, making it a reliable (if basic) locking mechanism.
