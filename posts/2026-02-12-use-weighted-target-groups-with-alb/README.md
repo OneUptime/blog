@@ -194,14 +194,17 @@ Instead of manual approval, you can automate rollback based on CloudWatch metric
 ```python
 import boto3
 import time
+from datetime import datetime, timedelta, timezone
 
-def get_error_rate(target_group_arn, alb_arn, period_minutes=5):
-    """Get the HTTP 5xx error rate for a target group."""
+def get_error_count(target_group_arn, alb_arn, period_minutes=5):
+    """Get the HTTP 5xx error count for a target group."""
     cloudwatch = boto3.client('cloudwatch')
 
     # Extract dimension values from ARNs
     tg_dim = target_group_arn.split(':')[-1]
     alb_dim = alb_arn.split(':')[-1].replace('loadbalancer/', '')
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(minutes=period_minutes)
 
     response = cloudwatch.get_metric_statistics(
         Namespace='AWS/ApplicationELB',
@@ -210,8 +213,8 @@ def get_error_rate(target_group_arn, alb_arn, period_minutes=5):
             {'Name': 'TargetGroup', 'Value': tg_dim},
             {'Name': 'LoadBalancer', 'Value': alb_dim}
         ],
-        StartTime=time.time() - (period_minutes * 60),
-        EndTime=time.time(),
+        StartTime=start_time,
+        EndTime=end_time,
         Period=period_minutes * 60,
         Statistics=['Sum']
     )
@@ -245,7 +248,11 @@ def canary_deploy(listener_arn, v1_tg, v2_tg, alb_arn, error_threshold=10):
                     'TargetGroups': [
                         {'TargetGroupArn': v1_tg, 'Weight': v1_weight},
                         {'TargetGroupArn': v2_tg, 'Weight': v2_weight}
-                    ]
+                    ],
+                    'TargetGroupStickinessConfig': {
+                        'Enabled': True,
+                        'DurationSeconds': 3600
+                    }
                 }
             }]
         )
@@ -254,7 +261,7 @@ def canary_deploy(listener_arn, v1_tg, v2_tg, alb_arn, error_threshold=10):
         print("  Monitoring for 10 minutes...")
         time.sleep(600)
 
-        errors = get_error_rate(v2_tg, alb_arn)
+        errors = get_error_count(v2_tg, alb_arn)
         print(f"  v2 error count: {errors}")
 
         if errors > error_threshold:
@@ -267,7 +274,11 @@ def canary_deploy(listener_arn, v1_tg, v2_tg, alb_arn, error_threshold=10):
                         'TargetGroups': [
                             {'TargetGroupArn': v1_tg, 'Weight': 100},
                             {'TargetGroupArn': v2_tg, 'Weight': 0}
-                        ]
+                        ],
+                        'TargetGroupStickinessConfig': {
+                            'Enabled': True,
+                            'DurationSeconds': 3600
+                        }
                     }
                 }]
             )
@@ -313,7 +324,7 @@ This lets you canary-deploy specific parts of your application independently.
 
 **Stickiness**: Enable target group stickiness to prevent users from bouncing between versions. This is especially important if v1 and v2 have different session formats or API responses.
 
-**Health checks**: Make sure both target groups have proper health checks. If the new version is unhealthy, the ALB will not route traffic to it regardless of the weight.
+**Health checks**: Make sure both target groups have proper health checks. If a weighted target group is empty or has only unhealthy targets, the ALB does not automatically fail over that traffic to another weighted target group with healthy targets.
 
 **Weight = 0 is not the same as removing the target group**: A target group with weight 0 still exists in the configuration but receives no traffic. This makes it easy to re-enable by just changing the weight.
 
