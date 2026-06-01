@@ -40,7 +40,7 @@ aws ses get-identity-verification-attributes \
   --region us-east-1
 ```
 
-The response shows either `Pending` (link not clicked yet) or `Success` (verified).
+The response typically shows `Pending` (link not clicked yet) or `Success` (verified). It can also show `Failed`, `TemporaryFailure`, or `NotStarted` depending on the identity state.
 
 ## Step 2: Verify Multiple Email Addresses
 
@@ -91,7 +91,8 @@ aws sesv2 list-email-identities \
   --region us-east-1 \
   --query 'EmailIdentities[?IdentityType==`EMAIL_ADDRESS`].{
     Identity:IdentityName,
-    Status:SendingEnabled
+    VerificationStatus:VerificationStatus,
+    SendingEnabled:SendingEnabled
   }'
 ```
 
@@ -195,7 +196,7 @@ resource "aws_ses_email_identity" "support" {
   email = "support@example.com"
 }
 
-output "sender_verification_status" {
+output "sender_identity_arn" {
   value = aws_ses_email_identity.sender.arn
 }
 ```
