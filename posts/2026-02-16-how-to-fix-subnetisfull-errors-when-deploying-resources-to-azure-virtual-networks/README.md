@@ -20,10 +20,8 @@ Your subnet has run out of IP addresses. This is a planning problem that becomes
 
 Every subnet in an Azure VNet has a CIDR range that determines how many IP addresses are available. But you do not get to use all of them. Azure reserves 5 IP addresses in every subnet:
 
-- x.x.x.0 - Network address
-- x.x.x.1 - Default gateway
-- x.x.x.2, x.x.x.3 - Azure DNS
-- x.x.x.255 - Broadcast address (for a /24)
+- The first four addresses in the subnet range, such as x.x.x.0 through x.x.x.3
+- The last address in the subnet range, such as x.x.x.255 for a /24
 
 So a /24 subnet (256 addresses) gives you 251 usable addresses. A /27 subnet (32 addresses) gives you only 27 usable addresses. And some Azure services consume more IPs than you might expect.
 
@@ -32,14 +30,14 @@ So a /24 subnet (256 addresses) gives you 251 usable addresses. A /27 subnet (32
 Different Azure services consume IP addresses differently:
 
 - **Virtual Machine**: 1 IP per NIC (usually 1, but can be more)
-- **App Service VNet Integration**: 1 IP per active instance (watch out during scale-out)
-- **Azure Kubernetes Service**: 1 IP per node + 1 IP per pod (with Azure CNI)
-- **Application Gateway**: Minimum number depends on the configuration, but it is at least 1 per instance plus management IPs
+- **App Service VNet Integration**: 1 IP per App Service plan instance, with extra headroom needed during scale operations and platform upgrades
+- **Azure Kubernetes Service**: Traditional Azure CNI uses subnet IP capacity for nodes and pods based on the configured maximum pods per node
+- **Application Gateway**: 1 private IP per instance, plus another private IP if a private frontend IP is configured
 - **Azure Firewall**: Requires its own /26 subnet (64 addresses, 59 usable)
 - **VPN Gateway**: Requires a dedicated GatewaySubnet
 - **Private Endpoints**: 1 IP per endpoint
 
-AKS with Azure CNI networking is the most common culprit. If you have 3 nodes running 30 pods each, that is 93 IP addresses just for one cluster.
+AKS with traditional Azure CNI networking is the most common culprit. If you have 3 nodes configured for 30 pods each, that is 93 IP addresses to plan for just one cluster.
 
 ## Diagnosing the Issue
 
@@ -127,7 +125,7 @@ az network vnet subnet list \
   --output table
 ```
 
-If there is room, you can update the subnet prefix. Azure allows expanding a subnet in place without downtime, but you cannot shrink it.
+If there is room, you can update the subnet prefix. Azure allows resizing a subnet that has active resources if the new range still includes all existing IP addresses. In practice, expansion is usually the safe fix; shrinking only works when it does not exclude any assigned IPs. Some delegated service subnets can also have service-specific constraints.
 
 ```bash
 # Expand a /25 subnet to a /24
@@ -136,7 +134,7 @@ az network vnet subnet update \
   --resource-group my-rg \
   --vnet-name my-vnet \
   --name my-subnet \
-  --address-prefix 10.0.1.0/24
+  --address-prefixes 10.0.1.0/24
 ```
 
 If you cannot expand because adjacent subnets occupy the address space, you need a different approach.
@@ -157,7 +155,7 @@ az network vnet subnet create \
   --resource-group my-rg \
   --vnet-name my-vnet \
   --name new-workload-subnet \
-  --address-prefix 10.1.0.0/24
+  --address-prefixes 10.1.0.0/24
 ```
 
 Then migrate or deploy new resources to the new subnet. Existing resources stay on the old subnet.
@@ -166,7 +164,9 @@ Then migrate or deploy new resources to the new subnet. Existing resources stay 
 
 For AKS, the networking plugin makes a huge difference in IP consumption.
 
-**Azure CNI**: Every pod gets an IP from the subnet. A 3-node cluster with 30 pods per node uses 93 IPs. This scales poorly for large clusters.
+**Traditional Azure CNI**: Pod IPs are planned from the cluster subnet based on the configured maximum pods per node. A 3-node cluster with 30 maximum pods per node needs 93 IPs. This scales poorly for large clusters.
+
+**Azure CNI Pod Subnet**: Nodes and pods use separate subnets, and pod IPs are allocated from the pod subnet. This improves IP utilization, but you still need to size the pod subnet for pod scale.
 
 **Azure CNI Overlay**: Pods get IPs from a private CIDR range, not from the subnet. Only node IPs come from the subnet. A 3-node cluster uses just 3 subnet IPs regardless of pod count.
 
@@ -183,7 +183,7 @@ az aks create \
   --vnet-subnet-id "/subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.Network/virtualNetworks/my-vnet/subnets/aks-subnet"
 ```
 
-If you are running Azure CNI and hitting IP limits, migrating to CNI Overlay is the long-term fix. It requires creating a new node pool, which means a rolling update.
+If you are running traditional Azure CNI and hitting IP limits, migrating to CNI Overlay can be the long-term fix. Azure supports updating eligible existing clusters to Overlay with `az aks update`, but the process is irreversible and reimages node pools, so plan for the same kind of disruption you would expect from a node image or Kubernetes version upgrade.
 
 ## Solution 5: Plan Subnet Sizes Correctly
 
@@ -192,7 +192,7 @@ Prevention is better than remediation. Here are recommended subnet sizes for com
 | Service | Minimum Subnet Size | Recommended Size |
 |---------|---------------------|------------------|
 | General VMs | /28 (11 usable) | /24 (251 usable) |
-| AKS with Azure CNI | /24 minimum | /22 or larger |
+| AKS with traditional Azure CNI | Size by nodes, surge, and max pods per node | /21 or larger for larger clusters |
 | AKS with CNI Overlay | /27 | /24 |
 | App Service VNet Integration | /28 | /26 |
 | Application Gateway v2 | /24 recommended | /24 |
@@ -212,22 +212,22 @@ az network vnet create \
 
 # Allocate subnets with growth in mind
 az network vnet subnet create --resource-group my-rg --vnet-name production-vnet \
-  --name web-subnet --address-prefix 10.0.1.0/24
+  --name web-subnet --address-prefixes 10.0.1.0/24
 
 az network vnet subnet create --resource-group my-rg --vnet-name production-vnet \
-  --name app-subnet --address-prefix 10.0.2.0/24
+  --name app-subnet --address-prefixes 10.0.2.0/24
 
 az network vnet subnet create --resource-group my-rg --vnet-name production-vnet \
-  --name data-subnet --address-prefix 10.0.3.0/24
+  --name data-subnet --address-prefixes 10.0.3.0/24
 
 az network vnet subnet create --resource-group my-rg --vnet-name production-vnet \
-  --name aks-subnet --address-prefix 10.0.16.0/20
+  --name aks-subnet --address-prefixes 10.0.16.0/20
 
 az network vnet subnet create --resource-group my-rg --vnet-name production-vnet \
-  --name AzureFirewallSubnet --address-prefix 10.0.4.0/26
+  --name AzureFirewallSubnet --address-prefixes 10.0.4.0/26
 
 az network vnet subnet create --resource-group my-rg --vnet-name production-vnet \
-  --name AzureBastionSubnet --address-prefix 10.0.4.64/26
+  --name AzureBastionSubnet --address-prefixes 10.0.4.64/26
 ```
 
 Notice the AKS subnet gets a /20 (4091 usable IPs) to accommodate node and pod growth.
