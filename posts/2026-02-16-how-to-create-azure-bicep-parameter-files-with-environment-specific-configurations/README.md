@@ -59,8 +59,9 @@ param tags object = {}
 
 The traditional way to supply parameters is with a `.parameters.json` file. You create one per environment.
 
+`parameters.dev.json`
+
 ```json
-// parameters.dev.json
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
@@ -91,8 +92,9 @@ The traditional way to supply parameters is with a `.parameters.json` file. You 
 }
 ```
 
+`parameters.prod.json`
+
 ```json
-// parameters.prod.json
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
@@ -210,8 +212,9 @@ Notice that you do not need to specify `--template-file` when using `.bicepparam
 
 For sensitive values like database passwords, you can reference Azure Key Vault secrets directly in JSON parameter files.
 
+`parameters.prod.json`
+
 ```json
-// parameters.prod.json - with Key Vault reference
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
@@ -284,7 +287,6 @@ param appServicePlanSku = 'P2v3'
 param instanceCount = 5
 param enableGeoRedundancy = true
 param logRetentionDays = 365
-param resourcePrefix = prefix
 param tags = {
   environment: prefix
   region: region
@@ -335,7 +337,7 @@ Keep parameter files in version control alongside your templates. They are part 
 
 Use the `.bicepparam` format for new projects. The type safety and template linking catch errors earlier than JSON parameter files.
 
-Never put secrets in parameter files. Use Key Vault references for JSON files, or pipeline variables that get passed as command-line overrides.
+Never put secrets in parameter files. Use Key Vault references for JSON files, the `getSecret` function for `.bicepparam` files, or pipeline variables that get passed as command-line overrides.
 
 Document the differences between environments in your parameter files with comments. Future team members will thank you when they need to understand why production has different settings than staging.
 
