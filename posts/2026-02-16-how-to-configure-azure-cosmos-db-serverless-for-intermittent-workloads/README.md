@@ -18,13 +18,13 @@ Here is a quick comparison of the two models:
 |---------|----------------------|------------|
 | Pricing | Pay per RU/s provisioned | Pay per RU consumed |
 | Minimum cost | ~$24/month (400 RU/s) | $0 when idle |
-| Max throughput | Up to 1,000,000 RU/s | 5,000 RU/s burst |
-| Storage limit | Unlimited | 1 TB per container |
+| Max throughput | Up to 1,000,000 RU/s | Starts at 5,000 RU/s per container; 5,000 RU/s per physical partition |
+| Storage limit | Unlimited | Unlimited per container; 20 GB per logical partition |
 | Multi-region | Yes | Single region only |
-| SLA | 99.999% (multi-region) | 99.9% |
-| Autoscale | Yes | Not needed (automatic) |
+| SLA | 99.999% (multi-region) | Single-region SLA model; availability zones supported in designated regions |
+| Autoscale | Yes | Not configured |
 
-The key tradeoffs are: serverless has lower throughput limits, is single-region only, and has a lower SLA. But for the right workloads, the cost savings are dramatic.
+The key tradeoffs are: serverless has different throughput characteristics, is single-region only, and does not provide the same multi-region availability model as provisioned throughput. But for the right workloads, the cost savings are dramatic.
 
 ## When to Use Serverless
 
@@ -39,9 +39,9 @@ Serverless is the right choice when:
 
 Serverless is probably not the right choice when:
 
-- You need consistent, high throughput (over 5,000 RU/s)
+- You need predictable high throughput or latency guarantees
 - You need multi-region distribution
-- You need the 99.999% SLA
+- You need the 99.999% multi-region SLA
 - Your workload is steady 24/7
 
 ## Creating a Serverless Account
@@ -63,9 +63,9 @@ Serverless is configured at the account level, not the container level. You cann
 # Create a new Cosmos DB account with serverless capacity mode
 
 az cosmosdb create \
-    --name myServerlessAccount \
+    --name myserverlessaccount \
     --resource-group myResourceGroup \
-    --locations regionName=eastus \
+    --locations regionName=eastus failoverPriority=0 isZoneRedundant=False \
     --capabilities EnableServerless
 ```
 
@@ -75,7 +75,7 @@ az cosmosdb create \
 {
     "type": "Microsoft.DocumentDB/databaseAccounts",
     "apiVersion": "2023-04-15",
-    "name": "myServerlessAccount",
+    "name": "myserverlessaccount",
     "location": "eastus",
     "properties": {
         "databaseAccountOfferType": "Standard",
@@ -101,20 +101,20 @@ Creating databases and containers in a serverless account works the same as prov
 ```bash
 # Create a database (no throughput specification needed)
 az cosmosdb sql database create \
-    --account-name myServerlessAccount \
+    --account-name myserverlessaccount \
     --name mydb \
     --resource-group myResourceGroup
 
 # Create a container (no throughput specification needed)
 az cosmosdb sql container create \
-    --account-name myServerlessAccount \
+    --account-name myserverlessaccount \
     --database-name mydb \
     --name orders \
     --partition-key-path "/customerId" \
     --resource-group myResourceGroup
 ```
 
-Notice there is no `--throughput` or `--max-throughput` parameter. The container automatically scales up and down based on demand.
+Notice there is no `--throughput` or `--max-throughput` parameter. Serverless containers do not have provisioned throughput settings.
 
 ### Using the .NET SDK
 
@@ -163,8 +163,12 @@ ItemResponse<dynamic> response = await container.CreateItemAsync(
 Console.WriteLine($"Write cost: {response.RequestCharge} RUs");
 
 // Query documents - also identical to provisioned
+QueryDefinition query = new QueryDefinition(
+    "SELECT * FROM c WHERE c.customerId = @customerId")
+    .WithParameter("@customerId", "cust-123");
+
 FeedIterator<dynamic> iterator = container.GetItemQueryIterator<dynamic>(
-    queryText: "SELECT * FROM c WHERE c.customerId = @customerId",
+    queryDefinition: query,
     requestOptions: new QueryRequestOptions
     {
         PartitionKey = new PartitionKey("cust-123")
@@ -210,7 +214,7 @@ The breakeven point is roughly around 100 million RUs per month. Below that, ser
 
 ## Handling Burst Limits
 
-Serverless containers can burst up to 5,000 RU/s. If your application temporarily needs more than that, requests will be throttled with HTTP 429 responses. Handle this in your code:
+Serverless containers start with 5,000 RU/s, and each physical partition can handle up to 5,000 RU/s. If a container or hot partition needs more than the available capacity, requests will be throttled with HTTP 429 responses. Handle this in your code:
 
 ```csharp
 // Handle throttling with retry logic
@@ -225,7 +229,7 @@ CosmosClient client = new CosmosClient(endpoint, key, new CosmosClientOptions
 });
 ```
 
-If you are consistently hitting the 5,000 RU/s limit, it is a signal that your workload might be better served by provisioned throughput with autoscale.
+If you are consistently hitting throttling limits, it is a signal that your workload might be better served by provisioned throughput with autoscale.
 
 ## Migrating from Provisioned to Serverless
 
@@ -234,9 +238,9 @@ You cannot convert an existing provisioned account to serverless or vice versa. 
 ```bash
 # Step 1: Create a new serverless account
 az cosmosdb create \
-    --name myNewServerlessAccount \
+    --name mynewserverlessaccount \
     --resource-group myResourceGroup \
-    --locations regionName=eastus \
+    --locations regionName=eastus failoverPriority=0 isZoneRedundant=False \
     --capabilities EnableServerless
 
 # Step 2: Use Data Migration Tool or Azure Data Factory to copy data
@@ -252,8 +256,8 @@ Track your RU consumption to understand costs:
 ```bash
 # Check total RU consumption over the last hour
 az monitor metrics list \
-    --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/myServerlessAccount" \
-    --metric "TotalRequestUnits" \
+    --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/myserverlessaccount" \
+    --metricnames "TotalRequestUnits" \
     --interval PT1H \
     --aggregation Total
 ```
@@ -292,17 +296,17 @@ public static async Task<IActionResult> Run(
 }
 ```
 
-Both the Function and the database scale to zero when idle and only cost money when processing requests. For intermittent workloads, this combination is extremely cost-effective.
+The Function can scale to zero when idle, and the database has no provisioned RU/s charge when it is not processing requests. You still pay for stored data. For intermittent workloads, this combination is extremely cost-effective.
 
 ## Limitations to Be Aware Of
 
 Before choosing serverless, understand these limitations:
 
 1. **Single region only**: No multi-region replication or geo-redundancy
-2. **1 TB storage per container**: Provisioned containers have no practical limit
-3. **5,000 RU/s burst ceiling**: Provisioned can go up to 1,000,000 RU/s
+2. **20 GB per logical partition**: Serverless containers support unlimited total container storage, but the logical partition limit still matters
+3. **5,000 RU/s per physical partition**: Provisioned can go up to 1,000,000 RU/s
 4. **No shared throughput databases**: Each container gets independent throughput
-5. **No continuous backup**: Only periodic backup is supported
+5. **No provisioned throughput controls**: You cannot read, update, or set throughput on a serverless container
 6. **Cannot convert to provisioned**: You need to create a new account to switch
 
 Serverless Cosmos DB is a perfect fit for the many workloads that do not need always-on throughput. Development environments, low-traffic services, event-driven processing, and prototypes all benefit from the pay-per-use model. Start serverless and upgrade to provisioned only when your traffic patterns justify the commitment.
