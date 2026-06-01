@@ -8,9 +8,9 @@ Description: Set up CloudWatch Metric Streams to pipe AWS metrics directly into 
 
 ---
 
-If you have ever used the Datadog AWS integration, you know it works by polling CloudWatch APIs at regular intervals. That approach works, but it introduces latency (usually 5 to 10 minutes) and can rack up significant CloudWatch API costs at scale. CloudWatch Metric Streams offer a better path: they push metrics to a destination in near real-time, cutting both latency and API costs.
+If you have ever used the Datadog AWS integration, you know it works by polling CloudWatch APIs at regular intervals. That approach works, but it introduces latency (usually around 10 minutes) and can rack up significant CloudWatch API costs at scale. CloudWatch Metric Streams offer a better path: they push metrics to a destination in near real-time, cutting latency and reducing API polling.
 
-In this guide, you will set up a CloudWatch Metric Stream that sends your AWS metrics to Datadog through Amazon Kinesis Data Firehose. The result is fresher data in your Datadog dashboards and lower CloudWatch API bills.
+In this guide, you will set up a CloudWatch Metric Stream that sends your AWS metrics to Datadog through Amazon Kinesis Data Firehose. The result is fresher data in your Datadog dashboards and less reliance on CloudWatch API polling, although Metric Streams and Firehose have their own AWS usage charges.
 
 ## How Metric Streams Work
 
@@ -43,7 +43,7 @@ Log into Datadog and grab your API key from the Organization Settings page. You 
 | US5 (us5.datadoghq.com) | `https://awsmetrics-intake.us5.datadoghq.com/v1/input` |
 | EU (datadoghq.eu) | `https://awsmetrics-intake.datadoghq.eu/v1/input` |
 
-You will append `?dd-api-key=YOUR_API_KEY` to the endpoint URL when configuring Firehose.
+When configuring Firehose with the AWS CLI, provide the Datadog API key in the `AccessKey` field for the HTTP endpoint destination.
 
 ## Step 2: Create an S3 Bucket for Failed Deliveries
 
@@ -60,8 +60,9 @@ aws s3 mb s3://my-datadog-metric-stream-backup \
 
 Firehose needs an IAM role that allows it to write to S3 and deliver to the HTTP endpoint.
 
+Trust policy - allows Firehose to assume this role:
+
 ```json
-// Trust policy - allows Firehose to assume this role
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -197,7 +198,7 @@ aws cloudwatch put-metric-stream \
   --output-format "opentelemetry1.0"
 ```
 
-The `output-format` should be `opentelemetry1.0` for Datadog. This is the format Datadog's intake endpoint expects.
+The `output-format` should be `opentelemetry1.0` for Datadog. Datadog's metric streaming integration supports OpenTelemetry output format, and version 1.0 is the latest CloudWatch Metric Streams OpenTelemetry format.
 
 ## Step 7: Filter Namespaces (Optional but Recommended)
 
@@ -217,13 +218,13 @@ aws cloudwatch put-metric-stream \
   ]'
 ```
 
-This keeps your Datadog bill in check too, since you are only sending the metrics you actually need.
+This keeps your streamed metric volume in check too, since you are only sending the metrics you actually need.
 
-## Step 8: Disable the Polling Integration in Datadog
+## Step 8: Leave the Datadog AWS Integration Enabled
 
-After your Metric Stream is running, go to Datadog and disable the CloudWatch polling for the same namespaces. Running both simultaneously means duplicate data and unnecessary costs.
+After your Metric Stream is running, leave your existing AWS integration configuration in place. Datadog automatically detects the streamed namespaces and stops polling those metrics after it recognizes the stream.
 
-In Datadog, navigate to the AWS integration tile, find your account, and uncheck the namespaces you are now streaming.
+During the transition, you might briefly see duplicate data while Datadog detects the new stream. Datadog still uses API polling for metadata and for CloudWatch metrics that cannot be sent through Metric Streams, such as some metrics that report with more than a two-hour delay.
 
 ## Verifying the Setup
 
@@ -242,6 +243,6 @@ However, if you stream everything without filters, the costs can add up for larg
 
 ## Wrapping Up
 
-CloudWatch Metric Streams to Datadog is a cleaner architecture than API polling. You get lower latency, lower API costs, and a push-based model that scales naturally. The setup involves a few AWS resources, but once configured, it runs hands-off.
+CloudWatch Metric Streams to Datadog is a cleaner architecture than API polling. You get lower latency, less CloudWatch API polling, and a push-based model that scales naturally. The setup involves a few AWS resources, but once configured, it runs hands-off.
 
 If you are also interested in streaming to other platforms, check out our guide on [CloudWatch Metric Streams to New Relic](https://oneuptime.com/blog/post/2026-02-12-use-cloudwatch-metric-streams-to-new-relic/view). And for a broader look at centralized monitoring across multiple accounts, see [centralized monitoring for multi-account AWS](https://oneuptime.com/blog/post/2026-02-12-set-up-centralized-monitoring-for-multi-account-aws/view).
