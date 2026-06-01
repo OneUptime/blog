@@ -94,12 +94,12 @@ const { ServiceBusClient } = require('@azure/service-bus');
 
 const sbClient = new ServiceBusClient(process.env.SERVICEBUS_CONNECTION_STRING);
 const paymentSender = sbClient.createSender('payment-processing');
-const deadLetterSender = sbClient.createSender('validation-failures');
+const failureSender = sbClient.createSender('validation-failures');
 
-module.exports = async function (context, message) {
-  // Extract the correlation ID from the incoming message
-  const correlationId = message.correlationId;
-  const order = message.body;
+module.exports = async function (context, order) {
+  // Extract the correlation ID from the incoming Service Bus metadata
+  const correlationId = context.bindingData.correlationId || context.bindingData.CorrelationId;
+  const messageId = context.bindingData.messageId || context.bindingData.MessageId;
 
   context.log(`[${correlationId}] Validating order ${order.id}`);
 
@@ -108,18 +108,18 @@ module.exports = async function (context, message) {
     const validationResult = validateOrder(order);
 
     if (!validationResult.valid) {
-      // Send to dead letter with correlation preserved
-      await deadLetterSender.sendMessages({
+      // Send to a failure queue with correlation preserved
+      await failureSender.sendMessages({
         body: {
           order: order,
           validationErrors: validationResult.errors
         },
         correlationId: correlationId,
-        messageId: `${message.messageId}-validation-failed`,
+        messageId: `${messageId}-validation-failed`,
         applicationProperties: {
           'source': 'order-validation',
           'operation': 'validation.failed',
-          'originalMessageId': message.messageId
+          'originalMessageId': messageId
         }
       });
 
@@ -139,7 +139,7 @@ module.exports = async function (context, message) {
         'source': 'order-validation',
         'operation': 'payment.process',
         'previousStep': 'validation',
-        'originalMessageId': message.messageId     // Link to the previous message
+        'originalMessageId': messageId             // Link to the previous message
       }
     });
 
@@ -188,29 +188,35 @@ async function requestReply(requestQueue, replyQueue, requestBody, timeoutMs) {
     }
   });
 
+  const deadline = Date.now() + (timeoutMs || 30000);
+
   // Wait for a response message with the matching correlation ID
-  const messages = await receiver.receiveMessages(1, {
-    maxWaitTimeInMs: timeoutMs || 30000
-  });
+  while (Date.now() < deadline) {
+    const messages = await receiver.receiveMessages(1, {
+      maxWaitTimeInMs: Math.max(1, Math.min(5000, deadline - Date.now()))
+    });
 
-  // Filter for the correlated response
-  const response = messages.find(m => m.correlationId === correlationId);
+    for (const response of messages) {
+      if (response.correlationId === correlationId) {
+        await receiver.completeMessage(response);
+        return response.body;
+      }
 
-  if (response) {
-    await receiver.completeMessage(response);
-    return response.body;
+      // Leave replies for other callers available on the reply queue
+      await receiver.abandonMessage(response);
+    }
   }
 
   throw new Error(`No reply received for correlation ${correlationId} within timeout`);
 }
 
 // The responder function reads the correlationId and includes it in the reply
-async function responder(context, message) {
-  const correlationId = message.correlationId;
-  const replyTo = message.replyTo;
+async function responder(context, requestBody) {
+  const correlationId = context.bindingData.correlationId || context.bindingData.CorrelationId;
+  const replyTo = context.bindingData.replyTo || context.bindingData.ReplyTo;
 
   // Process the request
-  const result = await processRequest(message.body);
+  const result = await processRequest(requestBody);
 
   // Send the reply with the same correlation ID
   const replySender = sbClient.createSender(replyTo);
@@ -228,7 +234,7 @@ async function responder(context, message) {
 
 ## Session-Based Correlation
 
-For scenarios where you need ordered processing of related messages, use Service Bus sessions. Messages with the same `SessionId` are always processed by the same consumer in order.
+For scenarios where you need ordered processing of related messages, use Service Bus sessions. Messages with the same `SessionId` are processed by one session receiver at a time, and that receiver gets the messages in order while it holds the session lock.
 
 ```javascript
 // session-correlation.js - Using sessions for ordered correlation
@@ -251,16 +257,17 @@ async function sendOrderSteps(orderId, steps) {
   }
 }
 
-// Receiving session messages - guaranteed in order
-async function processOrderSession(context, message) {
-  const sessionId = message.sessionId;
-  const stepNumber = message.applicationProperties.stepNumber;
-  const totalSteps = message.applicationProperties.totalSteps;
+// Receiving session messages - set isSessionsEnabled to true on the Service Bus trigger
+async function processOrderSession(context, step) {
+  const sessionId = context.bindingData.sessionId || context.bindingData.SessionId;
+  const properties = context.bindingData.applicationProperties || context.bindingData.userProperties || {};
+  const stepNumber = properties.stepNumber;
+  const totalSteps = properties.totalSteps;
 
   context.log(`[Session: ${sessionId}] Processing step ${stepNumber + 1} of ${totalSteps}`);
 
   // Process the step
-  await processStep(message.body);
+  await processStep(step);
 
   // Session state can track progress
   if (stepNumber === totalSteps - 1) {
@@ -298,25 +305,26 @@ async function trackEvent(correlationId, event) {
 
 // Usage in each function
 async function processPayment(context, message) {
-  const correlationId = message.correlationId;
+  const correlationId = context.bindingData.correlationId || context.bindingData.CorrelationId;
+  const messageId = context.bindingData.messageId || context.bindingData.MessageId;
 
   // Track that we started processing
   await trackEvent(correlationId, {
     source: 'payment-processor',
     operation: 'payment.started',
     status: 'processing',
-    messageId: message.messageId
+    messageId: messageId
   });
 
   try {
-    const result = await chargeCustomer(message.body);
+    const result = await chargeCustomer(message);
 
     // Track successful completion
     await trackEvent(correlationId, {
       source: 'payment-processor',
       operation: 'payment.completed',
       status: 'success',
-      messageId: message.messageId,
+      messageId: messageId,
       details: { paymentId: result.id }
     });
 
@@ -326,7 +334,7 @@ async function processPayment(context, message) {
       source: 'payment-processor',
       operation: 'payment.failed',
       status: 'error',
-      messageId: message.messageId,
+      messageId: messageId,
       details: { error: err.message }
     });
 
@@ -372,7 +380,7 @@ appInsights.setup(process.env.APPINSIGHTS_CONNECTION_STRING).start();
 const telemetryClient = appInsights.defaultClient;
 
 module.exports = async function (context, message) {
-  const correlationId = message.correlationId;
+  const correlationId = context.bindingData.correlationId || context.bindingData.CorrelationId;
 
   // Add correlation ID to all telemetry for this invocation
   telemetryClient.trackEvent({
@@ -380,7 +388,7 @@ module.exports = async function (context, message) {
     properties: {
       correlationId: correlationId,
       step: 'payment',
-      orderId: message.body.orderId
+      orderId: message.orderId
     }
   });
 
