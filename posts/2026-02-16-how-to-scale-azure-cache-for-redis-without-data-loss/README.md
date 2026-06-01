@@ -12,7 +12,7 @@ Your Redis cache started as a Standard C1 and it was plenty. But traffic grew, m
 
 ## Understanding the Scaling Options
 
-Azure Cache for Redis gives you three ways to scale:
+Azure Cache for Redis gives you four ways to scale:
 
 1. **Scale up (vertical)**: Move to a larger cache size within the same tier (e.g., C1 to C2, or P1 to P2).
 2. **Scale out (horizontal)**: Add shards to a clustered cache (Premium tier only).
@@ -23,7 +23,7 @@ Each of these has different implications for data preservation.
 
 ## Scaling Up Within the Same Tier
 
-This is the safest scaling operation. When you scale from C1 to C2 (or P1 to P3), Azure provisions a new, larger cache behind the scenes, migrates your data, and switches the DNS to point to the new instance. Your data is preserved.
+This is one of the safer scaling operations. When you scale a Standard or Premium cache from C1 to C2 (or P1 to P3), Azure reprovisions one replica at the new size, transfers data, performs a failover, and then reprovisions the other replica. Your data is typically preserved.
 
 ```bash
 # Scale up from Standard C1 to Standard C3
@@ -31,20 +31,19 @@ This is the safest scaling operation. When you scale from C1 to C2 (or P1 to P3)
 az redis update \
   --name my-redis-cache \
   --resource-group rg-redis \
-  --sku Standard \
-  --vm-size C3
+  --set "sku.capacity"="3"
 ```
 
 What happens during the scale-up:
 
-1. Azure creates a new cache node with the target size.
-2. Data from the existing cache is replicated to the new node.
-3. Once replication is complete, traffic is switched to the new node.
-4. The old node is decommissioned.
+1. Azure reprovisions one replica with the target size.
+2. Data is transferred to the resized replica.
+3. Azure performs a failover.
+4. The remaining replica is reprovisioned at the target size.
 
-**Downtime**: Expect a brief connectivity interruption (typically 5-30 seconds) during the DNS switchover. Your application should handle this with retry logic.
+**Downtime**: Standard and Premium caches remain available during scaling, but small connection blips can occur. Your application should handle this with retry logic.
 
-**Duration**: The entire process takes 20-60 minutes depending on the size of your dataset.
+**Duration**: Scaling can take a long time. The duration depends on factors such as the amount of data, write load, server load, and shard count.
 
 **Data loss risk**: Minimal. The replication step ensures data is copied before the switch. However, writes that occur during the final switchover moment might be lost if your application does not retry.
 
@@ -75,18 +74,18 @@ If you are on the Premium tier, you can enable clustering and add shards. Each s
 az redis update \
   --name my-premium-cache \
   --resource-group rg-redis \
-  --shard-count 3
+  --set shardCount=3
 ```
 
 Increasing the shard count from 1 to 3 (or 3 to 6, etc.) triggers a rebalancing operation. Redis redistributes hash slots across the new set of shards, moving data as needed.
 
 **Data preservation**: Yes, data is preserved during shard scaling. The rebalancing process moves data between shards without deleting it.
 
-**Downtime**: There will be brief connectivity interruptions as the cluster reconfigures. Individual shard failovers happen sequentially.
+**Downtime**: There can be brief connectivity interruptions as the cluster reconfigures.
 
-**Duration**: 20-45 minutes per shard added. Adding 3 shards could take over an hour.
+**Duration**: Cluster scaling is a long-running operation. The time depends on the number of keys, value sizes, write load, and server load, and it does not increase in a simple linear way with shard count.
 
-**Important caveat**: Multi-key operations that span different hash slots will fail during the rebalancing. If your application uses MGET, MSET, or Lua scripts that access keys across shards, those operations might throw CROSSSLOT errors during the migration.
+**Important caveat**: On clustered caches, multi-key operations batched into a single command must use keys that are located in the same shard. If your application uses MGET, MSET, or Lua scripts that access keys across shards, those operations can throw CROSSSLOT errors. Use hash tags when related keys must stay in the same hash slot.
 
 ## Scaling Down Within the Same Tier
 
@@ -97,11 +96,10 @@ Scaling down (e.g., C3 to C1, or P3 to P1) is supported and data is preserved, p
 az redis update \
   --name my-redis-cache \
   --resource-group rg-redis \
-  --sku Standard \
-  --vm-size C2
+  --set "sku.capacity"="2"
 ```
 
-**The critical check**: Before scaling down, verify that your dataset fits in the smaller cache. If your C3 cache (13 GB) has 8 GB of data and you try to scale to C1 (1 GB), the operation will fail.
+**The critical check**: Before scaling down, verify that your dataset fits in the smaller cache. If your C3 cache (13 GB) has 8 GB of data and you try to scale to C1 (1 GB), data can be lost. Azure evicts keys using the allkeys-lru eviction policy if the original data size exceeds the smaller target size.
 
 ```bash
 # Check current memory usage before scaling down
@@ -119,9 +117,9 @@ Rule of thumb: your dataset should use no more than 70% of the target cache size
 
 This is where it gets tricky. Tier changes have different data preservation behaviors:
 
-### Basic to Standard: Data May Be Lost
+### Basic to Standard: Data Is Typically Preserved
 
-Moving from Basic to Standard adds replication. The process involves provisioning new nodes, and data may not be preserved. Plan for a cold cache after this operation.
+Moving from Basic to Standard adds replication. Azure provisions a replica cache and copies data from the primary cache to the replica cache, so data is typically preserved. Basic caches do lose all data if you scale to a different Basic cache size.
 
 ### Standard to Premium: Data Is Preserved
 
@@ -132,17 +130,16 @@ This is a supported scaling path and data is typically preserved. The process is
 az redis update \
   --name my-redis-cache \
   --resource-group rg-redis \
-  --sku Premium \
-  --vm-size P1
+  --set "sku.name"="Premium" "sku.capacity"="1" "sku.family"="P"
 ```
 
 ### Premium to Standard: Not Supported Directly
 
-You cannot scale down from Premium to Standard. You would need to create a new Standard cache, export your data from the Premium cache, and import it into the Standard cache.
+You cannot scale down from Premium to Standard. You would need to create a new Standard cache and warm it through your application or another application-level migration path. Azure Cache for Redis import is not available on Standard tier targets.
 
 ### Export/Import for Tier Migration
 
-When direct scaling is not supported, use the export/import feature (Premium tier has this built in):
+When direct scaling is not supported and the target cache supports import, use the export/import feature (Premium tier has this built in):
 
 ```bash
 # Step 1: Export data from the Premium cache to a storage account
@@ -153,13 +150,13 @@ az redis export \
   --container "https://mystorageaccount.blob.core.windows.net/redis-exports" \
   --file-format rdb
 
-# Step 2: Create the new Standard or Premium cache
+# Step 2: Create the new Premium cache
 az redis create \
   --name my-new-cache \
   --resource-group rg-redis \
   --location eastus \
-  --sku Standard \
-  --vm-size C3
+  --sku Premium \
+  --vm-size p1
 
 # Step 3: Import data into the new cache (only available on Premium target)
 az redis import \
@@ -179,10 +176,10 @@ If you added too many shards and want to reduce them, you can decrease the shard
 az redis update \
   --name my-premium-cache \
   --resource-group rg-redis \
-  --shard-count 3
+  --set shardCount=3
 ```
 
-Data is redistributed to the remaining shards. However, if the remaining shards do not have enough memory to hold all the data, the operation will fail or trigger evictions.
+Data is redistributed to the remaining shards. However, if the remaining shards do not have enough memory to hold all the data, the operation can fail and revert or keys can be evicted.
 
 ## Preparing Your Application for Scaling
 
