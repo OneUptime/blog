@@ -267,7 +267,7 @@ moved {
 
 Follow this workflow to refactor safely.
 
-First, create the new module or resource structure without deleting the old code. Add the `moved` blocks declaring the relationship between old and new addresses. Run `terraform plan` and verify that the plan shows moves, not destroys and creates. Look for lines that say "will be moved" rather than "will be destroyed" or "will be created."
+First, move the resource configuration to the new module or resource address, leaving only the new address in the active configuration. Add the `moved` blocks declaring the relationship between old and new addresses. Run `terraform plan` and verify that the plan shows moves, not destroys and creates. Look for lines that say "has moved to" or "will be moved" rather than "will be destroyed" or "will be created."
 
 ```bash
 # Run plan and carefully review the output
@@ -284,13 +284,13 @@ Apply the changes once you are satisfied the plan is correct.
 terraform apply
 ```
 
-After the apply succeeds, you can optionally remove the `moved` blocks. They are only needed for the transition, but keeping them around does not hurt and serves as documentation of the refactoring history.
+After the apply succeeds, you can optionally remove the `moved` blocks once every workspace or module consumer that needs the migration has applied them. Keeping them around does not hurt and serves as documentation of the refactoring history.
 
 ## When Moved Blocks Are Not Enough
 
-There are limitations. Moved blocks only work for renaming and relocating resources within the same Terraform state. They do not work for moving resources between completely separate state files. For that, you need `terraform state mv` or the `terraform_remote_state` data source approach.
+There are limitations. Moved blocks only work for renaming and relocating resources within the same Terraform state. They do not move resources between completely separate state files. For that, use configuration-driven `removed` and `import` blocks, or use `terraform state mv` when you specifically need a direct state-file move. Data sources such as `terraform_remote_state` can help reference outputs from another state, but they do not transfer resource ownership.
 
-Also, moved blocks cannot change the resource type. You cannot use them to move from `azurerm_storage_account` to `azurerm_storage_account_v2`, for example. Type changes require an import and remove approach.
+Also, moved blocks are primarily for address changes. Some providers support specific moves between resource types, but only when the provider explicitly implements that state move. Otherwise, type changes require a remove and import approach.
 
 ## Summary
 
