@@ -14,7 +14,7 @@ KQL provides powerful string parsing functions that let you extract structure fr
 
 ## How Custom Logs Land in Log Analytics
 
-Custom logs ingested through the Azure Monitor Agent, the HTTP Data Collector API, or custom log collection rules end up in tables you define. The raw log text typically lands in a column like `RawData` or a custom column name you specify in your data collection rule.
+Custom logs ingested through the Azure Monitor Agent, the Logs Ingestion API, or custom data collection rules end up in tables you define. The legacy HTTP Data Collector API can also send custom logs, but Microsoft recommends the Logs Ingestion API for new ingestion workflows. The raw log text typically lands in a column like `RawData` or a custom column name you specify in your data collection rule.
 
 For example, if you configured a custom text log collection, your data might look like this in the `MyApp_CL` table:
 
@@ -46,7 +46,7 @@ For more complex patterns with multiple fields:
 MyApp_CL
 | where RawData contains "order"
 | parse RawData with * "order #" OrderId:long " " Action:string
-| where isnotempty(OrderId)
+| where isnotnull(OrderId)
 | project TimeGenerated, OrderId, Action
 ```
 
@@ -155,22 +155,22 @@ let ParseAppLogs = () {
     | extend OrderId = extract(@"order\s*#?(\d+)", 1, Message)
     | extend ErrorReason = extract(@"- (.+)$", 1, Message)
 };
-ParseAppLogs
+ParseAppLogs()
 ```
 
 To save it as a workspace function:
 
-1. Go to your Log Analytics workspace
-2. Click on Functions in the left menu
-3. Click New function
-4. Paste the query, give it a name and category
+1. Go to your Log Analytics workspace and open Logs
+2. Paste and test the query
+3. Select Save > Save as function
+4. Give it a name and category
 5. Save
 
-Now you can use `ParseAppLogs` in any query as if it were a table:
+Now you can use `ParseAppLogs()` in any query as if it were a table:
 
 ```kql
 // Use the saved function in other queries
-ParseAppLogs
+ParseAppLogs()
 | where Severity == "ERROR"
 | where ServiceName == "PaymentService"
 | summarize ErrorCount = count() by ErrorReason, bin(TimeGenerated, 1h)
@@ -181,13 +181,13 @@ ParseAppLogs
 
 Instead of parsing at query time, you can parse during ingestion using Data Collection Rule (DCR) transformations. This approach parses the data once and stores the extracted fields, which makes queries faster and simpler.
 
-In your DCR, add a transformation:
+In your DCR, assuming your destination table contains these output columns, add a transformation:
 
 ```kql
 // DCR transformation KQL - runs during ingestion
 source
 | parse RawData with Severity:string " [" ServiceName:string "] " Message:string
-| extend OrderId = extract(@"order\s*#?(\d+)", 1, Message)
+| extend OrderId = tolong(extract(@"order\s*#?(\d+)", 1, Message))
 | project TimeGenerated, Severity, ServiceName, Message, OrderId
 ```
 
@@ -208,7 +208,7 @@ Parsing raw text is computationally expensive. Here are tips to keep your querie
 // Good: Filter first, then parse
 MyApp_CL
 | where TimeGenerated > ago(1h)
-| where RawData contains "ERROR"
+| where RawData has "ERROR"
 | parse RawData with * "[" ServiceName:string "] " Message:string
 ```
 
@@ -224,7 +224,7 @@ MyApp_CL | where RawData has "PaymentService"
 MyApp_CL | where RawData contains "Payment"
 ```
 
-**Limit regex complexity**: Avoid greedy quantifiers and backtracking-heavy patterns. Simple capture groups with explicit character classes perform better.
+**Limit regex complexity**: Avoid overly broad greedy quantifiers when a more specific pattern will do. Simple capture groups with explicit character classes perform better.
 
 ## Practical Example: Building a Dashboard from Custom Logs
 
