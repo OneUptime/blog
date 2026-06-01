@@ -16,10 +16,10 @@ In this post, I will walk through setting up a Standard public load balancer fro
 
 Azure offers two SKUs for load balancers: Basic and Standard. Here is what you need to know:
 
-- **Basic**: Free, limited features, no SLA, being deprecated. Avoid it for new deployments.
-- **Standard**: Costs a small amount per month, supports availability zones, has an SLA, supports more backend pool members, and offers richer health probes.
+- **Basic**: Free, limited features, no SLA, and retired. Avoid it for new deployments.
+- **Standard**: Incurs charges, supports availability zones, has an SLA, supports more backend pool members, and offers richer health probes.
 
-Always use the Standard SKU. Microsoft has announced that Basic Load Balancer will be retired, so there is no reason to start new projects with it.
+Always use the Standard SKU. Microsoft retired Basic Load Balancer on September 30, 2025, so there is no reason to start new projects with it.
 
 ## Architecture Overview
 
@@ -106,7 +106,7 @@ az network lb probe create \
   --threshold 2
 ```
 
-The `--threshold 2` means a VM is considered unhealthy after 2 consecutive failed probes (10 seconds with a 5-second interval).
+The `--threshold 2` means a VM is considered unhealthy after 2 consecutive failed or timed-out TCP probes (10 seconds with a 5-second interval).
 
 You can also use HTTP health probes that check a specific path:
 
@@ -123,7 +123,7 @@ az network lb probe create \
   --threshold 3
 ```
 
-HTTP probes are more reliable because they verify that your application is actually responding, not just that the port is open.
+HTTP probes can be more reliable because they verify that your application is returning a successful HTTP response, not just that the port is open.
 
 ## Step 5: Create a Load Balancing Rule
 
@@ -167,7 +167,7 @@ az network lb rule create \
 
 ## Step 6: Create an NSG for the Backend Subnet
 
-The backend VMs need an NSG that allows traffic from the load balancer:
+The backend VMs need an NSG that allows client traffic to the backend ports. The default `AzureLoadBalancer` NSG rule allows load balancer health probe traffic unless you override it with a higher-priority rule.
 
 ```bash
 # Create an NSG for the backend subnet
@@ -175,16 +175,16 @@ az network nsg create \
   --resource-group lbResourceGroup \
   --name backendNSG
 
-# Allow HTTP traffic from the internet
+# Allow HTTP and HTTPS client traffic from the internet
 az network nsg rule create \
   --resource-group lbResourceGroup \
   --nsg-name backendNSG \
-  --name AllowHTTP \
+  --name AllowWeb \
   --priority 1000 \
   --direction Inbound \
   --access Allow \
   --protocol Tcp \
-  --source-address-prefixes '*' \
+  --source-address-prefixes Internet \
   --destination-port-ranges 80 443
 
 # Associate the NSG with the backend subnet
@@ -197,7 +197,7 @@ az network vnet subnet update \
 
 ## Step 7: Create the Backend VMs
 
-Now create the VMs and add them to the backend pool. These VMs should not have public IPs since traffic will come through the load balancer:
+Now create the VMs and add them to the backend pool. These VMs should not have public IPs since traffic will come through the load balancer. Save the cloud-init YAML shown below as `cloud-init.yaml` before running the loop.
 
 ```bash
 # Create two VMs for the backend pool
@@ -244,10 +244,10 @@ runcmd:
 
 ## Step 8: Verify the Setup
 
-After the VMs are created and booted, check the backend pool status:
+After the VMs are created and booted, list the backend pool members:
 
 ```bash
-# List the backend pool members and their health status
+# List the backend pool members
 az network lb show \
   --resource-group lbResourceGroup \
   --name myLoadBalancer \
@@ -275,7 +275,7 @@ for i in $(seq 1 6); do
 done
 ```
 
-You should see responses alternating between your backend VMs.
+You should see responses from your backend VMs over repeated requests, but the exact order is not guaranteed.
 
 ## Session Persistence
 
@@ -299,9 +299,25 @@ Options for `--load-distribution`:
 
 ## Outbound Connectivity
 
-With the Standard Load Balancer, backend VMs do not have default outbound internet access. If your VMs need to reach the internet (for package updates, API calls, etc.), you need to configure outbound rules:
+When VMs are placed in a Standard Load Balancer backend pool, Azure's default outbound access is disabled. This example's load balancing rules still provide automatic outbound SNAT unless you disable it. For production workloads, define outbound connectivity explicitly with outbound rules or a NAT Gateway.
 
 ```bash
+# Disable automatic outbound SNAT on the inbound load balancing rule
+az network lb rule update \
+  --resource-group lbResourceGroup \
+  --lb-name myLoadBalancer \
+  --name httpRule \
+  --disable-outbound-snat true
+
+# If you created httpsRule, disable automatic outbound SNAT on that rule too
+if az network lb rule show --resource-group lbResourceGroup --lb-name myLoadBalancer --name httpsRule >/dev/null 2>&1; then
+  az network lb rule update \
+    --resource-group lbResourceGroup \
+    --lb-name myLoadBalancer \
+    --name httpsRule \
+    --disable-outbound-snat true
+fi
+
 # Create an outbound rule for backend VMs to access the internet
 az network lb outbound-rule create \
   --resource-group lbResourceGroup \
