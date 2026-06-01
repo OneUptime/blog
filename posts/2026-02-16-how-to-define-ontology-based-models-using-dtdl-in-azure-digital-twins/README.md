@@ -8,7 +8,7 @@ Description: Learn how to define ontology-based models using the Digital Twins D
 
 ---
 
-Azure Digital Twins lets you create a virtual representation of real-world environments - buildings, factories, cities, energy grids. But before you can create any twins, you need models that define what types of things exist in your environment and how they relate to each other. This is where the Digital Twins Definition Language (DTDL) comes in. DTDL is a JSON-LD based schema language that lets you define interfaces describing the properties, telemetry, commands, and relationships of your digital twins.
+Azure Digital Twins lets you create a virtual representation of real-world environments - buildings, factories, cities, energy grids. But before you can create any twins, you need models that define what types of things exist in your environment and how they relate to each other. This is where the Digital Twins Definition Language (DTDL) comes in. DTDL is a JSON-LD based schema language that lets you define interfaces describing the properties, relationships, components, and telemetry of your digital twins. DTDL commands are part of the broader language, but Azure Digital Twins models do not support commands.
 
 When you go beyond simple device models and start modeling entire environments, you need ontologies - structured hierarchies of concepts that reflect how your domain actually works. This guide covers how to design and implement ontology-based DTDL models for Azure Digital Twins.
 
@@ -41,12 +41,12 @@ Before diving into ontologies, let us cover the building blocks of DTDL. Every m
 
 The `@id` follows the DTMI (Digital Twin Model Identifier) format: `dtmi:<domain>:<path>;<version>`. The version number is mandatory and must be a positive integer.
 
-Contents can include four types of elements:
+Contents commonly include these Azure Digital Twins-compatible elements:
 
 1. **Property** - State values that are stored (e.g., room capacity, floor number)
-2. **Telemetry** - Time-series data that flows through (e.g., temperature reading)
-3. **Command** - Actions that can be invoked (e.g., turn on lights)
-4. **Relationship** - Connections to other twins (e.g., room contains sensors)
+2. **Telemetry** - Time-series data that flows through (e.g., temperature reading). Azure Digital Twins allows telemetry in model definitions, but properties are usually the right choice for twin state.
+3. **Relationship** - Connections to other twins (e.g., room contains sensors)
+4. **Component** - A reusable interface included inside another interface
 
 ## Designing a Building Ontology
 
@@ -275,8 +275,7 @@ Now add models for the systems that serve the spaces.
     {
       "@type": "Property",
       "name": "setpointTemperature",
-      "schema": "double",
-      "writable": true
+      "schema": "double"
     },
     {
       "@type": "Property",
@@ -290,8 +289,7 @@ Now add models for the systems that serve the spaces.
           { "name": "auto", "enumValue": "auto" },
           { "name": "off", "enumValue": "off" }
         ]
-      },
-      "writable": true
+      }
     },
     {
       "@type": "Telemetry",
@@ -324,21 +322,14 @@ graph TD
 
 ## Uploading Models to Azure Digital Twins
 
-Use the Azure CLI or SDK to upload the models to your Azure Digital Twins instance. Models must be uploaded in dependency order - base types before derived types.
+Use the Azure CLI or SDK to upload the models to your Azure Digital Twins instance. When you upload models separately, upload dependencies first - base types before derived types. You can also upload a dependent model set together in one request by placing the model definitions in a JSON array.
 
 ```bash
-# Upload all models at once (the service resolves dependencies)
+# models/building-ontology.json contains a JSON array of the model definitions
 
 az dt model create \
   --dt-name my-digital-twins \
-  --models '[
-    <Space model JSON>,
-    <Building model JSON>,
-    <Floor model JSON>,
-    <Room model JSON>,
-    <Sensor model JSON>,
-    <HVACZone model JSON>
-  ]'
+  --models ./models/building-ontology.json
 ```
 
 Or using the Python SDK for programmatic uploads.
@@ -348,20 +339,26 @@ Or using the Python SDK for programmatic uploads.
 from azure.digitaltwins.core import DigitalTwinsClient
 from azure.identity import DefaultAzureCredential
 import json
-import glob
 
 # Connect to the Azure Digital Twins instance
 credential = DefaultAzureCredential()
 client = DigitalTwinsClient("https://my-digital-twins.api.eus.digitaltwins.azure.net", credential)
 
-# Load all model files from a directory
-model_files = glob.glob("models/*.json")
+# Load model files from a directory in dependency order
+model_files = [
+    "models/Space.json",
+    "models/Sensor.json",
+    "models/HVACZone.json",
+    "models/Building.json",
+    "models/Floor.json",
+    "models/Room.json",
+]
 models = []
 for f in model_files:
     with open(f, 'r') as file:
         models.append(json.load(file))
 
-# Upload all models - the service handles dependency resolution
+# Upload the model set
 created_models = client.create_models(models)
 for model in created_models:
     print(f"Created model: {model.id}")
@@ -379,7 +376,7 @@ To extend it, create models that inherit from the ontology's interfaces.
   "@type": "Interface",
   "@context": "dtmi:dtdl:context;2",
   "displayName": "Smart Conference Room",
-  "extends": "dtmi:digitaltwins:rec_3_3:asset:Room;1",
+  "extends": "dtmi:digitaltwins:rec_3_3:building:ConferenceRoom;1",
   "contents": [
     {
       "@type": "Telemetry",
