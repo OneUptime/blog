@@ -14,7 +14,7 @@ Most Aurora documentation focuses on "what to click." Let's instead focus on "ho
 
 ## The Big Architectural Difference
 
-Traditional databases (including standard RDS) follow a monolithic architecture: the database engine and storage are on the same machine. When you write data, the engine writes to local EBS volumes. Replication copies data from the primary to replicas over the network.
+Traditional databases (including standard RDS) follow a more tightly coupled architecture: the database engine writes to storage attached to the DB instance. When you write data, the engine writes to EBS-backed storage. Replication copies data from the primary to replicas over the network.
 
 Aurora decouples the database engine from the storage layer. The compute instances (writer and readers) run the database engine, while storage is handled by a separate distributed system. This separation is what enables most of Aurora's advantages.
 
@@ -42,7 +42,7 @@ Aurora's storage is a distributed, fault-tolerant system that spans three Availa
 
 ### Six Copies Across Three AZs
 
-Every piece of data you write is replicated six times: two copies in each of three AZs. This is significantly more redundant than standard RDS (which does two copies for Multi-AZ).
+Every piece of data you write is replicated six times: two copies in each of three AZs. This is significantly more redundant than a standard RDS Multi-AZ DB instance deployment, where changes are synchronously replicated to a standby in another AZ.
 
 Aurora uses a quorum-based protocol:
 - **Writes succeed** when 4 out of 6 copies acknowledge
@@ -77,9 +77,9 @@ This dramatically reduces network I/O. Instead of sending full pages across the 
 
 ### Automatic Storage Scaling
 
-Aurora storage auto-scales in 10 GB increments up to 128 TB. You never need to provision storage or worry about running out of disk space (well, until 128 TB). There's no equivalent of the RDS "storage full" emergency.
+Aurora storage auto-scales in 10 GB increments. Current Aurora versions support up to 128 TiB or 256 TiB cluster volumes, depending on the engine version. You never need to provision storage or worry about running out of disk space in the usual RDS sense, although the cluster can still reach its engine-version storage limit.
 
-Storage billing is based on the high-water mark - the maximum storage used. However, if you delete a large amount of data, the storage allocation can eventually shrink.
+Storage billing is based on the storage your cluster volume uses, evaluated over time. On Aurora versions that support dynamic volume resizing, deleting a large amount of data can reduce the allocated cluster volume size and lower storage charges.
 
 ## How Replication Works
 
@@ -117,14 +117,14 @@ One feature that helps: during a failover, Aurora can use the surviving instance
 Aurora failover is faster than standard RDS for several reasons:
 
 1. **No data replication needed**: The new writer already has access to all data through the shared storage layer.
-2. **No crash recovery replay**: The storage layer ensures data durability, so the new writer doesn't need to replay a long transaction log.
+2. **Fast recovery**: Aurora's storage layer and survivable page cache reduce the amount of recovery work needed on the new writer.
 3. **DNS update**: Aurora updates the cluster endpoint DNS to point to the new writer.
 
 Typical failover times:
-- **With existing readers**: 15-30 seconds. Aurora promotes a reader to writer.
-- **Without readers**: 2-5 minutes. Aurora needs to create a new instance.
+- **With existing readers**: typically within 30 seconds. Aurora promotes a reader to writer.
+- **Without readers**: typically less than 10 minutes. Aurora needs to create a new instance.
 
-This is why you should always have at least one reader instance in your Aurora cluster, even if you don't need read scaling.
+This is why production Aurora clusters commonly include at least one reader instance, even when read scaling isn't the primary goal.
 
 ## Storage Costs
 
@@ -135,7 +135,7 @@ Aurora storage pricing differs from standard RDS:
 
 For small databases, Aurora can be more expensive because the per-GB rate is higher. For large databases with variable storage needs, Aurora can be cheaper because you don't have to over-provision.
 
-As of 2026, Aurora storage pricing is approximately:
+As of 2026, Aurora storage pricing in common US Regions is approximately:
 - Storage: $0.10 per GB-month
 - I/O: $0.20 per million requests (standard), or included with Aurora I/O-Optimized
 
@@ -161,8 +161,9 @@ Aurora MySQL has a unique feature called Backtracking that lets you "rewind" the
 aws rds create-db-cluster \
   --db-cluster-identifier my-cluster \
   --engine aurora-mysql \
-  --backtrack-window 86400 \
-  ...
+  --master-username admin \
+  --master-user-password 'changeMe123!' \
+  --backtrack-window 86400
 
 # Backtrack to a specific time
 aws rds backtrack-db-cluster \
@@ -170,7 +171,7 @@ aws rds backtrack-db-cluster \
   --backtrack-to "2026-02-12T10:30:00Z"
 ```
 
-This works because Aurora's storage keeps redo log records that can be applied in reverse. Backtracking takes seconds, compared to minutes or hours for a snapshot restore.
+This works because Aurora stores change records for the configured backtrack window. Backtracking usually takes minutes, compared to minutes or hours for a snapshot restore.
 
 ## Performance Considerations
 
@@ -191,7 +192,7 @@ Choose Aurora when:
 - You want fast, automatic failover
 - You don't want to manage storage provisioning
 - Your database might grow unpredictably
-- You need more than 5 read replicas
+- You need many low-lag read replicas without putting traditional replication load on the primary
 
 Choose standard RDS when:
 - You have a small database (< 100 GB) and want to minimize cost
