@@ -121,7 +121,7 @@ az cosmosdb sql container throughput migrate \
     --resource-group myResourceGroup
 ```
 
-When migrating from manual to autoscale, the new max RU/s is set to the current manual value (or higher, based on storage requirements). For example, if your manual throughput is 4,000 RU/s, the autoscale max will be set to 4,000 RU/s with a minimum of 400 RU/s.
+When migrating from manual to autoscale, the new max RU/s is determined by the system based on your current manual throughput, the highest RU/s ever provisioned, and storage requirements. For example, if your manual throughput is 4,000 RU/s and storage does not require a higher value, the autoscale max will be set to 4,000 RU/s with a minimum of 400 RU/s.
 
 ### Autoscale to Manual
 
@@ -163,14 +163,14 @@ await container.ReplaceThroughputAsync(newThroughput);
 
 The minimum allowed max RU/s depends on your storage:
 
-- The formula is: Max RU/s must be at least `MAX(1000, storage_in_GB * 10) * number_of_regions`
+- The formula for a container is: Max RU/s must be at least `MAX(1000, storage_in_GB * 10, highest_max_RU_s_ever_provisioned / 10)`, rounded to the nearest 1,000 RU/s
 - For example, if you have 100 GB of data, your minimum max RU/s is 1,000
 
 ## Cost Comparison: Manual vs Autoscale
 
-Autoscale RU/s are priced at 1.5x the rate of manual provisioned RU/s. However, because autoscale can drop to 10% of the max during low traffic, the actual cost depends on your traffic pattern.
+For single-write region accounts, autoscale RU/s are priced at 1.5x the rate of manual provisioned RU/s. For accounts with multiple write regions, autoscale uses the same rate as standard provisioned throughput for multiple write regions. Because autoscale can drop to 10% of the max during low traffic, the actual cost depends on your traffic pattern.
 
-Here is an example for a max of 10,000 RU/s:
+Here is an example for a single-write region account with a max of 10,000 RU/s:
 
 | Scenario | Manual Cost | Autoscale Cost |
 |----------|------------|----------------|
@@ -179,14 +179,14 @@ Here is an example for a max of 10,000 RU/s:
 | 10% utilization average | 10,000 RU/s * rate | ~1,000 RU/s * 1.5x rate (85% cheaper) |
 | Bursty (10% most hours, 100% some) | 10,000 RU/s * rate | Varies, usually much cheaper |
 
-The rule of thumb: if your average utilization is below 66% of your peak, autoscale is cheaper. If you are consistently above 66%, manual provisioned is cheaper.
+The rule of thumb for single-write region accounts: if your average utilization is below 66% of your peak, autoscale is cheaper. If you are consistently above 66%, manual provisioned is cheaper.
 
 ## Monitoring Autoscale Behavior
 
 Track how autoscale is working in your environment:
 
 ```bash
-# Check current throughput level (what autoscale has scaled to)
+# Check the autoscale throughput settings
 az cosmosdb sql container throughput show \
     --account-name myCosmosAccount \
     --database-name mydb \
@@ -196,13 +196,13 @@ az cosmosdb sql container throughput show \
 
 In the Azure Portal under Metrics, monitor these:
 
-- **Provisioned Throughput**: Shows the current autoscale level over time
+- **Provisioned Throughput**: Shows the scaled autoscale throughput over time
 - **Normalized RU Consumption**: Shows what percentage of available throughput you are using
 - **Total Request Units**: Your actual consumption
 - **429 Count**: Throttled requests (should be near zero with autoscale)
 
 ```csharp
-// Programmatically check the current throughput level
+// Programmatically check the autoscale throughput settings
 Container container = client.GetContainer("mydb", "orders");
 ThroughputResponse throughputResponse = await container.ReadThroughputAsync(
     new RequestOptions());
@@ -211,8 +211,7 @@ if (throughputResponse.Resource.AutoscaleMaxThroughput.HasValue)
 {
     Console.WriteLine($"Autoscale max: {throughputResponse.Resource.AutoscaleMaxThroughput} RU/s");
 
-    // The current throughput is determined by the system
-    // You can see it in the portal metrics
+    // Use Azure Monitor metrics to see scaled RU/s over time
 }
 ```
 
@@ -223,7 +222,7 @@ When using autoscale at the database level with shared throughput, all container
 Important considerations:
 
 - If one container is hot and others are cold, the hot container gets most of the throughput
-- You can have up to 25 containers in a shared throughput database
+- The first 25 containers can share the minimum autoscale max RU/s; adding more containers increases the minimum required max RU/s
 - Individual containers can also have dedicated autoscale throughput alongside shared containers
 
 ```csharp
@@ -253,4 +252,4 @@ await database.CreateContainerAsync(new ContainerProperties("logs", "/date"));
 
 6. **Do not forget the 10% minimum**: Even during zero traffic, you are billed for 10% of the max. If your max is 100,000 RU/s, you always pay for at least 10,000 RU/s.
 
-Autoscale is the best default choice for most production Cosmos DB workloads. It eliminates the guesswork of capacity planning, prevents throttling during traffic spikes, and saves money during quiet periods. The 1.5x price premium is easily offset by not paying for idle capacity during off-peak hours.
+Autoscale is the best default choice for many production Cosmos DB workloads. It eliminates the guesswork of capacity planning, prevents throttling during traffic spikes, and saves money during quiet periods. In single-write region accounts, the 1.5x price premium is often offset by not paying for idle capacity during off-peak hours.
