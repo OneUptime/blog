@@ -22,14 +22,14 @@ Azure Cost Management continuously analyzes your spending data and builds a mode
 
 When actual spending deviates significantly from the expected range, the system flags it as an anomaly. The detection is fully automated - you do not need to define baselines or thresholds.
 
-Anomaly detection runs daily and evaluates the most recent spending data. It typically detects anomalies with a 1-2 day delay because it needs the complete cost data for a day before it can compare against the model.
+Anomaly detection runs daily and evaluates the most recent spending data. It runs about 36 hours after the end of the day in UTC, so it typically detects anomalies with a 1-2 day delay because it needs a complete daily data set before it can compare against the model.
 
 ## Viewing Anomalies in Cost Analysis
 
 Before setting up alerts, you can see existing anomalies in the cost analysis view.
 
 1. Go to **Cost Management + Billing** > **Cost analysis**.
-2. Switch to the **Daily costs** view.
+2. Select one of the **Smart views**, such as **Resources**.
 3. Look for days marked with an anomaly indicator (a diamond icon or callout on the chart).
 4. Click on the anomaly to see details: what service, resource group, or resource caused the unusual spending.
 
@@ -47,18 +47,18 @@ Anomaly alerts are configured through the Cost alerts feature in Cost Management
 4. Click **Add** and select **Anomaly alert**.
 5. Configure the alert:
    - **Name**: A descriptive name like "Daily cost anomaly detection".
-   - **Scope**: The subscription or resource group to monitor.
+   - **Scope**: The subscription to monitor.
    - **Email recipients**: Addresses that should receive anomaly notifications.
 6. Click **Create**.
 
-Anomaly alerts are currently available at the subscription level. Management group-level anomaly detection is supported in the cost analysis view but alerting may have limited scope options.
+Anomaly alerts can currently be created at the subscription scope. They also require the Cost Management Contributor role or higher, or a custom role with the `Microsoft.CostManagement/scheduledActions/write` permission.
 
 ### Via ARM Templates
 
 ```json
 {
   "type": "Microsoft.CostManagement/scheduledActions",
-  "apiVersion": "2023-03-01",
+  "apiVersion": "2025-03-01",
   "name": "daily-anomaly-alert",
   "kind": "InsightAlert",
   "properties": {
@@ -84,20 +84,36 @@ Anomaly alerts are currently available at the subscription level. Management gro
 ### Via Azure CLI
 
 ```bash
-# Create a scheduled action for anomaly alerting
+# Create a scheduled action for anomaly alerting with the Scheduled Actions REST API
+SUBSCRIPTION_ID="<sub-id>"
+BODY=$(cat <<EOF
+{
+  "kind": "InsightAlert",
+  "properties": {
+    "displayName": "Daily Cost Anomaly Alert",
+    "notification": {
+      "subject": "Azure Cost Anomaly Detected",
+      "to": [
+        "ops@example.com",
+        "finance@example.com"
+      ]
+    },
+    "schedule": {
+      "frequency": "Daily",
+      "startDate": "2026-02-16T00:00:00Z",
+      "endDate": "2027-02-16T00:00:00Z"
+    },
+    "status": "Enabled",
+    "viewId": "/subscriptions/${SUBSCRIPTION_ID}/providers/Microsoft.CostManagement/views/ms:DailyAnomalyByResourceGroup"
+  }
+}
+EOF
+)
 
-az costmanagement scheduled-action create \
-  --name "daily-anomaly-alert" \
-  --display-name "Daily Cost Anomaly Alert" \
-  --status "Enabled" \
-  --kind "InsightAlert" \
-  --scope "/subscriptions/<sub-id>" \
-  --view-id "/subscriptions/<sub-id>/providers/Microsoft.CostManagement/views/ms:DailyAnomalyByResourceGroup" \
-  --notification-to "ops@example.com" "finance@example.com" \
-  --notification-subject "Azure Cost Anomaly Detected" \
-  --schedule-frequency "Daily" \
-  --schedule-start-date "2026-02-16T00:00:00Z" \
-  --schedule-end-date "2027-02-16T00:00:00Z"
+az rest \
+  --method put \
+  --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/providers/Microsoft.CostManagement/scheduledActions/daily-anomaly-alert?api-version=2025-03-01" \
+  --body "$BODY"
 ```
 
 ## What the Anomaly Alert Email Contains
@@ -197,29 +213,30 @@ For faster response, connect anomaly detection to automation:
 
 1. **Logic App integration**: When an anomaly email arrives at a shared mailbox, a Logic App parses it and creates a ticket in your tracking system.
 
-2. **Custom Azure Function**: Query the Cost Management API daily for anomalies and post them to a Slack or Teams channel.
+2. **Custom Azure Function**: Query the Cost Management API daily for recent cost data, apply your own detection rule, and post potential anomalies to a Slack or Teams channel.
 
 ```python
-# Python function to check for cost anomalies using the Cost Management API
+# Python function to check for cost spikes using the Cost Management API
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def check_for_anomalies(subscription_id, access_token):
-    """Query Cost Management for recent anomalies."""
-    url = f"https://management.azure.com/subscriptions/{subscription_id}/providers/Microsoft.CostManagement/query?api-version=2023-03-01"
+    """Query recent costs and flag days that exceed a simple threshold."""
+    url = f"https://management.azure.com/subscriptions/{subscription_id}/providers/Microsoft.CostManagement/query?api-version=2025-03-01"
+    now = datetime.now(timezone.utc)
 
     # Query for daily costs over the past 7 days
     body = {
-        "type": "ActualCost",
+        "type": "Usage",
         "timeframe": "Custom",
         "timePeriod": {
-            "from": (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00Z"),
-            "to": datetime.utcnow().strftime("%Y-%m-%dT00:00:00Z")
+            "from": (now - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00Z"),
+            "to": now.strftime("%Y-%m-%dT00:00:00Z")
         },
         "dataset": {
             "granularity": "Daily",
             "aggregation": {
-                "totalCost": {"name": "Cost", "function": "Sum"}
+                "totalCost": {"name": "PreTaxCost", "function": "Sum"}
             }
         }
     }
@@ -230,18 +247,23 @@ def check_for_anomalies(subscription_id, access_token):
     }
 
     response = requests.post(url, json=body, headers=headers)
+    response.raise_for_status()
     data = response.json()
 
     # Simple anomaly detection: flag days where cost exceeds 2x the average
-    costs = [row[0] for row in data["properties"]["rows"]]
+    columns = [column["name"] for column in data["properties"]["columns"]]
+    cost_index = columns.index("PreTaxCost")
+    date_index = columns.index("UsageDate")
+
+    costs = [row[cost_index] for row in data["properties"]["rows"]]
     avg_cost = sum(costs) / len(costs) if costs else 0
 
     anomalies = []
-    for i, row in enumerate(data["properties"]["rows"]):
-        if row[0] > avg_cost * 2:
+    for row in data["properties"]["rows"]:
+        if row[cost_index] > avg_cost * 2:
             anomalies.append({
-                "date": row[1],
-                "cost": row[0],
+                "date": row[date_index],
+                "cost": row[cost_index],
                 "expected_avg": avg_cost
             })
 
