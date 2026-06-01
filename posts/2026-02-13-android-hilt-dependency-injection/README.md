@@ -26,7 +26,7 @@ In your project-level `build.gradle.kts`:
 // Add the Hilt Gradle plugin to the project classpath
 // This plugin generates the Dagger components that Hilt manages
 plugins {
-    id("com.google.dagger.hilt.android") version "2.51" apply false
+    id("com.google.dagger.hilt.android") version "2.57.1" apply false
 }
 ```
 
@@ -34,24 +34,24 @@ In your app-level `build.gradle.kts`:
 
 ```kotlin
 // Apply the Hilt plugin and add the required dependencies
-// kapt is needed for Hilt's annotation processing
+// ksp is used for Hilt's annotation processing
 plugins {
     id("com.google.dagger.hilt.android")
-    kotlin("kapt")
+    id("com.google.devtools.ksp")
 }
 
 dependencies {
-    implementation("com.google.dagger:hilt-android:2.51")
-    kapt("com.google.dagger:hilt-android-compiler:2.51")
+    implementation("com.google.dagger:hilt-android:2.57.1")
+    ksp("com.google.dagger:hilt-android-compiler:2.57.1")
 
-    // For ViewModel injection
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    // For hiltViewModel() in Compose
+    implementation("androidx.hilt:hilt-lifecycle-viewmodel-compose:1.3.0")
 
     // Test dependencies
-    testImplementation("com.google.dagger:hilt-android-testing:2.51")
-    kaptTest("com.google.dagger:hilt-android-compiler:2.51")
-    androidTestImplementation("com.google.dagger:hilt-android-testing:2.51")
-    kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.51")
+    testImplementation("com.google.dagger:hilt-android-testing:2.57.1")
+    kspTest("com.google.dagger:hilt-android-compiler:2.57.1")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.57.1")
+    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.57.1")
 }
 ```
 
@@ -92,7 +92,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // userRepository is available here, already initialized by Hilt
-        val user = userRepository.getCurrentUser()
+        lifecycleScope.launch {
+            val user = userRepository.getCurrentUser()
+        }
     }
 }
 ```
