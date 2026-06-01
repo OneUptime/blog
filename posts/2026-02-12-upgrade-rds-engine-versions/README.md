@@ -73,7 +73,7 @@ If you prefer to control the timing:
 # Upgrade to a specific minor version
 aws rds modify-db-instance \
   --db-instance-identifier my-database \
-  --engine-version 16.3 \
+  --engine-version 15.5 \
   --apply-immediately
 ```
 
@@ -104,9 +104,8 @@ For MySQL (5.7 to 8.0):
 
 ```bash
 # Run the upgrade checker utility
-mysqlcheck --check-upgrade --all-databases \
-  -h my-database.abc123.us-east-1.rds.amazonaws.com \
-  -u admin -p
+mysqlsh -- util check-for-server-upgrade admin@my-database.abc123.us-east-1.rds.amazonaws.com:3306 \
+  --target-version=8.0.36
 ```
 
 ```sql
@@ -180,13 +179,15 @@ Always have a rollback point:
 
 ```bash
 # Create a snapshot right before the upgrade
+SNAPSHOT_ID=pre-major-upgrade-$(date +%Y%m%d)
+
 aws rds create-db-snapshot \
   --db-instance-identifier my-database \
-  --db-snapshot-identifier pre-major-upgrade-$(date +%Y%m%d)
+  --db-snapshot-identifier "$SNAPSHOT_ID"
 
 # Wait for the snapshot to complete
 aws rds wait db-snapshot-available \
-  --db-snapshot-identifier pre-major-upgrade-$(date +%Y%m%d)
+  --db-snapshot-identifier "$SNAPSHOT_ID"
 ```
 
 ### Step 5: Perform the Upgrade
