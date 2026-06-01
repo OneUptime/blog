@@ -10,7 +10,7 @@ Description: A hands-on guide to using AWS Glue DataBrew for no-code data cleani
 
 Data preparation is the unglamorous but essential step before any analysis or machine learning project. Studies consistently show that data scientists spend 60-80% of their time cleaning and preparing data. AWS Glue DataBrew aims to reduce that by giving you a visual, no-code interface for data profiling, cleaning, and transformation.
 
-Unlike Glue ETL (which requires PySpark) or Glue Studio (which is visual but still ETL-focused), DataBrew is purpose-built for data exploration and preparation. You get a spreadsheet-like interface where you can see your data, apply transformations, and build reusable recipes.
+Unlike Glue ETL (which typically involves Spark or Python code) or Glue Studio (which is visual but still ETL-focused), DataBrew is purpose-built for data exploration and preparation. You get a spreadsheet-like interface where you can see your data, apply transformations, and build reusable recipes.
 
 ## Core Concepts
 
@@ -136,10 +136,10 @@ The profile output is a JSON file in S3 that you can view in the DataBrew consol
 
 ## Creating a Project
 
-Projects give you an interactive session to explore data and build recipes:
+Projects give you an interactive session to explore data and build recipes. The recipe you pass to `RecipeName` must already exist:
 
 ```python
-# Create a DataBrew project
+# Create a DataBrew project after creating the recipe
 databrew.create_project(
     Name='clean-customer-transactions',
     DatasetName='customer-transactions',
@@ -158,11 +158,11 @@ The sample configuration controls how much data is loaded into the interactive s
 
 Recipes are the core of DataBrew. Each recipe is a list of transformation steps. In the console, you build recipes by clicking on columns and choosing transformations from a menu.
 
-Programmatically, you can define recipes directly:
+Programmatically, you can define or update recipes directly:
 
 ```python
-# Create a recipe with multiple cleaning steps
-databrew.create_recipe(
+# Update the working version of a recipe with multiple cleaning steps
+databrew.update_recipe(
     Name='customer-cleaning-recipe',
     Steps=[
         {
@@ -181,7 +181,7 @@ databrew.create_recipe(
         },
         {
             'Action': {
-                'Operation': 'DELETE_MISSING_VALUES',
+                'Operation': 'REMOVE_MISSING',
                 'Parameters': {
                     'sourceColumn': 'customer_id'
                 }
@@ -189,11 +189,11 @@ databrew.create_recipe(
         },
         {
             'Action': {
-                'Operation': 'REPLACE_VALUE',
+                'Operation': 'REPLACE_TEXT',
                 'Parameters': {
                     'sourceColumn': 'state',
-                    'value': 'California',
-                    'targetValue': 'CA'
+                    'pattern': 'California',
+                    'value': 'CA'
                 }
             }
         },
@@ -202,17 +202,17 @@ databrew.create_recipe(
                 'Operation': 'CHANGE_DATA_TYPE',
                 'Parameters': {
                     'sourceColumn': 'transaction_amount',
-                    'targetDataType': 'DOUBLE'
+                    'columnDataType': 'double'
                 }
             }
         },
         {
             'Action': {
-                'Operation': 'FLAG_COLUMN_FROM_CONDITION',
+                'Operation': 'BOOLEAN_OPERATION',
                 'Parameters': {
-                    'sourceColumn': 'transaction_amount',
-                    'condition': 'IS_GREATER_THAN',
-                    'value': '10000',
+                    'valueExpression': '`transaction_amount` > 10000',
+                    'trueValueExpression': 'true',
+                    'falseValueExpression': 'false',
                     'targetColumn': 'high_value_flag'
                 }
             }
@@ -238,14 +238,17 @@ DataBrew has over 250 built-in transformations. Here are the most commonly used 
 {"Operation": "DUPLICATE", "Parameters": {"sourceColumn": "email", "targetColumn": "email_backup"}}
 
 # Move a column to a different position
-{"Operation": "MOVE", "Parameters": {"sourceColumn": "customer_id", "targetIndex": "0"}}
+{"Operation": "MOVE_TO_INDEX", "Parameters": {"sourceColumn": "customer_id", "targetIndex": "0"}}
 ```
 
 ### String Operations
 
 ```python
 # Trim whitespace
-{"Operation": "TRIM", "Parameters": {"sourceColumn": "name"}}
+{"Operation": "REMOVE_COMBINED", "Parameters": {
+    "sourceColumn": "name",
+    "removeLeadingAndTrailingWhitespace": "true"
+}}
 
 # Extract substring using regex
 {"Operation": "EXTRACT_PATTERN", "Parameters": {
@@ -255,11 +258,11 @@ DataBrew has over 250 built-in transformations. Here are the most commonly used 
 }}
 
 # Split column
-{"Operation": "SPLIT_COLUMN_ON_DELIMITER", "Parameters": {
+{"Operation": "SPLIT_COLUMN_SINGLE_DELIMITER", "Parameters": {
     "sourceColumn": "full_name",
-    "delimiter": " ",
-    "targetColumn1": "first_name",
-    "targetColumn2": "last_name"
+    "pattern": " ",
+    "limit": "1",
+    "includeInSplit": "false"
 }}
 ```
 
@@ -269,11 +272,11 @@ DataBrew has over 250 built-in transformations. Here are the most commonly used 
 # Parse dates
 {"Operation": "FORMAT_DATE", "Parameters": {
     "sourceColumn": "date_str",
-    "dateFormat": "yyyy-MM-dd"
+    "targetDateFormat": "mm-dd-yyyy"
 }}
 
 # Extract date parts
-{"Operation": "EXTRACT_YEAR", "Parameters": {
+{"Operation": "YEAR", "Parameters": {
     "sourceColumn": "order_date",
     "targetColumn": "order_year"
 }}
@@ -284,11 +287,9 @@ DataBrew has over 250 built-in transformations. Here are the most commonly used 
 ```python
 # Group by with aggregation
 {"Operation": "GROUP_BY", "Parameters": {
-    "groupByColumns": "customer_id",
-    "aggregations": {
-        "transaction_amount": "SUM",
-        "order_id": "COUNT"
-    }
+    "sourceColumns": "[\"customer_id\"]",
+    "groupByAggFunctionOptions": "[{\"sourceColumnName\":\"transaction_amount\",\"targetColumnName\":\"total_transaction_amount\",\"targetColumnDataType\":\"number\",\"functionName\":\"SUM\"},{\"sourceColumnName\":\"order_id\",\"targetColumnName\":\"order_count\",\"targetColumnDataType\":\"number\",\"functionName\":\"COUNT\"}]",
+    "useNewDataFrame": "true"
 }}
 ```
 
@@ -296,16 +297,18 @@ DataBrew has over 250 built-in transformations. Here are the most commonly used 
 
 ```python
 # Replace missing values with a default
-{"Operation": "FILL_MISSING_VALUES", "Parameters": {
+{"Operation": "FILL_WITH_CUSTOM", "Parameters": {
     "sourceColumn": "category",
-    "fillValue": "Unknown"
+    "columnDataType": "string",
+    "value": "Unknown"
 }}
 
 # Remove outliers using IQR method
 {"Operation": "REMOVE_OUTLIERS", "Parameters": {
     "sourceColumn": "price",
-    "strategy": "IQR",
-    "multiplier": "1.5"
+    "outlierStrategy": "IQR",
+    "threshold": "1.5",
+    "removeType": "DELETE_ROWS"
 }}
 ```
 
@@ -411,8 +414,7 @@ Use DataBrew for data preparation and profiling. Use Glue ETL or Glue Studio for
 
 DataBrew pricing:
 - Interactive sessions: $1 per session per 30 minutes
-- Profile jobs: $0.16 per node per hour
-- Recipe jobs: $0.48 per node per hour
+- DataBrew jobs, including profile and recipe jobs: $0.48 per node-hour, billed per minute
 
 Keep costs manageable by:
 - Using small samples in interactive sessions
