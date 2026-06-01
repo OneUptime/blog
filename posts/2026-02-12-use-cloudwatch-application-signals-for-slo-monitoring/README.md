@@ -44,20 +44,15 @@ The key SLIs that Application Signals tracks are:
 The CloudWatch agent needs to be configured to collect Application Signals data. Here is the relevant section of the agent configuration:
 
 ```json
-// CloudWatch Agent configuration with Application Signals
 {
   "logs": {
     "metrics_collected": {
-      "application_signals": {
-        "enabled": true
-      }
+      "application_signals": {}
     }
   },
   "traces": {
     "traces_collected": {
-      "application_signals": {
-        "enabled": true
-      }
+      "application_signals": {}
     }
   }
 }
@@ -70,23 +65,7 @@ If you are running on EKS, you can enable Application Signals through the EKS ad
 
 aws eks create-addon \
   --cluster-name my-cluster \
-  --addon-name amazon-cloudwatch-observability \
-  --configuration-values '{
-    "agent": {
-      "config": {
-        "traces": {
-          "traces_collected": {
-            "application_signals": {}
-          }
-        },
-        "logs": {
-          "metrics_collected": {
-            "application_signals": {}
-          }
-        }
-      }
-    }
-  }'
+  --addon-name amazon-cloudwatch-observability
 ```
 
 ## Step 2: Instrument Your Application
@@ -118,23 +97,36 @@ spec:
 For an ECS service, set environment variables in the task definition:
 
 ```json
-// Environment variables for OpenTelemetry auto-instrumentation on ECS
-{
-  "name": "OTEL_RESOURCE_ATTRIBUTES",
-  "value": "service.name=order-service"
-},
-{
-  "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
-  "value": "http://localhost:4317"
-},
-{
-  "name": "OTEL_METRICS_EXPORTER",
-  "value": "none"
-},
-{
-  "name": "OTEL_TRACES_EXPORTER",
-  "value": "otlp"
-}
+[
+  {
+    "name": "OTEL_RESOURCE_ATTRIBUTES",
+    "value": "service.name=order-service,deployment.environment=production"
+  },
+  {
+    "name": "OTEL_AWS_APPLICATION_SIGNALS_ENABLED",
+    "value": "true"
+  },
+  {
+    "name": "OTEL_EXPORTER_OTLP_PROTOCOL",
+    "value": "http/protobuf"
+  },
+  {
+    "name": "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+    "value": "http://localhost:4316/v1/traces"
+  },
+  {
+    "name": "OTEL_AWS_APPLICATION_SIGNALS_EXPORTER_ENDPOINT",
+    "value": "http://localhost:4316/v1/metrics"
+  },
+  {
+    "name": "OTEL_METRICS_EXPORTER",
+    "value": "none"
+  },
+  {
+    "name": "OTEL_LOGS_EXPORTER",
+    "value": "none"
+  }
+]
 ```
 
 ## Step 3: Verify Service Discovery
@@ -143,7 +135,9 @@ After deploying your instrumented application, wait a few minutes and check the 
 
 ```bash
 # List discovered services via CLI
-aws cloudwatch list-services \
+aws application-signals list-services \
+  --start-time 1770854400 \
+  --end-time 1770940800 \
   --region us-east-1
 ```
 
@@ -155,7 +149,7 @@ Now create an SLO on top of the automatically collected SLIs. For example, let's
 
 ```bash
 # Create an availability SLO for the order service
-aws cloudwatch create-service-level-objective \
+aws application-signals create-service-level-objective \
   --name "order-service-availability" \
   --description "99.9% availability over 30 days" \
   --sli-config '{
@@ -178,14 +172,15 @@ aws cloudwatch create-service-level-objective \
       }
     },
     "AttainmentGoal": 99.9
-  }'
+  }' \
+  --burn-rate-configurations '[{"LookBackWindowMinutes": 60}]'
 ```
 
 You can also create latency-based SLOs:
 
 ```bash
 # Create a latency SLO: p99 latency must be under 500ms
-aws cloudwatch create-service-level-objective \
+aws application-signals create-service-level-objective \
   --name "order-service-latency-p99" \
   --description "p99 latency under 500ms" \
   --sli-config '{
@@ -232,14 +227,14 @@ The SLO is only useful if you get alerted when the error budget is burning too f
 # This alerts when the error budget burn rate exceeds 10x normal
 aws cloudwatch put-metric-alarm \
   --alarm-name "order-service-high-burn-rate" \
-  --metric-name "SloAttainment" \
+  --metric-name "BurnRate" \
   --namespace "AWS/ApplicationSignals" \
-  --dimensions Name=SloName,Value=order-service-availability \
-  --statistic Average \
+  --dimensions Name=SloName,Value=order-service-availability Name=BurnRateWindowMinutes,Value=60 \
+  --statistic Maximum \
   --period 300 \
   --evaluation-periods 3 \
-  --threshold 99.9 \
-  --comparison-operator LessThanThreshold \
+  --threshold 10 \
+  --comparison-operator GreaterThanThreshold \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:slo-alerts"
 ```
 
@@ -255,14 +250,13 @@ This approach is borrowed from Google's SRE book and prevents both alert fatigue
 Create a CloudWatch dashboard that shows all your SLOs in one place:
 
 ```json
-// Dashboard widget showing SLO attainment
 {
   "type": "metric",
   "properties": {
     "metrics": [
-      ["AWS/ApplicationSignals", "SloAttainment", "SloName", "order-service-availability"],
-      ["AWS/ApplicationSignals", "SloAttainment", "SloName", "order-service-latency-p99"],
-      ["AWS/ApplicationSignals", "SloAttainment", "SloName", "payment-service-availability"]
+      ["AWS/ApplicationSignals", "AttainmentRate", "SloName", "order-service-availability"],
+      ["AWS/ApplicationSignals", "AttainmentRate", "SloName", "order-service-latency-p99"],
+      ["AWS/ApplicationSignals", "AttainmentRate", "SloName", "payment-service-availability"]
     ],
     "view": "singleValue",
     "title": "SLO Attainment - Current",
