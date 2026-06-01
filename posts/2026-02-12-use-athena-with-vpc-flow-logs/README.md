@@ -10,7 +10,7 @@ Description: Learn how to query VPC Flow Logs with Amazon Athena for network tra
 
 VPC Flow Logs capture information about IP traffic going to and from network interfaces in your VPC. They tell you who's talking to whom, on what ports, and whether the traffic was accepted or rejected. When something goes wrong - a connection timeout, a security breach, or unexpected traffic patterns - flow logs are where you start investigating.
 
-The raw logs sit in S3 as text files. Querying them with Athena gives you SQL-powered network analysis without any infrastructure to manage.
+By default, the raw logs sit in S3 as Gzip-compressed text files. Querying them with Athena gives you SQL-powered network analysis without any infrastructure to manage.
 
 ## Enabling VPC Flow Logs
 
@@ -29,7 +29,7 @@ aws ec2 create-flow-logs \
   --max-aggregation-interval 60
 ```
 
-The `max-aggregation-interval` of 60 seconds gives you the most granular data. You can also set it to 600 seconds (10 minutes) to reduce log volume.
+The `max-aggregation-interval` of 60 seconds gives you the most granular data. You can also set it to 600 seconds (10 minutes) to reduce log volume for interfaces that are not attached to Nitro-based instances. For Nitro-based instances, the aggregation interval is always 60 seconds or less regardless of this setting.
 
 Logs are organized by date:
 ```text
@@ -172,7 +172,7 @@ ORDER BY hour;
 
 ### Rejected Traffic
 
-Rejected flows indicate traffic that was blocked by security groups or network ACLs:
+Rejected flows often indicate traffic that was blocked by security groups or network ACLs. They can also appear for packets that arrive after a connection is closed:
 
 ```sql
 -- Analyze rejected traffic to identify potential threats
@@ -218,7 +218,7 @@ HAVING COUNT(DISTINCT dstport) > 20
 ORDER BY unique_ports_targeted DESC;
 ```
 
-A source IP hitting 20+ different ports on the same destination is almost certainly scanning.
+A source IP hitting 20+ different ports on the same destination is a strong signal worth investigating.
 
 ### Unexpected Outbound Traffic
 
@@ -293,7 +293,7 @@ LIMIT 200;
 
 ### Asymmetric Traffic Analysis
 
-If traffic goes out but no response comes back, that's a routing or security group issue:
+If traffic goes out but no response comes back, that can point to a routing, security group, network ACL, or application issue:
 
 ```sql
 -- Find traffic with no return flow (potential routing or SG issues)
@@ -320,6 +320,7 @@ FROM outbound o
 LEFT JOIN inbound i ON o.srcaddr = i.dstaddr
     AND o.dstaddr = i.srcaddr
     AND o.protocol = i.protocol
+    AND o.dstport = i.srcport
 WHERE i.srcaddr IS NULL
 LIMIT 50;
 ```
@@ -331,7 +332,7 @@ VPC Flow Logs can generate a lot of data. A busy VPC might produce gigabytes per
 1. **Always filter on the date partition** - never scan all dates
 2. **Filter on action when possible** - if you only need rejected traffic, filter for it
 3. **Consider converting to Parquet** - for very high-volume logs, converting to columnar format can cut costs by 90%+ (see [optimizing with column formats](https://oneuptime.com/blog/post/2026-02-12-optimize-athena-queries-with-column-formats-parquet-orc/view))
-4. **Use aggregation intervals wisely** - 600-second intervals produce less data than 60-second intervals
+4. **Use aggregation intervals wisely** - 600-second intervals can produce less data than 60-second intervals for interfaces that are not attached to Nitro-based instances
 
 For more tips on Athena cost management, check out [reducing Athena query costs](https://oneuptime.com/blog/post/2026-02-12-reduce-athena-query-costs/view).
 
