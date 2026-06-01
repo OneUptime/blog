@@ -8,7 +8,7 @@ Description: Step-by-step instructions for deploying a static web application di
 
 ---
 
-Azure Static Web Apps is one of those services that does exactly what you want with minimal fuss. You point it at a GitHub repository, tell it where your app lives, and it handles the rest - building, deploying, setting up HTTPS, and giving you a globally distributed site. Every push to your main branch triggers a new deployment, and pull requests get their own preview URLs automatically.
+Azure Static Web Apps is one of those services that does exactly what you want with minimal fuss. You point it at a GitHub repository, tell it where your app lives, and it handles the rest - building, deploying, setting up HTTPS, and giving you a globally distributed site. Every push to your main branch triggers a new deployment, and pull requests against the watched branch get their own preview URLs automatically, subject to your plan's pre-production environment limits.
 
 This guide walks through deploying a static web app from a GitHub repo, covering the initial setup, build configuration, and common customizations.
 
@@ -19,8 +19,8 @@ Before getting into the steps, here is what the service provides out of the box:
 - Free SSL/TLS certificates with automatic renewal.
 - Global distribution through Azure's CDN.
 - Automatic builds and deployments triggered by GitHub commits.
-- Staging environments for every pull request.
-- Built-in authentication providers (Azure AD, GitHub, Twitter).
+- Staging environments for pull requests against the watched branch.
+- Built-in authentication providers such as Microsoft Entra ID and GitHub, with additional providers available through custom authentication configuration.
 - Optional serverless API backend via Azure Functions.
 
 For a free tier, this is a surprisingly complete package.
@@ -33,13 +33,14 @@ You will need:
 - A GitHub account with a repository containing a static web app or a frontend framework project.
 - The app should have a build command that outputs static files (like React, Vue, Angular, Hugo, or plain HTML).
 
-If you do not have a project ready, create a simple React app to follow along.
+If you do not have a project ready, create a simple Vite React app to follow along.
 
 ```bash
 # Create a new React app and push it to GitHub
 
-npx create-react-app my-static-app
+npm create vite@latest my-static-app -- --template react
 cd my-static-app
+npm install
 git init
 git add .
 git commit -m "Initial commit"
@@ -76,10 +77,10 @@ Azure then asks about your build configuration. This is where you tell it how to
 
 The build configuration depends on your framework. Here are common settings:
 
-**React / Create React App:**
+**React / Vite:**
 - App location: `/`
 - API location: (leave empty)
-- Output location: `build`
+- Output location: `dist`
 
 **Vue.js:**
 - App location: `/`
@@ -127,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -141,7 +142,7 @@ jobs:
           action: "upload"
           app_location: "/"
           api_location: ""
-          output_location: "build"
+          output_location: "dist"
 
   close_pull_request_job:
     # Clean up staging environments when PRs are closed
@@ -187,7 +188,7 @@ az staticwebapp create \
   --source https://github.com/your-username/my-static-app \
   --branch main \
   --app-location "/" \
-  --output-location "build" \
+  --output-location "dist" \
   --login-with-github
 ```
 
@@ -208,11 +209,11 @@ You can customize the build process by modifying the workflow file or adding con
     repo_token: ${{ secrets.GITHUB_TOKEN }}
     action: "upload"
     app_location: "/"
-    output_location: "build"
+    output_location: "dist"
   env:
     # Set environment variables for the build process
-    REACT_APP_API_URL: "https://api.example.com"
-    REACT_APP_ENVIRONMENT: "production"
+    VITE_API_URL: "https://api.example.com"
+    VITE_ENVIRONMENT: "production"
 ```
 
 **Routing Rules**: Create a `staticwebapp.config.json` file in your app's output directory to control routing, headers, and redirects.
@@ -252,7 +253,7 @@ If your static app is inside a subdirectory of a larger repository (a monorepo s
     repo_token: ${{ secrets.GITHUB_TOKEN }}
     action: "upload"
     app_location: "/packages/frontend"
-    output_location: "build"
+    output_location: "dist"
 ```
 
 ## Wrapping Up
