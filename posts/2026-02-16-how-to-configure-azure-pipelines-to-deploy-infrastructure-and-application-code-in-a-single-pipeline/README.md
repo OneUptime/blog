@@ -14,7 +14,7 @@ A single pipeline that handles both infrastructure and application deployment el
 
 ## The Pipeline Structure
 
-The key insight is that infrastructure deployment and application deployment are stages in the same pipeline, with explicit dependencies between them. Infrastructure deploys first, its outputs (like connection strings and resource names) feed into the application deployment stage, and the whole thing runs as one atomic unit.
+The key insight is that infrastructure deployment and application deployment are stages in the same pipeline, with explicit dependencies between them. Infrastructure deploys first, its outputs, like resource names and endpoint values, feed into the application deployment stage, and the whole thing runs as one ordered pipeline run.
 
 ```mermaid
 flowchart TD
@@ -23,7 +23,7 @@ flowchart TD
     C --> D[Stage: Deploy Application]
     D --> E[Stage: Smoke Tests]
 
-    C -->|Outputs: connection strings, URLs| D
+    C -->|Outputs: resource names, endpoints| D
     B -->|Artifacts: compiled app, Bicep files| C
 ```
 
@@ -47,6 +47,8 @@ variables:
   azureSubscription: 'Production-ServiceConnection'
   resourceGroup: 'rg-myapp-prod'
   location: 'eastus2'
+  sqlAdminUser: 'sqladmin'
+  # Define sqlAdminPassword as a secret pipeline variable or variable group value.
 
 stages:
   - stage: Build
@@ -102,7 +104,7 @@ stages:
 
 ## Stage 2: Deploy Infrastructure
 
-This stage deploys the Bicep template and captures the outputs. The outputs are critical because they contain the resource names and connection strings that the application deployment stage needs.
+This stage deploys the Bicep template and captures the outputs. The outputs are critical because they contain the resource names and endpoint values that the application deployment stage needs. Avoid returning passwords or complete secret connection strings as Bicep outputs.
 
 ```yaml
   - stage: DeployInfrastructure
@@ -131,18 +133,21 @@ This stage deploys the Bicep template and captures the outputs. The outputs are 
                 DEPLOY_OUTPUT=$(az deployment group create \
                   --resource-group "$(resourceGroup)" \
                   --template-file "$(Pipeline.Workspace)/drop/infra/main.bicep" \
-                  --parameters "$(Pipeline.Workspace)/drop/infra/parameters.prod.json" \
+                  --parameters @"$(Pipeline.Workspace)/drop/infra/parameters.prod.json" \
+                  --parameters environmentName=prod sqlAdminUser="$(sqlAdminUser)" sqlAdminPassword="$(sqlAdminPassword)" \
                   --query "properties.outputs" \
                   --output json)
 
                 # Extract specific outputs and set as pipeline variables
                 APP_SERVICE_NAME=$(echo $DEPLOY_OUTPUT | jq -r '.appServiceName.value')
-                SQL_CONNECTION=$(echo $DEPLOY_OUTPUT | jq -r '.sqlConnectionString.value')
+                SQL_SERVER_FQDN=$(echo $DEPLOY_OUTPUT | jq -r '.sqlServerFqdn.value')
+                SQL_DATABASE_NAME=$(echo $DEPLOY_OUTPUT | jq -r '.sqlDatabaseName.value')
                 STORAGE_NAME=$(echo $DEPLOY_OUTPUT | jq -r '.storageAccountName.value')
 
                 # Set output variables for use in subsequent stages
                 echo "##vso[task.setvariable variable=appServiceName;isOutput=true]$APP_SERVICE_NAME"
-                echo "##vso[task.setvariable variable=sqlConnectionString;isOutput=true;isSecret=true]$SQL_CONNECTION"
+                echo "##vso[task.setvariable variable=sqlServerFqdn;isOutput=true]$SQL_SERVER_FQDN"
+                echo "##vso[task.setvariable variable=sqlDatabaseName;isOutput=true]$SQL_DATABASE_NAME"
                 echo "##vso[task.setvariable variable=storageAccountName;isOutput=true]$STORAGE_NAME"
 
                 echo "Infrastructure deployed successfully"
@@ -157,6 +162,9 @@ Here is the corresponding Bicep template that produces those outputs:
 // infra/main.bicep - infrastructure for the application
 param location string = resourceGroup().location
 param environmentName string
+param sqlAdminUser string = 'sqladmin'
+
+@secure()
 param sqlAdminPassword string
 
 // App Service Plan
@@ -176,6 +184,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
 resource webApp 'Microsoft.Web/sites@2023-01-01' = {
   name: 'app-myapp-${environmentName}-${uniqueString(resourceGroup().id)}'
   location: location
+  kind: 'app,linux'
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
@@ -190,7 +199,7 @@ resource sqlServer 'Microsoft.Sql/servers@2023-05-01-preview' = {
   name: 'sql-myapp-${environmentName}'
   location: location
   properties: {
-    administratorLogin: 'sqladmin'
+    administratorLogin: sqlAdminUser
     administratorLoginPassword: sqlAdminPassword
   }
 }
@@ -217,7 +226,8 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 
 // Outputs consumed by the application deployment stage
 output appServiceName string = webApp.name
-output sqlConnectionString string = 'Server=${sqlServer.properties.fullyQualifiedDomainName};Database=${sqlDb.name};'
+output sqlServerFqdn string = sqlServer.properties.fullyQualifiedDomainName
+output sqlDatabaseName string = sqlDb.name
 output storageAccountName string = storage.name
 ```
 
@@ -232,7 +242,8 @@ This stage uses the infrastructure outputs to deploy the application to the corr
     variables:
       # Reference outputs from the infrastructure stage
       appServiceName: $[ stageDependencies.DeployInfrastructure.DeployBicep.outputs['deployInfra.appServiceName'] ]
-      sqlConnectionString: $[ stageDependencies.DeployInfrastructure.DeployBicep.outputs['deployInfra.sqlConnectionString'] ]
+      sqlServerFqdn: $[ stageDependencies.DeployInfrastructure.DeployBicep.outputs['deployInfra.sqlServerFqdn'] ]
+      sqlDatabaseName: $[ stageDependencies.DeployInfrastructure.DeployBicep.outputs['deployInfra.sqlDatabaseName'] ]
       storageAccountName: $[ stageDependencies.DeployInfrastructure.DeployBicep.outputs['deployInfra.storageAccountName'] ]
     jobs:
       - deployment: DeployWebApp
@@ -260,7 +271,7 @@ This stage uses the infrastructure outputs to deploy the application to the corr
                         --resource-group "$(resourceGroup)" \
                         --name "$(appServiceName)" \
                         --settings \
-                          "ConnectionStrings__Default=$(sqlConnectionString)" \
+                          "ConnectionStrings__Default=Server=tcp:$(sqlServerFqdn),1433;Initial Catalog=$(sqlDatabaseName);User ID=$(sqlAdminUser);Password=$(sqlAdminPassword);Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;" \
                           "Storage__AccountName=$(storageAccountName)"
                   displayName: 'Configure app settings'
 
@@ -281,7 +292,9 @@ After both infrastructure and application are deployed, run quick smoke tests to
 ```yaml
   - stage: SmokeTests
     displayName: 'Smoke Tests'
-    dependsOn: DeployApplication
+    dependsOn:
+      - DeployInfrastructure
+      - DeployApplication
     variables:
       appServiceName: $[ stageDependencies.DeployInfrastructure.DeployBicep.outputs['deployInfra.appServiceName'] ]
     jobs:
@@ -315,10 +328,20 @@ stages:
     jobs:
       - job: Detect
         steps:
+          - checkout: self
+            fetchDepth: 0
+
           - script: |
               # Check if infrastructure files changed
-              INFRA_CHANGED=$(git diff --name-only HEAD~1 HEAD -- infra/ | wc -l)
-              APP_CHANGED=$(git diff --name-only HEAD~1 HEAD -- src/ | wc -l)
+              BASE_COMMIT=$(git rev-parse HEAD^ 2>/dev/null || echo "")
+
+              if [ -z "$BASE_COMMIT" ]; then
+                INFRA_CHANGED=1
+                APP_CHANGED=1
+              else
+                INFRA_CHANGED=$(git diff --name-only "$BASE_COMMIT" HEAD -- infra/ | wc -l)
+                APP_CHANGED=$(git diff --name-only "$BASE_COMMIT" HEAD -- src/ tests/ | wc -l)
+              fi
 
               echo "##vso[task.setvariable variable=infraChanged;isOutput=true]$([ $INFRA_CHANGED -gt 0 ] && echo true || echo false)"
               echo "##vso[task.setvariable variable=appChanged;isOutput=true]$([ $APP_CHANGED -gt 0 ] && echo true || echo false)"
@@ -330,14 +353,17 @@ Then add conditions to your stages:
 
 ```yaml
   - stage: DeployInfrastructure
-    condition: eq(stageDependencies.DetectChanges.Detect.outputs['changes.infraChanged'], 'true')
+    dependsOn: DetectChanges
+    condition: and(succeeded(), eq(dependencies.DetectChanges.outputs['Detect.changes.infraChanged'], 'true'))
 ```
+
+If the application stage still needs infrastructure outputs when the infrastructure stage is skipped, look up the existing resource names in the application stage or store them in environment-specific variables.
 
 ## Best Practices
 
 1. **Always deploy infrastructure first.** The application might depend on new resources or configuration changes. If you deploy the app first and it references a resource that does not exist yet, it will fail.
 
-2. **Use outputs to pass data between stages.** Do not hardcode resource names. Let the infrastructure deployment tell the application deployment where to deploy.
+2. **Use outputs to pass non-secret data between stages.** Do not hardcode generated resource names. Let the infrastructure deployment tell the application deployment where to deploy, but keep passwords and other secrets in Key Vault or Azure Pipelines secret variables.
 
 3. **Make infrastructure deployments idempotent.** Bicep handles this naturally, but make sure your templates can be run multiple times without errors.
 
