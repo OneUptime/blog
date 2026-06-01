@@ -22,7 +22,10 @@ The retry schedule follows roughly this pattern:
 - Retry 4: 5 minutes
 - Retry 5: 10 minutes
 - Retry 6: 30 minutes
-- Retry 7 and beyond: 60 minutes (up to the max attempts or TTL)
+- Retry 7: 1 hour
+- Retry 8: 3 hours
+- Retry 9: 6 hours
+- Later retries: every 12 hours up to 24 hours (up to the max attempts or TTL)
 
 Event Grid uses a jittered exponential backoff, meaning the exact timing varies slightly to avoid thundering herd problems when many events fail at the same time.
 
@@ -46,7 +49,7 @@ az eventgrid event-subscription create \
   --event-ttl 720
 ```
 
-In this example, Event Grid will retry up to 15 times or for up to 12 hours, whichever comes first.
+In this example, Event Grid will attempt delivery up to 15 times or for up to 12 hours, whichever comes first.
 
 ## Choosing the Right Retry Settings
 
@@ -69,7 +72,7 @@ az eventgrid event-subscription create \
   --deadletter-endpoint "${STORAGE_ID}/blobServices/default/containers/deadletters"
 ```
 
-This configuration retries up to 5 times within 1 hour. After that, the event is dead-lettered (if configured) or dropped.
+This configuration attempts delivery up to 5 times within 1 hour. After that, the event is dead-lettered (if configured) or dropped.
 
 ## Retry Policy with Bicep
 
@@ -87,7 +90,7 @@ resource criticalSubscription 'Microsoft.EventGrid/topics/eventSubscriptions@202
       }
     }
     retryPolicy: {
-      maxDeliveryAttempts: 30 // Maximum retries
+      maxDeliveryAttempts: 30 // Maximum delivery attempts
       eventTimeToLiveInMinutes: 1440 // Full 24 hours
     }
     deadLetterDestination: {
@@ -138,15 +141,18 @@ Event Grid's retry behavior depends on the HTTP status code returned by your sub
 
 **Not retried (permanent errors):**
 - 400 Bad Request
-- 401 Unauthorized
 - 403 Forbidden
-- 404 Not Found
 - 413 Request Entity Too Large
+- 401 Unauthorized (for WebHook endpoints)
+
+Some status codes are endpoint-specific. For Azure resource endpoints, Event Grid retries 401 Unauthorized and 404 Not Found after 5 minutes or more. For other failed responses not listed as non-retryable, Event Grid follows the standard retry schedule.
 
 **Success (event is completed):**
 - 200 OK
 - 201 Created
 - 202 Accepted
+- 203 Non-Authoritative Information
+- 204 No Content
 
 This means your subscriber can control retry behavior by choosing the right status code. If you receive a malformed event you cannot process, return 400 and Event Grid will not waste time retrying. If you are temporarily overloaded, return 429 or 503 and Event Grid will back off and retry.
 
@@ -164,6 +170,17 @@ public async Task<HttpResponseData> Run(
 
         foreach (var ev in events)
         {
+            if (ev.TryGetSystemEventData(out var eventData) &&
+                eventData is SubscriptionValidationEventData validationEvent)
+            {
+                response.StatusCode = System.Net.HttpStatusCode.OK;
+                await response.WriteAsJsonAsync(new Dictionary<string, string>
+                {
+                    ["validationResponse"] = validationEvent.ValidationCode
+                });
+                return response;
+            }
+
             await ProcessEvent(ev);
         }
 
@@ -192,21 +209,23 @@ public async Task<HttpResponseData> Run(
 Here is what a retry sequence looks like for an event that fails repeatedly.
 
 ```mermaid
-gantt
-    title Event Grid Retry Timeline
-    dateFormat HH:mm
-    axisFormat %H:%M
-
-    section Delivery Attempts
-    Attempt 1 (fail)     :done, 10:00, 1m
-    Wait 10s             :active, 10:01, 1m
-    Attempt 2 (fail)     :done, 10:02, 1m
-    Wait 30s             :active, 10:03, 2m
-    Attempt 3 (fail)     :done, 10:05, 1m
-    Wait 1m              :active, 10:06, 3m
-    Attempt 4 (fail)     :done, 10:09, 1m
-    Wait 5m              :active, 10:10, 5m
-    Attempt 5 (success)  :crit, 10:15, 1m
+sequenceDiagram
+    participant EG as Event Grid
+    participant Handler as Subscriber
+    EG->>Handler: Attempt 1
+    Handler-->>EG: Failure
+    Note over EG: Wait about 10 seconds
+    EG->>Handler: Attempt 2
+    Handler-->>EG: Failure
+    Note over EG: Wait about 30 seconds
+    EG->>Handler: Attempt 3
+    Handler-->>EG: Failure
+    Note over EG: Wait about 1 minute
+    EG->>Handler: Attempt 4
+    Handler-->>EG: Failure
+    Note over EG: Wait about 5 minutes
+    EG->>Handler: Attempt 5
+    Handler-->>EG: Success
 ```
 
 ## Implementing Client-Side Retry Logic
@@ -268,7 +287,7 @@ Here are the retry-related practices that work well in production.
 
 Always enable dead-lettering alongside your retry policy. Without it, events that exhaust retries are silently lost.
 
-Return the correct HTTP status codes from your subscriber. Use 4xx for permanent failures and 5xx for transient failures. This gives Event Grid the information it needs to make good retry decisions.
+Return the correct HTTP status codes from your subscriber. Use 400 or another documented non-retryable status for permanent failures, and use retryable statuses such as 429 or 5xx for transient failures. This gives Event Grid the information it needs to make good retry decisions.
 
 Keep your event handler idempotent. Since Event Grid uses at-least-once delivery and retries can cause duplicate deliveries, your handler must be able to process the same event multiple times safely.
 
