@@ -8,7 +8,7 @@ Description: Learn how to handle connection, disconnection, and reconnection eve
 
 ---
 
-Every WebSocket connection has a lifecycle: it connects, it stays alive for some period, and eventually it disconnects. In between, it might temporarily lose connectivity and reconnect. How you handle these lifecycle events determines whether your real-time application feels solid or flaky. A user switching from Wi-Fi to cellular, a network hiccup, a browser tab going to sleep - these are everyday occurrences that your application needs to handle gracefully.
+Every real-time SignalR connection has a lifecycle: it connects, it stays alive for some period, and eventually it disconnects. In between, it might temporarily lose connectivity and reconnect. How you handle these lifecycle events determines whether your real-time application feels solid or flaky. A user switching from Wi-Fi to cellular, a network hiccup, a browser tab going to sleep - these are everyday occurrences that your application needs to handle gracefully.
 
 In this post, I will walk through the connection lifecycle events in Azure SignalR Service, show you how to handle them on both the server and client side, and cover the patterns that make real-time applications resilient.
 
@@ -27,7 +27,7 @@ stateDiagram-v2
     Disconnected --> [*]
 ```
 
-Each transition is an event you can hook into. Let me walk through each one.
+Several of these transitions expose events or callbacks you can hook into. Let me walk through each one.
 
 ## Server-Side Lifecycle Events (Default Mode)
 
@@ -52,7 +52,7 @@ public class AppHub : Hub
     public override async Task OnConnectedAsync()
     {
         var connectionId = Context.ConnectionId;
-        var userId = Context.UserIdentifier;
+        var userId = Context.UserIdentifier ?? connectionId;
         var userAgent = Context.GetHttpContext()?.Request.Headers["User-Agent"].ToString();
         var ipAddress = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
 
@@ -84,10 +84,10 @@ public class AppHub : Hub
 
     // Called when a client disconnects
     // The exception parameter is non-null if the disconnect was caused by an error
-    public override async Task OnDisconnectedAsync(Exception exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var connectionId = Context.ConnectionId;
-        var userId = Context.UserIdentifier;
+        var userId = Context.UserIdentifier ?? connectionId;
 
         if (exception != null)
         {
@@ -186,8 +186,8 @@ public class UserPresenceService : IUserPresenceService
 
 public class ConnectionMetadata
 {
-    public string UserAgent { get; set; }
-    public string IpAddress { get; set; }
+    public string? UserAgent { get; set; }
+    public string? IpAddress { get; set; }
     public DateTime ConnectedAt { get; set; }
 }
 ```
@@ -212,7 +212,7 @@ const connection = new signalR.HubConnectionBuilder()
                 // Stop reconnecting after 60 seconds
                 return null;
             }
-            // Exponential backoff: 0s, 2s, 4s, 8s, 16s, 30s (capped)
+            // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (capped)
             var delay = Math.min(
                 Math.pow(2, retryContext.previousRetryCount) * 1000,
                 30000
@@ -222,7 +222,7 @@ const connection = new signalR.HubConnectionBuilder()
     })
     .build();
 
-// Connection successfully established
+// Connection lost; SignalR is attempting to reconnect
 connection.onreconnecting((error) => {
     // The connection was lost and SignalR is attempting to reconnect
     console.warn("Connection lost. Attempting to reconnect...", error);
@@ -329,8 +329,10 @@ In Serverless mode with Azure Functions, you can handle lifecycle events using t
 [SignalROutput(HubName = "notifications")]
 public static SignalRMessageAction OnConnected(
     [SignalRTrigger("notifications", "connections", "connected")] SignalRInvocationContext context,
-    ILogger logger)
+    FunctionContext functionContext)
 {
+    var logger = functionContext.GetLogger("OnConnected");
+
     logger.LogInformation("Client connected: {ConnectionId}, User: {UserId}",
         context.ConnectionId, context.UserId);
 
@@ -346,8 +348,10 @@ public static SignalRMessageAction OnConnected(
 [Function("OnDisconnected")]
 public static void OnDisconnected(
     [SignalRTrigger("notifications", "connections", "disconnected")] SignalRInvocationContext context,
-    ILogger logger)
+    FunctionContext functionContext)
 {
+    var logger = functionContext.GetLogger("OnDisconnected");
+
     logger.LogInformation("Client disconnected: {ConnectionId}, User: {UserId}",
         context.ConnectionId, context.UserId);
 
@@ -360,8 +364,8 @@ public static void OnDisconnected(
 Azure SignalR Service has configurable timeouts that affect the lifecycle:
 
 - **KeepAlive interval**: How often the server sends ping frames to keep the connection alive. Default is 15 seconds.
-- **Server timeout**: How long the client waits for a keep-alive ping before considering the connection dead. Default is 30 seconds.
-- **Client timeout**: How long the server waits for a message from the client before closing the connection.
+- **Server timeout**: How long the client waits without receiving any message from the server before considering the connection dead. Default is 30 seconds.
+- **Client timeout**: How long the server waits without receiving a message from the client before considering the connection disconnected. Default is 30 seconds.
 
 Configure these on the server:
 
@@ -371,7 +375,7 @@ builder.Services.AddSignalR(options =>
 {
     // Send keep-alive pings every 10 seconds
     options.KeepAliveInterval = TimeSpan.FromSeconds(10);
-    // Consider the connection dead if no ping received for 20 seconds
+    // Consider the client disconnected if no message is received for 20 seconds
     options.ClientTimeoutInterval = TimeSpan.FromSeconds(20);
 })
 .AddAzureSignalR();
@@ -403,13 +407,20 @@ var app = builder.Build();
 var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
 lifetime.ApplicationStopping.Register(() =>
 {
-    // Azure SignalR Service handles graceful connection migration
-    // during rolling deployments when using multiple app servers
-    Console.WriteLine("Application is shutting down. Connections will be migrated.");
+    Console.WriteLine("Application is shutting down.");
 });
 ```
 
-Azure SignalR Service handles connection migration during rolling deployments. When an app server instance goes down, the service migrates connections to other healthy instances without the client noticing (in most cases).
+Azure SignalR Service can handle graceful shutdown during rolling deployments when you configure graceful shutdown options. In `Default` mode, if a hub server goes offline without graceful shutdown, the client connections routed to that server are dropped and clients need to reconnect.
+
+```csharp
+builder.Services.AddSignalR()
+    .AddAzureSignalR(options =>
+    {
+        options.GracefulShutdown.Mode = GracefulShutdownMode.MigrateClients;
+        options.GracefulShutdown.Timeout = TimeSpan.FromSeconds(30);
+    });
+```
 
 ## Monitoring Connection Lifecycle
 
@@ -429,7 +440,7 @@ public override async Task OnConnectedAsync()
     await base.OnConnectedAsync();
 }
 
-public override async Task OnDisconnectedAsync(Exception exception)
+public override async Task OnDisconnectedAsync(Exception? exception)
 {
     _logger.LogInformation(
         new EventId(1002, "ClientDisconnected"),
