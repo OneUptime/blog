@@ -50,7 +50,7 @@ Open the generated `.projenrc.ts`.
 import { awscdk } from 'projen';
 
 const project = new awscdk.AwsCdkTypeScriptApp({
-  cdkVersion: '2.130.0',     // CDK version to use
+  cdkVersion: '2.257.0',     // CDK version to use
   defaultReleaseBranch: 'main',
   name: 'my-cdk-app',
   projenrcTs: true,
@@ -83,7 +83,7 @@ Don't run `npm install` directly. Add dependencies through Projen.
 
 ```typescript
 const project = new awscdk.AwsCdkTypeScriptApp({
-  cdkVersion: '2.130.0',
+  cdkVersion: '2.257.0',
   defaultReleaseBranch: 'main',
   name: 'my-cdk-app',
   projenrcTs: true,
@@ -110,7 +110,7 @@ Projen makes it easy to manage CDK context values.
 
 ```typescript
 const project = new awscdk.AwsCdkTypeScriptApp({
-  cdkVersion: '2.130.0',
+  cdkVersion: '2.257.0',
   defaultReleaseBranch: 'main',
   name: 'my-cdk-app',
   projenrcTs: true,
@@ -141,21 +141,19 @@ const project = new awscdk.AwsCdkTypeScriptApp({
     jestConfig: {
       testTimeout: 30000,           // 30 second timeout
       coverageThreshold: {
-        global: {
-          branches: 80,
-          functions: 80,
-          lines: 80,
-          statements: 80,
-        },
+        branches: 80,
+        functions: 80,
+        lines: 80,
+        statements: 80,
       },
     },
   },
 });
 
 // Add test-related scripts
-project.addTask('test:watch', {
-  exec: 'jest --watch',
-  description: 'Run tests in watch mode',
+project.addTask('test:coverage', {
+  exec: 'jest --coverage',
+  description: 'Run tests with coverage',
 });
 ```
 
@@ -214,6 +212,8 @@ project.eslint?.addRules({
 One of Projen's best features is generating CI/CD workflows. Here's how to set up GitHub Actions.
 
 ```typescript
+import { awscdk, github } from 'projen';
+
 const project = new awscdk.AwsCdkTypeScriptApp({
   // ... other options
 
@@ -224,9 +224,11 @@ const project = new awscdk.AwsCdkTypeScriptApp({
 
   // Build workflow
   buildWorkflow: true,
-  buildWorkflowTriggers: {
-    pullRequest: {},
-    push: { branches: ['main'] },
+  buildWorkflowOptions: {
+    workflowTriggers: {
+      pullRequest: {},
+      push: { branches: ['main'] },
+    },
   },
 });
 
@@ -239,13 +241,12 @@ deployWorkflow?.on({
 deployWorkflow?.addJob('deploy', {
   runsOn: ['ubuntu-latest'],
   permissions: {
-    contents: 'read' as any,
-    idToken: 'write' as any,
+    contents: github.workflows.JobPermission.READ,
   },
   steps: [
-    { uses: 'actions/checkout@v4' },
+    { uses: 'actions/checkout@v6' },
     {
-      uses: 'actions/setup-node@v4',
+      uses: 'actions/setup-node@v6',
       with: { 'node-version': '20' },
     },
     { run: 'npm ci' },
@@ -270,12 +271,16 @@ If you have multiple CDK projects, you can create a shared Projen template.
 // In a shared library package
 import { awscdk } from 'projen';
 
+export type CompanyCdkAppOptions = Omit<awscdk.AwsCdkTypeScriptAppOptions, 'cdkVersion'> & {
+  readonly cdkVersion?: string;
+};
+
 export class CompanyCdkApp extends awscdk.AwsCdkTypeScriptApp {
-  constructor(options: awscdk.AwsCdkTypeScriptAppOptions) {
+  constructor(options: CompanyCdkAppOptions) {
     super({
       ...options,
       // Company-wide defaults
-      cdkVersion: '2.130.0',
+      cdkVersion: options.cdkVersion ?? '2.257.0',
       minNodeVersion: '20.0.0',
       eslint: true,
       jest: true,
@@ -348,6 +353,8 @@ Respect it. If you edit a generated file directly, your changes will be overwrit
 If Projen doesn't support a configuration you need, you can use escape hatches.
 
 ```typescript
+import { TextFile } from 'projen';
+
 // Add arbitrary files that Projen doesn't natively support
 project.tryFindObjectFile('tsconfig.json')?.addOverride('compilerOptions.baseUrl', '.');
 
