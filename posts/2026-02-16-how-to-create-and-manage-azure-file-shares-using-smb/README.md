@@ -24,7 +24,7 @@ Azure Files fits several scenarios:
 
 ## Creating a Storage Account for Azure Files
 
-Azure Files lives inside a standard Azure Storage account. You can use an existing account or create a new one:
+Azure Files lives inside an Azure Storage account. You can use an existing account or create a new one:
 
 ```bash
 # Create a storage account optimized for Azure Files
@@ -64,7 +64,7 @@ az storage share-rm create \
   --quota 100
 ```
 
-The quota defines the maximum size of the share in GiB. For standard shares, you can set this up to 100 TiB (if large file share support is enabled on the account).
+The quota defines the maximum size of the share in GiB. For standard SMB shares using the pay-as-you-go billing model, you can set this up to 100 TiB.
 
 ### Azure Portal
 
@@ -107,9 +107,9 @@ az storage share-rm update \
   --access-tier Cool
 ```
 
-## Enabling Large File Shares
+## Large File Shares
 
-By default, standard storage accounts support file shares up to 5 TiB. To use shares up to 100 TiB, enable large file share support:
+Standard SMB file shares now support up to 100 TiB with the pay-as-you-go billing model. Older storage accounts may still expose the large file share property, which can be enabled with:
 
 ```bash
 # Enable large file share support on the storage account
@@ -119,14 +119,19 @@ az storage account update \
   --enable-large-file-share
 ```
 
-Note that enabling large file shares is a one-way operation. Once enabled, you cannot switch the storage account to GRS or GZRS redundancy. Plan your redundancy strategy before enabling this.
+Note that enabling this property is a one-way operation. The Azure CLI still documents it as supported only for LRS and ZRS replication types, which means conversions to geo-redundant accounts are not possible after it is enabled. Plan your redundancy strategy before enabling this on older accounts.
 
 ## Managing Files and Directories
 
 ### Creating Directories
 
 ```bash
-# Create a directory in the file share
+# Create directories in the file share
+az storage directory create \
+  --account-name myfilesaccount \
+  --share-name myfileshare \
+  --name "projects"
+
 az storage directory create \
   --account-name myfilesaccount \
   --share-name myfileshare \
@@ -286,7 +291,7 @@ Enable diagnostic settings to track file share usage:
 # Enable diagnostic logging for Azure Files
 az monitor diagnostic-settings create \
   --name files-diagnostics \
-  --resource $(az storage account show --name myfilesaccount --resource-group myresourcegroup --query id --output tsv) \
+  --resource "$(az storage account show --name myfilesaccount --resource-group myresourcegroup --query id --output tsv)/fileServices/default" \
   --logs '[{"category":"StorageRead","enabled":true},{"category":"StorageWrite","enabled":true}]' \
   --metrics '[{"category":"Transaction","enabled":true}]' \
   --workspace myloganalyticsworkspace
