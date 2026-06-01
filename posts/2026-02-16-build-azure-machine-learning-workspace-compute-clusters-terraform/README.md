@@ -44,6 +44,11 @@ variable "environment" {
   default = "production"
 }
 
+variable "data_scientist_object_id" {
+  description = "Microsoft Entra object ID of the data scientist assigned to the compute instance."
+  type        = string
+}
+
 resource "azurerm_resource_group" "ml" {
   name     = "rg-ml-${var.environment}"
   location = "eastus"
@@ -99,7 +104,7 @@ resource "azurerm_container_registry" "ml" {
   location            = azurerm_resource_group.ml.location
   resource_group_name = azurerm_resource_group.ml.name
   sku                 = "Standard"
-  admin_enabled       = false
+  admin_enabled       = true
 
   tags = azurerm_resource_group.ml.tags
 }
@@ -257,7 +262,7 @@ resource "azurerm_machine_learning_compute_instance" "dev" {
   machine_learning_workspace_id = azurerm_machine_learning_workspace.main.id
   virtual_machine_size          = "Standard_DS3_v2"
 
-  # Auto-shutdown schedule to save costs
+  # Assign the personal compute instance to a data scientist
   assign_to_user {
     object_id = var.data_scientist_object_id
     tenant_id = data.azurerm_client_config.current.tenant_id
