@@ -1,16 +1,16 @@
-# How to Prepare for SOC 2 Audits with Azure Compliance Manager
+# How to Prepare for SOC 2 Audits with Microsoft Purview Compliance Manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, SOC 2, Compliance, Audit, Security, Trust Services, Governance
 
-Description: Prepare for SOC 2 audits using Azure Compliance Manager to assess your compliance posture, gather evidence, and implement required controls across your Azure environment.
+Description: Prepare for SOC 2 audits using Microsoft Purview Compliance Manager to assess your compliance posture, gather evidence, and implement required controls across your Azure environment.
 
 ---
 
 SOC 2 (System and Organization Controls 2) is one of the most requested compliance certifications for SaaS companies and service providers. Developed by the AICPA, it evaluates your organization against five Trust Services Criteria: Security, Availability, Processing Integrity, Confidentiality, and Privacy. If your customers are asking for a SOC 2 report, you need to demonstrate that your Azure environment has the right controls in place.
 
-Azure Compliance Manager is the tool that helps you assess your current compliance posture, identify gaps, track remediation, and collect evidence for your auditor. In this post, I will walk through how to use Compliance Manager effectively and the specific Azure configurations needed for SOC 2.
+Microsoft Purview Compliance Manager is the tool that helps you assess your current compliance posture, identify gaps, track remediation, and collect evidence for your auditor. In this post, I will walk through how to use Compliance Manager effectively and the specific Azure configurations needed for SOC 2.
 
 ## Understanding SOC 2
 
@@ -29,11 +29,11 @@ The five Trust Services Criteria are:
 
 Most organizations start with just Security and add additional criteria as needed.
 
-## Setting Up Azure Compliance Manager
+## Setting Up Microsoft Purview Compliance Manager
 
 Compliance Manager is part of the Microsoft Purview compliance portal. It provides pre-built assessments for SOC 2 and many other frameworks.
 
-To get started, navigate to compliance.microsoft.com and create a SOC 2 assessment:
+To get started, navigate to purview.microsoft.com and create a SOC 2 assessment:
 
 ```text
 1. Go to Microsoft Purview Compliance Portal
@@ -44,12 +44,13 @@ To get started, navigate to compliance.microsoft.com and create a SOC 2 assessme
 6. Name the assessment and assign owners
 ```
 
-Compliance Manager breaks the SOC 2 requirements into two categories:
+Compliance Manager breaks assessment controls into three responsibility categories:
 
 - **Microsoft-managed controls** - controls that Microsoft handles as part of the Azure platform (physical security, infrastructure patching, etc.)
 - **Customer-managed controls** - controls you are responsible for implementing in your Azure environment
+- **Shared controls** - controls where Microsoft and your organization both have implementation responsibility
 
-Microsoft handles about 60% of the controls. You are responsible for the rest.
+The exact split depends on your assessment template, licensing, in-scope services, and architecture. Review the responsibility category on each control instead of assuming a fixed percentage.
 
 ## Key Controls and Azure Configurations
 
@@ -64,12 +65,14 @@ Implement role-based access control with least privilege:
 
 az role definition create --role-definition '{
   "Name": "SOC2 Application Operator",
+  "IsCustom": true,
   "Description": "Limited operator role for SOC 2 compliance",
   "Actions": [
     "Microsoft.Web/sites/read",
     "Microsoft.Web/sites/restart/action",
     "Microsoft.Insights/metrics/read",
-    "Microsoft.Insights/logs/read"
+    "Microsoft.OperationalInsights/workspaces/read",
+    "Microsoft.OperationalInsights/workspaces/query/read"
   ],
   "NotActions": [
     "Microsoft.Authorization/*/write",
@@ -196,12 +199,14 @@ az security pricing create --name StorageAccounts --tier Standard
 az security pricing create --name KeyVaults --tier Standard
 az security pricing create --name Containers --tier Standard
 
-# Enable automatic vulnerability assessment for SQL databases
-az sql va baseline set \
-  --resource-group production-rg \
-  --server myserver \
-  --database mydb \
-  --name default
+# Enable Microsoft Defender for SQL vulnerability assessment
+az security pricing create --name SqlServers --tier Standard
+
+# Enable SQL vulnerability assessment on an Azure SQL logical server
+az rest \
+  --method put \
+  --url "https://management.azure.com/subscriptions/{subscription-id}/resourceGroups/production-rg/providers/Microsoft.Sql/servers/myserver/sqlVulnerabilityAssessments/default?api-version=2023-08-01" \
+  --body '{"properties":{"state":"Enabled"}}'
 ```
 
 ### Control: Incident Response (CC7.3, CC7.4)
@@ -212,7 +217,8 @@ Set up automated incident detection and response:
 # Enable Microsoft Sentinel for SIEM capabilities
 az sentinel onboarding-state create \
   --resource-group soc2-monitoring-rg \
-  --workspace-name soc2-central-logs
+  --workspace-name soc2-central-logs \
+  --name default
 
 # Create analytics rules for security incidents
 # Example: Alert on brute force attempts
@@ -220,8 +226,16 @@ az sentinel alert-rule create \
   --resource-group soc2-monitoring-rg \
   --workspace-name soc2-central-logs \
   --rule-name "brute-force-detection" \
-  --template-id "a1b2c3d4-..." \
-  --enabled true
+  --scheduled '{
+    "displayName": "Brute force detection",
+    "enabled": true,
+    "query": "SigninLogs | where ResultType != 0 | summarize FailedAttempts = count() by UserPrincipalName, bin(TimeGenerated, 5m) | where FailedAttempts > 10",
+    "queryFrequency": "PT5M",
+    "queryPeriod": "PT5M",
+    "severity": "Medium",
+    "triggerOperator": "GreaterThan",
+    "triggerThreshold": 0
+  }'
 ```
 
 ### Control: Data Protection (CC6.7)
@@ -229,13 +243,13 @@ az sentinel alert-rule create \
 Encrypt data at rest and in transit:
 
 ```bash
-# Enforce HTTPS on all storage accounts using Azure Policy
+# Audit HTTPS on all storage accounts using Azure Policy
 az policy assignment create \
   --name "require-https-storage" \
   --scope "/subscriptions/{subscription-id}" \
   --policy "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9"
 
-# Enforce TLS 1.2 minimum on all App Services using Azure Policy
+# Audit TLS version on all App Services using Azure Policy
 az policy assignment create \
   --name "require-tls12" \
   --scope "/subscriptions/{subscription-id}" \
@@ -290,8 +304,8 @@ az monitor scheduled-query create \
   --resource-group soc2-monitoring-rg \
   --name "monthly-compliance-check" \
   --scopes $LOG_ANALYTICS_ID \
-  --condition "count > 0" \
-  --condition-query "
+  --condition "count 'FailedPolicyEvents' > 0" \
+  --condition-query FailedPolicyEvents="
     AzureActivity
     | where CategoryValue == 'Policy'
     | where ActivityStatusValue == 'Failed'
@@ -304,7 +318,7 @@ az monitor scheduled-query create \
 
 ## Compliance Score
 
-Compliance Manager gives you a compliance score (0-100%) based on how many controls you have implemented. For SOC 2:
+Compliance Manager gives you a compliance score based on your progress completing scored improvement actions. The score helps prioritize remediation, but it is not a guarantee of compliance or audit readiness. For SOC 2, use ranges like these as internal planning guidance only:
 
 - **Below 60%** - significant gaps, not ready for audit
 - **60-80%** - progress made but remediation needed
