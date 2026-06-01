@@ -16,8 +16,8 @@ Without autoscaling, you either overprovision (wasting money on idle instances) 
 
 ## Prerequisites
 
-- Azure Spring Apps Standard or Enterprise tier (autoscaling is not available on the Basic tier)
-- Azure CLI with the spring extension installed
+- An existing Azure Spring Apps Basic, Standard, or Enterprise tier service (custom domains require Standard or Enterprise). These plans entered retirement on March 17, 2025, so use this guidance for existing Azure Spring Apps workloads.
+- Azure CLI with the spring extension installed. The `az spring` command group is deprecated, but still documented for existing Azure Spring Apps resources.
 - A registered domain name (for the custom domain section)
 - Access to your DNS provider's management console
 
@@ -62,6 +62,7 @@ DEPLOYMENT_ID=$(az spring app deployment show \
 az monitor autoscale create \
     --name autoscale-order-service \
     --resource "$DEPLOYMENT_ID" \
+    --resource-group rg-spring-production \
     --resource-type "Microsoft.AppPlatform/Spring/apps/deployments" \
     --min-count 2 \
     --max-count 10 \
@@ -78,7 +79,7 @@ Add a rule that increases instances when CPU exceeds 70 percent:
 az monitor autoscale rule create \
     --autoscale-name autoscale-order-service \
     --resource-group rg-spring-production \
-    --condition "tomcat.global.request.avg.time avg > 70" \
+    --condition "PodCpuUsage > 70 avg 10m where AppName == order-service and Deployment == default" \
     --scale out 2 \
     --cooldown 5
 ```
@@ -106,6 +107,7 @@ For more precise control, you can use the REST API or ARM templates. Here is an 
                     {
                         "metricTrigger": {
                             "metricName": "PodCpuUsage",
+                            "metricNamespace": "Microsoft.AppPlatform/Spring",
                             "metricResourceUri": "[resourceId('Microsoft.AppPlatform/Spring/apps/deployments', 'myorg-spring-apps', 'order-service', 'default')]",
                             "timeGrain": "PT1M",
                             "statistic": "Average",
@@ -124,6 +126,7 @@ For more precise control, you can use the REST API or ARM templates. Here is an 
                     {
                         "metricTrigger": {
                             "metricName": "PodCpuUsage",
+                            "metricNamespace": "Microsoft.AppPlatform/Spring",
                             "metricResourceUri": "[resourceId('Microsoft.AppPlatform/Spring/apps/deployments', 'myorg-spring-apps', 'order-service', 'default')]",
                             "timeGrain": "PT1M",
                             "statistic": "Average",
@@ -170,41 +173,34 @@ az monitor autoscale profile create \
 
 ## Configuring Custom Domains
 
-By default, Azure Spring Apps gives you a URL like `myorg-spring-apps-order-service.azuremicroservices.io`. For production use, you want your own domain.
+By default, Azure Spring Apps gives you a URL under `azuremicroservices.io`. For production use, you want your own domain.
 
 ### Step 1: Add a CNAME Record
 
-First, create a CNAME record with your DNS provider. The CNAME should point your desired hostname to the Azure Spring Apps default URL.
+First, create a CNAME record with your DNS provider. The CNAME should point your desired hostname to the Azure Spring Apps service URL.
 
 For example, to use `api.mycompany.com`:
 
 ```text
 Type: CNAME
 Name: api
-Value: myorg-spring-apps-order-service.azuremicroservices.io
+Value: myorg-spring-apps.azuremicroservices.io
 TTL: 3600
 ```
 
-### Step 2: Verify Domain Ownership
+### Step 2: Verify DNS
 
-Azure requires domain verification to prevent domain hijacking. You need to add a TXT record:
+Azure validates the CNAME record before it binds the custom domain. Confirm that your hostname resolves to the Azure Spring Apps service URL:
 
 ```bash
-# Get the domain verification token
-az spring app custom-domain show \
-    --domain-name api.mycompany.com \
-    --app order-service \
-    --service myorg-spring-apps \
-    --resource-group rg-spring-production
+# Verify the CNAME record
+nslookup api.mycompany.com
 ```
 
-Add the verification TXT record to your DNS:
+The result should include the Azure Spring Apps service URL:
 
 ```text
-Type: TXT
-Name: asuid.api
-Value: <verification-token-from-azure>
-TTL: 3600
+api.mycompany.com canonical name = myorg-spring-apps.azuremicroservices.io
 ```
 
 ### Step 3: Bind the Custom Domain
@@ -222,29 +218,7 @@ az spring app custom-domain bind \
 
 ### Step 4: Configure SSL/TLS Certificate
 
-You absolutely need HTTPS for production. Azure Spring Apps supports both managed certificates and custom certificates.
-
-For a managed certificate (free, auto-renewed):
-
-```bash
-# Enable managed certificate for the custom domain
-# Azure handles certificate provisioning and renewal automatically
-az spring certificate add \
-    --name api-mycompany-cert \
-    --service myorg-spring-apps \
-    --resource-group rg-spring-production \
-    --domain-name api.mycompany.com
-
-# Bind the certificate to the custom domain
-az spring app custom-domain update \
-    --domain-name api.mycompany.com \
-    --app order-service \
-    --service myorg-spring-apps \
-    --resource-group rg-spring-production \
-    --certificate api-mycompany-cert
-```
-
-If you have a certificate in Azure Key Vault (common for wildcard certs or certificates from specific CAs):
+You absolutely need HTTPS for production. Azure Spring Apps supports certificates imported from Azure Key Vault, which is common for wildcard certs or certificates from specific CAs.
 
 ```bash
 # Import certificate from Key Vault
@@ -253,7 +227,8 @@ az spring certificate add \
     --service myorg-spring-apps \
     --resource-group rg-spring-production \
     --vault-uri https://kv-mycompany.vault.azure.net \
-    --vault-certificate-name wildcard-cert
+    --vault-certificate-name wildcard-cert \
+    --enable-auto-sync true
 
 # Bind it to the domain
 az spring app custom-domain update \
@@ -290,13 +265,19 @@ curl -I https://api.mycompany.com/actuator/health
 Keep an eye on autoscale activity to make sure your rules are behaving as expected:
 
 ```bash
-# View recent autoscale events
-az monitor autoscale show-predictive-metric \
-    --autoscale-setting-name autoscale-order-service \
+AUTOSCALE_ID=$(az monitor autoscale show \
+    --name autoscale-order-service \
     --resource-group rg-spring-production \
-    --timespan "2026-02-15T00:00:00Z/2026-02-16T00:00:00Z" \
-    --metric-name "PercentageCPU" \
-    --aggregation "Average" \
+    --query id -o tsv)
+
+# View recent autoscale scale-action metrics
+az monitor metrics list \
+    --resource "$AUTOSCALE_ID" \
+    --namespace "Microsoft.Insights/autoscaleSettings" \
+    --metrics "ScaleActionsInitiated" \
+    --aggregation Total \
+    --start-time "2026-02-15T00:00:00Z" \
+    --end-time "2026-02-16T00:00:00Z" \
     --interval PT1H
 ```
 
@@ -304,4 +285,4 @@ Also check the Activity Log in the Azure portal for autoscale actions. If you se
 
 ## Summary
 
-Autoscaling in Azure Spring Apps is straightforward once you understand the metric-based rules and cooldown periods. Start with CPU-based scaling, add scheduled profiles if your traffic is predictable, and always set asymmetric cooldowns (fast scale-out, slow scale-in). Custom domains require DNS configuration, domain verification, and SSL certificate binding, but Azure Spring Apps supports managed certificates that handle renewal automatically. Together, these configurations prepare your Spring Boot application for production-grade traffic handling and professional branding.
+Autoscaling in Azure Spring Apps is straightforward once you understand the metric-based rules and cooldown periods. Start with CPU-based scaling, add scheduled profiles if your traffic is predictable, and always set asymmetric cooldowns (fast scale-out, slow scale-in). Custom domains require DNS configuration, DNS verification, and SSL certificate binding, and Azure Spring Apps can auto-sync renewed certificates from Azure Key Vault. Together, these configurations prepare your Spring Boot application for production-grade traffic handling and professional branding.
