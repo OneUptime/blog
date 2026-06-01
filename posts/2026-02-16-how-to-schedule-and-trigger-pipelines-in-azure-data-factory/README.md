@@ -38,7 +38,6 @@ Schedule triggers are the most common type. They fire on a recurring schedule de
 Here is the JSON definition for a schedule trigger that runs every day at 6 AM UTC.
 
 ```json
-// Schedule trigger - runs daily at 6 AM UTC
 {
   "name": "trg_daily_6am",
   "properties": {
@@ -49,18 +48,15 @@ Here is the JSON definition for a schedule trigger that runs every day at 6 AM U
         "interval": 1,
         "startTime": "2026-02-16T06:00:00Z",
         "timeZone": "UTC",
-        // Optional: specify end time
         "endTime": "2027-12-31T23:59:59Z"
       }
     },
-    // Associate with one or more pipelines
     "pipelines": [
       {
         "pipelineReference": {
           "referenceName": "pl_daily_etl",
           "type": "PipelineReference"
         },
-        // Pass parameters to the pipeline
         "parameters": {
           "runDate": "@trigger().scheduledTime"
         }
@@ -75,19 +71,15 @@ Here is the JSON definition for a schedule trigger that runs every day at 6 AM U
 You can create more complex schedules using additional recurrence properties.
 
 ```json
-// Run every Monday and Wednesday at 8:00 AM and 4:00 PM
 {
   "recurrence": {
     "frequency": "Week",
     "interval": 1,
-    "startTime": "2026-02-16T08:00:00Z",
+    "startTime": "2026-02-16T08:00:00",
     "timeZone": "Eastern Standard Time",
     "schedule": {
-      // Specific days of the week
       "weekDays": ["Monday", "Wednesday"],
-      // Specific hours
       "hours": [8, 16],
-      // Specific minutes
       "minutes": [0]
     }
   }
@@ -95,7 +87,6 @@ You can create more complex schedules using additional recurrence properties.
 ```
 
 ```json
-// Run on the 1st and 15th of every month at midnight
 {
   "recurrence": {
     "frequency": "Month",
@@ -131,7 +122,6 @@ Tumbling window triggers are designed for time-series data processing. They divi
 - Only one pipeline per trigger
 
 ```json
-// Tumbling window trigger - process data in hourly windows
 {
   "name": "trg_hourly_window",
   "properties": {
@@ -141,10 +131,7 @@ Tumbling window triggers are designed for time-series data processing. They divi
       "interval": 1,
       "startTime": "2026-02-16T00:00:00Z",
       "delay": "00:05:00",
-      // Wait 5 minutes after window ends before starting
-      // (gives source systems time to finish writing)
       "maxConcurrency": 3,
-      // Allow up to 3 windows to process in parallel
       "retryPolicy": {
         "count": 3,
         "intervalInSeconds": 60
@@ -156,7 +143,6 @@ Tumbling window triggers are designed for time-series data processing. They divi
         "type": "PipelineReference"
       },
       "parameters": {
-        // Pass window boundaries to the pipeline
         "windowStart": "@trigger().outputs.windowStartTime",
         "windowEnd": "@trigger().outputs.windowEndTime"
       }
@@ -172,7 +158,6 @@ The ability to pass `windowStartTime` and `windowEndTime` to the pipeline is ext
 You can create dependencies between tumbling window triggers. This is powerful for building data processing chains where downstream processing should only start after upstream processing completes.
 
 ```json
-// Dependency configuration - this trigger waits for another to complete
 {
   "name": "trg_downstream_window",
   "properties": {
@@ -181,7 +166,6 @@ You can create dependencies between tumbling window triggers. This is powerful f
       "frequency": "Hour",
       "interval": 1,
       "startTime": "2026-02-16T00:00:00Z",
-      // Dependency on another tumbling window trigger
       "dependsOn": [
         {
           "type": "TumblingWindowTriggerDependencyReference",
@@ -189,7 +173,6 @@ You can create dependencies between tumbling window triggers. This is powerful f
             "referenceName": "trg_hourly_window",
             "type": "TriggerReference"
           },
-          // Match on the same window (offset 0, size matches frequency)
           "offset": "00:00:00",
           "size": "01:00:00"
         }
@@ -204,19 +187,15 @@ You can create dependencies between tumbling window triggers. This is powerful f
 Storage event triggers fire when a file is created or deleted in Azure Blob Storage or Azure Data Lake Storage Gen2. This is the go-to pattern for event-driven data processing.
 
 ```json
-// Storage event trigger - fire when new files arrive
 {
   "name": "trg_new_file_arrival",
   "properties": {
     "type": "BlobEventsTrigger",
     "typeProperties": {
-      // The storage account to monitor
       "scope": "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<account>",
       "events": ["Microsoft.Storage.BlobCreated"],
-      // Filter by container and file pattern
       "blobPathBeginsWith": "/raw-data/blobs/incoming/",
       "blobPathEndsWith": ".csv",
-      // Ignore empty blobs
       "ignoreEmptyBlobs": true
     },
     "pipelines": [
@@ -226,7 +205,6 @@ Storage event triggers fire when a file is created or deleted in Azure Blob Stor
           "type": "PipelineReference"
         },
         "parameters": {
-          // Pass the file path and name to the pipeline
           "fileName": "@triggerBody().fileName",
           "folderPath": "@triggerBody().folderPath"
         }
@@ -250,16 +228,13 @@ Storage event triggers rely on Azure Event Grid. The first time you create one, 
 Custom event triggers respond to Azure Event Grid custom topics. This is useful when the triggering event is not a blob creation but something custom - like a message from another application indicating that data is ready.
 
 ```json
-// Custom event trigger
 {
   "name": "trg_custom_event",
   "properties": {
     "type": "CustomEventsTrigger",
     "typeProperties": {
-      // The Event Grid topic to listen to
       "scope": "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.EventGrid/topics/<topic>",
       "events": ["DataReady", "BatchComplete"],
-      // Optional: filter on subject pattern
       "subjectBeginsWith": "sales/",
       "subjectEndsWith": ""
     },
@@ -270,7 +245,7 @@ Custom event triggers respond to Azure Event Grid custom topics. This is useful 
           "type": "PipelineReference"
         },
         "parameters": {
-          "eventData": "@triggerBody().data"
+          "batchId": "@triggerBody().event.data.batchId"
         }
       }
     ]
@@ -294,7 +269,7 @@ az datafactory pipeline create-run \
 
 ## Managing Trigger State
 
-Triggers have two states: **Started** and **Stopped**. A stopped trigger does not fire, even if its schedule or event conditions are met.
+The trigger states you manage are **Started** and **Stopped**. A stopped trigger does not fire, even if its schedule or event conditions are met. You may also see a read-only **Disabled** runtime state for some trigger types.
 
 ```bash
 # Start a trigger
