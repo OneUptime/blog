@@ -10,11 +10,11 @@ Description: Build a transactable SaaS offer on the Azure Marketplace with a lan
 
 When you list a SaaS product on the Azure Marketplace as a transactable offer, Microsoft handles the billing relationship with the customer. The customer purchases your SaaS subscription through the Azure portal, and Microsoft collects payment and sends you your share. But there is a piece in the middle that you need to build: the landing page.
 
-The landing page is where customers land after clicking "Subscribe" in the Azure Marketplace. It is your responsibility to resolve the marketplace token, activate the subscription, and provision the customer's account. In this guide, I will walk through building the complete landing page integration and subscription lifecycle management for a transactable SaaS offer.
+The landing page is where customers land after clicking "Subscribe" in the Azure Marketplace. For manually activated plans, it is your responsibility to resolve the marketplace token, activate the subscription, and provision the customer's account. In this guide, I will walk through building the complete landing page integration and subscription lifecycle management for a transactable SaaS offer.
 
 ## The Subscription Lifecycle
 
-Here is the full flow from purchase to active subscription:
+Here is the full flow from purchase to active subscription for a manually activated plan:
 
 ```mermaid
 sequenceDiagram
@@ -31,8 +31,8 @@ sequenceDiagram
     Fulfillment-->>Landing: Return subscription info
     Landing->>Customer: Show plan details and confirmation
     Customer->>Landing: Confirm activation
-    Landing->>Fulfillment: Activate subscription
     Landing->>SaaS: Provision tenant account
+    Landing->>Fulfillment: Activate subscription
     Landing->>Customer: Redirect to SaaS application
 ```
 
@@ -70,9 +70,9 @@ public class LandingPageController : Controller
         }
 
         // Resolve the token to get subscription details
-        var subscription = await _fulfillmentClient.ResolveAsync(token);
+        var resolved = await _fulfillmentClient.ResolveAsync(WebUtility.UrlDecode(token));
 
-        if (subscription == null)
+        if (resolved == null)
         {
             _logger.LogError("Failed to resolve marketplace token");
             return BadRequest("Invalid marketplace token");
@@ -80,18 +80,18 @@ public class LandingPageController : Controller
 
         _logger.LogInformation(
             "Resolved subscription {SubscriptionId} for {Email}",
-            subscription.Id, subscription.Purchaser.EmailId);
+            resolved.Id, resolved.Subscription.Purchaser.EmailId);
 
         // Show the activation page with subscription details
         var model = new ActivationViewModel
         {
-            SubscriptionId = subscription.Id.ToString(),
-            SubscriptionName = subscription.Name,
-            PlanId = subscription.PlanId,
-            PurchaserEmail = subscription.Purchaser.EmailId,
-            PurchaserTenantId = subscription.Purchaser.TenantId,
-            Quantity = subscription.Quantity,
-            OfferId = subscription.OfferId
+            SubscriptionId = resolved.Id.ToString(),
+            SubscriptionName = resolved.SubscriptionName,
+            PlanId = resolved.PlanId,
+            PurchaserEmail = resolved.Subscription.Purchaser.EmailId,
+            PurchaserTenantId = resolved.Subscription.Purchaser.TenantId,
+            Quantity = resolved.Quantity,
+            OfferId = resolved.OfferId
         };
 
         return View("Activate", model);
@@ -115,9 +115,7 @@ public class LandingPageController : Controller
             });
 
             // Activate the subscription through the Fulfillment API
-            await _fulfillmentClient.ActivateSubscriptionAsync(
-                subscriptionId,
-                request.PlanId);
+            await _fulfillmentClient.ActivateSubscriptionAsync(subscriptionId);
 
             _logger.LogInformation(
                 "Subscription {SubscriptionId} activated for tenant {TenantId}",
@@ -162,7 +160,7 @@ public class MarketplaceFulfillmentClient : IMarketplaceFulfillmentClient
     }
 
     // Resolve a marketplace token to get subscription details
-    public async Task<MarketplaceSubscription> ResolveAsync(string token)
+    public async Task<MarketplaceResolveResponse> ResolveAsync(string token)
     {
         var request = new HttpRequestMessage(HttpMethod.Post,
             $"{BaseUrl}/subscriptions/resolve?api-version=2018-08-31");
@@ -174,19 +172,14 @@ public class MarketplaceFulfillmentClient : IMarketplaceFulfillmentClient
         response.EnsureSuccessStatusCode();
 
         var content = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<MarketplaceSubscription>(content);
+        return JsonSerializer.Deserialize<MarketplaceResolveResponse>(content);
     }
 
     // Activate a subscription after provisioning is complete
-    public async Task ActivateSubscriptionAsync(Guid subscriptionId, string planId)
+    public async Task ActivateSubscriptionAsync(Guid subscriptionId)
     {
         var request = new HttpRequestMessage(HttpMethod.Post,
             $"{BaseUrl}/subscriptions/{subscriptionId}/activate?api-version=2018-08-31");
-
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(new { planId }),
-            Encoding.UTF8,
-            "application/json");
 
         await AddAuthHeaderAsync(request);
 
@@ -217,6 +210,26 @@ public class MarketplaceFulfillmentClient : IMarketplaceFulfillmentClient
 
         request.Content = new StringContent(
             JsonSerializer.Serialize(new { planId = newPlanId }),
+            Encoding.UTF8,
+            "application/json");
+
+        await AddAuthHeaderAsync(request);
+
+        var response = await _httpClient.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+    }
+
+    // Acknowledge an operation-backed webhook such as ChangePlan or ChangeQuantity
+    public async Task UpdateOperationStatusAsync(
+        Guid subscriptionId,
+        Guid operationId,
+        string status)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch,
+            $"{BaseUrl}/subscriptions/{subscriptionId}/operations/{operationId}?api-version=2018-08-31");
+
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { status }),
             Encoding.UTF8,
             "application/json");
 
@@ -267,7 +280,8 @@ public class MarketplaceWebhookController : ControllerBase
             "Marketplace webhook: {Action} for subscription {SubscriptionId}",
             payload.Action, payload.SubscriptionId);
 
-        // Always verify the webhook by checking the subscription status
+        // Validate the Microsoft Entra bearer token on the request before processing.
+        // Then verify the webhook by checking the subscription or operation status.
         var subscription = await _fulfillmentClient
             .GetSubscriptionAsync(payload.SubscriptionId);
 
@@ -326,12 +340,6 @@ public class MarketplaceWebhookController : ControllerBase
         // Deactivate the tenant's account
         await _tenantService.DeactivateAsync(payload.SubscriptionId);
 
-        // Acknowledge the cancellation
-        await _fulfillmentClient.UpdateOperationStatusAsync(
-            payload.SubscriptionId,
-            payload.OperationId,
-            "Success");
-
         _logger.LogInformation(
             "Subscription {SubscriptionId} cancelled", payload.SubscriptionId);
     }
@@ -359,6 +367,11 @@ public class MarketplaceWebhookController : ControllerBase
         await _tenantService.UpdateQuantityAsync(
             payload.SubscriptionId,
             subscription.Quantity);
+
+        await _fulfillmentClient.UpdateOperationStatusAsync(
+            payload.SubscriptionId,
+            payload.OperationId,
+            "Success");
     }
 }
 ```
@@ -370,14 +383,14 @@ When setting up the SaaS offer in Partner Center, you need to provide two URLs:
 1. **Landing page URL**: `https://yoursaas.com/landing`
 2. **Connection webhook URL**: `https://yoursaas.com/api/marketplace/webhook`
 
-You also need to register an Azure AD application that the Fulfillment API uses for authentication. The app needs the "SaaS Fulfillment API" permission.
+You also need to register a Microsoft Entra application that the Fulfillment API uses for authentication. The app must be registered with the SaaS offer in Partner Center and use the SaaS Fulfillment API resource when requesting tokens.
 
 ## Testing with the Marketplace Sandbox
 
 Before going live, test everything using the Marketplace sandbox. The sandbox lets you simulate purchases, plan changes, and cancellations without real transactions:
 
 ```bash
-# Generate a test token for the landing page
+# Resolve the marketplace token sent to the landing page
 
 curl -X POST "https://marketplaceapi.microsoft.com/api/saas/subscriptions/resolve?api-version=2018-08-31" \
   -H "Authorization: Bearer $TOKEN" \
