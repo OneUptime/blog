@@ -8,7 +8,7 @@ Description: Learn how to set up Azure Cloud Shell as a productive environment f
 
 ---
 
-Azure Cloud Shell is a browser-based terminal that comes pre-loaded with Azure management tools. You do not need to install anything on your local machine - just open a browser, navigate to shell.azure.com, and you have a fully configured shell with the Azure CLI, PowerShell, Terraform, and Bicep ready to go. It is backed by persistent storage, so your scripts and configuration files survive between sessions.
+Azure Cloud Shell is a browser-based terminal that comes pre-loaded with Azure management tools. You do not need to install anything on your local machine - just open a browser, navigate to shell.azure.com, and you have a fully configured shell with the Azure CLI, PowerShell, Terraform, and Bicep ready to go. If you configure Cloud Shell with a mounted storage account, your scripts and configuration files survive between sessions.
 
 For infrastructure engineers who manage Azure resources with Terraform and Bicep, Cloud Shell provides a consistent environment that works from anywhere. In this post, I will walk through how to set up Cloud Shell for serious infrastructure work, including configuring Terraform backends, organizing Bicep projects, and building efficient workflows.
 
@@ -26,7 +26,7 @@ Cloud Shell provisions a small Linux container for your session. It comes with:
 - git, vim, nano, code (Monaco editor)
 - Python, Node.js
 
-The first time you launch Cloud Shell, it creates an Azure Files share in a storage account. This share is mounted at `$HOME/clouddrive` and persists between sessions. Anything you store there survives even if your Cloud Shell session times out.
+The first time you launch Cloud Shell, you can choose to mount persistent storage or use an ephemeral session. If you choose persistent storage, Cloud Shell uses an Azure Files share mounted at `$HOME/clouddrive`, and your `$HOME` directory is also persisted in that file share. Anything you store there survives even if your Cloud Shell session times out.
 
 ## Organizing Your Infrastructure Files
 
@@ -79,7 +79,8 @@ Cloud Shell comes with Terraform pre-installed, but you might want a specific ve
 terraform version
 
 # Install a specific Terraform version if needed
-TERRAFORM_VERSION="1.7.0"
+TERRAFORM_VERSION="1.15.5"
+mkdir -p ~/clouddrive/bin
 curl -Lo terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 unzip terraform.zip -d ~/clouddrive/bin/
 rm terraform.zip
@@ -102,16 +103,36 @@ Terraform state files should never be stored locally. Use Azure Storage as a rem
 # This should be in a dedicated resource group separate from your application resources
 az group create --name terraform-state-rg --location eastus
 
+STORAGE_ACCOUNT_NAME="tfstate$(date +%s)"
+
 az storage account create \
-  --name tfstateaccount$(date +%s | tail -c 6) \
+  --name "$STORAGE_ACCOUNT_NAME" \
   --resource-group terraform-state-rg \
   --sku Standard_LRS \
   --encryption-services blob
 
+STORAGE_ACCOUNT_ID=$(az storage account show \
+  --name "$STORAGE_ACCOUNT_NAME" \
+  --resource-group terraform-state-rg \
+  --query id \
+  --output tsv)
+
+USER_OBJECT_ID=$(az ad signed-in-user show --query id --output tsv)
+
+az role assignment create \
+  --assignee-object-id "$USER_OBJECT_ID" \
+  --assignee-principal-type User \
+  --role "Storage Blob Data Contributor" \
+  --scope "$STORAGE_ACCOUNT_ID"
+
+# Role assignments can take a few minutes to propagate before login-based
+# storage operations succeed.
+
 # Create a container for state files
 az storage container create \
   --name tfstate \
-  --account-name YOUR_STORAGE_ACCOUNT_NAME
+  --account-name "$STORAGE_ACCOUNT_NAME" \
+  --auth-mode login
 ```
 
 Now configure your Terraform files to use this backend:
@@ -120,15 +141,17 @@ Now configure your Terraform files to use this backend:
 # backend.tf - Configure Azure Storage as the Terraform state backend
 terraform {
   backend "azurerm" {
+    use_cli              = true
+    use_azuread_auth     = true
     resource_group_name  = "terraform-state-rg"
-    storage_account_name = "tfstateaccount123456"
+    storage_account_name = "tfstate1234567890"
     container_name       = "tfstate"
     key                  = "dev.terraform.tfstate"
   }
 }
 ```
 
-The nice thing about Cloud Shell is that authentication happens automatically. Since you are already logged into Azure, Terraform uses your Azure CLI credentials to access the storage backend. No need to configure service principals or environment variables for interactive use.
+The nice thing about Cloud Shell is that authentication happens automatically. Since you are already logged into Azure, Terraform can use your Azure CLI credentials to access the storage backend when `use_cli` and `use_azuread_auth` are enabled. Make sure your account has a data-plane role such as Storage Blob Data Contributor on the state container or storage account. No need to configure service principals or environment variables for interactive use.
 
 ## Writing Terraform Configurations in Cloud Shell
 
@@ -147,7 +170,11 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
 }
@@ -222,6 +249,9 @@ Initialize and apply:
 
 ```bash
 cd ~/clouddrive/infrastructure/terraform/environments/dev
+
+# AzureRM provider 4.x requires the target subscription ID for plan and apply
+export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
 # Initialize Terraform (downloads providers, configures backend)
 terraform init
@@ -384,7 +414,7 @@ chmod +x ~/clouddrive/scripts/deploy.sh
 
 ## Customizing Your Cloud Shell Environment
 
-Since `~/.bashrc` persists between sessions, you can customize your environment:
+When Cloud Shell is configured with persistent storage, `~/.bashrc` persists between sessions, so you can customize your environment:
 
 ```bash
 # Add to ~/.bashrc for a more productive Cloud Shell experience
