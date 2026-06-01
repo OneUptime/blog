@@ -35,7 +35,7 @@ The `"kind": "Stateful"` declaration tells the runtime to persist all action inp
 
 ## The Async HTTP Pattern
 
-When a caller triggers a long-running workflow via HTTP, Logic Apps automatically implements the async polling pattern. Instead of waiting for the workflow to complete, the caller gets a 202 Accepted response with a location header pointing to a status endpoint.
+When a stateful workflow calls a long-running HTTP endpoint, Logic Apps automatically follows the async polling pattern if the endpoint returns a 202 Accepted response with a Location header. Instead of keeping the HTTP action open, the runtime polls the Location URL until the endpoint returns a final non-202 response.
 
 ```mermaid
 sequenceDiagram
@@ -44,17 +44,18 @@ sequenceDiagram
     participant ExternalService
 
     Client->>LogicApp: POST /start-migration
-    LogicApp-->>Client: 202 Accepted + Location header
+    LogicApp-->>Client: 202 Accepted
     Note over LogicApp: Workflow runs asynchronously
     LogicApp->>ExternalService: Start data migration
-    Client->>LogicApp: GET /status/{run-id} (polling)
-    LogicApp-->>Client: 202 Running
+    ExternalService-->>LogicApp: 202 Accepted + Location header
+    LogicApp->>ExternalService: GET Location URL (polling)
+    ExternalService-->>LogicApp: 202 Running
     ExternalService-->>LogicApp: Migration complete
-    Client->>LogicApp: GET /status/{run-id} (polling)
-    LogicApp-->>Client: 200 OK + result
+    LogicApp->>ExternalService: GET Location URL (polling)
+    ExternalService-->>LogicApp: 200 OK + result
 ```
 
-The workflow automatically manages this pattern. You do not need to implement the polling endpoint yourself.
+The HTTP action automatically manages polling for outbound calls when the external service provides the polling endpoint. For inbound calls to a Request trigger, omit the Response action if you want the workflow endpoint to respond immediately with 202 Accepted, or add a Response action if the caller must receive a final response within the HTTP timeout limit.
 
 ```json
 {
@@ -72,14 +73,13 @@ The workflow automatically manages this pattern. You do not need to implement th
             "targetDatabase": { "type": "string" }
           }
         }
-      },
-      "operationOptions": "asynchronous"
+      }
     }
   }
 }
 ```
 
-The `"operationOptions": "asynchronous"` flag tells the trigger to return 202 immediately instead of waiting for the workflow to complete.
+The Request trigger becomes an immediate 202 Accepted endpoint when the workflow doesn't include a Response action.
 
 ## Webhook-Based Long-Running Actions
 
@@ -141,7 +141,7 @@ For actions that call external services and need to wait for a callback, use the
 }
 ```
 
-The `subscribe` action registers a callback URL with the external service. When the migration completes, the external service POSTs to that callback URL, which resumes the workflow. The `unsubscribe` action is called if the workflow is cancelled or the timeout expires.
+The `subscribe` action registers a callback URL with the external service. When the migration completes, the external service POSTs to that callback URL, which resumes the workflow. The webhook action stays subscribed until it successfully finishes, the workflow run is cancelled, the workflow times out, or the webhook parameters change.
 
 ## Multi-Stage Long-Running Workflow
 
@@ -251,8 +251,7 @@ Here is a real-world example: a customer onboarding workflow that spans multiple
       "manual": {
         "type": "Request",
         "kind": "Http",
-        "inputs": { "method": "POST" },
-        "operationOptions": "asynchronous"
+        "inputs": { "method": "POST" }
       }
     }
   },
@@ -288,13 +287,25 @@ Every action has a timeout. For long-running steps, set explicit timeouts using 
 | 1 week | P7D |
 | 30 days | P30D |
 
-The maximum timeout for a single action is 30 days. The maximum for a workflow run is 90 days on Consumption and configurable on Standard.
+HTTP request and response operations have much shorter connection timeouts, so use asynchronous polling or webhook actions for longer work. The default maximum run duration is 90 days for Consumption workflows and 90 days for Standard stateful workflows, and the Standard value can be changed with app and host settings.
 
 ```json
 {
   "Wait_For_External_Process": {
     "type": "HttpWebhook",
-    "inputs": { ... },
+    "inputs": {
+      "subscribe": {
+        "method": "POST",
+        "uri": "https://example.com/subscribe",
+        "body": {
+          "callbackUrl": "@{listCallbackUrl()}"
+        }
+      },
+      "unsubscribe": {
+        "method": "POST",
+        "uri": "https://example.com/unsubscribe"
+      }
+    },
     "limit": {
       "timeout": "P30D"
     }
@@ -344,10 +355,19 @@ Track the current stage of each running workflow by using custom tracking proper
 
 ```json
 {
-  "trackedProperties": {
-    "customerId": "@triggerBody()?['customerId']",
-    "currentStage": "approval",
-    "startedAt": "@workflow().run.startDateTime"
+  "Track_Approval_Stage": {
+    "type": "Compose",
+    "inputs": {
+      "customerId": "@triggerBody()?['customerId']",
+      "currentStage": "approval",
+      "startedAt": "@workflow().run.startDateTime"
+    },
+    "trackedProperties": {
+      "customerId": "@action().inputs.customerId",
+      "currentStage": "@action().inputs.currentStage",
+      "startedAt": "@action().inputs.startedAt"
+    },
+    "runAfter": {}
   }
 }
 ```
@@ -358,7 +378,7 @@ Set up alerts for workflows that have been running longer than expected. Use Azu
 
 Use scopes to group related actions into logical stages. This makes it easier to understand the workflow's current position and to implement error handling at the stage level.
 
-Set explicit timeouts on every long-running action. Without timeouts, a workflow can run indefinitely if a callback never arrives.
+Set explicit timeouts on every long-running action. Without timeouts, a workflow can keep waiting until the workflow run duration limit is reached if a callback never arrives.
 
 Implement compensation logic for multi-stage workflows. If Stage 3 fails, you might need to undo Stage 2 and Stage 1.
 
