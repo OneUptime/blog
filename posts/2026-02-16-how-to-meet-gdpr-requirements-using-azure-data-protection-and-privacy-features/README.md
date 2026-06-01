@@ -8,7 +8,7 @@ Description: Configure Azure services to meet GDPR requirements for data protect
 
 ---
 
-The General Data Protection Regulation (GDPR) applies to any organization that processes personal data of EU residents, regardless of where the organization is based. If your application on Azure handles names, email addresses, IP addresses, or any other data that can identify an EU resident, GDPR applies to you.
+The General Data Protection Regulation (GDPR) applies to any organization that processes personal data of people in the EU/EEA, regardless of where the organization is based. If your application on Azure handles names, email addresses, IP addresses, or any other data that can identify a person in the EU/EEA, GDPR applies to you.
 
 Azure provides many features that help with GDPR compliance, but you need to configure them deliberately. In this post, I will cover the technical configurations needed to meet GDPR requirements on Azure, from data residency to encryption, access controls, data subject rights, and breach notification.
 
@@ -33,10 +33,8 @@ az policy assignment create \
         "westeurope",
         "northeurope",
         "germanywestcentral",
-        "francesouth",
         "francecentral",
-        "swedencentral",
-        "switzerlandnorth"
+        "swedencentral"
       ]
     }
   }'
@@ -47,9 +45,9 @@ az policy assignment create \
 Make sure data replication does not send personal data outside the EU:
 
 ```bash
-# Use locally redundant or zone-redundant storage for EU data
-# Do NOT use GRS or RA-GRS as they replicate to a paired region
-# that might be outside the EU
+# Use locally redundant or zone-redundant storage when data must
+# remain in a single selected region. GRS and RA-GRS replicate to
+# a paired secondary region, so verify that region before using them.
 az storage account create \
   --resource-group eu-data-rg \
   --name eudatastorage \
@@ -84,7 +82,7 @@ az keyvault create \
 # Create encryption keys
 az keyvault key create \
   --vault-name gdpr-keyvault \
-  --name data-encryption-key \
+  --name column-master-key \
   --kty RSA \
   --size 2048
 
@@ -95,22 +93,19 @@ az keyvault key create \
 For column-level encryption of personal data in Azure SQL, use Always Encrypted:
 
 ```sql
--- Create a column encryption key in Azure SQL
+-- Create Always Encrypted key metadata in Azure SQL
 -- This encrypts specific PII columns at the application level
 -- The encryption key is stored in Key Vault, not in the database
 
 CREATE COLUMN MASTER KEY [CMK_KV]
 WITH (
     KEY_STORE_PROVIDER_NAME = N'AZURE_KEY_VAULT',
-    KEY_PATH = N'https://gdpr-keyvault.vault.azure.net/keys/column-master-key/version'
+    KEY_PATH = N'https://gdpr-keyvault.vault.azure.net:443/keys/column-master-key/4c05f1a41b12488f9cba2ea964b6a700'
 );
 
-CREATE COLUMN ENCRYPTION KEY [CEK_Personal]
-WITH VALUES (
-    COLUMN_MASTER_KEY = [CMK_KV],
-    ALGORITHM = 'RSA_OAEP',
-    ENCRYPTED_VALUE = 0x01... -- generated during key creation
-);
+-- Create the CEK_Personal metadata with SSMS or the SqlServer PowerShell module.
+-- These tools generate the required ENCRYPTED_VALUE varbinary for your
+-- actual Key Vault key; it is not a hand-written placeholder value.
 
 -- Create table with encrypted PII columns
 CREATE TABLE Customers (
@@ -213,11 +208,13 @@ public async Task<HttpResponseData> HandleAccessRequest(
     });
 
     // Audit this access request
+    req.Headers.TryGetValues("X-Requester-Id", out var requesterIds);
+
     await _auditLog.LogAsync(new AuditEntry
     {
         Action = "DataSubjectAccessRequest",
         SubjectId = subjectId,
-        RequestedBy = req.Headers.GetValues("X-Requester-Id").FirstOrDefault(),
+        RequestedBy = requesterIds?.FirstOrDefault(),
         Timestamp = DateTime.UtcNow
     });
 
@@ -291,7 +288,11 @@ public async Task<HttpResponseData> HandleErasureRequest(
     });
 
     // Delete from Redis cache
-    await _cache.RemoveAsync($"user:{subjectId}:*");
+    var cacheKeys = await _cache.FindKeysByPatternAsync($"user:{subjectId}:*");
+    foreach (var key in cacheKeys)
+    {
+        await _cache.RemoveAsync(key);
+    }
 
     // Purge from CDN if applicable
     // Invalidate cached content that might contain personal data
