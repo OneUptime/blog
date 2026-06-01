@@ -46,14 +46,17 @@ az functionapp config appsettings set \
 
 ## Configuring the SDK in Your Function App
 
-For the isolated worker model, you need to explicitly register the Application Insights services.
+For the isolated worker model, install the `Microsoft.ApplicationInsights.WorkerService` and `Microsoft.Azure.Functions.Worker.ApplicationInsights` packages, then explicitly register the Application Insights services.
 
 ```csharp
 // Program.cs - Register Application Insights with proper configuration
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.ApplicationInsights;
+using Microsoft.ApplicationInsights.WorkerService;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.ApplicationInsights;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
@@ -65,6 +68,19 @@ var host = new HostBuilder()
     })
     .ConfigureLogging(logging =>
     {
+        // The Application Insights worker SDK adds a default Warning+ filter.
+        // Override it if you want Information logs in Application Insights.
+        logging.Services.Configure<LoggerFilterOptions>(options =>
+        {
+            var aiRule = options.Rules.FirstOrDefault(rule =>
+                rule.ProviderName == typeof(ApplicationInsightsLoggerProvider).FullName);
+
+            if (aiRule is not null)
+            {
+                options.Rules.Remove(aiRule);
+            }
+        });
+
         // Set default log level - Information is a good balance
         logging.SetMinimumLevel(LogLevel.Information);
 
@@ -116,18 +132,25 @@ Notice that I excluded `Request` and `Exception` types from sampling. You always
 The built-in telemetry captures request counts, durations, and failures automatically. For deeper insight, add custom telemetry.
 
 ```csharp
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
+using Microsoft.Extensions.Logging;
 
 public class OrderProcessor
 {
     private readonly ILogger<OrderProcessor> _logger;
     private readonly TelemetryClient _telemetry;
+    private readonly IPaymentClient _paymentClient;
 
-    public OrderProcessor(ILogger<OrderProcessor> logger, TelemetryClient telemetry)
+    public OrderProcessor(
+        ILogger<OrderProcessor> logger,
+        TelemetryClient telemetry,
+        IPaymentClient paymentClient)
     {
         _logger = logger;
         _telemetry = telemetry;
+        _paymentClient = paymentClient;
     }
 
     [Function("ProcessOrder")]
@@ -196,6 +219,10 @@ public class OrderProcessor
             throw;
         }
     }
+
+    private Task ValidateOrder(Order order) => Task.CompletedTask;
+
+    private Task FulfillOrder(Order order) => Task.CompletedTask;
 }
 ```
 
@@ -276,9 +303,9 @@ union requests, dependencies, traces, exceptions
 Alerts notify you when something goes wrong before users start complaining. Here are the most important alerts to configure.
 
 ```bash
-# Alert when function failure rate exceeds 5%
+# Alert when failed requests exceed 5 in a 15-minute window
 az monitor metrics alert create \
-  --name "High-Failure-Rate" \
+  --name "High-Failed-Request-Count" \
   --resource-group my-resource-group \
   --scopes "/subscriptions/<SUB>/resourceGroups/<RG>/providers/microsoft.insights/components/func-insights" \
   --condition "count requests/failed > 5" \
@@ -286,7 +313,7 @@ az monitor metrics alert create \
   --evaluation-frequency 5m \
   --severity 2 \
   --action-group my-team-alerts \
-  --description "Function failure rate exceeded 5%"
+  --description "Function failed request count exceeded 5 in 15 minutes"
 
 # Alert when average response time exceeds 3 seconds
 az monitor metrics alert create \
