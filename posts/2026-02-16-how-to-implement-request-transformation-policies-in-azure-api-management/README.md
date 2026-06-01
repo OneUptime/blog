@@ -55,9 +55,10 @@ Removing internal headers from the response:
     <base />
     <set-header name="X-Powered-By" exists-action="delete" />
     <set-header name="X-AspNet-Version" exists-action="delete" />
-    <set-header name="Server" exists-action="delete" />
 </outbound>
 ```
+
+APIM cannot delete certain protected headers. For example, the `Server` header cannot be deleted from responses with `set-header`.
 
 ## Rewriting the URL
 
@@ -75,7 +76,7 @@ Sometimes the URL your consumers call is different from the URL your backend exp
 
 The `{customerId}` placeholder maps to the URL template parameter defined in the operation. If the operation URL template is `/{customerId}`, then the value from the URL is inserted into the rewrite template.
 
-For more complex URL rewrites, use the `set-backend-service` policy:
+For routing requests to a different backend, use the `set-backend-service` policy:
 
 ```xml
 <!-- Route requests to a completely different backend based on a header -->
@@ -83,7 +84,7 @@ For more complex URL rewrites, use the `set-backend-service` policy:
 <inbound>
     <base />
     <choose>
-        <when condition="@(context.Request.Headers.GetValueOrDefault("X-Internal","") == "true")">
+        <when condition="@(context.Request.Headers.GetValueOrDefault(&quot;X-Internal&quot;,&quot;&quot;) == &quot;true&quot;)">
             <set-backend-service base-url="https://internal-service.corp.net" />
         </when>
         <otherwise>
@@ -192,7 +193,6 @@ If your backend returns XML but your consumers expect JSON (or vice versa), APIM
 
 ```xml
 <!-- Convert XML response from legacy backend to JSON -->
-<!-- The json-conversion-error-handling attribute controls what happens on failure -->
 <outbound>
     <base />
     <xml-to-json kind="direct" apply="always" consider-accept-header="true" />
@@ -226,8 +226,8 @@ For complex transformations, APIM supports Liquid templates. Liquid gives you lo
             {% for item in body.results %}
             {
                 "id": "{{ item.id }}",
-                "title": "{{ item.name | upcase }}",
-                "active": {{ item.status | equals: "active" }}
+                "title": "{{ item.name | Upcase }}",
+                "active": {% if item.status == "active" %}true{% else %}false{% endif %}
             }{% unless forloop.last %},{% endunless %}
             {% endfor %}
         ],
@@ -252,7 +252,7 @@ You can chain multiple transformation policies together. They execute in order, 
         <value>api-gateway</value>
     </set-header>
     <!-- Then, rewrite the URL -->
-    <rewrite-uri template="/v2{context.Request.Url.Path}" />
+    <rewrite-uri template="@(&quot;/v2&quot; + context.Request.Url.Path)" />
     <!-- Then, transform the body -->
     <set-body>@{
         var body = context.Request.Body.As<JObject>();
@@ -269,7 +269,7 @@ Body transformations (reading and rewriting the request or response body) are th
 
 - Avoid reading the body if you do not need to. Header and URL transformations are nearly free.
 - If you read the body with `context.Request.Body.As<T>()`, it buffers the entire body in memory. For large payloads, this can be significant.
-- Use `preserveContent="true"` on the `set-body` policy if you need to read the body multiple times.
+- Use `preserveContent: true` when calling `context.Request.Body.As<T>()` or `context.Response.Body.As<T>()` if you need to read the body multiple times.
 
 ## Summary
 
