@@ -75,7 +75,7 @@ az aks nodepool add \
   --node-vm-size Standard_D4s_v3
 ```
 
-Windows node pool names are limited to 6 characters. The `--os-sku` option supports `Windows2019` and `Windows2022`. Windows Server 2022 is recommended for new deployments as it has better container support and security features.
+Windows node pool names must start with a lowercase letter, contain only lowercase alphanumeric characters, and be 1-6 characters long. The `--os-sku` option supports Windows Server OS SKUs such as `Windows2022` and the preview `Windows2025` SKU. `Windows2019` is no longer supported for AKS node pools as of March 1, 2026. Windows Server 2022 is recommended for production deployments that use supported Kubernetes versions because Windows Server 2025 is still preview.
 
 Verify the node pools.
 
@@ -129,9 +129,9 @@ spec:
         kubernetes.io/os: windows
       containers:
       - name: dotnet-app
-        image: mcr.microsoft.com/dotnet/samples:aspnetapp
+        image: mcr.microsoft.com/dotnet/framework/samples:aspnetapp
         ports:
-        - containerPort: 8080
+        - containerPort: 80
         resources:
           requests:
             cpu: 500m
@@ -148,7 +148,7 @@ spec:
   type: LoadBalancer
   ports:
   - port: 80
-    targetPort: 8080
+    targetPort: 80
   selector:
     app: dotnet-app
 ```
@@ -245,7 +245,7 @@ spec:
         effect: "NoSchedule"
       containers:
       - name: dotnet-app
-        image: mcr.microsoft.com/dotnet/samples:aspnetapp
+        image: mcr.microsoft.com/dotnet/framework/samples:aspnetapp
 ```
 
 With this combination, Windows pods are directed to Windows nodes (nodeSelector) and non-Windows pods are prevented from landing on Windows nodes (taint).
@@ -362,7 +362,7 @@ Keep in mind that Windows nodes take longer to provision (5-10 minutes) compared
 
 **Pod scheduled on wrong node type**: Verify the nodeSelector is set correctly. Check for typos in the `kubernetes.io/os` label value.
 
-**Networking issues between Windows and Linux pods**: Ensure you are using Azure CNI (not kubenet). Windows containers require Azure CNI for full networking functionality.
+**Networking issues between Windows and Linux pods**: Ensure you are using Azure CNI (not kubenet). Windows node pools are not available with the kubenet network model.
 
 **Windows node not joining the cluster**: Check that the node VM size supports Windows containers. Not all VM sizes are compatible. Standard_D4s_v3 or larger is recommended.
 
