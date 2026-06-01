@@ -31,7 +31,7 @@ The `artifacts-keyring` package handles authentication automatically using your 
 ```bash
 # Install the Azure Artifacts keyring helper
 
-pip install artifacts-keyring
+pip install keyring artifacts-keyring
 
 # Configure pip to use your Azure Artifacts feed
 # Create or edit pip.conf (Linux/macOS) or pip.ini (Windows)
@@ -102,7 +102,7 @@ Before you can publish, your package needs proper packaging configuration. Here 
 # pyproject.toml - Modern Python package configuration
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "my-shared-utils"
@@ -121,7 +121,7 @@ dependencies = [
 # Optional dependency groups
 [project.optional-dependencies]
 redis = ["redis>=4.5.0"]
-dev = ["pytest>=7.4.0", "black>=23.7.0"]
+dev = ["pytest>=7.4.0", "pytest-cov>=4.1.0", "black>=23.7.0", "flake8>=6.1.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -257,7 +257,7 @@ stages:
           # Authenticate with Azure Artifacts
           - task: TwineAuthenticate@1
             inputs:
-              artifactFeed: $(feedName)
+              artifactFeed: '$(System.TeamProject)/$(feedName)'  # Use just $(feedName) for organization-scoped feeds
             displayName: 'Authenticate with Azure Artifacts'
 
           # Upload to the feed using twine
@@ -312,19 +312,18 @@ For builds from the main branch (not tagged releases), publish development versi
 When building Docker images that depend on internal packages, you need to pass credentials to the build:
 
 ```dockerfile
+# syntax=docker/dockerfile:1
 # Dockerfile with Azure Artifacts authentication
 FROM python:3.12-slim AS builder
 
-# Accept the PAT as a build argument (not stored in the final image)
-ARG AZURE_ARTIFACTS_PAT
 ARG FEED_URL
-
-# Configure pip to use the Azure Artifacts feed
-RUN pip config set global.index-url "https://myorg:${AZURE_ARTIFACTS_PAT}@${FEED_URL}"
 
 # Install dependencies including internal packages
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=secret,id=azure_artifacts_pat \
+    AZURE_ARTIFACTS_PAT="$(cat /run/secrets/azure_artifacts_pat)" && \
+    PIP_INDEX_URL="https://myorg:${AZURE_ARTIFACTS_PAT}@${FEED_URL}" \
+    pip install --no-cache-dir -r requirements.txt
 
 # Production stage - no credentials here
 FROM python:3.12-slim
@@ -338,12 +337,12 @@ Build with:
 
 ```bash
 docker build \
-  --build-arg AZURE_ARTIFACTS_PAT=$PAT \
+  --secret id=azure_artifacts_pat,env=AZURE_ARTIFACTS_PAT \
   --build-arg FEED_URL="pkgs.dev.azure.com/myorg/myproject/_packaging/python-internal/pypi/simple/" \
   -t myapp:latest .
 ```
 
-The multi-stage build ensures the PAT is only present in the builder stage, not in the final image.
+The BuildKit secret mount makes the PAT available only to the `RUN` step that installs packages, and the multi-stage build keeps it out of the final image.
 
 ## Feed Retention and Cleanup
 
