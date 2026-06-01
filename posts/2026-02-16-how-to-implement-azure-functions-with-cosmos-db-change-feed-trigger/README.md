@@ -8,13 +8,13 @@ Description: Build real-time data processing pipelines using Azure Functions wit
 
 ---
 
-The Cosmos DB change feed is one of those features that unlocks entirely new architectural patterns once you understand it. Every time a document is created or updated in a Cosmos DB container, the change feed captures that event. Azure Functions can subscribe to this feed and react to changes in near real-time - typically within a few seconds of the change occurring.
+The Cosmos DB change feed is one of those features that unlocks entirely new architectural patterns once you understand it. When a document is created or updated in a Cosmos DB container, the default change feed mode makes the latest version of that item available. Azure Functions can subscribe to this feed and react to changes in near real-time - typically within a few seconds of the change occurring.
 
 This is incredibly useful for building event-driven architectures. You can materialize views, sync data to search indexes, trigger notifications, audit changes, or propagate updates to downstream services - all without modifying the code that writes to Cosmos DB.
 
 ## How the Change Feed Works
 
-The change feed is an ordered log of changes within each logical partition of a Cosmos DB container. It captures inserts and updates (not deletes, by default). Each change is delivered exactly once to your function in the order it occurred within that partition.
+The change feed is an ordered log of changes within partition key ranges of a Cosmos DB container. In the default latest-version mode, it captures inserts and updates (not deletes), but it does not include every intermediate update if the same item changes multiple times before the feed is read. The Azure Functions trigger uses the change feed processor and provides at-least-once delivery, so your function can see the same batch again after a retry or restart.
 
 ```mermaid
 graph LR
@@ -27,7 +27,7 @@ graph LR
     D --> H[Materialized View]
 ```
 
-The change feed processor (which the Azure Functions trigger uses internally) handles partitioning, checkpointing, and load balancing automatically. If your container has 100 physical partitions, the processor distributes the work across multiple function instances.
+The change feed processor (which the Azure Functions trigger uses internally) handles partitioning, checkpointing, and load balancing automatically. If your container has many partition key ranges, the processor distributes the work across multiple function instances.
 
 ## Setting Up the Project
 
@@ -99,11 +99,11 @@ public class Product
 }
 ```
 
-The `LeaseContainerName` parameter specifies a container that tracks which changes have been processed. This is what enables exactly-once delivery and allows the function to pick up where it left off after restarts.
+The `LeaseContainerName` parameter specifies a container that tracks which changes have been processed. This is what enables checkpointing and allows the function to pick up where it left off after restarts. Because delivery is at least once, the function logic still needs to be idempotent.
 
 ## Real-World Example: Syncing to a Search Index
 
-One of the most common use cases is keeping a search index in sync with Cosmos DB. Here is how you would sync product data to Azure Cognitive Search.
+One of the most common use cases is keeping a search index in sync with Cosmos DB. Here is how you would sync product data to Azure AI Search.
 
 ```csharp
 using Azure.Search.Documents;
@@ -120,7 +120,7 @@ public class SearchIndexSync
         _searchClient = searchClient;
     }
 
-    // Sync Cosmos DB changes to Azure Cognitive Search in near real-time
+    // Sync Cosmos DB changes to Azure AI Search in near real-time
     [Function("SyncProductsToSearch")]
     public async Task Run(
         [CosmosDBTrigger(
@@ -168,6 +168,15 @@ public class SearchIndexSync
         }
     }
 }
+
+public class SearchProduct
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public decimal Price { get; set; }
+    public string Category { get; set; }
+    public DateTime LastModified { get; set; }
+}
 ```
 
 ## Handling Deletes
@@ -191,7 +200,7 @@ public async Task HandleWithDeletes(
         {
             // Handle the delete - remove from search index, cache, etc.
             _logger.LogInformation("Product deleted: {Id}", product.Id);
-            await _searchClient.DeleteDocumentsAsync("id", new[] { product.Id });
+            await _searchClient.DeleteDocumentsAsync("Id", new[] { product.Id });
         }
         else
         {
@@ -214,7 +223,7 @@ public class ProductWithSoftDelete : Product
 }
 ```
 
-Cosmos DB also supports change feed with delete detection in "all versions and deletes" mode. This captures actual deletes but requires the container to be configured with this mode enabled.
+Cosmos DB also supports change feed with delete detection in "all versions and deletes" mode. This captures actual deletes but requires continuous backup and the all versions and deletes mode to be enabled on the account. The Azure Functions trigger currently consumes the default latest-version mode, so use the soft-delete pattern when you need delete handling in a Functions trigger.
 
 ## Multiple Consumers
 
@@ -257,20 +266,30 @@ public void UpdateAnalytics(
 
 ## Performance Tuning
 
-The change feed trigger has several configuration options that affect performance.
+The change feed trigger has several configuration options that affect performance. Trigger-specific options are set on the `CosmosDBTrigger` attribute.
+
+```csharp
+[CosmosDBTrigger(
+    databaseName: "ecommerce",
+    containerName: "products",
+    Connection = "CosmosDBConnection",
+    LeaseContainerName = "leases",
+    MaxItemsPerInvocation = 100,
+    FeedPollDelay = 5000,
+    LeaseAcquireInterval = 13000,
+    LeaseExpirationInterval = 60000,
+    LeaseRenewInterval = 17000)]
+IReadOnlyList<Product> changedProducts
+```
+
+Connection mode is configured in `host.json` for the Cosmos DB binding.
 
 ```json
 {
   "version": "2.0",
   "extensions": {
     "cosmosDB": {
-      "connectionMode": "Direct",
-      "maxItemsPerInvocation": 100,
-      "feedPollDelay": 5000,
-      "leaseAcquireInterval": 13000,
-      "leaseExpirationInterval": 60000,
-      "leaseRenewInterval": 17000,
-      "maxConcurrency": 0
+      "connectionMode": "Direct"
     }
   }
 }
@@ -279,7 +298,7 @@ The change feed trigger has several configuration options that affect performanc
 Key settings to understand:
 
 - `maxItemsPerInvocation`: Controls batch size. Higher values mean fewer function invocations but more documents per batch.
-- `feedPollDelay`: Milliseconds between polling for new changes. Lower values mean faster detection but more RU consumption on the lease container.
+- `feedPollDelay`: Milliseconds between polling for new changes. Lower values mean faster detection but more RU consumption on the monitored container.
 - `connectionMode`: Use "Direct" for better performance in production.
 
 ## Error Handling and Idempotency
