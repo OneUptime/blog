@@ -38,11 +38,11 @@ After the move, the subscription would be restricted to East US only (from Manag
 
 To move a subscription between management groups, you need:
 
-- **Microsoft.Management/managementGroups/subscriptions/write** permission on the target management group
+- **Microsoft.Management/managementGroups/write**, **Microsoft.Management/managementGroups/subscriptions/write**, **Microsoft.Authorization/roleAssignments/write**, **Microsoft.Authorization/roleAssignments/delete**, and **Microsoft.Management/register/action** permissions on the subscription being moved
 - **Microsoft.Management/managementGroups/write** permission on the target management group
-- **Owner** role on the subscription (or Management Group Contributor at the source management group)
+- **Microsoft.Management/managementGroups/write** permission on the current parent management group
 
-In practice, the "Management Group Contributor" role at both the source and target management groups, combined with at least Reader on the subscription, is sufficient.
+In practice, the Owner role on the subscription, combined with Contributor or Management Group Contributor on both the source and target management groups, is sufficient. If your Owner role on the subscription is inherited from the current management group, you can only move the subscription to another management group where you also have Owner.
 
 ## Step 1: Assess the Impact Before Moving
 
@@ -56,6 +56,7 @@ Before moving anything, understand what will change.
 # This includes both direct and inherited assignments
 az policy assignment list \
   --scope "/subscriptions/<subscription-id>" \
+  --disable-scope-strict-match true \
   --query "[].{name:displayName, scope:scope, enforcement:enforcementMode}" \
   --output table
 ```
@@ -77,7 +78,7 @@ az role assignment list \
 # List policies assigned at the target management group
 az policy assignment list \
   --scope "/providers/Microsoft.Management/managementGroups/<target-group>" \
-  --query "[].{name:displayName, effect:parameters.effect.value, scope:scope}" \
+  --query "[].{name:displayName, enforcement:enforcementMode, scope:scope}" \
   --output table
 ```
 
@@ -93,7 +94,7 @@ az role assignment list \
 
 ### Run a Compliance Pre-Check
 
-Check whether the subscription's existing resources would be compliant with the target management group's policies:
+Check current compliance, then compare the result with the target management group's policy assignments to identify resources that may become non-compliant after the move:
 
 ```bash
 # Trigger a policy compliance scan on the subscription
@@ -154,7 +155,7 @@ New-AzManagementGroupSubscription `
 # Move using the REST API directly
 # This is useful for automation and scripting
 az rest --method put \
-  --url "https://management.azure.com/providers/Microsoft.Management/managementGroups/<target-group>/subscriptions/<subscription-id>?api-version=2021-04-01" \
+  --url "https://management.azure.com/providers/Microsoft.Management/managementGroups/<target-group>/subscriptions/<subscription-id>?api-version=2020-05-01" \
   --body '{}'
 ```
 
@@ -166,9 +167,9 @@ After moving the subscription, verify that everything is as expected.
 
 ```bash
 # Verify the subscription is now under the target management group
-az account management-group show \
+az account management-group subscription show \
   --name "<target-management-group-name>" \
-  --query "children[?name=='<subscription-id>']" \
+  --subscription "<subscription-id>" \
   --output table
 ```
 
@@ -182,7 +183,7 @@ az policy state trigger-scan \
 # Check compliance status (run after scan completes)
 az policy state summarize \
   --subscription "<subscription-id>" \
-  --query "value[0].{compliant:results.nonCompliantResources}" \
+  --query "value[0].{nonCompliantResources:results.nonCompliantResources}" \
   --output table
 ```
 
@@ -266,7 +267,7 @@ For organizations that frequently create new subscriptions, you can set a defaul
 # Set the default management group for new subscriptions
 # New subscriptions will automatically be placed in this group
 az rest --method put \
-  --url "https://management.azure.com/providers/Microsoft.Management/managementGroups/<tenant-root-group-id>/settings/default?api-version=2021-04-01" \
+  --url "https://management.azure.com/providers/Microsoft.Management/managementGroups/<tenant-root-group-id>/settings/default?api-version=2020-05-01" \
   --body '{
     "properties": {
       "defaultManagementGroup": "/providers/Microsoft.Management/managementGroups/Sandbox",
