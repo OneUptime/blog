@@ -34,7 +34,7 @@ graph TD
 
 ## Approach 1: Native CDC with Azure SQL Database
 
-Azure SQL Database has a built-in CDC feature that tracks changes at the table level. ADF can read from these change tables directly.
+Azure SQL Database has a built-in CDC feature that tracks changes at the table level. ADF mapping data flows can use this native CDC metadata to extract delta rows without requiring a separate watermark column.
 
 ### Enable CDC on Azure SQL Database
 
@@ -50,7 +50,7 @@ EXEC sys.sp_cdc_enable_table
     @source_schema = N'dbo',
     @source_name = N'Orders',
     @role_name = NULL,
-    @supports_net_changes = 1;  -- Enable net changes (latest state per row)
+    @supports_net_changes = 1;  -- Requires a primary key or unique index
 
 -- Verify CDC is enabled
 SELECT name, is_cdc_enabled
@@ -73,7 +73,7 @@ Create a new data flow and add a "Source" transformation. Select "Azure SQL Data
 The CDC source automatically handles:
 - Reading only changed rows since the last run
 - Identifying whether each row is an insert, update, or delete
-- Providing both before and after values for updates
+- Loading SQL CDC net changes through ADF's checkpointing
 
 Here is the pipeline JSON that uses a CDC-enabled data flow:
 
@@ -225,7 +225,7 @@ END;
 
 ## Approach 3: ADF Mapping Data Flow with CDC Capabilities
 
-ADF mapping data flows provide a visual approach to CDC with built-in support for merge operations (upsert + delete).
+ADF mapping data flows provide a visual approach to CDC with built-in support for merge operations (upsert + delete). For native CDC sources such as SQL Server, Azure SQL Database, and Azure SQL Managed Instance, ADF can detect the row marker automatically; for custom CDC staging tables, use an Alter Row transformation to map your operation column to insert, update, upsert, or delete actions.
 
 Create a mapping data flow that reads changed data and applies it to the destination:
 
@@ -264,7 +264,7 @@ Create a mapping data flow that reads changed data and applies it to the destina
 }
 ```
 
-In the data flow designer, the "Alter Row" transformation lets you define conditions for each operation:
+In the data flow designer, the "Alter Row" transformation lets you define conditions for each operation when your source has a custom operation column:
 
 - **Insert if**: The row is new (CDC operation = 'I')
 - **Update if**: The row was modified (CDC operation = 'U')
@@ -312,8 +312,7 @@ CDC pipelines need extra monitoring because missed changes can create data incon
 ```python
 # monitoring.py - Script to check CDC pipeline health
 
-import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 # Check watermark freshness
 def check_watermark_freshness(connection_string, max_lag_minutes=60):
@@ -327,7 +326,7 @@ def check_watermark_freshness(connection_string, max_lag_minutes=60):
         FROM dbo.WatermarkTable
     """)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     for row in cursor:
         lag = now - row.WatermarkValue
         lag_minutes = lag.total_seconds() / 60
