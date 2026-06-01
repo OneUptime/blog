@@ -10,7 +10,7 @@ Description: Configure Azure Traffic Manager with performance routing to automat
 
 When you deploy an application across multiple Azure regions, you want users to connect to the closest region. Not the geographically closest - the one with the lowest network latency. A user in London might get better latency to a server in Amsterdam than one in Dublin, depending on the network path.
 
-Azure Traffic Manager's performance routing method handles this automatically. It maintains an Internet Latency Table that maps IP address ranges to the Azure region with the lowest latency. When a DNS query comes in, Traffic Manager looks up the source IP, finds the best-performing endpoint, and returns its address.
+Azure Traffic Manager's performance routing method handles this automatically. It maintains an Internet Latency Table that maps IP address ranges to the Azure region with the lowest latency. When a DNS query comes in, Traffic Manager looks up the DNS query source IP, or the EDNS Client Subnet value if the resolver sends one, finds the best-performing endpoint, and returns that endpoint in the DNS response.
 
 In this post, I will walk through setting up Traffic Manager with performance routing, configuring endpoints across regions, and tuning the setup for optimal user experience.
 
@@ -20,10 +20,10 @@ Traffic Manager does not measure latency in real-time for each user request. Ins
 
 When a DNS query arrives at Traffic Manager:
 
-1. Traffic Manager identifies the source IP of the DNS resolver (not the end user)
+1. Traffic Manager identifies the source IP of the DNS resolver, or the EDNS Client Subnet value if the resolver sends one
 2. It looks up the latency table to find which Azure region has the lowest latency for that IP range
 3. It checks if the endpoint in that region is healthy
-4. If healthy, it returns that endpoint's address
+4. If healthy, it returns that endpoint in the DNS response
 5. If unhealthy, it falls back to the next lowest-latency healthy endpoint
 
 ```mermaid
@@ -135,7 +135,8 @@ az network dns record-set cname set-record \
   --record-set-name "app" \
   --cname "myapp-perf.trafficmanager.net"
 
-# For the zone apex, use an alias record
+# For the zone apex, use an alias record only if the Traffic Manager profile
+# contains external endpoints that use static IPv4 or IPv6 addresses.
 az network dns record-set a create \
   --resource-group rg-dns \
   --zone-name example.com \
@@ -152,8 +153,7 @@ Verify that Traffic Manager returns different endpoints based on the source loca
 # Test from your current location
 dig app.example.com
 
-# Use Traffic Manager's test tool to simulate queries from different regions
-# This shows which endpoint would be returned for a given source IP
+# Show the Traffic Manager profile DNS name
 az network traffic-manager profile show \
   --resource-group rg-tm-perf \
   --name tm-myapp-perf \
@@ -197,9 +197,9 @@ Query Traffic Manager metrics to understand traffic distribution.
 az monitor metrics list \
   --resource $(az network traffic-manager profile show \
     -g rg-tm-perf -n tm-myapp-perf --query id -o tsv) \
-  --metric "QueriesByEndpoint" \
+  --metric "QpsByEndpoint" \
   --interval PT1H \
-  --aggregation Count \
+  --aggregation Total \
   --output table
 ```
 
@@ -224,11 +224,11 @@ Keep in mind that many DNS resolvers enforce a minimum TTL regardless of what th
 
 There are some things to be aware of with performance routing:
 
-**DNS resolver location matters, not user location**: Traffic Manager routes based on the source IP of the DNS query, which is the DNS resolver's IP, not the end user's IP. If a user in Tokyo uses a DNS resolver in San Francisco, they will be routed to the US endpoint. This is rare with modern DNS (which supports EDNS Client Subnet), but it can happen.
+**DNS resolver location often matters, not user location**: Traffic Manager routes based on the source IP of the DNS query, which is usually the DNS resolver's IP. It can also use the EDNS Client Subnet value when the recursive resolver includes it. If a user in Tokyo uses a DNS resolver in San Francisco and that resolver does not send EDNS Client Subnet data, they can be routed to a US endpoint.
 
 **No real-time latency measurement**: The Internet Latency Table is based on aggregate measurements, not real-time probes. Temporary network congestion or routing changes are not reflected immediately.
 
-**Single endpoint per query**: Traffic Manager returns one endpoint per DNS query. There is no weighted distribution within performance routing. If you need that, combine with nested profiles.
+**No custom weights within performance routing**: If multiple endpoints are in the same Azure region, Traffic Manager distributes traffic evenly across the available endpoints in that region. If you need custom weights, combine performance routing with nested weighted profiles.
 
 ## Combining Performance with Weighted Routing
 
