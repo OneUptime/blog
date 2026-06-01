@@ -36,9 +36,7 @@ Here is a data preparation script that runs as an Azure ML pipeline step.
 
 ```python
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import SMOTE
+from sklearn.preprocessing import LabelEncoder
 import argparse
 import os
 
@@ -68,21 +66,11 @@ def prepare_credit_data(input_path: str, output_path: str):
     df["loan_to_income"] = df["loan_amount"] / (df["annual_income"] + 1)
     df["credit_utilization"] = df["revolving_balance"] / (df["credit_limit"] + 1)
 
-    # Scale numeric features
-    scaler = StandardScaler()
-    feature_cols = [c for c in df.columns if c != "default"]
-    df[feature_cols] = scaler.fit_transform(df[feature_cols])
-
-    # Handle class imbalance with SMOTE oversampling
-    X = df.drop("default", axis=1)
-    y = df["default"]
-    smote = SMOTE(random_state=42)
-    X_balanced, y_balanced = smote.fit_resample(X, y)
-
-    # Combine and save
-    result = pd.DataFrame(X_balanced, columns=X.columns)
-    result["default"] = y_balanced
-    result.to_csv(os.path.join(output_path, "prepared_data.csv"), index=False)
+    # Save the cleaned dataset. Scaling and SMOTE should happen after
+    # the train/test split so information from the test set does not leak
+    # into training.
+    os.makedirs(output_path, exist_ok=True)
+    df.to_csv(os.path.join(output_path, "prepared_data.csv"), index=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -101,12 +89,12 @@ For credit risk, gradient boosting models tend to perform well. They handle non-
 ```python
 import lightgbm as lgb
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score, classification_report
+from imblearn.over_sampling import SMOTE
 import mlflow
 import mlflow.lightgbm
-import joblib
 
 def train_credit_model(data_path: str):
     """Train a LightGBM credit risk model with MLflow tracking."""
@@ -118,11 +106,27 @@ def train_credit_model(data_path: str):
     X = df.drop("default", axis=1)
     y = df["default"]
 
-    # Split into train and test sets
-    from sklearn.model_selection import train_test_split
+    # Split into train and test sets before fitting preprocessing steps
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
+
+    # Fit preprocessing only on the training set to avoid data leakage
+    scaler = StandardScaler()
+    X_train = pd.DataFrame(
+        scaler.fit_transform(X_train),
+        columns=X.columns,
+        index=X_train.index
+    )
+    X_test = pd.DataFrame(
+        scaler.transform(X_test),
+        columns=X.columns,
+        index=X_test.index
+    )
+
+    # Handle class imbalance with SMOTE oversampling on the training set only
+    smote = SMOTE(random_state=42)
+    X_train, y_train = smote.fit_resample(X_train, y_train)
 
     # Configure LightGBM parameters tuned for credit risk
     params = {
@@ -135,9 +139,7 @@ def train_credit_model(data_path: str):
         "bagging_fraction": 0.8,
         "bagging_freq": 5,
         "verbose": -1,
-        "is_unbalance": True,  # Additional handling for class imbalance
-        "n_estimators": 500,
-        "early_stopping_rounds": 50
+        "n_estimators": 500
     }
 
     # Train the model
@@ -145,7 +147,10 @@ def train_credit_model(data_path: str):
     model.fit(
         X_train, y_train,
         eval_set=[(X_test, y_test)],
-        callbacks=[lgb.log_evaluation(50)]
+        callbacks=[
+            lgb.early_stopping(50),
+            lgb.log_evaluation(50)
+        ]
     )
 
     # Evaluate on the test set
@@ -163,6 +168,7 @@ def train_credit_model(data_path: str):
     }).sort_values("importance", ascending=False)
     importance_df.to_csv("feature_importance.csv", index=False)
     mlflow.log_artifact("feature_importance.csv")
+    mlflow.lightgbm.save_model(model, "model")
 
     print(f"Test AUC: {auc_score:.4f}")
     print(classification_report(y_test, (y_pred_proba > 0.5).astype(int)))
@@ -182,6 +188,16 @@ Financial regulators increasingly require that credit risk models are explainabl
 ```python
 import shap
 import mlflow
+import numpy as np
+import pandas as pd
+
+def get_positive_class_shap_values(shap_values):
+    """Return SHAP values for the positive class across SHAP versions."""
+    if isinstance(shap_values, list):
+        return shap_values[1]
+    if getattr(shap_values, "ndim", 0) == 3:
+        return shap_values[:, :, 1]
+    return shap_values
 
 def explain_model(model, X_test, feature_names):
     """Generate SHAP explanations for the credit risk model."""
@@ -190,31 +206,34 @@ def explain_model(model, X_test, feature_names):
     shap_values = explainer.shap_values(X_test)
 
     # Get global feature importance from SHAP
+    positive_class_shap = get_positive_class_shap_values(shap_values)
     global_importance = pd.DataFrame({
         "feature": feature_names,
-        "mean_shap": np.abs(shap_values[1]).mean(axis=0)
+        "mean_shap": np.abs(positive_class_shap).mean(axis=0)
     }).sort_values("mean_shap", ascending=False)
 
     # Log the SHAP summary to MLflow
+    global_importance.to_csv("shap_importance.csv", index=False)
     mlflow.log_artifact("shap_importance.csv")
 
     # For individual predictions, show top contributing factors
-    return shap_values
+    return explainer, shap_values
 
 def explain_single_prediction(model, explainer, applicant_data, feature_names):
     """Explain why a specific loan application was scored the way it was."""
     shap_values = explainer.shap_values(applicant_data)
+    positive_class_shap = get_positive_class_shap_values(shap_values)
     contributions = pd.DataFrame({
         "feature": feature_names,
         "value": applicant_data.values[0],
-        "contribution": shap_values[1][0]
-    }).sort_values("contribution", key=abs, ascending=False)
+        "contribution": positive_class_shap[0]
+    }).sort_values("contribution", key=lambda values: values.abs(), ascending=False)
 
     # Top 5 reasons for the decision
     return contributions.head(5)
 ```
 
-SHAP values are particularly useful because they give you per-applicant explanations. If an applicant is denied, you can say "the primary factors were high debt-to-income ratio and short employment history," which meets regulatory requirements for adverse action notices.
+SHAP values are particularly useful because they give you per-applicant explanations. If an applicant is denied, they can help identify statements such as "the primary factors were high debt-to-income ratio and short employment history," but lenders still need to validate that those explanations accurately reflect the factors used in the credit decision for adverse action notices.
 
 ## Step 4 - Deploy as a Real-Time Endpoint
 
@@ -227,6 +246,7 @@ az ml model create \
   --name credit-risk-model \
   --version 1 \
   --path ./model \
+  --type mlflow_model \
   --resource-group finance-ml-rg \
   --workspace-name finance-ml-ws
 
@@ -243,11 +263,12 @@ az ml online-deployment create \
   --model azureml:credit-risk-model:1 \
   --instance-type Standard_DS3_v2 \
   --instance-count 2 \
+  --all-traffic \
   --resource-group finance-ml-rg \
   --workspace-name finance-ml-ws
 ```
 
-Running two instances ensures high availability. The scoring endpoint returns both the probability of default and the top contributing factors from the SHAP analysis.
+Running two instances helps provide high availability. If you include the SHAP logic in the scoring path, the scoring endpoint can return both the probability of default and the top contributing factors from the SHAP analysis.
 
 ## Step 5 - Build the Power BI Dashboard
 
@@ -274,7 +295,7 @@ SWITCH(
 )
 ```
 
-Set up a scheduled refresh so the dashboard pulls the latest scoring results daily. For real-time monitoring, use Power BI streaming datasets connected to an Event Hub that captures scoring events.
+Set up a scheduled refresh so the dashboard pulls the latest scoring results daily. For real-time monitoring, use a Power BI streaming semantic model, or use Azure Stream Analytics with Event Hub as the input and Power BI as the output. Microsoft has announced that creation of new Power BI real-time streaming semantic models remains enabled until October 31, 2027, so plan new real-time implementations with that retirement date in mind.
 
 ## Model Governance and Monitoring
 
@@ -286,4 +307,4 @@ Log every prediction with its inputs and outputs. This creates an audit trail th
 
 ## Wrapping Up
 
-Credit risk modeling with Azure ML and Power BI gives you the full pipeline from data to decisions. Azure ML handles the heavy lifting of training, explainability, and deployment. Power BI turns the results into actionable dashboards for risk teams. The combination of SHAP explanations and MLflow tracking keeps you compliant with regulatory requirements for model transparency. Start with a solid feature engineering pipeline, validate your model thoroughly, and build monitoring into the process from day one.
+Credit risk modeling with Azure ML and Power BI gives you the full pipeline from data to decisions. Azure ML handles the heavy lifting of training, explainability, and deployment. Power BI turns the results into actionable dashboards for risk teams. The combination of validated SHAP explanations and MLflow tracking supports regulatory requirements for model transparency. Start with a solid feature engineering pipeline, validate your model thoroughly, and build monitoring into the process from day one.
