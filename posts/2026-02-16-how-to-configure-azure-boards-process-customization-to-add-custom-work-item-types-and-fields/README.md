@@ -95,7 +95,7 @@ When the default types do not cover your needs, create new ones.
 1. In your inherited process, click "New work item type"
 2. Name it "Technical Debt"
 3. Choose an icon and color (helps with visual identification on boards)
-4. The new type starts with the same layout as a base type
+4. The new type starts with a default layout that you can customize
 
 Now add fields specific to technical debt tracking:
 
@@ -190,6 +190,8 @@ You can drag and drop fields between groups, reorder them within a group, and mo
 
 When you create a custom work item type, you need to decide where it appears on the backlog and board:
 
+By default, custom work item types are not added to any backlog. Add them to the appropriate backlog level so teams can plan and track them from backlog and board views.
+
 ### Adding to the Backlog
 
 1. In the process settings, go to "Backlog levels"
@@ -231,18 +233,17 @@ az devops invoke \
   --area processes \
   --resource processes \
   --org https://dev.azure.com/myorg \
-  --http-method GET
+  --http-method GET \
+  --api-version 7.1
 
-# Create a new work item type field via REST API
+# Add an existing field to a work item type via REST API
 curl -s -X POST \
   -H "Authorization: Basic $(echo -n :$PAT | base64)" \
   -H "Content-Type: application/json" \
-  "https://dev.azure.com/myorg/_apis/work/processes/PROCESS_ID/workItemTypes/MyTeam.TechnicalDebt/fields?api-version=7.1" \
+  "https://dev.azure.com/myorg/_apis/work/processes/PROCESS_ID/workItemTypes/MyTeam.TechnicalDebt/fields?api-version=7.1-preview.2" \
   -d '{
     "referenceName": "Custom.DebtCategory",
-    "name": "Debt Category",
-    "type": "string",
-    "description": "The category of technical debt"
+    "defaultValue": "Code quality"
   }'
 ```
 
