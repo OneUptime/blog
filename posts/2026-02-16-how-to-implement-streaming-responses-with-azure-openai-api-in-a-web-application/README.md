@@ -38,7 +38,8 @@ sequenceDiagram
 
 ## Prerequisites
 
-- An Azure OpenAI resource with a deployed model (gpt-4o or gpt-4o-mini)
+- An Azure OpenAI resource with a deployed model (gpt-4o or gpt-4o-mini) and its deployment name
+- `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` environment variables
 - Python 3.9+ with Flask or FastAPI
 - A modern web browser (all major browsers support SSE and EventSource)
 
@@ -57,21 +58,21 @@ Create the backend server:
 ```python
 # server.py - FastAPI backend that streams Azure OpenAI responses
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from openai import AzureOpenAI
+from fastapi.responses import StreamingResponse
+from openai import AsyncAzureOpenAI
 import json
+import os
 
 app = FastAPI()
 
 # Initialize the Azure OpenAI client
-client = AzureOpenAI(
-    azure_endpoint="https://your-resource.openai.azure.com/",
-    api_key="your-api-key",
-    api_version="2024-06-01"
+client = AsyncAzureOpenAI(
+    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+    api_key=os.environ["AZURE_OPENAI_API_KEY"],
+    api_version="2024-10-21"
 )
 
-DEPLOYMENT_NAME = "gpt-4o-mini"
+DEPLOYMENT_NAME = "your-gpt-4o-mini-deployment"
 
 async def generate_stream(messages: list):
     """
@@ -80,7 +81,7 @@ async def generate_stream(messages: list):
     """
     try:
         # Create a streaming completion request
-        stream = client.chat.completions.create(
+        stream = await client.chat.completions.create(
             model=DEPLOYMENT_NAME,
             messages=messages,
             max_tokens=1000,
@@ -89,7 +90,7 @@ async def generate_stream(messages: list):
         )
 
         # Iterate over the streaming chunks
-        for chunk in stream:
+        async for chunk in stream:
             if chunk.choices and len(chunk.choices) > 0:
                 delta = chunk.choices[0].delta
 
@@ -269,19 +270,28 @@ The frontend uses the Fetch API to read the streaming response and update the UI
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let fullResponse = '';
+                let buffer = '';
 
                 while (true) {
                     const { done, value } = await reader.read();
-                    if (done) break;
 
-                    // Decode the chunk and parse SSE events
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n');
+                    if (done) {
+                        buffer += decoder.decode();
+                    } else {
+                        // Decode bytes and keep partial SSE events for the next read.
+                        buffer += decoder.decode(value, { stream: true });
+                    }
 
-                    for (const line of lines) {
-                        // SSE events start with "data: "
-                        if (line.startsWith('data: ')) {
-                            const jsonStr = line.slice(6);
+                    const events = done ? [buffer] : buffer.split('\n\n');
+                    buffer = done ? '' : events.pop();
+
+                    for (const event of events) {
+                        const dataLines = event
+                            .split('\n')
+                            .filter(line => line.startsWith('data: '))
+                            .map(line => line.slice(6));
+
+                        for (const jsonStr of dataLines) {
                             try {
                                 const data = JSON.parse(jsonStr);
 
@@ -296,10 +306,12 @@ The frontend uses the Fetch API to read the streaming response and update the UI
                                     assistantDiv.textContent = `Error: ${data.error}`;
                                 }
                             } catch (e) {
-                                // Skip malformed JSON (can happen with partial chunks)
+                                // Skip malformed JSON events
                             }
                         }
                     }
+
+                    if (done) break;
                 }
 
                 // Add the complete response to conversation history
@@ -343,15 +355,13 @@ Open `http://localhost:8000` in your browser and start chatting. You should see 
 
 ## Step 4: Handle Token Counting and Rate Limits
 
-When streaming, you still consume tokens just like non-streaming requests. The difference is that you get the token count at the end of the stream rather than upfront. Track usage for cost monitoring:
+When streaming, you still consume tokens just like non-streaming requests. If you request usage stats, Azure OpenAI sends the token counts in an extra chunk near the end of the stream. Track usage for cost monitoring:
 
 ```python
 # Enhanced streaming generator with token tracking
 async def generate_stream_with_tracking(messages: list):
     """Stream response and track token usage."""
-    total_completion_tokens = 0
-
-    stream = client.chat.completions.create(
+    stream = await client.chat.completions.create(
         model=DEPLOYMENT_NAME,
         messages=messages,
         max_tokens=1000,
@@ -359,7 +369,7 @@ async def generate_stream_with_tracking(messages: list):
         stream_options={"include_usage": True}  # Request usage stats
     )
 
-    for chunk in stream:
+    async for chunk in stream:
         if chunk.choices and len(chunk.choices) > 0:
             delta = chunk.choices[0].delta
             if delta.content:
@@ -434,7 +444,7 @@ A few things matter for production streaming deployments:
 
 **Concurrent connections**: Each streaming request holds an HTTP connection open for the duration of the generation. Plan your connection pool sizes accordingly.
 
-**Retry logic**: If the stream is interrupted, your frontend should detect the disconnection and offer to retry. The SSE protocol has built-in reconnection, but since we are using fetch with a reader, you need to handle this manually.
+**Retry logic**: If the stream is interrupted, your frontend should detect the disconnection and offer to retry. The `EventSource` API has built-in reconnection behavior, but since we are using fetch with a reader, you need to handle this manually.
 
 ## Summary
 
