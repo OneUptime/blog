@@ -16,7 +16,7 @@ In this guide, I will walk through the full process of onboarding on-premises Wi
 
 When you onboard a server to Azure Arc, you install the Azure Connected Machine agent on it. This agent establishes an outbound connection to Azure (no inbound ports needed) and registers the server as a resource in your Azure subscription. The server shows up as a `Microsoft.HybridCompute/machines` resource type.
 
-Once registered, the server gets a managed identity in Azure AD, which the agent uses for all communication. This identity also enables the server to authenticate to other Azure services, which is useful for scenarios like pulling secrets from Key Vault or authenticating to Azure SQL.
+Once registered, the server gets a managed identity in Microsoft Entra ID, which the agent uses for all communication. This identity also enables the server to authenticate to other Azure services, which is useful for scenarios like pulling secrets from Key Vault or authenticating to Azure SQL.
 
 The agent does not give Azure control over the server in the traditional sense. Azure cannot start, stop, or reboot the server through Arc. Instead, Arc provides a management plane for configuration, monitoring, and governance. The actual server operations are still your responsibility.
 
@@ -30,19 +30,21 @@ Before you start, make sure you have these in place:
 - No inbound ports need to be opened
 
 **Required Azure endpoints (the agent needs to reach these):**
+- `download.microsoft.com` - Windows agent installation package
+- `packages.microsoft.com` - Linux agent installation package
 - `management.azure.com` - Azure Resource Manager
-- `login.microsoftonline.com` - Azure AD authentication
-- `gbl.his.arc.azure.com` - Global hybrid identity service
-- `*.his.arc.azure.com` - Regional hybrid identity service
+- `login.microsoftonline.com`, `*.login.microsoft.com`, and `pas.windows.net` - Microsoft Entra ID authentication
+- `*.his.arc.azure.com` - Metadata and hybrid identity service
 - `*.guestconfiguration.azure.com` - Guest configuration
+- `guestnotificationservice.azure.com`, `*.guestnotificationservice.azure.com`, and `azgn*.servicebus.windows.net` or `*.servicebus.windows.net` - Notification service for extension and connectivity scenarios
 
 **Supported operating systems:**
-- Windows Server 2012 R2 and newer
-- Ubuntu 16.04, 18.04, 20.04, 22.04
-- RHEL 7 and 8
-- SLES 12 SP3+ and 15
-- CentOS 7 and 8
-- Amazon Linux 2
+- Windows Server 2012 and newer
+- Ubuntu 18.04, 20.04, 22.04, 24.04
+- RHEL 7, 8, 9, and 10
+- SLES 12 SP5 and SLES 15 SP3+
+- Amazon Linux 2 and 2023
+- AlmaLinux, Azure Linux, Debian, Oracle Linux, and Rocky Linux versions listed in the Microsoft support matrix
 - Several other distributions (check the Microsoft docs for the full list)
 
 **Azure permissions:**
@@ -54,7 +56,7 @@ For a single server or initial testing, the interactive method is the simplest.
 
 ### Step 1: Generate the Onboarding Script
 
-In the Azure Portal, navigate to Azure Arc and click "Servers." Click "Add" and select "Add a single server." Fill in the details:
+In the Azure Portal, navigate to Azure Arc and click "Machines." Click "Add/Create" and select "Add a machine." For a single server, choose "Add a single server" and generate the script. Fill in the details:
 
 - Subscription and resource group where the server will be registered
 - Region (should be close to the server's physical location)
@@ -153,7 +155,7 @@ if ! command -v azcmagent &> /dev/null; then
 fi
 
 # Check if already connected
-STATUS=$(azcmagent show --json 2>/dev/null | jq -r '.status' 2>/dev/null)
+STATUS=$(azcmagent show status 2>/dev/null | tr -d '\r')
 if [ "$STATUS" == "Connected" ]; then
     echo "Server is already connected to Azure Arc"
     exit 0
@@ -208,14 +210,14 @@ Once your servers are onboarded, take advantage of the Azure management capabili
 1. **Apply Azure Policy** to enforce configuration standards
 2. **Enable Azure Monitor** to collect logs and metrics
 3. **Deploy Microsoft Defender for Cloud** for security monitoring
-4. **Install extensions** like the Log Analytics agent or custom script extensions
+4. **Install extensions** like the Azure Monitor Agent or custom script extensions
 5. **Use tags** to organize servers by environment, team, or application
 
 ## Network Architecture Considerations
 
 For production deployments, consider using Azure Arc Private Link Scope. This routes the agent's traffic through a private endpoint instead of the public internet, which is important for environments with strict network security requirements.
 
-The Private Link Scope setup involves creating an Azure Private Link Scope resource, connecting it to a private endpoint in your VNet, and configuring your on-premises DNS to resolve the Azure endpoints to the private IP addresses.
+The Private Link Scope setup involves creating an Azure Arc Private Link Scope resource, connecting it to a private endpoint in your VNet, and configuring your on-premises DNS to resolve the Azure Arc private endpoint addresses. Some endpoints, including Microsoft Entra ID and Azure Resource Manager, still use the normal route to the internet unless you configure separate private connectivity for them.
 
 ## Summary
 
