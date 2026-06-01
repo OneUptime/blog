@@ -16,7 +16,7 @@ In this post, I will explain how SNAT works in Azure, why port exhaustion happen
 
 When a VM behind an Azure Load Balancer needs to make an outbound connection to the internet, Azure performs SNAT. It translates the VM's private IP address and source port to a public IP address and a port from a pool of available SNAT ports. This is how multiple VMs can share the same public IP for outbound traffic.
 
-Each public IP address provides 64,512 SNAT ports. These ports are shared across all the VMs in the backend pool. By default, Azure allocates these ports automatically, which works fine for small deployments. But as your backend pool grows, the per-VM allocation shrinks, and you can run into exhaustion.
+Each public IP address provides up to 64,000 SNAT ports for Azure Load Balancer. These ports are shared across all the VMs in the backend pool. By default, Azure allocates these ports automatically based on the backend pool size, which works fine for small deployments. But as your backend pool grows, the per-VM allocation shrinks, and you can run into exhaustion.
 
 ```mermaid
 graph LR
@@ -26,7 +26,7 @@ graph LR
     LB -->|Public IP:Port| Internet
 ```
 
-The default allocation formula is roughly: 64,512 ports divided by the number of backend pool members. With 100 VMs, that is only about 645 ports per VM. If any single VM needs to make more than 645 simultaneous outbound connections, it hits exhaustion.
+The default allocation is based on backend pool size. With 100 VMs and one frontend IP, Azure allocates 512 SNAT ports per VM. If any single VM needs to make more simultaneous outbound connections to the same destination than its allocation supports, it hits exhaustion.
 
 ## Symptoms of SNAT Port Exhaustion
 
@@ -87,13 +87,13 @@ az network lb outbound-rule create \
   --address-pool bp-main
 ```
 
-The key parameter is `--outbound-ports 10000`. This allocates 10,000 SNAT ports per backend instance. With one public IP providing 64,512 ports, this means you can have up to 6 backend instances (64,512 / 10,000 = 6.45).
+The key parameter is `--outbound-ports 10000`. This allocates 10,000 SNAT ports per backend instance. With one public IP providing up to 64,000 ports, this means you can have up to 6 backend instances (64,000 / 10,000 = 6.4).
 
 If you need more capacity, add more public IP addresses.
 
 ### Step 3: Add More Public IPs for Scaling
 
-Each public IP adds another 64,512 ports to the pool. If you need to support more backend instances or higher port allocations, add public IPs.
+Each public IP adds up to another 64,000 ports to the pool. If you need to support more backend instances or higher port allocations, add public IPs.
 
 ```bash
 # Create additional public IPs for more SNAT capacity
@@ -123,18 +123,15 @@ az network lb frontend-ip create \
   --public-ip-address pip-lb-outbound-3
 
 # Update the outbound rule to use all three frontend IPs
-az network lb outbound-rule create \
+az network lb outbound-rule update \
   --resource-group rg-lb-outbound \
   --lb-name lb-main \
   --name rule-outbound \
   --frontend-ip-configs fe-outbound fe-outbound-2 fe-outbound-3 \
-  --protocol All \
-  --idle-timeout 15 \
-  --outbound-ports 10000 \
-  --address-pool bp-main
+  --outbound-ports 10000
 ```
 
-With three public IPs, you now have 193,536 total ports (3 x 64,512). At 10,000 ports per instance, that supports 19 backend instances.
+With three public IPs, you now have up to 192,000 total ports (3 x 64,000). At 10,000 ports per instance, that supports 19 backend instances.
 
 ## Choosing the Right Port Allocation
 
@@ -148,7 +145,7 @@ How many ports does each VM actually need? That depends on your workload. Here a
 You can calculate the maximum number of backend instances supported by your configuration with this formula:
 
 ```text
-Max instances = (Number of public IPs x 64,512) / Ports per instance
+Max instances = (Number of public IPs x 64,000) / Ports per instance
 ```
 
 ## Configuring Idle Timeout
@@ -164,7 +161,7 @@ az network lb outbound-rule update \
   --idle-timeout 4
 ```
 
-The default is 4 minutes, and you can set it up to 30 minutes. Shorter timeouts mean ports get recycled faster, which helps prevent exhaustion. But setting it too low can cause problems if your connections are legitimately idle for extended periods.
+The default is 4 minutes, and outbound rules can be configured up to 120 minutes. Shorter timeouts mean ports get recycled faster, which helps prevent exhaustion. But setting it too low can cause problems if your connections are legitimately idle for extended periods.
 
 ## TCP Reset on Idle Timeout
 
