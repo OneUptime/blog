@@ -68,7 +68,7 @@ A device twin is a JSON document with three main sections:
 
 ## Prerequisites
 
-- An Azure IoT Hub with devices registered
+- A standard-tier Azure IoT Hub with devices registered
 - Azure CLI with the IoT extension (`az extension add --name azure-iot`)
 - A device client that supports device twin operations (Azure IoT SDKs support this)
 
@@ -157,6 +157,7 @@ The device needs to listen for desired property changes and act on them. Here is
 # This runs on the IoT device and responds to cloud configuration updates
 from azure.iot.device import IoTHubDeviceClient
 import json
+import time
 
 # Connection string for the device (provisioned via DPS or manual registration)
 CONNECTION_STRING = "HostName=iothub-production-001.azure-devices.net;DeviceId=sensor-temp-042;SharedAccessKey=..."
@@ -227,6 +228,14 @@ desired = twin["desired"]
 desired_property_handler(desired)
 
 print("Device twin handler active, waiting for updates...")
+
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("Shutting down device twin handler...")
+finally:
+    client.shutdown()
 ```
 
 ## Step 4: Report Device State
@@ -289,7 +298,7 @@ az iot hub query \
     --hub-name iothub-production-001 \
     --query-command "SELECT tags.location.building, COUNT() AS deviceCount FROM devices GROUP BY tags.location.building"
 
-# Find offline devices (last activity more than 1 hour ago)
+# Find disconnected devices
 az iot hub query \
     --hub-name iothub-production-001 \
     --query-command "SELECT deviceId, connectionState, lastActivityTime FROM devices WHERE connectionState = 'Disconnected'"
@@ -310,7 +319,7 @@ This lets you build reactive workflows. For example, when a device reports low b
 
 ## Best Practices
 
-**Keep twin size manageable.** The maximum twin size is 32 KB total. Do not store large data payloads in twins. Use device-to-cloud messages for telemetry and blobs for large data.
+**Keep twin size manageable.** IoT Hub enforces an 8 KB limit for tags and a 32 KB limit each for desired properties and reported properties. Do not store large data payloads in twins. Use device-to-cloud messages for telemetry and blobs for large data.
 
 **Use desired/reported pattern consistently.** For every desired property you set, have the device report back the applied value in reported properties. This creates a feedback loop that lets you verify configuration changes.
 
