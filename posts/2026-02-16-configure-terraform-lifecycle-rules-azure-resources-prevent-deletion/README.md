@@ -14,11 +14,11 @@ This post covers how to use lifecycle rules effectively for Azure resources, wit
 
 ## Understanding Lifecycle Rules
 
-Terraform provides three lifecycle meta-arguments that control how resources are managed. `prevent_destroy` blocks any plan that would destroy the resource. `create_before_destroy` creates the replacement before destroying the original. `ignore_changes` tells Terraform to ignore modifications to specific attributes. Each serves a different purpose, and using them correctly can save you from disaster.
+Terraform provides lifecycle meta-arguments that control how resources are managed. The three most common are `prevent_destroy`, which blocks plans that would destroy the resource while the lifecycle rule remains in the configuration; `create_before_destroy`, which creates the replacement before destroying the original; and `ignore_changes`, which tells Terraform to ignore modifications to specific attributes. Each serves a different purpose, and using them correctly can save you from disaster.
 
 ## prevent_destroy: Protecting Critical Resources
 
-The `prevent_destroy` rule is the simplest and most powerful. When set to `true`, Terraform refuses to create any plan that would result in the resource being destroyed.
+The `prevent_destroy` rule is the simplest and most powerful. When set to `true`, Terraform refuses to create any plan that would result in the resource being destroyed while the lifecycle rule is still present in the configuration.
 
 ```hcl
 # Protect a production SQL database from accidental deletion
@@ -160,13 +160,12 @@ resource "azurerm_kubernetes_cluster" "main" {
   dns_prefix          = "aks-prod"
 
   default_node_pool {
-    name       = "default"
-    node_count = 3
-    vm_size    = "Standard_D4s_v5"
-
-    enable_auto_scaling = true
-    min_count           = 2
-    max_count           = 10
+    name                 = "default"
+    node_count           = 3
+    vm_size              = "Standard_D4s_v5"
+    auto_scaling_enabled = true
+    min_count            = 2
+    max_count            = 10
   }
 
   identity {
@@ -288,11 +287,12 @@ Terraform 1.2 introduced `precondition` and `postcondition` blocks that add vali
 ```hcl
 # Validate that critical settings are correct before applying
 resource "azurerm_storage_account" "important" {
-  name                     = "stimportantdata001"
-  resource_group_name      = azurerm_resource_group.main.name
-  location                 = azurerm_resource_group.main.location
-  account_tier             = "Standard"
-  account_replication_type = var.replication_type
+  name                       = "stimportantdata001"
+  resource_group_name        = azurerm_resource_group.main.name
+  location                   = azurerm_resource_group.main.location
+  account_tier               = "Standard"
+  account_replication_type   = var.replication_type
+  https_traffic_only_enabled = true
 
   lifecycle {
     prevent_destroy = true
@@ -305,7 +305,7 @@ resource "azurerm_storage_account" "important" {
 
     # Verify the storage account was created with HTTPS enforcement
     postcondition {
-      condition     = self.enable_https_traffic_only == true
+      condition     = self.https_traffic_only_enabled == true
       error_message = "Storage account must enforce HTTPS-only traffic."
     }
   }
@@ -320,20 +320,12 @@ When building reusable modules, include lifecycle rules as a standard practice.
 # modules/azure-database/main.tf
 # A database module with built-in safety
 
-variable "protect_from_deletion" {
-  description = "Whether to enable prevent_destroy lifecycle rule"
-  type        = bool
-  default     = true
-}
-
 resource "azurerm_mssql_database" "main" {
   name      = var.database_name
   server_id = var.server_id
   sku_name  = var.sku_name
 
-  # Dynamic lifecycle based on environment
-  # Note: prevent_destroy must be a literal, not a variable
-  # This pattern uses count for conditional protection
+  # Lifecycle arguments must use literal values, not variables
   lifecycle {
     prevent_destroy = true
     ignore_changes = [
