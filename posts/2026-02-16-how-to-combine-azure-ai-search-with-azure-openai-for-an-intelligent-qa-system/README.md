@@ -41,7 +41,7 @@ You need the following Azure resources:
 
 1. **Azure AI Search** (Basic tier or higher) with an index containing your documents
 2. **Azure OpenAI** with a GPT-4 or GPT-4o deployment
-3. Python 3.8+ with the required packages
+3. Python 3.9+ with the required packages
 
 ```bash
 # Install the required Python packages
@@ -115,7 +115,7 @@ DEPLOYMENT_NAME = "gpt-4o"  # Your deployment name
 
 openai_client = AzureOpenAI(
     api_key=OPENAI_KEY,
-    api_version="2024-06-01",
+    api_version="2024-10-21",
     azure_endpoint=OPENAI_ENDPOINT
 )
 ```
@@ -283,7 +283,7 @@ def truncate_context(documents: list[dict], max_tokens: int = 6000) -> str:
 
 ## Step 6: Use the Built-In "On Your Data" Feature
 
-Azure OpenAI also has a built-in "On Your Data" feature that handles the RAG pattern automatically. Instead of writing the search and context assembly code yourself, you configure the data source directly in the API call.
+Azure OpenAI also has a built-in "On Your Data" feature that handles the RAG pattern automatically. Instead of writing the search and context assembly code yourself, you configure the data source directly in the API call. This feature is now deprecated and approaching retirement, so use it only for existing supported deployments and consider Foundry Agent Service with Foundry IQ for new projects.
 
 ```python
 # on_your_data.py - Use Azure OpenAI's built-in data source integration
