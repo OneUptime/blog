@@ -70,7 +70,7 @@ Let me break down each parameter:
 
 Rolling upgrades require health monitoring. Without a way to verify that updated instances are healthy, the rolling upgrade has no signal to determine whether to continue or stop.
 
-You can use either a load balancer health probe or the Application Health Extension:
+For Uniform orchestration scale sets, you can use either a load balancer health probe or the Application Health Extension. For Flexible orchestration scale sets, use the Application Health Extension:
 
 ### Load Balancer Health Probe
 
@@ -104,6 +104,12 @@ az vmss extension set \
     "port": 8080,
     "requestPath": "/health"
   }'
+
+# If the scale set uses Manual upgrade mode, install the extension on existing instances
+az vmss update-instances \
+  --resource-group myResourceGroup \
+  --name myScaleSet \
+  --instance-ids "*"
 ```
 
 I prefer the Application Health Extension because it works independently of the load balancer and can detect application-level issues that the load balancer probe might miss.
@@ -203,11 +209,11 @@ az vmss update \
   --set virtualMachineProfile.storageProfile.imageReference.version=1.0.0
 ```
 
-**Manually reimage specific instances**: If only a few instances were updated, you can reimage them individually.
+**Manually update or reimage specific instances after reverting the model**: If only a few instances were updated, revert the scale set model first, then update or reimage those instances so they are recreated from the reverted model.
 
 ```bash
-# Reimage specific instances back to the scale set model
-az vmss reimage --resource-group myResourceGroup --name myScaleSet --instance-ids 0 1 2
+# Update specific instances to the reverted scale set model
+az vmss update-instances --resource-group myResourceGroup --name myScaleSet --instance-ids 0 1 2
 ```
 
 ## Best Practices for Rolling Upgrades
@@ -222,15 +228,22 @@ The pause between batches should be long enough for newly updated instances to s
 
 ### Health Check Grace Period
 
-New instances need time to boot, run startup scripts, and warm up the application before they can pass health checks. Configure a grace period:
+New instances need time to boot, run startup scripts, and warm up the application before they can pass health checks. If you use the Application Health Extension with rich health states, configure a grace period:
 
 ```bash
-# Set automatic repair policy with grace period
-az vmss update \
+# Set Application Health Extension rich health states with a grace period
+az vmss extension set \
   --resource-group myResourceGroup \
-  --name myScaleSet \
-  --set automaticRepairsPolicy.enabled=true \
-  --set automaticRepairsPolicy.gracePeriod=PT30M
+  --vmss-name myScaleSet \
+  --name ApplicationHealthLinux \
+  --publisher Microsoft.ManagedServices \
+  --version 2.0 \
+  --settings '{
+    "protocol": "http",
+    "port": 8080,
+    "requestPath": "/health",
+    "gracePeriod": 600
+  }'
 ```
 
 ### Pre-Upgrade Testing
@@ -287,12 +300,14 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Update Scale Set Image
+        env:
+          IMAGE_VERSION: 2.0.0
         run: |
-          # Update the scale set with the new image version
+          # Update the scale set with a published image version
           az vmss update \
             --resource-group myResourceGroup \
             --name myScaleSet \
-            --set virtualMachineProfile.storageProfile.imageReference.version=${{ github.sha }}
+            --set virtualMachineProfile.storageProfile.imageReference.version=${{ env.IMAGE_VERSION }}
 
       - name: Monitor Rolling Upgrade
         run: |
