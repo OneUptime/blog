@@ -233,17 +233,12 @@ async function consumeEvents() {
 }
 ```
 
-## Using Azure AD Authentication (OAuth)
+## Using Microsoft Entra ID Authentication (OAuth)
 
-For production environments, Azure AD authentication is more secure than connection strings. It uses the SASL/OAUTHBEARER mechanism:
+For production environments, Microsoft Entra ID authentication is more secure than connection strings. It uses the SASL/OAUTHBEARER mechanism. With librdkafka-based clients such as confluent-kafka, you can configure OIDC token retrieval directly:
 
 ```python
 from confluent_kafka import Producer
-from azure.identity import DefaultAzureCredential
-
-# Get an OAuth token using Azure Identity
-credential = DefaultAzureCredential()
-token = credential.get_token("https://eventhubs.azure.net/.default")
 
 producer_config = {
     'bootstrap.servers': 'my-eventhubs-namespace.servicebus.windows.net:9093',
@@ -253,7 +248,7 @@ producer_config = {
     'sasl.oauthbearer.client.id': '<your-app-client-id>',
     'sasl.oauthbearer.client.secret': '<your-app-client-secret>',
     'sasl.oauthbearer.token.endpoint.url': 'https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token',
-    'sasl.oauthbearer.scope': 'https://eventhubs.azure.net/.default',
+    'sasl.oauthbearer.scope': 'https://my-eventhubs-namespace.servicebus.windows.net/.default',
 }
 
 producer = Producer(producer_config)
@@ -286,13 +281,13 @@ While the Kafka protocol compatibility is very good, there are some differences 
 
 **Partition count changes**: In Standard tier, partition count is fixed after creation. Kafka's ability to add partitions dynamically does not apply.
 
-**Compacted topics**: Log compaction is not supported. Event Hubs uses time-based retention only.
+**Compacted topics**: Log compaction is supported on compacted Event Hubs/Kafka topics, but you enable it through Azure management options rather than Kafka topic configuration.
 
-**Transactions**: Kafka transactions (exactly-once semantics with `transactional.id`) are not supported.
+**Transactions**: Kafka transactions are not generally available across all tiers. They are currently in public preview for Premium and Dedicated tiers.
 
-**Consumer group management**: Consumer groups created through the Kafka protocol are visible in the Azure portal, and vice versa.
+**Consumer group management**: Kafka consumer groups are auto-created and managed through Kafka APIs. They are distinct from Event Hubs consumer groups that you manage in the Azure portal.
 
-**Retention**: Event Hubs retention is configured per Event Hub (1-90 days on Standard tier), not through Kafka topic configuration.
+**Retention**: Event Hubs retention is configured per Event Hub, not through Kafka topic configuration. Standard tier supports up to 7 days; Premium and Dedicated support up to 90 days.
 
 ## Migrating from Self-Managed Kafka
 
@@ -324,7 +319,8 @@ When connecting Kafka clients to Event Hubs, these settings help optimize perfor
 # Producer tuning for Event Hubs
 batch.size=65536
 linger.ms=10
-compression.type=lz4
+compression.type=none
+# Use compression.type=gzip only on Premium or Dedicated tiers
 buffer.memory=67108864
 request.timeout.ms=60000
 delivery.timeout.ms=120000
@@ -334,7 +330,7 @@ fetch.min.bytes=1024
 fetch.max.wait.ms=500
 max.poll.records=500
 session.timeout.ms=30000
-heartbeat.interval.ms=10000
+heartbeat.interval.ms=3000
 ```
 
 Increase timeouts compared to local Kafka because cloud endpoints have higher network latency than local broker connections.
