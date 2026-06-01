@@ -162,9 +162,18 @@ az network front-door waf-policy rule create \
   --name RateLimitRule \
   --priority 100 \
   --rule-type RateLimitRule \
-  --rate-limit-duration-in-minutes 1 \
+  --rate-limit-duration 1 \
   --rate-limit-threshold 100 \
-  --action Block
+  --action Block \
+  --defer
+
+az network front-door waf-policy rule match-condition add \
+  --policy-name waf-functions \
+  --resource-group rg-functions \
+  --name RateLimitRule \
+  --match-variable RequestUri \
+  --operator Contains \
+  --values "/api/"
 
 # Associate the WAF policy with the Front Door endpoint
 az afd security-policy create \
