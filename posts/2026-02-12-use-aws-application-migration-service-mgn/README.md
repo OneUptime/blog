@@ -43,36 +43,13 @@ Before starting, set up the MGN service in your target region.
 aws mgn initialize-service --region us-east-1
 ```
 
-Create an IAM user or role for the replication agent.
+Create an IAM user or role for the replication agent and attach the AWS managed policy for agent installation.
 
 ```bash
-# Create an IAM policy for the MGN agent
-aws iam create-policy \
-    --policy-name "MGNAgentPolicy" \
-    --policy-document '{
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "mgn:SendAgentMetricsForMgn",
-                    "mgn:SendAgentLogsForMgn",
-                    "mgn:SendClientMetricsForMgn",
-                    "mgn:SendClientLogsForMgn",
-                    "mgn:RegisterAgentForMgn",
-                    "mgn:UpdateAgentSourcePropertiesForMgn",
-                    "mgn:UpdateAgentReplicationInfoForMgn",
-                    "mgn:UpdateAgentConversionInfoForMgn",
-                    "mgn:GetAgentInstallationAssetsForMgn",
-                    "mgn:GetAgentCommandForMgn",
-                    "mgn:GetAgentConfirmedResumeInfoForMgn",
-                    "mgn:GetAgentRuntimeConfigurationForMgn",
-                    "mgn:GetAgentReplicationInfoForMgn"
-                ],
-                "Resource": "*"
-            }
-        ]
-    }'
+# Attach the AWS managed policy for MGN agent installation
+aws iam attach-user-policy \
+    --user-name "mgn-agent-installer" \
+    --policy-arn "arn:aws:iam::aws:policy/AWSApplicationMigrationAgentInstallationPolicy"
 ```
 
 ## Installing the MGN Agent
@@ -117,7 +94,7 @@ aws mgn describe-source-servers \
 
 # Get detailed replication status for a specific server
 aws mgn describe-source-servers \
-    --filters '{"sourceServerIDs": ["s-abc123"]}' \
+    --filters '{"sourceServerIDs": ["s-0123456789abcdef0"]}' \
     --query "items[0].{
         Name: sourceProperties.identificationHints.hostname,
         State: dataReplicationInfo.dataReplicationState,
@@ -140,22 +117,28 @@ Before launching test or cutover instances, configure how the target EC2 instanc
 ```bash
 # Update launch configuration
 aws mgn update-launch-configuration \
-    --source-server-id "s-abc123" \
+    --source-server-id "s-0123456789abcdef0" \
     --name "payment-api-server" \
-    --ec2-launch-template-id "lt-abc123" \
     --launch-disposition "STARTED" \
     --target-instance-type-right-sizing-method "BASIC" \
-    --copy-private-ip false \
-    --copy-tags true \
+    --no-copy-private-ip \
+    --copy-tags \
     --boot-mode "LEGACY_BIOS"
 ```
 
-You can also configure the target using an EC2 Launch Template for more control.
+MGN automatically creates an EC2 Launch Template for each source server. You can modify that launch template for more control.
 
 ```bash
-# Create a launch template for the target instances
-aws ec2 create-launch-template \
-    --launch-template-name "mgn-payment-api" \
+# Get the EC2 launch template MGN created for this source server
+LT_ID=$(aws mgn get-launch-configuration \
+    --source-server-id "s-0123456789abcdef0" \
+    --query "ec2LaunchTemplateID" \
+    --output text)
+
+# Create a new version of the launch template for the target instance
+LT_VERSION=$(aws ec2 create-launch-template-version \
+    --launch-template-id "$LT_ID" \
+    --source-version '$Default' \
     --launch-template-data '{
         "InstanceType": "t3.large",
         "SecurityGroupIds": ["sg-abc123"],
@@ -168,7 +151,14 @@ aws ec2 create-launch-template \
                 {"Key": "MigratedFrom", "Value": "on-premises"}
             ]
         }]
-    }'
+    }' \
+    --query "LaunchTemplateVersion.VersionNumber" \
+    --output text)
+
+# Make the new launch template version the default version used by MGN
+aws ec2 modify-launch-template \
+    --launch-template-id "$LT_ID" \
+    --default-version "$LT_VERSION"
 ```
 
 ## Running a Test Launch
@@ -178,7 +168,7 @@ Always test before cutting over. The test launch creates an EC2 instance from th
 ```bash
 # Launch a test instance
 aws mgn start-test \
-    --source-server-ids '["s-abc123"]'
+    --source-server-ids "s-0123456789abcdef0"
 ```
 
 After the test instance launches, validate:
@@ -192,19 +182,22 @@ After the test instance launches, validate:
 ```bash
 # Check the test instance status
 aws mgn describe-source-servers \
-    --filters '{"sourceServerIDs": ["s-abc123"]}' \
+    --filters '{"sourceServerIDs": ["s-0123456789abcdef0"]}' \
     --query "items[0].lifeCycle.lastTest"
 ```
 
-After testing, mark the test as complete.
+After successful testing, mark the server as ready for cutover. You can also terminate the launched test instance when you no longer need it.
 
 ```bash
-# Mark test as successful and clean up test instances
-aws mgn mark-as-archived \
-    --source-server-id "s-abc123"
-```
+# Mark the server ready for cutover
+aws mgn change-server-life-cycle-state \
+    --source-server-id "s-0123456789abcdef0" \
+    --life-cycle '{"state": "READY_FOR_CUTOVER"}'
 
-Wait - don't actually archive it. Instead, finalize the test to proceed to cutover readiness.
+# Clean up the launched test instance
+aws mgn terminate-target-instances \
+    --source-server-ids "s-0123456789abcdef0"
+```
 
 ## Cutover
 
@@ -213,7 +206,7 @@ When you're satisfied with test results, perform the cutover. This is the actual
 ```bash
 # Start the cutover
 aws mgn start-cutover \
-    --source-server-ids '["s-abc123"]'
+    --source-server-ids "s-0123456789abcdef0"
 ```
 
 The cutover process:
@@ -226,7 +219,7 @@ The cutover process:
 ```bash
 # Check cutover status
 aws mgn describe-source-servers \
-    --filters '{"sourceServerIDs": ["s-abc123"]}' \
+    --filters '{"sourceServerIDs": ["s-0123456789abcdef0"]}' \
     --query "items[0].lifeCycle.lastCutover"
 ```
 
@@ -237,7 +230,7 @@ After cutover, verify everything works and then finalize.
 ```bash
 # After successful validation, finalize the cutover
 aws mgn finalize-cutover \
-    --source-server-id "s-abc123"
+    --source-server-id "s-0123456789abcdef0"
 
 # This disconnects the agent and stops replication
 ```
