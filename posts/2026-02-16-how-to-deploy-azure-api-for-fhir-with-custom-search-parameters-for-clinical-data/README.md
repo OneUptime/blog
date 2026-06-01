@@ -1,16 +1,16 @@
-# How to Deploy Azure API for FHIR with Custom Search Parameters for Clinical Data
+# How to Deploy Azure Health Data Services FHIR Service with Custom Search Parameters for Clinical Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure FHIR, Healthcare, Clinical Data, HL7 FHIR, Azure Health Data Services, Search Parameters, Interoperability
 
-Description: Deploy Azure API for FHIR and configure custom search parameters to enable efficient querying of clinical data for healthcare applications.
+Description: Deploy the FHIR service in Azure Health Data Services and configure custom search parameters to enable efficient querying of clinical data for healthcare applications.
 
 ---
 
-FHIR (Fast Healthcare Interoperability Resources) is the modern standard for exchanging healthcare data. Azure API for FHIR provides a managed, HIPAA-compliant FHIR server that stores and serves clinical data through standard RESTful APIs. Out of the box, it supports the search parameters defined in the FHIR specification. But real-world clinical applications often need to search on custom extensions or specific data patterns that the default parameters do not cover.
+FHIR (Fast Healthcare Interoperability Resources) is the modern standard for exchanging healthcare data. The FHIR service in Azure Health Data Services provides a managed, compliant FHIR server that stores and serves clinical data through standard RESTful APIs. Out of the box, it supports the search parameters defined in the FHIR specification. But real-world clinical applications often need to search on custom extensions or specific data patterns that the default parameters do not cover.
 
-This guide walks through deploying Azure API for FHIR, configuring custom search parameters, and building efficient queries for clinical workflows.
+This guide walks through deploying the FHIR service in Azure Health Data Services, configuring custom search parameters, and building efficient queries for clinical workflows.
 
 ## Why Custom Search Parameters?
 
@@ -23,49 +23,54 @@ The FHIR specification defines a comprehensive set of search parameters for each
 
 Without custom search parameters, you would have to fetch all resources and filter client-side, which is impractical for large datasets.
 
-## Step 1: Deploy Azure API for FHIR
+## Step 1: Deploy the FHIR Service in Azure Health Data Services
 
 ### Using the Azure Portal
 
-1. Search for "Azure API for FHIR" in the Azure portal.
-2. Click Create.
-3. Configure the basics:
+1. Create or open an Azure Health Data Services workspace in the Azure portal.
+2. In the workspace, select Services > FHIR service.
+3. Click Add FHIR service.
+4. Configure the basics:
    - Subscription and resource group
-   - Account name (globally unique)
+   - FHIR service name
    - Location (choose a region close to your users)
-   - FHIR version: R4 (the current standard)
-4. Configure authentication:
-   - Authority: `https://login.microsoftonline.com/{tenant-id}`
-   - Audience: `https://{account-name}.azurehealthcareapis.com`
-5. Configure networking:
+   - FHIR version: R4 (the common production version supported by Azure Health Data Services)
+5. Review authentication:
+   - By default, the FHIR service uses Microsoft Entra ID and Azure RBAC for data plane access.
+   - The audience is the FHIR service endpoint, such as `https://{workspace-name}-{fhir-service-name}.fhir.azurehealthcareapis.com`.
+6. Configure networking:
    - Public endpoint or private endpoint based on your security requirements.
-6. Click Create.
+7. Click Create.
 
 ### Using Azure CLI
 
 ```bash
-# Create the FHIR service using Azure CLI
+# Create the workspace and FHIR service using Azure CLI
 
 # This deploys a fully managed FHIR R4 server
-az healthcareapis service create \
+az healthcareapis workspace create \
     --resource-group healthcare-rg \
-    --resource-name my-fhir-server \
+    --name healthcare-workspace \
+    --location eastus
+
+az healthcareapis workspace fhir-service create \
+    --resource-group healthcare-rg \
+    --workspace-name healthcare-workspace \
+    --name my-fhir-service \
     --kind fhir-R4 \
     --location eastus \
-    --cosmos-db-configuration offer-throughput=1000 \
     --authentication-configuration \
         authority="https://login.microsoftonline.com/{tenant-id}" \
-        audience="https://my-fhir-server.azurehealthcareapis.com"
+        audience="https://healthcare-workspace-my-fhir-service.fhir.azurehealthcareapis.com"
 ```
 
 ### Configure Access
 
-Register an Azure AD application for your client:
+Register a Microsoft Entra application for your client:
 
 1. Create an app registration for the FHIR client application.
-2. Add the FHIR API permission: `https://{account-name}.azurehealthcareapis.com/user_impersonation`.
-3. Grant admin consent.
-4. Assign the "FHIR Data Contributor" role to the application on the FHIR resource.
+2. Assign the "FHIR Data Contributor" role to the application on the FHIR resource.
+3. Use the application's client ID and credentials to request tokens for the FHIR service endpoint.
 
 ## Step 2: Load Sample Clinical Data
 
@@ -120,7 +125,7 @@ Load it using a PUT request:
 # Upload the patient resource to the FHIR server
 # Uses bearer token authentication
 curl -X PUT \
-    "https://my-fhir-server.azurehealthcareapis.com/Patient/patient-001" \
+    "https://healthcare-workspace-my-fhir-service.fhir.azurehealthcareapis.com/Patient/patient-001" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H "Content-Type: application/fhir+json" \
     -d @patient.json
@@ -138,13 +143,13 @@ A custom search parameter is itself a FHIR resource of type `SearchParameter`. Y
     "id": "patient-mrn",
     "url": "http://example.org/fhir/SearchParameter/patient-mrn",
     "version": "1.0.0",
-    "name": "mrn",
+    "name": "PatientMrn",
     "status": "active",
     "description": "Search patients by medical record number extension",
     "code": "mrn",
     "base": ["Patient"],
     "type": "string",
-    "expression": "Patient.extension.where(url='http://example.org/fhir/StructureDefinition/mrn').value.ofType(string)"
+    "expression": "Patient.extension('http://example.org/fhir/StructureDefinition/mrn').value"
 }
 ```
 
@@ -152,8 +157,8 @@ Upload it:
 
 ```bash
 # Create the custom search parameter on the FHIR server
-curl -X PUT \
-    "https://my-fhir-server.azurehealthcareapis.com/SearchParameter/patient-mrn" \
+curl -X POST \
+    "https://healthcare-workspace-my-fhir-service.fhir.azurehealthcareapis.com/SearchParameter" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H "Content-Type: application/fhir+json" \
     -d @search-parameter-mrn.json
@@ -167,13 +172,13 @@ curl -X PUT \
     "id": "patient-fall-risk",
     "url": "http://example.org/fhir/SearchParameter/patient-fall-risk",
     "version": "1.0.0",
-    "name": "fallRiskScore",
+    "name": "PatientFallRiskScore",
     "status": "active",
     "description": "Search patients by fall risk score",
     "code": "fall-risk-score",
     "base": ["Patient"],
     "type": "number",
-    "expression": "Patient.extension.where(url='http://example.org/fhir/StructureDefinition/fall-risk-score').value.ofType(integer)"
+    "expression": "Patient.extension('http://example.org/fhir/StructureDefinition/fall-risk-score').value.ofType(integer)"
 }
 ```
 
@@ -187,7 +192,7 @@ For Observations with specific components (like blood pressure with systolic and
     "id": "observation-systolic",
     "url": "http://example.org/fhir/SearchParameter/observation-systolic",
     "version": "1.0.0",
-    "name": "systolicBP",
+    "name": "ObservationSystolicBP",
     "status": "active",
     "description": "Search observations by systolic blood pressure value",
     "code": "systolic-bp",
@@ -207,21 +212,12 @@ After creating custom search parameters, you must reindex the server so that exi
 # Start a reindex job on the FHIR server
 # This runs asynchronously and indexes all resources with the new search parameters
 curl -X POST \
-    "https://my-fhir-server.azurehealthcareapis.com/$reindex" \
+    "https://healthcare-workspace-my-fhir-service.fhir.azurehealthcareapis.com/$reindex" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H "Content-Type: application/fhir+json" \
     -d '{
         "resourceType": "Parameters",
-        "parameter": [
-            {
-                "name": "maximumConcurrency",
-                "valueInteger": 3
-            },
-            {
-                "name": "targetDataStoreUsagePercentage",
-                "valueInteger": 80
-            }
-        ]
+        "parameter": []
     }'
 ```
 
@@ -230,7 +226,7 @@ The reindex job returns a job ID. Check its status:
 ```bash
 # Check reindex job status
 curl -X GET \
-    "https://my-fhir-server.azurehealthcareapis.com/_operations/reindex/{job-id}" \
+    "https://healthcare-workspace-my-fhir-service.fhir.azurehealthcareapis.com/_operations/reindex/{job-id}" \
     -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -245,7 +241,7 @@ Once reindexing completes, use the custom parameters in search queries.
 ```bash
 # Find a patient by their MRN extension value
 curl -X GET \
-    "https://my-fhir-server.azurehealthcareapis.com/Patient?mrn=MRN-2026-001234" \
+    "https://healthcare-workspace-my-fhir-service.fhir.azurehealthcareapis.com/Patient?mrn=MRN-2026-001234" \
     -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -254,16 +250,16 @@ curl -X GET \
 ```bash
 # Find patients with fall risk score greater than 5
 curl -X GET \
-    "https://my-fhir-server.azurehealthcareapis.com/Patient?fall-risk-score=gt5" \
+    "https://healthcare-workspace-my-fhir-service.fhir.azurehealthcareapis.com/Patient?fall-risk-score=gt5" \
     -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
 ### Combine Custom and Standard Parameters
 
 ```bash
-# Find active male patients in WA with high fall risk
+# Find male patients in WA with high fall risk
 curl -X GET \
-    "https://my-fhir-server.azurehealthcareapis.com/Patient?gender=male&address-state=WA&fall-risk-score=gt5" \
+    "https://healthcare-workspace-my-fhir-service.fhir.azurehealthcareapis.com/Patient?gender=male&address-state=WA&fall-risk-score=gt5" \
     -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -272,7 +268,7 @@ curl -X GET \
 ```bash
 # Find observations with systolic BP above 140 mmHg
 curl -X GET \
-    "https://my-fhir-server.azurehealthcareapis.com/Observation?systolic-bp=gt140|http://unitsofmeasure.org|mm[Hg]" \
+    "https://healthcare-workspace-my-fhir-service.fhir.azurehealthcareapis.com/Observation?systolic-bp=gt140|http://unitsofmeasure.org|mm[Hg]" \
     -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -281,8 +277,8 @@ curl -X GET \
 Here is a Python example of querying the FHIR server with custom search parameters:
 
 ```python
-# Python client for querying Azure FHIR with custom search parameters
-# Uses the requests library and Azure AD authentication
+# Python client for querying the Azure Health Data Services FHIR service with custom search parameters
+# Uses the requests library and Microsoft Entra authentication
 import requests
 from azure.identity import ClientSecretCredential
 
@@ -357,13 +353,13 @@ class FhirClient:
 
 ### Throughput
 
-Azure API for FHIR uses Cosmos DB as the backend. Throughput is measured in Request Units (RU):
+The FHIR service indexes search parameters for efficient search, and query complexity affects performance:
 
-- Search queries consume more RU than direct reads.
-- Queries with multiple parameters consume more RU.
-- Sort operations (`_sort`) add significant RU cost.
+- Search queries are generally more expensive than direct reads.
+- Queries with multiple or low-selectivity parameters can increase latency.
+- Sort operations (`_sort`) add additional query cost.
 
-Monitor RU consumption in the Azure portal and adjust throughput as needed.
+Monitor latency, request volume, throttling, and errors in Azure Monitor, and tune search parameters and client query patterns as needed.
 
 ### Indexing Impact
 
@@ -375,7 +371,7 @@ Each custom search parameter adds indexing overhead:
 
 ## Compliance and Security
 
-Azure API for FHIR is HIPAA-compliant and supports:
+The FHIR service in Azure Health Data Services supports:
 
 - Customer-managed encryption keys for data at rest.
 - Private Link for network isolation.
@@ -387,7 +383,7 @@ Enable diagnostic logging to track all search queries for compliance auditing:
 ```bash
 # Enable diagnostic logging for the FHIR service
 az monitor diagnostic-settings create \
-    --resource "/subscriptions/{sub}/resourceGroups/healthcare-rg/providers/Microsoft.HealthcareApis/services/my-fhir-server" \
+    --resource "/subscriptions/{sub}/resourceGroups/healthcare-rg/providers/Microsoft.HealthcareApis/workspaces/healthcare-workspace/fhirservices/my-fhir-service" \
     --name "fhir-diagnostics" \
     --workspace "/subscriptions/{sub}/resourceGroups/healthcare-rg/providers/Microsoft.OperationalInsights/workspaces/my-workspace" \
     --logs '[{"category":"AuditLogs","enabled":true}]'
@@ -395,4 +391,4 @@ az monitor diagnostic-settings create \
 
 ## Wrapping Up
 
-Azure API for FHIR with custom search parameters lets you build efficient clinical data queries that go beyond the default FHIR specification. The process involves deploying the FHIR server, creating SearchParameter resources with FHIRPath expressions targeting your custom extensions, reindexing the server, and then using the new parameters in standard FHIR search queries. Design your search parameters carefully since each one adds indexing overhead, and monitor RU consumption to keep performance within acceptable limits.
+The FHIR service in Azure Health Data Services with custom search parameters lets you build efficient clinical data queries that go beyond the default FHIR specification. The process involves deploying the FHIR server, creating SearchParameter resources with FHIRPath expressions targeting your custom extensions, reindexing the server, and then using the new parameters in standard FHIR search queries. Design your search parameters carefully since each one adds indexing overhead, and monitor query performance to keep performance within acceptable limits.
