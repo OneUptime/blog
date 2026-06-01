@@ -26,7 +26,7 @@ These queries require scanning large datasets and performing aggregations. A FHI
 - Azure Health Data Services workspace with a FHIR service deployed
 - Azure Data Lake Storage Gen2 account
 - Azure CLI installed
-- Appropriate RBAC permissions on both resources
+- Appropriate RBAC permissions on both resources, including the FHIR Data Exporter role for the client that starts the export
 
 ## Step 1: Create the Data Lake Storage Account
 
@@ -50,7 +50,8 @@ az storage account create \
 # Create a container for the FHIR exports
 az storage container create \
     --name $CONTAINER_NAME \
-    --account-name $STORAGE_ACCOUNT
+    --account-name $STORAGE_ACCOUNT \
+    --auth-mode login
 ```
 
 ## Step 2: Grant the FHIR Service Access to the Storage Account
@@ -58,8 +59,15 @@ az storage container create \
 The FHIR service needs write access to the storage account. The recommended approach is using managed identity:
 
 ```bash
+# Enable the FHIR service's system-assigned managed identity if it is not already enabled
+az healthcareapis workspace fhir-service update \
+    --name fhir-clinical \
+    --workspace-name healthworkspace01 \
+    --resource-group $RESOURCE_GROUP \
+    --identity-type SystemAssigned
+
 # Get the FHIR service's managed identity principal ID
-FHIR_PRINCIPAL_ID=$(az healthcareapis fhir-service show \
+FHIR_PRINCIPAL_ID=$(az healthcareapis workspace fhir-service show \
     --name fhir-clinical \
     --workspace-name healthworkspace01 \
     --resource-group $RESOURCE_GROUP \
@@ -85,11 +93,15 @@ Update the FHIR service to point to the storage account:
 
 ```bash
 # Configure the export storage account on the FHIR service
-az healthcareapis fhir-service update \
+FHIR_SERVICE_ID=$(az healthcareapis workspace fhir-service show \
     --name fhir-clinical \
     --workspace-name healthworkspace01 \
     --resource-group $RESOURCE_GROUP \
-    --export-storage-account-name $STORAGE_ACCOUNT
+    --query id -o tsv)
+
+az resource update \
+    --ids $FHIR_SERVICE_ID \
+    --set properties.exportConfiguration.storageAccountName=$STORAGE_ACCOUNT
 ```
 
 ## Step 4: Run a FHIR Export
@@ -102,6 +114,8 @@ The FHIR service supports the Bulk Data Export specification ($export operation)
 # Get an access token
 FHIR_URL="https://healthworkspace01-fhir-clinical.fhir.azurehealthcareapis.com"
 TENANT_ID=$(az account show --query tenantId -o tsv)
+APP_ID="<your-client-application-id>"
+CLIENT_SECRET="<your-client-secret>"
 
 TOKEN=$(curl -s -X POST \
     "https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token" \
@@ -114,7 +128,7 @@ TOKEN=$(curl -s -X POST \
 # Trigger a full export (all resource types)
 # The export runs asynchronously and returns a Content-Location header
 EXPORT_RESPONSE=$(curl -s -i -X GET \
-    "${FHIR_URL}/\$export" \
+    "${FHIR_URL}/\$export?_container=${CONTAINER_NAME}" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Accept: application/fhir+json" \
     -H "Prefer: respond-async")
@@ -130,7 +144,7 @@ echo "Export polling URL: $POLL_URL"
 ```bash
 # Export only Patient, Observation, and Condition resources
 curl -s -i -X GET \
-    "${FHIR_URL}/\$export?_type=Patient,Observation,Condition" \
+    "${FHIR_URL}/\$export?_container=${CONTAINER_NAME}&_type=Patient,Observation,Condition" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Accept: application/fhir+json" \
     -H "Prefer: respond-async"
@@ -142,7 +156,7 @@ curl -s -i -X GET \
 # Export only data modified since a specific date
 # Useful for incremental exports
 curl -s -i -X GET \
-    "${FHIR_URL}/\$export?_since=2026-01-01T00:00:00Z" \
+    "${FHIR_URL}/\$export?_container=${CONTAINER_NAME}&_since=2026-01-01T00:00:00Z" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Accept: application/fhir+json" \
     -H "Prefer: respond-async"
@@ -167,17 +181,17 @@ When the export completes, the response includes links to the exported files:
     "output": [
         {
             "type": "Patient",
-            "url": "https://healthdatalake01.blob.core.windows.net/fhir-export/Patient.ndjson",
+            "url": "https://healthdatalake01.blob.core.windows.net/fhir-export/20260216T120000/Patient-0-0.ndjson",
             "count": 15000
         },
         {
             "type": "Observation",
-            "url": "https://healthdatalake01.blob.core.windows.net/fhir-export/Observation.ndjson",
+            "url": "https://healthdatalake01.blob.core.windows.net/fhir-export/20260216T120000/Observation-0-0.ndjson",
             "count": 450000
         },
         {
             "type": "Condition",
-            "url": "https://healthdatalake01.blob.core.windows.net/fhir-export/Condition.ndjson",
+            "url": "https://healthdatalake01.blob.core.windows.net/fhir-export/20260216T120000/Condition-0-0.ndjson",
             "count": 85000
         }
     ]
@@ -200,7 +214,7 @@ SELECT
     JSON_VALUE(doc, '$.address[0].city') AS City,
     JSON_VALUE(doc, '$.address[0].state') AS State
 FROM OPENROWSET(
-    BULK 'https://healthdatalake01.dfs.core.windows.net/fhir-export/Patient.ndjson',
+    BULK 'https://healthdatalake01.dfs.core.windows.net/fhir-export/*/Patient-*.ndjson',
     FORMAT = 'CSV',
     FIELDTERMINATOR = '0x0b',
     FIELDQUOTE = '0x0b',
@@ -218,7 +232,7 @@ WITH Diabetics AS (
         JSON_VALUE(doc, '$.subject.reference') AS PatientRef,
         JSON_VALUE(doc, '$.code.coding[0].code') AS ConditionCode
     FROM OPENROWSET(
-        BULK 'https://healthdatalake01.dfs.core.windows.net/fhir-export/Condition.ndjson',
+        BULK 'https://healthdatalake01.dfs.core.windows.net/fhir-export/*/Condition-*.ndjson',
         FORMAT = 'CSV',
         FIELDTERMINATOR = '0x0b',
         FIELDQUOTE = '0x0b',
@@ -232,7 +246,7 @@ HbA1c AS (
         CAST(JSON_VALUE(doc, '$.valueQuantity.value') AS FLOAT) AS HbA1cValue,
         JSON_VALUE(doc, '$.effectiveDateTime') AS MeasurementDate
     FROM OPENROWSET(
-        BULK 'https://healthdatalake01.dfs.core.windows.net/fhir-export/Observation.ndjson',
+        BULK 'https://healthdatalake01.dfs.core.windows.net/fhir-export/*/Observation-*.ndjson',
         FORMAT = 'CSV',
         FIELDTERMINATOR = '0x0b',
         FIELDQUOTE = '0x0b',
@@ -275,7 +289,7 @@ For ongoing analytics, set up a recurring export using Azure Logic Apps or Azure
                 "type": "Http",
                 "inputs": {
                     "method": "GET",
-                    "uri": "https://healthworkspace01-fhir-clinical.fhir.azurehealthcareapis.com/$export?_since=@{addDays(utcNow(), -1)}",
+                    "uri": "https://healthworkspace01-fhir-clinical.fhir.azurehealthcareapis.com/$export?_container=fhir-export&_since=@{addDays(utcNow(), -1)}",
                     "headers": {
                         "Authorization": "Bearer @{body('getToken').access_token}",
                         "Accept": "application/fhir+json",
@@ -292,16 +306,16 @@ Use the `_since` parameter with the previous day's timestamp to perform incremen
 
 ## Data Quality and De-identification
 
-Before using exported FHIR data for research or analytics, consider de-identification. Azure Health Data Services supports the $de-identify operation, which can remove or generalize personally identifiable information:
+Before using exported FHIR data for research or analytics, consider de-identification. Azure Health Data Services supports de-identified export, which can remove or generalize personally identifiable information based on an anonymization configuration file:
 
 ```bash
-# Run an export with de-identification
+# Run a system-level export with de-identification
+# The anonymizationConfig.json file must exist in a container named "anonymization"
 curl -s -i -X GET \
-    "${FHIR_URL}/\$export" \
+    "${FHIR_URL}/\$export?_container=deidentified-export&_anonymizationConfig=anonymizationConfig.json" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Accept: application/fhir+json" \
-    -H "Prefer: respond-async" \
-    -H "X-MS-FHIR-De-identify: true"
+    -H "Prefer: respond-async"
 ```
 
 De-identification is important for compliance with HIPAA and other privacy regulations when data is used for purposes beyond direct patient care.
