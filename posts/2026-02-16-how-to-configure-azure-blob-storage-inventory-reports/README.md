@@ -15,7 +15,6 @@ When you have millions of blobs spread across dozens of containers, keeping trac
 An inventory report is essentially a snapshot of your blob estate at a point in time. You configure which fields to include, and Azure generates the report on a schedule. The available fields include:
 
 - **Name**: Full blob path including container
-- **Container Name**: The container the blob lives in
 - **Creation-Time**: When the blob was created
 - **Last-Modified**: When it was last updated
 - **Content-Length**: Size in bytes
@@ -65,7 +64,6 @@ az storage account blob-inventory-policy create \
           "objectType": "Blob",
           "schemaFields": [
             "Name",
-            "Container-Name",
             "Creation-Time",
             "Last-Modified",
             "Content-Length",
@@ -83,7 +81,7 @@ az storage account blob-inventory-policy create \
 
 ### Inventory with Blob Tags and Versions
 
-For governance scenarios, you might want to include blob tags and version information:
+For governance scenarios in a standard Blob Storage account without hierarchical namespace enabled, you might want to include blob tags and version information:
 
 ```bash
 # Create a comprehensive inventory including tags and versions
@@ -103,14 +101,14 @@ az storage account blob-inventory-policy create \
             "blobTypes": ["blockBlob"],
             "includeBlobVersions": true,
             "includeSnapshots": true,
-            "prefixMatch": ["data/", "backups/", "logs/"]
+            "includeDeleted": true,
+            "prefixMatch": ["data/raw/", "backups/2026/", "logs/app1/"]
           },
           "format": "Parquet",
           "schedule": "Weekly",
           "objectType": "Blob",
           "schemaFields": [
             "Name",
-            "Container-Name",
             "Creation-Time",
             "Last-Modified",
             "Content-Length",
@@ -129,7 +127,7 @@ az storage account blob-inventory-policy create \
   }'
 ```
 
-Notice the use of `prefixMatch` to limit the inventory to specific blob path prefixes. This is useful when you only care about certain containers or directories and want to keep the report size manageable.
+Notice the use of `prefixMatch` to limit the inventory to specific blob path prefixes. Prefixes start with the container name, so this is useful when you only care about certain containers or directories within containers and want to keep the report size manageable.
 
 ### Container-Level Inventory
 
@@ -150,6 +148,7 @@ az storage account blob-inventory-policy create \
         "name": "container-inventory",
         "destination": "inventory",
         "definition": {
+          "filters": {},
           "format": "Csv",
           "schedule": "Weekly",
           "objectType": "Container",
@@ -176,12 +175,13 @@ Inventory reports are written to the destination container you specified. The fi
 
 ```text
 inventory/
-  daily-blob-inventory/
-    2026/
-      02/
-        16/
-          00-00-00/
-            daily-blob-inventory_manifest.json
+  2026/
+    02/
+      16/
+        00-00-00/
+          daily-blob-inventory/
+            daily-blob-inventory-manifest.json
+            daily-blob-inventory-manifest.checksum
             daily-blob-inventory_0.csv
             daily-blob-inventory_1.csv
 ```
@@ -199,7 +199,7 @@ import pandas as pd
 import glob
 
 # Read all inventory CSV files for a specific date
-csv_files = glob.glob("inventory/daily-blob-inventory/2026/02/16/00-00-00/*.csv")
+csv_files = glob.glob("inventory/2026/02/16/00-00-00/daily-blob-inventory/*.csv")
 
 # Combine all files into a single dataframe
 # Each file has the same schema, so simple concatenation works
@@ -240,7 +240,7 @@ SELECT
     COUNT(*) AS blob_count,
     SUM([Content-Length]) / POWER(1024, 3) AS total_size_gb
 FROM OPENROWSET(
-    BULK 'https://mystorageaccount.blob.core.windows.net/inventory/comprehensive-inventory/2026/02/16/00-00-00/*.parquet',
+    BULK 'https://mystorageaccount.blob.core.windows.net/inventory/2026/02/16/00-00-00/comprehensive-inventory/*.parquet',
     FORMAT = 'PARQUET'
 ) AS inventory
 GROUP BY [AccessTier]
@@ -254,7 +254,7 @@ ORDER BY total_size_gb DESC
 Identify blobs that are in more expensive tiers than they need to be:
 
 ```python
-# Find large blobs in Hot tier that haven't been accessed recently
+# Find large blobs in Hot tier that haven't been modified recently
 # These are candidates for Cool or Archive tier
 candidates = df[
     (df["AccessTier"] == "Hot") &
@@ -275,7 +275,8 @@ Check that all blobs in a compliance-sensitive container have the required tags:
 
 ```python
 # Check for blobs missing required compliance tags
-compliance_blobs = df[df["Container-Name"] == "financial-records"]
+df["Container"] = df["Name"].str.split("/", n=1).str[0]
+compliance_blobs = df[df["Container"] == "financial-records"]
 missing_tags = compliance_blobs[
     compliance_blobs["Tags"].isna() |
     ~compliance_blobs["Tags"].str.contains("classification", na=False)
@@ -305,6 +306,6 @@ print(f"New blobs: {growth_blobs:,}")
 - **Multiple rules**: You can have up to 100 inventory rules per storage account. Use multiple rules for different purposes (one for cost analysis, another for compliance).
 - **Report size**: For accounts with billions of blobs, reports can be very large. Use Parquet format for better compression and faster querying.
 - **Destination container**: The inventory destination container must be in the same storage account. If you need the data elsewhere, set up a copy pipeline.
-- **Cost**: Inventory reports are free - you only pay for the storage used by the report files themselves.
+- **Cost**: Inventory is billed based on the number of blobs and containers scanned, and you also pay the normal storage and operation charges for the generated files.
 
 Blob inventory reports are one of the most underused features in Azure Storage. Setting up a daily or weekly report takes 5 minutes and gives you visibility into your storage estate that would otherwise require expensive and slow list operations. If you manage more than a few thousand blobs, this is worth your time.
