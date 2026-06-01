@@ -37,24 +37,15 @@ The notification feature is genuinely useful. It sends an email 30 minutes befor
 For scripting and automation, use the CLI:
 
 ```bash
-# Enable auto-shutdown at 7:00 PM Eastern Time
+# Enable auto-shutdown at 7:00 PM UTC
 
 az vm auto-shutdown \
   --resource-group myResourceGroup \
   --name myDevVM \
-  --time 1900 \
-  --timezone "Eastern Standard Time"
+  --time 1900
 ```
 
-The `--time` parameter uses 24-hour format (HHMM). The timezone must be a valid Windows timezone name.
-
-Common timezone values:
-- `Eastern Standard Time` (US East)
-- `Pacific Standard Time` (US West)
-- `UTC`
-- `Central European Standard Time`
-- `India Standard Time`
-- `Japan Standard Time`
+The `--time` parameter uses 24-hour format (HHMM) in UTC. If you need to configure a timezone-aware schedule from automation, use an ARM template or Azure Policy schedule resource with a valid Windows timezone name.
 
 ## Enabling Auto-Shutdown with Email Notification
 
@@ -66,7 +57,6 @@ az vm auto-shutdown \
   --resource-group myResourceGroup \
   --name myDevVM \
   --time 1900 \
-  --timezone "Eastern Standard Time" \
   --email "team@example.com"
 ```
 
@@ -82,7 +72,6 @@ az vm auto-shutdown \
   --resource-group myResourceGroup \
   --name myDevVM \
   --time 1900 \
-  --timezone "Pacific Standard Time" \
   --webhook "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
 ```
 
@@ -98,7 +87,6 @@ If you need to set auto-shutdown on all VMs in a resource group:
 
 RESOURCE_GROUP="dev-resources"
 SHUTDOWN_TIME="1900"
-TIMEZONE="Eastern Standard Time"
 EMAIL="devteam@example.com"
 
 # Get all VM names in the resource group
@@ -114,7 +102,6 @@ for VM_NAME in $VM_NAMES; do
     --resource-group $RESOURCE_GROUP \
     --name $VM_NAME \
     --time $SHUTDOWN_TIME \
-    --timezone "$TIMEZONE" \
     --email "$EMAIL"
   echo "Done: $VM_NAME"
 done
@@ -146,7 +133,7 @@ az automation account create \
   --location eastus
 ```
 
-Azure Automation provides a gallery of pre-built runbooks. The "Start/Stop VMs during off-hours" solution is a popular choice. You can also create a simple custom runbook:
+Microsoft's packaged "Start/Stop VMs v2" solution is the current replacement for the older Azure Automation "Start/Stop VMs during off-hours" solution. You can also create a simple custom runbook:
 
 ```powershell
 # PowerShell runbook to start VMs with a specific tag
@@ -212,8 +199,16 @@ For organizations, you want to ensure that auto-shutdown is configured on all de
     "details": {
       "type": "Microsoft.DevTestLab/schedules",
       "existenceCondition": {
-        "field": "Microsoft.DevTestLab/schedules/status",
-        "equals": "Enabled"
+        "allOf": [
+          {
+            "field": "Microsoft.DevTestLab/schedules/status",
+            "equals": "Enabled"
+          },
+          {
+            "field": "Microsoft.DevTestLab/schedules/targetResourceId",
+            "equals": "[field('id')]"
+          }
+        ]
       },
       "roleDefinitionIds": [
         "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
@@ -253,15 +248,15 @@ This policy automatically enables auto-shutdown on any VM tagged with Environmen
 
 ## Cost Impact
 
-Let me put some numbers to this. Say you have 10 Standard_D4s_v5 VMs for your development team:
+Let me put some numbers to this. Say you have 10 Standard_D4s_v5 Linux VMs in East US for your development team:
 
 | Scenario | Monthly Hours | Monthly Cost |
 |----------|--------------|-------------|
-| Running 24/7 | 730 hrs/VM | ~$1,400/VM ($14,000 total) |
-| Auto-shutdown (weekdays, 10 hrs/day) | 220 hrs/VM | ~$420/VM ($4,200 total) |
-| Auto-shutdown (weekdays, 8 hrs/day) | 176 hrs/VM | ~$340/VM ($3,400 total) |
+| Running 24/7 | 730 hrs/VM | ~$140/VM ($1,400 total) |
+| Auto-shutdown (weekdays, 10 hrs/day) | 220 hrs/VM | ~$42/VM ($420 total) |
+| Auto-shutdown (weekdays, 8 hrs/day) | 176 hrs/VM | ~$34/VM ($340 total) |
 
-By shutting down dev VMs outside of business hours, you save roughly 70% on compute costs. For 10 VMs, that is nearly $10,000 per month.
+By shutting down dev VMs outside of business hours, you save roughly 70% on compute costs. For 10 VMs, that is roughly $1,000 per month.
 
 ## Handling Exceptions
 
