@@ -14,10 +14,10 @@ This guide walks through building and deploying an Angular application with an A
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 20.19+ or another Angular-supported Node.js version
 - Angular CLI installed (`npm i -g @angular/cli`)
 - Azure account and CLI
-- GitHub account
+- GitHub account and CLI
 - Basic Angular knowledge
 
 ## Creating the Angular Application
@@ -99,16 +99,34 @@ export class ContactService {
 }
 ```
 
+Provide `HttpClient` in the app configuration:
+
+```typescript
+// src/app/app.config.ts
+import { ApplicationConfig } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
+import { routes } from './app.routes';
+
+export const appConfig: ApplicationConfig = {
+  providers: [provideRouter(routes), provideHttpClient()],
+};
+```
+
 Build the contact list component:
 
 ```typescript
 // src/app/contacts/contact-list/contact-list.component.ts
 import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ContactService, Contact } from '../../services/contact.service';
 import { Subject, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 
 @Component({
   selector: 'app-contact-list',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="contact-list">
       <h2>Contacts</h2>
@@ -232,6 +250,13 @@ mkdir -p api/src/functions
 cd api
 npm init -y
 npm install @azure/functions
+npm pkg set main="src/functions/*.js"
+cat > host.json <<'EOF'
+{
+  "version": "2.0"
+}
+EOF
+cd ..
 ```
 
 Build the contacts API:
@@ -314,6 +339,32 @@ app.http('createContact', {
   },
 });
 
+// PUT /api/contacts/:id - Update a contact
+app.http('updateContact', {
+  methods: ['PUT'],
+  authLevel: 'anonymous',
+  route: 'contacts/{id}',
+  handler: async (request) => {
+    const index = contacts.findIndex((c) => c.id === request.params.id);
+
+    if (index === -1) {
+      return { status: 404, jsonBody: { error: 'Contact not found' } };
+    }
+
+    const body = await request.json();
+    const updatedContact = {
+      ...contacts[index],
+      name: body.name ?? contacts[index].name,
+      email: body.email ?? contacts[index].email,
+      phone: body.phone ?? contacts[index].phone,
+      company: body.company ?? contacts[index].company,
+    };
+
+    contacts[index] = updatedContact;
+    return { jsonBody: updatedContact };
+  },
+});
+
 // DELETE /api/contacts/:id - Delete a contact
 app.http('deleteContact', {
   methods: ['DELETE'],
@@ -334,10 +385,13 @@ app.http('deleteContact', {
 
 ## Static Web App Configuration
 
-Create `staticwebapp.config.json` in the Angular project root:
+Create `public/staticwebapp.config.json` so Angular copies it to the build output root:
 
 ```json
 {
+  "platform": {
+    "apiRuntime": "node:20"
+  },
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["/api/*", "/*.{css,js,png,jpg,svg,ico}"]
@@ -365,9 +419,16 @@ Push to GitHub and create the Static Web App:
 
 ```bash
 # Initialize and push to GitHub
+git init
 git add .
 git commit -m "Angular app with contacts API"
+git branch -M main
 gh repo create angular-swa-app --public --push --source .
+
+# Create the resource group
+az group create \
+  --name angular-swa-rg \
+  --location eastus
 
 # Create the Azure Static Web App
 az staticwebapp create \
@@ -409,7 +470,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
 
       - name: Build And Deploy
@@ -421,9 +482,16 @@ jobs:
           app_location: "/"
           api_location: "api"
           output_location: "dist/angular-swa-app/browser"
-        env:
-          # Angular needs this for production builds
-          NODE_ENV: production
+
+  close_pull_request:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close Pull Request
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: "close"
 ```
 
 ## Local Development
@@ -438,20 +506,26 @@ npm install -g @azure/static-web-apps-cli
 swa start http://localhost:4200 --api-location api --run "ng serve"
 ```
 
-This gives you hot reload for both the Angular frontend and the Azure Functions API.
+This gives you Angular hot reload with the Azure Functions API available through the local Static Web Apps emulator.
 
 ## Environment-Specific Configuration
 
-Angular uses `environment.ts` files for configuration. For Azure Static Web Apps, keep the API base URL relative:
+If you use Angular environment files for configuration, generate them first:
+
+```bash
+ng generate environments
+```
+
+For Azure Static Web Apps, keep the API base URL relative:
 
 ```typescript
-// src/environments/environment.ts
+// src/environments/environment.development.ts
 export const environment = {
   production: false,
   apiUrl: '/api',
 };
 
-// src/environments/environment.prod.ts
+// src/environments/environment.ts
 export const environment = {
   production: true,
   apiUrl: '/api',
