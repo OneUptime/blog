@@ -43,7 +43,7 @@ ON dbo.Orders (TenantId)
 INCLUDE (CustomerName, OrderDate, TotalAmount, Status);
 ```
 
-The index on `TenantId` is critical. Without it, every query would result in a full table scan because the RLS predicate adds a filter on `TenantId` to every query automatically.
+The index on `TenantId` is critical. Without it, queries that rely on the RLS predicate may need to scan far more rows because the predicate adds a filter on `TenantId` automatically.
 
 ## Setting Up the Security Predicate Function
 
@@ -81,7 +81,7 @@ ADD BLOCK PREDICATE Security.fn_tenantAccessPredicate(TenantId) ON dbo.Orders AF
 WITH (STATE = ON);
 ```
 
-There are two types of predicates here. The FILTER PREDICATE silently removes rows that do not match the current tenant from SELECT queries. The BLOCK PREDICATE prevents INSERT and UPDATE operations that would create or modify rows with a `TenantId` that does not match the session context. This prevents a tenant from writing data that belongs to another tenant.
+There are two types of predicates here. The FILTER PREDICATE silently removes rows that do not match the current tenant from SELECT, UPDATE, and DELETE operations. The BLOCK PREDICATE prevents INSERT and UPDATE operations that would create or modify rows with a `TenantId` that does not match the session context. This prevents a tenant from writing data that belongs to another tenant.
 
 ## Setting the Tenant Context from Your Application
 
@@ -129,9 +129,9 @@ The `@read_only=1` parameter is important. Once set, the session context value c
 
 ## Handling Connection Pooling
 
-Connection pooling is a common source of bugs with RLS. When a connection is returned to the pool and picked up by a different request, the session context from the previous request might still be set. Since we used `@read_only=1`, the old value cannot be overwritten.
+Connection pooling is a common source of bugs with RLS. Your application should set the session context every time EF opens a database connection, because pooled physical connections can be reused across requests. When you use `@read_only=1`, the value cannot be changed again on that logical connection until it is closed and returned to the pool.
 
-The solution is to ensure you always open a fresh connection or reset the session context properly. One approach is to use Entity Framework Core's connection interceptor:
+The solution is to set the session context as part of connection opening and to close or dispose connections promptly so they return to the pool. One approach is to use Entity Framework Core's connection interceptor:
 
 ```csharp
 // Interceptor that resets tenant context when a connection is opened
@@ -153,7 +153,7 @@ public class TenantConnectionInterceptor : DbConnectionInterceptor
         var tenantId = _tenantResolver.GetCurrentTenantId();
 
         using var command = connection.CreateCommand();
-        command.CommandText = "EXEC sp_set_session_context @key=N'TenantId', @value=@tenantId";
+        command.CommandText = "EXEC sp_set_session_context @key=N'TenantId', @value=@tenantId, @read_only=1";
 
         var param = command.CreateParameter();
         param.ParameterName = "@tenantId";
@@ -182,9 +182,11 @@ Testing is critical. You should write integration tests that verify a tenant can
 
 ```sql
 -- Insert test data for two different tenants
+EXEC sp_set_session_context @key=N'TenantId', @value=N'tenant-001';
 INSERT INTO dbo.Orders (TenantId, CustomerName, OrderDate, TotalAmount, Status)
 VALUES ('tenant-001', 'Alice Corp', GETUTCDATE(), 1500.00, 'Completed');
 
+EXEC sp_set_session_context @key=N'TenantId', @value=N'tenant-002';
 INSERT INTO dbo.Orders (TenantId, CustomerName, OrderDate, TotalAmount, Status)
 VALUES ('tenant-002', 'Bob Inc', GETUTCDATE(), 2300.00, 'Pending');
 
@@ -225,7 +227,7 @@ There are a few traps that catch people when implementing RLS for multi-tenancy:
 - Forgetting to set the session context results in an empty result set, not an error. Your application might silently return no data instead of failing loudly. Add validation to check that the session context was set.
 - Views and stored procedures inherit RLS policies from their underlying tables. This is usually what you want, but be aware of it.
 - RLS does not protect against side-channel attacks like timing attacks or row count inference. If strict isolation is required for compliance, consider separate databases instead.
-- Bulk operations like `BULK INSERT` bypass RLS. If you use bulk loading, add explicit tenant validation before loading.
+- Bulk operations like `BULK INSERT` are subject to `AFTER INSERT` block predicates. If you use bulk loading, set the tenant context before loading and add explicit tenant validation so the batch cannot mix tenant IDs unexpectedly.
 
 ## Wrapping Up
 
