@@ -14,7 +14,7 @@ In this post, I will walk through setting up JIT access, configuring the policie
 
 ## How JIT VM Access Works
 
-JIT access works by managing the Network Security Group (NSG) rules on your VMs. Here is the workflow:
+JIT access works by managing the Network Security Group (NSG) rules for your VMs, or Azure Firewall rules when the VM is protected by a supported Azure Firewall configuration. Here is the workflow:
 
 ```mermaid
 sequenceDiagram
@@ -36,16 +36,16 @@ sequenceDiagram
 
 The key points:
 
-1. Management ports are blocked by deny rules in the NSG at all times.
-2. When access is requested and approved, a temporary allow rule is inserted with higher priority than the deny rule.
+1. Management ports are blocked by deny rules in the NSG or Azure Firewall rules.
+2. When access is requested by an authorized user, a temporary allow rule is inserted with higher priority than the deny rule.
 3. The allow rule is scoped to the requesting user's IP address.
-4. When the time window expires (or when the user manually closes the access), the allow rule is automatically removed.
+4. When the time window expires, Defender for Cloud restores the network rules to their previous state.
 
 ## Prerequisites
 
 - Microsoft Defender for Servers Plan 2 enabled on the subscription (JIT requires this plan).
-- NSGs attached to the VMs or their subnets.
-- The user requesting access needs at least the Reader role on the VM and a role with `Microsoft.Security/locations/jitNetworkAccessPolicies/initiate/action` permission.
+- NSGs attached to the VMs' network interfaces or subnets, or a supported Azure Firewall configuration.
+- The user requesting access needs permissions including `Microsoft.Security/locations/jitNetworkAccessPolicies/initiate/action`, `Microsoft.Security/locations/jitNetworkAccessPolicies/*/read`, `Microsoft.Compute/virtualMachines/read`, `Microsoft.Network/networkInterfaces/*/read`, and `Microsoft.Network/publicIPAddresses/read`.
 
 ## Step 1: Enable JIT Access on Your VMs
 
@@ -55,7 +55,7 @@ In the Azure portal, navigate to Microsoft Defender for Cloud, then go to Worklo
 
 - **Configured** - VMs that already have JIT enabled.
 - **Not configured** - VMs that are eligible for JIT but do not have it set up.
-- **Unsupported** - VMs that cannot use JIT (usually because they do not have an NSG).
+- **Unsupported** - VMs that cannot use JIT (for example, classic VMs, VMs without an NSG or supported Azure Firewall configuration, or VMs where JIT is disabled by policy).
 
 Select the VMs you want to protect from the "Not configured" tab and click "Enable JIT on VMs."
 
@@ -107,7 +107,7 @@ You can customize the JIT policy for each port to control:
 
 - **Maximum request duration** - The longest time window a user can request.
 - **Allowed source addresses** - Restrict which IP ranges can be used. For example, you might only allow your corporate VPN range.
-- **Protocol** - TCP, UDP, or both.
+- **Protocol** - TCP, UDP, or `*` for both.
 
 Here is a more restrictive configuration that limits SSH access to corporate IP ranges and sets a shorter maximum duration:
 
@@ -164,7 +164,7 @@ az rest --method POST \
           {
             \"number\": 22,
             \"allowedSourceAddressPrefix\": \"$MY_IP\",
-            \"endTimeUtc\": \"$(date -u -v+1H '+%Y-%m-%dT%H:%M:%S.0000000Z')\"
+            \"endTimeUtc\": \"$(date -u -d '+1 hour' '+%Y-%m-%dT%H:%M:%S.0000000Z')\"
           }
         ]
       }
@@ -176,23 +176,22 @@ echo "JIT access granted from $MY_IP for 1 hour"
 
 ## Step 4: Set Up Approval Workflow (Optional)
 
-By default, anyone with the right RBAC permissions can request and immediately get JIT access. For higher-security environments, you might want an approval workflow where a security team member must approve the request before the port opens.
+By default, anyone with the right RBAC permissions can request and immediately get JIT access. For higher-security environments, you might want a separate approval workflow where a security team member must approve a deployment or admin task before automation calls the JIT API to open the port.
 
-You can implement this using Azure Logic Apps triggered by JIT request events.
+You can implement this using Azure Logic Apps as the approval front end, with the Logic App calling the JIT API only after approval.
 
 The general flow looks like this:
 
 ```mermaid
 graph TD
-    A[User Requests JIT Access] --> B[Activity Log Event]
-    B --> C[Logic App Triggered]
+    A[User Requests Access in Approval Workflow] --> C[Logic App Triggered]
     C --> D[Send Approval Email to Security Team]
     D --> E{Approved?}
     E -->|Yes| F[Logic App Calls JIT API to Open Port]
     E -->|No| G[Notify User of Denial]
 ```
 
-To implement this, create an Activity Log alert that triggers when a JIT request is initiated, and connect it to a Logic App with an approval action.
+To implement this, expose a Logic App or similar workflow as the request entry point, add an approval action, and have the workflow call the JIT initiate API only after approval. You can still use Activity Log alerts separately to audit JIT requests after they are made.
 
 ## Step 5: Monitor JIT Access Activity
 
@@ -217,13 +216,13 @@ AzureActivity
 | order by TimeGenerated desc
 ```
 
-You can also query the JIT policy to see currently active access windows:
+You can also query the JIT policy to see recorded JIT requests and their port status:
 
 ```bash
-# List all active JIT requests
+# List JIT requests and port status
 az rest --method GET \
   --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/rg-production/providers/Microsoft.Security/locations/eastus/jitNetworkAccessPolicies?api-version=2020-01-01" \
-  --query "value[].properties.virtualMachines[].{vm:id, ports:ports}"
+  --query "value[].properties.requests[].virtualMachines[].{vm:id, ports:ports}"
 ```
 
 ## Step 6: Automate JIT for CI/CD Pipelines
