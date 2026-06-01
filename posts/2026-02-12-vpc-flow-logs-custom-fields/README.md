@@ -14,7 +14,7 @@ Custom fields in VPC Flow Logs let you capture additional metadata about each fl
 
 ## Available Custom Fields
 
-Here are the fields available beyond the default set:
+Here are commonly used fields available beyond the default set:
 
 | Field | Description | Use Case |
 |-------|-------------|----------|
@@ -68,7 +68,7 @@ aws ec2 create-flow-logs \
   --traffic-type ALL \
   --log-destination-type s3 \
   --log-destination arn:aws:s3:::my-flow-logs-bucket/vpc-logs/ \
-  --log-format '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status} ${vpc-id} ${subnet-id} ${instance-id} ${tcp-flags} ${type} ${pkt-srcaddr} ${pkt-dstaddr} ${flow-direction} ${traffic-path}' \
+  --log-format '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status} ${vpc-id} ${subnet-id} ${instance-id} ${tcp-flags} ${type} ${pkt-srcaddr} ${pkt-dstaddr} ${flow-direction} ${traffic-path} ${pkt-src-aws-service} ${pkt-dst-aws-service}' \
   --max-aggregation-interval 60
 ```
 
@@ -139,6 +139,8 @@ resource "aws_s3_bucket" "flow_logs" {
   bucket = "flow-logs-${data.aws_caller_identity.current.account_id}"
 }
 
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket_lifecycle_configuration" "flow_logs" {
   bucket = aws_s3_bucket.flow_logs.id
 
@@ -172,31 +174,31 @@ TCP flags are represented as a bitmask integer. Here's how to decode them:
 | FIN | 1 | Connection teardown |
 | SYN | 2 | Connection initiation |
 | RST | 4 | Connection reset |
-| PSH | 8 | Push data |
-| ACK | 16 | Acknowledgment |
 | SYN-ACK | 18 | Connection accepted |
-| FIN-ACK | 17 | Clean shutdown |
 
 Common patterns:
 - `2` (SYN only) - New connection attempt
 - `18` (SYN+ACK) - Connection accepted by server
 - `4` (RST) - Connection forcefully closed
-- `1` (FIN) - Clean connection close
+- `1` (FIN) - Connection teardown
+- `3` (SYN+FIN) or `19` (SYN-ACK+FIN) - Short connections opened and closed within the same aggregation interval
+
+VPC Flow Logs does not report standalone ACK or PSH flags in the `tcp-flags` field. ACK-only traffic is logged as `0`; ACK is only represented as part of SYN-ACK (`18`).
 
 ## Understanding Traffic Path
 
-The `traffic-path` field tells you how traffic flowed through AWS networking:
+The `traffic-path` field tells you how egress traffic flowed through AWS networking:
 
 | Value | Meaning |
 |-------|---------|
-| 1 | Through an internet gateway |
-| 2 | Through a NAT gateway |
-| 3 | Through a transit gateway |
+| 1 | Through another resource in the same VPC, including an AWS-managed network interface or an Outpost local gateway |
+| 2 | Through an internet gateway or a gateway VPC endpoint |
+| 3 | Through a virtual private gateway |
 | 4 | Through intra-region VPC peering |
 | 5 | Through inter-region VPC peering |
-| 6 | Through a local gateway |
+| 6 | Through a Local Zone or Wavelength Zone |
 | 7 | Through a gateway VPC endpoint |
-| 8 | Through an internet gateway (for AWS service) |
+| 8 | Through an internet gateway |
 
 This is incredibly useful for understanding routing and cost optimization.
 
@@ -269,12 +271,14 @@ Analyze traffic by path (for cost optimization):
 -- Traffic volume by network path
 SELECT
     CASE traffic_path
-        WHEN 1 THEN 'Internet Gateway'
-        WHEN 2 THEN 'NAT Gateway'
-        WHEN 3 THEN 'Transit Gateway'
+        WHEN 1 THEN 'Same VPC resource'
+        WHEN 2 THEN 'Internet Gateway or Gateway Endpoint'
+        WHEN 3 THEN 'Virtual Private Gateway'
         WHEN 4 THEN 'VPC Peering (intra-region)'
         WHEN 5 THEN 'VPC Peering (inter-region)'
+        WHEN 6 THEN 'Local Zone or Wavelength Zone'
         WHEN 7 THEN 'Gateway Endpoint'
+        WHEN 8 THEN 'Internet Gateway'
         ELSE CAST(traffic_path AS VARCHAR)
     END as path_type,
     SUM(bytes) / 1073741824.0 as total_gb,
@@ -329,7 +333,8 @@ If you're sending logs to CloudWatch, use Insights for quick analysis.
 This CloudWatch Insights query finds the top talkers by bytes transferred:
 
 ```text
-fields @timestamp, srcaddr, dstaddr, dstport, bytes, action, flow_direction
+parse @message "* * * * * * * * * * * * * * * * * * * * * * * * *" as version, account_id, interface_id, srcaddr, dstaddr, srcport, dstport, protocol, packets, bytes, start_time, end_time, action, log_status, vpc_id, subnet_id, instance_id, tcp_flags, traffic_type, pkt_srcaddr, pkt_dstaddr, flow_direction, traffic_path, pkt_src_aws_service, pkt_dst_aws_service
+| fields @timestamp, srcaddr, dstaddr, dstport, bytes, action, flow_direction
 | filter action = "ACCEPT"
 | stats sum(bytes) as total_bytes by srcaddr, dstaddr, dstport
 | sort total_bytes desc
@@ -339,7 +344,8 @@ fields @timestamp, srcaddr, dstaddr, dstport, bytes, action, flow_direction
 Find SYN floods (possible DDoS):
 
 ```text
-fields @timestamp, srcaddr, dstaddr, dstport, tcp_flags, action
+parse @message "* * * * * * * * * * * * * * * * * * * * * * * * *" as version, account_id, interface_id, srcaddr, dstaddr, srcport, dstport, protocol, packets, bytes, start_time, end_time, action, log_status, vpc_id, subnet_id, instance_id, tcp_flags, traffic_type, pkt_srcaddr, pkt_dstaddr, flow_direction, traffic_path, pkt_src_aws_service, pkt_dst_aws_service
+| fields @timestamp, srcaddr, dstaddr, dstport, tcp_flags, action
 | filter tcp_flags = 2 and action = "REJECT"
 | stats count(*) as syn_count by srcaddr
 | sort syn_count desc
