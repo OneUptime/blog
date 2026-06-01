@@ -40,6 +40,12 @@ Create a Spring Boot project with gRPC dependencies.
         <artifactId>spring-boot-starter</artifactId>
     </dependency>
 
+    <!-- Spring MVC for the HTTP health check endpoint -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
     <!-- gRPC Spring Boot Starter -->
     <dependency>
         <groupId>net.devh</groupId>
@@ -52,6 +58,13 @@ Create a Spring Boot project with gRPC dependencies.
         <groupId>com.google.protobuf</groupId>
         <artifactId>protobuf-java</artifactId>
         <version>3.25.1</version>
+    </dependency>
+
+    <!-- Required for gRPC Java generated code on Java 9+ with protoc-gen-grpc-java 1.60.x -->
+    <dependency>
+        <groupId>javax.annotation</groupId>
+        <artifactId>javax.annotation-api</artifactId>
+        <version>1.3.2</version>
     </dependency>
 </dependencies>
 
@@ -114,7 +127,7 @@ service ProductService {
     // Create a new product
     rpc CreateProduct (CreateProductRequest) returns (ProductResponse);
 
-    // Server-side streaming - get product updates in real time
+    // Server-side streaming - stream matching products
     rpc StreamProductUpdates (StreamRequest) returns (stream ProductResponse);
 }
 
@@ -392,13 +405,39 @@ The key setting is `--transport http2`. gRPC requires HTTP/2, and you need to ex
 Configure health probes so Container Apps knows when your service is healthy.
 
 ```bash
-# Update the container app with health probes
+# Export the current container app configuration
+az containerapp show \
+  --name product-grpc-service \
+  --resource-group grpc-demo-rg \
+  --output yaml > containerapp.yaml
+```
+
+Add the probes under the container entry in `containerapp.yaml`.
+
+```yaml
+# properties.template.containers[0].probes
+probes:
+  - type: Liveness
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  - type: Readiness
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 5
+```
+
+Then apply the updated configuration.
+
+```bash
 az containerapp update \
   --name product-grpc-service \
   --resource-group grpc-demo-rg \
-  --set-env-vars "SPRING_PROFILES_ACTIVE=prod" \
-  --set configuration.ingress.additionalPortMappings[0].external=true \
-  --set configuration.ingress.additionalPortMappings[0].targetPort=8080
+  --yaml containerapp.yaml
 ```
 
 ## The Deployment Architecture
@@ -476,4 +515,4 @@ This tells Container Apps to add instances when each instance handles more than 
 
 ## Wrapping Up
 
-Spring Boot with gRPC gives you high-performance service-to-service communication with strongly typed contracts. Azure Container Apps provides serverless container hosting with automatic scaling and built-in TLS. The key things to remember are: enable HTTP/2 transport on the ingress, expose a health check endpoint on a separate HTTP port, and use multi-stage Docker builds to keep your images small. Start with a simple service, validate gRPC connectivity, and then add streaming and more complex patterns as needed.
+Spring Boot with gRPC gives you high-performance service-to-service communication with strongly typed contracts. Azure Container Apps provides serverless container hosting with automatic scaling and built-in TLS. The key things to remember are: enable HTTP/2 transport on the ingress, configure health probes for your HTTP health check endpoint, and use multi-stage Docker builds to keep your images small. Start with a simple service, validate gRPC connectivity, and then add streaming and more complex patterns as needed.
