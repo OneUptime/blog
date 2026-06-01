@@ -41,8 +41,8 @@ Azure Backup's security features address each of these scenarios.
 Soft delete is enabled by default on all new Recovery Services vaults. When backup data is deleted (either by stopping protection with delete data or by explicitly deleting recovery points), the data enters a "soft deleted" state instead of being permanently removed.
 
 During the soft delete retention period:
-- The data is not accessible for restore
-- No storage charges are incurred for soft-deleted data
+- The item must be undeleted before you can restore from its recovery points
+- No storage charges are incurred for the default 14-day soft delete retention period for vaulted backups; regular backup charges apply for retention beyond 14 days
 - The data can be undeleted (restored to active state)
 - After the retention period, data is permanently deleted
 
@@ -63,15 +63,15 @@ Enhanced soft delete extends the default 14-day retention and adds the "always-o
 
 ```bash
 # Enable enhanced soft delete with 30-day retention
-# Once set to AlwaysON, it cannot be disabled
+# Once set to AlwaysOn, it cannot be disabled
 az backup vault backup-properties set \
     --resource-group rg-backup-eastus2 \
     --name rsv-backup-eastus2-001 \
-    --soft-delete-feature-state AlwaysON \
+    --soft-delete-feature-state AlwaysOn \
     --soft-delete-duration 30
 ```
 
-The `AlwaysON` state is irreversible. Once enabled, no one (including subscription owners) can disable soft delete or reduce the retention period. Use this for production vaults where backup data integrity is critical.
+The `AlwaysOn` state is irreversible. Once enabled, no one (including subscription owners) can disable soft delete. Use this for production vaults where backup data integrity is critical.
 
 ### Recover Soft-Deleted Backup Data
 
@@ -118,14 +118,14 @@ With an immutable vault:
 # WARNING: Once locked, immutability cannot be disabled
 
 # First, enable in unlocked state (can be reverted)
-az backup vault backup-properties set \
+az backup vault update \
     --resource-group rg-backup-eastus2 \
     --name rsv-backup-eastus2-001 \
     --immutability-state Unlocked
 
 # After testing, lock it permanently
 # THIS IS IRREVERSIBLE - test thoroughly before locking
-az backup vault backup-properties set \
+az backup vault update \
     --resource-group rg-backup-eastus2 \
     --name rsv-backup-eastus2-001 \
     --immutability-state Locked
@@ -151,16 +151,16 @@ Immutability does not prevent:
 
 MUA adds a second approval step for critical backup operations. Even if an attacker compromises one admin account, they cannot destroy backups without approval from a second person.
 
-MUA uses Azure Resource Guard, a separate resource that must be in a different subscription or under a different administrator.
+MUA uses Azure Resource Guard, a separate resource that should be owned by a different administrator. For stronger isolation, Microsoft recommends placing it in a different subscription or tenant, but it must be in the same Azure region as the vault.
 
 ### Create the Resource Guard
 
 ```bash
-# Create a Resource Guard in a separate subscription or resource group
+# Create a Resource Guard in the same region as the vault
 # The Resource Guard owner should be different from the vault admin
-az backup resource-guard create \
+az dataprotection resource-guard create \
     --resource-group rg-security-governance \
-    --name rg-backup-guard-001 \
+    --resource-guard-name rg-backup-guard-001 \
     --location eastus2
 ```
 
@@ -170,10 +170,10 @@ az backup resource-guard create \
 # Associate the Resource Guard with the Recovery Services vault
 # After this, critical operations require approval from the Resource Guard owner
 
-az backup vault backup-properties set \
+az backup vault resource-guard-mapping update \
     --resource-group rg-backup-eastus2 \
     --name rsv-backup-eastus2-001 \
-    --resource-guard-operation-requests "/subscriptions/<security-sub-id>/resourceGroups/rg-security-governance/providers/Microsoft.DataProtection/resourceGuards/rg-backup-guard-001"
+    --resource-guard-id "/subscriptions/<security-sub-id>/resourceGroups/rg-security-governance/providers/Microsoft.DataProtection/resourceGuards/rg-backup-guard-001"
 ```
 
 ### Protected Operations
@@ -186,7 +186,7 @@ With MUA enabled, the following operations require Resource Guard approval:
 - Changing immutability from Unlocked to Disabled
 - Stopping protection with delete data
 
-When someone attempts one of these operations, they must request a Just-In-Time (JIT) access token from the Resource Guard owner. The owner reviews the request and either approves or denies it.
+When someone needs to perform one of these operations, they request Just-In-Time (JIT) permissions, such as the Backup MUA Operator role, from the Resource Guard owner. The owner reviews the request and either approves or denies it.
 
 ## Step 4: Configure Encryption with Customer-Managed Keys
 
@@ -213,10 +213,11 @@ az backup vault encryption update \
     --resource-group rg-backup-eastus2 \
     --name rsv-backup-eastus2-001 \
     --encryption-key-id "https://kv-backup-keys.vault.azure.net/keys/backup-encryption-key/version" \
+    --mi-system-assigned \
     --infrastructure-encryption Enabled
 ```
 
-CMK encryption gives you full control over the encryption keys. You can rotate keys on your schedule and revoke access if needed. However, if you lose access to the Key Vault or the key, you cannot restore backup data, so protect the key vault with extreme care.
+CMK encryption gives you full control over the encryption keys. You must configure CMK before protecting items in the vault, and the Key Vault must have soft delete and purge protection enabled. You can rotate keys on your schedule and revoke access if needed. However, if you lose access to the Key Vault or the key, you cannot restore backup data, so protect the key vault with extreme care.
 
 ## Step 5: Enable Monitoring and Alerts
 
@@ -246,14 +247,14 @@ az monitor diagnostic-settings create \
 ## Recommended Security Configuration by Environment
 
 ### Production / Compliance Vaults
-- Soft delete: AlwaysON with 30+ day retention
+- Soft delete: AlwaysOn with 30+ day retention
 - Immutability: Locked
 - MUA: Enabled with Resource Guard in separate subscription
 - Encryption: Customer-managed keys
 - Monitoring: Full diagnostic logging
 
 ### Standard Business Vaults
-- Soft delete: AlwaysON with 14-day retention
+- Soft delete: AlwaysOn with 14-day retention
 - Immutability: Unlocked (ready to lock if needed)
 - MUA: Enabled
 - Encryption: Platform-managed (sufficient for most scenarios)
