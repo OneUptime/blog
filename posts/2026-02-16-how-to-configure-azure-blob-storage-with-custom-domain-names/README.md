@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Blob Storage, Custom Domain, DNS, CDN, HTTPS, Web Hosting
+Tags: Azure, Blob Storage, Custom Domain, DNS, Azure Front Door, HTTPS, Web Hosting
 
 Description: Step-by-step guide to mapping your own domain name to Azure Blob Storage for cleaner URLs and branded content delivery.
 
@@ -15,13 +15,13 @@ By default, Azure Blob Storage URLs look like `https://mystorageaccount.blob.cor
 There are two ways to use a custom domain with Azure Blob Storage:
 
 1. **Direct CNAME mapping**: Point your domain directly to the blob endpoint. Simple but does not support HTTPS on the custom domain.
-2. **Azure CDN with custom domain**: Put Azure CDN in front of your storage account and map the custom domain to the CDN endpoint. Supports HTTPS with free managed certificates.
+2. **Azure Front Door with custom domain**: Put Azure Front Door in front of your storage account and map the custom domain to the Front Door endpoint. Supports HTTPS with free managed certificates.
 
-For most production scenarios, the CDN approach is the way to go because HTTPS is a hard requirement for modern web applications.
+For most production scenarios, the Front Door approach is the way to go because HTTPS is a hard requirement for modern web applications.
 
 ## Approach 1: Direct CNAME Mapping
 
-This is the simpler setup, suitable when you do not need HTTPS on the custom domain (or when the storage is accessed over HTTP only, which is increasingly rare).
+This is the simpler setup, suitable when you do not need HTTPS on the custom domain and the storage account allows HTTP access, which is increasingly rare.
 
 ### Step 1: Create the DNS Record
 
@@ -74,110 +74,133 @@ After the mapping is in place, blobs are accessible at both the default and cust
 # Default URL
 https://mystorageaccount.blob.core.windows.net/images/logo.png
 
-# Custom domain URL (HTTP only without CDN)
+# Custom domain URL (HTTP only without Front Door)
 http://assets.yourdomain.com/images/logo.png
 ```
 
 ### Limitation: No HTTPS
 
-The direct CNAME approach does not support HTTPS on the custom domain. Azure Blob Storage cannot present a certificate for your domain. If you access `https://assets.yourdomain.com`, you will get a certificate error because the storage endpoint presents a certificate for `*.blob.core.windows.net`. This is why most people use the CDN approach.
+The direct CNAME approach does not support HTTPS on the custom domain. Azure Blob Storage cannot present a certificate for your domain. If you access `https://assets.yourdomain.com`, you will get a certificate error because the storage endpoint presents a certificate for `*.blob.core.windows.net`. This is why most people use the Front Door approach.
 
-## Approach 2: Azure CDN with Custom Domain and HTTPS
+## Approach 2: Azure Front Door with Custom Domain and HTTPS
 
-This is the recommended approach for production. Azure CDN handles caching, HTTPS, and custom domain certificates.
+This is the recommended approach for production. Azure Front Door handles caching, HTTPS, and custom domain certificates.
 
-### Step 1: Create a CDN Profile and Endpoint
+### Step 1: Create a Front Door Profile and Endpoint
 
 ```bash
-# Create a CDN profile
-az cdn profile create \
+# Create a Front Door profile
+az afd profile create \
   --resource-group myResourceGroup \
-  --name my-cdn-profile \
-  --sku Standard_Microsoft \
-  --location global
+  --profile-name my-front-door-profile \
+  --sku Standard_AzureFrontDoor
 
-# Create a CDN endpoint pointing to the storage account
-az cdn endpoint create \
+# Create a Front Door endpoint
+az afd endpoint create \
   --resource-group myResourceGroup \
-  --profile-name my-cdn-profile \
-  --name my-cdn-endpoint \
-  --origin "mystorageaccount.blob.core.windows.net" \
-  --origin-host-header "mystorageaccount.blob.core.windows.net"
+  --profile-name my-front-door-profile \
+  --endpoint-name my-front-door-endpoint \
+  --enabled-state Enabled
+
+# Create an origin group
+az afd origin-group create \
+  --resource-group myResourceGroup \
+  --profile-name my-front-door-profile \
+  --origin-group-name storage-origin-group \
+  --probe-request-type HEAD \
+  --probe-protocol Https \
+  --probe-interval-in-seconds 100 \
+  --probe-path /
+
+# Add the storage account as an origin
+az afd origin create \
+  --resource-group myResourceGroup \
+  --profile-name my-front-door-profile \
+  --origin-group-name storage-origin-group \
+  --origin-name storage-origin \
+  --host-name mystorageaccount.blob.core.windows.net \
+  --origin-host-header mystorageaccount.blob.core.windows.net \
+  --priority 1 \
+  --weight 1000 \
+  --enabled-state Enabled
 ```
 
-The CDN endpoint gets a default URL like `https://my-cdn-endpoint.azureedge.net`. This already works with HTTPS.
+The Front Door endpoint gets a default URL like `https://my-front-door-endpoint.azurefd.net`. This already works with HTTPS.
 
-### Step 2: Add the Custom Domain to CDN
+### Step 2: Add the Custom Domain to Front Door
 
-First, create a CNAME record at your DNS provider pointing to the CDN endpoint:
+First, create a CNAME record at your DNS provider pointing to the Front Door endpoint:
 
 ```text
-assets.yourdomain.com  CNAME  my-cdn-endpoint.azureedge.net
+assets.yourdomain.com  CNAME  my-front-door-endpoint.azurefd.net
 ```
 
-Then register the custom domain on the CDN endpoint:
+Then register the custom domain on the Front Door profile:
 
 ```bash
-# Add the custom domain to the CDN endpoint
-az cdn custom-domain create \
+# Add the custom domain to Front Door
+az afd custom-domain create \
   --resource-group myResourceGroup \
-  --profile-name my-cdn-profile \
-  --endpoint-name my-cdn-endpoint \
-  --hostname "assets.yourdomain.com" \
-  --name "assets-domain"
+  --profile-name my-front-door-profile \
+  --custom-domain-name assets-domain \
+  --host-name "assets.yourdomain.com" \
+  --certificate-type ManagedCertificate \
+  --minimum-tls-version TLS12
 ```
+
+If the domain is not already validated or prevalidated in Azure, Front Door returns a DNS validation token. Add the requested TXT record at your DNS provider, then wait for domain validation to complete before attaching the domain to a route.
 
 ### Step 3: Enable HTTPS with a Managed Certificate
 
-Azure CDN can automatically provision and manage a TLS certificate for your custom domain:
+Azure Front Door can automatically provision and manage a TLS certificate for your custom domain. Create a route that attaches the custom domain to the endpoint and origin group:
 
 ```bash
-# Enable HTTPS with a CDN-managed certificate
-az cdn custom-domain enable-https \
+# Route requests from the custom domain to the storage origin
+az afd route create \
   --resource-group myResourceGroup \
-  --profile-name my-cdn-profile \
-  --endpoint-name my-cdn-endpoint \
-  --name "assets-domain" \
-  --min-tls-version "1.2"
+  --profile-name my-front-door-profile \
+  --endpoint-name my-front-door-endpoint \
+  --route-name storage-route \
+  --origin-group storage-origin-group \
+  --origins storage-origin \
+  --supported-protocols Http Https \
+  --patterns-to-match "/*" \
+  --forwarding-protocol HttpsOnly \
+  --https-redirect Enabled \
+  --link-to-default-domain Enabled \
+  --custom-domains assets-domain
 ```
 
-Certificate provisioning takes 6-8 hours to complete. Azure handles:
+Certificate provisioning can take several minutes to complete after domain validation. Azure handles:
 - Domain validation
 - Certificate issuance
-- Certificate deployment to all CDN edge nodes
+- Certificate deployment to all Front Door edge nodes
 - Automatic renewal before expiry
 
 Check the HTTPS provisioning status:
 
 ```bash
 # Check HTTPS provisioning status
-az cdn custom-domain show \
+az afd custom-domain show \
   --resource-group myResourceGroup \
-  --profile-name my-cdn-profile \
-  --endpoint-name my-cdn-endpoint \
-  --name "assets-domain" \
-  --query "customHttpsParameters"
+  --profile-name my-front-door-profile \
+  --custom-domain-name assets-domain \
+  --query "{validation:domainValidationState,deployment:deploymentStatus}"
 ```
 
-### Step 4: Configure CDN Caching Rules
+### Step 4: Configure Front Door Caching
 
-Optimize the CDN caching behavior for your content:
+Optimize Front Door caching behavior for your content:
 
 ```bash
-# Set caching rules on the CDN endpoint
-# Cache images for 7 days, other content for 1 day
-az cdn endpoint rule add \
+# Enable caching on the route
+az afd route update \
   --resource-group myResourceGroup \
-  --profile-name my-cdn-profile \
-  --endpoint-name my-cdn-endpoint \
-  --order 1 \
-  --rule-name "CacheImages" \
-  --match-variable UrlFileExtension \
-  --operator Contains \
-  --match-values "jpg" "png" "gif" "svg" "webp" \
-  --action-name CacheExpiration \
-  --cache-behavior Override \
-  --cache-duration "7.00:00:00"
+  --profile-name my-front-door-profile \
+  --endpoint-name my-front-door-endpoint \
+  --route-name storage-route \
+  --enable-caching true \
+  --query-string-caching-behavior IgnoreQueryString
 ```
 
 ## Using Your Own Certificate
@@ -192,21 +215,26 @@ az keyvault certificate import \
   --file ./assets-yourdomain-com.pfx \
   --password "cert-password"
 
-# Enable HTTPS with your own certificate
-az cdn custom-domain enable-https \
+# Register the Key Vault certificate as a Front Door secret
+az afd secret create \
   --resource-group myResourceGroup \
-  --profile-name my-cdn-profile \
-  --endpoint-name my-cdn-endpoint \
-  --name "assets-domain" \
-  --user-cert-group-name myResourceGroup \
-  --user-cert-vault-name myKeyVault \
-  --user-cert-secret-name assets-cert \
-  --user-cert-protocol-type sni
+  --profile-name my-front-door-profile \
+  --secret-name assets-cert-secret \
+  --secret-source "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.KeyVault/vaults/myKeyVault/secrets/assets-cert"
+
+# Update the custom domain to use your certificate
+az afd custom-domain update \
+  --resource-group myResourceGroup \
+  --profile-name my-front-door-profile \
+  --custom-domain-name assets-domain \
+  --certificate-type CustomerCertificate \
+  --secret assets-cert-secret \
+  --minimum-tls-version TLS12
 ```
 
 ## Static Website Hosting with Custom Domain
 
-If you are using Azure Blob Storage's static website feature, the process is slightly different. Static websites use a different endpoint (`mystorageaccount.z13.web.core.windows.net`) instead of the standard blob endpoint.
+If you are using Azure Blob Storage's static website feature, the process is slightly different. Static websites use a different endpoint (`mystorageaccount.<zone-id>.web.core.windows.net`) instead of the standard blob endpoint.
 
 ```bash
 # Enable static website hosting
@@ -217,31 +245,36 @@ az storage blob service-properties update \
   --404-document "404.html"
 ```
 
-For the CDN origin, point to the static website endpoint:
+For the Front Door origin, point to the static website endpoint:
 
 ```bash
-# Create CDN endpoint for static website
-az cdn endpoint create \
+# Create a Front Door origin for the static website endpoint
+az afd origin create \
   --resource-group myResourceGroup \
-  --profile-name my-cdn-profile \
-  --name my-website-endpoint \
-  --origin "mystorageaccount.z13.web.core.windows.net" \
-  --origin-host-header "mystorageaccount.z13.web.core.windows.net"
+  --profile-name my-front-door-profile \
+  --origin-group-name storage-origin-group \
+  --origin-name static-website-origin \
+  --host-name mystorageaccount.<zone-id>.web.core.windows.net \
+  --origin-host-header mystorageaccount.<zone-id>.web.core.windows.net \
+  --priority 1 \
+  --weight 1000 \
+  --enabled-state Enabled
 ```
 
 Then follow the same custom domain and HTTPS steps as before.
+Use `static-website-origin` instead of `storage-origin` when you create or update the route for the static website.
 
 ## Apex Domain Support
 
 If you want to use an apex domain (like `yourdomain.com` instead of `assets.yourdomain.com`), you cannot use a CNAME record because of DNS protocol restrictions. Instead, use Azure DNS with alias records:
 
 ```bash
-# Create an alias record in Azure DNS that points to the CDN endpoint
+# Create an alias record in Azure DNS that points to the Front Door endpoint
 az network dns record-set a create \
   --resource-group myResourceGroup \
   --zone-name yourdomain.com \
   --name "@" \
-  --target-resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Cdn/profiles/my-cdn-profile/endpoints/my-cdn-endpoint"
+  --target-resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Cdn/profiles/my-front-door-profile/afdEndpoints/my-front-door-endpoint"
 ```
 
 This requires your domain's DNS to be hosted in Azure DNS.
@@ -261,6 +294,6 @@ curl -v https://assets.yourdomain.com/images/logo.png
 openssl s_client -connect assets.yourdomain.com:443 -servername assets.yourdomain.com < /dev/null 2>/dev/null | openssl x509 -noout -subject -issuer -dates
 ```
 
-The certificate should show your domain as the subject and should be valid. If you see a certificate for `*.azureedge.net` instead, the custom domain HTTPS provisioning is not complete yet.
+The certificate should show your domain as the subject and should be valid. If you see a certificate for `*.azurefd.net` instead, the custom domain HTTPS provisioning is not complete yet.
 
-Custom domains for blob storage are one of those things that seem like they should be simple but have enough moving parts to trip you up. The CDN approach is the right default because it gives you HTTPS, caching, and global distribution all in one. If you are just serving a few files and HTTPS does not matter, the direct CNAME works. But for anything user-facing, go with CDN.
+Custom domains for blob storage are one of those things that seem like they should be simple but have enough moving parts to trip you up. The Front Door approach is the right default because it gives you HTTPS, caching, and global distribution all in one. If you are just serving a few files and HTTPS does not matter, the direct CNAME works. But for anything user-facing, go with Front Door.
