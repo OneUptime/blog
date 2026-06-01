@@ -10,7 +10,7 @@ Description: A practical guide to writing PromQL queries in Amazon Managed Prome
 
 PromQL is the query language for Prometheus. It is how you turn raw metrics into meaningful insights. You can calculate error rates, compute percentiles, aggregate across dimensions, and build the queries that power your Grafana dashboards and alerting rules.
 
-Amazon Managed Prometheus (AMP) supports the full PromQL specification. Every query that works with open-source Prometheus works with AMP. The only difference is how you authenticate - AMP uses AWS SigV4 instead of open network access.
+Amazon Managed Prometheus (AMP) supports PromQL through Prometheus-compatible APIs. PromQL queries that work with open-source Prometheus generally work with AMP, subject to AWS service quotas and supported API features. The main difference is how you authenticate - AMP uses AWS SigV4 instead of open network access.
 
 This guide covers practical PromQL patterns for the metrics you actually care about: request rates, error rates, latency, resource utilization, and alerting thresholds.
 
@@ -23,7 +23,7 @@ You can query AMP from Managed Grafana (the most common approach), from the comm
 ```bash
 # Install awscurl for SigV4-authenticated requests
 
-pip install awscurl
+pip3 install awscurl
 
 # Run a simple query
 awscurl --service aps \
@@ -192,8 +192,8 @@ sum(container_memory_working_set_bytes{namespace="production"}) by (pod)
 sum(kube_pod_container_resource_limits{namespace="production", resource="memory"}) by (pod)
 * 100
 
-# Memory usage per node in GB
-node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes
+# Memory usage per node in GiB
+(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / 1024 / 1024 / 1024
 ```
 
 ### Disk Usage
@@ -238,14 +238,14 @@ kube_deployment_spec_replicas - kube_deployment_status_available_replicas > 0
 # Total requests across all pods in a namespace
 sum(rate(http_requests_total{namespace="production"}[5m]))
 
-# Average CPU across all nodes
-avg(rate(node_cpu_seconds_total{mode!="idle"}[5m]))
+# Average CPU usage percentage across all nodes
+100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
 
-# Max memory usage across pods
+# Max container memory usage per pod
 max(container_memory_working_set_bytes{namespace="production"}) by (pod)
 
 # Count of active pods per namespace
-count(kube_pod_status_phase{phase="Running"}) by (namespace)
+sum(kube_pod_status_phase{phase="Running"}) by (namespace)
 ```
 
 ### topk and bottomk
