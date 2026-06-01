@@ -59,12 +59,12 @@ When you push an image to ACR, it goes to the region closest to you (or the regi
 
 ```mermaid
 graph TB
-    Push[Image Push] --> Primary[East US - Primary]
-    Primary --> WestUS[West US 2 - Replica]
-    Primary --> Europe[West Europe - Replica]
-    Primary --> Asia[Southeast Asia - Replica]
+    Push[Image Push] --> EastUS[East US - Geo-replica]
+    EastUS --> WestUS[West US 2 - Geo-replica]
+    EastUS --> Europe[West Europe - Geo-replica]
+    EastUS --> Asia[Southeast Asia - Geo-replica]
 
-    AKS1[AKS East US] --> Primary
+    AKS1[AKS East US] --> EastUS
     AKS2[AKS West US 2] --> WestUS
     AKS3[AKS West Europe] --> Europe
     AKS4[AKS Southeast Asia] --> Asia
@@ -74,23 +74,20 @@ Each AKS cluster pulls from its closest replication. If that replication is unav
 
 ## Configuring Zone Redundancy
 
-Within each region, you can enable zone redundancy to protect against availability zone failures. This replicates the registry data across multiple zones within the same region.
+Within each supported region, ACR zone redundancy protects against availability zone failures by distributing the registry data plane across multiple zones. Zone redundancy is now enabled by default for registries and geo-replicas in supported regions, so you do not need to opt in during replica creation.
 
 ```bash
-# Create a zone-redundant replication
+# Create a replication in a region that supports availability zones
 az acr replication create \
   --registry myacr \
-  --location eastus2 \
-  --zone-redundancy enabled
+  --location eastus2
 
-# Update an existing replication to be zone redundant
-# Note: you cannot change zone redundancy on existing replications
-# You need to delete and recreate
-az acr replication delete --registry myacr --location westus2
+# The --zone-redundancy flag still exists for backward compatibility,
+# but it is unnecessary in supported regions.
 az acr replication create \
   --registry myacr \
   --location westus2 \
-  --zone-redundancy enabled
+  --zone-redundancy Enabled
 ```
 
 Zone redundancy protects against failure of a single availability zone within a region. Combined with geo-replication, you get protection against both zone and region failures.
@@ -110,20 +107,32 @@ This is transparent to your AKS configuration. You do not need to change any ima
 
 ## Testing Failover
 
-You can simulate a failover scenario by disabling a replication and observing that pulls still work.
+You can simulate a failover scenario by temporarily excluding a geo-replica from global endpoint routing and observing that pulls still work.
 
 ```bash
 # Check the health of all replications
 az acr replication list --registry myacr -o table
 
-# Pull an image from your AKS cluster and note the response time
+# Pull an image from a client in the same region and note the response time
 # Normal pull from the local region should be fast
 time docker pull myacr.azurecr.io/myapp:latest
 
-# To test failover, you can check the replication status
+# Temporarily stop routing global endpoint requests to the East US replica
+az acr replication update \
+  --registry myacr \
+  --name eastus \
+  --region-endpoint-enabled false
+
+# Re-enable routing after the test
+az acr replication update \
+  --registry myacr \
+  --name eastus \
+  --region-endpoint-enabled true
+
+# You can also check the replication status
 az acr replication show \
   --registry myacr \
-  --location eastus \
+  --name eastus \
   --query "status" -o json
 ```
 
@@ -152,13 +161,13 @@ Set up monitoring to know when a replication is unhealthy before it affects your
 # Check replication status programmatically
 az acr replication list --registry myacr --query "[].{Location:location, Status:status.displayStatus}" -o table
 
-# Set up an Azure Monitor alert for replication failures
+# Set up an Azure Monitor alert for low successful pull activity
 az monitor metrics alert create \
-  --name "acr-replication-lag" \
+  --name "acr-successful-pulls-low" \
   --resource-group myRG \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.ContainerRegistry/registries/myacr" \
-  --condition "avg SuccessfulPullCount < 1 where Geolocation includes westus2" \
-  --description "ACR replication in West US 2 may be unhealthy" \
+  --condition "total SuccessfulPullCount < 1" \
+  --description "ACR has no successful image pulls in the evaluation window" \
   --action-group "/subscriptions/<sub-id>/resourceGroups/myRG/providers/microsoft.insights/actionGroups/ops-team"
 ```
 
@@ -180,7 +189,7 @@ With geo-replication in place, there are additional steps to optimize image pull
 
 ### Enable Dedicated Data Endpoints
 
-By default, all image data goes through the registry's single endpoint. Dedicated data endpoints provide region-specific data endpoints that can improve throughput.
+By default, clients may need access to shared storage endpoints for image layer data. Dedicated data endpoints provide registry-specific, region-specific endpoints that are useful when you need tightly scoped firewall rules.
 
 ```bash
 # Enable dedicated data endpoints
@@ -192,14 +201,19 @@ az acr show --name myacr --query "dataEndpointHostNames" -o json
 
 ### Use Artifact Streaming
 
-For large images, Azure offers artifact streaming that allows pods to start before the full image is downloaded.
+For large images, Azure offers artifact streaming in preview, which can reduce time-to-pod readiness by streaming compatible images to AKS instead of waiting on a full traditional pull.
 
 ```bash
-# Enable artifact streaming on the ACR
+# Create a streaming artifact for a specific image
 az acr artifact-streaming create \
-  --registry myacr \
+  --name myacr \
+  --image myapp:v1.2.3
+
+# Or enable automatic streaming artifact creation for new images in a repository
+az acr artifact-streaming update \
+  --name myacr \
   --repository myapp \
-  --filter "v*"
+  --enable-streaming true
 ```
 
 ### Configure AKS Image Pull Caching
@@ -261,6 +275,10 @@ Here is a complete pattern for deploying the same application across multiple re
 REGIONS=("eastus" "westus2" "westeurope")
 
 for REGION in "${REGIONS[@]}"; do
+  az group create \
+    --name "aks-${REGION}-rg" \
+    --location "$REGION"
+
   # Create a cluster in each region
   az aks create \
     --resource-group "aks-${REGION}-rg" \
