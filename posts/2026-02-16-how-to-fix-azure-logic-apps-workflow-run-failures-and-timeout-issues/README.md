@@ -14,7 +14,7 @@ This post covers the most common failure scenarios and how to fix them.
 
 ## Understanding Logic Apps Run History
 
-Every Logic Apps execution creates a run record that shows the status of each action. Navigate to your Logic App in the Azure portal and click "Runs history" to see recent executions.
+Every stateful Logic Apps execution creates a run record that shows the status of each action. Navigate to your Logic App in the Azure portal and click "Runs history" to see recent executions.
 
 Click on a failed run to see the workflow visualization with each action marked as Succeeded (green check), Failed (red X), or Skipped (gray dash). Click on a failed action to see the input, output, and error details.
 
@@ -26,7 +26,7 @@ Logic Apps actions have a default timeout. If an action does not complete within
 
 ### HTTP Actions
 
-HTTP actions default to a 2-minute timeout. If you are calling an API that takes longer, the action fails with a timeout error.
+HTTP actions in Consumption workflows have a 2-minute outbound request timeout. Standard workflows have a longer default timeout, and stateless workflows are intended for shorter runs. If you are calling an API that takes longer to respond synchronously, the action fails with a timeout error.
 
 ```json
 {
@@ -39,18 +39,13 @@ HTTP actions default to a 2-minute timeout. If you are calling an API that takes
     }
   },
   "runAfter": {},
-  "runtimeConfiguration": {
-    "staticResult": {
-      "staticResultOptions": "Disabled"
-    }
-  },
   "limit": {
     "timeout": "PT10M"
   }
 }
 ```
 
-In the designer, click on the action, go to Settings, and set the Timeout to a longer duration. Use ISO 8601 duration format: `PT10M` for 10 minutes, `PT1H` for 1 hour.
+For long-running HTTP operations, use the asynchronous polling pattern instead of waiting for a synchronous response. The `limit.timeout` value controls how long Logic Apps waits for an asynchronous operation before marking the action as timed out. Use ISO 8601 duration format: `PT10M` for 10 minutes, `PT1H` for 1 hour.
 
 ### Long-Running Workflows
 
@@ -67,12 +62,11 @@ If your workflow calls an API that takes more than a few minutes, use the asynch
     "body": {
       "jobType": "large-export"
     }
-  },
-  "operationOptions": "DisableAsyncPattern"
+  }
 }
 ```
 
-Wait, actually you want to enable the async pattern, not disable it. By default, Logic Apps supports the 202 async pattern. If your API returns HTTP 202 with a Location header, Logic Apps will automatically poll the Location URL until the operation completes. Make sure your API implements this pattern correctly.
+By default, stateful Logic Apps workflows support the 202 async pattern. If your API returns HTTP 202 with a Location header, Logic Apps will automatically poll the Location URL until the operation completes. Make sure your API implements this pattern correctly. Only use `operationOptions: "DisableAsyncPattern"` when you intentionally want the HTTP action to run synchronously and avoid polling the Location header.
 
 ## Common Failure: Connector Authentication Errors
 
@@ -92,7 +86,7 @@ az resource list \
   --output table
 ```
 
-For production workflows, use managed identities instead of user credentials wherever possible. Managed identities do not expire.
+For production workflows, use managed identities instead of user credentials wherever possible. Managed identities avoid user-owned secrets and let Azure manage the credential lifecycle.
 
 ```json
 {
@@ -126,7 +120,7 @@ You can also use the `coalesce()` function to provide default values:
 
 ### Large Payloads
 
-Logic Apps has payload size limits. For Consumption plan, the maximum is 100 MB for HTTP actions and 50 MB for other actions. If your workflow processes large files, you might hit these limits.
+Logic Apps has payload size limits. The default message size limit is 100 MB for both Consumption and Standard workflows, and actions that support chunking can handle larger messages up to the chunking limits. Some connectors and protocols have their own smaller limits. If your workflow processes large files, you might hit these limits.
 
 **Fix**: For large files, use chunking or stream the content through blob storage.
 
@@ -158,14 +152,14 @@ Adjust the retry policy based on the failure type. For transient errors (network
   "type": "Http",
   "inputs": {
     "method": "GET",
-    "uri": "https://api.example.com/data"
-  },
-  "retryPolicy": {
-    "type": "exponential",
-    "count": 10,
-    "interval": "PT10S",
-    "minimumInterval": "PT10S",
-    "maximumInterval": "PT1H"
+    "uri": "https://api.example.com/data",
+    "retryPolicy": {
+      "type": "exponential",
+      "count": 10,
+      "interval": "PT10S",
+      "minimumInterval": "PT10S",
+      "maximumInterval": "PT1H"
+    }
   }
 }
 ```
@@ -217,7 +211,7 @@ If using an HTTP request trigger, verify the trigger URL is correct and accessib
 ```bash
 # Get the trigger URL for an HTTP-triggered Logic App
 az rest --method POST \
-  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.Logic/workflows/my-logic-app/listCallbackUrl?api-version=2016-06-01"
+  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.Logic/workflows/my-logic-app/triggers/manual/listCallbackUrl?api-version=2016-06-01"
 ```
 
 ### Service Bus / Event Grid Trigger
@@ -255,8 +249,8 @@ az monitor metrics alert create \
   --name logic-app-failure-alert \
   --scopes "/subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.Logic/workflows/my-logic-app" \
   --condition "total RunsFailed > 0" \
-  --window-size PT5M \
-  --evaluation-frequency PT1M \
+  --window-size 5m \
+  --evaluation-frequency 1m \
   --action "/subscriptions/<sub-id>/resourceGroups/my-rg/providers/Microsoft.Insights/actionGroups/ops-team"
 ```
 
@@ -276,9 +270,9 @@ az monitor diagnostic-settings create \
 Logic Apps Standard (based on Azure Functions runtime) handles failures differently:
 
 - You get local debugging support in VS Code
-- Stateless workflows have no run history
+- Stateless workflows do not store run history by default, although you can temporarily enable debug run history
 - Retry policies are configured in the workflow definition
-- Performance is generally better because it runs on dedicated infrastructure
+- Performance can be better because workflows run on single-tenant infrastructure with configurable compute
 
 If you are hitting performance or reliability issues on the Consumption plan, consider migrating critical workflows to Standard.
 
