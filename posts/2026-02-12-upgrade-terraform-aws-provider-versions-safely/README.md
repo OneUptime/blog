@@ -16,7 +16,7 @@ This post walks through a safe upgrade process that minimizes risk and gives you
 
 The AWS provider follows semantic versioning: `MAJOR.MINOR.PATCH`.
 
-- **Patch** (5.30.0 to 5.30.1): Bug fixes. Safe to apply.
+- **Patch** (5.30.0 to 5.30.1): Bug fixes. Usually safe to apply, but still review the release notes.
 - **Minor** (5.30.0 to 5.31.0): New features, new resources. Usually safe but check the changelog.
 - **Major** (4.x to 5.x): Breaking changes. Resources may behave differently. Requires careful planning.
 
@@ -100,7 +100,7 @@ Then run init to download the new version:
 terraform init -upgrade
 ```
 
-The `-upgrade` flag tells Terraform to update providers within the version constraints. Without it, Terraform uses whatever version is already cached.
+The `-upgrade` flag tells Terraform to update providers within the version constraints. Without it, Terraform reuses the provider selections recorded in `.terraform.lock.hcl` when they still satisfy the configured constraints.
 
 ## Step 4: Run Plan and Inspect
 
@@ -227,7 +227,7 @@ General approach for major upgrades:
 8. Get a thorough code review
 9. Apply to production during a maintenance window
 
-For the AWS provider 4.x to 5.x upgrade specifically, the biggest changes were around S3 bucket configuration (moved to separate resources) and the removal of many long-deprecated arguments.
+For the AWS provider, the S3 bucket configuration refactor was introduced in the 4.x line, where configuration such as versioning and server-side encryption moved toward separate resources. The 4.x to 5.x upgrade also removed several long-deprecated provider arguments, so read the version-specific upgrade guide before changing the major version constraint.
 
 ## Rolling Back
 
