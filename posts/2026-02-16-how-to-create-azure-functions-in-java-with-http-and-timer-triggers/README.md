@@ -97,7 +97,7 @@ import java.util.Optional;
 
 public class ProductApi {
 
-    // HTTP-triggered function that responds to GET and POST requests
+    // HTTP-triggered function that responds to GET requests
     @FunctionName("GetProduct")
     public HttpResponseMessage getProduct(
             @HttpTrigger(
@@ -206,7 +206,7 @@ public class ScheduledTasks {
             "Cleaned up " + expiredCount + " expired sessions");
     }
 
-    // Runs at midnight every day
+    // Runs at midnight every day, in UTC by default
     @FunctionName("GenerateDailyReport")
     public void generateReport(
             @TimerTrigger(
@@ -228,7 +228,7 @@ public class ScheduledTasks {
         }
     }
 
-    // Runs at 9 AM on weekdays
+    // Runs at 9 AM on weekdays, in UTC by default
     @FunctionName("SendMorningDigest")
     public void sendDigest(
             @TimerTrigger(
@@ -253,7 +253,7 @@ public class ScheduledTasks {
 }
 ```
 
-The CRON expression format for Azure Functions is: `{second} {minute} {hour} {day} {month} {day-of-week}`. Note that it includes seconds, which is different from standard Unix CRON.
+The CRON expression format for Azure Functions is: `{second} {minute} {hour} {day} {month} {day-of-week}`. Note that it includes seconds, which is different from standard Unix CRON. Timer schedules use UTC by default unless you configure a supported function app time zone.
 
 ## Adding Input and Output Bindings
 
@@ -262,6 +262,7 @@ Bindings let your function read from and write to other Azure services without w
 ```java
 import com.microsoft.azure.functions.*;
 import com.microsoft.azure.functions.annotation.*;
+import java.util.Optional;
 
 public class OrderProcessor {
 
