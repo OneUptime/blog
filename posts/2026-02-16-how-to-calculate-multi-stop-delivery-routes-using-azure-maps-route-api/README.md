@@ -28,6 +28,22 @@ Let us start with the basics - routing from point A to point B.
 import requests
 
 AZURE_MAPS_KEY = "your-subscription-key"
+AZURE_MAPS_ENDPOINT = "https://atlas.microsoft.com"
+
+def waypoint_feature(point: tuple, index: int) -> dict:
+    lat, lon = point
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+        "properties": {"pointIndex": index, "pointType": "waypoint"}
+    }
+
+def get_route_path(route_response: dict) -> dict:
+    return next(
+        feature["properties"]
+        for feature in route_response["features"]
+        if feature["properties"]["type"] == "RoutePath"
+    )
 
 def get_route(origin: tuple, destination: tuple) -> dict:
     """Calculate a route between two coordinate pairs.
@@ -36,30 +52,40 @@ def get_route(origin: tuple, destination: tuple) -> dict:
         origin: (latitude, longitude) tuple
         destination: (latitude, longitude) tuple
     """
-    url = "https://atlas.microsoft.com/route/directions/json"
+    url = f"{AZURE_MAPS_ENDPOINT}/route/directions"
 
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY,
-        "query": f"{origin[0]},{origin[1]}:{destination[0]},{destination[1]}",
-        "travelMode": "car",
-        "traffic": "true",  # Use real-time traffic data
-        "routeType": "fastest"  # Options: fastest, shortest, eco, thrilling
+        "api-version": "2025-01-01"
+    }
+    headers = {
+        "Content-Type": "application/geo+json",
+        "subscription-key": AZURE_MAPS_KEY
+    }
+    body = {
+        "type": "FeatureCollection",
+        "features": [
+            waypoint_feature(origin, 0),
+            waypoint_feature(destination, 1)
+        ],
+        "travelMode": "driving",
+        "optimizeRoute": "fastestWithTraffic",
+        "routeOutputOptions": ["routePath"]
     }
 
-    response = requests.get(url, params=params)
+    response = requests.post(url, params=params, headers=headers, json=body)
     response.raise_for_status()
     data = response.json()
 
-    route = data["routes"][0]
-    summary = route["summary"]
+    route = get_route_path(data)
+    duration = route.get("durationTrafficInSeconds", route["durationInSeconds"])
+    traffic_delay = duration - route["durationInSeconds"]
 
     return {
-        "distanceKm": summary["lengthInMeters"] / 1000,
-        "durationMinutes": summary["travelTimeInSeconds"] / 60,
-        "trafficDelayMinutes": summary.get("trafficDelayInSeconds", 0) / 60,
-        "departureTime": summary.get("departureTime", ""),
-        "arrivalTime": summary.get("arrivalTime", ""),
+        "distanceKm": route["distanceInMeters"] / 1000,
+        "durationMinutes": duration / 60,
+        "trafficDelayMinutes": traffic_delay / 60,
+        "departureTime": route.get("departureAt", ""),
+        "arrivalTime": route.get("arrivalAt", ""),
         "legs": route["legs"]
     }
 
@@ -76,13 +102,29 @@ print(f"Traffic delay: {route['trafficDelayMinutes']:.0f} minutes")
 
 ## Multi-Stop Routing
 
-For delivery routes with multiple stops, pass all waypoints in the query string separated by colons.
+For delivery routes with multiple stops, pass all waypoints as GeoJSON Point features in the request body.
 
 ```python
 # multi_stop_route.py - Route through multiple delivery stops
 import requests
 
 AZURE_MAPS_KEY = "your-subscription-key"
+AZURE_MAPS_ENDPOINT = "https://atlas.microsoft.com"
+
+def waypoint_feature(point: tuple, index: int) -> dict:
+    lat, lon = point
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+        "properties": {"pointIndex": index, "pointType": "waypoint"}
+    }
+
+def get_route_path(route_response: dict) -> dict:
+    return next(
+        feature["properties"]
+        for feature in route_response["features"]
+        if feature["properties"]["type"] == "RoutePath"
+    )
 
 def get_multi_stop_route(waypoints: list, optimize: bool = False) -> dict:
     """Calculate a route through multiple waypoints.
@@ -91,50 +133,60 @@ def get_multi_stop_route(waypoints: list, optimize: bool = False) -> dict:
         waypoints: List of (latitude, longitude) tuples
         optimize: If True, reorder waypoints for minimum travel time
     """
-    # Build the query string with all waypoints
-    query = ":".join([f"{wp[0]},{wp[1]}" for wp in waypoints])
-
-    url = "https://atlas.microsoft.com/route/directions/json"
+    url = f"{AZURE_MAPS_ENDPOINT}/route/directions"
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY,
-        "query": query,
-        "travelMode": "car",
-        "traffic": "true",
-        "routeType": "fastest",
-        "computeBestOrder": str(optimize).lower()  # Optimize waypoint order
+        "api-version": "2025-01-01"
+    }
+    headers = {
+        "Content-Type": "application/geo+json",
+        "subscription-key": AZURE_MAPS_KEY
+    }
+    body = {
+        "type": "FeatureCollection",
+        "features": [
+            waypoint_feature(point, index)
+            for index, point in enumerate(waypoints)
+        ],
+        "travelMode": "driving",
+        "optimizeRoute": "fastestWithTraffic",
+        "optimizeWaypointOrder": optimize,
+        "routeOutputOptions": ["routePath"]
     }
 
-    response = requests.get(url, params=params)
+    response = requests.post(url, params=params, headers=headers, json=body)
     response.raise_for_status()
     data = response.json()
 
-    route = data["routes"][0]
-    summary = route["summary"]
+    route = get_route_path(data)
+    duration = route.get("durationTrafficInSeconds", route["durationInSeconds"])
+    traffic_delay = duration - route["durationInSeconds"]
 
     result = {
-        "totalDistanceKm": summary["lengthInMeters"] / 1000,
-        "totalDurationMinutes": summary["travelTimeInSeconds"] / 60,
-        "trafficDelayMinutes": summary.get("trafficDelayInSeconds", 0) / 60,
+        "totalDistanceKm": route["distanceInMeters"] / 1000,
+        "totalDurationMinutes": duration / 60,
+        "trafficDelayMinutes": traffic_delay / 60,
         "legs": []
     }
 
     # Parse each leg of the route
     for i, leg in enumerate(route["legs"]):
-        leg_summary = leg["summary"]
+        leg_duration = leg.get("durationTrafficInSeconds", leg["durationInSeconds"])
         result["legs"].append({
             "legIndex": i,
-            "distanceKm": leg_summary["lengthInMeters"] / 1000,
-            "durationMinutes": leg_summary["travelTimeInSeconds"] / 60,
-            "departureTime": leg_summary.get("departureTime", ""),
-            "arrivalTime": leg_summary.get("arrivalTime", "")
+            "distanceKm": leg["distanceInMeters"] / 1000,
+            "durationMinutes": leg_duration / 60,
+            "departureTime": leg.get("departureAt", ""),
+            "arrivalTime": leg.get("arrivalAt", "")
         })
 
     # If optimization was used, get the optimized order
-    if optimize and "optimizedWaypoints" in data["routes"][0]:
+    if optimize and "optimizedWaypoints" in route:
         result["optimizedOrder"] = [
-            wp["optimizedIndex"]
-            for wp in data["routes"][0]["optimizedWaypoints"]
+            wp["inputIndex"]
+            for wp in sorted(
+                route["optimizedWaypoints"],
+                key=lambda item: item["optimizedIndex"]
+            )
         ]
 
     return result
@@ -184,24 +236,34 @@ Real delivery vehicles have constraints - weight limits, height restrictions, an
 ```python
 def get_truck_route(waypoints: list, vehicle_params: dict) -> dict:
     """Calculate a truck route with vehicle constraints."""
-    query = ":".join([f"{wp[0]},{wp[1]}" for wp in waypoints])
-
-    url = "https://atlas.microsoft.com/route/directions/json"
+    url = f"{AZURE_MAPS_ENDPOINT}/route/directions"
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY,
-        "query": query,
-        "travelMode": "truck",  # Use truck routing instead of car
-        "traffic": "true",
-        "vehicleWidth": vehicle_params.get("widthMeters", 2.5),
-        "vehicleHeight": vehicle_params.get("heightMeters", 3.5),
-        "vehicleLength": vehicle_params.get("lengthMeters", 12.0),
-        "vehicleWeight": vehicle_params.get("weightKg", 20000),
-        "vehicleAxleWeight": vehicle_params.get("axleWeightKg", 10000),
-        "vehicleLoadType": vehicle_params.get("loadType", "otherHazmatGeneral")
+        "api-version": "2025-01-01"
+    }
+    headers = {
+        "Content-Type": "application/geo+json",
+        "subscription-key": AZURE_MAPS_KEY
+    }
+    body = {
+        "type": "FeatureCollection",
+        "features": [
+            waypoint_feature(point, index)
+            for index, point in enumerate(waypoints)
+        ],
+        "travelMode": "truck",
+        "optimizeRoute": "fastestWithTraffic",
+        "routeOutputOptions": ["routePath"],
+        "vehicleSpec": {
+            "width": vehicle_params.get("widthMeters", 2.5),
+            "height": vehicle_params.get("heightMeters", 3.5),
+            "length": vehicle_params.get("lengthMeters", 12.0),
+            "weight": vehicle_params.get("weightKg", 20000),
+            "axleWeight": vehicle_params.get("axleWeightKg", 10000),
+            "loadType": [vehicle_params.get("loadType", "USHazmatClass9")]
+        }
     }
 
-    response = requests.get(url, params=params)
+    response = requests.post(url, params=params, headers=headers, json=body)
     response.raise_for_status()
     return response.json()
 
@@ -230,25 +292,35 @@ For delivery planning, you often need to calculate routes for a specific departu
 
 ```python
 # Calculate a route with a specific departure time
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 def get_timed_route(waypoints: list, departure_time: datetime) -> dict:
     """Calculate a route for a specific departure time."""
-    query = ":".join([f"{wp[0]},{wp[1]}" for wp in waypoints])
-
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY,
-        "query": query,
-        "travelMode": "car",
-        "traffic": "true",
-        "departAt": departure_time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "computeBestOrder": "true"
+        "api-version": "2025-01-01"
+    }
+    headers = {
+        "Content-Type": "application/geo+json",
+        "subscription-key": AZURE_MAPS_KEY
+    }
+    body = {
+        "type": "FeatureCollection",
+        "features": [
+            waypoint_feature(point, index)
+            for index, point in enumerate(waypoints)
+        ],
+        "travelMode": "driving",
+        "optimizeRoute": "fastestWithTraffic",
+        "optimizeWaypointOrder": True,
+        "departAt": departure_time.isoformat(),
+        "routeOutputOptions": ["routePath"]
     }
 
-    response = requests.get(
-        "https://atlas.microsoft.com/route/directions/json",
-        params=params
+    response = requests.post(
+        f"{AZURE_MAPS_ENDPOINT}/route/directions",
+        params=params,
+        headers=headers,
+        json=body
     )
     response.raise_for_status()
     return response.json()
@@ -256,34 +328,43 @@ def get_timed_route(waypoints: list, departure_time: datetime) -> dict:
 # Compare morning rush hour vs. midday routes
 morning_route = get_timed_route(
     all_waypoints,
-    datetime(2026, 2, 16, 8, 0, 0)  # 8:00 AM
+    datetime(2026, 2, 16, 8, 0, 0, tzinfo=timezone.utc)  # 8:00 AM UTC
 )
 
 midday_route = get_timed_route(
     all_waypoints,
-    datetime(2026, 2, 16, 11, 0, 0)  # 11:00 AM
+    datetime(2026, 2, 16, 11, 0, 0, tzinfo=timezone.utc)  # 11:00 AM UTC
 )
 ```
 
 ## Extracting Turn-by-Turn Directions
 
-For driver guidance, extract the detailed instructions from the route response.
+For driver guidance, request the itinerary output with `routeOutputOptions: ["routePath", "itinerary"]` and extract the detailed instructions from the route response.
 
 ```python
 def get_directions(route_response: dict) -> list:
     """Extract turn-by-turn directions from a route response."""
     directions = []
-    route = route_response["routes"][0]
 
-    for leg_index, leg in enumerate(route["legs"]):
-        for step in leg.get("guidance", {}).get("instructions", []):
-            directions.append({
-                "leg": leg_index,
-                "instruction": step.get("message", ""),
-                "distanceMeters": step.get("routeOffsetInMeters", 0),
-                "maneuver": step.get("maneuver", ""),
-                "street": step.get("street", "")
-            })
+    for feature in route_response["features"]:
+        properties = feature["properties"]
+        if properties["type"] != "ManeuverPoint":
+            continue
+
+        instruction = properties.get("instruction", {})
+        route_point = properties.get("routePathPoint", {})
+        street_names = []
+        if properties.get("steps"):
+            street_names = properties["steps"][0].get("names", [])
+
+        directions.append({
+            "leg": route_point.get("legIndex", 0),
+            "instruction": instruction.get("text", ""),
+            "formattedInstruction": instruction.get("formattedText", ""),
+            "distanceMeters": properties.get("distanceInMeters", 0),
+            "maneuver": instruction.get("maneuverType", ""),
+            "street": ", ".join(street_names)
+        })
 
     return directions
 ```
@@ -312,43 +393,60 @@ When you have multiple drivers and need to assign stops efficiently, the Route M
 ```python
 def get_route_matrix(origins: list, destinations: list) -> list:
     """Calculate travel time between all origin-destination pairs."""
-    url = "https://atlas.microsoft.com/route/matrix/json"
+    url = f"{AZURE_MAPS_ENDPOINT}/route/matrix"
 
     # Build the request body
     body = {
-        "origins": {
-            "type": "MultiPoint",
-            "coordinates": [[lon, lat] for lat, lon in origins]
-        },
-        "destinations": {
-            "type": "MultiPoint",
-            "coordinates": [[lon, lat] for lat, lon in destinations]
-        }
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "MultiPoint",
+                    "coordinates": [[lon, lat] for lat, lon in origins]
+                },
+                "properties": {"pointType": "origins"}
+            },
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "MultiPoint",
+                    "coordinates": [[lon, lat] for lat, lon in destinations]
+                },
+                "properties": {"pointType": "destinations"}
+            }
+        ],
+        "travelMode": "driving",
+        "optimizeRoute": "fastest",
+        "traffic": "historical"
     }
 
     params = {
-        "api-version": "1.0",
-        "subscription-key": AZURE_MAPS_KEY,
-        "travelMode": "car"
+        "api-version": "2025-01-01"
+    }
+    headers = {
+        "Content-Type": "application/geo+json",
+        "subscription-key": AZURE_MAPS_KEY
     }
 
-    response = requests.post(url, params=params, json=body)
+    response = requests.post(url, params=params, headers=headers, json=body)
     response.raise_for_status()
     data = response.json()
 
     # Parse the matrix
-    matrix = []
-    for row in data["matrix"]:
-        matrix_row = []
-        for cell in row:
-            if cell["statusCode"] == 200:
-                matrix_row.append({
-                    "durationMinutes": cell["response"]["routeSummary"]["travelTimeInSeconds"] / 60,
-                    "distanceKm": cell["response"]["routeSummary"]["lengthInMeters"] / 1000
-                })
-            else:
-                matrix_row.append(None)
-        matrix.append(matrix_row)
+    matrix = [
+        [None for _ in destinations]
+        for _ in origins
+    ]
+
+    for cell in data["properties"]["matrix"]:
+        i = cell["originIndex"]
+        j = cell["destinationIndex"]
+        if cell["statusCode"] == 200:
+            matrix[i][j] = {
+                "durationMinutes": cell["durationInSeconds"] / 60,
+                "distanceKm": cell["distanceInMeters"] / 1000
+            }
 
     return matrix
 
@@ -382,15 +480,14 @@ for j, zone in enumerate(delivery_zones):
 
 ## Cost and Rate Limit Considerations
 
-The Route API pricing depends on the operation type:
+Azure Maps bills routing by transactions. The details depend on the operation type and pricing tier:
 
-- Simple routes (up to 5 waypoints): 1 transaction each
-- Routes with more than 5 waypoints: charged per waypoint
-- Route matrix: charged per cell in the matrix
-- Waypoint optimization adds additional cost
+- Route Directions calls count as routing transactions.
+- Route Matrix counts one routing transaction for every 4 matrix cells, rounded up to the nearest whole number.
+- Batch Route calls count each individual route calculation query as a routing transaction.
 
 For high-volume applications, cache frequently requested routes and use the route matrix for batch planning instead of individual route calculations.
 
 ## Wrapping Up
 
-The Azure Maps Route API handles everything from simple point-to-point navigation to complex multi-vehicle fleet optimization. The key features for delivery routing are waypoint optimization (which reorders stops for efficiency), traffic-aware timing (which accounts for real-world conditions), and vehicle constraints (which ensure routes are actually drivable by your fleet). Start with basic multi-stop routing, measure the time savings from optimization, and layer in traffic timing and vehicle constraints as your delivery operation grows in complexity.
+The Azure Maps Route API handles everything from simple point-to-point navigation to the routing and matrix calculations that support multi-vehicle fleet planning. The key features for delivery routing are waypoint optimization (which reorders stops for efficiency), traffic-aware timing (which accounts for real-world conditions), and vehicle constraints (which ensure routes are actually drivable by your fleet). Start with basic multi-stop routing, measure the time savings from optimization, and layer in traffic timing and vehicle constraints as your delivery operation grows in complexity.
