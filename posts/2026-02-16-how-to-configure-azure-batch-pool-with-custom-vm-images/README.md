@@ -8,7 +8,7 @@ Description: A step-by-step guide to creating and using custom VM images for Azu
 
 ---
 
-The default marketplace images for Azure Batch pools include a base operating system and the Batch node agent, but they do not include your application's dependencies. If your tasks need Python libraries, CUDA drivers, custom software, or specific OS configurations, you have two choices: install everything via a start task (which runs on every node, every time), or create a custom VM image with everything pre-installed. Custom images make pool creation faster and more reliable because nodes boot ready to work.
+The default marketplace images for Azure Batch pools provide a base operating system, and Azure Batch installs the matching Batch node agent when the node joins the pool. They do not include your application's dependencies. If your tasks need Python libraries, CUDA drivers, custom software, or specific OS configurations, you have two choices: install everything via a start task (which runs on every node, every time), or create a custom VM image with everything pre-installed. Custom images make pool creation faster and more reliable because nodes boot ready to work.
 
 ## Why Use Custom Images?
 
@@ -32,7 +32,7 @@ az vm create \
   --name batch-image-builder \
   --resource-group batch-rg \
   --location eastus \
-  --image "Canonical:0001-com-ubuntu-server-jammy:22_04-lts:latest" \
+  --image "Canonical:ubuntu-22_04-lts:server:latest" \
   --size Standard_D4s_v3 \
   --admin-username azureuser \
   --generate-ssh-keys
@@ -130,7 +130,7 @@ az sig image-version create \
   --gallery-name batchImageGallery \
   --gallery-image-definition batch-worker-ubuntu \
   --gallery-image-version 1.0.0 \
-  --managed-image $VM_ID \
+  --virtual-machine $VM_ID \
   --target-regions eastus westus2 \
   --replica-count 1
 ```
@@ -186,8 +186,8 @@ Create a Packer template.
       "managed_image_name": "batch-worker-{{timestamp}}",
       "os_type": "Linux",
       "image_publisher": "Canonical",
-      "image_offer": "0001-com-ubuntu-server-jammy",
-      "image_sku": "22_04-lts",
+      "image_offer": "ubuntu-22_04-lts",
+      "image_sku": "server",
       "location": "eastus",
       "vm_size": "Standard_D4s_v3"
     }
