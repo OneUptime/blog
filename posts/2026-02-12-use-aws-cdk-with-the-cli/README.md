@@ -65,13 +65,7 @@ cdk init app --language typescript
 
 Here's a practical example that creates a VPC, an ECS Fargate service, and an RDS database.
 
-First, install the required construct libraries:
-
-```bash
-npm install @aws-cdk/aws-ec2 @aws-cdk/aws-ecs @aws-cdk/aws-ecs-patterns @aws-cdk/aws-rds
-```
-
-Or with CDK v2 (where everything is in one package):
+For CDK v2, install the CDK library and constructs package:
 
 ```bash
 npm install aws-cdk-lib constructs
@@ -289,7 +283,8 @@ Access context in your code:
 ```typescript
 // Read context values in your stack
 const envConfig = this.node.tryGetContext('environments');
-const targetEnv = envConfig[props?.stage || 'dev'];
+const stage = this.node.tryGetContext('stage') || 'dev';
+const targetEnv = envConfig[stage];
 ```
 
 Override context from the CLI:
