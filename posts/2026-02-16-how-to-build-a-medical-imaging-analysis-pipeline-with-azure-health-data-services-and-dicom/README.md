@@ -78,9 +78,8 @@ The DICOM service supports the DICOMweb standard. Upload images using the STOW-R
 ```python
 # Upload DICOM files to Azure DICOM service using DICOMweb STOW-RS
 # Handles authentication and multipart DICOM upload
-import requests
 from azure.identity import ClientSecretCredential
-from pathlib import Path
+import requests
 
 class DicomClient:
     def __init__(self, dicom_url, tenant_id, client_id, client_secret):
@@ -155,7 +154,7 @@ class DicomClient:
             f"{self.dicom_url}/v1/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}",
             headers={
                 "Authorization": f"Bearer {self._get_token()}",
-                "Accept": "application/dicom"
+                "Accept": "application/dicom; transfer-syntax=*"
             }
         )
 
@@ -165,42 +164,46 @@ class DicomClient:
 
 ### Bulk Upload from PACS
 
-For migrating large volumes of data from an existing PACS (Picture Archiving and Communication System), use the Azure DICOM service's bulk import feature:
+For migrating large volumes of data from an existing PACS (Picture Archiving and Communication System), use the Azure DICOM service's bulk import feature, which is currently in preview:
 
-1. Export DICOM files from your PACS to Azure Blob Storage.
-2. Use the DICOM service's import endpoint to bulk ingest.
+1. Enable events, a system-assigned managed identity, and bulk import on the DICOM service.
+2. Export DICOM files from your PACS.
+3. Upload the files to the generated `import-container` storage container. The DICOM service monitors this container and imports new files.
 
 ```bash
-# Trigger a bulk import from Blob Storage
-curl -X POST \
-    "https://{workspace}-{dicom}.dicom.azurehealthcareapis.com/v1/$import" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "input": [{
-            "type": "application/dicom",
-            "url": "https://storageaccount.blob.core.windows.net/dicom-import/"
-        }]
-    }'
+# Upload DICOM files to the bulk import container
+azcopy copy "/path/to/dicom/files/*" \
+    "https://{storage-account}.blob.core.windows.net/import-container?{sas-token}" \
+    --recursive=true
 ```
 
 ## Step 3: Build the Analysis Pipeline
 
 ### Monitor for New Studies Using Change Feed
 
-The DICOM service has a change feed that emits events when studies are added or updated.
+The DICOM service has a change feed that records create, update, and delete events. Poll the change feed to find new instances for processing.
 
 ```csharp
 // Azure Function that monitors the DICOM change feed for new studies
 // Triggers image analysis when a new study is uploaded
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
-using System.Net.Http;
-using System.Threading.Tasks;
 
 public class DicomChangeFeedProcessor
 {
     private readonly HttpClient _httpClient;
+    private readonly string _dicomUrl = Environment.GetEnvironmentVariable("DICOM_URL");
+    private long _lastOffset = 0;
+
+    public DicomChangeFeedProcessor(HttpClient httpClient)
+    {
+        _httpClient = httpClient;
+    }
 
     [FunctionName("ProcessDicomChangeFeed")]
     public async Task Run(
@@ -209,14 +212,19 @@ public class DicomChangeFeedProcessor
     {
         // Poll the DICOM change feed for new events
         var response = await _httpClient.GetAsync(
-            $"{dicomUrl}/v1/changefeed?offset={lastOffset}&limit=100"
+            $"{_dicomUrl}/v1/changefeed?offset={_lastOffset}&limit=100"
+        );
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadAsStringAsync();
+        var changes = JsonSerializer.Deserialize<List<ChangeEvent>>(
+            body,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
         );
 
-        var changes = await response.Content.ReadAsAsync<List<ChangeEvent>>();
-
-        foreach (var change in changes)
+        foreach (var change in changes ?? new List<ChangeEvent>())
         {
-            if (change.Action == "Create" && change.State == "Current")
+            if (change.Action == "create" && change.State == "current")
             {
                 log.LogInformation(
                     $"New study detected: {change.StudyInstanceUid}"
@@ -225,8 +233,24 @@ public class DicomChangeFeedProcessor
                 // Trigger the analysis pipeline
                 await TriggerAnalysis(change.StudyInstanceUid, log);
             }
+
+            _lastOffset = Math.Max(_lastOffset, change.Sequence);
         }
     }
+
+    private Task TriggerAnalysis(string studyInstanceUid, ILogger log)
+    {
+        // Queue or call your analysis workflow here.
+        return Task.CompletedTask;
+    }
+}
+
+public class ChangeEvent
+{
+    public long Sequence { get; set; }
+    public string StudyInstanceUid { get; set; }
+    public string Action { get; set; }
+    public string State { get; set; }
 }
 ```
 
@@ -398,7 +422,10 @@ def create_fhir_results(fhir_client, patient_id, study_uid, analysis_result):
             for obs_id in observation_ids
         ],
         "imagingStudy": [{
-            "reference": f"ImagingStudy?identifier={study_uid}"
+            "identifier": {
+                "system": "urn:dicom:uid",
+                "value": f"urn:oid:{study_uid}"
+            }
         }],
         "conclusion": analysis_result["classification"]
     }
