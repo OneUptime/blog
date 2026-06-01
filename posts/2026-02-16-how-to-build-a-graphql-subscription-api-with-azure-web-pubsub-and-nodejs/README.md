@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GraphQL, Subscription, Azure Web PubSub, Node.js, Real-Time, WebSocket, API
 
-Description: Implement GraphQL subscriptions using Azure Web PubSub as the transport layer with a Node.js backend for scalable real-time updates.
+Description: Implement GraphQL subscriptions using Azure Web PubSub as the broker layer with a Node.js backend for scalable real-time updates.
 
 ---
 
 GraphQL subscriptions let clients receive real-time updates from the server. When something changes on the backend - a new message arrives, a stock price updates, an order status changes - subscriptions push that data to connected clients immediately. The typical implementation uses WebSockets, which works fine for a single server instance. But when you scale out to multiple instances, you need a pub/sub mechanism so that events from one server reach clients connected to another.
 
-That is where Azure Web PubSub comes in. It is a fully managed WebSocket service that handles the connection management and message routing for you. In this post, we will combine GraphQL subscriptions with Azure Web PubSub to build a scalable real-time API.
+That is where Azure Web PubSub comes in. It is a fully managed WebSocket service that can act as the shared broker between your Node.js instances. In this post, we will combine GraphQL subscriptions with Azure Web PubSub to build a scalable real-time API.
 
 ## Architecture
 
@@ -18,19 +18,21 @@ Here is how the pieces fit together:
 
 ```mermaid
 graph TD
-    A[Client 1] -->|WebSocket| B[Azure Web PubSub]
-    C[Client 2] -->|WebSocket| B
-    D[Node.js Server 1] -->|Publish| B
-    E[Node.js Server 2] -->|Publish| B
-    B -->|Deliver| A
-    B -->|Deliver| C
+    A[Client 1] -->|GraphQL WebSocket| D[Node.js Server 1]
+    C[Client 2] -->|GraphQL WebSocket| E[Node.js Server 2]
+    D -->|Publish to group| B[Azure Web PubSub]
+    E -->|Publish to group| B
+    B -->|Group message| D
+    B -->|Group message| E
+    D -->|GraphQL subscription event| A
+    E -->|GraphQL subscription event| C
 ```
 
-Instead of each server managing its own WebSocket connections, Azure Web PubSub handles all the connection state. Your servers just publish messages to the PubSub service, and it delivers them to the right clients.
+Each server still handles the GraphQL WebSocket connections for its own clients, while Azure Web PubSub distributes events between server instances. Your servers publish messages to the PubSub service, and each instance receives them back and delivers them to its local GraphQL subscribers.
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - An Azure account
 - Azure CLI installed
 - An Azure Web PubSub resource (we will create one below)
@@ -65,8 +67,9 @@ mkdir graphql-subscriptions && cd graphql-subscriptions
 npm init -y
 
 # Install dependencies
-npm install @apollo/server graphql ws graphql-ws \
-  @azure/web-pubsub @azure/web-pubsub-express express
+npm install @apollo/server @as-integrations/express4 graphql \
+  @graphql-tools/schema ws graphql-ws @azure/web-pubsub \
+  @azure/web-pubsub-client express@4 cors
 ```
 
 ## Step 3: Build the GraphQL Schema
@@ -112,26 +115,46 @@ Create a custom pub/sub adapter that uses Azure Web PubSub instead of an in-memo
 // azure-pubsub.js
 // Custom PubSub adapter backed by Azure Web PubSub
 const { WebPubSubServiceClient } = require('@azure/web-pubsub');
+const { WebPubSubClient } = require('@azure/web-pubsub-client');
 const EventEmitter = require('events');
 
 class AzureWebPubSub {
   constructor(connectionString, hubName) {
     // The service client is used to send messages to the hub
     this.serviceClient = new WebPubSubServiceClient(connectionString, hubName);
+    this.brokerGroup = 'graphql-events';
     this.emitter = new EventEmitter();
     this.subscriptionCounter = 0;
+    this.client = null;
+  }
+
+  // Connect this server instance to Azure Web PubSub so it receives events
+  async connect() {
+    const token = await this.serviceClient.getClientAccessToken({
+      roles: [`webpubsub.joinLeaveGroup.${this.brokerGroup}`],
+    });
+
+    this.client = new WebPubSubClient(token.url);
+    this.client.on('group-message', (event) => {
+      const message = event.message.data;
+
+      if (message && message.trigger && message.payload) {
+        this.emitter.emit(message.trigger, message.payload);
+      }
+    });
+
+    await this.client.start();
+    await this.client.joinGroup(this.brokerGroup);
   }
 
   // Publish an event to Azure Web PubSub
   async publish(triggerName, payload) {
-    // Send to the Azure service for cross-instance delivery
-    await this.serviceClient.sendToAll({
+    // Send to the Azure service for cross-instance delivery.
+    // Every server instance has joined this group and will emit the payload locally.
+    await this.serviceClient.group(this.brokerGroup).sendToAll({
       trigger: triggerName,
-      data: payload,
+      payload,
     });
-
-    // Also emit locally for clients connected to this instance
-    this.emitter.emit(triggerName, payload);
   }
 
   // Subscribe to events from a specific trigger
@@ -163,7 +186,7 @@ module.exports = { AzureWebPubSub };
 ```javascript
 // resolvers.js
 // GraphQL resolvers for queries, mutations, and subscriptions
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 // In-memory message storage
 const messagesStore = {};
@@ -180,7 +203,7 @@ function createResolvers(pubsub) {
     Mutation: {
       sendMessage: async (_, { room, user, text }) => {
         const message = {
-          id: uuidv4(),
+          id: randomUUID(),
           user,
           text,
           timestamp: new Date().toISOString(),
@@ -263,11 +286,13 @@ module.exports = { createResolvers };
 // server.js
 // Main server that ties Apollo Server, Express, and WebSocket together
 const { ApolloServer } = require('@apollo/server');
-const { expressMiddleware } = require('@apollo/server/express4');
+const { expressMiddleware } = require('@as-integrations/express4');
+const { ApolloServerPluginDrainHttpServer } = require('@apollo/server/plugin/drainHttpServer');
 const { createServer } = require('http');
 const express = require('express');
+const cors = require('cors');
 const { WebSocketServer } = require('ws');
-const { useServer } = require('graphql-ws/lib/use/ws');
+const { useServer } = require('graphql-ws/use/ws');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
 const { typeDefs } = require('./schema');
 const { createResolvers } = require('./resolvers');
@@ -277,6 +302,7 @@ async function start() {
   // Initialize Azure Web PubSub
   const connectionString = process.env.AZURE_WEBPUBSUB_CONNECTION_STRING;
   const pubsub = new AzureWebPubSub(connectionString, 'graphql-chat');
+  await pubsub.connect();
 
   const resolvers = createResolvers(pubsub);
   const schema = makeExecutableSchema({ typeDefs, resolvers });
@@ -297,6 +323,7 @@ async function start() {
   const server = new ApolloServer({
     schema,
     plugins: [
+      ApolloServerPluginDrainHttpServer({ httpServer }),
       {
         // Proper shutdown for the WebSocket server
         async serverWillStart() {
@@ -313,7 +340,7 @@ async function start() {
   await server.start();
 
   // Mount the GraphQL HTTP endpoint
-  app.use('/graphql', express.json(), expressMiddleware(server));
+  app.use('/graphql', cors(), express.json(), expressMiddleware(server));
 
   // Health check endpoint
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
@@ -377,10 +404,10 @@ az webapp config set \
 
 ## Scaling Considerations
 
-The big advantage of using Azure Web PubSub is horizontal scaling. Without it, if you have three server instances and a client is connected to instance 1, a message published on instance 2 would never reach that client. Azure Web PubSub solves this by acting as the central message broker.
+The big advantage of using Azure Web PubSub is horizontal scaling. Without it, if you have three server instances and a client is connected to instance 1, a message published on instance 2 would never reach that client. Azure Web PubSub solves this by acting as the central message broker between the server instances.
 
-For high-traffic scenarios, consider using the Standard tier of Azure Web PubSub, which supports up to 100,000 concurrent connections per unit. You can also partition your rooms across multiple hubs to distribute the load.
+For high-traffic scenarios, consider using the Standard tier of Azure Web PubSub, which supports up to 1,000 concurrent connections per unit and up to 100 units per instance. You can also partition your rooms across multiple hubs to distribute the load.
 
 ## Summary
 
-We built a GraphQL subscription API that uses Azure Web PubSub for scalable real-time message delivery. The key benefit is that your Node.js servers do not need to manage WebSocket connections directly - Azure Web PubSub handles the connection state and message routing. This means you can scale your servers horizontally without worrying about sticky sessions or shared state. The combination of GraphQL subscriptions for the API layer and Azure Web PubSub for the transport layer gives you both developer experience and operational scalability.
+We built a GraphQL subscription API that uses Azure Web PubSub for scalable real-time message delivery. The key benefit is that your Node.js servers do not need to share subscription events through in-memory state - Azure Web PubSub handles the cross-instance message routing. This means you can scale your servers horizontally without worrying about sticky sessions for event delivery. The combination of GraphQL subscriptions for the API layer and Azure Web PubSub for the broker layer gives you both developer experience and operational scalability.
