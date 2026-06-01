@@ -24,7 +24,7 @@ Each has different tradeoffs:
 |--------|-----------|--------|-----------|
 | Data freshness | Real-time | Scheduled refresh | Mixed |
 | Report performance | Depends on Synapse | Fast (in-memory) | Mixed |
-| Data volume limit | No limit | ~1 GB per dataset (shared) | Mixed |
+| Data volume limit | Source/query limits apply | ~1 GB per dataset (shared) | Mixed |
 | Synapse cost | Higher (constant queries) | Lower (batch refreshes) | Mixed |
 | Offline access | No | Yes | Partial |
 
@@ -92,7 +92,7 @@ SELECT
 FROM dbo.FactSales f
 JOIN dbo.DimCustomer d ON f.CustomerId = d.CustomerId
 JOIN dbo.DimProduct p ON f.ProductId = p.ProductId
-GROUP BY d.Country, d.City, p.ProductCategory, p.Brand, f.OrderDate
+GROUP BY d.Country, d.City, p.ProductCategory, p.Brand, CAST(f.OrderDate AS DATE)
 ```
 
 Using pre-aggregated queries in Power BI significantly improves report performance, especially with DirectQuery.
@@ -115,11 +115,11 @@ GO
 -- Create a view over Parquet files in the data lake
 CREATE OR ALTER VIEW dbo.vw_MonthlySales AS
 SELECT
-    YEAR(OrderDate) AS SalesYear,
-    MONTH(OrderDate) AS SalesMonth,
-    ProductCategory,
-    Country,
-    SUM(TotalAmount) AS Revenue,
+    YEAR(sales.OrderDate) AS SalesYear,
+    MONTH(sales.OrderDate) AS SalesMonth,
+    sales.ProductCategory,
+    customers.Country,
+    SUM(sales.TotalAmount) AS Revenue,
     COUNT(*) AS OrderCount
 FROM OPENROWSET(
     BULK 'https://synapsedatalake2026.dfs.core.windows.net/synapse-data/curated/sales/**/*.parquet',
@@ -129,7 +129,7 @@ JOIN OPENROWSET(
     BULK 'https://synapsedatalake2026.dfs.core.windows.net/synapse-data/dimensions/customers.parquet',
     FORMAT = 'PARQUET'
 ) AS customers ON sales.CustomerId = customers.CustomerId
-GROUP BY YEAR(OrderDate), MONTH(OrderDate), ProductCategory, Country;
+GROUP BY YEAR(sales.OrderDate), MONTH(sales.OrderDate), sales.ProductCategory, customers.Country;
 ```
 
 ### Step 2: Connect Power BI to the Serverless Endpoint
@@ -151,7 +151,7 @@ For a tighter integration, link your Power BI workspace directly to the Synapse 
 3. Select your Power BI workspace.
 4. This allows you to browse and edit Power BI datasets directly from Synapse Studio.
 
-With this integration, you can also push data from Synapse pipelines directly into Power BI datasets using the Power BI refresh API.
+With this integration, you can also trigger Power BI dataset refreshes from Synapse pipelines using the Power BI refresh API.
 
 ## Optimizing DirectQuery Performance
 
@@ -165,16 +165,16 @@ CREATE MATERIALIZED VIEW dbo.mvw_SalesSummary
 WITH (DISTRIBUTION = HASH(ProductCategory))
 AS
 SELECT
-    ProductCategory,
-    Brand,
-    Country,
-    CAST(OrderDate AS DATE) AS OrderDate,
-    SUM(TotalAmount) AS Revenue,
+    p.ProductCategory,
+    p.Brand,
+    c.Country,
+    CAST(f.OrderDate AS DATE) AS OrderDate,
+    SUM(f.TotalAmount) AS Revenue,
     COUNT_BIG(*) AS OrderCount
 FROM dbo.FactSales f
 JOIN dbo.DimProduct p ON f.ProductId = p.ProductId
 JOIN dbo.DimCustomer c ON f.CustomerId = c.CustomerId
-GROUP BY ProductCategory, Brand, Country, OrderDate;
+GROUP BY p.ProductCategory, p.Brand, c.Country, CAST(f.OrderDate AS DATE);
 ```
 
 Synapse automatically uses materialized views when they satisfy a query, even if the query references the base tables.
