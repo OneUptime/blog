@@ -62,28 +62,28 @@ az eventhubs namespace create \
   --location eastus \
   --sku Standard
 
-# Create an Event Hub with 4 partitions and 1-day retention
+# Create an Event Hub with 4 partitions and 24-hour retention
 az eventhubs eventhub create \
   --name telemetry-stream \
   --namespace-name my-eh-namespace \
   --resource-group my-resource-group \
   --partition-count 4 \
-  --message-retention 1
+  --retention-time-in-hours 24
 ```
 
 ### Choosing Partition Count
 
-The partition count directly affects parallelism. Stream Analytics assigns one reader per partition, so more partitions allow more parallel processing.
+The partition count directly affects parallelism. More partitions allow more parallel processing, but they also add resource overhead in Stream Analytics.
 
-- **4 partitions** - good for moderate throughput (up to 4 MB/s input)
+- **4 partitions** - good for moderate throughput
 - **8-16 partitions** - good for high throughput applications
 - **32 partitions** - for very high volume scenarios
 
-Important: you cannot change the partition count after creation. Choose a value that accommodates your expected growth.
+Important: in the Event Hubs Standard tier, you cannot change the partition count after creation. Premium and Dedicated tiers can dynamically add partitions, but increasing partitions can affect ordering for partition-keyed producers. Choose a value that accommodates your expected growth.
 
 ## Step 2: Create a Dedicated Consumer Group
 
-Always create a dedicated consumer group for Stream Analytics. Using the default `$Default` group creates conflicts if other applications also read from the Event Hub.
+Always create a dedicated consumer group for Stream Analytics. Using the default `$Default` group can exceed the Event Hubs reader limit if other applications also read from the Event Hub.
 
 ```bash
 # Create a consumer group specifically for Stream Analytics
@@ -113,13 +113,13 @@ az eventhubs eventhub authorization-rule create \
   --resource-group my-resource-group \
   --rights Listen
 
-# Get the connection string
+# Get the shared access policy key for ARM template deployments
 az eventhubs eventhub authorization-rule keys list \
   --name stream-analytics-reader \
   --namespace-name my-eh-namespace \
   --eventhub-name telemetry-stream \
   --resource-group my-resource-group \
-  --query primaryConnectionString \
+  --query primaryKey \
   --output tsv
 ```
 
@@ -127,7 +127,7 @@ az eventhubs eventhub authorization-rule keys list \
 
 More secure. The Stream Analytics job authenticates using its managed identity.
 
-1. Enable managed identity on your Stream Analytics job (it is on by default)
+1. Enable a system-assigned or user-assigned managed identity on your Stream Analytics job
 2. Assign the "Azure Event Hubs Data Receiver" role to the Stream Analytics managed identity
 
 ```bash
@@ -165,7 +165,6 @@ Now add the Event Hub as an input to your Stream Analytics job.
 ### Using ARM Template
 
 ```json
-// Event Hub input configuration
 {
   "name": "telemetry-input",
   "properties": {
@@ -176,11 +175,9 @@ Now add the Event Hub as an input to your Stream Analytics job.
         "serviceBusNamespace": "my-eh-namespace",
         "eventHubName": "telemetry-stream",
         "consumerGroupName": "streamanalytics-consumer",
-        // For connection string auth:
+        "authenticationMode": "ConnectionString",
         "sharedAccessPolicyName": "stream-analytics-reader",
         "sharedAccessPolicyKey": "<key>",
-        // For managed identity auth (use this instead):
-        // "authenticationMode": "Msi"
         "partitionCount": 4
       }
     },
@@ -196,12 +193,11 @@ Now add the Event Hub as an input to your Stream Analytics job.
 
 ## Step 5: Configure Serialization
 
-The serialization format must match what your producers are sending. Stream Analytics supports:
+The serialization format must match what your producers are sending. For Event Hub inputs, Stream Analytics supports:
 
 - **JSON** - the most common format. Supports nested objects and arrays.
 - **CSV** - delimited text with configurable delimiter and encoding.
-- **Avro** - binary format with schema. Efficient but requires schema registry.
-- **Parquet** - columnar binary format. Good for high-volume scenarios.
+- **Avro** - binary format with schema. Efficient for high-volume scenarios.
 
 ### JSON Serialization
 
@@ -280,13 +276,13 @@ The sample data view shows you exactly what Stream Analytics sees, which helps y
 
 ## Scaling and Partitioning
 
-For Stream Analytics to process Event Hub data in parallel, the number of streaming units must be sufficient to read from all partitions simultaneously.
+For Stream Analytics to process Event Hub data in parallel, the number of streaming units must be sufficient for the input volume and query complexity.
 
-The general formula:
+General guidance:
 
-- Each partition needs at least 1 SU to be read in parallel
-- Complex queries need more SUs per partition
-- A good starting point: 1 SU per partition for simple queries, 2-3 SUs per partition for complex queries with joins
+- One V2 streaming unit can process roughly 7 MB/s of input, depending on query complexity
+- Match streaming units with Event Hub partitions when you need higher parallelism
+- Complex queries, joins, and many input partitions require more SUs
 
 ### Enable Partition-Based Query Processing
 
@@ -300,9 +296,9 @@ SELECT
     System.Timestamp() AS WindowEnd
 INTO [output]
 FROM [telemetry-input]
-TIMESTAMP BY EventTime
 -- Partition by the Event Hub partition ID
 PARTITION BY PartitionId
+TIMESTAMP BY EventTime
 GROUP BY
     DeviceId,
     PartitionId,
