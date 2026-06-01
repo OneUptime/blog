@@ -27,8 +27,8 @@ The general pattern is that larger VMs support more NICs. Before planning a mult
 ```bash
 # Check the maximum NIC count for a VM size
 
-az vm list-sizes --location eastus \
-  --query "[?name=='Standard_D4s_v5'].{Name:name, MaxNICs:maxNetworkInterfaces, Memory:memoryInMb, vCPUs:numberOfCores}" \
+az vm list-skus --location eastus --resource-type virtualMachines --size Standard_D8s_v5 \
+  --query "[].{Name:name, MaxNICs:capabilities[?name=='MaxNetworkInterfaces'].value | [0], MemoryGB:capabilities[?name=='MemoryGB'].value | [0], vCPUs:capabilities[?name=='vCPUs'].value | [0]}" \
   -o table
 ```
 
@@ -41,23 +41,23 @@ Before attaching multiple NICs, you need a VNet with multiple subnets. Each NIC 
 az network vnet create \
   --resource-group myResourceGroup \
   --name myVNet \
-  --address-prefix 10.0.0.0/16 \
+  --address-prefixes 10.0.0.0/16 \
   --subnet-name frontend-subnet \
-  --subnet-prefix 10.0.1.0/24
+  --subnet-prefixes 10.0.1.0/24
 
 # Add a second subnet
 az network vnet subnet create \
   --resource-group myResourceGroup \
   --vnet-name myVNet \
   --name backend-subnet \
-  --address-prefix 10.0.2.0/24
+  --address-prefixes 10.0.2.0/24
 
 # Optionally add a management subnet
 az network vnet subnet create \
   --resource-group myResourceGroup \
   --vnet-name myVNet \
   --name mgmt-subnet \
-  --address-prefix 10.0.3.0/24
+  --address-prefixes 10.0.3.0/24
 ```
 
 ## Creating Multiple NICs
@@ -100,7 +100,7 @@ az vm create \
   --resource-group myResourceGroup \
   --name myMultiNicVM \
   --image Ubuntu2204 \
-  --size Standard_D4s_v5 \
+  --size Standard_D8s_v5 \
   --nics myVM-nic-frontend myVM-nic-backend myVM-nic-mgmt \
   --admin-username azureuser \
   --generate-ssh-keys
@@ -177,7 +177,6 @@ network:
         use-routes: false
       routes:
         - to: 10.0.2.0/24
-          via: 10.0.2.1
           table: 200
         - to: 0.0.0.0/0
           via: 10.0.2.1
@@ -192,7 +191,6 @@ network:
         use-routes: false
       routes:
         - to: 10.0.3.0/24
-          via: 10.0.3.1
           table: 201
         - to: 0.0.0.0/0
           via: 10.0.3.1
@@ -211,11 +209,14 @@ sudo netplan apply
 
 ### Windows Configuration
 
-On Windows, multiple NICs are generally handled better out of the box. Windows will register each NIC with its own IP and gateway. However, you might still want to configure metrics to control which NIC is preferred for outbound traffic:
+On Windows, Azure still assigns the default gateway only to the primary NIC. Windows will register each NIC with its own IP address, but if a secondary NIC needs to reach resources outside its own subnet, add routes for that traffic. You can also configure metrics to control which route is preferred:
 
 ```powershell
 # View all network adapters
 Get-NetAdapter
+
+# Add a persistent route for traffic that should leave through a secondary NIC
+New-NetRoute -DestinationPrefix "10.0.4.0/24" -InterfaceAlias "Ethernet 2" -NextHop "10.0.2.1"
 
 # Set interface metric to control routing preference
 # Lower metric = higher priority
@@ -259,7 +260,7 @@ Database servers with one NIC for client connections and another NIC on a dedica
 
 ## Monitoring Multi-NIC VMs
 
-With multiple NICs, monitoring becomes more important because you need visibility into traffic on each interface separately. Azure Network Watcher can capture traffic on specific NICs, and you can use NSG flow logs to track traffic patterns per interface.
+With multiple NICs, monitoring becomes more important because you need visibility into traffic on each interface separately. Azure Network Watcher can capture traffic on specific NICs, and you can use virtual network flow logs to track traffic patterns. If you already have NSG flow logs, keep in mind that Microsoft is retiring them and no longer allows creating new NSG flow logs.
 
 Setting up per-NIC monitoring through tools like OneUptime ensures you can see when one interface is saturated while another is idle, which helps you balance traffic and plan capacity.
 
