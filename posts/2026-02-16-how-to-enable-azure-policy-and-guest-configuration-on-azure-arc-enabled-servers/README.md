@@ -18,72 +18,37 @@ It helps to think of policy for Arc servers in two layers:
 
 **Layer 1: Azure Resource Policy** - These policies operate on the Azure resource representation of your Arc server. They can check things like tags, location, resource group membership, and installed extensions. These work automatically once the server is connected to Arc.
 
-**Layer 2: Guest Configuration Policy** - These policies look inside the operating system. They check things like whether a specific Windows feature is installed, whether a Linux package is present, whether a particular configuration file has the right contents. These require the Guest Configuration extension to be installed on the server.
+**Layer 2: Guest Configuration Policy** - These policies look inside the operating system. They check things like whether a specific Windows feature is installed, whether a Linux package is present, whether a particular configuration file has the right contents. On Arc-enabled servers, this capability is provided by the Azure Connected Machine agent.
 
 ## Prerequisites for Guest Configuration
 
 Before Guest Configuration policies will work, you need:
 
 1. **The Arc server must be connected and healthy** - Check with `azcmagent show` on the server
-2. **The Guest Configuration extension must be installed** - This is a VM extension that runs inside the OS
+2. **The Microsoft.GuestConfiguration resource provider must be registered** - This is required before Machine Configuration can manage assignments
 3. **A system-assigned managed identity** - Arc servers get this automatically during onboarding
-4. **Network connectivity** - The server needs to reach `*.guestconfiguration.azure.com` on port 443
+4. **Network connectivity** - The server needs outbound HTTPS connectivity to the Azure Arc endpoints, including `*.guestconfiguration.azure.com`
 
-## Installing the Guest Configuration Extension
+## Enabling Machine Configuration
 
-The Guest Configuration extension needs to be installed on each Arc server. You can do this manually or at scale using Azure Policy itself.
+For Arc-enabled servers, you do not install the Azure VM Guest Configuration extension. The Machine Configuration agent is included in the Azure Connected Machine agent. Make sure your Arc agent is healthy and keep it current, especially if you plan to use packages that apply configurations.
 
-### Manual Installation via Azure CLI
-
-```bash
-# Install the Guest Configuration extension on a Linux Arc server
-
-az connectedmachine extension create \
-    --machine-name "my-linux-server" \
-    --resource-group "arc-servers-rg" \
-    --name "AzurePolicyforLinux" \
-    --publisher "Microsoft.GuestConfiguration" \
-    --type "ConfigurationForLinux" \
-    --location "eastus"
-
-# Install on a Windows Arc server
-az connectedmachine extension create \
-    --machine-name "my-windows-server" \
-    --resource-group "arc-servers-rg" \
-    --name "AzurePolicyforWindows" \
-    --publisher "Microsoft.GuestConfiguration" \
-    --type "ConfigurationforWindows" \
-    --location "eastus"
-```
-
-### Automatic Installation via Policy
-
-The better approach for scale is to use a built-in policy that automatically deploys the Guest Configuration extension to any Arc server that does not have it:
+### Check the Arc Agent
 
 ```bash
-# Assign the built-in policy to auto-deploy Guest Configuration extension
-# This policy targets Linux Arc servers
-az policy assignment create \
-    --name "deploy-gc-ext-linux" \
-    --display-name "Deploy Guest Configuration extension to Linux Arc servers" \
-    --policy "331e8ea8-378a-410f-a2e5-ae22f38bb0da" \
-    --scope "/subscriptions/your-subscription-id" \
-    --mi-system-assigned \
-    --location "eastus" \
-    --role "Contributor"
-
-# This policy targets Windows Arc servers
-az policy assignment create \
-    --name "deploy-gc-ext-windows" \
-    --display-name "Deploy Guest Configuration extension to Windows Arc servers" \
-    --policy "385f5831-96d4-41db-9a3c-cd3af78aaae6" \
-    --scope "/subscriptions/your-subscription-id" \
-    --mi-system-assigned \
-    --location "eastus" \
-    --role "Contributor"
+# Run on the Arc-enabled server
+azcmagent show
 ```
 
-These policies use a DeployIfNotExists effect, meaning they will automatically install the extension on any Arc server that does not already have it. The managed identity assigned to the policy needs Contributor permissions to deploy extensions.
+### Register the Resource Provider
+
+You can register the Microsoft.GuestConfiguration provider with Azure CLI:
+
+```bash
+az provider register --namespace Microsoft.GuestConfiguration
+```
+
+After that, any Arc-enabled servers in scope of Machine Configuration policy assignments are automatically included. The built-in policies that deploy the Guest Configuration extension are for Azure virtual machines, not Arc-enabled servers.
 
 ## Assigning Built-in Guest Configuration Policies
 
@@ -113,17 +78,15 @@ az policy assignment create \
 
 ### Using Policy Initiatives (Policy Sets)
 
-For a comprehensive compliance baseline, use a policy initiative that bundles multiple related policies together:
+For a comprehensive compliance baseline, use policy initiatives that bundle multiple related policies together. You can also assign a built-in baseline policy directly:
 
 ```bash
-# Assign the Windows Security Baseline initiative
+# Assign the Windows compute security baseline policy
 az policy assignment create \
     --name "windows-security-baseline" \
     --display-name "Windows Server Security Baseline" \
-    --policy-set-definition "72650e9f-97bc-4b2a-ab5f-9781a9fcecbc" \
-    --scope "/subscriptions/your-subscription-id" \
-    --mi-system-assigned \
-    --location "eastus"
+    --policy "72650e9f-97bc-4b2a-ab5f-9781a9fcecbc" \
+    --scope "/subscriptions/your-subscription-id"
 ```
 
 ## Creating Custom Guest Configuration Policies
@@ -132,13 +95,14 @@ When the built-in policies do not cover your specific requirements, you can crea
 
 ### Step 1: Author the Configuration
 
-For Windows, you use PowerShell DSC (Desired State Configuration). For Linux, you use InSpec or Chef InSpec.
+For both Windows and Linux custom content, Machine Configuration uses PowerShell DSC (Desired State Configuration). Built-in Linux content can also use local validation tools such as Chef InSpec, but custom packages are authored with DSC.
 
 Here is an example of a custom configuration that checks if a specific Windows service is running:
 
 ```powershell
-# Import the required module
+# Install the required modules
 Install-Module -Name GuestConfiguration -Force
+Install-Module -Name PSDscResources -Force
 
 # Define the DSC configuration
 Configuration CheckCriticalServices {
@@ -176,7 +140,7 @@ New-GuestConfigurationPackage `
     -Force
 
 # Test the package locally to make sure it works
-Test-GuestConfigurationPackage `
+Get-GuestConfigurationPackageComplianceStatus `
     -Path "./CheckCriticalServices/CheckCriticalServices.zip"
 ```
 
@@ -210,11 +174,13 @@ $sasUri = New-AzStorageBlobSASToken `
 
 # Create the policy definition
 New-GuestConfigurationPolicy `
+    -PolicyId (New-Guid).Guid `
     -ContentUri $sasUri `
     -DisplayName "Audit critical Windows services are running" `
     -Description "Checks that Windows Defender and Windows Update services are running" `
-    -Path "./policies" `
+    -Path "./policies/deployIfNotExists.json" `
     -Platform "Windows" `
+    -PolicyVersion "1.0.0" `
     -Mode "ApplyAndAutoCorrect"
 
 # Publish the policy to Azure
@@ -223,7 +189,7 @@ Publish-GuestConfigurationPolicy -Path "./policies"
 
 ## Viewing Compliance Results
 
-Once policies are assigned and the Guest Configuration extension has had time to evaluate (usually within 15-30 minutes), you can view compliance results.
+Once policies are assigned and the Machine Configuration agent has had time to evaluate, you can view compliance results.
 
 ### In the Azure Portal
 
@@ -248,13 +214,13 @@ az policy state list \
 
 ## Remediation for DeployIfNotExists Policies
 
-Some policies can automatically remediate non-compliant resources. For example, the policy that deploys the Guest Configuration extension uses a DeployIfNotExists effect. To trigger remediation for existing non-compliant resources:
+Some policies can automatically remediate non-compliant resources. For example, a custom Machine Configuration policy generated with `ApplyAndAutoCorrect` uses a DeployIfNotExists effect to create the guest assignment. To trigger remediation for existing non-compliant resources:
 
 ```bash
 # Create a remediation task for a policy assignment
 az policy remediation create \
-    --name "remediate-gc-extension" \
-    --policy-assignment "deploy-gc-ext-linux" \
+    --name "remediate-critical-services" \
+    --policy-assignment "critical-services-baseline" \
     --subscription "your-subscription-id"
 ```
 
@@ -268,7 +234,7 @@ az policy remediation create \
 
 **Keep Guest Configuration packages updated.** If your compliance requirements change, update your custom configuration packages and republish the policies.
 
-**Test custom configurations locally first.** Always use `Test-GuestConfigurationPackage` before publishing to catch issues early.
+**Test custom configurations locally first.** Always use `Get-GuestConfigurationPackageComplianceStatus` before publishing to catch issues early.
 
 ## Summary
 
