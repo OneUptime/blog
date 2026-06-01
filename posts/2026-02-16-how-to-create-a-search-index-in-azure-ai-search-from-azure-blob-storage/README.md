@@ -155,15 +155,16 @@ fields = [
         sortable=True
     ),
     SimpleField(
-        name="metadata_content_type",
+        name="metadata_storage_content_type",
         type=SearchFieldDataType.String,
         filterable=True,
         facetable=True
     ),
     # AI-enriched fields (populated by the skillset)
-    SearchableField(
+    SearchField(
         name="keyphrases",
         type=SearchFieldDataType.Collection(SearchFieldDataType.String),
+        searchable=True,
         filterable=True,
         facetable=True
     ),
@@ -273,6 +274,7 @@ The indexer ties everything together. It reads from the data source, applies the
 from azure.search.documents.indexes.models import (
     SearchIndexer,
     FieldMapping,
+    FieldMappingFunction,
     IndexingParameters,
     IndexingParametersConfiguration,
     BlobIndexerImageAction
@@ -303,7 +305,7 @@ indexer = SearchIndexer(
         FieldMapping(
             source_field_name="metadata_storage_path",
             target_field_name="id",
-            mapping_function={"name": "base64Encode"}  # Encode the path as a valid key
+            mapping_function=FieldMappingFunction(name="base64Encode")  # Encode the path as a valid key
         ),
         FieldMapping(
             source_field_name="metadata_storage_path",
@@ -428,7 +430,7 @@ def advanced_search(query, content_type=None, language=None):
     # Build a filter expression
     filters = []
     if content_type:
-        filters.append(f"metadata_content_type eq '{content_type}'")
+        filters.append(f"metadata_storage_content_type eq '{content_type}'")
     if language:
         filters.append(f"language eq '{language}'")
 
@@ -437,8 +439,8 @@ def advanced_search(query, content_type=None, language=None):
     results = search_client.search(
         search_text=query,
         filter=filter_expression,
-        facets=["metadata_content_type", "language", "keyphrases,count:10"],
-        order_by=["@search.score desc"],
+        facets=["metadata_storage_content_type", "language", "keyphrases,count:10"],
+        order_by=["search.score() desc"],
         top=10,
         include_total_count=True
     )
