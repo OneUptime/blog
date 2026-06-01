@@ -56,17 +56,15 @@ Do not rely on manually checking the Monitor hub. Set up alerts so you get notif
 5. Under **Actions**, create or select an action group that sends emails, SMS, or calls a webhook
 6. Give the alert a name and save
 
-Here is a more targeted alert using a custom dimension to alert only on specific pipelines.
+Here is a more targeted alert condition using dimensions to alert only on specific pipelines.
 
 ```json
-// Alert rule condition for specific pipeline failures
 {
-  "signal": "PipelineFailedRuns",
+  "signal": "Failed pipeline runs metrics",
   "criteria": {
     "metricName": "PipelineFailedRuns",
     "dimensions": [
       {
-        // Only alert on production pipelines
         "name": "Name",
         "operator": "Include",
         "values": ["pl_daily_etl", "pl_customer_sync"]
@@ -94,7 +92,7 @@ For deeper analysis, send ADF logs to Log Analytics.
    - **PipelineRuns** - pipeline execution logs
    - **ActivityRuns** - activity execution logs
    - **TriggerRuns** - trigger execution logs
-   - **DataFlowDebugOutput** - data flow debug logs
+   - **SSISIntegrationRuntimeLogs** - SSIS integration runtime logs, if you use Azure-SSIS IR
 4. Select **Send to Log Analytics workspace**
 5. Choose your workspace and save
 
@@ -105,7 +103,7 @@ Once logs are flowing, you can query them with KQL (Kusto Query Language).
 ADFPipelineRun
 | where Status == "Failed"
 | where TimeGenerated > ago(24h)
-| project TimeGenerated, PipelineName, RunId, FailureType, ErrorMessage = Parameters
+| project TimeGenerated, PipelineName, RunId, FailureType, ErrorMessage
 | order by TimeGenerated desc
 ```
 
@@ -174,13 +172,11 @@ Let me walk through the failures I see most often and how to fix them.
 - Check column mappings for any mismatches
 
 ```json
-// Enable fault tolerance to skip problematic rows
 {
   "typeProperties": {
     "source": { "type": "DelimitedTextSource" },
     "sink": { "type": "AzureSqlSink" },
     "enableSkipIncompatibleRow": true,
-    // Log skipped rows for investigation
     "redirectIncompatibleRowSettings": {
       "linkedServiceName": {
         "referenceName": "ls_log_storage",
@@ -256,10 +252,13 @@ For custom logging within your pipelines, add explicit logging activities.
 3. Use a **Stored Procedure** activity to write status records to a logging table
 
 ```json
-// Log activity status to a SQL table
 {
   "name": "LogPipelineStart",
   "type": "SqlServerStoredProcedure",
+  "linkedServiceName": {
+    "referenceName": "ls_logging_sql",
+    "type": "LinkedServiceReference"
+  },
   "inputs": [],
   "outputs": [],
   "typeProperties": {
@@ -279,7 +278,6 @@ For custom logging within your pipelines, add explicit logging activities.
 Configure retries on individual activities to handle transient failures.
 
 ```json
-// Retry policy on a Copy activity
 {
   "name": "CopyWithRetry",
   "type": "Copy",
