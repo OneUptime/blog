@@ -47,7 +47,7 @@ Document the following:
 - All keyspaces and tables
 - Partition keys and clustering columns
 - Secondary indexes
-- Materialized views (not supported in Cosmos DB - need alternative)
+- Materialized views (preview in Cosmos DB - review limitations or use an alternative)
 - User-defined types (UDTs)
 - Custom data types or functions
 - Table sizes and row counts
@@ -140,9 +140,9 @@ CREATE TABLE IF NOT EXISTS orders (
 
 There are several tools for migrating data:
 
-### Option A: Azure Cosmos DB Live Data Migrator
+### Option A: Dual-Write Proxy with Spark
 
-The simplest approach for online migration. It reads from your source Cassandra cluster and writes to Cosmos DB in real-time.
+For zero-downtime migration, use dual writes for live changes and Spark for the historical bulk load. The open-source Cassandra dual-write proxy can route application traffic to your source cluster while asynchronously writing changes to Cosmos DB during the migration.
 
 ### Option B: Spark with the Cassandra Connector
 
@@ -204,20 +204,11 @@ cqlsh my-cassandra-host 9042 -e \
 # Use SSL and the Cosmos DB port
 cqlsh myCassandraAccount.cassandra.cosmos.azure.com 10350 \
     --ssl \
+    --protocol-version=4 \
     -u myCassandraAccount \
     -p YOUR_PRIMARY_KEY \
-    -e "COPY my_keyspace.users FROM '/tmp/users.csv' WITH HEADER = TRUE AND CHUNKSIZE=100;"
+    -e "COPY my_keyspace.users FROM '/tmp/users.csv' WITH HEADER = TRUE AND CHUNKSIZE=100 AND INGESTRATE=100 AND MAXATTEMPTS=10;"
 ```
-
-### Option D: Azure Database Migration Service
-
-DMS provides a managed migration experience with monitoring and retry capabilities:
-
-1. Create a DMS instance in the Azure Portal
-2. Create a new migration project with Cassandra as the source and Cosmos DB Cassandra API as the target
-3. Configure source and target connections
-4. Select keyspaces and tables
-5. Run the migration and monitor progress
 
 ## Step 5: Validate the Migration
 
@@ -227,16 +218,14 @@ After data transfer, verify that everything arrived correctly:
 # Python validation script using the Cassandra driver
 from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
-from ssl import SSLContext, PROTOCOL_TLS_CLIENT, CERT_REQUIRED
+import ssl
 
 # Connect to source Cassandra
 source_cluster = Cluster(['my-cassandra-host'], port=9042)
 source_session = source_cluster.connect('my_keyspace')
 
 # Connect to Cosmos DB Cassandra API
-ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
-ssl_context.check_hostname = False
-ssl_context.verify_mode = CERT_REQUIRED
+ssl_context = ssl.create_default_context()
 
 auth_provider = PlainTextAuthProvider(
     username='myCassandraAccount',
@@ -296,10 +285,10 @@ cassandra:
 
 Be aware of these differences between Apache Cassandra and Cosmos DB Cassandra API:
 
-1. **Materialized views**: Not supported. Use separate tables with denormalized data instead.
-2. **Lightweight transactions (LWT)**: Limited support. IF NOT EXISTS works, but IF conditions on non-key columns may not.
+1. **Materialized views**: Supported in preview. Because preview features are not recommended for production workloads, use separate tables with denormalized data unless the preview limitations are acceptable.
+2. **Lightweight transactions (LWT)**: Supported, but not for accounts that have multiple-region writes enabled.
 3. **Secondary indexes**: Supported but implemented differently. Performance characteristics differ from native Cassandra.
-4. **Batch statements**: Only single-partition batches are atomic. Multi-partition batches are not transactional.
+4. **Batch statements**: Supported as unlogged batches only. Do not rely on logged batch semantics.
 5. **TTL**: Supported at both row and table level.
 6. **User-defined functions**: Not supported. Move this logic to your application layer.
 7. **Custom compaction strategies**: Not applicable - Cosmos DB manages storage internally.
