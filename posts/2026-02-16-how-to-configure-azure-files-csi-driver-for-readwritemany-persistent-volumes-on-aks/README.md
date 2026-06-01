@@ -8,17 +8,18 @@ Description: How to configure Azure Files CSI Driver on AKS for shared persisten
 
 ---
 
-Most Kubernetes storage options support ReadWriteOnce (RWO) access mode, meaning only one pod can mount the volume at a time. But many applications need shared storage that multiple pods access simultaneously - content management systems, shared configuration directories, file upload services, and legacy applications that depend on shared filesystems. Azure Files provides ReadWriteMany (RWX) persistent volumes on AKS through the CSI driver, backed by Azure file shares using SMB or NFS protocols.
+Most Kubernetes block storage options support ReadWriteOnce (RWO) access mode, meaning the volume can be mounted as read-write by a single node. But many applications need shared storage that pods on multiple nodes can access simultaneously - content management systems, shared configuration directories, file upload services, and legacy applications that depend on shared filesystems. Azure Files provides ReadWriteMany (RWX) persistent volumes on AKS through the CSI driver, backed by Azure file shares using SMB or NFS protocols.
 
 ## Understanding Access Modes
 
-Kubernetes defines three access modes for persistent volumes:
+Kubernetes defines these access modes for persistent volumes:
 
-- **ReadWriteOnce (RWO)**: One pod can read and write. Azure Disks support this.
+- **ReadWriteOnce (RWO)**: One node can mount the volume as read-write. Azure Disks support this.
 - **ReadOnlyMany (ROX)**: Many pods can read, none can write.
 - **ReadWriteMany (RWX)**: Many pods can read and write simultaneously. Azure Files supports this.
+- **ReadWriteOncePod (RWOP)**: One pod can mount the volume as read-write.
 
-If you try to use Azure Disks with RWX, Kubernetes will reject the claim. Azure Files is the answer when you need shared, writable storage.
+If you try to use Azure Disks with RWX, the claim will not bind to an Azure Disk volume because the Azure Disk CSI driver supports ReadWriteOnce. Azure Files is the answer when you need shared, writable storage.
 
 ## Prerequisites
 
@@ -63,16 +64,14 @@ provisioner: file.csi.azure.com
 parameters:
   # Use Standard storage tier (cheaper, suitable for most workloads)
   skuName: Standard_LRS
-  # Enable large file shares (up to 100 TiB)
-  enableLargeFileShares: "true"
   # Protocol: smb or nfs
   protocol: smb
 # Allow volume expansion after creation
 allowVolumeExpansion: true
 # Delete the Azure file share when the PVC is deleted
 reclaimPolicy: Delete
-# WaitForFirstConsumer ensures the share is created in the same zone as the pod
-volumeBindingMode: WaitForFirstConsumer
+# Create the share as soon as the PVC is created
+volumeBindingMode: Immediate
 mountOptions:
   # Set directory and file permissions
   - dir_mode=0777
@@ -232,7 +231,7 @@ spec:
   csi:
     driver: file.csi.azure.com
     readOnly: false
-    volumeHandle: unique-volume-id-123
+    volumeHandle: myResourceGroup#mystorageaccount#myfileshare
     volumeAttributes:
       # Reference the existing storage account and share
       resourceGroup: myResourceGroup
@@ -276,8 +275,6 @@ parameters:
   skuName: Premium_LRS
   # Use NFS protocol instead of SMB
   protocol: nfs
-  # Enable large file shares
-  enableLargeFileShares: "true"
 allowVolumeExpansion: true
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
@@ -291,13 +288,13 @@ NFS file shares do not require a Kubernetes Secret because they use network-leve
 
 Azure Files performance depends on the storage tier and configuration. Here are tips for getting the best throughput.
 
-**Use Premium tier** for workloads that need consistent performance. Standard tier has variable IOPS and throughput based on the share size.
+**Use Premium tier** for workloads that need consistent performance. Standard tier performance depends on the billing model, storage account limits, and per-file targets.
 
-**Increase share size** even if you do not need the space. Azure Files scales IOPS and throughput with share size. A 1 TiB Premium share provides 1,024 baseline IOPS and 65 MiB/s throughput.
+**Provision enough performance for the workload**. For provisioned Azure Files tiers, storage, IOPS, and throughput limits depend on the provisioning model and values you choose. For pay-as-you-go standard shares, throughput is limited by the storage account and per-file targets.
 
 **Use NFS with nconnect** for Linux workloads. The `nconnect=4` mount option creates multiple TCP connections, increasing throughput for parallel operations.
 
-**Enable large file shares** on the storage account. Without this flag, shares are limited to 5 TiB.
+**Check large-share limits on older storage accounts**. Current pay-as-you-go Azure file shares can grow up to 100 TiB, but older storage accounts that predate large file shares might need their share quota increased before they can grow beyond 5 TiB.
 
 ## Troubleshooting
 
