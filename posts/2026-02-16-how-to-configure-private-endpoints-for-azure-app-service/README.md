@@ -8,7 +8,7 @@ Description: Learn how to configure private endpoints for Azure App Service to r
 
 ---
 
-By default, Azure App Service is accessible from the public internet. Anyone who knows the URL can send requests to your application. For internal applications, admin panels, APIs that only backend services should access, or compliance-sensitive workloads, this is not acceptable. Private endpoints let you bring your App Service's inbound traffic into your VNet, giving it a private IP address and removing public internet access entirely.
+By default, Azure App Service is accessible from the public internet. Anyone who knows the URL can send requests to your application. For internal applications, admin panels, APIs that only backend services should access, or compliance-sensitive workloads, this is not acceptable. Private endpoints let you bring your App Service's inbound traffic into your VNet by giving the private endpoint a private IP address. When you also disable public network access, you remove public internet exposure entirely.
 
 This is different from VNet Integration, which handles outbound traffic. Private endpoints handle inbound traffic. Together, they create a fully private network path: traffic enters through a private endpoint and outbound connections go through VNet Integration.
 
@@ -18,10 +18,10 @@ When you create a private endpoint for an App Service, Azure provisions a networ
 
 The key behaviors:
 
-- The App Service gets a private IP from your VNet subnet
+- The private endpoint gets a private IP from your VNet subnet
 - The public endpoint can be disabled (recommended) or left accessible
 - DNS resolution changes so the hostname points to the private IP
-- Clients outside the VNet cannot reach the app unless they are connected via VPN, ExpressRoute, or VNet peering
+- When public network access is disabled, clients outside the VNet cannot reach the app unless they are connected via VPN, ExpressRoute, or VNet peering
 - The private endpoint works with deployment slots (each slot can have its own private endpoint)
 
 ## Prerequisites
@@ -42,12 +42,12 @@ az network vnet subnet create \
   --name private-endpoints-subnet \
   --address-prefix 10.0.3.0/24
 
-# Disable network policies on the subnet (required for private endpoints)
+# Disable private endpoint network policies on the subnet
 az network vnet subnet update \
   --resource-group myAppRG \
   --vnet-name myVNet \
   --name private-endpoints-subnet \
-  --disable-private-endpoint-network-policies true
+  --private-endpoint-network-policies Disabled
 
 # Get the App Service resource ID
 APP_ID=$(az webapp show \
@@ -77,7 +77,7 @@ az network private-dns zone create \
   --name privatelink.azurewebsites.net
 
 # Link the DNS zone to your VNet
-az network private-dns zone virtual-network-link create \
+az network private-dns link vnet create \
   --resource-group myAppRG \
   --zone-name privatelink.azurewebsites.net \
   --name vnet-dns-link \
@@ -120,29 +120,26 @@ az webapp update \
 
 After this, the App Service is only reachable through the private endpoint. Requests from the public internet will be refused.
 
-If you want to keep public access for some scenarios (like allowing specific IPs), use access restrictions instead:
+If you want to keep public access for some scenarios (like allowing specific IPs), leave public network access enabled and use access restrictions on the default endpoint instead. Access restriction rules are not evaluated for traffic that comes through the private endpoint, and service endpoint-based VNet rules are not supported on apps that have private endpoints configured.
 
 ```bash
-# Allow access only from the VNet and specific IPs
-az webapp config access-restriction add \
-  --resource-group myAppRG \
-  --name myapp \
-  --rule-name "AllowVNet" \
-  --priority 100 \
-  --vnet-name myVNet \
-  --subnet private-endpoints-subnet
-
+# Allow access only from a specific public IP on the default endpoint
 az webapp config access-restriction add \
   --resource-group myAppRG \
   --name myapp \
   --rule-name "AllowOfficeIP" \
-  --priority 200 \
+  --priority 100 \
   --ip-address 203.0.113.50/32
+
+az webapp config access-restriction set \
+  --resource-group myAppRG \
+  --name myapp \
+  --default-action Deny
 ```
 
 ## Step 4: Configure SCM Site Private Endpoint
 
-The SCM (Kudu) site used for deployments has its own endpoint. By default, creating a private endpoint for the main site also covers the SCM site. But you can configure them separately if needed:
+The SCM (Kudu) site used for deployments has its own hostname. With Azure Private DNS zone groups, the SCM DNS record is added automatically and points to the same private endpoint IP. You can configure SCM access restrictions separately if needed:
 
 ```bash
 # Check SCM site access
@@ -152,24 +149,38 @@ az webapp show \
   --query "siteConfig.scmIpSecurityRestrictionsDefaultAction" -o tsv
 ```
 
-If you disabled public access, deployments from GitHub Actions or Azure DevOps will need to come through the VNet too. You have several options:
+If you disabled public network access, deployments from GitHub Actions or Azure DevOps will need to come through the VNet too. You have several options:
 
 **Option A: Self-hosted runners in the VNet**: Deploy GitHub Actions runners or Azure DevOps agents as VMs in your VNet.
 
-**Option B: Allow SCM public access**: Keep the SCM site publicly accessible while restricting the main site.
+**Option B: Allow SCM public access**: Keep public network access enabled, deny unmatched traffic to the main site, and keep the SCM site publicly accessible for deployments.
 
 ```bash
-# Allow public access to SCM site for deployments
-az webapp config access-restriction set \
-  --resource-group myAppRG \
-  --name myapp \
-  --use-same-restrictions-for-scm-site false
-
-# Set SCM default action to allow
+# Enable public network access for the default endpoint
 az webapp update \
   --resource-group myAppRG \
   --name myapp \
-  --set siteConfig.scmIpSecurityRestrictionsDefaultAction=Allow
+  --set publicNetworkAccess=Enabled
+
+# Keep SCM restrictions separate from the main site
+az webapp config access-restriction set \
+  --resource-group myAppRG \
+  --name myapp \
+  --use-same-restrictions-for-scm-site false \
+  --default-action Deny \
+  --scm-default-action Allow
+```
+
+If you want to allow only specific deployment IP ranges to the SCM site, add SCM-specific access restriction rules instead:
+
+```bash
+az webapp config access-restriction add \
+  --resource-group myAppRG \
+  --name myapp \
+  --rule-name "AllowBuildAgent" \
+  --priority 100 \
+  --ip-address 203.0.113.60/32 \
+  --scm-site true
 ```
 
 ## Architecture with Both Private Endpoints and VNet Integration
@@ -215,10 +226,11 @@ az webapp update \
   --set publicNetworkAccess=Disabled
 
 # 4. Route all outbound through VNet
-az webapp config appsettings set \
+az resource update \
   --resource-group myAppRG \
   --name myapp \
-  --settings WEBSITE_VNET_ROUTE_ALL=1
+  --resource-type "Microsoft.Web/sites" \
+  --set properties.outboundVnetRouting.allTraffic=true
 ```
 
 ## Private Endpoints for Deployment Slots
@@ -266,7 +278,7 @@ az network vnet peering create \
   --allow-vnet-access
 
 # Link the private DNS zone to the client VNet
-az network private-dns zone virtual-network-link create \
+az network private-dns link vnet create \
   --resource-group myAppRG \
   --zone-name privatelink.azurewebsites.net \
   --name client-vnet-link \
@@ -286,7 +298,7 @@ If `nslookup myapp.azurewebsites.net` returns a public IP instead of the private
 ### Connection Timeout
 
 If you get timeouts connecting to the private endpoint:
-- Check NSG rules on the private endpoint subnet
+- If private endpoint network policies are enabled, check NSG rules on the private endpoint subnet
 - Verify the private endpoint is in a "Succeeded" provisioning state
 - Test from a VM in the same VNet to rule out peering or VPN issues
 
@@ -302,8 +314,8 @@ az network private-endpoint show \
 
 If CI/CD deployments fail after disabling public access:
 - Use self-hosted runners in the VNet
-- Use an IP access restriction to allow your CI/CD service's IP range
-- Keep SCM site public access if the main site private endpoint is sufficient for your security requirements
+- If you need public CI/CD access, re-enable public network access and use SCM-specific access restrictions to allow your CI/CD service's IP range
+- Keep SCM site public access with separate SCM restrictions if the main site private endpoint is sufficient for your security requirements
 
 ## Monitoring Private Endpoints
 
