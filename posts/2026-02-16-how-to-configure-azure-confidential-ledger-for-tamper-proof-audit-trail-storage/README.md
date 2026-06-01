@@ -65,10 +65,10 @@ az confidentialledger create \
   --resource-group $RG \
   --location $LOCATION \
   --ledger-type Public \
-  --aad-based-security-principals "[{\"principalId\":\"$USER_OID\",\"tenantId\":\"$(az account show --query tenantId -o tsv)\",\"ledgerRoleName\":\"Administrator\"}]"
+  --aad-based-security-principals "[{\"principal-id\":\"$USER_OID\",\"tenant-id\":\"$(az account show --query tenantId -o tsv)\",\"ledger-role-name\":\"Administrator\"}]"
 ```
 
-The `ledger-type` can be "Public" or "Private." Public means the ledger is accessible over the internet (with authentication, of course). Private means it is only accessible through a private endpoint.
+The `ledger-type` can be "Public" or "Private." Public means transaction data is stored in plain text, while Private means transaction data is encrypted. The ledger type cannot be changed after the ledger is created.
 
 ## Step 2: Set Up Client Access
 
@@ -109,7 +109,9 @@ LEDGER_URI = f"https://{LEDGER_NAME}.confidential-ledger.azure.com"
 IDENTITY_URI = "https://identity.confidential-ledger.core.azure.com"
 
 # Retrieve the ledger's TLS certificate for secure communication
-identity_client = ConfidentialLedgerCertificateClient(IDENTITY_URI)
+identity_client = ConfidentialLedgerCertificateClient(
+    certificate_endpoint=IDENTITY_URI
+)
 network_identity = identity_client.get_ledger_identity(
     ledger_id=LEDGER_NAME
 )
@@ -146,7 +148,7 @@ audit_record = {
 # Write the audit record to the ledger
 # The collection_id helps organize records into logical groups
 entry = ledger_client.create_ledger_entry(
-    entry_contents=json.dumps(audit_record),
+    {"contents": json.dumps(audit_record)},
     collection_id="security-audit",
 )
 
@@ -164,20 +166,15 @@ This script retrieves and displays the cryptographic receipt for a transaction:
 ```python
 # Wait for the transaction to be committed
 # The ledger uses consensus, so there is a brief delay
-from azure.confidentialledger import TransactionState
-
+wait_poller = ledger_client.begin_wait_for_commit(transaction_id)
+wait_poller.wait()
 status = ledger_client.get_transaction_status(transaction_id)
-while status["state"] == TransactionState.PENDING:
-    print("Waiting for transaction to commit...")
-    import time
-    time.sleep(0.5)
-    status = ledger_client.get_transaction_status(transaction_id)
 
 print(f"Transaction state: {status['state']}")
 
 # Get the cryptographic receipt for this transaction
 # This receipt can be independently verified
-receipt = ledger_client.get_transaction_receipt(transaction_id)
+receipt = ledger_client.get_receipt(transaction_id)
 print(f"Receipt: {json.dumps(receipt, indent=2)}")
 ```
 
@@ -225,7 +222,7 @@ TENANT_ID=$(az account show --query tenantId -o tsv)
 az confidentialledger update \
   --name $LEDGER_NAME \
   --resource-group $RG \
-  --aad-based-security-principals "[{\"principalId\":\"$USER_OID\",\"tenantId\":\"$TENANT_ID\",\"ledgerRoleName\":\"Administrator\"},{\"principalId\":\"$AUDITOR_OID\",\"tenantId\":\"$TENANT_ID\",\"ledgerRoleName\":\"Reader\"}]"
+  --aad-based-security-principals "[{\"principal-id\":\"$USER_OID\",\"tenant-id\":\"$TENANT_ID\",\"ledger-role-name\":\"Administrator\"},{\"principal-id\":\"$AUDITOR_OID\",\"tenant-id\":\"$TENANT_ID\",\"ledger-role-name\":\"Reader\"}]"
 ```
 
 ## Integrating with Your Existing Audit Pipeline
@@ -245,9 +242,9 @@ This way, you get the operational benefits of your existing logging infrastructu
 
 ## Cost and Performance Considerations
 
-Confidential Ledger pricing is based on the number of transactions. Write operations cost more than reads, and the per-transaction cost decreases at higher volumes. For a typical audit trail that writes a few thousand events per day, the cost is quite manageable.
+Confidential Ledger pricing is based on the ledger instance and storage usage. The standard ledger cost includes the first 100 GB of storage across the three decentralized nodes, with additional storage charged separately. Use the Azure pricing calculator for current regional pricing.
 
-Performance-wise, write operations have slightly higher latency than a regular database because the ledger needs consensus across its nodes before confirming a transaction. Expect write latencies in the range of 100-500 milliseconds. For audit trail use cases, this is perfectly acceptable.
+Performance-wise, write operations have higher latency than a regular database because the ledger needs consensus across its nodes before confirming a transaction. For audit trail use cases, this is usually acceptable, but you should test with your own event volume and region.
 
 ## Wrapping Up
 
