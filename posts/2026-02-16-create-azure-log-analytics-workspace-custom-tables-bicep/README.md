@@ -248,7 +248,7 @@ resource auditLogsTable 'Microsoft.OperationalInsights/workspaces/tables@2022-10
 }
 ```
 
-The `_CL` suffix is required for custom log tables. The `plan` parameter is important for cost management. `Analytics` tables support full KQL queries but cost more for ingestion. `Basic` tables are cheaper to ingest but have limited query capabilities and only 8 days of interactive query retention.
+The `_CL` suffix is required for custom log tables. The `plan` parameter is important for cost management. `Analytics` tables support full KQL queries and include query costs in the ingestion price. `Basic` tables are cheaper to ingest, are charged separately for interactive queries, and support full KQL on a single table with lookup to Analytics tables.
 
 ## Data Collection Rules
 
@@ -265,7 +265,7 @@ param location string = resourceGroup().location
 param workspaceId string
 
 // Data Collection Endpoint - the ingestion point for custom logs
-resource dce 'Microsoft.Insights/dataCollectionEndpoints@2022-06-01' = {
+resource dce 'Microsoft.Insights/dataCollectionEndpoints@2024-03-11' = {
   name: 'dce-custom-logs'
   location: location
   properties: {
@@ -276,9 +276,10 @@ resource dce 'Microsoft.Insights/dataCollectionEndpoints@2022-06-01' = {
 }
 
 // Data Collection Rule for performance metrics
-resource dcrPerfMetrics 'Microsoft.Insights/dataCollectionRules@2022-06-01' = {
+resource dcrPerfMetrics 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
   name: 'dcr-app-performance-metrics'
   location: location
+  kind: 'Direct'
   properties: {
     dataCollectionEndpointId: dce.id
 
@@ -323,9 +324,10 @@ resource dcrPerfMetrics 'Microsoft.Insights/dataCollectionRules@2022-06-01' = {
 }
 
 // DCR with transformation - filter and enrich data before storing
-resource dcrWithTransform 'Microsoft.Insights/dataCollectionRules@2022-06-01' = {
+resource dcrWithTransform 'Microsoft.Insights/dataCollectionRules@2024-03-11' = {
   name: 'dcr-deployment-events'
   location: location
+  kind: 'Direct'
   properties: {
     dataCollectionEndpointId: dce.id
 
@@ -368,8 +370,8 @@ resource dcrWithTransform 'Microsoft.Insights/dataCollectionRules@2022-06-01' = 
 }
 
 output dceEndpoint string = dce.properties.logsIngestion.endpoint
-output dcrPerfMetricsId string = dcrPerfMetrics.id
-output dcrDeploymentEventsId string = dcrWithTransform.id
+output dcrPerfMetricsImmutableId string = dcrPerfMetrics.properties.immutableId
+output dcrDeploymentEventsImmutableId string = dcrWithTransform.properties.immutableId
 ```
 
 ## Ingesting Data
@@ -382,8 +384,8 @@ With the DCR and custom tables in place, applications can send data using the Lo
 # First, get an access token
 TOKEN=$(az account get-access-token --resource "https://monitor.azure.com" --query accessToken -o tsv)
 
-# Send a log entry
-curl -X POST "${DCE_ENDPOINT}/dataCollectionRules/${DCR_ID}/streams/Custom-AppPerformanceMetrics_CL?api-version=2023-01-01" \
+# Send a log entry. DCR_IMMUTABLE_ID is the DCR immutable ID, not the Azure resource ID.
+curl -X POST "${DCE_ENDPOINT}/dataCollectionRules/${DCR_IMMUTABLE_ID}/streams/Custom-AppPerformanceMetrics_CL?api-version=2023-01-01" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '[{
