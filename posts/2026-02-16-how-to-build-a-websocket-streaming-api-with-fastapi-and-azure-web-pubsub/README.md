@@ -8,7 +8,7 @@ Description: Build a WebSocket streaming API using FastAPI and Azure Web PubSub 
 
 ---
 
-Streaming APIs deliver data to clients continuously rather than in a single request-response cycle. Think stock price tickers, live sports scores, IoT sensor dashboards, or log tailing. WebSockets are the natural transport for this, but managing thousands of WebSocket connections on your Python server is problematic - Python's GIL and single-threaded nature make it a poor fit for connection-heavy workloads.
+Streaming APIs deliver data to clients continuously rather than in a single request-response cycle. Think stock price tickers, live sports scores, IoT sensor dashboards, or log tailing. WebSockets are the natural transport for this, but managing thousands of WebSocket connections on your Python server adds operational complexity - you need to handle connection state, reconnects, fan-out, and horizontal scaling.
 
 Azure Web PubSub solves this by offloading WebSocket connection management to a managed service. Your FastAPI server publishes data to the PubSub service, and the service handles delivering it to all connected clients. This means your Python server can focus on the data processing logic and scale independently of the number of connected clients.
 
@@ -35,6 +35,11 @@ The FastAPI server processes data from various sources and publishes it to Azure
 ## Step 1: Create the Azure Web PubSub Resource
 
 ```bash
+# Create the resource group
+az group create \
+  --name streaming-rg \
+  --location eastus
+
 # Create the Web PubSub service
 
 az webpubsub create \
@@ -69,8 +74,6 @@ Create a service class that wraps the Azure Web PubSub client.
 ```python
 # src/pubsub_service.py
 # Manages communication with Azure Web PubSub
-import json
-import time
 from datetime import datetime
 from azure.messaging.webpubsubservice import WebPubSubServiceClient
 
@@ -105,14 +108,14 @@ class PubSubService:
         """Publish a message to a specific group (channel)."""
         self.client.send_to_group(
             group,
-            message=json.dumps(data),
+            message=data,
             content_type="application/json",
         )
 
     def publish_to_all(self, data: dict):
         """Publish a message to all connected clients."""
         self.client.send_to_all(
-            message=json.dumps(data),
+            message=data,
             content_type="application/json",
         )
 
@@ -120,7 +123,7 @@ class PubSubService:
         """Send a message to a specific user."""
         self.client.send_to_user(
             user_id,
-            message=json.dumps(data),
+            message=data,
             content_type="application/json",
         )
 
@@ -405,7 +408,9 @@ async function connectToStream(userId, streams) {
 
     // Handle group messages
     if (message.type === 'message' && message.group) {
-      const data = JSON.parse(message.data);
+      const data = message.dataType === 'json' && typeof message.data !== 'string'
+        ? message.data
+        : JSON.parse(message.data);
       handleStreamData(message.group, data);
     }
   };
@@ -490,6 +495,7 @@ az containerapp create \
   --image myregistry.azurecr.io/streaming-api:v1 \
   --target-port 8000 \
   --ingress external \
+  --secrets pubsub-connection="$WEBPUBSUB_CONNECTION_STRING" \
   --env-vars \
     WEBPUBSUB_CONNECTION_STRING=secretref:pubsub-connection \
   --min-replicas 1 \
@@ -500,7 +506,7 @@ az containerapp create \
 
 The beauty of this architecture is that your FastAPI server and the WebSocket connections scale independently. You can have 10,000 clients connected to Azure Web PubSub while running just one or two FastAPI instances. If your data sources become the bottleneck, scale the FastAPI instances. If you need more WebSocket connections, scale the PubSub service units.
 
-Azure Web PubSub Standard tier supports 100,000 concurrent connections per unit. For most streaming use cases, a single unit handles the connection load, and your bottleneck is the data processing on the FastAPI side.
+Azure Web PubSub Standard and Premium tiers support 1,000 concurrent connections per unit, and Standard/Premium_P1 instances can scale up to 100 units. For most streaming use cases, the PubSub service handles the connection load, and your bottleneck is the data processing on the FastAPI side.
 
 ## Summary
 
