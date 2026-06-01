@@ -55,7 +55,7 @@ az webapp identity assign \
 # Note the principalId from the output
 ```
 
-Then grant the identity access to your SQL Database. This requires running SQL commands as the Azure AD admin of the SQL Server:
+Then grant the identity access to your SQL Database. This requires running SQL commands as the Microsoft Entra admin (Azure AD admin in the Azure CLI) of the SQL Server:
 
 ```bash
 # Set an Azure AD admin for the SQL Server
@@ -115,8 +115,7 @@ public class ManagedIdentityConnectionFactory : IDatabaseConnectionFactory
 {
     private readonly string _connectionString;
     private readonly TokenCredential _credential;
-    private AccessToken? _cachedToken;
-    private readonly SemaphoreSlim _tokenLock = new(1, 1);
+    private readonly Func<SqlAuthenticationParameters, CancellationToken, Task<SqlAuthenticationToken>> _accessTokenCallback;
 
     // Azure SQL scope for token acquisition
     private const string AzureSqlScope = "https://database.windows.net/.default";
@@ -139,45 +138,28 @@ public class ManagedIdentityConnectionFactory : IDatabaseConnectionFactory
             ExcludeVisualStudioCodeCredential = true,
             ExcludeInteractiveBrowserCredential = true,
         });
+
+        // Reuse the same callback instance so SqlClient can pool connections correctly
+        _accessTokenCallback = async (_, cancellationToken) =>
+        {
+            var token = await _credential.GetTokenAsync(
+                new TokenRequestContext(new[] { AzureSqlScope }),
+                cancellationToken);
+
+            return new SqlAuthenticationToken(token.Token, token.ExpiresOn);
+        };
     }
 
     public async Task<SqlConnection> CreateConnectionAsync()
     {
-        var connection = new SqlConnection(_connectionString);
-
-        // Get an access token for Azure SQL
-        var token = await GetTokenAsync();
-        connection.AccessToken = token;
+        var connection = new SqlConnection(_connectionString)
+        {
+            // Let SqlClient request and refresh tokens within the connection pool
+            AccessTokenCallback = _accessTokenCallback,
+        };
 
         await connection.OpenAsync();
         return connection;
-    }
-
-    // Cache the token to avoid requesting a new one for every connection
-    private async Task<string> GetTokenAsync()
-    {
-        await _tokenLock.WaitAsync();
-        try
-        {
-            // Use cached token if it has not expired (with 5-minute buffer)
-            if (_cachedToken.HasValue &&
-                _cachedToken.Value.ExpiresOn > DateTimeOffset.UtcNow.AddMinutes(5))
-            {
-                return _cachedToken.Value.Token;
-            }
-
-            // Request a new token
-            var tokenResult = await _credential.GetTokenAsync(
-                new TokenRequestContext(new[] { AzureSqlScope }),
-                CancellationToken.None);
-
-            _cachedToken = tokenResult;
-            return tokenResult.Token;
-        }
-        finally
-        {
-            _tokenLock.Release();
-        }
     }
 }
 ```
@@ -326,7 +308,7 @@ using DapperManagedIdentity.Repositories;
 var builder = WebApplication.CreateBuilder(args);
 
 // Register the managed identity connection factory as singleton
-// Token caching makes singleton the right choice
+// Reusing the credential and token callback makes singleton the right choice
 builder.Services.AddSingleton<IDatabaseConnectionFactory, ManagedIdentityConnectionFactory>();
 
 // Register repositories
@@ -355,4 +337,4 @@ As long as your Azure account has access to the SQL Database, the same code work
 
 ## Wrapping Up
 
-Dapper with Managed Identity gives you the performance of direct SQL with the security of passwordless authentication. There are no credentials to manage, rotate, or accidentally commit to source control. The `DefaultAzureCredential` class transparently handles authentication in both Azure (using the managed identity) and local development (using Azure CLI). The connection factory pattern shown here caches tokens efficiently so you are not requesting a new token for every database call. For applications running on Azure that need fast, direct SQL access, this combination of Dapper and Managed Identity is hard to beat.
+Dapper with Managed Identity gives you the performance of direct SQL with the security of passwordless authentication. There are no credentials to manage, rotate, or accidentally commit to source control. The `DefaultAzureCredential` class transparently handles authentication in both Azure (using the managed identity) and local development (using Azure CLI). The connection factory pattern shown here reuses the credential and token callback so SqlClient can refresh tokens while preserving connection pooling. For applications running on Azure that need fast, direct SQL access, this combination of Dapper and Managed Identity is hard to beat.
