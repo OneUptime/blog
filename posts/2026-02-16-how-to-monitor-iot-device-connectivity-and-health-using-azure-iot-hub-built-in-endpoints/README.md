@@ -24,7 +24,7 @@ Let us set up each of these.
 
 ## Understanding the Built-In Events Endpoint
 
-Every IoT Hub instance has a built-in Event Hubs-compatible endpoint. By default, all device-to-cloud messages flow through this endpoint. But you can also route lifecycle events - specifically device connection and disconnection events - to this endpoint or to custom endpoints.
+Every IoT Hub instance has a built-in Event Hubs-compatible endpoint. By default, all device-to-cloud messages flow through this endpoint. But you can also route non-telemetry events - including device lifecycle events and connection state events - to this endpoint or to custom endpoints.
 
 First, check that the built-in endpoint is accessible.
 
@@ -41,24 +41,24 @@ This returns the Event Hubs-compatible endpoint URI, the partition count, and th
 
 ## Routing Device Connection State Events
 
-Device connected and disconnected events are not routed by default. You need to create a message route that captures these lifecycle events.
+Device connected and disconnected events are not routed by default. You need to create a message route that captures these connection state events.
 
 ```bash
-# Create a route for device lifecycle events to the built-in endpoint
-az iot hub route create \
+# Create a route for device lifecycle events, such as device create and delete events
+az iot hub message-route create \
   --hub-name my-iot-hub \
   --route-name device-lifecycle-route \
+  --endpoint-name events \
   --source devicelifecycleevents \
-  --endpoint events \
   --condition "true" \
   --enabled true
 
-# Also create a route for connection state events specifically
-az iot hub route create \
+# Create a route for connection state events, such as device connect and disconnect events
+az iot hub message-route create \
   --hub-name my-iot-hub \
   --route-name connection-state-route \
+  --endpoint-name events \
   --source deviceconnectionstateevents \
-  --endpoint events \
   --condition "true" \
   --enabled true
 ```
@@ -91,7 +91,7 @@ async function main() {
 
         if (source === 'deviceConnectionStateEvents') {
           const deviceId = event.systemProperties['iothub-connection-device-id'];
-          const eventType = event.body.opType; // 'deviceConnected' or 'deviceDisconnected'
+          const eventType = event.properties?.opType; // 'deviceConnected' or 'deviceDisconnected'
           const timestamp = event.enqueuedTimeUtc;
 
           console.log(`[${timestamp}] Device ${deviceId}: ${eventType}`);
@@ -123,7 +123,7 @@ Key metrics to watch include:
 - **connectedDeviceCount** - currently connected devices
 - **totalDeviceCount** - total registered devices
 - **d2c.telemetry.ingress.allProtocol** - all attempted telemetry sends (including failures)
-- **dailyMessageQuotaUsed** - percentage of daily message quota consumed
+- **dailyMessageQuotaUsed** - number of total messages used today
 - **deviceDataUsage** - bytes of data transferred
 
 You can query these metrics using the Azure CLI or set up alerts.
@@ -271,8 +271,8 @@ graph LR
 
 A few things I have learned from running IoT monitoring in production:
 
-- Connection state events can be delayed by up to 60 seconds. Do not use them for real-time presence detection. Use them for trend analysis and alerting on prolonged disconnections.
-- The `connectedDeviceCount` metric is eventually consistent. If you need an exact count at a specific moment, query device twins instead.
+- Connection state events can be delayed by up to 60 seconds, and rapid connect or disconnect cycles within that window might not all be reported. Do not use them for real-time presence detection. Use them for trend analysis and alerting on prolonged disconnections.
+- The `connectedDeviceCount` metric is a snapshot metric for aggregate monitoring. If you need production-grade per-device presence, use connection events together with sequence numbers or implement an application heartbeat pattern instead of relying on device twin `connectionState` queries at runtime.
 - Set different heartbeat intervals for different device types. A gateway that processes data continuously should report every minute. A battery-powered sensor might only report every hour.
 - Always include the firmware version in health reports. When something goes wrong fleet-wide, the first question is usually "which firmware version are these devices running?"
 
