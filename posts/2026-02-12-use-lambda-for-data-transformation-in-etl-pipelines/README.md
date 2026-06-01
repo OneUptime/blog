@@ -140,8 +140,7 @@ Another common task is normalizing JSON logs from different sources into a consi
 ```javascript
 // Normalize JSON logs from various sources into a standard format
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { createGunzip } = require('zlib');
-const { pipeline } = require('stream/promises');
+const { gunzipSync } = require('zlib');
 
 const s3 = new S3Client({ region: 'us-east-1' });
 
@@ -195,9 +194,12 @@ exports.handler = async (event) => {
       continue;
     }
 
-    // Download and decompress
+    // Download and decompress if needed
     const response = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-    const rawData = await response.Body.transformToString();
+    const rawBytes = await response.Body.transformToByteArray();
+    const rawData = key.endsWith('.gz')
+      ? gunzipSync(Buffer.from(rawBytes)).toString('utf-8')
+      : Buffer.from(rawBytes).toString('utf-8');
 
     // Parse JSON lines format
     const logs = rawData
@@ -278,10 +280,14 @@ exports.handler = async (event) => {
     }
 
     for (const batch of batches) {
-      await firehose.send(new PutRecordBatchCommand({
+      const response = await firehose.send(new PutRecordBatchCommand({
         DeliveryStreamName: 'transformed-events-stream',
         Records: batch,
       }));
+
+      if (response.FailedPutCount && response.FailedPutCount > 0) {
+        throw new Error(`Failed to put ${response.FailedPutCount} records to Firehose`);
+      }
     }
   }
 
@@ -335,7 +341,7 @@ EtlFunction:
   Properties:
     Runtime: python3.12
     Handler: handler.handler
-    MemorySize: 3008    # Max out for heavy data processing
+    MemorySize: 3008    # Increase for heavier data processing
     Timeout: 900        # 15 minutes max for large files
     EphemeralStorage:
       Size: 10240       # 10 GB temp storage for large files
