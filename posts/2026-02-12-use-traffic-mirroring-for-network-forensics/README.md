@@ -8,7 +8,7 @@ Description: Learn how to set up AWS VPC traffic mirroring to capture and analyz
 
 ---
 
-When a security incident happens, the first question is always "What traffic was flowing?" VPC Flow Logs tell you who talked to whom, but they do not capture packet contents. Traffic Mirroring gives you full packet capture - every byte of every packet - sent to a destination where you can analyze it with your favorite network forensics tools.
+When a security incident happens, the first question is always "What traffic was flowing?" VPC Flow Logs tell you who talked to whom, but they do not capture packet contents. Traffic Mirroring gives you packet capture for mirrored traffic - subject to AWS Traffic Mirroring limits and any packet length you configure - sent to a destination where you can analyze it with your favorite network forensics tools.
 
 ## What is VPC Traffic Mirroring?
 
@@ -25,7 +25,7 @@ graph LR
 ```
 
 Key properties:
-- Full packet capture (not just metadata like Flow Logs)
+- Packet capture for mirrored traffic (not just metadata like Flow Logs)
 - Traffic is mirrored, not intercepted - production traffic is unaffected
 - You can filter what gets mirrored (by protocol, port, direction)
 - Supports VXLAN encapsulation to the mirror target
@@ -39,7 +39,7 @@ A traffic mirroring setup has three components:
 
 **Mirror Filter**: Rules that define which traffic to capture (think of it like a BPF filter).
 
-**Mirror Target**: Where the mirrored traffic goes. Can be an ENI on a monitoring instance or a Network Load Balancer fronting a fleet of monitoring instances.
+**Mirror Target**: Where the mirrored traffic goes. Can be an ENI on a monitoring instance, a Network Load Balancer fronting a fleet of monitoring instances, or a Gateway Load Balancer endpoint.
 
 **Mirror Session**: Ties together a source, filter, and target.
 
@@ -86,7 +86,7 @@ aws elbv2 create-target-group \
     --vpc-id vpc-0123456789abcdef0 \
     --target-type instance \
     --health-check-protocol TCP \
-    --health-check-port 4789
+    --health-check-port 8080
 
 # Register monitoring instances
 aws elbv2 register-targets \
@@ -109,7 +109,7 @@ aws ec2 create-traffic-mirror-target \
 
 ## Step 2: Create Mirror Filters
 
-Filters control which traffic gets mirrored. Without filters, you would mirror everything - which is expensive and generates enormous amounts of data.
+Filters control which traffic gets mirrored. With broad accept-all filters, you would mirror everything that Traffic Mirroring supports - which is expensive and generates enormous amounts of data.
 
 ```bash
 # Create a mirror filter
@@ -183,7 +183,6 @@ aws ec2 create-traffic-mirror-filter-rule \
     --traffic-direction ingress \
     --rule-number 100 \
     --rule-action accept \
-    --protocol 0 \
     --source-cidr-block 0.0.0.0/0 \
     --destination-cidr-block 0.0.0.0/0 \
     --description "All inbound"
@@ -194,7 +193,6 @@ aws ec2 create-traffic-mirror-filter-rule \
     --traffic-direction egress \
     --rule-number 100 \
     --rule-action accept \
-    --protocol 0 \
     --source-cidr-block 0.0.0.0/0 \
     --destination-cidr-block 0.0.0.0/0 \
     --description "All outbound"
@@ -211,6 +209,7 @@ aws ec2 create-traffic-mirror-session \
     --traffic-mirror-target-id tmt-0123456789abcdef0 \
     --traffic-mirror-filter-id tmf-0123456789abcdef0 \
     --session-number 1 \
+    --virtual-network-id 1234 \
     --description "Mirror web server traffic" \
     --tag-specifications 'ResourceType=traffic-mirror-session,Tags=[{Key=Name,Value=webserver-mirror}]'
 ```
@@ -223,14 +222,16 @@ aws ec2 create-traffic-mirror-session \
     --network-interface-id eni-production-instance \
     --traffic-mirror-target-id tmt-ids-target \
     --traffic-mirror-filter-id tmf-web-filter \
-    --session-number 1
+    --session-number 1 \
+    --virtual-network-id 1234
 
 # Session 2: All traffic to forensics platform
 aws ec2 create-traffic-mirror-session \
     --network-interface-id eni-production-instance \
     --traffic-mirror-target-id tmt-forensics-target \
     --traffic-mirror-filter-id tmf-capture-all \
-    --session-number 2
+    --session-number 2 \
+    --virtual-network-id 1234
 ```
 
 ## Step 4: Configure the Monitoring Instance
@@ -242,7 +243,7 @@ aws ec2 create-traffic-mirror-session \
 # Traffic arrives on port 4789 as VXLAN packets
 sudo tcpdump -i eth0 udp port 4789 -w /tmp/capture.pcap
 
-# Decode VXLAN and capture the inner packets
+# Inspect the VXLAN-encapsulated packets
 sudo tcpdump -i eth0 udp port 4789 -n -v
 ```
 
@@ -261,7 +262,8 @@ sudo apt-get install suricata -y
 Create a VXLAN interface to decapsulate the mirrored traffic:
 
 ```bash
-# Create VXLAN interface for decapsulation
+# Create VXLAN interface for decapsulation.
+# The VXLAN ID must match the session's --virtual-network-id.
 sudo ip link add vxlan0 type vxlan id 1234 local 10.0.1.50 dstport 4789
 sudo ip link set vxlan0 up
 
@@ -295,6 +297,7 @@ aws ec2 create-traffic-mirror-session \
     --traffic-mirror-target-id tmt-forensics-target \
     --traffic-mirror-filter-id tmf-capture-all \
     --session-number 1 \
+    --virtual-network-id 1234 \
     --description "INCIDENT: Investigating potential breach on i-abc123"
 ```
 
@@ -338,9 +341,9 @@ For complementary DNS-based monitoring, see our guide on [monitoring Route 53 DN
 
 **Storage**: Full packet capture generates large volumes of data. A moderately busy web server can produce 10-50 GB of capture data per hour.
 
-**Instance types**: Traffic mirroring is supported on Nitro-based instances. Older instance types are not supported.
+**Instance types**: Traffic mirroring sources are supported only on specific EC2 instance families. Check the current AWS supported instance type list before enabling mirroring.
 
-**Cost**: There is no additional AWS charge for traffic mirroring itself, but you pay for the data transfer between the source and target, plus the compute and storage for your monitoring infrastructure.
+**Cost**: AWS charges hourly for each active traffic mirror session. You also pay for data transfer between the source and target, plus the compute, load balancing, and storage for your monitoring infrastructure.
 
 ## Cleanup
 
