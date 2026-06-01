@@ -8,7 +8,7 @@ Description: Learn how to configure replication policies in Azure Site Recovery 
 
 ---
 
-Every disaster recovery strategy comes down to two numbers: RPO and RTO. Your Recovery Point Objective (RPO) defines how much data you can afford to lose, measured in time. Your Recovery Time Objective (RTO) defines how quickly you need to be back up and running. Azure Site Recovery replication policies let you configure these parameters to match your business requirements.
+Every disaster recovery strategy comes down to two numbers: RPO and RTO. Your Recovery Point Objective (RPO) defines how much data you can afford to lose, measured in time. Your Recovery Time Objective (RTO) defines how quickly you need to be back up and running. Azure Site Recovery replication policies let you configure recovery point retention and application-consistent snapshot frequency to match your business requirements.
 
 Getting the replication policy right is important because it directly affects your data loss exposure, storage costs, and failover options. This guide covers how to create and tune replication policies in Azure Site Recovery.
 
@@ -62,7 +62,7 @@ Instead of modifying the default policy (which affects all VMs using it), create
 4. Click "Create policy"
 5. Configure:
    - **Name**: e.g., `policy-tier1-critical` or `policy-tier2-standard`
-   - **Recovery point retention**: Set in hours (1-72 hours)
+   - **Recovery point retention**: Set in hours. Azure VM portal workflows commonly allow 0-72 hours, while managed-disk scenarios can support longer retention where available.
    - **App-consistent snapshot frequency**: Set in hours (1-12 hours, or 0 to disable)
 6. Click "Create"
 
@@ -111,14 +111,14 @@ Write-Output "Tier 3 policy created: 4h retention, no app-consistent snapshots"
 
 After creating a policy, associate it with VMs through protection container mappings.
 
-When you enable replication for a new VM, you can select which policy to use. For VMs that are already replicating, you can change the policy:
+When you enable replication for a new VM, you can select which policy to use. For VMs that are already replicating, edit the policy they use to change retention or application-consistent snapshot frequency:
 
-1. Go to the replicated item in the vault
-2. Click "Replication policy" in the settings
-3. Select the new policy
+1. Go to the vault
+2. Click "Site Recovery Infrastructure" > "Replication policies"
+3. Select the policy and click "Edit settings"
 4. Save
 
-The policy change takes effect immediately. Recovery points created under the old policy are retained until they expire according to the old policy's retention settings.
+The policy change applies to all existing replications that use that policy. If you need to move a VM to a different policy instead of editing the current one, check the replication scenario requirements; some scenarios require you to disable and re-enable protection to associate a different policy.
 
 ## Step 3: Tune RPO for Your Workloads
 
@@ -153,11 +153,11 @@ Development environments, staging servers, testing infrastructure. Data can be r
 
 When an application runs across multiple VMs (for example, a web server and a database), you want all VMs to recover to the same point in time. Without multi-VM consistency, you might recover the web server to 2:05 PM and the database to 2:03 PM, causing data inconsistency.
 
-Multi-VM consistency groups create shared recovery points across all VMs in the group.
+Multi-VM consistency creates shared recovery points across all VMs in the replication group.
 
 1. Enable replication for all VMs in the application
-2. In the replication settings, enable "Multi-VM consistency"
-3. Add all related VMs to the same consistency group
+2. Use a replication policy with multi-VM sync enabled
+3. Add all related VMs to the same replication group when you enable replication
 
 There are limitations:
 - Maximum 16 VMs per consistency group
@@ -165,33 +165,27 @@ There are limitations:
 - Enabling multi-VM consistency increases replication traffic because VMs must coordinate snapshot timing
 
 ```powershell
-# Enable multi-VM consistency for a group of application VMs
-# All VMs in the group will share recovery points
+# Enable multi-VM consistency on an Azure-to-Azure replication policy
 
 $vault = Get-AzRecoveryServicesVault -Name "rsv-dr-centralus-001" -ResourceGroupName "rg-dr-centralus"
 Set-AzRecoveryServicesAsrVaultContext -Vault $vault
 
-# Get the replicated items
-$container = Get-AzRecoveryServicesAsrProtectionContainer
-$webVM = Get-AzRecoveryServicesAsrReplicationProtectedItem -ProtectionContainer $container -FriendlyName "vm-web-01"
-$appVM = Get-AzRecoveryServicesAsrReplicationProtectedItem -ProtectionContainer $container -FriendlyName "vm-app-01"
-$dbVM = Get-AzRecoveryServicesAsrReplicationProtectedItem -ProtectionContainer $container -FriendlyName "vm-sql-01"
+# Option 1: create a new policy with multi-VM sync enabled
+New-AzRecoveryServicesAsrPolicy `
+    -AzureToAzure `
+    -Name "policy-erp-multivm" `
+    -RecoveryPointRetentionInHours 72 `
+    -ApplicationConsistentSnapshotFrequencyInHours 1 `
+    -MultiVmSyncStatus "Enable"
 
-# Update each VM to be part of the same multi-VM consistency group
-Set-AzRecoveryServicesAsrReplicationProtectedItem `
-    -ReplicationProtectedItem $webVM `
-    -EnableMultiVMSync "Enable" `
-    -MultiVMGroupName "erp-app-group"
-
-Set-AzRecoveryServicesAsrReplicationProtectedItem `
-    -ReplicationProtectedItem $appVM `
-    -EnableMultiVMSync "Enable" `
-    -MultiVMGroupName "erp-app-group"
-
-Set-AzRecoveryServicesAsrReplicationProtectedItem `
-    -ReplicationProtectedItem $dbVM `
-    -EnableMultiVMSync "Enable" `
-    -MultiVMGroupName "erp-app-group"
+# Option 2: update an existing Azure-to-Azure policy
+$policy = Get-AzRecoveryServicesAsrPolicy -Name "policy-tier1-critical"
+Update-AzRecoveryServicesAsrPolicy `
+    -AzureToAzure `
+    -InputObject $policy `
+    -RecoveryPointRetentionInHours 72 `
+    -ApplicationConsistentSnapshotFrequencyInHours 1 `
+    -MultiVmSyncStatus "Enable"
 ```
 
 ## Step 5: Monitor RPO Compliance
@@ -215,8 +209,8 @@ $container = Get-AzRecoveryServicesAsrProtectionContainer
 $items = Get-AzRecoveryServicesAsrReplicationProtectedItem -ProtectionContainer $container
 
 foreach ($item in $items) {
-    $rpoDuration = $item.ProviderSpecificDetails.LastRpoCalculatedTime
-    $rpoMinutes = ((Get-Date) - $rpoDuration).TotalMinutes
+    $rpoSeconds = $item.ProviderSpecificDetails.RpoInSeconds
+    $rpoMinutes = $rpoSeconds / 60
 
     $status = if ($rpoMinutes -le 15) { "OK" }
               elseif ($rpoMinutes -le 60) { "WARNING" }
