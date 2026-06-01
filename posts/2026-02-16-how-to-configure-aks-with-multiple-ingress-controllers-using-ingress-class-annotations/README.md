@@ -92,6 +92,7 @@ Deploy the public (external) ingress controller.
 helm install nginx-external ingress-nginx/ingress-nginx \
   --namespace ingress-external \
   --create-namespace \
+  --set controller.ingressClass=nginx-external \
   --set controller.ingressClassResource.name=nginx-external \
   --set controller.ingressClassResource.controllerValue="k8s.io/ingress-nginx-external" \
   --set controller.ingressClassResource.enabled=true \
@@ -109,6 +110,7 @@ Now deploy the internal ingress controller. The key difference is the Azure load
 helm install nginx-internal ingress-nginx/ingress-nginx \
   --namespace ingress-internal \
   --create-namespace \
+  --set controller.ingressClass=nginx-internal \
   --set controller.ingressClassResource.name=nginx-internal \
   --set controller.ingressClassResource.controllerValue="k8s.io/ingress-nginx-internal" \
   --set controller.ingressClassResource.enabled=true \
@@ -254,11 +256,11 @@ kubectl annotate ingressclass nginx-external \
   ingressclass.kubernetes.io/is-default-class=true
 
 # Verify it is marked as default
-kubectl get ingressclass
-# The default class will show (default) next to its name
+kubectl get ingressclass nginx-external -o jsonpath='{.metadata.annotations.ingressclass\.kubernetes\.io/is-default-class}{"\n"}'
+# This should print true
 ```
 
-Only one IngressClass should be the default. If multiple are marked as default, the behavior is undefined and depends on which controller processes the resource first.
+Only one IngressClass should be the default. If multiple are marked as default, the admission controller prevents creating new Ingress resources that do not specify an `ingressClassName`.
 
 ## Architecture Overview
 
