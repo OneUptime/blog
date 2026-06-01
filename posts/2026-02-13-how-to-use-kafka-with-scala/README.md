@@ -81,7 +81,7 @@ class TypedKafkaProducer(bootstrapServers: String) {
 }
 ```
 
-Notice that idempotence is enabled. This means that even if the producer retries a send, Kafka will deduplicate the message. This is essential for exactly-once semantics.
+Notice that idempotence is enabled. This means that even if the producer retries a send, Kafka will avoid writing duplicate copies of the same message. This is one building block for exactly-once semantics; end-to-end exactly-once processing also requires transactions when you consume, process, and produce records atomically.
 
 ## Building a Consumer
 
@@ -120,6 +120,7 @@ class TypedKafkaConsumer[T: Decoder](
     while (running) {
       val records = consumer.poll(Duration.ofMillis(500))
       val iterator = records.iterator()
+      var batchSucceeded = true
 
       while (iterator.hasNext) {
         val record = iterator.next()
@@ -129,13 +130,17 @@ class TypedKafkaConsumer[T: Decoder](
               case Success(_) => // processed ok
               case Failure(ex) =>
                 System.err.println(s"Handler failed for offset ${record.offset()}: ${ex.getMessage}")
+                batchSucceeded = false
             }
           case Left(err) =>
             System.err.println(s"Deserialization failed: ${err.getMessage}")
+            batchSucceeded = false
         }
       }
 
-      consumer.commitSync()
+      if (!records.isEmpty && batchSucceeded) {
+        consumer.commitSync()
+      }
     }
 
     consumer.close()
@@ -277,14 +282,14 @@ Use the `EmbeddedKafka` library for integration tests. It spins up a Kafka broke
 
 ```scala
 // Integration test using EmbeddedKafka for an in-process broker
-import io.github.embeddedkafka.EmbeddedKafka._
+import io.github.embeddedkafka.EmbeddedKafka
 import org.scalatest.flatspec.AnyFlatSpec
 
-class KafkaProducerSpec extends AnyFlatSpec {
+class KafkaProducerSpec extends AnyFlatSpec with EmbeddedKafka {
   "TypedKafkaProducer" should "send and receive messages" in {
     withRunningKafka {
-      val producer = new TypedKafkaProducer("localhost:6001")
-      producer.send("test-topic", "key1", OrderEvent("o1", "c1", 99.99, System.currentTimeMillis()))
+      val producer = new TypedKafkaProducer("localhost:6000")
+      producer.send("test-topic", "key1", OrderEvent("o1", "c1", BigDecimal("99.99"), System.currentTimeMillis()))
       val message = consumeFirstStringMessageFrom("test-topic")
       assert(message.contains("o1"))
       producer.close()
