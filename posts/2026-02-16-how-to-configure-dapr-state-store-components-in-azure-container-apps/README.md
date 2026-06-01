@@ -12,7 +12,7 @@ State management is one of those problems every microservice architect faces. Wh
 
 ## How Dapr State Management Works
 
-Dapr's state management API gives your application simple key-value operations: get, set, and delete. Your application calls the Dapr sidecar on localhost, and the sidecar handles the actual interaction with the backing store. The API supports optional features like transactions, ETags for optimistic concurrency, and first-write-wins semantics.
+Dapr's state management API gives your application simple key-value operations: get, set, and delete. Your application calls the Dapr sidecar on localhost, and the sidecar handles the actual interaction with the backing store. The API supports optional features like transactions, ETags for optimistic concurrency, and first-write concurrency.
 
 The state store component is configured separately from your application code. This means you can have different state stores for development and production without changing a single line of code.
 
@@ -71,7 +71,7 @@ scopes:
   - cart-service
 ```
 
-The `scopes` field is important. It restricts which container apps can access this state store. Only the services listed will have access.
+The `scopes` field is important. It restricts which Dapr-enabled container apps can load this state store. Use the Dapr application IDs for your apps here; only those scoped apps will have access.
 
 ## Step 2: Use the State Store from Your Application
 
@@ -167,7 +167,7 @@ The great thing is that your application code does not change at all. The same g
 
 ## Step 4: Use Transactions for Atomic Operations
 
-Dapr supports multi-item transactions on state stores that support them (like Redis and Cosmos DB).
+Dapr supports multi-item transactions on state stores that support them, like Redis and Cosmos DB. For partitioned stores such as Cosmos DB, all operations in the transaction must use the same partition.
 
 ```javascript
 // Perform a transactional state operation
@@ -190,7 +190,10 @@ async function transferItem(fromUser, toUser, item) {
           key: `inventory-${fromUser}-${item}`
         }
       }
-    ]
+    ],
+    metadata: {
+      partitionKey: `transfer-${fromUser}-${toUser}`
+    }
   });
 }
 ```
@@ -219,7 +222,7 @@ async function updateCartWithConcurrency(userId, updateFn) {
       value: updatedData,
       etag: etag,
       options: {
-        concurrency: 'first-write-wins'
+        concurrency: 'first-write'
       }
     }
   ]);
@@ -233,7 +236,7 @@ For scenarios where you need cheap, durable storage and do not need low-latency 
 ```yaml
 # dapr-statestore-blob.yaml
 componentType: state.azure.blobstorage
-version: v1
+version: v2
 metadata:
   - name: accountName
     value: "mystorageaccount"
@@ -269,7 +272,7 @@ Here is a quick comparison to help you decide.
 
 **Slow state operations:** If using Cosmos DB, check that the partition key strategy aligns with your access patterns. A hot partition can cause throttling.
 
-**Data not persisting across restarts:** Redis without persistence configured will lose data on restart. Use a Standard or Premium tier for persistence, or switch to Cosmos DB for critical state.
+**Data not persisting across restarts:** Redis without persistence configured can lose data after failures. Use a Premium or Enterprise tier with Redis persistence enabled, or switch to Cosmos DB for critical state.
 
 ## Summary
 
