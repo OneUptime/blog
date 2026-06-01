@@ -8,27 +8,29 @@ Description: A practical guide to maximizing AWS Free Tier benefits including wh
 
 ---
 
-AWS Free Tier is genuinely useful, but it's also a minefield of unexpected charges if you're not careful. There are three different types of free tier offers, each with different rules, and it's remarkably easy to accidentally exceed them. I've seen people rack up hundreds of dollars thinking they were within free tier limits.
+AWS Free Tier is genuinely useful, but it's also a minefield of unexpected charges if you're not careful. AWS changed the Free Tier program on July 15, 2025, so the rules now depend on when you created your account and whether you're on the Free plan or Paid plan. It's remarkably easy to accidentally exceed the limits that apply to your account. I've seen people rack up hundreds of dollars thinking they were within free tier limits.
 
 Let's make sure that doesn't happen to you.
 
-## The Three Types of Free Tier
+## The Free Tier Models
 
-AWS Free Tier isn't one thing - it's three categories of offers:
+AWS Free Tier isn't one thing. For accounts created on or after July 15, 2025, new customers get Free Tier credits and choose between a Free plan and a Paid plan. The Free plan lasts up to 6 months or until your credits run out, whichever comes first. Paid plan accounts can use remaining credits until they expire, but pay standard rates for usage beyond credits or for services where credits don't apply.
+
+There are also service-level offers:
 
 **Always Free** - These don't expire. They're available to all AWS accounts forever. Examples include:
 - 1 million Lambda requests per month
 - 25GB DynamoDB storage
 - 10 custom CloudWatch metrics
 
-**12-Month Free** - Available for 12 months after you create your AWS account. These are the ones most people think of:
-- 750 hours/month of t2.micro or t3.micro EC2
-- 750 hours/month of RDS db.t2.micro or db.t3.micro
+**Legacy 12-Month Free** - If you created your AWS account before July 15, 2025, you can use the legacy 12-month offers for 12 months after account creation. These are the ones most people think of:
+- 750 hours/month of t2.micro EC2, or t3.micro in regions where t2.micro isn't available
+- 750 hours/month of eligible single-AZ RDS micro instances
 - 5GB S3 standard storage
 - 30GB EBS storage
 
 **Free Trials** - Short-term free access to specific services when you first use them:
-- Amazon Redshift: 2-month free trial
+- Amazon Redshift: $300 Redshift Serverless credit with a 90-day expiration, or a 2-month provisioned cluster trial in regions where Redshift Serverless isn't available
 - Amazon SageMaker: 2-month free trial
 - Amazon Inspector: 15-day free trial
 
@@ -37,11 +39,7 @@ AWS Free Tier isn't one thing - it's three categories of offers:
 Before you do anything else, set up billing alerts. AWS provides a specific Free Tier usage alert:
 
 ```bash
-# Enable billing alerts in your account preferences
-
-aws ce update-preferences
-
-# Create a budget that alerts at 80% of free tier usage
+# Create a budget that alerts when monthly cost exceeds $0.01
 aws budgets create-budget \
   --account-id $(aws sts get-caller-identity --query Account --output text) \
   --budget '{
@@ -55,7 +53,8 @@ aws budgets create-budget \
       "Notification": {
         "NotificationType": "ACTUAL",
         "ComparisonOperator": "GREATER_THAN",
-        "Threshold": 0.01
+        "Threshold": 0.01,
+        "ThresholdType": "ABSOLUTE_VALUE"
       },
       "Subscribers": [
         {"SubscriptionType": "EMAIL", "Address": "your-email@example.com"}
@@ -64,15 +63,19 @@ aws budgets create-budget \
   ]'
 ```
 
-Also enable the Free Tier usage alerts in the AWS Console under Billing Preferences. These send you an email when you approach 85% of a specific free tier limit.
+Also enable the Free Tier usage alerts in the AWS Console under Billing Preferences. These send you an email when you exceed 85% of a specific free tier limit. For additional visibility, you can query current Free Tier usage programmatically:
+
+```bash
+aws freetier get-free-tier-usage
+```
 
 ## EC2 Free Tier: Getting It Right
 
-The EC2 free tier gives you 750 hours per month of t2.micro or t3.micro instances. That's enough for one instance running 24/7. But there are traps.
+The legacy EC2 12-month free tier gives you 750 hours per month of t2.micro instances, or t3.micro in regions where t2.micro isn't available. For accounts created on or after July 15, 2025, EC2 Free Tier eligibility is different and includes a broader set of instance types on the Free plan. Either way, 750 hours is enough for one instance running 24/7. But there are traps.
 
 **The 750 hours are shared across all instances.** If you run two t3.micro instances, each uses 750 hours per month, totaling 1,500 hours. You'll be charged for 750 of those.
 
-**Region matters.** The instance must be in a region where t2.micro or t3.micro is available as free tier. Most regions work, but check.
+**Region matters.** For legacy accounts, t3.micro is Free Tier eligible only in regions where t2.micro isn't available. For newer accounts, check the console's "Free tier eligible" label or the EC2 Free Tier documentation before launching.
 
 **EBS volumes count separately.** Each instance gets a root volume. Free tier covers 30GB of EBS storage total. A single 30GB volume is fine. Two 20GB volumes total 40GB, and you'll pay for the extra 10GB.
 
@@ -102,7 +105,7 @@ Notice the `DeleteOnTermination: true` flag. Without it, the EBS volume persists
 
 ## RDS Free Tier: Watch the Multi-AZ Trap
 
-RDS gives you 750 hours per month of a db.t3.micro instance. The most common mistake is enabling Multi-AZ deployment, which effectively doubles your instance hours (750 x 2 = 1,500) and takes you over the free tier.
+Legacy RDS Free Tier gives you 750 hours per month of eligible single-AZ micro DB instances. For current Free plan accounts, eligible RDS engines and classes include db.t3.micro and db.t4g.micro for supported engines. The most common mistake is enabling Multi-AZ deployment, which adds another DB instance and can take you over the free tier or consume credits much faster.
 
 ```bash
 # Create a free tier eligible RDS instance - note MultiAZ is false
@@ -149,7 +152,7 @@ The thing to watch is memory allocation. If you set a function to 1024MB, you on
 
 ## S3 Free Tier: Storage and Requests
 
-S3 free tier (12-month) includes:
+For legacy accounts, the S3 12-month free tier includes:
 - 5GB standard storage
 - 20,000 GET requests
 - 2,000 PUT requests
@@ -189,7 +192,7 @@ Use provisioned mode rather than on-demand if you want to stay in free tier. On-
 
 Several services have hidden costs that catch people:
 
-**Elastic IP addresses.** An EIP attached to a running instance is free. An EIP that's allocated but not attached costs $0.005/hour ($3.60/month). Always release EIPs you're not using.
+**Elastic IP addresses and public IPv4 addresses.** AWS charges for all Elastic IP addresses and public IPv4 addresses, whether they're attached to a running resource or idle. The public IPv4 price is $0.005/hour ($3.60/month), though legacy EC2 Free Tier includes 750 hours of public IPv4 address usage per month for the first 12 months. Always release EIPs you're not using.
 
 ```bash
 # Find unattached Elastic IPs
@@ -200,9 +203,9 @@ aws ec2 describe-addresses \
 aws ec2 release-address --allocation-id eipalloc-0a1b2c3d4e5f67890
 ```
 
-**NAT Gateways.** Not included in free tier at all. $0.045/hour ($32/month) plus data processing. Use your instance's public IP instead during development.
+**NAT Gateways.** Not included in free tier at all. In us-east-1, a NAT Gateway costs $0.045/hour ($32.40 for a 30-day month) plus data processing and the associated public IPv4 address charge. Use your instance's public IP instead during development.
 
-**CloudWatch Logs.** Ingestion costs $0.50/GB. If your Lambda functions log heavily, this adds up.
+**CloudWatch Logs.** CloudWatch Logs includes a monthly free allowance, but ingestion after that is commonly $0.50/GB in US regions. If your Lambda functions log heavily, this adds up.
 
 **Data transfer.** Free tier includes 100GB of data transfer out per month (always free across all services). Heavy API usage can exceed this.
 
@@ -235,4 +238,4 @@ For a more automated approach to tracking free tier usage, see our guide on [tra
 
 ## Key Takeaways
 
-AWS Free Tier is a great way to learn and build small projects without spending money. The key rules: set up billing alerts immediately, understand the difference between always-free and 12-month offers, watch out for hidden costs like EIPs and NAT Gateways, and audit your resources monthly. Most unexpected charges come from resources you forgot about, not from intentional usage.
+AWS Free Tier is a great way to learn and build small projects without spending money. The key rules: set up billing alerts immediately, understand whether your account is on the newer Free/Paid plan model or the legacy 12-month model, watch out for hidden costs like public IPv4 addresses and NAT Gateways, and audit your resources monthly. Most unexpected charges come from resources you forgot about, not from intentional usage.
