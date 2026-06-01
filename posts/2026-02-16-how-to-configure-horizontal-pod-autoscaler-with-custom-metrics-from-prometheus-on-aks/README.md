@@ -8,7 +8,7 @@ Description: Guide to configuring HPA on AKS with custom Prometheus metrics for 
 
 ---
 
-The default Horizontal Pod Autoscaler (HPA) in Kubernetes scales based on CPU and memory utilization. That works for some workloads, but many applications need to scale on application-specific metrics - queue depth, request latency, active connections, or business-level indicators like orders per minute. Prometheus collects these custom metrics, and with the right adapter, HPA can use them for scaling decisions on AKS.
+The default Horizontal Pod Autoscaler (HPA) in Kubernetes scales based on CPU and memory utilization. That works for some workloads, but many applications need to scale on application-specific metrics - queue depth, request latency, active connections, or business-level indicators like orders per minute. Prometheus collects these application metrics, and with the right adapter, HPA can use them for scaling decisions on AKS.
 
 ## Why Custom Metrics Matter
 
@@ -20,7 +20,7 @@ The architecture looks like this:
 graph LR
     A[Application] -->|Exposes /metrics| B[Prometheus]
     B -->|Scraped Metrics| C[Prometheus Adapter]
-    C -->|Custom Metrics API| D[Kubernetes API Server]
+    C -->|Custom or External Metrics API| D[Kubernetes API Server]
     D -->|Metric Values| E[HPA Controller]
     E -->|Scale Decision| F[Deployment Replicas]
 ```
@@ -53,15 +53,15 @@ helm install prometheus prometheus-community/kube-prometheus-stack \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
 ```
 
-The `serviceMonitorSelectorNilUsesHelmValues=false` setting tells Prometheus to discover ServiceMonitors from all namespaces, not just those installed by Helm.
+The `serviceMonitorSelectorNilUsesHelmValues=false` setting tells Prometheus to use the `serviceMonitorSelector` value from the chart. With the default empty selector and namespace selector, Prometheus can discover ServiceMonitors across namespaces instead of only the ServiceMonitors matching the Helm release labels.
 
 ## Step 2: Expose Application Metrics
 
-Your application needs a `/metrics` endpoint that Prometheus can scrape. Here is an example using a Python Flask app that exposes a custom metric for queue depth.
+Your application needs a `/metrics` endpoint that Prometheus can scrape. Here is an example using a Python Flask app that exposes a Prometheus metric for queue depth.
 
 ```python
 # app.py
-# Flask application that exposes custom Prometheus metrics
+# Flask application that exposes Prometheus metrics
 from flask import Flask
 from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 import redis
@@ -97,7 +97,7 @@ A ServiceMonitor tells Prometheus where to find your application's metrics endpo
 
 ```yaml
 # service-monitor.yaml
-# Tells Prometheus to scrape metrics from pods matching the app label
+# Tells Prometheus to scrape metrics from Services matching the app label
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -129,7 +129,7 @@ Open http://localhost:9090/targets in your browser. Your application should appe
 
 ## Step 4: Install the Prometheus Adapter
 
-The Prometheus Adapter bridges Prometheus and the Kubernetes custom metrics API. HPA queries the custom metrics API, and the adapter translates those queries into PromQL against Prometheus.
+The Prometheus Adapter bridges Prometheus and the Kubernetes custom and external metrics APIs. HPA queries those APIs, and the adapter translates those queries into PromQL against Prometheus.
 
 ```bash
 # Install the Prometheus adapter
@@ -140,28 +140,23 @@ helm install prometheus-adapter prometheus-community/prometheus-adapter \
   --set prometheus.port=9090
 ```
 
-## Step 5: Configure Custom Metric Rules
+## Step 5: Configure Metric Rules
 
-The adapter needs rules that define how to map Prometheus metrics to Kubernetes custom metrics. Create a values file for the adapter.
+The adapter needs rules that define how to map Prometheus metrics to Kubernetes metrics APIs. Because queue depth is a global backlog metric rather than a per-pod metric, expose it through the external metrics API. Create a values file for the adapter.
 
 ```yaml
 # adapter-values.yaml
 # Configuration for the Prometheus adapter
-# Defines how Prometheus metrics are exposed as Kubernetes custom metrics
+# Defines how Prometheus metrics are exposed as Kubernetes custom and external metrics
 rules:
-  custom:
-  - seriesQuery: 'app_queue_depth{namespace!="",pod!=""}'
-    resources:
-      overrides:
-        namespace:
-          resource: namespace
-        pod:
-          resource: pod
+  external:
+  - seriesQuery: 'app_queue_depth{queue_name!=""}'
     name:
       matches: "^(.*)$"
       as: "${1}"
-    metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+    metricsQuery: 'max(<<.Series>>{<<.LabelMatchers>>}) by (queue_name)'
 
+  custom:
   - seriesQuery: 'http_requests_per_second{namespace!="",pod!=""}'
     resources:
       overrides:
@@ -178,7 +173,7 @@ rules:
 Upgrade the adapter with these rules.
 
 ```bash
-# Upgrade the adapter with custom metric rules
+# Upgrade the adapter with metric rules
 helm upgrade prometheus-adapter prometheus-community/prometheus-adapter \
   --namespace monitoring \
   --values adapter-values.yaml \
@@ -186,17 +181,23 @@ helm upgrade prometheus-adapter prometheus-community/prometheus-adapter \
   --set prometheus.port=9090
 ```
 
-## Step 6: Verify Custom Metrics Are Available
+## Step 6: Verify Metrics Are Available
 
-After the adapter restarts, check that Kubernetes can see your custom metrics.
+After the adapter restarts, check that Kubernetes can see your metrics.
 
 ```bash
-# List all available custom metrics
+# List all available external metrics
 # Your app_queue_depth metric should appear in this list
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1" | python3 -m json.tool
+
+# Query the queue depth metric in the default namespace
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/default/app_queue_depth?labelSelector=queue_name%3Dorders" | python3 -m json.tool
+
+# List all available custom metrics
 kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1" | python3 -m json.tool
 
-# Query a specific metric for pods in the default namespace
-kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/app_queue_depth" | python3 -m json.tool
+# Query a pod metric for pods in the default namespace
+kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/http_requests_per_second" | python3 -m json.tool
 ```
 
 If the metric does not appear, check the adapter logs.
@@ -206,9 +207,9 @@ If the metric does not appear, check the adapter logs.
 kubectl logs -n monitoring -l app.kubernetes.io/name=prometheus-adapter
 ```
 
-## Step 7: Create the HPA with Custom Metrics
+## Step 7: Create the HPA with Prometheus Metrics
 
-Now create an HPA that scales based on your custom metric.
+Now create an HPA that scales based on your Prometheus metric.
 
 ```yaml
 # hpa-custom-metrics.yaml
@@ -227,10 +228,13 @@ spec:
   minReplicas: 2
   maxReplicas: 20
   metrics:
-  - type: Pods
-    pods:
+  - type: External
+    external:
       metric:
         name: app_queue_depth
+        selector:
+          matchLabels:
+            queue_name: orders
       target:
         type: AverageValue
         # Scale so each pod handles roughly 10 messages
@@ -256,7 +260,7 @@ Apply the HPA.
 kubectl apply -f hpa-custom-metrics.yaml
 ```
 
-This HPA maintains an average queue depth of 10 per pod. If the total queue depth is 50 and there are 2 pods (average 25 per pod), the HPA will scale up to 5 pods (50/10 = 5). The behavior section controls how aggressively scaling happens - it can add up to 4 pods per minute but only removes 2 pods every 2 minutes.
+This HPA maintains an average queue depth of 10 per pod. For an external metric with `AverageValue`, Kubernetes divides the metric value by the number of pods before comparing it with the target. If the total queue depth is 50, the HPA will scale to 5 pods (50/10 = 5). The behavior section controls how aggressively scaling happens - it can add up to 4 pods per minute but only removes 2 pods every 2 minutes.
 
 ## Step 8: Monitor HPA Behavior
 
@@ -275,11 +279,11 @@ The output shows the current metric value, the target value, and the current/des
 
 ## Combining Custom and Resource Metrics
 
-You can combine custom metrics with standard CPU/memory metrics in a single HPA. Kubernetes uses the metric that results in the highest replica count.
+You can combine custom or external metrics with standard CPU/memory metrics in a single HPA. Kubernetes uses the metric that results in the highest replica count.
 
 ```yaml
 # hpa-combined.yaml
-# HPA using both CPU and custom queue depth metrics
+# HPA using both CPU and external queue depth metrics
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -300,11 +304,14 @@ spec:
       target:
         type: Utilization
         averageUtilization: 70
-  # Scale on custom queue depth metric
-  - type: Pods
-    pods:
+  # Scale on external queue depth metric
+  - type: External
+    external:
       metric:
         name: app_queue_depth
+        selector:
+          matchLabels:
+            queue_name: orders
       target:
         type: AverageValue
         averageValue: "10"
@@ -314,14 +321,14 @@ With this configuration, if CPU says you need 5 replicas but queue depth says yo
 
 ## Troubleshooting Tips
 
-**HPA shows "unknown" for custom metrics**: The adapter might not be scraping your metric. Verify the metric exists in Prometheus by querying it directly in the Prometheus UI. Check that the adapter rules match the metric name and labels.
+**HPA shows "unknown" for custom or external metrics**: The adapter might not be exposing your metric. Verify the metric exists in Prometheus by querying it directly in the Prometheus UI. Check that the adapter rules match the metric name and labels.
 
 **HPA not scaling up despite high metric values**: Check if you hit the maxReplicas limit. Also verify that pods have resource requests set - the HPA needs requests defined to calculate utilization for resource-based metrics.
 
-**Metric values lagging behind reality**: The adapter queries Prometheus on a regular interval (default 30 seconds). Combined with Prometheus scrape intervals and HPA evaluation periods, there can be a 1-2 minute delay between a metric change and a scaling action. Tune these intervals based on how quickly you need to respond.
+**Metric values lagging behind reality**: The HPA control loop runs periodically, and the default controller sync period is 15 seconds. Combined with Prometheus scrape intervals and pod startup time, there can be a delay between a metric change and a scaling action. Tune these intervals based on how quickly you need to respond.
 
 **Adapter returning stale data**: If you change adapter rules, the adapter might cache old values. Restart the adapter pods after rule changes.
 
 ## Summary
 
-Scaling on custom Prometheus metrics gives you precise control over when and how your AKS workloads scale. The setup involves four components - your application exposing metrics, Prometheus scraping them, the adapter translating them into the Kubernetes API, and the HPA acting on them. Once this pipeline is in place, you can scale on virtually any metric your application produces, from queue depths to request rates to business-level indicators. The key is choosing metrics that actually correlate with load and tuning the HPA behavior to avoid thrashing.
+Scaling on Prometheus metrics gives you precise control over when and how your AKS workloads scale. The setup involves four components - your application exposing metrics, Prometheus scraping them, the adapter translating them into the Kubernetes API, and the HPA acting on them. Once this pipeline is in place, you can scale on virtually any metric your application produces, from queue depths to request rates to business-level indicators. The key is choosing metrics that actually correlate with load and tuning the HPA behavior to avoid thrashing.
