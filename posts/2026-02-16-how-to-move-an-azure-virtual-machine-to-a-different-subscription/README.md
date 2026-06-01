@@ -14,17 +14,17 @@ I have moved VMs between subscriptions several times for various reasons: reorga
 
 ## Understanding the Move Operation
 
-When you move a VM between subscriptions, Azure performs a control plane operation. The VM's resource ID changes (because the subscription ID is part of the resource ID), but the underlying compute, storage, and networking stay in place. There is no data copy, no redeployment, and typically no downtime if the VM is already stopped.
+When you move a VM between subscriptions, Azure performs a control plane operation. The VM's resource ID changes (because the subscription ID is part of the resource ID), but the underlying compute, storage, and networking stay in place. There is no data copy or redeployment for supported configurations.
 
-That said, Microsoft recommends stopping (deallocating) the VM before moving it. While some moves work with running VMs, stopping the VM avoids edge cases and makes the process more predictable.
+Azure does not require you to stop or deallocate the VM before moving it, and a running VM can continue to serve traffic during the move. That said, deallocating the VM during a planned maintenance window can still make the process more predictable for configurations that require it, such as Azure Disk Encryption moves within a resource group.
 
 ## Prerequisites
 
 Before you start, work through this checklist:
 
 1. The source and destination subscriptions must exist within the same Azure Active Directory tenant.
-2. The destination subscription must be registered for the resource providers used by the VM (Microsoft.Compute, Microsoft.Network, Microsoft.Storage at minimum).
-3. Your account needs at least Contributor access on both the source and destination resource groups.
+2. The destination subscription must be registered for the resource providers used by the VM (Microsoft.Compute and Microsoft.Network at minimum, plus Microsoft.Storage if you use unmanaged disks or storage-account-backed features such as boot diagnostics).
+3. Your account needs permission to move resources from the source resource group and write to the destination resource group. Contributor on both resource groups is usually sufficient.
 4. The destination subscription must have sufficient quota for the VM size you are moving.
 5. Any Azure policies on the destination subscription should not block the incoming resources.
 
@@ -77,7 +77,8 @@ These typically include:
 - Network interface(s) (Microsoft.Network/networkInterfaces)
 - Public IP address(es) (Microsoft.Network/publicIPAddresses)
 - Network Security Group(s) (Microsoft.Network/networkSecurityGroups)
-- Virtual Network (Microsoft.Network/virtualNetworks) - if not shared with other resources
+- Virtual Network (Microsoft.Network/virtualNetworks)
+- Other NICs attached to that VNet, plus their VMs and disks, if they are part of the same dependency chain
 
 You can get the list of resources associated with your VM:
 
@@ -88,7 +89,7 @@ az vm show --resource-group myResourceGroup --name myVM \
   -o json
 ```
 
-The tricky part is virtual networks. If your VM is the only resource using a VNet, you can move the VNet along with it. But if other VMs share that VNet, you cannot move it. In that case, you will need to create a new VNet in the destination and reconfigure the NIC after the move, or use VNet peering.
+The tricky part is virtual networks. For a cross-subscription move, the VM, its dependent resources, and the VNet dependency chain must be moved together or already exist in the destination. If other VMs have NICs attached to the same VNet, you may need to move those NICs, VMs, and disks as part of the same dependency chain. You cannot use the standard move operation to move a VM and change its VNet attachment at the same time; moving to a different VNet usually means recreating the VM from disks, snapshots, or backup in the target network.
 
 ## Validating the Move
 
@@ -128,6 +129,7 @@ az resource move \
     "/subscriptions/source-sub-id/resourceGroups/myResourceGroup/providers/Microsoft.Compute/disks/myVM_OsDisk" \
     "/subscriptions/source-sub-id/resourceGroups/myResourceGroup/providers/Microsoft.Compute/disks/myVM_DataDisk1" \
     "/subscriptions/source-sub-id/resourceGroups/myResourceGroup/providers/Microsoft.Network/networkInterfaces/myVM-nic" \
+    "/subscriptions/source-sub-id/resourceGroups/myResourceGroup/providers/Microsoft.Network/virtualNetworks/myVNet" \
     "/subscriptions/source-sub-id/resourceGroups/myResourceGroup/providers/Microsoft.Network/publicIPAddresses/myVM-ip" \
     "/subscriptions/source-sub-id/resourceGroups/myResourceGroup/providers/Microsoft.Network/networkSecurityGroups/myVM-nsg"
 ```
@@ -165,13 +167,13 @@ Resource locks (CanNotDelete, ReadOnly) need to be removed before the move and r
 
 Some VM configurations add complexity to the move:
 
-**VMs with Azure Backup**: You need to stop the backup, delete the recovery points (or keep them in the source vault), and then reconfigure backup in the destination subscription after the move.
+**VMs with Azure Backup**: You need to stop the backup, retain the backup data if you still need it, and delete the restore point collections that block the move. If soft delete is enabled, wait for soft-deleted restore points to expire or disable soft delete before retrying. Then reconfigure backup in the destination subscription after the move.
 
-**VMs with Managed Identity**: System-assigned managed identities are tied to the resource and will be re-created, but any role assignments for that identity need to be reconfigured. User-assigned managed identities can be moved along with the VM if they are in the same resource group.
+**VMs with Managed Identity**: System-assigned managed identities are tied to the VM resource, but any role assignments for that identity need to be checked and reconfigured if they were scoped to resources that changed. User-assigned managed identity resources do not support move operations, so plan to create or use an identity in the destination subscription and update the VM configuration if needed.
 
 **VMs in Availability Sets**: You must move the entire availability set along with all VMs in it. You cannot move a single VM out of an availability set to a different subscription.
 
-**VMs with Azure Disk Encryption**: Encrypted VMs can be moved, but you need to ensure the Key Vault and its keys are accessible from the destination subscription. This often means the Key Vault needs to be in the same tenant.
+**VMs with Azure Disk Encryption**: Azure Disk Encryption adds stricter requirements. An ADE-enabled VM can be moved to another resource group when it is deallocated, but to move it to another subscription you must disable encryption first. Key Vaults used for disk encryption also cannot be moved while disk encryption is enabled.
 
 ## Monitoring the Move
 
