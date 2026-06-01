@@ -16,6 +16,8 @@ Azure Service Bus Geo-DR creates a pairing between two Premium tier namespaces i
 
 When you initiate a failover, the secondary namespace becomes the new primary. The alias DNS record switches to point at the secondary, and applications using the alias automatically start connecting to the new primary. It is important to understand that messages in the old primary are not replicated - only the metadata is.
 
+If you need both metadata and message data replicated across regions, use Azure Service Bus Geo-Replication instead. For most disaster recovery scenarios where message loss is not acceptable, Microsoft recommends Geo-Replication over metadata-only Geo-DR.
+
 ```mermaid
 graph LR
     subgraph "Normal Operation"
@@ -145,7 +147,7 @@ param secondaryLocation string = 'westus'
 param aliasName string = 'sb-myapp'
 
 // Primary namespace
-resource primaryNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
+resource primaryNamespace 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
   name: 'sb-myapp-primary'
   location: primaryLocation
   sku: {
@@ -156,7 +158,7 @@ resource primaryNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' =
 }
 
 // Secondary namespace
-resource secondaryNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
+resource secondaryNamespace 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
   name: 'sb-myapp-secondary'
   location: secondaryLocation
   sku: {
@@ -167,7 +169,7 @@ resource secondaryNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview'
 }
 
 // Create queues on the primary (they will replicate to secondary)
-resource ordersQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
+resource ordersQueue 'Microsoft.ServiceBus/namespaces/queues@2024-01-01' = {
   parent: primaryNamespace
   name: 'orders'
   properties: {
@@ -177,7 +179,7 @@ resource ordersQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview'
 }
 
 // Geo-DR alias pairing
-resource geoAlias 'Microsoft.ServiceBus/namespaces/disasterRecoveryConfigs@2022-10-01-preview' = {
+resource geoAlias 'Microsoft.ServiceBus/namespaces/disasterRecoveryConfigs@2024-01-01' = {
   parent: primaryNamespace
   name: aliasName
   properties: {
@@ -219,27 +221,25 @@ Since messages are not replicated, you need a strategy for handling potential me
 
 ## After the Failover: Re-Pairing
 
-After a failover, the pairing is broken. The old primary is no longer part of the disaster recovery configuration. To re-establish protection:
+After a failover, the pairing is broken. The old primary is no longer part of the disaster recovery configuration. Geo-DR supports fail-forward semantics only, so you cannot fail back to the previous primary replica. To re-establish protection:
 
 1. Break the old pairing completely if it has not been broken already.
-2. Clear any entities from the old primary namespace (it needs to be empty to become a secondary).
-3. Create a new Geo-DR pairing with the old primary as the new secondary.
+2. Create a new empty Premium namespace in another region to act as the next secondary.
+3. Create a new Geo-DR pairing from the current primary to the new secondary.
 
 ```bash
-# After failover, re-pair with the old primary as secondary
-# First, delete all entities from the old primary
-# Then create a new alias pairing
+# After failover, re-pair with a new empty namespace as secondary
 
 az servicebus georecovery-alias set \
   --resource-group rg-messaging \
   --namespace-name sb-myapp-secondary \
   --alias sb-myapp \
-  --partner-namespace "/subscriptions/{sub-id}/resourceGroups/rg-messaging/providers/Microsoft.ServiceBus/namespaces/sb-myapp-primary"
+  --partner-namespace "/subscriptions/{sub-id}/resourceGroups/rg-messaging/providers/Microsoft.ServiceBus/namespaces/sb-myapp-new-secondary"
 ```
 
 ## Testing Your Failover
 
-You should test failover regularly - at least once a quarter. Run a planned failover during a maintenance window and verify that your applications reconnect automatically through the alias. Check that all queues, topics, and subscriptions are present in the new primary. Then re-pair and fail back.
+You should test failover regularly - at least once a quarter. Run a planned failover during a maintenance window and verify that your applications reconnect automatically through the alias. Check that all queues, topics, and subscriptions are present in the new primary. Then create a new secondary namespace and re-pair.
 
 ## Summary
 
