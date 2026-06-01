@@ -222,7 +222,7 @@ public class QueueWorker
 
                 try
                 {
-                    await ProcessMessageAsync(message.MessageText);
+                    await ProcessMessageAsync(message.Body.ToString());
                     await _mainQueue.DeleteMessageAsync(
                         message.MessageId, message.PopReceipt);
                 }
@@ -241,7 +241,7 @@ public class QueueWorker
         // Create a dead-letter envelope with metadata
         var dlqMessage = new
         {
-            OriginalMessage = message.MessageText,
+            OriginalMessage = message.Body.ToString(),
             OriginalMessageId = message.MessageId,
             DequeueCount = message.DequeueCount,
             Reason = "exceeded_max_dequeue_count"
@@ -374,7 +374,7 @@ for message in messages:
     except Exception as e:
         # Calculate exponential backoff based on dequeue count
         # 1st retry: 30s, 2nd: 60s, 3rd: 120s, 4th: 240s, 5th: 480s
-        backoff_seconds = min(30 * (2 ** message.dequeue_count), 3600)
+        backoff_seconds = min(30 * (2 ** (message.dequeue_count - 1)), 3600)
 
         # Update the message visibility timeout for the backoff period
         queue_client.update_message(
