@@ -52,7 +52,7 @@ graph TD
 
 ## Step 2: Use the Export Feature
 
-Azure DevOps can export a classic build pipeline to YAML. Go to your classic build pipeline, click **Edit**, then click the three dots menu and look for **View YAML** or **Export to YAML**.
+Azure DevOps can export a classic build pipeline created with the classic build designer to YAML. Classic release pipelines do not support YAML export, so you need to migrate their tasks and stages manually. Go to your classic build pipeline, click **Edit**, then click the three dots menu and look for **Export to YAML**.
 
 The exported YAML is a starting point, not a finished product. It is often verbose, uses legacy task versions, and does not take advantage of YAML-specific features. But it saves you from having to look up every task's YAML syntax.
 
@@ -145,6 +145,7 @@ steps:
     displayName: 'Publish'
     inputs:
       command: 'publish'
+      publishWebProjects: false
       projects: '**/MyApp.csproj'
       arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)'
 
@@ -183,6 +184,7 @@ stages:
             displayName: 'Build and publish'
             inputs:
               command: 'publish'
+              publishWebProjects: false
               projects: '**/MyApp.csproj'
               arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)'
 
@@ -302,11 +304,11 @@ This way, if something goes wrong with the YAML pipeline, you can quickly revert
 
 ## Common Migration Pitfalls
 
-**Artifact handling is different.** Classic release pipelines automatically download artifacts. YAML deployment jobs use `$(Pipeline.Workspace)` and the download task. Make sure your artifact paths are correct.
+**Artifact handling is different.** Classic release pipelines automatically download artifacts. YAML deployment jobs also download artifacts automatically to `$(Pipeline.Workspace)` by default, while regular jobs need the `download` step or a download task. Make sure your artifact paths are correct.
 
-**Service connections might need new permissions.** YAML pipelines authenticate differently than classic ones. Verify that your service connections allow the YAML pipeline to use them.
+**Service connections might need new permissions.** YAML pipelines reference service connections by name in the YAML file, and the pipeline may need to be explicitly authorized to use them. Verify that your service connections allow the YAML pipeline to use them.
 
-**Scheduled triggers behave differently.** In classic pipelines, schedules are defined in the UI. In YAML, they are part of the file. If you have both, the YAML schedule takes precedence and the UI schedule is ignored.
+**Scheduled triggers behave differently.** In classic pipelines, schedules are defined in the UI. In YAML, they are usually part of the file. If a YAML pipeline has both UI-defined scheduled triggers and YAML scheduled triggers, the UI-defined schedules take precedence and the YAML schedules are ignored until the UI schedules are removed.
 
 **Variable scoping changes.** In classic pipelines, variables set in one phase are available in later phases. In YAML, variables are scoped to stages and jobs. You need output variables to pass data between them.
 
