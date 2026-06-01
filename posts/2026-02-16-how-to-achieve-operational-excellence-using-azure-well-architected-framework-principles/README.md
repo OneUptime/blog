@@ -14,7 +14,7 @@ I have seen production environments where nobody could explain how a deployment 
 
 ## What Operational Excellence Means in Practice
 
-The operational excellence pillar covers four main areas: design and architecture, monitoring and diagnostics, automation, and continuous improvement. At its core, it asks the question: can your team confidently deploy, operate, and troubleshoot this workload?
+The operational excellence pillar centers on DevOps culture, development standards, observability, automation, safe deployment practices, and continuous improvement. At its core, it asks the question: can your team confidently deploy, operate, and troubleshoot this workload?
 
 If the answer involves phrases like "we usually just SSH in and check" or "only Dave knows how that works," you have operational excellence gaps.
 
@@ -22,7 +22,7 @@ If the answer involves phrases like "we usually just SSH in and check" or "only 
 
 The WAF is clear on this: everything should be defined as code. Manual portal configurations are not repeatable, not auditable, and not version-controlled. Whether you use Bicep, Terraform, ARM templates, or Pulumi, your infrastructure should be deployable from a repository.
 
-Here is a simple example of defining an Azure resource group and storage account with Bicep, which is Microsoft's recommended IaC language for Azure.
+Here is a simple example of defining an Azure resource group and deploying a storage account module with Bicep, Microsoft's native IaC language for Azure.
 
 ```bicep
 // Define the target scope for this deployment
@@ -59,7 +59,7 @@ The key principle is that you should be able to tear down your entire environmen
 
 The WAF recommends progressive deployment strategies that minimize the blast radius of changes. This means using techniques like blue-green deployments, canary releases, or ring-based deployments rather than deploying changes directly to all production instances at once.
 
-Azure has native support for these patterns. App Service deployment slots let you stage a new version and swap it into production with zero downtime. Azure Kubernetes Service supports canary deployments through service meshes or deployment strategies.
+Azure has native support for these patterns. App Service deployment slots let you stage a new version and swap it into production without downtime. Azure Kubernetes Service can run Kubernetes canary deployment patterns through service meshes or traffic-routing deployment strategies.
 
 Set up a deployment pipeline that includes:
 
@@ -77,9 +77,9 @@ You cannot operate what you cannot see. The WAF operational excellence pillar pu
 
 Good observability means you can answer questions like: Why is this API call slow? What changed between yesterday and today? Is this error affecting all users or just some?
 
-Azure Monitor is the foundation. Enable diagnostic settings for every resource and send logs and metrics to a Log Analytics workspace. Use Application Insights for application-level telemetry.
+Azure Monitor is the foundation. Enable diagnostic settings for every supported resource and send logs and metrics to a Log Analytics workspace. Use Application Insights for application-level telemetry.
 
-Here is how to enable diagnostic settings across your resources using the Azure CLI.
+Here is how to enable diagnostic settings for a supported resource using the Azure CLI.
 
 ```bash
 # Get the Log Analytics workspace ID
