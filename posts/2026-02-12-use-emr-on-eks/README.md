@@ -32,7 +32,7 @@ This creates a basic EKS cluster using eksctl with managed node groups.
 eksctl create cluster \
   --name data-platform \
   --region us-east-1 \
-  --version 1.28 \
+  --version 1.35 \
   --nodegroup-name spark-workers \
   --node-type m5.2xlarge \
   --nodes 5 \
@@ -91,12 +91,15 @@ Create a trust policy for the execution role.
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::123456789:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE"
+        "Federated": "arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
+        "StringEquals": {
+          "oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE:aud": "sts.amazonaws.com"
+        },
         "StringLike": {
-          "oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE:sub": "system:serviceaccount:spark-workloads:emr-containers-sa-*"
+          "oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE:sub": "system:serviceaccount:spark-workloads:emr-containers-sa-*-*-123456789012-*"
         }
       }
     }
@@ -122,8 +125,21 @@ aws iam put-role-policy \
     "Statement": [
       {
         "Effect": "Allow",
-        "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
-        "Resource": ["arn:aws:s3:::my-data-bucket", "arn:aws:s3:::my-data-bucket/*"]
+        "Action": ["s3:ListBucket"],
+        "Resource": [
+          "arn:aws:s3:::my-data-bucket",
+          "arn:aws:s3:::my-scripts",
+          "arn:aws:s3:::my-emr-logs"
+        ]
+      },
+      {
+        "Effect": "Allow",
+        "Action": ["s3:GetObject", "s3:PutObject"],
+        "Resource": [
+          "arn:aws:s3:::my-data-bucket/*",
+          "arn:aws:s3:::my-scripts/*",
+          "arn:aws:s3:::my-emr-logs/*"
+        ]
       },
       {
         "Effect": "Allow",
@@ -150,7 +166,7 @@ This submits a PySpark job to the EMR on EKS virtual cluster.
 aws emr-containers start-job-run \
   --virtual-cluster-id abc123def456 \
   --name "daily-etl-job" \
-  --execution-role-arn arn:aws:iam::123456789:role/EMRContainersJobRole \
+  --execution-role-arn arn:aws:iam::123456789012:role/EMRContainersJobRole \
   --release-label emr-7.0.0-latest \
   --job-driver '{
     "sparkSubmitJobDriver": {
@@ -187,7 +203,7 @@ aws emr-containers start-job-run \
 
 One of the advantages of running on Kubernetes is that you can customize the pod spec for drivers and executors. This is useful for setting resource requests, node affinity, and tolerations.
 
-This pod template ensures Spark executors run on specific nodes with GPU support.
+This pod template ensures Spark executors run on specific dedicated Spark compute nodes.
 
 ```yaml
 # executor-pod-template.yaml
@@ -227,7 +243,7 @@ aws s3 cp executor-pod-template.yaml s3://my-scripts/pod-templates/
 aws emr-containers start-job-run \
   --virtual-cluster-id abc123def456 \
   --name "custom-pod-job" \
-  --execution-role-arn arn:aws:iam::123456789:role/EMRContainersJobRole \
+  --execution-role-arn arn:aws:iam::123456789012:role/EMRContainersJobRole \
   --release-label emr-7.0.0-latest \
   --job-driver '{
     "sparkSubmitJobDriver": {
@@ -261,11 +277,11 @@ Build and push it to ECR.
 
 ```bash
 aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 docker build -t my-spark-image:latest .
-docker tag my-spark-image:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/my-spark-image:latest
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-spark-image:latest
+docker tag my-spark-image:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-spark-image:latest
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-spark-image:latest
 ```
 
 Then reference it in your job submission.
@@ -274,12 +290,12 @@ Then reference it in your job submission.
 aws emr-containers start-job-run \
   --virtual-cluster-id abc123def456 \
   --name "custom-image-job" \
-  --execution-role-arn arn:aws:iam::123456789:role/EMRContainersJobRole \
+  --execution-role-arn arn:aws:iam::123456789012:role/EMRContainersJobRole \
   --release-label emr-7.0.0-latest \
   --job-driver '{
     "sparkSubmitJobDriver": {
       "entryPoint": "local:///opt/spark/work-dir/etl_job.py",
-      "sparkSubmitParameters": "--conf spark.kubernetes.container.image=123456789.dkr.ecr.us-east-1.amazonaws.com/my-spark-image:latest"
+      "sparkSubmitParameters": "--conf spark.kubernetes.container.image=123456789012.dkr.ecr.us-east-1.amazonaws.com/my-spark-image:latest"
     }
   }'
 ```
