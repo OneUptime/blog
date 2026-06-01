@@ -124,7 +124,7 @@ s3.upload_file(
     }
 )
 
-# Upload with ACL (make publicly readable)
+# Upload with ACL (make publicly readable when ACLs are enabled and Block Public Access allows it)
 s3.upload_file(
     Filename='logo.png',
     Bucket='my-public-bucket',
@@ -245,7 +245,8 @@ Uploads can fail for many reasons. Always handle errors gracefully, especially f
 
 ```python
 import boto3
-from botocore.exceptions import ClientError, S3UploadFailedError
+from boto3.exceptions import S3UploadFailedError
+from botocore.exceptions import ClientError
 
 s3 = boto3.client('s3')
 
@@ -257,6 +258,17 @@ def safe_upload(local_path, bucket, key, max_retries=3):
             print(f"Uploaded {local_path} to s3://{bucket}/{key}")
             return True
         except S3UploadFailedError as e:
+            error_code = None
+            if isinstance(e.__context__, ClientError):
+                error_code = e.__context__.response['Error']['Code']
+
+            if error_code == 'AccessDenied':
+                print(f"Access denied - check your IAM permissions")
+                return False
+            elif error_code == 'NoSuchBucket':
+                print(f"Bucket '{bucket}' doesn't exist")
+                return False
+
             print(f"Upload failed (attempt {attempt}): {e}")
             if attempt == max_retries:
                 return False
