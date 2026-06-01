@@ -107,18 +107,10 @@ Both circuits need to connect to your Azure VNet through a virtual network gatew
 
 ```bash
 # Create the ExpressRoute gateway (make it zone-redundant for additional HA)
-az network public-ip create \
-  --resource-group myResourceGroup \
-  --name erGatewayPIP \
-  --sku Standard \
-  --allocation-method Static \
-  --zone 1 2 3
-
 az network vnet-gateway create \
   --resource-group myResourceGroup \
   --name myERGateway \
   --vnet myVNet \
-  --public-ip-addresses erGatewayPIP \
   --gateway-type ExpressRoute \
   --sku ErGw2AZ \
   --no-wait
@@ -135,7 +127,7 @@ az network vpn-connection create \
   --name primaryConnection \
   --vnet-gateway1 myERGateway \
   --express-route-circuit2 "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/expressRouteCircuits/primaryCircuit" \
-  --routing-weight 10
+  --routing-weight 20
 
 # Connect the secondary circuit
 az network vpn-connection create \
@@ -143,10 +135,10 @@ az network vpn-connection create \
   --name secondaryConnection \
   --vnet-gateway1 myERGateway \
   --express-route-circuit2 "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/expressRouteCircuits/secondaryCircuit" \
-  --routing-weight 20
+  --routing-weight 10
 ```
 
-The `--routing-weight` parameter influences route selection. Lower weight means higher preference. With primary at weight 10 and secondary at weight 20, Azure prefers the primary circuit. If the primary goes down, traffic automatically shifts to the secondary.
+The `--routing-weight` parameter influences route selection. Higher weight means higher preference. With primary at weight 20 and secondary at weight 10, Azure prefers the primary circuit. If the primary goes down, traffic automatically shifts to the secondary.
 
 ## Step 4: Configure Active-Active Routing
 
@@ -174,23 +166,31 @@ Your on-premises routers should be configured with BGP sessions to both circuits
 ```text
 ! On-premises BGP configuration for dual ExpressRoute
 router bgp 65010
-  ! Primary circuit BGP neighbor
-  neighbor 172.16.0.1 remote-as 12076
-  neighbor 172.16.0.1 description "Primary ER Circuit"
+  ! Primary circuit BGP neighbors
+  neighbor 172.16.0.2 remote-as 12076
+  neighbor 172.16.0.2 description "Primary ER Circuit - primary link"
+  neighbor 172.16.0.6 remote-as 12076
+  neighbor 172.16.0.6 description "Primary ER Circuit - secondary link"
 
-  ! Secondary circuit BGP neighbor
-  neighbor 172.16.1.1 remote-as 12076
-  neighbor 172.16.1.1 description "Secondary ER Circuit"
+  ! Secondary circuit BGP neighbors
+  neighbor 172.16.1.2 remote-as 12076
+  neighbor 172.16.1.2 description "Secondary ER Circuit - primary link"
+  neighbor 172.16.1.6 remote-as 12076
+  neighbor 172.16.1.6 description "Secondary ER Circuit - secondary link"
 
   address-family ipv4
     ! Advertise on-premises networks through both circuits
     network 10.100.0.0 mask 255.255.0.0
-    neighbor 172.16.0.1 activate
-    neighbor 172.16.1.1 activate
+    neighbor 172.16.0.2 activate
+    neighbor 172.16.0.6 activate
+    neighbor 172.16.1.2 activate
+    neighbor 172.16.1.6 activate
 
     ! Prefer primary circuit by setting higher local preference
-    neighbor 172.16.0.1 route-map PRIMARY-PREF in
-    neighbor 172.16.1.1 route-map SECONDARY-PREF in
+    neighbor 172.16.0.2 route-map PRIMARY-PREF in
+    neighbor 172.16.0.6 route-map PRIMARY-PREF in
+    neighbor 172.16.1.2 route-map SECONDARY-PREF in
+    neighbor 172.16.1.6 route-map SECONDARY-PREF in
   exit-address-family
 
 ! Route maps for preference control
@@ -201,7 +201,7 @@ route-map SECONDARY-PREF permit 10
   set local-preference 100
 ```
 
-With this configuration, the primary circuit is preferred for return traffic (Azure to on-premises) via higher local preference. If the primary fails, BGP automatically withdraws its routes and the secondary takes over.
+With this configuration, the primary circuit is preferred for traffic from on-premises to Azure via higher local preference. To prefer the primary circuit for Azure-to-on-premises traffic, use Azure connection weight and BGP route advertisements such as AS path prepending on the secondary circuit. If the primary fails, BGP automatically withdraws its routes and the secondary takes over.
 
 ## Step 6: Add VPN Gateway as Emergency Backup
 
@@ -209,7 +209,7 @@ For an additional safety net, configure a site-to-site VPN as a backup path:
 
 ```bash
 # Create a VPN gateway in the same VNet (using a different GatewaySubnet is not possible)
-# So use the same gateway with both types, or create in a separate peered VNet
+# Create a separate route-based VPN gateway, or create it in a separate peered VNet
 
 # Create the VPN connection as backup
 az network local-gateway create \
