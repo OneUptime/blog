@@ -121,7 +121,7 @@ const globalTable = new dynamodb.TableV2(stack, 'UserProfiles', {
 
 ## Writing to Global Tables
 
-Your application code doesn't change much when using Global Tables. Just make sure you're writing to the closest region.
+Your application code doesn't change much when using Global Tables. For idempotent writes, write to the closest region. For non-idempotent writes in MREC tables, route each item to its assigned write region.
 
 ```python
 import boto3
@@ -146,7 +146,7 @@ table.put_item(Item={
 
 ## Handling Conflict Resolution
 
-What happens when two regions write to the same item at the same time? Global Tables use a "last writer wins" strategy based on timestamps. The write with the latest timestamp takes precedence.
+What happens when two regions write to the same item at the same time? Global Tables using the default multi-Region eventual consistency (MREC) mode use a "last writer wins" strategy based on timestamps. The write with the latest timestamp takes precedence. Multi-Region strong consistency (MRSC) tables handle concurrent writes differently by returning a retryable conflict error.
 
 This is mostly fine for typical workloads, but you need to be careful with certain patterns.
 
@@ -156,22 +156,27 @@ This is mostly fine for typical workloads, but you need to be careful with certa
 # Region B does the same thing at the same time
 # One update will be lost
 
-# SAFER: use atomic counters or conditional writes
+# SAFER: for MREC, route non-idempotent writes for an item to one region.
+# Atomic counters are safe when all writes for that item go to the same region,
+# or when you're using an MRSC table.
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 table = dynamodb.Table('UserProfiles')
 
-# Atomic counter - safe across regions
+# Atomic counter
 table.update_item(
     Key={'user_id': 'u-12345'},
-    UpdateExpression='SET login_count = login_count + :inc',
-    ExpressionAttributeValues={':inc': 1}
+    UpdateExpression='SET login_count = if_not_exists(login_count, :zero) + :inc',
+    ExpressionAttributeValues={':zero': 0, ':inc': 1}
 )
 
-# Conditional write - only succeeds if version matches
+# Conditional write - only succeeds if version matches.
+# With MREC, evaluate conditions in the item's write region so you're checking
+# against the latest version.
 table.update_item(
     Key={'user_id': 'u-12345'},
-    UpdateExpression='SET email = :email, version = :new_version',
-    ConditionExpression='version = :current_version',
+    UpdateExpression='SET email = :email, #v = :new_version',
+    ConditionExpression='#v = :current_version',
+    ExpressionAttributeNames={'#v': 'version'},
     ExpressionAttributeValues={
         ':email': 'newemail@example.com',
         ':new_version': 6,
@@ -182,7 +187,7 @@ table.update_item(
 
 ## Routing Clients to the Nearest Region
 
-For the lowest latency, route each client to the closest DynamoDB region. You can do this with Route 53 latency-based routing or at the application layer.
+For the lowest latency, route each client to the closest DynamoDB region for reads and idempotent writes. For non-idempotent writes in MREC tables, route to the item's write region instead. You can do this with Route 53 latency-based routing or at the application layer.
 
 ```python
 import boto3
@@ -197,7 +202,7 @@ def get_table():
     dynamodb = boto3.resource('dynamodb', region_name=DYNAMODB_REGION)
     return dynamodb.Table('UserProfiles')
 
-# All operations use the local replica
+# Reads and idempotent writes use the local replica
 table = get_table()
 response = table.get_item(Key={'user_id': 'u-12345'})
 ```
