@@ -32,13 +32,13 @@ Microsoft handles the physical security layer. You are responsible for everythin
 
 Identity is the outermost layer you control. If an attacker gets valid credentials, the other layers need to hold up.
 
-Start with these fundamentals in Azure AD:
+Start with these fundamentals in Microsoft Entra ID (formerly Azure AD):
 
 **Multi-factor authentication** should be enabled for every account. Period. Use Conditional Access policies rather than per-user MFA settings because policies give you more granular control.
 
 **Privileged Identity Management (PIM)** eliminates standing admin privileges. Instead of having accounts with permanent Global Admin or Contributor roles, users activate roles on demand with time limits and approval workflows.
 
-**Identity Protection** uses machine learning to detect risky sign-in patterns. Configure it to automatically block high-risk sign-ins and force password resets for compromised accounts.
+**Microsoft Entra ID Protection** uses machine learning to detect risky sign-in patterns. Configure risk-based Conditional Access policies to block high-risk sign-ins, require MFA, or require password changes for compromised accounts.
 
 ```bash
 # Example: List all role assignments to audit for excessive privileges
@@ -55,7 +55,7 @@ Review role assignments quarterly. Remove any that are no longer needed. Every u
 
 The perimeter layer protects against large-scale attacks targeting your public-facing endpoints.
 
-**Azure DDoS Protection Standard** provides advanced mitigation for volumetric, protocol, and application-layer attacks. It integrates with Application Gateway and public IPs to automatically detect and mitigate DDoS attacks.
+**Azure DDoS Network Protection** provides advanced mitigation for volumetric and protocol attacks at layers 3 and 4. Use it with a Web Application Firewall for application-layer protection. It integrates with public IPs attached to resources such as Application Gateway to automatically detect and mitigate DDoS attacks.
 
 **Azure Firewall** acts as a centralized network security appliance. Deploy it in a hub virtual network and route all traffic through it. Azure Firewall supports application rules (FQDN filtering), network rules (IP-based filtering), and threat intelligence-based filtering.
 
@@ -64,7 +64,20 @@ The perimeter layer protects against large-scale attacks targeting your public-f
 az network firewall create \
   --resource-group hub-rg \
   --name central-firewall \
+  --location eastus
+
+az network public-ip create \
+  --resource-group hub-rg \
+  --name fw-pip \
   --location eastus \
+  --allocation-method static \
+  --sku standard
+
+az network firewall ip-config create \
+  --resource-group hub-rg \
+  --firewall-name central-firewall \
+  --name FW-config \
+  --public-ip-address fw-pip \
   --vnet-name hub-vnet
 
 # Create a firewall policy with threat intelligence filtering enabled
@@ -106,23 +119,36 @@ az network nsg rule create \
 
 Your virtual machines and containers need their own protections.
 
-**Microsoft Defender for Servers** provides endpoint detection and response, vulnerability assessment, and just-in-time VM access. JIT access keeps management ports closed by default and opens them only when an authorized user requests access, for a limited time, from a specific IP.
+**Microsoft Defender for Servers Plan 2** provides endpoint detection and response, vulnerability assessment, and just-in-time VM access. JIT access keeps management ports closed by default and opens them only when an authorized user requests access, for a limited time, from a specific IP.
 
-**Azure Update Management** keeps operating systems patched. Configure maintenance windows and automatic patching schedules. Unpatched systems are one of the most common entry points for attackers.
+**Azure Update Manager** keeps operating systems patched. Configure maintenance windows and automatic patching schedules. Unpatched systems are one of the most common entry points for attackers.
 
 For container workloads, use **Microsoft Defender for Containers** to scan images for vulnerabilities and monitor runtime behavior. Run containers with the minimum required privileges and use read-only root filesystems where possible.
 
 ```bash
 # Enable just-in-time VM access through Defender for Cloud
 # This keeps SSH/RDP ports closed until an authorized request is made
-az security jit-policy create \
-  --resource-group prod-rg \
-  --location eastus \
-  --name default \
-  --virtual-machines '[{
-    "id": "/subscriptions/<sub-id>/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/prod-vm",
-    "ports": [{"number": 22, "protocol": "TCP", "allowedSourceAddressPrefix": "*", "maxRequestAccessDuration": "PT3H"}]
-  }]'
+az rest \
+  --method put \
+  --url "https://management.azure.com/subscriptions/<sub-id>/resourceGroups/prod-rg/providers/Microsoft.Security/locations/eastus/jitNetworkAccessPolicies/default?api-version=2020-01-01" \
+  --body '{
+    "kind": "Basic",
+    "properties": {
+      "virtualMachines": [
+        {
+          "id": "/subscriptions/<sub-id>/resourceGroups/prod-rg/providers/Microsoft.Compute/virtualMachines/prod-vm",
+          "ports": [
+            {
+              "number": 22,
+              "protocol": "TCP",
+              "allowedSourceAddressPrefix": "*",
+              "maxRequestAccessDuration": "PT3H"
+            }
+          ]
+        }
+      ]
+    }
+  }'
 ```
 
 ## Layer 5: Application
@@ -158,9 +184,9 @@ Data is ultimately what you are protecting. Even if every other layer is breache
 
 **Encryption in transit** means enforcing TLS 1.2+ on all connections. Disable older TLS versions on your storage accounts, databases, and app services.
 
-**Azure Information Protection** and **Microsoft Purview** provide data classification and labeling. Classify your data so that sensitive information gets additional protections automatically.
+**Microsoft Purview Information Protection** provides data classification and sensitivity labeling. Classify your data so that sensitive information gets additional protections automatically.
 
-**Azure SQL Database** offers row-level security, dynamic data masking, and Always Encrypted. These features protect data even from database administrators.
+**Azure SQL Database** offers row-level security, dynamic data masking, and Always Encrypted. Row-level security and dynamic data masking reduce exposure for nonprivileged users, while Always Encrypted can protect sensitive columns from database administrators and other high-privileged users who should not see plaintext data.
 
 ## Monitoring Across All Layers
 
