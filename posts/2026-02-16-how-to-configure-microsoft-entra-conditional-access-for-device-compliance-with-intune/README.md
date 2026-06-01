@@ -24,19 +24,19 @@ sequenceDiagram
     participant App as Corporate Application
     User->>EntraID: Sign in to application
     EntraID->>EntraID: Evaluate Conditional Access policies
-    EntraID->>Intune: Check device compliance status
+    EntraID->>EntraID: Check compliance status reported by Intune
     Intune->>Intune: Evaluate device against compliance policy
     alt Device is Compliant
-        Intune->>EntraID: Device is compliant
+        Intune->>EntraID: Report device as compliant
         EntraID->>App: Grant access
         App->>User: Access granted
     else Device is Not Compliant
-        Intune->>EntraID: Device is not compliant
+        Intune->>EntraID: Report device as not compliant
         EntraID->>User: Block access, show remediation steps
     end
 ```
 
-Intune evaluates device compliance based on policies you define (encryption required, minimum OS version, antivirus running, etc.). Conditional Access queries Intune's compliance verdict and uses it to make access decisions.
+Intune evaluates device compliance based on policies you define (encryption required, minimum OS version, antivirus running, etc.) and reports the compliance status to Microsoft Entra ID. Conditional Access uses that reported compliance status to make access decisions.
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ You need:
 - Microsoft Entra ID P1 or P2 license
 - Microsoft Intune license (included in Microsoft 365 E3/E5 or as standalone)
 - Intune set up and devices enrolled
-- Global Administrator or a combination of Intune Administrator and Security Administrator roles
+- Global Administrator, or a combination of Intune Administrator and Conditional Access Administrator or Security Administrator roles
 
 ## Step 1: Create Device Compliance Policies in Intune
 
@@ -64,7 +64,7 @@ For device health:
 - Require code integrity: Yes
 
 For device properties:
-- Minimum OS version: Set to a supported version (e.g., 10.0.19045 for Windows 10 22H2)
+- Minimum OS version: Set to a supported version (e.g., 10.0.26100 for Windows 11 24H2)
 
 For system security:
 - Require a password: Yes
@@ -72,9 +72,9 @@ For system security:
 - Firewall: Require
 - Antivirus: Require
 - Microsoft Defender Antimalware: Require
-- Microsoft Defender Antimalware minimum version: Current version
+- Microsoft Defender Antimalware minimum version: Set this to the minimum Microsoft Defender Antimalware platform version you require
 
-Here is how to create the same policy using PowerShell with the Microsoft Graph module:
+Here is how to create the same policy using PowerShell with the Microsoft Graph module. Some Windows compliance settings, including firewall and Microsoft Defender requirements, are currently exposed through the Microsoft Graph beta resource, so this example calls the beta endpoint:
 
 ```powershell
 # Connect to Microsoft Graph with Intune permissions
@@ -84,52 +84,58 @@ Connect-MgGraph -Scopes "DeviceManagementConfiguration.ReadWrite.All"
 # Create a Windows compliance policy
 $compliancePolicy = @{
     "@odata.type" = "#microsoft.graph.windows10CompliancePolicy"
-    DisplayName = "Windows Corporate Device Compliance"
-    Description = "Compliance requirements for corporate Windows devices."
+    displayName = "Windows Corporate Device Compliance"
+    description = "Compliance requirements for corporate Windows devices."
     # Device health requirements
-    BitLockerEnabled = $true
-    SecureBootEnabled = $true
-    CodeIntegrityEnabled = $true
+    bitLockerEnabled = $true
+    secureBootEnabled = $true
+    codeIntegrityEnabled = $true
+    storageRequireEncryption = $true
     # OS version requirements
-    OsMinimumVersion = "10.0.19045"
+    osMinimumVersion = "10.0.26100"
     # System security requirements
-    PasswordRequired = $true
-    PasswordMinimumLength = 8
-    FirewallEnabled = $true
-    AntivirusRequired = $true
-    DefenderEnabled = $true
-    # Real-time protection
-    RtpEnabled = $true
+    passwordRequired = $true
+    passwordMinimumLength = 8
+    activeFirewallRequired = $true
+    antivirusRequired = $true
+    defenderEnabled = $true
+    defenderVersion = "DEFENDER_ANTIMALWARE_MINIMUM_VERSION"
+    signatureOutOfDate = $true
+    rtpEnabled = $true
     # Scheduled actions for non-compliance
-    ScheduledActionsForRule = @(
+    scheduledActionsForRule = @(
         @{
-            RuleName = "PasswordRequired"
-            ScheduledActionConfigurations = @(
+            ruleName = "PasswordRequired"
+            scheduledActionConfigurations = @(
                 @{
                     # Mark as non-compliant immediately
-                    ActionType = "block"
-                    GracePeriodHours = 0
-                    NotificationTemplateId = ""
+                    actionType = "block"
+                    gracePeriodHours = 0
+                    notificationTemplateId = ""
                 },
                 @{
                     # Send notification after 1 day
-                    ActionType = "notification"
-                    GracePeriodHours = 24
-                    NotificationTemplateId = "compliance-notification-template"
+                    actionType = "notification"
+                    gracePeriodHours = 24
+                    notificationTemplateId = "compliance-notification-template-id"
                 },
                 @{
-                    # Retire device after 30 days
-                    ActionType = "retire"
-                    GracePeriodHours = 720
-                    NotificationTemplateId = ""
+                    # Add device to the retire list after 30 days
+                    actionType = "retire"
+                    gracePeriodHours = 720
+                    notificationTemplateId = ""
                 }
             )
         }
     )
 }
 
-$policy = New-MgDeviceManagementDeviceCompliancePolicy -BodyParameter $compliancePolicy
-Write-Host "Windows compliance policy created: $($policy.DisplayName)"
+$policy = Invoke-MgGraphRequest -Method POST `
+    -Uri "https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicies" `
+    -Body ($compliancePolicy | ConvertTo-Json -Depth 10) `
+    -ContentType "application/json"
+
+Write-Host "Windows compliance policy created: $($policy.displayName)"
 ```
 
 ### iOS/macOS Compliance Policy
@@ -140,24 +146,24 @@ Create separate policies for each platform:
 # Create an iOS compliance policy
 $iosPolicy = @{
     "@odata.type" = "#microsoft.graph.iosCompliancePolicy"
-    DisplayName = "iOS Corporate Device Compliance"
-    Description = "Compliance requirements for corporate iOS devices."
+    displayName = "iOS Corporate Device Compliance"
+    description = "Compliance requirements for corporate iOS devices."
     # Security settings
-    PasscodeRequired = $true
-    PasscodeMinimumLength = 6
+    passcodeRequired = $true
+    passcodeMinimumLength = 6
     # Device health
-    ManagedEmailProfileRequired = $true
+    managedEmailProfileRequired = $true
     # OS requirements
-    OsMinimumVersion = "16.0"
+    osMinimumVersion = "16.0"
     # Jailbreak detection
-    SecurityBlockJailbrokenDevices = $true
-    ScheduledActionsForRule = @(
+    securityBlockJailbrokenDevices = $true
+    scheduledActionsForRule = @(
         @{
-            RuleName = "PasswordRequired"
-            ScheduledActionConfigurations = @(
+            ruleName = "PasswordRequired"
+            scheduledActionConfigurations = @(
                 @{
-                    ActionType = "block"
-                    GracePeriodHours = 0
+                    actionType = "block"
+                    gracePeriodHours = 0
                 }
             )
         }
@@ -174,20 +180,22 @@ Policies need to be assigned to device or user groups:
 
 ```powershell
 # Assign the compliance policy to a group of users
+$policyId = "COMPLIANCE_POLICY_ID"
+
 $assignment = @{
-    Assignments = @(
+    assignments = @(
         @{
-            Target = @{
+            target = @{
                 "@odata.type" = "#microsoft.graph.groupAssignmentTarget"
-                GroupId = "ALL_CORPORATE_USERS_GROUP_ID"
+                groupId = "ALL_CORPORATE_USERS_GROUP_ID"
             }
         }
     )
 }
 
-# Assign to the Windows compliance policy
+# Assign to the compliance policy
 Invoke-MgGraphRequest -Method POST `
-    -Uri "https://graph.microsoft.com/v1.0/deviceManagement/deviceCompliancePolicies/$($policy.Id)/assign" `
+    -Uri "https://graph.microsoft.com/v1.0/deviceManagement/deviceCompliancePolicies/$policyId/assign" `
     -Body ($assignment | ConvertTo-Json -Depth 10)
 
 Write-Host "Compliance policy assigned to corporate users group."
@@ -202,13 +210,13 @@ When a device becomes non-compliant, you can give users time to fix the issue be
    - **Mark device noncompliant**: Set a grace period (e.g., 1 day). During this period, the device is flagged but not blocked.
    - **Send email notification**: Notify the user that their device needs attention.
    - **Remotely lock device**: For serious compliance failures, lock the device after a longer period.
-   - **Retire device**: As a last resort, retire the device enrollment after an extended grace period.
+   - **Add device to retire list**: As a last resort, add the device to the retire list after an extended grace period. An administrator must explicitly retire the device from that list before company data is removed and the device is removed from Intune management.
 
 A typical escalation timeline might be:
 - Immediately: Mark as non-compliant
 - After 1 day: Send email to user
 - After 3 days: Send email to user and manager
-- After 30 days: Retire the device
+- After 30 days: Add the device to the retire list
 
 ## Step 4: Create the Conditional Access Policy
 
@@ -233,30 +241,30 @@ Now create a Conditional Access policy that requires device compliance:
 Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess"
 
 $params = @{
-    DisplayName = "Require Compliant Device for Corporate Apps"
-    State = "enabledForReportingButNotEnforced"  # Start in report-only mode
-    Conditions = @{
-        Users = @{
-            IncludeUsers = @("All")
-            ExcludeUsers = @("EMERGENCY_ACCOUNT_ID_1", "EMERGENCY_ACCOUNT_ID_2")
+    displayName = "Require Compliant Device for Corporate Apps"
+    state = "enabledForReportingButNotEnforced"  # Start in report-only mode
+    conditions = @{
+        users = @{
+            includeUsers = @("All")
+            excludeUsers = @("EMERGENCY_ACCOUNT_ID_1", "EMERGENCY_ACCOUNT_ID_2")
         }
-        Applications = @{
-            IncludeApplications = @("All")
+        applications = @{
+            includeApplications = @("All")
         }
         # Optionally target specific platforms
-        Platforms = @{
-            IncludePlatforms = @("windows", "iOS", "android", "macOS")
+        platforms = @{
+            includePlatforms = @("windows", "iOS", "android", "macOS")
         }
     }
-    GrantControls = @{
-        Operator = "OR"
-        BuiltInControls = @("compliantDevice")
+    grantControls = @{
+        operator = "OR"
+        builtInControls = @("compliantDevice")
     }
 }
 
 $policy = New-MgIdentityConditionalAccessPolicy -BodyParameter $params
 Write-Host "Conditional Access policy created in report-only mode."
-Write-Host "Policy ID: $($policy.Id)"
+Write-Host "Policy ID: $($policy.id)"
 ```
 
 ## Step 5: Handle Unmanaged Devices
@@ -274,38 +282,40 @@ Option 2 - Allow unmanaged devices with restrictions:
 # Create a separate policy for unmanaged devices
 # Require MFA and limit session duration
 $params = @{
-    DisplayName = "Restrict Access from Unmanaged Devices"
-    State = "enabled"
-    Conditions = @{
-        Users = @{
-            IncludeUsers = @("All")
-            ExcludeUsers = @("EMERGENCY_ACCOUNT_ID")
+    displayName = "Restrict Access from Unmanaged Devices"
+    state = "enabled"
+    conditions = @{
+        users = @{
+            includeUsers = @("All")
+            excludeUsers = @("EMERGENCY_ACCOUNT_ID")
         }
-        Applications = @{
-            IncludeApplications = @("All")
+        applications = @{
+            includeApplications = @("All")
         }
         # Use a filter to target unmanaged devices
-        Devices = @{
-            DeviceFilter = @{
-                Mode = "include"
-                Rule = "device.isCompliant -ne True -and device.trustType -ne 'ServerAD'"
+        devices = @{
+            deviceFilter = @{
+                mode = "include"
+                rule = 'device.isCompliant -ne "True" -and device.trustType -ne "ServerAD"'
             }
         }
     }
-    GrantControls = @{
-        Operator = "AND"
-        BuiltInControls = @("mfa")
+    grantControls = @{
+        operator = "AND"
+        builtInControls = @("mfa")
     }
-    SessionControls = @{
-        # Restrict to browser-only access with no download capability
-        ApplicationEnforcedRestrictions = @{
-            IsEnabled = $true
+    sessionControls = @{
+        # For supported apps, block downloads with Conditional Access App Control
+        cloudAppSecurity = @{
+            cloudAppSecurityType = "blockDownloads"
+            isEnabled = $true
         }
         # Limit session to 1 hour
-        SignInFrequency = @{
-            Value = 1
-            Type = "hours"
-            IsEnabled = $true
+        signInFrequency = @{
+            value = 1
+            type = "hours"
+            frequencyInterval = "timeBased"
+            isEnabled = $true
         }
     }
 }
@@ -335,7 +345,7 @@ IntuneDeviceComplianceOrg
 | summarize
     CompliantDevices = countif(ComplianceState == "Compliant"),
     NonCompliantDevices = countif(ComplianceState == "NonCompliant"),
-    InGracePeriod = countif(ComplianceState == "InGracePeriod")
+    InGracePeriod = countif(isnotempty(InGracePeriodUntil) and todatetime(InGracePeriodUntil) > now())
     by bin(TimeGenerated, 1d)
 | render timechart
 ```
@@ -344,7 +354,7 @@ IntuneDeviceComplianceOrg
 
 Configure email notifications for users whose devices fall out of compliance:
 
-1. In Intune, go to Tenant administration, then Notifications.
+1. In Intune, go to Endpoint security, then Device compliance, then Notifications.
 2. Create a notification template:
    - Include a message explaining what compliance means and why it matters
    - Provide self-service remediation steps (update OS, enable encryption, etc.)
