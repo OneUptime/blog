@@ -62,7 +62,7 @@ az security pricing show \
 
 You can also enable it through the Azure portal: navigate to Microsoft Defender for Cloud > Environment settings > Your subscription > Defender plans, and toggle Key Vaults to On.
 
-Once enabled, Defender starts monitoring all Key Vaults in the subscription immediately. There is a learning period of about 30 days during which the system builds behavioral baselines for each vault. During this period, you may see more alerts than usual as the system calibrates.
+Once enabled, Defender starts monitoring all Key Vaults in the subscription. Some anomaly detections rely on behavioral baselines, so alert quality improves as Defender observes normal activity in your environment.
 
 ## Step 2: Configure Alert Notifications
 
@@ -73,11 +73,11 @@ Set up email notifications so your security team is alerted immediately when Def
 az security contact create \
   --name "default1" \
   --emails "security-ops@contoso.com" \
-  --alert-notifications on \
-  --alerts-to-admins on
+  --alert-notifications '{"state":"On","minimalSeverity":"Medium"}' \
+  --notifications-by-role '{"state":"On","roles":["Owner"]}'
 ```
 
-For more targeted routing, create an Azure Monitor action group that sends Key Vault alerts to specific teams.
+For more targeted routing, create an Azure Monitor action group that you can attach to alert processing rules or Sentinel automation rules for Key Vault security alerts.
 
 ```bash
 # Create an action group for Key Vault security alerts
@@ -97,13 +97,19 @@ Here are the specific alerts Defender for Key Vault can generate:
 | Alert Type | Severity | Description |
 |---|---|---|
 | KV_OperationVolumeAnomaly | Medium | Unusually high number of vault operations |
-| KV_SecretListingAnomaly | Medium | Suspicious listing of secrets in a vault |
-| KV_AccessFromUnusualIP | Medium | Access from an IP not seen before for this vault |
-| KV_AccessFromTorNode | High | Access from a known Tor exit node |
-| KV_AccessFromSuspiciousIP | High | Access from a known malicious IP address |
-| KV_SuspiciousAppAccess | Medium | Access from a potentially compromised application |
-| KV_UnusualPolicy | Medium | Vault access policy was changed in an unusual way |
-| KV_SecretExfiltration | High | Pattern suggesting bulk secret extraction |
+| KV_ListGetAnomaly | Medium | Suspicious secret listing followed by one or more secret reads |
+| KV_TORAccess | Medium | Access from a known Tor exit node |
+| KV_SuspiciousIPAccess | Medium | Successful access from an IP identified by Microsoft Threat Intelligence as suspicious |
+| KV_SuspiciousIPAccessDenied | Low | Denied access attempt from an IP identified by Microsoft Threat Intelligence as suspicious |
+| KV_AppAnomaly | Medium | Access from a service principal that does not normally access the vault |
+| KV_PutGetAnomaly | Medium | Unusual access policy change followed by one or more secret reads |
+| KV_OperationPatternAnomaly | Medium | Unusual pattern of Key Vault operations |
+| KV_UserAnomaly | Medium | Access from a user that does not normally access the vault |
+| KV_UserAppAnomaly | Medium | Access from a user-service principal pair that does not normally access the vault |
+| KV_AccountVolumeAnomaly | Medium | A user or service principal accessed an unusually high number of key vaults |
+| KV_AccountVolumeAccessDeniedAnomaly | Low | A user or service principal was denied access to an unusually high number of key vaults |
+| KV_UserAccessDeniedAnomaly | Low | Denied access attempt by a user that does not normally access the vault |
+| KV_UnusualAccessSuspiciousIP | Medium | Unusual access attempt from a suspicious non-Microsoft or external IP |
 
 ## Step 4: Investigate an Alert
 
@@ -114,7 +120,7 @@ First, pull the alert details.
 ```bash
 # Get details of a specific Key Vault security alert
 az security alert list \
-  --query "[?contains(alertType, 'KV_')].{type: alertType, severity: severity, vault: compromisedEntity, time: timeGeneratedUtc, description: description}" \
+  --query "[?contains(alertName, 'KV_')].{type: alertName, severity: severity, vault: compromisedEntity, time: detectedTimeUtc, description: description}" \
   --output table
 ```
 
@@ -157,13 +163,13 @@ AzureDiagnostics
 
 ## Step 5: Set Up Automated Response
 
-For high-severity alerts (like access from Tor or suspicious IPs), an automated response can contain the threat while your team investigates.
+For priority alerts (like access from Tor or suspicious IPs), an automated response can contain the threat while your team investigates.
 
 Here is a Logic App workflow that responds to Key Vault alerts by temporarily restricting vault network access.
 
 ```powershell
 # PowerShell script for automated Key Vault lockdown
-# Triggered by a Logic App on high-severity Defender alerts
+# Triggered by a Logic App on priority Defender alerts
 
 param(
     [string]$VaultName,
@@ -175,14 +181,14 @@ param(
 $vault = Get-AzKeyVault -VaultName $VaultName -ResourceGroupName $ResourceGroupName
 $currentRules = $vault.NetworkAcls
 
-# Lock down the vault to deny all public network access
+# Lock down the vault so only configured private endpoint, VNet, or IP rules are allowed
 Update-AzKeyVaultNetworkRuleSet `
     -VaultName $VaultName `
     -ResourceGroupName $ResourceGroupName `
     -DefaultAction Deny `
     -Bypass AzureServices
 
-Write-Output "Key Vault $VaultName locked down - public access denied"
+Write-Output "Key Vault $VaultName locked down - default network access denied"
 Write-Output "Previous default action: $($currentRules.DefaultAction)"
 
 # Log the incident for tracking
@@ -217,8 +223,8 @@ az monitor diagnostic-settings create \
   --name "kv-diagnostics" \
   --resource "/subscriptions/YOUR_SUB/resourceGroups/myResourceGroup/providers/Microsoft.KeyVault/vaults/myKeyVault" \
   --workspace "/subscriptions/YOUR_SUB/resourceGroups/monitoring-rg/providers/Microsoft.OperationalInsights/workspaces/central-workspace" \
-  --logs '[{"category":"AuditEvent","enabled":true,"retentionPolicy":{"enabled":true,"days":365}}]' \
-  --metrics '[{"category":"AllMetrics","enabled":true,"retentionPolicy":{"enabled":true,"days":90}}]'
+  --logs '[{"category":"AuditEvent","enabled":true}]' \
+  --metrics '[{"category":"AllMetrics","enabled":true}]'
 ```
 
 With logging enabled, you can create custom detection rules in Microsoft Sentinel that complement Defender's built-in detections.
@@ -244,7 +250,7 @@ AzureDiagnostics
 Defender detects threats, but reducing the attack surface prevents them in the first place.
 
 ```bash
-# Restrict Key Vault to VNet access only
+# Restrict Key Vault to selected networks
 az keyvault update \
   --name myKeyVault \
   --default-action Deny \
@@ -270,7 +276,7 @@ az role assignment create \
   --scope "/subscriptions/YOUR_SUB/resourceGroups/myResourceGroup/providers/Microsoft.KeyVault/vaults/myKeyVault"
 ```
 
-Using RBAC instead of access policies is important because RBAC assignments are logged in the Entra ID audit log, providing a complete trail of who was granted access and when.
+Using RBAC instead of access policies is important because Azure role assignment changes are logged in the Azure Activity Log, providing a complete trail of who was granted access and when.
 
 ## Monitoring Best Practices
 
@@ -286,10 +292,10 @@ Using RBAC instead of access policies is important because RBAC assignments are 
 
 ## Cost Considerations
 
-Defender for Key Vault is priced per vault per month. The cost is typically around $0.02 per 10,000 operations. For most organizations, this is negligible compared to the value of the secrets stored in the vaults.
+Defender for Key Vault is priced per vault per month, separate from the normal Key Vault transaction charges. For most organizations, this is negligible compared to the value of the secrets stored in the vaults.
 
 You get a 30-day free trial when you first enable the plan, which is enough time to evaluate the detection quality and alert volume in your environment.
 
 ## Wrapping Up
 
-Microsoft Defender for Key Vault adds a critical security layer to your most sensitive infrastructure. It detects suspicious access patterns, alerts on known attack indicators, and gives your team the context they need to investigate and respond quickly. Enable it across your subscription, set up alert notifications, configure diagnostic logging for forensics, and build automated response playbooks for high-severity alerts. The combination of behavioral detection and automated response means threats to your secrets are caught and contained quickly, before they can escalate into a full breach.
+Microsoft Defender for Key Vault adds a critical security layer to your most sensitive infrastructure. It detects suspicious access patterns, alerts on known attack indicators, and gives your team the context they need to investigate and respond quickly. Enable it across your subscription, set up alert notifications, configure diagnostic logging for forensics, and build automated response playbooks for priority alerts. The combination of behavioral detection and automated response means threats to your secrets are caught and contained quickly, before they can escalate into a full breach.
