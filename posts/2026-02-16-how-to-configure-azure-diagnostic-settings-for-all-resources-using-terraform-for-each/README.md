@@ -14,7 +14,7 @@ This post shows you how to use Terraform's `for_each` meta-argument to configure
 
 ## The Problem
 
-Every Azure resource type emits different log categories and metrics. A Key Vault has `AuditEvent` logs. A Storage Account has `StorageRead`, `StorageWrite`, and `StorageDelete`. An App Service has `AppServiceHTTPLogs`, `AppServiceConsoleLogs`, and more. You need to know which categories each resource type supports, and you need a diagnostic setting resource for each one.
+Every Azure resource type emits different log categories and metrics. A Key Vault has `AuditEvent` logs. A Storage blob service has `StorageRead`, `StorageWrite`, and `StorageDelete`. An App Service has `AppServiceHTTPLogs`, `AppServiceConsoleLogs`, and more. You need to know which categories each resource type supports, and you need a diagnostic setting resource for each one.
 
 Without `for_each`, your Terraform code would look something like this for just three resources:
 
@@ -103,7 +103,7 @@ locals {
         { category = "QueryRuntimeStatistics", enabled = true },
         { category = "PartitionKeyStatistics", enabled = true },
       ]
-      metrics = [{ category = "Requests", enabled = true }]
+      metrics = [{ category = "AllMetrics", enabled = true }]
     }
     redis = {
       resource_id = azurerm_redis_cache.main.id
@@ -135,12 +135,11 @@ resource "azurerm_monitor_diagnostic_setting" "all" {
     }
   }
 
-  # Dynamically create metric blocks
-  dynamic "metric" {
-    for_each = each.value.metrics
+  # Dynamically create metric blocks based on the config
+  dynamic "enabled_metric" {
+    for_each = [for metric in each.value.metrics : metric if metric.enabled]
     content {
-      category = metric.value.category
-      enabled  = metric.value.enabled
+      category = enabled_metric.value.category
     }
   }
 }
@@ -180,14 +179,8 @@ resource "azurerm_monitor_diagnostic_setting" "storage" {
   target_resource_id         = azurerm_storage_account.all[each.key].id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.central.id
 
-  metric {
+  enabled_metric {
     category = "Transaction"
-    enabled  = true
-  }
-
-  metric {
-    category = "Capacity"
-    enabled  = false
   }
 }
 ```
@@ -224,11 +217,10 @@ resource "azurerm_monitor_diagnostic_setting" "dual_destination" {
     }
   }
 
-  dynamic "metric" {
-    for_each = each.value.metrics
+  dynamic "enabled_metric" {
+    for_each = [for metric in each.value.metrics : metric if metric.enabled]
     content {
-      category = metric.value.category
-      enabled  = metric.value.enabled
+      category = enabled_metric.value.category
     }
   }
 }
