@@ -66,14 +66,14 @@ az postgres flexible-server create \
   --tier GeneralPurpose \
   --version 16 \
   --storage-size 128 \
-  --high-availability ZoneRedundant \
+  --zonal-resiliency Enabled \
   --zone 1 \
   --standby-zone 3
 ```
 
 ### Azure Portal
 
-During server creation, go to the "High Availability" tab, select "Zone redundant," and choose your preferred availability zones for the primary and standby.
+During server creation, go to the "Business Critical (High availability)" section, enable "Zonal Resiliency," and choose your preferred availability zone for the primary. Azure provisions the standby in a different zone when zone-redundant HA is available.
 
 ## Enabling HA on an Existing Server
 
@@ -84,20 +84,21 @@ If you already have a server without HA:
 az postgres flexible-server update \
   --resource-group myResourceGroup \
   --name my-pg-existing-server \
-  --high-availability ZoneRedundant \
+  --zonal-resiliency Enabled \
   --standby-zone 2
 ```
 
-This operation takes several minutes. There will be a brief connection interruption while the standby is being set up. Plan this for a maintenance window.
+This operation takes several minutes. Enabling HA is an online operation and does not change your networking, firewall, server parameters, or backup retention settings.
 
-To enable same-zone HA:
+To allow same-zone HA as a fallback when zone-redundant HA is not available:
 
 ```bash
-# Enable same-zone HA
+# Enable HA and allow the standby in the same zone if needed
 az postgres flexible-server update \
   --resource-group myResourceGroup \
   --name my-pg-existing-server \
-  --high-availability SameZone
+  --zonal-resiliency Enabled \
+  --allow-same-zone
 ```
 
 ## What Happens During Failover
@@ -193,6 +194,7 @@ Use a connection pool that can detect and replace broken connections:
 
 ```python
 from psycopg2 import pool
+import time
 
 # Create a threaded connection pool
 connection_pool = pool.ThreadedConnectionPool(
@@ -236,7 +238,7 @@ After failover, the DNS record changes. Make sure your application does not cach
 
 - In Python, psycopg2 resolves DNS on each new connection by default.
 - In Java, set `networkaddress.cache.ttl` to a low value (30 seconds).
-- In .NET, `ServicePointManager.DnsRefreshTimeout` controls DNS caching.
+- In .NET Framework, `ServicePointManager.DnsRefreshTimeout` controls DNS caching.
 - Avoid connection strings with IP addresses - always use the FQDN.
 
 ## Monitoring HA Health
@@ -254,19 +256,19 @@ az postgres flexible-server show \
 Set up alerts for HA events:
 
 ```bash
-# Alert on HA health degradation
-az monitor metrics alert create \
+# Alert on PostgreSQL Resource Health events
+az monitor activity-log alert create \
   --name pg-ha-health-alert \
   --resource-group myResourceGroup \
-  --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.DBforPostgreSQL/flexibleServers/my-pg-ha-server" \
-  --condition "max Is HA Enabled < 1" \
-  --description "HA health has degraded" \
+  --scope "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.DBforPostgreSQL/flexibleServers/my-pg-ha-server" \
+  --condition category=ResourceHealth \
+  --description "PostgreSQL resource health changed" \
   --action-group myActionGroup
 ```
 
 ## Cost Analysis
 
-HA doubles your compute cost because you are running two servers:
+HA doubles your compute cost because you are running two servers, and Azure bills provisioned storage for both the primary and standby replicas:
 
 | SKU | Without HA (monthly) | With HA (monthly) |
 |-----|---------------------|-------------------|
@@ -275,7 +277,7 @@ HA doubles your compute cost because you are running two servers:
 | Standard_D8ds_v4 | ~$500 | ~$1,000 |
 | Standard_E4ds_v4 | ~$330 | ~$660 |
 
-Storage costs remain the same since the standby uses synchronized storage, not a separate copy.
+Backup storage billing depends on your backup usage and redundancy settings.
 
 For the cost-conscious: calculate the cost of downtime for your business. If an hour of downtime costs more than a month of HA, the math is straightforward.
 
@@ -288,7 +290,7 @@ If you need to disable HA (for example, to save costs in a staging environment):
 az postgres flexible-server update \
   --resource-group myResourceGroup \
   --name my-pg-ha-server \
-  --high-availability Disabled
+  --zonal-resiliency Disabled
 ```
 
 This removes the standby server and returns to a single-server deployment.
