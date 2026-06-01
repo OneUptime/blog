@@ -46,7 +46,7 @@ beeline -u "jdbc:hive2://localhost:10001/default;transportMode=http" \
   -n admin -p "password" \
   -e "SHOW DATABASES;" > /tmp/hive_databases.txt
 
-# For each database, list tables and their DDL
+# For each database, list tables
 for db in $(cat /tmp/hive_databases.txt | tail -n +2); do
   echo "=== Database: $db ===" >> /tmp/hive_inventory.txt
   beeline -u "jdbc:hive2://localhost:10001/$db;transportMode=http" \
@@ -57,46 +57,51 @@ done
 
 ## Migrating Data
 
-If your HDInsight cluster uses Azure Blob Storage or ADLS Gen2 as its primary storage, your data is already accessible from Databricks. You do not need to physically move it - just mount the same storage in your Databricks workspace.
+If your HDInsight cluster uses Azure Blob Storage or ADLS Gen2 as its primary storage, your data is already accessible from Databricks. You do not need to physically move it - configure Databricks to access the same storage paths.
 
-### Mount Azure Storage in Databricks
+### Access Azure Storage in Databricks
 
 ```python
-# Mount an Azure Blob Storage container in Databricks
+# Configure access to an Azure Blob Storage container in Databricks
 # This makes the same data accessible from both HDInsight and Databricks
 # during the migration transition period
 
-dbutils.fs.mount(
-    source="wasbs://hive-warehouse@mystorageaccount.blob.core.windows.net",
-    mount_point="/mnt/hive-warehouse",
-    extra_configs={
-        "fs.azure.account.key.mystorageaccount.blob.core.windows.net":
-            dbutils.secrets.get(scope="storage", key="account-key")
-    }
+spark.conf.set(
+    "fs.azure.account.key.mystorageaccount.blob.core.windows.net",
+    dbutils.secrets.get(scope="storage", key="account-key")
 )
 
-# Verify the mount works
-display(dbutils.fs.ls("/mnt/hive-warehouse"))
+# Verify access works
+display(dbutils.fs.ls("wasbs://hive-warehouse@mystorageaccount.blob.core.windows.net/"))
 ```
 
 For ADLS Gen2 with service principal authentication:
 
 ```python
-# Mount ADLS Gen2 using service principal credentials
+# Configure ADLS Gen2 using service principal credentials
 # Store credentials in Databricks secrets for security
-configs = {
-    "fs.azure.account.auth.type": "OAuth",
-    "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
-    "fs.azure.account.oauth2.client.id": dbutils.secrets.get(scope="adls", key="client-id"),
-    "fs.azure.account.oauth2.client.secret": dbutils.secrets.get(scope="adls", key="client-secret"),
-    "fs.azure.account.oauth2.client.endpoint": "https://login.microsoftonline.com/<tenant-id>/oauth2/token"
-}
+storage_account = "myadlsaccount"
+account_fqdn = f"{storage_account}.dfs.core.windows.net"
 
-dbutils.fs.mount(
-    source="abfss://data@myadlsaccount.dfs.core.windows.net",
-    mount_point="/mnt/adls-data",
-    extra_configs=configs
+spark.conf.set(f"fs.azure.account.auth.type.{account_fqdn}", "OAuth")
+spark.conf.set(
+    f"fs.azure.account.oauth.provider.type.{account_fqdn}",
+    "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider"
 )
+spark.conf.set(
+    f"fs.azure.account.oauth2.client.id.{account_fqdn}",
+    dbutils.secrets.get(scope="adls", key="client-id")
+)
+spark.conf.set(
+    f"fs.azure.account.oauth2.client.secret.{account_fqdn}",
+    dbutils.secrets.get(scope="adls", key="client-secret")
+)
+spark.conf.set(
+    f"fs.azure.account.oauth2.client.endpoint.{account_fqdn}",
+    "https://login.microsoftonline.com/<tenant-id>/oauth2/token"
+)
+
+display(dbutils.fs.ls("abfss://data@myadlsaccount.dfs.core.windows.net/"))
 ```
 
 ## Migrating Hive Tables
@@ -139,7 +144,7 @@ CREATE TABLE IF NOT EXISTS ecommerce_dw.fact_orders (
 )
 PARTITIONED BY (order_year INT, order_month INT)
 STORED AS ORC
-LOCATION '/mnt/hive-warehouse/ecommerce_dw/fact_orders';
+LOCATION 'wasbs://hive-warehouse@mystorageaccount.blob.core.windows.net/ecommerce_dw/fact_orders';
 
 -- Recover partitions from existing data on storage
 MSCK REPAIR TABLE ecommerce_dw.fact_orders;
@@ -158,13 +163,13 @@ df.write \
     .format("delta") \
     .mode("overwrite") \
     .partitionBy("order_year", "order_month") \
-    .save("/mnt/adls-data/delta/ecommerce_dw/fact_orders")
+    .save("abfss://data@myadlsaccount.dfs.core.windows.net/delta/ecommerce_dw/fact_orders")
 
 # Create a Delta table over the new location
 spark.sql("""
     CREATE TABLE ecommerce_dw.fact_orders_delta
     USING DELTA
-    LOCATION '/mnt/adls-data/delta/ecommerce_dw/fact_orders'
+    LOCATION 'abfss://data@myadlsaccount.dfs.core.windows.net/delta/ecommerce_dw/fact_orders'
 """)
 ```
 
@@ -184,12 +189,14 @@ Spark equivalent (Python, 5 lines):
 ```python
 # The same word count in PySpark - dramatically simpler
 # Read the input file, split lines into words, and count
-text = spark.read.text("/mnt/data/input.txt")
+from pyspark.sql.functions import col, explode, split
+
+text = spark.read.text("abfss://data@myadlsaccount.dfs.core.windows.net/input.txt")
 word_counts = text.select(explode(split(col("value"), "\\s+")).alias("word")) \
     .groupBy("word") \
     .count() \
     .orderBy(col("count").desc())
-word_counts.write.csv("/mnt/data/output/word-counts")
+word_counts.write.csv("abfss://data@myadlsaccount.dfs.core.windows.net/output/word-counts")
 ```
 
 ### ETL Pipeline Migration
@@ -203,7 +210,7 @@ from pyspark.sql.functions import col, year, month, current_timestamp
 raw_orders = spark.read \
     .option("header", "true") \
     .option("inferSchema", "true") \
-    .csv("/mnt/hive-warehouse/raw/orders/")
+    .csv("wasbs://hive-warehouse@mystorageaccount.blob.core.windows.net/raw/orders/")
 
 # Transform: clean, enrich, and compute derived columns
 processed_orders = raw_orders \
@@ -216,9 +223,11 @@ processed_orders = raw_orders \
 # Write to Delta table with merge for idempotent updates
 from delta.tables import DeltaTable
 
-if DeltaTable.isDeltaTable(spark, "/mnt/adls-data/delta/fact_orders"):
+delta_path = "abfss://data@myadlsaccount.dfs.core.windows.net/delta/fact_orders"
+
+if DeltaTable.isDeltaTable(spark, delta_path):
     # Merge new data with existing - handles duplicates gracefully
-    delta_table = DeltaTable.forPath(spark, "/mnt/adls-data/delta/fact_orders")
+    delta_table = DeltaTable.forPath(spark, delta_path)
     delta_table.alias("existing") \
         .merge(processed_orders.alias("new"), "existing.order_id = new.order_id") \
         .whenMatchedUpdateAll() \
@@ -229,7 +238,7 @@ else:
     processed_orders.write \
         .format("delta") \
         .partitionBy("order_year", "order_month") \
-        .save("/mnt/adls-data/delta/fact_orders")
+        .save(delta_path)
 ```
 
 ## Migrating Oozie Workflows
@@ -297,7 +306,7 @@ job_config = {
 Here is a practical checklist to track your migration:
 
 1. Inventory all HDInsight workloads (Hive tables, jobs, schedules)
-2. Set up Databricks workspace and configure storage mounts
+2. Set up Databricks workspace and configure storage access
 3. Recreate Hive metastore objects in Databricks
 4. Convert data to Delta format (optional but recommended)
 5. Rewrite MapReduce and Pig jobs in PySpark or Spark SQL
