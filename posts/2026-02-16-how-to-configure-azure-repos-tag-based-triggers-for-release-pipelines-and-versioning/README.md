@@ -25,9 +25,6 @@ trigger:
   tags:
     include:
       - v*          # Matches v1.0.0, v2.3.1, v0.1.0-beta, etc.
-  branches:
-    include:
-      - none        # Do not trigger on branch pushes
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -52,20 +49,16 @@ When someone pushes a tag like `v1.2.0` to the repository, this pipeline trigger
 
 ## Semantic Versioning with Tags
 
-Most teams use semantic versioning (semver) for their tags. You can filter tags to match only valid semver patterns.
+Most teams use semantic versioning (semver) for their tags. Azure Pipelines tag trigger filters use wildcards, not regular expressions, so use a broad release tag prefix and validate the exact semver format in the pipeline.
 
 ```yaml
-# Trigger only on semantic version tags
+# Trigger on release-looking version tags
 trigger:
   tags:
     include:
-      - 'v[0-9]+.[0-9]+.[0-9]+'     # Stable releases: v1.0.0, v2.3.1
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'    # Pre-releases: v1.0.0-beta.1, v2.0.0-rc.1
+      - 'v*'                          # Stable and pre-release tags: v1.0.0, v2.0.0-rc.1
     exclude:
       - 'v*-draft*'                    # Exclude draft tags
-  branches:
-    include:
-      - none
 ```
 
 Then in your pipeline, parse the version number for use in packaging and deployment.
@@ -78,11 +71,17 @@ steps:
       TAG="$(Build.SourceBranchName)"
       VERSION="${TAG#v}"  # Remove leading 'v'
 
+      # Validate SemVer before using the tag for packaging
+      if ! echo "$VERSION" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+        echo "##vso[task.logissue type=error]Tag $TAG is not a valid semantic version tag"
+        exit 1
+      fi
+
       # Split into components
       MAJOR=$(echo "$VERSION" | cut -d. -f1)
       MINOR=$(echo "$VERSION" | cut -d. -f2)
       PATCH=$(echo "$VERSION" | cut -d. -f3 | cut -d- -f1)
-      PRERELEASE=$(echo "$VERSION" | grep -oP '(?<=-).+' || echo "")
+      PRERELEASE=$(echo "$VERSION" | grep -oP '(?<=-)[^+]+' || echo "")
 
       echo "Version: $VERSION"
       echo "Major: $MAJOR, Minor: $MINOR, Patch: $PATCH"
@@ -136,13 +135,10 @@ trigger:
   tags:
     include:
       - 'v*'
-  branches:
-    include:
-      - none
 
 variables:
   - name: version
-    value: $[ replace(variables['Build.SourceBranchName'], 'v', '') ]
+    value: $[ replace(variables['Build.SourceBranch'], 'refs/tags/v', '') ]
   - name: isPreRelease
     value: $[ contains(variables['Build.SourceBranchName'], '-') ]
 
@@ -157,10 +153,15 @@ stages:
         steps:
           - checkout: self
             fetchDepth: 0  # Full history needed for tag info
+            fetchTags: true
 
           - script: |
               echo "Building release $(version)"
               echo "Pre-release: $(isPreRelease)"
+              if ! echo "$(version)" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+                echo "##vso[task.logissue type=error]Tag $(Build.SourceBranchName) is not a valid semantic version tag"
+                exit 1
+              fi
             displayName: 'Display version info'
 
           - task: DotNetCoreCLI@2
@@ -184,6 +185,7 @@ stages:
               packagesToPack: '**/MyLibrary.csproj'
               versioningScheme: 'byEnvVar'
               versionEnvVar: 'VERSION'
+              outputDir: '$(Build.ArtifactStagingDirectory)'
 
           - task: PublishBuildArtifacts@1
             displayName: 'Publish artifacts'
@@ -203,11 +205,14 @@ stages:
           - task: DownloadBuildArtifacts@1
             inputs:
               artifactName: 'release-package'
+              downloadPath: '$(System.ArtifactsDirectory)'
 
           - task: NuGetCommand@2
             displayName: 'Push to feed'
             inputs:
               command: 'push'
+              packagesToPush: '$(System.ArtifactsDirectory)/**/*.nupkg;!$(System.ArtifactsDirectory)/**/*.symbols.nupkg'
+              nuGetFeedType: 'internal'
               publishVstsFeed: 'releases'
 
   # Stage 3: Deploy to staging (pre-releases go here only)
@@ -239,15 +244,16 @@ stages:
                 - script: echo "Deploying $(version) to production..."
 ```
 
-## Creating GitHub-Style Releases
+## Generating Release Notes
 
-If you want to create release notes alongside your tagged release, you can use the Azure DevOps REST API to create a release annotation.
+If you want release notes alongside your tagged release, you can generate a changelog and publish it as a pipeline artifact.
 
 ```yaml
 # Generate release notes from commits since last tag
 steps:
   - checkout: self
     fetchDepth: 0  # Need full history for changelog
+    fetchTags: true
 
   - script: |
       # Find the previous tag
@@ -294,6 +300,7 @@ steps:
   - checkout: self
     persistCredentials: true  # Needed to push tags
     fetchDepth: 0
+    fetchTags: true
 
   - script: |
       # Determine the next version based on commit messages
@@ -327,20 +334,29 @@ steps:
 
 While Azure Repos does not have the same tag protection rules as GitHub, you can implement governance through branch policies and pipeline conditions.
 
-Use naming conventions to differentiate authorized tags from ad-hoc ones. For example, only trigger release pipelines on tags that match `v[0-9]+.[0-9]+.[0-9]+` and ignore tags like `test-*` or `temp-*`.
+Use naming conventions to differentiate authorized tags from ad-hoc ones. For example, trigger release pipelines on tags that start with `v`, validate that they are semantic versions in the pipeline, and ignore tags like `test-*` or `temp-*`.
 
 You can also add a validation step that checks who created the tag and rejects builds from unauthorized users.
 
 ```yaml
 steps:
+  - checkout: self
+    fetchDepth: 0
+    fetchTags: true
+
   - script: |
       # Check who created the tag
       TAG_AUTHOR=$(git tag -l --format='%(taggeremail)' "$(Build.SourceBranchName)")
       echo "Tag created by: $TAG_AUTHOR"
 
+      if [ -z "$TAG_AUTHOR" ]; then
+        echo "##vso[task.logissue type=error]Tag $(Build.SourceBranchName) is not an annotated tag or has no tagger email"
+        exit 1
+      fi
+
       # Validate against allowed release managers
       ALLOWED_EMAILS="release-manager@company.com lead@company.com"
-      if echo "$ALLOWED_EMAILS" | grep -qw "$TAG_AUTHOR"; then
+      if printf '%s\n' $ALLOWED_EMAILS | grep -Fxq "$TAG_AUTHOR"; then
         echo "Authorized release manager"
       else
         echo "##vso[task.logissue type=error]Unauthorized tag creator: $TAG_AUTHOR"
