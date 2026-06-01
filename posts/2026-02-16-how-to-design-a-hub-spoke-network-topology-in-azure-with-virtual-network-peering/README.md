@@ -14,7 +14,7 @@ In this post, I will walk through the complete design and implementation of a hu
 
 ## What is Hub-Spoke Topology
 
-The hub is a central virtual network that contains shared services like firewalls, VPN gateways, DNS servers, and monitoring infrastructure. The spokes are separate virtual networks, each containing a specific workload or business unit. Spokes connect to the hub through VNet peering, and all traffic between spokes (and to the internet or on-premises) flows through the hub.
+The hub is a central virtual network that contains shared services like firewalls, VPN gateways, DNS servers, and monitoring infrastructure. The spokes are separate virtual networks, each containing a specific workload or business unit. Spokes connect to the hub through VNet peering, and with the right user-defined routes, traffic between spokes (and to the internet or on-premises) flows through the hub.
 
 ```mermaid
 graph TD
@@ -210,26 +210,22 @@ DEV_VNET_ID=$(az network vnet show \
   --query id --output tsv)
 
 # Peer hub to production spoke
-# allow-gateway-transit lets the spoke use the hub's VPN gateway
 az network vnet peering create \
   --resource-group hub-rg \
   --name hub-to-prod \
   --vnet-name hub-vnet \
   --remote-vnet $PROD_VNET_ID \
   --allow-vnet-access \
-  --allow-forwarded-traffic \
-  --allow-gateway-transit
+  --allow-forwarded-traffic
 
 # Peer production spoke to hub
-# use-remote-gateways lets this spoke use the hub's VPN/ExpressRoute gateway
 az network vnet peering create \
   --resource-group prod-rg \
   --name prod-to-hub \
   --vnet-name prod-spoke-vnet \
   --remote-vnet $HUB_VNET_ID \
   --allow-vnet-access \
-  --allow-forwarded-traffic \
-  --use-remote-gateways
+  --allow-forwarded-traffic
 
 # Peer hub to dev spoke
 az network vnet peering create \
@@ -238,8 +234,7 @@ az network vnet peering create \
   --vnet-name hub-vnet \
   --remote-vnet $DEV_VNET_ID \
   --allow-vnet-access \
-  --allow-forwarded-traffic \
-  --allow-gateway-transit
+  --allow-forwarded-traffic
 
 # Peer dev spoke to hub
 az network vnet peering create \
@@ -248,9 +243,10 @@ az network vnet peering create \
   --vnet-name dev-spoke-vnet \
   --remote-vnet $HUB_VNET_ID \
   --allow-vnet-access \
-  --allow-forwarded-traffic \
-  --use-remote-gateways
+  --allow-forwarded-traffic
 ```
+
+If you deploy a VPN or ExpressRoute gateway in the hub, enable `--allow-gateway-transit` on the hub-to-spoke peerings and `--use-remote-gateways` on each spoke-to-hub peering that should use the hub gateway.
 
 ## Routing Traffic Through the Firewall
 
@@ -263,7 +259,7 @@ az network route-table create \
   --name prod-route-table \
   --disable-bgp-route-propagation true
 
-# Route all traffic to other spokes through the firewall
+# Route traffic to the dev spoke through the firewall
 az network route-table route create \
   --resource-group prod-rg \
   --route-table-name prod-route-table \
@@ -293,6 +289,9 @@ az network vnet subnet update \
   --vnet-name prod-spoke-vnet \
   --name app-subnet \
   --route-table prod-route-table
+
+# Repeat equivalent route tables for each spoke subnet so return traffic
+# also goes through the firewall.
 ```
 
 ## Firewall Rules
@@ -336,7 +335,7 @@ az network private-dns zone create \
   --resource-group hub-rg \
   --name "privatelink.database.windows.net"
 
-# Link the DNS zone to all VNets
+# Link the DNS zone to each VNet that needs to resolve records in the zone
 az network private-dns link vnet create \
   --resource-group hub-rg \
   --zone-name "privatelink.database.windows.net" \
