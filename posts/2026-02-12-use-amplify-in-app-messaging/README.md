@@ -8,7 +8,9 @@ Description: Implement targeted in-app messages using Amplify In-App Messaging b
 
 ---
 
-Push notifications get users back into your app, but in-app messages reach them while they are already engaged. Amplify In-App Messaging lets you display targeted messages, banners, modals, and carousels inside your application based on user behavior, segments, and events. It is backed by Amazon Pinpoint, so you get the same targeting and analytics capabilities used by large-scale consumer apps.
+Push notifications get users back into your app, but in-app messages reach them while they are already engaged. Amplify In-App Messaging lets you display targeted messages, banners, overlays, mobile-feed messages, and carousels inside your application based on user behavior, segments, and events. It is backed by Amazon Pinpoint, so you get the same targeting and analytics capabilities used by large-scale consumer apps.
+
+AWS will end support for Amazon Pinpoint on October 30, 2026, and Amazon Pinpoint is no longer available to new customers. Use this guide for existing Pinpoint projects, and plan migrations around AWS's current Pinpoint end-of-support guidance.
 
 This guide covers setting up in-app messaging, defining campaigns in Pinpoint, displaying messages in your React app, and handling user interactions.
 
@@ -37,50 +39,47 @@ sequenceDiagram
 - An Amplify project with authentication
 - Amazon Pinpoint project (created automatically by Amplify or manually)
 - React or React Native project
-- Node.js 16 or later
+- Node.js 18 or later
 
 ## Step 1: Install Dependencies
 
 ```bash
-# Install the in-app messaging package
+# Install Amplify and the React in-app messaging UI packages
 
-npm install aws-amplify @aws-amplify/notifications
+npm install aws-amplify @aws-amplify/ui-react @aws-amplify/ui-react-notifications
 ```
 
 ## Step 2: Configure Amplify with Pinpoint
 
-If you are using the Amplify CLI, add analytics and notifications:
+If you are using the Amplify CLI, add notifications and choose the In-App Messaging channel:
 
 ```bash
-# Add Pinpoint analytics (required for in-app messaging)
-amplify add analytics
 amplify add notifications
 amplify push
 ```
 
-For manual configuration:
+For manual configuration, create an outputs-style object with your existing resources and pass it to `Amplify.configure`:
 
 ```typescript
 // src/amplify-config.ts
 import { Amplify } from 'aws-amplify';
 
-Amplify.configure({
-  Auth: {
-    Cognito: {
-      userPoolId: 'us-east-1_XXXXX',
-      userPoolClientId: 'xxxxxxxx',
-      identityPoolId: 'us-east-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-    },
+const outputs = {
+  version: '1',
+  auth: {
+    aws_region: 'us-east-1',
+    user_pool_id: 'us-east-1_XXXXX',
+    user_pool_client_id: 'xxxxxxxx',
+    identity_pool_id: 'us-east-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
   },
-  Notifications: {
-    InAppMessaging: {
-      AWSPinpoint: {
-        appId: 'your-pinpoint-app-id',
-        region: 'us-east-1',
-      },
-    },
+  notifications: {
+    aws_region: 'us-east-1',
+    amazon_pinpoint_app_id: 'your-pinpoint-app-id',
+    channels: ['IN_APP_MESSAGING'],
   },
-});
+} as const;
+
+Amplify.configure(outputs);
 ```
 
 ## Step 3: Initialize In-App Messaging
@@ -89,7 +88,7 @@ Initialize the messaging service when your app starts:
 
 ```typescript
 // src/App.tsx - Initialize in-app messaging on app load
-import { initializeInAppMessaging, syncMessages } from '@aws-amplify/notifications';
+import { initializeInAppMessaging, syncMessages } from 'aws-amplify/in-app-messaging';
 
 // Call this once when the app loads
 async function setupInAppMessaging() {
@@ -118,6 +117,7 @@ aws pinpoint create-campaign \
   --write-campaign-request '{
     "Name": "Welcome New Users",
     "Description": "Show welcome message to new users",
+    "SegmentId": "your-segment-id",
     "MessageConfiguration": {
       "InAppMessage": {
         "Content": [
@@ -168,13 +168,16 @@ aws pinpoint create-campaign \
         },
         "FilterType": "ENDPOINT"
       },
-      "Frequency": "ONCE",
+      "Frequency": "IN_APP_EVENT",
       "StartTime": "2026-02-12T00:00:00Z"
+    },
+    "Limits": {
+      "Total": 1
     }
   }'
 ```
 
-The campaign is configured to show when the `app_launched` event is triggered, and it only shows once per user (`Frequency: ONCE`).
+The campaign is configured to show when the `app_launched` event is triggered, and it only shows once per endpoint because the campaign limit sets `Total` to `1`.
 
 ## Step 5: Trigger Events to Show Messages
 
@@ -182,8 +185,8 @@ In-app messages display when your app records events that match campaign trigger
 
 ```typescript
 // Record events that can trigger in-app messages
-import { record } from '@aws-amplify/analytics';
-import { dispatchEvent } from '@aws-amplify/notifications';
+import { record } from 'aws-amplify/analytics';
+import { dispatchEvent } from 'aws-amplify/in-app-messaging';
 
 // When the app launches, record the event
 function onAppLaunch() {
@@ -234,12 +237,12 @@ Amplify provides default UI for in-app messages, but you can customize the rende
 // components/CustomInAppMessage.tsx
 import React from 'react';
 import {
-  useInAppMessaging,
   InAppMessageDisplay,
-} from '@aws-amplify/notifications/react';
+  InAppMessagingProvider,
+} from '@aws-amplify/ui-react-notifications';
 
 // Custom banner component
-function CustomBannerMessage({ message, onDismiss, onAction }: any) {
+function CustomBannerMessage(props: any) {
   return (
     <div
       style={{
@@ -247,7 +250,7 @@ function CustomBannerMessage({ message, onDismiss, onAction }: any) {
         top: 0,
         left: 0,
         right: 0,
-        backgroundColor: message.content[0]?.backgroundColor || '#4CAF50',
+        backgroundColor: props.style?.container?.backgroundColor || '#4CAF50',
         padding: '16px',
         zIndex: 1000,
         display: 'flex',
@@ -257,29 +260,15 @@ function CustomBannerMessage({ message, onDismiss, onAction }: any) {
     >
       <div>
         <h3 style={{ margin: 0, color: '#fff' }}>
-          {message.content[0]?.header?.content}
+          {props.header?.content}
         </h3>
         <p style={{ margin: '4px 0 0', color: '#fff' }}>
-          {message.content[0]?.body?.content}
+          {props.body?.content}
         </p>
       </div>
       <div style={{ display: 'flex', gap: '8px' }}>
-        {message.content[0]?.primaryButton && (
-          <button
-            onClick={() => onAction(message.content[0].primaryButton)}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-            }}
-          >
-            {message.content[0].primaryButton.title}
-          </button>
-        )}
         <button
-          onClick={onDismiss}
+          onClick={props.onClose}
           style={{
             padding: '8px 16px',
             backgroundColor: 'transparent',
@@ -299,14 +288,14 @@ function CustomBannerMessage({ message, onDismiss, onAction }: any) {
 // Use the custom renderer
 function InAppMessageProvider({ children }: { children: React.ReactNode }) {
   return (
-    <>
+    <InAppMessagingProvider>
       <InAppMessageDisplay
         components={{
           BannerMessage: CustomBannerMessage,
         }}
       />
       {children}
-    </>
+    </InAppMessagingProvider>
   );
 }
 
@@ -319,10 +308,14 @@ When users interact with in-app messages, you need to handle the actions:
 
 ```typescript
 // Handle in-app message interactions
-import { onMessageReceived, onMessageDismissed, onMessageActionTaken } from '@aws-amplify/notifications';
+import {
+  onMessageDisplayed,
+  onMessageDismissed,
+  onMessageActionTaken,
+} from 'aws-amplify/in-app-messaging';
 
 // Called when a message is displayed
-onMessageReceived((message) => {
+onMessageDisplayed((message) => {
   console.log('Message shown to user:', message.id);
   // Track impression in your analytics
 });
@@ -334,25 +327,13 @@ onMessageDismissed((message) => {
 });
 
 // Called when the user clicks a CTA button
-onMessageActionTaken((message, action) => {
-  console.log('User clicked action:', action);
-
-  // Handle different action types
-  switch (action.actionType) {
-    case 'DEEP_LINK':
-      // Navigate to the deep link URL
-      window.location.href = action.url;
-      break;
-    case 'LINK':
-      // Open external URL
-      window.open(action.url, '_blank');
-      break;
-    case 'CLOSE':
-      // Just close the message
-      break;
-  }
+onMessageActionTaken((message) => {
+  console.log('User clicked an action on message:', message.id);
+  // Add custom analytics or app behavior here.
 });
 ```
+
+If you use the Amplify UI components, the standard Pinpoint button actions (`LINK`, `DEEP_LINK`, and `CLOSE`) and interaction notifications are already wired up for you.
 
 ## Step 8: Segment-Based Targeting
 
@@ -394,15 +375,15 @@ Pinpoint supports several in-app message layouts:
 - **TOP_BANNER**: Fixed banner at the top of the screen
 - **BOTTOM_BANNER**: Fixed banner at the bottom
 - **MIDDLE_BANNER**: Centered banner
-- **FULL_SCREEN**: Takes over the entire screen
+- **OVERLAYS**: Covers the entire screen
 - **CAROUSEL**: Swipeable multi-page message
-- **MODAL**: Centered dialog with overlay
+- **MOBILE_FEED**: Appears in a window in front of the page
 
 Choose the layout based on the urgency and importance of the message. Full screen for critical updates, banners for gentle nudges.
 
 ## Best Practices
 
-**Limit frequency**: Do not bombard users with messages. Use Pinpoint's frequency controls (once, once per day, once per session) to keep things reasonable.
+**Limit frequency**: Do not bombard users with messages. Use Pinpoint's total, daily, and session caps to keep things reasonable.
 
 **Test before launch**: Use Pinpoint's campaign testing feature to preview messages on test devices before rolling out to all users.
 
