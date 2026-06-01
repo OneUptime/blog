@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Table Storage, Cosmos DB, Data Migration, Cloud Migration, NoSQL, Database
 
-Description: A step-by-step guide to migrating your data from Azure Table Storage to Azure Cosmos DB Table API with minimal downtime and data loss.
+Description: A step-by-step guide to migrating your data from Azure Table Storage to Azure Cosmos DB Table API with a planned cutover and validation.
 
 ---
 
@@ -53,9 +53,9 @@ Set the throughput high during migration and scale it down afterward. You can al
 
 There are several tools for migrating data.
 
-**Azure Data Factory** is the recommended approach for large-scale migrations. It handles parallelism, retries, and monitoring out of the box.
+**Azure Data Factory** is a managed approach for larger migrations. It handles parallelism, retries, and monitoring out of the box.
 
-**The Data Migration Tool (dt)** is a standalone utility from Microsoft designed for Cosmos DB migrations. It is straightforward for smaller datasets.
+**The Azure Cosmos DB Data Migration Tool (dmt)** is a standalone utility from Microsoft designed for Cosmos DB migrations. It is straightforward for smaller datasets.
 
 **Custom code** gives you the most control, especially if you need to transform data during migration.
 
@@ -75,7 +75,7 @@ In the Azure portal, create a Copy Data pipeline with the following configuratio
 
 Source: Azure Table Storage linked service pointing to your storage account.
 
-Sink: Azure Cosmos DB Table API linked service pointing to your Cosmos DB account.
+Sink: Azure Table Storage linked service configured with the Cosmos DB Table API connection string.
 
 You can also define the pipeline as JSON.
 
@@ -122,7 +122,6 @@ For smaller datasets or when you need data transformation during migration, cust
 
 ```python
 from azure.data.tables import TableClient
-from azure.data.tables import TableServiceClient
 import os
 import time
 
@@ -224,8 +223,17 @@ def upsert_with_retry(client, entity, max_retries=5):
             return True
         except HttpResponseError as e:
             if e.status_code == 429:
-                # Extract retry-after header or use exponential backoff
-                wait_time = 2 ** attempt
+                # Use retry-after headers when available, or fall back to exponential backoff
+                retry_after_ms = e.response.headers.get("x-ms-retry-after-ms") if e.response else None
+                retry_after = e.response.headers.get("Retry-After") if e.response else None
+
+                if retry_after_ms:
+                    wait_time = float(retry_after_ms) / 1000
+                elif retry_after:
+                    wait_time = float(retry_after)
+                else:
+                    wait_time = 2 ** attempt
+
                 print(f"Throttled, waiting {wait_time}s before retry")
                 time.sleep(wait_time)
             else:
@@ -238,6 +246,8 @@ def upsert_with_retry(client, entity, max_retries=5):
 After migration, validate that all data was transferred correctly.
 
 ```python
+from itertools import islice
+
 def validate_migration(source_client, dest_client):
     """
     Compare entity counts and sample entities between source and destination.
@@ -253,11 +263,9 @@ def validate_migration(source_client, dest_client):
         print(f"WARNING: Count mismatch! Missing {source_count - dest_count} entities")
 
     # Spot-check some entities
-    sample_entities = list(source_client.query_entities(
-        query_filter="",
+    sample_entities = list(islice(source_client.list_entities(
         select=["PartitionKey", "RowKey"],
-        results_per_page=10
-    ))
+    ), 10))
 
     for entity in sample_entities[:10]:
         try:
