@@ -16,7 +16,7 @@ In this guide, you will set up a Lambda function that consumes messages from an 
 
 ## How Lambda Consumes from MSK
 
-Lambda acts as a Kafka consumer group under the hood. It creates an internal consumer that polls your MSK topics, fetches batches of messages, and invokes your Lambda function with those batches.
+Lambda acts as a Kafka consumer group under the hood. It creates event pollers that poll your MSK topics, fetch batches of messages, and invoke your Lambda function with those batches.
 
 ```mermaid
 flowchart LR
@@ -24,12 +24,13 @@ flowchart LR
     B -->|Topic: orders| C[Partition 0]
     B -->|Topic: orders| D[Partition 1]
     B -->|Topic: orders| E[Partition 2]
-    C -->|Poll| F[Lambda Invocation 1]
-    D -->|Poll| G[Lambda Invocation 2]
-    E -->|Poll| H[Lambda Invocation 3]
+    C -->|Poll| F[Lambda Event Source Mapping]
+    D -->|Poll| F
+    E -->|Poll| F
+    F -->|Invoke with batches| G[Lambda Function]
 ```
 
-One Lambda invocation runs per partition (or more, with the parallelization factor). This is the same model Kafka uses with traditional consumer groups - one consumer per partition.
+Lambda reads messages sequentially for each topic partition, and a single Lambda payload can include messages from multiple partitions. This keeps the same ordering constraint Kafka consumers have within each partition.
 
 ## Prerequisites
 
@@ -37,35 +38,37 @@ Before setting up the event source mapping, you need:
 
 - An MSK cluster running in a VPC
 - A topic created on the cluster
-- A Lambda function deployed in the same VPC (or with VPC connectivity)
+- A Lambda function to process the batches
 - IAM permissions for Lambda to access the MSK cluster
 
-The VPC requirement is important. MSK clusters run inside a VPC, and Lambda needs network access to reach the Kafka brokers. Your Lambda function must be configured with a VPC and subnets that can reach the MSK cluster's security group.
+The VPC requirement is important, but it applies to the event source mapping, not to your function's own VPC configuration. MSK clusters run inside a VPC, and Lambda creates or reuses a Hyperplane ENI in the MSK cluster's subnet to reach the Kafka brokers.
 
 ## Step 1: Configure VPC Access for Lambda
 
-Your Lambda function needs to be in the same VPC as your MSK cluster, or in a peered VPC.
+Your event source mapping needs network access to the MSK cluster. For an Amazon MSK event source, Lambda uses the subnet and security group configuration from the MSK cluster, so you usually do not need to attach the Lambda function itself to the MSK VPC.
 
 ```bash
-# Update Lambda function to run in the MSK cluster's VPC
+# Optional: attach the function to a VPC only if your code must reach VPC resources directly
 
 aws lambda update-function-configuration \
   --function-name msk-consumer \
   --vpc-config SubnetIds=subnet-abc123,subnet-def456,SecurityGroupIds=sg-msk-consumer
 ```
 
-The security group `sg-msk-consumer` must allow outbound traffic to the MSK cluster's security group on the Kafka broker ports (typically 9092 for plaintext or 9094 for TLS).
+The MSK cluster security group must allow traffic on the Kafka broker port used by your authentication mode: 9098 for IAM authentication, 9096 for SASL/SCRAM, or 9094 for TLS.
 
-Make sure the MSK cluster's security group allows inbound traffic from the Lambda security group.
+Make sure the MSK cluster's security group allows inbound traffic on the broker port. A common pattern is to use a self-referencing rule so the Hyperplane ENI that Lambda creates with the cluster's security group can reach the brokers.
 
 ```bash
-# Allow Lambda's security group to reach MSK brokers
+# Allow resources using the MSK security group to reach MSK brokers with IAM auth
 aws ec2 authorize-security-group-ingress \
   --group-id sg-msk-cluster \
   --protocol tcp \
-  --port 9094 \
-  --source-group sg-msk-consumer
+  --port 9098 \
+  --source-group sg-msk-cluster
 ```
+
+If you use the default on-demand scaling mode, the event source mapping also needs a path to invoke the Lambda service, either through a NAT gateway or VPC endpoints for Lambda, AWS STS, and, when needed, Secrets Manager. Provisioned mode handles this connection for you.
 
 ## Step 2: Set Up IAM Permissions
 
@@ -89,9 +92,9 @@ Lambda needs specific permissions to interact with MSK.
         "kafka-cluster:DescribeClusterDynamicConfiguration"
       ],
       "Resource": [
-        "arn:aws:kafka:us-east-1:123456789012:cluster/my-msk-cluster/*",
-        "arn:aws:kafka:us-east-1:123456789012:topic/my-msk-cluster/*",
-        "arn:aws:kafka:us-east-1:123456789012:group/my-msk-cluster/*"
+        "arn:aws:kafka:us-east-1:123456789012:cluster/my-msk-cluster/cluster-uuid",
+        "arn:aws:kafka:us-east-1:123456789012:topic/my-msk-cluster/cluster-uuid/*",
+        "arn:aws:kafka:us-east-1:123456789012:group/my-msk-cluster/cluster-uuid/*"
       ]
     },
     {
@@ -128,8 +131,8 @@ def lambda_handler(event, context):
 
     # Messages are grouped by topic-partition
     for topic_partition, messages in event['records'].items():
-        topic = topic_partition.rsplit('-', 1)[0]
-        partition = topic_partition.rsplit('-', 1)[1]
+        topic = messages[0]['topic'] if messages else topic_partition.rsplit('-', 1)[0]
+        partition = messages[0]['partition'] if messages else topic_partition.rsplit('-', 1)[1]
 
         print(f"Processing {len(messages)} messages from {topic} partition {partition}")
 
@@ -155,7 +158,10 @@ def lambda_handler(event, context):
             except Exception as e:
                 print(f"Error processing message at offset {message['offset']}: {e}")
                 failed_items.append({
-                    "itemIdentifier": f"{topic_partition}-{message['offset']}"
+                    "itemIdentifier": {
+                        "partition": topic_partition,
+                        "offset": message['offset']
+                    }
                 })
 
     if failed_items:
@@ -165,11 +171,11 @@ def lambda_handler(event, context):
 
 
 def decode_headers(headers):
-    """Decode Kafka message headers from base64."""
+    """Decode Kafka message headers."""
     decoded = {}
     for header in headers:
-        for key, value_list in header.items():
-            decoded[key] = base64.b64decode(value_list).decode('utf-8')
+        for key, value in header.items():
+            decoded[key] = bytes(value).decode('utf-8')
     return decoded
 
 
@@ -217,13 +223,10 @@ aws lambda create-event-source-mapping \
   --function-name msk-consumer \
   --event-source-arn arn:aws:kafka:us-east-1:123456789012:cluster/my-cluster/uuid \
   --topics "orders" \
-  --starting-position LATEST \
-  --source-access-configurations '[
-    {"Type": "VPC_SUBNET", "URI": "subnet:subnet-abc123"},
-    {"Type": "VPC_SUBNET", "URI": "subnet:subnet-def456"},
-    {"Type": "VPC_SECURITY_GROUP", "URI": "security_group:sg-msk-consumer"}
-  ]'
+  --starting-position LATEST
 ```
+
+For IAM authentication, grant the function execution role the required `kafka-cluster:*` permissions. You do not add `VPC_SUBNET` or `VPC_SECURITY_GROUP` source access configurations for an Amazon MSK event source; those source access configuration types are for self-managed Kafka.
 
 For **SASL/SCRAM authentication**:
 
@@ -239,18 +242,20 @@ aws lambda create-event-source-mapping \
   ]'
 ```
 
+For SASL/SCRAM, the execution role also needs permission to read the Secrets Manager secret, and `kms:Decrypt` if the secret uses a customer managed KMS key.
+
 ## Scaling and Concurrency
 
-Lambda scales based on the number of partitions in your topic. By default, one Lambda invocation processes one partition. You can increase this with the parallelization factor.
+Lambda scales Kafka event source mappings with event pollers. In the default on-demand mode, Lambda adds or removes event pollers based on partition offset lag. For workloads that need more predictable throughput, configure provisioned mode with minimum and maximum poller counts.
 
 ```bash
-# Update to allow 5 concurrent invocations per partition
+# Configure provisioned pollers for a Kafka event source mapping
 aws lambda update-event-source-mapping \
   --uuid your-mapping-uuid \
-  --parallelization-factor 5
+  --provisioned-poller-config '{"MinimumPollers": 5, "MaximumPollers": 10}'
 ```
 
-With 10 partitions and a parallelization factor of 5, you get up to 50 concurrent Lambda invocations. Keep in mind that increasing parallelization means messages within a partition may be processed out of order across different Lambda instances.
+Each Amazon MSK event poller can handle up to 5 MB/sec of throughput or up to 5 concurrent Lambda invocations. To maintain ordered processing within partitions, Lambda caps the maximum pollers to the number of partitions in the topic.
 
 ## Handling Consumer Lag
 
@@ -259,17 +264,17 @@ If your Lambda function cannot keep up with the message production rate, consume
 - **OffsetLag**: The difference between the latest offset in the topic and the consumer's current offset.
 - **Lambda Duration**: If your function takes too long per batch, processing falls behind.
 
-When lag gets too high, you have a few options: increase parallelization factor, increase batch size to process more messages per invocation, optimize your function's processing speed, or add more partitions to the topic.
+When lag gets too high, you have a few options: use provisioned mode with more pollers, increase batch size to process more messages per invocation, optimize your function's processing speed, or add more partitions to the topic.
 
 For comprehensive monitoring setup, take a look at our guide on [connecting Amazon Managed Grafana to CloudWatch](https://oneuptime.com/blog/post/2026-02-12-connect-amazon-managed-grafana-to-cloudwatch/view).
 
 ## Common Pitfalls
 
-**ENI limits**: Lambda creates ENIs in your VPC. If you hit the ENI limit, new Lambda invocations cannot start. Request a limit increase proactively.
+**ENI limits**: Lambda creates Hyperplane ENIs in the MSK cluster's VPC for the event source mapping. If your function is also attached to a VPC for its own business logic, that VPC configuration can create additional ENIs.
 
-**Cold starts in VPC**: Lambda functions in a VPC used to have terrible cold starts. This is mostly resolved now, but you may still see slightly higher cold start times compared to non-VPC functions.
+**Cold starts in VPC**: You usually do not need to attach the function itself to the MSK VPC just to use an MSK trigger. If your business logic requires VPC access, you may still see slightly higher cold start times compared to non-VPC functions.
 
-**Timeout configuration**: Set your Lambda timeout long enough to process a full batch. If you are processing 100 messages that each take 50ms, your function needs at least 5 seconds plus overhead.
+**Timeout configuration**: Set your Lambda timeout long enough to process a full batch. If you are processing 100 messages that each take 50ms, your function needs at least 5 seconds plus overhead. Amazon MSK event source mappings support functions with a maximum timeout of 14 minutes.
 
 **Offset management**: Lambda manages offsets automatically. If your function fails and retries, it replays from the last committed offset. Design your processing to be idempotent.
 
