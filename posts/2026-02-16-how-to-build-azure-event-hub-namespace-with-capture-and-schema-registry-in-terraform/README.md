@@ -57,7 +57,7 @@ resource "azurerm_storage_account" "capture" {
 # Container where captured events will be stored
 resource "azurerm_storage_container" "capture" {
   name                  = "eventhub-capture"
-  storage_account_name  = azurerm_storage_account.capture.name
+  storage_account_id    = azurerm_storage_account.capture.id
   container_access_type = "private"
 }
 ```
@@ -103,7 +103,7 @@ resource "azurerm_eventhub_namespace" "main" {
 }
 ```
 
-The Standard SKU is the minimum required for Capture. If you need Schema Registry (which we do), Standard also supports it. The Premium SKU adds features like dedicated clusters and larger message sizes.
+The Standard SKU is the minimum required for Capture. If you need Schema Registry (which we do), Standard also supports it. The Premium SKU adds features like resource isolation and higher limits for consumer groups, partitions, connections, and retention. The Dedicated tier adds dedicated clusters and support for larger message sizes.
 
 ## Event Hubs with Capture Enabled
 
@@ -112,11 +112,10 @@ Now create the event hubs themselves with Capture configured.
 ```hcl
 # Event Hub for order events with capture enabled
 resource "azurerm_eventhub" "orders" {
-  name                = "evh-orders"
-  namespace_name      = azurerm_eventhub_namespace.main.name
-  resource_group_name = azurerm_resource_group.main.name
-  partition_count     = 8
-  message_retention   = 7
+  name              = "evh-orders"
+  namespace_id      = azurerm_eventhub_namespace.main.id
+  partition_count   = 8
+  message_retention = 7
 
   # Capture configuration - automatically saves events to storage
   capture_description {
@@ -137,11 +136,10 @@ resource "azurerm_eventhub" "orders" {
 
 # Event Hub for telemetry data
 resource "azurerm_eventhub" "telemetry" {
-  name                = "evh-telemetry"
-  namespace_name      = azurerm_eventhub_namespace.main.name
-  resource_group_name = azurerm_resource_group.main.name
-  partition_count     = 16
-  message_retention   = 3
+  name              = "evh-telemetry"
+  namespace_id      = azurerm_eventhub_namespace.main.id
+  partition_count   = 16
+  message_retention = 3
 
   capture_description {
     enabled             = true
@@ -218,9 +216,8 @@ resource "azurerm_eventhub_namespace_schema_group" "avro" {
 
 The `schema_compatibility` setting controls how schema evolution is handled:
 
-- **Forward**: New schemas can be read by consumers using the old schema. You can add optional fields or remove fields.
-- **Backward**: Old schemas can be read by consumers using the new schema. You can add fields with defaults or remove optional fields.
-- **Full**: Both forward and backward compatible. The safest option but the most restrictive.
+- **Forward**: New schemas can be read by consumers using the old schema. You can add fields or delete optional fields.
+- **Backward**: Old schemas can be read by consumers using the new schema. You can delete fields or add optional fields.
 - **None**: No compatibility checking. Not recommended for production.
 
 ## Authorization Rules
@@ -299,9 +296,9 @@ Captured files are written in Avro format with the folder structure you defined 
 
 ## Cost Optimization
 
-Throughput units are the primary cost driver for Event Hubs Standard. With auto-inflate, you only pay for the throughput units you actually use, up to the maximum you configured. Review your throughput unit usage in Azure Monitor and adjust the base and maximum values accordingly.
+Throughput units are the primary cost driver for Event Hubs Standard. With auto-inflate, Event Hubs can automatically increase throughput units up to the maximum you configured when traffic rises, and throughput units are billed hourly based on the maximum number selected during that hour. Review your throughput unit usage in Azure Monitor and adjust the base and maximum values accordingly.
 
-Capture adds a small per-event cost, but it is significantly cheaper than building your own event archival pipeline. The storage costs for captured Avro files are typically minimal.
+In the Standard tier, Capture is billed separately based on the namespace throughput units, but it is significantly cheaper than building your own event archival pipeline. The storage costs for captured Avro files are typically minimal.
 
 ## Conclusion
 
