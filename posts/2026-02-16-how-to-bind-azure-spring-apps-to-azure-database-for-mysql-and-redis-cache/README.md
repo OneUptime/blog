@@ -16,7 +16,7 @@ Hardcoding database credentials in application.yml is a security risk and a main
 
 ## Prerequisites
 
-- Azure Spring Apps Standard or Enterprise tier
+- Azure Spring Apps Standard or Enterprise tier for an existing workload; Azure Spring Apps entered retirement on March 17, 2025 and retires on March 31, 2028
 - Azure Database for MySQL Flexible Server
 - Azure Cache for Redis
 - Azure CLI with the spring extension
@@ -81,6 +81,7 @@ az spring connection create mysql-flexible \
     --resource-group $RESOURCE_GROUP \
     --service myorg-spring-apps \
     --app order-service \
+    --connection mysql-orderdb \
     --target-resource-group $RESOURCE_GROUP \
     --server $MYSQL_SERVER \
     --database orderdb \
@@ -196,9 +197,11 @@ az spring connection create redis \
     --resource-group $RESOURCE_GROUP \
     --service myorg-spring-apps \
     --app order-service \
+    --connection redis-cache \
     --target-resource-group $RESOURCE_GROUP \
     --server $REDIS_NAME \
     --database 0 \
+    --secret \
     --client-type springBoot
 ```
 
@@ -206,6 +209,7 @@ This injects the following properties:
 
 - `spring.redis.host`
 - `spring.redis.port`
+- `spring.redis.database`
 - `spring.redis.password`
 - `spring.redis.ssl`
 
@@ -317,14 +321,14 @@ az spring connection validate \
     --resource-group $RESOURCE_GROUP \
     --service myorg-spring-apps \
     --app order-service \
-    --connection mysql_orderdb
+    --connection mysql-orderdb
 
 # Validate the Redis connection
 az spring connection validate \
     --resource-group $RESOURCE_GROUP \
     --service myorg-spring-apps \
     --app order-service \
-    --connection redis_myorg
+    --connection redis-cache
 ```
 
 ## Manual Configuration Alternative
@@ -341,13 +345,13 @@ az spring app update \
         "SPRING_DATASOURCE_URL=jdbc:mysql://myorg-mysql-server.mysql.database.azure.com:3306/orderdb?useSSL=true" \
         "SPRING_DATASOURCE_USERNAME=springadmin" \
         "SPRING_DATASOURCE_PASSWORD=$ADMIN_PASSWORD" \
-        "SPRING_REDIS_HOST=myorg-redis-cache.redis.cache.windows.net" \
-        "SPRING_REDIS_PORT=6380" \
-        "SPRING_REDIS_PASSWORD=$REDIS_KEY" \
-        "SPRING_REDIS_SSL_ENABLED=true"
+        "SPRING_DATA_REDIS_HOST=myorg-redis-cache.redis.cache.windows.net" \
+        "SPRING_DATA_REDIS_PORT=6380" \
+        "SPRING_DATA_REDIS_PASSWORD=$REDIS_KEY" \
+        "SPRING_DATA_REDIS_SSL_ENABLED=true"
 ```
 
-This approach works but has downsides: you are managing secrets manually, and credential rotation requires a redeployment. Service bindings with managed identity (available on the Enterprise tier) eliminate the password management entirely.
+This approach works but has downsides: you are managing secrets manually, and credential rotation requires a redeployment. For MySQL, service bindings with managed identity can eliminate password management entirely; for Redis with Spring Boot, Service Connector currently uses secret or connection string authentication.
 
 ## Connection Pooling Considerations
 
@@ -369,4 +373,4 @@ The default HikariCP pool size of 10 is fine for development but may be too smal
 
 ## Summary
 
-Binding Azure Spring Apps to MySQL and Redis is simplest with service connectors, which inject connection properties automatically. Your Spring Boot application picks them up through auto-configuration, so you do not need to hardcode credentials. For production, use VNet integration for network security, managed identity for credential-free authentication, and proper connection pooling for MySQL. With both a database and a cache layer connected, your Spring Boot application has the foundation for handling production workloads efficiently.
+Binding Azure Spring Apps to MySQL and Redis is simplest with service connectors, which inject connection properties automatically. Your Spring Boot application picks them up through auto-configuration, so you do not need to hardcode credentials. For production, use VNet integration for network security, managed identity for credential-free authentication where supported, and proper connection pooling for MySQL. With both a database and a cache layer connected, your Spring Boot application has the foundation for handling production workloads efficiently.
