@@ -8,9 +8,9 @@ Description: Learn how to set up Azure CDN in front of Azure Blob Storage to cac
 
 ---
 
-Serving files directly from Azure Blob Storage works fine when your users are close to the storage account's region. But when someone in Tokyo requests an image stored in East US, the round trip adds noticeable latency. Azure CDN solves this by caching your content at edge locations worldwide, so users get served from the nearest point of presence instead of traveling across the globe.
+Serving files directly from Azure Blob Storage works fine when your users are close to the storage account's region. But when someone in Tokyo requests an image stored in East US, the round trip adds noticeable latency. A CDN solves this by caching your content at edge locations worldwide, so users get served from the nearest point of presence instead of traveling across the globe.
 
-Setting up Azure CDN with Blob Storage is straightforward, but there are several configuration details that make the difference between a well-optimized setup and a frustrating one. Let me walk through the full process.
+Setting up Azure CDN with Blob Storage is straightforward for existing Azure CDN Standard from Microsoft (classic) profiles, but there are several configuration details that make the difference between a well-optimized setup and a frustrating one. As of 2026, new deployments should use Azure Front Door Standard or Premium instead: Azure CDN Standard from Microsoft (classic) no longer supports new profile or domain creation and is scheduled to retire on September 30, 2027. Let me walk through the full process for classic Azure CDN profiles that are still being maintained.
 
 ## How Azure CDN Works with Blob Storage
 
@@ -36,33 +36,29 @@ The first request for a file goes through to your Blob Storage origin. After tha
 
 ## Azure CDN Tiers
 
-Azure offers several CDN tiers, each with different features and pricing:
+Azure has changed its CDN lineup over time, so the current choices matter:
 
-- **Azure CDN Standard from Microsoft** - Basic CDN features, no rules engine, good for simple use cases.
-- **Azure CDN Standard from Akamai** - Akamai's network with basic feature set.
-- **Azure CDN Standard from Verizon** - Verizon's network with basic features.
-- **Azure CDN Premium from Verizon** - Advanced rules engine, real-time analytics, token authentication.
-- **Azure Front Door Standard/Premium** - The newer product that combines CDN with load balancing and WAF.
+- **Azure CDN Standard from Microsoft (classic)** - Existing profiles can still serve traffic, and the SKU supports the standard rules engine, but new profile and domain creation is no longer supported and the service retires on September 30, 2027.
+- **Azure CDN from Akamai** - Retired in 2023.
+- **Azure CDN Standard/Premium from Verizon/Edgio** - Retired on January 15, 2025.
+- **Azure Front Door Standard/Premium** - The current Microsoft CDN platform for new deployments, combining CDN, global load balancing, rules, and optional WAF features.
 
-For most Blob Storage integration scenarios, Azure CDN Standard from Microsoft or Azure Front Door Standard works well.
+For most new Blob Storage integration scenarios, Azure Front Door Standard works well. Use the Azure CDN commands below only when you are maintaining an existing Azure CDN Standard from Microsoft (classic) profile.
 
 ## Creating the CDN Profile and Endpoint
 
 ### Using Azure CLI
 
-First, create a CDN profile, which is a container for one or more CDN endpoints:
+First, confirm that you have an existing CDN profile, which is a container for one or more CDN endpoints:
 
 ```bash
-# Create a CDN profile with Microsoft's Standard tier
-
-az cdn profile create \
+# Show an existing Azure CDN Standard from Microsoft (classic) profile
+az cdn profile show \
   --name mycdnprofile \
-  --resource-group myresourcegroup \
-  --sku Standard_Microsoft \
-  --location global
+  --resource-group myresourcegroup
 ```
 
-Then create an endpoint that points to your Blob Storage account:
+Then create an endpoint that points to your Blob Storage account if your existing classic profile still allows endpoint changes:
 
 ```bash
 # Create a CDN endpoint with Blob Storage as the origin
@@ -83,13 +79,9 @@ After creation, your CDN endpoint URL will be something like `https://mycdnendpo
 ### Using Bicep
 
 ```bicep
-// Create a CDN profile and endpoint pointing to Blob Storage
-resource cdnProfile 'Microsoft.Cdn/profiles@2023-05-01' = {
+// Reference an existing Azure CDN Standard from Microsoft (classic) profile
+resource cdnProfile 'Microsoft.Cdn/profiles@2023-05-01' existing = {
   name: 'mycdnprofile'
-  location: 'global'
-  sku: {
-    name: 'Standard_Microsoft'
-  }
 }
 
 resource cdnEndpoint 'Microsoft.Cdn/profiles/endpoints@2023-05-01' = {
@@ -178,7 +170,7 @@ az cdn endpoint rule add \
 
 ## Custom Domain and HTTPS
 
-Using a custom domain with Azure CDN involves two steps: DNS configuration and HTTPS certificate setup.
+Using a custom domain with Azure CDN involves two steps: DNS configuration and HTTPS certificate setup. For Azure CDN Standard from Microsoft (classic), new custom domain onboarding is no longer supported. For existing custom domains, Azure-managed certificates are also no longer supported, so use a certificate from Key Vault or migrate to Azure Front Door Standard/Premium.
 
 ### DNS Setup
 
@@ -188,31 +180,36 @@ Create a CNAME record in your DNS provider:
 cdn.example.com  CNAME  mycdnendpoint.azureedge.net
 ```
 
-### Configure the Custom Domain
+### Check the Custom Domain
 
 ```bash
-# Add a custom domain to the CDN endpoint
-az cdn custom-domain create \
+# Show an existing custom domain on the CDN endpoint
+az cdn custom-domain show \
   --name cdn-example-com \
   --endpoint-name mycdnendpoint \
   --profile-name mycdnprofile \
-  --resource-group myresourcegroup \
-  --hostname cdn.example.com
+  --resource-group myresourcegroup
 ```
 
 ### Enable HTTPS
 
 ```bash
-# Enable managed HTTPS certificate for the custom domain
+# Enable HTTPS with a customer-managed certificate from Key Vault
 az cdn custom-domain enable-https \
   --name cdn-example-com \
   --endpoint-name mycdnendpoint \
   --profile-name mycdnprofile \
   --resource-group myresourcegroup \
+  --user-cert-vault-name mykeyvault \
+  --user-cert-group-name myresourcegroup \
+  --user-cert-secret-name cdn-example-com \
+  --user-cert-secret-version <secret-version> \
+  --user-cert-subscription-id <subscription-id> \
+  --user-cert-protocol-type sni \
   --min-tls-version 1.2
 ```
 
-Azure will provision and manage a free TLS certificate. This process takes several hours to complete.
+Certificate deployment can take several hours to complete.
 
 ## Purging the CDN Cache
 
@@ -261,9 +258,9 @@ For static sites with cache-busting query parameters (like `style.css?v=123`), u
 
 ## Restricting Direct Blob Storage Access
 
-Once CDN is set up, you may want to ensure users can only access content through the CDN, not directly from Blob Storage. You can do this by restricting the Blob Storage firewall to only allow CDN IP ranges, or by using a private origin with Azure Front Door.
+Once CDN is set up, you may want to ensure users can only access content through the CDN, not directly from Blob Storage. For new deployments, Azure Front Door Premium with Private Link is the cleaner approach because the origin can stay private.
 
-A simpler approach is to use SAS tokens on the origin that only the CDN knows about, but this adds complexity to token management.
+With classic Azure CDN and Blob Storage, direct-origin restriction is harder. Storage firewall rules based on CDN address ranges are operationally brittle, and SAS tokens are usually client-facing signed URLs rather than an origin secret that Azure CDN Standard from Microsoft can automatically append for every origin request.
 
 ## Monitoring and Analytics
 
@@ -286,4 +283,4 @@ A low byte hit ratio usually means your TTL settings are too short or your conte
 
 ## Wrapping Up
 
-Azure CDN in front of Blob Storage is one of the simplest performance improvements you can make for content-heavy applications. The setup takes 15 minutes, the cost is reasonable, and your users worldwide get faster load times. Focus on getting your cache headers right, enable compression for text-based content, and set up monitoring to make sure your cache hit ratio stays healthy.
+For existing classic profiles, Azure CDN in front of Blob Storage is still a useful performance improvement for content-heavy applications. For new deployments, use Azure Front Door Standard or Premium instead. In either case, focus on getting your cache headers right, enable compression for text-based content, and set up monitoring to make sure your cache hit ratio stays healthy.
