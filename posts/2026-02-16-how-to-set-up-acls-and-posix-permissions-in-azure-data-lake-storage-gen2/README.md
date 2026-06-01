@@ -18,7 +18,7 @@ ADLS Gen2 uses two layers of access control.
 
 **POSIX ACLs** operate at the individual file and directory level. They provide granular control over who can read, write, or execute specific files and directories.
 
-RBAC is evaluated first. If an RBAC role grants access, the ACLs are not checked. ACLs only come into play when RBAC does not provide access. This means if someone has "Storage Blob Data Owner" at the account level, ACLs will not restrict them.
+For Microsoft Entra-based requests, RBAC is evaluated first. If an RBAC role grants access, the ACLs are not checked. ACLs only come into play when RBAC does not provide access. This means if someone has "Storage Blob Data Owner" at the account level, ACLs will not restrict them.
 
 ## POSIX Permission Basics
 
@@ -30,9 +30,9 @@ Each file and directory has three permission sets, just like in Linux.
 
 Each set has three permission bits.
 
-- **Read (r)**: List contents of a directory, or read file contents.
-- **Write (w)**: Create, delete, or rename items in a directory, or modify file contents.
-- **Execute (x)**: Traverse a directory (required to access items inside it), or execute a file.
+- **Read (r)**: Read file contents. On a directory, read must be combined with execute to list contents.
+- **Write (w)**: Write or append to a file. On a directory, write must be combined with execute to create child items.
+- **Execute (x)**: Traverse a directory (required to access items inside it). Execute does not have meaning for files in ADLS Gen2.
 
 Permissions are represented as a three-digit octal number (like 750) or as an rwx string (like rwxr-x---).
 
@@ -116,7 +116,7 @@ ACL entries follow this format: `type:id:permissions`
 # Set an ACL that grants a specific Azure AD user read access
 # The object ID is the user's Azure AD object ID
 directory_client.set_access_control(
-    acl="user::rwx,group::r-x,other::---,user:a]b1c2d3-e4f5-6789-abcd-ef0123456789:r-x"
+    acl="user::rwx,group::r-x,other::---,user:ab1c2d3e-4f5a-6789-abcd-ef0123456789:r-x,mask::r-x"
 )
 ```
 
@@ -222,9 +222,9 @@ new_acl = (
 # It returns a summary of the operation
 result = directory_client.set_access_control_recursive(acl=new_acl)
 
-print(f"Directories processed: {result['directories_successful']}")
-print(f"Files processed: {result['files_successful']}")
-print(f"Failures: {result['failure_count']}")
+print(f"Directories processed: {result.counters.directories_successful}")
+print(f"Files processed: {result.counters.files_successful}")
+print(f"Failures: {result.counters.failure_count}")
 ```
 
 ## Changing Ownership
