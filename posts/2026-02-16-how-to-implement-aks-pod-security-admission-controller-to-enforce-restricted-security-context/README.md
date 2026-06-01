@@ -18,7 +18,7 @@ Kubernetes defines three security profiles that the PSA controller can enforce:
 
 - **Privileged**: No restrictions at all. This is essentially the default behavior.
 - **Baseline**: Prevents known privilege escalations. Blocks things like hostNetwork, hostPID, and privileged containers, but still allows running as root.
-- **Restricted**: The most locked-down profile. Requires containers to run as non-root, drop all capabilities, use a read-only root filesystem concept, and set a restrictive seccomp profile.
+- **Restricted**: The most locked-down profile. Requires containers to run as non-root, drop all capabilities, restrict privilege escalation, use only allowed volume types, and set a restrictive seccomp profile.
 
 Each profile can be applied in three modes:
 
@@ -28,7 +28,7 @@ Each profile can be applied in three modes:
 
 ## Checking Your AKS Version
 
-The PSA controller is available in Kubernetes 1.25 and later, which means any recent AKS cluster supports it natively. You can verify your cluster version with this command.
+The PSA controller became generally available in Kubernetes 1.25, and AKS enables it by default on supported clusters. You can verify your cluster version with this command.
 
 ```bash
 # Check the current Kubernetes version of your AKS cluster
@@ -36,11 +36,11 @@ The PSA controller is available in Kubernetes 1.25 and later, which means any re
 az aks show --resource-group myResourceGroup --name myAKSCluster --query kubernetesVersion -o tsv
 ```
 
-If you are running 1.25 or newer, the PSA controller is already enabled and active. There is no add-on to install or feature flag to flip.
+If you are running a supported AKS version, the PSA controller is already enabled and active. There is no add-on to install or feature flag to flip.
 
 ## Applying Restricted Profile to a Namespace
 
-The PSA controller is configured through namespace labels. This is the key concept - you do not configure it cluster-wide through a single config file. Instead, you label each namespace with the desired security profile and mode.
+On AKS, the PSA controller is configured through namespace labels. This is the key concept - instead of editing the API server admission configuration directly, you label each namespace with the desired security profile and mode.
 
 Here is how to create a namespace with the restricted profile enforced.
 
@@ -78,7 +78,7 @@ The version pinning is important. Without it, the behavior changes every time yo
 
 Before you start enforcing the restricted profile, you need to understand what it demands from your pods. Here is what every container in the pod must satisfy.
 
-The pod spec must not set `hostNetwork`, `hostPID`, or `hostIPC` to true. Containers must run as non-root by setting `runAsNonRoot: true`. The `seccompProfile` must be set to `RuntimeDefault` or `Localhost`. Containers must drop `ALL` capabilities and may only add back `NET_BIND_SERVICE`. The `allowPrivilegeEscalation` field must be set to `false`. Volume types are restricted to configMap, emptyDir, projected, secret, downwardAPI, persistentVolumeClaim, and ephemeral.
+The pod spec must not set `hostNetwork`, `hostPID`, or `hostIPC` to true. Containers must run as non-root by setting `runAsNonRoot: true`. The `seccompProfile` must be set to `RuntimeDefault` or `Localhost`. Containers must drop `ALL` capabilities and may only add back `NET_BIND_SERVICE`. The `allowPrivilegeEscalation` field must be set to `false`. Volume types are restricted to configMap, csi, emptyDir, projected, secret, downwardAPI, persistentVolumeClaim, and ephemeral. A read-only root filesystem is a good hardening practice, but it is not required by the Kubernetes restricted Pod Security Standard.
 
 Here is a pod spec that fully complies with the restricted profile.
 
@@ -105,6 +105,7 @@ spec:
       # Container-level security context
       securityContext:
         allowPrivilegeEscalation: false
+        # Recommended hardening; not required by the restricted profile
         readOnlyRootFilesystem: true
         capabilities:
           drop:
@@ -206,17 +207,17 @@ kubectl label namespace monitoring \
 # but you still get warnings about restricted violations
 ```
 
-## Automating Label Application with Azure Policy
+## Enforcing Equivalent Controls with Azure Policy
 
-To make sure new namespaces automatically get the right labels, use Azure Policy for AKS.
+If you need enterprise-wide policy management, use Azure Policy for AKS. This does not automatically label namespaces for PSA. Instead, it applies Azure Policy and Gatekeeper constraints that enforce equivalent pod security controls. The Azure Policy add-on must be installed on the AKS cluster first.
 
 ```bash
-# Assign a built-in Azure Policy that enforces pod security standards
+# Assign the built-in restricted pod security standards initiative
 az policy assignment create \
   --name 'enforce-psa-restricted' \
   --display-name 'Enforce restricted PSA on app namespaces' \
-  --scope "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.ContainerService/managedClusters/myAKS" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/95edb821-ddaf-4404-9732-666045e056b4" \
+  --scope "/subscriptions/<sub-id>/resourceGroups/myRG" \
+  --policy-set-definition "/providers/Microsoft.Authorization/policySetDefinitions/42b8ef37-b724-4e24-bbc8-7a7708edfe00" \
   --params '{"effect": {"value": "Deny"}, "excludedNamespaces": {"value": ["kube-system", "gatekeeper-system", "azure-arc"]}}'
 ```
 
@@ -248,4 +249,4 @@ kubectl get namespaces -o json | jq -r '
 
 ## Wrapping Up
 
-The Pod Security Admission controller is a straightforward, built-in mechanism to enforce security standards on AKS without installing third-party tools. Start with warn and audit modes to understand your current security posture, fix violations iteratively, and then move to enforcement. The restricted profile is strict, but it represents genuine security best practices - running containers as non-root with minimal capabilities significantly reduces the blast radius of any compromise. Pin your version labels, exempt system namespaces appropriately, and use Azure Policy to keep things consistent as your cluster grows.
+The Pod Security Admission controller is a straightforward, built-in mechanism to enforce security standards on AKS without installing third-party tools. Start with warn and audit modes to understand your current security posture, fix violations iteratively, and then move to enforcement. The restricted profile is strict, but it represents genuine security best practices - running containers as non-root with minimal capabilities significantly reduces the blast radius of any compromise. Pin your version labels, exempt system namespaces appropriately, and use Azure Policy when you need enterprise-scale enforcement as your cluster estate grows.
