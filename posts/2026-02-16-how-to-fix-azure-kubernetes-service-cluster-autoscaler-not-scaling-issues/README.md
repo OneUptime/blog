@@ -16,7 +16,7 @@ I have debugged cluster autoscaler issues on AKS clusters ranging from 5 to 500 
 
 The AKS cluster autoscaler checks every 10 seconds (by default) for unschedulable pods. If it finds pods that cannot be scheduled due to insufficient resources, it calculates how many nodes to add and triggers a scale-up. For scale-down, it checks every 10 seconds for nodes that have been underutilized (below 50% resource requests) for more than 10 minutes.
 
-The key phrase there is "resource requests." The autoscaler does not look at actual CPU or memory usage. It looks at the resource requests defined in your pod specs. If your pods do not have resource requests set, the autoscaler has no data to work with.
+The key phrase there is "resource requests." The autoscaler does not look at actual CPU or memory usage. It looks at the resource requests defined in your pod specs. If your pods do not have resource requests set, CPU or memory pressure might not trigger scaling behavior the way you expect.
 
 ## Problem: Pods Stuck in Pending but No Scale-Up
 
@@ -47,11 +47,17 @@ az aks nodepool update \
   --max-count 10
 ```
 
-If autoscaling is enabled, check the autoscaler's logs to understand why it is not scaling.
+If autoscaling is enabled, check the autoscaler events and status to understand why it is not scaling. AKS runs the cluster autoscaler in the managed control plane, so detailed autoscaler logs are available through AKS control plane logging rather than by reading a pod log from your cluster.
 
 ```bash
-# Get cluster autoscaler logs from the kube-system namespace
-kubectl logs -n kube-system -l app=cluster-autoscaler --tail=100
+# View scale-up decisions that did not trigger a new node
+kubectl get events --field-selector source=cluster-autoscaler,reason=NotTriggerScaleUp
+
+# View autoscaler warnings
+kubectl get events --field-selector source=cluster-autoscaler,type=Warning
+
+# View autoscaler health and status
+kubectl get configmap -n kube-system cluster-autoscaler-status -o yaml
 ```
 
 Common reasons the autoscaler decides not to scale up:
@@ -68,9 +74,9 @@ If a pod requests 64 GB of memory but your node pool uses a VM size with only 16
 
 If pods have node affinity rules that do not match any node pool, or anti-affinity rules that prevent colocation, the autoscaler may determine that scaling will not help.
 
-### PodDisruptionBudget blocking scheduling
+### Pods below the autoscaler priority cutoff
 
-PDBs can prevent the scheduler from placing pods, which confuses the autoscaler in some scenarios.
+Pods with a PriorityClass value below -10 do not trigger scale-up in AKS. Use very low priorities for overprovisioning placeholders, but keep normal application pods above the autoscaler cutoff.
 
 ## Problem: Autoscaler Scale-Up Is Too Slow
 
@@ -125,7 +131,7 @@ description: "Priority class for overprovisioning pods"
 
 The autoscaler scales down nodes that have been underutilized for a configurable period (default 10 minutes). But several conditions can prevent scale-down.
 
-**Pods with local storage.** If a pod uses emptyDir volumes or hostPath volumes, the autoscaler will not evict it by default because the data would be lost.
+**Pods with local storage.** If your autoscaler profile has `skip-nodes-with-local-storage=true`, a pod that uses local storage such as emptyDir or hostPath can prevent that node from being deleted.
 
 **Pods without a controller.** Standalone pods (not managed by a Deployment, StatefulSet, or similar controller) block scale-down because the autoscaler cannot recreate them on another node.
 
@@ -176,13 +182,7 @@ The default autoscaler configuration works for most workloads, but you can tune 
 az aks update \
   --resource-group myResourceGroup \
   --name myAKSCluster \
-  --cluster-autoscaler-profile \
-    scan-interval=10s \
-    scale-down-delay-after-add=10m \
-    scale-down-unneeded-time=10m \
-    scale-down-utilization-threshold=0.5 \
-    max-graceful-termination-sec=600 \
-    expander=least-waste
+  --cluster-autoscaler-profile scan-interval=10s,scale-down-delay-after-add=10m,scale-down-unneeded-time=10m,scale-down-utilization-threshold=0.5,max-graceful-termination-sec=600,expander=least-waste
 ```
 
 Key settings:
@@ -192,4 +192,4 @@ Key settings:
 - **scale-down-utilization-threshold**: The utilization threshold below which a node is considered underutilized
 - **expander**: Strategy for choosing which node pool to scale (least-waste, random, most-pods, priority)
 
-The cluster autoscaler is a critical component of any production AKS deployment. When it is not working, start by checking whether it is enabled, then look at the autoscaler logs, and finally verify your pod resource requests and scheduling constraints. Most issues come down to missing resource requests, max node limits, or pods blocking scale-down.
+The cluster autoscaler is a critical component of any production AKS deployment. When it is not working, start by checking whether it is enabled, then look at the autoscaler events and status, and finally verify your pod resource requests and scheduling constraints. Most issues come down to missing resource requests, max node limits, or pods blocking scale-down.
