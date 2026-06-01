@@ -98,7 +98,7 @@ az network application-gateway create \
     --public-ip-address appgw-public-ip \
     --http-settings-port 443 \
     --http-settings-protocol Https \
-    --frontend-port 443 \
+    --frontend-port 80 \
     --servers my-app-service.azurewebsites.net \
     --priority 100
 ```
@@ -165,19 +165,21 @@ az network application-gateway http-settings update \
 Now enable the WAF policy:
 
 ```bash
-# Create a WAF policy
+# Create a WAF policy with the recommended Default Rule Set
 az network application-gateway waf-policy create \
     --resource-group my-resource-group \
-    --name my-waf-policy
+    --name my-waf-policy \
+    --type Microsoft_DefaultRuleSet \
+    --version 2.1
 
-# Configure WAF to use the OWASP 3.2 rule set in Prevention mode
+# Configure WAF in Prevention mode
 az network application-gateway waf-policy policy-setting update \
     --resource-group my-resource-group \
     --policy-name my-waf-policy \
     --state Enabled \
     --mode Prevention \
-    --max-request-body-size-kb 128 \
-    --file-upload-limit-mb 100
+    --max-request-body-size-in-kb 128 \
+    --file-upload-limit-in-mb 100
 
 # Associate the WAF policy with the Application Gateway
 az network application-gateway update \
@@ -196,11 +198,12 @@ The WAF has two modes:
 To ensure all traffic goes through the Application Gateway (and WAF), restrict direct access to the App Service:
 
 ```bash
-# Get the Application Gateway's public IP
-APPGW_IP=$(az network public-ip show \
+# Enable the Microsoft.Web service endpoint on the Application Gateway subnet
+az network vnet subnet update \
     --resource-group my-resource-group \
-    --name appgw-public-ip \
-    --query ipAddress -o tsv)
+    --vnet-name my-vnet \
+    --name appgw-subnet \
+    --service-endpoints Microsoft.Web
 
 # Add an access restriction to only allow traffic from the Application Gateway subnet
 az webapp config access-restriction add \
@@ -236,12 +239,19 @@ az network application-gateway ssl-cert create \
     --cert-file ./certificate.pfx \
     --cert-password "your-cert-password"
 
+# Create a frontend port for HTTPS traffic
+az network application-gateway frontend-port create \
+    --resource-group my-resource-group \
+    --gateway-name my-appgw \
+    --name https-port \
+    --port 443
+
 # Create an HTTPS listener with the custom domain
 az network application-gateway http-listener create \
     --resource-group my-resource-group \
     --gateway-name my-appgw \
     --name https-listener \
-    --frontend-port appGatewayFrontendPort \
+    --frontend-port https-port \
     --frontend-ip appGatewayFrontendIP \
     --ssl-cert my-ssl-cert \
     --host-name www.myapp.com
