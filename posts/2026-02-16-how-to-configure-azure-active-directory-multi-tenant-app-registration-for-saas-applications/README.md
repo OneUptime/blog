@@ -34,7 +34,7 @@ sequenceDiagram
     App->>App: Create/update user record for Contoso tenant
 ```
 
-The key difference from single-tenant is that the authorization happens at the customer's Azure AD tenant, not yours. Your app redirects to a common endpoint, Azure AD figures out which tenant the user belongs to, and that tenant's policies (MFA, conditional access, etc.) apply.
+The key difference from single-tenant is that the authorization happens at the customer's Azure AD tenant, not yours. Your app redirects to a tenant-independent endpoint such as `organizations`, Azure AD figures out which tenant the user belongs to, and that tenant's policies (MFA, conditional access, etc.) apply.
 
 ## Step 1 - Register the Multi-Tenant Application
 
@@ -46,7 +46,9 @@ Create the app registration in your Azure AD tenant with multi-tenant support en
 az ad app create \
   --display-name "MySaaSApp" \
   --sign-in-audience "AzureADMultipleOrgs" \
-  --web-redirect-uris "https://app.mysaas.com/auth/callback" \
+  --web-redirect-uris \
+    "https://app.mysaas.com/auth/callback" \
+    "https://app.mysaas.com/auth/admin-consent/callback" \
   --enable-id-token-issuance true
 
 # Note the Application (client) ID from the output
@@ -81,7 +83,7 @@ az ad app permission add \
   --api-permissions 498476ce-e0fe-48b0-b801-37ba7e2685c6=Role
 ```
 
-For multi-tenant apps, be very careful about what permissions you request. Every permission requires the customer's admin to consent. If you ask for too much, admins will reject the consent request. Only request what you actually need.
+For multi-tenant apps, be very careful about what permissions you request. Permissions that require admin consent must be approved by the customer's admin, and some tenants disable user consent entirely. If you ask for too much, admins will reject the consent request. Only request what you actually need.
 
 Delegated permissions (Scope) act on behalf of the signed-in user. Application permissions (Role) act as the app itself and require admin consent. Prefer delegated permissions when possible.
 
@@ -104,7 +106,7 @@ const app = express();
 const msalConfig = {
     auth: {
         clientId: process.env.CLIENT_ID,
-        authority: 'https://login.microsoftonline.com/common',  // "common" for multi-tenant
+        authority: 'https://login.microsoftonline.com/organizations',  // multi-tenant work or school accounts
         clientSecret: process.env.CLIENT_SECRET
     }
 };
@@ -114,7 +116,7 @@ const msalClient = new msal.ConfidentialClientApplication(msalConfig);
 // Admin consent endpoint - redirect the admin to grant org-wide permissions
 app.get('/auth/admin-consent', (req, res) => {
     const adminConsentUrl =
-        `https://login.microsoftonline.com/common/adminconsent` +
+        `https://login.microsoftonline.com/organizations/v2.0/adminconsent` +
         `?client_id=${process.env.CLIENT_ID}` +
         `&redirect_uri=${encodeURIComponent(process.env.ADMIN_CONSENT_REDIRECT)}` +
         `&state=${generateStateToken()}` +
@@ -125,11 +127,15 @@ app.get('/auth/admin-consent', (req, res) => {
 
 // Handle the admin consent callback
 app.get('/auth/admin-consent/callback', async (req, res) => {
-    const { tenant, admin_consent, error } = req.query;
+    const { tenant, admin_consent, error, state } = req.query;
 
     if (error) {
         console.error(`Admin consent failed: ${error}`);
         return res.redirect('/onboarding/consent-failed');
+    }
+
+    if (!validateStateToken(state)) {
+        return res.status(400).send('Invalid state');
     }
 
     if (admin_consent === 'True') {
@@ -192,7 +198,7 @@ app.get('/auth/callback', async (req, res) => {
 
 ## Step 4 - Validate Tokens Properly
 
-Token validation for multi-tenant apps is different from single-tenant. You cannot validate against a single issuer because tokens come from different tenants.
+Token validation for multi-tenant apps is different from single-tenant. You cannot validate against a single issuer because tokens come from different tenants. The example below is for validating ID tokens issued to your web app, or access tokens issued to your own API. Do not validate Microsoft Graph access tokens in your client application; treat them as opaque and let Microsoft Graph validate them.
 
 ```javascript
 const jwksClient = jwksRsa({
@@ -201,20 +207,39 @@ const jwksClient = jwksRsa({
     rateLimit: true
 });
 
-function getSigningKey(header, callback) {
-    jwksClient.getSigningKey(header.kid, (err, key) => {
-        if (err) return callback(err);
-        callback(null, key.getPublicKey());
-    });
+function issuerMatches(keyIssuer, tokenIssuer, tenantId) {
+    const expectedKeyIssuer = keyIssuer.replace('{tenantid}', tenantId);
+    return expectedKeyIssuer === tokenIssuer;
+}
+
+function getSigningKeyForToken(unverifiedClaims) {
+    return (header, callback) => {
+        jwksClient.getSigningKey(header.kid, (err, key) => {
+            if (err) return callback(err);
+
+            // Microsoft Entra tenant-independent keys include an issuer value.
+            // Use it to make sure the signing key is valid for this token's tenant.
+            const keyIssuer = key.issuer || key.jwk?.issuer;
+            if (keyIssuer && !issuerMatches(keyIssuer, unverifiedClaims.iss, unverifiedClaims.tid)) {
+                return callback(new Error('Signing key issuer does not match token issuer'));
+            }
+
+            callback(null, key.getPublicKey());
+        });
+    };
 }
 
 function validateToken(token) {
     return new Promise((resolve, reject) => {
-        jwt.verify(token, getSigningKey, {
+        const decoded = jwt.decode(token, { complete: true });
+        if (!decoded?.payload?.tid || !decoded?.payload?.iss) {
+            return reject(new Error('Token is missing tenant or issuer claims'));
+        }
+
+        jwt.verify(token, getSigningKeyForToken(decoded.payload), {
             audience: process.env.CLIENT_ID,
             // For multi-tenant, do NOT validate issuer with a single value
-            // Instead, validate the issuer format
-            issuer: null  // We validate issuer manually below
+            // Instead, validate the issuer format below
         }, (err, decoded) => {
             if (err) return reject(err);
 
@@ -224,7 +249,8 @@ function validateToken(token) {
 
             // The issuer should match the pattern for Azure AD v2.0
             const expectedIssuer = `https://login.microsoftonline.com/${tenantId}/v2.0`;
-            if (issuer !== expectedIssuer) {
+            const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!guidPattern.test(tenantId) || issuer !== expectedIssuer) {
                 return reject(new Error(`Invalid issuer: ${issuer}`));
             }
 
@@ -240,7 +266,7 @@ function validateToken(token) {
 }
 ```
 
-The critical point is the issuer validation. Each Azure AD tenant has its own issuer URL containing the tenant ID. You need to check that the format is correct and that the tenant ID belongs to a customer you have onboarded.
+The critical point is the issuer validation. Each Azure AD tenant has its own issuer URL containing the tenant ID. You need to check that the format is correct, that the signing key is valid for that issuer, and that the tenant ID belongs to a customer you have onboarded.
 
 ## Step 5 - Implement Tenant Isolation
 
@@ -281,30 +307,45 @@ app.post('/api/projects', tenantContext, async (req, res) => {
 
 Consider using row-level security at the database level as an additional safety net. PostgreSQL RLS or Azure SQL row-level security can enforce tenant isolation even if your application code has a bug.
 
-## Step 6 - Handle Tenant Lifecycle Events
+## Step 6 - Handle Consent and Subscription Lifecycle Events
 
-Tenants may revoke consent, and your app needs to handle that gracefully. Register for Azure AD lifecycle notifications.
+Tenants may revoke consent, and your app needs to handle that gracefully. There is no general Azure AD webhook that sends a `consentRevoked` event for your application. If you use Microsoft Graph change notifications, register a `lifecycleNotificationUrl` and handle Graph subscription lifecycle events such as `reauthorizationRequired`, `subscriptionRemoved`, and `missed`. For sign-in and Graph API calls, also handle consent and authorization failures directly.
 
 ```javascript
-// Webhook endpoint for tenant lifecycle events
-app.post('/webhooks/tenant-lifecycle', async (req, res) => {
-    const event = req.body;
+// Webhook endpoint for Microsoft Graph subscription lifecycle notifications
+app.post('/webhooks/graph-lifecycle', async (req, res) => {
+    for (const notification of req.body.value || []) {
+        switch (notification.lifecycleEvent) {
+            case 'reauthorizationRequired':
+                // Renew the Graph subscription or refresh authorization
+                await reauthorizeGraphSubscription(notification.subscriptionId);
+                break;
 
-    switch (event.changeType) {
-        case 'consentRevoked':
-            // The tenant admin revoked consent for your app
-            await deactivateTenant(event.tenantId);
-            console.log(`Tenant ${event.tenantId} revoked consent`);
-            break;
+            case 'subscriptionRemoved':
+                // Recreate the subscription if the tenant is still active
+                await recreateGraphSubscription(notification.tenantId);
+                break;
 
-        case 'subscriptionDeleted':
-            // Handle subscription cancellation
-            await handleSubscriptionEnd(event.tenantId);
-            break;
+            case 'missed':
+                // Use delta queries or another reconciliation process
+                await reconcileGraphChanges(notification.tenantId);
+                break;
+        }
     }
 
-    res.status(200).send('OK');
+    res.sendStatus(202);
 });
+
+async function callGraphForTenant(tenantId, request) {
+    try {
+        return await request();
+    } catch (error) {
+        if (error.statusCode === 401 || error.statusCode === 403) {
+            await markTenantConsentRequired(tenantId);
+        }
+        throw error;
+    }
+}
 ```
 
 ## Wrapping Up
