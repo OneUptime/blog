@@ -24,7 +24,7 @@ Before jumping into solutions, let us be clear about what we are solving. Withou
 
 Azure has specific naming rules for each resource type (length limits, allowed characters), which makes a one-size-fits-all approach impossible. A storage account cannot have hyphens, but a virtual network can. A key vault has a 24-character limit, while a virtual machine allows 64.
 
-## Pattern 1: User-Defined Types with a Naming Module
+## Pattern 1: Naming Module
 
 The cleanest approach in Bicep is to create a dedicated module that generates names based on your conventions. Every other module calls this naming module to get the right names.
 
@@ -140,12 +140,8 @@ module naming 'modules/naming.bicep' = {
   }
 }
 
-// Use the generated names throughout the deployment
-resource rg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
-  name: naming.outputs.names.resourceGroup
-  location: location
-  tags: naming.outputs.tags
-}
+// Expose the generated resource group name for use by deployment scripts
+output resourceGroupName string = naming.outputs.names.resourceGroup
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: naming.outputs.names.storageAccount
@@ -358,7 +354,7 @@ Here is a complete example that combines the naming module with shared configura
 // deploy.bicep - Full deployment using shared naming conventions
 
 param appName string
-param environment string = 'prd'
+param environment string = 'production'
 param location string = 'eastus2'
 
 // Shared config
