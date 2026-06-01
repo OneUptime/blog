@@ -27,6 +27,8 @@ Redis is the go-to choice for distributed caching. It is fast, supports rich dat
 
 You can create a Redis cache through the Azure Portal or the CLI. Here is the CLI approach.
 
+Azure Cache for Redis has a published retirement timeline, and Microsoft recommends Azure Managed Redis for new deployments. The `az redis` commands below apply to Azure Cache for Redis Basic, Standard, and Premium tiers where creating those resources is still available.
+
 ```bash
 # Create a resource group if you do not have one
 
@@ -267,7 +269,7 @@ public async Task<IActionResult> UpdateProduct(int id, Product updated)
 
 ## Session Storage with Redis
 
-Redis is also commonly used for distributed session storage. This lets users stay logged in regardless of which instance handles their request.
+Redis is also commonly used for distributed session storage. This keeps session state available regardless of which instance handles a request.
 
 ```csharp
 // In Program.cs, add session support backed by Redis
@@ -278,7 +280,9 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true;
 });
 
-// The AddStackExchangeRedisCache call from earlier provides the backing store
+// The AddStackExchangeRedisCache call from earlier provides the backing store.
+// Add this before MapControllers or other endpoints that use session.
+app.UseSession();
 ```
 
 ## Monitoring Cache Performance
