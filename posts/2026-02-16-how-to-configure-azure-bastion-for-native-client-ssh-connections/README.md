@@ -10,7 +10,7 @@ Description: Learn how to configure Azure Bastion to support native SSH client c
 
 Azure Bastion provides secure RDP and SSH access to your VMs without exposing them through public IP addresses. For a long time, Bastion only worked through the Azure Portal's browser-based interface. That was useful, but it did not give you the experience of a native SSH client - no file transfers, no SSH agent forwarding, no custom SSH config options.
 
-Azure Bastion native client support changes that. With the Standard SKU, you can use your local SSH client (the `ssh` command on your terminal) to connect through Bastion. You get all the features of your native SSH client while Bastion handles the secure tunneling and eliminates the need for public IPs on your VMs.
+Azure Bastion native client support changes that. With the Standard SKU or higher, you can use your local SSH client from your terminal to connect through Bastion. You get the experience of your native SSH client while Bastion handles the secure tunneling and eliminates the need for public IPs on your VMs.
 
 ## Why Native Client Matters
 
@@ -22,11 +22,11 @@ The browser-based SSH in the Portal works, but it has limitations:
 - **Terminal quality.** The browser terminal does not match the experience of iTerm, Windows Terminal, or your preferred terminal emulator.
 - **No automation.** You cannot script browser-based SSH sessions.
 
-Native client support solves all of these. You connect using the regular `ssh` command, and Bastion acts as a transparent tunnel.
+Native client support solves these day-to-day workflow problems. You connect from your local terminal through the Azure CLI, and Bastion acts as a secure tunnel.
 
 ## Prerequisites
 
-1. **Azure Bastion Standard SKU** - Native client is not available on the Basic SKU
+1. **Azure Bastion Standard SKU or higher** - Native client is not available on the Basic SKU
 2. **Azure CLI** installed with the bastion extension
 3. **A VM** in a VNet with Azure Bastion deployed
 4. **No public IP needed** on the target VM
@@ -72,7 +72,8 @@ If you already have a Bastion instance, upgrade to Standard and enable tunneling
 az network bastion update \
   --resource-group myResourceGroup \
   --name myBastion \
-  --sku Standard \
+  --location eastus \
+  --sku name=Standard \
   --enable-tunneling true
 ```
 
@@ -109,12 +110,12 @@ az network bastion ssh \
 
 This opens a full native SSH session in your terminal. It looks and feels exactly like a regular SSH connection because it is - Bastion handles the tunneling underneath.
 
-## Step 4: Connect Using Azure AD Authentication
+## Step 4: Connect Using Microsoft Entra ID Authentication
 
-If your VM supports Azure AD authentication (available for Linux VMs with the Azure AD login extension), you can connect without managing SSH keys:
+If your VM supports Microsoft Entra ID authentication (available for Linux VMs with the Microsoft Entra login extension), you can connect without managing SSH keys:
 
 ```bash
-# Connect using Azure AD authentication
+# Connect using Microsoft Entra ID authentication
 az network bastion ssh \
   --resource-group myResourceGroup \
   --name myBastion \
@@ -122,14 +123,14 @@ az network bastion ssh \
   --auth-type AAD
 ```
 
-This uses your Azure AD credentials. The VM must have the `AADSSHLoginForLinux` extension installed.
+This uses your Microsoft Entra ID credentials. The VM must have the `AADSSHLoginForLinux` extension installed.
 
-## Step 5: SSH Tunneling for Port Forwarding
+## Step 5: Bastion Tunneling for Port Forwarding
 
-Native client support enables SSH tunneling, which lets you forward local ports to services running on the VM:
+Native client support enables Bastion tunneling, which lets you forward local ports to services running on the VM:
 
 ```bash
-# Create an SSH tunnel to forward local port 5432 to the VM's localhost:5432
+# Create a tunnel to forward local port 5432 to the target VM's port 5432
 az network bastion tunnel \
   --resource-group myResourceGroup \
   --name myBastion \
@@ -145,7 +146,7 @@ This opens a tunnel. In another terminal, connect to the tunneled service:
 psql -h 127.0.0.1 -p 5432 -U dbadmin -d myDatabase
 ```
 
-This is incredibly useful for accessing databases, web applications, or any service running on VMs that do not have public IPs.
+This is incredibly useful for accessing databases, web applications, or any service reachable on the target VM's private IP that does not have a public IP.
 
 ## Step 6: File Transfer with SCP
 
@@ -223,8 +224,8 @@ For native client to work:
 
 1. **Bastion must be in Standard SKU** with tunneling enabled
 2. **The target VM must be in the same VNet** or a peered VNet
-3. **NSG on AzureBastionSubnet** must allow outbound to the VNet on ports 22 (SSH) and 3389 (RDP)
-4. **NSG on the VM's subnet** must allow inbound from AzureBastionSubnet on port 22
+3. **NSG on AzureBastionSubnet** must allow outbound to the VNet on ports 22 (SSH), 3389 (RDP), or any custom target ports you use for Bastion tunnel/custom-port connections
+4. **NSG on the VM's subnet** must allow inbound from AzureBastionSubnet on port 22, or on the target service port if you are using `az network bastion tunnel`
 5. **No public IP needed** on the target VM
 
 ```bash
@@ -248,11 +249,11 @@ az network bastion update \
   --scale-units 4
 ```
 
-The default is 2 scale units (20 concurrent SSH connections). Each additional scale unit adds approximately 10 more concurrent connections.
+The default dedicated deployment uses 2 instances. For medium workloads, each instance supports up to 40 concurrent SSH connections or 20 concurrent RDP connections, but data-intensive sessions such as file transfers can reduce practical capacity. Changing scale units disrupts active Bastion connections, so schedule scaling changes during a maintenance window.
 
 ## Pricing Considerations
 
-Standard SKU Bastion is more expensive than Basic. As of early 2026, Standard costs roughly $0.35 per hour (compared to $0.19 for Basic). But native client support, tunneling, and scaling are only available on Standard. For teams that rely on SSH access to VMs daily, the productivity gain justifies the cost difference.
+Standard SKU Bastion is more expensive than Basic, and pricing varies by region and agreement. Azure Bastion is billed hourly from deployment until deletion, with outbound data transfer charges, so check the Azure Bastion pricing page for current rates. Native client support, tunneling, and scaling are available on Standard or higher. For teams that rely on SSH access to VMs daily, the productivity gain justifies the cost difference.
 
 ## Common Issues
 
@@ -266,4 +267,4 @@ Standard SKU Bastion is more expensive than Basic. As of early 2026, Standard co
 
 ## Summary
 
-Azure Bastion native client support brings the full power of your local SSH client to VMs that have no public IP addresses. Deploy Bastion with Standard SKU and tunneling enabled, then use `az network bastion ssh` for interactive sessions or `az network bastion tunnel` for port forwarding and file transfers. This eliminates the compromises of browser-based SSH while maintaining the security benefits of Bastion - no public IPs, no exposed ports, and all access audited through Azure.
+Azure Bastion native client support brings the full power of your local SSH client to VMs that have no public IP addresses. Deploy Bastion with Standard SKU and tunneling enabled, then use `az network bastion ssh` for interactive sessions or `az network bastion tunnel` for port forwarding and file transfers. This eliminates the compromises of browser-based SSH while maintaining the security benefits of Bastion - no public IPs, no exposed ports, and access centralized through Azure.
