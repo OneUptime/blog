@@ -43,7 +43,8 @@ Before configuring Global Reach, confirm the following:
 2. **Global Reach availability** in both peering locations (not all locations support it - check the Azure documentation for supported locations)
 3. **Non-overlapping address spaces** between the two on-premises networks
 4. **Owner or Contributor access** on both ExpressRoute circuits
-5. **/29 or larger subnets** for Global Reach peering (two /29 subnets, one for each circuit)
+5. **Premium SKU on both circuits** if the circuits are in different geopolitical regions
+6. **A /29 IPv4 subnet** for the Global Reach connection
 
 The /29 subnet requirement is often overlooked. Global Reach needs IP addresses for the point-to-point link between the two circuits. You provide a /29, and Azure uses the first usable IPs from it.
 
@@ -180,7 +181,7 @@ When a server in London sends a packet to a server in Singapore through Global R
 3. The packet arrives at the Singapore MSEE router
 4. The Singapore MSEE forwards the packet through the Singapore ExpressRoute circuit to the Singapore on-premises network
 
-The entire path stays within the Microsoft network. At no point does the traffic touch the public internet.
+The inter-site path uses private ExpressRoute connectivity and the Microsoft backbone. At no point does the traffic touch the public internet.
 
 ## Bandwidth and Performance Considerations
 
@@ -197,9 +198,9 @@ For workloads with heavy inter-site traffic, compare the Global Reach cost again
 ## Limitations
 
 - **Not available in all peering locations.** Check the Azure docs for current availability.
-- **Does not support IPv6.** Global Reach currently works only with IPv4 traffic.
+- **IPv6 requires separate configuration.** The examples above configure IPv4. Global Reach also supports IPv6 when you configure an IPv6 address prefix for the connection.
 - **Requires non-overlapping address spaces.** If both on-premises networks use the same IP ranges, Global Reach will not work. You would need to implement NAT, which Global Reach does not support natively.
-- **Maximum of 4 Global Reach connections per circuit.**
+- **Global Reach connections count against the circuit connection limit.** The exact limit depends on the ExpressRoute circuit SKU and bandwidth, so check the current Azure limits before designing a full mesh.
 
 ## Deleting a Global Reach Connection
 
