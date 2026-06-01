@@ -26,19 +26,27 @@ Failures can occur at any step. Azure Notification Hubs can tell you about failu
 
 ## Enabling Diagnostic Logging
 
-Before troubleshooting anything, enable per-message telemetry. This is the single most important step because it tells you whether notifications are being sent, dropped, or rejected.
+Before troubleshooting anything, enable operational logging and use per-message telemetry for sends. Operational logs help you audit management operations such as hub and credential changes. Per-message telemetry is the feature that tells you whether notifications are being sent, dropped, or rejected, and it is available on the Standard tier.
 
 ```bash
-# Enable diagnostic logging for Notification Hub
+# Enable operational logging for a Notification Hubs namespace
 
 az monitor diagnostic-settings create \
   --name "nh-diagnostics" \
-  --resource "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.NotificationHubs/namespaces/myNHNamespace/notificationHubs/myHub" \
+  --resource "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.NotificationHubs/namespaces/myNHNamespace" \
   --workspace "/subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.OperationalInsights/workspaces/myLAW" \
   --logs '[{"category":"OperationalLogs","enabled":true}]'
 ```
 
-Also enable per-message telemetry for detailed send results. This is done at the notification level by including the `ServiceBusNotification-DeviceHandle` header in test sends, or by using the "Test Send" feature in the Azure portal.
+For detailed send results, use the notification ID returned in the `Location` header from a send request and call the per-message telemetry API:
+
+```bash
+curl -X GET \
+  "https://myNHNamespace.servicebus.windows.net/myHub/messages/{notification-message-id}?api-version=2016-07" \
+  -H "Authorization: <sas-token>"
+```
+
+For isolated device testing, use the "Test Send" feature in the Azure portal or direct send with the `ServiceBusNotification-DeviceHandle` header.
 
 ## iOS (APNs) Delivery Failures
 
@@ -57,12 +65,11 @@ az notification-hub credential apns update \
   --resource-group myRG \
   --namespace-name myNHNamespace \
   --notification-hub-name myHub \
-  --apns-credential \
-    key-id="ABC123DEF4" \
-    app-name="com.mycompany.myapp" \
-    app-id="TEAM123456" \
-    token="<base64-encoded-p8-key-content>" \
-    endpoint="https://api.push.apple.com"
+  --key-id "ABC123DEF4" \
+  --app-name "com.mycompany.myapp" \
+  --app-id "TEAM123456" \
+  --token "<p8-key-content>" \
+  --endpoint "https://api.push.apple.com:443/3/device"
 ```
 
 Common APNs configuration mistakes:
@@ -77,10 +84,10 @@ APNs has two environments: sandbox (for development builds) and production (for 
 
 ```text
 // Sandbox endpoint (for development)
-https://api.sandbox.push.apple.com
+https://api.development.push.apple.com:443/3/device
 
 // Production endpoint (for App Store and TestFlight)
-https://api.push.apple.com
+https://api.push.apple.com:443/3/device
 ```
 
 If your development builds get notifications but production builds do not (or vice versa), check the endpoint configuration.
@@ -95,11 +102,12 @@ Use test send to a specific device token and check the result.
 # Test send to a specific iOS device
 # This gives you detailed feedback including APNs response
 curl -X POST \
-  "https://myNHNamespace.servicebus.windows.net/myHub/messages?direct&api-version=2015-01" \
+  "https://myNHNamespace.servicebus.windows.net/myHub/messages?direct&api-version=2015-04" \
   -H "ServiceBusNotification-Format: apple" \
   -H "ServiceBusNotification-DeviceHandle: <device-token>" \
+  -H "x-ms-version: 2015-04" \
   -H "Authorization: <sas-token>" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json;charset=utf-8" \
   -d '{"aps":{"alert":"Test notification","badge":1}}'
 ```
 
@@ -109,7 +117,7 @@ If the response includes "The device token is not valid," the registration is st
 
 APNs has specific requirements for the notification payload. Common formatting errors that cause silent failures:
 
-```json
+```jsonc
 // Correct iOS payload format
 {
   "aps": {
@@ -125,7 +133,7 @@ APNs has specific requirements for the notification payload. Common formatting e
 }
 ```
 
-```json
+```jsonc
 // Wrong: Missing the "aps" wrapper - notification is silently dropped
 {
   "alert": "This will not work",
@@ -139,19 +147,20 @@ The payload must not exceed 4 KB for regular notifications. Larger payloads are 
 
 ### FCM Configuration
 
-Azure Notification Hubs supports both the legacy FCM HTTP v1 API and the newer FCM v1 API. The legacy API uses a server key, while the v1 API uses a service account JSON key.
+Azure Notification Hubs supports both the legacy FCM HTTP API and the newer FCM HTTP v1 API. The legacy API uses a server key, while the v1 API uses service account credentials.
 
 Google deprecated the legacy FCM API, so you should migrate to FCM v1 if you have not already.
 
 ```bash
-# Configure FCM v1 authentication
-# Upload the service account JSON key from the Firebase Console
+# Configure legacy FCM authentication
 az notification-hub credential gcm update \
   --resource-group myRG \
   --namespace-name myNHNamespace \
   --notification-hub-name myHub \
   --google-api-key "<your-server-key>"
 ```
+
+For FCM v1, configure the hub's Google (FCM v1) settings in the Azure portal using the service account `project_id`, `private_key`, and `client_email`, or update the hub with an `FcmV1Credential` through the Notification Hubs REST API.
 
 ### FCM Token Registration Issues
 
@@ -171,29 +180,33 @@ public void onNewToken(String token) {
 
 ### FCM Payload Formatting
 
-FCM supports two types of messages: notification messages and data messages. Notification messages are displayed automatically by the OS when the app is in the background. Data messages are always delivered to the app, which handles display.
+FCM supports two types of messages: notification messages and data messages. Notification messages are displayed automatically by the OS when the app is in the background. Data messages are delivered to the app code, which handles display.
 
-```json
+```jsonc
 // FCM notification message - shown automatically when app is in background
 {
-  "notification": {
-    "title": "New Update",
-    "body": "Version 2.0 is now available"
-  },
-  "data": {
-    "url": "https://example.com/update"
+  "message": {
+    "notification": {
+      "title": "New Update",
+      "body": "Version 2.0 is now available"
+    },
+    "data": {
+      "url": "https://example.com/update"
+    }
   }
 }
 ```
 
-```json
-// FCM data-only message - always delivered to app code
+```jsonc
+// FCM data-only message - handled by app code
 // Use this for silent notifications or custom display
 {
-  "data": {
-    "title": "New Update",
-    "body": "Version 2.0 is now available",
-    "url": "https://example.com/update"
+  "message": {
+    "data": {
+      "title": "New Update",
+      "body": "Version 2.0 is now available",
+      "url": "https://example.com/update"
+    }
   }
 }
 ```
@@ -204,10 +217,10 @@ A common mistake is sending notification messages but expecting the app to handl
 
 Stale registrations are a major source of delivery failures. Over time, as users uninstall your app or change devices, registrations accumulate that point to devices that no longer exist.
 
-Monitor your registration count and delivery success rate.
+Monitor your active device metrics and delivery success rate, and verify that the hub's registration TTL is set intentionally.
 
 ```bash
-# Check the number of active registrations
+# Check the registration TTL configured on the hub
 az notification-hub show \
   --resource-group myRG \
   --namespace-name myNHNamespace \
@@ -226,21 +239,20 @@ If you use tags to target notifications, make sure the registration tags match t
 ```bash
 # List registrations for a specific tag to verify they exist
 # If no registrations match your target tag, no notifications are sent
-az notification-hub registration list \
-  --resource-group myRG \
-  --namespace-name myNHNamespace \
-  --notification-hub-name myHub \
-  --top 10
+curl -X GET \
+  "https://myNHNamespace.servicebus.windows.net/myHub/tags/news/registrations?api-version=2015-01&\$top=10" \
+  -H "Authorization: <sas-token>" \
+  -H "x-ms-version: 2015-01"
 ```
 
 A notification sent to a tag with zero matching registrations succeeds from the API perspective (HTTP 201) but delivers to zero devices. This is not an error; it is working as designed. Always verify that registrations exist for your target tags before troubleshooting delivery.
 
 ## Throttling and Rate Limits
 
-Notification Hub has rate limits based on your pricing tier:
+Notification Hub has quotas based on your pricing tier:
 - **Free**: 1 million pushes per month, limited active devices
 - **Basic**: 10 million pushes per month
-- **Standard**: Unlimited pushes, with per-second rate limits based on namespace capacity
+- **Standard**: 10 million included pushes per month, with support for unlimited active devices and rich telemetry
 
 If you are being throttled, you will see HTTP 429 responses from the API. Scale up your tier or spread sends over time to stay within limits.
 
