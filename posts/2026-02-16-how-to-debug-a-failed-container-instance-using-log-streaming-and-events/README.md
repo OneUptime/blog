@@ -102,15 +102,9 @@ az container logs \
     --resource-group my-resource-group \
     --name my-container \
     --container-name web-app
-
-# View logs from the previous instance (if the container restarted)
-az container logs \
-    --resource-group my-resource-group \
-    --name my-container \
-    --previous
 ```
 
-The `--previous` flag is particularly useful when a container is crash-looping. It shows the logs from the previous run, which probably contain the error that caused the crash.
+For crash-looping containers, check the logs as soon as the container exits and also review the container events and `previousState` field from `az container show`. Unlike Kubernetes, `az container logs` for ACI does not provide a `--previous` flag.
 
 ## Step 4: Stream Logs in Real Time
 
@@ -143,38 +137,15 @@ az container exec \
     --container-name web-app \
     --exec-command /bin/sh
 
-# Run a specific command without interactive mode
-az container exec \
-    --resource-group my-resource-group \
-    --name my-container \
-    --exec-command "cat /var/log/app/error.log"
-
-# Check environment variables
-az container exec \
-    --resource-group my-resource-group \
-    --name my-container \
-    --exec-command "env"
-
-# Check network connectivity
-az container exec \
-    --resource-group my-resource-group \
-    --name my-container \
-    --exec-command "nslookup mydb.database.windows.net"
-
-# Check disk space
-az container exec \
-    --resource-group my-resource-group \
-    --name my-container \
-    --exec-command "df -h"
-
-# Check running processes
-az container exec \
-    --resource-group my-resource-group \
-    --name my-container \
-    --exec-command "ps aux"
+# Then run diagnostic commands inside the shell
+cat /var/log/app/error.log
+env
+nslookup mydb.database.windows.net
+df -h
+ps aux
 ```
 
-Note that exec only works if the container has a shell binary (`/bin/sh` or `/bin/bash`). Some minimal images (like distroless) do not include a shell, which means you cannot exec into them.
+Note that exec only works if the process you run exists in the container. For interactive troubleshooting, the container needs a shell binary (`/bin/sh` or `/bin/bash`). Some minimal images (like distroless) do not include a shell, which means you cannot open a shell in them. ACI also supports launching a single process with `az container exec`, so run commands with arguments from the interactive shell rather than passing compound shell commands directly to `--exec-command`.
 
 ## Common Failure Patterns
 
@@ -217,11 +188,10 @@ az container show \
     --name my-container \
     --query "containers[0].instanceView.currentState.exitCode"
 
-# Read the previous instance's logs
+# Read the current logs
 az container logs \
     --resource-group my-resource-group \
-    --name my-container \
-    --previous
+    --name my-container
 ```
 
 Common exit codes:
@@ -242,23 +212,16 @@ Common exit codes:
 **How to debug:**
 
 ```bash
-# Check if the application is listening on the right port
+# Open a shell first
 az container exec \
     --resource-group my-resource-group \
     --name my-container \
-    --exec-command "netstat -tlnp"
+    --exec-command /bin/sh
 
-# Or with ss if netstat is not available
-az container exec \
-    --resource-group my-resource-group \
-    --name my-container \
-    --exec-command "ss -tlnp"
-
-# Test the connection from inside the container
-az container exec \
-    --resource-group my-resource-group \
-    --name my-container \
-    --exec-command "curl -v localhost:8080"
+# Then check from inside the container
+netstat -tlnp
+ss -tlnp
+curl -v localhost:8080
 ```
 
 **Common causes:**
@@ -281,6 +244,8 @@ az monitor metrics list \
     --output table
 ```
 
+Azure Monitor metrics for Azure Container Instances are currently in preview and are only available for Linux containers.
+
 If memory usage climbs steadily until the container is killed, you have a memory leak. If it spikes suddenly, a specific operation is consuming too much memory.
 
 **Fixes:**
@@ -295,17 +260,15 @@ If memory usage climbs steadily until the container is killed, you have a memory
 **How to debug:**
 
 ```bash
-# Test DNS resolution from inside the container
+# Open a shell first
 az container exec \
     --resource-group my-resource-group \
     --name my-container \
-    --exec-command "nslookup mydb.database.windows.net"
+    --exec-command /bin/sh
 
-# Test TCP connectivity
-az container exec \
-    --resource-group my-resource-group \
-    --name my-container \
-    --exec-command "nc -zv mydb.database.windows.net 1433"
+# Then test from inside the container
+nslookup mydb.database.windows.net
+nc -zv mydb.database.windows.net 1433
 ```
 
 **Common causes:**
@@ -316,15 +279,15 @@ az container exec \
 
 ## Using Azure Monitor for Deeper Analysis
 
-For ongoing monitoring, set up Azure Monitor alerts:
+For ongoing monitoring, set up Azure Monitor alerts on supported metrics such as memory usage:
 
 ```bash
-# Create an alert for container restarts
+# Create an alert for high memory usage
 az monitor metrics alert create \
     --resource-group my-resource-group \
-    --name "Container Restart Alert" \
+    --name "Container Memory Alert" \
     --scopes "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ContainerInstance/containerGroups/{name}" \
-    --condition "total RestartCount > 5" \
+    --condition "avg MemoryUsage > 1073741824" \
     --window-size 15m \
     --evaluation-frequency 5m \
     --action "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Insights/actionGroups/{ag}"
@@ -343,9 +306,6 @@ az container show -g $RG -n $NAME --query "containers[0].instanceView.events[]" 
 
 # Current logs
 az container logs -g $RG -n $NAME
-
-# Previous instance logs (after crash)
-az container logs -g $RG -n $NAME --previous
 
 # Live log streaming
 az container attach -g $RG -n $NAME
