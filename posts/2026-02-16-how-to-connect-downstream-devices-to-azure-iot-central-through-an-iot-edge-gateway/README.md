@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure IoT Edge, IoT Central, Gateway Devices, Downstream Devices, Edge Computing, IoT Architecture, Device Connectivity
 
-Description: Learn how to connect downstream IoT devices to Azure IoT Central through an IoT Edge gateway for protocol translation and local processing.
+Description: Learn how to connect downstream IoT devices to Azure IoT Central through an IoT Edge transparent gateway for secure message forwarding and local buffering.
 
 ---
 
-Not every IoT device can connect directly to the cloud. Some use protocols that IoT Central does not support natively, like Modbus or BLE. Others sit on isolated networks without internet access. Some are legacy devices with no TLS stack at all. In these situations, an Azure IoT Edge gateway acts as the intermediary - downstream devices connect to the gateway over their native protocol, and the gateway handles the cloud communication on their behalf.
+Not every IoT device can connect directly to the cloud. Some sit on isolated networks without internet access, and others need traffic to pass through a local gateway for network or certificate management. In these situations, an Azure IoT Edge gateway acts as the intermediary - downstream devices connect to the gateway with MQTT or AMQP, and the gateway handles the cloud communication on their behalf. Devices that use protocols IoT Central does not support natively, like Modbus or BLE, need a protocol translation gateway instead of the transparent gateway pattern used in this tutorial.
 
 This guide walks through setting up an IoT Edge device as a transparent gateway in IoT Central, connecting downstream devices through it, and managing the telemetry flow.
 
@@ -20,13 +20,13 @@ Azure IoT Edge supports three gateway patterns:
 2. **Protocol translation gateway** - The gateway presents itself as a single device and translates from downstream protocols (Modbus, OPC-UA, BLE) into IoT Hub messages. Downstream devices do not have individual identities in the cloud.
 3. **Identity translation gateway** - Downstream devices have their own cloud identities but cannot authenticate directly. The gateway handles authentication and identity mapping.
 
-For this tutorial, we will focus on the transparent gateway pattern since it gives downstream devices their own identity and is the most common starting point.
+For this tutorial, we will focus on the transparent gateway pattern since it gives downstream devices their own identity and is the most direct starting point when downstream devices can use the IoT Hub MQTT or AMQP protocols.
 
 ## Step 1: Create the Edge Device Template in IoT Central
 
 First, create a device template for the gateway device itself.
 
-In IoT Central, go to Device Templates and click New. Select Azure IoT Edge and choose a deployment manifest. For a basic transparent gateway, use a manifest that includes the `edgeHub` and `edgeAgent` system modules.
+In IoT Central, go to Device Templates and click New. Select Azure IoT Edge, mark the template as a gateway, and choose a deployment manifest. For a basic transparent gateway, use a manifest that includes the `edgeHub` and `edgeAgent` system modules.
 
 Here is a minimal deployment manifest for a transparent gateway.
 
@@ -46,7 +46,7 @@ Here is a minimal deployment manifest for a transparent gateway.
           "edgeAgent": {
             "type": "docker",
             "settings": {
-              "image": "mcr.microsoft.com/azureiotedge-agent:1.4"
+              "image": "mcr.microsoft.com/azureiotedge-agent:1.5"
             }
           },
           "edgeHub": {
@@ -54,7 +54,28 @@ Here is a minimal deployment manifest for a transparent gateway.
             "status": "running",
             "restartPolicy": "always",
             "settings": {
-              "image": "mcr.microsoft.com/azureiotedge-hub:1.4"
+              "image": "mcr.microsoft.com/azureiotedge-hub:1.5",
+              "createOptions": {
+                "HostConfig": {
+                  "PortBindings": {
+                    "443/tcp": [
+                      {
+                        "HostPort": "443"
+                      }
+                    ],
+                    "5671/tcp": [
+                      {
+                        "HostPort": "5671"
+                      }
+                    ],
+                    "8883/tcp": [
+                      {
+                        "HostPort": "8883"
+                      }
+                    ]
+                  }
+                }
+              }
             },
             "env": {
               "OptimizeForPerformance": {
@@ -147,15 +168,18 @@ For downstream devices to connect through the gateway, the Edge Hub needs to acc
 # Generate test CA certificates for the gateway
 # In production, use your organization's PKI
 
-# Clone the IoT Edge certificate generation scripts
+# Clone the IoT Edge certificate generation scripts and copy them to a working directory
 git clone https://github.com/Azure/iotedge.git
-cd iotedge/tools/CACertificates
+mkdir edge-certs
+cp iotedge/tools/CACertificates/*.cnf edge-certs/
+cp iotedge/tools/CACertificates/certGen.sh edge-certs/
+cd edge-certs
 
 # Generate root CA
 ./certGen.sh create_root_and_intermediate
 
 # Generate the Edge device CA certificate
-./certGen.sh create_edge_device_ca_certificate "my-gateway"
+./certGen.sh create_edge_device_ca_certificate "my-gateway-ca"
 ```
 
 Update the IoT Edge configuration to use these certificates.
@@ -165,15 +189,17 @@ Update the IoT Edge configuration to use these certificates.
 sudo nano /etc/aziot/config.toml
 ```
 
-Add the certificate paths to the configuration.
+Add the gateway hostname and certificate paths to the configuration. The `hostname` value must be the DNS name that downstream devices use in `GatewayHostName`.
 
 ```toml
+hostname = "my-gateway.local"
+
 # Trust bundle - the root CA certificate
 trust_bundle_cert = "file:///path/to/certs/azure-iot-test-only.root.ca.cert.pem"
 
 [edge_ca]
-cert = "file:///path/to/certs/iot-edge-device-ca-my-gateway-full-chain.cert.pem"
-pk = "file:///path/to/private/iot-edge-device-ca-my-gateway.key.pem"
+cert = "file:///path/to/certs/iot-edge-device-ca-my-gateway-ca-full-chain.cert.pem"
+pk = "file:///path/to/private/iot-edge-device-ca-my-gateway-ca.key.pem"
 ```
 
 Apply the configuration and verify.
@@ -284,7 +310,7 @@ Setting `timeToLiveSecs` to 86400 gives you 24 hours of buffering. Keep in mind 
 
 IoT Central displays the gateway-downstream relationship in the device explorer. When you click on the gateway device, you can see all downstream devices associated with it. This makes it easy to manage the entire local network from the cloud.
 
-You can also create device groups based on the gateway relationship, which is useful for dashboards that show all sensors in a specific facility (all connected through the same gateway).
+You can also create device groups based on the downstream device template or cloud properties that identify the facility, which is useful for dashboards that show all sensors in a specific location.
 
 ## Troubleshooting Common Issues
 
