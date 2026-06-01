@@ -32,7 +32,7 @@ az ad app create \
 # Create a service principal for the app registration
 az ad sp create --id <APP_ID>
 
-# Add an API scope so clients can request access
+# Set the Application ID URI so clients can request tokens for this API
 az ad app update \
   --id <APP_ID> \
   --identifier-uris "api://<APP_ID>"
@@ -54,44 +54,64 @@ az webapp auth microsoft update \
 az webapp auth update \
   --name my-function-app \
   --resource-group my-resource-group \
-  --unauthenticated-client-action RedirectToLoginPage
+  --enabled true \
+  --unauthenticated-client-action Return401
 ```
 
-With this configuration, any request without a valid Azure AD token will be rejected with a 401 response (or redirected to the login page if you chose that option).
+With this configuration, any request without a valid Azure AD token will be rejected with a 401 response. For browser-based apps, you can use `RedirectToLoginPage` instead.
 
 ### Accessing User Information in Your Function
 
 When Easy Auth validates a token, it passes the user information to your function through HTTP headers.
 
 ```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 [Function("GetProfile")]
 public async Task<HttpResponseData> GetProfile(
     [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
 {
-    // Easy Auth injects the user's identity through the ClaimsPrincipal
     // The x-ms-client-principal header contains the encoded claims
-    var principalHeader = req.Headers.GetValues("x-ms-client-principal").FirstOrDefault();
-
-    if (principalHeader == null)
+    if (!req.Headers.TryGetValues("x-ms-client-principal", out var principalValues))
     {
         var unauthorized = req.CreateResponse(System.Net.HttpStatusCode.Unauthorized);
         return unauthorized;
     }
 
     // Decode the client principal
+    var principalHeader = principalValues.FirstOrDefault();
+    if (string.IsNullOrEmpty(principalHeader))
+    {
+        var unauthorized = req.CreateResponse(System.Net.HttpStatusCode.Unauthorized);
+        return unauthorized;
+    }
+
     var decoded = Convert.FromBase64String(principalHeader);
     var json = System.Text.Encoding.UTF8.GetString(decoded);
-    var principal = JsonSerializer.Deserialize<ClientPrincipal>(json);
+    var principal = JsonSerializer.Deserialize<ClientPrincipal>(
+        json,
+        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-    _logger.LogInformation("Authenticated user: {User}", principal.UserDetails);
+    req.Headers.TryGetValues("x-ms-client-principal-id", out var userIdValues);
+    req.Headers.TryGetValues("x-ms-client-principal-name", out var userNameValues);
+
+    var userId = userIdValues?.FirstOrDefault();
+    var userName = userNameValues?.FirstOrDefault();
+    var roleClaimType = principal?.RoleClaimType ?? "roles";
+
+    _logger.LogInformation("Authenticated user: {User}", userName);
 
     var response = req.CreateResponse(System.Net.HttpStatusCode.OK);
     await response.WriteAsJsonAsync(new
     {
-        userId = principal.UserId,
-        email = principal.UserDetails,
-        roles = principal.Claims
-            .Where(c => c.Type == "roles")
+        userId = userId,
+        email = userName,
+        roles = (principal?.Claims ?? Enumerable.Empty<ClientPrincipalClaim>())
+            .Where(c => c.Type == roleClaimType || c.Type == "roles")
             .Select(c => c.Value)
     });
     return response;
@@ -100,15 +120,25 @@ public async Task<HttpResponseData> GetProfile(
 // Model for the client principal that Easy Auth provides
 public class ClientPrincipal
 {
+    [JsonPropertyName("auth_typ")]
     public string IdentityProvider { get; set; }
-    public string UserId { get; set; }
-    public string UserDetails { get; set; }
+
+    [JsonPropertyName("name_typ")]
+    public string NameClaimType { get; set; }
+
+    [JsonPropertyName("role_typ")]
+    public string RoleClaimType { get; set; }
+
+    [JsonPropertyName("claims")]
     public IEnumerable<ClientPrincipalClaim> Claims { get; set; }
 }
 
 public class ClientPrincipalClaim
 {
+    [JsonPropertyName("typ")]
     public string Type { get; set; }
+
+    [JsonPropertyName("val")]
     public string Value { get; set; }
 }
 ```
@@ -123,20 +153,13 @@ First, set up the JWT validation in your `Program.cs`.
 
 ```csharp
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Identity.Web;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication(builder =>
     {
         // Add the authentication middleware
         builder.UseMiddleware<AuthenticationMiddleware>();
-    })
-    .ConfigureServices((context, services) =>
-    {
-        // Configure Microsoft Identity (Azure AD) authentication
-        services.AddMicrosoftIdentityWebApiAuthentication(context.Configuration);
     })
     .Build();
 
@@ -166,10 +189,15 @@ Create middleware that validates the JWT token on every request.
 ```csharp
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Middleware;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.IdentityModel.Tokens;
+using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
+using System.Threading;
 
 public class AuthenticationMiddleware : IFunctionsWorkerMiddleware
 {
@@ -207,7 +235,8 @@ public class AuthenticationMiddleware : IFunctionsWorkerMiddleware
         }
 
         // Extract the Bearer token from the Authorization header
-        var authHeader = httpReqData.Headers.GetValues("Authorization")?.FirstOrDefault();
+        httpReqData.Headers.TryGetValues("Authorization", out var authHeaderValues);
+        var authHeader = authHeaderValues?.FirstOrDefault();
         if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
         {
             _logger.LogWarning("Missing or invalid Authorization header");
@@ -221,7 +250,7 @@ public class AuthenticationMiddleware : IFunctionsWorkerMiddleware
         try
         {
             // Validate the JWT token
-            var config = await _configManager.GetConfigurationAsync();
+            var config = await _configManager.GetConfigurationAsync(CancellationToken.None);
             var validationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
@@ -229,6 +258,7 @@ public class AuthenticationMiddleware : IFunctionsWorkerMiddleware
                 ValidateAudience = true,
                 ValidAudience = _audience,
                 ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
                 IssuerSigningKeys = config.SigningKeys,
                 ClockSkew = TimeSpan.FromMinutes(2)
             };
@@ -297,13 +327,14 @@ public async Task<HttpResponseData> Run(
 
 ## Calling the Authenticated Function
 
-Clients need to obtain a token from Azure AD before calling your function. Here is an example using the Microsoft Authentication Library (MSAL).
+Clients need to obtain a token from Azure AD before calling your function. Here is an example using the Azure Identity client library.
 
 ```csharp
 // Client-side code to call the authenticated function
 using Azure.Identity;
 
-// For daemon/service-to-service calls, use client credentials
+// For daemon/service-to-service calls, use client credentials.
+// Configure an app role on the API and grant it to this client app.
 var credential = new ClientSecretCredential(
     tenantId: "your-tenant-id",
     clientId: "client-app-client-id",
@@ -333,4 +364,4 @@ Both approaches can be combined - use Easy Auth as a first line of defense and a
 
 ## Summary
 
-Azure AD authentication for Azure Functions eliminates the need for shared API keys and gives you identity-based access control. Easy Auth is the quickest path to securing your functions, while custom middleware gives you full control over the authentication pipeline. Whichever approach you choose, you get standards-based OAuth 2.0 security, integration with Azure RBAC, and a clear audit trail of who called your functions and when.
+Azure AD authentication for Azure Functions eliminates the need for shared API keys and gives you identity-based access control. Easy Auth is the quickest path to securing your functions, while custom middleware gives you full control over the authentication pipeline. Whichever approach you choose, you get standards-based OAuth 2.0 security, integration with Microsoft Entra app roles and claims, and a clear audit trail of who called your functions and when.
