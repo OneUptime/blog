@@ -39,7 +39,8 @@ First, train your model in the cloud using Azure ML:
 
 # Train an image classification model using Azure Machine Learning
 from azure.ai.ml import MLClient
-from azure.ai.ml.entities import Environment, CommandJob
+from azure.ai.ml.entities import Environment, CommandJob, Output
+from azure.ai.ml.constants import AssetTypes
 from azure.identity import DefaultAzureCredential
 
 # Connect to the Azure ML workspace
@@ -68,13 +69,14 @@ training_job = CommandJob(
         "training_data": ml_client.data.get("defect-detection-images", version="1")
     },
     outputs={
-        "model": {"type": "uri_folder"}
+        "model": Output(type=AssetTypes.URI_FOLDER)
     },
     display_name="defect-detection-training"
 )
 
 # Submit and wait for completion
 returned_job = ml_client.jobs.create_or_update(training_job)
+ml_client.jobs.stream(returned_job.name)
 print(f"Training job submitted: {returned_job.name}")
 ```
 
@@ -85,7 +87,8 @@ The training script itself (train.py):
 # PyTorch training script for defect detection
 import torch
 import torch.nn as nn
-from torchvision import models, transforms
+from torchvision import datasets, models, transforms
+from torchvision.models import ResNet18_Weights
 from torch.utils.data import DataLoader
 import argparse
 import os
@@ -93,7 +96,7 @@ import os
 def train(data_path, epochs, output_dir):
     """Train a ResNet-based defect detection model."""
     # Use a pretrained ResNet18 and fine-tune for defect detection
-    model = models.resnet18(pretrained=True)
+    model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
 
     # Replace the final layer for binary classification (defect/no-defect)
     num_features = model.fc.in_features
@@ -112,7 +115,7 @@ def train(data_path, epochs, output_dir):
     ])
 
     # Load training data
-    dataset = torchvision.datasets.ImageFolder(data_path, transform=transform)
+    dataset = datasets.ImageFolder(data_path, transform=transform)
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True, num_workers=4)
 
     # Training loop
@@ -139,6 +142,8 @@ def train(data_path, epochs, output_dir):
 
     # Save the model in ONNX format for edge deployment
     # ONNX provides better cross-platform compatibility at the edge
+    model.eval()
+    os.makedirs(output_dir, exist_ok=True)
     dummy_input = torch.randn(1, 3, 224, 224).to(device)
     onnx_path = os.path.join(output_dir, "defect_detector.onnx")
 
@@ -168,11 +173,23 @@ After training, register the model in Azure ML for versioning and deployment tra
 ```python
 # register_model.py
 # Register the trained model in Azure ML
+from azure.ai.ml import MLClient
 from azure.ai.ml.entities import Model
 from azure.ai.ml.constants import AssetTypes
+from azure.identity import DefaultAzureCredential
+
+credential = DefaultAzureCredential()
+ml_client = MLClient(
+    credential=credential,
+    subscription_id="your-subscription-id",
+    resource_group_name="rg-ml-production",
+    workspace_name="aml-workspace"
+)
+
+JOB_NAME = "defect-detection-training-job-name"
 
 model = Model(
-    path="outputs/defect_detector.onnx",
+    path=f"azureml://jobs/{JOB_NAME}/outputs/model/paths/defect_detector.onnx",
     name="defect-detector",
     description="Defect detection model for manufacturing quality inspection",
     type=AssetTypes.CUSTOM_MODEL,
@@ -198,7 +215,6 @@ import onnxruntime as ort
 import numpy as np
 from PIL import Image
 import io
-import json
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -216,13 +232,22 @@ def preprocess_image(image_bytes):
 
     # Convert to numpy array and normalize
     img_array = np.array(image).astype(np.float32) / 255.0
-    img_array = (img_array - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    img_array = (img_array - mean) / std
 
     # Transpose from HWC to CHW format and add batch dimension
     img_array = np.transpose(img_array, (2, 0, 1))
-    img_array = np.expand_dims(img_array, axis=0)
+    img_array = np.expand_dims(img_array, axis=0).astype(np.float32)
 
     return img_array
+
+
+def softmax(logits):
+    """Compute softmax probabilities from model logits."""
+    logits = logits - np.max(logits)
+    exp_logits = np.exp(logits)
+    return exp_logits / np.sum(exp_logits)
 
 
 @app.route("/predict", methods=["POST"])
@@ -239,7 +264,7 @@ def predict():
     result = session.run(None, {input_name: input_data})
 
     # Interpret results
-    probabilities = np.softmax(result[0][0])
+    probabilities = softmax(result[0][0])
     prediction = "defect" if np.argmax(probabilities) == 1 else "no_defect"
     confidence = float(np.max(probabilities))
 
@@ -261,7 +286,7 @@ Create the Dockerfile:
 
 ```dockerfile
 # Dockerfile for edge inference
-FROM nvcr.io/nvidia/cuda:11.8.0-runtime-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 # Install Python and dependencies
 RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
@@ -304,26 +329,33 @@ Azure Stack Edge runs IoT Edge, which manages container deployments. Create an I
     "modulesContent": {
         "$edgeAgent": {
             "properties.desired": {
+                "schemaVersion": "1.1",
+                "runtime": {
+                    "type": "docker",
+                    "settings": {
+                        "registryCredentials": {
+                            "acredgemodels": {
+                                "username": "acredgemodels",
+                                "password": "<acr-password>",
+                                "address": "acredgemodels.azurecr.io"
+                            }
+                        }
+                    }
+                },
                 "modules": {
                     "defect-detector": {
                         "type": "docker",
+                        "version": "1.0",
                         "status": "running",
                         "restartPolicy": "always",
+                        "env": {
+                            "NVIDIA_VISIBLE_DEVICES": {
+                                "value": "0"
+                            }
+                        },
                         "settings": {
                             "image": "acredgemodels.azurecr.io/defect-detector:v1",
-                            "createOptions": {
-                                "HostConfig": {
-                                    "DeviceRequests": [
-                                        {
-                                            "Count": 1,
-                                            "Capabilities": [["gpu"]]
-                                        }
-                                    ],
-                                    "PortBindings": {
-                                        "5001/tcp": [{"HostPort": "5001"}]
-                                    }
-                                }
-                            }
+                            "createOptions": "{\"HostConfig\":{\"DeviceRequests\":[{\"Count\":1,\"Capabilities\":[[\"gpu\"]]}],\"PortBindings\":{\"5001/tcp\":[{\"HostPort\":\"5001\"}]}}}"
                         }
                     }
                 }
@@ -331,6 +363,7 @@ Azure Stack Edge runs IoT Edge, which manages container deployments. Create an I
         },
         "$edgeHub": {
             "properties.desired": {
+                "schemaVersion": "1.1",
                 "routes": {
                     "defectResults": "FROM /messages/modules/defect-detector/outputs/* INTO $upstream"
                 }
