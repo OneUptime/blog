@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Media Services, DRM, Widevine, PlayReady, Content Protection, Video Streaming
 
-Description: Learn how to configure DRM content protection using Widevine and PlayReady in Azure Media Services to secure your video content from unauthorized access.
+Description: Learn how legacy Azure Media Services environments configured DRM content protection using Widevine and PlayReady to secure video content from unauthorized access.
 
 ---
 
-If you are streaming premium video content, protecting it from piracy and unauthorized redistribution is not optional. Digital Rights Management (DRM) is the industry standard approach for securing video streams, and Azure Media Services supports the two most widely adopted DRM technologies: Google Widevine and Microsoft PlayReady. Together, these cover virtually every major browser and device platform.
+If you are streaming premium video content, protecting it from piracy and unauthorized redistribution is not optional. Digital Rights Management (DRM) is the industry standard approach for securing video streams. Before its retirement on June 30, 2024, Azure Media Services supported two widely adopted DRM technologies: Google Widevine and Microsoft PlayReady. Together, these covered most major browser and device platforms.
 
-In this guide, we will walk through configuring both Widevine and PlayReady content protection in Azure Media Services, from setting up content key policies to delivering encrypted streams to your users.
+In this historical guide for legacy Azure Media Services environments, we will walk through configuring both Widevine and PlayReady content protection, from setting up content key policies to delivering encrypted streams to your users.
 
 ## Understanding DRM in Azure Media Services
 
@@ -21,7 +21,7 @@ Before jumping into configuration, it helps to understand how the pieces fit tog
 3. If valid, Azure issues a DRM license containing a content key.
 4. The player uses the license to decrypt and play the video.
 
-PlayReady covers Microsoft Edge, Internet Explorer, and many smart TVs. Widevine covers Chrome, Firefox, Android, and most other platforms. By enabling both, you get near-universal coverage without needing to worry about which browser your audience prefers.
+PlayReady covered Microsoft Edge, Internet Explorer, and many smart TVs. Widevine covered Chrome, Firefox, Android, and most other platforms. By enabling both, you got broad coverage without needing to worry about which browser your audience preferred.
 
 ```mermaid
 sequenceDiagram
@@ -40,31 +40,48 @@ sequenceDiagram
 
 Before starting, make sure you have:
 
-- An Azure subscription with a Media Services account created.
+- An Azure subscription with an existing Media Services account created before the service retirement.
 - An Azure AD application registered for token signing.
-- The Azure CLI installed, or access to the Azure portal.
+- The Azure CLI installed, or legacy access to the Azure portal.
 - A video asset already uploaded and encoded in your Media Services account.
 
 ## Step 1: Create a Content Key Policy
 
 Content key policies define how content keys are delivered to end clients. You need to configure separate options for each DRM system within a single policy.
 
-The following Azure CLI command creates a content key policy with both PlayReady and Widevine options. The policy uses JWT token restriction so that only authenticated users receive licenses.
+The following Azure CLI commands create a content key policy with separate PlayReady and Widevine options. Each option uses JWT token restriction so that only authenticated users receive licenses.
 
 ```bash
-# Create a content key policy with PlayReady and Widevine license templates
-
+# Create the content key policy with a PlayReady option.
 az ams content-key-policy create \
   --resource-group myResourceGroup \
   --account-name myMediaServicesAccount \
   --name MultiDrmPolicy \
   --policy-option-name PlayReadyOption \
-  --open-restriction false \
-  --play-ready-template "@playready-template.json" \
+  --issuer "https://your-sts.example.com" \
+  --audience "urn:your-application" \
+  --token-key "your-token-signing-key" \
+  --token-key-type Symmetric \
+  --token-type Jwt \
+  --token-claims "urn:microsoft:azure:mediaservices:contentkeyidentifier=" \
+  --play-ready-template "@playready-template.json"
+
+# Add the Widevine option to the same content key policy.
+az ams content-key-policy option add \
+  --resource-group myResourceGroup \
+  --account-name myMediaServicesAccount \
+  --name MultiDrmPolicy \
+  --policy-option-name WidevineOption \
+  --issuer "https://your-sts.example.com" \
+  --audience "urn:your-application" \
+  --token-key "your-token-signing-key" \
+  --token-key-type Symmetric \
+  --token-type Jwt \
+  --token-claims "urn:microsoft:azure:mediaservices:contentkeyidentifier=" \
   --widevine-template "@widevine-template.json"
 ```
 
-However, in most production scenarios, you will configure this through the Azure portal or using the .NET SDK for finer control.
+However, in most legacy production scenarios, you would configure this through the Azure portal or using the .NET SDK for finer control.
 
 ## Step 2: Define the PlayReady License Template
 
@@ -72,24 +89,27 @@ The PlayReady license template specifies what the client is allowed to do with t
 
 ```json
 {
-  "Licenses": [
+  "licenses": [
     {
-      "ContentType": "Unspecified",
-      "PlayRight": {
-        "AllowPassingVideoContentToUnknownOutput": "Allowed",
-        "ImageConstraintForAnalogComponentVideoRestriction": false,
-        "ImageConstraintForAnalogComputerMonitorRestriction": false
+      "allowTestDevices": false,
+      "contentType": "Unspecified",
+      "contentKeyLocation": {
+        "@odata.type": "#Microsoft.Media.ContentKeyPolicyPlayReadyContentEncryptionKeyFromHeader"
       },
-      "LicenseType": "NonPersistent",
-      "ExpirationDate": null,
-      "BeginDate": null,
-      "RelativeExpirationDate": "PT24H"
+      "playRight": {
+        "allowPassingVideoContentToUnknownOutput": "Allowed",
+        "digitalVideoOnlyContentRestriction": false,
+        "imageConstraintForAnalogComponentVideoRestriction": false,
+        "imageConstraintForAnalogComputerMonitorRestriction": false
+      },
+      "licenseType": "NonPersistent",
+      "relativeExpirationDate": "PT24H"
     }
   ]
 }
 ```
 
-The key fields here are `LicenseType` set to `NonPersistent` (the license lives only in memory and is not stored on disk) and `RelativeExpirationDate` set to 24 hours. You can adjust these based on your business requirements. For example, rental content might have a 48-hour window while subscription content could be refreshed every session.
+The key fields here are `licenseType` set to `NonPersistent` (the license lives only in memory and is not stored on disk) and `relativeExpirationDate` set to 24 hours. You can adjust these based on your business requirements. For example, rental content might have a 48-hour window while subscription content could be refreshed every session.
 
 ## Step 3: Define the Widevine License Template
 
@@ -144,15 +164,15 @@ var tokenRestriction = new ContentKeyPolicyTokenRestriction
         Convert.FromBase64String("your-base64-encoded-symmetric-key")
     ),
 
-    // Require the content key identifier claim in the token
-    RequiredClaims = new List<ContentKeyPolicyTokenClaim>
-    {
-        ContentKeyPolicyTokenClaim.ContentKeyIdentifierClaim
-    },
-
     // Use JWT (not SWT)
     RestrictionTokenType = ContentKeyPolicyRestrictionTokenType.Jwt
 };
+
+// Require the content key identifier claim in the token
+tokenRestriction.RequiredClaims.Add(new ContentKeyPolicyTokenClaim
+{
+    ClaimType = "urn:microsoft:azure:mediaservices:contentkeyidentifier"
+});
 ```
 
 The symmetric key must match the key used by your Security Token Service (STS) when signing JWT tokens. In production, you will likely use RSA keys or X.509 certificates instead, but symmetric keys work well for getting started.
@@ -169,14 +189,14 @@ az ams streaming-locator create \
   --name myDrmLocator \
   --asset-name myEncodedAsset \
   --streaming-policy-name Predefined_MultiDrmCencStreaming \
-  --default-content-key-policy-name MultiDrmPolicy
+  --content-key-policy-name MultiDrmPolicy
 ```
 
-The `Predefined_MultiDrmCencStreaming` streaming policy is a built-in policy that configures Common Encryption (CENC) for both PlayReady and Widevine. Azure provides this out of the box, so you do not need to create a custom streaming policy for most scenarios.
+The `Predefined_MultiDrmCencStreaming` streaming policy is a built-in policy that configures Common Encryption (CENC) for both PlayReady and Widevine. Azure provided this out of the box, so you did not need to create a custom streaming policy for most scenarios.
 
 ## Step 6: Configure the Client Player
 
-On the client side, you need a player that supports DRM. Azure Media Player handles this natively. Here is an example HTML setup.
+On the client side, you need a player that supports DRM. Azure Media Player handled this natively. Here is an example HTML setup.
 
 ```html
 <link href="//amp.azure.net/libs/amp/latest/skins/amp-default/azuremediaplayer.min.css" rel="stylesheet">
@@ -198,11 +218,11 @@ On the client side, you need a player that supports DRM. Azure Media Player hand
     protectionInfo: [
       {
         type: "PlayReady",
-        authenticationToken: "Bearer=your-jwt-token-here"
+        authenticationToken: "Bearer your-jwt-token-here"
       },
       {
         type: "Widevine",
-        authenticationToken: "Bearer=your-jwt-token-here"
+        authenticationToken: "Bearer your-jwt-token-here"
       }
     ]
   });
@@ -215,7 +235,7 @@ On the client side, you need a player that supports DRM. Azure Media Player hand
 </script>
 ```
 
-The player automatically selects the appropriate DRM system based on the browser. Chrome and Firefox will use Widevine, while Edge uses PlayReady.
+The player automatically selects the appropriate DRM system based on the browser and platform support. Chrome and Firefox will usually use Widevine, while Microsoft browsers and many Windows devices can use PlayReady.
 
 ## Step 7: Test and Validate
 
@@ -226,7 +246,7 @@ After configuring everything, test the setup by:
 3. Trying to play without a token to verify that unauthorized access is blocked.
 4. Checking the Azure Media Services logs for any license delivery failures.
 
-You can also use the Azure portal's streaming endpoint test player, which has built-in support for DRM testing.
+Before the Azure Media Services retirement, you could also use the Azure portal's streaming endpoint test player, which had built-in support for DRM testing.
 
 ## Common Troubleshooting
 
@@ -239,4 +259,4 @@ A few issues come up regularly when configuring multi-DRM:
 
 ## Wrapping Up
 
-Configuring DRM with both Widevine and PlayReady in Azure Media Services gives you broad device and browser coverage for content protection. The key steps are creating a content key policy with templates for both DRM systems, applying JWT token restriction, and using the built-in multi-DRM streaming policy. Once set up, the system handles license delivery automatically, letting you focus on building the rest of your video platform rather than worrying about content security plumbing.
+Configuring DRM with both Widevine and PlayReady in Azure Media Services gave you broad device and browser coverage for content protection before the service was retired. The key steps were creating a content key policy with templates for both DRM systems, applying JWT token restriction, and using the built-in multi-DRM streaming policy. Once set up, the system handled license delivery automatically, letting you focus on building the rest of your video platform rather than worrying about content security plumbing.
