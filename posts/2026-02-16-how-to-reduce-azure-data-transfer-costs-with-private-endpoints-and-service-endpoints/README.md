@@ -8,7 +8,7 @@ Description: Learn how to reduce Azure data transfer costs and improve security 
 
 ---
 
-Data transfer costs on Azure can be surprisingly expensive, especially when traffic between your VMs and Azure PaaS services (like Storage, SQL Database, or Key Vault) takes an indirect path through the public internet. By using Private Endpoints and Service Endpoints, you can route this traffic over the Azure backbone network instead, which is both cheaper and more secure.
+Data transfer costs on Azure can be surprisingly expensive, especially when traffic between your VMs and Azure PaaS services (like Storage, SQL Database, or Key Vault) is forced through an indirect path such as the public internet or an on-premises network appliance. By using Private Endpoints and Service Endpoints, you can keep this traffic on the Azure backbone network instead, which can avoid unnecessary egress charges and improve security.
 
 In this post, I will explain the difference between these two approaches, when to use each one, and how to set them up to reduce your data transfer bill.
 
@@ -17,11 +17,11 @@ In this post, I will explain the difference between these two approaches, when t
 Azure data transfer pricing has a few key rules:
 
 - **Inbound data** (into Azure from the internet): Free
-- **Outbound data** (from Azure to the internet): $0.087/GB for the first 10 TB/month
+- **Outbound data** (from Azure to the internet): the first 100 GB/month is free, then $0.087/GB for the next 10 TB/month in many North America and Europe regions
 - **Data transfer between Azure regions**: $0.02-$0.08/GB depending on the regions
-- **Data transfer within the same region**: Free (mostly)
+- **Data transfer between Azure services within the same region**: no additional data transfer cost
 
-The "mostly" in that last point is important. When your VM connects to an Azure PaaS service (like Azure Storage) using the service's public endpoint, the traffic technically goes out to the internet and back in. Even though both resources are in the same region, you might be charged for outbound data transfer.
+The last point is important. When your VM connects to an Azure PaaS service (like Azure Storage) using the service's public endpoint, the service still uses public DNS and public IP addressing, but same-region Azure-to-Azure traffic does not automatically become billable internet egress. You are more likely to see avoidable outbound data transfer charges when traffic leaves Azure, crosses regions, or is forced through an on-premises or internet path before reaching the service.
 
 ## Service Endpoints vs. Private Endpoints
 
@@ -39,14 +39,14 @@ Both solutions keep traffic on the Azure backbone, but they work differently:
 
 - Cost: ~$7.30/month per endpoint plus $0.01/GB for processed data
 - Creates a private IP address in your VNet for the PaaS service
-- Traffic goes entirely through your VNet using the private IP
+- Traffic uses the private IP and Private Link on the Microsoft backbone network
 - Works across regions and VNet peering
-- Blocks public access if desired (more secure)
+- Lets you block public access if you configure the service firewall or public network access settings
 
 ```mermaid
 graph LR
     subgraph "Without Either"
-        VM1[VM] -->|Public Internet| PaaS1[Storage Public IP]
+        VM1[VM] -->|Public Endpoint| PaaS1[Storage Public IP]
     end
     subgraph "With Service Endpoint"
         VM2[VM] -->|Azure Backbone| PaaS2[Storage Public IP]
@@ -62,7 +62,7 @@ Service Endpoints are the right choice when:
 
 - You want to reduce data transfer costs with zero additional monthly cost
 - You do not need to access the PaaS service from on-premises or peered VNets
-- You do not need to block public internet access to the PaaS service
+- You are comfortable using service firewall virtual network rules instead of a private IP address
 - You want a quick, simple setup
 
 ```bash
@@ -128,7 +128,7 @@ az network vnet subnet update \
   --resource-group myResourceGroup \
   --vnet-name myVNet \
   --name myPrivateEndpointSubnet \
-  --disable-private-endpoint-network-policies true
+  --private-endpoint-network-policies Disabled
 
 # Create the Private Endpoint
 az network private-endpoint create \
@@ -170,10 +170,10 @@ Now, when your VM resolves `mystorageaccount.blob.core.windows.net`, it gets the
 
 ## Calculating Cost Savings
 
-Let me walk through a real scenario. Suppose your application transfers 5 TB of data per month to Azure Storage in the same region.
+Let me walk through a real scenario. Suppose your application transfers 5 TB of data per month to Azure Storage, and your current routing forces that traffic out through an internet or on-premises egress path before it reaches Storage. If the VM and Storage account are in the same Azure region and the traffic already stays on Azure's direct path, there should be no additional Azure data transfer charge even without Service Endpoints or Private Endpoints.
 
-**Without Service/Private Endpoints** (traffic goes via public path):
-- Potential outbound data charges: 5,120 GB * $0.087/GB = $445/month
+**Without Service/Private Endpoints** (traffic takes an avoidable internet egress path):
+- Potential outbound data charges after the free allowance: roughly 5,120 GB * $0.087/GB = $445/month
 
 **With Service Endpoints** (free):
 - Data transfer: $0 (traffic stays on Azure backbone, same-region)
@@ -181,12 +181,12 @@ Let me walk through a real scenario. Suppose your application transfers 5 TB of 
 - Total: $0/month
 
 **With Private Endpoints**:
-- Data transfer: $0 (private network)
+- Same-region Azure data transfer: $0
 - Private Endpoint: ~$7.30/month
 - Data processed: 5,120 GB * $0.01/GB = $51.20/month
 - Total: $58.50/month
 
-In both cases, the savings are significant. Service Endpoints save more money, but Private Endpoints offer stronger security and cross-VNet access.
+In cases where you are avoiding a real egress path, the savings are significant. Service Endpoints save more money, but Private Endpoints offer stronger security and cross-VNet access. If your same-region traffic was already staying on Azure's direct path, Service Endpoints may not reduce bandwidth charges, and Private Endpoints can add Private Link processing charges.
 
 ## Setting Up Private Endpoints for Common Azure Services
 
@@ -233,7 +233,7 @@ az network vnet subnet create \
   --vnet-name $VNET_NAME \
   --name $PE_SUBNET \
   --address-prefixes 10.0.3.0/24 \
-  --disable-private-endpoint-network-policies true
+  --private-endpoint-network-policies Disabled
 
 # Step 2: Create Private Endpoint for Storage
 az network private-endpoint create \
@@ -305,4 +305,4 @@ flowchart TD
 
 ## Summary
 
-Service Endpoints and Private Endpoints both reduce data transfer costs by keeping traffic on the Azure backbone. Service Endpoints are free and simple - use them when you just need to reduce costs for VNet-to-PaaS traffic in the same region. Private Endpoints cost a small monthly fee but provide a private IP, cross-VNet access, and the ability to completely block public access. For most production environments, the security and flexibility of Private Endpoints justify the small additional cost. Either way, both options are better than routing your Azure-to-Azure traffic over the public internet.
+Service Endpoints and Private Endpoints both help avoid unnecessary data transfer costs by keeping traffic on the Azure backbone when routing would otherwise send it through an egress path. Service Endpoints are free and simple - use them when you need VNet-to-PaaS traffic to use the optimized Azure service route and you do not need a private IP address. Private Endpoints cost a small monthly fee but provide a private IP, cross-VNet access, and the ability to completely block public access. For most production environments, the security and flexibility of Private Endpoints justify the small additional cost. Either way, both options are better than sending Azure-to-Azure traffic through an avoidable internet or on-premises egress path.
