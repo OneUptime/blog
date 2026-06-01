@@ -36,7 +36,7 @@ Install the Infracost CLI:
 brew install infracost
 
 # Linux
-curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/infracost/cli/master/scripts/install.sh | sh
 
 # Verify installation
 infracost --version
@@ -63,9 +63,36 @@ provider "azurerm" {
   features {}
 }
 
+variable "postgres_admin_password" {
+  type      = string
+  sensitive = true
+}
+
 resource "azurerm_resource_group" "main" {
   name     = "rg-myapp-prod"
   location = "eastus2"
+}
+
+resource "azurerm_virtual_network" "main" {
+  name                = "vnet-myapp-prod"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  address_space       = ["10.0.0.0/16"]
+}
+
+resource "azurerm_subnet" "gateway" {
+  name                 = "snet-appgw"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+resource "azurerm_public_ip" "gateway" {
+  name                = "pip-appgw-prod"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
 }
 
 # App Service Plan - Premium tier
@@ -95,11 +122,8 @@ resource "azurerm_postgresql_flexible_server" "main" {
   storage_mb          = 65536
   version             = "16"
   zone                = "1"
-
-  authentication {
-    active_directory_auth_enabled = true
-    password_auth_enabled         = false
-  }
+  administrator_login    = "pgadminuser"
+  administrator_password = var.postgres_admin_password
 }
 
 # Redis Cache
@@ -131,8 +155,8 @@ resource "azurerm_application_gateway" "main" {
   }
 
   frontend_port {
-    name = "https"
-    port = 443
+    name = "http"
+    port = 80
   }
 
   frontend_ip_configuration {
@@ -147,25 +171,32 @@ resource "azurerm_application_gateway" "main" {
   backend_http_settings {
     name                  = "http-settings"
     cookie_based_affinity = "Disabled"
-    port                  = 443
-    protocol              = "Https"
+    port                  = 80
+    protocol              = "Http"
     request_timeout       = 30
   }
 
   http_listener {
-    name                           = "https-listener"
+    name                           = "http-listener"
     frontend_ip_configuration_name = "public"
-    frontend_port_name             = "https"
-    protocol                       = "Https"
+    frontend_port_name             = "http"
+    protocol                       = "Http"
   }
 
   request_routing_rule {
     name                       = "default-rule"
     priority                   = 1
     rule_type                  = "Basic"
-    http_listener_name         = "https-listener"
+    http_listener_name         = "http-listener"
     backend_address_pool_name  = "app-pool"
     backend_http_settings_name = "http-settings"
+  }
+
+  waf_configuration {
+    enabled          = true
+    firewall_mode    = "Prevention"
+    rule_set_type    = "OWASP"
+    rule_set_version = "3.2"
   }
 }
 ```
@@ -177,7 +208,7 @@ Run the cost estimate:
 infracost breakdown --path .
 ```
 
-The output shows something like:
+The output shows line items similar to this (exact prices vary by region and over time):
 
 ```text
 Project: myapp-prod
@@ -195,10 +226,13 @@ Project: myapp-prod
  azurerm_redis_cache.main
  - Cache (C1, Standard)                              730  hours             $40.15
 
+ azurerm_public_ip.gateway
+ - IP address                                        730  hours              $3.65
+
  azurerm_service_plan.main
  - Linux app service plan (P1v3)                     730  hours            $136.51
 
- OVERALL TOTAL                                                             $926.02
+ OVERALL TOTAL                                                             $929.67
 ```
 
 ## Cost Differences for Pull Requests
@@ -244,6 +278,12 @@ name: Infracost Cost Estimation
 
 on:
   pull_request:
+    types: [opened, synchronize, closed, reopened]
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+  push:
+    branches: [main]
     paths:
       - '**/*.tf'
       - '**/*.tfvars'
@@ -253,44 +293,44 @@ permissions:
   pull-requests: write  # Required to post comments
 
 jobs:
-  infracost:
-    name: Estimate Infrastructure Costs
+  diff:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout PR branch
+        if: github.event.action != 'closed'
+        uses: actions/checkout@v4
+        with:
+          path: head
+
       - name: Checkout base branch
+        if: github.event.action != 'closed'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.ref }}
-
-      - name: Setup Infracost
-        uses: infracost/actions/setup@v3
-        with:
-          api-key: ${{ secrets.INFRACOST_API_KEY }}
-
-      - name: Generate base cost
-        run: |
-          infracost breakdown \
-            --path . \
-            --format json \
-            --out-file /tmp/infracost-base.json
-
-      - name: Checkout PR branch
-        uses: actions/checkout@v4
+          path: base
 
       - name: Generate cost diff
-        run: |
-          infracost diff \
-            --path . \
-            --compare-to /tmp/infracost-base.json \
-            --format json \
-            --out-file /tmp/infracost-diff.json
-
-      - name: Post PR comment
-        uses: infracost/actions/comment@v1
+        uses: infracost/actions/diff@v4
         with:
-          path: /tmp/infracost-diff.json
-          behavior: update  # Update the same comment on subsequent pushes
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+          base-path: base
+          head-path: head
+
+  scan:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+
+      - name: Update baseline costs
+        uses: infracost/actions/scan@v4
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+          path: .
 ```
 
 The PR comment looks clean and professional. It shows a table of resources with their current cost, proposed cost, and the difference. Reviewers can immediately see the financial impact of a change.
@@ -320,7 +360,7 @@ resource_usage:
   azurerm_function_app.main:
     monthly_executions: 1000000        # 1 million executions per month
     execution_duration_ms: 500         # Average 500ms per execution
-    monthly_memory_gb_s: 200000        # Memory-seconds consumed
+    memory_mb: 512                     # Average memory consumed per execution
 ```
 
 Run with the usage file:
@@ -332,29 +372,11 @@ infracost breakdown --path . --usage-file infracost-usage.yml
 
 ## Setting Cost Policies
 
-You can set guardrails to prevent expensive changes from being merged without review:
+You can set guardrails in Infracost Cloud to prevent expensive changes from being merged without review. Go to Governance > Cost Guardrails and create rules like:
 
-```yaml
-# .infracost/policy.yml - Cost policies for the project
-
-version: 0.1
-
-policies:
-  # Warn if monthly cost exceeds $5000
-  - name: Monthly cost budget
-    type: monthly_cost
-    threshold:
-      value: 5000
-    action: warn
-
-  # Block if a single PR increases cost by more than $500
-  - name: PR cost increase limit
-    type: cost_increase
-    threshold:
-      value: 500
-      percentage: 20  # OR more than 20% increase
-    action: deny
-```
+- Warn if monthly cost exceeds $5000
+- Block if a single PR increases cost by more than $500
+- Block if a single PR increases cost by more than 20%
 
 ## Multi-Environment Cost Tracking
 
