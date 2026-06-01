@@ -19,7 +19,7 @@ Here are the main methods, roughly ordered from least to most secure:
 1. **Storage account key** - simple but insecure (the key grants full access)
 2. **SAS token** - scoped access with expiration
 3. **Service principal with OAuth** - recommended for most scenarios
-4. **Azure AD credential passthrough** - per-user access with the user's own identity
+4. **DBFS mounts** - legacy workspace-level shortcuts
 5. **Unity Catalog external locations** - the most governed approach
 
 ## Method 1: Storage Account Key
@@ -95,7 +95,7 @@ This is the recommended approach for most production workloads. You create a ser
 
 ```bash
 # Create a service principal using Azure CLI
-az ad sp create-for-rbac --name "databricks-storage-sp" --skip-assignment
+az ad sp create-for-rbac --name "databricks-storage-sp"
 
 # Output will include appId, password, and tenant
 # Save these securely
@@ -200,23 +200,25 @@ Mounts are easy to use but have downsides: they persist across the workspace, al
 
 If you have Unity Catalog set up, this is the best approach. It provides centralized, governed access to storage.
 
-```sql
--- Create a storage credential using the Databricks Access Connector
-CREATE STORAGE CREDENTIAL adls_credential
-WITH (
-    AZURE_MANAGED_IDENTITY = (
-        ACCESS_CONNECTOR_ID = '/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Databricks/accessConnectors/<connector>'
-    )
-);
+```bash
+# Create a storage credential using the Databricks Access Connector
+databricks storage-credentials create --json '{
+  "name": "adls_credential",
+  "azure_managed_identity": {
+    "access_connector_id": "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Databricks/accessConnectors/<connector>"
+  }
+}'
+```
 
+```sql
 -- Create an external location
 CREATE EXTERNAL LOCATION silver_data
 URL 'abfss://silver@<storage-account>.dfs.core.windows.net/'
-WITH (STORAGE CREDENTIAL adls_credential);
+WITH (CREDENTIAL adls_credential);
 
 -- Grant access to specific groups
 GRANT READ FILES ON EXTERNAL LOCATION silver_data TO `data-analysts`;
-GRANT WRITE FILES ON EXTERNAL LOCATION silver_data TO `data-engineers`;
+GRANT READ FILES, WRITE FILES ON EXTERNAL LOCATION silver_data TO `data-engineers`;
 ```
 
 Now users access data through Unity Catalog's access control, and you do not need to set Spark configurations in notebooks.
@@ -228,7 +230,7 @@ Now users access data through Unity Catalog's access control, and you do not nee
 | Account Key | Low | Easy | No | Development only |
 | SAS Token | Medium | Easy | No | Short-term access |
 | Service Principal | High | Moderate | No | Production without Unity Catalog |
-| AD Passthrough | High | Easy | Yes | Interactive analytics |
+| DBFS Mounts | Medium | Easy | No | Legacy only |
 | Unity Catalog | Highest | Moderate | Yes | Production with governance |
 
 ## Troubleshooting Common Issues
