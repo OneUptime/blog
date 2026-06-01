@@ -8,7 +8,7 @@ Description: Learn how to enable and use AWS WAF Web ACL logging to analyze secu
 
 ---
 
-AWS WAF is your first line of defense against web-based attacks. But running WAF without logging is like having a security camera that doesn't record - you're blocking threats but have no idea what's actually happening. Web ACL logging gives you full visibility into every request WAF evaluates, letting you analyze patterns, tune rules, and build a solid security posture.
+AWS WAF is your first line of defense against web-based attacks. But running WAF without logging is like having a security camera that doesn't record - you're blocking threats but have no idea what's actually happening. Web ACL logging gives you detailed visibility into requests WAF evaluates, letting you analyze patterns, tune rules, and build a solid security posture.
 
 In this guide, we'll walk through setting up WAF logging, choosing the right destination, and actually using those logs for meaningful security analysis.
 
@@ -22,11 +22,11 @@ Every request that hits your WAF-protected resource gets evaluated against your 
 - Satisfy compliance requirements for audit trails
 - Correlate WAF events with other security signals
 
-WAF logs capture the full request details including headers, the rule that matched, the action taken, and the source IP. That's powerful data for security analysis.
+WAF logs capture request details including headers, the rule that matched, the action taken, and the source IP. That's powerful data for security analysis.
 
 ## Setting Up WAF Logging
 
-WAF supports three logging destinations: Amazon S3, CloudWatch Logs, and Kinesis Data Firehose. Each has different tradeoffs we'll cover shortly. First, let's set up the basics.
+WAF supports three logging destinations: Amazon S3, CloudWatch Logs, and Amazon Data Firehose. Each has different tradeoffs we'll cover shortly. First, let's set up the basics.
 
 Here's how to enable WAF logging using the AWS CLI. The log group name must start with `aws-waf-logs-` for CloudWatch Logs.
 
@@ -48,7 +48,7 @@ Now enable logging on your Web ACL. You'll need the ARN of your log destination.
 # Get the ARN of your CloudWatch log group
 LOG_GROUP_ARN=$(aws logs describe-log-groups \
   --log-group-name-prefix aws-waf-logs-my-web-acl \
-  --query 'logGroups[0].arn' \
+  --query 'logGroups[0].logGroupArn' \
   --output text)
 
 # Enable logging on the Web ACL
@@ -67,9 +67,9 @@ Each destination serves a different use case. Here's a quick breakdown.
 
 **S3** is ideal for long-term storage and compliance. Logs land in S3 where you can query them with Athena or feed them into a SIEM. It's the cheapest option for high-volume logging.
 
-**Kinesis Data Firehose** gives you the most flexibility. You can transform logs in transit and deliver them to S3, Redshift, Elasticsearch, or third-party tools.
+**Amazon Data Firehose** gives you the most flexibility. You can transform logs in transit and deliver them to S3, Redshift, Amazon OpenSearch Service, or third-party tools.
 
-For most teams getting started, CloudWatch Logs is the right choice. You can always add S3 as a secondary destination later.
+For most teams getting started, CloudWatch Logs is the right choice. You can switch to S3 later if long-term storage becomes the priority.
 
 ## Using Terraform for Infrastructure as Code
 
@@ -259,7 +259,7 @@ At scale, logging every request gets expensive fast. Here are some practical app
 
 **Start with full logging** when you're first setting up or tuning rules. You need the complete picture to make good decisions.
 
-**Switch to filtered logging** once your rules are stable. Log only BLOCK and COUNT actions. This typically cuts log volume by 80-90%.
+**Switch to filtered logging** once your rules are stable. Log BLOCK, COUNT, and any CAPTCHA or CHALLENGE actions you use. This typically cuts log volume by 80-90%.
 
 **Use redacted fields** to strip sensitive data. WAF lets you redact specific headers or query parameters from logs.
 
