@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AKS, Pod Priority, Preemption, Kubernetes, Scheduling, Workload Management, Azure
 
-Description: Learn how to use Kubernetes PriorityClasses in AKS to guarantee that critical workloads always get scheduled, even when cluster resources are tight.
+Description: Learn how to use Kubernetes PriorityClasses in AKS so critical workloads are scheduled before lower-priority workloads when cluster resources are tight.
 
 ---
 
-When your AKS cluster runs out of resources, the Kubernetes scheduler has to make hard choices about which pods get to run and which ones wait. By default, scheduling is first-come-first-served. If a batch processing job grabbed all available CPU before your production API server needs to scale up, your API pods sit in Pending state until resources free up. That is not a good outcome.
+When your AKS cluster runs out of resources, the Kubernetes scheduler has to make hard choices about which pods get to run and which ones wait. Without explicit priorities, most application pods have the same priority, so the scheduler has no workload-importance signal to use. If a batch processing job grabbed all available CPU before your production API server needs to scale up, your API pods sit in Pending state until resources free up. That is not a good outcome.
 
 Pod Priority and Preemption give you control over these decisions. You assign priority levels to your workloads, and when resources are scarce, the scheduler can evict lower-priority pods to make room for higher-priority ones. In this guide, I will walk through setting up PriorityClasses, assigning them to workloads, and handling the edge cases that trip people up.
 
@@ -18,7 +18,7 @@ Kubernetes uses two concepts here:
 
 **Priority** is a numeric value assigned to a pod. Higher numbers mean higher priority. When the scheduler cannot find a node with enough resources for a new pod, it checks whether evicting lower-priority pods on any node would free up enough resources.
 
-**Preemption** is the act of evicting those lower-priority pods. The scheduler picks the node where preemption causes the least disruption (fewest pods evicted, lowest total priority removed) and evicts the necessary pods.
+**Preemption** is the act of evicting those lower-priority pods. The scheduler tries to pick a node where preemption removes lower-priority pods and, on a best-effort basis, avoids violating PodDisruptionBudgets.
 
 ```mermaid
 graph TD
@@ -42,11 +42,11 @@ Here is a practical set of PriorityClasses that covers most use cases:
 
 # Defines a hierarchy of priority levels for different workload types
 
-# System-critical workloads (monitoring, logging, networking)
+# Platform-critical workloads (monitoring, logging, networking)
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: system-critical
+  name: platform-critical
 value: 1000000
 globalDefault: false
 preemptionPolicy: PreemptLowerPriority
@@ -172,7 +172,7 @@ spec:
 
 ```yaml
 # prometheus-deployment.yaml
-# Monitoring system with system-critical priority
+# Monitoring system with platform-critical priority
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -188,8 +188,8 @@ spec:
       labels:
         app: prometheus
     spec:
-      # System-critical priority - monitoring must always run
-      priorityClassName: system-critical
+      # Highest custom priority for platform services
+      priorityClassName: platform-critical
       containers:
       - name: prometheus
         image: prom/prometheus:v2.50.0
@@ -210,13 +210,13 @@ kubectl patch deployment filler -p \
   '{"spec":{"template":{"spec":{"priorityClassName":"batch-low","containers":[{"name":"nginx","resources":{"requests":{"cpu":"500m","memory":"256Mi"}}}]}}}}'
 
 # Wait for them to be running
-kubectl get pods -l app=filler --no-headers | wc -l
+kubectl rollout status deployment/filler
 
 # Now deploy a high-priority pod that needs resources
 kubectl run critical-pod \
   --image=nginx \
   --restart=Never \
-  --overrides='{"spec":{"priorityClassName":"production-high","containers":[{"name":"critical-pod","resources":{"requests":{"cpu":"2","memory":"2Gi"}}}]}}'
+  --overrides='{"apiVersion":"v1","spec":{"priorityClassName":"production-high","containers":[{"name":"critical-pod","image":"nginx","resources":{"requests":{"cpu":"2","memory":"2Gi"}}}]}}'
 
 # Watch the critical pod get scheduled by preempting filler pods
 kubectl get events --sort-by='.lastTimestamp' | grep Preempted
@@ -258,30 +258,21 @@ spec:
 
 ## Interaction with Cluster Autoscaler
 
-Pod priority interacts with the AKS cluster autoscaler in important ways. The autoscaler considers pod priority when making scaling decisions:
+Pod priority interacts with the AKS cluster autoscaler in important ways. The upstream cluster autoscaler considers pod priority when making scaling decisions:
 
-- The autoscaler will scale up the cluster to accommodate pending high-priority pods
-- When scaling down, the autoscaler prefers to remove nodes running low-priority pods
-- Pods with priority above a configurable threshold are exempt from scale-down eviction
+- Pods with priority below the expendable pods priority cutoff do not trigger scale-up
+- Pods with priority below the cutoff do not prevent scale-down
+- Pods with priority greater than or equal to the cutoff are handled normally
 
-```bash
-# Configure autoscaler to prioritize high-priority workloads
-az aks update \
-  --resource-group myResourceGroup \
-  --name myAKSCluster \
-  --cluster-autoscaler-profile \
-    expendable-pods-priority-cutoff=-10
-```
-
-The `expendable-pods-priority-cutoff` setting tells the autoscaler that pods with priority below this value can be evicted freely during scale-down. Set it to a value below your lowest meaningful priority class.
+In current cluster autoscaler behavior, the default expendable pods priority cutoff is `-10`. AKS documents the supported `--cluster-autoscaler-profile` settings separately, so do not assume every upstream cluster autoscaler flag is exposed as an AKS profile setting.
 
 ## Best Practices
 
-**Do not overuse system-critical priority.** Reserve the highest priority for truly essential infrastructure components. If everything is "critical," nothing is.
+**Do not overuse the highest priority.** Reserve the highest custom priority for truly essential infrastructure components. If everything is "critical," nothing is.
 
 **Always set resource requests.** Priority and preemption only work properly when pods have resource requests. Without requests, the scheduler cannot calculate whether preempting a pod would free enough resources.
 
-**Use PodDisruptionBudgets alongside priority.** PDBs protect against too many pods being evicted simultaneously. Even during preemption, Kubernetes respects PDBs (though it may eventually override them if the pending pod has been waiting too long).
+**Use PodDisruptionBudgets alongside priority.** PDBs protect against too many pods being evicted simultaneously. During preemption, Kubernetes tries to choose victims whose PDBs are not violated, but PDB protection is best effort and lower-priority pods can still be removed if no better victims exist.
 
 **Monitor preemption events.** Set up alerts for preemption events in your monitoring system. Frequent preemptions indicate that your cluster is undersized or that resource allocation needs rebalancing.
 
