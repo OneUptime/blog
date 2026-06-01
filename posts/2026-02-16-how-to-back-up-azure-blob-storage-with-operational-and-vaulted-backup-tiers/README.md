@@ -10,31 +10,31 @@ Description: Learn how to configure Azure Backup for blob storage using both ope
 
 Azure Blob Storage is the backbone of data storage for countless applications. But storing data in blob storage does not inherently protect it from accidental deletion, overwrites, or malicious modifications. Azure's built-in soft delete for blobs helps with accidental deletes, but it does not protect against bulk deletion, storage account compromise, or provide long-term retention.
 
-Azure Backup for blobs offers two backup tiers that complement each other: operational backup (continuous, same-account snapshots) and vaulted backup (periodic, vault-stored copies). This guide covers when to use each and how to set them up.
+Azure Backup for blobs offers two backup tiers that complement each other: operational backup (continuous, same-account protection using blob data protection capabilities) and vaulted backup (periodic, vault-stored copies). This guide covers when to use each and how to set them up.
 
 ## Understanding the Two Backup Tiers
 
 ### Operational Backup
 
-Operational backup is a continuous, local data protection mechanism. It uses blob versioning and change feed under the hood to track changes and enable point-in-time restore for your blob data.
+Operational backup is a continuous, local data protection mechanism. It uses blob point-in-time restore, blob versioning, soft delete, change feed, and a delete lock under the hood to track changes and enable point-in-time restore for your blob data.
 
 Key characteristics:
 - **Continuous** - No scheduled backup jobs; every change is tracked automatically
 - **Local** - Data stays in the same storage account
 - **Fast restore** - Point-in-time restore completes quickly because data is local
 - **Retention** - Up to 360 days
-- **Scope** - Protects all containers in the storage account (you cannot select individual containers)
+- **Scope** - Protects block blobs in all containers in the storage account (you cannot select individual containers)
 
 Use cases: Recovering from accidental deletes, reverting unwanted modifications, undoing bulk operations gone wrong.
 
 ### Vaulted Backup
 
-Vaulted backup is a periodic backup that copies blob data to the Recovery Services vault in a different location.
+Vaulted backup is a periodic backup that copies blob data to the Backup vault.
 
 Key characteristics:
 - **Scheduled** - Backups run on a schedule (daily or weekly)
 - **Offsite** - Data is stored in the vault, separate from the source storage account
-- **Cross-region** - With GRS vaults, backup data is replicated to a paired region
+- **Cross-region** - With geo-redundant vault storage and cross-region restore enabled, backup data can be restored from the paired region
 - **Long-term retention** - Up to 10 years
 - **Container-level** - You can select specific containers to back up
 
@@ -43,7 +43,7 @@ Use cases: Compliance retention, cross-region disaster recovery, protection agai
 ```mermaid
 flowchart LR
     A[Blob Storage Account] -->|Continuous tracking| B[Operational Backup - Same Account]
-    A -->|Scheduled copy| C[Vaulted Backup - Recovery Services Vault]
+    A -->|Scheduled copy| C[Vaulted Backup - Backup Vault]
     B -->|Point-in-time restore| D[Restored Blobs]
     C -->|Full container restore| D
     C -->|Cross-region restore| E[Restored to Different Region]
@@ -52,13 +52,14 @@ flowchart LR
 ## Prerequisites
 
 For operational backup:
-- Storage account must be General Purpose v2 or BlobStorage
+- Storage account must be a standard General Purpose v2 account
 - Blob versioning must not already be configured with lifecycle management policies that conflict
 - The storage account cannot have a read lock
 
 For vaulted backup:
 - A Backup vault in the same region as the storage account
 - Backup vault must have a managed identity with required permissions on the storage account
+- Storage account must be a standard General Purpose v2 account
 - Storage account must not have immutability policies that conflict with backup operations
 
 ## Step 1: Set Up Operational Backup
@@ -130,52 +131,41 @@ az role assignment create \
     --scope "/subscriptions/<sub-id>/resourceGroups/rg-production/providers/Microsoft.Storage/storageAccounts/stproductioneastus2"
 
 # Configure backup protection
+az dataprotection backup-instance initialize \
+    --datasource-type AzureBlob \
+    --datasource-location eastus2 \
+    --policy-id "/subscriptions/<sub-id>/resourceGroups/rg-backup-eastus2/providers/Microsoft.DataProtection/backupVaults/bv-blob-eastus2-001/backupPolicies/policy-blob-operational-30d" \
+    --datasource-id "/subscriptions/<sub-id>/resourceGroups/rg-production/providers/Microsoft.Storage/storageAccounts/stproductioneastus2" \
+    > backup_instance.json
+
 az dataprotection backup-instance create \
     --resource-group rg-backup-eastus2 \
     --vault-name bv-blob-eastus2-001 \
-    --backup-instance '{
-        "objectType": "BackupInstanceResource",
-        "properties": {
-            "dataSourceInfo": {
-                "resourceID": "/subscriptions/<sub-id>/resourceGroups/rg-production/providers/Microsoft.Storage/storageAccounts/stproductioneastus2",
-                "resourceUri": "/subscriptions/<sub-id>/resourceGroups/rg-production/providers/Microsoft.Storage/storageAccounts/stproductioneastus2",
-                "datasourceType": "Microsoft.Storage/storageAccounts/blobServices",
-                "resourceName": "stproductioneastus2",
-                "resourceType": "Microsoft.Storage/storageAccounts",
-                "objectType": "Datasource"
-            },
-            "policyInfo": {
-                "policyId": "/subscriptions/<sub-id>/resourceGroups/rg-backup-eastus2/providers/Microsoft.DataProtection/backupVaults/bv-blob-eastus2-001/backupPolicies/policy-blob-operational-30d"
-            },
-            "objectType": "BackupInstance"
-        }
-    }'
+    --backup-instance backup_instance.json
 ```
 
-When operational backup is enabled, Azure automatically enables blob versioning, soft delete, and change feed on the storage account. These are required for the continuous point-in-time restore capability.
+When operational backup is enabled, Azure automatically enables point-in-time restore, blob versioning, soft delete, change feed, and a delete lock on the storage account. These are required for the continuous point-in-time restore capability.
 
 ## Step 2: Restore from Operational Backup
 
-Operational backup supports point-in-time restore for all blobs in the storage account.
+Operational backup supports point-in-time restore for block blobs in the storage account.
 
 ```bash
 # Restore all containers to a specific point in time
 # This restores the entire storage account's blob data to the specified timestamp
+az dataprotection backup-instance restore initialize-for-data-recovery \
+    --datasource-type AzureBlob \
+    --restore-location eastus2 \
+    --source-datastore OperationalStore \
+    --target-resource-id "/subscriptions/<sub-id>/resourceGroups/rg-production/providers/Microsoft.Storage/storageAccounts/stproductioneastus2" \
+    --point-in-time 2026-02-15T14:30:00Z \
+    > restore.json
+
 az dataprotection backup-instance restore trigger \
     --resource-group rg-backup-eastus2 \
     --vault-name bv-blob-eastus2-001 \
     --backup-instance-name "stproductioneastus2-stproductioneastus2-blob" \
-    --restore-request '{
-        "objectType": "AzureBlobRestoreRequest",
-        "restoreTargetInfo": {
-            "objectType": "RestoreTargetInfo",
-            "recoveryOption": "FailIfExists",
-            "restoreLocation": "eastus2"
-        },
-        "sourceDataStoreType": "OperationalStore",
-        "restoreType": "OriginalLocation",
-        "pointInTimeInUTC": "2026-02-15T14:30:00Z"
-    }'
+    --restore-request-object restore.json
 ```
 
 You can also restore specific blob ranges by specifying container and blob name prefixes, rather than restoring the entire account.
@@ -221,12 +211,13 @@ az dataprotection backup-policy create \
                 "trigger": {
                     "objectType": "ScheduleBasedTriggerContext",
                     "schedule": {
-                        "repeatingTimeIntervals": ["R/2026-02-16T04:00:00+00:00/P1W"]
+                        "repeatingTimeIntervals": ["R/2026-02-16T04:00:00+00:00/P1W"],
+                        "timeZone": "UTC"
                     },
                     "taggingCriteria": [
                         {
                             "isDefault": true,
-                            "tagInfo": {"tagName": "Default"},
+                            "tagInfo": {"id": "Default_", "tagName": "Default"},
                             "taggingPriority": 99
                         }
                     ]
@@ -242,20 +233,21 @@ az dataprotection backup-policy create \
     }'
 ```
 
+The schedule uses ISO 8601 duration format. Azure Backup runs these backups indefinitely, so any repeat count in the `R` prefix is ignored.
+
 ### Configure Vaulted Backup for Specific Containers
 
 Unlike operational backup which covers the entire account, vaulted backup lets you select specific containers:
 
 ```bash
-# Grant additional permissions for vaulted backup
-# The vault identity needs read access to the storage account data
-az role assignment create \
-    --assignee "$VAULT_IDENTITY" \
-    --role "Storage Blob Data Reader" \
-    --scope "/subscriptions/<sub-id>/resourceGroups/rg-production/providers/Microsoft.Storage/storageAccounts/stproductioneastus2"
+# Build a vaulted backup configuration for selected containers
+az dataprotection backup-instance initialize-backupconfig \
+    --datasource-type AzureBlob \
+    --container-list compliance audit-logs \
+    > vaulted_backup_config.json
 ```
 
-When configuring the backup instance for vaulted backup, specify the containers you want to protect. This is useful when you only need long-term retention for specific data sets, such as compliance-regulated data in a dedicated container.
+When configuring the backup instance for vaulted backup, pass the generated backup configuration so the backup instance includes only the containers you want to protect. This is useful when you only need long-term retention for specific data sets, such as compliance-regulated data in a dedicated container. The Backup vault still needs the Storage Account Backup Contributor role on the storage account.
 
 ## Step 4: Using Both Tiers Together
 
@@ -267,7 +259,7 @@ The best practice is to use both tiers together:
 | Bulk accidental operation | Point-in-time restore | Available |
 | Storage account compromise | May be affected | Safe in vault |
 | Regulatory retention (years) | Max 360 days | Up to 10 years |
-| Cross-region protection | No | Yes (with GRS vault) |
+| Cross-region protection | No | Yes (with geo-redundant vault storage and cross-region restore enabled) |
 | Ransomware recovery | May be affected if attacker has storage access | Protected in vault |
 
 A combined policy gives you:
@@ -300,7 +292,7 @@ az dataprotection job list \
 
 To manage costs:
 - Set operational backup retention to the minimum you need (not the maximum 360 days)
-- Use lifecycle management on blob versions to tier older versions to cool or archive storage
+- Use lifecycle management carefully on blob versions only when it does not conflict with your backup retention, and avoid moving versions that you may need to restore into the archive tier
 - Select only the containers you need for vaulted backup rather than backing up everything
 
 ## Wrapping Up
