@@ -41,14 +41,14 @@ The key benefit is that even if an admin's credentials are compromised, the atta
 
 PIM requires:
 
-- Microsoft Entra ID P2 license for each user who will use PIM
+- Microsoft Entra ID P2 or Microsoft Entra ID Governance licenses for users with eligible or time-bound PIM assignments, approvers, and access reviewers
 - Global Administrator or Privileged Role Administrator role to configure PIM
 - At least two emergency access accounts that are permanently assigned (not eligible) to prevent lockout
 
 ## Step 1: Access Privileged Identity Management
 
 1. Sign in to the Microsoft Entra admin center at entra.microsoft.com.
-2. Navigate to Identity governance, then Privileged Identity Management.
+2. Navigate to ID Governance, then Privileged Identity Management.
 3. If this is your first time, you may see a consent prompt. Click Consent and complete MFA verification.
 
 ## Step 2: Review Current Permanent Role Assignments
@@ -66,14 +66,14 @@ You want to convert most permanent assignments to eligible assignments, keeping 
 
 Each role can have its own activation settings. Let me walk through configuring the Global Administrator role as an example:
 
-1. In PIM under Microsoft Entra roles, click Settings.
+1. In PIM under Microsoft Entra roles, click Roles.
 2. Find and click on Global Administrator.
-3. Click Edit to modify the settings.
+3. Click Role settings, then click Edit to modify the settings.
 
 ### Activation Settings
 
-- **Activation maximum duration**: Set this to the minimum time needed. For Global Admin, 4 hours is usually enough. You can set it from 30 minutes to 24 hours.
-- **On activation, require**: Select Azure MFA. This forces the user to complete multi-factor authentication when activating the role.
+- **Activation maximum duration**: Set this to the minimum time needed. For Global Admin, 4 hours is usually enough. You can set it from 1 hour to 24 hours.
+- **On activation, require**: Select Microsoft Entra multifactor authentication. This requires the user to satisfy MFA before activating the role, unless they have already satisfied a strong authentication requirement in the current session.
 - **Require justification on activation**: Enable this. The user must explain why they need the privileges.
 - **Require ticket information on activation**: Optionally enable this to require a ticket number for audit purposes.
 - **Require approval to activate**: Enable this for highly sensitive roles like Global Administrator. You will then need to specify who can approve.
@@ -101,19 +101,20 @@ Click Update to save the settings.
 
 Now convert your existing permanent admins to eligible:
 
-1. In PIM under Microsoft Entra roles, click Assignments.
-2. Filter to show Active assignments for the Global Administrator role.
-3. For each permanent admin (except emergency accounts), click on the assignment.
-4. Click Update and change the assignment type from Active to Eligible.
+1. In PIM under Microsoft Entra roles, click Roles.
+2. Click the Global Administrator role.
+3. Review the Active roles tab for permanent active assignments.
+4. For each permanent admin except emergency accounts, add a new Eligible assignment.
 5. Set an end date for the eligible assignment or leave it as permanent eligible.
-6. Click Save.
+6. After you confirm the eligible assignment exists and at least one emergency account remains permanently active, remove the old Active assignment.
 
 You can also do this with PowerShell:
 
 ```powershell
 # Connect to Microsoft Graph with PIM permissions
+Import-Module Microsoft.Graph.Identity.Governance
 
-Connect-MgGraph -Scopes "RoleManagement.ReadWrite.Directory"
+Connect-MgGraph -Scopes "RoleManagement.ReadWrite.Directory", "User.Read.All"
 
 # Get the role definition ID for Global Administrator
 $globalAdminRole = Get-MgRoleManagementDirectoryRoleDefinition -Filter "displayName eq 'Global Administrator'"
@@ -122,25 +123,37 @@ $globalAdminRole = Get-MgRoleManagementDirectoryRoleDefinition -Filter "displayN
 $user = Get-MgUser -Filter "userPrincipalName eq 'admin@contoso.com'"
 
 # Create an eligible role assignment schedule
-# This replaces the permanent active assignment with an eligible one
 $params = @{
-    Action = "adminAssign"
+    Action = "AdminAssign"
     Justification = "Converting from permanent to eligible assignment"
     RoleDefinitionId = $globalAdminRole.Id
     DirectoryScopeId = "/"
     PrincipalId = $user.Id
     ScheduleInfo = @{
-        StartDateTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        StartDateTime = [System.DateTime]::UtcNow
         Expiration = @{
             # Set the eligible assignment to expire in 1 year
-            Type = "afterDateTime"
-            EndDateTime = (Get-Date).AddYears(1).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            Type = "AfterDateTime"
+            EndDateTime = [System.DateTime]::UtcNow.AddYears(1)
         }
     }
 }
 
 New-MgRoleManagementDirectoryRoleEligibilityScheduleRequest -BodyParameter $params
 Write-Host "Eligible assignment created for $($user.UserPrincipalName)"
+
+# After confirming the eligible assignment exists, remove the old active assignment.
+# Do not remove your last active Global Administrator assignment.
+$removeParams = @{
+    Action = "AdminRemove"
+    Justification = "Removing permanent active assignment after creating eligible assignment"
+    RoleDefinitionId = $globalAdminRole.Id
+    DirectoryScopeId = "/"
+    PrincipalId = $user.Id
+}
+
+New-MgRoleManagementDirectoryRoleAssignmentScheduleRequest -BodyParameter $removeParams
+Write-Host "Active assignment removal requested for $($user.UserPrincipalName)"
 ```
 
 ## Step 5: Configure PIM for Azure Resource Roles
