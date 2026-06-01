@@ -14,7 +14,7 @@ On AKS, implementing split-horizon DNS requires customizing CoreDNS to intercept
 
 ## Why Split-Horizon DNS Matters
 
-Without split-horizon DNS, when a pod inside your cluster calls `api.example.com`, the request goes out to the public DNS server, gets the public IP of the load balancer, comes back through the Azure load balancer, hits the ingress controller, and finally reaches the destination pod. That is a round trip through the internet for traffic that could have gone directly between pods on the same network.
+Without split-horizon DNS, when a pod inside your cluster calls `api.example.com`, CoreDNS forwards the query to the cluster's upstream resolver, gets the public IP of the load balancer, sends traffic through the external-facing load balancer path, hits the ingress controller, and finally reaches the destination pod. That is an unnecessary external-facing path for traffic that could have gone directly between pods on the same network.
 
 ```mermaid
 graph LR
@@ -237,7 +237,7 @@ When you rewrite `api.example.com` to an internal address, TLS certificate valid
 
 ### Option 1: Use Certificates that Match the Public Domain
 
-Configure your internal services to use TLS certificates that include `api.example.com` in their Subject Alternative Names (SANs). This is the correct approach for production.
+Configure your internal services to use TLS certificates that include `api.example.com` in their Subject Alternative Names (SANs). This is the correct approach for production when clients still connect to `https://api.example.com`. If you use a public ACME issuer such as Let's Encrypt, keep the SANs to domain names you control in public DNS; do not include internal names such as `*.svc.cluster.local`.
 
 ```yaml
 # cert-manager certificate for the internal service
@@ -253,7 +253,6 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - api.example.com
-    - api-service.production.svc.cluster.local
 ```
 
 ### Option 2: Use HTTP Internally
