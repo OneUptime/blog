@@ -131,9 +131,9 @@ def extract_invoice_data(invoice_path):
         # Extract line items
         if "Items" in fields:
             invoice["line_items"] = []
-            for item in fields["Items"].value:
+            for item in fields["Items"].value_array:
                 line_item = {}
-                item_fields = item.value
+                item_fields = item.value_object
                 if "Description" in item_fields:
                     line_item["description"] = item_fields["Description"].content
                 if "Quantity" in item_fields:
@@ -213,11 +213,11 @@ def extract_receipt_data(receipt_path):
         # Items purchased
         if "Items" in fields:
             receipt["items"] = []
-            for item in fields["Items"].value:
+            for item in fields["Items"].value_array:
                 item_data = {}
-                item_fields = item.value
-                if "Name" in item_fields:
-                    item_data["name"] = item_fields["Name"].content
+                item_fields = item.value_object
+                if "Description" in item_fields:
+                    item_data["description"] = item_fields["Description"].content
                 if "TotalPrice" in item_fields:
                     item_data["price"] = item_fields["TotalPrice"].content
                 if "Quantity" in item_fields:
@@ -306,7 +306,7 @@ print(f"\nProcessed {len(results)} invoices")
 
 ## Working with Confidence Scores
 
-Every extracted field comes with a confidence score between 0 and 1. Use these to implement validation logic:
+Every extracted field comes with a confidence score between 0 and 1. The examples above store one confidence value as `vendor_confidence`; in production, store the confidence for each field you need to validate. Use these scores to implement validation logic:
 
 ```python
 def validate_invoice(invoice_data, min_confidence=0.8):
@@ -316,13 +316,14 @@ def validate_invoice(invoice_data, min_confidence=0.8):
     """
     needs_review = []
 
-    for field_name, field_value in invoice_data.items():
-        if isinstance(field_value, dict) and "confidence" in field_value:
-            if field_value["confidence"] < min_confidence:
+    for field_name, confidence in invoice_data.items():
+        if field_name.endswith("_confidence") and isinstance(confidence, (int, float)):
+            data_field = field_name.removesuffix("_confidence")
+            if confidence < min_confidence:
                 needs_review.append({
-                    "field": field_name,
-                    "extracted_value": field_value.get("content"),
-                    "confidence": field_value["confidence"]
+                    "field": data_field,
+                    "extracted_value": invoice_data.get(data_field),
+                    "confidence": confidence
                 })
 
     if needs_review:
