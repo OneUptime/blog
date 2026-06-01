@@ -39,7 +39,7 @@ flowchart TD
     C --> E{Sign-In Risk Policy}
     D --> F{User Risk Policy}
     E --> G[Allow / Require MFA / Block]
-    F --> H[Allow / Require Password Change / Block]
+    F --> H[Allow / Require Risk Remediation / Block]
 ```
 
 ## Prerequisites
@@ -47,7 +47,7 @@ flowchart TD
 Before configuring risk policies, you need:
 
 - Microsoft Entra ID P2 licenses for all users who will be covered
-- Global Administrator or Security Administrator role
+- Conditional Access Administrator role to create or edit risk-based Conditional Access policies
 - MFA already configured and available for your users (risk policies often require MFA as a response)
 - A break-glass account excluded from all conditional access policies
 
@@ -55,7 +55,7 @@ Before configuring risk policies, you need:
 
 Before creating policies, see what risks Entra ID Protection is already detecting in your environment. This gives you a baseline and helps you set appropriate thresholds.
 
-Navigate to the Azure portal > Microsoft Entra ID > Security > Identity Protection > Risk detections.
+Navigate to the Microsoft Entra admin center > Entra ID > Protection > Identity Protection > Risk detections.
 
 You can also query risk detections programmatically using Microsoft Graph.
 
@@ -76,13 +76,15 @@ The sign-in risk policy runs at authentication time and can require additional v
 
 **Using the Portal:**
 
-1. Navigate to Microsoft Entra ID > Security > Identity Protection > Sign-in risk policy
-2. Set the **Users** scope to "All users" (or a specific group for testing)
-3. Under **Exclude**, add your break-glass accounts
-4. Set the **Sign-in risk** threshold to "Medium and above"
-5. Under **Access**, select "Allow access" with "Require multi-factor authentication"
-6. Set **Enforce policy** to "On"
-7. Click Save
+1. Navigate to Microsoft Entra admin center > Entra ID > Conditional Access
+2. Create a new policy
+3. Set the **Users** scope to "All users" (or a specific group for testing)
+4. Under **Exclude**, add your break-glass accounts
+5. Set **Target resources** to "All resources"
+6. Under **Conditions**, configure **Sign-in risk** for "Medium and above"
+7. Under **Grant**, select "Grant access" and require the built-in multifactor authentication authentication strength
+8. Set **Enable policy** to "Report-only" for initial validation, then move it to "On" after confirming the policy impact
+9. Click Create
 
 **Using Microsoft Graph PowerShell:**
 
@@ -121,21 +123,25 @@ With this policy in place, any sign-in detected as medium or high risk will requ
 
 ## Step 3: Configure the User Risk Policy
 
-The user risk policy is different from sign-in risk because it addresses ongoing account compromise rather than a single suspicious sign-in. When a user is flagged as risky, the policy can require a password change.
+The user risk policy is different from sign-in risk because it addresses ongoing account compromise rather than a single suspicious sign-in. When a user is flagged as risky, the policy can require risk remediation.
 
 **Using the Portal:**
 
-1. Navigate to Microsoft Entra ID > Security > Identity Protection > User risk policy
-2. Set the **Users** scope to "All users"
+1. Navigate to Microsoft Entra admin center > Entra ID > Conditional Access
+2. Create a new policy and set the **Users** scope to "All users"
 3. Exclude break-glass accounts
-4. Set the **User risk** threshold to "High"
-5. Under **Access**, select "Allow access" with "Require password change"
-6. Set **Enforce policy** to "On"
-7. Click Save
+4. Set **Target resources** to "All resources"
+5. Under **Conditions**, configure **User risk** for "High"
+6. Under **Grant**, select "Grant access" with "Require risk remediation"
+7. Set **Enable policy** to "Report-only" for initial validation, then move it to "On" after confirming the policy impact
+8. Click Create
 
 **Using Microsoft Graph PowerShell:**
 
 ```powershell
+# Connect to Microsoft Graph with the required permissions
+Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess"
+
 # Create a conditional access policy for user risk remediation
 $userRiskParams = @{
     DisplayName = "Require Password Change for High Risk Users"
@@ -160,13 +166,13 @@ $userRiskParams = @{
 New-MgIdentityConditionalAccessPolicy -BodyParameter $userRiskParams
 ```
 
-When a user is flagged as high risk, they will be required to change their password and verify with MFA the next time they sign in. The combination of MFA plus password change ensures that even if the password was compromised, the attacker cannot use it anymore.
+When a password-based user is flagged as high risk, they will be required to verify with MFA and complete a secure password change the next time they sign in. For passwordless users, risk remediation revokes the user's sessions so they must reauthenticate. The password-based flow ensures that even if the password was compromised, the attacker cannot use it anymore.
 
 ## Step 4: Handle Self-Service Password Reset Integration
 
-For the user risk policy to work smoothly, your users need the ability to change their own passwords. This requires Self-Service Password Reset (SSPR) to be enabled.
+For the user risk policy to work smoothly for password-based users, your users need the ability to change their own passwords. This requires Self-Service Password Reset (SSPR) to be enabled.
 
-If SSPR is not enabled, high-risk users will be blocked and will need to contact the helpdesk, which creates a support burden and delays remediation.
+If SSPR is not enabled, high-risk password-based users will need administrator or helpdesk intervention, which creates a support burden and delays remediation.
 
 Check your SSPR configuration under Microsoft Entra ID > Password reset. Ensure that:
 - SSPR is enabled for at least the groups covered by your user risk policy
@@ -183,9 +189,12 @@ For risky users, you have three options:
 - **Reset password** - manually forces a password reset for the user
 
 ```powershell
+# Connect to Microsoft Graph with the required permissions
+Connect-MgGraph -Scopes "IdentityRiskyUser.ReadWrite.All"
+
 # List all users currently flagged as risky
-Get-MgRiskyUser -Filter "riskLevel eq 'high'" -Property DisplayName,UserPrincipalName,RiskLevel,RiskLastUpdatedDateTime |
-    Select-Object DisplayName, UserPrincipalName, RiskLevel, RiskLastUpdatedDateTime
+Get-MgRiskyUser -Filter "riskLevel eq 'high'" -Property UserDisplayName,UserPrincipalName,RiskLevel,RiskLastUpdatedDateTime |
+    Select-Object UserDisplayName, UserPrincipalName, RiskLevel, RiskLastUpdatedDateTime
 
 # Manually confirm a user as compromised
 Confirm-MgRiskyUserCompromised -UserIds @("user-object-id")
@@ -203,8 +212,8 @@ Here is a general guideline:
 | Risk Level | Sign-In Risk Action | User Risk Action |
 |---|---|---|
 | Low | Monitor only (no enforcement) | Monitor only |
-| Medium | Require MFA | Monitor or require MFA |
-| High | Require MFA or block | Require password change + MFA |
+| Medium | Require MFA | Monitor or require risk remediation |
+| High | Require MFA or block | Require risk remediation |
 
 If you are seeing too many false positives at the Medium level, raise the threshold to High and investigate the Medium detections manually for a few weeks. If you are not seeing enough enforcement, lower the threshold.
 
@@ -212,7 +221,7 @@ If you are seeing too many false positives at the Medium level, raise the thresh
 
 Some risk detections, like "atypical travel," can fire when users are at known corporate offices or using approved VPN gateways. Define named locations to reduce false positives.
 
-Navigate to Microsoft Entra ID > Security > Conditional Access > Named locations. Add your office IP ranges and mark them as trusted.
+Navigate to Microsoft Entra admin center > Entra ID > Conditional Access > Named locations. Add your office IP ranges and mark them as trusted.
 
 Then update your sign-in risk policy to exclude sign-ins from trusted locations, or create a separate, more lenient policy for those locations.
 
@@ -221,11 +230,12 @@ Then update your sign-in risk policy to exclude sign-ins from trusted locations,
 For large organizations, managing risk policies manually does not scale. Here is how to automate the review of risky users.
 
 ```python
-# Python script to auto-remediate low and medium risk users
-# that have been flagged for more than 7 days without investigation
+# Python script to dismiss low and medium risk users
+# that have been reviewed and flagged for more than 7 days
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
+access_token = "<access-token>"
 headers = {"Authorization": f"Bearer {access_token}"}
 
 # Get risky users flagged more than 7 days ago
@@ -233,26 +243,28 @@ response = requests.get(
     "https://graph.microsoft.com/v1.0/identityProtection/riskyUsers",
     headers=headers,
     params={
-        "$filter": "riskLevel eq 'low' or riskLevel eq 'medium'",
+        "$filter": "(riskLevel eq 'low') or (riskLevel eq 'medium')",
         "$select": "id,userPrincipalName,riskLevel,riskLastUpdatedDateTime"
     }
 )
+response.raise_for_status()
 
 stale_users = []
-cutoff = datetime.utcnow() - timedelta(days=7)
+cutoff = datetime.now(timezone.utc) - timedelta(days=7)
 
 for user in response.json().get("value", []):
-    last_updated = datetime.fromisoformat(user["riskLastUpdatedDateTime"].rstrip("Z"))
+    last_updated = datetime.fromisoformat(user["riskLastUpdatedDateTime"].replace("Z", "+00:00"))
     if last_updated < cutoff:
         stale_users.append(user["id"])
 
 # Dismiss risk for stale low/medium risk users
 if stale_users:
-    requests.post(
+    dismiss_response = requests.post(
         "https://graph.microsoft.com/v1.0/identityProtection/riskyUsers/dismiss",
         headers=headers,
         json={"userIds": stale_users}
     )
+    dismiss_response.raise_for_status()
     print(f"Dismissed risk for {len(stale_users)} users")
 ```
 
