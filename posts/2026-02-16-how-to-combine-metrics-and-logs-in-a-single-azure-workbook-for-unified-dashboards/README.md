@@ -16,7 +16,7 @@ In this post, I will show you how to build unified dashboards in Azure Workbooks
 
 Before building the dashboard, let me clarify the difference between the data sources we will be combining.
 
-**Azure Monitor Metrics** - Numeric time-series data collected at regular intervals. Think CPU percentage, memory usage, disk IOPS, network bytes. Metrics are lightweight, near real-time (1-minute granularity), and stored for 93 days. They are queried through the Metrics API.
+**Azure Monitor Metrics** - Numeric time-series data collected over time. Think CPU percentage, memory usage, disk IOPS, network bytes. Metrics are lightweight, near real-time, have a minimum time granularity of 1 minute for many charts, and most platform and custom metrics are stored for 93 days. They are queried through the Metrics API.
 
 **Log Analytics Logs** - Structured and semi-structured data stored in Log Analytics workspaces. This includes Windows/Linux events, syslog, performance counters, custom logs, and Azure diagnostic logs. Logs are queried using KQL.
 
@@ -48,16 +48,16 @@ Start with the essential parameters:
 
 **TimeRange** - Time range picker, default to "Last 24 hours"
 **Subscription** - Subscription picker
-**ResourceGroup** - Resource group picker, filtered by Subscription
-**VM** - Query-based dropdown:
+**ResourceGroup** - Query-based dropdown, filtered by Subscription
+**VM** - Resource picker backed by an Azure Resource Graph query:
 
 ```kusto
-resources
+Resources
 | where type == "microsoft.compute/virtualmachines"
 | where subscriptionId == "{Subscription}"
-| where resourceGroup == "{ResourceGroup}"
-| project name
-| sort by name asc
+| where resourceGroup =~ "{ResourceGroup}"
+| project value = id, label = name, selected = false, group = resourceGroup
+| sort by label asc
 ```
 
 ## Step 2: Add Metrics Panels
@@ -85,9 +85,9 @@ Add a second panel for memory. If you are using the Azure Monitor agent with per
 // Memory usage from performance counters
 Perf
 | where TimeGenerated {TimeRange}
-| where Computer contains "{VM}"
+| where Computer contains "{VM:name}"
 | where ObjectName == "Memory"
-| where CounterName == "% Used Memory" or CounterName == "Available MBytes"
+| where CounterName in ("% Used Memory", "Available MBytes")
 | summarize Value = avg(CounterValue) by CounterName, bin(TimeGenerated, 5m)
 | render timechart
 ```
@@ -100,9 +100,9 @@ Add another row with disk and network metrics:
 // Disk latency from metrics
 Perf
 | where TimeGenerated {TimeRange}
-| where Computer contains "{VM}"
-| where ObjectName == "LogicalDisk"
-| where CounterName == "Avg. Disk sec/Read" or CounterName == "Avg. Disk sec/Write"
+| where Computer contains "{VM:name}"
+| where ObjectName in ("Logical Disk", "LogicalDisk")
+| where CounterName in ("Avg. Disk sec/Read", "Avg. Disk sec/Write")
 | where InstanceName == "_Total"
 | summarize AvgLatencyMs = avg(CounterValue) * 1000 by CounterName, bin(TimeGenerated, 5m)
 | render timechart
@@ -114,9 +114,9 @@ For network:
 // Network throughput
 Perf
 | where TimeGenerated {TimeRange}
-| where Computer contains "{VM}"
-| where ObjectName == "Network Adapter"
-| where CounterName == "Bytes Received/sec" or CounterName == "Bytes Sent/sec"
+| where Computer contains "{VM:name}"
+| where ObjectName in ("Network Interface", "Network Adapter")
+| where CounterName in ("Bytes Received/sec", "Bytes Sent/sec")
 | summarize BytesPerSec = sum(CounterValue) by CounterName, bin(TimeGenerated, 5m)
 | render timechart
 ```
@@ -131,8 +131,8 @@ Below the metrics, add panels that query Log Analytics for event data.
 // Error events summary for the selected VM
 Event
 | where TimeGenerated {TimeRange}
-| where Computer contains "{VM}"
-| where EventLevelName == "Error"
+| where Computer contains "{VM:name}"
+| where EventLevelName =~ "Error"
 | summarize ErrorCount = count() by Source, EventID
 | sort by ErrorCount desc
 | take 15
@@ -146,8 +146,8 @@ Set visualization to "Grid" with conditional formatting on ErrorCount (red backg
 // Most recent critical and error events
 Event
 | where TimeGenerated {TimeRange}
-| where Computer contains "{VM}"
-| where EventLevelName in ("Error", "Critical")
+| where Computer contains "{VM:name}"
+| where EventLevelName in~ ("Error", "Critical")
 | project TimeGenerated, EventLevelName, Source, EventID, RenderedDescription
 | sort by TimeGenerated desc
 | take 25
@@ -161,7 +161,7 @@ Set visualization to "Grid" with the TimeGenerated column formatted as a relativ
 // Application exceptions if available
 exceptions
 | where timestamp {TimeRange}
-| where cloud_RoleName contains "{VM}" or client_IP contains "{VM}"
+| where cloud_RoleName contains "{VM:name}" or cloud_RoleInstance contains "{VM:name}"
 | summarize Count = count() by type, method, outerMessage
 | sort by Count desc
 | take 10
@@ -169,14 +169,14 @@ exceptions
 
 ## Step 4: Add Activity Log Panel
 
-The Activity Log shows what administrative operations happened:
+If you route the Azure Activity Log to a Log Analytics workspace, the `AzureActivity` table shows what administrative operations happened:
 
 ```kusto
 // Azure Activity Log for the selected VM
 AzureActivity
 | where TimeGenerated {TimeRange}
-| where _ResourceId contains "{VM}"
-| where ActivityStatusValue == "Success"
+| where ResourceId =~ "{VM}"
+| where ActivityStatusValue =~ "Succeeded"
 | project TimeGenerated, OperationNameValue, Caller, CategoryValue
 | sort by TimeGenerated desc
 | take 20
@@ -193,17 +193,17 @@ The most valuable part of a unified dashboard is the correlation view - where me
 Workbooks do not natively support annotations like Grafana does, but you can achieve a similar effect using a combined query:
 
 ```kusto
-// Combine CPU metrics with deployment events on the same timeline
+// Combine CPU metrics with error events on the same timeline
 let cpuData = Perf
 | where TimeGenerated {TimeRange}
-| where Computer contains "{VM}"
+| where Computer contains "{VM:name}"
 | where ObjectName == "Processor" and CounterName == "% Processor Time" and InstanceName == "_Total"
 | summarize CPU = avg(CounterValue) by bin(TimeGenerated, 5m)
 | extend Series = "CPU %";
 let events = Event
 | where TimeGenerated {TimeRange}
-| where Computer contains "{VM}"
-| where EventLevelName == "Error"
+| where Computer contains "{VM:name}"
+| where EventLevelName =~ "Error"
 | summarize ErrorCount = count() by bin(TimeGenerated, 5m)
 | extend CPU = todouble(ErrorCount * 5)
 | extend Series = "Errors (scaled)"
@@ -227,11 +227,11 @@ Create a row with two columns:
 // Event timeline aligned with metrics
 Event
 | where TimeGenerated {TimeRange}
-| where Computer contains "{VM}"
+| where Computer contains "{VM:name}"
 | summarize
-    Errors = countif(EventLevelName == "Error"),
-    Warnings = countif(EventLevelName == "Warning"),
-    Info = countif(EventLevelName == "Information")
+    Errors = countif(EventLevelName =~ "Error"),
+    Warnings = countif(EventLevelName =~ "Warning"),
+    Info = countif(EventLevelName =~ "Information")
     by bin(TimeGenerated, 15m)
 | render timechart
 ```
@@ -244,25 +244,28 @@ Combine metrics and logs into a single health score:
 // Compute a simple health score
 let cpuHealth = Perf
 | where TimeGenerated > ago(15m)
-| where Computer contains "{VM}"
+| where Computer contains "{VM:name}"
 | where ObjectName == "Processor" and CounterName == "% Processor Time" and InstanceName == "_Total"
 | summarize AvgCPU = avg(CounterValue)
-| extend cpuScore = case(AvgCPU < 70, 100, AvgCPU < 85, 60, 20);
+| extend cpuScore = case(AvgCPU < 70, 100, AvgCPU < 85, 60, 20)
+| extend JoinKey = 1;
 let errorHealth = Event
 | where TimeGenerated > ago(15m)
-| where Computer contains "{VM}"
-| where EventLevelName == "Error"
+| where Computer contains "{VM:name}"
+| where EventLevelName =~ "Error"
 | summarize ErrorCount = count()
-| extend errorScore = case(ErrorCount == 0, 100, ErrorCount < 5, 70, 30);
+| extend errorScore = case(ErrorCount == 0, 100, ErrorCount < 5, 70, 30)
+| extend JoinKey = 1;
 let heartbeatHealth = Heartbeat
 | where TimeGenerated > ago(15m)
-| where Computer contains "{VM}"
+| where Computer contains "{VM:name}"
 | summarize HeartbeatCount = count()
-| extend hbScore = case(HeartbeatCount > 2, 100, HeartbeatCount > 0, 50, 0);
+| extend hbScore = case(HeartbeatCount > 2, 100, HeartbeatCount > 0, 50, 0)
+| extend JoinKey = 1;
 cpuHealth
-| join kind=fullouter errorHealth on $left.cpuScore == $left.cpuScore
-| join kind=fullouter heartbeatHealth on $left.cpuScore == $left.cpuScore
-| extend OverallScore = (cpuScore + errorScore + hbScore) / 3
+| join kind=fullouter errorHealth on JoinKey
+| join kind=fullouter heartbeatHealth on JoinKey
+| extend OverallScore = (coalesce(cpuScore, 0) + coalesce(errorScore, 0) + coalesce(hbScore, 0)) / 3
 | project OverallScore, CPUScore = cpuScore, ErrorScore = errorScore, HeartbeatScore = hbScore
 ```
 
