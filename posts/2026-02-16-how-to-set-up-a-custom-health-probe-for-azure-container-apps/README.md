@@ -31,6 +31,15 @@ const app = express();
 let isReady = false;
 let dbConnection = null;
 
+// Replace these placeholders with your real dependency initialization logic
+async function connectToDatabase() {
+  return { isConnected: () => true };
+}
+
+async function warmUpCache() {
+  return Promise.resolve();
+}
+
 // Simulate initialization that takes time
 async function initialize() {
   // Connect to database
@@ -92,27 +101,27 @@ properties:
           cpu: 0.5
           memory: 1Gi
         probes:
-          - type: startup
+          - type: Startup
             httpGet:
               path: /health/startup
               port: 3000
             initialDelaySeconds: 5
-            periodSeconds: 5
-            failureThreshold: 30
+            periodSeconds: 15
+            failureThreshold: 10
             timeoutSeconds: 3
-          - type: liveness
+          - type: Liveness
             httpGet:
               path: /health/live
               port: 3000
-            initialDelaySeconds: 0
+            initialDelaySeconds: 1
             periodSeconds: 10
             failureThreshold: 3
             timeoutSeconds: 5
-          - type: readiness
+          - type: Readiness
             httpGet:
               path: /health/ready
               port: 3000
-            initialDelaySeconds: 0
+            initialDelaySeconds: 1
             periodSeconds: 5
             failureThreshold: 3
             successThreshold: 1
@@ -135,11 +144,11 @@ In a Bicep template, probes are defined inside the container definition.
 
 ```bicep
 // Container app with health probes
-resource myApi 'Microsoft.App/containerApps@2023-05-01' = {
+resource myApi 'Microsoft.App/containerApps@2025-07-01' = {
   name: 'my-api'
   location: location
   properties: {
-    managedEnvironmentId: environment.id
+    environmentId: environment.id
     configuration: {
       ingress: {
         external: true
@@ -164,8 +173,8 @@ resource myApi 'Microsoft.App/containerApps@2023-05-01' = {
                 port: 3000
               }
               initialDelaySeconds: 5
-              periodSeconds: 5
-              failureThreshold: 30
+              periodSeconds: 15
+              failureThreshold: 10
               timeoutSeconds: 3
             }
             {
@@ -201,17 +210,17 @@ resource myApi 'Microsoft.App/containerApps@2023-05-01' = {
 
 ## Step 4: Use TCP Probes for Non-HTTP Apps
 
-Not every container serves HTTP. For gRPC services, TCP workers, or other non-HTTP applications, you can use TCP socket probes instead.
+Not every container serves HTTP. Azure Container Apps does not support gRPC health probes, so for gRPC services, TCP workers, or other non-HTTP applications, you can use TCP socket probes instead.
 
 ```yaml
 # TCP probe configuration for non-HTTP apps
 probes:
-  - type: liveness
+  - type: Liveness
     tcpSocket:
       port: 5000
     periodSeconds: 10
     failureThreshold: 3
-  - type: readiness
+  - type: Readiness
     tcpSocket:
       port: 5000
     periodSeconds: 5
@@ -226,10 +235,10 @@ Each parameter affects how the probe behaves.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| initialDelaySeconds | Wait this long before the first probe | 0 |
+| initialDelaySeconds | Wait this long before the first probe | Not documented; 1-60 when set |
 | periodSeconds | How often to run the probe | 10 |
 | timeoutSeconds | How long to wait for a response | 1 |
-| failureThreshold | How many failures before taking action | 3 |
+| failureThreshold | How many failures before taking action | 3; maximum 10 |
 | successThreshold | How many successes to consider recovered | 1 |
 
 The total time before a container is restarted (for liveness) or removed from the load balancer (for readiness) is roughly:
@@ -238,7 +247,7 @@ The total time before a container is restarted (for liveness) or removed from th
 initialDelaySeconds + (periodSeconds * failureThreshold)
 ```
 
-For example, with `initialDelaySeconds=0`, `periodSeconds=10`, and `failureThreshold=3`, the container gets 30 seconds of failed probes before action is taken.
+For example, with `initialDelaySeconds=1`, `periodSeconds=10`, and `failureThreshold=3`, the container gets about 31 seconds before action is taken.
 
 ## Probe Interaction Flow
 
@@ -268,7 +277,7 @@ sequenceDiagram
 
 ## When Things Go Wrong
 
-**Probe kills a slow-starting app:** If your application takes 60 seconds to start and the liveness probe kicks in after 30 seconds, it will restart the container before it finishes starting. Use a startup probe with a high `failureThreshold` to handle this. With `periodSeconds=5` and `failureThreshold=30`, the startup probe allows 150 seconds for initialization.
+**Probe kills a slow-starting app:** If your application takes 60 seconds to start and the liveness probe kicks in after 30 seconds, it will restart the container before it finishes starting. Use a startup probe with a longer period and high `failureThreshold` to handle this. With `initialDelaySeconds=5`, `periodSeconds=15`, and `failureThreshold=10`, the startup probe allows about 155 seconds from container start for initialization.
 
 **Readiness probe keeps failing:** If the readiness probe fails permanently (e.g., the database is down), the container stays alive but receives no traffic. This is by design - it prevents sending requests to a container that cannot handle them. Fix the underlying dependency issue.
 
