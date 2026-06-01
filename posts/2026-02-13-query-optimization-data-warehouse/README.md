@@ -59,7 +59,7 @@ GROUP BY user_id;
 
 Without partitioning, this query scans every row in the table. With daily partitions, it scans only 31 partitions out of potentially thousands.
 
-The critical requirement is that your WHERE clause must reference the partition column directly. Functions applied to the partition column break pruning:
+The critical requirement is that your WHERE clause must let the optimizer isolate the partition column. Functions applied to the partition column can prevent pruning:
 
 ```sql
 -- BAD: Wrapping the partition column in a function prevents pruning
@@ -73,7 +73,7 @@ WHERE event_date >= '2026-01-01' AND event_date < '2026-02-01';
 
 ## Sort Keys and Clustering
 
-Sort keys (Redshift), clustering keys (Snowflake, BigQuery), or ORDER BY keys (ClickHouse) determine the physical order of data within partitions. When your query filters or joins on the sort key, the engine can skip large blocks of data using zone maps (min/max metadata stored per block).
+Sort keys (Redshift), clustering keys (Snowflake, BigQuery), or ORDER BY keys (ClickHouse) influence how data is physically organized within partitions or storage blocks. When your query filters on these keys, the engine can skip large blocks of data using metadata such as min/max values stored per block or micro-partition.
 
 ```sql
 -- Redshift: Create a table with a compound sort key
@@ -101,7 +101,7 @@ AS SELECT * FROM dataset.raw_events;
 
 ## Materialized Views
 
-When you have a complex aggregation that gets queried repeatedly, materialized views pre-compute and store the result. The warehouse refreshes the materialized view incrementally as the base table changes.
+When you have a complex aggregation that gets queried repeatedly, materialized views pre-compute and store the result. Depending on the warehouse and the SQL used to define the view, the warehouse may refresh the materialized view incrementally as the base table changes; otherwise, it might require a full refresh.
 
 ```sql
 -- Materialized view that pre-aggregates daily user activity
@@ -110,7 +110,6 @@ SELECT
     event_date,
     user_id,
     count(*) AS total_events,
-    count(DISTINCT event_type) AS unique_event_types,
     min(created_at) AS first_event_at,
     max(created_at) AS last_event_at
 FROM events
