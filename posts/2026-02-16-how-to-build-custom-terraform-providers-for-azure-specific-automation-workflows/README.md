@@ -19,7 +19,7 @@ Before investing the effort, consider whether you actually need a custom provide
 - The Azure resource type is in preview and not yet supported by `azurerm`
 - You need to manage a non-Azure service that integrates tightly with your Azure infrastructure
 - You have internal automation APIs that you want to expose as Terraform resources
-- You need to combine multiple Azure API calls into a single atomic Terraform resource
+- You need to combine multiple Azure API calls behind a single Terraform resource
 
 If your need is just a one-off API call, a `null_resource` with a local-exec provisioner might be simpler. But if you want proper plan/apply behavior, state management, and drift detection, a custom provider is the right approach.
 
@@ -39,6 +39,7 @@ go mod init github.com/yourorg/terraform-provider-azurecatalog
 # Get the Terraform Plugin Framework dependency
 go get github.com/hashicorp/terraform-plugin-framework
 go get github.com/hashicorp/terraform-plugin-go
+go get github.com/hashicorp/terraform-plugin-testing
 ```
 
 The project structure looks like this:
@@ -46,6 +47,8 @@ The project structure looks like this:
 ```text
 terraform-provider-azurecatalog/
   internal/
+    catalog/
+      client.go
     provider/
       provider.go
     resources/
@@ -100,6 +103,7 @@ import (
     "github.com/hashicorp/terraform-plugin-framework/provider/schema"
     "github.com/hashicorp/terraform-plugin-framework/resource"
     "github.com/hashicorp/terraform-plugin-framework/types"
+    "github.com/yourorg/terraform-provider-azurecatalog/internal/catalog"
     "github.com/yourorg/terraform-provider-azurecatalog/internal/resources"
 )
 
@@ -132,6 +136,7 @@ func (p *AzureCatalogProvider) Metadata(
     resp *provider.MetadataResponse,
 ) {
     resp.TypeName = "azurecatalog"
+    resp.Version = p.version
 }
 
 // Schema defines the provider configuration schema
@@ -173,7 +178,7 @@ func (p *AzureCatalogProvider) Configure(
     }
 
     // Create the API client and make it available to resources
-    client := &CatalogClient{
+    client := &catalog.Client{
         Endpoint:       config.CatalogEndpoint.ValueString(),
         ApiKey:         config.ApiKey.ValueString(),
         SubscriptionId: config.SubscriptionId.ValueString(),
@@ -194,9 +199,14 @@ func (p *AzureCatalogProvider) Resources(ctx context.Context) []func() resource.
 func (p *AzureCatalogProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
     return nil
 }
+```
 
-// CatalogClient is the API client shared between resources
-type CatalogClient struct {
+```go
+// internal/catalog/client.go
+package catalog
+
+// Client is the API client shared between resources
+type Client struct {
     Endpoint       string
     ApiKey         string
     SubscriptionId string
@@ -217,24 +227,28 @@ import (
 
     "github.com/hashicorp/terraform-plugin-framework/resource"
     "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
     "github.com/hashicorp/terraform-plugin-framework/types"
-    "github.com/yourorg/terraform-provider-azurecatalog/internal/provider"
+    "github.com/yourorg/terraform-provider-azurecatalog/internal/catalog"
 )
 
 var _ resource.Resource = &CatalogEntryResource{}
+var _ resource.ResourceWithConfigure = &CatalogEntryResource{}
 
 type CatalogEntryResource struct {
-    client *provider.CatalogClient
+    client *catalog.Client
 }
 
 // CatalogEntryModel maps the resource schema to a Go struct
 type CatalogEntryModel struct {
-    Id            types.String `tfsdk:"id"`
-    ResourceId    types.String `tfsdk:"azure_resource_id"`
-    ServiceName   types.String `tfsdk:"service_name"`
-    Owner         types.String `tfsdk:"owner"`
-    CostCenter    types.String `tfsdk:"cost_center"`
-    Environment   types.String `tfsdk:"environment"`
+    Id             types.String `tfsdk:"id"`
+    ResourceId     types.String `tfsdk:"azure_resource_id"`
+    ServiceName    types.String `tfsdk:"service_name"`
+    Owner          types.String `tfsdk:"owner"`
+    CostCenter     types.String `tfsdk:"cost_center"`
+    Environment    types.String `tfsdk:"environment"`
     Classification types.String `tfsdk:"classification"`
 }
 
@@ -261,6 +275,9 @@ func (r *CatalogEntryResource) Schema(
             "id": schema.StringAttribute{
                 Computed:    true,
                 Description: "The catalog entry ID",
+                PlanModifiers: []planmodifier.String{
+                    stringplanmodifier.UseStateForUnknown(),
+                },
             },
             "azure_resource_id": schema.StringAttribute{
                 Required:    true,
@@ -285,6 +302,7 @@ func (r *CatalogEntryResource) Schema(
             "classification": schema.StringAttribute{
                 Optional:    true,
                 Computed:    true,
+                Default:     stringdefault.StaticString("internal"),
                 Description: "Data classification level",
             },
         },
@@ -300,7 +318,17 @@ func (r *CatalogEntryResource) Configure(
     if req.ProviderData == nil {
         return
     }
-    r.client = req.ProviderData.(*provider.CatalogClient)
+
+    client, ok := req.ProviderData.(*catalog.Client)
+    if !ok {
+        resp.Diagnostics.AddError(
+            "Unexpected Resource Configure Type",
+            fmt.Sprintf("Expected *catalog.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+        )
+        return
+    }
+
+    r.client = client
 }
 
 // Create handles resource creation
@@ -320,9 +348,6 @@ func (r *CatalogEntryResource) Create(
     entryId := fmt.Sprintf("cat-%s", plan.ResourceId.ValueString())
 
     plan.Id = types.StringValue(entryId)
-    if plan.Classification.IsNull() {
-        plan.Classification = types.StringValue("internal")
-    }
 
     resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
@@ -384,13 +409,14 @@ Build the provider binary and put it where Terraform can find it.
 
 ```bash
 # Build the provider
-go build -o terraform-provider-azurecatalog
+go build -o terraform-provider-azurecatalog_v0.1.0
 
 # Create the local plugin directory
-mkdir -p ~/.terraform.d/plugins/registry.terraform.io/yourorg/azurecatalog/0.1.0/darwin_arm64
+OS_ARCH="$(go env GOOS)_$(go env GOARCH)"
+mkdir -p ~/.terraform.d/plugins/registry.terraform.io/yourorg/azurecatalog/0.1.0/${OS_ARCH}
 
 # Copy the binary
-cp terraform-provider-azurecatalog ~/.terraform.d/plugins/registry.terraform.io/yourorg/azurecatalog/0.1.0/darwin_arm64/
+cp terraform-provider-azurecatalog_v0.1.0 ~/.terraform.d/plugins/registry.terraform.io/yourorg/azurecatalog/0.1.0/${OS_ARCH}/
 ```
 
 ## Using Your Custom Provider
@@ -402,13 +428,18 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.85"
+      version = "~> 4.0"
     }
     azurecatalog = {
       source  = "yourorg/azurecatalog"
       version = "0.1.0"
     }
   }
+}
+
+provider "azurerm" {
+  features {}
+  subscription_id = var.subscription_id
 }
 
 provider "azurecatalog" {
@@ -418,10 +449,15 @@ provider "azurecatalog" {
 }
 
 # Create an Azure resource with the standard provider
+resource "azurerm_resource_group" "data" {
+  name     = "rg-data"
+  location = "eastus"
+}
+
 resource "azurerm_storage_account" "data" {
   name                     = "stdataprod001"
-  resource_group_name      = "rg-data"
-  location                 = "eastus"
+  resource_group_name      = azurerm_resource_group.data.name
+  location                 = azurerm_resource_group.data.location
   account_tier             = "Standard"
   account_replication_type = "GRS"
 }
@@ -448,8 +484,15 @@ package resources_test
 import (
     "testing"
 
+    "github.com/hashicorp/terraform-plugin-framework/providerserver"
+    "github.com/hashicorp/terraform-plugin-go/tfprotov6"
     "github.com/hashicorp/terraform-plugin-testing/helper/resource"
+    "github.com/yourorg/terraform-provider-azurecatalog/internal/provider"
 )
+
+var testAccProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
+    "azurecatalog": providerserver.NewProtocol6WithError(provider.New()),
+}
 
 func TestAccCatalogEntry_basic(t *testing.T) {
     resource.Test(t, resource.TestCase{
@@ -457,6 +500,12 @@ func TestAccCatalogEntry_basic(t *testing.T) {
         Steps: []resource.TestStep{
             {
                 Config: `
+                    provider "azurecatalog" {
+                        catalog_endpoint = "https://catalog.internal.company.com/api"
+                        api_key          = "test-api-key"
+                        subscription_id  = "00000000-0000-0000-0000-000000000000"
+                    }
+
                     resource "azurecatalog_entry" "test" {
                         azure_resource_id = "/subscriptions/xxx/resourceGroups/rg-test"
                         service_name      = "test-service"
