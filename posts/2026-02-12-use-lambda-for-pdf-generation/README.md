@@ -127,6 +127,7 @@ You can invoke it with sample invoice data:
 # Test the PDF generation function
 aws lambda invoke \
   --function-name pdf-generator \
+  --cli-binary-format raw-in-base64-out \
   --payload '{
     "number": "INV-2026-001",
     "date": "2026-02-12",
@@ -149,7 +150,7 @@ aws lambda invoke \
 
 For complex layouts, using HTML and CSS is much easier than positioning elements programmatically. Puppeteer runs a headless Chromium browser that can render HTML and export it as a PDF.
 
-The challenge is that Chromium is large - too large for a regular Lambda deployment package. You need to use a Lambda Layer with a pre-built Chromium binary.
+The challenge is that Chromium is large - too large for a small direct-upload Lambda package. A Lambda Layer or container image is commonly used for the pre-built Chromium binary.
 
 Install the dependencies:
 
@@ -264,8 +265,11 @@ PdfGeneratorFunction:
   Type: AWS::Lambda::Function
   Properties:
     FunctionName: html-to-pdf
-    Runtime: nodejs20.x
+    Runtime: nodejs22.x
     Handler: index.handler
+    Code:
+      S3Bucket: !Ref DeploymentBucket
+      S3Key: html-to-pdf.zip
     MemorySize: 2048    # Chromium needs at least 1.5GB
     Timeout: 60         # HTML rendering can take time
     EphemeralStorage:
@@ -320,7 +324,10 @@ const definition = {
     GeneratePDFs: {
       Type: "Map",
       MaxConcurrency: 10,  // Process 10 invoices at a time
-      Iterator: {
+      ItemProcessor: {
+        ProcessorConfig: {
+          Mode: "INLINE",
+        },
         StartAt: "GenerateOne",
         States: {
           GenerateOne: {
