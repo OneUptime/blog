@@ -36,8 +36,8 @@ flowchart TB
 ## Prerequisites
 
 - Azure Site Recovery configured with VMs replicating to the target region
-- An Azure Automation account in the target region (for custom scripts)
-- The Automation account linked to the Recovery Services vault
+- An Azure Automation account in the same subscription as the Recovery Services vault (for custom scripts)
+- Runbook actions added to the recovery plan from that Automation account
 - Runbooks created and published in the Automation account
 
 ## Step 1: Create the Recovery Plan
@@ -82,7 +82,7 @@ az automation account create \
     --sku Free
 ```
 
-The Automation account needs a Run As account or managed identity with permissions to manage resources in the target subscription. This is because the runbooks will interact with Azure resources (VMs, DNS zones, load balancers, etc.) during failover.
+The Automation account needs a managed identity with permissions to manage resources in the target subscription. This is because the runbooks will interact with Azure resources (VMs, DNS zones, load balancers, etc.) during failover. Azure Automation Run As accounts were retired in 2023, so use managed identities for new runbooks.
 
 ## Step 4: Create Runbooks for Recovery Actions
 
@@ -90,7 +90,7 @@ Here are common runbooks you would add to a recovery plan:
 
 ### Runbook: Update SQL Server Connection Strings
 
-After the database VMs come up in the DR region, application servers need to point to the new database IP addresses. This runbook updates the App Settings on Azure App Services or configuration on VMs:
+After the database VMs come up in the DR region, application servers need to point to the new database IP addresses. This runbook updates connection strings on Azure App Service apps; VM configuration updates follow the same pattern:
 
 ```powershell
 # Runbook: Update-SqlConnectionStrings
@@ -114,22 +114,32 @@ $dbMapping = @{
 $appServices = @("app-erp-api", "app-erp-web")
 foreach ($app in $appServices) {
     $currentSettings = Get-AzWebApp -ResourceGroupName "rg-dr-centralus" -Name $app
+    $connectionStrings = @{}
+
+    foreach ($setting in $currentSettings.SiteConfig.ConnectionStrings) {
+        $connectionStrings[$setting.Name] = @{
+            Type = $setting.Type
+            Value = $setting.ConnectionString
+        }
+    }
+
+    $updated = $false
     foreach ($setting in $currentSettings.SiteConfig.ConnectionStrings) {
         foreach ($oldIP in $dbMapping.Keys) {
             if ($setting.ConnectionString -like "*$oldIP*") {
                 $newConnStr = $setting.ConnectionString -replace [regex]::Escape($oldIP), $dbMapping[$oldIP]
-                # Update the connection string with the new DB IP
-                Set-AzWebApp -ResourceGroupName "rg-dr-centralus" `
-                    -Name $app `
-                    -ConnectionStrings @{
-                        $setting.Name = @{
-                            Type = $setting.Type
-                            Value = $newConnStr
-                        }
-                    }
+                $connectionStrings[$setting.Name].Value = $newConnStr
+                $updated = $true
                 Write-Output "Updated $($setting.Name) in $app"
             }
         }
+    }
+
+    if ($updated) {
+        # Set-AzWebApp replaces the connection string collection, so include all entries.
+        Set-AzWebApp -ResourceGroupName "rg-dr-centralus" `
+            -Name $app `
+            -ConnectionStrings $connectionStrings
     }
 }
 
@@ -165,7 +175,8 @@ Remove-AzDnsRecordSet `
     -Name "erp" `
     -RecordType A `
     -ZoneName $dnsZone `
-    -ResourceGroupName $dnsRG
+    -ResourceGroupName $dnsRG `
+    -Confirm:$false
 
 $record = New-AzDnsRecordConfig -Ipv4Address $drPublicIP.IpAddress
 New-AzDnsRecordSet `
@@ -181,11 +192,11 @@ Write-Output "DNS updated: erp.$dnsZone -> $($drPublicIP.IpAddress)"
 
 ### Runbook: Verify Database Health
 
-After database VMs start, verify they are actually accepting connections before proceeding to the next group:
+After database VMs start, verify they are actually accepting connections and record a runbook failure if they are not. Recovery plans continue even if a script fails, so add a manual action after this runbook if you need an operator to review the result before the next group starts:
 
 ```powershell
 # Runbook: Verify-DatabaseHealth
-# Runs after Group 1 to confirm databases are online before starting app servers
+# Runs after Group 1 to confirm databases are online and log a failure if they are not
 
 param(
     [Object]$RecoveryPlanContext
@@ -274,7 +285,7 @@ After validating, clean up the test failover resources.
 
 **Runbook fails with authentication error.** The Automation account's managed identity may not have the required permissions. Grant it Contributor access to the target resource group.
 
-**Runbook times out.** The default timeout for a runbook in a recovery plan is 60 minutes. If your script takes longer (e.g., large database verification), increase the timeout in the Automation account.
+**Runbook times out.** Azure Automation cloud runbooks running in an Azure sandbox have a three-hour fair share limit. If your script takes longer (e.g., large database verification), optimize the runbook or run it on a Hybrid Runbook Worker.
 
 **VMs in a group start but one fails.** If a single VM in a group fails to start, the recovery plan pauses the entire plan. Fix the issue and resume, or skip the failed VM if it is non-critical.
 
