@@ -10,7 +10,7 @@ Description: A practical guide to joining reference data from Blob Storage or SQ
 
 One of the most common patterns in stream processing is enriching incoming events with additional context. A raw event might contain a device ID, but your downstream analytics need the device location, owner, and model number. A transaction event might have a customer ID, but your fraud detection logic needs the customer's risk profile. This is where reference data joins come in.
 
-Azure Stream Analytics supports joining slowly-changing reference data with fast-moving streaming data. The reference data acts like a lookup table that your streaming query can use to enrich events as they pass through. In this post, we will cover the two supported reference data sources - Azure Blob Storage and Azure SQL Database - and walk through the configuration and query patterns you need to get this working.
+Azure Stream Analytics supports joining slowly-changing reference data with fast-moving streaming data. The reference data acts like a lookup table that your streaming query can use to enrich events as they pass through. Stream Analytics supports Azure Blob Storage, Azure Data Lake Storage Gen2, and Azure SQL Database as storage layers for reference data. In this post, we will cover Blob Storage and SQL Database, and walk through the configuration and query patterns you need to get this working.
 
 ## What Is Reference Data in Stream Analytics?
 
@@ -61,22 +61,30 @@ Now configure the reference data input in your Stream Analytics job. Here is how
 az stream-analytics input create \
   --resource-group my-resource-group \
   --job-name my-stream-job \
-  --name "DeviceReference" \
-  --type "Reference" \
-  --datasource '{
-    "type": "Microsoft.Storage/Blob",
-    "properties": {
-      "storageAccounts": [{
-        "accountName": "mystorageaccount",
-        "accountKey": "your-storage-key"
-      }],
-      "container": "reference-data",
-      "pathPattern": "devices/{date}/{time}/devices.csv",
-      "dateFormat": "yyyy-MM-dd",
-      "timeFormat": "HH-mm-ss"
+  --input-name "DeviceReference" \
+  --properties '{
+    "type": "Reference",
+    "datasource": {
+      "type": "Microsoft.Storage/Blob",
+      "properties": {
+        "storageAccounts": [{
+          "accountName": "mystorageaccount",
+          "accountKey": "your-storage-key"
+        }],
+        "container": "reference-data",
+        "pathPattern": "devices/{date}/{time}/devices.csv",
+        "dateFormat": "yyyy-MM-dd",
+        "timeFormat": "HH-mm-ss"
+      }
+    },
+    "serialization": {
+      "type": "Csv",
+      "properties": {
+        "fieldDelimiter": ",",
+        "encoding": "UTF8"
+      }
     }
-  }' \
-  --serialization '{"type": "Csv", "properties": {"fieldDelimiter": ",", "encoding": "UTF8"}}'
+  }'
 ```
 
 ### Refresh Behavior
@@ -94,18 +102,21 @@ For reference data that changes more frequently or that you manage in a relation
 az stream-analytics input create \
   --resource-group my-resource-group \
   --job-name my-stream-job \
-  --name "CustomerReference" \
-  --type "Reference" \
-  --datasource '{
-    "type": "Microsoft.Sql/Server/Database",
-    "properties": {
-      "server": "myserver.database.windows.net",
-      "database": "mydb",
-      "user": "sqladmin",
-      "password": "your-password",
-      "table": "Customers",
-      "refreshType": "RefreshPeriodicallyWithFull",
-      "refreshRate": "00:05:00"
+  --input-name "CustomerReference" \
+  --properties '{
+    "type": "Reference",
+    "datasource": {
+      "type": "Microsoft.Sql/Server/Database",
+      "properties": {
+        "server": "myserver.database.windows.net",
+        "database": "mydb",
+        "user": "sqladmin",
+        "password": "your-password",
+        "table": "Customers",
+        "refreshType": "RefreshPeriodicallyWithFull",
+        "refreshRate": "00:05:00",
+        "fullSnapshotQuery": "SELECT CustomerId, Name, Segment, RiskScore FROM Customers"
+      }
     }
   }'
 ```
@@ -119,16 +130,21 @@ With delta refresh, you provide a separate query that returns only the rows that
 ```sql
 -- Full query (used on initial load)
 SELECT CustomerId, Name, Segment, RiskScore
-FROM Customers
+FROM CustomersTemporal
+FOR SYSTEM_TIME AS OF @snapshotTime
 
 -- Delta query (used for periodic refreshes)
--- Only returns rows modified since the last refresh
-SELECT CustomerId, Name, Segment, RiskScore
-FROM Customers
-WHERE LastModified > @lastRefreshTime
+-- Returns inserted or deleted rows within the delta window
+SELECT CustomerId, Name, Segment, RiskScore, ValidFrom AS _watermark_, 1 AS _operation_
+FROM CustomersTemporal
+WHERE ValidFrom BETWEEN @deltaStartTime AND @deltaEndTime
+UNION
+SELECT CustomerId, Name, Segment, RiskScore, ValidTo AS _watermark_, 2 AS _operation_
+FROM CustomerHistory
+WHERE ValidTo BETWEEN @deltaStartTime AND @deltaEndTime
 ```
 
-This significantly reduces the load on your SQL Database when your reference dataset is large but changes are sparse.
+Delta queries are typically built on Azure SQL temporal tables. They must return the same columns as the snapshot query, plus `_watermark_` and `_operation_` columns so Stream Analytics can apply the incremental changes. This significantly reduces the load on your SQL Database when your reference dataset is large but changes are sparse.
 
 ## Writing the Join Query
 
@@ -148,8 +164,7 @@ SELECT
     System.Timestamp() AS ProcessedTime
 INTO [enriched-output]
 FROM [telemetry-stream] stream
--- DATEDIFF specifies the temporal join condition
--- For reference data, this defines the snapshot timing
+-- Reference data joins do not require a temporal window
 JOIN [DeviceReference] ref
     ON stream.DeviceId = ref.DeviceId
 ```
@@ -182,28 +197,37 @@ The `COALESCE` function provides default values for columns that would otherwise
 
 ## Size Limits and Performance
 
-Reference data is loaded entirely into memory for each streaming unit (SU) allocated to your job. This means there are practical limits on how large your reference data can be:
+Reference data is loaded into memory for low-latency stream processing. This means there are practical limits on how large your reference data can be:
 
-- **Blob Storage reference data**: Up to 5 GB per reference input (or 300 MB for jobs using compatibility level 1.1 or earlier)
-- **SQL Database reference data**: Up to 5 GB
+- **Best performance**: Use reference datasets smaller than 300 MB
+- **Larger datasets**: Jobs with six streaming units or more support reference datasets up to 5 GB
+- **Smaller jobs**: Microsoft recommends 50 MB or lower for one streaming unit and 150 MB or lower for three streaming units
 
-If your reference data exceeds these limits, consider filtering it down to only the columns and rows your query actually needs. You can also partition your Stream Analytics job and use partitioned reference data to distribute the memory load.
+If your reference data exceeds these limits, consider filtering it down to only the columns and rows your query actually needs. For reference datasets larger than 300 MB, consider using SQL Database with the delta query option for better refresh performance.
 
 ## Common Patterns and Tips
 
-**Multiple reference data joins**: You can join multiple reference data inputs in a single query. For example, enriching events with both device metadata and customer information.
+**Multiple reference data joins**: You can join a reference data input to a streaming input. To join multiple reference data inputs, break the query into multiple steps. For example, enriching events with both device metadata and customer information:
 
 ```sql
 -- Join with two different reference data sources
+WITH DeviceStep AS (
+    SELECT
+        stream.EventId,
+        stream.CustomerId,
+        device.Location,
+        stream.Value
+    FROM [events] stream
+    JOIN [DeviceRef] device ON stream.DeviceId = device.DeviceId
+)
 SELECT
-    stream.EventId,
-    device.Location,
+    DeviceStep.EventId,
+    DeviceStep.Location,
     customer.Segment,
-    stream.Value
+    DeviceStep.Value
 INTO [output]
-FROM [events] stream
-JOIN [DeviceRef] device ON stream.DeviceId = device.DeviceId
-JOIN [CustomerRef] customer ON stream.CustomerId = customer.CustomerId
+FROM DeviceStep
+JOIN [CustomerRef] customer ON DeviceStep.CustomerId = customer.CustomerId
 ```
 
 **Testing with local data**: During development, you can test your query with sample reference data using the "Test query" feature in the Azure portal. Upload a sample file and verify your join logic before deploying.
