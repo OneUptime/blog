@@ -50,9 +50,9 @@ You need an app registration that represents your portal.
    - "Accounts in this organizational directory only" for internal users
    - "Accounts in any organizational directory" for multi-tenant
    - "Accounts in any organizational directory and personal Microsoft accounts" if you want the broadest access
-4. Set the Redirect URI to Web and enter: `https://yourportal.powerappsportals.com/signin-openid_1`
+4. In your Power Pages site, start adding the Microsoft Entra ID OpenID Connect provider and copy the Reply URL. Set the Redirect URI in the app registration to Web and paste that Reply URL, for example: `https://yourportal.powerappsportals.com/signin-openid_1`
 
-The redirect URI path depends on which identity provider slot you use in the portal settings. The convention is `/signin-openid_1` for the first OpenID Connect provider.
+The redirect URI path depends on the identity provider configuration. Use the Reply URL that Power Pages gives you rather than typing it from memory.
 
 After registration, note the Application (client) ID and Directory (tenant) ID.
 
@@ -69,7 +69,7 @@ If you want additional user information in the portal, configure optional claims
 
 1. Go to Token configuration > Add optional claim.
 2. Select ID token.
-3. Add claims like `email`, `given_name`, `family_name`, and `groups` if needed.
+3. Add claims like `email`, `given_name`, and `family_name` if needed. For group membership, use Token configuration > Add groups claim.
 
 ## Step 2: Configure the Portal Site Settings
 
@@ -79,13 +79,14 @@ Here are the site settings you need to create or update:
 
 | Site Setting Name | Value |
 |---|---|
-| Authentication/OpenIdConnect/AzureAD/Authority | `https://login.microsoftonline.com/{tenant-id}/v2.0` |
+| Authentication/OpenIdConnect/AzureAD/Authority | `https://login.microsoftonline.com/{tenant-id}/` |
 | Authentication/OpenIdConnect/AzureAD/ClientId | Your Application (client) ID |
 | Authentication/OpenIdConnect/AzureAD/ClientSecret | Your client secret value |
 | Authentication/OpenIdConnect/AzureAD/RedirectUri | `https://yourportal.powerappsportals.com/signin-openid_1` |
 | Authentication/OpenIdConnect/AzureAD/MetadataAddress | `https://login.microsoftonline.com/{tenant-id}/v2.0/.well-known/openid-configuration` |
-| Authentication/OpenIdConnect/AzureAD/Scope | `openid email profile` |
+| Authentication/OpenIdConnect/AzureAD/Scope | `openid email` |
 | Authentication/OpenIdConnect/AzureAD/ResponseType | `code id_token` |
+| Authentication/OpenIdConnect/AzureAD/ResponseMode | `form_post` |
 | Authentication/OpenIdConnect/AzureAD/ExternalLogoutEnabled | `true` |
 | Authentication/OpenIdConnect/AzureAD/RegistrationEnabled | `true` |
 
@@ -108,19 +109,15 @@ Repeat for each setting.
 
 When a user signs in through Azure AD for the first time, the portal creates a Contact record in Dataverse. You need to configure how Azure AD claims map to contact fields.
 
-Add these site settings for claim mapping:
+Add this site setting for claim mapping:
 
 | Site Setting Name | Value |
 |---|---|
-| Authentication/OpenIdConnect/AzureAD/RegistrationClaimsMapping/FirstName | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname` |
-| Authentication/OpenIdConnect/AzureAD/RegistrationClaimsMapping/LastName | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname` |
-| Authentication/OpenIdConnect/AzureAD/RegistrationClaimsMapping/Email | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress` |
+| Authentication/OpenIdConnect/AzureAD/RegistrationClaimsMapping | `firstname=http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname,lastname=http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname,emailaddress1=http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress` |
 
 With v2.0 tokens, the claims may use shorter names. If the mapping does not work, try these values instead:
 
-- FirstName: `given_name`
-- LastName: `family_name`
-- Email: `email`
+- `firstname=given_name,lastname=family_name,emailaddress1=email`
 
 Test with both claim formats to see which your token uses.
 
@@ -145,23 +142,19 @@ First, enable group claims in your app registration:
 2. Select Security groups.
 3. For the ID token, choose Group ID.
 
-Then configure validation in the portal. Create a site setting:
+Then configure audience validation in the portal if you want Power Pages to validate that tokens were issued for your app. Create a site setting:
 
 | Site Setting Name | Value |
 |---|---|
 | Authentication/OpenIdConnect/AzureAD/ValidAudiences | Your Application (client) ID |
 
-For group filtering, you need to implement custom logic in a portal web template or use Power Automate to check group membership after sign-in and assign web roles accordingly.
+This validates the token audience; it does not filter users by group. For group filtering, you need to implement custom logic in a portal web template or use Power Automate to check group membership after sign-in and assign web roles accordingly.
 
 ## Step 6: Assign Web Roles
 
 Portal access is controlled by web roles. After a user authenticates through Azure AD, they need a web role to access protected content.
 
-You can auto-assign a default web role:
-
-| Site Setting Name | Value |
-|---|---|
-| Authentication/OpenIdConnect/AzureAD/LoginClaimsMapping/Role | The name of the Dataverse web role |
+You can make one web role the default for all authenticated users by setting Authenticated Users Role to Yes on the web role record. A website should have only one default authenticated users role.
 
 Alternatively, assign web roles through a Power Automate flow that triggers when a new Contact is created with an external identity provider.
 
