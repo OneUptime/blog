@@ -8,7 +8,7 @@ Description: Learn how to configure AKS node surge upgrade settings to control t
 
 ---
 
-Upgrading AKS node pools is one of those operations that should be routine but often causes unexpected downtime. By default, AKS upgrades nodes one at a time: it cordons a node, drains the pods, reimages the node with the new version, and then uncordons it. This is safe but slow. If you have a 20-node cluster, upgrading one node at a time can take hours.
+Upgrading AKS node pools is one of those operations that should be routine but often causes unexpected downtime. By default, AKS uses a max surge value of one extra node: it creates a buffer node, cordons and drains an old node, reimages the old node with the new version, and then repeats the process. This is safe but slow. If you have a 20-node cluster, upgrading one node at a time can take hours.
 
 Node surge upgrades let you control this tradeoff between speed and safety. You can tell AKS to spin up extra nodes during the upgrade so that workloads have somewhere to go before old nodes are drained. This guide covers how to configure surge settings, the tradeoffs involved, and practical patterns for different cluster profiles.
 
@@ -21,7 +21,7 @@ During a standard upgrade without surge, AKS follows this sequence for each node
 3. Reimage or replace the node with the new version
 4. Uncordon the node
 
-With surge enabled, AKS creates additional nodes (the "surge" nodes) first, waits for them to be ready, and then starts draining old nodes. This means your workloads always have somewhere to run during the transition.
+With surge enabled, AKS creates additional nodes (the "surge" nodes) first, waits for them to be ready, and then starts draining old nodes. This gives your workloads additional capacity to move to during the transition, as long as quota, IP capacity, scheduling constraints, and PodDisruptionBudgets allow it.
 
 ```mermaid
 graph TD
@@ -29,10 +29,11 @@ graph TD
     B --> C[Wait for Surge Nodes Ready]
     C --> D[Cordon Old Node]
     D --> E[Drain Pods to Surge/Other Nodes]
-    E --> F[Delete Old Node]
+    E --> F[Reimage Old Node]
     F --> G{More Nodes?}
     G -->|Yes| D
-    G -->|No| H[Upgrade Complete]
+    G -->|No| H[Remove Remaining Surge Nodes]
+    H --> I[Upgrade Complete]
 ```
 
 ## Configuring Surge Settings
@@ -121,10 +122,10 @@ az aks nodepool update \
 
 ### Maximum Speed
 
-If you want the fastest possible upgrade and cost is not a concern, set surge to 100%. AKS creates a completely new set of nodes, shifts all workloads over, and then deletes the old nodes. This is essentially a blue-green upgrade at the node level.
+If you want the fastest possible rolling upgrade and cost is not a concern, set surge to 100%. AKS can create a full set of temporary buffer nodes and drain all nodes in the node pool simultaneously. This is fast, but it can be disruptive and is usually better suited to test environments than production.
 
 ```bash
-# Maximum speed: 100% surge (blue-green node upgrade)
+# Maximum speed: 100% surge
 az aks nodepool update \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
@@ -155,7 +156,7 @@ spec:
       app: my-app
 ```
 
-For stateful workloads where you absolutely cannot have any disruption, consider using a separate node pool with taints and a high surge value:
+For stateful workloads that need tighter scheduling control, consider using a separate node pool with taints and a high surge value. You still need application-level redundancy and PDBs that allow safe evictions.
 
 ```bash
 # Create a dedicated node pool for stateful workloads with 100% surge
@@ -177,7 +178,7 @@ During an upgrade, you can monitor progress through the Azure CLI or portal.
 az aks upgrade \
   --resource-group myResourceGroup \
   --name myAKSCluster \
-  --kubernetes-version 1.29.2
+  --kubernetes-version <target-version>
 
 # Monitor node pool upgrade status
 az aks nodepool show \
@@ -194,7 +195,7 @@ az aks nodepool show \
 kubectl get nodes -w
 ```
 
-During the upgrade with surge enabled, you will see the surge nodes appear first (with names containing "aks-nodepool1-temp-" or similar), and then old nodes will start to be cordoned and drained.
+During the upgrade with surge enabled, you will see the surge nodes appear first, and then old nodes will start to be cordoned and drained.
 
 ```bash
 # View node cordon status during upgrade
@@ -225,7 +226,7 @@ az monitor activity-log list \
   --output table
 ```
 
-If an upgrade is truly stuck, you can stop and restart it. The cluster will reconcile to the desired state.
+If an upgrade is truly stuck because the drain timeout elapsed, fix the blocking condition and then run another update or upgrade operation. AKS resumes the stopped upgrade on the next PUT operation.
 
 ## Cost Implications
 
