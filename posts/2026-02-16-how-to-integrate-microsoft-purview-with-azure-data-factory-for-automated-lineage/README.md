@@ -8,7 +8,7 @@ Description: Step-by-step guide to connecting Azure Data Factory with Microsoft 
 
 ---
 
-Azure Data Factory is where most organizations build their data pipelines, and Microsoft Purview is where they govern their data. When these two services are connected, every pipeline run in Data Factory automatically pushes lineage information to Purview. You get a complete picture of how data flows from source systems through transformations to destination tables, without writing any custom lineage code.
+Azure Data Factory is where most organizations build their data pipelines, and Microsoft Purview is where they govern their data. When these two services are connected, supported pipeline activities in Data Factory automatically push lineage information to Purview. You get a picture of how data flows from supported source systems to supported destination tables, without writing any custom lineage code.
 
 This integration is one of the quickest ways to get meaningful data lineage in Purview, because ADF pipelines already define the data movement explicitly. In this post, we will set up the integration, verify it works, understand what lineage gets captured, and troubleshoot common issues.
 
@@ -19,7 +19,7 @@ Before setting up the integration, make sure you have:
 - A Microsoft Purview account in the same Azure tenant as your Data Factory
 - An Azure Data Factory instance (V2)
 - The Data Factory managed identity needs the "Purview Data Curator" role in Purview
-- Both services should be in the same region for best performance (though cross-region works)
+- If your Purview account is protected by firewall rules, configure the required managed private endpoints so ADF can reach it
 
 ## Setting Up the Connection
 
@@ -51,36 +51,46 @@ echo "ADF Managed Identity: $ADF_IDENTITY"
 # as Purview uses its own RBAC system separate from Azure RBAC
 ```
 
-Using the Purview API to assign the role:
+Using the Purview metadata policy API to assign the role requires fetching the collection metadata policy, adding the Data Factory managed identity object ID to the Data Curator role rule, and writing the updated policy back:
 
 ```python
 import requests
 
 purview_account = "my-purview-account"
 base_url = f"https://{purview_account}.purview.azure.com"
+collection_name = "my-purview-account"  # Use the collection name, not the display name
+adf_object_id = "<adf-managed-identity-object-id>"
+access_token = "<purview-access-token>"
 
 headers = {
     "Authorization": f"Bearer {access_token}",
     "Content-Type": "application/json"
 }
 
-# Add the ADF managed identity as a Data Curator on the root collection
-role_assignment = {
-    "members": [
-        {
-            "objectId": "<adf-managed-identity-object-id>",
-            "objectType": "ServicePrincipal"
-        }
-    ],
-    "roleName": "data_curator"
-}
-
-# Apply the role assignment to the root collection
-response = requests.post(
-    f"{base_url}/policystore/collections/my-purview-account/metadataPolicy?api-version=2021-07-01",
-    headers=headers,
-    json=role_assignment
+# Get the latest metadata policy for the collection
+policy_response = requests.get(
+    f"{base_url}/policystore/collections/{collection_name}/metadataPolicy?api-version=2021-07-01",
+    headers=headers
 )
+policy_response.raise_for_status()
+policy = policy_response.json()
+
+# Add the ADF managed identity to the Data Curator role rule
+role_rule_name = f"purviewmetadatarole_builtin_data-curator:{collection_name}"
+for rule in policy["properties"]["attributeRules"]:
+    if rule["name"] == role_rule_name:
+        principals = rule["dnfCondition"][0][0]["attributeValueIncludedIn"]
+        if adf_object_id not in principals:
+            principals.append(adf_object_id)
+        break
+
+# Write the updated policy back by policy ID
+response = requests.put(
+    f"{base_url}/policystore/metadataPolicies/{policy['id']}?api-version=2021-07-01",
+    headers=headers,
+    json=policy
+)
+response.raise_for_status()
 ```
 
 ### Step 2: Connect Data Factory to Purview
@@ -119,11 +129,11 @@ After connecting, verify the integration is working:
 
 1. In ADF, go to Manage > Microsoft Purview
 2. You should see the Purview account name and a "Connected" status
-3. The "Lineage push" toggle should be enabled
+3. Under the integration capabilities, the "Data Lineage - Pipeline" status should be "Connected"
 
 ## What Lineage Gets Captured
 
-Different ADF activity types capture different levels of lineage detail.
+Microsoft Purview captures runtime lineage for Copy Data, Data Flow, and Execute SSIS Package activities when the source and sink use supported data stores. Unsupported activities and unsupported source or destination systems do not produce lineage.
 
 ### Copy Activity
 
@@ -137,19 +147,19 @@ This gives you basic table-to-table lineage. For example, if you copy data from 
 
 ### Data Flow Activity
 
-Data Flows capture the richest lineage because they include transformation logic:
+Data Flows capture source-to-sink lineage for supported data stores:
 - All source datasets
 - All destination (sink) datasets
-- Column-level mappings
-- Transformation steps (joins, aggregations, filters, derived columns)
+- Column-level lineage when the source and sink are not resource sets
 
-This means if your Data Flow joins two tables and writes the result to a third table, Purview shows all three tables connected through the Data Flow process, with column-level detail showing which input columns map to which output columns.
+This means if your Data Flow joins two supported tables and writes the result to a third supported table, Purview shows the source and sink assets connected through the Data Flow process. Purview does not currently show the detailed Data Flow transformation steps such as joins, aggregates, filters, or derived-column operations.
 
 ### Other Activities
 
-- **Stored Procedure activity**: Captures the stored procedure as a process node
-- **Lookup activity**: Captured as a data access
-- **Execute Pipeline activity**: Child pipeline lineage is captured separately
+- **Execute SSIS Package activity**: Captures lineage for supported SSIS package executions
+- **Stored Procedure activity**: Not captured by the ADF-Purview lineage integration
+- **Lookup activity**: Not captured by the ADF-Purview lineage integration
+- **Execute Pipeline activity**: Does not generate lineage by itself; supported activities inside the invoked pipeline can still report their own lineage when they run
 
 Activities that do not interact with data (like If Condition, ForEach, Wait) do not generate lineage.
 
@@ -238,7 +248,7 @@ The lineage typically appears within 5-15 minutes of the pipeline run completing
 
 ## Column-Level Lineage from Data Flows
 
-Data Flows provide the most detailed lineage. Here is what a typical Data Flow looks like and what Purview captures:
+Data Flows can provide column-level lineage for supported sources and sinks that are not resource sets. Here is what a typical Data Flow looks like:
 
 ```text
 Source: SQL customers table
@@ -249,7 +259,7 @@ Source: SQL customers table
   |-> Sink: Write to dim_customers table
 ```
 
-Purview captures each of these steps and shows column-level lineage. You can click on any column in the sink table and trace it back to its source columns through the transformation steps.
+Purview shows the supported source and sink assets involved in the Data Flow and can show column-level lineage between them. It does not currently show each transformation step inside the Data Flow lineage graph.
 
 ## Troubleshooting Common Issues
 
@@ -261,14 +271,14 @@ If lineage does not show up after a pipeline run:
 2. **Check the connection**: In ADF Manage > Purview, verify the connection status is "Connected"
 3. **Check the pipeline run**: Make sure the pipeline run actually succeeded
 4. **Wait longer**: Lineage can take up to 15 minutes to appear
-5. **Check regions**: Cross-region setups sometimes have longer delays
+5. **Check network access**: If Purview is protected by a firewall, make sure the integration runtime used by the pipeline can reach the Purview account
 
 ### Partial Lineage
 
 If only some activities show lineage:
 
 - Copy activities with parameterized table names may not resolve to specific tables
-- Dynamic SQL queries in Copy activities may not capture lineage correctly
+- Query or stored procedure sources in Copy activities do not produce table-level lineage in Purview; lineage is limited to table and view sources
 - Third-party linked services may not support lineage
 
 ### Duplicate Assets
@@ -283,22 +293,22 @@ If you see duplicate assets in the lineage view:
 Set up a periodic check to ensure lineage is flowing correctly:
 
 ```python
-# Check recent lineage activity in Purview
-# Search for recently updated assets with lineage
+# Check recent ADF copy activity assets in Purview
+# updateTime uses Unix epoch time in milliseconds
 search_payload = {
-    "keywords": "*",
+    "keywords": None,
     "limit": 10,
     "filter": {
         "and": [
             {"attributeName": "entityType", "operator": "eq", "attributeValue": "adf_copy_activity"},
-            {"updateTime": {"operator": "ge", "value": "2026-02-16T00:00:00Z"}}
+            {"attributeName": "updateTime", "operator": "ge", "attributeValue": 1771200000000}
         ]
     },
     "orderby": [{"updateTime": "desc"}]
 }
 
 response = requests.post(
-    f"{base_url}/catalog/api/search/query?api-version=2022-08-01-preview",
+    f"{base_url}/datamap/api/search/query?api-version=2023-09-01",
     headers=headers,
     json=search_payload
 )
@@ -313,7 +323,7 @@ for item in recent_activities.get("value", []):
 
 **Use Data Flows for important transformations**: Copy activities only give you table-level lineage. If column-level lineage matters (and it usually does for critical pipelines), use Data Flows.
 
-**Name datasets descriptively**: ADF dataset names become the asset names in Purview lineage. Use clear, consistent naming so the lineage graph is readable.
+**Name pipelines and activities descriptively**: ADF pipeline and activity names appear as process nodes in Purview lineage. Use clear, consistent naming so the lineage graph is readable.
 
 **Tag critical pipelines**: Use ADF annotations and Purview classifications to mark your most important data pipelines for easy identification.
 
@@ -321,4 +331,4 @@ for item in recent_activities.get("value", []):
 
 ## Summary
 
-Integrating Azure Data Factory with Microsoft Purview is one of the highest-value governance investments you can make with minimal effort. The setup takes about 15 minutes - grant the managed identity access, connect the services, and run your pipelines. From that point on, every pipeline execution automatically pushes lineage to Purview. Use Data Flows for column-level detail, monitor that lineage is flowing correctly, and use the lineage graph in Purview for impact analysis and compliance documentation. This automated approach to lineage is far more sustainable than trying to manually document data flows.
+Integrating Azure Data Factory with Microsoft Purview is one of the highest-value governance investments you can make with minimal effort. The setup takes about 15 minutes - grant the managed identity access, connect the services, and run your pipelines. From that point on, supported pipeline activities automatically push lineage to Purview. Use Data Flows where column-level detail is needed and supported, monitor that lineage is flowing correctly, and use the lineage graph in Purview for impact analysis and compliance documentation. This automated approach to lineage is far more sustainable than trying to manually document data flows.
