@@ -16,13 +16,13 @@ In this post, I will explain how WCF Relay works, walk through the configuration
 
 WCF Relay is a feature of Azure Relay that specifically targets WCF services. It works by registering your WCF service endpoint with Azure Service Bus. The service opens an outbound connection to the relay, and clients connect to the relay endpoint instead of directly to the service. The relay bridges the two connections.
 
-The key advantage over Hybrid Connections is that WCF Relay preserves the SOAP messaging model. Clients can use standard WCF proxies to call the service, and the service contract stays the same. It is transparent to both sides.
+The key advantage over Hybrid Connections is that WCF Relay preserves the SOAP messaging model. Clients can use standard WCF proxies to call the service, and the service contract stays the same. The client and service still need relay endpoints and credentials, but the service contract and operation calls remain familiar WCF code.
 
 ## Prerequisites
 
 - An Azure subscription
 - .NET Framework 4.6.2 or later (WCF is a .NET Framework technology)
-- Visual Studio or the .NET CLI
+- Visual Studio, or the .NET CLI with an SDK-style .NET Framework project
 - An existing WCF service you want to expose (or we will create a simple one)
 
 ## Step 1: Create the Relay Namespace
@@ -107,8 +107,8 @@ namespace LegacyServices
 The magic happens in the configuration. Install the Azure Relay NuGet package and configure the service to use a relay binding.
 
 ```bash
-# Install the Azure Relay NuGet package
-dotnet add package Microsoft.Azure.Relay
+# Install the WCF Relay NuGet package
+dotnet add package WindowsAzure.ServiceBus
 ```
 
 Here is the service host configuration that exposes the WCF service through Azure Relay.
@@ -174,7 +174,7 @@ namespace LegacyServices.Host
 }
 ```
 
-When you run this, the service registers with Azure Relay and starts listening for requests. The outbound connection is established over port 443.
+When you run this, the service registers with Azure Relay and starts listening for requests. NetTcpRelayBinding uses outbound connections to Azure Relay; depending on connectivity mode and firewall configuration, allow the documented WCF Relay ports such as 5671, 9352, or HTTP fallback.
 
 ## Step 4: Build the Client
 
