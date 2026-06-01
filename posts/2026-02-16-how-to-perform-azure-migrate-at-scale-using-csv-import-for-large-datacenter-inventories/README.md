@@ -8,7 +8,7 @@ Description: Learn how to use CSV import in Azure Migrate to assess and plan mig
 
 ---
 
-When you are migrating a datacenter with a few dozen VMs, the Azure Migrate appliance discovery approach works perfectly. But when your inventory is in the thousands - multiple datacenters, different hypervisors, physical servers, and network appliances - the appliance-based approach can be slow and may not cover everything. Azure Migrate supports CSV import for exactly this scenario. You export your inventory data from your existing CMDB, asset management system, or manual spreadsheets, format it as a CSV, and import it directly into Azure Migrate for assessment. This guide explains how to do it right.
+When you are migrating a datacenter with a few dozen VMs, the Azure Migrate appliance discovery approach works perfectly. But when your inventory is in the thousands - multiple datacenters, different hypervisors, physical servers, and network segments - the appliance-based approach can be slow and may not cover everything. Azure Migrate supports CSV import for exactly this scenario. You export your inventory data from your existing CMDB, asset management system, or manual spreadsheets, format it as a CSV, and import it directly into Azure Migrate for assessment. This guide explains how to do it right.
 
 ## When to Use CSV Import
 
@@ -20,12 +20,11 @@ CSV import is the right choice when:
 - You want to do preliminary assessments before committing to a full discovery deployment
 - You need to assess servers that are behind firewalls where the appliance cannot reach
 
-The limitation of CSV import is that you do not get real-time performance data. You provide estimated performance metrics in the CSV, or you rely on Azure Migrate's default sizing. For accurate right-sizing, you eventually want appliance-based or agent-based performance data, but CSV import gets you started fast.
+The limitation of CSV import is that you do not get real-time performance data. You provide estimated performance metrics in the CSV, or you rely on Azure Migrate's default sizing. For accurate right-sizing, you eventually want appliance-based discovery data, but CSV import gets you started fast. Servers imported using a CSV file can be assessed, but they cannot be migrated directly from those imported records.
 
 ## Prerequisites
 
 - An Azure Migrate project
-- Azure CLI installed
 - Your server inventory data (from CMDB, spreadsheets, or other sources)
 - Permissions to create assessments in the Azure Migrate project
 
@@ -34,21 +33,21 @@ The limitation of CSV import is that you do not get real-time performance data. 
 Azure Migrate expects a specific CSV format. Here are the required and optional columns:
 
 ```csv
-Server name,IP addresses,Cores,Memory (MB),OS name,OS version,OS architecture,Boot type,Disk 1 size (GB),Disk 1 read IOPS,Disk 1 write IOPS,Disk 1 read throughput (MBps),Disk 1 write throughput (MBps),NIC 1 throughput (MBps),CPU utilization percentage,Memory utilization percentage
+*Server name,IP addresses,*Cores,*Memory (In MB),*OS name,OS version,OS architecture,Server type,Hypervisor,CPU utilization percentage,Memory utilization percentage,Network adapters,Network In throughput,Network Out throughput,Boot type,Number of disks,Storage in use (In GB),Disk 1 size (In GB),Disk 1 read throughput (MB per second),Disk 1 write throughput (MB per second),Disk 1 read ops (operations per second),Disk 1 write ops (operations per second)
 ```
 
 Here is an example with real-looking data:
 
 ```csv
-Server name,IP addresses,Cores,Memory (MB),OS name,OS version,OS architecture,Boot type,Disk 1 size (GB),Disk 1 read IOPS,Disk 1 write IOPS,Disk 1 read throughput (MBps),Disk 1 write throughput (MBps),NIC 1 throughput (MBps),CPU utilization percentage,Memory utilization percentage
-web-server-01,10.0.1.10,4,8192,Windows Server,2019,64-bit,BIOS,100,500,200,50,25,1000,45,60
-web-server-02,10.0.1.11,4,8192,Windows Server,2019,64-bit,BIOS,100,500,200,50,25,1000,42,58
-app-server-01,10.0.2.10,8,16384,Windows Server,2019,64-bit,UEFI,200,1000,500,100,75,1000,65,72
-app-server-02,10.0.2.11,8,16384,Windows Server,2019,64-bit,UEFI,200,1000,500,100,75,1000,60,68
-db-server-01,10.0.3.10,16,65536,Red Hat Enterprise Linux,8.5,64-bit,UEFI,500,5000,2000,200,150,10000,55,80
-db-server-02,10.0.3.11,16,65536,Red Hat Enterprise Linux,8.5,64-bit,UEFI,500,5000,2000,200,150,10000,50,75
-batch-server-01,10.0.4.10,32,131072,Windows Server,2022,64-bit,UEFI,1000,8000,4000,400,300,10000,80,85
-file-server-01,10.0.5.10,4,16384,Windows Server,2019,64-bit,BIOS,2000,200,100,30,20,1000,15,40
+*Server name,IP addresses,*Cores,*Memory (In MB),*OS name,OS version,OS architecture,Server type,Hypervisor,CPU utilization percentage,Memory utilization percentage,Network adapters,Network In throughput,Network Out throughput,Boot type,Number of disks,Storage in use (In GB),Disk 1 size (In GB),Disk 1 read throughput (MB per second),Disk 1 write throughput (MB per second),Disk 1 read ops (operations per second),Disk 1 write ops (operations per second)
+web-server-01,10.0.1.10,4,8192,Windows Server 2019,2019,64-bit,Virtual,VMware,45,60,1,100,50,BIOS,1,80,100,50,25,500,200
+web-server-02,10.0.1.11,4,8192,Windows Server 2019,2019,64-bit,Virtual,VMware,42,58,1,100,50,BIOS,1,80,100,50,25,500,200
+app-server-01,10.0.2.10,8,16384,Windows Server 2019,2019,64-bit,Virtual,VMware,65,72,1,150,75,UEFI,1,160,200,100,75,1000,500
+app-server-02,10.0.2.11,8,16384,Windows Server 2019,2019,64-bit,Virtual,VMware,60,68,1,150,75,UEFI,1,160,200,100,75,1000,500
+db-server-01,10.0.3.10,16,65536,Red Hat Enterprise Linux 8,8.5,64-bit,Physical,,55,80,2,200,150,UEFI,1,400,500,200,150,5000,2000
+db-server-02,10.0.3.11,16,65536,Red Hat Enterprise Linux 8,8.5,64-bit,Physical,,50,75,2,200,150,UEFI,1,400,500,200,150,5000,2000
+batch-server-01,10.0.4.10,32,131072,Windows Server 2022,2022,64-bit,Virtual,Hyper-V,80,85,2,400,300,UEFI,1,800,1000,400,300,8000,4000
+file-server-01,10.0.5.10,4,16384,Windows Server 2019,2019,64-bit,Virtual,Hyper-V,15,40,1,30,20,BIOS,1,1500,2000,30,20,200,100
 ```
 
 ### Generating the CSV from Existing Systems
@@ -67,12 +66,15 @@ def convert_cmdb_export(input_file, output_file):
 
     # Define the output header that Azure Migrate expects
     output_header = [
-        "Server name", "IP addresses", "Cores", "Memory (MB)",
-        "OS name", "OS version", "OS architecture", "Boot type",
-        "Disk 1 size (GB)", "Disk 1 read IOPS", "Disk 1 write IOPS",
-        "Disk 1 read throughput (MBps)", "Disk 1 write throughput (MBps)",
-        "NIC 1 throughput (MBps)",
-        "CPU utilization percentage", "Memory utilization percentage"
+        "*Server name", "IP addresses", "*Cores", "*Memory (In MB)",
+        "*OS name", "OS version", "OS architecture", "Server type", "Hypervisor",
+        "CPU utilization percentage", "Memory utilization percentage",
+        "Network adapters", "Network In throughput", "Network Out throughput",
+        "Boot type", "Number of disks", "Storage in use (In GB)",
+        "Disk 1 size (In GB)", "Disk 1 read throughput (MB per second)",
+        "Disk 1 write throughput (MB per second)",
+        "Disk 1 read ops (operations per second)",
+        "Disk 1 write ops (operations per second)"
     ]
 
     with open(input_file, 'r') as infile, open(output_file, 'w', newline='') as outfile:
@@ -84,22 +86,28 @@ def convert_cmdb_export(input_file, output_file):
             # Map CMDB fields to Azure Migrate fields
             # Adjust field names based on your specific CMDB export
             output_row = {
-                "Server name": row.get("hostname", ""),
+                "*Server name": row.get("hostname", ""),
                 "IP addresses": row.get("ip_address", ""),
-                "Cores": row.get("cpu_cores", "4"),
-                "Memory (MB)": int(float(row.get("ram_gb", "8")) * 1024),
-                "OS name": row.get("operating_system", ""),
+                "*Cores": row.get("cpu_cores", "4"),
+                "*Memory (In MB)": int(float(row.get("ram_gb", "8")) * 1024),
+                "*OS name": row.get("operating_system", ""),
                 "OS version": row.get("os_version", ""),
                 "OS architecture": "64-bit",
-                "Boot type": row.get("boot_type", "BIOS"),
-                "Disk 1 size (GB)": row.get("disk_size_gb", "100"),
-                "Disk 1 read IOPS": row.get("disk_read_iops", "500"),
-                "Disk 1 write IOPS": row.get("disk_write_iops", "200"),
-                "Disk 1 read throughput (MBps)": "50",
-                "Disk 1 write throughput (MBps)": "25",
-                "NIC 1 throughput (MBps)": "1000",
+                "Server type": row.get("server_type", "Virtual"),
+                "Hypervisor": row.get("hypervisor", "VMware"),
                 "CPU utilization percentage": row.get("avg_cpu_pct", "50"),
                 "Memory utilization percentage": row.get("avg_mem_pct", "60"),
+                "Network adapters": row.get("network_adapters", "1"),
+                "Network In throughput": row.get("network_in_mbps", "50"),
+                "Network Out throughput": row.get("network_out_mbps", "25"),
+                "Boot type": row.get("boot_type", "BIOS"),
+                "Number of disks": row.get("disk_count", "1"),
+                "Storage in use (In GB)": row.get("storage_in_use_gb", ""),
+                "Disk 1 size (In GB)": row.get("disk_size_gb", "100"),
+                "Disk 1 read throughput (MB per second)": row.get("disk_read_mbps", "50"),
+                "Disk 1 write throughput (MB per second)": row.get("disk_write_mbps", "25"),
+                "Disk 1 read ops (operations per second)": row.get("disk_read_iops", "500"),
+                "Disk 1 write ops (operations per second)": row.get("disk_write_iops", "200"),
             }
             writer.writerow(output_row)
 
@@ -109,12 +117,12 @@ if __name__ == "__main__":
     convert_cmdb_export(sys.argv[1], sys.argv[2])
 ```
 
-### Handling Multiple Disks and NICs
+### Handling Multiple Disks and Network Adapters
 
-Azure Migrate CSV supports multiple disks and NICs. Just add additional columns:
+Azure Migrate CSV supports details for up to 20 disks. Just add additional disk columns:
 
 ```csv
-Server name,...,Disk 1 size (GB),Disk 1 read IOPS,Disk 1 write IOPS,...,Disk 2 size (GB),Disk 2 read IOPS,Disk 2 write IOPS,...,NIC 1 throughput (MBps),NIC 2 throughput (MBps)
+*Server name,...,Disk 1 size (In GB),Disk 1 read ops (operations per second),Disk 1 write ops (operations per second),...,Disk 2 size (In GB),Disk 2 read ops (operations per second),Disk 2 write ops (operations per second),...,Network adapters,Network In throughput,Network Out throughput
 ```
 
 For servers with many disks, this can make the CSV quite wide. I have seen database servers with 10+ disks, which means 50+ columns just for disk data.
@@ -132,43 +140,43 @@ def validate(filename):
     """Check the CSV for common issues that would cause import failures."""
     errors = []
     warnings = []
+    row_count = 0
 
     with open(filename, 'r') as f:
         reader = csv.DictReader(f)
 
         for i, row in enumerate(reader, start=2):
+            row_count += 1
             # Check required fields
-            if not row.get("Server name"):
+            if not row.get("*Server name"):
                 errors.append(f"Row {i}: Missing server name")
 
-            if not row.get("Cores"):
+            if not row.get("*Cores"):
                 errors.append(f"Row {i}: Missing CPU cores")
 
-            if not row.get("Memory (MB)"):
+            if not row.get("*Memory (In MB)"):
                 errors.append(f"Row {i}: Missing memory")
+
+            if not row.get("*OS name"):
+                errors.append(f"Row {i}: Missing OS name")
 
             # Validate numeric fields
             try:
-                cores = int(row.get("Cores", 0))
+                cores = int(row.get("*Cores", 0))
                 if cores < 1 or cores > 256:
                     warnings.append(f"Row {i}: Unusual core count ({cores})")
             except ValueError:
-                errors.append(f"Row {i}: Invalid core count: {row.get('Cores')}")
+                errors.append(f"Row {i}: Invalid core count: {row.get('*Cores')}")
 
             try:
-                memory = int(row.get("Memory (MB)", 0))
+                memory = int(row.get("*Memory (In MB)", 0))
                 if memory < 512:
                     warnings.append(f"Row {i}: Very low memory ({memory} MB)")
             except ValueError:
                 errors.append(f"Row {i}: Invalid memory value")
 
-            # Check OS name
-            os_name = row.get("OS name", "")
-            if not os_name:
-                warnings.append(f"Row {i}: Missing OS name for {row.get('Server name')}")
-
     # Print results
-    print(f"Validated {i - 1} rows")
+    print(f"Validated {row_count} rows")
     if errors:
         print(f"\nERRORS ({len(errors)}):")
         for e in errors:
@@ -199,34 +207,22 @@ The import processes the CSV and creates server records in Azure Migrate. For la
 
 After import, verify the servers appear correctly:
 
-```bash
-# List discovered/imported servers in the Azure Migrate project
-az migrate assessment list-discovered-machine \
-    --project-name $PROJECT_NAME \
-    --resource-group $RESOURCE_GROUP \
-    --query "[].{Name:name, Cores:properties.numberOfCores, Memory:properties.memoryInMB}" \
-    -o table
-```
+1. Open the Azure Migrate dashboard
+2. On **Azure Migrate: Discovery and assessment**, select the discovered server count
+3. Select the **Import based** tab
 
 ## Step 4: Create Assessments
 
 With the servers imported, create assessments to get sizing recommendations and cost estimates:
 
-```bash
-# Create an assessment for the imported servers
-az migrate assessment create \
-    --project-name $PROJECT_NAME \
-    --resource-group $RESOURCE_GROUP \
-    --name "full-datacenter-assessment" \
-    --sizing-criterion "AsOnPremises" \
-    --target-location "eastus" \
-    --currency "USD" \
-    --reserved-instance "RI3Year" \
-    --vm-uptime-per-day 24 \
-    --vm-uptime-per-month 31
-```
+1. Go to the **Infrastructure** tab
+2. Select the imported servers you want to assess
+3. Select **Create assessment**
+4. Enter a friendly assessment name and review the selected servers
+5. Set the target region, pricing options, saving options, and sizing criteria
+6. Review the settings and select **Create Assessment**
 
-Use "AsOnPremises" sizing when your CSV does not include detailed performance data. This sizes the Azure VMs to match the on-premises configuration. If you included performance metrics in the CSV, use "PerformanceBased" for potentially smaller (and cheaper) Azure VMs.
+Use "As-is on-premises" sizing when your CSV does not include detailed performance data. This sizes the Azure VMs to match the on-premises configuration. If you included performance metrics in the CSV, use "Performance-based" for potentially smaller (and cheaper) Azure VMs.
 
 ## Step 5: Analyze Assessment Results
 
@@ -235,17 +231,12 @@ The assessment generates several useful reports:
 - **Azure readiness**: Which servers can move to Azure and which have issues
 - **VM sizing**: Recommended Azure VM SKUs for each server
 - **Cost estimate**: Monthly Azure compute and storage costs
-- **Migration waves**: Grouping suggestions based on dependencies
+- **Assessment scope**: The servers included in the assessment
 
 Export the assessment for offline analysis:
 
-```bash
-# Export assessment results
-az migrate assessment download-url \
-    --project-name $PROJECT_NAME \
-    --resource-group $RESOURCE_GROUP \
-    --assessment-name "full-datacenter-assessment"
-```
+1. Open the assessment in **Decide and plan** > **Assessments** > **Workloads**
+2. Select **Export assessment** to download the Excel report
 
 ## Handling Thousands of Servers
 
