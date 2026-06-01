@@ -8,7 +8,7 @@ Description: Configure and implement retry policies for Azure Functions triggers
 
 ---
 
-Transient failures happen all the time in distributed systems. A database connection times out, a downstream API returns a 503, a queue message fails to process because of a temporary lock conflict. If your Azure Function does not have a retry strategy, these momentary glitches become permanent failures. Azure Functions provides built-in retry policies that you can configure at the function level, the host level, or within your code to handle these situations gracefully.
+Transient failures happen all the time in distributed systems. A database connection times out, a downstream API returns a 503, a queue message fails to process because of a temporary lock conflict. If your Azure Function does not have a retry strategy, these momentary glitches become permanent failures. Azure Functions provides retry behaviors that you can configure through supported function-level retry policies, trigger-specific host settings, or within your code to handle these situations gracefully.
 
 In this post, I will cover all the retry mechanisms available in Azure Functions, when to use each one, and how to configure them properly.
 
@@ -18,13 +18,13 @@ Azure Functions has three layers of retry behavior.
 
 The first layer is **trigger-specific retry behavior**. Queue triggers, Service Bus triggers, and Event Hub triggers each have their own built-in retry logic that is separate from the general retry policy. For example, queue triggers automatically retry messages up to 5 times before sending them to a poison queue.
 
-The second layer is the **function-level retry policy**. This is a general-purpose retry that you configure on individual functions. It applies to any unhandled exception thrown by your function code.
+The second layer is the **function-level retry policy**. This retry policy is configured on individual functions for supported triggers such as Timer, Event Hubs, Kafka, and Azure Cosmos DB. It applies when a supported trigger execution raises an unhandled exception.
 
 The third layer is **code-level retry logic** that you implement yourself, typically using a library like Polly. This gives you the most control but requires more code.
 
 ## Function-Level Retry Policies
 
-Starting with Azure Functions runtime version 4.x, you can configure retry policies directly on functions using the `FixedDelayRetry` or `ExponentialBackoffRetry` attributes.
+In Azure Functions runtime version 2.x and later, you can configure retry policies directly on functions for supported triggers using the `FixedDelayRetry` or `ExponentialBackoffRetry` attributes in .NET.
 
 ### Fixed Delay Retry
 
@@ -45,19 +45,19 @@ public class OrderProcessor
         _paymentService = paymentService;
     }
 
-    // Retry up to 3 times with a 5-second delay between each attempt
-    // This is useful when the failure is likely transient (network blip, etc.)
-    [Function("ProcessPayment")]
+    // Retry up to 3 times with a 5-second delay between each attempt.
+    // Function-level retry policies are supported for Timer triggers.
+    [Function("ProcessPendingPayments")]
     [FixedDelayRetry(3, "00:00:05")]
     public async Task Run(
-        [QueueTrigger("payment-requests")] PaymentRequest request)
+        [TimerTrigger("0 */5 * * * *")] TimerInfo timer)
     {
-        _logger.LogInformation("Processing payment for order {OrderId}", request.OrderId);
+        _logger.LogInformation("Processing pending payments at {Time}", DateTime.UtcNow);
 
         // If this throws, the runtime will retry up to 3 times
-        await _paymentService.ChargeAsync(request);
+        await _paymentService.ProcessPendingPaymentsAsync();
 
-        _logger.LogInformation("Payment processed for order {OrderId}", request.OrderId);
+        _logger.LogInformation("Pending payments processed");
     }
 }
 ```
@@ -98,14 +98,16 @@ You can also configure retry behavior in `host.json` for specific trigger types.
   "extensions": {
     "serviceBus": {
       "prefetchCount": 10,
-      "messageHandlerOptions": {
-        "autoComplete": false,
-        "maxConcurrentCalls": 16,
-        "maxAutoRenewDuration": "00:05:00"
-      },
-      "sessionHandlerOptions": {
-        "autoComplete": false,
-        "maxConcurrentSessions": 8
+      "autoCompleteMessages": false,
+      "maxConcurrentCalls": 16,
+      "maxConcurrentSessions": 8,
+      "maxAutoLockRenewalDuration": "00:05:00",
+      "clientRetryOptions": {
+        "mode": "exponential",
+        "tryTimeout": "00:01:00",
+        "delay": "00:00:00.80",
+        "maxDelay": "00:01:00",
+        "maxRetries": 3
       }
     },
     "queues": {
@@ -115,17 +117,11 @@ You can also configure retry behavior in `host.json` for specific trigger types.
       "maxDequeueCount": 5,
       "newBatchThreshold": 8
     }
-  },
-  "retry": {
-    "strategy": "exponentialBackoff",
-    "maxRetryCount": 5,
-    "minimumInterval": "00:00:02",
-    "maximumInterval": "00:15:00"
   }
 }
 ```
 
-The `maxDequeueCount` in the queues section controls how many times a queue message is retried before being moved to the poison queue. This is separate from the function-level retry policy.
+The `maxDequeueCount` in the queues section controls how many times a queue message is tried before being moved to the poison queue. This is separate from function-level retry policies. For Service Bus, `clientRetryOptions` applies to interactions with the Service Bus service; failed function executions are handled by Service Bus message settlement and the entity's delivery and dead-letter settings.
 
 ## Code-Level Retry with Polly
 
@@ -298,7 +294,7 @@ public async Task ProcessRequest(
 
 ## Monitoring Retry Behavior
 
-Use Application Insights to track retry attempts and identify functions that are failing frequently.
+Use Application Insights to identify functions that are failing frequently, which can indicate repeated retries.
 
 ```kusto
 // Find functions with high retry rates
