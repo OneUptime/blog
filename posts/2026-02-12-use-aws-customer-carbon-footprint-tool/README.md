@@ -10,15 +10,15 @@ Description: Learn how to use the AWS Customer Carbon Footprint Tool to measure,
 
 Every workload you run on AWS has a carbon footprint. The servers consume electricity, the cooling systems run around the clock, and the electricity itself may come from fossil fuels depending on the region. For organizations with sustainability goals or ESG reporting requirements, understanding this footprint is not optional anymore.
 
-AWS provides the Customer Carbon Footprint Tool to give you visibility into the carbon emissions associated with your AWS usage. It is free, built into the console, and requires zero setup. But using it effectively takes some understanding of what the numbers mean and how to act on them.
+AWS provides the Customer Carbon Footprint Tool to give you visibility into the carbon emissions associated with your AWS usage. It is free, built into the console, and requires zero setup. AWS has announced that the Customer Carbon Footprint Tool will be deprecated on June 30, 2026 in favor of the AWS Sustainability service, but the same core concepts apply. Using it effectively takes some understanding of what the numbers mean and how to act on them.
 
 ## What the Tool Actually Measures
 
 The AWS Customer Carbon Footprint Tool estimates your greenhouse gas emissions from AWS usage based on three factors:
 
 1. **Your resource consumption** - The compute, storage, networking, and other services you use
-2. **The energy needed to power those resources** - Varies by instance type and utilization
-3. **The carbon intensity of the electricity** - Varies dramatically by region based on the local energy grid mix
+2. **The energy and infrastructure allocated to those resources** - Estimated through AWS's carbon allocation methodology
+3. **The emissions calculation method** - Location-based and market-based methods account for regional grids and AWS carbon-free energy purchases
 
 The tool reports emissions in metric tons of carbon dioxide equivalent (MTCO2e), covering Scope 1, Scope 2, and Scope 3 emissions related to your AWS usage.
 
@@ -26,12 +26,11 @@ The tool reports emissions in metric tons of carbon dioxide equivalent (MTCO2e),
 graph TD
     A[Your AWS Usage] --> B[Resource Consumption Data]
     B --> C[Energy Estimation Model]
-    C --> D[Regional Grid Carbon Intensity]
-    D --> E[Carbon Emissions Estimate - MTCO2e]
-    F[AWS Renewable Energy Purchases] --> G[Carbon Offsets]
-    E --> H[Gross Emissions]
-    G --> H
-    H --> I[Net Emissions Report]
+    C --> D[Location-Based Calculation]
+    C --> E[Market-Based Calculation]
+    F[AWS Carbon-Free Energy Purchases] --> E
+    D --> G[LBM Emissions - MTCO2e]
+    E --> H[MBM Emissions - MTCO2e]
 ```
 
 ## Accessing the Tool
@@ -43,18 +42,18 @@ The Carbon Footprint Tool is available in the AWS Billing Console:
 3. Click **Carbon Footprint** in the left navigation
 4. The dashboard loads with your emissions data
 
-You need the `aws-portal:ViewBilling` permission to access this tool. If you are using AWS Organizations, the management account can see the aggregate footprint across all member accounts.
+You need the `sustainability:GetCarbonFootprintSummary` permission to access the Customer Carbon Footprint Tool data. If you are using AWS Organizations, the management account can see the aggregate footprint across all member accounts. For the newer AWS Sustainability APIs, grant the `sustainability:GetEstimatedCarbonEmissions` and `sustainability:GetEstimatedCarbonEmissionsDimensionValues` permissions.
 
 ```json
-// IAM policy to grant access to the Carbon Footprint Tool
 {
   "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
       "Action": [
-        "aws-portal:ViewBilling",
-        "sustainability:GetCarbonFootprintSummary"
+        "sustainability:GetCarbonFootprintSummary",
+        "sustainability:GetEstimatedCarbonEmissions",
+        "sustainability:GetEstimatedCarbonEmissionsDimensionValues"
       ],
       "Resource": "*"
     }
@@ -68,19 +67,11 @@ The dashboard shows several key visualizations:
 
 ### Emissions Over Time
 
-A bar chart showing your monthly emissions in MTCO2e. This is your primary trend indicator. You want this line going down over time, or at least staying flat as your usage grows.
+A bar chart showing your monthly emissions in MTCO2e. This is your primary trend indicator. You want this trend going down over time, or at least staying flat as your usage grows.
 
 ### Emissions by Service
 
-A breakdown showing which AWS services contribute most to your footprint. Typically, EC2 dominates because compute is the most energy-intensive activity. Common breakdowns look like:
-
-| Service | Typical Share |
-|---------|--------------|
-| Amazon EC2 | 50-70% |
-| Amazon S3 | 5-15% |
-| Amazon RDS | 5-15% |
-| Data Transfer | 5-10% |
-| Other Services | 5-15% |
+A breakdown showing which AWS services contribute most to your footprint. In the Customer Carbon Footprint Tool, the service view highlights Amazon EC2, Amazon S3, and Amazon CloudFront, with other products grouped under Other. In the newer AWS Sustainability APIs and Data Exports, you can also group emissions data by service.
 
 ### Emissions by Region
 
@@ -88,15 +79,14 @@ This is one of the most actionable views. Different regions have vastly differen
 
 ### Avoided Emissions
 
-AWS purchases renewable energy and invests in carbon offset projects. The "avoided emissions" figure shows how much your footprint would have been if AWS had not made these investments.
+AWS reports emissions using location-based and market-based methods. The emissions savings figure is the difference between the location-based emissions calculation and the market-based calculation, which accounts for AWS carbon-free energy purchases.
 
 ## Exporting and Automating Reports
 
 For ESG reporting, you need to get the data out of the console. The tool supports CSV export:
 
-1. Click the **Download** button on the dashboard
-2. Choose your date range
-3. Select CSV format
+1. Click the **Download CSV** button on the dashboard
+2. Save the exported file for your reporting workflow
 
 For automated reporting, use the AWS SDK:
 
@@ -104,41 +94,58 @@ For automated reporting, use the AWS SDK:
 # Retrieve carbon footprint data programmatically
 
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
-client = boto3.client('billingconductor')
-
-# Note: Carbon footprint data is also accessible via the
-# Cost and Usage Report with sustainability columns enabled
-# Here we use the sustainability API
 sustainability = boto3.client('sustainability')
 
-response = sustainability.get_carbon_footprint_summary(
-    DateInterval={
-        'Start': '2025-01-01',
-        'End': '2025-12-31'
-    }
+response = sustainability.get_estimated_carbon_emissions(
+    TimePeriod={
+        'Start': datetime(2025, 1, 1, tzinfo=timezone.utc),
+        'End': datetime(2026, 1, 1, tzinfo=timezone.utc)
+    },
+    EmissionsTypes=[
+        'TOTAL_LBM_CARBON_EMISSIONS',
+        'TOTAL_MBM_CARBON_EMISSIONS'
+    ],
+    Granularity='YEARLY_CALENDAR'
 )
 
-print(f"Total emissions: {response['TotalEmissions']} MTCO2e")
-print(f"Avoided emissions: {response['AvoidedEmissions']} MTCO2e")
+for result in response['Results']:
+    values = result['EmissionsValues']
+    lbm = values['TOTAL_LBM_CARBON_EMISSIONS']
+    mbm = values['TOTAL_MBM_CARBON_EMISSIONS']
+    print(f"Location-based emissions: {lbm['Value']} {lbm['Unit']}")
+    print(f"Market-based emissions: {mbm['Value']} {mbm['Unit']}")
 ```
 
-For detailed per-service breakdowns, enable the sustainability columns in your AWS Cost and Usage Report (CUR):
+For detailed reporting, create a Data Export for the `CARBON_EMISSIONS` table:
 
 ```bash
-# Create a CUR report with sustainability data included
-aws cur put-report-definition \
-  --report-definition '{
-    "ReportName": "sustainability-report",
-    "TimeUnit": "MONTHLY",
-    "Format": "textORcsv",
-    "Compression": "GZIP",
-    "S3Bucket": "my-cur-reports-bucket",
-    "S3Prefix": "sustainability",
-    "S3Region": "us-east-1",
-    "AdditionalSchemaElements": ["RESOURCES"],
-    "RefreshClosedReports": true
+# Create a carbon emissions Data Export
+aws bcm-data-exports create-export \
+  --export '{
+    "Name": "carbon-emissions",
+    "Description": "Monthly carbon emissions export",
+    "DataQuery": {
+      "QueryStatement": "SELECT * FROM CARBON_EMISSIONS"
+    },
+    "DestinationConfigurations": {
+      "S3Destination": {
+        "S3Bucket": "my-carbon-reports-bucket",
+        "S3BucketOwner": "123456789012",
+        "S3Prefix": "sustainability",
+        "S3Region": "us-east-1",
+        "S3OutputConfigurations": {
+          "OutputType": "CUSTOM",
+          "Format": "TEXT_OR_CSV",
+          "Compression": "GZIP",
+          "Overwrite": "OVERWRITE_REPORT"
+        }
+      }
+    },
+    "RefreshCadence": {
+      "Frequency": "SYNCHRONOUS"
+    }
   }'
 ```
 
@@ -164,7 +171,7 @@ Oversized instances waste energy. Use AWS Compute Optimizer to find instances th
 ```bash
 # Get right-sizing recommendations from Compute Optimizer
 aws compute-optimizer get-ec2-instance-recommendations \
-  --filters "Name=Finding,Values=OVER_PROVISIONED" \
+  --filters name=Finding,values=Overprovisioned \
   --query 'instanceRecommendations[*].{Instance:instanceArn,Current:currentInstanceType,Recommended:recommendationOptions[0].instanceType}'
 ```
 
@@ -207,11 +214,11 @@ def lambda_handler(event, context):
 
 ### 5. Use Spot and Serverless
 
-Spot instances reuse spare capacity, which is more energy-efficient than provisioning dedicated capacity. Serverless services like Lambda only consume resources when actively processing requests, so there is zero waste during idle periods.
+Spot instances use spare EC2 capacity, which can improve utilization of existing AWS infrastructure. Serverless services like Lambda only allocate compute to your function while it is processing requests, so you do not keep dedicated compute running during idle periods.
 
 ### 6. Optimize Storage
 
-Move infrequently accessed data to S3 Glacier or S3 Glacier Deep Archive. These storage classes use less energy because the data does not need to be on spinning disks or SSDs that are always powered.
+Move infrequently accessed data to S3 Glacier or S3 Glacier Deep Archive. These storage classes are designed for archive access patterns and help you avoid keeping data in higher-performance storage classes when you do not need frequent access.
 
 ```bash
 # Create an S3 lifecycle rule to move old data to Glacier
@@ -242,7 +249,7 @@ aws s3api put-bucket-lifecycle-configuration \
 
 You can create custom CloudWatch alarms based on carbon footprint trends. While there is no direct CloudWatch metric for carbon, you can build a pipeline:
 
-1. Export CUR data with sustainability columns to S3
+1. Export the `CARBON_EMISSIONS` table to S3 with AWS Data Exports
 2. Process it with a Lambda function on a schedule
 3. Publish a custom CloudWatch metric
 4. Alert when emissions exceed a threshold
@@ -253,13 +260,13 @@ For broader monitoring of both your sustainability metrics and operational healt
 
 Many organizations need to include cloud carbon emissions in their ESG reports. The Carbon Footprint Tool provides data suitable for:
 
-- **GHG Protocol** - The emissions map to Scope 2 (purchased electricity) and Scope 3 (supply chain) categories
+- **GHG Protocol** - The emissions use Scope 1, Scope 2, and Scope 3 categories attributed to your AWS usage
 - **CDP (Carbon Disclosure Project)** - Use the exported CSV data for your annual disclosure
 - **Science Based Targets initiative (SBTi)** - Track progress toward reduction targets
 
 When preparing reports, always note:
-- The data has a 3-month lag (Q1 data is available in Q2)
-- Historical data goes back to January 2020
+- New data is usually published between the 15th and 21st of the month after the usage occurs
+- Historical data is available back to January 2022 in the AWS Sustainability service, while the Customer Carbon Footprint Tool console shows the previous 38 months
 - Numbers are estimates based on AWS's models, not direct measurements
 
 ## Wrapping Up
