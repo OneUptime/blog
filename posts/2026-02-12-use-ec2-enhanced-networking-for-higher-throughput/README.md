@@ -19,7 +19,7 @@ The numbers speak for themselves:
 | Bandwidth | Up to 1 Gbps | Up to 200 Gbps |
 | Latency | Higher, variable | Lower, consistent |
 | Packets per second | ~100K PPS | Millions of PPS |
-| Jitter | Higher | Near-zero |
+| Jitter | Higher | Lower and more consistent |
 | CPU overhead | Higher (hypervisor processing) | Lower (hardware offload) |
 
 Enhanced networking is free. You don't pay anything extra for it. The only requirement is using a supported instance type and having the right driver.
@@ -28,7 +28,7 @@ Enhanced networking is free. You don't pay anything extra for it. The only requi
 
 AWS offers two enhanced networking interfaces:
 
-**Elastic Network Adapter (ENA)** - The current standard. Supports up to 200 Gbps on latest instances. Required for all current-generation instance types.
+**Elastic Network Adapter (ENA)** - The current standard. Supports up to 200 Gbps on supported high-end instances. All Nitro-based instances use ENA for enhanced networking.
 
 **Intel 82599 VF (ixgbevf)** - The older interface. Supports up to 10 Gbps. Only used on a few legacy instance types like C3, R3, and I2.
 
@@ -94,7 +94,8 @@ On Amazon Linux 2023 and recent Ubuntu/RHEL versions, the ENA driver is pre-inst
 ```bash
 # Amazon Linux 2 - usually pre-installed, update to latest
 sudo yum install -y kernel-devel-$(uname -r)
-sudo yum update -y ena
+sudo yum update -y kernel
+# Reboot after a kernel update so the newer in-kernel driver is active
 
 # Ubuntu 18.04+ - usually pre-installed via linux-aws kernel
 dpkg -l | grep linux-aws
@@ -148,7 +149,9 @@ ethtool -l eth0
 
 # Set RSS queues to match CPU count (or max available)
 NUM_CPUS=$(nproc)
-sudo ethtool -L eth0 combined $NUM_CPUS
+MAX_QUEUES=$(ethtool -l eth0 | awk '/Pre-set maximums:/ {in_max=1; next} in_max && /Combined:/ {print $2; exit}')
+NUM_QUEUES=$(( NUM_CPUS < MAX_QUEUES ? NUM_CPUS : MAX_QUEUES ))
+sudo ethtool -L eth0 combined "$NUM_QUEUES"
 ```
 
 ### Tune Kernel Network Parameters
@@ -243,7 +246,7 @@ iperf3 -c <server-ip> -t 30 -P 8 -w 2M
 iperf3 -c <server-ip> -t 30 -l 64 -P 8
 ```
 
-Compare results before and after tuning. On an m5.8xlarge with ENA, you should see close to 10 Gbps single-flow and 25 Gbps aggregate with multiple parallel flows.
+Compare results before and after tuning. On an m5.8xlarge with ENA, you should see close to 10 Gbps single-flow within a cluster placement group and close to 10 Gbps aggregate with multiple parallel flows.
 
 ## Instance Type and Network Bandwidth
 
@@ -251,10 +254,10 @@ Not all instance types get the same network bandwidth. Here's a quick reference:
 
 | Instance Size | Baseline Bandwidth | Burst Bandwidth |
 |--------------|-------------------|-----------------|
-| m5.large | Up to 10 Gbps | 10 Gbps |
-| m5.xlarge | Up to 10 Gbps | 10 Gbps |
-| m5.2xlarge | Up to 10 Gbps | 10 Gbps |
-| m5.4xlarge | Up to 10 Gbps | 10 Gbps |
+| m5.large | 0.75 Gbps | 10 Gbps |
+| m5.xlarge | 1.25 Gbps | 10 Gbps |
+| m5.2xlarge | 2.5 Gbps | 10 Gbps |
+| m5.4xlarge | 5 Gbps | 10 Gbps |
 | m5.8xlarge | 10 Gbps | 10 Gbps |
 | m5.12xlarge | 12 Gbps | 12 Gbps |
 | m5.16xlarge | 20 Gbps | 20 Gbps |
@@ -282,7 +285,7 @@ aws ec2 run-instances \
   --subnet-id subnet-abc123
 ```
 
-Cluster placement groups put instances on the same physical rack, minimizing network hops. Combined with ENA, this gives you the lowest possible latency between instances - often under 100 microseconds.
+Cluster placement groups pack instances close together inside one Availability Zone, minimizing network hops. Combined with ENA, this gives you very low latency between instances.
 
 ## Monitoring Network Performance
 
@@ -330,6 +333,6 @@ echo 'MTU=9001' | sudo tee -a /etc/sysconfig/network-scripts/ifcfg-eth0
 ip link show eth0 | grep mtu
 ```
 
-Jumbo frames only work within the same VPC or peered VPCs. Traffic going through an internet gateway or VPN is limited to 1500 MTU.
+Jumbo frames work best for private traffic inside a VPC. Traffic over an internet gateway or VPN is limited to 1500 MTU, and inter-Region VPC peering is limited to 8500 MTU.
 
 Enhanced networking is one of those features where the default is usually good enough, but spending an hour on tuning can give you dramatically better performance. For network-intensive workloads like data processing, distributed databases, or high-frequency trading, the difference between default and optimized ENA configuration can be the difference between meeting your latency requirements and missing them.
