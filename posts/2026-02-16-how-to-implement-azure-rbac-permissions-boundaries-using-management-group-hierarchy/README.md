@@ -10,7 +10,7 @@ Description: Learn how to use Azure management group hierarchy to create effecti
 
 As your Azure environment grows, controlling who can do what and where becomes increasingly complex. A team lead who needs Contributor access to their project's resources should not accidentally end up with access to the finance team's subscriptions. Management groups give you a hierarchical structure to organize subscriptions, and when combined with RBAC role assignments at different levels of that hierarchy, they create natural permissions boundaries that keep access scoped appropriately.
 
-In this post, I will explain how to design a management group hierarchy that supports clean permissions boundaries, how to assign roles at the right level, and how to use deny assignments and Azure Policy to enforce guardrails.
+In this post, I will explain how to design a management group hierarchy that supports clean permissions boundaries, how to assign roles at the right level, and how to use role assignment conditions and Azure Policy to enforce guardrails.
 
 ## Understanding Management Group Hierarchy and RBAC Inheritance
 
@@ -183,21 +183,21 @@ az role assignment create \
 
 One common problem with permissions boundaries is that someone with Owner or User Access Administrator at a management group level can assign roles to others, potentially granting access beyond what was intended. You can limit this with role assignment conditions.
 
-Role assignment conditions (preview) let you restrict what roles a user can assign and to whom. This creates a conditional role assignment that limits what roles the engineering lead can delegate:
+Role assignment conditions let you restrict what roles a user can assign and to whom. This creates a conditional role assignment that limits what roles the engineering lead can delegate:
 
 ```bash
-# Assign User Access Administrator with conditions
+# Assign Role Based Access Control Administrator with conditions
 # This limits the engineering lead to only assigning specific roles
 az role assignment create \
   --assignee-object-id "<eng-lead-id>" \
   --assignee-principal-type User \
   --role "Role Based Access Control Administrator" \
   --scope "/providers/Microsoft.Management/managementGroups/mg-engineering" \
-  --condition "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {acdd72a7-3385-48ef-bd42-f606fba81ae7, b24988ac-6180-42a0-ab88-20f7382dd24c}))" \
+  --condition "((!(ActionMatches{'Microsoft.Authorization/roleAssignments/write'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {acdd72a7-3385-48ef-bd42-f606fba81ae7, b24988ac-6180-42a0-ab88-20f7382dd24c})) AND ((!(ActionMatches{'Microsoft.Authorization/roleAssignments/delete'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {acdd72a7-3385-48ef-bd42-f606fba81ae7, b24988ac-6180-42a0-ab88-20f7382dd24c}))" \
   --condition-version "2.0"
 ```
 
-The condition above restricts the assignee to only granting the Reader (`acdd72a7...`) and Contributor (`b24988ac...`) roles. They cannot grant Owner or User Access Administrator, which prevents privilege escalation.
+The condition above restricts the assignee to only granting or removing assignments for the Reader (`acdd72a7...`) and Contributor (`b24988ac...`) roles. They cannot grant Owner or User Access Administrator, which prevents privilege escalation.
 
 ## Step 5: Apply Azure Policy Guardrails
 
@@ -212,7 +212,8 @@ az policy assignment create \
   --display-name "Deny Public IP Addresses in Production" \
   --policy "/providers/Microsoft.Authorization/policyDefinitions/6c112d4e-5bc7-47ae-a041-ea2d9dccd749" \
   --scope "/providers/Microsoft.Management/managementGroups/mg-eng-prod" \
-  --enforcement-mode Default
+  --enforcement-mode Default \
+  --params '{"listOfResourceTypesNotAllowed":{"value":["Microsoft.Network/publicIPAddresses"]}}'
 
 # Require specific resource types only
 az policy assignment create \
@@ -266,7 +267,8 @@ AzureActivity
 | where TimeGenerated > ago(30d)
 | where OperationNameValue == "Microsoft.Authorization/roleAssignments/write"
 | where ActivityStatusValue == "Success"
-| extend Scope = tostring(parse_json(Properties).requestbody)
+| extend Scope = tostring(Authorization_d.scope)
+| where Scope startswith "/providers/Microsoft.Management/managementGroups/"
 | project
     TimeGenerated,
     Caller,
@@ -276,7 +278,7 @@ AzureActivity
 | order by TimeGenerated desc
 ```
 
-You can also use Azure Resource Graph to get a snapshot of current assignments:
+You can also use the Azure CLI to get a snapshot of current assignments:
 
 ```bash
 # List all role assignments at management group scope
