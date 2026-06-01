@@ -65,7 +65,7 @@ This returns something like:
 ]
 ```
 
-If both tunnels are DOWN, you have an IKE/IPsec configuration issue. If one is UP but connectivity still fails, the issue is likely routing.
+If both tunnels are DOWN, you likely have an IKE/IPsec configuration issue or a reachability problem between the customer gateway and AWS tunnel endpoints. If one is UP but connectivity still fails, the issue is likely routing.
 
 ## Step 2: Verify IKE Configuration
 
@@ -130,7 +130,7 @@ nc -u -z 52.4.5.6 500
 
 Even with tunnels up, traffic won't flow without proper routes.
 
-Check if route propagation is enabled on your VPC route table:
+For VPN connections that use a virtual private gateway, check if route propagation is enabled on your VPC route table:
 
 ```bash
 # Check route propagation settings
@@ -157,7 +157,7 @@ aws ec2 describe-route-tables \
   --query 'RouteTables[0].Routes[?GatewayId==`vgw-abc123`]'
 ```
 
-For static VPN connections, you need to add routes manually:
+For static VPN connections on a virtual private gateway, add the on-premises prefixes to the VPN connection. If route propagation is not enabled, also add matching routes in the VPC route table with the virtual private gateway as the target:
 
 ```bash
 # Add a static route for on-premises CIDR
@@ -296,7 +296,7 @@ Note: modifying tunnel options will briefly disrupt the tunnel.
 2. Tunnels UP but no traffic? Check route tables, route propagation, BGP routes
 3. One-way traffic? Check routing on both sides, NACLs (remember ephemeral ports)
 4. Intermittent drops? Check DPD (Dead Peer Detection) settings, MTU/MSS issues
-5. Slow throughput? VPN throughput is limited to ~1.25 Gbps per tunnel
+5. Slow throughput? Standard VPN tunnels support up to ~1.25 Gbps per tunnel; Large Bandwidth Tunnels on supported Transit Gateway or Cloud WAN attachments support up to 5 Gbps per tunnel
 
 ## Monitoring VPN Health
 
@@ -308,7 +308,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name "vpn-tunnel-down" \
   --namespace AWS/VPN \
   --metric-name TunnelState \
-  --dimensions Name=VpnId,Value=vpn-abc123 \
+  --dimensions Name=VpnId,Value=vpn-abc123 Name=TunnelIpAddress,Value=52.1.2.3 \
   --statistic Maximum \
   --period 300 \
   --threshold 1 \
