@@ -14,10 +14,10 @@ It's one of the most underused tools in AWS, and it can save you hours of debugg
 
 ## What the Policy Simulator Does
 
-The Policy Simulator evaluates IAM policies the same way the AWS authorization engine does. You specify a user, group, or role, choose an action, specify a resource, and the simulator tells you:
+The Policy Simulator evaluates IAM policies using the inputs that you provide during simulation. For supported policy types and scenarios, you specify a user, group, or role, choose an action, specify a resource, and the simulator tells you:
 
 - Whether the action would be **allowed** or **denied**
-- Which **specific policy statement** caused the decision
+- Which **specific policy statement** caused the decision, when a matching statement exists
 - Whether the result came from an **explicit deny**, **explicit allow**, or **implicit deny** (no matching allow)
 
 ```mermaid
@@ -74,7 +74,7 @@ The response includes details about which policy matched:
             "MatchedStatements": [
                 {
                     "SourcePolicyId": "DeveloperAccess",
-                    "SourcePolicyType": "IAM Policy"
+                    "SourcePolicyType": "user-managed"
                 }
             ]
         }
@@ -169,9 +169,9 @@ When a user reports "Access Denied," the Policy Simulator is your best friend. H
 3. Check the result
 
 If the simulation says "allowed" but the real request fails, the problem might be:
-- A **resource-based policy** (like an S3 bucket policy) that denies access
-- A **service control policy** in AWS Organizations blocking the action
-- A **permission boundary** restricting the user's effective permissions
+- A **resource-based policy** (like an S3 bucket policy) that was not included in the simulation
+- A **service control policy** in AWS Organizations blocking the action, especially if the SCP has conditions
+- A **permission boundary** restricting the user's effective permissions if it was not selected or provided for the simulation
 - A **VPC endpoint policy** filtering the request
 
 The console version of the simulator shows which policies were evaluated, making it easier to trace the decision chain.
@@ -238,10 +238,10 @@ Run this as part of your CI/CD pipeline whenever IAM policies change.
 
 ## Limitations
 
-The Policy Simulator has some limitations to be aware of. It doesn't evaluate resource-based policies (S3 bucket policies, KMS key policies, etc.) - only identity-based policies. It also doesn't evaluate service control policies or VPC endpoint policies. And it can't simulate cross-account access scenarios accurately.
+The Policy Simulator has some limitations to be aware of. It doesn't automatically retrieve resource-based policies for the resources you enter. You can include some resource-based policies in a simulation, but support is limited to Amazon S3, Amazon SQS, Amazon SNS, and unlocked Amazon Glacier vault policies, and resource-based policy simulation isn't supported for IAM roles. It also doesn't evaluate SCPs that have conditions, doesn't support resource control policies (RCPs), and doesn't evaluate VPC endpoint policies. And it can't simulate IAM roles and users for cross-account access accurately.
 
 For comprehensive access testing, combine the Policy Simulator with IAM Access Analyzer. Our guide on [using IAM Access Analyzer to find unintended access](https://oneuptime.com/blog/post/2026-02-12-use-iam-access-analyzer-to-find-unintended-access/view) covers the complementary approach.
 
 ## Wrapping Up
 
-The IAM Policy Simulator removes the guesswork from permission management. Test policies before deploying them, debug access denied errors systematically, and automate permission validation in your CI/CD pipeline. It's not perfect - it can't evaluate every type of policy - but it catches the majority of issues and should be part of every AWS team's toolkit.
+The IAM Policy Simulator removes the guesswork from permission management. Test policies before deploying them, debug access denied errors systematically, and automate permission validation in your CI/CD pipeline. It's not perfect - it can't evaluate every policy type or every real-world request context - but it catches the majority of issues and should be part of every AWS team's toolkit.
