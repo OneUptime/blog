@@ -18,13 +18,13 @@ Azure App Service runs your web application on managed infrastructure. When you 
 
 - The application is still starting up (cold start)
 - The worker process has crashed and is restarting
-- You have exceeded the resource limits for your App Service Plan tier
-- The app has been stopped or is in a failed state
+- You have exceeded resource limits for your App Service Plan tier
+- The app is running but the worker process or container is in a failed state
 - Auto-scaling has not kicked in fast enough for a traffic spike
 
 ## Step 1: Check If the App Is Actually Running
 
-This seems obvious, but it catches people more than you would expect. Go to your App Service in the Azure portal and check the **Overview** page. Look at the **Status** field. If it says "Stopped," your app is not running and every request will get a 503.
+This seems obvious, but it catches people more than you would expect. Go to your App Service in the Azure portal and check the **Overview** page. Look at the **Status** field. If it says "Stopped," your app is not running. A stopped app normally returns Azure's "Error 403 - This web app is stopped" page, but it is still worth ruling out before you dig into 503-specific causes.
 
 ```bash
 # Check the current state of your App Service
@@ -74,12 +74,12 @@ Look for errors during startup. Common culprits include:
 
 - Missing environment variables that the app needs to initialize
 - Database connection strings pointing to unreachable hosts
-- Port binding issues (App Service expects your app to listen on the port specified in the `PORT` environment variable or `WEBSITES_PORT` app setting)
+- Port binding issues (built-in Linux and Node.js apps should listen on the port in the `PORT` environment variable; custom Linux containers should set `WEBSITES_PORT` when the container listens on a port other than 80 or 8080)
 - Missing native dependencies or incompatible runtime versions
 
 ## Step 3: Verify the Health Check Configuration
 
-If you have configured a health check path for your App Service, instances that fail the health check will be removed from the load balancer rotation. If all instances fail, you get 503s across the board.
+If you have configured a health check path for your App Service, instances that fail enough health check pings can be removed from the load balancer rotation. By default, App Service limits how many unhealthy instances are excluded at one time, and if all instances are unhealthy, none are excluded unless you override that behavior with `WEBSITE_HEALTHCHECK_MAXUNHEALTHYWORKERPERCENT`.
 
 Check your health check configuration:
 
@@ -92,9 +92,9 @@ az webapp show \
   --output tsv
 ```
 
-Make sure the health check path returns a 200 status within the timeout period. If your health check endpoint hits a database or external service, a failure in that dependency will make the health check fail, even though your app might be perfectly capable of serving other requests.
+Make sure the health check path returns a 200-299 status within one minute. If your health check endpoint hits a database or external service, a failure in that dependency will make the health check fail, even though your app might be capable of serving some other requests.
 
-I have seen cases where teams set the health check to `/api/health` which queries the database, and when the database has a brief network blip, every single instance gets marked unhealthy and all traffic fails with 503. Keep your health check simple - a basic endpoint that confirms the process is running is usually enough.
+I have seen cases where teams set the health check to `/api/health` which queries the database, and when the database has a brief network blip, healthy instances are taken out of rotation and the remaining instances get overloaded. Keep your health check deliberate: include dependencies that must be available before the app should receive traffic, but avoid making the endpoint more fragile than your real readiness requirements.
 
 ## Step 4: Check Resource Limits and Quotas
 
@@ -105,7 +105,7 @@ For Free and Shared tiers, these limits are quite aggressive:
 - Free tier: 60 CPU minutes per day
 - Shared tier: 240 CPU minutes per day
 
-Once you exceed the CPU quota, your app is stopped until the next day. If you are running anything beyond a personal project, move to at least the Basic tier.
+Once you exceed the CPU quota, your app is stopped until the quota resets, and Azure normally shows the "Error 403 - This web app is stopped" page. If you are running anything beyond a personal project, move to at least the Basic tier.
 
 For Standard and Premium tiers, resource limits are per-instance. Check the **App Service Plan** metrics:
 
@@ -218,7 +218,7 @@ To avoid 503 errors in production:
 2. Enable Always On to prevent idle unloading.
 3. Set up auto-scaling with sensible thresholds so you can handle traffic spikes.
 4. Use deployment slots for zero-downtime deployments.
-5. Keep health check endpoints lightweight - do not let them depend on external services.
+5. Keep health check endpoints aligned with readiness - check only the dependencies that must work before the app should receive traffic.
 6. Set up monitoring and alerts on HTTP 503 responses so you catch issues early.
 
 The 503 error in App Service is almost always a capacity or startup issue. Once you identify which category your problem falls into, the fix is usually straightforward.
