@@ -58,6 +58,7 @@ Install all applications that should be available on every session host.
 
 ```powershell
 # Example: Silent install of commonly needed applications
+New-Item -Path "C:\Temp" -ItemType Directory -Force
 
 # Install Google Chrome (enterprise MSI)
 $chromePath = "C:\Temp\GoogleChromeStandaloneEnterprise64.msi"
@@ -111,11 +112,12 @@ New-Item -Path $vdotPath -ItemType Directory -Force
 
 # Clone the optimization tool repository
 Invoke-WebRequest -Uri "https://github.com/The-Virtual-Desktop-Team/Virtual-Desktop-Optimization-Tool/archive/refs/heads/main.zip" -OutFile "$vdotPath\vdot.zip"
+Unblock-File -Path "$vdotPath\vdot.zip"
 Expand-Archive -Path "$vdotPath\vdot.zip" -DestinationPath $vdotPath
 
 # Run the optimization tool
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
-& "$vdotPath\Virtual-Desktop-Optimization-Tool-main\Windows_VDOT.ps1" -Optimizations All -AcceptEULA
+& "$vdotPath\Virtual-Desktop-Optimization-Tool-main\Windows_VDOT.ps1" -Optimizations All -Verbose -AcceptEULA
 ```
 
 The tool applies optimizations including:
@@ -171,11 +173,15 @@ reg load "HKU\DefaultUser" "C:\Users\Default\NTUSER.DAT"
 # Set default desktop wallpaper
 reg add "HKU\DefaultUser\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "C:\Windows\Web\Wallpaper\Corporate\company-wallpaper.jpg" /f
 
-# Set default Start menu layout (if using a custom layout)
-reg add "HKU\DefaultUser\SOFTWARE\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount" /v "LockedStartLayout" /t REG_DWORD /d 1 /f
+# Set default Start menu layout (if using a custom Windows 11 LayoutModification.json)
+New-Item -Path "C:\Users\Default\AppData\Local\Microsoft\Windows\Shell" -ItemType Directory -Force
+Copy-Item -Path "C:\Temp\LayoutModification.json" -Destination "C:\Users\Default\AppData\Local\Microsoft\Windows\Shell\LayoutModification.json" -Force
 
 # Disable first-run experience
 reg add "HKU\DefaultUser\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v "SubscribedContent-338389Enabled" /t REG_DWORD /d 0 /f
+
+# Disable transparency effects for new user profiles
+reg add "HKU\DefaultUser\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v "EnableTransparency" /t REG_DWORD /d 0 /f
 
 # Unload the hive
 [gc]::Collect()
@@ -187,9 +193,9 @@ reg unload "HKU\DefaultUser"
 Install any agents required by your organization.
 
 ```powershell
-# Install the Azure Monitor Agent for monitoring
-Install-PackageProvider -Name NuGet -Force
-Install-Module -Name Az.ConnectedMachine -Force
+# Install endpoint security and management agents that are safe to include in the image.
+# Deploy Azure Monitor Agent after each session host VM exists, because it is a VM extension
+# associated with the deployed Azure resource and its Data Collection Rules.
 
 # Install Microsoft Defender for Endpoint (if not included)
 # Download from your Microsoft 365 security portal
@@ -242,7 +248,7 @@ az sig image-version create \
   --gallery-image-definition win11-avd-custom \
   --gallery-image-version 1.0.0 \
   --target-regions "eastus=1" \
-  --managed-image "/subscriptions/<sub-id>/resourceGroups/myImageRG/providers/Microsoft.Compute/virtualMachines/avd-image-builder"
+  --virtual-machine "/subscriptions/<sub-id>/resourceGroups/myImageRG/providers/Microsoft.Compute/virtualMachines/avd-image-builder"
 ```
 
 ## Step 7: Deploy Session Hosts from the Custom Image
@@ -251,19 +257,27 @@ Use the custom image when creating new session hosts for your host pool.
 
 ```bash
 # Create session hosts using the custom image from the gallery
-az vm create \
+for i in 0 1 2; do
+  az vm create \
+    --resource-group myResourceGroup \
+    --name "avd-host-$i" \
+    --image "/subscriptions/<sub-id>/resourceGroups/myImageRG/providers/Microsoft.Compute/galleries/avdImageGallery/images/win11-avd-custom/versions/1.0.0" \
+    --size Standard_D4s_v5 \
+    --vnet-name avd-vnet \
+    --subnet session-hosts \
+    --admin-username avdadmin \
+    --admin-password 'YourSecurePassword123!'
+done
+
+# Install Azure Monitor Agent on each deployed VM if you collect guest telemetry
+az vm extension set \
   --resource-group myResourceGroup \
-  --name avd-host \
-  --count 3 \
-  --image "/subscriptions/<sub-id>/resourceGroups/myImageRG/providers/Microsoft.Compute/galleries/avdImageGallery/images/win11-avd-custom/versions/1.0.0" \
-  --size Standard_D4s_v5 \
-  --vnet-name avd-vnet \
-  --subnet session-hosts \
-  --admin-username avdadmin \
-  --admin-password 'YourSecurePassword123!'
+  --vm-name avd-host-0 \
+  --name AzureMonitorWindowsAgent \
+  --publisher Microsoft.Azure.Monitor
 ```
 
-After deploying, register the VMs with the host pool using the AVD agent and registration token, as described in the host pool setup process.
+After deploying, join the VMs to the same supported identity provider as the host pool, then register them with the host pool using the Azure Virtual Desktop Agent, Agent Boot Loader, and registration token, as described in the host pool setup process.
 
 ## Image Update Strategy
 
