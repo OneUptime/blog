@@ -8,16 +8,16 @@ Description: Set up Azure Traffic Manager with nested profiles to implement mult
 
 ---
 
-Azure Traffic Manager is a DNS-based traffic routing service. It works well for simple failover scenarios, but when you need more sophisticated routing logic - like combining priority-based failover between regions with performance-based routing within regions - you need nested profiles. Nested profiles let you chain Traffic Manager profiles together, where a child profile acts as an endpoint in a parent profile.
+Azure Traffic Manager is a DNS-based traffic routing service. It works well for simple failover scenarios, but when you need more sophisticated routing logic - like combining priority-based failover between regions with weighted distribution within regions - you need nested profiles. Nested profiles let you chain Traffic Manager profiles together, where a child profile acts as an endpoint in a parent profile.
 
 This guide covers how to set up a nested Traffic Manager configuration for multi-region failover with load balancing within each region.
 
 ## Why Nested Profiles?
 
-A single Traffic Manager profile supports one routing method: priority, weighted, performance, geographic, or multivalue. But real-world architectures often need combinations. For example:
+A single Traffic Manager profile supports one routing method: priority, weighted, performance, geographic, multivalue, or subnet. But real-world architectures often need combinations. For example:
 
 - Priority routing between regions (primary in East US, failover to West US)
-- Performance routing within each region (multiple endpoints, route to the fastest one)
+- Weighted routing within each region (multiple endpoints, distribute traffic by weight)
 - Geographic routing at the top level, with weighted distribution within each geographic group
 
 Nested profiles solve this by letting you use different routing methods at different levels of the hierarchy.
@@ -60,7 +60,7 @@ az network traffic-manager profile create \
   --max-failures 3
 ```
 
-The health check parameters matter a lot here. We set a 10-second probe interval with a 5-second timeout and 3 tolerated failures. That means a failing endpoint is detected in about 30 seconds.
+The health check parameters matter a lot here. We set a 10-second probe interval with a 5-second timeout and 3 tolerated failures. That means a failing endpoint is detected after about 30 seconds of failed probes, plus DNS caching effects from the profile TTL.
 
 ```bash
 # Create the West US child profile with weighted routing
@@ -87,18 +87,18 @@ Add your actual application endpoints to each child profile.
 az network traffic-manager endpoint create \
   --resource-group rg-traffic-manager \
   --profile-name tm-child-eastus \
-  --type azureEndpoints \
+  --type externalEndpoints \
   --name app-east-1 \
-  --target-resource-id $(az webapp show -g rg-app-eastus -n app-east-1 --query id -o tsv) \
+  --target app-east-1.azurewebsites.net \
   --weight 50 \
   --endpoint-status Enabled
 
 az network traffic-manager endpoint create \
   --resource-group rg-traffic-manager \
   --profile-name tm-child-eastus \
-  --type azureEndpoints \
+  --type externalEndpoints \
   --name app-east-2 \
-  --target-resource-id $(az webapp show -g rg-app-eastus -n app-east-2 --query id -o tsv) \
+  --target app-east-2.azurewebsites.net \
   --weight 50 \
   --endpoint-status Enabled
 
@@ -106,21 +106,23 @@ az network traffic-manager endpoint create \
 az network traffic-manager endpoint create \
   --resource-group rg-traffic-manager \
   --profile-name tm-child-westus \
-  --type azureEndpoints \
+  --type externalEndpoints \
   --name app-west-1 \
-  --target-resource-id $(az webapp show -g rg-app-westus -n app-west-1 --query id -o tsv) \
+  --target app-west-1.azurewebsites.net \
   --weight 50 \
   --endpoint-status Enabled
 
 az network traffic-manager endpoint create \
   --resource-group rg-traffic-manager \
   --profile-name tm-child-westus \
-  --type azureEndpoints \
+  --type externalEndpoints \
   --name app-west-2 \
-  --target-resource-id $(az webapp show -g rg-app-westus -n app-west-2 --query id -o tsv) \
+  --target app-west-2.azurewebsites.net \
   --weight 50 \
   --endpoint-status Enabled
 ```
+
+These App Service examples use external endpoints because a Traffic Manager profile can have only one Web App Azure endpoint from each Azure region. If you have one Web App per region, you can use `azureEndpoints` with `--target-resource-id` instead.
 
 ## Step 3: Create the Parent Profile
 
@@ -169,7 +171,6 @@ az network traffic-manager endpoint create \
   --target-resource-id $CHILD_EASTUS_ID \
   --priority 1 \
   --min-child-endpoints 1 \
-  --min-child-ipv4 1 \
   --endpoint-status Enabled
 
 # Add West US child as the failover (priority 2) nested endpoint
@@ -181,7 +182,6 @@ az network traffic-manager endpoint create \
   --target-resource-id $CHILD_WESTUS_ID \
   --priority 2 \
   --min-child-endpoints 1 \
-  --min-child-ipv4 1 \
   --endpoint-status Enabled
 ```
 
@@ -230,14 +230,14 @@ To simulate a failover, you can disable the endpoints in the East US child profi
 az network traffic-manager endpoint update \
   --resource-group rg-traffic-manager \
   --profile-name tm-child-eastus \
-  --type azureEndpoints \
+  --type externalEndpoints \
   --name app-east-1 \
   --endpoint-status Disabled
 
 az network traffic-manager endpoint update \
   --resource-group rg-traffic-manager \
   --profile-name tm-child-eastus \
-  --type azureEndpoints \
+  --type externalEndpoints \
   --name app-east-2 \
   --endpoint-status Disabled
 ```
@@ -282,7 +282,7 @@ For production systems where fast failover is critical, a TTL of 10-30 seconds i
 
 ## Three-Tier Nesting Example
 
-You can nest up to three levels deep. Here is an example with geographic routing at the top, priority routing in the middle, and weighted routing at the bottom.
+Traffic Manager supports nesting profiles up to 10 levels deep. Here is a three-level example with geographic routing at the top, priority routing in the middle, and weighted routing at the bottom.
 
 ```mermaid
 graph TD
