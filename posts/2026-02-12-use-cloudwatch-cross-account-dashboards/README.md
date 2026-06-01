@@ -59,6 +59,16 @@ aws oam create-sink \
 
 The sink generates an ARN you will need when configuring the source accounts. Copy that ARN.
 
+Before source accounts can link to the sink, attach a sink policy that allows those accounts to create links. If you use AWS Organizations, scope the policy to your organization ID.
+
+```bash
+# Replace the sink ARN and organization ID with your values
+aws oam put-sink-policy \
+  --sink-identifier "arn:aws:oam:us-east-1:123456789012:sink/abc123-def456" \
+  --policy '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":["oam:CreateLink","oam:UpdateLink"],"Resource":"*","Condition":{"StringEquals":{"aws:PrincipalOrgID":"o-exampleorgid"},"ForAllValues:StringEquals":{"oam:ResourceTypes":["AWS::CloudWatch::Metric","AWS::Logs::LogGroup","AWS::XRay::Trace"]}}}]}' \
+  --region us-east-1
+```
+
 ## Step 2: Create Links from Source Accounts
 
 In each source account, you create a link to the monitoring account sink. This authorizes the source account to share its telemetry data.
@@ -67,24 +77,26 @@ In each source account, you create a link to the monitoring account sink. This a
 # Run this in each source account
 # Replace the sink ARN with the one from Step 1
 aws oam create-link \
-  --label-template "AccountName" \
+  --label-template '$AccountName' \
   --resource-types '["AWS::CloudWatch::Metric", "AWS::Logs::LogGroup", "AWS::XRay::Trace"]' \
   --sink-identifier "arn:aws:oam:us-east-1:123456789012:sink/abc123-def456" \
   --region us-east-1
 ```
 
-The `resource-types` parameter controls what data is shared. You can share metrics, log groups, and X-Ray traces. For dashboards, you need at least `AWS::CloudWatch::Metric`.
+The `resource-types` parameter controls what data is shared. You can share metrics, log groups, and X-Ray traces. For dashboards, you need at least `AWS::CloudWatch::Metric`. The telemetry types in the link must be allowed by the sink policy.
 
-## Step 3: Accept the Link in the Monitoring Account
+## Step 3: Verify the Link in the Monitoring Account
 
-If you are not using AWS Organizations with automatic acceptance, you need to manually accept each link in the monitoring account. Check the OAM console or use the CLI.
+OAM links do not have a separate manual acceptance step. If the sink policy permits the source account and resource types, the link is created from the source account. You can verify attached links from the monitoring account with the CLI.
 
 ```bash
-# List pending links in the monitoring account
-aws oam list-links --region us-east-1
+# List links attached to the monitoring account sink
+aws oam list-attached-links \
+  --sink-identifier "arn:aws:oam:us-east-1:123456789012:sink/abc123-def456" \
+  --region us-east-1
 ```
 
-When using AWS Organizations, you can configure a policy to auto-accept links from accounts in your organization. This saves manual steps when you add new accounts.
+When using AWS Organizations, you can configure the sink policy to allow accounts in your organization and use a CloudFormation StackSet to create source-account links across the organization.
 
 ## Step 4: Build Your Cross-Account Dashboard
 
@@ -147,8 +159,6 @@ The key parameter is `accountId` on each metric. This tells CloudWatch which sou
 Instead of hardcoding metric names, use CloudWatch SEARCH expressions to dynamically find metrics across accounts. This is especially useful when new resources are spun up and you want them to appear on the dashboard automatically.
 
 ```json
-// SEARCH expression example that finds all Lambda duration metrics
-// across all linked accounts
 {
   "expression": "SEARCH('{AWS/Lambda,FunctionName} MetricName=\"Duration\"', 'Average', 300)",
   "id": "e1",
@@ -163,7 +173,6 @@ You can combine SEARCH with METRICS to build powerful aggregation views that sum
 Your cross-account dashboard can also display alarm states from linked accounts. Add an alarm status widget and configure it with alarm ARNs from the source accounts.
 
 ```json
-// Alarm status widget configuration
 {
   "type": "alarm",
   "x": 12,
@@ -196,7 +205,7 @@ This gives your operations team a single view of alarm states across the entire 
 
 If metrics from a source account are not appearing, check:
 
-1. The OAM link is in an active state (not pending)
+1. The OAM link exists in the source account and appears in `list-attached-links` for the monitoring account sink
 2. The correct resource types are shared (must include `AWS::CloudWatch::Metric`)
 3. Both the sink and link are in the same region
 4. IAM permissions allow the monitoring account to read the source account metrics
