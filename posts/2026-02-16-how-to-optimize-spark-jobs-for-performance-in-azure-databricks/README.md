@@ -111,10 +111,13 @@ If AQE does not resolve the skew, you can manually salt the join key.
 
 ```python
 # Manual salting for heavily skewed keys
-from pyspark.sql.functions import expr, col, lit, concat
+from pyspark.sql.functions import col, hash, lit, pmod
 
-# Add a salt column (random number from 0 to 9)
-fact_salted = fact_sales.withColumn("salt", (col("product_id").hash() % 10).cast("string"))
+# Add a deterministic salt bucket from 0 to 9
+fact_salted = fact_sales.withColumn(
+    "salt",
+    pmod(hash(col("product_id")), lit(10)).cast("string")
+)
 
 # Explode the dimension table with all salt values
 dim_exploded = dim_products.crossJoin(
@@ -173,7 +176,7 @@ After Z-ordering, queries that filter on `event_type` or `user_id` will read sig
 Cache DataFrames that are used multiple times in a job to avoid recomputing them.
 
 ```python
-# Cache a DataFrame in memory
+# Cache a DataFrame
 frequent_df = spark.table("silver.customers").filter("is_active = true")
 frequent_df.cache()
 
@@ -190,10 +193,10 @@ frequent_df.unpersist()
 
 Only cache when:
 - The DataFrame is used multiple times
-- It fits in available memory
+- It fits in the available cache storage level
 - The cost of recomputation is high
 
-Do not cache DataFrames that are used once or are very large.
+Do not cache DataFrames that are used once or are too large for the available storage level.
 
 ## 5. Right-Size Your Cluster
 
@@ -252,12 +255,12 @@ Use `repartition()` when you want to redistribute data (triggers a shuffle). Use
 
 ## 7. Use Photon
 
-Photon is Databricks' C++ query engine that accelerates Spark SQL and DataFrame operations. It can provide 2-8x performance improvements for scan-heavy, aggregation, and join workloads.
+Photon is Databricks' native vectorized query engine that accelerates Spark SQL and DataFrame operations. It can improve performance for scan-heavy, aggregation, and join workloads.
 
-Enable Photon by selecting a Photon-enabled runtime when creating your cluster.
+Photon is enabled by default on many compute types running Databricks Runtime 9.1 LTS and above. For all-purpose and jobs compute, you can enable or disable it with the **Use Photon Acceleration** checkbox. If you create compute through the Clusters API or Jobs API, set the runtime engine to Photon.
 
 ```text
-Runtime: 14.3.x-photon-scala2.12
+runtime_engine: PHOTON
 ```
 
 Photon works transparently - no code changes needed. It accelerates operations that run through the Spark SQL engine.
@@ -270,7 +273,7 @@ Photon works transparently - no code changes needed. It accelerates operations t
 # Bad: pulls all data to the driver (can cause OOM)
 all_data = df.collect()
 
-# Better: use toPandas() for moderate datasets
+# Better: only convert a deliberately small result to Pandas
 pandas_df = df.limit(100000).toPandas()
 
 # Best: write results to a table and query from there
@@ -288,7 +291,7 @@ def clean_name(name):
 df.withColumn("clean_name", clean_name("name"))
 
 # Good: Use built-in functions (runs natively in JVM)
-from pyspark.sql.functions import upper, trim
+from pyspark.sql.functions import col, upper, trim
 df.withColumn("clean_name", upper(trim(col("name"))))
 ```
 
