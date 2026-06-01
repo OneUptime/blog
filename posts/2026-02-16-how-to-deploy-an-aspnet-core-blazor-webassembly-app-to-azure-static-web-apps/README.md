@@ -14,12 +14,12 @@ In this post, we will create a Blazor WebAssembly application from scratch, add 
 
 ## Creating the Blazor WebAssembly Project
 
-Start by setting up a new Blazor WebAssembly project. We will use the hosted template, which gives us a client project, a server project, and a shared project.
+Start by setting up a new Blazor WebAssembly project. We will use the standalone template, which gives us a client app that Azure Static Web Apps can host directly.
 
 ```bash
 # Create a new Blazor WASM standalone app
 
-dotnet new blazorwasm -n BlazorStaticDemo --no-https
+dotnet new blazorwasm -n BlazorStaticDemo -f net8.0 --no-https
 cd BlazorStaticDemo
 ```
 
@@ -31,7 +31,7 @@ Let's build a simple weather dashboard that fetches data from an API. First, cre
 
 ```csharp
 // Models/WeatherForecast.cs
-// Shared model between the Blazor client and the API
+// Model used by the Blazor client
 namespace BlazorStaticDemo.Models;
 
 public class WeatherForecast
@@ -50,6 +50,7 @@ Now update the FetchData page to call our API.
 ```csharp
 // Pages/FetchData.razor
 @page "/fetchdata"
+@using BlazorStaticDemo.Models
 @inject HttpClient Http
 
 <h1>Weather Forecast</h1>
@@ -153,10 +154,10 @@ Your project should look like this:
 
 ```text
 BlazorStaticDemo/
-  BlazorStaticDemo/     # Blazor WASM client
-    Pages/
-    wwwroot/
-    Program.cs
+  Pages/
+  wwwroot/
+  Program.cs
+  BlazorStaticDemo.csproj
   Api/                   # Azure Functions backend
     WeatherForecast.cs
     host.json
@@ -165,10 +166,13 @@ BlazorStaticDemo/
 
 ## Configuring Static Web Apps
 
-Create a configuration file at the root of your Blazor project to define routing rules.
+Create a configuration file in the `wwwroot` folder of your Blazor project so it is copied to the root of the published output.
 
 ```json
 {
+  "platform": {
+    "apiRuntime": "dotnet-isolated:8.0"
+  },
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["/css/*", "/js/*", "/api/*", "/_framework/*"]
@@ -193,7 +197,7 @@ There are two ways to deploy: through the Azure Portal with GitHub integration, 
 npm install -g @azure/static-web-apps-cli
 
 # Test locally before deploying
-swa start http://localhost:5000 --api-location ./Api
+swa start http://localhost:5000 --api-location ./Api --run "dotnet watch run"
 
 # Create the Static Web App resource in Azure
 az staticwebapp create \
@@ -202,8 +206,8 @@ az staticwebapp create \
   --source https://github.com/your-username/blazor-static-demo \
   --location "eastus2" \
   --branch main \
-  --app-location "/BlazorStaticDemo" \
-  --api-location "/Api" \
+  --app-location "/" \
+  --api-location "Api" \
   --output-location "wwwroot"
 ```
 
@@ -238,10 +242,6 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # Build the Blazor WASM project
-      - name: Build Blazor App
-        run: dotnet publish BlazorStaticDemo -c Release -o publish
-
       # Deploy to Azure Static Web Apps
       - name: Deploy
         uses: Azure/static-web-apps-deploy@v1
@@ -249,8 +249,8 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
-          app_location: "/BlazorStaticDemo"
-          api_location: "/Api"
+          app_location: "/"
+          api_location: "Api"
           output_location: "wwwroot"
 
   # Close pull request job handles cleanup of staging environments
@@ -302,8 +302,13 @@ public async Task<HttpResponseData> GetProfile(
     [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
 {
     // Azure Static Web Apps injects this header with user info
-    var clientPrincipal = req.Headers.GetValues("x-ms-client-principal").FirstOrDefault();
+    if (!req.Headers.TryGetValues("x-ms-client-principal", out var headerValues))
+    {
+        var unauthorized = req.CreateResponse(HttpStatusCode.Unauthorized);
+        return unauthorized;
+    }
 
+    var clientPrincipal = headerValues.FirstOrDefault();
     if (string.IsNullOrEmpty(clientPrincipal))
     {
         var unauthorized = req.CreateResponse(HttpStatusCode.Unauthorized);
