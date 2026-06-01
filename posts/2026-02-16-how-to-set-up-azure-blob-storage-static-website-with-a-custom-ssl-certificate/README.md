@@ -8,7 +8,7 @@ Description: Step-by-step guide to hosting a static website on Azure Blob Storag
 
 ---
 
-Hosting a static website on Azure Blob Storage is one of the cheapest and simplest ways to serve HTML, CSS, and JavaScript files. But out of the box, the static website endpoint only supports HTTP on the default `*.web.core.windows.net` domain. If you want to use your own domain with HTTPS, you need to add Azure CDN in front and configure a custom SSL certificate.
+Hosting a static website on Azure Blob Storage is one of the cheapest and simplest ways to serve HTML, CSS, and JavaScript files. Out of the box, the static website endpoint supports HTTPS on the default `*.web.core.windows.net` domain, but Azure Storage does not natively support HTTPS for custom domains. If you want to use your own domain with HTTPS, you need to add Azure CDN in front and configure a custom SSL certificate.
 
 This guide walks through the full setup from enabling the static website feature to serving it over HTTPS on your own domain.
 
@@ -67,20 +67,16 @@ az storage blob list \
 
 Test the default endpoint in your browser to make sure the site loads correctly before adding a custom domain.
 
-## Step 3: Create an Azure CDN Profile and Endpoint
+## Step 3: Use an Existing Azure CDN Profile and Create an Endpoint
 
 To use a custom domain with HTTPS, you need Azure CDN in front of the static website. Azure CDN also gives you caching, compression, and global distribution.
 
-Create a CDN profile and endpoint pointing to the static website URL:
+Azure CDN Standard from Microsoft is now a classic service on a retirement path. New profiles cannot be created after October 1, 2025, and the service retires on September 30, 2027. Use the Azure CDN commands below only if you already have an existing Azure CDN Standard from Microsoft profile. For new deployments, use Azure Front Door Standard or Premium instead.
+
+Create a CDN endpoint pointing to the static website URL:
 
 ```bash
-# Create a CDN profile using the Standard Microsoft tier
-az cdn profile create \
-  --resource-group rg-website \
-  --name cdn-mywebsite \
-  --sku Standard_Microsoft
-
-# Create a CDN endpoint pointing to the static website origin
+# Create a CDN endpoint in an existing Azure CDN Standard from Microsoft profile
 # Note: the origin hostname is the static website URL without https://
 az cdn endpoint create \
   --resource-group rg-website \
@@ -143,28 +139,9 @@ az cdn custom-domain create \
 
 Azure validates the CNAME record before accepting the custom domain. If validation fails, double-check your DNS records and wait for propagation.
 
-## Step 6: Enable HTTPS with a Managed Certificate
+## Step 6: Use Your Own Certificate from Key Vault
 
-The simplest approach is to use Azure CDN's free managed certificate. Azure handles certificate issuance, renewal, and installation automatically.
-
-```bash
-# Enable HTTPS with CDN-managed certificate
-az cdn custom-domain enable-https \
-  --resource-group rg-website \
-  --profile-name cdn-mywebsite \
-  --endpoint-name mywebsite-endpoint \
-  --name www-example-com
-```
-
-The managed certificate provisioning takes 6-8 hours. During this time, Azure:
-
-1. Validates domain ownership via the CNAME record
-2. Requests a certificate from DigiCert
-3. Deploys the certificate to all CDN edge nodes
-
-You can check the provisioning status in the portal or via CLI.
-
-## Step 6 (Alternative): Use Your Own Certificate from Key Vault
+Azure CDN Standard from Microsoft classic no longer supports Azure-managed certificates. Existing managed certificates remained valid only until April 14, 2026. For Azure CDN classic, use your own certificate from Azure Key Vault. For new deployments, use Azure Front Door Standard or Premium, which supports Azure-managed certificates.
 
 If you need to use your own certificate (for example, an organization-validated or extended-validation cert), store it in Azure Key Vault and link it to the CDN.
 
@@ -210,7 +187,7 @@ az cdn custom-domain enable-https \
 
 If you are hosting a single-page application that uses client-side routing, you need a URL rewrite rule to redirect all requests to `index.html`.
 
-This CDN rule catches any request that does not match a file and rewrites it to serve `index.html`:
+This CDN rule catches requests without a file extension and rewrites them to serve `index.html`:
 
 ```bash
 # Create a rules engine rule for SPA routing
@@ -285,4 +262,4 @@ For CI/CD pipelines, add the purge command after the upload step to automate thi
 
 ## Wrapping Up
 
-Hosting a static website on Azure Blob Storage with a custom SSL certificate is a cost-effective and scalable solution. The key pieces are: enable static website hosting on the storage account, put Azure CDN in front of it, map your custom domain, and configure HTTPS. Whether you use the free managed certificate or bring your own from Key Vault, the process is well-documented and reliable. The whole setup takes about an hour of active work, plus the wait time for certificate provisioning.
+Hosting a static website on Azure Blob Storage with a custom SSL certificate is a cost-effective and scalable solution. The key pieces are: enable static website hosting on the storage account, put a CDN service in front of it, map your custom domain, and configure HTTPS. For existing Azure CDN classic profiles, bring your own certificate from Key Vault. For new deployments, use Azure Front Door Standard or Premium with an Azure-managed certificate or a certificate from Key Vault. The whole setup takes about an hour of active work, plus the wait time for certificate provisioning.
