@@ -10,14 +10,16 @@ Description: Learn how to implement blue-green deployments in Azure Spring Apps 
 
 Deploying directly to production is risky. If something goes wrong, your users see errors while you scramble to fix or roll back. Blue-green deployment eliminates this risk by maintaining two identical environments - one serving production traffic (blue) and one ready for the next release (green). You deploy to green, test it, and then swap traffic. If the new version has issues, you swap back instantly. Azure Spring Apps supports this pattern natively through staging deployments.
 
+Note: Azure Spring Apps entered its retirement period on March 17, 2025 and is scheduled for retirement on March 31, 2028. These steps apply to existing Azure Spring Apps customers who can still operate the service during the retirement period.
+
 ## How Blue-Green Works in Azure Spring Apps
 
-In Azure Spring Apps, each application can have two deployments:
+In the Azure Spring Apps Standard and Enterprise plans, each application can have two deployments:
 
 - **Production deployment:** Receives all incoming traffic
 - **Staging deployment:** A separate instance that is not exposed to production traffic
 
-You deploy your new version to the staging deployment, run tests against it, and then swap the staging and production deployments. The swap is atomic and takes only a few seconds.
+You deploy your new version to the staging deployment, run tests against it, and then set the staging deployment as production. The switch updates production routing and usually takes only a few seconds.
 
 ## Step 1: Create an Application with a Default Deployment
 
@@ -70,32 +72,43 @@ The staging deployment runs alongside the production deployment but does not rec
 Azure Spring Apps provides a test endpoint for the staging deployment. Use it to verify the new version before swapping.
 
 ```bash
-# Get the staging deployment's test URL
+# Check that the staging deployment is ready
 az spring app deployment show \
   --name staging \
   --app order-service \
   --service my-spring-service \
   --resource-group spring-rg \
-  --query "properties.instances"
+  --query "properties.provisioningState"
 ```
 
 You can access the staging deployment directly through the test endpoint URL.
 
 ```bash
-# Get the test endpoint for the spring apps instance
-az spring test-endpoint list \
-  --service my-spring-service \
-  --resource-group spring-rg
+# Get the primary test endpoint for the staging deployment
+STAGING_URL=$(az spring test-endpoint list \
+  --name my-spring-service \
+  --resource-group spring-rg \
+  --app order-service \
+  --deployment staging \
+  --query "primaryTestEndpoint" -o tsv)
 
 # Test the staging deployment
-curl https://primary:<test-key>@my-spring-service.test.azuremicroservices.io/order-service/staging/actuator/health
+curl "$STAGING_URL/actuator/health"
+```
+
+If the test endpoint is not enabled for your Azure Spring Apps instance, enable it first.
+
+```bash
+az spring test-endpoint enable \
+  --name my-spring-service \
+  --resource-group spring-rg
 ```
 
 Run your integration tests and smoke tests against the staging endpoint.
 
 ```bash
 # Run integration tests against staging
-./mvnw test -Dtest.base-url="https://primary:<test-key>@my-spring-service.test.azuremicroservices.io/order-service/staging"
+./mvnw test -Dtest.base-url="$STAGING_URL"
 ```
 
 ## Step 4: Swap Staging and Production
@@ -130,7 +143,7 @@ az spring app show \
   --query "properties.activeDeployment.name"
 
 # Check the production endpoint
-curl https://order-service-my-spring-service.azuremicroservices.io/actuator/info
+curl https://my-spring-service-order-service.azuremicroservices.io/actuator/info
 ```
 
 ## Step 6: Roll Back if Needed
@@ -189,7 +202,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -198,18 +211,18 @@ jobs:
         run: ./mvnw clean package -DskipTests
 
       - name: Login to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy to staging
         run: |
-          az spring app deployment create \
-            --name staging \
-            --app order-service \
+          az spring app deploy \
+            --name order-service \
             --service my-spring-service \
             --resource-group spring-rg \
             --artifact-path target/order-service-*.jar \
+            --deployment staging \
             --runtime-version Java_17
 
       - name: Wait for staging to be ready
@@ -247,7 +260,7 @@ jobs:
 
 Blue-green deployments require extra care with database schema changes:
 
-1. **Make migrations backward-compatible.** During the swap, both versions briefly handle traffic. The old version must work with the new schema, and the new version must work with the old schema.
+1. **Make migrations backward-compatible.** During the rollout and rollback window, either version may need to run against the same database. The old version must work with the new schema, and the new version must work with the old schema.
 
 2. **Use expand-contract pattern.** First, expand the schema (add new columns/tables). Deploy the new version. Then contract (remove old columns/tables in a later release).
 
@@ -287,7 +300,7 @@ az spring app deployment delete \
 
 **Different behavior between staging and production:** Ensure both deployments have the same environment variables, secrets, and configuration. A common mistake is forgetting to set environment variables on the staging deployment.
 
-**Slow swap:** The swap itself is fast, but DNS caching might mean some users still hit the old deployment for a short time. This is typically less than a minute.
+**Slow swap:** The swap itself is fast, but allow a short period for Azure Spring Apps to update ingress routing and service registration.
 
 ## Summary
 
