@@ -26,7 +26,7 @@ Geo-filtering is not just about blocking traffic. It is about meeting legal obli
 Before you start, make sure you have:
 
 - An Azure subscription with appropriate permissions
-- An existing Azure CDN profile (Standard Microsoft, Standard Verizon, or Premium Verizon)
+- An existing Azure CDN Standard from Microsoft (classic) profile. Azure CDN from Edgio, formerly Verizon, was retired on January 15, 2025, and Azure CDN Standard from Microsoft (classic) is scheduled for retirement on September 30, 2027.
 - At least one CDN endpoint configured and serving content
 - Azure CLI installed if you want to use command-line configuration
 
@@ -61,43 +61,34 @@ The rule takes effect within a few minutes as it propagates across the CDN edge 
 
 For teams that prefer automation or need to manage rules across multiple environments, the Azure CLI is the better option.
 
-Here is how to add a geo-filtering rule that blocks traffic from specific countries:
+The `--geo-filters` value sets the endpoint's geo-filter list, so include any existing geo-filter rules you want to keep.
+
+Here is how to configure a geo-filtering rule that blocks traffic from specific countries:
 
 ```bash
-# Add a geo-filtering rule to block access from two countries
+# Configure a geo-filtering rule to block access from two countries
 
 # Replace the values with your actual resource group, profile, and endpoint names
-az cdn endpoint rule add \
+az cdn endpoint update \
   --resource-group myResourceGroup \
   --profile-name myCdnProfile \
   --name myEndpoint \
-  --order 1 \
-  --rule-name "BlockCountries" \
-  --match-variable RemoteAddress \
-  --operator GeoMatch \
-  --match-values "CN" "RU" \
-  --action-name Block
+  --geo-filters '[{"relativePath": "/", "action": "Block", "countryCodes": ["CN", "RU"]}]'
 ```
 
-If you want to allow only specific countries instead, you can flip the logic:
+If you want to allow only specific countries instead, use the `Allow` action:
 
 ```bash
 # Allow access only from the United States and Canada
 # All other countries will receive a 403 response
-az cdn endpoint rule add \
+az cdn endpoint update \
   --resource-group myResourceGroup \
   --profile-name myCdnProfile \
   --name myEndpoint \
-  --order 1 \
-  --rule-name "AllowNorthAmerica" \
-  --match-variable RemoteAddress \
-  --operator GeoMatch \
-  --negate-condition true \
-  --match-values "US" "CA" \
-  --action-name Block
+  --geo-filters '[{"relativePath": "/", "action": "Allow", "countryCodes": ["US", "CA"]}]'
 ```
 
-The `--negate-condition` flag is the key here. It inverts the match, so the rule blocks any request that is NOT from the US or Canada.
+The `Allow` action is the key here. It permits the listed countries and blocks requests from countries that are not in the list.
 
 ## Step 3: Configure Geo-Filtering with Bicep
 
@@ -143,19 +134,11 @@ One of the powerful features of geo-filtering is the ability to apply different 
 
 ```bash
 # Block specific countries from the premium content path only
-az cdn endpoint rule add \
+az cdn endpoint update \
   --resource-group myResourceGroup \
   --profile-name myCdnProfile \
   --name myEndpoint \
-  --order 1 \
-  --rule-name "BlockPremiumContent" \
-  --match-variable RequestUri \
-  --operator Contains \
-  --match-values "/premium/" \
-  --action-name Block \
-  --match-variable RemoteAddress \
-  --operator GeoMatch \
-  --match-values "DE" "FR" "IT"
+  --geo-filters '[{"relativePath": "/premium/", "action": "Block", "countryCodes": ["DE", "FR", "IT"]}]'
 ```
 
 This gives you granular control over which content is available where.
@@ -193,13 +176,13 @@ az monitor diagnostic-settings create \
 
 ## CDN Tier Differences
 
-The level of geo-filtering support varies by CDN tier:
+The level of geo-filtering support varies by CDN tier and product lifecycle status:
 
-- **Standard Microsoft**: Supports basic geo-filtering with allow/block by country
-- **Standard Verizon**: Supports basic geo-filtering similar to Standard Microsoft
-- **Premium Verizon**: Offers advanced geo-filtering through the rules engine with more granular path matching and additional actions
+- **Azure CDN Standard from Microsoft (classic)**: Supports geo-filtering with allow/block by country, but is scheduled for retirement on September 30, 2027
+- **Azure CDN from Edgio, formerly Verizon**: Retired on January 15, 2025
+- **Azure Front Door Standard and Premium**: Microsoft's recommended modern CDN platform for new deployments and migrations
 
-If you need complex geo-filtering rules with multiple conditions, the Premium Verizon tier gives you the most flexibility through its supplemental rules engine.
+If you need complex geo-filtering rules with multiple conditions for a new deployment, evaluate Azure Front Door Standard or Premium instead of creating new Azure CDN classic dependencies.
 
 ## Wrapping Up
 
