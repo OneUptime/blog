@@ -14,9 +14,9 @@ This guide covers how to enable VNet encryption, understand what it protects, co
 
 ## How VNet Encryption Works
 
-VNet encryption operates at the network layer, below your applications. When enabled, all traffic between VMs in the VNet is encrypted using DTLS (Datagram Transport Layer Security). The encryption and decryption happen on the Azure host infrastructure, not inside the VM, which means:
+VNet encryption operates at the network layer, below your applications. When enabled, supported VM-to-VM traffic in the VNet is encrypted using DTLS (Datagram Transport Layer Security). The encryption and decryption happen on the Azure host infrastructure, not inside the VM, which means:
 
-- No performance impact on the VM's CPU (encryption is handled by the host)
+- No encryption workload on the VM's CPU (encryption is handled by the host)
 - No configuration changes inside the VM
 - No application code changes
 - No certificate management in the VM
@@ -51,10 +51,10 @@ The VM sends unencrypted traffic to its virtual NIC. The host infrastructure int
 
 VNet encryption requires VM sizes that run on specific hardware with encryption support. The commonly supported sizes include:
 
-- **D-series v5 and later**: Dsv5, Ddsv5, Dasv5
-- **E-series v5 and later**: Esv5, Edsv5, Easv5
-- **F-series v2**: Fsv2
-- **M-series**: Msv2, Mdsv2
+- **D-series v4, v5, and v6**: Dv4/Dsv4, Ddv4/Ddsv4, Dav4/Dasv4, Dv5/Dsv5, Ddv5/Ddsv5, Dlsv5/Dldsv5, Dasv5/Dadsv5, and supported D-series v6 SKUs
+- **E-series v4, v5, and v6**: Ev4/Esv4, Edv4/Edsv4, Eav4/Easv4, Ev5/Esv5, Edv5/Edsv5, Easv5/Eadsv5, and supported E-series v6 SKUs
+- **F-series v6**: Falsv6, Famsv6, Fasv6
+- **M-series v2 and v3**: Mv2, Msv2, Mdsv2, Msv3, Mdsv3
 - **L-series v3**: Lsv3
 
 Check the Azure documentation for the complete list, as it expands regularly.
@@ -73,10 +73,10 @@ az network vnet update \
   --encryption-enforcement-policy AllowUnencrypted
 ```
 
-The `--encryption-enforcement-policy` has two options:
+The `--encryption-enforcement-policy` has two values in the Azure CLI, but only one enforcement mode is generally available:
 
 - **AllowUnencrypted**: Encrypts traffic between VMs that support encryption, but allows unencrypted traffic to/from VMs that do not support it. This is the safe starting point.
-- **DropUnencrypted**: Only allows encrypted traffic. VMs that do not support VNet encryption will lose connectivity to other VMs. Use this only when you are certain all VMs in the VNet support encryption.
+- **DropUnencrypted**: Intended to drop unencrypted traffic, but it is not generally available. Use it only if Microsoft has enabled the feature for your subscription and you have validated support for every VM in the VNet.
 
 ## Step 2: Create a New VNet with Encryption
 
@@ -118,7 +118,7 @@ Check whether your existing VMs support VNet encryption by verifying their NIC c
 az network nic show \
   --name myvm-nic \
   --resource-group myResourceGroup \
-  --query "{Name:name, AcceleratedNetworking:enableAcceleratedNetworking, VMSize:virtualMachine}" \
+  --query "{Name:name, AcceleratedNetworking:enableAcceleratedNetworking, VNetEncryptionSupported:vnetEncryptionSupported}" \
   --output table
 ```
 
@@ -141,6 +141,8 @@ az vm start \
   --resource-group myResourceGroup
 ```
 
+If you enable encryption on a VNet that already has VMs, stop and start those VMs so the encryption capability is applied.
+
 ## Step 5: Deploy VMs with Encryption Support
 
 When creating new VMs in the encrypted VNet, ensure you use a supported VM size with accelerated networking:
@@ -162,9 +164,9 @@ az vm create \
 
 The combination of a supported VM size and accelerated networking ensures the VM participates in VNet encryption.
 
-## Step 6: Transition to DropUnencrypted Enforcement
+## Step 6: Review DropUnencrypted Enforcement
 
-Once you have verified that all VMs in the VNet support encryption, you can switch to strict enforcement:
+AllowUnencrypted is the only enforcement mode supported at general availability. If Microsoft has enabled DropUnencrypted for your subscription, first verify that all VMs in the VNet support encryption:
 
 ```bash
 # First, list all VMs in the VNet and check their encryption support
@@ -172,41 +174,34 @@ az vm list \
   --resource-group myResourceGroup \
   --query "[].{Name:name, Size:hardwareProfile.vmSize}" \
   --output table
-
-# If all VMs are on supported sizes, switch to strict enforcement
-az network vnet update \
-  --name myVNet \
-  --resource-group myResourceGroup \
-  --encryption-enforcement-policy DropUnencrypted
 ```
 
-With DropUnencrypted, any VM that does not support encryption will lose intra-VNet connectivity. This is the most secure option but requires careful validation first.
+With DropUnencrypted, any VM that does not support encryption can lose intra-VNet connectivity. Do not configure DropUnencrypted unless the feature is available for your subscription and you have carefully validated every VM first.
 
 ## Step 7: Monitor Encryption Status
 
 Azure provides metrics and diagnostics for VNet encryption. Check the encryption state of network flows:
 
 ```bash
-# Enable Network Watcher flow logs with traffic analytics
+# Enable Virtual Network flow logs with traffic analytics
 az network watcher flow-log create \
   --name vnet-encryption-flow-log \
   --resource-group myResourceGroup \
-  --nsg myNSG \
+  --location eastus \
+  --vnet myVNet \
   --storage-account myStorageAccount \
   --enabled true \
-  --format JSON \
-  --log-version 2 \
   --traffic-analytics true \
   --workspace "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myWorkspace"
 ```
 
-You can also verify encryption at the packet level using traffic analytics:
+You can also verify encryption at the flow level using traffic analytics:
 
 ```text
 // KQL query to check traffic encryption status
-AzureNetworkAnalytics_CL
-| where FlowType_s == "IntraVNet"
-| summarize FlowCount = count() by Encrypted_s, bin(TimeGenerated, 1h)
+NTANetAnalytics
+| where FlowType == "IntraVNet"
+| summarize FlowCount = count() by FlowEncryption, bin(FlowStartTime, 1h)
 | render timechart
 ```
 
@@ -222,9 +217,9 @@ VNet encryption protects the following traffic:
 
 There are traffic types that VNet encryption does not cover:
 
-- **Traffic to/from Azure PaaS services**: Use Private Endpoints with service-side encryption for PaaS
+- **Traffic to/from many Azure PaaS services**: PaaS support depends on the underlying VM size and accelerated networking support. Use Private Endpoints with service-side encryption for PaaS when VNet encryption is not supported.
 - **Traffic to/from the internet**: Use TLS at the application layer
-- **Traffic through VPN or ExpressRoute**: These have their own encryption (IPsec for VPN)
+- **Traffic through VPN or ExpressRoute**: VPN uses IPsec, but ExpressRoute traffic is not encrypted by default. Microsoft recommends not enabling VNet encryption on VNets with ExpressRoute gateways because it can break on-premises communication.
 - **DNS traffic to Azure DNS**: Uses a separate channel
 - **Traffic to Azure management endpoints**: Metadata service, IMDS, etc.
 
@@ -234,9 +229,9 @@ For a complete zero-trust network posture, combine VNet encryption with applicat
 
 Since encryption is handled by the host infrastructure (not the VM), the performance impact is minimal:
 
-- **Latency**: Adds microseconds, not milliseconds. For most applications, this is undetectable.
-- **Throughput**: No measurable throughput reduction because encryption uses dedicated hardware on the host.
-- **CPU impact on VMs**: Zero. The VM does not participate in encryption.
+- **Latency**: Adds minimal overhead, mostly during initial tunnel establishment.
+- **Throughput**: Minimal throughput or bandwidth impact because crypto operations are offloaded to host hardware.
+- **CPU impact on VMs**: No VM CPU encryption workload. The VM does not participate in encryption.
 
 The main constraint is VM size compatibility. If you need to use VM sizes that do not support VNet encryption, you must use the AllowUnencrypted policy and rely on application-layer encryption for those specific VMs.
 
@@ -276,4 +271,4 @@ az network vnet peering create \
 
 ## Wrapping Up
 
-Azure Virtual Network encryption provides wire-level encryption for intra-VNet traffic without any changes to your VMs or applications. The encryption happens on the host infrastructure, so there is no performance impact on your workloads. Start with the AllowUnencrypted enforcement policy to ensure compatibility with all your existing VMs, verify that all VMs support encryption, and then optionally switch to DropUnencrypted for strict enforcement. Combined with application-layer TLS and Private Endpoints, VNet encryption fills the gap for in-transit data protection within your Azure network infrastructure.
+Azure Virtual Network encryption provides wire-level encryption for supported intra-VNet traffic without any changes to your VMs or applications. The encryption happens on the host infrastructure, so the performance impact on your workloads is minimal. Use the AllowUnencrypted enforcement policy to ensure compatibility with all your existing VMs, and verify that all VMs support encryption. Combined with application-layer TLS and Private Endpoints, VNet encryption fills the gap for in-transit data protection within your Azure network infrastructure.
