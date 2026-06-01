@@ -14,7 +14,7 @@ This guide walks through the full migration process, covering everything from un
 
 ## Why Migrate?
 
-Before diving into the how, let's be clear about the why. Azure Storage Queues give you a basic FIFO queue with at-least-once delivery. That works for a lot of scenarios, but Service Bus brings several features that Storage Queues simply do not have:
+Before diving into the how, let's be clear about the why. Azure Storage Queues give you a basic queue with best-effort FIFO behavior and at-least-once delivery. That works for a lot of scenarios, but Service Bus brings several features that Storage Queues simply do not have:
 
 - Dead-letter queues for messages that fail processing
 - Topics and subscriptions for pub/sub patterns
@@ -22,7 +22,7 @@ Before diving into the how, let's be clear about the why. Azure Storage Queues g
 - Duplicate detection built into the broker
 - Message deferral and scheduled delivery
 - Transactions spanning multiple operations
-- Messages up to 256 KB (or 100 MB with Premium tier)
+- Messages up to 256 KB in Basic and Standard tiers, or up to 100 MB in Premium when using AMQP
 
 If you need any of these features, migrating is worth the effort.
 
@@ -80,7 +80,7 @@ param location string = resourceGroup().location
 param namespaceName string = 'sb-myapp-prod'
 
 // Create the Service Bus namespace at Standard tier
-resource sbNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
+resource sbNamespace 'Microsoft.ServiceBus/namespaces@2024-01-01' = {
   name: namespaceName
   location: location
   sku: {
@@ -90,7 +90,7 @@ resource sbNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
 }
 
 // Create a queue for order processing
-resource ordersQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
+resource ordersQueue 'Microsoft.ServiceBus/namespaces/queues@2024-01-01' = {
   parent: sbNamespace
   name: 'orders'
   properties: {
@@ -102,7 +102,7 @@ resource ordersQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview'
 }
 
 // Create a topic for notifications
-resource notificationsTopic 'Microsoft.ServiceBus/namespaces/topics@2022-10-01-preview' = {
+resource notificationsTopic 'Microsoft.ServiceBus/namespaces/topics@2024-01-01' = {
   parent: sbNamespace
   name: 'notifications'
   properties: {
@@ -114,25 +114,25 @@ resource notificationsTopic 'Microsoft.ServiceBus/namespaces/topics@2022-10-01-p
 
 ## Step 4: Update Message Serialization
 
-Storage Queues store messages as strings (often base64-encoded). Service Bus messages have a body that can be bytes, and they support a rich set of properties. Take this opportunity to clean up your message format.
+Storage Queue messages must be representable in an XML request with UTF-8 encoding, and older clients often base64-encode them. Service Bus messages have a body that can be bytes, and they support a rich set of properties. Take this opportunity to clean up your message format.
 
 Here is an example of adapting a message sender from Storage Queues to Service Bus.
 
 ```csharp
 // Old: Sending a message via Storage Queue
+using Azure.Messaging.ServiceBus;
 using Azure.Storage.Queues;
+using System;
 using System.Text.Json;
 
 var storageClient = new QueueClient("storage-conn-string", "orders");
 var order = new Order { Id = 1, Product = "Widget", Quantity = 5 };
 
-// Storage Queues require string messages
+// Storage Queue messages must be XML-safe UTF-8 unless you configure Base64 encoding
 var messageBody = JsonSerializer.Serialize(order);
 await storageClient.SendMessageAsync(messageBody);
 
 // New: Sending a message via Service Bus
-using Azure.Messaging.ServiceBus;
-
 var sbClient = new ServiceBusClient("servicebus-conn-string");
 var sender = sbClient.CreateSender("orders");
 
@@ -156,6 +156,7 @@ The consumer side needs the most attention. Storage Queue consumers typically po
 ```csharp
 // Service Bus consumer with proper error handling
 using Azure.Messaging.ServiceBus;
+using System.Text.Json;
 
 var client = new ServiceBusClient("servicebus-conn-string");
 
