@@ -35,7 +35,7 @@ az aks nodepool add \
   --node-vm-size Standard_D4s_v5 \
   --labels workload=api team=backend environment=production
 
-# Add labels to an existing node pool
+# Replace labels on an existing node pool
 az aks nodepool update \
   --resource-group myRG \
   --cluster-name myAKS \
@@ -46,7 +46,7 @@ az aks nodepool update \
 kubectl get nodes --show-labels | grep "workload="
 ```
 
-These labels persist across node restarts and scale operations. Any new node added to the pool automatically gets the same labels.
+These labels persist across node restarts and scale operations. Any new node added to the pool automatically gets the same labels. When you update node pool labels, include all labels you want to keep because the update overwrites the existing label set.
 
 ## Scheduling Pods with Node Selectors
 
@@ -264,7 +264,7 @@ spec:
 Separate production and staging workloads onto different nodes.
 
 ```bash
-# Production node pool - no taints needed if it is the default
+# Production node pool - label it for production workloads
 az aks nodepool add --resource-group myRG --cluster-name myAKS \
   --name prodpool --node-count 5 --node-vm-size Standard_D8s_v5 \
   --labels environment=production
@@ -280,8 +280,10 @@ az aks nodepool add --resource-group myRG --cluster-name myAKS \
 Separate compute-intensive, memory-intensive, and general workloads.
 
 ```bash
-# General purpose pool (default, no taints)
-# Already exists as the system node pool
+# General purpose pool (user pool, no taints)
+az aks nodepool add --resource-group myRG --cluster-name myAKS \
+  --name generalpool --node-count 3 --node-vm-size Standard_D4s_v5 \
+  --labels workload-type=general
 
 # Compute-intensive pool
 az aks nodepool add --resource-group myRG --cluster-name myAKS \
