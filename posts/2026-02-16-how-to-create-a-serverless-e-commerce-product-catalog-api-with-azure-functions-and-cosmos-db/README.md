@@ -16,7 +16,7 @@ Serverless architecture handles this well. Azure Functions scale automatically t
 
 Traditional e-commerce platforms run on fixed infrastructure. You provision servers based on expected peak traffic, which means you are paying for idle capacity most of the year. During flash sales or holiday seasons, you scramble to scale up and hope the provisioning finishes before traffic hits.
 
-With Azure Functions, you pay per execution. During quiet periods, costs are minimal. During a sale, Functions spins up as many instances as needed. Cosmos DB with autoscale does the same for the database layer. Your catalog handles 100 requests per second and 100,000 requests per second with the same architecture.
+With Azure Functions, you pay per execution. During quiet periods, costs are minimal. During a sale, Functions scales out within the limits of your hosting plan. Cosmos DB with autoscale does the same for the database layer. Your catalog can handle quiet periods and traffic spikes with the same architecture, as long as you size the plan, throughput, and partition key for your expected peak.
 
 ## Architecture
 
@@ -25,12 +25,12 @@ graph LR
     A[Client App / Storefront] --> B[Azure API Management]
     B --> C[Azure Functions - Catalog API]
     C --> D[Cosmos DB - Product Store]
-    C --> E[Azure Cognitive Search]
+    C --> E[Azure AI Search]
     C --> F[Azure CDN - Product Images]
     D --> E
 ```
 
-API Management provides rate limiting, authentication, and a clean interface for your frontend. The Functions handle business logic. Cosmos DB stores the product data. Cognitive Search provides full-text and faceted search.
+API Management provides rate limiting, authentication, and a clean interface for your frontend. The Functions handle business logic. Cosmos DB stores the product data. Azure AI Search provides full-text and faceted search.
 
 ## Step 1 - Design the Cosmos DB Data Model
 
@@ -85,7 +85,7 @@ az cosmosdb sql container create \
   --database-name CatalogDB \
   --name Products \
   --partition-key-path "/category" \
-  --throughput 4000 \
+  --max-throughput 4000 \
   --idx @catalog-index-policy.json
 ```
 
@@ -98,6 +98,9 @@ The function to get a product by ID is the simplest and most frequently called e
 ```python
 import azure.functions as func
 import json
+import os
+import uuid
+from datetime import datetime, timezone
 from azure.cosmos import CosmosClient, exceptions
 
 # Initialize Cosmos DB client outside the function for connection reuse
@@ -186,11 +189,6 @@ def list_products(req: func.HttpRequest) -> func.HttpResponse:
     order_clause = get_order_clause(sort_by)
     query = f"SELECT * FROM c WHERE {where_clause} {order_clause}"
 
-    # Execute with pagination using continuation tokens
-    query_options = {"max_item_count": page_size}
-    if continuation:
-        query_options["continuation"] = continuation
-
     results = container.query_items(
         query=query,
         parameters=parameters,
@@ -199,12 +197,13 @@ def list_products(req: func.HttpRequest) -> func.HttpResponse:
     )
 
     # Get the page of results
-    page = list(results.by_page().next())
+    pager = results.by_page(continuation_token=continuation)
+    page = list(next(pager, []))
 
     response = {
         "products": page,
         "count": len(page),
-        "continuation": results.continuation_token
+        "continuation": pager.continuation_token
     }
 
     return func.HttpResponse(
@@ -227,7 +226,7 @@ def get_order_clause(sort_by: str) -> str:
 
 ## Step 3 - Add Product Search
 
-For full-text search with facets and filters, integrate Azure Cognitive Search. It provides relevance scoring, fuzzy matching, and faceted navigation that Cosmos DB queries alone cannot match.
+For full-text search with facets and filters, integrate Azure AI Search. It provides relevance scoring, fuzzy matching, and faceted navigation that Cosmos DB queries alone cannot match.
 
 ```python
 from azure.search.documents import SearchClient
@@ -260,7 +259,8 @@ def search_products(req: func.HttpRequest) -> func.HttpResponse:
 
     # Add category filter if specified
     if category_filter:
-        search_options["filter"] = f"category eq '{category_filter}'"
+        escaped_category = category_filter.replace("'", "''")
+        search_options["filter"] = f"category eq '{escaped_category}'"
 
     results = search_client.search(**search_options)
 
@@ -283,7 +283,7 @@ def search_products(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-Set up a Cosmos DB change feed that automatically syncs product updates to the search index. This way, when a product is added or modified in Cosmos DB, the search index updates within seconds.
+Set up a Cosmos DB change feed processor, or an Azure AI Search indexer for Cosmos DB, to sync product updates to the search index. This way, when a product is added or modified in Cosmos DB, the search index updates without a manual reindex.
 
 ## Step 4 - Handle Product Creation and Updates
 
@@ -309,7 +309,7 @@ def create_product(req: func.HttpRequest) -> func.HttpResponse:
             product["id"] = f"prod-{uuid.uuid4().hex[:8]}"
 
         # Add timestamps
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat()
         product["createdAt"] = now
         product["updatedAt"] = now
 
@@ -351,11 +351,11 @@ az apim api import \
   --path catalog \
   --api-id catalog-api \
   --specification-format OpenApi \
-  --specification-url "https://catalog-api-func.azurewebsites.net/api/openapi"
+  --specification-path ./openapi.json
 ```
 
 Add a caching policy for product detail pages. Products do not change frequently, so a 5-minute cache on GET requests significantly reduces function invocations and Cosmos DB RU consumption.
 
 ## Wrapping Up
 
-A serverless product catalog on Azure Functions and Cosmos DB gives you automatic scaling, flexible schema for diverse products, and low operational overhead. The combination of Cosmos DB for transactional queries and Cognitive Search for full-text search covers the two main access patterns any catalog needs. Add API Management for a production-grade API layer with caching and rate limiting. The result is a catalog API that handles steady-state traffic cheaply and scales up instantly for traffic spikes without manual intervention.
+A serverless product catalog on Azure Functions and Cosmos DB gives you automatic scaling, flexible schema for diverse products, and low operational overhead. The combination of Cosmos DB for transactional queries and Azure AI Search for full-text search covers the two main access patterns any catalog needs. Add API Management for a production-grade API layer with caching and rate limiting. The result is a catalog API that handles steady-state traffic cheaply and scales up for traffic spikes with little manual intervention.
