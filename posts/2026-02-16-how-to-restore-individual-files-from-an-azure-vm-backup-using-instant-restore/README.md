@@ -17,13 +17,13 @@ This guide covers how to use file-level recovery from Azure VM backups, includin
 Instead of creating a new VM from a backup, file recovery mounts the backup disks directly to a machine you specify. The flow is:
 
 1. You select a recovery point in the Azure portal
-2. Azure generates a script (PowerShell for Windows, shell script for Linux)
-3. You run the script on any machine (could be the original VM, another VM, or even your workstation)
+2. Azure generates a recovery executable for Windows or a Python script for Linux
+3. You run it on a compatible machine (could be the original VM, another VM, or even your workstation)
 4. The script mounts the recovery point's disks as local drives/volumes
 5. You browse the mounted drives and copy the files you need
 6. You unmount the drives when done
 
-The whole process typically takes just a few minutes, compared to 30-60 minutes for a full VM restore.
+The whole process typically takes just a few minutes to connect the recovery point, compared to 30-60 minutes for a full VM restore. Copy time depends on the amount of data; Microsoft recommends this feature when the total recovery size is 10 GB or less.
 
 ```mermaid
 flowchart LR
@@ -37,10 +37,11 @@ flowchart LR
 
 - An Azure VM with at least one successful backup in a Recovery Services vault
 - A machine to mount the recovery point on:
-  - For Windows recovery points: Windows Server 2012 R2 or later, or Windows 10/11
-  - For Linux recovery points: A Linux machine with Python 2.7+ and open-iscsi and lvm2 packages
-- Network connectivity from the mount machine to Azure (outbound HTTPS)
-- The mount machine must not be the same VM you are recovering files from if the original VM's disks are encrypted with Azure Disk Encryption using BEK+KEK
+  - For Windows recovery points: the same server OS version as the backed-up VM, or a compatible client OS version
+  - For Linux recovery points: a compatible Linux machine with bash 4+, Python 2.6.6+, and open-iscsi and lshw packages
+- Network connectivity from the mount machine to Azure over outbound HTTPS and iSCSI port 3260
+- The backed-up Azure VM must use the Resource Manager deployment model and be protected in a Recovery Services vault
+- File/folder recovery is not supported for Azure Disk Encryption (ADE) encrypted VM backups
 
 ## Step 1: Select the Recovery Point
 
@@ -104,27 +105,27 @@ For Linux VMs, the process uses a Python script:
 
 ```bash
 # Install required packages if not already present
-# These are needed for iSCSI connection and LVM support
+# These are needed for iSCSI connection and hardware discovery
 sudo apt-get update
-sudo apt-get install -y open-iscsi lvm2 python3
+sudo apt-get install -y open-iscsi lshw python3
 
 # Make the downloaded script executable
 chmod +x LinuxILRScript.py
 
-# Run the script with sudo (required for iSCSI and mount operations)
-sudo python3 LinuxILRScript.py
+# Run the script as root (required for iSCSI and mount operations)
+sudo ./LinuxILRScript.py
 
 # Enter the password when prompted
 # The script connects via iSCSI and mounts the volumes
 ```
 
-On Linux, the volumes are mounted under `/mnt/vmmount/` by default. If the original VM had LVM, the script automatically activates the volume groups and mounts the logical volumes.
+On Linux, the volumes are mounted under the directory where the script is run. If the original VM used LVM or software RAID, run the script on another compatible machine instead of the backed-up VM, then use the volume group or RAID information printed by the script to activate and mount the logical volumes.
 
 The mount points follow this pattern:
 ```text
-/mnt/vmmount/sdc1/     (OS partition)
-/mnt/vmmount/sdd1/     (Data disk 1)
-/mnt/vmmount/vg-data-lv-data/  (LVM logical volume)
+/home/azureuser/myVM-20260216123000/Volume1/  (OS partition)
+/home/azureuser/myVM-20260216123000/Volume2/  (Data disk 1)
+/mnt/recovered-lv-data/                       (manually mounted LVM logical volume)
 ```
 
 ## Step 5: Locate and Copy Files
@@ -155,13 +156,13 @@ Get-FileHash "C:\inetpub\wwwroot\web.config.restored" -Algorithm SHA256
 
 ```bash
 # Browse the mounted backup and find files
-ls -la /mnt/vmmount/sdc1/etc/nginx/
+ls -la /home/azureuser/myVM-20260216123000/Volume1/etc/nginx/
 
 # Copy a configuration file
-cp /mnt/vmmount/sdc1/etc/nginx/nginx.conf /etc/nginx/nginx.conf.restored
+cp /home/azureuser/myVM-20260216123000/Volume1/etc/nginx/nginx.conf /etc/nginx/nginx.conf.restored
 
 # Recover an entire directory with rsync for progress tracking
-rsync -avh --progress /mnt/vmmount/sdd1/var/lib/mysql/ /var/lib/mysql-restored/
+rsync -avh --progress /home/azureuser/myVM-20260216123000/Volume2/var/lib/mysql/ /var/lib/mysql-restored/
 
 # Verify file integrity
 sha256sum /etc/nginx/nginx.conf.restored
@@ -171,14 +172,11 @@ sha256sum /etc/nginx/nginx.conf.restored
 
 ### Recovering from Encrypted Disks
 
-If the original VM used Azure Disk Encryption (ADE), the file recovery script handles decryption automatically, provided:
-- You have access to the Key Vault containing the encryption keys
-- The mount machine has connectivity to the Key Vault
-- Your Azure AD credentials have permission to access the keys
+If the original VM used Azure Disk Encryption (ADE), Azure Backup does not support file/folder-level recovery from that backup. Restore the VM or restore disks, then recover the files from the restored VM or disks.
 
 ### Recovering Large Files or Many Files
 
-The iSCSI connection used by file recovery has decent throughput, but for very large restores (tens of GB or more), consider doing a full VM restore instead. The iSCSI connection can time out during very long copy operations.
+File recovery is intended for smaller restores. Microsoft recommends it when the total recovery size is 10 GB or less and lists expected transfer speeds around 1 GB per hour. For larger restores, consider doing a full VM or disk restore instead. The iSCSI connection can time out during very long copy operations.
 
 To handle this, copy in batches and verify each batch:
 
@@ -238,27 +236,26 @@ After you have copied everything you need, unmount the recovery point:
 
 ### Windows
 
-Close any File Explorer windows or command prompts that have the mounted drives open, then run:
+Close any File Explorer windows or command prompts that have the mounted drives open, then select **Unmount Disks** in the Azure portal File Recovery page. If you generated the mount script with PowerShell, use `Disable-AzRecoveryServicesBackupRPMountScript` for the same recovery point:
 
 ```powershell
-# Unmount the recovery point drives
-# Run the script again with the unmount parameter
-.\IaaSVMILRExeForWindows.exe -Unmount
+# Unmount the recovery point drives when using Azure PowerShell
+Disable-AzRecoveryServicesBackupRPMountScript -RecoveryPoint $rp[0] -VaultId $targetVault.ID
 ```
 
-Or simply close the script window. It will prompt you to unmount.
+You can also close access from Azure CLI with `az backup restore files unmount-rp`.
 
 ### Linux
 
 ```bash
-# Unmount the recovery point
-sudo python3 LinuxILRScript.py -unmount
+# After selecting Unmount Disks in the Azure portal, clean orphaned Linux mount paths if needed
+sudo python3 LinuxILRScript.py clean
 
 # Verify all mounts are cleaned up
-mount | grep vmmount
+mount | grep myVM-20260216123000
 ```
 
-If the script does not clean up properly, you can manually disconnect the iSCSI sessions:
+If you used Azure CLI to generate the script, close access to the recovery point with `az backup restore files unmount-rp`. If the script does not clean up properly, you can manually disconnect the iSCSI sessions:
 
 ```bash
 # Manual cleanup if the script fails to unmount
