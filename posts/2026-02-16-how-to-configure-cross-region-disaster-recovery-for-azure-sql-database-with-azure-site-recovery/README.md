@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure SQL Database, Disaster Recovery, Azure Site Recovery, Geo-Replication, Failover, Business Continuity, High Availability
+Tags: Azure SQL Database, Disaster Recovery, Geo-Replication, Failover, Business Continuity, High Availability
 
 Description: Learn how to set up cross-region disaster recovery for Azure SQL Database using geo-replication and failover groups for business continuity.
 
@@ -16,7 +16,7 @@ Azure SQL Database offers two built-in disaster recovery mechanisms:
 
 **Active Geo-Replication** creates read-only replicas of your database in different Azure regions. You can have up to four secondary replicas. Failover is manual - you decide when to promote a secondary to primary. This gives you maximum control but requires human intervention during an outage.
 
-**Auto-Failover Groups** build on geo-replication but add automatic failover. You define a failover group with a primary and secondary region, and Azure automatically fails over if the primary becomes unavailable. Failover groups also provide a listener endpoint that automatically redirects connections to the current primary, so your application does not need connection string changes.
+**Auto-Failover Groups** build on geo-replication but add Microsoft-managed failover. You define a failover group with a primary and secondary region, and Azure can automatically fail over after the configured grace period during a widespread outage in the primary region. Failover groups also provide a listener endpoint that automatically redirects connections to the current primary, so your application does not need connection string changes.
 
 For most production scenarios, I recommend auto-failover groups. Manual failover (active geo-replication) is useful when you want to avoid accidental failovers or need fine-grained control over the timing.
 
@@ -104,7 +104,7 @@ az sql db replica list-links \
     -o table
 ```
 
-The output shows the replication state, role (primary or secondary), and the replication lag percentage.
+The output shows the replication state, role (primary or secondary), and link metadata for the replica relationship.
 
 ### Step 5: Perform Manual Failover
 
@@ -141,7 +141,7 @@ az sql failover-group create \
     --grace-period 1
 ```
 
-The `grace-period` is the number of hours Azure waits before triggering an automatic failover. Setting it to 1 hour means Azure will automatically fail over if the primary is unavailable for more than 1 hour. You can set it as low as 1 hour or disable automatic failover entirely with `--failover-policy Manual`.
+The `grace-period` is the number of hours Azure waits before triggering an automatic failover. Setting it to 1 hour means Azure will not automatically fail over before the primary has been unavailable for at least 1 hour. You can set it as low as 1 hour or use customer-managed failover with `--failover-policy Manual`.
 
 ### Step 2: Add Databases to the Failover Group
 
@@ -170,7 +170,7 @@ Server=tcp:<failover-group-name>.secondary.database.windows.net,1433;Database=ap
 
 Here is a connection string example for a .NET application:
 
-```csharp
+```jsonc
 // appsettings.json - Connection string using failover group listener
 // The listener automatically routes to the current primary
 {
@@ -180,7 +180,7 @@ Here is a connection string example for a .NET application:
 }
 ```
 
-When a failover occurs, the DNS for the listener endpoint updates automatically. Your application reconnects to the new primary without any configuration changes. There will be a brief interruption (typically 30 to 60 seconds for automatic failover), but no manual intervention is needed.
+When a failover occurs, the DNS for the listener endpoint updates automatically. Your application reconnects to the new primary without any configuration changes after its DNS cache refreshes. The listener DNS records have a 30-second TTL, but the full interruption can vary depending on client DNS caching, retry behavior, and the failover scenario.
 
 ### Step 4: Test the Failover
 
@@ -215,6 +215,7 @@ During a failover, your application will see transient errors. Implement retry l
 // RetryableDataSource.java - Retry logic for SQL connections during failover
 import java.sql.Connection;
 import java.sql.SQLException;
+import javax.sql.DataSource;
 
 public class RetryableDataSource {
 
@@ -281,7 +282,7 @@ Also monitor replication lag to catch issues before they become critical:
 # Query replication lag through Azure Monitor metrics
 az monitor metrics list \
     --resource "/subscriptions/<sub-id>/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Sql/servers/$PRIMARY_SERVER/databases/$DB_NAME" \
-    --metric "geo_replication_lag_seconds" \
+    --metric "replication_lag_seconds" \
     --interval PT5M \
     --aggregation Average
 ```
