@@ -41,7 +41,9 @@ The DCsv3 series offers multiple sizes with varying amounts of EPC memory.
 | Standard_DC4s_v3 | 4 | 32 | 16 | Medium workloads |
 | Standard_DC8s_v3 | 8 | 64 | 32 | Data analytics |
 | Standard_DC16s_v3 | 16 | 128 | 64 | Large databases |
-| Standard_DC32s_v3 | 32 | 256 | 128 | Enterprise workloads |
+| Standard_DC24s_v3 | 24 | 192 | 128 | Larger workloads |
+| Standard_DC32s_v3 | 32 | 256 | 192 | Enterprise workloads |
+| Standard_DC48s_v3 | 48 | 384 | 256 | Enterprise workloads |
 
 The EPC memory is the critical factor. Your enclave application's sensitive data and code must fit within the EPC. If it exceeds the EPC size, performance degrades significantly due to EPC paging.
 
@@ -53,7 +55,7 @@ The EPC memory is the critical factor. Your enclave application's sensitive data
 
 ## Step 1: Deploy a DCsv3 Virtual Machine
 
-Create a DCsv3 VM using the Azure CLI. Use an Ubuntu image that has the SGX drivers pre-installed.
+Create a DCsv3 VM using the Azure CLI. Use a supported Generation 2 Ubuntu image.
 
 ```bash
 # Create a resource group in a region that supports confidential computing
@@ -62,16 +64,17 @@ az group create \
   --name confidential-rg \
   --location eastus
 
-# Deploy a DCsv3 VM with Ubuntu 22.04
+# Deploy a DCsv3 VM with Ubuntu 22.04 Gen2
 az vm create \
   --resource-group confidential-rg \
   --name confidential-vm \
   --size Standard_DC4s_v3 \
-  --image Canonical:0001-com-ubuntu-confidential-vm-jammy:22_04-lts-cvm:latest \
+  --image Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest \
   --admin-username azureuser \
   --generate-ssh-keys \
-  --security-type ConfidentialVM \
-  --os-disk-security-encryption-type VMGuestStateOnly \
+  --security-type TrustedLaunch \
+  --enable-secure-boot true \
+  --enable-vtpm true \
   --public-ip-sku Standard
 ```
 
@@ -96,16 +99,17 @@ Install the Intel SGX SDK, which provides the tools and libraries needed to deve
 
 ```bash
 # Add the Intel SGX repository
-echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main' | \
-    sudo tee /etc/apt/sources.list.d/intel-sgx.list
-
-# Add the Intel GPG key
+sudo install -d -m 0755 /etc/apt/keyrings
 wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | \
-    sudo apt-key add -
+    sudo tee /etc/apt/keyrings/intel-sgx-keyring.asc > /dev/null
+
+echo 'deb [signed-by=/etc/apt/keyrings/intel-sgx-keyring.asc arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main' | \
+    sudo tee /etc/apt/sources.list.d/intel-sgx.list
 
 # Update and install the SGX packages
 sudo apt-get update
 sudo apt-get install -y \
+    build-essential \
     libsgx-enclave-common \
     libsgx-dcap-ql \
     libsgx-dcap-ql-dev \
@@ -115,9 +119,9 @@ sudo apt-get install -y \
     libsgx-aesm-launch-plugin
 
 # Install the Intel SGX SDK
-wget https://download.01.org/intel-sgx/latest/linux-latest/distro/ubuntu22.04-server/sgx_linux_x64_sdk_2.22.100.3.bin
-chmod +x sgx_linux_x64_sdk_2.22.100.3.bin
-sudo ./sgx_linux_x64_sdk_2.22.100.3.bin --prefix=/opt/intel
+wget https://download.01.org/intel-sgx/latest/linux-latest/distro/ubuntu22.04-server/sgx_linux_x64_sdk_2.29.100.1.bin
+chmod +x sgx_linux_x64_sdk_2.29.100.1.bin
+sudo ./sgx_linux_x64_sdk_2.29.100.1.bin --prefix=/opt/intel
 
 # Source the SDK environment
 source /opt/intel/sgxsdk/environment
@@ -161,6 +165,8 @@ Now implement the trusted enclave code.
 ```c
 /* Enclave.c - Trusted code that runs inside the SGX enclave */
 #include "Enclave_t.h"  /* Auto-generated from the EDL file */
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 #include <sgx_tcrypto.h>
 
@@ -186,6 +192,7 @@ And the untrusted host application.
 ```c
 /* App.c - Untrusted code that manages the enclave lifecycle */
 #include <stdio.h>
+#include <stdint.h>
 #include <sgx_urts.h>
 #include "Enclave_u.h"  /* Auto-generated from the EDL file */
 
@@ -225,10 +232,10 @@ int main() {
 
 ## Step 4: Use Open Enclave SDK for Simplified Development
 
-The Intel SGX SDK is powerful but low-level. For many use cases, the Open Enclave SDK provides a simpler development experience and supports multiple TEE technologies.
+The Intel SGX SDK is powerful but low-level. For many use cases, the Open Enclave SDK provides a simpler development experience and supports multiple TEE technologies. The packaged Open Enclave SDK install path currently targets Ubuntu 20.04; for Ubuntu 22.04, follow the Open Enclave source build or release instructions instead of assuming the package is available in the Jammy repository.
 
 ```bash
-# Install the Open Enclave SDK
+# On Ubuntu 20.04, after configuring the Intel, LLVM, and Microsoft APT repositories from the Open Enclave docs:
 sudo apt-get install -y open-enclave
 
 # Verify the installation
