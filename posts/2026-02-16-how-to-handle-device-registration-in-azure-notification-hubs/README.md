@@ -14,7 +14,7 @@ Device registration is the foundation of push notifications. If a device is not 
 
 Azure Notification Hubs has two APIs for managing devices:
 
-**Registrations** are the original model. Each registration maps a platform-specific push handle (like an APNs device token or FCM registration ID) to a set of tags. Registrations can be either native (platform-specific payload) or template-based.
+**Registrations** are the original model. Each registration maps a platform-specific push handle (like an APNs device token or FCM registration token) to a set of tags. Registrations can be either native (platform-specific payload) or template-based.
 
 **Installations** are the newer, recommended model. An installation represents a device with a unique ID, its push handle, platform, tags, and optional templates. Installations are idempotent - you can create or update them with the same ID without worrying about duplicates.
 
@@ -24,7 +24,7 @@ The key difference: with registrations, you need to track registration IDs to up
 
 There are two patterns for who creates the registration:
 
-**Client-managed**: The mobile app registers directly with Notification Hubs. This is simpler to set up but gives you less control. The app needs the hub connection string (or a SAS token), and you cannot easily customize tags from the server.
+**Client-managed**: The mobile app registers directly with Notification Hubs. This is simpler to set up but gives you less control. The app needs a Listen-only hub connection string (or a SAS token), and you cannot easily customize tags from the server.
 
 **Backend-managed**: The mobile app sends its push token to your backend, and your backend creates the registration. This is the recommended approach because your backend controls the tags, can validate the request, and does not expose hub credentials to the client.
 
@@ -65,8 +65,8 @@ async function upsertInstallation(deviceInfo) {
 
   const installation = {
     installationId: installationId, // Use a stable device identifier
-    platform: platform === 'ios' ? 'apns' : 'gcm',
-    pushChannel: pushHandle,        // The APNs token or FCM registration ID
+    platform: platform === 'ios' ? 'apns' : 'fcmv1',
+    pushChannel: pushHandle,        // The APNs token or FCM registration token
     tags: tags
   };
 
@@ -74,7 +74,7 @@ async function upsertInstallation(deviceInfo) {
   console.log(`Installation ${installationId} upserted with tags:`, tags);
 }
 
-// Delete an installation when the user logs out or uninstalls
+// Delete an installation when the user logs out or explicitly disables this device
 async function removeInstallation(installationId) {
   try {
     await client.deleteInstallation(installationId);
@@ -176,14 +176,24 @@ async function upsertInstallationWithTemplates(deviceInfo) {
     templates = {
       alertTemplate: {
         body: JSON.stringify({
-          notification: { title: '$(title)', body: '$(body)' }
+          message: {
+            android: {
+              notification: { title: '$(title)', body: '$(body)' }
+            }
+          }
         }),
+        headers: {},
         tags: [`user:${userId}`, 'type:alert']
       },
       silentTemplate: {
         body: JSON.stringify({
-          data: { action: '$(action)', resource: '$(resource)' }
+          message: {
+            android: {
+              data: { action: '$(action)', resource: '$(resource)' }
+            }
+          }
         }),
+        headers: {},
         tags: [`user:${userId}`, 'type:silent']
       }
     };
@@ -191,7 +201,7 @@ async function upsertInstallationWithTemplates(deviceInfo) {
 
   const installation = {
     installationId: installationId,
-    platform: platform === 'ios' ? 'apns' : 'gcm',
+    platform: platform === 'ios' ? 'apns' : 'fcmv1',
     pushChannel: pushHandle,
     tags: [`user:${userId}`, `platform:${platform}`],
     templates: templates
@@ -221,7 +231,7 @@ async function removeTagFromInstallation(installationId, tag) {
 
 async function updatePushHandle(installationId, newHandle) {
   await client.updateInstallation(installationId, [
-    { op: 'replace', path: '/pushChannel', value: newHandle }
+    { op: 'add', path: '/pushChannel', value: newHandle }
   ]);
 }
 
@@ -237,7 +247,7 @@ async function updateUserProfile(installationId, updates) {
   }
 
   if (updates.pushHandle) {
-    patches.push({ op: 'replace', path: '/pushChannel', value: updates.pushHandle });
+    patches.push({ op: 'add', path: '/pushChannel', value: updates.pushHandle });
   }
 
   await client.updateInstallation(installationId, patches);
@@ -246,7 +256,7 @@ async function updateUserProfile(installationId, updates) {
 
 ## Handling Token Refresh
 
-Push tokens change. On iOS, the system can issue a new device token at any time. On Android, FCM registration IDs can be refreshed. Your app needs to detect these changes and update the registration.
+Push tokens change. On iOS, the system can issue a new device token at any time. On Android, FCM registration tokens can be refreshed. Your app needs to detect these changes and update the registration.
 
 ```javascript
 // token-refresh-handler.js - Backend endpoint for token updates
@@ -264,7 +274,7 @@ app.post('/api/update-push-token', requireAuth, async (req, res) => {
 
     // Update just the push handle
     await client.updateInstallation(installationId, [
-      { op: 'replace', path: '/pushChannel', value: newPushHandle }
+      { op: 'add', path: '/pushChannel', value: newPushHandle }
     ]);
 
     res.json({ status: 'updated' });
@@ -315,7 +325,7 @@ module.exports = async function cleanupTimer(context) {
 };
 ```
 
-You should also handle the feedback from platform notification services. When APNs or FCM tells you a token is invalid, remove the corresponding registration immediately.
+Notification Hubs automatically cleans up an installation or registration when a send reaches a PNS handle that APNs or FCM reports as expired. If you maintain secondary records in your own database or another notification hub, use feedback and application activity data to keep those records in sync.
 
 ## Best Practices
 
