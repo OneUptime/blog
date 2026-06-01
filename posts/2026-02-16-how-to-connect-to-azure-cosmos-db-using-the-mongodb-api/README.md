@@ -29,13 +29,13 @@ az cosmosdb create \
     --default-consistency-level Session
 ```
 
-Available server versions are 3.6, 4.0, and 4.2. Choose the version that matches your application's MongoDB driver compatibility.
+Available server versions include 3.2, 3.6, 4.0, 4.2, 5.0, 6.0, and 7.0. Choose the version that matches your application's MongoDB driver compatibility and the MongoDB features you need.
 
 ### Using Azure Portal
 
 1. Go to Create a resource and search for Azure Cosmos DB
 2. Select Azure Cosmos DB API for MongoDB
-3. Choose a server version (4.2 recommended)
+3. Choose a server version that matches your application's compatibility requirements
 4. Select your capacity mode (provisioned or serverless)
 5. Complete the creation wizard
 
@@ -63,7 +63,7 @@ Notice the differences from a standard MongoDB connection string:
 - Port 10255 instead of the default 27017
 - SSL is required
 - The `replicaSet=globaldb` parameter
-- `retrywrites=false` (important for Cosmos DB compatibility)
+- `retrywrites=false` (important unless retryable writes are enabled on the Cosmos DB account)
 
 ## Connecting from Different Languages
 
@@ -218,12 +218,13 @@ await orders.InsertOneAsync(order);
 Collections in Cosmos DB MongoDB API map to Cosmos DB containers. You can create them with specific options:
 
 ```javascript
-// Create a collection with a shard key (maps to Cosmos DB partition key)
-// The shard key is critical for performance - same rules as partition keys
-db.createCollection("orders");
+// Create a collection with a shard key (maps to Cosmos DB partition key).
+// The shard key is critical for performance - same rules as partition keys.
 db.runCommand({
-    shardCollection: "mydb.orders",
-    key: { customerId: "hashed" }
+    customAction: "CreateCollection",
+    collection: "orders",
+    shardKey: "customerId",
+    offerThroughput: 400
 });
 
 // Create indexes for your query patterns
@@ -251,10 +252,20 @@ In Cosmos DB MongoDB API, the shard key maps directly to the partition key. The 
 
 ```javascript
 // Good shard key - high cardinality, aligns with queries
-db.runCommand({ shardCollection: "mydb.orders", key: { customerId: "hashed" } });
+db.runCommand({
+    customAction: "CreateCollection",
+    collection: "orders",
+    shardKey: "customerId",
+    offerThroughput: 400
+});
 
 // Bad shard key - low cardinality
-db.runCommand({ shardCollection: "mydb.orders", key: { status: "hashed" } });
+db.runCommand({
+    customAction: "CreateCollection",
+    collection: "ordersByStatus",
+    shardKey: "status",
+    offerThroughput: 400
+});
 ```
 
 ## What Works and What Does Not
@@ -264,16 +275,15 @@ Most MongoDB operations work, but there are some notable exceptions:
 **Supported:**
 - CRUD operations (insert, find, update, delete)
 - Aggregation pipeline (most stages)
-- Indexes (single, compound, TTL, unique, geo)
-- Change streams
-- Transactions (with version 4.0+)
-- Text search (basic)
+- Indexes (single, compound, TTL, unique, 2dsphere)
+- Change streams (with limitations)
+- Transactions within a single non-sharded collection (with version 4.0+)
 
 **Not supported or limited:**
 - `$graphLookup` aggregation stage
 - Capped collections
 - Map-Reduce (deprecated in MongoDB anyway)
-- Full-text search with `$text` (use Azure Cognitive Search instead)
+- Full-text search with `$text` (use Azure AI Search instead)
 - Some aggregation operators (check documentation for the full list)
 
 ## Optimizing for Cosmos DB
@@ -288,9 +298,9 @@ db.orders.find(
     { product: 1, price: 1, status: 1 }  // Only return these fields
 );
 
-// Use the explain command to see RU costs
-db.orders.find({ customerId: "cust-123" }).explain("executionStats");
-// Look at the "executionStats.totalRequestCharge" field
+// Use getLastRequestStatistics after an operation to see RU costs
+db.runCommand({ getLastRequestStatistics: 1 });
+// Look at the "RequestCharge" field
 ```
 
 ## Connecting with MongoDB Compass
