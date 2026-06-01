@@ -8,7 +8,7 @@ Description: Learn how to register, version, and manage datasets in Azure Machin
 
 ---
 
-One of the most common problems in machine learning is not being able to reproduce a result because you do not know which version of the data was used. You train a model on Monday, get great results, and by Friday the underlying data has changed and you cannot figure out what happened. Azure Machine Learning's data assets (formerly called datasets) solve this by letting you register versioned snapshots of your data that are immutable once created. Every experiment run can reference a specific data version, giving you complete reproducibility.
+One of the most common problems in machine learning is not being able to reproduce a result because you do not know which version of the data was used. You train a model on Monday, get great results, and by Friday the underlying data has changed and you cannot figure out what happened. Azure Machine Learning's data assets (formerly called datasets) solve this by letting you register immutable data asset versions. Local paths are uploaded to workspace storage when registered, while cloud storage paths are stored as versioned references. Every experiment run can reference a specific data version, giving you reproducibility as long as the data at referenced cloud paths is not modified in place.
 
 In this post, I will cover how to create, register, version, and manage data assets in Azure Machine Learning.
 
@@ -149,6 +149,7 @@ Reference registered data assets in your training jobs to ensure reproducibility
 
 ```python
 from azure.ai.ml import command, Input
+from azure.ai.ml.constants import InputOutputModes
 
 # Create a training job that uses a specific data version
 training_job = command(
@@ -157,7 +158,8 @@ training_job = command(
     inputs={
         "training_data": Input(
             type=AssetTypes.URI_FILE,
-            path="azureml:customer-churn-data:2"  # Specific version
+            path="azureml:customer-churn-data:2",  # Specific version
+            mode=InputOutputModes.RO_MOUNT
         )
     },
     environment="azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:1",
@@ -169,7 +171,7 @@ submitted_job = ml_client.jobs.create_or_update(training_job)
 print(f"Job submitted: {submitted_job.name}")
 ```
 
-In the training script, the data is automatically mounted or downloaded to a local path:
+In the training script, the data is available at a local path. The `mode` controls how Azure ML makes the input available; `ro_mount` mounts it read-only, while `download` downloads it before the script starts.
 
 ```python
 import argparse
@@ -202,11 +204,11 @@ transformations:
       header: all_files_same_headers
       encoding: utf8
   - convert_column_types:
-      - column_name: tenure
+      - columns: tenure
         column_type: int
-      - column_name: monthly_charges
+      - columns: monthly_charges
         column_type: float
-      - column_name: churn
+      - columns: churn
         column_type: boolean
   - drop_columns:
       - customer_id    # Remove PII column
@@ -256,7 +258,7 @@ This lineage is captured automatically as long as you reference registered data 
 
 **Tag everything.** Tags like `record_count`, `date_range`, `source_system`, and `schema_version` make it much easier to find the right dataset later.
 
-**Never modify a registered version.** If you find an issue with a registered dataset, create a new version with the fix. The old version stays as is so that experiments that used it can still be reproduced.
+**Never modify the files behind a registered version.** If you find an issue with a registered dataset, create a new version with the fix. The old version stays as is so that experiments that used it can still be reproduced.
 
 **Archive old versions.** If a dataset version is no longer needed, archive it rather than deleting it. This preserves lineage while decluttering the workspace.
 
@@ -270,6 +272,8 @@ ml_client.data.archive(name="customer-churn-data", version="1")
 **Validate data before registering.** Run basic data quality checks before creating a new version. Check for null values, duplicate rows, and schema consistency with previous versions.
 
 ```python
+import pandas as pd
+
 def validate_before_registration(filepath, expected_columns):
     """
     Run basic quality checks on a dataset before registering it.
