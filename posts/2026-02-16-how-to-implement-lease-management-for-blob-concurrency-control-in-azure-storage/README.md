@@ -12,7 +12,7 @@ When multiple instances of your application can read and write the same blob, yo
 
 ## How Blob Leases Work
 
-A lease is an exclusive lock on a blob. When a client acquires a lease on a blob, it gets a lease ID. Any subsequent write or delete operation on that blob must include this lease ID. Operations from other clients (or the same client without the lease ID) are rejected with a 412 Precondition Failed error.
+A lease is an exclusive lock on blob write and delete operations. When a client acquires a lease on a blob, it gets a lease ID. Any subsequent write or delete operation on that blob must include this lease ID. Operations from other clients (or the same client without the lease ID) are rejected with a 412 Precondition Failed error.
 
 Key concepts:
 
@@ -226,7 +226,7 @@ except Exception as e:
 The `lease_break_period` parameter controls how long to wait before the lease is fully broken:
 - `0`: Break immediately
 - `1-60`: Wait the specified number of seconds
-- `None`: Use the remaining time on the lease
+- `None`: For a fixed-duration lease, use the remaining time on the lease; an infinite lease breaks immediately
 
 ## Implementing a Distributed Lock
 
