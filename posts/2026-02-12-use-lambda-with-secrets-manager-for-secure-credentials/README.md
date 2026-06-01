@@ -60,6 +60,14 @@ const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client
 
 const client = new SecretsManagerClient({ region: 'us-east-1' });
 
+function parseSecretString(secretString) {
+  try {
+    return JSON.parse(secretString);
+  } catch {
+    return secretString;
+  }
+}
+
 async function getSecret(secretId) {
   const response = await client.send(
     new GetSecretValueCommand({ SecretId: secretId })
@@ -67,7 +75,7 @@ async function getSecret(secretId) {
 
   // Secrets can be stored as a string or binary
   if (response.SecretString) {
-    return JSON.parse(response.SecretString);
+    return parseSecretString(response.SecretString);
   }
 
   // Binary secret
@@ -96,6 +104,14 @@ const client = new SecretsManagerClient({ region: 'us-east-1' });
 const secretCache = {};
 const CACHE_TTL_MS = 5 * 60 * 1000; // Refresh cache every 5 minutes
 
+function parseSecretString(secretString) {
+  try {
+    return JSON.parse(secretString);
+  } catch {
+    return secretString;
+  }
+}
+
 async function getSecret(secretId) {
   const cached = secretCache[secretId];
 
@@ -110,7 +126,7 @@ async function getSecret(secretId) {
   );
 
   const value = response.SecretString
-    ? JSON.parse(response.SecretString)
+    ? parseSecretString(response.SecretString)
     : Buffer.from(response.SecretBinary);
 
   // Update cache
@@ -133,10 +149,15 @@ exports.handler = async (event) => {
 AWS provides a Secrets Manager Lambda extension that handles caching automatically. It runs as a local HTTP service within the Lambda execution environment:
 
 ```bash
-# Add the Secrets Manager caching layer to your function
+# Add the latest Secrets Manager caching layer to your function
+LAYER_ARN=$(aws ssm get-parameter \
+  --name "/aws/service/aws-parameters-and-secrets-lambda-extension/x86/latest" \
+  --query "Parameter.Value" \
+  --output text)
+
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers "arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:11"
+  --layers "$LAYER_ARN"
 ```
 
 Then retrieve secrets via a local HTTP call:
@@ -147,6 +168,14 @@ const http = require('http');
 
 // The extension runs on localhost port 2773
 const EXTENSION_PORT = 2773;
+
+function parseSecretString(secretString) {
+  try {
+    return JSON.parse(secretString);
+  } catch {
+    return secretString;
+  }
+}
 
 async function getSecretFromExtension(secretId) {
   return new Promise((resolve, reject) => {
@@ -164,7 +193,7 @@ async function getSecretFromExtension(secretId) {
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
         const parsed = JSON.parse(data);
-        resolve(JSON.parse(parsed.SecretString));
+        resolve(parseSecretString(parsed.SecretString));
       });
     }).on('error', reject);
   });
@@ -271,6 +300,8 @@ AWS provides rotation templates for common databases:
 
 ```yaml
 # CloudFormation: RDS secret with automatic rotation
+Transform: AWS::SecretsManager-2024-09-16
+
 Resources:
   DbSecret:
     Type: AWS::SecretsManager::Secret
