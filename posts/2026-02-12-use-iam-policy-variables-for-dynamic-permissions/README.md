@@ -168,8 +168,7 @@ Tag variables enable powerful team-based access patterns:
             "Effect": "Allow",
             "Action": [
                 "ec2:StartInstances",
-                "ec2:StopInstances",
-                "ec2:DescribeInstances"
+                "ec2:StopInstances"
             ],
             "Resource": "*",
             "Condition": {
@@ -178,6 +177,12 @@ Tag variables enable powerful team-based access patterns:
                     "ec2:ResourceTag/Environment": "${aws:PrincipalTag/Environment}"
                 }
             }
+        },
+        {
+            "Sid": "AllowDescribeInstances",
+            "Effect": "Allow",
+            "Action": "ec2:DescribeInstances",
+            "Resource": "*"
         },
         {
             "Sid": "AllowTeamS3Access",
@@ -196,7 +201,7 @@ Tag variables enable powerful team-based access patterns:
 }
 ```
 
-For the EC2 part, the user's Team and Environment tags must match the resource's tags. For S3, the bucket name must start with `project-` followed by the user's team name. This means team "alpha" can access `project-alpha-data`, `project-alpha-logs`, etc.
+For the EC2 start and stop actions, the user's Team and Environment tags must match the resource's tags. `DescribeInstances` is separate because it doesn't support resource-tag authorization conditions. For S3, the bucket name must start with `project-` followed by the user's team name. This means team "alpha" can access `project-alpha-data`, `project-alpha-logs`, etc.
 
 ## Using Variables in Resource ARNs
 
@@ -261,7 +266,7 @@ Each account gets its own prefix in the shared bucket, automatically.
 
 ## Default Values for Missing Variables
 
-If a policy variable references a tag or attribute that doesn't exist, the variable resolves to an empty string. This can cause unexpected behavior. Always ensure your users and roles have the required tags before deploying ABAC policies.
+If a policy variable references a tag or attribute that doesn't exist, the value is effectively null. In a `Condition`, operators like `StringEquals` or `StringLike` won't match, and in some cases the entire statement can become invalid. Always ensure your users and roles have the required tags before deploying ABAC policies.
 
 You can add a safeguard with a condition that checks for the tag's existence:
 
@@ -279,7 +284,7 @@ You can add a safeguard with a condition that checks for the tag's existence:
 }
 ```
 
-This denies all actions if the caller doesn't have a Team tag, preventing the empty-string fallback from causing problems.
+This denies all actions if the caller doesn't have a Team tag, preventing missing variables from causing problems.
 
 ## Terraform with Policy Variables
 
