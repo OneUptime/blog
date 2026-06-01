@@ -37,21 +37,21 @@ flowchart LR
 You will need the following Azure resources:
 
 - An Azure OpenAI resource with a GPT-4 deployment and a text-embedding-ada-002 deployment
-- An Azure AI Search resource (Basic tier or higher for vector search)
+- An Azure AI Search resource (Free tier works for small tests; Basic or higher is recommended for larger data sets)
 - Python 3.9 or later
-- The following Python packages: `openai`, `azure-search-documents`, `azure-identity`
+- The following Python packages: `openai`, `azure-search-documents`
 
 Install the dependencies:
 
 ```bash
 # Install required Python packages
 
-pip install openai azure-search-documents azure-identity
+pip install openai azure-search-documents
 ```
 
 ## Step 1: Prepare and Chunk Your Documents
 
-Before indexing, you need to break your documents into smaller chunks. Language models have token limits, and smaller chunks produce more precise search results. A common approach is to split documents into chunks of 500-1000 tokens with some overlap between chunks.
+Before indexing, you need to break your documents into smaller chunks. Language models have token limits, and smaller chunks produce more precise search results. A common approach is to split documents into chunks of 500-1000 tokens with some overlap between chunks. In production, use a tokenizer-aware splitter; the simple example below uses words as an approximation.
 
 ```python
 def chunk_text(text, chunk_size=800, overlap=100):
