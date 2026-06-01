@@ -26,8 +26,8 @@ Start by creating a new Pulumi project:
 mkdir aks-cluster && cd aks-cluster
 pulumi new azure-typescript
 
-# Install additional packages we will need
-npm install @pulumi/azuread @pulumi/kubernetes
+# Install the additional Kubernetes provider package we will need
+npm install @pulumi/kubernetes
 ```
 
 Pulumi generates a scaffold with `index.ts` as the entry point. Let me build out a complete AKS deployment.
@@ -41,15 +41,22 @@ First, create the networking and supporting resources that AKS needs:
 
 import * as pulumi from "@pulumi/pulumi";
 import * as azure from "@pulumi/azure-native";
-import * as azuread from "@pulumi/azuread";
 import * as k8s from "@pulumi/kubernetes";
+import * as crypto from "crypto";
 
 // Load configuration values from Pulumi config
 const config = new pulumi.Config();
-const environment = config.require("environment"); // dev, staging, production
+const environment = config.get("environment") || pulumi.getStack(); // dev, staging, production
 const location = config.get("location") || "eastus2";
 const nodeCount = config.getNumber("nodeCount") || 3;
 const nodeVmSize = config.get("nodeVmSize") || "Standard_D4s_v5";
+const kubernetesVersion = config.get("kubernetesVersion") || "1.35";
+
+function deterministicGuid(...parts: string[]): string {
+    const hash = crypto.createHash("sha256").update(parts.join("|")).digest("hex");
+    const variant = ((parseInt(hash.substring(16, 18), 16) & 0x3f) | 0x80).toString(16);
+    return `${hash.substring(0, 8)}-${hash.substring(8, 12)}-5${hash.substring(13, 16)}-${variant}${hash.substring(18, 20)}-${hash.substring(20, 32)}`;
+}
 
 // Naming convention - prefix all resources with environment
 const prefix = `myapp-${environment}`;
@@ -105,10 +112,19 @@ const aksIdentity = new azure.managedidentity.UserAssignedIdentity(`id-aks-${pre
 
 // Grant the managed identity Network Contributor on the VNet subnet
 // This allows AKS to manage networking resources
+const clientConfig = azure.authorization.getClientConfigOutput();
+const networkContributorRoleId = clientConfig.subscriptionId.apply(subscriptionId =>
+    `/subscriptions/${subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7`
+);
+const subnetRoleAssignmentName = pulumi.all([aksSubnet.id, aksIdentity.principalId]).apply(
+    ([subnetId, principalId]) => deterministicGuid(subnetId, principalId, "network-contributor")
+);
+
 const subnetRoleAssignment = new azure.authorization.RoleAssignment(`ra-aks-subnet`, {
     principalId: aksIdentity.principalId,
     principalType: "ServicePrincipal",
-    roleDefinitionId: "/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7", // Network Contributor
+    roleAssignmentName: subnetRoleAssignmentName,
+    roleDefinitionId: networkContributorRoleId, // Network Contributor
     scope: aksSubnet.id,
 });
 
@@ -136,8 +152,8 @@ const aksCluster = new azure.containerservice.ManagedCluster(`aks-${prefix}`, {
         userAssignedIdentities: [aksIdentity.id],
     },
 
-    // Kubernetes version - check available versions with az aks get-versions
-    kubernetesVersion: "1.29",
+    // Kubernetes version - check available versions with az aks get-versions --location <region>
+    kubernetesVersion: kubernetesVersion,
 
     // System node pool - runs kube-system pods
     agentPoolProfiles: [{
@@ -216,7 +232,7 @@ const appNodePool = new azure.containerservice.AgentPool(`np-app-${prefix}`, {
     mode: "User",
     vmSize: nodeVmSize,
     osDiskSizeGB: 256,
-    osDiskType: "Ephemeral", // Ephemeral OS disk for better performance
+    osDiskType: "Managed",
     vnetSubnetID: aksSubnet.id,
     availabilityZones: ["1", "2", "3"],
     enableAutoScaling: true,
@@ -250,6 +266,7 @@ const creds = pulumi.all([resourceGroup.name, aksCluster.name]).apply(
         azure.containerservice.listManagedClusterUserCredentials({
             resourceGroupName: rgName,
             resourceName: clusterName,
+            format: "exec",
         })
 );
 
@@ -299,6 +316,12 @@ const nginxIngress = new k8s.helm.v3.Release("nginx-ingress", {
             nodeSelector: {
                 "workload": "application",
             },
+            tolerations: environment === "production" ? [] : [{
+                key: "kubernetes.azure.com/scalesetpriority",
+                operator: "Equal",
+                value: "spot",
+                effect: "NoSchedule",
+            }],
         },
     },
 }, { provider: k8sProvider });
@@ -331,20 +354,21 @@ export const ingressIp = nginxIngress.status.apply(s => {
 Deploy with Pulumi's CLI:
 
 ```bash
-# Preview changes before deploying
-pulumi preview
-
 # Deploy to the dev environment
 pulumi config set environment dev
+pulumi config set kubernetesVersion 1.35
 pulumi config set nodeCount 2
 pulumi config set nodeVmSize Standard_B4ms
+pulumi preview
 pulumi up
 
 # Deploy to production with different settings
-pulumi stack select production
+pulumi stack init production
 pulumi config set environment production
+pulumi config set kubernetesVersion 1.35
 pulumi config set nodeCount 3
 pulumi config set nodeVmSize Standard_D4s_v5
+pulumi preview
 pulumi up
 ```
 
@@ -366,7 +390,17 @@ pulumi.runtime.setMocks({
         id: `${args.name}-id`,
         state: args.inputs,
     }),
-    call: (args) => args.inputs,
+    call: (args) => {
+        if (args.token === "azure-native:containerservice:listManagedClusterUserCredentials") {
+            return {
+                kubeconfigs: [{
+                    value: Buffer.from("apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\n").toString("base64"),
+                }],
+            };
+        }
+
+        return args.inputs;
+    },
 });
 
 describe("AKS Cluster", () => {
@@ -384,7 +418,7 @@ describe("AKS Cluster", () => {
         });
     });
 
-    test("resource group is in correct location", (done) => {
+    test("resource group name follows naming convention", (done) => {
         aksCluster.resourceGroupName.apply((name: string) => {
             expect(name).toMatch(/^rg-myapp-/);
             done();
