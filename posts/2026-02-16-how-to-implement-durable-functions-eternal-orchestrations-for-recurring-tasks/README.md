@@ -133,10 +133,17 @@ module.exports = async function (context, req) {
 
   // Check if the orchestration is already running
   const status = await client.getStatus(instanceId);
-  if (status && status.runtimeStatus === 'Running') {
+  const terminalStatuses = [
+    df.OrchestrationRuntimeStatus.Completed,
+    df.OrchestrationRuntimeStatus.Failed,
+    df.OrchestrationRuntimeStatus.Terminated,
+    df.OrchestrationRuntimeStatus.Canceled
+  ];
+
+  if (status && !terminalStatuses.includes(status.runtimeStatus)) {
     context.res = {
       status: 409,
-      body: { error: 'Orchestration is already running', instanceId }
+      body: { error: 'Orchestration is already active', instanceId }
     };
     return;
   }
@@ -201,6 +208,8 @@ If an activity function throws an error and it is not caught, the orchestration 
 
 ```javascript
 // error-handling.js - Resilient eternal orchestration
+const df = require('durable-functions');
+
 module.exports = df.orchestrator(function* (context) {
   const state = context.df.getInput() || { errors: 0, iterations: 0 };
 
@@ -282,12 +291,12 @@ Both patterns can handle recurring tasks, but they serve different needs.
 
 | Feature | Eternal Orchestration | Timer Trigger |
 |---------|----------------------|---------------|
-| Maintains state | Yes | No |
+| Maintains state | Yes | No built-in orchestration state |
 | Schedule flexibility | Dynamic (can change interval) | Fixed cron expression |
-| Error recovery | Custom error handling with backoff | Auto-retry per execution |
-| Can be paused/resumed | Yes (terminate/restart) | Disable/enable in portal |
+| Error recovery | Custom error handling with backoff | Retry policy if configured |
+| Can be paused/resumed | Yes (suspend/resume or terminate/restart) | Disable/enable in portal |
 | History | Reset each cycle | No history between runs |
-| Cost | Runs continuously | Only runs at scheduled times |
+| Cost | Runs once per cycle and uses durable storage checkpoints | Runs at scheduled times |
 
 Use eternal orchestrations when you need state continuity between cycles, dynamic scheduling, or complex multi-step processing. Use timer triggers for simple, stateless periodic tasks.
 
