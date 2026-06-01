@@ -24,7 +24,7 @@ sequenceDiagram
     participant Customer
 
     App->>App: Track usage events
-    App->>Meter: Report usage (hourly or daily)
+    App->>Meter: Report billable usage hourly
     Meter->>Billing: Update customer invoice
     Billing->>Customer: Monthly invoice with usage charges
 ```
@@ -41,7 +41,7 @@ Before writing any code, you need to define your billing dimensions in Partner C
 | data-processed | Data Processed | per GB | 10 | $0.15 |
 | active-users | Active Users | per user | 25 | $2.00 |
 
-The "Included Quantity" is the amount bundled with the base plan price. Charges only apply for usage above this threshold.
+The "Included Quantity" is the amount bundled with the base plan price. Your application must track this allowance and only send usage events to Microsoft for usage above this threshold.
 
 ## Building the Usage Tracking Component
 
@@ -89,10 +89,10 @@ public class UsageTrackingService
     public async Task<Dictionary<string, double>> GetHourlyAggregateAsync(string hourBucket)
     {
         var query = new QueryDefinition(
-            @"SELECT c.dimensionId, SUM(c.quantity) as total
+            @"SELECT c.DimensionId, SUM(c.Quantity) AS Total
               FROM c
-              WHERE c.hourBucket = @hour AND c.reported = false
-              GROUP BY c.dimensionId")
+              WHERE c.HourBucket = @hour AND c.Reported = false
+              GROUP BY c.DimensionId")
             .WithParameter("@hour", hourBucket);
 
         var results = new Dictionary<string, double>();
@@ -103,7 +103,7 @@ public class UsageTrackingService
             var response = await iterator.ReadNextAsync();
             foreach (var item in response)
             {
-                results[(string)item.dimensionId] = (double)item.total;
+                results[(string)item.DimensionId] = (double)item.Total;
             }
         }
 
@@ -114,7 +114,7 @@ public class UsageTrackingService
     public async Task MarkAsReportedAsync(string hourBucket)
     {
         var query = new QueryDefinition(
-            "SELECT * FROM c WHERE c.hourBucket = @hour AND c.reported = false")
+            "SELECT * FROM c WHERE c.HourBucket = @hour AND c.Reported = false")
             .WithParameter("@hour", hourBucket);
 
         using var iterator = _usageContainer.GetItemQueryIterator<UsageEvent>(query);
@@ -165,7 +165,7 @@ public class MeteringReporter
         // Get the previous hour bucket
         var previousHour = DateTime.UtcNow.AddHours(-1).ToString("yyyy-MM-ddTHH");
         var effectiveTime = DateTime.UtcNow.AddHours(-1)
-            .ToString("yyyy-MM-ddTHH:00:00");
+            .ToString("yyyy-MM-ddTHH:00:00Z");
 
         // Get aggregated usage for the previous hour
         var aggregates = await _usageTracker.GetHourlyAggregateAsync(previousHour);
@@ -178,6 +178,8 @@ public class MeteringReporter
 
         // Get an access token for the metering API
         var token = await GetMeteringApiTokenAsync();
+
+        var allReported = true;
 
         foreach (var (dimensionId, quantity) in aggregates)
         {
@@ -204,7 +206,7 @@ public class MeteringReporter
                 "https://marketplaceapi.microsoft.com/api/usageEvent?api-version=2018-08-31",
                 content);
 
-            if (response.IsSuccessStatusCode)
+            if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.Conflict)
             {
                 log.LogInformation(
                     "Reported usage: {Dimension} = {Quantity} for {Hour}",
@@ -218,12 +220,16 @@ public class MeteringReporter
                     dimensionId, response.StatusCode, error);
 
                 // Do not mark as reported so we retry next hour
+                allReported = false;
                 continue;
             }
         }
 
-        // Mark all successfully reported events
-        await _usageTracker.MarkAsReportedAsync(previousHour);
+        // Mark the hour as reported only if every dimension was accepted or already recorded
+        if (allReported)
+        {
+            await _usageTracker.MarkAsReportedAsync(previousHour);
+        }
     }
 
     private async Task<string> GetMeteringApiTokenAsync()
@@ -266,7 +272,7 @@ public class ApiUsageMeteringMiddleware
         // Only meter successful API calls
         if (context.Response.StatusCode >= 200 && context.Response.StatusCode < 300)
         {
-            // Record 1 API call (metering uses per-1000 units, so we track individual calls)
+            // Record 1 billable API call after the included monthly quantity has been consumed
             await usageTracker.RecordUsageAsync("api-calls", 0.001);
         }
     }
@@ -294,7 +300,7 @@ public class DataProcessingService
         // Process the data
         await DoActualProcessing(dataStream);
 
-        // Record the usage
+        // Record billable data processed after the included monthly quantity has been consumed
         await _usageTracker.RecordUsageAsync("data-processed", sizeInGb,
             $"Processed {dataStream.Length} bytes");
     }
@@ -386,17 +392,17 @@ Using serverless Cosmos DB keeps costs low for the metering database since it on
 
 ## Testing Custom Metering
 
-Before going live, test your metering integration against the metering API sandbox:
+Before going live, test your metering integration with a preview or private plan that uses zero-priced custom dimensions:
 
 ```bash
-# Test a metering event against the sandbox
+# Test a metering event against a preview or private test plan
 
 curl -X POST \
   "https://marketplaceapi.microsoft.com/api/usageEvent?api-version=2018-08-31" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "resourceId": "your-managed-app-resource-id",
+    "resourceId": "your-managed-app-resource-group-id",
     "quantity": 5.0,
     "dimension": "api-calls",
     "effectiveStartTime": "2026-02-16T10:00:00",
@@ -408,4 +414,4 @@ A successful response returns a `usageEventId` and `status: Accepted`. Check Par
 
 ## Wrapping Up
 
-Custom metering transforms your managed application from a flat-fee product into a usage-based offering that aligns your revenue with the value customers receive. The implementation requires three pieces: usage tracking in your application logic, aggregation and storage in Cosmos DB, and hourly reporting to the Marketplace Metering API. The 24-hour reporting window gives you a buffer for retries, but building a robust retry mechanism from the start saves you from lost revenue. Once the metering pipeline is running reliably, you can add new billing dimensions without changing the reporting infrastructure - just define the new dimension in Partner Center and start recording events against it.
+Custom metering transforms your managed application from a flat-fee product into a usage-based offering that aligns your revenue with the value customers receive. The implementation requires three pieces: usage tracking in your application logic, aggregation and storage in Cosmos DB, and hourly reporting to the Marketplace Metering API. The 24-hour reporting window gives you a buffer for retries, but building a robust retry mechanism from the start saves you from lost revenue. Once the metering pipeline is running reliably, you can add new billing dimensions for new or updated plans without changing the reporting infrastructure - define the dimension in Partner Center, enable it on the plan, and start recording events against it.
