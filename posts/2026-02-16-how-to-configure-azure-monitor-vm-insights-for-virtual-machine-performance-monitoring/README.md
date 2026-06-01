@@ -14,9 +14,9 @@ In this guide, I will walk you through setting up VM Insights from scratch, conf
 
 ## What Is VM Insights?
 
-VM Insights is a feature within Azure Monitor that provides pre-built performance charts, a dependency map showing how your VMs communicate with each other and external services, and health monitoring. It works for both Azure VMs and Azure Arc-enabled servers running on-premises or in other clouds.
+VM Insights is a feature within Azure Monitor that provides pre-built performance charts, a dependency map showing how your VMs communicate with each other and external services, and health monitoring. It works for Azure VMs, virtual machine scale sets, and Azure Arc-enabled servers running on-premises or in other clouds.
 
-The dependency map alone is worth the setup. It discovers running processes, network connections, and service dependencies automatically. No manual diagramming required.
+The dependency map alone is worth the setup if you need process and connection discovery. It discovers running processes, network connections, and service dependencies automatically. No manual diagramming required. The Dependency Agent and Map experience are deprecated and scheduled for retirement on June 30, 2028, so plan new deployments with that timeline in mind.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ Before you start, make sure you have the following in place:
 
 - An Azure subscription with at least Contributor access to the resource group containing your VMs
 - A Log Analytics workspace (VM Insights stores its data here)
-- The VMs you want to monitor should be running a supported OS (Windows Server 2012 R2+ or most modern Linux distributions)
+- The VMs you want to monitor should be running a supported OS (for example, Windows Server 2016+, Windows Server 2012 R2 with an ESU agreement, or supported Linux distributions)
 
 If you do not already have a Log Analytics workspace, create one first. You can do this in the Azure Portal under Monitor > Log Analytics workspaces, or use the CLI.
 
@@ -53,7 +53,7 @@ The wizard will ask you to select a Log Analytics workspace. Pick the one you ju
 
 ## Step 2: Install the Required Agents
 
-VM Insights requires two components on each VM:
+VM Insights requires the Azure Monitor Agent on each VM. If you want the Map feature, you also need process and dependency collection enabled:
 
 - **Azure Monitor Agent (AMA)**: This is the newer, preferred agent that collects performance counters and log data. It replaces the older Log Analytics agent (MMA).
 - **Dependency Agent**: This collects process and network dependency data for the map feature.
@@ -77,7 +77,8 @@ az vm extension set \
   --vm-name myLinuxVM \
   --name DependencyAgentLinux \
   --publisher Microsoft.Azure.Monitoring.DependencyAgent \
-  --version 9.10
+  --version 9.10 \
+  --settings '{"enableAMA": "true"}'
 ```
 
 For Windows VMs, use `AzureMonitorWindowsAgent` and `DependencyAgentWindows` as the extension names.
@@ -86,15 +87,59 @@ For Windows VMs, use `AzureMonitorWindowsAgent` and `DependencyAgentWindows` as 
 
 With the Azure Monitor Agent, you need a Data Collection Rule (DCR) that defines what data to collect and where to send it. VM Insights uses a specific DCR configuration.
 
+Save the VM Insights DCR definition to a file named `vm-insights-dcr.json`:
+
+```json
+{
+  "location": "eastus",
+  "properties": {
+    "description": "Data collection rule for VM Insights.",
+    "dataSources": {
+      "performanceCounters": [
+        {
+          "name": "VMInsightsPerfCounters",
+          "streams": [
+            "Microsoft-InsightsMetrics"
+          ],
+          "scheduledTransferPeriod": "PT1M",
+          "samplingFrequencyInSeconds": 60,
+          "counterSpecifiers": [
+            "\\VmInsights\\DetailedMetrics"
+          ]
+        }
+      ]
+    },
+    "destinations": {
+      "logAnalytics": [
+        {
+          "workspaceResourceId": "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myVMInsightsWorkspace",
+          "name": "VMInsightsPerf-Logs-Dest"
+        }
+      ]
+    },
+    "dataFlows": [
+      {
+        "streams": [
+          "Microsoft-InsightsMetrics"
+        ],
+        "destinations": [
+          "VMInsightsPerf-Logs-Dest"
+        ]
+      }
+    ]
+  }
+}
+```
+
+Then create the DCR from that file:
+
 ```bash
 # Create a data collection rule for VM Insights
 az monitor data-collection rule create \
   --resource-group myResourceGroup \
   --name myVMInsightsDCR \
   --location eastus \
-  --data-flows '[{"streams":["Microsoft-InsightsMetrics","Microsoft-ServiceMap"],"destinations":["myWorkspaceDest"]}]' \
-  --destinations '{"logAnalytics":[{"workspaceResourceId":"/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myVMInsightsWorkspace","name":"myWorkspaceDest"}]}' \
-  --data-sources '{"performanceCounters":[{"name":"VMInsightsPerfCounters","streams":["Microsoft-InsightsMetrics"],"samplingFrequencyInSeconds":60,"counterSpecifiers":["\\Processor Information(_Total)\\% Processor Time","\\Memory\\Available Bytes","\\LogicalDisk(_Total)\\% Free Space"]}]}'
+  --rule-file vm-insights-dcr.json
 ```
 
 Then associate the rule with your VM:
@@ -113,8 +158,9 @@ If you have dozens or hundreds of VMs, configuring each one manually is not prac
 
 Azure provides built-in policy initiatives for VM Insights:
 
-- "Enable Azure Monitor for VMs" - deploys both agents and creates the DCR association
-- "Enable Azure Monitor for Virtual Machine Scale Sets" - same but for VMSS
+- "Enable Azure Monitor for VMs with Azure Monitoring Agent (AMA)" - deploys AMA and creates the DCR association
+- "Enable Azure Monitor for VMSS with Azure Monitoring Agent (AMA)" - same but for VMSS
+- "Enable Azure Monitor for Hybrid VMs with AMA" - same but for Azure Arc-enabled servers
 
 To assign the policy:
 
@@ -125,7 +171,7 @@ To assign the policy:
 5. Fill in the parameters (Log Analytics workspace ID, DCR resource ID)
 6. Click Review + Create
 
-New VMs created within the scope will automatically get the agents installed.
+New or modified VMs within the scope will automatically get the agent configuration. Run a remediation task if you want the initiative to apply to existing VMs in the scope.
 
 ## Step 5: Explore the Performance View
 
@@ -157,11 +203,12 @@ This is incredibly valuable during incident response. If a service goes down, yo
 
 VM Insights data lands in the InsightsMetrics table in your Log Analytics workspace. You can write KQL queries against this table to create alerts.
 
-Here is a query that finds VMs with less than 10% free memory:
+Here is a query that finds VMs with less than 512 MB of available memory:
 
 ```kql
 // Find VMs with critically low available memory
 InsightsMetrics
+| where Origin == "vm.azm.ms"
 | where Namespace == "Memory" and Name == "AvailableMB"
 | summarize AvgAvailableMB = avg(Val) by Computer, bin(TimeGenerated, 5m)
 | where AvgAvailableMB < 512
