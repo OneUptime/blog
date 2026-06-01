@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Desktop, Host Pool, Session Hosts, VDI, Remote Work, Window
+Tags: Azure, Virtual Desktop, Host Pool, Session Hosts, VDI, Remote Work, Windows
 
 Description: Step-by-step guide to creating a host pool and deploying session hosts for Azure Virtual Desktop to deliver virtual desktops to your users.
 
@@ -43,9 +43,9 @@ There are two types of host pools:
 ## Prerequisites
 
 - An Azure subscription.
-- Azure AD (or Entra ID) with user accounts.
+- Microsoft Entra ID with user accounts.
 - A virtual network in Azure (session hosts need network connectivity).
-- For domain join: Azure AD DS or Active Directory Domain Services with network connectivity from the VNet.
+- For domain join: Microsoft Entra Domain Services or Active Directory Domain Services with network connectivity from the VNet.
 - The Azure Virtual Desktop resource provider registered.
 
 ## Step 1: Create the Host Pool
@@ -57,7 +57,7 @@ Start in the Azure portal. Navigate to Azure Virtual Desktop and click "Create a
 - **Host pool name**: avd-pooled-hp
 - **Location**: East US (this is the metadata location, not where VMs run)
 - **Validation environment**: No (Yes enables preview features for testing)
-- **Preferred app group type**: Desktop (or RemoteApp for published applications)
+- **Preferred app group type**: Desktop (or RailApplications for published RemoteApps)
 - **Host pool type**: Pooled
 - **Load balancing algorithm**: Breadth-first (spreads users across all hosts) or Depth-first (fills one host before moving to the next)
 - **Max session limit**: 10 (depends on VM size - adjust based on your workload)
@@ -75,10 +75,10 @@ az desktopvirtualization hostpool create \
   --load-balancer-type BreadthFirst \
   --max-session-limit 10 \
   --preferred-app-group-type Desktop \
-  --registration-info expiration-time="2026-02-17T00:00:00Z" registration-token-operation="Update"
+  --registration-info expiration-time=$(date -u -d '+24 hours' --iso-8601=ns) registration-token-operation="Update"
 ```
 
-The registration token is important - session hosts use it to join the host pool. It has an expiration date, so set it far enough in the future to complete your deployment.
+The registration token is important - session hosts use it to join the host pool. It has an expiration date, so set it long enough to complete your deployment, up to the 27-day maximum.
 
 ## Step 2: Deploy Session Host VMs
 
@@ -98,18 +98,28 @@ During host pool creation, the wizard has a "Virtual Machines" tab:
 8. **OS disk type**: Premium SSD
 9. **Virtual network**: Select your existing VNet
 10. **Subnet**: Select the appropriate subnet
-11. **Domain to join**: Azure Active Directory (or AD DS)
+11. **Domain to join**: Microsoft Entra ID (or AD DS)
 12. **Admin account**: Provide credentials
 
 ### Using an ARM Template
 
-For repeatable deployments, use an ARM template.
+For repeatable deployments, use an ARM template. This example creates the VM and NIC resources; if you deploy VMs outside the AVD portal workflow, complete the join and registration steps in the next section.
 
 ```json
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "avdadmin"
+    },
+    "adminPassword": {
+      "type": "secureString",
+      "metadata": {
+        "description": "Local administrator password for the session host VMs"
+      }
+    },
     "vmCount": {
       "type": "int",
       "defaultValue": 3,
@@ -121,14 +131,43 @@ For repeatable deployments, use an ARM template.
       "type": "string",
       "defaultValue": "Standard_D4s_v5"
     },
-    "hostPoolToken": {
-      "type": "secureString",
+    "vnetName": {
+      "type": "string",
       "metadata": {
-        "description": "Registration token from the host pool"
+        "description": "Existing virtual network name"
+      }
+    },
+    "subnetName": {
+      "type": "string",
+      "metadata": {
+        "description": "Existing subnet name"
       }
     }
   },
   "resources": [
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2023-05-01",
+      "name": "[concat('avd-host-', copyIndex(), '-nic')]",
+      "location": "[resourceGroup().location]",
+      "copy": {
+        "name": "nicLoop",
+        "count": "[parameters('vmCount')]"
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('subnetName'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
     {
       "type": "Microsoft.Compute/virtualMachines",
       "apiVersion": "2023-03-01",
@@ -138,6 +177,9 @@ For repeatable deployments, use an ARM template.
         "name": "vmLoop",
         "count": "[parameters('vmCount')]"
       },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', concat('avd-host-', copyIndex(), '-nic'))]"
+      ],
       "properties": {
         "hardwareProfile": {
           "vmSize": "[parameters('vmSize')]"
@@ -158,7 +200,7 @@ For repeatable deployments, use an ARM template.
         },
         "osProfile": {
           "computerName": "[concat('avd-host-', copyIndex())]",
-          "adminUsername": "avdadmin",
+          "adminUsername": "[parameters('adminUsername')]",
           "adminPassword": "[parameters('adminPassword')]"
         },
         "networkProfile": {
@@ -185,7 +227,7 @@ Get the registration token:
 az desktopvirtualization hostpool update \
   --resource-group myResourceGroup \
   --name avd-pooled-hp \
-  --registration-info expiration-time="2026-02-17T00:00:00Z" registration-token-operation="Update"
+  --registration-info expiration-time=$(date -u -d '+24 hours' --iso-8601=ns) registration-token-operation="Update"
 
 # Retrieve the token
 az desktopvirtualization hostpool retrieve-registration-token \
@@ -199,8 +241,8 @@ On each session host VM, install the AVD agent and bootloader using the registra
 
 ```powershell
 # Download and install the AVD Agent on the session host
-$agentUrl = "https://query.prod.cms.rt.microsoft.com/cms/api/am/binary/RWrmXv"
-$bootloaderUrl = "https://query.prod.cms.rt.microsoft.com/cms/api/am/binary/RWrxrH"
+$agentUrl = "https://go.microsoft.com/fwlink/?linkid=2310011"
+$bootloaderUrl = "https://go.microsoft.com/fwlink/?linkid=2311028"
 
 # Download the installers
 Invoke-WebRequest -Uri $agentUrl -OutFile "AVDAgent.msi"
@@ -255,10 +297,10 @@ az role assignment create \
   --scope "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.DesktopVirtualization/applicationgroups/avd-desktop-ag"
 ```
 
-For groups of users, assign an Azure AD group instead of individual users.
+For groups of users, assign a Microsoft Entra group instead of individual users.
 
 ```bash
-# Assign an Azure AD group
+# Assign a Microsoft Entra group
 az role assignment create \
   --assignee-object-id "group-object-id" \
   --assignee-principal-type Group \
@@ -270,7 +312,7 @@ az role assignment create \
 
 Users connect through one of the AVD clients:
 
-- **Windows Desktop client** - Download from Microsoft.
+- **Windows App or Remote Desktop client** - Download from Microsoft.
 - **Web client** - Access at `https://client.wvd.microsoft.com/arm/webclient`.
 - **macOS, iOS, Android clients** - Available in respective app stores.
 
@@ -281,7 +323,7 @@ After logging in, users see their assigned workspace with the desktop or applica
 Check the status of your session hosts from the portal or CLI.
 
 ```bash
-# List session hosts and their status
+# Show host pool properties
 az desktopvirtualization hostpool show \
   --resource-group myResourceGroup \
   --name avd-pooled-hp
