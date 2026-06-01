@@ -14,7 +14,7 @@ If you have ever wondered why analytical queries on Parquet files run 10x to 100
 
 Traditional databases and file formats (CSV, JSON, row-oriented databases like MySQL) store data row by row. Each row's fields are stored together on disk.
 
-Columnar formats (Parquet, ORC, Arrow) store data column by column. All values for a single column are stored together, separate from other columns.
+Columnar formats organize data column by column. On-disk formats like Parquet and ORC store values for a single column together, separate from other columns; Arrow uses the same columnar idea for in-memory data.
 
 Consider a table with sales data:
 
@@ -153,6 +153,7 @@ Here is a Python example that writes a Parquet file with explicit schema control
 ```python
 import pyarrow as pa
 import pyarrow.parquet as pq
+from datetime import date
 
 # Define schema with explicit types for better compression and compatibility
 
@@ -171,18 +172,18 @@ table = pa.table({
     "price": [29.99, 49.99],
 }, schema=schema)
 
-# Write with Zstd compression and a 128MB row group size
+# Write with Zstd compression and up to 1 million rows per row group
 pq.write_table(
     table,
     "sales.parquet",
     compression="zstd",
-    row_group_size=128 * 1024 * 1024,
+    row_group_size=1_000_000,
     use_dictionary=True,
     write_statistics=True,
 )
 ```
 
-Notice the `pa.dictionary()` type for the product column. This tells Parquet to use dictionary encoding, which is significantly more efficient for low-cardinality string columns.
+Notice the `pa.dictionary()` type for the product column and `use_dictionary=True` in the writer. This lets Parquet use dictionary encoding, which is significantly more efficient for low-cardinality string columns.
 
 ### Reading Parquet Files Efficiently
 
@@ -217,7 +218,7 @@ ORC (Optimized Row Columnar) is Parquet's main competitor. It was developed in t
 ORC and Parquet share the same fundamental design (columnar layout, row groups, encoding, compression). The differences are mostly in implementation details:
 
 - ORC has built-in ACID support (used by Hive ACID tables)
-- ORC includes bloom filters by default for string columns
+- ORC can include bloom filters for selected columns
 - Parquet has broader ecosystem support outside Hadoop
 - Parquet handles nested data (structs, arrays, maps) more naturally
 
