@@ -22,7 +22,7 @@ Key characteristics:
 - Semantic versioning support
 - Feed-level permissions (same as npm, NuGet, etc.)
 - Available through Azure CLI and pipeline tasks
-- Support for views (like @release, @prerelease) for promotion workflows
+- Support for views (like @Release, @Prerelease) for promotion workflows
 
 ```mermaid
 flowchart LR
@@ -138,7 +138,7 @@ steps:
       command: 'publish'
       publishDirectory: 'output'
       feedsToUsePublish: 'internal'
-      vstsFeedPublish: 'shared-artifacts'
+      vstsFeedPublish: 'MyProject/shared-artifacts'
       vstsFeedPackagePublish: 'my-tool'
       versionOption: 'custom'
       versionPublish: '$(packageVersion)'
@@ -185,7 +185,7 @@ steps:
       command: 'download'
       downloadDirectory: '$(System.DefaultWorkingDirectory)/tool'
       feedsToUse: 'internal'
-      vstsFeed: 'shared-artifacts'
+      vstsFeed: 'MyProject/shared-artifacts'
       vstsFeedPackage: 'my-tool'
       vstsPackageVersion: '1.0.0'
     displayName: 'Download my-tool package'
@@ -212,19 +212,14 @@ Use prerelease suffixes: `1.1.0-beta.1`, `1.1.0-rc.1`. Or use the build number: 
 ### Listing Available Versions
 
 ```bash
-# List all versions of a package
-az artifacts universal list \
-  --organization "https://dev.azure.com/myorg" \
-  --project "MyProject" \
-  --scope project \
-  --feed "shared-artifacts" \
-  --name "my-tool" \
-  --output table
+# List package versions with the Azure DevOps REST API
+az rest --method get \
+  --url "https://feeds.dev.azure.com/myorg/MyProject/_apis/packaging/Feeds/shared-artifacts/packages?protocolType=upack&packageNameQuery=my-tool&includeAllVersions=true&api-version=7.1"
 ```
 
 ## Using Views for Promotion
 
-Azure Artifacts feeds have views that act as promotion stages. By default, you get `@local`, `@prerelease`, and `@release` views.
+Azure Artifacts feeds have views that act as promotion stages. By default, you get `@Local`, `@Prerelease`, and `@Release` views.
 
 You can promote a package version to a view to indicate its maturity:
 
@@ -232,23 +227,22 @@ You can promote a package version to a view to indicate its maturity:
 # Promote a package version to the release view
 # This uses the Azure DevOps REST API
 az rest --method patch \
-  --url "https://pkgs.dev.azure.com/myorg/MyProject/_apis/packaging/feeds/shared-artifacts/upack/packages/my-tool/versions/1.0.0?api-version=7.0" \
-  --body '{"views": {"op": "add", "path": "/views/-", "value": "@release"}}'
+  --url "https://pkgs.dev.azure.com/myorg/MyProject/_apis/packaging/feeds/shared-artifacts/upack/packages/my-tool/versions/1.0.0?api-version=7.2-preview.1" \
+  --body '{"views": {"op": "add", "path": "/views/-", "value": "@Release"}}'
 ```
 
-In your download steps, you can then reference a specific view:
+In your download steps, you can then download the promoted version explicitly:
 
 ```yaml
-# Download only from the release view
+# Download the promoted release version
 - task: UniversalPackages@0
   inputs:
     command: 'download'
     downloadDirectory: '$(System.DefaultWorkingDirectory)/tool'
     feedsToUse: 'internal'
-    vstsFeed: 'shared-artifacts'
+    vstsFeed: 'MyProject/shared-artifacts'
     vstsFeedPackage: 'my-tool'
     vstsPackageVersion: '1.0.0'
-    vstsFeedPackageVersion: '@release'
   displayName: 'Download released version'
 ```
 
@@ -298,10 +292,10 @@ steps:
       command: 'publish'
       publishDirectory: 'model'
       feedsToUsePublish: 'internal'
-      vstsFeedPublish: 'ml-models'
+      vstsFeedPublish: 'MyProject/ml-models'
       vstsFeedPackagePublish: 'recommendation-engine'
       versionOption: 'custom'
-      versionPublish: '$(Build.BuildNumber)'
+      versionPublish: '0.0.$(Build.BuildId)'
     displayName: 'Publish trained model'
 ```
 
@@ -326,14 +320,9 @@ az artifacts universal publish \
 Universal Packages count toward your Azure Artifacts storage quota. To manage costs:
 
 ```bash
-# Delete old package versions that are no longer needed
-az artifacts universal delete \
-  --organization "https://dev.azure.com/myorg" \
-  --project "MyProject" \
-  --scope project \
-  --feed "shared-artifacts" \
-  --name "my-tool" \
-  --version "0.0.1"
+# Delete old package versions that are no longer needed with the Azure DevOps REST API
+az rest --method delete \
+  --url "https://pkgs.dev.azure.com/myorg/MyProject/_apis/packaging/feeds/shared-artifacts/upack/packages/my-tool/versions/0.0.1?api-version=7.1-preview.1"
 ```
 
 You can also configure retention policies on the feed to automatically clean up old versions.
