@@ -27,12 +27,16 @@ Before writing any code, you need to register your application in Azure AD. This
 # Register a new application in Azure AD
 
 az ad app create \
-  --display-name "React MSAL Demo" \
-  --web-redirect-uris "http://localhost:3000" "https://your-production-domain.com" \
-  --enable-id-token-issuance true \
-  --enable-access-token-issuance true
+  --display-name "React MSAL Demo"
+
+# Configure SPA redirect URIs for the authorization code flow with PKCE
+az rest \
+  --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/YOUR_APPLICATION_OBJECT_ID" \
+  --body '{"spa":{"redirectUris":["http://localhost:3000","https://your-production-domain.com"]}}'
 
 # Note the application (client) ID from the output
+# Also note the application object ID for updating the registration
 # Also note your tenant ID:
 az account show --query tenantId --output tsv
 ```
@@ -112,7 +116,7 @@ export const loginRequest = {
 // Scopes for calling Microsoft Graph API
 export const graphConfig = {
   graphMeEndpoint: 'https://graph.microsoft.com/v1.0/me',
-  scopes: ['User.Read', 'Mail.Read'],
+  scopes: ['User.Read'],
 };
 ```
 
@@ -371,7 +375,7 @@ export function useAuthenticatedFetch() {
   async function authFetch(url: string, options: RequestInit = {}) {
     // Get a token for your backend API
     const tokenResponse = await instance.acquireTokenSilent({
-      scopes: ['api://YOUR_API_CLIENT_ID/.default'],
+      scopes: ['api://YOUR_API_CLIENT_ID/access_as_user'],
       account: accounts[0],
     });
 
