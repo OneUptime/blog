@@ -21,7 +21,7 @@ sequenceDiagram
     participant AAD as Azure AD
     participant AKS as AKS API Server
     Dev->>kubectl: kubectl get pods
-    kubectl->>AAD: Request token (device code flow)
+    kubectl->>AAD: Request token (kubelogin/Azure CLI)
     AAD->>Dev: Prompt for credentials + MFA
     Dev->>AAD: Authenticate
     AAD->>kubectl: Return access token
@@ -64,6 +64,7 @@ az aks update \
   --resource-group myResourceGroup \
   --name myAKSCluster \
   --enable-aad \
+  --enable-azure-rbac \
   --aad-admin-group-object-ids "<admin-group-object-id>"
 ```
 
@@ -195,7 +196,7 @@ Navigate to Azure AD > Security > Conditional Access in the Azure portal, or use
 Create a Conditional Access policy that targets the Azure Kubernetes Service application.
 
 ```bash
-# The Azure Kubernetes Service client app ID is a well-known GUID
+# The Azure Kubernetes Service server app ID is a well-known GUID
 # 6dae42f8-4368-4678-94ff-3960e28e3630
 
 # Create the policy using the Azure portal or Microsoft Graph API
@@ -233,7 +234,7 @@ The policy configuration targets the AKS server application and requires MFA.
 }
 ```
 
-Important: Always exclude a break-glass account group from Conditional Access policies. If MFA fails or Azure AD has an issue, you need a way to access the cluster.
+Important: Always exclude a break-glass account group from Conditional Access policies. If a policy is misconfigured or MFA enrollment is unavailable, you need a way to recover access to the cluster.
 
 ### Restrict Access to Corporate Network
 
@@ -248,7 +249,12 @@ Important: Always exclude a break-glass account group from Conditional Access po
       ]
     },
     "users": {
-      "includeAll": true
+      "includeUsers": [
+        "All"
+      ],
+      "excludeGroups": [
+        "<break-glass-group-id>"
+      ]
     },
     "locations": {
       "includeLocations": ["All"],
@@ -280,7 +286,7 @@ az aks get-credentials \
 kubectl get pods
 ```
 
-On the first kubectl command, users see a device login prompt. They authenticate through Azure AD (including MFA if the Conditional Access policy requires it), and the token is cached locally.
+On the first kubectl command, users follow the sign-in prompt from kubelogin or the Azure CLI. Device code authentication does not work when a Conditional Access policy is set on the tenant, so use Azure CLI or web browser interactive authentication in that scenario. Users authenticate through Azure AD, including MFA if the Conditional Access policy requires it.
 
 For CI/CD pipelines that need non-interactive authentication, use a service principal or managed identity instead of Azure AD user tokens.
 
@@ -301,17 +307,17 @@ With local accounts disabled, every cluster access is authenticated through Azur
 
 ## Step 7: Audit Access
 
-Azure AD sign-in logs capture every authentication attempt to the cluster.
+Azure AD sign-in logs capture authentication attempts to the cluster. Azure Activity Logs capture management-plane actions such as retrieving a kubeconfig.
 
 ```bash
-# View sign-in logs for the AKS application
+# View kubeconfig retrieval events for the AKS cluster
 az monitor activity-log list \
   --resource-group myResourceGroup \
   --query "[?authorization.action=='Microsoft.ContainerService/managedClusters/listClusterUserCredential/action']" \
   --output table
 ```
 
-In the Azure portal, navigate to Azure AD > Sign-in logs and filter by the "Azure Kubernetes Service" application to see who accessed the cluster, from where, and whether Conditional Access policies were satisfied.
+In the Azure portal, navigate to Azure AD > Sign-in logs and filter by the "Azure Kubernetes Service Microsoft Entra Server" application to see who authenticated, from where, and whether Conditional Access policies were satisfied.
 
 ## Troubleshooting
 
@@ -319,7 +325,7 @@ In the Azure portal, navigate to Azure AD > Sign-in logs and filter by the "Azur
 
 **Conditional Access policy not enforcing**: Verify the policy targets the correct application ID (6dae42f8-4368-4678-94ff-3960e28e3630). Test the policy in Report-Only mode first before enabling it.
 
-**Users locked out**: If Conditional Access is too restrictive, use the break-glass account to access the cluster with `az aks get-credentials --admin` (if local accounts are not disabled).
+**Users locked out**: If Conditional Access is too restrictive, use a break-glass account that is excluded from the policy. If Microsoft Entra authentication itself is unavailable and local accounts are disabled, temporarily re-enable local accounts with `az aks update --enable-local-accounts`, then retrieve admin credentials with `az aks get-credentials --admin`.
 
 ## Summary
 
