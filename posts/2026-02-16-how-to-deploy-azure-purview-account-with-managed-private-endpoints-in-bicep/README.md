@@ -41,6 +41,7 @@ graph TD
 param location string = resourceGroup().location
 param purviewAccountName string
 param environment string = 'prod'
+param deploymentScriptIdentityId string
 
 // Tags applied to all resources
 var tags = {
@@ -51,11 +52,12 @@ var tags = {
 
 // Unique suffix for globally unique names
 var uniqueSuffix = uniqueString(resourceGroup().id)
+var privateEndpointSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-private-endpoints')
 ```
 
 ## The Purview Account
 
-The main Purview account resource with managed VNet configuration.
+The main Purview account resource with private-network configuration.
 
 ```bicep
 // Microsoft Purview Account
@@ -69,23 +71,23 @@ resource purviewAccount 'Microsoft.Purview/accounts@2021-12-01' = {
   }
 
   properties: {
-    // Enable the managed virtual network for private scanning
+    // Resource group for Purview-managed resources
     managedResourceGroupName: 'rg-${purviewAccountName}-managed'
 
     // Public network access configuration
     publicNetworkAccess: 'Disabled'    // Disable public access for security
 
-    // Managed resource configuration
-    managedResources: {}
+    // Restrict public access to Purview-managed resources
+    managedResourcesPublicNetworkAccess: 'Disabled'
   }
 }
 ```
 
-Setting `publicNetworkAccess` to `Disabled` means the Purview portal and API can only be accessed through private endpoints. This is the recommended setting for production environments.
+Setting `publicNetworkAccess` to `Disabled` blocks public access to the Microsoft Purview account endpoint. For the classic governance portal, users need account and portal private endpoints; the newer Microsoft Purview portal uses platform and ingestion private endpoints instead.
 
 ## Virtual Network and Private Endpoints for Purview Portal
 
-To access the Purview portal when public access is disabled, you need private endpoints for the Purview account, portal, and the managed storage/Event Hub.
+To access the classic Purview portal when public access is disabled, you need private endpoints for the Purview account and portal. Ingestion private endpoints for Purview-managed storage and Event Hubs are separate from managed private endpoints that connect Purview to your data sources.
 
 ```bicep
 // Virtual network for private endpoint connectivity
@@ -202,7 +204,7 @@ resource eventHubDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@
 
 ## Private Endpoints for Purview
 
-Purview requires three private endpoints: one for the account, one for the portal (studio), and typically additional ones for the managed storage and Event Hub.
+For the classic governance portal, deploy an account private endpoint and a portal private endpoint. Deploy ingestion private endpoints separately when you use a self-hosted integration runtime to scan private data sources.
 
 ```bicep
 // Private endpoint for Purview account (API access)
@@ -212,7 +214,7 @@ resource purviewAccountPe 'Microsoft.Network/privateEndpoints@2023-09-01' = {
   tags: tags
   properties: {
     subnet: {
-      id: vnet.properties.subnets[0].id    // snet-private-endpoints
+      id: privateEndpointSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -233,7 +235,7 @@ resource purviewPortalPe 'Microsoft.Network/privateEndpoints@2023-09-01' = {
   tags: tags
   properties: {
     subnet: {
-      id: vnet.properties.subnets[0].id
+      id: privateEndpointSubnetId
     }
     privateLinkServiceConnections: [
       {
@@ -282,12 +284,11 @@ resource portalDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups
 
 ## Creating Managed Private Endpoints for Data Sources
 
-Managed private endpoints are created within Purview's managed VNet to connect to your data sources. These are configured through the Purview API after the account is deployed.
+Managed private endpoints are created within Purview's managed VNet to connect to your data sources. These are configured through the Purview scanning data plane API after the account is deployed and after you create a Managed VNet integration runtime.
 
 ```bicep
 // Deployment script to create managed private endpoints for data sources
-// Managed private endpoints cannot be created directly as Bicep resources
-// because they are managed by Purview's internal infrastructure
+// Managed private endpoints are created through the Purview scanning data plane API
 
 // Example: Storage account that Purview will scan
 resource dataLakeStorage 'Microsoft.Storage/storageAccounts@2023-01-01' = {
@@ -299,7 +300,7 @@ resource dataLakeStorage 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   properties: {
     isHnsEnabled: true
     minimumTlsVersion: 'TLS1_2'
-    publicNetworkAccess: 'Disabled'   // Only accessible via private endpoints
+    publicNetworkAccess: 'Disabled'   // Requires an approved private endpoint connection
   }
 }
 
@@ -326,23 +327,22 @@ resource createManagedPe 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
-      // Reference a user-assigned identity with Purview admin access
+      '${deploymentScriptIdentityId}': {}
     }
   }
   properties: {
-    azCliVersion: '2.50.0'
+    azCliVersion: '2.52.0'
     retentionInterval: 'PT1H'
     scriptContent: '''
       # Create a managed private endpoint for the storage account
       az rest --method PUT \
-        --url "https://${PURVIEW_ACCOUNT}.purview.azure.com/managedVirtualNetworks/default/managedPrivateEndpoints/pe-datalake?api-version=2021-12-01" \
-        --body '{
-          "properties": {
-            "privateLinkResourceId": "${STORAGE_ACCOUNT_ID}",
-            "groupId": "blob",
-            "requestMessage": "Purview scanning access"
+        --url "https://$PURVIEW_ACCOUNT.purview.azure.com/scan/managedvirtualnetworks/defaultv2/managedprivateendpoints/pe-datalake?api-version=2023-09-01" \
+        --body "{
+          \"properties\": {
+            \"privateLinkResourceId\": \"$STORAGE_ACCOUNT_ID\",
+            \"groupId\": \"blob\"
           }
-        }'
+        }"
 
       echo "Managed private endpoint created. Manual approval may be required."
     '''
@@ -412,9 +412,9 @@ resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' 
 // Deployment outputs
 output purviewAccountId string = purviewAccount.id
 output purviewAccountName string = purviewAccount.name
-output purviewEndpoint string = purviewAccount.properties.endpoints.catalog
+output purviewEndpoint string = 'https://${purviewAccount.name}.purview.azure.com'
 output purviewManagedIdentityId string = purviewAccount.identity.principalId
-output purviewScanEndpoint string = purviewAccount.properties.endpoints.scan
+output purviewScanEndpoint string = 'https://${purviewAccount.name}.purview.azure.com/scan'
 ```
 
 ## Deployment
@@ -428,7 +428,7 @@ az group create --name rg-purview-prod --location eastus2
 az deployment group create \
   --resource-group rg-purview-prod \
   --template-file main.bicep \
-  --parameters purviewAccountName='purview-contoso-prod' environment='prod'
+  --parameters purviewAccountName='purview-contoso-prod' environment='prod' deploymentScriptIdentityId='/subscriptions/<subscription-id>/resourceGroups/<identity-resource-group>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/<identity-name>'
 ```
 
 ## Post-Deployment Steps
@@ -440,12 +440,20 @@ After the Bicep deployment completes, there are a few manual or scripted steps:
 3. **Set up scan schedules** - Configure how often Purview scans each data source.
 
 ```bash
+# Find the generated private endpoint connection name on the storage account
+az network private-endpoint-connection list \
+  --resource-name stxxxxdatalake \
+  --resource-group rg-purview-prod \
+  --type Microsoft.Storage/storageAccounts \
+  --query "[].name" \
+  --output tsv
+
 # Approve the managed private endpoint on the storage account
 az network private-endpoint-connection approve \
   --resource-name stxxxxdatalake \
   --resource-group rg-purview-prod \
   --type Microsoft.Storage/storageAccounts \
-  --name pe-datalake \
+  --name <private-endpoint-connection-name> \
   --description "Approved for Purview scanning"
 ```
 
