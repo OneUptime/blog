@@ -14,7 +14,7 @@ This post covers how to set up CORS on Azure App Service, the different approach
 
 ## Why CORS Exists
 
-Browsers enforce the Same-Origin Policy, which means JavaScript running on `https://myapp.com` cannot make requests to `https://api.myapp.com` unless the API explicitly allows it. This is a security feature that prevents malicious websites from making requests to your API on behalf of your users.
+Browsers enforce the Same-Origin Policy, which means JavaScript running on `https://myapp.com` cannot read responses from `https://api.myapp.com` unless the API explicitly allows it. This is a security feature that prevents malicious websites from reading API responses on behalf of your users.
 
 CORS is the mechanism that lets servers opt in to cross-origin requests. The server sends back specific HTTP headers that tell the browser which origins are allowed to access the resource.
 
@@ -38,8 +38,8 @@ You can add specific origins like `https://myapp.com` or use the wildcard `*` to
 
 A couple things to know about the portal approach:
 
-- It only configures `Access-Control-Allow-Origin`. The platform handles the other headers automatically based on the preflight request.
-- If you add any origins, Azure automatically responds to OPTIONS preflight requests with a 200 status.
+- App Service CORS lets you configure allowed origins for the app. The built-in feature automatically allows all methods and headers for each configured origin; use application-level CORS if you need different rules per route, method, or header.
+- If you add any origins, Azure handles OPTIONS preflight requests for configured origins. Check the CORS response headers, not just the HTTP status code, when debugging.
 - The wildcard `*` allows all origins but does not support credentials (cookies, auth headers). This is a browser restriction, not an Azure one.
 
 ## Configuring CORS via Azure CLI
@@ -158,7 +158,7 @@ The general recommendation is to pick one approach and stick with it. If you con
 
 ## Handling Preflight Requests
 
-When a browser sends a cross-origin request that is not "simple" (meaning it uses methods other than GET/POST, or custom headers), it first sends a preflight OPTIONS request. This is the browser asking the server, "is this request allowed?"
+When a browser sends a cross-origin request that is not "simple" (for example, it uses methods other than GET, HEAD, or POST, uses custom headers, or sends a POST body with a non-safelisted content type), it first sends a preflight OPTIONS request. This is the browser asking the server, "is this request allowed?"
 
 If your CORS is configured at the Azure platform level, App Service handles preflight requests automatically. You do not need to add OPTIONS handlers to your API routes.
 
