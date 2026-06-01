@@ -81,7 +81,7 @@ az network nat gateway update \
   --idle-timeout 120
 ```
 
-The change takes effect immediately for new connections. Existing connections keep their current timer.
+The updated setting applies at the NAT Gateway resource level.
 
 ## Step 3: Create a New NAT Gateway with Custom Idle Timeout
 
@@ -198,7 +198,7 @@ High idle timeouts mean SNAT ports are held longer, which can lead to port exhau
 # Check NAT Gateway metrics
 az monitor metrics list \
   --resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Network/natGateways/myNatGateway" \
-  --metric "SNATConnectionCount" "TotalConnectionCount" "DroppedPackets" \
+  --metrics "SNATConnectionCount" "TotalConnectionCount" "PacketDropCount" \
   --interval PT5M \
   --output table
 ```
@@ -206,12 +206,12 @@ az monitor metrics list \
 Create an alert for high SNAT usage:
 
 ```bash
-# Alert when SNAT connection count gets high
+# Alert when total active SNAT connections get high
 az monitor metrics alert create \
   --name "NatGateway-HighSNAT" \
   --resource-group myResourceGroup \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Network/natGateways/myNatGateway" \
-  --condition "total SNATConnectionCount > 50000" \
+  --condition "total TotalConnectionCount > 1600000" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --action myActionGroup \
@@ -220,7 +220,7 @@ az monitor metrics alert create \
 
 ## Step 6: Scale SNAT Ports if Needed
 
-If you increase the idle timeout and start running into SNAT port exhaustion, you can add more public IP addresses to the NAT Gateway. Each public IP provides approximately 64,000 SNAT ports.
+If you increase the idle timeout and start running into SNAT port exhaustion, you can add more public IP addresses to the NAT Gateway. Each public IP provides 64,512 SNAT ports.
 
 ```bash
 # Create additional public IPs
