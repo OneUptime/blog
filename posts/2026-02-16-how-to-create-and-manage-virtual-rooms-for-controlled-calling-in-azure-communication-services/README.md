@@ -18,19 +18,20 @@ A Room in ACS is a container for a scheduled calling experience. It has:
 
 - **A time window** - Valid from and valid until timestamps. The room only accepts calls during this window.
 - **A participant list** - Pre-defined list of users who are allowed to join.
-- **Roles** - Each participant is assigned a role (Presenter, Attendee, or Consumer) that determines their capabilities.
+- **Roles** - Each participant is assigned a role (Presenter, Collaborator, Attendee, or Consumer) that determines their capabilities.
 
 | Role | Can Speak | Can Share Screen | Can See Video | Can Send Video |
 |---|---|---|---|---|
 | Presenter | Yes | Yes | Yes | Yes |
+| Collaborator | Yes | Yes | Yes | Yes |
 | Attendee | Yes | No | Yes | Yes |
 | Consumer | No | No | Yes | No |
 
 This role model maps naturally to scenarios like:
 
 - **Telehealth** - Doctor (Presenter) and Patient (Attendee) in a private consultation
-- **Online class** - Instructor (Presenter), students (Attendee), and observers (Consumer)
-- **Webinar** - Speaker (Presenter), panelists (Attendee), and audience (Consumer)
+- **Online class** - Instructor (Presenter), teaching assistants (Collaborator), students (Attendee), and observers (Consumer)
+- **Webinar** - Speaker (Presenter), panelists (Collaborator), and audience (Consumer)
 - **Interview** - Interviewer (Presenter) and candidate (Attendee)
 
 ## Step 1: Create a Room
@@ -38,9 +39,9 @@ This role model maps naturally to scenarios like:
 Rooms are created and managed through the Rooms SDK or REST API.
 
 ```bash
-# Install the Rooms SDK
+# Install the Rooms and Identity SDKs
 
-npm install @azure/communication-rooms
+npm install @azure/communication-rooms @azure/communication-identity
 ```
 
 ```javascript
@@ -238,10 +239,8 @@ async function joinRoomCall(token, displayName, roomId, withVideo = true) {
             const reason = currentCall.callEndReason;
             console.log(`Call ended. Code: ${reason?.code}, Subcode: ${reason?.subCode}`);
 
-            // Common end reasons for rooms:
-            // 403 - Not authorized (not a room participant)
-            // 404 - Room not found
-            // 410 - Room expired (outside valid time window)
+            // Inspect code, subCode, and message for details such as authorization,
+            // room lookup, token, or connectivity failures.
         }
     });
 
@@ -345,7 +344,7 @@ stateDiagram-v2
 
 ```python
 # room_management.py - Room operations with the Python SDK
-from azure.communication.rooms import RoomsClient, RoomParticipant, ParticipantRole
+from azure.communication.rooms import RoomsClient, RoomParticipant, ParticipantRole, CommunicationUserIdentifier
 from azure.communication.identity import CommunicationIdentityClient
 from datetime import datetime, timedelta, timezone
 
@@ -361,7 +360,7 @@ def create_classroom(instructor_id: str, student_ids: list, duration_hours: int 
     # Build the participant list
     participants = [
         RoomParticipant(
-            communication_identifier={"communication_user_id": instructor_id},
+            communication_identifier=CommunicationUserIdentifier(instructor_id),
             role=ParticipantRole.PRESENTER
         )
     ]
@@ -369,7 +368,7 @@ def create_classroom(instructor_id: str, student_ids: list, duration_hours: int 
     for student_id in student_ids:
         participants.append(
             RoomParticipant(
-                communication_identifier={"communication_user_id": student_id},
+                communication_identifier=CommunicationUserIdentifier(student_id),
                 role=ParticipantRole.ATTENDEE
             )
         )
