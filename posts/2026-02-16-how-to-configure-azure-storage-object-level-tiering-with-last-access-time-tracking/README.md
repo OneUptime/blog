@@ -33,7 +33,7 @@ Without last access time tracking, lifecycle policies can only use two criteria:
 
 Neither of these captures actual usage. A blob created 6 months ago might still be read every day. Moving it to Cool based on creation date would increase costs due to higher access charges.
 
-Last access time tracking records when each blob was last read. This lets you create policies like: "Move to Cool tier if not accessed for 30 days" - which accurately targets data that nobody is using.
+Last access time tracking records when each blob was last read or written. This lets you create policies like: "Move to Cool tier if not accessed for 30 days" - which accurately targets data that nobody is using.
 
 ## Step 1: Enable Last Access Time Tracking
 
@@ -48,7 +48,7 @@ az storage account blob-service-properties update \
   --enable-last-access-tracking true
 ```
 
-Once enabled, Azure starts recording the last access time for every blob read operation (GetBlob, GetBlobProperties). The tracking applies to all blob operations going forward - it does not retroactively populate access times for existing blobs.
+Once enabled, Azure starts recording the last access time for access operations such as Get Blob reads and Put Blob writes. Property and metadata reads, such as Get Blob Properties, Get Blob Metadata, and Get Blob Tags, do not update the last access time. The tracking applies to blob operations going forward - it does not retroactively populate access times for existing blobs.
 
 Verify the setting:
 
@@ -65,10 +65,10 @@ az storage account blob-service-properties show \
 Not every read updates the last access time. Azure batches access time updates to reduce overhead:
 
 - The first read of a blob updates the access time
-- Subsequent reads within a 24-hour window may or may not update it
+- Subsequent reads within the same 24-hour window do not update it
 - The granularity is approximately 24 hours
 
-This means the access time is not precise down to the second, but it is accurate enough for lifecycle management decisions. A blob that has not been accessed in 30 days will definitely show a last access time older than 30 days.
+This means the access time is not precise down to the second, but it is accurate enough for lifecycle management decisions. If a blob has not been accessed since tracking was enabled and its last access time is empty, lifecycle policies use the date when last access time tracking was enabled.
 
 You can check a blob's last access time:
 
@@ -112,7 +112,8 @@ az storage account management-policy create \
               "daysAfterLastAccessTimeGreaterThan": 90
             },
             "tierToArchive": {
-              "daysAfterLastAccessTimeGreaterThan": 180
+              "daysAfterLastAccessTimeGreaterThan": 180,
+              "daysAfterLastTierChangeGreaterThan": 30
             },
             "delete": {
               "daysAfterLastAccessTimeGreaterThan": 730
@@ -131,11 +132,11 @@ This policy does the following:
 
 1. After 30 days without access, move to Cool tier
 2. After 90 days without access, move to Cold tier
-3. After 180 days without access, move to Archive tier
+3. After 180 days without access and at least 30 days since the last tier change, move to Archive tier
 4. After 730 days (2 years) without access, delete the blob
-5. If a blob in Cool tier is accessed, automatically move it back to Hot
+5. If a blob that this rule moved to Cool is accessed, automatically move it back to Hot
 
-The `enableAutoTierToHotFromCool` setting is particularly useful. It ensures that if someone accesses a blob that was tiered down to Cool, it automatically moves back to Hot for optimal access performance.
+The `enableAutoTierToHotFromCool` setting is particularly useful. It ensures that if someone accesses a blob that was tiered down to Cool by this rule, it automatically moves back to Hot. Automatic tiering from Cool to Hot is limited to once every 30 days to help avoid repeated early deletion charges.
 
 ## Step 4: Combine Access Time with Other Criteria
 
@@ -164,7 +165,8 @@ az storage account management-policy create \
               "daysAfterLastAccessTimeGreaterThan": 14
             },
             "tierToArchive": {
-              "daysAfterLastAccessTimeGreaterThan": 60
+              "daysAfterLastAccessTimeGreaterThan": 60,
+              "daysAfterLastTierChangeGreaterThan": 30
             },
             "enableAutoTierToHotFromCool": true
           }
@@ -261,13 +263,13 @@ blob_service = BlobServiceClient.from_connection_string(connection_string)
 
 # Move a specific blob to Cool tier immediately
 blob_client = blob_service.get_blob_client("data", "large-dataset.csv")
-blob_client.set_standard_blob_tier(StandardBlobTier.Cool)
+blob_client.set_standard_blob_tier(StandardBlobTier.COOL)
 
 # Move a batch of blobs to Archive tier
 container = blob_service.get_container_client("data")
 for blob in container.list_blobs(name_starts_with="old-reports/"):
     client = container.get_blob_client(blob.name)
-    client.set_standard_blob_tier(StandardBlobTier.Archive)
+    client.set_standard_blob_tier(StandardBlobTier.ARCHIVE)
     print(f"Archived: {blob.name}")
 ```
 
@@ -292,9 +294,9 @@ That is roughly a 57% reduction in monthly storage costs, just from automaticall
 
 ## Important Considerations
 
-**Early deletion fees**: Moving a blob to Cool, Cold, or Archive and then accessing it before the minimum retention period results in an early deletion charge. Cool has a 30-day minimum, Cold has 90 days, and Archive has 180 days.
+**Early deletion fees**: Moving a blob to Cool, Cold, or Archive and then deleting it, overwriting it, or moving it to another tier before the minimum retention period results in an early deletion charge. Cool has a 30-day minimum, Cold has 90 days, and Archive has 180 days.
 
-**Archive rehydration time**: Blobs in Archive tier cannot be read directly. They must be rehydrated to Hot or Cool first, which takes up to 15 hours (standard) or up to 1 hour (high priority at higher cost).
+**Archive rehydration time**: Blobs in Archive tier cannot be read directly. They must be rehydrated to Hot, Cool, or Cold first, which takes up to 15 hours (standard) or can complete in less than 1 hour for objects under 10 GB (high priority at higher cost).
 
 **Access time granularity**: Last access time updates have approximately 24-hour granularity. Do not use this for fine-grained access tracking or analytics.
 
@@ -302,4 +304,4 @@ That is roughly a 57% reduction in monthly storage costs, just from automaticall
 
 ## Wrapping Up
 
-Object-level tiering with last access time tracking is one of the most effective cost optimization features in Azure Blob Storage. Enable access time tracking, create lifecycle policies that move untouched data to cheaper tiers, and let Azure handle the rest. The savings add up quickly for storage accounts with terabytes of data where most blobs are rarely accessed. The enableAutoTierToHotFromCool feature ensures that data which becomes active again is automatically promoted back to the optimal tier.
+Object-level tiering with last access time tracking is one of the most effective cost optimization features in Azure Blob Storage. Enable access time tracking, create lifecycle policies that move untouched data to cheaper tiers, and let Azure handle the rest. The savings add up quickly for storage accounts with terabytes of data where most blobs are rarely accessed. The enableAutoTierToHotFromCool feature ensures that data tiered to Cool by the policy and later accessed again is automatically promoted back to Hot.
