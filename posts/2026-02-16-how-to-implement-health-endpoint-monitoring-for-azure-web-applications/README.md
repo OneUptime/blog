@@ -16,6 +16,8 @@ Azure load balancers, Application Gateway, Traffic Manager, and Front Door all u
 
 ASP.NET Core has a built-in health check framework that makes it straightforward to implement health endpoints. Let us start with the fundamentals:
 
+The dependency checks below use the `AspNetCore.HealthChecks.SqlServer`, `AspNetCore.HealthChecks.Redis`, `AspNetCore.HealthChecks.Azure.Storage.Blobs`, and `AspNetCore.HealthChecks.Uris` packages in addition to ASP.NET Core's built-in health check middleware.
+
 ```csharp
 // Program.cs - Register health checks
 var builder = WebApplication.CreateBuilder(args);
@@ -123,8 +125,8 @@ static async Task WriteDetailedResponse(
         })
     };
 
-    // Return 200 for Healthy, 503 for Unhealthy
-    context.Response.StatusCode = report.Status == HealthStatus.Healthy
+    // Return 200 for Healthy or Degraded, 503 for Unhealthy
+    context.Response.StatusCode = report.Status != HealthStatus.Unhealthy
         ? StatusCodes.Status200OK
         : StatusCodes.Status503ServiceUnavailable;
 
@@ -211,9 +213,9 @@ builder.Services.AddHealthChecks()
         timeout: TimeSpan.FromSeconds(10)));
 ```
 
-## Configuring Azure Load Balancer Health Probes
+## Configuring Azure Application Gateway Health Probes
 
-Azure Application Gateway and Load Balancer use health probes to determine which backend instances are healthy. Configure them to use your readiness endpoint:
+Azure Application Gateway and Load Balancer use health probes to determine which backend instances are healthy. Configure Application Gateway to use your readiness endpoint:
 
 ```bash
 # Configure Application Gateway health probe
@@ -229,6 +231,13 @@ az network application-gateway probe create \
   --timeout 10 \
   --threshold 3 \
   --match-status-codes "200"
+
+# Associate the probe with backend HTTP settings
+az network application-gateway http-settings update \
+  --resource-group myResourceGroup \
+  --gateway-name myAppGateway \
+  --name appGatewayBackendHttpSettings \
+  --probe health-probe
 ```
 
 For AKS deployments, configure Kubernetes probes in your deployment manifest:
@@ -276,7 +285,7 @@ spec:
 
 ## Health Check UI
 
-For operations visibility, you can add a health check dashboard using the AspNetCore.HealthChecks.UI package:
+For operations visibility, you can add a health check dashboard using the `AspNetCore.HealthChecks.UI`, `AspNetCore.HealthChecks.UI.InMemory.Storage`, and `AspNetCore.HealthChecks.UI.Client` packages:
 
 ```csharp
 // Add health checks UI with in-memory storage
@@ -286,11 +295,18 @@ builder.Services.AddHealthChecksUI(options =>
     options.MaximumHistoryEntriesPerEndpoint(100);
 
     // Add endpoints to monitor
-    options.AddHealthCheckEndpoint("Order API", "/health/detail");
-    options.AddHealthCheckEndpoint("Payment API", "https://payment-api/health/detail");
-    options.AddHealthCheckEndpoint("Inventory API", "https://inventory-api/health/detail");
+    options.AddHealthCheckEndpoint("Order API", "/health/ui");
+    options.AddHealthCheckEndpoint("Payment API", "https://payment-api/health/ui");
+    options.AddHealthCheckEndpoint("Inventory API", "https://inventory-api/health/ui");
 })
 .AddInMemoryStorage();
+
+// HealthChecks UI expects monitored endpoints to use the UI response writer
+app.MapHealthChecks("/health/ui", new HealthCheckOptions
+{
+    Predicate = _ => true,
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
 
 // Map the UI endpoint
 app.MapHealthChecksUI(options =>
