@@ -38,10 +38,10 @@ flowchart LR
 
 To set up sensitivity labels, you need:
 
-- Microsoft 365 E3 or E5 license (E5 for auto-labeling)
+- Microsoft 365 E3 or E5 license, or equivalent Microsoft Purview Information Protection licensing (E5 or Plan 2 for auto-labeling)
 - Global Administrator or Compliance Administrator role
 - Access to the Microsoft Purview compliance portal
-- Azure Information Protection unified labeling enabled
+- Built-in sensitivity labeling in Microsoft 365 apps, or the Microsoft Purview Information Protection client for File Explorer, PowerShell, and scanner scenarios
 
 ## Step 1: Create a Label Taxonomy
 
@@ -117,12 +117,7 @@ New-LabelPolicy `
   -Name "Company-Wide Labels" `
   -Labels "Public","General","Confidential","HighlyConfidential","Personal" `
   -ExchangeLocation "All" `
-  -ModernGroupLocation "All" `
-  -Settings @{
-    "requiredowngradejustification" = "true";
-    "mandatory" = "true";
-    "defaultlabelid" = "general-label-guid-here"
-  }
+  -ModernGroupLocation "All"
 ```
 
 Label policies can take up to 24 hours to propagate to all users. During this time, some users may see the labels while others do not.
@@ -207,9 +202,19 @@ New-DlpCompliancePolicy `
 New-DlpComplianceRule `
   -Policy "Block External Sharing of HC Documents" `
   -Name "Block HC External" `
-  -ContentContainsSensitivityLabels "HighlyConfidential" `
+  -ContentContainsSensitiveInformation @(@{
+    operator = "And";
+    groups = @(@{
+      operator = "Or";
+      name = "Default";
+      labels = @(@{
+        name = "HighlyConfidential";
+        type = "Sensitivity"
+      })
+    })
+  }) `
   -BlockAccess $true `
-  -BlockAccessScope "NotInOrganization" `
+  -BlockAccessScope "PerUser" `
   -NotifyUser "SiteAdmin","LastModifier" `
   -NotifyPolicyTipCustomText "This document is labeled Highly Confidential and cannot be shared externally."
 ```
@@ -231,7 +236,7 @@ You can also query label activity through the unified audit log.
 Search-UnifiedAuditLog `
   -StartDate (Get-Date).AddDays(-7) `
   -EndDate (Get-Date) `
-  -Operations "SensitivityLabelApplied","SensitivityLabelRemoved","SensitivityLabelChanged" `
+  -Operations "SensitivityLabelApplied","SensitivityLabelUpdated","SensitivityLabelRemoved","FileSensitivityLabelApplied","FileSensitivityLabelChanged","FileSensitivityLabelRemoved" `
   -ResultSize 100 |
   Select-Object CreationDate, UserIds, Operations, AuditData
 ```
