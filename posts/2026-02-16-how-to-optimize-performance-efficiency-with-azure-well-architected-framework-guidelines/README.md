@@ -27,19 +27,19 @@ Use Azure Monitor and Application Insights to collect this data over a represent
 ```bash
 # Query Application Insights for p50, p95, and p99 response times over the past 14 days
 
-# This KQL query runs against your Log Analytics workspace
+# This KQL query runs against your Log Analytics workspace for a workspace-based Application Insights resource
 az monitor log-analytics query \
   --workspace "{workspace-id}" \
   --analytics-query "
-    requests
-    | where timestamp > ago(14d)
+    AppRequests
+    | where TimeGenerated > ago(14d)
     | summarize
-        p50=percentile(duration, 50),
-        p95=percentile(duration, 95),
-        p99=percentile(duration, 99),
+        p50=percentile(DurationMs, 50),
+        p95=percentile(DurationMs, 95),
+        p99=percentile(DurationMs, 99),
         count=count()
-      by bin(timestamp, 1h)
-    | order by timestamp desc
+      by bin(TimeGenerated, 1h)
+    | order by TimeGenerated desc
   " \
   -o table
 ```
@@ -88,7 +88,7 @@ Set the cooldown period for scale-in longer than scale-out. You want to respond 
 
 Caching is one of the highest-impact performance optimizations available. The WAF recommends implementing caching at multiple layers: CDN for static content, application-level cache for computed results, and database query caching for frequently accessed data.
 
-Azure Cache for Redis is the go-to solution for application-level caching. Use it to cache database query results, session data, and computed values that are expensive to regenerate.
+For new workloads, Azure Managed Redis is the recommended managed Redis service for application-level caching. If you already use Azure Cache for Redis, plan migration because Azure Cache for Redis SKUs are on a retirement timeline. Use Redis to cache database query results, session data, and computed values that are expensive to regenerate.
 
 The cache-aside pattern is the most common approach. Your application checks the cache first. On a cache miss, it queries the database, stores the result in cache, and returns it. On a cache hit, it returns the cached value directly.
 
@@ -104,7 +104,7 @@ Key considerations for your caching strategy:
 
 Database performance is usually the biggest performance bottleneck. The WAF provides specific guidance for different Azure database services.
 
-For Azure SQL Database, start by reviewing query performance. The Query Performance Insight feature shows you the most resource-intensive queries and their execution plans.
+For Azure SQL Database, start by reviewing query performance. The Query Performance Insight feature shows you the most resource-intensive queries, query text, and resource utilization history.
 
 ```sql
 -- Find the top 10 most expensive queries by total CPU time
@@ -131,9 +131,9 @@ For Cosmos DB, performance optimization centers around partition key selection a
 
 Network latency adds up, especially in distributed architectures. The WAF recommends minimizing network hops and keeping communicating services close to each other.
 
-Use Azure Front Door or Application Gateway to terminate TLS at the edge and route traffic to the nearest backend. For services that communicate frequently, deploy them in the same region and preferably in the same virtual network to minimize latency.
+Use Azure Front Door when you need global edge TLS termination and routing to origins close to users. Use Application Gateway for regional layer-7 routing and TLS termination. For services that communicate frequently, deploy them in the same region and preferably in the same virtual network to minimize latency.
 
-Enable Accelerated Networking on VMs that handle significant network traffic. This feature bypasses the host network stack and provides up to 30% latency reduction for network-intensive workloads.
+Enable Accelerated Networking on supported VMs that handle significant network traffic. This feature uses SR-IOV to bypass the virtual switch on the host, reducing latency, jitter, and CPU utilization for network-intensive workloads.
 
 Consider using Azure ExpressRoute instead of VPN gateways for hybrid connectivity if consistent, low-latency connections to on-premises resources are critical for performance.
 
@@ -151,7 +151,7 @@ Use the bulkhead pattern to isolate critical paths from non-critical ones. If yo
 
 The WAF strongly recommends load testing as part of your performance optimization process. You cannot know if your system meets its performance targets without testing under realistic load.
 
-Azure Load Testing (based on Apache JMeter) lets you create and run load tests from the Azure portal. Test against your performance baselines and SLOs. Include tests for expected peak load, sustained load, and spike scenarios.
+Azure Load Testing supports Apache JMeter-based and Locust-based tests and lets you create and run load tests from the Azure portal. Test against your performance baselines and SLOs. Include tests for expected peak load, sustained load, and spike scenarios.
 
 Run load tests before every major deployment and after any architecture change. Performance regressions are much easier to fix when caught early than when they show up in production.
 
