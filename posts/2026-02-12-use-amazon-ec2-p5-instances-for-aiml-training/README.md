@@ -8,7 +8,7 @@ Description: A practical guide to using Amazon EC2 P5 instances powered by NVIDI
 
 ---
 
-Amazon EC2 P5 instances are the most powerful GPU instances available on AWS. Each P5 instance packs 8 NVIDIA H100 Tensor Core GPUs with 80GB of HBM3 memory each, connected by NVSwitch for 900 GB/s GPU-to-GPU bandwidth. Add 3200 Gbps of EFA networking for multi-node training, and you have a platform capable of training the largest foundation models.
+Amazon EC2 P5 instances are one of the highest-performance GPU instance families available on AWS. Each P5 instance packs 8 NVIDIA H100 Tensor Core GPUs with 80GB of HBM3 memory each, connected by NVSwitch for 900 GB/s GPU-to-GPU bandwidth. Add 3200 Gbps of EFA networking for multi-node training, and you have a platform capable of training the largest foundation models.
 
 This guide covers how to get P5 instances running, configure them for training, and make the most of the hardware.
 
@@ -38,38 +38,44 @@ aws service-quotas get-service-quota \
   --quota-code L-417A185B \
   --query 'Quota.Value'
 
-# Request an increase if needed (request 192 vCPUs for one p5.48xlarge)
+# Request an increase if needed (request 768 vCPUs for four p5.48xlarge instances)
 aws service-quotas request-service-quota-increase \
   --service-code ec2 \
   --quota-code L-417A185B \
   --desired-value 768
 ```
 
-For guaranteed access, consider purchasing Capacity Reservations or using a Capacity Block.
+For guaranteed short-term access, consider purchasing a Capacity Block.
 
 ```bash
-# Reserve P5 capacity for 30 days
-aws ec2 create-capacity-reservation \
+# Find available P5 Capacity Block offerings
+aws ec2 describe-capacity-block-offerings \
   --instance-type p5.48xlarge \
-  --instance-platform Linux/UNIX \
   --instance-count 4 \
-  --availability-zone us-east-1a \
-  --end-date-type limited \
-  --end-date 2026-03-15T00:00:00Z
+  --start-date-range 2026-07-01T00:00:00Z \
+  --end-date-range 2026-07-15T00:00:00Z \
+  --capacity-duration-hours 48 \
+  --all-availability-zones
+
+# Purchase a Capacity Block using an offering ID from the previous command
+aws ec2 purchase-capacity-block \
+  --capacity-block-offering-id cb-0123456789abcdefg \
+  --instance-platform Linux/UNIX
 ```
 
 ## Step 2: Launch P5 Instances
 
 ```bash
-# Launch P5 instances with EFA networking
+# Launch one P5 instance with EFA networking; repeat per node or use a launch template
 aws ec2 run-instances \
   --image-id ami-0abc123-deep-learning \
   --instance-type p5.48xlarge \
-  --count 4 \
+  --count 1 \
   --key-name my-ml-key \
   --placement "GroupName=ml-training-pg" \
   --network-interfaces '[
     {
+      "NetworkCardIndex": 0,
       "DeviceIndex": 0,
       "SubnetId": "subnet-0abc123",
       "Groups": ["sg-0abc123"],
@@ -149,7 +155,7 @@ def main():
 
     # Use FP8 training for H100 Transformer Engine
     # This leverages the H100's dedicated FP8 hardware
-    from transformer_engine.pytorch import fp8_autocast
+    from transformer_engine.pytorch import autocast
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
     train_loader = create_distributed_dataloader()
@@ -158,7 +164,7 @@ def main():
         for batch in train_loader:
             batch = {k: v.to(device) for k, v in batch.items()}
 
-            with fp8_autocast():
+            with autocast():
                 outputs = model(**batch)
                 loss = outputs.loss
 
@@ -242,26 +248,24 @@ The H100 has hardware features that older GPUs lack. Use them.
 # Install NVIDIA Transformer Engine
 # pip install transformer-engine
 
+import torch
 import transformer_engine.pytorch as te
+from transformer_engine.pytorch import autocast
 
 # Replace standard Linear layers with TE versions
 # These automatically use FP8 when enabled
 class TransformerBlock(torch.nn.Module):
     def __init__(self, hidden_size, num_heads):
         super().__init__()
-        self.attention = te.MultiheadAttention(
-            hidden_size, num_heads,
-            fuse_qkv_params=True
-        )
-        self.mlp = te.LayerNormMLP(
-            hidden_size, hidden_size * 4
+        self.layer = te.TransformerLayer(
+            hidden_size=hidden_size,
+            ffn_hidden_size=hidden_size * 4,
+            num_attention_heads=num_heads
         )
 
     def forward(self, x):
-        with te.fp8_autocast():
-            x = self.attention(x)
-            x = self.mlp(x)
-        return x
+        with autocast():
+            return self.layer(x)
 ```
 
 FP8 training on H100 can provide up to 2x speedup over FP16 with minimal accuracy impact.
@@ -314,4 +318,4 @@ P5 instances are expensive: around $98/hour for a p5.48xlarge On-Demand. Here ar
 
 ## Wrapping Up
 
-EC2 P5 instances with NVIDIA H100 GPUs represent the current peak of cloud GPU compute. The combination of FP8 hardware, 80GB HBM3 per GPU, NVSwitch interconnect, and 3200 Gbps EFA networking makes them suitable for training even the largest language models and generative AI systems. The key to getting the most out of them is using the H100-specific features: FP8 via Transformer Engine, Flash Attention, and NCCL over EFA for multi-node scaling. Plan your capacity ahead, because these instances are in high demand.
+EC2 P5 instances with NVIDIA H100 GPUs represent a high-end cloud GPU compute option. The combination of FP8 hardware, 80GB HBM3 per GPU, NVSwitch interconnect, and 3200 Gbps EFA networking makes them suitable for training even the largest language models and generative AI systems. The key to getting the most out of them is using the H100-specific features: FP8 via Transformer Engine, Flash Attention, and NCCL over EFA for multi-node scaling. Plan your capacity ahead, because these instances are in high demand.
