@@ -58,19 +58,20 @@ foreach ($sub in $allSubs) {
     foreach ($vm in $vms) {
         $allVMs += [PSCustomObject]@{
             Tenant       = $sub.TenantId
+            SubscriptionId = $sub.Id
             Subscription = $sub.Name
             VMName       = $vm.Name
             ResourceGroup = $vm.ResourceGroupName
             Status       = $vm.PowerState
             Location     = $vm.Location
+            Tags         = $vm.Tags
         }
     }
 }
 
 # Display VMs missing the Environment tag
 $allVMs | Where-Object {
-    $vm = Get-AzVM -ResourceGroupName $_.ResourceGroup -Name $_.VMName
-    -not $vm.Tags.ContainsKey("Environment")
+    -not $_.Tags -or -not $_.Tags.ContainsKey("Environment")
 } | Format-Table -AutoSize
 ```
 
@@ -94,11 +95,9 @@ If customers have Log Analytics workspaces in their delegated subscriptions, you
 
 ```kusto
 // Query heartbeat data across multiple customer workspaces
-let workspace1 = workspace("customer-a-workspace-id");
-let workspace2 = workspace("customer-b-workspace-id");
 union
-    (workspace1 | Heartbeat | where TimeGenerated > ago(1h)),
-    (workspace2 | Heartbeat | where TimeGenerated > ago(1h))
+    (workspace("customer-a-workspace-id").Heartbeat | where TimeGenerated > ago(1h)),
+    (workspace("customer-b-workspace-id").Heartbeat | where TimeGenerated > ago(1h))
 | summarize LastHeartbeat = max(TimeGenerated) by Computer, _ResourceId
 | where LastHeartbeat < ago(10m)
 // Find machines that haven't sent a heartbeat in 10 minutes
@@ -111,14 +110,14 @@ Azure Policy is another area where the portal integration shines. You can view p
 
 Navigate to Azure Policy and check the compliance blade. With all subscriptions selected, you see the aggregate compliance state across all tenants. You can drill down into specific policies to see which resources are non-compliant, regardless of which tenant they belong to.
 
-You can also assign policies to delegated subscriptions, provided your delegation includes the appropriate role (typically Contributor or a custom role with policy write permissions). This is incredibly useful for enforcing standards across all managed environments:
+You can also assign policies to delegated subscriptions, provided your delegation includes an appropriate supported built-in role (typically Contributor). This is incredibly useful for enforcing standards across all managed environments:
 
 ```bash
 # Assign a policy to a delegated subscription using Azure CLI
 az policy assignment create \
   --name "require-tag-environment" \
   --display-name "Require Environment tag on all resources" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b466-ef391786494f" \
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b590-94f262ecfa99" \
   --scope "/subscriptions/customer-subscription-id" \
   --params '{"tagName": {"value": "Environment"}}'
 ```
@@ -133,12 +132,9 @@ Here is a practical example - a runbook that shuts down non-production VMs acros
 # Azure Automation runbook for cross-tenant VM shutdown
 # Runs on a schedule (e.g., 7 PM daily)
 
-# Authenticate using the Automation Run As account
-$connection = Get-AutomationConnection -Name "AzureRunAsConnection"
-Connect-AzAccount -ServicePrincipal `
-    -TenantId $connection.TenantId `
-    -ApplicationId $connection.ApplicationId `
-    -CertificateThumbprint $connection.CertificateThumbprint
+# Authenticate using the Automation account's managed identity
+Disable-AzContextAutosave -Scope Process
+Connect-AzAccount -Identity | Out-Null
 
 # Get all subscriptions (including delegated ones)
 $subscriptions = Get-AzSubscription
@@ -148,6 +144,7 @@ foreach ($sub in $subscriptions) {
 
     # Find non-production VMs that are running
     $vms = Get-AzVM -Status | Where-Object {
+        $_.Tags -and
         $_.Tags["Environment"] -eq "Development" -and
         $_.PowerState -eq "VM running"
     }
@@ -161,9 +158,9 @@ foreach ($sub in $subscriptions) {
 }
 ```
 
-## Azure Security Center Across Tenants
+## Microsoft Defender for Cloud Across Tenants
 
-Azure Security Center (now Microsoft Defender for Cloud) provides a unified security view when combined with Lighthouse. You can see security recommendations and alerts from all delegated subscriptions in a single dashboard.
+Microsoft Defender for Cloud provides a unified security view when combined with Lighthouse. You can see security recommendations and alerts from all delegated subscriptions in a single dashboard.
 
 This is particularly useful for MSPs who need to maintain security standards across customer environments. The secure score for each subscription is visible, and you can drill into recommendations and apply fixes without switching tenants.
 
@@ -185,7 +182,7 @@ Lighthouse does not project every Azure service. Some services have limited or n
 
 - Azure Kubernetes Service management is limited
 - Key Vault access requires additional configuration
-- Some Azure AD operations are not available cross-tenant
+- Some Microsoft Entra ID operations are not available cross-tenant
 - Certain portal blades may not show delegated resources in all views
 
 Check Microsoft's documentation for the latest list of supported services.
