@@ -8,13 +8,13 @@ Description: Step-by-step guide to creating an Azure Database for MySQL Flexible
 
 ---
 
-Azure Database for MySQL Flexible Server is the next generation of Microsoft's managed MySQL offering. It replaces the older Single Server deployment option and gives you much more control over database configuration, maintenance windows, and cost optimization. If you are starting a new project or migrating an existing workload, Flexible Server is the way to go.
+Azure Database for MySQL Flexible Server is the current generation of Microsoft's managed MySQL offering. It replaces the older Single Server deployment option, which was retired in September 2024, and gives you much more control over database configuration, maintenance windows, and cost optimization. If you are starting a new project or migrating an existing workload, Flexible Server is the way to go.
 
 In this post, I will walk you through creating an Azure Database for MySQL Flexible Server using both the Azure portal and the Azure CLI. We will also cover key configuration decisions you need to make before provisioning.
 
 ## Why Flexible Server?
 
-The older Single Server option is on its retirement path. Flexible Server brings several improvements that matter in day-to-day operations:
+The older Single Server option is retired. Flexible Server brings several improvements that matter in day-to-day operations:
 
 - You can stop and start the server to save costs during development.
 - Zone-redundant and same-zone high availability options are available.
@@ -45,7 +45,7 @@ On the basics tab, you will configure the fundamental settings:
 - **Resource group**: Choose an existing resource group or create a new one.
 - **Server name**: This must be globally unique. It will form part of your connection string (e.g., myserver.mysql.database.azure.com).
 - **Region**: Pick the region closest to your application. Latency matters, especially for transactional workloads.
-- **MySQL version**: Choose 8.0 unless you have a specific reason to use 5.7. Version 8.0 has better performance and more features.
+- **MySQL version**: Choose 8.4 for new workloads if your application and drivers support it, or 8.0 if you need the older long-supported major version. Avoid 5.7 for new deployments because it is already retired at the MySQL community level.
 - **Workload type**: Select Development (burstable), Production (general purpose), or Production (memory optimized) depending on your needs.
 - **Compute + storage**: Click "Configure server" to fine-tune the compute tier, vCores, storage size, and IOPS.
 
@@ -59,11 +59,11 @@ This is where cost and performance decisions happen. Here is what each tier look
 | General Purpose (D-series) | Most production workloads | 2-96 | 8-384 GB |
 | Memory Optimized (E-series) | Heavy caching, analytics | 2-96 | 16-672 GB |
 
-Storage ranges from 20 GB to 16 TB, and you can enable storage auto-grow so the database expands automatically when it gets close to full.
+Storage ranges from 20 GiB to 16 TiB for Burstable and General Purpose servers, and up to 32 TiB for Memory Optimized servers. In the Azure CLI, the `--storage-size` value has a 32 GiB minimum. You can enable storage auto-grow so the database expands automatically when it gets close to full.
 
 ### Authentication
 
-You need to set up the admin account. You have two options:
+You need to set up the admin account. You have three options:
 
 - MySQL authentication only (username and password)
 - Microsoft Entra ID authentication only
