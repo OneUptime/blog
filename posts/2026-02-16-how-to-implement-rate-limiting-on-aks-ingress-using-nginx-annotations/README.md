@@ -8,7 +8,7 @@ Description: Learn how to configure rate limiting on AKS NGINX Ingress using ann
 
 ---
 
-Without rate limiting, a single misbehaving client can overwhelm your backend services, causing cascading failures that affect all users. Whether it is a DDoS attempt, a buggy client making infinite retry loops, or a legitimate traffic spike from a viral moment, rate limiting at the ingress layer is your first line of defense. NGINX Ingress Controller on AKS supports rate limiting through simple annotations, and in this post, I will show you how to configure it effectively.
+Without rate limiting, a single misbehaving client can overwhelm your backend services, causing cascading failures that affect all users. Whether it is a DDoS attempt, a buggy client making infinite retry loops, or a legitimate traffic spike from a viral moment, rate limiting at the ingress layer is your first line of defense. The community ingress-nginx controller on AKS supports rate limiting through simple annotations, and in this post, I will show you how to configure it effectively.
 
 ## How NGINX Rate Limiting Works
 
@@ -18,7 +18,7 @@ In NGINX terms, you define a rate (how fast the bucket drains) and a burst size 
 
 ## Prerequisites
 
-You need an AKS cluster with the NGINX Ingress Controller installed. If you do not have it yet, install it with Helm.
+You need an AKS cluster with the community ingress-nginx controller installed. The ingress-nginx project was retired in March 2026, so use this for existing deployments and evaluate Gateway API implementations for new production deployments. If you still need to install ingress-nginx, install it with Helm.
 
 ```bash
 # Install NGINX Ingress Controller on AKS
@@ -33,7 +33,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 
 ## Basic Rate Limiting with Annotations
 
-The simplest form of rate limiting uses the `nginx.ingress.kubernetes.io/limit-rps` annotation to set requests per second per client IP.
+The simplest form of rate limiting uses the `nginx.ingress.kubernetes.io/limit-rps` annotation to set requests per second per client IP per ingress-nginx controller replica.
 
 ```yaml
 # rate-limited-ingress.yaml
@@ -48,8 +48,6 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: "10"
     # Allow bursts of up to 20 requests
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
-    # Return 429 Too Many Requests instead of default 503
-    nginx.ingress.kubernetes.io/custom-http-errors: "429"
 spec:
   ingressClassName: nginx
   rules:
@@ -65,7 +63,7 @@ spec:
                   number: 80
 ```
 
-With this configuration, each client IP can make 10 requests per second. The burst multiplier of 2 means NGINX will allow bursts of up to 20 requests (10 x 2) before rejecting. Requests beyond the burst get a 503 response.
+With this configuration, each client IP can make 10 requests per second per controller replica. The burst multiplier of 2 means NGINX will allow bursts of up to 20 requests (10 x 2) before rejecting. Requests beyond the burst get a 503 response unless you configure `limit-req-status-code` in the controller ConfigMap.
 
 ## Rate Limiting by Connections
 
@@ -110,7 +108,7 @@ metadata:
   name: combined-ingress
   namespace: default
   annotations:
-    # 20 requests per second per IP
+    # 20 requests per second per IP per controller replica
     nginx.ingress.kubernetes.io/limit-rps: "20"
     # Allow burst of up to 40
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
@@ -150,7 +148,7 @@ metadata:
   annotations:
     # Limit request body to 10 megabytes
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
-    # Rate limit to 5 requests per second (uploads are heavy)
+    # Rate limit to 5 requests per second per controller replica (uploads are heavy)
     nginx.ingress.kubernetes.io/limit-rps: "5"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "1"
 spec:
@@ -181,7 +179,7 @@ metadata:
   name: auth-ingress
   namespace: default
   annotations:
-    # Very strict limit for login endpoints
+    # Very strict limit for login endpoints per controller replica
     nginx.ingress.kubernetes.io/limit-rps: "3"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "1"
 spec:
@@ -206,7 +204,7 @@ metadata:
   name: content-ingress
   namespace: default
   annotations:
-    # Higher limit for content serving
+    # Higher limit for content serving per controller replica
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
 spec:
@@ -224,26 +222,21 @@ spec:
                   number: 80
 ```
 
-## Custom Error Responses
+## Custom Error Status Codes
 
-When a client hits the rate limit, they get a 503 by default. You can customize this to return a proper 429 Too Many Requests with a helpful message.
+When a client hits the request rate limit, they get a 503 by default. You can customize this to return a proper 429 Too Many Requests by changing the controller ConfigMap.
 
 ```yaml
-# custom-error-configmap.yaml
-# Custom error page for rate-limited requests
+# ingress-nginx-controller-configmap.yaml
+# Return 429 for rejected rate-limited requests
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: custom-error-pages
+  name: ingress-nginx-controller
   namespace: ingress-nginx
 data:
-  # Return a JSON response for rate-limited API requests
-  429: |
-    {
-      "error": "Too Many Requests",
-      "message": "Rate limit exceeded. Please retry after a short delay.",
-      "retryAfter": 1
-    }
+  # Return 429 instead of the default 503 for rejected requests
+  limit-req-status-code: "429"
 ```
 
 ## Testing Rate Limits
@@ -258,7 +251,8 @@ go install github.com/rakyll/hey@latest
 hey -n 100 -q 50 -c 10 http://api.example.com/
 
 # Check the response code distribution
-# You should see 200s up to the limit and 503s after
+# You should see 200s up to the limit and 503s after,
+# or 429s if you configured limit-req-status-code
 ```
 
 You can also use curl to test manually.
@@ -284,23 +278,23 @@ flowchart TD
     G --> E
 ```
 
-## Global Rate Limiting with ConfigMap
+## Global Rate Limiting Behavior with ConfigMap
 
-If you want to set default rate limits for all ingress resources, configure them in the NGINX controller's ConfigMap.
+The controller ConfigMap can set global rate-limiting behavior such as the rejection status code, but request-rate limits like `limit-rps` and `limit-rpm` are configured on Ingress resources.
 
 ```yaml
 # nginx-configmap.yaml
-# Global rate limiting defaults for all ingress resources
+# Global rate limiting behavior for the controller
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ingress-nginx-controller
   namespace: ingress-nginx
 data:
-  # Global request rate limit
+  # Status code for rejected request-rate limits
   limit-req-status-code: "429"
-  # Shared memory zone size for rate limiting
-  limit-req-zone-size: "10m"
+  # Status code for rejected connection limits
+  limit-conn-status-code: "429"
 ```
 
 ## Monitoring Rate-Limited Requests
@@ -308,7 +302,8 @@ data:
 Keep track of how many requests are being rate limited to understand if your limits are too aggressive or too loose.
 
 ```bash
-# Check NGINX controller metrics for rate limiting
+# Check NGINX controller metrics for rate limiting.
+# Metrics must be enabled on the Helm release first.
 kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- \
   curl -s localhost:10254/metrics | grep nginx_ingress
 
