@@ -10,11 +10,11 @@ Description: How to write shell scripts that work across different Unix systems 
 
 Most shell scripts are written in Bash and tested on one Linux distribution. They work fine until someone tries to run them on Alpine Linux (which uses `ash`), FreeBSD (which ships `sh` from the Almquist shell family), macOS (which has a very old Bash and now defaults to `zsh`), or a minimal Docker container. At that point, the script fails in confusing ways.
 
-Writing POSIX-compatible shell scripts avoids these problems entirely. POSIX `sh` is the lowest common denominator that every Unix-like system supports. If your script runs under POSIX `sh`, it runs everywhere.
+Writing POSIX-compatible shell scripts avoids many of these problems. POSIX `sh` is the lowest common denominator that POSIX-conforming systems support. If your script sticks to POSIX `sh`, it has the best chance of running consistently across Unix-like systems.
 
 ## What POSIX sh Actually Is
 
-POSIX is a family of standards maintained by the IEEE. The shell portion (formally IEEE Std 1003.1, Shell Command Language) defines the syntax and built-in utilities that conforming shells must support. Every system that calls itself Unix-like provides a `/bin/sh` that conforms to this standard (with varying degrees of strictness).
+POSIX is a family of standards maintained by the IEEE. The shell portion (formally IEEE Std 1003.1, Shell Command Language) defines the syntax and built-in utilities that conforming shells must support. POSIX-conforming systems provide a shell command language interpreter that conforms to this standard, commonly available as `/bin/sh` on Unix-like systems.
 
 The practical implication: if you stick to POSIX features, your script will work with `dash`, `ash`, `ksh`, `bash`, and the native `sh` on BSD systems, Solaris, and macOS.
 
@@ -80,7 +80,7 @@ if [ "$name" = "admin" ]; then
 fi
 ```
 
-Note the operator difference: `==` is Bash, `=` is POSIX for string comparison.
+Note the operator difference: `==` is a non-POSIX extension, while `=` is POSIX for string comparison.
 
 ### String Substitution
 
@@ -91,7 +91,7 @@ Bash supports `${variable//pattern/replacement}` for global substitution. POSIX 
 clean="${input//,/ }"
 
 # CORRECT: Use an external tool for global substitution
-clean=$(echo "$input" | tr ',' ' ')
+clean=$(printf '%s\n' "$input" | tr ',' ' ')
 ```
 
 POSIX does support prefix and suffix removal (`${var#pattern}`, `${var%pattern}`, `${var##pattern}`, `${var%%pattern}`), which covers many use cases.
@@ -105,15 +105,21 @@ POSIX does support prefix and suffix removal (`${var#pattern}`, `${var%pattern}`
 diff <(sort file1) <(sort file2)
 
 # CORRECT: Use temporary files instead
-sort file1 > /tmp/sorted1.$$
-sort file2 > /tmp/sorted2.$$
-diff /tmp/sorted1.$$ /tmp/sorted2.$$
-rm -f /tmp/sorted1.$$ /tmp/sorted2.$$
+tmpdir=${TMPDIR:-/tmp}/sort.$$
+if ! mkdir "$tmpdir"; then
+    echo "Could not create temporary directory" >&2
+    exit 1
+fi
+trap 'rm -rf "$tmpdir"' EXIT INT TERM
+
+sort file1 > "$tmpdir/sorted1"
+sort file2 > "$tmpdir/sorted2"
+diff "$tmpdir/sorted1" "$tmpdir/sorted2"
 ```
 
 ### The `source` Command
 
-`source` is a Bash alias for the POSIX `.` command:
+`source` is a Bash synonym for the POSIX `.` command:
 
 ```sh
 # WRONG: source is not guaranteed in POSIX
@@ -131,8 +137,10 @@ Here strings (`<<<`) are Bash-only:
 # WRONG: Here strings are not POSIX
 read -r name <<< "$input"
 
-# CORRECT: Use a here document or printf with pipe
-name=$(printf '%s' "$input")
+# CORRECT: Use a here document
+IFS= read -r name <<EOF
+$input
+EOF
 ```
 
 ## Arithmetic
@@ -150,7 +158,7 @@ For floating point, use `awk` or `bc`:
 
 ```sh
 # Floating point arithmetic using awk
-average=$(echo "$sum $count" | awk '{printf "%.2f", $1 / $2}')
+average=$(printf '%s %s\n' "$sum" "$count" | awk '{printf "%.2f", $1 / $2}')
 ```
 
 ## Functions
@@ -235,7 +243,7 @@ tmpfile=$(mktemp)
 # cleanup runs automatically on exit
 ```
 
-Note: `mktemp` is not POSIX, but it is available on virtually every modern system. If you need strict POSIX compliance, create temp files manually with `$$` (process ID) in the name.
+Note: `mktemp` is not POSIX, but it is available on virtually every modern system. If you need strict POSIX compliance, avoid assuming `mktemp` exists and create temporary paths with explicit collision checks and cleanup.
 
 ## Testing Your Script for POSIX Compliance
 
@@ -250,7 +258,7 @@ shellcheck -s sh script.sh
 
 ### Testing with dash
 
-Debian's `dash` is a strict POSIX shell. If your script runs under `dash`, it is almost certainly POSIX-compatible:
+Debian's `dash` is a small shell that closely follows POSIX behavior. If your script runs under `dash`, that is a strong portability signal:
 
 ```sh
 # Run your script under dash to verify POSIX compatibility
@@ -262,7 +270,7 @@ dash ./script.sh
 For thorough testing, run your script across multiple environments:
 
 ```sh
-# Test the script under Alpine (ash), Debian (dash), and FreeBSD (sh)
+# Test the script under Alpine (ash) and Debian (dash)
 for image in alpine:latest debian:latest; do
     echo "Testing on $image"
     docker run --rm -v "$(pwd):/scripts" "$image" sh /scripts/myscript.sh
@@ -299,10 +307,18 @@ TAG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         -e|--env)
+            if [ $# -lt 2 ]; then
+                log "Missing value for $1"
+                exit 1
+            fi
             ENVIRONMENT="$2"
             shift 2
             ;;
         -t|--tag)
+            if [ $# -lt 2 ]; then
+                log "Missing value for $1"
+                exit 1
+            fi
             TAG="$2"
             shift 2
             ;;
@@ -326,7 +342,7 @@ docker push "myapp:$TAG"
 log "Deployment complete"
 ```
 
-Every construct in this script is POSIX-compliant. It will run identically on Debian, Alpine, macOS, FreeBSD, and any other Unix-like system.
+Every shell construct in this script is POSIX-compliant. Assuming the required external commands are installed, it will use the same shell semantics on Debian, Alpine, macOS, FreeBSD, and other Unix-like systems.
 
 ## When to Use Bash Instead
 
