@@ -38,18 +38,25 @@ infrastructure/
 
 ## Authentication Setup
 
-GitHub Actions authenticates to Azure using OpenID Connect (OIDC), which is more secure than storing service principal secrets. Set up the federated credentials in Azure AD.
+GitHub Actions authenticates to Azure using OpenID Connect (OIDC), which is more secure than storing service principal secrets. Set up the federated credentials in Microsoft Entra ID.
 
 ```bash
-# Create a service principal for GitHub Actions
+# Create an app registration and service principal for GitHub Actions
 
-az ad sp create-for-rbac --name "github-actions-bicep" \
-  --role contributor \
-  --scopes /subscriptions/YOUR_SUBSCRIPTION_ID
+app_id=$(az ad app create \
+  --display-name "github-actions-bicep" \
+  --query appId -o tsv)
+
+az ad sp create --id "$app_id"
+
+az role assignment create \
+  --assignee "$app_id" \
+  --role Contributor \
+  --scope /subscriptions/YOUR_SUBSCRIPTION_ID
 
 # Add federated credential for the main branch
 az ad app federated-credential create \
-  --id YOUR_APP_ID \
+  --id "$app_id" \
   --parameters '{
     "name": "github-main",
     "issuer": "https://token.actions.githubusercontent.com",
@@ -59,7 +66,7 @@ az ad app federated-credential create \
 
 # Add federated credential for pull requests
 az ad app federated-credential create \
-  --id YOUR_APP_ID \
+  --id "$app_id" \
   --parameters '{
     "name": "github-pr",
     "issuer": "https://token.actions.githubusercontent.com",
@@ -344,17 +351,19 @@ jobs:
 
       - name: Deploy to Production
         run: |
+          deployment_name="deploy-$(date +%Y%m%d-%H%M%S)"
           az deployment group create \
             --resource-group rg-app-prod \
             --parameters infrastructure/parameters/prod.bicepparam \
-            --name "deploy-$(date +%Y%m%d-%H%M%S)"
+            --name "$deployment_name"
+          echo "DEPLOYMENT_NAME=$deployment_name" >> $GITHUB_ENV
 
       # Verify deployment succeeded
       - name: Verify Deployment
         run: |
           deployment=$(az deployment group show \
             --resource-group rg-app-prod \
-            --name "$(az deployment group list --resource-group rg-app-prod --query '[0].name' -o tsv)" \
+            --name "$DEPLOYMENT_NAME" \
             --query 'properties.provisioningState' -o tsv)
           echo "Deployment state: $deployment"
           if [ "$deployment" != "Succeeded" ]; then
@@ -378,7 +387,7 @@ For `staging`:
 2. Restrict to the `main` branch
 
 For `dev`:
-1. No reviewers needed - deploy automatically after CI passes
+1. No reviewers needed - deploy automatically when the deployment workflow runs on `main`
 
 ## Handling Deployment Failures
 
