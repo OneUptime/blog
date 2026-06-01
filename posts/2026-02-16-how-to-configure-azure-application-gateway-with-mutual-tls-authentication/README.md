@@ -39,7 +39,7 @@ sequenceDiagram
         Backend->>AppGW: Response
         AppGW->>Client: Response
     else Certificate Invalid
-        AppGW->>Client: TLS Handshake Failure (403)
+        AppGW->>Client: HTTP 400 / TLS handshake failure
     end
 ```
 
@@ -79,7 +79,7 @@ az network application-gateway client-cert add \
   --resource-group myResourceGroup \
   --gateway-name myAppGateway \
   --name myClientCA \
-  --data @ca-chain.pem
+  --data ca-chain.pem
 ```
 
 Now create an SSL profile that enables client certificate verification:
@@ -90,11 +90,22 @@ az network application-gateway ssl-profile add \
   --resource-group myResourceGroup \
   --gateway-name myAppGateway \
   --name mTLSProfile \
-  --client-auth-configuration "{\"verifyClientCertIssuerDN\":true}" \
+  --client-auth-configuration true \
   --trusted-client-certificates myClientCA
 ```
 
-The `verifyClientCertIssuerDN` setting ensures the gateway checks that the client certificate was issued by one of the trusted CAs.
+To enable strict issuer DN validation, update the SSL profile:
+
+```bash
+# Enable strict issuer DN validation
+az network application-gateway ssl-profile update \
+  --resource-group myResourceGroup \
+  --gateway-name myAppGateway \
+  --name mTLSProfile \
+  --set clientAuthConfiguration.verifyClientCertIssuerDN=true
+```
+
+The `verifyClientCertIssuerDN` setting ensures the gateway verifies the client certificate's immediate issuer distinguished name against the trusted client CA certificate chain.
 
 ## Step 3: Configure the HTTPS Listener
 
@@ -106,7 +117,7 @@ az network application-gateway http-listener update \
   --resource-group myResourceGroup \
   --gateway-name myAppGateway \
   --name myHTTPSListener \
-  --ssl-profile mTLSProfile
+  --ssl-profile-id mTLSProfile
 ```
 
 If you do not have an HTTPS listener yet, create one with the SSL profile:
@@ -128,25 +139,42 @@ az network application-gateway http-listener create \
   --frontend-port myFrontendPort443 \
   --frontend-ip myFrontendIP \
   --ssl-cert serverCert \
-  --ssl-profile mTLSProfile
+  --ssl-profile-id mTLSProfile
 ```
 
 ## Step 4: Configure Client Certificate Header Forwarding
 
-Application Gateway can forward client certificate information to your backend as HTTP headers. This lets your application code access the client's certificate details for authorization decisions:
+Application Gateway exposes client certificate information as rewrite server variables. You can add those values to request headers before forwarding traffic to your backend:
 
 ```bash
-# Update HTTP settings to include client certificate headers
-az network application-gateway http-settings update \
+# Create a rewrite rule set
+az network application-gateway rewrite-rule set create \
   --resource-group myResourceGroup \
   --gateway-name myAppGateway \
-  --name myHTTPSettings \
-  --host-name-from-backend-pool false \
-  --protocol Https \
-  --port 443
+  --name clientCertHeaders
+
+# Add request headers from mTLS server variables
+az network application-gateway rewrite-rule create \
+  --resource-group myResourceGroup \
+  --gateway-name myAppGateway \
+  --rule-set-name clientCertHeaders \
+  --name addClientCertHeaders \
+  --sequence 100 \
+  --request-headers \
+    X-Client-Cert-Issuer={var_client_certificate_issuer} \
+    X-Client-Cert-Subject={var_client_certificate_subject} \
+    X-Client-Cert-Serial={var_client_certificate_serial} \
+    X-Client-Cert-Fingerprint={var_client_certificate_fingerprint}
+
+# Attach the rewrite rule set to the request routing rule
+az network application-gateway rule update \
+  --resource-group myResourceGroup \
+  --gateway-name myAppGateway \
+  --name myRoutingRule \
+  --rewrite-rule-set clientCertHeaders
 ```
 
-The gateway adds these headers to the request:
+This rewrite rule adds these headers to the request:
 
 - `X-Client-Cert-Issuer` - The issuer DN of the client certificate
 - `X-Client-Cert-Subject` - The subject DN of the client certificate
@@ -171,7 +199,7 @@ curl -v \
 Test without a client certificate - this should fail:
 
 ```bash
-# Test without a client certificate - should fail with 403
+# Test without a client certificate - should fail
 curl -v \
   --cacert server-ca.pem \
   https://myappgateway.example.com/api/test
@@ -190,15 +218,15 @@ curl -v \
 
 ## Client Certificate Revocation
 
-Application Gateway supports checking client certificates against a Certificate Revocation List (CRL). Upload the CRL to ensure revoked certificates are rejected:
+Application Gateway supports client certificate revocation checking with OCSP. Enable revocation checking on the SSL profile so revoked certificates are rejected:
 
 ```bash
-# Upload CRL for client certificate revocation checking
+# Enable OCSP client certificate revocation checking
 az network application-gateway ssl-profile update \
   --resource-group myResourceGroup \
   --gateway-name myAppGateway \
   --name mTLSProfile \
-  --client-auth-configuration "{\"verifyClientRevocation\":\"OCSP\"}"
+  --set clientAuthConfiguration.verifyClientRevocation=OCSP
 ```
 
 Options for revocation checking:
@@ -261,16 +289,14 @@ Monitor mTLS authentication failures in Application Gateway logs:
 
 ```text
 // KQL query for mTLS authentication failures
-AzureDiagnostics
-| where ResourceType == "APPLICATIONGATEWAYS"
-| where Category == "ApplicationGatewayAccessLog"
-| where sslClientCertificateVerifyResult_s != "PASSED"
+AGWAccessLogs
+| where not(SslClientVerify startswith "SUCCESS")
 | project
     TimeGenerated,
-    clientIP_s,
-    requestUri_s,
-    sslClientCertificateVerifyResult_s,
-    sslClientCertificateIssuerName_s
+    ClientIp,
+    RequestUri,
+    SslClientVerify,
+    SslClientCertificateIssuerName
 | order by TimeGenerated desc
 ```
 
@@ -278,14 +304,14 @@ This query surfaces failed mTLS attempts, helping you identify misconfigured cli
 
 ## Common Issues
 
-**All clients get 403.** Check that the uploaded CA certificate matches the CA that signed the client certificates. Verify the certificate chain is complete (include intermediate CAs).
+**All clients get 400.** Check that the uploaded CA certificate matches the CA that signed the client certificates. Verify the certificate chain is complete (include intermediate CAs).
 
 **Certificate works in curl but not in the browser.** Browsers require the client certificate to be installed in the operating system's certificate store or provided through a smart card. PEM files do not work directly in browsers.
 
 **Performance impact.** mTLS adds overhead to the TLS handshake. The gateway needs to validate the client certificate chain, which adds a few milliseconds per connection. For high-throughput scenarios, factor this into your capacity planning.
 
-**Backend does not receive client certificate headers.** Make sure the backend HTTP settings are configured correctly and the gateway is not stripping custom headers.
+**Backend does not receive client certificate headers.** Make sure the rewrite rule set is associated with the request routing rule and uses the correct client certificate server variables.
 
 ## Summary
 
-Mutual TLS on Azure Application Gateway adds a strong authentication layer before traffic reaches your backend. Upload your trusted CA certificate, create an SSL profile with client authentication, and associate it with your HTTPS listener. Client certificate details are forwarded to your backend as HTTP headers for additional authorization logic. Start with testing using self-signed certificates, validate the configuration, then deploy with production certificates from your organization's PKI. For revocation handling, enable OCSP checking to ensure compromised certificates are rejected promptly.
+Mutual TLS on Azure Application Gateway adds a strong authentication layer before traffic reaches your backend. Upload your trusted CA certificate, create an SSL profile with client authentication, and associate it with your HTTPS listener. Client certificate details can be forwarded to your backend as HTTP headers with rewrite rules for additional authorization logic. Start with testing using self-signed certificates, validate the configuration, then deploy with production certificates from your organization's PKI. For revocation handling, enable OCSP checking to ensure compromised certificates are rejected promptly.
