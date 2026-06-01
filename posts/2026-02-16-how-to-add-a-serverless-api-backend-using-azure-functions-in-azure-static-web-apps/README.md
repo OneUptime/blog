@@ -31,12 +31,12 @@ my-project/
   staticwebapp.config.json
 ```
 
-The `api` directory contains your Azure Functions. During deployment, Azure Static Web Apps automatically detects this directory, builds the functions, and makes them available at `/api/*` on the same domain as your frontend. No need to configure API URLs or deal with cross-origin requests.
+The `api` directory contains your Azure Functions. During deployment, Azure Static Web Apps builds the functions from the folder configured as your `api_location` (commonly `api`) and makes them available at `/api/*` on the same domain as your frontend. No need to configure API URLs or deal with cross-origin requests.
 
 ```mermaid
 graph TD
     A[Browser] -->|/index.html| B[Static Content CDN]
-    A -->|/api/get-items| C[Azure Functions Backend]
+    A -->|/api/items| C[Azure Functions Backend]
     B --> D[Global Edge Locations]
     C --> E[Managed Functions Runtime]
     E --> F[Databases / External APIs]
@@ -59,21 +59,22 @@ In your project root, create the `api` directory and initialize it.
 mkdir api
 cd api
 npm init -y
+cd ..
 ```
 
-Next, create the `host.json` file that configures the Functions runtime.
+Next, create the `api/host.json` file that configures the Functions runtime.
 
 ```json
 {
   "version": "2.0",
   "extensionBundle": {
     "id": "Microsoft.Azure.Functions.ExtensionBundle",
-    "version": "[3.*, 4.0.0)"
+    "version": "[4.0.0, 5.0.0)"
   }
 }
 ```
 
-The `extensionBundle` allows you to use bindings (like HTTP triggers, timer triggers, and database bindings) without installing extension packages manually.
+The `extensionBundle` allows you to use supported bindings without installing extension packages manually. For managed APIs in Static Web Apps, triggers and bindings are limited to HTTP.
 
 ## Step 2: Create Your First Function
 
@@ -275,7 +276,7 @@ The Static Web Apps CLI lets you run both the frontend and API locally with the 
 swa start src --api-location api
 ```
 
-This starts the frontend dev server and the Functions runtime, and proxies everything through a single port (typically 4280). API requests to `/api/*` route to the Functions runtime automatically.
+This serves the frontend, starts the Functions runtime, and proxies everything through a single port (typically 4280). API requests to `/api/*` route to the Functions runtime automatically.
 
 If you are using a framework with its own dev server (like React or Vue), start that first and point the SWA CLI at it.
 
