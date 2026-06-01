@@ -48,6 +48,7 @@ az network vnet create \
   --subnet-prefixes 10.0.0.0/24
 
 # Create a storage account
+# Replace this with a globally unique name that uses only lowercase letters and numbers.
 az storage account create \
   --resource-group rg-service-endpoints-demo \
   --name stserviceendpointdemo \
