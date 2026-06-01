@@ -15,12 +15,12 @@ This guide walks through building a web-based calling application with the ACS C
 ## Prerequisites
 
 - An Azure Communication Services resource
-- A modern browser that supports WebRTC (Chrome, Firefox, Edge, Safari)
+- A browser supported by the ACS Calling SDK (recent Chrome, Edge, or Safari on supported operating systems; Firefox support is currently in public preview)
 - Node.js 18+ for the token backend
-- The ACS Calling SDK npm package
+- The ACS Calling, Common, and Identity SDK npm packages
 
 ```bash
-npm install @azure/communication-calling @azure/communication-common
+npm install @azure/communication-calling @azure/communication-common @azure/communication-identity
 ```
 
 ## Architecture
@@ -100,7 +100,7 @@ The CallAgent is the main entry point for making and receiving calls.
 
 ```javascript
 // calling-app.js - Initialize the ACS Calling SDK
-const { CallClient } = require('@azure/communication-calling');
+const { CallClient, LocalVideoStream } = require('@azure/communication-calling');
 const { AzureCommunicationTokenCredential } = require('@azure/communication-common');
 
 let callClient;
@@ -439,13 +439,15 @@ async function toggleHold() {
 
 ## Device Selection
 
-Let users choose their preferred microphone, speaker, and camera.
+Let users choose their preferred microphone, speaker, and camera where the browser and operating system support device selection.
 
 ```javascript
 async function getAvailableDevices() {
     const cameras = await deviceManager.getCameras();
     const microphones = await deviceManager.getMicrophones();
-    const speakers = await deviceManager.getSpeakers();
+    const speakers = deviceManager.isSpeakerSelectionAvailable
+        ? await deviceManager.getSpeakers()
+        : [];
 
     return {
         cameras: cameras.map(function (c) { return { id: c.id, name: c.name }; }),
@@ -463,6 +465,8 @@ async function selectMicrophone(deviceId) {
 }
 
 async function selectSpeaker(deviceId) {
+    if (!deviceManager.isSpeakerSelectionAvailable) return;
+
     const speakers = await deviceManager.getSpeakers();
     const selected = speakers.find(function (s) { return s.id === deviceId; });
     if (selected) {
