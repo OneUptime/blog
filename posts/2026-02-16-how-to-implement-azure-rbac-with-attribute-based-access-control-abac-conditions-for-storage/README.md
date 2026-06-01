@@ -36,10 +36,11 @@ It also works with custom roles that include blob data actions.
 
 Before implementing ABAC conditions, make sure you have:
 
-- Azure subscription with at least one storage account using Azure Data Lake Storage Gen2 or Blob Storage
+- Azure subscription with at least one storage account using Azure Blob Storage, or Azure Data Lake Storage Gen2 when you are using attributes that support hierarchical namespace accounts
 - Owner or User Access Administrator role at the scope where you are creating assignments
-- Blob index tags enabled on your storage account (this is on by default for most account types)
-- The users you are assigning roles to should authenticate using Azure AD (not shared keys or SAS tokens, which bypass RBAC entirely)
+- A general-purpose v2 or premium block blob storage account if you are using blob index tags. Blob index tags are not supported for hierarchical namespace accounts, except for the Blob Tags without indexing preview.
+- Storage Blob Data Owner, or a custom role with blob tag read/write permissions, if you need to set or verify blob index tags
+- The users you are assigning roles to should authenticate using Microsoft Entra ID (not Shared Key, account SAS, or service SAS authorization, which bypass Azure RBAC conditions)
 
 ## Setting Up Blob Index Tags
 
@@ -50,13 +51,13 @@ First, upload some blobs with tags so you have data to work with:
 ```bash
 # Upload a blob with index tags
 
-# Tags are key-value pairs separated by '&'
+# Tags are key-value pairs passed as space-separated key=value arguments
 az storage blob upload \
   --account-name mystorageaccount \
   --container-name documents \
   --name finance/report-q1.pdf \
   --file ./report-q1.pdf \
-  --tags "department=finance&classification=internal" \
+  --tags department=finance classification=internal \
   --auth-mode login
 
 # Upload another blob with different tags
@@ -65,7 +66,7 @@ az storage blob upload \
   --container-name documents \
   --name engineering/design-doc.pdf \
   --file ./design-doc.pdf \
-  --tags "department=engineering&classification=confidential" \
+  --tags department=engineering classification=confidential \
   --auth-mode login
 
 # Verify tags on a blob
@@ -147,11 +148,11 @@ Here are several condition patterns you will likely need:
 )
 ```
 
-**Restrict by blob path prefix:**
+**Restrict by blob path prefix for read operations:**
 
 ```text
 (
-  !(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read'})
+  !(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read'} AND NOT SubOperationMatches{'Blob.List'})
   OR
   (
     @Resource[Microsoft.Storage/storageAccounts/blobServices/containers/blobs:path]
@@ -164,7 +165,7 @@ Here are several condition patterns you will likely need:
 
 ```text
 (
-  !(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read'})
+  !(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read'} AND NOT SubOperationMatches{'Blob.List'})
   OR
   (
     @Resource[Microsoft.Storage/storageAccounts/blobServices/containers/blobs/tags:department<$key_case_sensitive$>]
@@ -186,13 +187,18 @@ For infrastructure as code, here is how to define an ABAC-conditioned role assig
 
 // Parameters
 param principalId string
-param storageAccountId string
+param storageAccountName string
 
 // Role definition ID for Storage Blob Data Reader
 var storageBlobDataReaderRoleId = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: storageAccountName
+}
+
 resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccountId, principalId, storageBlobDataReaderRoleId)
+  name: guid(storageAccount.id, principalId, storageBlobDataReaderRoleId)
+  scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
@@ -255,9 +261,9 @@ The failed request should return a 403 Forbidden error. Check the storage accoun
 
 Be aware of these limitations when planning your ABAC implementation:
 
-- ABAC conditions only work with Azure AD authentication. Shared key and SAS token access bypasses RBAC entirely. Disable shared key access on storage accounts where you rely on ABAC.
+- ABAC conditions are evaluated only when access is authorized through Azure RBAC. Shared Key, account SAS, and service SAS authorization bypass role assignment conditions. Disable shared key access on storage accounts where you rely on ABAC.
 - Blob index tags must be set when blobs are uploaded or updated afterward. If a blob has no tags, conditions that check tags will not match, effectively denying access.
-- There is a limit on condition complexity - conditions can have up to 10 expressions combined.
+- There is a limit on condition complexity in the portal visual editor: it supports up to 5 expressions per condition. You can add more expressions by using the code editor, Azure CLI, PowerShell, or templates.
 - List operations have special handling. When a user lists blobs, individual tag-based filtering is not applied at the list level. The user might see blob names in a list but fail when trying to read them.
 
 ## Best Practices
@@ -265,7 +271,7 @@ Be aware of these limitations when planning your ABAC implementation:
 - Disable shared key access on storage accounts where you use ABAC. Otherwise, anyone with the account key bypasses all your conditions.
 - Standardize your tagging taxonomy. ABAC conditions are only as good as the tags on your blobs. Define and enforce a tagging policy.
 - Use the portal's condition builder for initial setup and then export to CLI or Bicep for production deployment.
-- Test conditions thoroughly with users who have only the conditioned assignment. Do not test with accounts that have Owner or Contributor roles, as those will bypass blob-level conditions.
+- Test conditions thoroughly with users who have only the conditioned storage data assignment. Do not test with accounts that have another unconditioned storage data role assignment or access through Shared Key, account SAS, or service SAS authorization.
 - Document your conditions. The condition syntax is not intuitive, so keep a reference of what each conditioned assignment does and why.
 
 ## Summary
