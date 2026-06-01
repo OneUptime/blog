@@ -21,7 +21,7 @@ The managed APIM gateway runs in Azure and is great when your backends are also 
 - **Data sovereignty**: Some regulations require that API traffic does not leave a specific geographic region. The self-hosted gateway keeps request processing local.
 - **Edge computing**: For IoT or retail scenarios, you might need gateways at edge locations with intermittent connectivity.
 
-The self-hosted gateway supports most APIM policies (rate limiting, JWT validation, transformations, etc.) and synchronizes its configuration from the Azure control plane every few minutes.
+The self-hosted gateway supports most APIM policies (rate limiting, JWT validation, transformations, etc.) and checks the Azure control plane for configuration updates regularly.
 
 ## Prerequisites
 
@@ -52,10 +52,10 @@ kubectl create namespace apim-gateway
 Then create a Kubernetes secret with the gateway token:
 
 ```bash
-# Store the APIM gateway token as a Kubernetes secret
-# Replace <your-gateway-token> with the token from the Azure Portal
+# Store the APIM gateway token as a Kubernetes secret.
+# Replace <your-gateway-token> with the full token from the Azure Portal.
 kubectl create secret generic apim-gateway-token \
-    --from-literal=value="GatewayKey <your-gateway-token>" \
+    --from-literal=config.service.auth.key="<your-gateway-token>" \
     --namespace apim-gateway
 ```
 
@@ -71,12 +71,12 @@ helm repo update
 # Install the self-hosted gateway
 helm install apim-gateway azure-apim-gateway/azure-api-management-gateway \
     --namespace apim-gateway \
-    --set gateway.configuration.uri="https://yourinstance.management.azure-api.net/subscriptions/YOUR_SUB_ID/resourceGroups/YOUR_RG/providers/Microsoft.ApiManagement/service/yourinstance/gateways/on-prem-gateway?api-version=2021-08-01" \
-    --set gateway.auth.key="apim-gateway-token" \
+    --set gateway.configuration.uri="https://yourinstance.configuration.azure-api.net" \
+    --set gateway.auth.key="<your-gateway-token>" \
     --set service.type=LoadBalancer
 ```
 
-The `configuration.uri` is the management endpoint for your specific gateway resource. You can find this in the Azure Portal on the gateway's Deployment tab.
+The `configuration.uri` is the Configuration URL for your APIM instance. You can find this in the Azure Portal on the gateway's Deployment tab.
 
 ## Step 4: Deploy with kubectl (Without Helm)
 
@@ -85,14 +85,25 @@ If you prefer plain Kubernetes manifests, here is a complete deployment:
 ```yaml
 # apim-gateway-deployment.yaml
 # Deploys the APIM self-hosted gateway as a Kubernetes Deployment
-# with 2 replicas for high availability
+# with 3 replicas for production high availability
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apim-gateway-env
+  namespace: apim-gateway
+data:
+  gateway.name: on-prem-gateway
+  config.service.auth: key
+  config.service.endpoint: "https://yourinstance.configuration.azure-api.net"
+  telemetry.logs.std.level: info
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: apim-gateway
   namespace: apim-gateway
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: apim-gateway
@@ -109,16 +120,11 @@ spec:
           containerPort: 8080
         - name: https
           containerPort: 8081
-        - name: management
-          containerPort: 8082
-        env:
-        - name: config.service.auth
-          valueFrom:
-            secretKeyRef:
-              name: apim-gateway-token
-              key: value
-        - name: config.service.endpoint
-          value: "https://yourinstance.management.azure-api.net/subscriptions/YOUR_SUB_ID/resourceGroups/YOUR_RG/providers/Microsoft.ApiManagement/service/yourinstance/gateways/on-prem-gateway?api-version=2021-08-01"
+        envFrom:
+        - configMapRef:
+            name: apim-gateway-env
+        - secretRef:
+            name: apim-gateway-token
         resources:
           requests:
             cpu: 250m
@@ -128,14 +134,14 @@ spec:
             memory: 512Mi
         readinessProbe:
           httpGet:
-            path: /status-0123456789abcdef
-            port: management
+            path: /internal-status-0123456789abcdef
+            port: http
           initialDelaySeconds: 10
           periodSeconds: 10
         livenessProbe:
           httpGet:
-            path: /status-0123456789abcdef
-            port: management
+            path: /internal-status-0123456789abcdef
+            port: http
           initialDelaySeconds: 30
           periodSeconds: 15
 ---
@@ -244,7 +250,7 @@ spec:
 The self-hosted gateway is stateless, so scaling is straightforward. Use a Horizontal Pod Autoscaler based on CPU or memory:
 
 ```yaml
-# HPA to auto-scale the gateway between 2 and 10 replicas
+# HPA to auto-scale the gateway between 3 and 10 replicas
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -255,7 +261,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: apim-gateway
-  minReplicas: 2
+  minReplicas: 3
   maxReplicas: 10
   metrics:
   - type: Resource
@@ -266,18 +272,18 @@ spec:
         averageUtilization: 70
 ```
 
-For high availability, run at least two replicas and spread them across availability zones using pod anti-affinity rules.
+For production high availability, run at least three replicas and spread them across availability zones using pod anti-affinity rules.
 
 ## Monitoring and Telemetry
 
-The self-hosted gateway sends telemetry back to the Azure control plane, so you can see metrics in the APIM Analytics blade. For local monitoring, the gateway exposes Prometheus metrics on the management port. You can scrape these with a Prometheus instance in your cluster.
+The self-hosted gateway can send metrics and logs to Azure Monitor and Application Insights according to the configuration in your APIM service. For local monitoring, configure local metrics through StatsD or OpenTelemetry and scrape or export them from your monitoring stack.
 
 ## Offline Behavior
 
-One of the key questions about the self-hosted gateway is what happens when it loses connectivity to Azure. The gateway caches its configuration locally and continues to process requests using the last known configuration. It will reconnect and sync when connectivity is restored.
+One of the key questions about the self-hosted gateway is what happens when it loses connectivity to Azure. Running gateway instances continue to process requests using an in-memory copy of the last known configuration. With local configuration backup enabled, stopped instances can also start from a persisted backup. The gateway will reconnect and sync when connectivity is restored.
 
-However, some features degrade during extended disconnections. Rate limiting counters that depend on the Azure control plane stop synchronizing. Analytics data is buffered locally and sent when connectivity returns, but the buffer has limits.
+However, some features degrade during extended disconnections. The gateway cannot receive configuration updates, report its status, or upload telemetry while it is disconnected. Rate limiting counters can synchronize among local gateway instances, but they do not synchronize with other gateway resources such as the managed gateway in Azure.
 
 ## Summary
 
-Deploying the Azure API Management self-hosted gateway on Kubernetes gives you the policy engine and management capabilities of APIM while keeping request processing local to your infrastructure. Provision the gateway in Azure, deploy it to Kubernetes with Helm or plain manifests, assign your APIs, and configure TLS for production. The gateway syncs its configuration from Azure and reports telemetry back, giving you a unified management experience across hybrid and multi-cloud environments.
+Deploying the Azure API Management self-hosted gateway on Kubernetes gives you the policy engine and management capabilities of APIM while keeping request processing local to your infrastructure. Provision the gateway in Azure, deploy it to Kubernetes with Helm or plain manifests, assign your APIs, and configure TLS for production. The gateway syncs its configuration from Azure and can report telemetry back, giving you a unified management experience across hybrid and multi-cloud environments.
