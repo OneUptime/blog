@@ -10,7 +10,7 @@ Description: Understand how Azure RBAC deny assignments work and how to use them
 
 Azure RBAC (Role-Based Access Control) is an allow-based system. You grant roles that give users permission to perform actions, and anything not explicitly allowed is denied by default. But what happens when you want to grant someone broad permissions while explicitly blocking a specific action? That is where deny assignments come in.
 
-Deny assignments are the flip side of role assignments. They block specific actions on a resource, and they take precedence over any allow role assignments. If a user has Contributor access to a resource group but a deny assignment blocks `Microsoft.Compute/virtualMachines/delete`, they can manage everything in that resource group except delete VMs.
+Deny assignments are the flip side of role assignments. They block specific actions on a resource, and they take precedence over any allow role assignments. If a user has Contributor access to a resource group but a deny assignment blocks `Microsoft.Compute/virtualMachines/delete`, they can manage everything else permitted by Contributor in that resource group except delete VMs.
 
 This guide covers how deny assignments work, where they come from, and how to use them effectively in your governance strategy.
 
@@ -35,19 +35,19 @@ This evaluation order means deny assignments are extremely powerful. They overri
 
 ## Important: How Deny Assignments Are Created
 
-Here is something that trips up a lot of people: **you cannot create deny assignments directly through the Azure portal, CLI, or ARM templates.** Deny assignments are created by Azure itself as part of specific features:
+Here is something that trips up a lot of people: **you cannot create deny assignments directly through the Azure portal, CLI, or ARM templates.** Deny assignments are created and managed by Azure as part of specific features:
 
-- **Azure Blueprints**: When you mark a resource as "locked" in a Blueprint, Azure creates deny assignments to prevent modifications
+- **Azure Deployment Stacks**: When you configure deny settings on a deployment stack, Azure creates deny assignments to protect managed resources
+- **Azure Blueprints**: When you mark a resource as "locked" in a Blueprint, Azure creates deny assignments to prevent modifications. Azure Blueprints is scheduled for deprecation on July 11, 2026, so use deployment stacks for new designs
 - **Azure Managed Applications**: The publisher of a managed application can create deny assignments to protect the managed resources
-- **Azure Lighthouse**: Cross-tenant management scenarios can include deny assignments
 
-For custom governance scenarios, you typically use **Azure Policy** with the `deny` effect to achieve similar results, or you use Azure Blueprints to create deny assignments on specific resources.
+For custom governance scenarios, you typically use **Azure Policy** with the `deny` or `denyAction` effect to block matching requests, or you use deployment stacks to create Azure-managed deny assignments on specific resources.
 
 Let me walk through both approaches.
 
 ## Approach 1: Using Azure Blueprints for Deny Assignments
 
-Azure Blueprints can create deny assignments that lock specific resources from modification. This is useful for protecting core infrastructure that should never be changed by regular users.
+Azure Blueprints can create deny assignments that lock specific resources from modification. This is useful for protecting core infrastructure that should never be changed by regular users. Because Azure Blueprints is scheduled for deprecation on July 11, 2026, use this approach only for existing Blueprint-based environments and prefer deployment stacks for new implementations.
 
 ### Create a Blueprint with Resource Locks
 
@@ -85,7 +85,7 @@ az blueprint assignment create \
   --name "protect-core-infra" \
   --blueprint-version "/providers/Microsoft.Blueprint/blueprints/CoreInfraProtection/versions/1.0" \
   --location "eastus" \
-  --lock-mode "DoNotDelete" \
+  --locks-mode "AllResourcesDoNotDelete" \
   --identity-type SystemAssigned
 ```
 
@@ -104,73 +104,66 @@ The output shows which actions are denied and at what scope. Blueprint-created d
 
 ## Approach 2: Using Azure Policy for Deny Effects
 
-While Azure Policy does not create deny assignments per se, the `deny` effect achieves the same practical result - blocking specific actions on resources that match your conditions.
+While Azure Policy does not create deny assignments per se, the `deny` and `denyAction` effects can block resource requests that match your conditions.
 
 ### Block VM Deletion in Production
 
-Here is a custom policy definition that prevents deletion of VMs tagged as production.
+Here is a custom policy rule that denies create or update requests for VMs tagged as production.
 
 ```json
 {
-  "mode": "All",
-  "policyRule": {
-    "if": {
-      "allOf": [
-        {
-          "field": "type",
-          "equals": "Microsoft.Compute/virtualMachines"
-        },
-        {
-          "field": "tags.environment",
-          "equals": "production"
-        }
-      ]
-    },
-    "then": {
-      "effect": "deny"
-    }
+  "if": {
+    "allOf": [
+      {
+        "field": "type",
+        "equals": "Microsoft.Compute/virtualMachines"
+      },
+      {
+        "field": "tags.environment",
+        "equals": "production"
+      }
+    ]
   },
-  "parameters": {}
+  "then": {
+    "effect": "deny"
+  }
 }
 ```
 
-Wait - this policy denies all operations on production VMs, not just deletion. To deny only deletion, you need to use the `deny` effect with the request type condition.
+Wait - this policy denies create and update requests for production VMs, not just deletion. To deny only deletion, you need to use the `denyAction` effect.
 
-Unfortunately, Azure Policy's `deny` effect does not natively distinguish between create, update, and delete operations in the same way deny assignments do. For operation-specific blocking, you need a different approach.
+Azure Policy's `deny` effect does not natively distinguish between create, update, and delete operations in the same way deny assignments do. For delete-specific blocking, you need a different approach.
 
 ### Block Specific Operations with Policy
 
-To block only delete operations, use the audit-based approach combined with resource locks, or use a more targeted policy.
+To block only delete operations, use the `denyAction` effect.
 
 ```json
 {
-  "mode": "All",
-  "policyRule": {
-    "if": {
-      "allOf": [
-        {
-          "field": "type",
-          "equals": "Microsoft.Compute/virtualMachines"
-        },
-        {
-          "field": "tags.environment",
-          "equals": "production"
-        }
-      ]
-    },
-    "then": {
-      "effect": "denyAction",
-      "details": {
-        "actionNames": [
-          "delete"
-        ]
+  "if": {
+    "allOf": [
+      {
+        "field": "type",
+        "equals": "Microsoft.Compute/virtualMachines"
+      },
+      {
+        "field": "tags.environment",
+        "equals": "production"
       }
+    ]
+  },
+  "then": {
+    "effect": "denyAction",
+    "details": {
+      "actionNames": [
+        "delete"
+      ]
     }
   }
 }
 ```
 
-The `denyAction` effect (available in newer API versions) lets you target specific operations. This blocks deletion of production-tagged VMs while still allowing updates and other management operations.
+The `denyAction` effect lets you target intended delete operations. This blocks direct deletion of production-tagged VMs while still allowing updates and other management operations. The only supported `denyAction` action name is currently `delete`.
 
 Create and assign this policy.
 
@@ -181,7 +174,7 @@ az policy definition create \
   --display-name "Deny deletion of production VMs" \
   --description "Prevents deletion of VMs tagged with environment=production" \
   --rules @policy-rule.json \
-  --mode All
+  --mode Indexed
 
 # Assign the policy at the subscription level
 az policy assignment create \
@@ -225,16 +218,17 @@ Deny assignments can exclude specific principals, which is how administrative ov
   ],
   "principals": [
     {
-      "type": "Everyone"
+      "id": "00000000-0000-0000-0000-000000000000",
+      "type": "SystemDefined"
     }
   ],
   "excludePrincipals": [
     {
-      "objectId": "blueprint-service-principal-id",
+      "id": "blueprint-service-principal-id",
       "type": "ServicePrincipal"
     },
     {
-      "objectId": "break-glass-group-id",
+      "id": "break-glass-group-id",
       "type": "Group"
     }
   ]
@@ -249,7 +243,7 @@ Here are some patterns I have seen work well in production environments.
 
 ### Pattern 1: Protect Network Infrastructure
 
-Use Blueprints with Read Only lock on your hub virtual network, VPN gateways, and ExpressRoute circuits. This prevents accidental modifications that could bring down connectivity for the entire organization.
+Use deployment stack deny settings, or Blueprint Read Only locks in existing Blueprint environments, on your hub virtual network, VPN gateways, and ExpressRoute circuits. This prevents accidental modifications that could bring down connectivity for the entire organization.
 
 ### Pattern 2: Prevent Subscription-Level Changes
 
@@ -265,11 +259,11 @@ Create deny assignments on backup vaults and recovery services vaults to prevent
 
 ## Limitations
 
-- Deny assignments cannot be created directly through the API by regular users. They are system-managed features.
-- You can have up to 500 deny assignments per tenant.
+- Deny assignments cannot be created directly through the API by regular users. They are Azure-managed features.
+- You can have up to 2,000 system-managed deny assignments per Azure subscription.
 - Deny assignments do not appear in the standard `az role assignment list` output. You need to specifically query for deny assignments.
-- Removing a Blueprint assignment removes the associated deny assignments, which could create a security gap if not handled carefully.
+- Removing a deployment stack or Blueprint assignment removes the associated deny assignments, which could create a security gap if not handled carefully.
 
 ## Wrapping Up
 
-Azure RBAC deny assignments are a powerful governance mechanism for protecting critical resources from modification, even by users with broad permissions. While you cannot create them directly, Azure Blueprints and Managed Applications give you the tools to deploy them where needed. For action-level blocking without deny assignments, Azure Policy with the `denyAction` effect is an increasingly capable alternative. Use these tools together to build a defense-in-depth access control strategy that protects your most important resources.
+Azure RBAC deny assignments are a powerful governance mechanism for protecting critical resources from modification, even by users with broad permissions. While you cannot create them directly, deployment stacks and Managed Applications give you the tools to deploy them where needed. For action-level blocking without deny assignments, Azure Policy with the `denyAction` effect is an increasingly capable alternative. Use these tools together to build a defense-in-depth access control strategy that protects your most important resources.
