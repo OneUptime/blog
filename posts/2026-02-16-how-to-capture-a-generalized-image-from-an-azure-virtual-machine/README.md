@@ -180,7 +180,7 @@ az sig image-version create \
   --gallery-name myImageGallery \
   --gallery-image-definition myWebApp \
   --gallery-image-version 1.0.0 \
-  --managed-image $VM_ID \
+  --virtual-machine $VM_ID \
   --target-regions "eastus=2" "westus2=1" "westeurope=1" \
   --storage-account-type Standard_LRS
 ```
@@ -253,14 +253,25 @@ For repeatable image builds, HashiCorp Packer is the industry standard. Packer c
     "location": "eastus",
     "vm_size": "Standard_D2s_v5"
   }],
-  "provisioners": [{
-    "type": "shell",
-    "inline": [
-      "sudo apt update && sudo apt upgrade -y",
-      "sudo apt install -y nginx nodejs npm",
-      "sudo systemctl enable nginx"
-    ]
-  }]
+  "provisioners": [
+    {
+      "type": "shell",
+      "inline": [
+        "sudo apt update && sudo apt upgrade -y",
+        "sudo apt install -y nginx nodejs npm",
+        "sudo systemctl enable nginx"
+      ]
+    },
+    {
+      "type": "shell",
+      "execute_command": "chmod +x {{ .Path }}; {{ .Vars }} sudo -E sh '{{ .Path }}'",
+      "inline": [
+        "/usr/sbin/waagent -force -deprovision+user && export HISTSIZE=0 && sync"
+      ],
+      "inline_shebang": "/bin/sh -x",
+      "skip_clean": true
+    }
+  ]
 }
 ```
 
@@ -271,7 +282,7 @@ Run the build with:
 packer build myimage.json
 ```
 
-Packer handles the entire lifecycle: creates a temporary VM, runs your provisioning scripts, generalizes the VM, captures the image, and cleans up the temporary resources. This is much more reliable than doing it manually and integrates well with CI/CD pipelines.
+Packer handles most of the lifecycle: creates a temporary VM, runs your provisioning scripts, captures the image, and cleans up the temporary resources. Keep the deprovision step as the last provisioner so the captured image is generalized. This is much more reliable than doing it manually and integrates well with CI/CD pipelines.
 
 ## Best Practices
 
@@ -279,7 +290,7 @@ Packer handles the entire lifecycle: creates a temporary VM, runs your provision
 2. **Test before deploying.** Always create a test VM from a new image version and verify it works before updating production.
 3. **Keep a changelog.** Document what changed in each image version so you can troubleshoot issues later.
 4. **Set replication to complete before deploying.** Image version creation returns before replication to all target regions is finished. Wait for replication to complete before deploying VMs in remote regions.
-5. **Use lifecycle policies.** Automatically delete image versions older than a certain age to control storage costs.
+5. **Use end-of-life dates and cleanup automation.** End-of-life dates help track when versions should be retired, and scheduled cleanup can delete old image versions to control storage costs.
 
 ## Wrapping Up
 
