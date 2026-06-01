@@ -29,13 +29,13 @@ graph TD
     H --> J[23 Non-Compliant Resources]
 ```
 
-Each policy within the initiative maps to specific controls in the regulatory framework. The compliance dashboard shows you exactly which controls are satisfied and which need attention.
+Many policies within the initiative map to specific controls in the regulatory framework. The compliance dashboard shows you which controls are satisfied and which need attention.
 
 ## Prerequisites
 
 You need:
 
-- Azure subscription with Owner or Policy Contributor role
+- Azure subscription with Owner or Resource Policy Contributor role
 - Microsoft Defender for Cloud (recommended for the regulatory compliance dashboard)
 - Understanding of which frameworks apply to your organization
 
@@ -49,11 +49,11 @@ Microsoft provides built-in initiatives for many regulatory frameworks. Let us s
 # These are ready to assign without any modification
 $initiatives = Get-AzPolicySetDefinition -BuiltIn |
     Where-Object {
-        $_.Properties.Metadata.category -eq "Regulatory Compliance"
+        $_.Metadata.category -eq "Regulatory Compliance"
     } |
     Select-Object Name,
-        @{N='DisplayName';E={$_.Properties.DisplayName}},
-        @{N='PolicyCount';E={$_.Properties.PolicyDefinitions.Count}}
+        @{N='DisplayName';E={$_.DisplayName}},
+        @{N='PolicyCount';E={$_.PolicyDefinition.Count}}
 
 $initiatives | Format-Table -AutoSize
 
@@ -93,7 +93,7 @@ Let us assign the CIS Microsoft Azure Foundations Benchmark initiative to a subs
 ```powershell
 # Get the CIS Benchmark initiative definition
 $cisInitiative = Get-AzPolicySetDefinition -BuiltIn |
-    Where-Object { $_.Properties.DisplayName -like "*CIS Microsoft Azure*" } |
+    Where-Object { $_.DisplayName -like "*CIS Microsoft Azure*" } |
     Select-Object -First 1
 
 # Assign the initiative to a subscription
@@ -124,20 +124,21 @@ $frameworks = @(
 
 foreach ($pattern in $frameworks) {
     $initiative = Get-AzPolicySetDefinition -BuiltIn |
-        Where-Object { $_.Properties.DisplayName -like $pattern } |
+        Where-Object { $_.DisplayName -like $pattern } |
         Select-Object -First 1
 
     if ($initiative) {
-        $name = ($initiative.Properties.DisplayName -replace '[^a-zA-Z0-9]', '-').ToLower().Substring(0, [Math]::Min(24, ($initiative.Properties.DisplayName -replace '[^a-zA-Z0-9]', '-').Length))
+        $safeName = ($initiative.DisplayName -replace '[^a-zA-Z0-9]', '-').ToLower()
+        $name = $safeName.Substring(0, [Math]::Min(24, $safeName.Length))
 
         New-AzPolicyAssignment `
             -Name "$name-audit" `
-            -DisplayName "$($initiative.Properties.DisplayName) - Audit" `
+            -DisplayName "$($initiative.DisplayName) - Audit" `
             -PolicySetDefinition $initiative `
             -Scope "/subscriptions/YOUR_SUBSCRIPTION_ID" `
             -EnforcementMode Default
 
-        Write-Host "Assigned: $($initiative.Properties.DisplayName)"
+        Write-Host "Assigned: $($initiative.DisplayName)"
     }
 }
 ```
@@ -182,7 +183,7 @@ $policyDefinitions = @(
     },
     @{
         # Require encryption at rest for SQL databases
-        policyDefinitionId = "/providers/Microsoft.Authorization/policyDefinitions/a8bef009-a5c9-4d0f-90d7-6018734e8a16"
+        policyDefinitionId = "/providers/Microsoft.Authorization/policyDefinitions/17k78e20-9358-41c9-923c-fb736d382a12"
         policyDefinitionReferenceId = "require-sql-encryption"
         parameters = @{}
     },
@@ -206,7 +207,7 @@ $initiativeParams = @{
 
 $customInitiative = New-AzPolicySetDefinition @initiativeParams
 
-Write-Host "Custom initiative created: $($customInitiative.Properties.DisplayName)"
+Write-Host "Custom initiative created: $($customInitiative.DisplayName)"
 
 # Assign the custom initiative
 New-AzPolicyAssignment `
@@ -239,6 +240,8 @@ Document every exemption with a clear justification. Auditors will ask why certa
 
 Some policies within compliance initiatives support automatic remediation. For example, if a policy audits for missing diagnostic logging, you can create a remediation task that automatically enables it:
 
+For remediation to succeed, the assignment must have a managed identity with the required permissions for the `DeployIfNotExists` or `Modify` policy being remediated.
+
 ```powershell
 # Create a remediation task for a specific policy within the initiative
 # This will automatically fix non-compliant resources
@@ -247,7 +250,7 @@ $assignment = Get-AzPolicyAssignment -Name "cis-benchmark-audit"
 # Start a remediation task for the diagnostic logging policy
 Start-AzPolicyRemediation `
     -Name "remediate-diagnostic-logging" `
-    -PolicyAssignmentId $assignment.PolicyAssignmentId `
+    -PolicyAssignmentId $assignment.Id `
     -PolicyDefinitionReferenceId "diagnostics-logging-policy-ref" `
     -ResourceGroupName "production-rg"
 
