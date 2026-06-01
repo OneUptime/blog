@@ -47,7 +47,7 @@ az cosmosdb create \
 
 ## Step 2: Create the Virtual Network and Subnet
 
-Your private endpoint needs a subnet to deploy into. This subnet must have the `privateEndpointNetworkPolicies` setting disabled.
+Your private endpoint needs a subnet to deploy into. The Azure Cosmos DB CLI examples disable `privateEndpointNetworkPolicies` on that subnet.
 
 ```bash
 # Create a VNet for the application workload
@@ -68,7 +68,7 @@ az network vnet subnet create \
   --disable-private-endpoint-network-policies true
 ```
 
-The `--disable-private-endpoint-network-policies true` flag is important. Without it, NSG rules and UDRs could interfere with private endpoint traffic.
+The `--disable-private-endpoint-network-policies true` flag keeps network policies disabled for private endpoints in that subnet. If you intentionally want NSG or route table support for private endpoints, enable private endpoint network policies instead and design those rules carefully.
 
 ## Step 3: Create the Private Endpoint
 
@@ -189,7 +189,7 @@ The response should show the private IP address assigned to the private endpoint
 
 ## Working with Multiple Regions
 
-If your Cosmos DB account has replicas in multiple regions, you need a private endpoint in each region where your applications are deployed.
+If your applications run from VNets in multiple regions, create a private endpoint in each VNet where you want local private access, or make sure those VNets can reach an existing private endpoint through peering or another private routing design.
 
 ```bash
 # Create a private endpoint in West US for the same Cosmos DB account
@@ -204,7 +204,7 @@ az network private-endpoint create \
   --location westus
 ```
 
-Each regional private endpoint gets its own private IP, and the DNS records are set up so that applications in each region connect through their local private endpoint.
+Each private endpoint gets private IP addresses in its own subnet. For a multi-region Azure Cosmos DB account, the private DNS zone group also keeps the private DNS records updated when account regions are added or removed.
 
 ## Handling Cosmos DB SDK Connection
 
