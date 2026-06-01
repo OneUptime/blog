@@ -26,17 +26,18 @@ graph LR
     G --> H
 ```
 
-Azure Synapse Link continuously exports Dataverse tables to Azure Data Lake Storage Gen2 in Delta Lake format. Synapse Analytics reads from the data lake using either serverless SQL pools (pay per query) or dedicated SQL pools (provisioned capacity). Power BI connects to Synapse for the reporting layer.
+Azure Synapse Link continuously exports Dataverse tables to Azure Data Lake Storage Gen2. When you enable the Delta Lake option and provide a Synapse Spark pool for the conversion job, the selected tables are available in Delta Lake format. Synapse Analytics reads from the data lake using either serverless SQL pools (pay per query) or dedicated SQL pools (provisioned capacity). Power BI connects to Synapse for the reporting layer.
 
 ## Setting Up Azure Synapse Link for Dataverse
 
 First, enable Azure Synapse Link in your Dynamics 365 environment:
 
-1. Go to the Power Platform admin center
+1. Go to Power Apps
 2. Select your environment
-3. Navigate to Settings, then Data management, then Azure Synapse Link
+3. Select Azure Synapse Link from the left navigation, then create a new link to your Synapse workspace
+4. Select **Use Spark pool for processing** if you want Delta Lake output
 
-Or set it up programmatically:
+You can provision the Azure prerequisites with Azure CLI:
 
 ```bash
 # Create the Azure Data Lake Storage account
@@ -81,11 +82,11 @@ Select the Dynamics 365 entities you want to sync to Synapse. For sales analytic
 - **team** - Sales teams
 - **businessunit** - Business units / divisions
 
-After configuration, Synapse Link performs an initial sync (which can take hours for large datasets) and then continuously streams changes with a latency of around 15-30 minutes.
+After configuration, Synapse Link performs an initial sync (which can take hours for large datasets) and then exports incremental changes based on the interval you configure. The minimum incremental interval is 5 minutes, and Delta Lake conversion adds time for the Spark processing job.
 
 ## Querying Dataverse Tables with Serverless SQL
 
-Once the data is flowing, you can query it using Synapse's serverless SQL pool. The data is stored as Delta Lake files in the data lake, and Synapse provides views to access them as regular SQL tables:
+Once the data is flowing, you can query it using Synapse's serverless SQL pool. The Delta Lake output is stored under the `deltalake` folder in the data lake, and Synapse exposes the exported Dataverse tables in the Lake Database. You can also query the Delta folders directly:
 
 ```sql
 -- Create a database for the sales analytics
@@ -98,7 +99,7 @@ GO
 -- Create an external data source pointing to the Dataverse export
 CREATE EXTERNAL DATA SOURCE DataverseExport
 WITH (
-    LOCATION = 'https://stdataverse365.dfs.core.windows.net/dataverse-d365-sales'
+    LOCATION = 'https://stdataverse365.dfs.core.windows.net/dataverse-d365-sales/deltalake'
 );
 GO
 
@@ -114,19 +115,19 @@ SELECT
     u.fullname AS SalesRepName
 FROM
     OPENROWSET(
-        BULK 'opportunity/*.parquet',
+        BULK 'opportunity',
         DATA_SOURCE = 'DataverseExport',
         FORMAT = 'DELTA'
     ) AS o
 LEFT JOIN
     OPENROWSET(
-        BULK 'account/*.parquet',
+        BULK 'account',
         DATA_SOURCE = 'DataverseExport',
         FORMAT = 'DELTA'
     ) AS a ON o.parentaccountid = a.accountid
 LEFT JOIN
     OPENROWSET(
-        BULK 'systemuser/*.parquet',
+        BULK 'systemuser',
         DATA_SOURCE = 'DataverseExport',
         FORMAT = 'DELTA'
     ) AS u ON o.ownerid = u.systemuserid
@@ -155,7 +156,7 @@ SELECT
     AVG(o.closeprobability) AS AvgWinProbability
 FROM
     OPENROWSET(
-        BULK 'opportunity/*.parquet',
+        BULK 'opportunity',
         DATA_SOURCE = 'DataverseExport',
         FORMAT = 'DELTA'
     ) AS o
@@ -165,11 +166,11 @@ GROUP BY
     o.salesstage;
 GO
 
--- View: Sales rep performance with quota attainment
+-- View: Sales rep performance by business unit
 CREATE VIEW vw_SalesRepPerformance AS
 SELECT
     u.fullname AS SalesRep,
-    t.name AS Team,
+    bu.name AS BusinessUnit,
     COUNT(CASE WHEN o.statecode = 1 THEN 1 END) AS WonDeals,
     COUNT(CASE WHEN o.statecode = 2 THEN 1 END) AS LostDeals,
     SUM(CASE WHEN o.statecode = 1 THEN o.actualvalue ELSE 0 END) AS TotalRevenue,
@@ -183,15 +184,15 @@ SELECT
         ELSE 0
     END AS WinRatePercent
 FROM
-    OPENROWSET(BULK 'systemuser/*.parquet', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS u
+    OPENROWSET(BULK 'systemuser', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS u
 LEFT JOIN
-    OPENROWSET(BULK 'opportunity/*.parquet', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS o
+    OPENROWSET(BULK 'opportunity', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS o
     ON o.ownerid = u.systemuserid
 LEFT JOIN
-    OPENROWSET(BULK 'team/*.parquet', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS t
-    ON u.teamid = t.teamid
+    OPENROWSET(BULK 'businessunit', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS bu
+    ON u.businessunitid = bu.businessunitid
 GROUP BY
-    u.fullname, t.name;
+    u.fullname, bu.name;
 GO
 
 -- View: Monthly revenue trend
@@ -199,17 +200,19 @@ CREATE VIEW vw_MonthlyRevenueTrend AS
 SELECT
     YEAR(o.actualclosedate) AS Year,
     MONTH(o.actualclosedate) AS Month,
+    DATEFROMPARTS(YEAR(o.actualclosedate), MONTH(o.actualclosedate), 1) AS MonthStartDate,
     COUNT(*) AS DealsWon,
     SUM(o.actualvalue) AS Revenue,
     AVG(o.actualvalue) AS AvgDealSize
 FROM
-    OPENROWSET(BULK 'opportunity/*.parquet', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS o
+    OPENROWSET(BULK 'opportunity', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS o
 WHERE
     o.statecode = 1  -- Won opportunities
     AND o.actualclosedate IS NOT NULL
 GROUP BY
     YEAR(o.actualclosedate),
-    MONTH(o.actualclosedate);
+    MONTH(o.actualclosedate),
+    DATEFROMPARTS(YEAR(o.actualclosedate), MONTH(o.actualclosedate), 1);
 GO
 ```
 
@@ -236,7 +239,7 @@ SELECT
         THEN DATEDIFF(day, l.createdon, l.modifiedon)
         ELSE NULL END) AS AvgDaysToQualify
 FROM
-    OPENROWSET(BULK 'lead/*.parquet', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS l
+    OPENROWSET(BULK 'lead', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS l
 GROUP BY
     YEAR(l.createdon),
     MONTH(l.createdon),
@@ -264,7 +267,7 @@ VAR CurrentYearRevenue = [Total Revenue]
 VAR PreviousYearRevenue =
     CALCULATE(
         [Total Revenue],
-        DATEADD('vw_MonthlyRevenueTrend'[Date], -1, YEAR)
+        DATEADD('vw_MonthlyRevenueTrend'[MonthStartDate], -1, YEAR)
     )
 RETURN
     IF(
@@ -276,18 +279,16 @@ RETURN
 
 ## Handling Data Freshness
 
-Synapse Link typically has a 15-30 minute lag. For real-time dashboards, add a data freshness indicator:
+Synapse Link is near real time, but the actual lag depends on the incremental update interval, data volume, and Delta conversion jobs. For dashboards, add a data freshness indicator based on the latest exported row timestamp:
 
 ```sql
--- Check the last sync time for each table
+-- Check the latest exported change timestamp for an exported table
 SELECT
-    name AS TableName,
-    last_modified AS LastSyncTime,
-    DATEDIFF(MINUTE, last_modified, GETUTCDATE()) AS MinutesSinceSync
+    'opportunity' AS TableName,
+    MAX(SinkModifiedOn) AS LatestExportedChange,
+    DATEDIFF(MINUTE, MAX(SinkModifiedOn), GETUTCDATE()) AS MinutesSinceLatestChange
 FROM
-    sys.external_tables
-ORDER BY
-    last_modified DESC;
+    OPENROWSET(BULK 'opportunity', DATA_SOURCE = 'DataverseExport', FORMAT = 'DELTA') AS o;
 ```
 
 ## Cost Optimization
@@ -295,8 +296,8 @@ ORDER BY
 Serverless SQL pools charge per terabyte of data scanned. Here are ways to keep costs down:
 
 - Use specific column projections in your SELECT statements instead of SELECT *.
-- Partition your data by date when creating materialized views.
-- Cache frequently accessed queries in a dedicated SQL pool if the cost justifies it.
+- Filter on date columns and partitioned folders where available so Synapse scans fewer files.
+- Materialize frequently accessed results in a dedicated SQL pool if the cost justifies it.
 - Use Power BI's import mode with scheduled refresh instead of DirectQuery for dashboards that do not need real-time data.
 
 ## Wrapping Up
