@@ -21,7 +21,6 @@ graph TB
         C[Firewall Policy]
         C --> D[Network Rule Collection]
         C --> E[Application Rule Collection]
-        C --> F[NAT Rule Collection]
     end
     subgraph "Spoke VNet"
         G[Workload Subnet] --> H[Route Table]
@@ -79,12 +78,6 @@ resource hubVnet 'Microsoft.Network/virtualNetworks@2024-01-01' = {
           addressPrefix: '10.0.1.0/26'
         }
       }
-      {
-        name: 'AzureFirewallManagementSubnet'
-        properties: {
-          addressPrefix: '10.0.2.0/26'
-        }
-      }
     ]
   }
 }
@@ -121,11 +114,6 @@ resource firewallPolicy 'Microsoft.Network/firewallPolicies@2024-01-01' = {
     // DNS settings for FQDN-based rules
     dnsSettings: {
       enableProxy: true
-    }
-    // Insights for logging and analytics
-    insights: {
-      isEnabled: true
-      retentionDays: 30
     }
   }
 }
