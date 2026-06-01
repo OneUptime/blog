@@ -144,7 +144,7 @@ aws lexv2-models create-slot \
 
 ### Transfer to Agent Intent
 
-You need a fallback intent that transfers to a human agent when the bot cannot help:
+You also need an agent transfer intent so customers can ask for a human:
 
 ```bash
 # Create an intent for agent transfer
@@ -183,8 +183,6 @@ def lambda_handler(event, context):
 
     if intent_name == 'CheckOrderStatus':
         return handle_check_order(event)
-    elif intent_name == 'ResetPassword':
-        return handle_reset_password(event)
     else:
         return close_intent(event, "Sorry, I could not process that request.")
 
@@ -256,11 +254,22 @@ aws lexv2-models create-bot-version \
     }
   }'
 
-# Create an alias for Connect to reference
+# Create an alias for Connect to reference and attach the fulfillment Lambda
 aws lexv2-models create-bot-alias \
   --bot-id "BOT_ID" \
   --bot-alias-name "Production" \
-  --bot-version "1"
+  --bot-version "1" \
+  --bot-alias-locale-settings '{
+    "en_US": {
+      "enabled": true,
+      "codeHookSpecification": {
+        "lambdaCodeHook": {
+          "lambdaARN": "arn:aws:lambda:us-east-1:123456789012:function:ContactCenterBotFulfillment",
+          "codeHookInterfaceVersion": "1.0"
+        }
+      }
+    }
+  }'
 ```
 
 ## Step 5: Integrate with Amazon Connect
@@ -268,12 +277,11 @@ aws lexv2-models create-bot-alias \
 Add the Lex bot to your Amazon Connect instance:
 
 ```bash
-# Associate the Lex bot with your Connect instance
-aws connect associate-lex-bot \
+# Associate the Lex V2 bot alias with your Connect instance
+aws connect associate-bot \
   --instance-id "connect-instance-id" \
-  --lex-bot '{
-    "LexRegion": "us-east-1",
-    "Name": "ContactCenterBot"
+  --lex-v2-bot '{
+    "AliasArn": "arn:aws:lex:us-east-1:123456789012:bot-alias/BOT_ID/BOT_ALIAS_ID"
   }'
 ```
 
