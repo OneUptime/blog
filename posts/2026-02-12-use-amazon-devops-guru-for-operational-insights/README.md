@@ -57,7 +57,7 @@ response = devops_guru.update_resource_collection(
 )
 ```
 
-Now any AWS resource tagged with `devops-guru-enabled: true` will be monitored. This is a clean way to control exactly what gets covered.
+Now supported AWS resources tagged with `devops-guru-enabled: true` will be monitored. This is a clean way to control exactly what gets covered.
 
 ### Using CloudFormation Stacks
 
@@ -191,7 +191,7 @@ Here's a sampling of what it watches across services:
 | SQS | Message age, queue depth, send/receive rates |
 | API Gateway | Latency, 4xx/5xx errors, request count |
 
-It also analyzes CloudFormation events, AWS Config changes, and CloudTrail logs to correlate operational changes with anomalies.
+It also analyzes operational events from sources such as CloudFormation, AWS Config, CloudTrail, CodeDeploy, and X-Ray to correlate operational changes with anomalies.
 
 ## A Real-World Scenario
 
@@ -254,16 +254,16 @@ devops_guru.update_service_integration(
 
 ## Cost and Coverage
 
-DevOps Guru pricing is based on the number of AWS resources analyzed per hour. The cost depends on the resource type:
+DevOps Guru pricing is based on the number of active AWS resources analyzed per hour and the number of DevOps Guru API calls. The cost depends on the resource type:
 
-- CloudFormation stack resources are billed per resource per hour
-- API calls for insights and recommendations are free
+- Resources in your coverage boundary are billed per active resource per hour
+- DevOps Guru API calls, including insight and recommendation APIs, are billed per API call
 
-For a typical production stack with 50-100 resources, expect to pay somewhere in the range of $50-200/month. That's a fraction of the cost of an engineer spending hours debugging production issues.
+For a typical production stack with 50-100 active resources, expect to pay somewhere in the range of roughly $100-300/month for resource analysis, plus API call charges. Use the DevOps Guru cost estimator for your actual coverage. That's a fraction of the cost of an engineer spending hours debugging production issues.
 
 ## Best Practices
 
-**Give it time to learn.** DevOps Guru needs at least 2-4 weeks of data to establish good baselines. Don't expect great insights on day one.
+**Give it time to learn.** DevOps Guru starts baselining after you enable it, which can take from minutes to about an hour depending on the number of resources being analyzed. Don't expect every useful insight immediately on day one.
 
 **Tag your resources consistently.** If you use tag-based coverage, make sure your tagging is clean and comprehensive.
 
