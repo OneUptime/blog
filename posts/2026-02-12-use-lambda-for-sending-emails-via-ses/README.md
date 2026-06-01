@@ -119,6 +119,7 @@ Invoke it like this:
 # Send a templated welcome email
 aws lambda invoke \
   --function-name email-sender \
+  --cli-binary-format raw-in-base64-out \
   --payload '{
     "to": "user@example.com",
     "templateName": "WelcomeEmail",
@@ -151,7 +152,7 @@ exports.handler = async (event) => {
     new GetObjectCommand({ Bucket: attachmentBucket, Key: attachmentKey })
   );
   const attachmentBuffer = Buffer.from(await attachment.Body.transformToByteArray());
-  const attachmentBase64 = attachmentBuffer.toString('base64');
+  const attachmentBase64 = attachmentBuffer.toString('base64').match(/.{1,76}/g).join('\r\n');
 
   const filename = attachmentKey.split('/').pop();
   const boundary = `----=_Part_${Date.now()}`;
@@ -296,7 +297,11 @@ Your Lambda function needs permission to use SES:
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "ses:FromAddress": "noreply@yourdomain.com"
+          "ses:FromAddress": [
+            "noreply@yourdomain.com",
+            "orders@yourdomain.com",
+            "news@yourdomain.com"
+          ]
         }
       }
     }
@@ -350,7 +355,7 @@ async function sendWithRetry(command, maxRetries = 3) {
     try {
       return await ses.send(command);
     } catch (error) {
-      if (error.name === 'Throttling' && attempt < maxRetries) {
+      if (error.name === 'ThrottlingException' && attempt < maxRetries) {
         // Exponential backoff: 1s, 2s, 4s
         const delay = Math.pow(2, attempt - 1) * 1000;
         console.log(`Throttled, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
