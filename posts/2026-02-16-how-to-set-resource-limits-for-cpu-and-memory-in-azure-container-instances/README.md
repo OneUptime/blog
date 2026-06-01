@@ -58,11 +58,11 @@ properties:
           # Guaranteed resources
           requests:
             cpu: 1.0
-            memoryInGb: 2.0
+            memoryInGB: 2.0
           # Maximum resources (optional - defaults to requests if not set)
           limits:
             cpu: 2.0
-            memoryInGb: 4.0
+            memoryInGB: 4.0
         ports:
           - port: 8080
             protocol: TCP
@@ -95,10 +95,10 @@ properties:
         resources:
           requests:
             cpu: 1.5
-            memoryInGb: 3.0
+            memoryInGB: 3.0
           limits:
             cpu: 2.0
-            memoryInGb: 4.0
+            memoryInGB: 4.0
         ports:
           - port: 80
             protocol: TCP
@@ -110,10 +110,10 @@ properties:
         resources:
           requests:
             cpu: 0.5
-            memoryInGb: 0.5
+            memoryInGB: 0.5
           limits:
             cpu: 0.5
-            memoryInGb: 1.0
+            memoryInGB: 1.0
 
   # Total group resources: 2.0 CPU, 3.5 GB memory (sum of requests)
   osType: Linux
@@ -129,16 +129,15 @@ type: Microsoft.ContainerInstance/containerGroups
 
 ACI has specific resource combinations you can use. Not every CPU/memory combination is valid. Here are the general ranges:
 
-For Linux containers:
-- CPU: 0.25 to 4.0 cores (per container)
-- Memory: 0.5 to 16 GB (per container)
+For standard Linux and Windows container groups:
+- Minimum per container group: 1 CPU core and 1 GB memory
+- Individual containers in a group can request less than 1 CPU core and 1 GB memory
+- Maximum per container group: 31 CPU cores and 240 GB memory
+
+For spot containers:
 - Maximum per container group: 4 CPU cores and 16 GB memory
 
-For Windows containers:
-- CPU: 1.0 to 4.0 cores
-- Memory: 1.0 to 16 GB
-
-The available combinations depend on the Azure region. Some regions support higher limits.
+The available combinations depend on the Azure region, operating system, SKU, and whether you use confidential containers. Always check your target region before deploying.
 
 ```bash
 # Check available resource capabilities in your region
@@ -258,10 +257,15 @@ Set requests to your baseline usage and limits higher for burst capacity. You pa
 
 ### Clean Up Idle Containers
 
-ACI charges as long as the container group exists, even if it is stopped. Delete container groups you are not using:
+ACI compute charges accrue while a container group is running. Stop or delete container groups you are not using:
 
 ```bash
-# Delete container groups that are no longer needed
+# Stop a container group that is no longer needed temporarily
+az container stop \
+    --resource-group my-resource-group \
+    --name my-container
+
+# Delete a container group that is no longer needed
 az container delete \
     --resource-group my-resource-group \
     --name my-container \
@@ -278,15 +282,15 @@ Azure has subscription-level quotas for ACI resources:
 
 - Default: 100 container groups per subscription per region
 - Default: 100 CPU cores per subscription per region
-- Default: 100 GB memory per subscription per region
 
 Check your current usage:
 
 ```bash
 # Check ACI quotas and usage for your subscription
-az container list \
-    --resource-group my-resource-group \
-    --query "[].{name:name, cpu:containers[0].resources.requests.cpu, memory:containers[0].resources.requests.memoryInGb}" \
+az rest \
+    --method get \
+    --url "https://management.azure.com/subscriptions/{sub}/providers/Microsoft.ContainerInstance/locations/eastus/usages?api-version=2023-05-01" \
+    --query "value[].{name:name.value,currentValue:currentValue,limit:limit}" \
     --output table
 ```
 
