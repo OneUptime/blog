@@ -267,7 +267,7 @@ To ensure boot diagnostics is always enabled across your organization, you can u
 }
 ```
 
-This policy audits VMs that do not have boot diagnostics enabled. You can change the effect to "deny" to prevent the creation of VMs without boot diagnostics, or use "deployIfNotExists" to automatically enable it.
+This policy audits VMs that do not have boot diagnostics enabled. You can change the effect to "deny" to prevent the creation of VMs without boot diagnostics, or build a "deployIfNotExists" or "modify" policy with the required details and remediation configuration to automatically enable it.
 
 ## Wrapping Up
 
