@@ -103,10 +103,10 @@ Here's a detailed breakdown of what each option gives you:
 | Per-instance billing | Yes | No (per-host billing) |
 | Socket/core visibility | No | Yes |
 | Instance placement control | No | Yes |
-| BYOL licensing support | No | Yes |
+| BYOL licensing support | Limited | Yes |
 | Automatic instance placement | Yes | Optional |
 | Host affinity | No | Yes |
-| Can mix instance sizes | Yes (any size) | Yes (within family) |
+| Can mix instance sizes | N/A | Yes (within family, when allocated by instance family) |
 | AWS License Manager integration | Limited | Full |
 | Host recovery | N/A | Yes |
 
@@ -117,54 +117,64 @@ Pricing is where things get interesting. Let's compare the costs for running 8 m
 **Dedicated Instances:**
 
 ```text
-Per-instance cost: ~$0.232/hr per m5.xlarge (dedicated pricing)
+Per-instance cost: ~$0.204/hr per m5.xlarge (dedicated Linux pricing)
 Region fee:        $2.00/hr (one-time per region, per account)
-Total:             (8 x $0.232) + $2.00 = $3.856/hr
+Total:             (8 x $0.204) + $2.00 = $3.632/hr
 ```
 
 **Dedicated Hosts:**
 
 ```text
-m5 host cost:      ~$4.788/hr (hosts up to 48 vCPUs, fits 12 x m5.xlarge)
-Total for 8:       $4.788/hr (same host, still has room for 4 more)
+m5 host cost:      ~$5.069/hr (hosts up to 96 vCPUs, fits 24 x m5.xlarge)
+Total for 8:       $5.069/hr (same host, still has room for 16 more)
 ```
 
-At 8 instances, Dedicated Instances are cheaper. But if you're running 12 m5.xlarge instances, the Dedicated Host wins because you're paying the same flat rate regardless of how many instances you pack onto it.
+At 8 instances, Dedicated Instances are cheaper. But if you're running 16 m5.xlarge instances, the Dedicated Host wins because you're paying the same flat rate regardless of how many instances you pack onto it.
 
 The breakeven point depends on the instance family and region, but generally: if you're filling more than 60-70% of a host's capacity, Dedicated Hosts become more cost-effective.
 
 ## Mixing Instance Sizes on Dedicated Hosts
 
-One underappreciated feature of Dedicated Hosts is that you can mix instance sizes within the same family. An m5 host doesn't have to run only m5.xlarge - it can run a mix:
+One underappreciated feature of Dedicated Hosts is that you can mix instance sizes within the same family when the host is allocated by instance family. An m5 host doesn't have to run only m5.xlarge - it can run a mix:
 
 ```bash
-# An m5 dedicated host with 48 vCPUs could run:
-# - 2 x m5.4xlarge  (16 vCPUs each = 32 vCPUs)
-# - 4 x m5.xlarge   (4 vCPUs each = 16 vCPUs)
-# Total: 48 vCPUs fully utilized
+# Allocate an m5 host that supports multiple m5 instance sizes
+HOST_ID=$(aws ec2 allocate-hosts \
+  --instance-family m5 \
+  --quantity 1 \
+  --availability-zone us-east-1a \
+  --query 'HostIds[0]' \
+  --output text)
+
+# An m5 dedicated host with 96 vCPUs could run:
+# - 4 x m5.4xlarge  (16 vCPUs each = 64 vCPUs)
+# - 8 x m5.xlarge   (4 vCPUs each = 32 vCPUs)
+# Total: 96 vCPUs fully utilized
 
 # Launch a large instance on the host
 aws ec2 run-instances \
   --image-id ami-0abc123 \
   --instance-type m5.4xlarge \
-  --placement "HostId=h-0abc123def456,Tenancy=host" \
-  --count 2
+  --placement "HostId=$HOST_ID,Tenancy=host" \
+  --subnet-id subnet-abc123 \
+  --count 4
 
 # Launch smaller instances on the same host
 aws ec2 run-instances \
   --image-id ami-0abc123 \
   --instance-type m5.xlarge \
-  --placement "HostId=h-0abc123def456,Tenancy=host" \
-  --count 4
+  --placement "HostId=$HOST_ID,Tenancy=host" \
+  --subnet-id subnet-abc123 \
+  --count 8
 ```
 
 This flexibility lets you optimize host utilization and get more value out of each host.
 
 ## VPC-Level vs Instance-Level Tenancy
 
-If you set the VPC tenancy to `dedicated`, every instance launched in that VPC automatically uses Dedicated Instances. This is the simplest approach if all your workloads need isolation.
+If you set the VPC tenancy to `dedicated`, instances launched in that VPC use Dedicated Instance tenancy by default. This is the simplest approach if all your workloads need isolation.
 
-But there's a catch: you can't change a VPC's tenancy from `dedicated` back to `default`. And not all instance types support dedicated tenancy, so you might hit issues with certain instance families.
+But there's a catch: you can't change a VPC's tenancy from `default` to `dedicated` after it is created. You can change a VPC from `dedicated` back to `default`, but that doesn't change the tenancy of existing instances. And not all instance types support dedicated tenancy, so you might hit issues with certain instance families.
 
 A more flexible approach is to keep the VPC on default tenancy and set tenancy at the instance level:
 
@@ -204,13 +214,14 @@ aws ec2 stop-instances --instance-ids i-0abc123
 aws ec2 modify-instance-placement \
   --instance-id i-0abc123 \
   --tenancy host \
+  --affinity host \
   --host-id h-0abc123def456
 
 # Start the instance on its new host
 aws ec2 start-instances --instance-ids i-0abc123
 ```
 
-You can also move from `host` to `dedicated`, but you can't go from either back to `default` shared tenancy.
+You can also move from `host` to `dedicated` or back to `default` shared tenancy, subject to the operating system, license, SQL Server, and instance-type limits documented by AWS.
 
 ## Making the Decision
 
