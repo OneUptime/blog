@@ -112,8 +112,9 @@ resource "azurerm_virtual_network_gateway" "main" {
   vpn_type = "RouteBased"  # Route-based is recommended for most scenarios
 
   # Gateway SKU - determines throughput and features
-  # VpnGw2 provides up to 1.25 Gbps throughput
-  sku = "VpnGw2"
+  # Generation2 VpnGw2 provides up to 1.25 Gbps aggregate throughput
+  sku        = "VpnGw2"
+  generation = "Generation2"
 
   # Active-active for high availability (requires two public IPs)
   active_active = false
@@ -123,11 +124,6 @@ resource "azurerm_virtual_network_gateway" "main" {
 
   bgp_settings {
     asn = 65515  # Azure default ASN, can be changed
-
-    peering_addresses {
-      ip_configuration_name = "vnetGatewayConfig"
-      apipa_addresses       = ["169.254.21.1"]
-    }
   }
 
   ip_configuration {
@@ -141,11 +137,11 @@ resource "azurerm_virtual_network_gateway" "main" {
 }
 ```
 
-The SKU choice affects throughput, number of tunnels, and cost. Here is a quick reference for common SKUs.
+The SKU choice affects throughput, number of tunnels, and cost. Here is a quick reference for common VPN Gateway SKUs.
 
-- VpnGw1: 650 Mbps, 30 tunnels
-- VpnGw2: 1.25 Gbps, 30 tunnels
-- VpnGw3: 2.5 Gbps, 30 tunnels
+- VpnGw1 (Generation1): 650 Mbps, 30 tunnels
+- VpnGw2 (Generation2): 1.25 Gbps, 30 tunnels
+- VpnGw3 (Generation2): 2.5 Gbps, 30 tunnels
 
 For production workloads, VpnGw2 or VpnGw3 is typical.
 
@@ -224,6 +220,9 @@ resource "azurerm_virtual_network_gateway_connection" "datacenter" {
   # Connection protocol
   connection_protocol = "IKEv2"
 
+  # Required for custom traffic selector policies to take effect
+  use_policy_based_traffic_selectors = true
+
   # Custom IPsec/IKE policy for stronger encryption
   ipsec_policy {
     # IKE Phase 1 (SA) settings
@@ -293,6 +292,16 @@ variable "vpn_shared_key_branch" {
   type        = string
   sensitive   = true
 }
+
+variable "log_analytics_workspace_id" {
+  description = "Resource ID of the Log Analytics workspace for VPN gateway diagnostics"
+  type        = string
+}
+
+variable "alert_action_group_id" {
+  description = "Resource ID of the Azure Monitor action group for VPN alerts"
+  type        = string
+}
 ```
 
 Store the shared keys securely using Terraform variables files or environment variables. Never commit them to version control.
@@ -341,12 +350,12 @@ resource "azurerm_monitor_diagnostic_setting" "vpn_gateway" {
   }
 }
 
-# Alert on tunnel disconnection
-resource "azurerm_monitor_metric_alert" "tunnel_down" {
-  name                = "vpn-tunnel-down"
+# Alert on unexpectedly low tunnel egress traffic
+resource "azurerm_monitor_metric_alert" "low_tunnel_egress" {
+  name                = "vpn-low-tunnel-egress"
   resource_group_name = azurerm_resource_group.networking.name
   scopes              = [azurerm_virtual_network_gateway.main.id]
-  description         = "Alert when VPN tunnel status changes to disconnected"
+  description         = "Alert when VPN tunnel egress bytes are unexpectedly low"
   severity            = 1
   frequency           = "PT5M"
   window_size         = "PT15M"
@@ -356,7 +365,7 @@ resource "azurerm_monitor_metric_alert" "tunnel_down" {
     metric_name      = "TunnelEgressBytes"
     aggregation      = "Total"
     operator         = "LessThan"
-    threshold        = 1  # No traffic indicates tunnel may be down
+    threshold        = 1  # Tune this threshold to your expected tunnel traffic pattern
   }
 
   action {
