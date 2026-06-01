@@ -10,7 +10,7 @@ Description: Learn how to use Azure Service Tags in NSG rules to allow traffic o
 
 Managing Network Security Group rules with IP addresses is a losing battle when it comes to Azure services. Azure services use large, dynamic pools of IP addresses that change regularly. If you hardcode these IPs in your NSG rules, they go stale, and you spend your time chasing updated IP ranges instead of building things.
 
-Service Tags solve this problem. They are named groups of IP address ranges that Azure maintains automatically. When you use a Service Tag in an NSG rule, Azure resolves it to the current IP ranges at evaluation time. The IPs update behind the scenes, and your rules stay correct without any maintenance.
+Service Tags solve this problem. They are named groups of IP address ranges that Azure maintains automatically. When you use a Service Tag in an NSG rule, Azure applies the rule to the current and future IP ranges for that tag. The IPs update behind the scenes, and your rules stay correct without any maintenance.
 
 This guide covers how to use Service Tags effectively in NSG rules, which tags are available for common scenarios, and how to handle edge cases where Service Tags alone are not enough.
 
@@ -39,7 +39,7 @@ Here are the Service Tags you are most likely to use in production NSG rules:
 
 | Service Tag | Description |
 |---|---|
-| `Internet` | All public internet IP space (anything outside Azure) |
+| `Internet` | Public internet-reachable IP space outside the virtual network, including Azure-owned public IP space |
 | `VirtualNetwork` | The VNet address space, peered VNets, and on-prem via VPN/ExpressRoute |
 | `AzureLoadBalancer` | Azure's infrastructure load balancer health probes |
 | `Storage` | Azure Storage service IP ranges |
@@ -210,10 +210,10 @@ az network list-service-tags \
 
 This returns all the IP prefixes that make up the Service Tag. The output can be long - some Service Tags include hundreds of CIDR blocks.
 
-You can also download the full list of Service Tags as a JSON file.
+You can also inspect metadata such as the Service Tag change number and prefix count.
 
 ```bash
-# Get the download URL for the Service Tag JSON file
+# Inspect metadata for a Service Tag
 az network list-service-tags \
   --location eastus \
   --query "values[?name=='Storage.EastUS'].properties.{changeNumber: changeNumber, region: region, totalPrefixes: addressPrefixes | length(@)}" \
@@ -278,7 +278,7 @@ Service Tags are not a silver bullet. Keep these limitations in mind:
 
 **Not all services have Service Tags.** Some newer or smaller Azure services do not have dedicated Service Tags yet. Check the documentation for the specific service.
 
-**Service Tags cannot be combined with IP addresses in a single rule.** Each rule uses either a Service Tag or an IP address/CIDR, not both.
+**Service Tags cannot be combined with other service tags or IP ranges in the same source or destination field.** Each source or destination field uses either a single Service Tag or one or more IP addresses/CIDR ranges, not both.
 
 **Regional variants are not available for all Service Tags.** Some tags like `AzureActiveDirectory` only have a global variant because the service is multi-regional by nature.
 
@@ -297,8 +297,8 @@ For defense in depth, combine Service Tags with:
 az policy definition create \
   --name "audit-nsg-hardcoded-ips" \
   --display-name "Audit NSG rules with hardcoded IP addresses" \
-  --description "Identifies NSG rules using specific IP addresses that could use Service Tags instead" \
-  --rules '{"if":{"allOf":[{"field":"type","equals":"Microsoft.Network/networkSecurityGroups/securityRules"},{"not":{"anyOf":[{"field":"Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefix","in":["*","VirtualNetwork","AzureLoadBalancer","Internet"]},{"field":"Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefix","like":"*.*.*.*/*"}]}}]},"then":{"effect":"audit"}}' \
+  --description "Identifies NSG rules using specific IPv4 source or destination prefixes that could use Service Tags instead" \
+  --rules '{"if":{"allOf":[{"field":"type","equals":"Microsoft.Network/networkSecurityGroups/securityRules"},{"anyOf":[{"field":"Microsoft.Network/networkSecurityGroups/securityRules/sourceAddressPrefix","like":"*.*.*.*"},{"field":"Microsoft.Network/networkSecurityGroups/securityRules/destinationAddressPrefix","like":"*.*.*.*"}]}]},"then":{"effect":"audit"}}' \
   --mode All
 ```
 
