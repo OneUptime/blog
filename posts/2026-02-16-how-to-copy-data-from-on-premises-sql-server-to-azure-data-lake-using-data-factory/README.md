@@ -36,6 +36,7 @@ The self-hosted integration runtime acts as the bridge between your on-premises 
 3. On-premises SQL Server with the database you want to copy
 4. A Windows machine in your network for the self-hosted integration runtime
 5. Network connectivity from the IR machine to both the SQL Server and the internet
+6. A 64-bit Java runtime on the IR machine if you write to Parquet through the self-hosted IR
 
 ## Step 1: Set Up the Self-Hosted Integration Runtime
 
@@ -55,21 +56,22 @@ For production, install the IR on at least two machines for high availability.
 Create a linked service that connects to your SQL Server through the self-hosted IR.
 
 ```json
-// Linked service for on-premises SQL Server
 {
   "name": "ls_onprem_sqlserver",
   "properties": {
     "type": "SqlServer",
     "typeProperties": {
-      // Connection string to your on-premises SQL Server
-      "connectionString": "Server=DBSERVER01;Database=SalesDB;Integrated Security=False;",
+      "server": "DBSERVER01",
+      "database": "SalesDB",
+      "authenticationType": "SQL",
+      "encrypt": "mandatory",
+      "trustServerCertificate": false,
       "userName": "adf_reader",
       "password": {
         "type": "SecureString",
         "value": "<password>"
       }
     },
-    // Route through the self-hosted IR
     "connectVia": {
       "referenceName": "SelfHostedIR",
       "type": "IntegrationRuntimeReference"
@@ -83,32 +85,24 @@ Test the connection to make sure ADF can reach your SQL Server through the IR.
 ## Step 3: Create the Linked Service for Azure Data Lake Storage Gen2
 
 ```json
-// Linked service for Azure Data Lake Storage Gen2
 {
   "name": "ls_adls_gen2",
   "properties": {
     "type": "AzureBlobFS",
     "typeProperties": {
-      // Use the ADLS Gen2 endpoint
-      "url": "https://<storageaccount>.dfs.core.windows.net",
-      // Recommended: use managed identity for authentication
-      "accountKey": {
-        "type": "SecureString",
-        "value": "<storage-account-key>"
-      }
+      "url": "https://<storageaccount>.dfs.core.windows.net"
     }
   }
 }
 ```
 
-For production, I recommend using managed identity instead of account keys. It is more secure and eliminates key rotation concerns.
+This example uses the system-assigned managed identity for the data factory. Grant that identity access to the target filesystem or folder, for example with the Storage Blob Data Contributor role or equivalent ACL permissions.
 
 ## Step 4: Create the Datasets
 
 ### SQL Server Source Dataset
 
 ```json
-// Dataset for the SQL Server source table
 {
   "name": "ds_sql_orders",
   "properties": {
@@ -118,7 +112,8 @@ For production, I recommend using managed identity instead of account keys. It i
       "type": "LinkedServiceReference"
     },
     "typeProperties": {
-      "tableName": "dbo.Orders"
+      "schema": "dbo",
+      "table": "Orders"
     }
   }
 }
@@ -127,7 +122,6 @@ For production, I recommend using managed identity instead of account keys. It i
 ### Data Lake Sink Dataset
 
 ```json
-// Dataset for Parquet files in ADLS Gen2
 {
   "name": "ds_adls_orders_parquet",
   "properties": {
@@ -162,7 +156,6 @@ Let us start with a full load pipeline that copies the entire table.
 Here is the pipeline definition.
 
 ```json
-// Full load pipeline - copies entire table
 {
   "name": "pl_full_load_orders",
   "properties": {
@@ -184,8 +177,7 @@ Here is the pipeline definition.
         ],
         "typeProperties": {
           "source": {
-            "type": "SqlServerSource",
-            // Optionally use a query instead of full table
+            "type": "SqlSource",
             "sqlReaderQuery": "SELECT OrderId, CustomerId, OrderDate, TotalAmount, Status FROM dbo.Orders"
           },
           "sink": {
@@ -194,7 +186,6 @@ Here is the pipeline definition.
               "type": "AzureBlobFSWriteSettings"
             }
           },
-          // Enable staging for better performance through self-hosted IR
           "enableStaging": false
         }
       }
@@ -224,6 +215,28 @@ CREATE TABLE dbo.WatermarkTable (
 -- Insert initial watermark (start of time)
 INSERT INTO dbo.WatermarkTable (TableName, WatermarkValue)
 VALUES ('Orders', '1900-01-01');
+GO
+
+-- Stored procedure used by the pipeline to advance the watermark
+CREATE OR ALTER PROCEDURE dbo.usp_UpdateWatermark
+    @TableName VARCHAR(255),
+    @WatermarkValue DATETIME2
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE dbo.WatermarkTable
+    SET WatermarkValue = @WatermarkValue,
+        LastUpdated = GETUTCDATE()
+    WHERE TableName = @TableName;
+
+    IF @@ROWCOUNT = 0
+    BEGIN
+        INSERT INTO dbo.WatermarkTable (TableName, WatermarkValue)
+        VALUES (@TableName, @WatermarkValue);
+    END
+END;
+GO
 ```
 
 ### Build the Incremental Pipeline
@@ -236,33 +249,30 @@ The incremental pipeline has these steps:
 4. Update the watermark table
 
 ```json
-// Incremental load pipeline
 {
   "name": "pl_incremental_load_orders",
   "properties": {
     "activities": [
       {
-        // Step 1: Get the current watermark
         "name": "GetCurrentWatermark",
         "type": "Lookup",
         "typeProperties": {
           "source": {
-            "type": "SqlServerSource",
+            "type": "SqlSource",
             "sqlReaderQuery": "SELECT WatermarkValue FROM dbo.WatermarkTable WHERE TableName = 'Orders'"
           },
           "dataset": {
-            "referenceName": "ds_sql_watermark",
+            "referenceName": "ds_sql_orders",
             "type": "DatasetReference"
           }
         }
       },
       {
-        // Step 2: Get the max modified date from source
         "name": "GetMaxModifiedDate",
         "type": "Lookup",
         "typeProperties": {
           "source": {
-            "type": "SqlServerSource",
+            "type": "SqlSource",
             "sqlReaderQuery": "SELECT MAX(LastModifiedDate) AS MaxModifiedDate FROM dbo.Orders"
           },
           "dataset": {
@@ -272,7 +282,6 @@ The incremental pipeline has these steps:
         }
       },
       {
-        // Step 3: Copy only new/modified rows
         "name": "CopyIncrementalData",
         "type": "Copy",
         "dependsOn": [
@@ -281,8 +290,7 @@ The incremental pipeline has these steps:
         ],
         "typeProperties": {
           "source": {
-            "type": "SqlServerSource",
-            // Query only rows modified since last watermark
+            "type": "SqlSource",
             "sqlReaderQuery": {
               "value": "SELECT * FROM dbo.Orders WHERE LastModifiedDate > '@{activity('GetCurrentWatermark').output.firstRow.WatermarkValue}' AND LastModifiedDate <= '@{activity('GetMaxModifiedDate').output.firstRow.MaxModifiedDate}'",
               "type": "Expression"
@@ -296,9 +304,12 @@ The incremental pipeline has these steps:
         "outputs": [{ "referenceName": "ds_adls_orders_parquet", "type": "DatasetReference" }]
       },
       {
-        // Step 4: Update the watermark
         "name": "UpdateWatermark",
         "type": "SqlServerStoredProcedure",
+        "linkedServiceName": {
+          "referenceName": "ls_onprem_sqlserver",
+          "type": "LinkedServiceReference"
+        },
         "dependsOn": [
           { "activity": "CopyIncrementalData", "dependencyConditions": ["Succeeded"] }
         ],
@@ -325,7 +336,6 @@ For large tables, partition the output files by date. This makes downstream quer
 Use a parameterized dataset with dynamic folder paths.
 
 ```json
-// Parameterized sink dataset with date partitioning
 {
   "name": "ds_adls_orders_partitioned",
   "properties": {
@@ -343,7 +353,6 @@ Use a parameterized dataset with dynamic folder paths.
       "location": {
         "type": "AzureBlobFSLocation",
         "fileSystem": "raw",
-        // Dynamic folder path based on date
         "folderPath": {
           "value": "sql-server/orders/year=@{dataset().year}/month=@{dataset().month}/day=@{dataset().day}",
           "type": "Expression"
@@ -366,11 +375,10 @@ When copying large volumes of data through a self-hosted IR, keep these tips in 
 6. **Use partitioned reads** - if your table is large, use physical partitions or a partition column to parallelize the read
 
 ```json
-// Enable parallel partition reads for large tables
 {
   "source": {
-    "type": "SqlServerSource",
-    "partitionOption": "DynamicRange",
+    "type": "SqlSource",
+    "partitionOptions": "DynamicRange",
     "partitionSettings": {
       "partitionColumnName": "OrderId",
       "partitionUpperBound": 10000000,
