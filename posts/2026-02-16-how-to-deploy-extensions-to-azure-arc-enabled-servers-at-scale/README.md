@@ -16,7 +16,7 @@ In this post, I will cover the different methods for deploying extensions to Arc
 
 Before diving into deployment methods, here is a quick overview of the most commonly used extensions for Arc-enabled servers:
 
-- **Log Analytics Agent (MMA)** - Collects logs and performance data for Azure Monitor
+- **Log Analytics Agent (MMA)** - Legacy agent for collecting logs and performance data for Azure Monitor. It has been retired and should be replaced with AMA for new deployments.
 - **Azure Monitor Agent (AMA)** - The newer replacement for MMA, supports Data Collection Rules
 - **Dependency Agent** - Collects process and network dependency data for VM insights
 - **Guest Configuration** - Enables in-guest policy auditing and enforcement
@@ -25,19 +25,21 @@ Before diving into deployment methods, here is a quick overview of the most comm
 - **Azure Key Vault extension** - Automatically rotates certificates from Key Vault
 - **Qualys vulnerability scanner** - Integrated vulnerability assessment
 
-You can list all available extensions using the CLI:
+You can inspect installed extensions and list available versions for a specific extension type using the CLI:
 
 ```bash
-# List all available extension types for Arc servers
+# List extensions installed on an Arc server
 
 az connectedmachine extension list \
     --machine-name "my-arc-server" \
     --resource-group "arc-servers-rg" \
     --output table
 
-# List available extension publishers and types
+# List available versions for a specific extension type
 az connectedmachine extension image list \
     --location "eastus" \
+    --publisher "Microsoft.Azure.Monitor" \
+    --extension-type "AzureMonitorLinuxAgent" \
     --output table
 ```
 
@@ -62,7 +64,7 @@ az policy assignment create \
 az policy assignment create \
     --name "deploy-ama-windows-arc" \
     --display-name "Deploy Azure Monitor Agent to Windows Arc servers" \
-    --policy "94f686d6-9a24-4e19-91f1-de9f6c23d2e3" \
+    --policy "94f686d6-9a24-4e19-91f1-de937dc171a4" \
     --scope "/subscriptions/your-subscription-id" \
     --mi-system-assigned \
     --location "eastus" \
@@ -93,12 +95,10 @@ If there is no built-in policy for the extension you need, you can create a cust
     "if": {
       "allOf": [
         {
-          // Target only Arc-enabled servers
           "field": "type",
           "equals": "Microsoft.HybridCompute/machines"
         },
         {
-          // Target only Linux servers
           "field": "Microsoft.HybridCompute/machines/osName",
           "equals": "linux"
         }
@@ -135,9 +135,8 @@ If there is no built-in policy for the extension you need, you can create a cust
               },
               "resources": [
                 {
-                  // Deploy the custom script extension
                   "type": "Microsoft.HybridCompute/machines/extensions",
-                  "apiVersion": "2022-03-10",
+                  "apiVersion": "2024-07-10",
                   "name": "[concat(parameters('vmName'), '/CustomScript')]",
                   "location": "[parameters('location')]",
                   "properties": {
@@ -150,6 +149,14 @@ If there is no built-in policy for the extension you need, you can create a cust
                   }
                 }
               ]
+            },
+            "parameters": {
+              "vmName": {
+                "value": "[field('name')]"
+              },
+              "location": {
+                "value": "[field('location')]"
+              }
             }
           }
         }
@@ -221,19 +228,12 @@ ARM templates work well when you want to deploy a set of extensions as a single 
     "location": {
       "type": "string",
       "defaultValue": "[resourceGroup().location]"
-    },
-    "workspaceId": {
-      "type": "string",
-      "metadata": {
-        "description": "Log Analytics workspace ID"
-      }
     }
   },
   "resources": [
     {
-      // Azure Monitor Agent extension
       "type": "Microsoft.HybridCompute/machines/extensions",
-      "apiVersion": "2022-03-10",
+      "apiVersion": "2024-07-10",
       "name": "[concat(parameters('machineName'), '/AzureMonitorLinuxAgent')]",
       "location": "[parameters('location')]",
       "properties": {
@@ -244,9 +244,8 @@ ARM templates work well when you want to deploy a set of extensions as a single 
       }
     },
     {
-      // Dependency Agent extension for VM Insights
       "type": "Microsoft.HybridCompute/machines/extensions",
-      "apiVersion": "2022-03-10",
+      "apiVersion": "2024-07-10",
       "name": "[concat(parameters('machineName'), '/DependencyAgentLinux')]",
       "location": "[parameters('location')]",
       "properties": {
@@ -269,8 +268,7 @@ Deploy this template for each server:
 az deployment group create \
     --resource-group "arc-servers-rg" \
     --template-file "extensions-template.json" \
-    --parameters machineName="my-arc-server" \
-                 workspaceId="your-workspace-id"
+    --parameters machineName="my-arc-server"
 ```
 
 ## Method 4: PowerShell with Parallel Execution
@@ -278,8 +276,10 @@ az deployment group create \
 For large-scale deployments with PowerShell, use the `ForEach-Object -Parallel` feature:
 
 ```powershell
-# Get all Arc servers
-$servers = Get-AzConnectedMachine -ResourceGroupName "arc-servers-rg"
+# Get Linux Arc servers
+$resourceGroupName = "arc-servers-rg"
+$servers = Get-AzConnectedMachine -ResourceGroupName $resourceGroupName |
+    Where-Object { $_.OSName -eq "linux" }
 
 # Deploy extensions in parallel (up to 10 at a time)
 $servers | ForEach-Object -Parallel {
@@ -288,7 +288,7 @@ $servers | ForEach-Object -Parallel {
     # Check if extension already exists
     $existing = Get-AzConnectedMachineExtension `
         -MachineName $server.Name `
-        -ResourceGroupName $server.ResourceGroupName `
+        -ResourceGroupName $using:resourceGroupName `
         -Name "AzureMonitorLinuxAgent" `
         -ErrorAction SilentlyContinue
 
@@ -296,7 +296,7 @@ $servers | ForEach-Object -Parallel {
         Write-Output "Installing AMA on $($server.Name)..."
         New-AzConnectedMachineExtension `
             -MachineName $server.Name `
-            -ResourceGroupName $server.ResourceGroupName `
+            -ResourceGroupName $using:resourceGroupName `
             -Name "AzureMonitorLinuxAgent" `
             -Publisher "Microsoft.Azure.Monitor" `
             -ExtensionType "AzureMonitorLinuxAgent" `
