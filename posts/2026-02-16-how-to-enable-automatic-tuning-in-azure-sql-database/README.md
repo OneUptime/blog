@@ -22,7 +22,7 @@ The system analyzes query patterns and identifies columns that would benefit fro
 
 ### 2. Drop Index
 
-Over time, indexes that were once useful become dead weight. They consume storage, slow down write operations, and never get used by any query. Automatic tuning identifies these unused indexes and drops them. Before dropping, it creates a backup of the index definition so it can be recreated if needed.
+Over time, indexes that were once useful become dead weight. They consume storage, slow down write operations, and never get used by any query. Automatic tuning identifies unused and duplicate indexes, drops eligible indexes, and can revert the change if needed.
 
 ### 3. Force Last Good Plan
 
@@ -39,14 +39,14 @@ flowchart TD
     G -->|Yes| H[Keep index]
     G -->|No| I[Revert - drop index]
     C --> J[Identify unused indexes]
-    J --> K[Drop with backup]
+    J --> K[Drop eligible indexes]
     D --> L[Detect plan regression]
     L --> M[Force previous good plan]
 ```
 
 ## How It Works Under the Hood
 
-Automatic tuning relies on the Query Store to collect performance data. The Query Store tracks every query's execution statistics - CPU time, duration, logical reads, execution count, and the execution plans used. Automatic tuning analyzes this data to identify opportunities.
+Automatic tuning relies on the Query Store to collect performance data. Query Store captures query text, execution statistics, and execution plans according to its capture policy. Automatic tuning analyzes this data to identify opportunities.
 
 The system uses a safe experimentation approach:
 
@@ -55,7 +55,7 @@ The system uses a safe experimentation approach:
 3. **Monitor the impact**: The system measures query performance before and after the change.
 4. **Verify or revert**: If performance improves, the change is kept. If performance degrades, the change is automatically reverted.
 
-This conservative approach means automatic tuning is safe for production workloads. It will not make things worse.
+This conservative approach is designed to make automatic tuning safe for production workloads. If there is no significant improvement, or if performance regresses, Azure SQL Database reverts the change.
 
 ## Enabling Automatic Tuning via Azure Portal
 
@@ -91,25 +91,41 @@ Click "Save" to apply the configuration. Changes take effect immediately.
 ## Enabling Automatic Tuning via Azure CLI
 
 ```bash
-# Enable all three automatic tuning options at the server level
+# Enable all three automatic tuning options at the server level with the REST API through Azure CLI
+subscriptionId=$(az account show --query id -o tsv)
 
-az sql server update \
-    --resource-group myResourceGroup \
-    --name myserver \
-    --set tags.auto_tuning_create_index=ON \
-    --set tags.auto_tuning_drop_index=ON \
-    --set tags.auto_tuning_force_last_good_plan=ON
+az rest --method patch \
+    --uri "https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/myResourceGroup/providers/Microsoft.Sql/servers/myserver/automaticTuning/current?api-version=2023-08-01" \
+    --body '{
+        "properties": {
+            "desiredState": "Custom",
+            "options": {
+                "createIndex": { "desiredState": "On" },
+                "dropIndex": { "desiredState": "On" },
+                "forceLastGoodPlan": { "desiredState": "On" }
+            }
+        }
+    }'
 ```
 
 For database-level settings:
 
 ```bash
 # Enable automatic tuning on a specific database
-az sql db update \
-    --resource-group myResourceGroup \
-    --server myserver \
-    --name mydb \
-    --set tags.auto_tuning_create_index=ON
+subscriptionId=$(az account show --query id -o tsv)
+
+az rest --method patch \
+    --uri "https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/myResourceGroup/providers/Microsoft.Sql/servers/myserver/databases/mydb/automaticTuning/current?api-version=2023-08-01" \
+    --body '{
+        "properties": {
+            "desiredState": "Custom",
+            "options": {
+                "createIndex": { "desiredState": "On" },
+                "dropIndex": { "desiredState": "On" },
+                "forceLastGoodPlan": { "desiredState": "On" }
+            }
+        }
+    }'
 ```
 
 ## Enabling Automatic Tuning via T-SQL
@@ -169,15 +185,14 @@ Each recommendation includes:
 ```sql
 -- View current automatic tuning recommendations
 SELECT
+    name,
+    type,
     reason,
     score,
-    state_desc AS current_state,
+    JSON_VALUE(state, '$.currentValue') AS current_state,
     is_revertable_action,
     is_executable_action,
-    JSON_VALUE(details, '$.indexName') AS index_name,
-    JSON_VALUE(details, '$.schemaName') AS schema_name,
-    JSON_VALUE(details, '$.tableName') AS table_name,
-    JSON_VALUE(details, '$.columnName') AS column_name
+    JSON_VALUE(details, '$.implementationDetails.script') AS script
 FROM sys.dm_db_tuning_recommendations
 ORDER BY score DESC;
 ```
@@ -187,13 +202,14 @@ To see the history of applied recommendations:
 ```sql
 -- View history of automatic tuning actions
 SELECT
+    name,
+    type,
     reason,
     score,
-    state_desc,
+    JSON_VALUE(state, '$.currentValue') AS current_state,
     execute_action_start_time,
     revert_action_start_time,
-    JSON_VALUE(details, '$.indexName') AS index_name,
-    JSON_VALUE(state, '$.currentValue') AS current_state
+    JSON_VALUE(details, '$.implementationDetails.script') AS script
 FROM sys.dm_db_tuning_recommendations
 WHERE execute_action_start_time IS NOT NULL
 ORDER BY execute_action_start_time DESC;
@@ -205,18 +221,14 @@ If you prefer to review recommendations before they are applied (a cautious appr
 
 ```sql
 -- Apply a specific recommendation using its name/ID
-EXECUTE sp_execute_external_script @language = N'Python',
-    @script = N'pass';  -- placeholder
-```
+DECLARE @script nvarchar(max);
 
-Actually, the proper way to apply recommendations manually is through the Portal or by using the T-SQL approach based on the recommendation details:
+SELECT @script = JSON_VALUE(details, '$.implementationDetails.script')
+FROM sys.dm_db_tuning_recommendations
+WHERE name = N'<recommendation_name>'
+  AND is_executable_action = 1;
 
-```sql
--- Example: manually create an index that was recommended
--- The exact index definition comes from the recommendation details
-CREATE NONCLUSTERED INDEX [nci_wi_Orders_CustomerId]
-ON [dbo].[Orders] ([CustomerId])
-INCLUDE ([OrderDate], [TotalAmount]);
+EXEC sp_executesql @script;
 ```
 
 ## Real-World Impact
@@ -233,11 +245,11 @@ The system does not make dramatic changes overnight. It is conservative, testing
 
 ## Considerations and Limitations
 
-**Query Store must be enabled.** Automatic tuning depends entirely on Query Store data. If Query Store is disabled or has insufficient retention, automatic tuning cannot function.
+**Query Store must be operational.** Automatic tuning depends on Query Store data. If Query Store is off, read-only, or has insufficient data, automatic tuning cannot function correctly.
 
 **Index creation uses resources.** Creating indexes on large tables consumes CPU and I/O. The system tries to avoid creating indexes during peak hours, but be aware that index creation could briefly increase resource usage.
 
-**Drop Index is the most cautious option.** The system only drops indexes that have not been used in a significant period (typically 30+ days of no reads). Even then, it tracks the index definition so it can be recreated.
+**Drop Index is the most cautious option.** The system drops indexes that have been unused over the last 90 days and duplicate indexes. Unique indexes, including indexes that support primary key and unique constraints, are never dropped. On Premium and Business Critical service tiers, unused indexes are not dropped, but duplicate indexes can still be dropped.
 
 **Not a replacement for database design.** Automatic tuning handles incremental optimizations. It cannot fix fundamental design problems like poor schema design, missing primary keys, or inappropriate data types.
 
