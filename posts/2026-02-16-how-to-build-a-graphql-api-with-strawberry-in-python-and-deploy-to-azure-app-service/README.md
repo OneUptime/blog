@@ -120,6 +120,7 @@ import strawberry
 from typing import Optional
 import uuid
 from datetime import date
+from dataclasses import replace
 from models import Book, Author, CreateBookInput, UpdateBookInput
 from store import books_db, authors_db
 
@@ -182,11 +183,11 @@ class Mutation:
 
         # Only update fields that were provided
         if input.title is not None:
-            book = strawberry.types.copy_with(book, title=input.title)
+            book = replace(book, title=input.title)
         if input.price is not None:
-            book = strawberry.types.copy_with(book, price=input.price)
+            book = replace(book, price=input.price)
         if input.in_stock is not None:
-            book = strawberry.types.copy_with(book, in_stock=input.in_stock)
+            book = replace(book, in_stock=input.in_stock)
 
         books_db[id] = book
         return book
@@ -232,7 +233,7 @@ if __name__ == "__main__":
 
 ## Test Locally
 
-Run the app and open the GraphQL playground in your browser.
+Run the app and open GraphiQL in your browser.
 
 ```bash
 # Start the development server
@@ -278,13 +279,15 @@ Strawberry supports custom error types using union types, which is a cleaner pat
 
 ```python
 # Custom error handling with union types
+from typing import Annotated
+
 @strawberry.type
 class BookNotFoundError:
     message: str
     book_id: str
 
 # Define a union type for the response
-BookResult = strawberry.union("BookResult", types=[Book, BookNotFoundError])
+BookResult = Annotated[Book | BookNotFoundError, strawberry.union("BookResult")]
 
 @strawberry.type
 class SafeQuery:
@@ -342,7 +345,13 @@ az webapp create \
   --resource-group bookstore-rg \
   --plan bookstore-plan \
   --name bookstore-graphql-api \
-  --deployment-container-image-name mybookstoreacr.azurecr.io/bookstore-graphql:v1
+  --container-image-name mybookstoreacr.azurecr.io/bookstore-graphql:v1
+
+# Configure the custom container port
+az webapp config appsettings set \
+  --resource-group bookstore-rg \
+  --name bookstore-graphql-api \
+  --settings WEBSITES_PORT=8000
 
 # Configure health check path
 az webapp config set \
@@ -359,9 +368,10 @@ When your GraphQL types have relationships (like Book to Author), you can run in
 # dataloaders.py
 # DataLoader to batch author lookups
 from strawberry.dataloader import DataLoader
+from models import Author
 from store import authors_db
 
-async def load_authors(keys: list[str]) -> list[Author]:
+async def load_authors(keys: list[str]) -> list[Author | None]:
     """Batch load authors by their IDs."""
     return [authors_db.get(key) for key in keys]
 
