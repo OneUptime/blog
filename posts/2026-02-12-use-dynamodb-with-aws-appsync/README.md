@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, AppSync, GraphQL, Serverless
 
-Description: Learn how to connect DynamoDB to AWS AppSync to build real-time GraphQL APIs with automatic CRUD operations, resolvers, and subscriptions.
+Description: Learn how to connect DynamoDB to AWS AppSync to build real-time GraphQL APIs with CRUD operations, resolvers, and subscriptions.
 
 ---
 
@@ -125,21 +125,23 @@ AppSync uses VTL (Velocity Template Language) resolvers to translate GraphQL req
 
 This resolver handles the `createTask` mutation. It generates a UUID, sets timestamps, and puts the item into DynamoDB.
 
-```json
+```vtl
+#set($id = $util.autoId())
+#set($now = $util.time.nowISO8601())
+#set($values = {})
+$util.qr($values.put("title", $ctx.args.input.title))
+$util.qr($values.put("description", $ctx.args.input.description))
+$util.qr($values.put("status", $util.defaultIfNull($ctx.args.input.status, "TODO")))
+$util.qr($values.put("assignee", $ctx.args.input.assignee))
+$util.qr($values.put("createdAt", $now))
+$util.qr($values.put("updatedAt", $now))
 {
   "version": "2018-05-29",
   "operation": "PutItem",
   "key": {
-    "id": { "S": "$util.autoId()" }
+    "id": $util.dynamodb.toDynamoDBJson($id)
   },
-  "attributeValues": {
-    "title": { "S": "$ctx.args.input.title" },
-    "description": $util.dynamodb.toDynamoDBJson($ctx.args.input.description),
-    "status": { "S": "$util.defaultIfNull($ctx.args.input.status, 'TODO')" },
-    "assignee": $util.dynamodb.toDynamoDBJson($ctx.args.input.assignee),
-    "createdAt": { "S": "$util.time.nowISO8601()" },
-    "updatedAt": { "S": "$util.time.nowISO8601()" }
-  }
+  "attributeValues": $util.dynamodb.toMapValuesJson($values)
 }
 ```
 
@@ -147,7 +149,7 @@ This resolver handles the `createTask` mutation. It generates a UUID, sets times
 
 The response mapping is straightforward - just pass through the result.
 
-```json
+```vtl
 $util.toJson($ctx.result)
 ```
 
@@ -155,12 +157,12 @@ $util.toJson($ctx.result)
 
 This handles the `getTask` query by performing a GetItem operation.
 
-```json
+```vtl
 {
   "version": "2018-05-29",
   "operation": "GetItem",
   "key": {
-    "id": { "S": "$ctx.args.id" }
+    "id": $util.dynamodb.toDynamoDBJson($ctx.args.id)
   }
 }
 ```
@@ -169,7 +171,7 @@ This handles the `getTask` query by performing a GetItem operation.
 
 For listing tasks, we use a Scan or Query operation depending on whether a status filter is provided.
 
-```json
+```vtl
 #if($ctx.args.status)
 {
   "version": "2018-05-29",
@@ -181,18 +183,18 @@ For listing tasks, we use a Scan or Query operation depending on whether a statu
       "#status": "status"
     },
     "expressionValues": {
-      ":status": { "S": "$ctx.args.status" }
+      ":status": $util.dynamodb.toDynamoDBJson($ctx.args.status)
     }
   },
-  "limit": $util.defaultIfNull($ctx.args.limit, 20),
-  "nextToken": $util.toJson($ctx.args.nextToken)
+  "limit": $util.defaultIfNull($ctx.args.limit, 20)#if($ctx.args.nextToken),
+  "nextToken": $util.toJson($ctx.args.nextToken)#end
 }
 #else
 {
   "version": "2018-05-29",
   "operation": "Scan",
-  "limit": $util.defaultIfNull($ctx.args.limit, 20),
-  "nextToken": $util.toJson($ctx.args.nextToken)
+  "limit": $util.defaultIfNull($ctx.args.limit, 20)#if($ctx.args.nextToken),
+  "nextToken": $util.toJson($ctx.args.nextToken)#end
 }
 #end
 ```
@@ -201,29 +203,51 @@ For listing tasks, we use a Scan or Query operation depending on whether a statu
 
 The update resolver uses DynamoDB's UpdateItem with expression-based updates, so only the fields provided get changed.
 
-```json
+```vtl
+#set($names = {})
+#set($values = {})
+$util.qr($names.put("#updatedAt", "updatedAt"))
+$util.qr($values.put(":updatedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
+#if(!$util.isNull($ctx.args.input.title))
+  $util.qr($names.put("#title", "title"))
+  $util.qr($values.put(":title", $util.dynamodb.toDynamoDB($ctx.args.input.title)))
+#end
+#if(!$util.isNull($ctx.args.input.description))
+  $util.qr($names.put("#description", "description"))
+  $util.qr($values.put(":description", $util.dynamodb.toDynamoDB($ctx.args.input.description)))
+#end
+#if(!$util.isNull($ctx.args.input.status))
+  $util.qr($names.put("#status", "status"))
+  $util.qr($values.put(":status", $util.dynamodb.toDynamoDB($ctx.args.input.status)))
+#end
+#if(!$util.isNull($ctx.args.input.assignee))
+  $util.qr($names.put("#assignee", "assignee"))
+  $util.qr($values.put(":assignee", $util.dynamodb.toDynamoDB($ctx.args.input.assignee)))
+#end
 {
   "version": "2018-05-29",
   "operation": "UpdateItem",
   "key": {
-    "id": { "S": "$ctx.args.input.id" }
+    "id": $util.dynamodb.toDynamoDBJson($ctx.args.input.id)
   },
   "update": {
-    "expression": "SET #updatedAt = :updatedAt #titleSet #descSet #statusSet #assigneeSet",
-    "expressionNames": {
-      "#updatedAt": "updatedAt"
-      #if($ctx.args.input.title), "#title": "title" #end
-      #if($ctx.args.input.description), "#description": "description" #end
-      #if($ctx.args.input.status), "#status": "status" #end
-      #if($ctx.args.input.assignee), "#assignee": "assignee" #end
-    },
-    "expressionValues": {
-      ":updatedAt": { "S": "$util.time.nowISO8601()" }
-      #if($ctx.args.input.title), ":title": { "S": "$ctx.args.input.title" } #end
-      #if($ctx.args.input.description), ":description": { "S": "$ctx.args.input.description" } #end
-      #if($ctx.args.input.status), ":status": { "S": "$ctx.args.input.status" } #end
-      #if($ctx.args.input.assignee), ":assignee": { "S": "$ctx.args.input.assignee" } #end
-    }
+    "expression": "SET #updatedAt = :updatedAt#if(!$util.isNull($ctx.args.input.title)), #title = :title#end#if(!$util.isNull($ctx.args.input.description)), #description = :description#end#if(!$util.isNull($ctx.args.input.status)), #status = :status#end#if(!$util.isNull($ctx.args.input.assignee)), #assignee = :assignee#end",
+    "expressionNames": $util.toJson($names),
+    "expressionValues": $util.toJson($values)
+  }
+}
+```
+
+### Delete Task Resolver
+
+The delete resolver removes the item by id.
+
+```vtl
+{
+  "version": "2018-05-29",
+  "operation": "DeleteItem",
+  "key": {
+    "id": $util.dynamodb.toDynamoDBJson($ctx.args.id)
   }
 }
 ```
@@ -246,9 +270,9 @@ export function request(ctx) {
     key: util.dynamodb.toMapValues({ id }),
     attributeValues: util.dynamodb.toMapValues({
       title: ctx.args.input.title,
-      description: ctx.args.input.description || null,
-      status: ctx.args.input.status || 'TODO',
-      assignee: ctx.args.input.assignee || null,
+      description: ctx.args.input.description ?? null,
+      status: ctx.args.input.status ?? 'TODO',
+      assignee: ctx.args.input.assignee ?? null,
       createdAt: now,
       updatedAt: now,
     }),
@@ -335,7 +359,7 @@ tasksTable.addGlobalSecondaryIndex({
 // Create the AppSync API
 const api = new appsync.GraphqlApi(stack, 'TasksApi', {
   name: 'TasksGraphQLApi',
-  schema: appsync.SchemaFile.fromAsset('schema.graphql'),
+  definition: appsync.Definition.fromFile('schema.graphql'),
   authorizationConfig: {
     defaultAuthorization: {
       authorizationType: appsync.AuthorizationType.API_KEY,
