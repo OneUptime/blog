@@ -14,13 +14,13 @@ In this post, we will set up the connection between Power BI and Azure Synapse A
 
 ## Understanding the Connection Options
 
-Power BI can connect to Azure Synapse in two main ways:
+Power BI can connect to Azure Synapse using three main storage modes:
 
 **Import Mode**: Power BI imports a copy of the data into its own in-memory storage (the VertiPaq engine). Queries are fast because they run against the local copy, but data is only as fresh as the last refresh.
 
 **DirectQuery Mode**: Power BI sends queries directly to Synapse every time a user interacts with the report. Data is always current, but query performance depends on Synapse's response time.
 
-**Composite Mode**: A hybrid where some tables use Import and others use DirectQuery. This is useful when you want fast performance for large dimension tables (imported) while keeping fact tables live (DirectQuery).
+**Composite Mode**: A hybrid where some tables use Import and others use DirectQuery, with dimension tables often set to Dual storage mode. This is useful when you want fast performance for dimensions while keeping fact tables live (DirectQuery).
 
 Choose based on your requirements:
 
@@ -28,7 +28,7 @@ Choose based on your requirements:
 |--------|--------|-------------|
 | Data freshness | Refresh schedule | Real-time |
 | Query performance | Fast (local) | Depends on Synapse |
-| Data volume | Limited by PBI capacity | Unlimited |
+| Data volume | Limited by Power BI capacity | Constrained by source performance and DirectQuery limits |
 | Synapse load | Only during refresh | Every query |
 
 ## Connecting to a Dedicated SQL Pool
@@ -37,7 +37,7 @@ Choose based on your requirements:
 
 1. Open Power BI Desktop
 2. Click "Get Data" on the Home ribbon
-3. Search for "Azure Synapse Analytics SQL" and select it
+3. Search for "Azure Synapse Analytics (SQL DW)" and select it
 4. Click "Connect"
 5. Enter the connection details:
 
@@ -47,7 +47,7 @@ Database: your_dedicated_pool
 ```
 
 6. Choose "DirectQuery" or "Import" mode
-7. Enter your credentials (Azure AD recommended)
+7. Enter your credentials (Microsoft Entra ID recommended)
 
 ### Connection String Format
 
@@ -126,7 +126,7 @@ GROUP BY
     region;
 ```
 
-Then in Power BI, connect to the serverless SQL pool and import from the view.
+Then in Power BI, connect to the serverless SQL pool and import from the view. Import mode is generally preferred for Power BI reports that run complex queries or scan large amounts of data from serverless SQL pools.
 
 ## Setting Up Scheduled Refresh
 
@@ -143,7 +143,9 @@ For Import mode, configure automatic data refresh:
 
 ### Using a Data Gateway
 
-If your Synapse workspace is behind a private endpoint, you need an on-premises data gateway:
+If your Synapse workspace is behind a private endpoint, you need a data gateway, such as a virtual network (VNet) data gateway or an on-premises data gateway installed on a VM with network access to Synapse:
+
+For an on-premises data gateway:
 
 1. Install the data gateway on a VM that has network access to Synapse
 2. Register the gateway in Power BI Service
@@ -242,9 +244,9 @@ Define roles in Power BI Desktop:
 )
 ```
 
-### In Synapse (Server-Side RLS)
+### In Synapse (Server-Side RLS for Dedicated SQL Pool)
 
-For DirectQuery, implement RLS in Synapse for stronger security:
+For DirectQuery against a dedicated SQL pool, implement RLS in Synapse for stronger security. This enforces per-viewer access only when Power BI connects as the viewer, such as with Microsoft Entra single sign-on; with shared credentials, all viewers use the same database identity.
 
 ```sql
 -- Create a security policy that filters sales by region
@@ -256,7 +258,7 @@ AS RETURN
     WHERE @Region IN (
         SELECT Region
         FROM dbo.UserRegionAccess
-        WHERE UserEmail = SESSION_USER
+        WHERE UserEmail = USER_NAME()
     );
 
 CREATE SECURITY POLICY SalesFilter
