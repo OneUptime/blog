@@ -35,7 +35,7 @@ The server only handles the token generation (steps 1-3), which is a lightweight
 ```bash
 mkdir file-upload-service && cd file-upload-service
 npm init -y
-npm install express @azure/storage-blob dotenv cors uuid multer
+npm install express @azure/storage-blob dotenv cors
 ```
 
 ## Generate SAS Tokens
@@ -83,7 +83,7 @@ function generateUploadSAS(blobName, expiresInMinutes = 15) {
   const expiresOn = new Date();
   expiresOn.setMinutes(expiresOn.getMinutes() + expiresInMinutes);
 
-  // Generate the SAS token with write-only permission
+  // Generate the SAS token with Create and Write permissions
   const sasToken = generateBlobSASQueryParameters(
     {
       containerName,
@@ -92,8 +92,6 @@ function generateUploadSAS(blobName, expiresInMinutes = 15) {
       startsOn,
       expiresOn,
       protocol: SASProtocol.Https,  // HTTPS only for security
-      // Optionally restrict content type
-      contentType: undefined,
     },
     sharedKeyCredential
   ).toString();
@@ -161,7 +159,7 @@ module.exports = {
 // Express.js API for file upload management
 const express = require('express');
 const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const path = require('path');
 const {
   generateUploadSAS,
@@ -208,7 +206,7 @@ app.post('/api/uploads/request', (req, res) => {
   }
 
   // Generate a unique blob name to prevent collisions
-  const fileId = uuidv4();
+  const fileId = randomUUID();
   const ext = path.extname(fileName) || `.${typeConfig.ext}`;
   const blobName = `${fileId}${ext}`;
 
@@ -254,6 +252,18 @@ app.post('/api/uploads/:fileId/confirm', async (req, res) => {
 
   try {
     const properties = await blobClient.getProperties();
+
+    if (properties.contentLength !== metadata.fileSize) {
+      await blobClient.deleteIfExists();
+      fileMetadata.delete(fileId);
+      return res.status(400).json({ error: 'Uploaded file size does not match the requested size' });
+    }
+
+    if (properties.contentType !== metadata.contentType) {
+      await blobClient.deleteIfExists();
+      fileMetadata.delete(fileId);
+      return res.status(400).json({ error: 'Uploaded content type does not match the requested content type' });
+    }
 
     // Update metadata with confirmed status
     metadata.status = 'confirmed';
@@ -339,6 +349,7 @@ start().catch(console.error);
 ## Browser-Side Upload Code
 
 Here is how the browser uses the SAS URL to upload directly to Blob Storage.
+Before running this from a browser on a different origin, configure CORS on the Blob service to allow your application's origin, the `PUT` method, and the request headers you send, including `x-ms-blob-type` and `Content-Type`.
 
 ```javascript
 // browser/upload.js
@@ -365,10 +376,7 @@ async function uploadFile(file) {
   // Step 2: Upload directly to Azure Blob Storage using the SAS URL
   const uploadRes = await fetch(uploadUrl, {
     method: 'PUT',
-    headers: {
-      ...headers,
-      'Content-Length': file.size,
-    },
+    headers,
     body: file,
   });
 
