@@ -41,7 +41,8 @@ For daemon applications and service-to-service communication, you use applicatio
 You need:
 
 - Microsoft Entra ID tenant
-- Application Administrator or Global Administrator role
+- Application Administrator or Cloud Application Administrator role to create and manage the app registration
+- Privileged Role Administrator or Global Administrator role to grant Microsoft Graph application permissions
 - Understanding of which API permissions your application needs
 
 ## Step 1: Create the App Registration
@@ -64,7 +65,7 @@ After registration, note the **Application (client) ID** and **Directory (tenant
 ```powershell
 # Connect to Microsoft Graph
 
-Connect-MgGraph -Scopes "Application.ReadWrite.All"
+Connect-MgGraph -Scopes "Application.ReadWrite.All", "AppRoleAssignment.ReadWrite.All"
 
 # Create the app registration
 $appParams = @{
@@ -194,12 +195,16 @@ $certData = [System.Convert]::ToBase64String(
 )
 
 $certParams = @{
-    KeyCredential = @{
-        DisplayName = "Backend Service Certificate"
-        Type = "AsymmetricX509Cert"
-        Usage = "Verify"
-        Key = [System.Convert]::FromBase64String($certData)
-    }
+    keyCredentials = @(
+        @{
+            DisplayName = "Backend Service Certificate"
+            Type = "AsymmetricX509Cert"
+            Usage = "Verify"
+            Key = [System.Convert]::FromBase64String($certData)
+            StartDateTime = $cert.NotBefore.ToUniversalTime()
+            EndDateTime = $cert.NotAfter.ToUniversalTime()
+        }
+    )
 }
 
 Update-MgApplication -ApplicationId $app.Id -BodyParameter $certParams
@@ -256,7 +261,7 @@ $users.value | ForEach-Object { Write-Host "  $($_.displayName) - $($_.userPrinc
 using Microsoft.Identity.Client;
 using System.Security.Cryptography.X509Certificates;
 
-// Load the certificate from the certificate store
+// Load the certificate from a PFX file
 var certificate = new X509Certificate2("path/to/cert.pfx", "certPassword");
 
 // Build the confidential client application
@@ -302,14 +307,14 @@ AADServicePrincipalSignInLogs
 | summarize
     SignInCount = count(),
     DistinctIPs = dcount(IPAddress),
-    FailureCount = countif(ResultType != "0")
+    FailureCount = countif(ResultType != "Success")
     by bin(TimeGenerated, 1d)
 | sort by TimeGenerated desc
 ```
 
 ## Step 6: Implement Token Caching
 
-Access tokens are valid for a period (typically 1 hour). Cache them and reuse until they expire:
+Access tokens are valid for a limited period (the default lifetime is typically 60 to 90 minutes). Cache them and reuse until they expire:
 
 ```powershell
 # Simple token caching pattern in PowerShell
