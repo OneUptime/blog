@@ -129,7 +129,7 @@ $role.Actions = @(
     "Microsoft.Network/networkSecurityGroups/read",
     "Microsoft.Resources/subscriptions/resourceGroups/read",
     # Allow viewing metrics and diagnostics
-    "Microsoft.Insights/alertRules/*",
+    "Microsoft.Insights/alertRules/read",
     "Microsoft.Insights/diagnosticSettings/read",
     "Microsoft.Insights/metrics/read"
 )
@@ -264,14 +264,14 @@ For best practices:
 - Regularly audit custom roles to make sure they are still needed and not overly permissive.
 - Prefer using NotActions when you want to grant broad access with specific exclusions, rather than listing every individual action.
 
-## Real-World Example: Database Reader with No PII Access
+## Real-World Example: SQL Metadata Reader
 
-Here is a more complex custom role that allows reading from Azure SQL databases but blocks access to columns containing personally identifiable information through data masking:
+Here is a more complex custom role that allows reading Azure SQL server and database metadata. Azure RBAC controls management-plane access to SQL resources; database query permissions and dynamic data masking permissions such as SELECT and UNMASK are managed inside the database with T-SQL:
 
 ```powershell
 $role = [Microsoft.Azure.Commands.Resources.Models.Authorization.PSRoleDefinition]::new()
-$role.Name = "SQL Data Reader - No PII"
-$role.Description = "Can read SQL databases and execute queries but cannot unmask dynamic data masking columns."
+$role.Name = "SQL Metadata Reader"
+$role.Description = "Can read Azure SQL server and database metadata, including schema and masking policy metadata."
 $role.IsCustom = $true
 
 $role.Actions = @(
@@ -279,13 +279,14 @@ $role.Actions = @(
     "Microsoft.Sql/servers/databases/read",
     "Microsoft.Sql/servers/databases/schemas/read",
     "Microsoft.Sql/servers/databases/schemas/tables/read",
-    "Microsoft.Sql/servers/databases/schemas/tables/columns/read"
+    "Microsoft.Sql/servers/databases/schemas/tables/columns/read",
+    "Microsoft.Sql/servers/databases/dataMaskingPolicies/read",
+    "Microsoft.Sql/servers/databases/dataMaskingPolicies/rules/read"
 )
 
-# Explicitly deny the ability to unmask data
-$role.NotActions = @(
-    "Microsoft.Sql/servers/databases/dataMaskingPolicies/*"
-)
+$role.NotActions = @()
+$role.DataActions = @()
+$role.NotDataActions = @()
 
 $role.AssignableScopes = @("/subscriptions/YOUR_SUBSCRIPTION_ID")
 
