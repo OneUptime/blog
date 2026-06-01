@@ -115,7 +115,7 @@ source "azure-arm" "ubuntu" {
   os_type         = "Linux"
   image_publisher = "Canonical"
   image_offer     = "0001-com-ubuntu-server-jammy"
-  image_sku       = "22_04-lts"
+  image_sku       = "22_04-lts-gen2"
 
   # Build VM configuration
   location = var.location
@@ -128,7 +128,17 @@ source "azure-arm" "ubuntu" {
     gallery_name        = "gal_company_images"
     image_name          = "ubuntu-server"
     image_version       = var.image_version
-    replication_regions = ["eastus2", "westus2"]  # Replicate for HA
+
+    target_region {
+      name     = "eastus2"
+      replicas = 1
+    }
+
+    target_region {
+      name     = "westus2"
+      replicas = 1
+    }
+
     storage_account_type = "Standard_LRS"
   }
 
@@ -180,13 +190,11 @@ build {
     ]
   }
 
-  # Install monitoring agents
+  # Install monitoring prerequisites
   provisioner "shell" {
     inline = [
-      "# Install the Azure Monitor agent",
-      "wget https://aka.ms/InstallAzureMonitorAgentLinux -O install_ama.sh",
-      "sudo bash install_ama.sh",
-      "rm install_ama.sh"
+      "# Azure Monitor Agent is installed as a VM extension after deployment",
+      "sudo apt-get install -y rsyslog"
     ]
   }
 
@@ -220,13 +228,14 @@ build {
 
   # Clean up before capture to reduce image size
   provisioner "shell" {
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} sudo -E sh '{{ .Path }}'"
+    skip_clean      = true
     inline = [
-      "sudo apt-get clean",
-      "sudo rm -rf /var/lib/apt/lists/*",
-      "sudo rm -rf /tmp/*",
+      "apt-get clean",
+      "rm -rf /var/lib/apt/lists/*",
 
       "# Deprovision the VM for generalization",
-      "sudo waagent -deprovision+user -force"
+      "/usr/sbin/waagent -force -deprovision+user && export HISTSIZE=0 && sync"
     ]
   }
 }
@@ -283,10 +292,15 @@ Now use Terraform to deploy VMs from the custom image:
 # main.tf - Deploy VMs from custom Packer-built images
 
 data "azurerm_shared_image_version" "ubuntu" {
-  name                = "1.0.0"
+  name                = var.image_version
   image_name          = "ubuntu-server"
   gallery_name        = "gal_company_images"
   resource_group_name = "rg-image-gallery"
+}
+
+variable "image_version" {
+  type    = string
+  default = "1.0.0"
 }
 
 resource "azurerm_resource_group" "app" {
@@ -334,8 +348,18 @@ resource "azurerm_linux_virtual_machine" "app" {
 
   tags = {
     Environment = "production"
-    ImageVersion = "1.0.0"
+    ImageVersion = var.image_version
   }
+}
+
+resource "azurerm_virtual_machine_extension" "monitor" {
+  count                      = 3
+  name                       = "AzureMonitorLinuxAgent"
+  virtual_machine_id         = azurerm_linux_virtual_machine.app[count.index].id
+  publisher                  = "Microsoft.Azure.Monitor"
+  type                       = "AzureMonitorLinuxAgent"
+  type_handler_version       = "1.0"
+  auto_upgrade_minor_version = true
 }
 ```
 
@@ -367,7 +391,7 @@ jobs:
 
       - name: Generate version
         id: version
-        run: echo "version=$(date +%Y.%m.%d)" >> $GITHUB_OUTPUT
+        run: echo "version=$(date +%Y.%-m.%-d)" >> $GITHUB_OUTPUT
 
       - name: Setup Packer
         uses: hashicorp/setup-packer@main
@@ -416,7 +440,7 @@ Use semantic versioning for your images. I follow this convention:
 - **Minor version**: Software additions or significant changes (adding Docker, changing security config)
 - **Patch version**: Security updates and minor fixes
 
-Alternatively, use date-based versioning (`2026.02.16`) for images that are rebuilt on a schedule.
+Alternatively, use date-based versioning (`2026.2.16`) for images that are rebuilt on a schedule.
 
 ## Testing Images
 
@@ -424,15 +448,22 @@ Add a test step to your pipeline that boots the image and validates it:
 
 ```bash
 # Quick smoke test after image build
-packer build -var "image_version=test" ubuntu-server.pkr.hcl
+packer build -var "image_version=0.0.1" ubuntu-server.pkr.hcl
 
 # Deploy a test VM from the image
 az vm create \
   --resource-group rg-packer-build \
   --name vm-image-test \
-  --image "/subscriptions/.../ubuntu-server/versions/test" \
+  --image "/subscriptions/<subscription-id>/resourceGroups/rg-image-gallery/providers/Microsoft.Compute/galleries/gal_company_images/images/ubuntu-server/versions/0.0.1" \
   --admin-username testuser \
   --generate-ssh-keys
+
+VM_IP=$(az vm show \
+  --resource-group rg-packer-build \
+  --name vm-image-test \
+  --show-details \
+  --query publicIps \
+  --output tsv)
 
 # Run validation checks
 ssh testuser@$VM_IP "docker --version && ufw status && systemctl is-active docker"
