@@ -100,15 +100,17 @@ First, create or obtain your certificate chain. For production, use a proper CA.
 ```bash
 # Generate a self-signed root CA certificate for development
 # In production, use certificates from a trusted CA
-openssl req -x509 -new -nodes \
-    -key root-ca.key \
+openssl req -x509 -newkey rsa:4096 -nodes \
+    -keyout root-ca.key \
     -sha256 -days 3650 \
     -out root-ca.pem \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
     -subj "/CN=IoT Root CA/O=MyCompany/C=US"
 
 # Generate a device certificate signed by the root CA
-openssl req -new -nodes \
-    -key device-001.key \
+openssl req -newkey rsa:2048 -nodes \
+    -keyout device-001.key \
     -out device-001.csr \
     -subj "/CN=device-001"
 
@@ -140,7 +142,7 @@ az iot dps enrollment-group create \
     --resource-group rg-iot-production \
     --dps-name dps-production-001 \
     --enrollment-id "factory-floor-devices" \
-    --certificate-path "./root-ca.pem" \
+    --ca-name "iot-root-ca" \
     --provisioning-status enabled \
     --allocation-policy hashed \
     --iot-hubs "iothub-production-001.azure-devices.net"
@@ -154,11 +156,15 @@ For simpler scenarios, symmetric key enrollment groups are faster to set up:
 
 ```bash
 # Create an enrollment group with symmetric key attestation
+GROUP_PRIMARY_KEY="$(openssl rand -base64 32)"
+GROUP_SECONDARY_KEY="$(openssl rand -base64 32)"
+
 az iot dps enrollment-group create \
     --resource-group rg-iot-production \
     --dps-name dps-production-001 \
     --enrollment-id "sensor-devices-group" \
-    --attestation-type symmetricKey \
+    --primary-key "$GROUP_PRIMARY_KEY" \
+    --secondary-key "$GROUP_SECONDARY_KEY" \
     --provisioning-status enabled \
     --allocation-policy hashed \
     --iot-hubs "iothub-production-001.azure-devices.net"
@@ -201,15 +207,21 @@ For special devices or testing, create individual enrollments that map a specifi
 
 ```bash
 # Create an individual enrollment for a specific device
+DEVICE_PRIMARY_KEY="$(openssl rand -base64 32)"
+DEVICE_SECONDARY_KEY="$(openssl rand -base64 32)"
+
 az iot dps enrollment create \
     --resource-group rg-iot-production \
     --dps-name dps-production-001 \
     --enrollment-id "gateway-device-001" \
     --attestation-type symmetricKey \
+    --primary-key "$DEVICE_PRIMARY_KEY" \
+    --secondary-key "$DEVICE_SECONDARY_KEY" \
     --provisioning-status enabled \
     --allocation-policy static \
     --iot-hubs "iothub-production-001.azure-devices.net" \
-    --initial-twin-properties '{"tags":{"environment":"production","role":"gateway"},"properties":{"desired":{"telemetryInterval":30}}}'
+    --initial-twin-tags '{"environment":"production","role":"gateway"}' \
+    --initial-twin-properties '{"telemetryInterval":30}'
 ```
 
 Individual enrollments take precedence over enrollment groups. If a device matches both an individual enrollment and a group enrollment, the individual enrollment is used.
