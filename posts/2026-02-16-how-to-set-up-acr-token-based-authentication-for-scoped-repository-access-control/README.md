@@ -24,8 +24,8 @@ With the admin account, everyone gets the same all-or-nothing access. With scope
 
 ## Prerequisites
 
-- Azure Container Registry on the Premium SKU (token-based auth requires Premium)
-- Azure CLI 2.50 or later
+- Azure Container Registry
+- Azure CLI 2.17.0 or later
 - Some repositories with images in your registry
 
 ## Step 1: Create Scope Maps
@@ -37,7 +37,7 @@ A scope map defines a set of permissions on specific repositories. Think of it a
 
 az acr scope-map create \
   --name cicd-scope \
-  --registry myRegistry \
+  --registry myregistry \
   --description "CI/CD pipeline access to application repositories" \
   --repository myapp/api content/write content/read \
   --repository myapp/frontend content/write content/read \
@@ -61,7 +61,7 @@ Let's create a few more scope maps for different use cases.
 # Create a scope map for production cluster - pull only
 az acr scope-map create \
   --name production-pull-scope \
-  --registry myRegistry \
+  --registry myregistry \
   --description "Production cluster read-only access" \
   --repository myapp/api content/read \
   --repository myapp/frontend content/read \
@@ -70,7 +70,7 @@ az acr scope-map create \
 # Create a scope map for external partner - very limited access
 az acr scope-map create \
   --name partner-scope \
-  --registry myRegistry \
+  --registry myregistry \
   --description "External partner access to shared SDK images" \
   --repository shared/sdk content/read \
   --repository shared/sdk metadata/read
@@ -78,7 +78,7 @@ az acr scope-map create \
 # Create a scope map for cleanup automation - delete old images
 az acr scope-map create \
   --name cleanup-scope \
-  --registry myRegistry \
+  --registry myregistry \
   --description "Automated cleanup tool for removing old images" \
   --repository myapp/api content/read content/delete \
   --repository myapp/frontend content/read content/delete \
@@ -87,29 +87,32 @@ az acr scope-map create \
 
 ## Step 2: Create Tokens from Scope Maps
 
-Now create tokens that use these scope maps. Each token gets a username and one or two passwords.
+Now create tokens that use these scope maps. Each token gets a username, and you can generate one or two passwords for it.
 
 ```bash
 # Create a token for CI/CD using the cicd-scope map
 az acr token create \
   --name cicd-token \
-  --registry myRegistry \
+  --registry myregistry \
   --scope-map cicd-scope \
-  --status enabled
+  --status enabled \
+  --no-passwords
 
 # Create a token for production pull
 az acr token create \
   --name production-pull-token \
-  --registry myRegistry \
+  --registry myregistry \
   --scope-map production-pull-scope \
-  --status enabled
+  --status enabled \
+  --no-passwords
 
 # Create a token for external partner
 az acr token create \
   --name partner-token \
-  --registry myRegistry \
+  --registry myregistry \
   --scope-map partner-scope \
-  --status enabled
+  --status enabled \
+  --no-passwords
 ```
 
 ## Step 3: Generate Token Passwords
@@ -121,26 +124,26 @@ Tokens need passwords to authenticate. Each token supports two passwords, which 
 # Store the output - the password is only shown once
 az acr token credential generate \
   --name cicd-token \
-  --registry myRegistry \
+  --registry myregistry \
   --password1 \
-  --expiry "2027-01-01T00:00:00Z"
+  --expiration "2027-01-01T00:00:00Z"
 
 # Generate password1 for the production pull token
 az acr token credential generate \
   --name production-pull-token \
-  --registry myRegistry \
+  --registry myregistry \
   --password1 \
-  --expiry "2027-01-01T00:00:00Z"
+  --expiration "2027-01-01T00:00:00Z"
 
 # Generate password1 for the partner token with shorter expiry
 az acr token credential generate \
   --name partner-token \
-  --registry myRegistry \
+  --registry myregistry \
   --password1 \
-  --expiry "2026-06-01T00:00:00Z"
+  --expiration "2026-12-01T00:00:00Z"
 ```
 
-Save the generated passwords securely. Store them in Azure Key Vault or your secrets manager of choice. The password is only displayed once at creation time.
+Save the generated passwords securely. Store them in Azure Key Vault or your secrets manager of choice. The password is only displayed once at generation time.
 
 ## Step 4: Use Tokens for Docker Authentication
 
@@ -209,9 +212,9 @@ Tokens support two passwords to enable zero-downtime rotation. Here is the proce
 # Step 1: Generate password2 while password1 is still active
 az acr token credential generate \
   --name production-pull-token \
-  --registry myRegistry \
+  --registry myregistry \
   --password2 \
-  --expiry "2028-01-01T00:00:00Z"
+  --expiration "2028-01-01T00:00:00Z"
 
 # Step 2: Update all systems to use password2
 # (Update Kubernetes secrets, CI/CD variables, etc.)
@@ -225,7 +228,7 @@ kubectl create secret docker-registry acr-pull-secret \
 # Step 3: Once everything is using password2, delete password1
 az acr token credential delete \
   --name production-pull-token \
-  --registry myRegistry \
+  --registry myregistry \
   --password1
 ```
 
@@ -235,27 +238,27 @@ List and manage your tokens:
 
 ```bash
 # List all tokens in the registry
-az acr token list --registry myRegistry -o table
+az acr token list --registry myregistry -o table
 
 # Show details of a specific token
-az acr token show --name cicd-token --registry myRegistry
+az acr token show --name cicd-token --registry myregistry
 
 # Disable a token (immediately blocks all access)
 az acr token update \
   --name partner-token \
-  --registry myRegistry \
+  --registry myregistry \
   --status disabled
 
 # Re-enable a token
 az acr token update \
   --name partner-token \
-  --registry myRegistry \
+  --registry myregistry \
   --status enabled
 
 # Delete a token permanently
 az acr token delete \
   --name partner-token \
-  --registry myRegistry --yes
+  --registry myregistry --yes
 ```
 
 ## Updating Scope Maps
@@ -266,13 +269,13 @@ As your application evolves, you may need to add or remove repositories from a s
 # Add a new repository to the CI/CD scope map
 az acr scope-map update \
   --name cicd-scope \
-  --registry myRegistry \
+  --registry myregistry \
   --add-repository myapp/newservice content/write content/read
 
 # Remove a repository from the scope map
 az acr scope-map update \
   --name cicd-scope \
-  --registry myRegistry \
+  --registry myregistry \
   --remove-repository myapp/deprecated content/write content/read
 ```
 
@@ -285,9 +288,10 @@ ACR logs all authentication events to Azure Monitor diagnostic logs. Enable diag
 ```bash
 # Enable diagnostic logging for the registry
 az monitor diagnostic-settings create \
-  --resource $(az acr show --name myRegistry --query id -o tsv) \
+  --resource $(az acr show --name myregistry --query id -o tsv) \
   --name acr-diagnostics \
   --workspace <log-analytics-workspace-id> \
+  --export-to-resource-specific true \
   --logs '[{"category":"ContainerRegistryLoginEvents","enabled":true}]'
 ```
 
@@ -304,7 +308,7 @@ az monitor log-analytics query \
 
 Keep scope maps focused and descriptive. One scope map per role or service identity is cleaner than a few broad scope maps shared across many tokens.
 
-Set expiration dates on all token passwords. Never create passwords without an expiry. When a password expires, any system using it stops working, which is exactly the behavior you want as a forcing function for rotation.
+Set expiration dates on all token passwords. Never create passwords without an expiration date. When a password expires, any system using it stops working, which is exactly the behavior you want as a forcing function for rotation.
 
 Store token passwords in Azure Key Vault, not in CI/CD environment variables or config files. Key Vault gives you audit trails, access policies, and automated rotation capabilities.
 
