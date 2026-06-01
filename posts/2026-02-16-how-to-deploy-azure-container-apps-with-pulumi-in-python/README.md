@@ -55,7 +55,7 @@ Make sure your `requirements.txt` includes:
 
 ```text
 pulumi>=3.0.0,<4.0.0
-pulumi-azure-native>=2.0.0,<3.0.0
+pulumi-azure-native>=3.0.0,<4.0.0
 ```
 
 Install dependencies:
@@ -66,7 +66,7 @@ pip install -r requirements.txt
 
 ## Building the Infrastructure
 
-Here is the complete `__main__.py` that deploys a Container Apps environment with two applications:
+Here is the complete `__main__.py` that deploys a Container Apps environment with three applications:
 
 ```python
 # __main__.py - Deploy Azure Container Apps with Pulumi Python
@@ -185,7 +185,7 @@ api_app = app.ContainerApp(
             traffic=[
                 app.TrafficWeightArgs(
                     latest_revision=True,
-                    percentage=100,
+                    weight=100,
                 ),
             ],
             # CORS settings
@@ -372,7 +372,7 @@ web_app = app.ContainerApp(
             traffic=[
                 app.TrafficWeightArgs(
                     latest_revision=True,
-                    percentage=100,
+                    weight=100,
                 ),
             ],
         ),
@@ -467,12 +467,12 @@ configuration=app.ConfigurationArgs(
         traffic=[
             app.TrafficWeightArgs(
                 revision_name=f"{name('ca-api')}--stable",
-                percentage=90,
+                weight=90,
                 label="stable",
             ),
             app.TrafficWeightArgs(
                 latest_revision=True,
-                percentage=10,
+                weight=10,
                 label="canary",
             ),
         ],
