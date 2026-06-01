@@ -8,13 +8,13 @@ Description: A practical guide to enabling the Azure Firewall DNS proxy feature 
 
 ---
 
-Azure Firewall supports filtering traffic based on fully qualified domain names (FQDNs) instead of just IP addresses. This is powerful because cloud services change their IP addresses constantly, but their domain names stay the same. To make FQDN filtering work reliably, you need to enable the Azure Firewall DNS proxy feature so the firewall can resolve and inspect DNS queries from your workloads.
+Azure Firewall supports filtering traffic based on fully qualified domain names (FQDNs) instead of just IP addresses. This is powerful because cloud services change their IP addresses constantly, but their domain names stay the same. To use FQDNs in network rules reliably, you need to enable the Azure Firewall DNS proxy feature so the firewall can process and forward DNS queries from your workloads.
 
 This guide covers the DNS proxy configuration, FQDN-based rule creation, and the troubleshooting steps you will need when things do not resolve as expected.
 
 ## Why DNS Proxy Matters for FQDN Filtering
 
-Without the DNS proxy, Azure Firewall faces a challenge with FQDN-based rules. Here is the problem: when a virtual machine makes a DNS query, it goes to whatever DNS server is configured (often Azure's default 168.63.129.16 or a custom DNS server). The VM gets back an IP address and then opens a connection to that IP. The firewall sees the connection to the IP address but does not inherently know which domain name the VM was trying to reach.
+Without the DNS proxy, Azure Firewall faces a challenge with FQDN-based network rules. Here is the problem: when a virtual machine makes a DNS query, it goes to whatever DNS server is configured (often Azure's default 168.63.129.16 or a custom DNS server). The VM gets back an IP address and then opens a connection to that IP. The firewall sees the connection to the IP address but might not resolve the same address for the FQDN in the network rule.
 
 When you enable DNS proxy mode, the firewall itself resolves the DNS query and caches the result. It knows the mapping between the domain name and the IP address. When the subsequent connection comes through, the firewall can match it against FQDN rules.
 
@@ -31,7 +31,7 @@ sequenceDiagram
     FW-->>VM: Response: 203.0.113.10
     Note over FW: Cache: api.example.com = 203.0.113.10
     VM->>FW: TCP connection to 203.0.113.10:443
-    Note over FW: Match against FQDN rule for api.example.com
+    Note over FW: Match against network FQDN rule for api.example.com
     FW->>Web: Forward allowed traffic
 ```
 
@@ -110,7 +110,7 @@ After changing DNS servers on a VNet, you need to restart the VMs in that VNet (
 
 ## Step 3: Create FQDN-Based Application Rules
 
-Application rules in Azure Firewall operate at layer 7 (HTTP/HTTPS) and natively support FQDN filtering. They perform SNI inspection on HTTPS traffic to determine the target domain.
+Application rules in Azure Firewall operate at layer 7 (HTTP/HTTPS) and natively support FQDN filtering. They use the SNI header on HTTPS traffic to determine the target domain.
 
 Let us create application rules that allow outbound access to specific domains:
 
@@ -137,13 +137,20 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --target-fqdns "github.com" "*.github.com" "*.githubusercontent.com"
 ```
 
-You can use wildcards in FQDN rules. The `*` matches any subdomain. Note that `*.github.com` matches `api.github.com` but does not match `github.com` itself, so you need both entries.
+You can use wildcards in application rule target FQDNs. The `*` matches any subdomain. Note that `*.github.com` matches `api.github.com` but does not match `github.com` itself, so you need both entries.
 
 ## Step 4: Create FQDN-Based Network Rules
 
 Network rules operate at layer 3/4 and traditionally use IP addresses. But with DNS proxy enabled, network rules also support FQDNs. This is useful for non-HTTP protocols like database connections, MQTT, or custom TCP services.
 
 ```bash
+# Create a rule collection group (if using firewall policy)
+az network firewall policy rule-collection-group create \
+  --name "NetworkRules" \
+  --policy-name myFirewallPolicy \
+  --resource-group myResourceGroup \
+  --priority 300
+
 # Create a network rule collection with FQDN targets
 az network firewall policy rule-collection-group collection add-filter-collection \
   --name "AllowDatabaseAccess" \
@@ -154,13 +161,13 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --rule-type NetworkRule \
   --action Allow \
   --rule-name "AllowPostgres" \
-  --protocols TCP \
+  --ip-protocols TCP \
   --source-addresses "10.1.0.0/24" \
   --destination-fqdns "mydb.postgres.database.azure.com" \
   --destination-ports 5432
 ```
 
-The key difference: application rules use `--target-fqdns` and network rules use `--destination-fqdns`. This is a common source of confusion in the CLI.
+The key difference: application rules use `--target-fqdns` and `--protocols`, while network rules use `--destination-fqdns` and `--ip-protocols`. This is a common source of confusion in the CLI.
 
 ## Step 5: Using FQDN Tags
 
@@ -184,7 +191,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --rule-type ApplicationRule \
   --action Allow \
   --rule-name "WindowsUpdateAccess" \
-  --protocols Http=80 Https=443 \
+  --protocols Https=443 \
   --source-addresses "10.1.0.0/24" \
   --fqdn-tags "WindowsUpdate"
 ```
@@ -222,7 +229,7 @@ AzureDiagnostics
 
 1. **VM still using old DNS server:** After changing VNet DNS settings, VMs need a restart to pick up the new DNS server.
 2. **Firewall cannot reach upstream DNS:** Check that the firewall's subnet has a route to the DNS servers and that NSG rules allow DNS traffic.
-3. **FQDN not matching:** Wildcards in FQDN rules only match one subdomain level. `*.example.com` matches `sub.example.com` but not `deep.sub.example.com`.
+3. **FQDN not matching:** Wildcards in application rule target FQDNs only match one subdomain level. `*.example.com` matches `sub.example.com` but not `deep.sub.example.com`. Network rule FQDNs do not support wildcards.
 4. **DNS response caching:** The firewall caches DNS responses. If a domain's IP changes, there might be a delay before the new IP is used. The cache respects TTL values from DNS responses.
 
 ## Rule Processing Order
@@ -251,12 +258,12 @@ flowchart TD
 
 ## Performance Considerations
 
-DNS proxy adds some latency to DNS queries because the firewall is in the resolution path. In practice, this is usually 1-3 milliseconds per query, and the caching significantly reduces repeat query latency.
+DNS proxy adds some latency to DNS queries because the firewall is in the resolution path, and the caching significantly reduces repeat query latency.
 
 For high-throughput environments:
 
-- Use the Premium SKU which has higher DNS query throughput
-- Keep the DNS proxy cache size in mind - it defaults to a reasonable size but can be a factor under extreme load
+- Choose the SKU based on expected firewall throughput and enabled features; Premium has higher overall throughput, but features such as TLS inspection and IDPS add processing cost
+- Keep DNS response TTL behavior in mind; positive cache entries are kept up to one hour, and negative cache entries are kept up to 30 minutes
 - Monitor the `FirewallHealth` metric to ensure the firewall is not overloaded
 
 ## Wrapping Up
