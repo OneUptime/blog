@@ -8,7 +8,7 @@ Description: Deploy an ASP.NET Core Web API to Azure App Service and configure m
 
 ---
 
-Deploying an ASP.NET Core Web API to Azure App Service is straightforward. The part that gets interesting is doing it securely - without storing any secrets in configuration files or environment variables. Managed identity lets your App Service authenticate to other Azure services (databases, Key Vault, Storage) using its own identity, with no passwords or connection strings to manage.
+Deploying an ASP.NET Core Web API to Azure App Service is straightforward. The part that gets interesting is doing it securely - without storing any secrets in configuration files or environment variables. Managed identity lets your App Service authenticate to other Azure services (databases, Key Vault, Storage) using its own identity, with no passwords or secret-bearing connection strings to manage.
 
 In this post, I will deploy a Web API to App Service and wire it up to Azure SQL Database and Key Vault using managed identity exclusively.
 
@@ -16,8 +16,16 @@ In this post, I will deploy a Web API to App Service and wire it up to Azure SQL
 
 Here is the Web API we are deploying. It reads secrets from Key Vault and queries data from Azure SQL.
 
+```bash
+dotnet add package Azure.Extensions.AspNetCore.Configuration.Secrets
+dotnet add package Azure.Identity
+dotnet add package Azure.Security.KeyVault.Secrets
+dotnet add package Microsoft.EntityFrameworkCore.SqlServer
+```
+
 ```csharp
 // Program.cs
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.EntityFrameworkCore;
@@ -122,7 +130,7 @@ az webapp create \
     --plan "${APP_NAME}-plan" \
     --runtime "DOTNET|8.0"
 
-# Azure SQL Server (with Azure AD admin)
+# Azure SQL Server
 az sql server create \
     --name $SQL_SERVER \
     --resource-group $RG \
@@ -136,6 +144,14 @@ az sql db create \
     --server $SQL_SERVER \
     --name apidb \
     --service-objective S0
+
+# Allow connections from Azure services such as App Service
+az sql server firewall-rule create \
+    --resource-group $RG \
+    --server $SQL_SERVER \
+    --name AllowAzureServices \
+    --start-ip-address 0.0.0.0 \
+    --end-ip-address 0.0.0.0
 
 # Key Vault with RBAC
 az keyvault create \
@@ -223,6 +239,13 @@ The connection string uses `Authentication=Active Directory Managed Identity` in
 ## Storing Initial Secrets in Key Vault
 
 ```bash
+# Give your signed-in user permission to write secrets
+USER_ID=$(az ad signed-in-user show --query id -o tsv)
+az role assignment create \
+    --role "Key Vault Secrets Officer" \
+    --assignee $USER_ID \
+    --scope $KV_ID
+
 # Store secrets in Key Vault
 az keyvault secret set \
     --vault-name $KV_NAME \
