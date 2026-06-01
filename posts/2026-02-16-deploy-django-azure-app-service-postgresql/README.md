@@ -171,7 +171,8 @@ az webapp config appsettings set \
     DATABASE_URL="$DATABASE_URL" \
     DJANGO_SECRET_KEY="$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')" \
     DJANGO_DEBUG="False" \
-    DJANGO_ALLOWED_HOSTS="my-django-app.azurewebsites.net"
+    DJANGO_ALLOWED_HOSTS="my-django-app.azurewebsites.net" \
+    SCM_DO_BUILD_DURING_DEPLOYMENT="1"
 ```
 
 ## Configuring the Startup Command
@@ -218,6 +219,15 @@ There are several ways to deploy. I will cover the two most common: Git deployme
 ### Option 1: Local Git Deployment
 
 ```bash
+# Local Git deployment requires SCM basic authentication to be enabled
+az resource update \
+    --resource-group django-rg \
+    --name scm \
+    --namespace Microsoft.Web \
+    --resource-type basicPublishingCredentialsPolicies \
+    --parent sites/my-django-app \
+    --set properties.allow=true
+
 # Configure local Git deployment
 az webapp deployment source config-local-git \
     --name my-django-app \
@@ -296,11 +306,19 @@ az webapp config hostname add \
     --resource-group django-rg \
     --hostname www.mysite.com
 
-# Enable free managed SSL certificate
-az webapp config ssl create \
+# Create and bind a free managed SSL certificate
+THUMBPRINT=$(az webapp config ssl create \
     --name my-django-app \
     --resource-group django-rg \
-    --hostname www.mysite.com
+    --hostname www.mysite.com \
+    --query thumbprint -o tsv)
+
+az webapp config ssl bind \
+    --name my-django-app \
+    --resource-group django-rg \
+    --hostname www.mysite.com \
+    --certificate-thumbprint "$THUMBPRINT" \
+    --ssl-type SNI
 ```
 
 ## Logging and Monitoring
@@ -352,10 +370,10 @@ az appservice plan update \
     --sku P1v2
 
 # Scale out (more instances)
-az webapp scale \
-    --name my-django-app \
+az appservice plan update \
+    --name django-plan \
     --resource-group django-rg \
-    --instance-count 3
+    --number-of-workers 3
 ```
 
 ## Wrapping Up
