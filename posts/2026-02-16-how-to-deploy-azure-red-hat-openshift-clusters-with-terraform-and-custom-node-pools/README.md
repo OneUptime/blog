@@ -8,7 +8,7 @@ Description: Deploy Azure Red Hat OpenShift clusters with custom master and work
 
 ---
 
-Azure Red Hat OpenShift (ARO) is a fully managed OpenShift service jointly operated by Microsoft and Red Hat. It gives you enterprise Kubernetes with OpenShift's developer tools, built-in CI/CD, and the operator framework, all running on Azure infrastructure. Unlike AKS, ARO includes a support agreement that covers both the platform and the underlying infrastructure.
+Azure Red Hat OpenShift (ARO) is a fully managed OpenShift service jointly operated by Microsoft and Red Hat. It gives you enterprise Kubernetes with OpenShift's developer tools, OpenShift Pipelines support, and the operator framework, all running on Azure infrastructure. Unlike AKS, ARO includes a support agreement that covers both the platform and the underlying infrastructure.
 
 Deploying ARO involves more networking prerequisites than AKS. You need a VNet with two dedicated subnets, a service principal or managed identity, and specific network configurations. Terraform handles all of this, and lets you customize the master and worker node pools to match your workload requirements.
 
@@ -39,7 +39,7 @@ ARO requires a minimum of three master nodes (for the control plane) and three w
 
 ## Prerequisites
 
-ARO requires a Red Hat pull secret for accessing container images from the Red Hat registry. Get one from https://console.redhat.com/openshift/install/pull-secret.
+A Red Hat pull secret is optional but recommended for accessing Red Hat container registries and certified partner content. Get one from https://console.redhat.com/openshift/install/pull-secret.
 
 You also need the Azure Red Hat OpenShift resource provider registered in your subscription.
 
@@ -141,6 +141,11 @@ variable "service_cidr" {
   type        = string
   default     = "172.30.0.0/16"
 }
+
+variable "openshift_version" {
+  description = "OpenShift version to deploy. Check available versions with: az aro get-versions --location <region>"
+  type        = string
+}
 ```
 
 ### Service Principal for ARO
@@ -160,19 +165,19 @@ resource "azuread_service_principal" "aro" {
 
 # Create a password for the service principal
 resource "azuread_service_principal_password" "aro" {
-  service_principal_id = azuread_service_principal.aro.id
+  service_principal_id = azuread_service_principal.aro.object_id
   end_date_relative    = "8760h" # 1 year
 }
 
 # Get the ARO resource provider service principal
 data "azuread_service_principal" "aro_rp" {
-  display_name = "Azure Red Hat OpenShift RP"
+  client_id = "f1dd0a37-89c6-4e07-bcd1-ffd3d43d8875"
 }
 ```
 
 ### Networking
 
-ARO requires specific networking. The VNet needs two subnets - one for master nodes and one for worker nodes. Both subnets must have `privateLinkServiceNetworkPolicies` disabled on the master subnet.
+ARO requires specific networking. The VNet needs two subnets - one for master nodes and one for worker nodes. The master subnet must have `privateLinkServiceNetworkPolicies` disabled.
 
 ```hcl
 # Resource group
@@ -186,7 +191,7 @@ resource "azurerm_virtual_network" "aro" {
   name                = "vnet-${var.cluster_name}"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  address_space       = ["10.0.0.0/16"]
+  address_space       = ["10.0.0.0/22"]
 }
 
 # Subnet for master nodes - needs private link service policies disabled
@@ -194,9 +199,9 @@ resource "azurerm_subnet" "master" {
   name                                          = "snet-master"
   resource_group_name                           = azurerm_resource_group.main.name
   virtual_network_name                          = azurerm_virtual_network.aro.name
-  address_prefixes                              = ["10.0.1.0/24"]
+  address_prefixes                              = ["10.0.0.0/23"]
   private_link_service_network_policies_enabled = false
-  service_endpoints                             = ["Microsoft.ContainerRegistry"]
+  service_endpoints                             = ["Microsoft.Storage", "Microsoft.ContainerRegistry"]
 }
 
 # Subnet for worker nodes
@@ -204,8 +209,8 @@ resource "azurerm_subnet" "worker" {
   name                 = "snet-worker"
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.aro.name
-  address_prefixes     = ["10.0.2.0/24"]
-  service_endpoints    = ["Microsoft.ContainerRegistry"]
+  address_prefixes     = ["10.0.2.0/23"]
+  service_endpoints    = ["Microsoft.Storage", "Microsoft.ContainerRegistry"]
 }
 ```
 
@@ -249,7 +254,7 @@ resource "azurerm_redhat_openshift_cluster" "main" {
 
   cluster_profile {
     domain       = var.domain
-    version      = "4.14"
+    version      = var.openshift_version
     pull_secret  = var.pull_secret
   }
 
@@ -260,18 +265,18 @@ resource "azurerm_redhat_openshift_cluster" "main" {
 
   # Master node pool configuration
   main_profile {
-    vm_size            = var.master_vm_size
-    subnet_id          = azurerm_subnet.master.id
-    encryption_at_host = "Enabled"
+    vm_size                    = var.master_vm_size
+    subnet_id                  = azurerm_subnet.master.id
+    encryption_at_host_enabled = true
   }
 
   # Worker node pool configuration
   worker_profile {
-    vm_size            = var.worker_vm_size
-    disk_size_gb       = var.worker_disk_size_gb
-    node_count         = var.worker_count
-    subnet_id          = azurerm_subnet.worker.id
-    encryption_at_host = "Enabled"
+    vm_size                    = var.worker_vm_size
+    disk_size_gb               = var.worker_disk_size_gb
+    node_count                 = var.worker_count
+    subnet_id                  = azurerm_subnet.worker.id
+    encryption_at_host_enabled = true
   }
 
   api_server_profile {
@@ -310,7 +315,7 @@ output "console_url" {
 }
 
 output "api_server_url" {
-  value       = "https://api.${var.domain}.${var.location}.aroapp.io:6443"
+  value       = azurerm_redhat_openshift_cluster.main.api_server_profile[0].url
   description = "URL for the Kubernetes API server"
 }
 
@@ -371,15 +376,15 @@ oc login $(az aro show --name aro-production --resource-group rg-aro-production 
 
 ## Post-Deployment Configuration
 
-After the cluster is running, you will typically want to configure Azure AD integration for authentication, set up persistent storage with Azure Disk or Azure Files CSI drivers, and configure cluster logging with Azure Monitor or the EFK stack.
+After the cluster is running, you will typically want to configure Microsoft Entra ID integration for authentication, set up persistent storage with Azure Disk or Azure Files CSI drivers, and configure cluster logging with Azure Monitor or the EFK stack.
 
-These post-deployment tasks can be handled with the OpenShift provider for Terraform, or through GitOps with ArgoCD which comes built into newer OpenShift versions.
+These post-deployment tasks can be handled with the OpenShift provider for Terraform, or through GitOps with OpenShift GitOps, which is based on Argo CD and can be installed as an operator.
 
 ## Cost Considerations
 
 ARO pricing includes the base Azure infrastructure cost plus an OpenShift license fee per worker node. The license fee covers Red Hat support and the OpenShift platform. Master nodes are included in the base ARO service cost.
 
-For development clusters, use smaller VM sizes and minimum node counts to keep costs manageable. The cluster can be resized later by updating the worker profile.
+For development clusters, use smaller VM sizes and minimum node counts to keep costs manageable. Worker capacity can be scaled after deployment through OpenShift MachineSets or ARO tooling, but changing `worker_profile` fields in Terraform forces replacement of the cluster resource.
 
 ## Conclusion
 
