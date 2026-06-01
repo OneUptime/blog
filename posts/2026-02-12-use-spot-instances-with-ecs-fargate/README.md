@@ -10,7 +10,7 @@ Description: Learn how to use Fargate Spot capacity providers with Amazon ECS to
 
 Fargate Spot lets you run ECS tasks at up to 70% discount compared to regular Fargate pricing. The tradeoff is that AWS can reclaim your Spot capacity with a 2-minute warning when it needs the resources back. That sounds scary, but for many workloads it's perfectly fine - and the savings are substantial.
 
-A standard Fargate task with 1 vCPU and 2GB memory costs about $0.04048/hour. The same task on Fargate Spot costs around $0.01215/hour. Over a month, that's the difference between $29.55 and $8.87 per task. Multiply by dozens or hundreds of tasks, and the savings become very real.
+A standard Fargate task with 1 vCPU and 2GB memory in us-east-1 costs about $0.04937/hour before any additional storage or data transfer charges. The same task on Fargate Spot costs roughly 30% of the on-demand price, though Spot prices vary by region and over time. Over a 730-hour month, that's about $36.04 for on-demand versus roughly $10.81 per Spot task. Multiply by dozens or hundreds of tasks, and the savings become very real.
 
 ## When to Use Fargate Spot
 
@@ -64,7 +64,7 @@ When creating or updating an ECS service, specify the capacity provider strategy
 aws ecs create-service \
   --cluster my-cluster \
   --service-name web-app \
-  --task-definition web-app:latest \
+  --task-definition web-app \
   --desired-count 6 \
   --capacity-provider-strategy \
     capacityProvider=FARGATE,weight=1,base=2 \
@@ -271,7 +271,7 @@ def fargate_spot_savings_report():
                 'Values': ['Amazon Elastic Container Service']
             }
         },
-        GroupBy=[{'Type': 'USAGE_TYPE', 'Key': ''}]
+        GroupBy=[{'Type': 'DIMENSION', 'Key': 'USAGE_TYPE'}]
     )
 
     fargate_cost = 0
