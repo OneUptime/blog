@@ -40,11 +40,11 @@ graph LR
 
 ## Integration Patterns
 
-SDK integrations support three execution patterns:
+Step Functions service integrations support three execution patterns. AWS SDK integrations support Request/Response and, for APIs that can carry a task token, Wait for Callback. The Run a Job pattern is available for supported optimized integrations such as Glue, ECS, EMR, CodeBuild, and Athena.
 
 ### Request/Response (Default)
 
-Step Functions calls the API and moves to the next state immediately without waiting for the operation to complete.
+Step Functions calls the API and moves to the next state after receiving the HTTP response. For asynchronous APIs, this does not mean the long-running work has completed.
 
 ```json
 {
@@ -62,7 +62,7 @@ Step Functions calls the API and moves to the next state immediately without wai
 
 ### Run a Job (.sync)
 
-For long-running operations, append `.sync` to wait for completion. This works with services like Glue, ECS, EMR, and CodeBuild.
+For supported optimized integrations, append `.sync` to wait for completion. This works with services like Glue, ECS, EMR, CodeBuild, and Athena.
 
 ```json
 {
@@ -98,7 +98,7 @@ Pause the execution and wait for an external system to call back with a task tok
 }
 ```
 
-## Common SDK Integration Examples
+## Common SDK and Optimized Integration Examples
 
 ### DynamoDB Operations
 
@@ -241,7 +241,7 @@ Pause the execution and wait for an external system to call back with a task tok
     "Parameters": {
       "LaunchType": "FARGATE",
       "Cluster": "arn:aws:ecs:us-east-1:123456789012:cluster/my-cluster",
-      "TaskDefinition": "arn:aws:ecs:us-east-1:123456789012:task-definition/processor:latest",
+      "TaskDefinition": "arn:aws:ecs:us-east-1:123456789012:task-definition/processor:1",
       "NetworkConfiguration": {
         "AwsvpcConfiguration": {
           "Subnets": ["subnet-abc123"],
@@ -331,7 +331,6 @@ Useful intrinsic functions:
 The state machine's IAM role needs permissions for every SDK call it makes:
 
 ```json
-// IAM policy for a state machine that uses DynamoDB, S3, and SNS integrations
 {
   "Version": "2012-10-17",
   "Statement": [
