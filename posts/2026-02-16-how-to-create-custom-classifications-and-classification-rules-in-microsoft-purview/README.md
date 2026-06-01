@@ -16,12 +16,12 @@ Custom classifications let you extend Purview's detection capabilities to identi
 
 Before creating custom rules, it helps to understand how classification works during a scan.
 
-When Purview scans a data source, it samples data from each column (or field, for unstructured data). It then runs each sample value against the classification rules in the active scan rule set. If a sufficient percentage of sampled values match a classification rule, Purview applies that classification to the column.
+When Purview scans a structured data source or structured file type, it samples data from each column. It then runs each sample value against the classification rules in the active scan rule set. If a sufficient percentage of sampled values match a classification rule, Purview applies that classification to the column.
 
 The key parameters are:
 
-- **Distinct match threshold**: The minimum number of distinct matching values needed
-- **Minimum match threshold**: The minimum percentage of sampled values that must match
+- **Distinct data threshold**: The minimum number of distinct values a column must have before the scanner evaluates the data pattern
+- **Minimum match threshold**: The minimum percentage of distinct sampled values that must match
 
 These thresholds prevent false positives. A column named "notes" might occasionally contain something that looks like a phone number, but if only 2% of values match, it should not be classified as a phone number column.
 
@@ -33,12 +33,13 @@ Let us create a custom classification for an internal employee ID format. Say yo
 
 In the Purview governance portal:
 
-1. Navigate to Data Map > Classifications
+1. Navigate to Data Map > Annotation management > Classifications
 2. Click "New" to create a custom classification
 3. Fill in the details:
-   - **Name**: "Internal Employee ID"
+   - **Name**: "Internal_Employee_ID"
    - **Description**: "Identifies internal employee identification numbers in the format XX999999"
-   - **Category**: Choose an appropriate category or create a new one
+
+Purview displays a friendly name for the classification in the catalog, but the formal classification name should start with a letter and use letters, numbers, periods, or underscores.
 
 ### Step 2: Create the Classification Rule
 
@@ -48,29 +49,29 @@ Classification rules define how Purview detects the pattern. You can use regex p
 
 For our employee ID pattern:
 
-1. Navigate to Data Map > Classification rules
+1. Navigate to Data Map > Annotation management > Classification rules
 2. Click "New" to create a rule
 3. Select "Regular Expression" as the rule type
 4. Configure the rule:
    - **Name**: "employee-id-regex"
-   - **Classification**: Select "Internal Employee ID" (the one we just created)
+   - **Classification**: Select "Internal_Employee_ID" (the one we just created)
    - **Pattern**: `^[A-Z]{2}\d{6}$`
-   - **Distinct match threshold**: 1
    - **Minimum match threshold**: 60
 
 The regex pattern breaks down as follows:
 - `^` - Start of string
-- `[A-Z]{2}` - Exactly two uppercase letters
+- `[A-Z]{2}` - Exactly two letters. Purview custom classification regex matching is case-insensitive, so this also matches lowercase letters.
 - `\d{6}` - Exactly six digits
 - `$` - End of string
 
-You can also create this through the REST API:
+You can also create the custom classification and classification rule through the REST API:
 
 ```python
 import requests
 
 purview_account = "my-purview-account"
 base_url = f"https://{purview_account}.purview.azure.com"
+access_token = "<access-token>"
 
 headers = {
     "Authorization": f"Bearer {access_token}",
@@ -81,28 +82,52 @@ headers = {
 
 classification_payload = {
     "name": "Internal_Employee_ID",
-    "kind": "Custom",
-    "description": "Internal employee identification numbers in format XX999999"
+    "description": "Internal employee identification numbers in format XX999999",
+    "typeVersion": "1.0"
 }
 
-response = requests.put(
-    f"{base_url}/catalog/api/atlas/v2/types/typedefs",
+response = requests.post(
+    f"{base_url}/datamap/api/atlas/v2/types/typedefs",
     headers=headers,
     json={
         "classificationDefs": [classification_payload]
     }
 )
 print(f"Classification created: {response.status_code}")
+
+# Create the custom regex classification rule
+
+rule_payload = {
+    "kind": "Custom",
+    "properties": {
+        "description": "Detects internal employee IDs in format XX999999",
+        "classificationName": "Internal_Employee_ID",
+        "dataPatterns": [
+            {
+                "kind": "Regex",
+                "pattern": r"^[A-Z]{2}\d{6}$"
+            }
+        ],
+        "minimumPercentageMatch": 60,
+        "ruleStatus": "Enabled"
+    }
+}
+
+response = requests.put(
+    f"{base_url}/scan/classificationrules/employee-id-regex?api-version=2023-09-01",
+    headers=headers,
+    json=rule_payload
+)
+print(f"Classification rule created: {response.status_code}")
 ```
 
 #### Dictionary-Based Rule
 
 For patterns that are better described by a known set of values rather than a regex, use dictionary matching. For example, classifying columns that contain department codes:
 
-1. Create a CSV file with your dictionary values:
+1. Create a single-column CSV file with your dictionary values:
 
 ```csv
-Value
 ENGINEERING
 MARKETING
 SALES
@@ -114,7 +139,7 @@ PRODUCT
 ```
 
 2. Upload this as a dictionary in Purview:
-   - Navigate to Data Map > Classification rules
+   - Navigate to Data Map > Annotation management > Classification rules
    - Click "New" and select "Dictionary" as the rule type
    - Upload your CSV file
    - Set the match thresholds
@@ -135,7 +160,7 @@ old_pattern = r'^[A-Z]{2}-\d{6}$'
 new_pattern = r'^[A-Z]{2}\d{6}$'
 ```
 
-Create two classification rules, both mapped to the "Internal Employee ID" classification.
+Create two classification rules, both mapped to the "Internal_Employee_ID" classification.
 
 ## Adding Custom Rules to Scan Rule Sets
 
@@ -146,8 +171,8 @@ Creating a classification and its rules is not enough - you also need to include
 ```python
 # Create a custom scan rule set that includes built-in and custom classifications
 scan_ruleset_payload = {
-    "name": "custom-sql-ruleset",
-    "kind": "AzureSqlDatabase",
+    "kind": "Azure Sql Database",
+    "scanRulesetType": "Custom",
     "properties": {
         "description": "Custom scan rule set with org-specific classifications",
         "excludedSystemClassifications": [],
@@ -157,14 +182,13 @@ scan_ruleset_payload = {
         ],
         "scanningRule": {
             "fileExtensions": [],
-            "customFileExtensions": [],
-            "dataPatternRules": []
+            "customFileExtensions": []
         }
     }
 }
 
 response = requests.put(
-    f"{base_url}/scan/scanrulesets/custom-sql-ruleset?api-version=2022-07-01-preview",
+    f"{base_url}/scan/scanrulesets/custom-sql-ruleset?api-version=2023-09-01",
     headers=headers,
     json=scan_ruleset_payload
 )
@@ -189,14 +213,15 @@ The classification rule editor in the Purview portal includes a test feature:
 
 1. Open your classification rule
 2. Click "Test"
-3. Enter sample values to test against:
+3. Upload a sample file to test against. Delimited samples need at least three columns, including the column that should receive the classification:
 
-```text
-AB123456    -> Should match
-XY789012    -> Should match
-abc123456   -> Should NOT match (lowercase letters)
-AB12345     -> Should NOT match (only 5 digits)
-AB1234567   -> Should NOT match (7 digits)
+```csv
+employee_id,name,notes
+AB123456,Alice Johnson,Should match
+XY789012,Bob Smith,Should match
+abc123456,Charlie Brown,Should also match because Purview regex rules are case-insensitive
+AB12345,Diana Prince,Should NOT match because it has only 5 digits
+AB1234567,Eve Wilson,Should NOT match because it has 7 digits
 ```
 
 ### Validate with a Test Scan
@@ -221,7 +246,7 @@ INSERT INTO classification_test (employee_id, name, random_text) VALUES
 ('IJ567890', 'Eve Wilson', 'Plain text value');
 ```
 
-Run a scan with your custom rule set and verify that the `employee_id` column gets classified as "Internal Employee ID" while the other columns do not.
+Run a scan with your custom rule set and verify that the `employee_id` column gets classified as "Internal_Employee_ID" while the other columns do not.
 
 ## Advanced Patterns
 
