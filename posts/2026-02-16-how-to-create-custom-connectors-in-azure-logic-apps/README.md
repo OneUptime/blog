@@ -8,7 +8,7 @@ Description: Build custom connectors for Azure Logic Apps to integrate any REST 
 
 ---
 
-Azure Logic Apps comes with hundreds of built-in connectors for services like Office 365, Salesforce, SQL Server, and more. But when you need to connect to your own APIs or a third-party service that does not have an official connector, you build a custom connector. A custom connector wraps any REST API and makes it available as drag-and-drop actions in the Logic Apps designer.
+Azure Logic Apps comes with hundreds of built-in connectors for services like Office 365, Salesforce, SQL Server, and more. But when you need to connect to your own APIs or a third-party service that does not have an official connector, you build a custom connector. A custom connector wraps a REST API that meets the connector requirements and makes it available as drag-and-drop actions in the Logic Apps designer.
 
 ## What Is a Custom Connector?
 
@@ -19,7 +19,7 @@ A custom connector is an OpenAPI (Swagger) definition of your REST API, packaged
 Before creating a custom connector, you need:
 
 - A REST API with documented endpoints (ideally with an OpenAPI/Swagger spec)
-- The API must be accessible over HTTPS
+- The API must be accessible through a public HTTPS endpoint
 - Authentication mechanism (API key, OAuth 2.0, or Basic auth)
 
 ## Step 1: Create or Obtain the OpenAPI Specification
@@ -189,7 +189,7 @@ If your API already has a Swagger/OpenAPI spec, you are ahead of the game. If no
 
 ## Step 2: Create the Custom Connector
 
-You can create the connector through the Azure Portal or through the CLI/PowerShell.
+You can create the connector through the Azure Portal or through the CLI.
 
 ### Using the Azure Portal
 
@@ -200,19 +200,20 @@ You can create the connector through the Azure Portal or through the CLI/PowerSh
 5. Set up authentication
 6. Review and create
 
-### Using PowerShell
+### Using the paconn CLI
 
-```powershell
-# Install the required module
+```bash
+# Install the custom connector CLI
+pip install paconn
 
-Install-Module -Name Microsoft.PowerApps.Administration.PowerShell
+# Sign in to Power Platform
+paconn login
 
-# Create the connector from an OpenAPI file
-New-CustomConnector `
-  -EnvironmentName "Default-{tenant-id}" `
-  -ConnectorName "InventoryAPI" `
-  -OpenApiDefinitionFile "./inventory-api-swagger.json" `
-  -Description "Custom connector for the Inventory API"
+# Create the connector from the connector files
+paconn create \
+  --env "{environment-guid}" \
+  --api-prop "./apiProperties.json" \
+  --api-def "./inventory-api-swagger.json"
 ```
 
 ## Step 3: Configure Authentication
@@ -244,7 +245,7 @@ az rest --method POST \
   --body '{
     "properties": {
       "api": {
-        "id": "/subscriptions/{sub-id}/providers/Microsoft.Web/customApis/InventoryAPI"
+        "id": "/subscriptions/{sub-id}/resourceGroups/rg-workflows/providers/Microsoft.Web/customApis/InventoryAPI"
       },
       "parameterValues": {
         "api_key": "your-api-key"
@@ -359,9 +360,9 @@ public class Script : ScriptBase
 
 ## Sharing Connectors Across Your Organization
 
-Custom connectors can be shared within your Azure tenant. Other teams can use your connector in their Logic Apps without rebuilding it.
+Custom connectors can be used within your Azure tenant by users who have access to the same Azure subscription and region. Other teams can use your connector in their Logic Apps without rebuilding it.
 
-To share, navigate to the connector in the Azure Portal and use the "Share" option to grant access to specific users or groups. Each user creates their own connection (with their own credentials), but they all use the same connector definition.
+For Power Apps and Power Automate, navigate to the connector in the maker portal and use the "Invite another user" option to grant access to specific users or groups. Each user creates their own connection (with their own credentials), but they all use the same connector definition.
 
 ## Connector Design Best Practices
 
