@@ -16,10 +16,10 @@ This is the cloud equivalent of "deny all, allow on request." In this guide, I w
 
 The JIT workflow is straightforward:
 
-1. JIT creates NSG deny rules on the management ports (SSH, RDP, etc.) that block all inbound traffic.
+1. JIT ensures deny rules exist on the management ports (SSH, RDP, etc.) in the NSG or Azure Firewall rules. Existing rules on those ports can still take priority, so review them when you enable JIT.
 2. When an authorized user needs access, they request it through the portal, CLI, or API.
 3. JIT creates temporary NSG allow rules for the requesting user's IP address, for a specified duration.
-4. When the time expires, JIT automatically removes the allow rules.
+4. When the time expires, JIT restores the network rules to their previous state. Connections that are already established are not interrupted.
 
 ```mermaid
 sequenceDiagram
@@ -35,7 +35,7 @@ sequenceDiagram
     Note over NSG: Port 22 open for user's IP
     User->>VM: SSH connection
     Note over User,VM: After 3 hours...
-    Defender->>NSG: Remove allow rule
+    Defender->>NSG: Restore previous rule state
     Note over NSG: Port 22 blocked again
 ```
 
@@ -46,8 +46,8 @@ This dramatically reduces the window of opportunity for attackers. Instead of po
 JIT VM access requires:
 
 - **Microsoft Defender for Servers (Plan 2)**: JIT is a feature of Defender for Cloud. You need at least Plan 2 enabled for the subscription.
-- **Supported NSG configuration**: The VM must have an NSG associated with it (either at the NIC or subnet level).
-- **RBAC permissions**: Users requesting access need the Reader role on the VM and the VM Contributor role (or a custom role with specific JIT permissions).
+- **Supported network configuration**: The VM must have an NSG associated with it (either at the NIC or subnet level) or be protected by Azure Firewall in the same virtual network.
+- **RBAC permissions**: Users requesting access need permissions to initiate the JIT policy and read the VM and related network resources. A custom role with the specific JIT permissions is the least-privilege option.
 
 ## Enabling Defender for Servers
 
@@ -58,7 +58,8 @@ If you have not already enabled Defender for Servers:
 
 az security pricing create \
   --name VirtualMachines \
-  --tier Standard
+  --tier Standard \
+  --subplan P2
 ```
 
 In the portal:
@@ -158,27 +159,29 @@ az rest --method post \
 
 ```powershell
 # Request JIT access using the Az PowerShell module
+$EndTimeUtc = (Get-Date).ToUniversalTime().AddHours(2).ToString("o")
+
 $JitPolicy = @{
     id    = "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachines/myVM"
     ports = @(
         @{
             number                     = 22
-            duration                   = "PT2H"
+            endTimeUtc                 = $EndTimeUtc
             allowedSourceAddressPrefix = @("203.0.113.50")
         }
     )
 }
 
+$JitPolicyArr = @($JitPolicy)
+
 Start-AzJitNetworkAccessPolicy `
-    -ResourceGroupName "myResourceGroup" `
-    -Location "eastus" `
-    -Name "default" `
-    -VirtualMachine $JitPolicy
+    -ResourceId "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Security/locations/eastus/jitNetworkAccessPolicies/default" `
+    -VirtualMachine $JitPolicyArr
 ```
 
 ## What Happens in the NSG
 
-When JIT is configured, it adds deny rules to the NSG for the management ports. These rules have a priority number that blocks traffic.
+When JIT is configured, it ensures deny rules exist in the NSG for the management ports. If existing rules already target those ports, they can take priority over the JIT deny rules, so review the effective rule order after enabling JIT.
 
 When access is requested, JIT creates allow rules with a higher priority (lower number) that permit traffic from the requesting IP. When the time expires, the allow rules are removed.
 
@@ -192,7 +195,7 @@ az network nsg rule list \
   --output table
 ```
 
-JIT-managed rules have names starting with "SecurityCenter-JITRule" and include the expiration time in the rule description.
+JIT-managed rules have names starting with "MicrosoftDefenderForCloud-JITRule" and include the expiration time in the rule description. Older environments might still show the previous "SecurityCenter-JITRule" prefix.
 
 ## Customizing JIT Policies
 
@@ -234,14 +237,14 @@ JIT and Bastion complement each other well:
 - **Bastion** eliminates the need for public IPs and provides browser-based access.
 - **JIT** controls when the ports are open, even within the virtual network.
 
-When combined, traffic must go through Bastion (no direct internet access) and the ports must be explicitly opened by JIT before the connection can be made. This is defense in depth at its best.
+When combined, traffic goes through Bastion (no direct internet access), and the target VM subnet still needs to allow RDP or SSH from the AzureBastionSubnet. You can scope JIT source ranges to the Bastion subnet or your approved private ranges so the ports are only opened from trusted network paths. This is defense in depth at its best.
 
 ## RBAC for JIT
 
 Control who can configure JIT policies and who can request access:
 
 - **Configuring JIT policies**: Requires Security Admin or Owner role on the subscription.
-- **Requesting access**: Requires Reader and Virtual Machine Contributor roles on the VM. You can create a custom role with only the JIT initiate permission for least-privilege access.
+- **Requesting access**: Requires permissions to initiate the JIT policy and read the VM and related network resources. You can create a custom role with only the required JIT and read permissions for least-privilege access.
 
 Custom role definition for JIT access only:
 
@@ -253,7 +256,8 @@ Custom role definition for JIT access only:
     "Microsoft.Security/locations/jitNetworkAccessPolicies/initiate/action",
     "Microsoft.Security/locations/jitNetworkAccessPolicies/*/read",
     "Microsoft.Compute/virtualMachines/read",
-    "Microsoft.Network/networkInterfaces/*/read"
+    "Microsoft.Network/networkInterfaces/*/read",
+    "Microsoft.Network/publicIPAddresses/read"
   ],
   "AssignableScopes": [
     "/subscriptions/{sub-id}"
