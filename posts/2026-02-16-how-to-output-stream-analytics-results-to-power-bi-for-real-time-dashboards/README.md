@@ -12,6 +12,8 @@ Static dashboards that refresh every few hours are fine for historical analysis,
 
 This integration is one of the fastest ways to get a live operational dashboard running. There is no intermediate database or polling mechanism - Stream Analytics pushes data directly to a Power BI streaming dataset, and the dashboard reflects changes within seconds.
 
+Important caveat: Microsoft has announced that real-time streaming in Power BI is being retired. Beginning October 31, 2027, you will not be able to create new Stream Analytics jobs with the Power BI output connector, and existing jobs using the connector will be stopped. For new long-term architectures, evaluate Real-Time Intelligence in Microsoft Fabric.
+
 In this post, I will walk through the full setup: configuring the Stream Analytics output, building the Power BI dataset, creating real-time tiles, and handling the practical challenges that come up in production.
 
 ## How the Integration Works
@@ -26,20 +28,20 @@ flowchart LR
     C --> E[Real-Time Reports]
 ```
 
-Stream Analytics pushes rows to a Power BI streaming dataset. Power BI automatically updates any tiles and visuals that are bound to that dataset. Users see the updates in their browser without refreshing the page.
+Stream Analytics pushes rows to a Power BI real-time semantic model. Power BI automatically updates tiles and visuals that are bound to that semantic model. Users see the updates in their browser without refreshing the page.
 
-There are two types of Power BI datasets that work with Stream Analytics:
+There are two types of Power BI real-time semantic models to understand:
 
-- **Push dataset** - Stream Analytics creates and manages the dataset schema. Supports both real-time tiles and standard report visuals with historical data.
-- **Streaming dataset** - for extremely low-latency updates. Supports only real-time tiles (no standard reports). Data is not stored permanently.
+- **Push semantic model** - stores data in Power BI. Supports standard report visuals and pinned dashboard tiles that update when new data arrives.
+- **Streaming semantic model** - for extremely low-latency updates. Supports only custom streaming tiles, with data stored only temporarily in a cache.
 
-Stream Analytics uses push datasets by default, which is what most people want.
+Stream Analytics creates its Power BI output with `defaultMode` set to `pushStreaming`, which combines push and streaming behavior and uses a FIFO retention policy.
 
 ## Prerequisites
 
 1. Azure Stream Analytics job with a working input and query
 2. Power BI Pro or Premium workspace (Power BI Free does not support streaming datasets from Stream Analytics)
-3. An Azure AD account that has access to both Stream Analytics and Power BI
+3. A Microsoft Entra ID account that has access to both Stream Analytics and Power BI
 
 ## Step 1: Configure the Power BI Output
 
@@ -49,7 +51,7 @@ Add Power BI as an output in your Stream Analytics job.
 
 1. Open your Stream Analytics job
 2. Go to **Outputs** > **Add** > **Power BI**
-3. Click **Authorize** and sign in with your Azure AD account that has Power BI access
+3. Click **Authorize** and sign in with your Microsoft Entra ID account that has Power BI access
 4. Configure:
    - **Output alias**: `powerbi-output`
    - **Group workspace**: select your Power BI workspace
@@ -61,26 +63,25 @@ Add Power BI as an output in your Stream Analytics job.
 
 ### Using Managed Identity (Recommended for Production)
 
-User token authentication requires manual re-authorization when the token expires (every 90 days). Managed identity avoids this.
+User token authentication can require manual re-authorization when the token expires, when the password changes, or every two weeks if Microsoft Entra multifactor authentication is configured. Managed identity avoids this.
 
 1. In the Stream Analytics job, go to **Identity** and ensure system-assigned managed identity is enabled
 2. In Power BI Admin portal, enable "Service principals can use Power BI APIs"
 3. Add the Stream Analytics managed identity to the Power BI workspace with Contributor access
 4. When configuring the output, select "Managed Identity" as the authentication mode
 
+Power BI output configuration with managed identity:
+
 ```json
-// Power BI output configuration with managed identity
 {
   "name": "powerbi-output",
   "properties": {
-    "type": "PowerBI",
     "datasource": {
       "type": "PowerBI",
       "properties": {
         "dataset": "IoT Telemetry Stream",
         "table": "TelemetryData",
         "groupId": "<power-bi-workspace-id>",
-        "groupName": "IoT Analytics Workspace",
         "authenticationMode": "Msi"
       }
     }
@@ -103,12 +104,12 @@ Here is a query that produces dashboard-ready output.
 -- Calculates metrics per device in 1-minute windows
 
 SELECT
-    DeviceId,
-    DeviceLocation,
-    AVG(temperature) AS AvgTemperature,
-    MAX(temperature) AS MaxTemperature,
-    MIN(temperature) AS MinTemperature,
-    AVG(humidity) AS AvgHumidity,
+    t.DeviceId,
+    d.DeviceLocation,
+    AVG(t.temperature) AS AvgTemperature,
+    MAX(t.temperature) AS MaxTemperature,
+    MIN(t.temperature) AS MinTemperature,
+    AVG(t.humidity) AS AvgHumidity,
     COUNT(*) AS EventCount,
     -- Include timestamp for time-series visuals
     System.Timestamp() AS WindowEnd
@@ -237,12 +238,12 @@ The difference: real-time tiles update automatically without user interaction. S
 
 ## Data Retention and Limits
 
-Power BI streaming datasets have some limits to be aware of:
+Power BI real-time semantic models have some limits to be aware of:
 
-- **200,000 rows per hour per dataset** - if you exceed this, Power BI drops rows
-- **5 million rows total per push dataset** - older rows are evicted on a FIFO basis when this is exceeded
-- **15 columns maximum** per table for real-time tiles
-- **75 maximum datasets per workspace** for push datasets
+- **1 million rows added per hour per push semantic model**
+- **200,000 rows stored per table** for the FIFO semantic model that Stream Analytics creates
+- **75 columns maximum** per push semantic model table
+- **Streaming tile payloads are limited to 15 KB per request**; larger requests can still update the push semantic model, but streaming tiles may fail
 
 These limits mean you should:
 - Aggregate data in Stream Analytics before pushing to Power BI (do not push raw events)
@@ -251,7 +252,7 @@ These limits mean you should:
 
 ## Handling Authentication Token Expiration
 
-If you used User Token authentication, the token expires after about 90 days. When it expires:
+If you used User Token authentication, you may need to renew authorization when the token expires, when the password changes, or every two weeks if Microsoft Entra multifactor authentication is configured. When authorization is no longer valid:
 
 1. The Power BI output starts failing with authentication errors
 2. Data stops flowing to the dashboard
