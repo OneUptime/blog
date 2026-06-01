@@ -55,7 +55,7 @@ def analyze_sentiment(texts):
     Analyze the sentiment of one or more text documents.
     Returns document-level and sentence-level sentiment for each input.
     """
-    # The API accepts up to 10 documents per call (or 25 with recent versions)
+    # The synchronous API accepts up to 10 documents per call
     results = client.analyze_sentiment(texts)
 
     for i, result in enumerate(results):
@@ -305,22 +305,22 @@ print(f"Top positive aspects: {summary['top_positive_aspects']}")
 
 ## Multi-Language Support
 
-Azure AI Language supports sentiment analysis in over 20 languages. The service automatically detects the language, or you can specify it explicitly.
+Azure AI Language supports sentiment analysis in many languages. For the sentiment analysis API, specify the language explicitly or run language detection first.
 
 ```python
 # Analyze text in different languages
-multilingual_texts = [
-    "Ce produit est fantastique! Je le recommande vivement.",        # French
-    "El servicio al cliente fue terrible, espere mas de una hora.",   # Spanish
-    "Das Essen war ausgezeichnet und der Service freundlich.",        # German
+multilingual_documents = [
+    {"id": "1", "language": "fr", "text": "Ce produit est fantastique! Je le recommande vivement."},
+    {"id": "2", "language": "es", "text": "El servicio al cliente fue terrible, espere mas de una hora."},
+    {"id": "3", "language": "de", "text": "Das Essen war ausgezeichnet und der Service freundlich."},
 ]
 
-# Language detection is automatic
-results = client.analyze_sentiment(multilingual_texts)
+# Specify the language per document
+results = client.analyze_sentiment(multilingual_documents)
 for i, result in enumerate(results):
     if not result.is_error:
-        print(f"Text: {multilingual_texts[i][:50]}...")
-        print(f"Detected language: {result.detected_language}")
+        print(f"Text: {multilingual_documents[i]['text'][:50]}...")
+        print(f"Language: {multilingual_documents[i]['language']}")
         print(f"Sentiment: {result.sentiment}\n")
 ```
 
