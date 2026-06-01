@@ -64,7 +64,8 @@ amplify add auth
 
 # Add GraphQL API
 amplify add api
-# GraphQL with Cognito authorization
+# GraphQL with Cognito authorization, and define a Todo model with
+# title, description, and completed fields to match the code below
 
 # Add storage
 amplify add storage
@@ -72,6 +73,17 @@ amplify add storage
 
 # Deploy
 amplify push
+```
+
+Use this GraphQL model for the Todo examples:
+
+```graphql
+type Todo @model {
+  id: ID!
+  title: String!
+  description: String
+  completed: Boolean!
+}
 ```
 
 This generates `amplifyconfiguration.json` and `awsconfiguration.json` in your `app/src/main/res/raw/` directory.
@@ -99,26 +111,33 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    buildFeatures {
+        compose = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.8"
+    }
 }
 
 dependencies {
     // Core Amplify library
-    implementation("com.amplifyframework:core-kotlin:2.14.0")
+    implementation("com.amplifyframework:core-kotlin:2.36.0")
 
     // Auth plugin
-    implementation("com.amplifyframework:aws-auth-cognito:2.14.0")
+    implementation("com.amplifyframework:aws-auth-cognito:2.36.0")
 
     // API plugin
-    implementation("com.amplifyframework:aws-api:2.14.0")
+    implementation("com.amplifyframework:aws-api:2.36.0")
 
     // Storage plugin
-    implementation("com.amplifyframework:aws-storage-s3:2.14.0")
+    implementation("com.amplifyframework:aws-storage-s3:2.36.0")
 
     // Required for Java 8+ APIs on older Android versions
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
     // Jetpack Compose
     implementation("androidx.compose.ui:ui:1.6.0")
+    implementation("androidx.compose.material:material-icons-core:1.6.0")
     implementation("androidx.compose.material3:material3:1.2.0")
     implementation("androidx.activity:activity-compose:1.8.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
@@ -187,6 +206,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.amplifyframework.auth.AuthSignUpStep
 import com.amplifyframework.auth.AuthUserAttributeKey
 import com.amplifyframework.auth.options.AuthSignUpOptions
 import com.amplifyframework.kotlin.core.Amplify
@@ -248,7 +268,7 @@ fun SignUpScreen(
 
                             val result = Amplify.Auth.signUp(email, password, options)
 
-                            if (result.nextStep.signUpStep.name == "CONFIRM_SIGN_UP_STEP") {
+                            if (result.nextStep.signUpStep == AuthSignUpStep.CONFIRM_SIGN_UP_STEP) {
                                 showConfirmation = true
                             }
                         } catch (e: Exception) {
@@ -361,7 +381,7 @@ object AuthService {
 package com.example.myapp.services
 
 import com.amplifyframework.api.graphql.SimpleGraphQLRequest
-import com.amplifyframework.api.graphql.GraphQLResponse
+import com.amplifyframework.api.aws.GsonVariablesSerializer
 import com.amplifyframework.kotlin.core.Amplify
 import org.json.JSONObject
 
@@ -396,9 +416,9 @@ object TodoService {
 
         val request = SimpleGraphQLRequest<String>(
             mutation,
-            JSONObject(variables).toString(),
+            variables,
             String::class.java,
-            null
+            GsonVariablesSerializer()
         )
 
         val response = Amplify.API.mutate(request)
@@ -458,43 +478,48 @@ object TodoService {
 // services/StorageService.kt
 package com.example.myapp.services
 
-import android.net.Uri
 import com.amplifyframework.kotlin.core.Amplify
-import com.amplifyframework.storage.StorageAccessLevel
+import com.amplifyframework.storage.StoragePath
 import com.amplifyframework.storage.options.StorageUploadFileOptions
 import java.io.File
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 object StorageService {
+    private fun privatePath(key: String): StoragePath =
+        StoragePath.fromIdentityId { identityId -> "private/$identityId/$key" }
+
     // Upload a file to S3
     suspend fun uploadFile(
         file: File,
         key: String,
         onProgress: (Double) -> Unit = {}
-    ): String {
-        val options = StorageUploadFileOptions.builder()
-            .accessLevel(StorageAccessLevel.PRIVATE)
-            .build()
+    ): String = coroutineScope {
+        val options = StorageUploadFileOptions.defaultInstance()
 
-        val upload = Amplify.Storage.uploadFile(key, file, options)
+        val upload = Amplify.Storage.uploadFile(privatePath(key), file, options)
 
         // Collect progress updates
-        upload.progress().collect { progress ->
-            onProgress(progress.fractionCompleted)
+        val progressJob = async {
+            upload.progress().collect { progress ->
+                onProgress(progress.fractionCompleted)
+            }
         }
 
         val result = upload.result()
-        return result.key
+        progressJob.cancel()
+        result.path
     }
 
     // Get download URL for a file
     suspend fun getDownloadUrl(key: String): String {
-        val result = Amplify.Storage.getUrl(key)
+        val result = Amplify.Storage.getUrl(privatePath(key))
         return result.url.toString()
     }
 
     // Download a file
     suspend fun downloadFile(key: String, localFile: File): File {
-        val download = Amplify.Storage.downloadFile(key, localFile)
+        val download = Amplify.Storage.downloadFile(privatePath(key), localFile)
         download.result()
         return localFile
     }
@@ -625,7 +650,7 @@ fun TodoListScreen() {
 
 **Handle configuration in Application class**: Configure Amplify once in your Application's `onCreate()`. Never configure it in an Activity.
 
-**Use private storage access**: For user-specific files, always use `StorageAccessLevel.PRIVATE`. This scopes files to the authenticated user.
+**Use private storage paths**: For user-specific files, use `StoragePath.fromIdentityId` with the `private/{identityId}/` prefix. This scopes files to the authenticated user.
 
 **Test with the local mock server**: Amplify CLI provides `amplify mock` for testing API and storage locally without deploying to AWS.
 
