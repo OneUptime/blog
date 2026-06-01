@@ -29,15 +29,15 @@ The agents only make outbound connections. No inbound ports need to be opened, w
 Before connecting a cluster, make sure you have:
 
 **Cluster requirements:**
-- Kubernetes 1.20 or later
-- At least 2 CPU cores and 4 GB RAM available for the Arc agents
+- A CNCF-certified Kubernetes cluster with at least one `linux/amd64` or `linux/arm64` node
+- At least 850 MB of free memory and capacity to use approximately 7% of a single CPU for the Arc agents
 - kubectl configured to connect to the cluster
-- Helm 3.6 or later installed on your workstation
+- Azure Arc installs its own Helm 3.6.3 binary under the `.azure` folder on the deployment machine
 - Cluster admin permissions
 
 **Azure requirements:**
-- Azure CLI 2.40 or later with the connectedk8s extension
-- An Azure subscription with the Microsoft.Kubernetes and Microsoft.KubernetesConfiguration resource providers registered
+- The latest Azure CLI with the connectedk8s extension
+- An Azure subscription with the Microsoft.Kubernetes, Microsoft.KubernetesConfiguration, and Microsoft.ExtendedLocation resource providers registered
 
 **Network requirements:**
 - Outbound connectivity from the cluster to Azure endpoints on port 443
@@ -53,10 +53,14 @@ az extension add --name connectedk8s --upgrade
 # Install the k8s-configuration extension for GitOps
 az extension add --name k8s-configuration --upgrade
 
+# Install the k8s-extension extension for cluster extensions
+az extension add --name k8s-extension --upgrade
+
 # Register the required resource providers
 az provider register --namespace Microsoft.Kubernetes
 az provider register --namespace Microsoft.KubernetesConfiguration
 az provider register --namespace Microsoft.ExtendedLocation
+az provider register --namespace Microsoft.PolicyInsights
 ```
 
 ## Connecting Your First Cluster
@@ -102,7 +106,7 @@ az connectedk8s show \
     --output table
 ```
 
-You should see pods like `flux-system`, `cluster-metadata-operator`, `config-agent`, and others running in the `azure-arc` namespace.
+You should see deployments and pods like `clusteridentityoperator`, `cluster-metadata-operator`, `config-agent`, `extension-manager`, and others running in the `azure-arc` namespace.
 
 ## Connecting Clusters at Scale
 
@@ -194,7 +198,7 @@ Cluster > Kubernetes resources > Workloads
 Cluster > Kubernetes resources > Services and ingresses
 ```
 
-To access Kubernetes resources through the portal, you need to set up a cluster connect token or Azure AD authentication:
+To access Kubernetes resources through the portal, you need to set up a cluster connect token or Microsoft Entra ID authentication:
 
 ```bash
 # Enable the cluster-connect feature
@@ -264,12 +268,12 @@ az policy assignment create \
 
 ## Troubleshooting Connection Issues
 
-**Agents not coming up.** Check resource availability in the cluster. The Arc agents need at least 2 CPUs and 4 GB RAM. Also check if there are any pod security policies or admission controllers blocking the deployment.
+**Agents not coming up.** Check resource availability in the cluster. The Arc agents need at least 850 MB of free memory and capacity to use approximately 7% of a single CPU. Also check if there are any pod security admission settings or admission controllers blocking the deployment.
 
 **Connectivity issues.** Run the connectivity check:
 
 ```bash
-# Check connectivity from within the cluster
+# Run diagnostic checks for the connected cluster
 az connectedk8s troubleshoot \
     --name "my-onprem-cluster" \
     --resource-group "arc-k8s-rg"
