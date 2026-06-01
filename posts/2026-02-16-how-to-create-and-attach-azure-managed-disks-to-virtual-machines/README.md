@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Managed Disks, Virtual Machine, Storage, IaaS, Cloud Infrastructure
 
-Description: Step-by-step guide to creating Azure Managed Disks and attaching them to virtual machines using Azure CLI, PowerShell, and the Azure portal.
+Description: Step-by-step guide to creating Azure Managed Disks and attaching them to virtual machines using Azure CLI, PowerShell, and ARM templates.
 
 ---
 
@@ -14,9 +14,9 @@ Azure Managed Disks are block-level storage volumes that Azure manages for you. 
 
 Before creating a disk, you need to understand the key parameters.
 
-**Disk Type** determines the performance tier: Standard HDD, Standard SSD, Premium SSD, or Ultra Disk. Premium SSD is the most common choice for production workloads.
+**Disk Type** determines the performance tier: Standard HDD, Standard SSD, Premium SSD, Premium SSD v2, or Ultra Disk. Premium SSD or Premium SSD v2 are common choices for production workloads.
 
-**Size** is specified in GiB. The size determines both capacity and performance (IOPS and throughput scale with disk size for Standard and Premium tiers).
+**Size** is specified in GiB. The size determines both capacity and performance for Standard HDD, Standard SSD, and Premium SSD disks. Premium SSD v2 and Ultra Disk let you configure performance separately.
 
 **Location** must match the location of the VM you want to attach it to.
 
@@ -32,8 +32,7 @@ az disk create \
   --resource-group my-resource-group \
   --location eastus \
   --sku Premium_LRS \
-  --size-gb 128 \
-  --os-type Linux
+  --size-gb 128
 
 # Create a disk in a specific availability zone
 az disk create \
@@ -171,7 +170,8 @@ After attaching the disk, you need to initialize it within the operating system 
 # SSH into the VM and run these commands
 
 # List all disks to find the new one
-# The new disk will typically show up as /dev/sdc or similar
+# On SCSI-based VMs, the new disk will typically show up as /dev/sdc or similar.
+# On NVMe-based VMs, use the NVMe device name shown by lsblk.
 lsblk
 
 # Create a partition on the new disk
@@ -224,13 +224,11 @@ Disk caching can significantly affect performance. The options are:
 - **ReadWrite**: Caches both reads and writes. Best for OS disks. Not recommended for data disks in most cases.
 
 ```bash
-# Change the caching policy on an attached disk
-az vm disk attach \
-  --vm-name my-vm \
+# Change the caching policy on an attached data disk at LUN 0
+az vm update \
+  --name my-vm \
   --resource-group my-resource-group \
-  --name data-disk-01 \
-  --lun 0 \
-  --caching ReadOnly
+  --disk-caching 0=ReadOnly
 ```
 
 ## Detaching a Disk
