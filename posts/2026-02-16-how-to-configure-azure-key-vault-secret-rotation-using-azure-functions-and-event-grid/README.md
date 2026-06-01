@@ -8,7 +8,7 @@ Description: A complete guide to automating secret rotation in Azure Key Vault u
 
 ---
 
-Secrets that never get rotated are a ticking time bomb. Database connection strings, API keys, storage account keys - if any of these are compromised and they have been the same for months or years, an attacker has a long window to exploit them. Azure Key Vault supports automatic secret rotation through a combination of Event Grid notifications and Azure Functions. When a secret approaches its expiration date, Key Vault fires an event, an Azure Function catches it, rotates the secret with the target service, and stores the new value back in Key Vault.
+Secrets that never get rotated are a ticking time bomb. Database connection strings, API keys, storage account keys - if any of these are compromised and they have been the same for months or years, an attacker has a long window to exploit them. Azure Key Vault supports event-driven secret rotation through a combination of Event Grid notifications and Azure Functions. When a secret approaches its expiration date, Key Vault fires an event, an Azure Function catches it, rotates the secret with the target service, and stores the new value back in Key Vault.
 
 This guide walks through setting up this entire pipeline from scratch.
 
@@ -45,7 +45,7 @@ You need:
 
 ## Step 1: Set Up the Key Vault Secret with Expiration
 
-First, create a secret in Key Vault with an expiration date and a near-expiry notification:
+First, create a secret in Key Vault with an expiration date. Key Vault raises the near-expiry notification event 30 days before the secret expires:
 
 ```powershell
 # Connect to Azure
@@ -66,6 +66,7 @@ Set-AzKeyVaultSecret `
         TargetService = "storageaccount"
         TargetResourceGroup = "myresourcegroup"
         TargetResourceName = "mystorageaccount"
+        CurrentKeyName = "key1"
     }
 
 Write-Host "Secret created with 90-day expiration."
@@ -146,8 +147,10 @@ Here is the Azure Function code that handles the rotation. This example rotates 
 param($eventGridEvent, $TriggerMetadata)
 
 # Extract information from the Event Grid event
-$secretName = $eventGridEvent.subject
-$vaultName = ($eventGridEvent.topic -split '/')[-1]
+Connect-AzAccount -Identity
+
+$secretName = $eventGridEvent.data.ObjectName
+$vaultName = $eventGridEvent.data.VaultName
 
 Write-Host "Rotation triggered for secret: $secretName in vault: $vaultName"
 
@@ -169,11 +172,11 @@ Write-Host "Target: $targetService - $targetResourceName in $targetResourceGroup
 if ($targetService -eq "storageaccount") {
     # Determine which key to rotate (alternate between key1 and key2)
     $currentKeyName = $secret.Tags["CurrentKeyName"]
-    if ($currentKeyName -eq "key1") {
-        $newKeyName = "key2"
-    } else {
-        $newKeyName = "key1"
+    if ($currentKeyName -notin @("key1", "key2")) {
+        throw "CurrentKeyName tag must be set to key1 or key2."
     }
+
+    $newKeyName = if ($currentKeyName -eq "key1") { "key2" } else { "key1" }
 
     Write-Host "Regenerating $newKeyName for storage account $targetResourceName"
 
@@ -235,32 +238,29 @@ Now connect Key Vault to the Azure Function through Event Grid:
 $functionApp = Get-AzFunctionApp `
     -ResourceGroupName "secret-rotation-rg" `
     -Name "secret-rotation-func"
+$functionResourceId = "$($functionApp.Id)/functions/RotateSecret"
 
 # Create the Event Grid subscription on the Key Vault
 # This triggers the function when secrets are near expiry
 $kvResourceId = (Get-AzKeyVault -VaultName "mykeyvault").ResourceId
+$destination = New-AzEventGridAzureFunctionEventSubscriptionDestinationObject `
+    -ResourceId $functionResourceId
 
-$eventSubParams = @{
-    EventSubscriptionName = "secret-nearexpiry-rotation"
-    ResourceId = $kvResourceId
-    EndpointType = "AzureFunction"
-    Endpoint = "$($functionApp.Id)/functions/RotateSecret"
-    # Only subscribe to the SecretNearExpiry event type
-    IncludedEventType = @("Microsoft.KeyVault.SecretNearExpiry")
-    # Optional: filter for specific secrets using subject filters
-    SubjectBeginsWith = "storage-account-key"
-}
-
-New-AzEventGridSubscription @eventSubParams
+New-AzEventGridSubscription `
+    -Name "secret-nearexpiry-rotation" `
+    -Scope $kvResourceId `
+    -Destination $destination `
+    -FilterIncludedEventType @("Microsoft.KeyVault.SecretNearExpiry") `
+    -FilterSubjectBeginsWith "storage-account-key"
 
 Write-Host "Event Grid subscription created."
 ```
 
 ## Step 6: Configure the Near-Expiry Event Timing
 
-By default, Key Vault fires the SecretNearExpiry event 30 days before the secret expires. You can customize this through the Key Vault event settings or by setting a notification trigger on the secret itself.
+By default, Key Vault fires the SecretNearExpiry event 30 days before the secret expires. Key rotation policies can configure timing for key near-expiry events, but secret near-expiry Event Grid notifications are raised 30 days before expiration.
 
-If your secrets expire every 90 days and you want the rotation to happen 30 days before expiry, the secret will effectively be rotated every 60 days. Adjust the timing based on your needs.
+If your secrets expire every 90 days and you want the rotation to happen 30 days before expiry, the secret will effectively be rotated every 60 days. Adjust the expiration interval based on your needs.
 
 ## Step 7: Test the Rotation
 
@@ -295,25 +295,14 @@ Then monitor the Function App logs to see if the rotation function executes:
 
 ## Step 8: Set Up Monitoring and Alerting
 
-You want to know if a rotation fails. Set up alerts for function failures:
+You want to know if a rotation fails. Set up alerts for failed function executions in Application Insights or Log Analytics, because the FunctionExecutionCount metric counts executions and does not indicate failures:
 
-```powershell
-# Create an alert rule for rotation function failures
-$actionGroup = Get-AzActionGroup -ResourceGroupName "secret-rotation-rg" -Name "security-alerts"
-
-$condition = New-AzMetricAlertRuleV2Criteria `
-    -MetricName "FunctionExecutionCount" `
-    -MetricNameSpace "Microsoft.Web/sites" `
-    -TimeAggregation Total `
-    -Operator GreaterThan `
-    -Threshold 0 `
-    -DimensionSelection @(
-        New-AzMetricAlertRuleV2DimensionSelection `
-            -DimensionName "FunctionName" `
-            -ValuesToInclude "RotateSecret"
-    )
-
-Write-Host "Configure alerts through Azure Monitor for function execution failures."
+```kusto
+// Example Log Analytics query for function exceptions
+FunctionAppLogs
+| where FunctionName == "RotateSecret"
+| where ExceptionDetails != ""
+| order by TimeGenerated desc
 ```
 
 Also monitor Key Vault diagnostic logs to verify that new secret versions are being created as expected.
