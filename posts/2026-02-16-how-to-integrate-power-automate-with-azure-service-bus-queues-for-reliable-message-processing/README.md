@@ -18,9 +18,9 @@ Consider Power Automate plus Service Bus when:
 
 - You need guaranteed message delivery (no lost messages even if the consumer is down).
 - You want to decouple producers from consumers so they can scale independently.
-- Messages should be processed in order.
+- Messages for the same entity should be processed in order by using Service Bus sessions.
 - You need to handle poison messages that repeatedly fail processing.
-- Multiple consumers need to process different types of messages from the same source.
+- Multiple consumers need to process work from the same source without each message being handled more than once.
 
 ## Step 1: Create the Azure Service Bus Namespace and Queue
 
@@ -94,7 +94,7 @@ The first time you use the Service Bus connector, create a connection:
 
 ### Set Custom Properties
 
-Custom properties (also called application properties) let you add metadata to messages without putting it in the body. This is useful for routing and filtering:
+Custom properties (also called application properties) let you add metadata to messages without putting it in the body. This is useful for routing decisions in the consumer flow:
 
 - Click "Add new parameter" > Custom Properties
 - Add properties like:
@@ -102,7 +102,7 @@ Custom properties (also called application properties) let you add metadata to m
   - `Region`: `US-East`
   - `MessageType`: `NewOrder`
 
-Consumer flows can filter on these properties.
+Consumer flows can read these properties and branch on them.
 
 ## Step 3: Build the Consumer Flow
 
@@ -165,7 +165,7 @@ The dead-letter queue (DLQ) holds messages that could not be processed after mul
 ### Create a Dead-Letter Processing Flow
 
 1. Create a new flow with the "When a message is received in a queue (peek-lock)" trigger.
-2. In the queue name, append `/$deadletterqueue` to the queue name: `order-processing/$deadletterqueue`.
+2. Select your queue name (for example, `order-processing`) and set Queue type to `DeadLetter`.
 3. Process dead-lettered messages:
    - Log the message details to a Dataverse error log table.
    - Send a notification to the operations team.
@@ -251,7 +251,7 @@ Log this ID in both the producer and consumer flows so you can trace a message t
 
 ## Performance Tips
 
-- **Set concurrency on the consumer trigger**: In the trigger settings, increase "Maximum Concurrency" to process multiple messages in parallel (up to 50).
+- **Set concurrency on the consumer trigger**: In the trigger settings, increase "Maximum Concurrency" to process multiple messages in parallel (up to 100).
 - **Keep message bodies small**: Put large payloads in Blob Storage and include only a reference in the message.
 - **Use sessions for ordered processing**: If messages for the same entity must be processed in order, use Service Bus sessions with the entity ID as the session ID.
 - **Batch processing**: Use the "Get messages from a queue" action instead of the trigger to process multiple messages in a single flow run.
