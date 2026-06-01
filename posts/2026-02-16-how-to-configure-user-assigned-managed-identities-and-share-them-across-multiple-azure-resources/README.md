@@ -187,7 +187,7 @@ az identity federated-credential create \
   --audience "api://AzureADTokenExchange"
 ```
 
-Then annotate your Kubernetes service account to use the managed identity.
+Then annotate your Kubernetes service account to use the managed identity, and label the pods that use the service account so the workload identity webhook mutates them.
 
 ```yaml
 # kubernetes/service-account.yaml
@@ -199,8 +199,26 @@ metadata:
   annotations:
     # Link this service account to the user-assigned managed identity
     azure.workload.identity/client-id: "YOUR_CLIENT_ID"
-  labels:
-    azure.workload.identity/use: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: app-service-account
+      containers:
+        - name: app
+          image: your-image:tag
 ```
 
 ## Step 7: Use the Identity in Application Code
@@ -240,7 +258,9 @@ using Azure.Security.KeyVault.Secrets;
 
 // Specify the client ID to use a specific user-assigned identity
 var credential = new ManagedIdentityCredential(
-    "YOUR_USER_ASSIGNED_IDENTITY_CLIENT_ID"
+    ManagedIdentityId.FromUserAssignedClientId(
+        "YOUR_USER_ASSIGNED_IDENTITY_CLIENT_ID"
+    )
 );
 
 var client = new SecretClient(
@@ -308,13 +328,13 @@ az vm identity remove \
   --name vm-1 \
   --identities $IDENTITY_ID
 
-# Delete the identity entirely (removes all role assignments too)
+# Delete the identity resource
 az identity delete \
   --resource-group myResourceGroup \
   --name app-workload-identity
 ```
 
-Deleting a user-assigned identity automatically removes it from all resources it was attached to and deletes its role assignments. Be cautious with this operation in production.
+Deleting a user-assigned identity does not remove the identity reference from resources it was attached to, and role assignments can remain as assignments to an unknown principal. Remove the identity from attached resources first and clean up its role assignments separately. Be cautious with this operation in production.
 
 ## Best Practices
 
