@@ -23,21 +23,23 @@ The architecture looks like this:
 ```mermaid
 flowchart TB
     subgraph EC2["EC2 Instance (Parent)"]
-        A[Application] --> B[vsock proxy]
+        A[Application]
+        B[KMS vsock proxy]
     end
     subgraph Enclave["Nitro Enclave"]
         C[Enclave Application] --> D[vsock listener]
         C --> E[Sensitive Data Processing]
     end
-    B <-->|vsock| D
-    F[AWS KMS] <-->|via vsock proxy| C
+    A <-->|vsock| D
+    C -->|vsock| B
+    B -->|HTTPS| F[AWS KMS]
 ```
 
-The parent instance runs your main application. When it needs to process sensitive data, it sends it through vsock to the enclave. The enclave processes it and returns only the results. The sensitive data never exists in the parent's memory.
+The parent instance runs your main application. When it needs to process sensitive data, it sends it through vsock to the enclave. The enclave processes it and returns only the results. To keep plaintext out of the parent's memory, send encrypted data to the parent and decrypt it only inside the enclave, typically using KMS attestation.
 
 ## Prerequisites
 
-Nitro Enclaves work on most Nitro-based instance types with at least 4 vCPUs. You need at least 2 vCPUs and some memory allocated to the enclave, leaving the rest for the parent instance.
+Nitro Enclaves work on many Nitro-based instance types; check the AWS supported instance list for exact sizes and exceptions. In typical x86 examples you allocate at least 2 vCPUs and some memory to the enclave, leaving the rest for the parent instance. On some 2-vCPU AWS Graviton instances, the allocator must be configured to preallocate only 1 vCPU.
 
 Supported instance families include m5, c5, r5, m6i, c6i, r6i, and many others. T-family instances are not supported.
 
@@ -68,6 +70,9 @@ sudo dnf install -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel
 # Add your user to the ne group
 sudo usermod -aG ne ec2-user
 
+# Add your user to the docker group so you can build enclave images
+sudo usermod -aG docker ec2-user
+
 # Configure the allocator - how much CPU and memory the enclave gets
 sudo vi /etc/nitro_enclaves/allocator.yaml
 ```
@@ -87,13 +92,15 @@ Start the services:
 # Start the Nitro Enclaves allocator and vsock proxy
 sudo systemctl enable nitro-enclaves-allocator.service
 sudo systemctl start nitro-enclaves-allocator.service
+sudo systemctl enable docker
+sudo systemctl start docker
 sudo systemctl enable nitro-enclaves-vsock-proxy.service
 sudo systemctl start nitro-enclaves-vsock-proxy.service
 ```
 
 ## Building an Enclave Application
 
-Enclave applications are packaged as Docker images and then converted to Enclave Image Files (EIF). Let's build a simple one that processes encrypted data.
+Enclave applications are packaged as Docker images and then converted to Enclave Image Files (EIF). Let's build a simple one that processes sensitive data.
 
 Create the application code:
 
@@ -227,13 +234,13 @@ def send_to_enclave(data):
     sock.close()
     return json.loads(response.decode())
 
-# Example: tokenize a credit card number
+# Example: tokenize a credit card number. In production, pass encrypted
+# payloads if the parent instance must not see the plaintext value.
 result = send_to_enclave({
     'card_number': '4111111111111111'
 })
 print(f"Token: {result['token']}")
 print(f"Last four: {result['last_four']}")
-# The actual card number never exists in the parent's memory
 ```
 
 ## KMS Integration with Attestation
@@ -250,7 +257,7 @@ First, create a KMS key with an enclave-specific policy:
       "Sid": "AllowEnclaveDecrypt",
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::123456789:role/enclave-role"
+        "AWS": "arn:aws:iam::123456789012:role/enclave-role"
       },
       "Action": "kms:Decrypt",
       "Resource": "*",
@@ -264,7 +271,7 @@ First, create a KMS key with an enclave-specific policy:
 }
 ```
 
-The `PCR0` condition means only an enclave with that exact image measurement can use this key. If someone modifies the enclave code even slightly, the PCR changes and KMS refuses the request.
+The `PCR0` condition means only an enclave with that exact image measurement can use this key when the KMS request includes a valid signed attestation document, as the Nitro Enclaves SDK does for attested KMS calls. If someone modifies the enclave code even slightly, the PCR changes and KMS refuses the request.
 
 ## Configuring the vsock Proxy for KMS
 
@@ -273,7 +280,8 @@ The enclave can't access the network directly, so you need the vsock proxy to fo
 ```yaml
 # /etc/nitro_enclaves/vsock-proxy.yaml
 # Allow the enclave to communicate with KMS
-- {address: kms.us-east-1.amazonaws.com, port: 443}
+allowlist:
+  - {address: kms.us-east-1.amazonaws.com, port: 443}
 ```
 
 Restart the proxy:
@@ -285,7 +293,7 @@ sudo systemctl restart nitro-enclaves-vsock-proxy.service
 
 ## Use Cases
 
-**Payment processing**: Decrypt and process credit card data inside an enclave. The card numbers never exist in the parent's memory, reducing PCI DSS scope significantly.
+**Payment processing**: Decrypt and process credit card data inside an enclave. If the card numbers arrive encrypted and are decrypted only in the enclave, they never exist in the parent's memory, reducing PCI DSS scope significantly.
 
 **Private key operations**: Store signing keys inside the enclave. The parent sends data to be signed, gets back the signature, but never sees the private key.
 
@@ -295,7 +303,7 @@ sudo systemctl restart nitro-enclaves-vsock-proxy.service
 
 ## Debugging Enclaves
 
-Since you can't SSH into an enclave, debugging requires a different approach:
+Since you can't SSH into an enclave, debugging requires a different approach. The console command works only for enclaves launched with `--debug-mode`, so use it during development:
 
 ```bash
 # View enclave console output (very useful for debugging)
