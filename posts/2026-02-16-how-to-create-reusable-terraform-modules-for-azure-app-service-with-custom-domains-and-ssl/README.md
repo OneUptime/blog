@@ -44,7 +44,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = ">= 3.70.0"
+      version = ">= 4.33.0"
     }
   }
 }
@@ -130,8 +130,8 @@ variable "custom_domains" {
     ssl_certificate = optional(object({
       # Use managed certificate (free, auto-renewed)
       managed = optional(bool, false)
-      # Or provide a certificate from Key Vault
-      key_vault_certificate_id = optional(string)
+      # Or provide a Key Vault secret ID for an imported App Service certificate
+      key_vault_secret_id = optional(string)
     }))
   }))
   default = []
@@ -190,6 +190,18 @@ locals {
   runtime_parts    = split("|", var.runtime_stack)
   runtime_name     = local.runtime_parts[0]
   runtime_version  = length(local.runtime_parts) > 1 ? local.runtime_parts[1] : ""
+  windows_runtime_name = (
+    local.runtime_name == "NODE" ? "node" :
+    local.runtime_name == "DOTNET" ? "dotnet" :
+    local.runtime_name == "PYTHON" ? "python" :
+    local.runtime_name == "JAVA" ? "java" :
+    null
+  )
+  windows_runtime_version = (
+    local.runtime_name == "NODE" ? "~${regex("[0-9]+", local.runtime_version)}" :
+    local.runtime_name == "DOTNET" && !startswith(local.runtime_version, "v") ? "v${local.runtime_version}" :
+    local.runtime_version
+  )
 
   # Merge user settings with required settings
   base_app_settings = {
@@ -270,9 +282,26 @@ resource "azurerm_windows_web_app" "this" {
     ftps_state          = "Disabled"
     http2_enabled       = true
     always_on           = can(regex("^[SP]", var.plan_sku_name))
+
+    application_stack {
+      current_stack  = local.windows_runtime_name
+      node_version   = local.runtime_name == "NODE" ? local.windows_runtime_version : null
+      dotnet_version = local.runtime_name == "DOTNET" ? local.windows_runtime_version : null
+      python_version = local.runtime_name == "PYTHON" ? local.windows_runtime_version : null
+      java_version   = local.runtime_name == "JAVA" ? local.windows_runtime_version : null
+    }
   }
 
   app_settings = local.all_app_settings
+
+  dynamic "connection_string" {
+    for_each = var.connection_strings
+    content {
+      name  = connection_string.value.name
+      type  = connection_string.value.type
+      value = connection_string.value.value
+    }
+  }
 }
 
 # Local to simplify references to the web app regardless of OS type
@@ -310,19 +339,7 @@ resource "azurerm_app_service_custom_hostname_binding" "this" {
   app_service_name    = local.web_app_name
   resource_group_name = var.resource_group_name
 
-  # SSL binding depends on certificate type
-  ssl_state = each.value.ssl_certificate != null ? "SniEnabled" : null
-  thumbprint = (
-    each.value.ssl_certificate != null ?
-    (
-      each.value.ssl_certificate.managed == true ?
-      null :  # Managed cert thumbprint set via certificate binding below
-      null    # Key Vault cert thumbprint resolved after creation
-    ) :
-    null
-  )
-
-  # Important: do not manage SSL state here when using managed certificates
+  # Important: do not manage SSL state here when using certificate bindings
   # The certificate binding handles that
   lifecycle {
     ignore_changes = [ssl_state, thumbprint]
@@ -342,16 +359,32 @@ resource "azurerm_app_service_certificate_binding" "managed" {
   ssl_state           = "SniEnabled"
 }
 
+# Import Key Vault certificates into App Service
+resource "azurerm_app_service_certificate" "keyvault" {
+  for_each = {
+    for domain in var.custom_domains :
+    domain.hostname => domain
+    if domain.ssl_certificate != null && domain.ssl_certificate.key_vault_secret_id != null
+  }
+
+  name                = "cert-${replace(each.key, ".", "-")}"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  app_service_plan_id = azurerm_service_plan.this.id
+  key_vault_secret_id = each.value.ssl_certificate.key_vault_secret_id
+  tags                = var.tags
+}
+
 # Bind Key Vault certificates to the hostname
 resource "azurerm_app_service_certificate_binding" "keyvault" {
   for_each = {
     for domain in var.custom_domains :
     domain.hostname => domain
-    if domain.ssl_certificate != null && domain.ssl_certificate.key_vault_certificate_id != null
+    if domain.ssl_certificate != null && domain.ssl_certificate.key_vault_secret_id != null
   }
 
   hostname_binding_id = azurerm_app_service_custom_hostname_binding.this[each.key].id
-  certificate_id      = each.value.ssl_certificate.key_vault_certificate_id
+  certificate_id      = azurerm_app_service_certificate.keyvault[each.key].id
   ssl_state           = "SniEnabled"
 }
 ```
@@ -385,7 +418,7 @@ resource "azurerm_monitor_diagnostic_setting" "this" {
     category = "AppServicePlatformLogs"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
     enabled  = true
   }
@@ -529,7 +562,7 @@ module "website" {
     {
       hostname = "app.company.com"
       ssl_certificate = {
-        key_vault_certificate_id = azurerm_key_vault_certificate.wildcard.id
+        key_vault_secret_id = azurerm_key_vault_certificate.wildcard.secret_id
       }
     }
   ]
