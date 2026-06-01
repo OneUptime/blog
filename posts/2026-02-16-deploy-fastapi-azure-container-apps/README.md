@@ -31,7 +31,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# In-memory storage
+# In-memory storage for the demo only. Use an external database in production.
 books = {}
 
 
@@ -147,8 +147,8 @@ EXPOSE 8000
 
 # Run FastAPI with Uvicorn
 # --host 0.0.0.0 makes it accessible from outside the container
-# --workers 2 handles concurrent requests
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Use one worker because the demo stores data in process memory
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 ```
 
 And the requirements.txt.
@@ -179,7 +179,7 @@ curl -X POST http://localhost:8000/api/books \
 
 ## Setting Up Azure Resources
 
-You need a few things: a resource group, a Container Apps environment, and a container registry to store your image.
+You need a few things: a resource group, a Container Apps environment, and a container registry to store your image. Replace `myfastapiregistry` with a globally unique Azure Container Registry name.
 
 ```bash
 # Install the Container Apps CLI extension if you do not have it
@@ -284,8 +284,8 @@ az containerapp update \
 graph LR
     A[Incoming Requests] --> B{Requests per Instance > 10?}
     B -->|Yes| C[Scale Up - Add Instance]
-    B -->|No| D{Requests per Instance < 5?}
-    D -->|Yes| E[Scale Down - Remove Instance]
+    B -->|No| D{Lower replica count needed?}
+    D -->|Yes, after stabilization| E[Scale Down - Remove Instance]
     D -->|No| F[Maintain Current Scale]
 ```
 
@@ -294,6 +294,12 @@ graph LR
 Container Apps supports both plain environment variables and secrets.
 
 ```bash
+# Create a secret
+az containerapp secret set \
+    --name bookstore-api \
+    --resource-group fastapi-rg \
+    --secrets "db-url=postgresql://user:pass@host:5432/db"
+
 # Set environment variables
 az containerapp update \
     --name bookstore-api \
@@ -302,12 +308,6 @@ az containerapp update \
     "APP_ENV=production" \
     "LOG_LEVEL=info" \
     "DATABASE_URL=secretref:db-url"
-
-# Create a secret
-az containerapp secret set \
-    --name bookstore-api \
-    --resource-group fastapi-rg \
-    --secrets "db-url=postgresql://user:pass@host:5432/db"
 ```
 
 ## Deploying New Revisions
@@ -341,7 +341,7 @@ az containerapp revision list \
 az containerapp revision activate \
     --name bookstore-api \
     --resource-group fastapi-rg \
-    --revision bookstore-api--v1
+    --revision <REVISION_NAME_FROM_LIST>
 ```
 
 ## Viewing Logs
