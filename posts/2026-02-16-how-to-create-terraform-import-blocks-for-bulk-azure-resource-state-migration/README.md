@@ -29,7 +29,7 @@ Import blocks fix both problems. They are declarative, they participate in the p
 
 ## Basic Import Block Syntax
 
-An import block has two fields: the Terraform resource address and the Azure resource ID.
+A basic import block has two fields: the Terraform resource address and the Azure resource ID.
 
 ```hcl
 # Import an existing resource group into Terraform state
@@ -124,7 +124,10 @@ echo "$resources" | jq -c '.[]' | while read -r resource; do
 
   if [ -n "$tf_type" ]; then
     # Convert the Azure name to a valid Terraform identifier
-    tf_name=$(echo "$name" | tr '-' '_' | tr '[:upper:]' '[:lower:]')
+    tf_name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_]/_/g')
+    if [[ "$tf_name" =~ ^[0-9] ]]; then
+      tf_name="_${tf_name}"
+    fi
 
     echo "import {" >> "$OUTPUT_FILE"
     echo "  to = ${tf_type}.${tf_name}" >> "$OUTPUT_FILE"
@@ -140,7 +143,7 @@ done
 
 echo ""
 echo "Import blocks written to $OUTPUT_FILE"
-echo "Remember to create matching resource blocks before running terraform plan"
+echo "Review generated resource names for duplicates before running terraform plan"
 ```
 
 ## Using terraform plan -generate-config-out
@@ -152,7 +155,7 @@ Terraform 1.5+ has a feature that generates the matching resource configuration 
 terraform plan -generate-config-out=generated.tf
 ```
 
-This command reads your import blocks, queries Azure for the current state of each resource, and writes the corresponding Terraform resource blocks to `generated.tf`. You will need to review and clean up the generated code, but it is much faster than writing everything from scratch.
+This command reads your import blocks, queries Azure for the current state of each resource, and writes the corresponding Terraform resource blocks to a new `generated.tf` file. You will need to review and clean up the generated code, but it is much faster than writing everything from scratch.
 
 ## Step-by-Step Bulk Migration Process
 
@@ -230,7 +233,7 @@ This imports all resources into state. After this, Terraform manages them.
 
 ### Step 7: Remove Import Blocks
 
-Once the import is complete, delete the import blocks from `imports.tf`. They are one-time directives and will cause errors if left in place after the resources are already in state.
+Once the import is complete, you can delete the import blocks from `imports.tf` because they are no longer needed. Terraform also allows you to leave them in place as a record of where the resources came from.
 
 ## Handling Complex Resources
 
