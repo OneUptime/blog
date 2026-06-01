@@ -44,7 +44,7 @@ aws cloudwatch get-metric-statistics \
   --start-time $(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
-  --statistics p99 \
+  --extended-statistics p99 \
   --dimensions Name=InstanceId,Value=i-0abc123def456
 ```
 
@@ -128,10 +128,10 @@ The `TreatMissingData` parameter controls what happens when CloudWatch has no da
 
 | Setting | Behavior | Good For |
 |---------|----------|----------|
-| `missing` | Maintains current state | Sporadic metrics |
+| `missing` | Transitions to INSUFFICIENT_DATA when all data points in the evaluation range are missing | Sporadic metrics |
 | `notBreaching` | Treats gaps as OK | Non-critical metrics |
 | `breaching` | Treats gaps as threshold violated | Health checks, heartbeats |
-| `ignore` | Skips evaluation | Batch job metrics |
+| `ignore` | Maintains current state | Batch job metrics |
 
 For health check alarms and heartbeat metrics, use `breaching`. If a metric stops reporting, that is often the problem itself. For metrics that are naturally sparse (like Lambda invocations on a low-traffic function), use `missing` or `notBreaching` to avoid spurious alerts.
 
@@ -139,12 +139,12 @@ For health check alarms and heartbeat metrics, use `breaching`. If a metric stop
 
 Most teams wire alarms to SNS topics that send emails or trigger PagerDuty. But CloudWatch alarm actions can do much more.
 
-Auto-remediation with Systems Manager is one of the most powerful patterns. When an alarm fires, it can trigger an SSM Automation document that restarts a service, scales a fleet, or runs a diagnostic script.
+Auto-remediation with Lambda is one of the most powerful patterns. When an alarm fires, it can invoke a Lambda function that restarts a service, scales a fleet, or runs a diagnostic script. If you prefer Systems Manager Automation documents, route the alarm state-change event through Amazon EventBridge.
 
-This example triggers an SSM automation to restart an EC2 instance when the alarm fires, handling the common case of a stuck process.
+This example invokes a Lambda function when the alarm fires. The function can then run the remediation logic, such as restarting a stuck service or calling Systems Manager Automation.
 
 ```yaml
-# Alarm action: Auto-restart instance via SSM on sustained high CPU
+# Alarm action: Invoke a remediation Lambda function on sustained high CPU
 HighCPUAlarm:
   Type: AWS::CloudWatch::Alarm
   Properties:
@@ -161,14 +161,24 @@ HighCPUAlarm:
       - Name: InstanceId
         Value: !Ref MyInstance
     AlarmActions:
-      - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/AWS-RestartEC2Instance"
+      - !GetAtt RestartInstanceFunction.Arn
+
+AllowCloudWatchAlarmInvoke:
+  Type: AWS::Lambda::Permission
+  Properties:
+    FunctionName: !Ref RestartInstanceFunction
+    Action: lambda:InvokeFunction
+    Principal: lambda.alarms.cloudwatch.amazonaws.com
+    SourceAccount: !Ref AWS::AccountId
+    SourceArn: !GetAtt HighCPUAlarm.Arn
 ```
 
 Other useful alarm actions include:
 
 - **EC2 actions**: Stop, terminate, or reboot instances directly
 - **Auto Scaling policies**: Scale out when demand exceeds capacity
-- **Lambda functions** (via SNS): Run arbitrary remediation logic
+- **Lambda functions**: Run arbitrary remediation logic
+- **Systems Manager OpsCenter or Incident Manager**: Create OpsItems or incidents for operational follow-up
 
 ## Structuring Alarm Naming and Tagging
 
@@ -224,13 +234,13 @@ Alert fatigue is the number one killer of on-call effectiveness. Some practical 
 
 ## Monitoring Your Alarms
 
-It sounds circular, but you should monitor your monitoring. Use CloudWatch metrics on your alarms themselves:
+It sounds circular, but you should monitor your monitoring. Use alarm history and alarm state-change events:
 
 - Track the number of alarms in ALARM state over time
 - Monitor INSUFFICIENT_DATA transitions, which may indicate broken metric pipelines
 - Set up a daily digest of all alarm state changes
 
-The CloudWatch console provides an alarm summary view, but for a more comprehensive approach, use CloudWatch Metrics Insights to query alarm state changes programmatically.
+The CloudWatch console provides an alarm summary view, but for a more comprehensive approach, use the `DescribeAlarms` and `DescribeAlarmHistory` APIs or route alarm state-change events through EventBridge.
 
 ## Summary
 
