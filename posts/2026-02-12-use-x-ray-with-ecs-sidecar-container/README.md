@@ -8,13 +8,13 @@ Description: Deploy the AWS X-Ray daemon as a sidecar container in your ECS task
 
 ---
 
-When running applications on Amazon ECS, you cannot just install the X-Ray daemon on the host like you would on EC2. Instead, you deploy the X-Ray daemon as a sidecar container within the same task definition. Your application container sends trace segments to the sidecar over the local network, and the sidecar relays them to the X-Ray service.
+When running applications on Amazon ECS with Fargate, you cannot install the X-Ray daemon on the host like you would on EC2. Instead, you deploy the X-Ray daemon as a sidecar container within the same task definition. Your application container sends trace segments to the sidecar over the local network, and the sidecar relays them to the X-Ray service.
 
-This pattern is clean, portable, and works with both Fargate and EC2 launch types. Let me walk you through the full setup.
+This pattern is clean, portable, and works with both Fargate and EC2 launch types. The X-Ray SDKs and daemon entered maintenance mode on February 25, 2026, so AWS recommends OpenTelemetry for new instrumentation, but this setup remains useful for applications that already emit X-Ray segments. Let me walk you through the full setup.
 
 ## The Sidecar Pattern
 
-In ECS, containers within the same task share a network namespace (in awsvpc mode) or can communicate via localhost (in bridge mode with links). The X-Ray daemon sidecar listens on UDP port 2000 and your application sends trace data to it.
+In ECS, containers within the same task can communicate over `localhost` in `awsvpc` mode. With the EC2 launch type and bridge mode, use Docker links or container networking names instead of `localhost`, because each container has its own loopback interface. The X-Ray daemon sidecar listens on UDP port 2000 and your application sends trace data to it.
 
 ```mermaid
 graph TD
@@ -31,7 +31,7 @@ The sidecar approach keeps your application image clean. You do not need to bake
 
 - An ECS cluster (Fargate or EC2 launch type)
 - A task execution role with ECR pull permissions
-- An application instrumented with the X-Ray SDK or OpenTelemetry
+- An application instrumented with the X-Ray SDK. For new OpenTelemetry instrumentation, use the AWS Distro for OpenTelemetry Collector instead of the X-Ray daemon.
 - AWS CLI configured with admin permissions
 
 ## Step 1: Create the Task Role with X-Ray Permissions
@@ -65,7 +65,6 @@ Both the application container and the sidecar container share this task role. T
 The task definition includes two containers: your application and the X-Ray daemon sidecar. Here is a JSON task definition for Fargate.
 
 ```json
-// ECS Task Definition with X-Ray sidecar for Fargate
 {
   "family": "my-app-with-xray",
   "networkMode": "awsvpc",
@@ -102,7 +101,7 @@ The task definition includes two containers: your application and the X-Ray daem
     },
     {
       "name": "xray-daemon",
-      "image": "amazon/aws-xray-daemon:latest",
+      "image": "public.ecr.aws/xray/aws-xray-daemon:3.x",
       "essential": false,
       "cpu": 32,
       "memoryReservation": 64,
@@ -215,14 +214,13 @@ app.listen(3000);
 If you are using the EC2 launch type instead of Fargate, you have an alternative: run the X-Ray daemon as a daemon service on each container instance instead of as a sidecar in every task. This uses fewer resources since you only run one daemon per host instead of one per task.
 
 ```json
-// Task definition for the X-Ray daemon as a daemon service
 {
   "family": "xray-daemon",
   "networkMode": "host",
   "containerDefinitions": [
     {
       "name": "xray-daemon",
-      "image": "amazon/aws-xray-daemon:latest",
+      "image": "public.ecr.aws/xray/aws-xray-daemon:3.x",
       "essential": true,
       "memory": 128,
       "portMappings": [
@@ -268,10 +266,10 @@ aws xray get-trace-summaries \
 
 **No traces appearing**: Check the xray-daemon container logs in CloudWatch Logs. If you see "Sending segment documents" messages, the daemon is working. The issue is likely in your application's SDK configuration.
 
-**Connection refused errors**: Make sure the security group allows UDP traffic on port 2000 within the task (for awsvpc mode, this is internal and typically not blocked).
+**Connection refused errors**: Make sure the daemon container is running and that the application is using the right daemon address. In `awsvpc` mode, traffic to `localhost:2000` stays inside the task and is not controlled by the task security group.
 
 **Daemon OOM killed**: If the daemon container is being killed, increase the `memoryReservation`. High-throughput applications can generate a lot of trace data.
 
 ## Wrapping Up
 
-The X-Ray sidecar pattern in ECS is the standard way to add distributed tracing to your containerized applications. It keeps concerns separated, works on both Fargate and EC2, and the official AWS daemon image is maintained and optimized. If you are running on EC2 instances instead, check out our guide on [setting up the X-Ray daemon on EC2](https://oneuptime.com/blog/post/2026-02-12-set-up-x-ray-daemon-on-ec2-for-tracing/view). For automated trace analysis, see [X-Ray Insights for automated analysis](https://oneuptime.com/blog/post/2026-02-12-use-x-ray-insights-for-automated-analysis/view).
+The X-Ray sidecar pattern in ECS is a common way to add distributed tracing to containerized applications that already use X-Ray instrumentation. It keeps concerns separated, works on both Fargate and EC2, and the official AWS daemon image is available for ECS deployments. If you are running on EC2 instances instead, check out our guide on [setting up the X-Ray daemon on EC2](https://oneuptime.com/blog/post/2026-02-12-set-up-x-ray-daemon-on-ec2-for-tracing/view). For automated trace analysis, see [X-Ray Insights for automated analysis](https://oneuptime.com/blog/post/2026-02-12-use-x-ray-insights-for-automated-analysis/view).
