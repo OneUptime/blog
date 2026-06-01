@@ -20,7 +20,7 @@ flowchart TD
     B -->|Allowed Network| C{Authentication}
     B -->|Blocked Network| D[403 Forbidden]
     C -->|Valid Credentials| E[Access Granted]
-    C -->|Invalid Credentials| F[401 Unauthorized]
+    C -->|Invalid Credentials| F[403 Forbidden]
 ```
 
 The network layer (firewall) is evaluated first. Even with valid credentials, a request from a blocked network is rejected. This provides defense in depth - if a storage account key is compromised, the attacker still cannot access the data unless they are on an allowed network.
@@ -89,12 +89,18 @@ az storage account network-rule add \
   --vnet-name myVNet \
   --subnet worker-subnet
 
-# Add a subnet from a different VNet (if peered)
+# Add a subnet from a different VNet in the same resource group
 az storage account network-rule add \
   --account-name mystorageaccount \
   --resource-group myResourceGroup \
   --vnet-name otherVNet \
   --subnet data-subnet
+
+# Add a subnet from another resource group by using its subnet resource ID
+az storage account network-rule add \
+  --account-name mystorageaccount \
+  --resource-group myResourceGroup \
+  --subnet /subscriptions/<subscription-id>/resourceGroups/otherResourceGroup/providers/Microsoft.Network/virtualNetworks/otherVNet/subnets/data-subnet
 
 # Add a specific public IP address (for on-premises access)
 az storage account network-rule add \
@@ -121,15 +127,16 @@ az storage account update \
   --bypass AzureServices
 ```
 
-The trusted services include:
+Trusted service access is limited to specific services and operations. The list includes:
 - Azure Backup
 - Azure Site Recovery
+- Azure Data Box
+- Azure Data Explorer
 - Azure DevTest Labs
 - Azure Event Grid
-- Azure Event Hubs
 - Azure Networking
 - Azure Monitor
-- Azure SQL Data Warehouse
+- Azure SQL Database and Azure Synapse Analytics
 
 You can also selectively bypass for logging and metrics:
 
@@ -170,14 +177,14 @@ Service endpoints and private endpoints both restrict network access, but they w
 
 | Feature | Service Endpoints | Private Endpoints |
 |---------|------------------|-------------------|
-| Traffic path | Azure backbone (public IP) | Private IP in your VNet |
+| Traffic path | Azure backbone to the public service endpoint | Private IP in your VNet |
 | DNS | Public DNS name | Private DNS zone needed |
-| Cross-region | Limited | Works cross-region |
+| Cross-region | Same or paired region with `Microsoft.Storage`; any region with `Microsoft.Storage.Global` | Works cross-region |
 | On-premises access | Via public IP rules only | Via VPN/ExpressRoute |
 | Cost | Free | Per-hour charge |
 | NSG support | Yes | Yes |
 
-Service endpoints are simpler and free, making them a good default choice. Private endpoints give you a private IP address within your VNet, which is required for certain compliance scenarios and works better with on-premises connectivity.
+Service endpoints are simpler and free, making them a good fit for many VNet-based access scenarios. Private endpoints give you a private IP address within your VNet, which is required for certain compliance scenarios and works better with on-premises connectivity.
 
 ## Configuring with ARM Templates
 
@@ -265,11 +272,11 @@ az storage account network-rule list \
 
 ### Azure Portal Cannot Access Storage
 
-When you set the default action to Deny, the Azure Portal loses access too. Add your browser's IP to the allowed list, or check the "Allow access from Azure Portal" option when using the Portal's network configuration page.
+When you set the default action to Deny, Azure Portal data access is subject to the same network rules. Add your browser's public IP to the allowed list, or use the Portal's option to add your current client IP address.
 
 ### Azure Functions or App Service Cannot Reach Storage
 
-If your Azure Functions or App Service runs on a shared plan, it does not have a static outbound IP. You need to either use VNet integration (to route traffic through a subnet with a service endpoint) or add all possible outbound IPs:
+If your Azure Functions or App Service does not have stable outbound networking, you need to either use VNet integration on a supported plan (to route traffic through a subnet with a service endpoint) or add all possible outbound IPs:
 
 ```bash
 # Get the outbound IPs for an App Service
