@@ -63,7 +63,7 @@ Returns `alternate` if `var` is set and non-empty. Returns nothing if `var` is u
 # Conditionally add a flag only when a variable is set
 verbose="${VERBOSE:+--verbose}"
 curl $verbose https://api.example.com/health
-# If VERBOSE is set to anything, curl gets --verbose
+# If VERBOSE is set to a non-empty value, curl gets --verbose
 # If VERBOSE is unset, curl gets no extra flag
 ```
 
@@ -108,8 +108,8 @@ time_part="${timestamp:11:8}"
 echo "$time_part"  # 14:30:00
 
 # Negative offset extracts from the end (note the space before the minus)
-last_four="${timestamp: -1}"
-echo "$last_four"  # Z
+last_char="${timestamp: -1}"
+echo "$last_char"  # Z
 ```
 
 The space before a negative offset is required. Without it, Bash interprets `${var:-1}` as the default value operator.
