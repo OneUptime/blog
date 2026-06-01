@@ -8,7 +8,7 @@ Description: Learn how to configure private endpoint access for Azure Cache for 
 
 ---
 
-By default, Azure Cache for Redis is accessible over the public internet. Any client with the hostname and access key can connect. For many production workloads - especially those handling sensitive data or operating under compliance requirements - this is not acceptable. Private endpoints let you bring your Redis cache into your virtual network, giving it a private IP address and removing the public endpoint entirely.
+By default, Azure Cache for Redis is accessible over the public internet. Any client with the hostname and access key can connect. For many production workloads - especially those handling sensitive data or operating under compliance requirements - this is not acceptable. Private endpoints let you bring your Redis cache into your virtual network, giving it a private IP address and, after public network access is disabled, blocking public access.
 
 This guide walks through the complete setup of private endpoint access for Azure Cache for Redis, from network planning to DNS configuration to verification.
 
@@ -22,7 +22,7 @@ The traffic between your application and Redis never leaves the Microsoft backbo
 graph LR
     A[App in VNet Subnet A] -->|Private IP: 10.0.1.5| B[Private Endpoint]
     B --> C[Azure Cache for Redis]
-    D[Public Internet] -.->|Blocked| C
+    D[Public Internet] -.->|Blocked after public access is disabled| C
 ```
 
 ## Why Use Private Endpoints Instead of VNet Injection?
@@ -30,18 +30,18 @@ graph LR
 Azure offers two methods for restricting Redis access to a VNet:
 
 - **VNet injection** (Premium tier only): Deploys the Redis nodes directly into a subnet of your VNet.
-- **Private endpoints** (all tiers Standard and above): Creates a private link to the Redis service.
+- **Private endpoints** (Basic, Standard, Premium, Enterprise, and Azure Managed Redis): Creates a private link to the Redis service.
 
 Private endpoints are generally preferred for several reasons:
 
-1. **Available on more tiers**: VNet injection requires Premium tier. Private endpoints work on Standard and Premium.
+1. **Available on more tiers**: VNet injection requires Premium tier. Private endpoints work on Basic, Standard, Premium, Enterprise, and Azure Managed Redis. Use care with Basic caches because deleting and recreating a private endpoint can cause data loss.
 2. **Simpler networking**: VNet injection requires careful subnet sizing and NSG rule management. Private endpoints are just a network interface.
 3. **Better with hub-spoke topologies**: Private endpoints work naturally with hub-spoke VNet designs and peering.
 4. **Consistent with other Azure services**: Private endpoints work the same way for SQL, Storage, Cosmos DB, and dozens of other services. One pattern to learn.
 
 ## Prerequisites
 
-- An Azure Cache for Redis instance (Standard C1 or higher)
+- An Azure Cache for Redis instance (the example below creates a Standard C1 cache)
 - A virtual network with at least one subnet for the private endpoint
 - Azure CLI version 2.40 or later
 - Network Contributor role (or equivalent) on the VNet
@@ -88,11 +88,10 @@ az redis create \
   --resource-group rg-redis-private \
   --location eastus \
   --sku Standard \
-  --vm-size C1 \
-  --enable-non-ssl-port false
+  --vm-size c1
 ```
 
-Wait for provisioning to complete before creating the private endpoint.
+Wait for provisioning to complete before creating the private endpoint. The non-SSL Redis port is disabled unless you explicitly pass `--enable-non-ssl-port`.
 
 ## Step 3: Create the Private Endpoint
 
@@ -112,12 +111,12 @@ az network private-endpoint create \
   --vnet-name vnet-redis \
   --subnet snet-endpoints \
   --private-connection-resource-id $REDIS_ID \
-  --group-id redisCache \
+  --group-ids redisCache \
   --connection-name redis-private-connection \
   --location eastus
 ```
 
-The `--group-id redisCache` tells Azure which sub-resource of the Redis cache to connect to. For Azure Cache for Redis, this is always `redisCache`.
+The `--group-ids redisCache` tells Azure which sub-resource of the Redis cache to connect to. For Azure Cache for Redis, this is always `redisCache`.
 
 After this command completes, your Redis cache has a private IP address in the 10.0.1.0/24 subnet.
 
@@ -160,7 +159,7 @@ The DNS zone group automatically creates an A record in the private DNS zone tha
 
 ## Step 5: Disable Public Network Access
 
-Creating a private endpoint does not automatically disable public access. If you want the cache to be reachable only through the private endpoint, you need to explicitly disable public access.
+Current Azure documentation states that the `publicNetworkAccess` flag is `Disabled` by default when using private endpoints. If the flag is enabled on your cache, or if you want to make the setting explicit, disable public access so the cache is reachable only through the private endpoint.
 
 ```bash
 # Disable public network access
@@ -224,7 +223,7 @@ az network private-dns link vnet list \
 
 If DNS resolves correctly but connections time out:
 
-1. Check NSG rules on the private endpoint subnet. Port 6380 (TLS) must be allowed.
+1. If you enabled private endpoint network policies on the subnet, check NSG rules for port 6380 (TLS). If you left private endpoint network policies disabled as shown earlier, check NSGs on the source subnet instead.
 2. Verify that the connecting resource is in a VNet that can reach the private endpoint (same VNet or peered VNet).
 3. Check if there are any route tables that might be redirecting traffic through a firewall that blocks Redis traffic.
 
