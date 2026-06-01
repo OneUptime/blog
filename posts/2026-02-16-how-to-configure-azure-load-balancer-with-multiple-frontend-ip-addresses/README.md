@@ -16,10 +16,10 @@ I have seen teams deploy five or six load balancers when one with multiple front
 
 There are a few common scenarios:
 
-- **Hosting multiple websites** on the same set of VMs, each needing its own public IP for SSL termination at the DNS level
+- **Hosting multiple websites** on the same set of VMs, each needing its own public IP while TLS terminates on the backend VMs
 - **Separating production and staging traffic** through different IPs while sharing backend infrastructure
 - **Running multiple services** (like a web app on port 443 and an API on port 8443) each with its own dedicated IP
-- **IP-based routing** where clients connect to specific IPs based on their geographic region or service tier
+- **IP-based traffic separation** where clients or DNS records direct traffic to specific IPs based on their geographic region or service tier
 
 ## Architecture Overview
 
@@ -193,7 +193,8 @@ az network lb rule create \
   --backend-pool-name backendPool1 \
   --backend-port 80 \
   --protocol Tcp \
-  --probe-name healthProbe1
+  --probe-name healthProbe1 \
+  --enable-floating-ip true
 
 az network lb rule create \
   --resource-group myResourceGroup \
@@ -204,14 +205,15 @@ az network lb rule create \
   --backend-pool-name backendPool1 \
   --backend-port 80 \
   --protocol Tcp \
-  --probe-name healthProbe1
+  --probe-name healthProbe1 \
+  --enable-floating-ip true
 ```
 
-The VMs in the backend pool will see traffic from both IPs. Your application code can differentiate based on the destination IP in the packet header if needed.
+When multiple frontend rules use the same backend pool and the same backend port, Azure requires Floating IP on each rule. With Floating IP enabled, the destination IP remains the load balancer frontend IP, so the backend instances must be configured to receive that IP, commonly on a loopback interface. Without Floating IP, the destination is translated to the backend instance's private IP.
 
 ## Outbound Rules with Multiple Frontend IPs
 
-When VMs in a backend pool need to make outbound connections, you can control which frontend IP they use for SNAT:
+When VMs in a backend pool need to make outbound connections, you can choose which frontend IP configurations are available for SNAT:
 
 ```bash
 # Create an outbound rule specifying which frontend IP to use for SNAT
@@ -225,7 +227,7 @@ az network lb outbound-rule create \
   --allocated-outbound-ports 10000
 ```
 
-This is handy when you need outbound traffic from your VMs to appear as a specific public IP, for example when the destination has IP-based allow lists.
+This is handy when you need outbound traffic from your VMs to appear from a specific public IP, for example when the destination has IP-based allow lists. If you include multiple frontend IP configurations in the same outbound rule, Azure can use any of those IPs for outbound connections.
 
 ## Monitoring and Verification
 
@@ -244,7 +246,7 @@ az network lb rule list \
   --lb-name myLoadBalancer \
   --output table
 
-# Check backend pool health
+# List backend pool NIC associations
 az network lb show \
   --resource-group myResourceGroup \
   --name myLoadBalancer \
@@ -258,9 +260,9 @@ az network lb show \
 
 **Zone redundancy.** If your load balancer is zone-redundant, your public IPs should be too. Mixing zone-redundant and zonal resources can cause unexpected failover behavior.
 
-**SNAT port exhaustion.** With multiple frontend IPs, you get more SNAT ports (1024 per IP per backend instance). If you are hitting SNAT limits, adding more frontend IPs with outbound rules can help.
+**SNAT port exhaustion.** Each public frontend IP can contribute up to 64,000 ephemeral ports for SNAT, and the number allocated per backend instance depends on the outbound rule configuration and backend pool size. If you are hitting SNAT limits, adding more frontend IPs with outbound rules or manually allocating outbound ports can help.
 
-**NSG rules.** Make sure the NSG on your backend VMs allows inbound traffic from the load balancer. Use the `AzureLoadBalancer` service tag in your NSG rules.
+**NSG rules.** Make sure the NSG on your backend VMs allows the expected client traffic and the load balancer health probes. Use the `AzureLoadBalancer` service tag to allow probe traffic from Azure Load Balancer.
 
 ## Summary
 
