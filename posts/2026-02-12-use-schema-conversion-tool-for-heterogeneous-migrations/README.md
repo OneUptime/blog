@@ -40,7 +40,7 @@ SCT is a desktop application that you download and run locally. It connects to b
 
 1. Download SCT from the AWS documentation page
 2. Install the required JDBC drivers for both source and target database engines
-3. Place JDBC drivers in the SCT `drivers` directory
+3. Configure the JDBC driver file paths in SCT under **Settings > Global Settings > Drivers**
 
 The JDBC drivers are not bundled with SCT due to licensing. You need to download them separately from the respective database vendor websites.
 
@@ -69,14 +69,14 @@ Summary:
   Triggers:            23/31 (74.2% auto-converted)
 ```
 
-The assessment report uses a color-coded system:
+The assessment report groups conversion work by whether objects are converted automatically or need simple, medium-complexity, or complex action items:
 
-- **Green**: Fully automatic conversion, no action needed
-- **Yellow**: Mostly converted but needs minor tweaks
-- **Orange**: Partially converted, significant manual work
-- **Red**: Cannot be converted, must be rewritten from scratch
+- **Automatically converted**: No action needed
+- **Simple actions**: Mostly converted but needs minor tweaks
+- **Medium-complexity actions**: Partially converted and needs manual work
+- **Complex actions**: Requires significant redesign or manual rewriting
 
-Pay close attention to the red items. These typically include Oracle-specific packages, CONNECT BY queries, or proprietary functions that have no direct PostgreSQL equivalent.
+Pay close attention to the complex action items. These typically include Oracle-specific packages, CONNECT BY queries, or proprietary functions that have no direct PostgreSQL equivalent.
 
 ## Step 3: Convert the Schema
 
@@ -107,7 +107,7 @@ END;
 ```sql
 -- Equivalent PostgreSQL function using COALESCE and CURRENT_TIMESTAMP
 CREATE OR REPLACE FUNCTION update_employee_status(
-    p_emp_id INTEGER,
+    p_emp_id NUMERIC,
     p_status VARCHAR
 ) RETURNS void AS
 $BODY$
@@ -122,7 +122,7 @@ $BODY$
 LANGUAGE plpgsql;
 ```
 
-Notice that SCT automatically translated `NVL` to `COALESCE`, `SYSDATE` to `CURRENT_TIMESTAMP`, `NUMBER` to `INTEGER`, and restructured the procedure as a PostgreSQL function. It also removed the explicit `COMMIT` since PostgreSQL functions run inside a transaction by default.
+Notice that SCT automatically translated `NVL` to `COALESCE`, `SYSDATE` to `CURRENT_TIMESTAMP`, `NUMBER` to `NUMERIC`, and restructured the procedure as a PostgreSQL function. It also removed the explicit `COMMIT` since transaction control is handled by the caller when using PostgreSQL functions.
 
 ## Step 4: Review and Fix Action Items
 
