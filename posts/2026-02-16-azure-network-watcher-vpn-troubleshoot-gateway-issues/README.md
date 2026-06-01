@@ -10,7 +10,7 @@ Description: Use Azure Network Watcher VPN Troubleshoot to diagnose and resolve 
 
 VPN connections fail. It is not a matter of if, but when. Maybe the tunnel drops after a network change, maybe a configuration drift breaks the IKE negotiation, or maybe the gateway is experiencing resource constraints. When it happens, you need a way to quickly identify the root cause without spending hours manually checking every parameter.
 
-Azure Network Watcher VPN Troubleshoot is a diagnostic tool that automatically analyzes your VPN gateway and its connections, identifies problems, and provides actionable recommendations. It checks everything from IKE negotiation to certificate validity to resource health, and outputs detailed logs you can dig through.
+Azure Network Watcher VPN Troubleshoot is a diagnostic tool that automatically analyzes your VPN gateway and its connections, identifies problems, and provides actionable recommendations. It checks gateway and connection health, IKE policy and authentication issues, peer reachability, and resource health, and outputs detailed logs you can dig through.
 
 In this guide, I will show you how to use VPN Troubleshoot, interpret the results, and fix the most common problems it identifies.
 
@@ -19,26 +19,25 @@ In this guide, I will show you how to use VPN Troubleshoot, interpret the result
 When you run VPN Troubleshoot, it performs a comprehensive analysis of the VPN gateway or a specific connection. The checks include:
 
 - Gateway resource health and provisioning state
-- Connection configuration validity
-- IKE negotiation logs (Phase 1 and Phase 2)
-- IPsec Security Association (SA) status
-- Gateway certificate validity
-- Route table consistency
-- BGP session status (if BGP is enabled)
-- Bandwidth and throughput metrics
-- Gateway CPU and memory utilization
+- Connection presence and configuration on the gateway
+- Connection state, including disconnected or standby status
+- Peer reachability
+- Pre-shared key authentication failures
+- IKE policy mismatches
+- Gateway CPU usage
+- Generated logs such as connection statistics, CPU statistics, IKE activity, and WFP diagnostics
 
-The tool outputs results in three categories:
+The tool outputs overall health and result codes such as:
 - **Healthy**: Everything looks good
-- **Unhealthy**: A specific problem was identified with a recommendation
-- **Not Run**: The check was not applicable or could not be performed
+- **UnHealthy**: A specific problem was identified with a recommendation
+- **NoFault**: No error was detected for a specific gateway or connection check
 
 ## Prerequisites
 
 VPN Troubleshoot stores its diagnostic output in an Azure Storage account. You need:
 
 - Network Watcher enabled in the gateway's region
-- A Storage Account in the same region as the VPN gateway
+- A Storage Account in the same resource group as the VPN gateway when using Azure CLI
 - The VPN Gateway resource ID
 
 ```bash
@@ -84,7 +83,7 @@ STORAGE_ID=$(az storage account show \
 # This can take 5-10 minutes to complete
 az network watcher troubleshooting start \
   --resource $GATEWAY_ID \
-  --resource-type vpnGateway \
+  --resource-type vnetGateway \
   --storage-account $STORAGE_ID \
   --storage-path "https://stvpndiagnostics.blob.core.windows.net/vpn-diagnostics"
 ```
@@ -117,12 +116,12 @@ The troubleshoot command returns a JSON response with the overall code and a lis
 
 ```json
 {
-  "code": "Unhealthy",
+  "code": "UnHealthy",
   "results": [
     {
-      "id": "NoConnection",
+      "id": "Authentication",
       "summary": "VPN connection is not connected",
-      "detail": "The VPN connection 'conn-to-onprem' is in a Connecting state. The IKE negotiation is failing.",
+      "detailed": "The VPN connection 'conn-to-onprem' is in a Connecting state. The IKE negotiation is failing.",
       "recommendedActions": [
         {
           "actionText": "Verify the shared key matches on both sides",
@@ -142,10 +141,10 @@ The troubleshoot command returns a JSON response with the overall code and a lis
 
 The key fields are:
 
-- `code`: Overall health status (Healthy, Unhealthy, or NotRun)
-- `id`: The specific issue identified (NoConnection, GatewayNotFound, etc.)
+- `code`: Overall health status (Healthy or UnHealthy)
+- `id`: The specific issue identified (Authentication, GatewayNotFound, etc.)
 - `summary`: A brief description of the problem
-- `detail`: More context about the issue
+- `detailed`: More context about the issue
 - `recommendedActions`: Steps to fix the problem
 
 ## Accessing Detailed Diagnostic Logs
@@ -160,16 +159,20 @@ az storage blob list \
   --auth-mode login \
   --output table
 
-# Download the IKE log file for analysis
+# Download the generated troubleshooting zip file for analysis.
+# Replace the blob name with the file returned by the list command.
 az storage blob download \
   --account-name stvpndiagnostics \
   --container-name vpn-diagnostics \
-  --name "IKEErrors.txt" \
-  --file /tmp/ike-errors.txt \
+  --name "<generated-troubleshoot-log>.zip" \
+  --file /tmp/vpn-troubleshoot.zip \
   --auth-mode login
+
+# Check which IKE log files were generated
+unzip -l /tmp/vpn-troubleshoot.zip | grep -i "Ike"
 ```
 
-The IKE log file contains detailed negotiation traces. Here is what to look for.
+The IKE log files contain detailed negotiation traces. Newer gateways use `IkeLogs.txt`; older outputs can include `IKEErrors.txt`. Here is what to look for.
 
 ### Phase 1 (IKE SA) Failures
 
@@ -262,19 +265,14 @@ az network vpn-connection ipsec-policy add \
 If the gateway is overloaded, connections can become unstable.
 
 ```bash
-# Check gateway metrics for CPU and memory usage
-az monitor metrics list \
-  --resource $GATEWAY_ID \
-  --metric "TunnelAverageBandwidth" \
-  --interval PT5M \
-  --aggregation Average \
-  --output table
+# Check the CPU and memory snapshot captured by VPN Troubleshoot
+unzip -p /tmp/vpn-troubleshoot.zip "*/CPUStats.txt"
 ```
 
 If the gateway is consistently at high utilization, upgrade to a larger SKU.
 
 ```bash
-# Resize the VPN gateway (non-disruptive for same-generation upgrades)
+# Resize the VPN gateway (minimal downtime for supported upgrades)
 az network vnet-gateway update \
   --resource-group rg-vpn \
   --name vpngw-main \
@@ -335,7 +333,7 @@ STORAGE_ID=$(az storage account show \
 # Run troubleshoot and capture result
 RESULT=$(az network watcher troubleshooting start \
   --resource $GATEWAY_ID \
-  --resource-type vpnGateway \
+  --resource-type vnetGateway \
   --storage-account $STORAGE_ID \
   --storage-path "https://${STORAGE_ACCOUNT}.blob.core.windows.net/vpn-diagnostics" \
   --query code -o tsv)
@@ -362,7 +360,7 @@ az monitor metrics alert create \
   --severity 1 \
   --description "VPN tunnel appears to be down"
 
-# Alert when gateway P2S connection count exceeds threshold
+# Alert when BGP peer status is degraded
 az monitor metrics alert create \
   --resource-group rg-vpn \
   --name alert-vpn-bgp-down \
