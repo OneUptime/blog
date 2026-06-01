@@ -8,7 +8,7 @@ Description: A detailed guide to writing custom Azure Policy definitions with th
 
 ---
 
-Azure Policy's `audit` and `deny` effects are useful, but they only tell you about problems or prevent new ones. The `DeployIfNotExists` effect goes further - it automatically deploys a configuration on a resource if that configuration is missing. When a VM gets created without diagnostic settings, the policy deploys them. When a storage account is created without encryption at rest, the policy configures it. This turns your policies from passive monitors into active enforcers.
+Azure Policy's `audit` and `deny` effects are useful, but they only tell you about problems or prevent new ones. The `DeployIfNotExists` effect goes further - it automatically deploys a configuration on a resource if that configuration is missing. When a VM gets created without diagnostic settings, the policy deploys them. When a storage account is created without diagnostic settings, the policy deploys them. This turns your policies from passive monitors into active enforcers.
 
 Writing a `DeployIfNotExists` policy is more involved than writing an `audit` policy because you need to embed an ARM template that performs the remediation. This guide walks through the full process with real examples.
 
@@ -35,7 +35,7 @@ flowchart TD
     H --> I[Resource now compliant]
 ```
 
-For newly created resources, the DINE evaluation triggers automatically within about 15 minutes. For existing resources, you need to create a remediation task.
+For newly created or updated resources, the DINE evaluation triggers automatically after a configurable delay, which defaults to 10 minutes. For existing resources, you need to create a remediation task.
 
 ## Policy Definition Structure
 
@@ -86,7 +86,7 @@ Let me break down the key fields:
 
 ## Example 1: Deploy Diagnostic Settings on VMs
 
-This is one of the most common DINE policies. It ensures every VM has diagnostic settings configured to send logs to a Log Analytics workspace.
+This is one of the most common DINE policies. It ensures every VM has diagnostic settings configured to send platform metrics to a Log Analytics workspace.
 
 ```json
 {
@@ -211,6 +211,7 @@ This policy ensures every subnet in a VNet has an NSG attached.
       "effect": "DeployIfNotExists",
       "details": {
         "type": "Microsoft.Network/virtualNetworks/subnets",
+        "name": "[field('fullName')]",
         "existenceCondition": {
           "field": "Microsoft.Network/virtualNetworks/subnets/networkSecurityGroup.id",
           "exists": "true"
@@ -245,8 +246,8 @@ This policy ensures every subnet in a VNet has an NSG attached.
               ]
             },
             "parameters": {
-              "subnetName": { "value": "[field('name')]" },
-              "vnetName": { "value": "[first(split(field('id'), '/subnets/'))]" },
+              "subnetName": { "value": "[last(split(field('fullName'), '/'))]" },
+              "vnetName": { "value": "[first(split(field('fullName'), '/'))]" },
               "nsgId": { "value": "[parameters('nsgId')]" },
               "subnetAddressPrefix": { "value": "[field('Microsoft.Network/virtualNetworks/subnets/addressPrefix')]" }
             }
@@ -260,7 +261,7 @@ This policy ensures every subnet in a VNet has an NSG attached.
 
 ## Creating and Assigning the Policy
 
-Save your policy definition as a JSON file and create it using the CLI.
+Save the policy rule and parameter definitions as JSON files and create the policy definition using the CLI.
 
 ```bash
 # Create the custom policy definition
@@ -310,7 +311,7 @@ az role assignment create \
 Create a test VM without diagnostic settings and verify the policy catches it.
 
 ```bash
-# Wait about 15 minutes for the policy to evaluate the new resource
+# Wait about 10 minutes by default for the policy to evaluate the new resource
 # Then check the compliance state
 az policy state list \
   --filter "policyAssignmentName eq 'deploy-vm-diagnostics-assignment' and complianceState eq 'NonCompliant'" \
