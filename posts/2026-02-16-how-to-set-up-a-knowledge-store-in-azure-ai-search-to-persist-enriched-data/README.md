@@ -58,8 +58,9 @@ The knowledge store is defined within the skillset. You add a `knowledgeStore` s
 
 Here is a complete skillset definition that extracts key phrases and entities, then projects them to both table and blob storage.
 
+Use `PUT https://<search-service>.search.windows.net/skillsets/my-knowledge-skillset?api-version=2026-04-01` with this request body:
+
 ```json
-// PUT https://<search-service>.search.windows.net/skillsets/my-knowledge-skillset?api-version=2024-07-01
 {
   "name": "my-knowledge-skillset",
   "description": "Skillset with knowledge store projections",
@@ -69,7 +70,6 @@ Here is a complete skillset definition that extracts key phrases and entities, t
   },
   "skills": [
     {
-      // Extract key phrases from document content
       "@odata.type": "#Microsoft.Skills.Text.KeyPhraseExtractionSkill",
       "name": "keyphrases-skill",
       "context": "/document",
@@ -81,7 +81,6 @@ Here is a complete skillset definition that extracts key phrases and entities, t
       ]
     },
     {
-      // Recognize entities in the document
       "@odata.type": "#Microsoft.Skills.Text.V3.EntityRecognitionSkill",
       "name": "entities-skill",
       "context": "/document",
@@ -92,18 +91,34 @@ Here is a complete skillset definition that extracts key phrases and entities, t
       "outputs": [
         { "name": "persons", "targetName": "people" },
         { "name": "organizations", "targetName": "organizations" },
-        { "name": "locations", "targetName": "locations" }
+        { "name": "locations", "targetName": "locations" },
+        { "name": "namedEntities", "targetName": "entities" }
       ]
     },
     {
-      // Shape the data for knowledge store projection
       "@odata.type": "#Microsoft.Skills.Util.ShaperSkill",
       "name": "shaper-skill",
       "context": "/document",
       "inputs": [
         { "name": "title", "source": "/document/metadata_storage_name" },
         { "name": "content", "source": "/document/content" },
-        { "name": "keyPhrases", "source": "/document/keyPhrases" },
+        {
+          "name": "keyPhrases",
+          "sourceContext": "/document/keyPhrases/*",
+          "inputs": [
+            { "name": "keyPhrase", "source": "/document/keyPhrases/*" }
+          ]
+        },
+        {
+          "name": "entities",
+          "sourceContext": "/document/entities/*",
+          "inputs": [
+            { "name": "text", "source": "/document/entities/*/text" },
+            { "name": "category", "source": "/document/entities/*/category" },
+            { "name": "subcategory", "source": "/document/entities/*/subcategory" },
+            { "name": "confidenceScore", "source": "/document/entities/*/confidenceScore" }
+          ]
+        },
         { "name": "people", "source": "/document/people" },
         { "name": "organizations", "source": "/document/organizations" },
         { "name": "locations", "source": "/document/locations" }
@@ -114,11 +129,9 @@ Here is a complete skillset definition that extracts key phrases and entities, t
     }
   ],
   "knowledgeStore": {
-    // Connection string to your Azure Storage account
     "storageConnectionString": "DefaultEndpointsProtocol=https;AccountName=mystorageaccount;AccountKey=<key>;EndpointSuffix=core.windows.net",
     "projections": [
       {
-        // Table projections for structured data
         "tables": [
           {
             "tableName": "documentsTable",
@@ -133,10 +146,9 @@ Here is a complete skillset definition that extracts key phrases and entities, t
           {
             "tableName": "entitiesTable",
             "generatedKeyName": "entityId",
-            "source": "/document/enrichedDocument/people/*"
+            "source": "/document/enrichedDocument/entities/*"
           }
         ],
-        // Object projections for full JSON documents
         "objects": [
           {
             "storageContainer": "enriched-documents",
@@ -144,7 +156,6 @@ Here is a complete skillset definition that extracts key phrases and entities, t
             "source": "/document/enrichedDocument"
           }
         ],
-        // File projections for binary content like images
         "files": []
       }
     ]
@@ -162,8 +173,9 @@ Without the Shaper skill, you would need to reference individual paths from the 
 
 You still need a search index and an indexer. The knowledge store works alongside the search index, not instead of it.
 
+Index definition:
+
 ```json
-// Index definition
 {
   "name": "my-knowledge-index",
   "fields": [
@@ -174,8 +186,9 @@ You still need a search index and an indexer. The knowledge store works alongsid
 }
 ```
 
+Indexer definition that references the skillset:
+
 ```json
-// Indexer definition that references the skillset
 {
   "name": "my-knowledge-indexer",
   "dataSourceName": "my-blob-datasource",
@@ -208,7 +221,7 @@ Check the indexer status to make sure it completes successfully.
 ```bash
 # Check indexer status
 
-curl -X GET "https://<search-service>.search.windows.net/indexers/my-knowledge-indexer/status?api-version=2024-07-01" \
+curl -X GET "https://<search-service>.search.windows.net/indexers/my-knowledge-indexer/status?api-version=2026-04-01" \
   -H "api-key: <your-admin-key>"
 ```
 
@@ -233,11 +246,17 @@ table_service = TableServiceClient.from_connection_string(connection_string)
 
 # Query the documents table
 documents_table = table_service.get_table_client("documentsTable")
-entities = documents_table.list_entities()
+documents = documents_table.list_entities()
 
-for entity in entities:
-    print(f"Document: {entity.get('title', 'N/A')}")
-    print(f"Key Phrases: {entity.get('keyPhrases', 'N/A')}")
+for document in documents:
+    print(f"Document: {document.get('title', 'N/A')}")
+
+# Query the key phrases table
+key_phrases_table = table_service.get_table_client("keyPhrasesTable")
+key_phrases = key_phrases_table.list_entities()
+
+for key_phrase in key_phrases:
+    print(f"Key Phrase: {key_phrase.get('keyPhrase', 'N/A')}")
     print()
 ```
 
