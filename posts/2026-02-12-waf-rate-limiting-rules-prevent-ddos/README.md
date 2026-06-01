@@ -10,14 +10,14 @@ Description: Learn how to configure AWS WAF rate-based rules to protect your app
 
 A rate-limiting rule is the single most effective WAF rule you can deploy. Without it, a single attacker can hammer your API with thousands of requests per second, overwhelming your backend, running up your AWS bill, and degrading the experience for legitimate users. Rate-based rules automatically block IPs that exceed a request threshold you define.
 
-AWS WAF rate-based rules track the request rate from individual IP addresses over a 5-minute window. When an IP exceeds your threshold, WAF blocks it automatically. When the rate drops below the threshold, WAF unblocks it. No manual intervention needed.
+AWS WAF rate-based rules track the request rate from individual IP addresses over an evaluation window. The default window is 5 minutes, and you can also configure 1-minute, 2-minute, or 10-minute windows. When an IP exceeds your threshold, WAF blocks it automatically. When the rate drops below the threshold, WAF unblocks it. No manual intervention needed.
 
 ## How Rate-Based Rules Work
 
-WAF evaluates rate-based rules on a rolling 5-minute window. If you set a threshold of 2,000 requests, any IP sending more than 2,000 requests in any 5-minute period gets blocked until its rate drops below the threshold.
+WAF evaluates rate-based rules on a rolling evaluation window. If you use the default 5-minute window and set a threshold of 2,000 requests, any IP sending more than 2,000 requests in that period gets blocked until its rate drops below the threshold.
 
 Key details:
-- The minimum threshold is 100 requests per 5 minutes
+- The minimum threshold is 10 requests per evaluation window
 - Evaluation happens continuously, not at fixed 5-minute boundaries
 - Blocked IPs are automatically unblocked when their rate decreases
 - You can combine rate limits with other conditions (like specific URL paths)
@@ -404,7 +404,7 @@ aws wafv2 get-sampled-requests \
   --web-acl-arn YOUR_WEB_ACL_ARN \
   --rule-metric-name RateLimit \
   --scope REGIONAL \
-  --time-window '{"StartTime": "2026-02-12T00:00:00Z", "EndTime": "2026-02-12T23:59:59Z"}' \
+  --time-window "StartTime=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%MZ),EndTime=$(date -u +%Y-%m-%dT%H:%MZ)" \
   --max-items 20
 ```
 
