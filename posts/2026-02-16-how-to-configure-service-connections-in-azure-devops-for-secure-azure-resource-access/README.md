@@ -26,7 +26,7 @@ There are two approaches: automatic and manual. The automatic approach is simple
 
 Go to **Project Settings > Service connections > New service connection > Azure Resource Manager**.
 
-Select **Service principal (automatic)**.
+Select **Workload identity federation (automatic)**. For older or edge-case setups that still use a stored secret, Azure DevOps also offers a **Service principal (automatic)** option, but workload identity federation is the recommended automatic path.
 
 Configure:
 
@@ -39,10 +39,10 @@ Azure DevOps will:
 
 1. Create a new app registration in your Azure Entra ID
 2. Create a service principal
-3. Assign the Contributor role at the scope you selected
-4. Store the credentials securely in Azure DevOps
+3. Create a federated identity credential for Azure DevOps
+4. Assign the Contributor role at the scope you selected
 
-This is the fastest way to get started, but you lose control over the service principal name, role assignment, and lifecycle.
+This is the fastest way to get started, but you lose control over the service principal name, role assignment, and lifecycle. If you choose the older service-principal-with-secret option, Azure DevOps stores the secret securely and you must rotate it before it expires.
 
 ### Manual Creation
 
@@ -142,12 +142,12 @@ The `azureSubscription` parameter in tasks refers to the service connection name
 
 ### Pipeline Permissions
 
-By default, a new service connection is available to all pipelines in the project. This is too permissive for production connections.
+Azure DevOps lets you grant access to all pipelines when creating or editing a service connection, but that is too permissive for production connections. Leave that option off, or restrict access if the connection is already open.
 
 Go to the service connection's settings, click **Security**, and configure:
 
-- **Pipeline permissions**: Restrict to specific pipelines. Click "Restrict permission" and then grant access only to the pipelines that need it.
-- **Project permissions**: Control which projects can use the connection (for organization-scoped connections).
+- **Pipeline permissions**: Restrict to specific pipelines. Click "Restrict access" and then grant access only to the pipelines that need it.
+- **Project permissions**: Control which other projects can use a shared service connection.
 
 When a pipeline tries to use a restricted service connection for the first time, Azure DevOps will prompt an administrator to approve the access.
 
@@ -282,18 +282,20 @@ steps:
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        # List all service principals with credentials expiring in 30 days
+        # List app registrations with credentials expiring in 30 days
         THRESHOLD=$(date -u -d "+30 days" '+%Y-%m-%dT%H:%M:%SZ')
+        NOW=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
-        # Check each service principal
+        # Check each app registration
         for APP_ID in $(az ad app list --query "[].appId" -o tsv); do
-          EXPIRY=$(az ad app credential list --id $APP_ID \
-            --query "[0].endDateTime" -o tsv 2>/dev/null)
+          APP_NAME=$(az ad app show --id "$APP_ID" --query "displayName" -o tsv)
 
-          if [ -n "$EXPIRY" ] && [[ "$EXPIRY" < "$THRESHOLD" ]]; then
-            APP_NAME=$(az ad app show --id $APP_ID --query "displayName" -o tsv)
-            echo "WARNING: $APP_NAME ($APP_ID) credential expires on $EXPIRY"
-          fi
+          while IFS=$'\t' read -r KEY_ID EXPIRY; do
+            if [ -n "$EXPIRY" ] && [[ "$EXPIRY" > "$NOW" ]] && [[ "$EXPIRY" < "$THRESHOLD" ]]; then
+              echo "WARNING: $APP_NAME ($APP_ID) credential $KEY_ID expires on $EXPIRY"
+            fi
+          done < <(az ad app credential list --id "$APP_ID" \
+            --query "[].{keyId:keyId,endDateTime:endDateTime}" -o tsv 2>/dev/null)
         done
 ```
 
