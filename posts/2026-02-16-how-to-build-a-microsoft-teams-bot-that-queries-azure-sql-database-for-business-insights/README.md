@@ -52,10 +52,9 @@ Register your bot in the Azure portal and configure it for Teams:
 az bot create \
   --resource-group rg-teams-bot \
   --name bot-business-insights \
-  --kind registration \
+  --app-type MultiTenant \
   --endpoint "https://your-bot-app.azurewebsites.net/api/messages" \
-  --appid $APP_ID \
-  --password $APP_PASSWORD
+  --appid $APP_ID
 
 # Enable the Teams channel
 az bot msteams create \
@@ -187,7 +186,7 @@ export class InsightsBot extends ActivityHandler {
     }
 }
 
-interface QueryIntent {
+export interface QueryIntent {
     type: string;
     params: Record<string, string>;
     originalText: string;
@@ -232,7 +231,7 @@ export class QueryService {
     }
 
     private async getWeeklySales(): Promise<QueryResult> {
-        // Query for sales in the current week, grouped by day
+        // Query for sales in the last 7 days, grouped by day
         const result = await this.pool.request().query(`
             SELECT
                 CAST(OrderDate AS DATE) as SaleDate,
@@ -245,7 +244,7 @@ export class QueryService {
         `);
 
         return {
-            title: 'This Week\'s Sales',
+            title: 'Sales for the Last 7 Days',
             columns: ['Date', 'Orders', 'Revenue'],
             rows: result.recordset.map(r => [
                 new Date(r.SaleDate).toLocaleDateString(),
@@ -260,9 +259,11 @@ export class QueryService {
     }
 
     private async getTopCustomers(limit: number): Promise<QueryResult> {
+        const safeLimit = Math.min(Math.max(limit, 1), 50);
+
         // Use parameterized query to prevent SQL injection
         const result = await this.pool.request()
-            .input('limit', sql.Int, Math.min(limit, 50))
+            .input('limit', sql.Int, safeLimit)
             .query(`
                 SELECT TOP (@limit)
                     c.CustomerName,
@@ -275,7 +276,7 @@ export class QueryService {
             `);
 
         return {
-            title: `Top ${limit} Customers by Revenue`,
+            title: `Top ${safeLimit} Customers by Revenue`,
             columns: ['Customer', 'Orders', 'Total Revenue'],
             rows: result.recordset.map(r => [
                 r.CustomerName,
@@ -367,6 +368,19 @@ export class QueryService {
         };
     }
 }
+
+interface QueryIntent {
+    type: string;
+    params: Record<string, string>;
+    originalText: string;
+}
+
+interface QueryResult {
+    title: string;
+    columns: string[];
+    rows: string[][];
+    summary?: Record<string, number | string>;
+}
 ```
 
 ## Building Adaptive Cards for Rich Results
@@ -398,7 +412,7 @@ export class CardBuilder {
                 facts: Object.entries(results.summary).map(([key, value]) => ({
                     title: this.formatLabel(key),
                     value: typeof value === 'number' ?
-                        (key.includes('revenue') ? `$${value.toFixed(2)}` : value.toString()) :
+                        (key.toLowerCase().includes('revenue') ? `$${value.toFixed(2)}` : value.toString()) :
                         value.toString()
                 }))
             });
@@ -481,6 +495,19 @@ export class CardBuilder {
             .trim();
     }
 }
+
+interface QueryIntent {
+    type: string;
+    params: Record<string, string>;
+    originalText: string;
+}
+
+interface QueryResult {
+    title: string;
+    columns: string[];
+    rows: string[][];
+    summary?: Record<string, number | string>;
+}
 ```
 
 ## Security Considerations
@@ -511,14 +538,14 @@ Deploy the bot to Azure App Service and configure the Teams app manifest:
 az webapp up \
   --name bot-business-insights-app \
   --resource-group rg-teams-bot \
-  --runtime "NODE:18-lts" \
+  --runtime "NODE:24-lts" \
   --plan plan-teams-bot
 
 # Configure the SQL connection string as an app setting
 az webapp config appsettings set \
   --name bot-business-insights-app \
   --resource-group rg-teams-bot \
-  --settings SQL_CONNECTION_STRING="Server=tcp:sql-insights.database.windows.net;Database=BusinessDB;User ID=teams-bot-reader;Encrypt=True;"
+  --settings SQL_CONNECTION_STRING="Server=tcp:sql-insights.database.windows.net;Database=BusinessDB;User ID=teams-bot-reader;Password=strong-password-here;Encrypt=True;"
 ```
 
 ## Wrapping Up
