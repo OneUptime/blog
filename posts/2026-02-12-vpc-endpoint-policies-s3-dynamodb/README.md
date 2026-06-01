@@ -131,7 +131,7 @@ Only allow S3 access to buckets owned by your organization's accounts:
 
 ### Restrict to Organization
 
-Even better, restrict to your entire AWS Organization:
+Even better, restrict S3 access to resources in your entire AWS Organization:
 
 ```json
 {
@@ -145,7 +145,7 @@ Even better, restrict to your entire AWS Organization:
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:PrincipalOrgID": "o-exampleorgid"
+          "aws:ResourceOrgID": "o-exampleorgid"
         }
       }
     }
@@ -191,14 +191,17 @@ Limit which IAM roles can use the endpoint:
     {
       "Sid": "RestrictToPrincipals",
       "Effect": "Allow",
-      "Principal": {
-        "AWS": [
-          "arn:aws:iam::111111111111:role/AppRole",
-          "arn:aws:iam::111111111111:role/BatchProcessorRole"
-        ]
-      },
+      "Principal": "*",
       "Action": "s3:*",
-      "Resource": "*"
+      "Resource": "*",
+      "Condition": {
+        "ArnEquals": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::111111111111:role/AppRole",
+            "arn:aws:iam::111111111111:role/BatchProcessorRole"
+          ]
+        }
+      }
     }
   ]
 }
@@ -382,14 +385,14 @@ Make sure your S3 endpoint policy includes access to ECR's S3 buckets:
 
 ## Monitoring
 
-Use CloudTrail to audit endpoint usage. Look for access denied events that might indicate misconfigured policies:
+Use CloudTrail to audit endpoint usage. For S3 object-level events like `GetObject`, enable CloudTrail data events and query the delivered logs, for example with CloudWatch Logs Insights or Athena. Look for access denied events that might indicate misconfigured policies:
 
-```bash
-# Search CloudTrail for endpoint access denied events
-aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=EventName,AttributeValue=GetObject \
-  --max-results 50 \
-  --query 'Events[?contains(CloudTrailEvent, `AccessDenied`)].{Time:EventTime,User:Username}'
+```text
+fields @timestamp, userIdentity.arn, eventName, errorCode, sourceIPAddress, vpcEndpointId
+| filter errorCode = "AccessDenied"
+| filter eventName = "GetObject" or eventName = "PutObject" or eventName = "GetItem" or eventName = "PutItem"
+| sort @timestamp desc
+| limit 50
 ```
 
 ## Best Practices
@@ -398,7 +401,7 @@ aws cloudtrail lookup-events \
 
 **Use resource wildcards carefully.** `arn:aws:s3:::my-app-*` is reasonable. `arn:aws:s3:::*` defeats the purpose.
 
-**Test thoroughly before deploying.** Policy changes take effect immediately. A bad endpoint policy can break your entire application's access to S3 or DynamoDB.
+**Test thoroughly before deploying.** Policy changes can take a few minutes to take effect. A bad endpoint policy can break your entire application's access to S3 or DynamoDB.
 
 **Document your policies.** Use the `Sid` field to explain what each statement does. Future you will be grateful.
 
