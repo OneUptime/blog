@@ -146,12 +146,13 @@ param location string = resourceGroup().location
 // Generate a unique suffix for globally unique names
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var baseName = 'myapp-${environment}'
+var storageBaseName = 'app${environment}'
 
 // Deploy a storage account using the module
 module appStorage 'modules/storage.bicep' = {
   name: 'deploy-app-storage'
   params: {
-    storageAccountName: '${baseName}stor${uniqueSuffix}'
+    storageAccountName: '${storageBaseName}${uniqueSuffix}'
     location: location
     skuName: environment == 'prod' ? 'Standard_GRS' : 'Standard_LRS'
     accessTier: 'Hot'
@@ -219,6 +220,9 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
   name: appName
   location: location
   tags: tags
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     siteConfig: {
@@ -245,12 +249,13 @@ param location string = resourceGroup().location
 
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var baseName = 'myapp-${environment}'
+var storageBaseName = 'app${environment}'
 
 // Deploy storage
 module storage 'modules/storage.bicep' = {
   name: 'deploy-storage'
   params: {
-    storageAccountName: '${replace(baseName, '-', '')}${uniqueSuffix}'
+    storageAccountName: '${storageBaseName}${uniqueSuffix}'
     location: location
     containerNames: ['uploads', 'backups']
   }
