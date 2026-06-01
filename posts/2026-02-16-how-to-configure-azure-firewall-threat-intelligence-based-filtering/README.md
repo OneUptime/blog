@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Firewall, Threat Intelligence, Security, Networking, Cyber Defense, Traffic Filtering
 
-Description: A guide to enabling and configuring Azure Firewall threat intelligence-based filtering to automatically block traffic from known malicious IP addresses and domains.
+Description: A guide to enabling and configuring Azure Firewall threat intelligence-based filtering to alert on or block traffic from known malicious IP addresses and domains.
 
 ---
 
-Azure Firewall includes a threat intelligence feature that automatically blocks traffic to and from known malicious IP addresses and domains. Microsoft maintains a curated feed of threat indicators sourced from their own security research, third-party feeds, and the Microsoft Threat Intelligence Center. When this feature is enabled, the firewall cross-references every connection against this feed and either alerts or blocks matching traffic.
+Azure Firewall includes a threat intelligence feature that can alert on or block traffic to and from known malicious IP addresses and domains. Microsoft maintains a curated feed of threat indicators sourced from their own security research, third-party feeds, and the Microsoft Threat Intelligence Center. When this feature is enabled, the firewall cross-references every connection against this feed and either alerts or blocks matching traffic.
 
 This is one of the easiest security wins you can get with Azure Firewall. It requires minimal configuration and provides immediate protection against known threats.
 
@@ -94,8 +94,8 @@ az network firewall policy update \
   --resource-group myResourceGroup \
   --name myFirewallPolicy \
   --threat-intel-mode Deny \
-  --threat-intel-allowlist-fqdns "partner-api.example.com" "legitimate-service.example.org" \
-  --threat-intel-allowlist-ipaddresses "203.0.113.50" "198.51.100.0/24"
+  --fqdns "partner-api.example.com" "legitimate-service.example.org" \
+  --ip-addresses "203.0.113.50" "198.51.100.0/24"
 ```
 
 Use allowlists carefully. Only add entries after confirming the traffic is genuinely legitimate. Every allowlist entry is a hole in your threat intelligence coverage.
@@ -110,15 +110,16 @@ az monitor diagnostic-settings create \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/azureFirewalls/myFirewall" \
   --name firewallDiagnostics \
   --workspace myLogAnalyticsWorkspace \
+  --export-to-resource-specific true \
   --logs '[
-    {"category":"AzureFirewallNetworkRule","enabled":true},
-    {"category":"AzureFirewallApplicationRule","enabled":true},
-    {"category":"AzureFirewallThreatIntelLog","enabled":true},
-    {"category":"AzureFirewallDnsProxy","enabled":true}
+    {"category":"AZFWNetworkRule","enabled":true},
+    {"category":"AZFWApplicationRule","enabled":true},
+    {"category":"AZFWThreatIntel","enabled":true},
+    {"category":"AZFWDnsQuery","enabled":true}
   ]'
 ```
 
-The `AzureFirewallThreatIntelLog` category specifically captures threat intelligence events.
+The `AZFWThreatIntel` category specifically captures threat intelligence events in the resource-specific `AZFWThreatIntel` table.
 
 ## Step 5: Query Threat Intelligence Logs
 
@@ -126,12 +127,12 @@ Once logging is enabled, query the logs in Log Analytics to see threat intellige
 
 ```text
 // KQL query for threat intelligence hits
-AzureFirewallThreatIntelLog
+AZFWThreatIntel
 | where TimeGenerated > ago(24h)
 | project
     TimeGenerated,
-    SourceIP,
-    DestinationIP,
+    SourceIp,
+    DestinationIp,
     DestinationPort,
     ThreatDescription,
     Action
@@ -142,9 +143,9 @@ For a summary of the most frequently blocked threats:
 
 ```text
 // KQL query for top threats by frequency
-AzureFirewallThreatIntelLog
+AZFWThreatIntel
 | where TimeGenerated > ago(7d)
-| summarize Count = count() by ThreatDescription, DestinationIP
+| summarize Count = count() by ThreatDescription, DestinationIp
 | order by Count desc
 | take 20
 ```
@@ -153,12 +154,12 @@ To identify which internal VMs are triggering the most alerts:
 
 ```text
 // KQL query for internal machines hitting threat indicators
-AzureFirewallThreatIntelLog
+AZFWThreatIntel
 | where TimeGenerated > ago(24h)
 | summarize
     HitCount = count(),
     UniqueThreats = dcount(ThreatDescription)
-    by SourceIP
+    by SourceIp
 | order by HitCount desc
 ```
 
@@ -174,7 +175,8 @@ az monitor scheduled-query create \
   --resource-group myResourceGroup \
   --name threatIntelAlert \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myLogAnalyticsWorkspace" \
-  --condition "count 'AzureFirewallThreatIntelLog | where TimeGenerated > ago(5m)' > 0" \
+  --condition "count 'ThreatIntelHits' > 0" \
+  --condition-query ThreatIntelHits="AZFWThreatIntel | where TimeGenerated > ago(5m) | where Action =~ 'Deny'" \
   --action-groups "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/microsoft.insights/actionGroups/securityTeam" \
   --description "Alert when Azure Firewall blocks threat intelligence traffic" \
   --severity 2 \
@@ -231,7 +233,7 @@ Premium IDPS can detect threats that basic threat intelligence misses, such as e
 
 - Threat intelligence only covers known threats. Zero-day attacks and novel infrastructure will not be in the feed.
 - The feed is managed by Microsoft. You cannot add your own custom threat indicators (for that, use custom network rules or a third-party threat intelligence platform).
-- FQDN-based filtering requires DNS proxy to be enabled on the firewall.
+- FQDN filtering in network rules requires DNS proxy to be enabled on the firewall.
 - There may be a brief delay between a new threat being identified and the indicator being distributed to your firewall.
 
 ## Summary
