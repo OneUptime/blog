@@ -29,34 +29,39 @@ stateDiagram-v2
     HalfOpen --> Open: Test request fails
 ```
 
-## Built-in Circuit Breaker in APIM (Preview)
+## Built-in Circuit Breaker in APIM
 
-Azure API Management now has a built-in circuit breaker feature through backend configuration. You can configure it using the Azure CLI or ARM templates.
+Azure API Management now has a built-in circuit breaker feature through backend configuration. You can configure it using the Azure portal, REST API, Bicep, or ARM templates.
+The built-in backend circuit breaker is not supported in the Consumption tier.
 
 ```bash
-# Configure a backend with circuit breaker rules
+# Configure a backend with circuit breaker rules using the Azure REST API
 
 # The circuit opens after 3 failures in a 30-second window
-az apim backend create \
-  --resource-group myResourceGroup \
-  --service-name myApimService \
-  --backend-id my-backend \
-  --url "https://my-backend-api.azurewebsites.net" \
-  --protocol http \
-  --circuit-breaker-rules '[{
-    "name": "defaultRule",
-    "failureCondition": {
-      "count": 3,
-      "interval": "PT30S",
-      "statusCodeRanges": [{"min": 500, "max": 599}],
-      "errorReasons": ["Timeout"]
-    },
-    "tripDuration": "PT60S",
-    "acceptRetryAfter": true
-  }]'
+az rest --method put \
+  --url "https://management.azure.com/subscriptions/<subscription-id>/resourceGroups/myResourceGroup/providers/Microsoft.ApiManagement/service/myApimService/backends/my-backend?api-version=2024-05-01" \
+  --body '{
+    "properties": {
+      "url": "https://my-backend-api.azurewebsites.net",
+      "protocol": "http",
+      "circuitBreaker": {
+        "rules": [{
+          "name": "defaultRule",
+          "failureCondition": {
+            "count": 3,
+            "interval": "PT30S",
+            "statusCodeRanges": [{"min": 500, "max": 599}],
+            "errorReasons": ["Timeout"]
+          },
+          "tripDuration": "PT60S",
+          "acceptRetryAfter": true
+        }]
+      }
+    }
+  }'
 ```
 
-This configuration opens the circuit after 3 failures (HTTP 5xx or timeouts) within 30 seconds. Once open, the circuit stays open for 60 seconds before transitioning to half-open.
+This configuration opens the circuit after 3 failures (HTTP 5xx or timeouts) within 30 seconds. Once open, the circuit stays open for 60 seconds before APIM resets the circuit and resumes traffic to the backend.
 
 ## Implementing Circuit Breaker with APIM Policies
 
@@ -72,14 +77,28 @@ Here is the complete policy implementation:
         <!-- Check the circuit breaker state from cache -->
         <!-- The cache key is specific to the backend service -->
         <cache-lookup-value
-            key="circuit-breaker-state-backend-api"
-            variable-name="circuitState"
-            default-value="closed" />
+            key="circuit-breaker-backend-api"
+            variable-name="circuitData"
+            default-value="closed|0|0" />
 
-        <cache-lookup-value
-            key="circuit-breaker-failures-backend-api"
-            variable-name="failureCount"
-            default-value="0" />
+        <set-variable name="circuitState" value='@{
+            var parts = context.Variables.GetValueOrDefault<string>("circuitData", "closed|0|0").Split('|');
+            var state = parts[0];
+            if (state == "open" && parts.Length > 2)
+            {
+                var openedAtTicks = long.Parse(parts[2]);
+                if (DateTime.UtcNow.Ticks - openedAtTicks >= TimeSpan.FromSeconds(30).Ticks)
+                {
+                    return "half-open";
+                }
+            }
+            return state;
+        }' />
+
+        <set-variable name="failureCount" value='@{
+            var parts = context.Variables.GetValueOrDefault<string>("circuitData", "closed|0|0").Split('|');
+            return parts.Length > 1 ? parts[1] : "0";
+        }' />
 
         <choose>
             <!-- If circuit is open, return 503 immediately -->
@@ -97,7 +116,7 @@ Here is the complete policy implementation:
                 </return-response>
             </when>
 
-            <!-- If circuit is half-open, allow only one test request -->
+            <!-- If circuit is half-open, allow the request as a recovery test -->
             <when condition="@(context.Variables.GetValueOrDefault<string>(
                 "circuitState") == "half-open")">
                 <set-variable name="isTestRequest" value="true" />
@@ -115,87 +134,57 @@ Here is the complete policy implementation:
         <choose>
             <!-- Backend returned success -->
             <when condition="@(context.Response.StatusCode < 500)">
-                <!-- Reset failure count on success -->
-                <cache-store-value
-                    key="circuit-breaker-failures-backend-api"
-                    value="0"
-                    duration="300" />
-
-                <!-- If this was a half-open test request, close the circuit -->
-                <choose>
-                    <when condition="@(context.Variables.GetValueOrDefault<string>(
-                        "circuitState") == "half-open")">
-                        <cache-store-value
-                            key="circuit-breaker-state-backend-api"
-                            value="closed"
-                            duration="300" />
-                    </when>
-                </choose>
+                <set-variable name="nextCircuitData" value="closed|0|0" />
+                <set-variable name="circuitCacheDuration" value="@(300)" />
             </when>
 
             <!-- Backend returned 5xx error -->
             <when condition="@(context.Response.StatusCode >= 500)">
-                <!-- Increment failure count -->
-                <cache-store-value
-                    key="circuit-breaker-failures-backend-api"
-                    value="@{
-                        var current = context.Variables.GetValueOrDefault<string>("failureCount");
-                        return (int.Parse(current) + 1).ToString();
-                    }"
-                    duration="60" />
-
-                <!-- Open circuit if failures exceed threshold -->
-                <choose>
-                    <when condition="@{
-                        var failures = context.Variables.GetValueOrDefault<string>("failureCount");
-                        return int.Parse(failures) >= 4;
-                    }">
-                        <!-- Set circuit to open for 30 seconds -->
-                        <cache-store-value
-                            key="circuit-breaker-state-backend-api"
-                            value="open"
-                            duration="30" />
-                    </when>
-                </choose>
-
-                <!-- If half-open test request failed, reopen circuit -->
-                <choose>
-                    <when condition="@(context.Variables.GetValueOrDefault<string>(
-                        "circuitState") == "half-open")">
-                        <cache-store-value
-                            key="circuit-breaker-state-backend-api"
-                            value="open"
-                            duration="30" />
-                    </when>
-                </choose>
+                <set-variable name="nextCircuitData" value='@{
+                    var failures = int.Parse(context.Variables.GetValueOrDefault<string>("failureCount", "0")) + 1;
+                    var state = context.Variables.GetValueOrDefault<string>("circuitState", "closed");
+                    if (state == "half-open" || failures >= 3)
+                    {
+                        return "open|" + failures + "|" + DateTime.UtcNow.Ticks;
+                    }
+                    return "closed|" + failures + "|0";
+                }' />
+                <set-variable name="circuitCacheDuration" value='@{
+                    var nextData = context.Variables.GetValueOrDefault<string>("nextCircuitData");
+                    return nextData.StartsWith("open|") ? 300 : 60;
+                }' />
             </when>
         </choose>
+
+        <cache-store-value
+            key="circuit-breaker-backend-api"
+            value='@((string)context.Variables["nextCircuitData"])'
+            duration='@((int)context.Variables["circuitCacheDuration"])' />
     </outbound>
 
     <on-error>
         <base />
 
         <!-- Handle timeout and connection errors -->
-        <cache-store-value
-            key="circuit-breaker-failures-backend-api"
-            value="@{
-                var current = context.Variables.GetValueOrDefault<string>("failureCount");
-                return (int.Parse(current) + 1).ToString();
-            }"
-            duration="60" />
+        <set-variable name="nextCircuitData" value='@{
+            var failures = int.Parse(context.Variables.GetValueOrDefault<string>("failureCount", "0")) + 1;
+            var state = context.Variables.GetValueOrDefault<string>("circuitState", "closed");
+            if (state == "half-open" || failures >= 3)
+            {
+                return "open|" + failures + "|" + DateTime.UtcNow.Ticks;
+            }
+            return "closed|" + failures + "|0";
+        }' />
 
-        <!-- Open circuit if failures exceed threshold -->
-        <choose>
-            <when condition="@{
-                var failures = context.Variables.GetValueOrDefault<string>("failureCount");
-                return int.Parse(failures) >= 4;
-            }">
-                <cache-store-value
-                    key="circuit-breaker-state-backend-api"
-                    value="open"
-                    duration="30" />
-            </when>
-        </choose>
+        <set-variable name="circuitCacheDuration" value='@{
+            var nextData = context.Variables.GetValueOrDefault<string>("nextCircuitData");
+            return nextData.StartsWith("open|") ? 300 : 60;
+        }' />
+
+        <cache-store-value
+            key="circuit-breaker-backend-api"
+            value='@((string)context.Variables["nextCircuitData"])'
+            duration='@((int)context.Variables["circuitCacheDuration"])' />
 
         <return-response>
             <set-status code="502" reason="Bad Gateway" />
@@ -209,30 +198,9 @@ Here is the complete policy implementation:
 
 ## Transitioning from Open to Half-Open
 
-In the policy above, the transition from open to half-open happens automatically because the cache duration on the "open" state is set to 30 seconds. After 30 seconds, the cache entry expires, and the `circuitState` reverts to its default value of "closed." However, a more proper half-open implementation would set the state to "half-open" just before the timeout expires.
+In the policy above, the transition from open to half-open happens lazily on the next request. The policy stores the time when the circuit opened. If a later request arrives after 30 seconds, APIM treats that request as a half-open recovery test. If the test succeeds, the circuit closes. If it fails, the circuit opens again.
 
-You can achieve this with an external timer. For example, an Azure Function that runs on a schedule:
-
-```csharp
-// Timer function that transitions open circuits to half-open
-// Runs every 15 seconds to check circuit state
-[Function("CircuitBreakerTimer")]
-public async Task Run([TimerTrigger("*/15 * * * * *")] TimerInfo timer)
-{
-    var cacheClient = _apimManagementClient.Cache;
-
-    // Check if circuit has been open long enough
-    var state = await GetCircuitState("backend-api");
-    var openSince = await GetCircuitOpenTimestamp("backend-api");
-
-    if (state == "open" && DateTime.UtcNow - openSince > TimeSpan.FromSeconds(30))
-    {
-        // Transition to half-open
-        await SetCircuitState("backend-api", "half-open");
-        _logger.LogInformation("Circuit for backend-api transitioned to half-open");
-    }
-}
-```
+Because APIM cache operations are asynchronous and distributed gateway instances do not provide an atomic compare-and-set operation, this policy should be treated as an approximate circuit breaker. If you need strict control over the number of half-open test requests, use an external state store that supports atomic operations, such as Redis, or use APIM's built-in backend circuit breaker.
 
 ## Circuit Breaker with Multiple Backends
 
@@ -274,7 +242,7 @@ You want visibility into when circuits open and close. Use APIM's diagnostic set
 <!-- Log circuit state changes for monitoring -->
 <choose>
     <when condition="@(context.Variables.GetValueOrDefault<string>("circuitState") == "open")">
-        <trace source="circuit-breaker" severity="warning">
+        <trace source="circuit-breaker" severity="error">
             <message>@($"Circuit breaker OPEN for backend: {context.Variables["backendId"]}")</message>
         </trace>
     </when>
