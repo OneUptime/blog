@@ -16,10 +16,10 @@ In this post, I will cover how geo-replication works, how to set it up through t
 
 Active geo-replication is a feature that lets you create up to four readable secondary databases in different Azure regions. These secondaries are continuously synchronized with the primary database using asynchronous replication. The key characteristics are:
 
-- **Asynchronous replication**: Transactions commit on the primary without waiting for the secondary. This means there is a small replication lag, typically under 5 seconds, but the primary's performance is not affected.
+- **Asynchronous replication**: Transactions commit on the primary before they are replicated to the secondary. This means there is a small replication lag, typically under 5 seconds. If a secondary cannot keep up with a heavy write workload, Azure SQL Database can throttle the primary's transaction log rate to help the secondary catch up.
 - **Readable secondaries**: The secondary databases are not just standby copies. They are fully readable, so you can offload reporting queries or serve read traffic from a closer region.
 - **Manual failover**: You decide when to fail over. This gives you control but requires your application or operations team to initiate the switch.
-- **Independent pricing**: Each secondary is a separate database with its own pricing tier. The secondary does not have to match the primary's tier, though it is recommended to use the same or higher tier.
+- **Independent billing**: Each secondary is a separate database that is billed separately. The secondary must use the same service tier as the primary, and it is strongly recommended to use the same compute size or higher.
 
 ## Geo-Replication vs. Failover Groups
 
@@ -44,7 +44,7 @@ graph LR
 
 - An existing Azure SQL Database (the primary)
 - Access to multiple Azure regions
-- The primary database must be at least Standard S3 or General Purpose tier (geo-replication is not available on Basic tier)
+- The primary and secondary databases must use the same Azure SQL Database service tier
 
 ## Setting Up Geo-Replication via Azure Portal
 
@@ -66,7 +66,7 @@ Click "Create replica". A wizard opens with these options:
 
 **Database name**: By default, the replica has the same name as the primary. This is required for geo-replication. You cannot rename it.
 
-**Compute + storage**: Choose the pricing tier for the secondary. I recommend matching or exceeding the primary's tier. A secondary with fewer resources can fall behind on replication, especially during heavy write periods.
+**Compute + storage**: Choose the compute configuration for the secondary within the same service tier as the primary. I recommend matching or exceeding the primary's compute size. A secondary with fewer resources can fall behind on replication, especially during heavy write periods.
 
 ### Step 4: Review and Create
 
@@ -102,7 +102,8 @@ az sql db replica create \
     --server myserver-primary \
     --name mydb \
     --partner-server myserver-secondary \
-    --partner-resource-group myResourceGroup
+    --partner-resource-group myResourceGroup \
+    --secondary-type Geo
 ```
 
 To check the replication status:
@@ -130,7 +131,7 @@ ADD SECONDARY ON SERVER [myserver-secondary];
 To check replication status:
 
 ```sql
--- Check replication state and lag
+-- Check replication state
 SELECT
     partner_server,
     partner_database,
@@ -145,9 +146,9 @@ FROM sys.geo_replication_links;
 If you need to fail over to the secondary (either for disaster recovery or planned maintenance), you initiate the failover from the secondary server.
 
 Via Azure Portal:
-1. Navigate to the secondary database.
+1. Navigate to the primary database.
 2. Click "Replicas" in the left menu.
-3. Click "Failover" and confirm.
+3. Select the secondary database you want to promote, then click "Failover" and confirm.
 
 Via Azure CLI:
 
@@ -192,7 +193,7 @@ Only use forced failover when the primary is truly unreachable and you need to r
 Keeping an eye on replication lag is important. If the secondary falls too far behind, a failover could mean significant data loss.
 
 ```sql
--- Monitor replication lag on the secondary database
+-- Monitor replication lag on the primary database
 SELECT
     partner_server,
     replication_state_desc,
@@ -208,7 +209,7 @@ Set up Azure Monitor alerts for:
 
 ## Performance Considerations
 
-**Secondary tier selection**: The secondary should have equal or greater resources than the primary. A weaker secondary will accumulate replication lag during write-heavy periods, which defeats the purpose.
+**Secondary tier selection**: The secondary must use the same service tier as the primary and should have equal or greater compute resources. A weaker secondary will accumulate replication lag during write-heavy periods, which defeats the purpose.
 
 **Read workload offloading**: Use the secondary for read-only queries like reporting, analytics, or search indexing. This reduces load on the primary and makes use of resources you are already paying for.
 
@@ -220,7 +221,7 @@ Set up Azure Monitor alerts for:
 
 Each geo-replica is a fully billed database. If your primary is a General Purpose 4 vCore database, and you create two secondaries at the same tier, you are paying for three databases. Factor this into your cost planning.
 
-You can use a lower tier for the secondary if it is only used for disaster recovery and not for read offloading, but be aware that replication lag may increase during peak write periods.
+You can use a lower compute size for the secondary if it is only used for disaster recovery and not for read offloading, but be aware that replication lag may increase during peak write periods.
 
 ## Cleaning Up
 
