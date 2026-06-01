@@ -85,11 +85,13 @@ Reference this backend in your API policy:
 
 When the circuit trips, APIM returns a 503 Service Unavailable response to the client without contacting the backend.
 
+Note that backend circuit breakers are not supported in the Consumption tier, and tripping rules are approximate because gateway instances do not synchronize circuit breaker state.
+
 ## Custom Policy-Based Circuit Breaker
 
 If you need more control than the native circuit breaker provides - for example, custom failure detection logic, different behaviors in the open state, or integration with external health monitoring - you can implement a circuit breaker with APIM policies and the built-in cache.
 
-The idea is to track failure counts in the cache and check them on each request:
+The idea is to track the circuit state and failure count in a single cache value and check it on each request. `cache-lookup-value` and `cache-store-value` can each be used only once per policy section, so keep the state in one composite value:
 
 ```xml
 <!-- Custom circuit breaker using APIM cache -->
@@ -98,11 +100,12 @@ The idea is to track failure counts in the cache and check them on each request:
     <base />
 
     <!-- Check if circuit is open -->
-    <cache-lookup-value key="circuit-order-service-state" variable-name="circuitState" default-value="closed" />
+    <cache-lookup-value key="circuit-order-service" variable-name="circuitData" default-value="closed:0" />
+    <set-variable name="circuitState" value='@(((string)context.Variables["circuitData"]).Split(":".ToCharArray())[0])' />
 
     <choose>
         <!-- If circuit is open, return 503 immediately -->
-        <when condition="@((string)context.Variables["circuitState"] == "open")">
+        <when condition='@((string)context.Variables["circuitState"] == "open")'>
             <return-response>
                 <set-status code="503" reason="Service Unavailable" />
                 <set-header name="Content-Type" exists-action="override">
@@ -120,52 +123,47 @@ The idea is to track failure counts in the cache and check them on each request:
 <outbound>
     <base />
 
-    <choose>
-        <!-- Track failures: if backend returns 5xx, increment failure counter -->
-        <when condition="@(context.Response.StatusCode >= 500)">
-            <!-- Get current failure count -->
-            <cache-lookup-value key="circuit-order-service-failures" variable-name="failureCount" default-value="0" />
+    <!-- Track failures and store the next composite state as state:failureCount -->
+    <set-variable name="nextCircuitData" value='@{
+        var parts = ((string)context.Variables["circuitData"]).Split(new char[] { (char)58 }, 3);
+        var failures = parts.Length > 1 ? int.Parse(parts[1]) : 0;
+        var cachedResponse = parts.Length == 3 ? ":" + parts[2] : "";
 
-            <!-- Increment failure count -->
-            <cache-store-value key="circuit-order-service-failures"
-                value="@((int.Parse((string)context.Variables["failureCount"]) + 1).ToString())"
-                duration="60" />
+        if (context.Response.StatusCode >= 500)
+        {
+            failures++;
+            return failures >= 5 ? "open:0" + cachedResponse : "closed:" + failures.ToString() + cachedResponse;
+        }
 
-            <!-- If failures exceed threshold, open the circuit -->
-            <choose>
-                <when condition="@(int.Parse((string)context.Variables["failureCount"]) + 1 >= 5)">
-                    <cache-store-value key="circuit-order-service-state" value="open" duration="30" />
-                    <!-- Reset failure counter -->
-                    <cache-store-value key="circuit-order-service-failures" value="0" duration="60" />
-                </when>
-            </choose>
-        </when>
-        <otherwise>
-            <!-- On success, reset the failure counter -->
-            <cache-store-value key="circuit-order-service-failures" value="0" duration="60" />
-        </otherwise>
-    </choose>
+        return "closed:0" + cachedResponse;
+    }' />
+
+    <cache-store-value key="circuit-order-service"
+        value='@((string)context.Variables["nextCircuitData"])'
+        duration='@(context.Response.StatusCode >= 500 &amp;&amp; ((string)context.Variables["nextCircuitData"]).StartsWith("open:0") ? 30 : 60)' />
 </outbound>
 ```
 
 In this implementation:
-- The failure count is stored in the APIM cache with a 60-second TTL
+- The circuit state and failure count are stored together in the APIM cache with a 60-second TTL
 - After 5 failures, the circuit state is set to "open" with a 30-second TTL
-- When the cache entry expires (after 30 seconds), the circuit automatically transitions to "half-open" because the default value is "closed"
+- When the cache entry expires (after 30 seconds), the circuit automatically transitions back to "closed" because the default value is "closed:0"
 - If the next request after the circuit opens succeeds, the failure counter resets and the circuit stays closed
+- Cache storage is asynchronous, so this policy-based implementation is useful for simple protection but is not as precise as the native backend circuit breaker
 
 ## Adding Half-Open State
 
-The basic implementation above transitions directly from open to closed when the cache entry expires. For a proper half-open state where only a limited number of probe requests are allowed, add a check:
+The basic implementation above transitions directly from open to closed when the cache entry expires. For a half-open state where only a limited number of probe requests are allowed, use a separate `half-open` state and throttle probes with `rate-limit-by-key`:
 
 ```xml
 <!-- Enhanced circuit breaker with explicit half-open state -->
 <inbound>
     <base />
-    <cache-lookup-value key="circuit-order-service-state" variable-name="circuitState" default-value="closed" />
+    <cache-lookup-value key="circuit-order-service" variable-name="circuitData" default-value="closed:0" />
+    <set-variable name="circuitState" value='@(((string)context.Variables["circuitData"]).Split(":".ToCharArray())[0])' />
 
     <choose>
-        <when condition="@((string)context.Variables["circuitState"] == "open")">
+        <when condition='@((string)context.Variables["circuitState"] == "open")'>
             <return-response>
                 <set-status code="503" reason="Service Unavailable" />
                 <set-header name="Retry-After" exists-action="override">
@@ -174,22 +172,12 @@ The basic implementation above transitions directly from open to closed when the
                 <set-body>{"error": "circuit_open"}</set-body>
             </return-response>
         </when>
-        <when condition="@((string)context.Variables["circuitState"] == "half-open")">
-            <!-- Allow this probe request through but limit concurrency -->
-            <cache-lookup-value key="circuit-order-service-probes" variable-name="probeCount" default-value="0" />
-            <choose>
-                <when condition="@(int.Parse((string)context.Variables["probeCount"]) >= 1)">
-                    <!-- Already have a probe in flight, reject -->
-                    <return-response>
-                        <set-status code="503" reason="Service Unavailable" />
-                        <set-body>{"error": "circuit_half_open_probe_in_progress"}</set-body>
-                    </return-response>
-                </when>
-                <otherwise>
-                    <!-- Allow this probe through -->
-                    <cache-store-value key="circuit-order-service-probes" value="1" duration="10" />
-                </otherwise>
-            </choose>
+        <when condition='@((string)context.Variables["circuitState"] == "half-open")'>
+            <!-- Allow one probe request per 10 seconds for this backend -->
+            <rate-limit-by-key calls="1"
+                renewal-period="10"
+                counter-key="circuit-order-service-half-open-probe"
+                retry-after-header-name="Retry-After" />
         </when>
     </choose>
 </inbound>
@@ -203,14 +191,18 @@ Instead of returning a 503 when the circuit is open, you might want to return ca
 <!-- Circuit breaker with fallback to cached data -->
 <inbound>
     <base />
-    <cache-lookup-value key="circuit-order-service-state" variable-name="circuitState" default-value="closed" />
+    <cache-lookup-value key="circuit-order-service" variable-name="circuitData" default-value="closed:0" />
+    <set-variable name="circuitState" value='@(((string)context.Variables["circuitData"]).Split(":".ToCharArray())[0])' />
+    <set-variable name="cachedResponse" value='@{
+        var parts = ((string)context.Variables["circuitData"]).Split(new char[] { (char)58 }, 3);
+        return parts.Length == 3 ? parts[2] : "";
+    }' />
 
     <choose>
-        <when condition="@((string)context.Variables["circuitState"] == "open")">
+        <when condition='@((string)context.Variables["circuitState"] == "open")'>
             <!-- Try to return cached response -->
-            <cache-lookup-value key="@("cached-response-" + context.Request.Url.Path)" variable-name="cachedResponse" />
             <choose>
-                <when condition="@(context.Variables.ContainsKey("cachedResponse"))">
+                <when condition='@(!string.IsNullOrEmpty((string)context.Variables["cachedResponse"]))'>
                     <return-response>
                         <set-status code="200" reason="OK" />
                         <set-header name="X-Circuit-Breaker" exists-action="override">
@@ -236,8 +228,8 @@ Instead of returning a 503 when the circuit is open, you might want to return ca
     <choose>
         <when condition="@(context.Response.StatusCode == 200)">
             <cache-store-value
-                key="@("cached-response-" + context.Request.Url.Path)"
-                value="@(context.Response.Body.As<string>(preserveContent: true))"
+                key="circuit-order-service"
+                value='@("closed:0:" + context.Response.Body.As&lt;string&gt;(preserveContent: true))'
                 duration="300" />
         </when>
     </choose>
@@ -251,7 +243,7 @@ Track when circuits trip and recover by logging to Application Insights:
 ```xml
 <!-- Log circuit breaker state changes -->
 <choose>
-    <when condition="@(int.Parse((string)context.Variables["failureCount"]) + 1 >= 5)">
+    <when condition='@(((string)context.Variables["nextCircuitData"]).StartsWith("open:0"))'>
         <trace source="circuit-breaker" severity="error">
             <message>Circuit breaker OPENED for order-service after 5 failures</message>
         </trace>
