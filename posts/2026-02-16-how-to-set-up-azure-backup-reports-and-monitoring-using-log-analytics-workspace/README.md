@@ -76,13 +76,14 @@ az monitor diagnostic-settings create \
     --name backup-diagnostics \
     --resource "$VAULT_ID" \
     --workspace "$WORKSPACE_ID" \
+    --export-to-resource-specific true \
     --logs '[
         {"category": "CoreAzureBackup", "enabled": true},
         {"category": "AddonAzureBackupJobs", "enabled": true},
-        {"category": "AddonAzureBackupAlerts", "enabled": true},
         {"category": "AddonAzureBackupPolicy", "enabled": true},
         {"category": "AddonAzureBackupStorage", "enabled": true},
-        {"category": "AddonAzureBackupProtectedInstance", "enabled": true}
+        {"category": "AddonAzureBackupProtectedInstance", "enabled": true},
+        {"category": "AzureBackupOperations", "enabled": true}
     ]'
 ```
 
@@ -111,13 +112,14 @@ for VAULT_ID in $VAULTS; do
         --name backup-diagnostics \
         --resource "$VAULT_ID" \
         --workspace "$WORKSPACE_ID" \
+        --export-to-resource-specific true \
         --logs '[
             {"category": "CoreAzureBackup", "enabled": true},
             {"category": "AddonAzureBackupJobs", "enabled": true},
-            {"category": "AddonAzureBackupAlerts", "enabled": true},
             {"category": "AddonAzureBackupPolicy", "enabled": true},
             {"category": "AddonAzureBackupStorage", "enabled": true},
-            {"category": "AddonAzureBackupProtectedInstance", "enabled": true}
+            {"category": "AddonAzureBackupProtectedInstance", "enabled": true},
+            {"category": "AzureBackupOperations", "enabled": true}
         ]' 2>/dev/null
 
     echo "Done: $VAULT_NAME"
@@ -128,9 +130,9 @@ done
 
 Azure Backup Reports is a built-in workbook that visualizes the diagnostic data. To access it:
 
-1. Go to any Recovery Services vault in the Azure portal
-2. Click on **Backup Reports** in the left menu
-3. Select your Log Analytics workspace
+1. In the Azure portal, go to **Resiliency** > **Monitoring + Reporting** > **Reports**
+2. Select **Backup Reports**
+3. On the **Get started** tab, select your Log Analytics workspace
 4. Choose the time range
 
 The reports include:
@@ -151,9 +153,10 @@ The built-in reports are good for standard monitoring, but custom queries let yo
 // All failed backup jobs across all vaults
 AddonAzureBackupJobs
 | where TimeGenerated > ago(24h)
+| summarize arg_max(TimeGenerated, *) by JobUniqueId
 | where JobStatus == "Failed"
 | project TimeGenerated, BackupItemUniqueId, JobOperation,
-    JobFailureCode, VaultName = split(ResourceId, "/")[-1]
+    JobFailureCode, VaultName
 | join kind=inner (
     CoreAzureBackup
     | where TimeGenerated > ago(24h)
@@ -179,12 +182,13 @@ CoreAzureBackup
     AddonAzureBackupJobs
     | where TimeGenerated > ago(48h)
     | where JobOperation == "Backup"
+    | summarize arg_max(TimeGenerated, *) by JobUniqueId
     | where JobStatus == "Completed"
     | distinct BackupItemUniqueId
 ) on BackupItemUniqueId
 | project BackupItemFriendlyName, BackupItemType,
     LastSeen = TimeGenerated,
-    VaultName = split(ResourceId, "/")[-1]
+    VaultName
 | order by LastSeen asc
 ```
 
@@ -211,7 +215,7 @@ AddonAzureBackupJobs
 | where TimeGenerated > ago(30d)
 | where JobOperation == "Backup"
 | where JobStatus == "Completed"
-| extend DurationMinutes = datetime_diff('minute', JobEndDateTime, JobStartDateTime)
+| extend DurationMinutes = JobDurationInSecs / 60.0
 | summarize
     AvgDuration = avg(DurationMinutes),
     MaxDuration = max(DurationMinutes),
@@ -233,8 +237,8 @@ az monitor scheduled-query create \
     --name "BackupJobFailure" \
     --resource-group $RESOURCE_GROUP \
     --scopes "$WORKSPACE_ID" \
-    --condition "count > 0" \
-    --condition-query "AddonAzureBackupJobs | where TimeGenerated > ago(1h) | where JobStatus == 'Failed'" \
+    --condition "count 'FailedJobs' > 0" \
+    --condition-query FailedJobs="AddonAzureBackupJobs | where TimeGenerated > ago(1h) | summarize arg_max(TimeGenerated, *) by JobUniqueId | where JobStatus == 'Failed'" \
     --evaluation-frequency 1h \
     --window-size 1h \
     --severity 2 \
@@ -250,8 +254,8 @@ az monitor scheduled-query create \
     --name "MissingBackup48h" \
     --resource-group $RESOURCE_GROUP \
     --scopes "$WORKSPACE_ID" \
-    --condition "count > 0" \
-    --condition-query "CoreAzureBackup | where TimeGenerated > ago(7d) | where OperationName == 'BackupItem' | where BackupItemProtectionState == 'Protected' | summarize arg_max(TimeGenerated, *) by BackupItemUniqueId | join kind=leftanti (AddonAzureBackupJobs | where TimeGenerated > ago(48h) | where JobOperation == 'Backup' | where JobStatus == 'Completed' | distinct BackupItemUniqueId) on BackupItemUniqueId" \
+    --condition "count 'MissingBackups' > 0" \
+    --condition-query MissingBackups="CoreAzureBackup | where TimeGenerated > ago(7d) | where OperationName == 'BackupItem' | summarize arg_max(TimeGenerated, *) by BackupItemUniqueId | where BackupItemProtectionState == 'Protected' | join kind=leftanti (AddonAzureBackupJobs | where TimeGenerated > ago(48h) | where JobOperation == 'Backup' | summarize arg_max(TimeGenerated, *) by JobUniqueId | where JobStatus == 'Completed' | distinct BackupItemUniqueId) on BackupItemUniqueId" \
     --evaluation-frequency 6h \
     --window-size 6h \
     --severity 1 \
@@ -269,16 +273,16 @@ For a quick overview, create an Azure Dashboard that shows key backup metrics:
 # 2. Add "Log Analytics query" tiles with the following queries:
 
 # Tile 1: Failed Jobs Today
-# AddonAzureBackupJobs | where TimeGenerated > ago(24h) | where JobStatus == "Failed" | count
+# AddonAzureBackupJobs | where TimeGenerated > ago(24h) | summarize arg_max(TimeGenerated, *) by JobUniqueId | where JobStatus == "Failed" | count
 
 # Tile 2: Protected Items Count
-# CoreAzureBackup | where OperationName == "BackupItem" | where BackupItemProtectionState == "Protected" | summarize arg_max(TimeGenerated, *) by BackupItemUniqueId | count
+# CoreAzureBackup | where OperationName == "BackupItem" | summarize arg_max(TimeGenerated, *) by BackupItemUniqueId | where BackupItemProtectionState == "Protected" | count
 
 # Tile 3: Storage Used (GB)
 # AddonAzureBackupStorage | summarize max(StorageConsumedInMBs) / 1024.0 by split(ResourceId, "/")[-1]
 
 # Tile 4: Backup Success Rate (Last 7 Days)
-# AddonAzureBackupJobs | where TimeGenerated > ago(7d) | where JobOperation == "Backup" | summarize Success = countif(JobStatus == "Completed"), Total = count() | extend Rate = round(todouble(Success) / todouble(Total) * 100, 1)
+# AddonAzureBackupJobs | where TimeGenerated > ago(7d) | where JobOperation == "Backup" | summarize arg_max(TimeGenerated, *) by JobUniqueId | summarize Success = countif(JobStatus == "Completed"), Total = count() | extend Rate = round(todouble(Success) / todouble(Total) * 100, 1)
 ```
 
 ## Data Retention Considerations
@@ -294,7 +298,7 @@ az monitor log-analytics workspace data-export create \
     --resource-group $RESOURCE_GROUP \
     --name backup-long-term \
     --destination "/subscriptions/<sub-id>/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Storage/storageAccounts/backuparchive01" \
-    --table-names AddonAzureBackupJobs CoreAzureBackup
+    --tables AddonAzureBackupJobs CoreAzureBackup
 ```
 
 ## Summary
