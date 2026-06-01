@@ -19,7 +19,7 @@ Here is how the pieces fit together:
 ```mermaid
 flowchart TD
     A[Azure Test Plans] -->|Test Cases| B[Test Suite]
-    C[Selenium Tests] -->|Associated via TestCase ID| B
+    C[Selenium Tests] -->|Associated automation| B
     D[Azure Pipeline] -->|Runs| C
     D -->|Publishes results| A
     C -->|Generates| E[TRX Test Results]
@@ -29,7 +29,7 @@ flowchart TD
     style B fill:#f0f0ff,stroke:#333
 ```
 
-The connection works through test case IDs. Each Selenium test method is annotated with the ID of its corresponding Azure Test Plans test case. When the test runs, the results are published to Azure Test Plans, matching on those IDs.
+The connection works through automated test association metadata on the Azure Test Plans test case. You can add the Azure Test Plans test case ID as test metadata in your Selenium test code for traceability, but Azure DevOps does not automatically link results just because a test has a custom `TestCaseId` property. After the test has appeared in published pipeline results, associate the test case with the automated test method in Azure DevOps.
 
 ## Step 1: Create Test Cases in Azure Test Plans
 
@@ -44,15 +44,16 @@ For example:
 
 ## Step 2: Write Selenium Tests with Test Case Associations
 
-The key is associating each test method with an Azure Test Plans test case ID. How you do this depends on your test framework.
+The key is keeping each test method traceable to an Azure Test Plans test case ID, then associating the test case with the automated method in Azure DevOps. How you add metadata in code depends on your test framework.
 
 ### Using NUnit (.NET)
 
 ```csharp
-// LoginTests.cs - Selenium tests associated with Azure Test Plans test cases
+// LoginTests.cs - Selenium tests with Azure Test Plans traceability metadata
 using NUnit.Framework;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using System;
 
 namespace MyApp.Tests.UI
 {
@@ -73,7 +74,7 @@ namespace MyApp.Tests.UI
             driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(10);
         }
 
-        // Associate this test with Azure Test Plans test case #5001
+        // Trace this test to Azure Test Plans test case #5001
         [Test]
         [Property("TestCaseId", "5001")]
         public void UserCanLoginWithValidCredentials()
@@ -98,7 +99,7 @@ namespace MyApp.Tests.UI
                 Does.Contain("Welcome"));
         }
 
-        // Associate with test case #5002
+        // Trace this test to Azure Test Plans test case #5002
         [Test]
         [Property("TestCaseId", "5002")]
         public void ErrorMessageDisplayedOnInvalidLogin()
@@ -120,7 +121,7 @@ namespace MyApp.Tests.UI
             Assert.That(driver.Url, Does.Contain("/login"));
         }
 
-        // Associate with test case #5003
+        // Trace this test to Azure Test Plans test case #5003
         [Test]
         [Property("TestCaseId", "5003")]
         public void UserCanResetPassword()
@@ -155,10 +156,10 @@ namespace MyApp.Tests.UI
 
 ### Using MSTest (.NET)
 
-MSTest has built-in support for test case association through the `TestProperty` attribute:
+MSTest supports custom test metadata through the `TestProperty` attribute. Use it to keep the Azure Test Plans test case ID visible in the test result, then complete the actual Azure DevOps association in Step 4:
 
 ```csharp
-// LoginTests.cs - MSTest version with test case associations
+// LoginTests.cs - MSTest version with test case traceability metadata
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
@@ -178,7 +179,7 @@ namespace MyApp.Tests.UI
             driver = new ChromeDriver(options);
         }
 
-        // MSTest uses TestProperty to link to Azure Test Plans
+        // MSTest uses TestProperty for traceability metadata
         [TestMethod]
         [TestProperty("TestCaseId", "5001")]
         public void UserCanLoginWithValidCredentials()
@@ -222,8 +223,8 @@ variables:
 steps:
   # Install Chrome for Selenium
   - script: |
-      wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-      echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+      wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor | sudo tee /usr/share/keyrings/google-linux-signing-key.gpg > /dev/null
+      echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-signing-key.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
       sudo apt-get update
       sudo apt-get install -y google-chrome-stable
     displayName: 'Install Chrome'
@@ -242,32 +243,35 @@ steps:
       arguments: '--configuration Release'
     displayName: 'Build test project'
 
-  # Run the tests and generate results
-  - task: DotNetCoreCLI@2
+  # Install the VSTest platform when Visual Studio is not installed on the agent
+  - task: VisualStudioTestPlatformInstaller@1
     inputs:
-      command: 'test'
-      projects: 'tests/**/*.csproj'
-      arguments: '--configuration Release --logger trx --results-directory $(Agent.TempDirectory)/TestResults'
-    displayName: 'Run Selenium tests'
-    continueOnError: true  # Continue even if tests fail so we can publish results
+      packageFeedSelector: 'nugetOrg'
+      versionSelector: 'latestStable'
+    displayName: 'Install Visual Studio Test Platform'
 
-  # Publish test results to Azure Test Plans
-  - task: PublishTestResults@2
+  # Run the tests from the test plan and publish the results
+  - task: VSTest@3
     inputs:
-      testResultsFormat: 'VSTest'
-      testResultsFiles: '**/*.trx'
-      searchFolder: '$(Agent.TempDirectory)/TestResults'
+      testSelector: 'testPlan'
+      testPlan: '$(testPlanId)'
+      testSuite: '$(testSuiteId)'
+      testConfiguration: '$(testConfigId)'
+      searchFolder: '$(System.DefaultWorkingDirectory)'
+      resultsFolder: '$(Agent.TempDirectory)/TestResults'
+      vsTestVersion: 'toolsInstaller'
       testRunTitle: 'Selenium E2E Tests - $(Build.BuildNumber)'
-    displayName: 'Publish test results'
+    displayName: 'Run Selenium tests'
+    continueOnError: true  # Continue the job even if tests fail
 ```
 
 ## Step 4: Link Automated Tests to Test Cases
 
-After running the pipeline at least once, you need to associate the automated test methods with the test cases in Azure Test Plans.
+After running the tests in a pipeline at least once, you need to associate the automated test methods with the test cases in Azure Test Plans.
 
 Go to Azure Test Plans, open a test case, click the "Associated Automation" tab, and link it to the corresponding test method. The test method name should match what appeared in the published test results.
 
-You can also do this programmatically using the Azure DevOps REST API:
+You can also update the underlying test case fields programmatically with the Azure DevOps REST API if you know the exact automated test metadata that Azure DevOps expects:
 
 ```bash
 # Associate a test method with a test case using the REST API
@@ -285,15 +289,25 @@ curl -u :$PAT \
       "op": "add",
       "path": "/fields/Microsoft.VSTS.TCM.AutomatedTestStorage",
       "value": "MyApp.Tests.UI.dll"
+    },
+    {
+      "op": "add",
+      "path": "/fields/Microsoft.VSTS.TCM.AutomatedTestType",
+      "value": "Unit Test"
+    },
+    {
+      "op": "add",
+      "path": "/fields/Microsoft.VSTS.TCM.AutomationStatus",
+      "value": "Automated"
     }
   ]'
 ```
 
 ## Step 5: Run Automated Tests from Test Plans
 
-Once tests are associated, you can trigger them directly from Azure Test Plans. Go to your test plan, select the test suite, and click "Run." Choose "Run with options" and select "Automated tests."
+Once tests are associated, you can trigger them directly from Azure Test Plans. First configure the test plan settings to use the build pipeline that produces the test binaries and a release pipeline or stage that runs the Visual Studio Test task. Then go to your test plan, select the automated test cases in the test suite, and choose "Run for web application."
 
-Azure Test Plans will create a pipeline run that executes the associated automated tests and reports the results back to the test plan.
+Azure Test Plans will create a test run, trigger the configured pipeline stage, execute the associated automated tests, and report the results back to the test plan.
 
 ## Handling Test Environment Configuration
 
@@ -301,6 +315,8 @@ Your Selenium tests need to know which URL to test against. Use pipeline variabl
 
 ```csharp
 // TestConfiguration.cs - read the target URL from environment variables
+using System;
+
 public static class TestConfiguration
 {
     // Read from environment variable, fall back to localhost for local dev
@@ -335,21 +351,31 @@ Capturing screenshots when tests fail makes debugging much easier:
 
 ```csharp
 // Capture a screenshot when a test fails
-[TearDown]
-public void Teardown()
+using NUnit.Framework;
+using OpenQA.Selenium;
+using System;
+using System.IO;
+
+public class LoginTests
 {
-    if (TestContext.CurrentContext.Result.Outcome.Status == TestStatus.Failed)
+    private IWebDriver driver;
+
+    [TearDown]
+    public void Teardown()
     {
-        var screenshot = ((ITakesScreenshot)driver).GetScreenshot();
-        var fileName = $"{TestContext.CurrentContext.Test.Name}_{DateTime.Now:yyyyMMdd_HHmmss}.png";
-        var path = Path.Combine(TestContext.CurrentContext.WorkDirectory, fileName);
-        screenshot.SaveAsFile(path);
+        if (TestContext.CurrentContext.Result.Outcome.Status == TestStatus.Failed)
+        {
+            var screenshot = ((ITakesScreenshot)driver).GetScreenshot();
+            var fileName = $"{TestContext.CurrentContext.Test.Name}_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+            var path = Path.Combine(TestContext.CurrentContext.WorkDirectory, fileName);
+            screenshot.SaveAsFile(path);
 
-        // Attach to test results so it shows up in Azure DevOps
-        TestContext.AddTestAttachment(path, "Screenshot on failure");
+            // Attach to test results so it shows up in Azure DevOps
+            TestContext.AddTestAttachment(path, "Screenshot on failure");
+        }
+
+        driver.Quit();
     }
-
-    driver.Quit();
 }
 ```
 
