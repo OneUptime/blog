@@ -22,7 +22,7 @@ Install the common module and individual service modules:
 Install-Module -Name AWS.Tools.Installer -Force -Scope CurrentUser
 
 # Install individual service modules as needed
-Install-AWSToolsModule AWS.Tools.EC2, AWS.Tools.S3, AWS.Tools.Lambda, AWS.Tools.CloudWatch -Force
+Install-AWSToolsModule AWS.Tools.EC2, AWS.Tools.S3, AWS.Tools.Lambda, AWS.Tools.CloudWatch, AWS.Tools.IdentityManagement, AWS.Tools.SecurityToken -Force
 ```
 
 If you want everything at once (not recommended for production, but handy for dev):
@@ -55,15 +55,16 @@ Set-AWSCredential -AccessKey YOUR_ACCESS_KEY -SecretKey YOUR_SECRET_KEY -StoreAs
 # Set your default region
 Set-DefaultAWSRegion -Region us-east-1
 
-# Initialize the profile for the current session
-Initialize-AWSDefaultConfiguration -ProfileName MyProfile -Region us-east-1
+# Use the profile for the current session
+Set-AWSCredential -ProfileName MyProfile
 ```
 
 For SSO-based authentication (common in enterprise environments):
 
 ```powershell
-# If you use AWS SSO, configure it via the AWS CLI first
-# then reference the profile in PowerShell
+# If you use AWS IAM Identity Center, configure the SSO profile first
+Initialize-AWSSSOConfiguration -ProfileName my-sso-profile
+Invoke-AWSSSOLogin -ProfileName my-sso-profile
 Set-AWSCredential -ProfileName my-sso-profile
 ```
 
@@ -83,8 +84,10 @@ EC2 is where most people start. Here are the most common operations.
 List all running instances with their key details:
 
 ```powershell
-# List all EC2 instances with useful properties
-Get-EC2Instance |
+# List running EC2 instances with useful properties
+$filter = @{ Name = 'instance-state-name'; Values = @('running') }
+
+Get-EC2Instance -Filter $filter |
     Select-Object -ExpandProperty Instances |
     Select-Object InstanceId, InstanceType,
         @{Name='State'; Expression={$_.State.Name}},
@@ -97,21 +100,20 @@ Launch a new EC2 instance:
 
 ```powershell
 # Launch a new t3.micro instance
+$tagspec = New-Object Amazon.EC2.Model.TagSpecification
+$tagspec.ResourceType = 'instance'
+$tagspec.Tags.Add(@{ Key = 'Name'; Value = 'MyWebServer' })
+$tagspec.Tags.Add(@{ Key = 'Environment'; Value = 'production' })
+
 $params = @{
-    ImageId         = 'ami-0c55b159cbfafe1f0'  # Amazon Linux 2
+    ImageId         = 'ami-xxxxxxxxxxxxxxxxx'  # Replace with a current AMI ID for your Region
     InstanceType    = 't3.micro'
     KeyName         = 'my-key-pair'
     SecurityGroupId = 'sg-xxxxxxxx'
     SubnetId        = 'subnet-xxxxxxxx'
     MinCount        = 1
     MaxCount        = 1
-    TagSpecification = @{
-        ResourceType = 'instance'
-        Tags = @(
-            @{ Key = 'Name'; Value = 'MyWebServer' }
-            @{ Key = 'Environment'; Value = 'production' }
-        )
-    }
+    TagSpecification = $tagspec
 }
 
 $instance = New-EC2Instance @params
@@ -166,7 +168,7 @@ Copy-S3Object -SourceBucket source-bucket -SourceKey file.txt -DestinationBucket
 Remove-S3Object -BucketName my-powershell-bucket -Key old-file.txt -Force
 
 # Enable versioning on a bucket
-Write-S3BucketVersioning -BucketName my-powershell-bucket -VersioningConfiguration_Status Enabled
+Write-S3BucketVersioning -BucketName my-powershell-bucket -VersioningConfig_Status Enabled
 ```
 
 ## Working with Lambda
