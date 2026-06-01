@@ -40,19 +40,21 @@ sequenceDiagram
 - An Azure OpenAI resource with a GPT model deployed (gpt-4o or gpt-4o-mini work well)
 - Python 3.9+ installed
 - Bot Framework SDK for Python (`botbuilder-core`)
+- The Bot Framework SDK and Emulator are archived, so for new greenfield bots Microsoft recommends the Microsoft 365 Agents SDK. This guide focuses on maintaining or building with Bot Framework SDK v4 and Azure Bot Service.
 
 ## Step 1: Create the Azure Bot Service Resource
 
-In the Azure portal, search for "Azure Bot" and create a new bot resource. Choose the "Multi Tenant" type for simplicity. You will need an App Registration - the portal can create one for you automatically.
+In the Azure portal, search for "Azure Bot" and create a new bot resource. Choose the "Single Tenant" type for a new bot. You will need an App Registration - the portal can create one for you automatically.
 
 Note the following values after creation:
 - Microsoft App ID
 - Microsoft App Password (client secret)
+- Microsoft App Tenant ID
 - Bot endpoint URL (you will set this later)
 
 ## Step 2: Deploy an Azure OpenAI Model
 
-If you have not already, create an Azure OpenAI resource in the Azure portal. Once provisioned, go to Azure OpenAI Studio and deploy a model. For a chatbot, I recommend deploying `gpt-4o-mini` for cost efficiency or `gpt-4o` for maximum quality.
+If you have not already, create an Azure OpenAI resource in the Azure portal. Once provisioned, go to the Azure AI Foundry portal and deploy a model. For a chatbot, I recommend deploying `gpt-4o-mini` for cost efficiency or `gpt-4o` for maximum quality.
 
 Note your:
 - Azure OpenAI endpoint URL
@@ -71,7 +73,7 @@ python -m venv venv
 source venv/bin/activate
 
 # Install required packages
-pip install botbuilder-core botbuilder-integration-aiohttp aiohttp openai
+pip install botbuilder-core botbuilder-integration-aiohttp botbuilder-azure aiohttp openai
 ```
 
 ## Step 4: Write the Bot Logic
@@ -80,18 +82,19 @@ The core of the bot is a class that extends `ActivityHandler` from the Bot Frame
 
 ```python
 # bot.py - Main bot logic with Azure OpenAI integration
+import os
 from botbuilder.core import ActivityHandler, TurnContext
-from openai import AzureOpenAI
+from openai import OpenAI
 
 class SupportBot(ActivityHandler):
     def __init__(self):
         # Initialize the Azure OpenAI client
-        self.client = AzureOpenAI(
-            azure_endpoint="https://your-resource.openai.azure.com/",
-            api_key="your-api-key",
-            api_version="2024-06-01"
+        azure_openai_endpoint = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")
+        self.client = OpenAI(
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
+            base_url=f"{azure_openai_endpoint}/openai/v1/"
         )
-        self.deployment_name = "gpt-4o-mini"
+        self.deployment_name = os.environ["AZURE_OPENAI_DEPLOYMENT"]
 
         # Store conversation history per conversation ID
         # In production, use a database or Redis for persistence
@@ -169,6 +172,7 @@ The bot needs a web server to receive incoming messages from Azure Bot Service. 
 
 ```python
 # app.py - Web server that receives messages from Azure Bot Service
+import os
 import sys
 import traceback
 from aiohttp import web
@@ -182,11 +186,16 @@ from botbuilder.schema import Activity
 from bot import SupportBot
 
 # Configuration from environment variables
-APP_ID = "your-microsoft-app-id"
-APP_PASSWORD = "your-microsoft-app-password"
+APP_ID = os.environ["MICROSOFT_APP_ID"]
+APP_PASSWORD = os.environ["MICROSOFT_APP_PASSWORD"]
+APP_TENANT_ID = os.environ["MICROSOFT_APP_TENANT_ID"]
 
 # Create the adapter with authentication settings
-SETTINGS = BotFrameworkAdapterSettings(APP_ID, APP_PASSWORD)
+SETTINGS = BotFrameworkAdapterSettings(
+    APP_ID,
+    APP_PASSWORD,
+    channel_auth_tenant=APP_TENANT_ID
+)
 ADAPTER = BotFrameworkAdapter(SETTINGS)
 
 # Error handler that logs exceptions
@@ -222,7 +231,7 @@ APP = web.Application()
 APP.router.add_post("/api/messages", messages)
 
 if __name__ == "__main__":
-    web.run_app(APP, host="0.0.0.0", port=3978)
+    web.run_app(APP, host="0.0.0.0", port=int(os.environ.get("PORT", 3978)))
 ```
 
 ## Step 6: Test Locally with the Bot Framework Emulator
@@ -230,10 +239,17 @@ if __name__ == "__main__":
 Before deploying, test your bot locally. Start the application:
 
 ```bash
+export MICROSOFT_APP_ID=""
+export MICROSOFT_APP_PASSWORD=""
+export MICROSOFT_APP_TENANT_ID=""
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+export AZURE_OPENAI_API_KEY="your-key"
+export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
+
 python app.py
 ```
 
-Download and install the Bot Framework Emulator. Open it, click "Open Bot," and enter `http://localhost:3978/api/messages` as the endpoint URL. Enter your App ID and Password. You should now be able to chat with your bot and see responses powered by Azure OpenAI.
+Download and install the Bot Framework Emulator. Open it, click "Open Bot," and enter `http://localhost:3978/api/messages` as the endpoint URL. Leave the App ID and Password blank for this local-only test. You should now be able to chat with your bot and see responses powered by Azure OpenAI. Test single-tenant authentication after deployment with your Azure Bot resource's Test in Web Chat feature.
 
 ## Step 7: Deploy to Azure App Service
 
@@ -242,6 +258,7 @@ For production, deploy the bot to Azure App Service. Create a requirements.txt f
 ```text
 botbuilder-core==4.16.1
 botbuilder-integration-aiohttp==4.16.1
+botbuilder-azure==4.16.1
 aiohttp==3.9.1
 openai==1.12.0
 ```
@@ -249,6 +266,11 @@ openai==1.12.0
 Deploy using the Azure CLI:
 
 ```bash
+# Create a resource group if you do not already have one
+az group create \
+    --name rg-chatbot \
+    --location eastus
+
 # Create an App Service plan and web app
 az appservice plan create \
     --name support-bot-plan \
@@ -269,9 +291,16 @@ az webapp config appsettings set \
     --settings \
     MICROSOFT_APP_ID="your-app-id" \
     MICROSOFT_APP_PASSWORD="your-app-password" \
+    MICROSOFT_APP_TENANT_ID="your-tenant-id" \
     AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/" \
-    AZURE_OPENAI_KEY="your-key" \
+    AZURE_OPENAI_API_KEY="your-key" \
     AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
+
+# Configure the aiohttp startup command
+az webapp config set \
+    --name support-chatbot-app \
+    --resource-group rg-chatbot \
+    --startup-file "python app.py"
 
 # Deploy the code
 az webapp up \
