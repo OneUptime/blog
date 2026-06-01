@@ -52,6 +52,13 @@ az network vnet create \
   --subnet-name AzureFirewallSubnet \
   --subnet-prefix 10.0.1.0/24
 
+# Create a workload subnet that will route through the firewall
+az network vnet subnet create \
+  --resource-group rg-firewall \
+  --vnet-name vnet-hub \
+  --name snet-workload \
+  --address-prefixes 10.0.2.0/24
+
 # Create a public IP for the firewall
 az network public-ip create \
   --resource-group rg-firewall \
@@ -141,7 +148,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --rule-name allow-windows-update \
   --rule-type ApplicationRule \
   --source-addresses "10.0.0.0/16" \
-  --protocols Http=80 Https=443 \
+  --protocols Https=443 \
   --fqdn-tags "WindowsUpdate"
 ```
 
@@ -160,6 +167,8 @@ FQDN tags are managed by Microsoft and automatically updated when the underlying
 ## Step 4: Configure FQDN Filtering for SQL Traffic
 
 Azure Firewall can also filter SQL (MSSQL) traffic by FQDN. This is useful for controlling which Azure SQL databases your applications can reach.
+
+SQL FQDN filtering is supported in proxy mode on port 1433. If your Azure SQL clients use the default redirect mode, use the SQL service tag in network rules instead.
 
 ```bash
 # Allow SQL traffic to specific Azure SQL servers
@@ -238,6 +247,11 @@ az network vnet subnet update \
 Enable diagnostic logging to see which rules are being triggered and which traffic is being blocked.
 
 ```bash
+# Create a Log Analytics workspace for firewall logs
+az monitor log-analytics workspace create \
+  --resource-group rg-firewall \
+  --workspace-name law-firewall
+
 # Enable diagnostic logging for the firewall
 az monitor diagnostic-settings create \
   --resource $(az network firewall show -g rg-firewall -n fw-hub --query id -o tsv) \
@@ -272,7 +286,7 @@ AzureDiagnostics
 
 **Group rules logically**: Use separate rule collections for different application tiers or environments. This makes auditing and troubleshooting much easier.
 
-**Enable DNS proxy**: Azure Firewall should be the DNS proxy for your VNets to ensure FQDN resolution in network rules works correctly. Enable it with `az network firewall policy update --resource-group rg-firewall --name policy-main --dns-servers --enable-dns-proxy true`.
+**Enable DNS proxy**: Azure Firewall should be the DNS proxy for your VNets to ensure FQDN resolution in network rules works correctly. Configure the VNet to use the firewall private IP as its DNS server, then enable DNS proxy with `az network firewall policy update --resource-group rg-firewall --name policy-main --enable-dns-proxy true`.
 
 **Test before going live**: Use the firewall logs to monitor in audit mode before switching to enforcement. This helps you catch missing rules before they cause outages.
 
