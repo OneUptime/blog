@@ -10,7 +10,7 @@ Description: Create and manage reusable task groups in Azure Pipelines to standa
 
 If you have multiple pipelines that share the same sequence of steps - building a .NET project, running code analysis, pushing Docker images, deploying to App Service - you are probably copy-pasting those steps between pipelines. Every time you need to update a shared step, you hunt down every pipeline that uses it and make the change manually. This is exactly the problem task groups solve.
 
-Task groups in Azure Pipelines let you bundle a sequence of tasks into a single reusable unit with parameters. You define the task group once, and any pipeline can reference it. Update the task group, and every pipeline picks up the change automatically.
+Task groups in Azure Pipelines let you bundle a sequence of classic pipeline tasks into a single reusable unit with parameters. You define the task group once, and classic pipelines in the same project can reference it. Minor updates to the task group are picked up automatically by pipelines that use its current major version.
 
 In this post, I will cover creating task groups for common scenarios, parameterizing them for flexibility, versioning them for safety, and when to use task groups versus YAML templates.
 
@@ -18,7 +18,7 @@ In this post, I will cover creating task groups for common scenarios, parameteri
 
 Before diving in, let me clarify the relationship between task groups and YAML templates, since they solve similar problems differently.
 
-**Task groups** are a feature of classic (visual designer) pipelines. They are defined through the UI, stored in Azure DevOps, and referenced by name. They work in both classic and YAML pipelines.
+**Task groups** are a feature of classic (visual designer) pipelines. They are defined through the UI, stored in Azure DevOps, and referenced through the task catalog. They are not supported in YAML pipelines.
 
 **YAML templates** are files in your repository that define reusable pipeline logic. They are version-controlled, reviewed in PRs, and only work in YAML pipelines.
 
@@ -75,6 +75,7 @@ Create a task group named "DotNet Build and Publish" with these tasks:
 **Task 4: Publish**
 - Task: DotNetCoreCLI@2
 - Command: publish
+- Publish web projects: false
 - Projects: `$(ProjectPath)`
 - Arguments: `--configuration $(BuildConfiguration) --output $(Build.ArtifactStagingDirectory)`
 
@@ -96,17 +97,70 @@ The task group exposes these parameters that consumers can customize:
 
 When a pipeline uses this task group, it can override any of these parameters or accept the defaults.
 
-## Using Task Groups in YAML Pipelines
+## Using Task Groups with YAML Pipelines
 
-You can reference task groups in YAML pipelines using the `task` keyword with the task group's ID.
+You cannot reference task groups directly in YAML pipelines. Microsoft recommends YAML templates for reusable logic in YAML pipelines.
 
-First, find the task group ID. Go to **Pipelines > Task groups**, click on your task group, and look at the URL. The ID is the GUID at the end.
+If you need to reuse the same logic from a task group in YAML, convert the task group into a template and reference that template from your pipeline.
 
-Then reference it in your YAML.
+Here is the equivalent YAML template approach.
 
 ```yaml
-# azure-pipelines.yml - Using a task group in YAML
+# templates/steps/dotnet-build-and-publish.yml
+parameters:
+  - name: projectPath
+    type: string
+    default: '**/*.csproj'
+  - name: testProjectPath
+    type: string
+    default: '**/*Tests.csproj'
+  - name: buildConfiguration
+    type: string
+    default: 'Release'
+  - name: artifactName
+    type: string
+    default: 'drop'
 
+steps:
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore'
+    inputs:
+      command: 'restore'
+      projects: '${{ parameters.projectPath }}'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Build'
+    inputs:
+      command: 'build'
+      projects: '${{ parameters.projectPath }}'
+      arguments: '--configuration ${{ parameters.buildConfiguration }} --no-restore'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Test'
+    inputs:
+      command: 'test'
+      projects: '${{ parameters.testProjectPath }}'
+      arguments: '--configuration ${{ parameters.buildConfiguration }} --no-build'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Publish'
+    inputs:
+      command: 'publish'
+      publishWebProjects: false
+      projects: '${{ parameters.projectPath }}'
+      arguments: '--configuration ${{ parameters.buildConfiguration }} --output $(Build.ArtifactStagingDirectory)'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifacts'
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: '${{ parameters.artifactName }}'
+```
+
+Then consume it from your pipeline.
+
+```yaml
+# azure-pipelines.yml
 trigger:
   - main
 
@@ -114,17 +168,13 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  # Reference the task group by its name
-  - task: DotNetBuildAndPublish@1
-    displayName: 'Build, Test, and Publish'
-    inputs:
-      ProjectPath: 'src/MyApp/MyApp.csproj'
-      TestProjectPath: 'tests/MyApp.Tests/MyApp.Tests.csproj'
-      BuildConfiguration: 'Release'
-      ArtifactName: 'myapp-build'
+  - template: templates/steps/dotnet-build-and-publish.yml
+    parameters:
+      projectPath: 'src/MyApp/MyApp.csproj'
+      testProjectPath: 'tests/MyApp.Tests/MyApp.Tests.csproj'
+      buildConfiguration: 'Release'
+      artifactName: 'myapp-build'
 ```
-
-Note that referencing task groups in YAML by name requires the task group to be in the same project. Cross-project references require the task group ID.
 
 ## Example: Docker Build and Push Task Group
 
@@ -175,7 +225,9 @@ Bundle your code quality checks into a single task group so every project runs t
    - Script: `$(LintCommand)`
 
 2. **SonarQube Analysis Begin**
-   - Task: SonarQubePrepare@5
+   - Task: SonarQubePrepare@8
+   - SonarQube Server Endpoint: `$(SonarQubeServiceConnection)`
+   - Scanner Mode: dotnet
    - Project Key: `$(SonarProjectKey)`
 
 3. **Build for Analysis**
@@ -183,16 +235,17 @@ Bundle your code quality checks into a single task group so every project runs t
    - Command: build
 
 4. **SonarQube Analysis End**
-   - Task: SonarQubeAnalyze@5
+   - Task: SonarQubeAnalyze@8
 
 5. **Publish Quality Gate Result**
-   - Task: SonarQubePublish@5
+   - Task: SonarQubePublish@8
 
 **Parameters**:
 
 | Parameter | Default Value |
 |-----------|---------------|
 | LintCommand | `dotnet format --verify-no-changes` |
+| SonarQubeServiceConnection | *(no default)* |
 | SonarProjectKey | *(no default)* |
 
 ## Versioning Task Groups
@@ -209,7 +262,7 @@ I recommend this workflow:
 1. Create the task group (version 1)
 2. When you need to make changes, create a **draft**
 3. Test the draft in a non-production pipeline
-4. When satisfied, **publish** the draft as a new major version
+4. When satisfied, **publish** the draft as a preview, test it, and then publish the preview as a new major version
 5. Gradually migrate pipelines to the new version
 6. Deprecate the old version once all pipelines have migrated
 
@@ -222,7 +275,7 @@ graph LR
     E --> F[v1: Deprecated]
 ```
 
-To create a draft: open the task group, click **Save as draft**. To publish: click **Publish draft**.
+To create a draft: open the task group, click **Save as draft**. To publish a new major version, click **Publish draft**, publish it as a preview, validate it, and then click **Publish preview**.
 
 ## Nesting Task Groups
 
@@ -238,13 +291,13 @@ However, do not nest too deeply. Two levels is usually the maximum before things
 
 Task groups have their own permission model:
 
-- **Creator**: Can create new task groups
-- **Reader**: Can view and use task groups
-- **Administrator**: Can modify and delete task groups
+- **Edit task group**: Can create, modify, or delete a task group
+- **Delete task group**: Can delete a task group
+- **Administer task group permissions**: Can add and remove users or groups in task group security
 
 Go to **Pipelines > Task groups**, click the three dots on a task group, and select **Security** to manage permissions.
 
-For production task groups, restrict the Administrator role to a small group of people (like the platform team). This prevents accidental changes that could break pipelines across the organization.
+For production task groups, restrict edit, delete, and administer permissions to a small group of people (like the platform team). This prevents accidental changes that could break pipelines across the project.
 
 ## Migrating Task Groups to YAML Templates
 
@@ -257,16 +310,7 @@ If your organization is moving to YAML pipelines, you will eventually want to mi
 
 Here is a side-by-side comparison.
 
-Task group approach (used in classic or YAML):
-
-```yaml
-# Referencing a task group
-steps:
-  - task: DotNetBuildAndPublish@1
-    inputs:
-      ProjectPath: 'src/MyApp/MyApp.csproj'
-      BuildConfiguration: 'Release'
-```
+Task group approach (used in classic pipelines): add the task group from the classic pipeline task catalog, select the task group version, and fill in values such as `ProjectPath` and `BuildConfiguration`.
 
 YAML template approach:
 
@@ -306,7 +350,7 @@ steps:
 
 ## Troubleshooting Common Issues
 
-**Task group not appearing in the task list**: Make sure you are looking in the correct project. Task groups are project-scoped unless explicitly shared.
+**Task group not appearing in the task list**: Make sure you are looking in the correct project. Task groups are project-scoped; use export and import if you need to copy a task group to another project.
 
 **Parameter values not being passed correctly**: Check that the parameter names in the task group match what the consuming pipeline passes. Names are case-sensitive.
 
