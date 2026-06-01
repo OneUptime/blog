@@ -12,6 +12,8 @@ Redis is supposed to be fast. Sub-millisecond responses, in-memory data store, t
 
 This post covers the most common causes of Redis timeouts in Azure and how to fix them.
 
+Note: Microsoft has announced the retirement timeline for Azure Cache for Redis and recommends moving existing instances to Azure Managed Redis. The guidance below still applies to existing Azure Cache for Redis deployments, but use Azure Managed Redis for new deployments where possible.
+
 ## Understanding Redis Timeout Errors
 
 A timeout error from Azure Redis Cache typically looks like this:
@@ -40,7 +42,7 @@ This is the most common cause. Every time your application creates a new `Connec
 - C0 (Basic): 256 connections
 - C1 (Standard): 1,000 connections
 - C2 (Standard): 2,000 connections
-- C6 (Premium): 7,500 connections
+- P1 (Premium): 7,500 connections
 
 If you exhaust the connection limit, new connection attempts fail with timeouts.
 
@@ -190,7 +192,7 @@ az redis update \
   --resource-group my-rg \
   --name myredis \
   --sku Premium \
-  --vm-size P1
+  --vm-size p1
 
 # For Premium tier, enable clustering for horizontal scaling
 az redis create \
@@ -198,7 +200,7 @@ az redis create \
   --name myredis-cluster \
   --location eastus \
   --sku Premium \
-  --vm-size P1 \
+  --vm-size p1 \
   --shard-count 3  # 3 shards for distributed load
 ```
 
