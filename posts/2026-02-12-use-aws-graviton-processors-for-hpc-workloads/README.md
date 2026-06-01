@@ -8,7 +8,7 @@ Description: Learn how to leverage AWS Graviton ARM-based processors for high-pe
 
 ---
 
-AWS Graviton processors are ARM-based chips designed by Amazon. They offer significantly better price-performance than comparable x86 instances for many workloads. The latest Graviton4 processors deliver up to 30% better compute performance than Graviton3, and Graviton instances typically cost 20-40% less than equivalent Intel or AMD instances.
+AWS Graviton processors are ARM-based chips designed by Amazon. They offer significantly better price-performance than comparable x86 instances for many workloads. Graviton4 processors deliver up to 30% better compute performance than Graviton3, and Graviton-based instances can deliver up to 40% better price-performance than comparable non-Graviton instances.
 
 For HPC workloads, this translates to running the same simulations for less money, or running bigger simulations for the same money. But moving to ARM requires some preparation. This guide covers what you need to know.
 
@@ -16,7 +16,7 @@ For HPC workloads, this translates to running the same simulations for less mone
 
 The numbers tell the story:
 
-- **C7g instances** (Graviton3) deliver up to 25% better performance than C6i (Intel) for compute-bound workloads, at 20% lower cost
+- **C7g instances** (Graviton3) deliver up to 25% better performance than C6g for compute-bound workloads, and should be benchmarked against comparable x86 instances for your workload
 - **HPC7g instances** are specifically designed for HPC, with 200 Gbps EFA networking and DDR5 memory
 - Graviton3 supports bfloat16 and SVE (Scalable Vector Extensions), which are useful for scientific computing and ML inference
 - Lower power consumption per compute unit
@@ -54,7 +54,7 @@ uname -m
 
 Common HPC software with ARM support:
 
-- **OpenMPI** - Full support since version 4.0
+- **Open MPI** - Open MPI 4.1 and later are supported with EFA
 - **GROMACS** - Native ARM support with NEON/SVE optimizations
 - **OpenFOAM** - Compiles natively on ARM
 - **WRF** (Weather Research and Forecasting) - ARM support available
@@ -73,8 +73,7 @@ Using AWS ParallelCluster, you can spin up a Graviton cluster with Slurm.
 Region: us-east-1
 Image:
   Os: alinux2
-  # Use ARM-based AMI
-  CustomAmi: ami-0graviton-hpc-ami
+  # AWS ParallelCluster selects an ARM-compatible official AMI for ARM instance types.
 
 HeadNode:
   InstanceType: m7g.xlarge
@@ -92,6 +91,8 @@ Scheduling:
           InstanceType: hpc7g.16xlarge
           MinCount: 0
           MaxCount: 64
+          Efa:
+            Enabled: true
       Networking:
         SubnetIds:
           - subnet-0abc123
@@ -131,33 +132,31 @@ If you need to build from source, here is how to compile common HPC applications
 
 ```bash
 # Compile with GCC and ARM-specific optimizations
-# The -march=armv8.4-a flag targets Graviton3's architecture
-# -mcpu=neoverse-v1 specifically targets the Graviton3 core
-gcc -O3 -march=armv8.4-a -mcpu=neoverse-v1 \
+# For Graviton3 and Graviton3E, AWS recommends -mcpu=neoverse-512tvb
+gcc -O3 -mcpu=neoverse-512tvb \
     -o simulation simulation.c -lm
 
 # For Graviton3 with SVE (Scalable Vector Extensions)
-gcc -O3 -march=armv8.4-a+sve -mcpu=neoverse-v1 \
+gcc -O3 -mcpu=neoverse-512tvb \
     -o simulation_sve simulation.c -lm
 
 # For Fortran codes (common in HPC)
-gfortran -O3 -march=armv8.4-a -mcpu=neoverse-v1 \
+gfortran -O3 -mcpu=neoverse-512tvb \
     -o solver solver.f90
 ```
 
-### Compiling OpenMPI for Graviton
+### Compiling Open MPI for Graviton
 
 ```bash
-# Download and build OpenMPI from source
+# Download and build Open MPI from source
 wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.6.tar.gz
 tar xzf openmpi-4.1.6.tar.gz
 cd openmpi-4.1.6
 
 ./configure --prefix=/opt/openmpi \
-  --with-efa \
-  --enable-mpi-cxx \
-  CFLAGS="-O3 -march=armv8.4-a -mcpu=neoverse-v1" \
-  CXXFLAGS="-O3 -march=armv8.4-a -mcpu=neoverse-v1"
+  --with-libfabric=/opt/amazon/efa \
+  CFLAGS="-O3 -mcpu=neoverse-512tvb" \
+  CXXFLAGS="-O3 -mcpu=neoverse-512tvb"
 
 make -j $(nproc) && sudo make install
 
@@ -179,8 +178,8 @@ cmake .. \
   -DGMX_BUILD_OWN_FFTW=ON \
   -DGMX_SIMD=ARM_NEON_ASIMD \
   -DGMX_MPI=ON \
-  -DCMAKE_C_FLAGS="-mcpu=neoverse-v1" \
-  -DCMAKE_CXX_FLAGS="-mcpu=neoverse-v1"
+  -DCMAKE_C_FLAGS="-mcpu=neoverse-512tvb" \
+  -DCMAKE_CXX_FLAGS="-mcpu=neoverse-512tvb"
 
 make -j $(nproc) && sudo make install
 ```
@@ -257,4 +256,4 @@ RUN cd /app/src && make ARCH=$(uname -m)
 
 ## Wrapping Up
 
-AWS Graviton processors deliver real, measurable cost savings for HPC workloads. The 20-40% lower instance cost combined with competitive or better performance makes them hard to ignore. The migration effort is mostly about recompiling your software for ARM, which modern compilers and build systems handle well. Start with a benchmark on your actual workload, and if the numbers look good, make the switch. Most teams that benchmark Graviton end up adopting it.
+AWS Graviton processors deliver real, measurable cost savings for many HPC workloads. Better price-performance combined with competitive or better performance makes them hard to ignore. The migration effort is mostly about recompiling your software for ARM, which modern compilers and build systems handle well. Start with a benchmark on your actual workload, and if the numbers look good, make the switch. Most teams that benchmark Graviton end up adopting it.
