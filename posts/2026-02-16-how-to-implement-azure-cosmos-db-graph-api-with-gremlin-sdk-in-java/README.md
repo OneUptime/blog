@@ -54,7 +54,7 @@ az cosmosdb gremlin graph create \
 <dependency>
     <groupId>org.apache.tinkerpop</groupId>
     <artifactId>gremlin-driver</artifactId>
-    <version>3.6.4</version>
+    <version>3.4.13</version>
 </dependency>
 ```
 
@@ -130,8 +130,7 @@ public class GraphOperations {
             ".property('id', id)" +
             ".property('name', name)" +
             ".property('city', city)" +       // This is the partition key
-            ".property('age', age)" +
-            ".property('pk', city)";           // Cosmos DB requires pk property
+            ".property('age', age)";
 
         Map<String, Object> params = new HashMap<>();
         params.put("id", id);
@@ -266,7 +265,7 @@ public class GraphQueries {
             String fromId, String fromCity, String toId, String toCity) {
         String query = "g.V([fromCity, fromId])" +
             ".repeat(both('friends_with').simplePath())" +
-            ".until(hasId(toId))" +
+            ".until(hasId(toId).has('city', toCity))" +
             ".limit(1)" +                     // Take only the first (shortest) path
             ".path()" +                        // Return the full path
             ".by('name')";
@@ -381,7 +380,7 @@ To optimize:
 - Limit the depth of traversals with `.loops().is(lt(maxDepth))`
 - Use `.limit()` to cap the number of results
 - Store frequently queried relationships as properties to avoid traversals
-- Monitor RU consumption and add indexes for commonly traversed properties
+- Monitor RU consumption and keep commonly queried properties included in the indexing policy
 
 ## Summary
 
