@@ -103,8 +103,8 @@ The `subject` field is where you control the scope of trust. Here are the common
 # Trust pull requests (use cautiously)
 # subject: "repo:your-org/your-repo:pull_request"
 
-# Trust a specific tag pattern
-# subject: "repo:your-org/your-repo:ref:refs/tags/v*"
+# Trust a specific tag
+# subject: "repo:your-org/your-repo:ref:refs/tags/v1.0.0"
 ```
 
 I strongly recommend using environment-based subjects for production deployments because GitHub Environments support required reviewers and other protection rules. Let us create one for both staging and production:
@@ -142,13 +142,15 @@ This assigns Contributor on a specific resource group rather than the entire sub
 ```bash
 # Assign Contributor role on the target resource group
 az role assignment create \
-  --assignee $APP_ID \
+  --assignee-object-id $SP_ID \
+  --assignee-principal-type ServicePrincipal \
   --role "Contributor" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/rg-myapp-prod"
 
 # If you only need to deploy web apps, use a more specific role
 az role assignment create \
-  --assignee $APP_ID \
+  --assignee-object-id $SP_ID \
+  --assignee-principal-type ServicePrincipal \
   --role "Website Contributor" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/rg-myapp-prod"
 ```
@@ -201,7 +203,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # Now you can run any Azure CLI or deployment commands
+      # Build your app before this step, or point package at an existing deployable artifact
       - name: Deploy Web App
         uses: azure/webapps-deploy@v3
         with:
