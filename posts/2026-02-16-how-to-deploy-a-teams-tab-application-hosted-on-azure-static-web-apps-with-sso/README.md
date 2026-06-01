@@ -19,12 +19,12 @@ graph TD
     A[Microsoft Teams Client] --> B[Teams Tab iframe]
     B --> C[Azure Static Web App - React]
     C --> D[Teams JS SDK - SSO Token]
-    D --> E[Azure AD Token Exchange]
+    D --> E[Backend validates token]
     E --> F[Your Backend API]
-    F --> G[Microsoft Graph API]
+    F --> G[On-behalf-of token exchange for Microsoft Graph]
 ```
 
-The Teams client loads your tab in an iframe. Your React app uses the Teams JavaScript SDK to get an SSO token, which it exchanges for an Azure AD access token. That token authenticates API calls to your backend or directly to Microsoft Graph.
+The Teams client loads your tab in an iframe. Your React app uses the Teams JavaScript SDK to get an SSO token for your Azure AD application. That token authenticates API calls to your backend. If your app needs Microsoft Graph data, your backend validates the SSO token and uses the OAuth 2.0 on-behalf-of flow to request a Graph access token.
 
 ## Creating the React Application
 
@@ -125,7 +125,7 @@ interface UserInfo {
 }
 
 export function useTeamsAuth(): AuthState {
-    const { isInTeams, context } = useContext(TeamsContext);
+    const { isInTeams } = useContext(TeamsContext);
     const [authState, setAuthState] = useState<AuthState>({
         token: null,
         user: null,
@@ -166,9 +166,10 @@ export function useTeamsAuth(): AuthState {
                 });
             } catch (error: any) {
                 console.error('SSO authentication failed:', error);
+                const errorMessage = typeof error === 'string' ? error : error?.message;
 
                 // If SSO fails, fall back to interactive auth
-                if (error.message === 'resourceRequiresConsent') {
+                if (errorMessage === 'resourceRequiresConsent') {
                     await handleConsentRequired();
                 } else {
                     setAuthState({
@@ -187,7 +188,8 @@ export function useTeamsAuth(): AuthState {
 
     const handleConsentRequired = async () => {
         try {
-            // Show the consent popup for first-time users
+            // Show the consent popup for first-time users. The /auth-start page
+            // must complete the interactive login and call authentication.notifySuccess().
             await microsoftTeams.authentication.authenticate({
                 url: `${window.location.origin}/auth-start`,
                 width: 600,
@@ -358,13 +360,7 @@ The Static Web Apps configuration file handles routing:
 {
     "navigationFallback": {
         "rewrite": "/index.html",
-        "exclude": ["/images/*.{png,jpg}", "/static/*"]
-    },
-    "responseOverrides": {
-        "401": {
-            "redirect": "/auth-start",
-            "statusCode": 302
-        }
+        "exclude": ["/api/*", "/images/*.{png,jpg}", "/static/*"]
     }
 }
 ```
@@ -381,7 +377,18 @@ az ad app create \
   --web-redirect-uris "https://your-static-app.azurestaticapps.net/auth-end" \
   --identifier-uris "api://your-static-app.azurestaticapps.net/your-client-id"
 
-# Add the Teams SSO scope
+# Expose the access_as_user scope used by Teams SSO
+SCOPE_ID=$(uuidgen)
+az ad app update \
+  --id your-client-id \
+  --set api.oauth2PermissionScopes="[{\"adminConsentDescription\":\"Allows Teams to call the app's web APIs as the current user.\",\"adminConsentDisplayName\":\"Access Teams Tab - Dashboard\",\"id\":\"$SCOPE_ID\",\"isEnabled\":true,\"type\":\"User\",\"userConsentDescription\":\"Allows Teams to call the app's web APIs as you.\",\"userConsentDisplayName\":\"Access Teams Tab - Dashboard\",\"value\":\"access_as_user\"}]"
+
+# Pre-authorize Microsoft Teams desktop/mobile and web clients for that scope
+az ad app update \
+  --id your-client-id \
+  --set api.preAuthorizedApplications="[{\"appId\":\"1fec8e78-bce4-4aaf-ab1b-5451cc387264\",\"delegatedPermissionIds\":[\"$SCOPE_ID\"]},{\"appId\":\"5e3ce6c0-2b1f-4285-8d4b-75c8e07c25dd\",\"delegatedPermissionIds\":[\"$SCOPE_ID\"]}]"
+
+# Add Microsoft Graph delegated permission if your backend uses Graph
 az ad app permission add \
   --id your-client-id \
   --api 00000003-0000-0000-c000-000000000000 \
@@ -411,6 +418,9 @@ Configure the tab in your Teams app manifest:
             "canUpdateConfiguration": true,
             "scopes": ["team", "groupChat"]
         }
+    ],
+    "validDomains": [
+        "your-static-app.azurestaticapps.net"
     ],
     "webApplicationInfo": {
         "id": "your-client-id",
