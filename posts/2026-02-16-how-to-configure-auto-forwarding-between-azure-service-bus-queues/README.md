@@ -28,7 +28,7 @@ graph LR
     end
 ```
 
-The source entity acts as a routing intermediary. Consumers do not read from the subscriptions directly - they read from the destination queues, which might have their own configuration for sessions, dead-lettering, or partitioning.
+The source entity acts as a routing intermediary. Consumers do not read from the subscriptions directly - they read from the destination queues, which might have their own configuration for retries, dead-lettering, or message TTL.
 
 ## Setting Up Auto-Forwarding
 
@@ -49,8 +49,7 @@ az servicebus queue create \
   --name billing-processing \
   --namespace-name my-servicebus \
   --resource-group my-rg \
-  --max-delivery-count 10 \
-  --enable-session true
+  --max-delivery-count 10
 
 # Create the topic
 az servicebus topic create \
@@ -77,29 +76,23 @@ az servicebus topic subscription create \
 ### Forwarding from a Queue to Another Queue
 
 ```bash
-# Create a chain: incoming -> processing -> archive
+# Create the destination queue first
 az servicebus queue create \
   --name processing \
   --namespace-name my-servicebus \
   --resource-group my-rg
 
+# Create the source queue with auto-forwarding enabled
 az servicebus queue create \
-  --name archive \
-  --namespace-name my-servicebus \
-  --resource-group my-rg
-
-# Set up auto-forwarding on dead-letter messages
-# When processing fails, forward dead letters to a centralized error queue
-az servicebus queue update \
-  --name processing \
+  --name incoming \
   --namespace-name my-servicebus \
   --resource-group my-rg \
-  --forward-dead-lettered-messages-to archive
+  --forward-to processing
 ```
 
 ## Pattern 1: Fan-Out with Dedicated Processing Queues
 
-This is the most common use case. A topic receives events, and subscriptions with filters route different event types to dedicated processing queues. Each queue can have its own scaling, session, and retry settings.
+This is the most common use case. A topic receives events, and subscriptions with filters route different event types to dedicated processing queues. Each queue can have its own scaling, retry, and dead-letter settings.
 
 ```csharp
 using Azure.Messaging.ServiceBus.Administration;
@@ -117,7 +110,7 @@ public class FanOutSetup
     public async Task ConfigureFanOutAsync()
     {
         // Create the central topic
-        if (!await _adminClient.TopicExistsAsync("order-events"))
+        if (!(await _adminClient.TopicExistsAsync("order-events")).Value)
         {
             await _adminClient.CreateTopicAsync(new CreateTopicOptions("order-events")
             {
@@ -130,9 +123,8 @@ public class FanOutSetup
         await CreateQueueIfNotExistsAsync("fulfillment-queue", new CreateQueueOptions("fulfillment-queue")
         {
             MaxDeliveryCount = 10,
-            LockDuration = TimeSpan.FromMinutes(5),
-            // Fulfillment needs ordered processing per order
-            RequiresSession = true
+            // Fulfillment handlers can take longer than the other workloads
+            LockDuration = TimeSpan.FromMinutes(5)
         });
 
         await CreateQueueIfNotExistsAsync("billing-queue", new CreateQueueOptions("billing-queue")
@@ -175,7 +167,7 @@ public class FanOutSetup
         string topicName, string subscriptionName,
         string forwardTo, string filterExpression)
     {
-        if (!await _adminClient.SubscriptionExistsAsync(topicName, subscriptionName))
+        if (!(await _adminClient.SubscriptionExistsAsync(topicName, subscriptionName)).Value)
         {
             await _adminClient.CreateSubscriptionAsync(
                 new CreateSubscriptionOptions(topicName, subscriptionName)
@@ -197,7 +189,7 @@ public class FanOutSetup
 
     private async Task CreateQueueIfNotExistsAsync(string name, CreateQueueOptions options)
     {
-        if (!await _adminClient.QueueExistsAsync(name))
+        if (!(await _adminClient.QueueExistsAsync(name)).Value)
         {
             await _adminClient.CreateQueueAsync(options);
         }
@@ -210,6 +202,11 @@ public class FanOutSetup
 Multiple sources send to different queues, and auto-forwarding consolidates them into a single processing queue.
 
 ```bash
+# Central processing queue that receives from all sources
+az servicebus queue create --name all-orders \
+  --namespace-name my-servicebus --resource-group my-rg \
+  --max-delivery-count 10
+
 # Queues that different systems publish to
 az servicebus queue create --name orders-api \
   --namespace-name my-servicebus --resource-group my-rg \
@@ -222,14 +219,9 @@ az servicebus queue create --name orders-import \
 az servicebus queue create --name orders-webhook \
   --namespace-name my-servicebus --resource-group my-rg \
   --forward-to all-orders
-
-# Central processing queue that receives from all sources
-az servicebus queue create --name all-orders \
-  --namespace-name my-servicebus --resource-group my-rg \
-  --max-delivery-count 10
 ```
 
-Now all three input queues funnel messages into `all-orders`, where a single consumer processes them. The source queue names can be checked in the message's custom properties if you need to know where a message originated.
+Now all three input queues funnel messages into `all-orders`, where a single consumer processes them. Add a custom property such as `SourceQueue` when sending if you need to know where a message originated.
 
 ## Pattern 3: Dead-Letter Forwarding to a Central Error Queue
 
@@ -267,7 +259,7 @@ Consumers read from the destination queues just like they would from any normal 
 public async Task ProcessFulfillment(
     [ServiceBusTrigger("fulfillment-queue",
         Connection = "ServiceBusConnection",
-        IsSessionsEnabled = true)]
+        AutoCompleteMessages = false)]
     ServiceBusReceivedMessage message,
     ServiceBusMessageActions messageActions)
 {
@@ -286,35 +278,37 @@ public async Task ProcessFulfillment(
 
 Auto-forwarding has a few constraints to be aware of.
 
-The destination entity must exist in the same Service Bus namespace. Cross-namespace forwarding is not supported.
+The basic tier of Service Bus does not support auto-forwarding.
+
+The destination entity must exist in the same Service Bus namespace before you configure forwarding. Cross-namespace forwarding is not supported.
 
 You can chain up to 4 forwarding hops. So Queue A can forward to Queue B, which forwards to Queue C, which forwards to Queue D. But Queue D cannot forward to Queue E.
 
-If the destination entity is full or unavailable, messages accumulate in the source entity. The transfer dead-letter queue captures messages that fail to forward after retries.
+Auto-forwarding is not supported for session-enabled queues or subscriptions.
+
+If the destination entity is full, disabled, or deleted, messages are moved to the source entity's dead-letter queue.
 
 Auto-forwarding does not support transformation. The message arrives at the destination exactly as it was sent to the source. If you need to modify messages during routing, you need a consumer in between.
 
 ## Monitoring Auto-Forward Health
 
-Check the transfer dead-letter queue to detect forwarding failures.
+Check the source entity's dead-letter queue to detect forwarding failures.
 
 ```csharp
-// Monitor forwarding health by checking transfer dead-letter counts
+// Monitor forwarding health by checking dead-letter counts
 public async Task CheckForwardingHealthAsync()
 {
     var adminClient = new ServiceBusAdministrationClient(
         Environment.GetEnvironmentVariable("ServiceBusConnection"));
 
-    await foreach (var queue in adminClient.GetQueuesAsync())
+    await foreach (var runtime in adminClient.GetQueuesRuntimePropertiesAsync())
     {
-        var runtime = await adminClient.GetQueueRuntimePropertiesAsync(queue.Name);
-
-        if (runtime.Value.TransferDeadLetterMessageCount > 0)
+        if (runtime.DeadLetterMessageCount > 0)
         {
             _logger.LogWarning(
-                "Queue {Queue} has {Count} transfer dead-letter messages - " +
+                "Queue {Queue} has {Count} dead-letter messages - " +
                 "auto-forwarding may be failing",
-                queue.Name, runtime.Value.TransferDeadLetterMessageCount);
+                runtime.Name, runtime.DeadLetterMessageCount);
         }
     }
 }
@@ -322,4 +316,4 @@ public async Task CheckForwardingHealthAsync()
 
 ## Summary
 
-Auto-forwarding in Azure Service Bus is a broker-level routing mechanism that chains queues and subscriptions together without custom code. Use it for fan-out from topics to dedicated processing queues, aggregating messages from multiple sources, and centralizing dead-letter handling. It is transactional, transparent to consumers, and requires zero application code. The main limitations are the same-namespace constraint and the 4-hop chain limit. For most messaging architectures, auto-forwarding simplifies the topology and reduces the amount of glue code you need to write.
+Auto-forwarding in Azure Service Bus is a broker-level routing mechanism that chains queues and subscriptions together without custom code. Use it for fan-out from topics to dedicated processing queues, aggregating messages from multiple sources, and centralizing dead-letter handling. It is transactional, transparent to consumers, and requires zero application code. The main limitations are the same-namespace constraint, the 4-hop chain limit, and the lack of support for session-enabled entities. For most messaging architectures, auto-forwarding simplifies the topology and reduces the amount of glue code you need to write.
