@@ -14,7 +14,7 @@ Azure Virtual Desktop has a built-in scaling plan feature that handles this auto
 
 ## How AVD Autoscaling Works
 
-The autoscaling feature monitors the percentage of available sessions across your host pool. It uses configurable thresholds to decide when to turn on additional VMs (ramp up) and when to shut down idle VMs (ramp down).
+The autoscaling feature monitors used host pool capacity across your host pool. It uses configurable thresholds to decide when to turn on additional VMs (ramp up) and when to shut down idle VMs (ramp down).
 
 You define schedules with different capacity targets for different times of day:
 
@@ -26,10 +26,10 @@ graph LR
     D --> A
 ```
 
-During each phase, you set:
+Across the schedule, you set:
 
-- **Minimum percentage of hosts**: The floor - how many VMs should always be running.
-- **Capacity threshold**: The percentage of used sessions that triggers scaling.
+- **Minimum percentage of hosts**: The floor for ramp-up and ramp-down - how many VMs should always be running.
+- **Capacity threshold**: The percentage of used host pool capacity that triggers scaling. Peak hours use the ramp-up threshold, and off-peak hours use the ramp-down threshold.
 - **Load balancing algorithm**: How users are distributed to VMs.
 
 ## Prerequisites
@@ -37,11 +37,11 @@ During each phase, you set:
 - An Azure Virtual Desktop host pool (pooled type - autoscaling works with pooled host pools).
 - Session hosts deployed in the host pool.
 - The `Microsoft.DesktopVirtualization` resource provider registered.
-- At minimum, `Desktop Virtualization Power On Off Contributor` role assigned to the Windows Virtual Desktop service principal on the session host VMs.
+- The `Desktop Virtualization Power On Off Contributor` role assigned to the Azure Virtual Desktop service principal at the subscription scope that contains the host pool and session hosts.
 
 ## Step 1: Assign Required Permissions
 
-The AVD autoscaling service needs permission to start and stop your session host VMs. Assign the power management role to the AVD service principal.
+The AVD autoscaling service needs permission to start and stop your session host VMs. Assign the power management role to the AVD service principal at the subscription scope.
 
 ```bash
 # Get the Azure Virtual Desktop service principal object ID
@@ -53,7 +53,6 @@ AVD_SP_ID=$(az ad sp show --id "9cdead84-a844-4324-93f2-b2e6bb768d07" --query "i
 SUB_ID=$(az account show --query "id" --output tsv)
 
 # Assign the power on/off contributor role at the subscription level
-# You can also scope this to a specific resource group for tighter security
 az role assignment create \
   --assignee-object-id "$AVD_SP_ID" \
   --assignee-principal-type ServicePrincipal \
@@ -61,20 +60,11 @@ az role assignment create \
   --scope "/subscriptions/$SUB_ID"
 ```
 
-If you want to scope the role more tightly (recommended for production), assign it at the resource group level.
-
-```bash
-# Assign only to the resource group containing session host VMs
-az role assignment create \
-  --assignee-object-id "$AVD_SP_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Desktop Virtualization Power On Off Contributor" \
-  --scope "/subscriptions/$SUB_ID/resourceGroups/myResourceGroup"
-```
+Microsoft recommends assigning this role at the subscription scope that contains the host pool and session hosts. Assigning it at a lower scope, such as a resource group, host pool, or individual VM, can prevent autoscale from working properly.
 
 ## Step 2: Create a Scaling Plan
 
-A scaling plan defines the schedule and thresholds for autoscaling. Create one through the Azure portal or CLI.
+A scaling plan defines the schedule and thresholds for autoscaling. Create one through the Azure portal or Azure PowerShell.
 
 ### Through the Portal
 
@@ -86,16 +76,17 @@ A scaling plan defines the schedule and thresholds for autoscaling. Create one t
    - **Time zone**: Your business time zone (e.g., Eastern Standard Time)
    - **Exclusion tags**: Optional - tag VMs you want to exclude from scaling
 
-### Through Azure CLI
+### Through Azure PowerShell
 
-```bash
+```powershell
 # Create a scaling plan
-az desktopvirtualization scaling-plan create \
-  --resource-group myResourceGroup \
-  --name avd-scaling-plan \
-  --location eastus \
-  --time-zone "Eastern Standard Time" \
-  --host-pool-type Pooled
+New-AzWvdScalingPlan `
+  -ResourceGroupName "myResourceGroup" `
+  -Name "avd-scaling-plan" `
+  -Location "eastus" `
+  -TimeZone "Eastern Standard Time" `
+  -HostPoolType "Pooled" `
+  -Schedule @()
 ```
 
 ## Step 3: Configure the Schedule
@@ -109,7 +100,7 @@ During ramp-up, you gradually increase capacity before peak hours start.
 - **Start time**: 07:00
 - **Load balancing algorithm**: Breadth-first (spread users to warm up multiple VMs)
 - **Minimum percentage of hosts**: 25% (start 25% of VMs before anyone logs in)
-- **Capacity threshold**: 60% (start more VMs when 60% of sessions are used)
+- **Capacity threshold**: 60% (start more VMs when used host pool capacity exceeds 60%)
 
 ### Peak Phase (9:00 AM - 5:00 PM)
 
@@ -117,8 +108,7 @@ During peak hours, keep enough capacity for all users with headroom for spikes.
 
 - **Start time**: 09:00
 - **Load balancing algorithm**: Depth-first (fill VMs before starting new ones, for efficiency)
-- **Minimum percentage of hosts**: 75%
-- **Capacity threshold**: 80%
+- **Capacity threshold**: Carries over from ramp-up
 
 ### Ramp-Down Phase (5:00 PM - 7:00 PM)
 
@@ -129,7 +119,7 @@ As users leave, gradually reduce capacity.
 - **Minimum percentage of hosts**: 25%
 - **Capacity threshold**: 90%
 - **Force logoff**: Yes, after 15 minutes notification
-- **Stop when**: VMs have no active sessions
+- **Stop when**: VMs have no sessions
 
 ### Off-Peak Phase (7:00 PM - 7:00 AM)
 
@@ -137,10 +127,9 @@ Overnight, run the minimum number of VMs.
 
 - **Start time**: 19:00
 - **Load balancing algorithm**: Depth-first
-- **Minimum percentage of hosts**: 10% (keep at least one VM for overnight users)
-- **Capacity threshold**: 90%
+- **Capacity threshold**: Carries over from ramp-down
 
-Configure this through the portal's schedule editor or via ARM template:
+Configure this through the portal's schedule editor or as a schedule object in an ARM template:
 
 ```json
 {
@@ -158,8 +147,6 @@ Configure this through the portal's schedule editor or via ARM template:
     "minute": 0
   },
   "peakLoadBalancingAlgorithm": "DepthFirst",
-  "peakMinimumHostsPct": 75,
-  "peakCapacityThresholdPct": 80,
   "rampDownStartTime": {
     "hour": 17,
     "minute": 0
@@ -176,8 +163,6 @@ Configure this through the portal's schedule editor or via ARM template:
     "minute": 0
   },
   "offPeakLoadBalancingAlgorithm": "DepthFirst",
-  "offPeakMinimumHostsPct": 10,
-  "offPeakCapacityThresholdPct": 90
 }
 ```
 
@@ -185,12 +170,17 @@ Configure this through the portal's schedule editor or via ARM template:
 
 Link the scaling plan to your host pool to activate it.
 
-```bash
+```powershell
 # Assign the scaling plan to the host pool
-az desktopvirtualization scaling-plan update \
-  --resource-group myResourceGroup \
-  --name avd-scaling-plan \
-  --host-pool-references "[{\"hostPoolArmPath\": \"/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.DesktopVirtualization/hostpools/avd-pooled-hp\", \"scalingPlanEnabled\": true}]"
+Update-AzWvdScalingPlan `
+  -ResourceGroupName "myResourceGroup" `
+  -Name "avd-scaling-plan" `
+  -HostPoolReference @(
+    @{
+      HostPoolArmPath = "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.DesktopVirtualization/hostPools/avd-pooled-hp"
+      ScalingPlanEnabled = $true
+    }
+  )
 ```
 
 Through the portal, go to the scaling plan, click "Host pool assignments," and add your host pool with the toggle set to Enabled.
@@ -215,8 +205,6 @@ Create a separate schedule for weekends with lower capacity.
     "minute": 0
   },
   "peakLoadBalancingAlgorithm": "DepthFirst",
-  "peakMinimumHostsPct": 25,
-  "peakCapacityThresholdPct": 80,
   "rampDownStartTime": {
     "hour": 16,
     "minute": 0
@@ -233,12 +221,10 @@ Create a separate schedule for weekends with lower capacity.
     "minute": 0
   },
   "offPeakLoadBalancingAlgorithm": "DepthFirst",
-  "offPeakMinimumHostsPct": 0,
-  "offPeakCapacityThresholdPct": 90
 }
 ```
 
-Setting off-peak minimum to 0% on weekends means all VMs can shut down if nobody is connected. This is the maximum cost savings.
+Setting the ramp-down minimum to 10% on weekends keeps a small amount of capacity available while still allowing idle hosts to shut down when there are no connected or disconnected user sessions.
 
 ## Step 6: Exclude Specific VMs from Scaling
 
