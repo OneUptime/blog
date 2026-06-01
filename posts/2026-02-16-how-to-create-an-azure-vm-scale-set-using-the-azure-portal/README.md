@@ -22,7 +22,7 @@ The Basics tab is where you set the foundational parameters.
 
 **Subscription and Resource Group**: Choose your subscription and either select an existing resource group or create a new one. I recommend a dedicated resource group for the scale set and its associated resources (load balancer, public IP, VNet) to keep things organized.
 
-**Scale set name**: Give it a meaningful name. I typically use a pattern like `appname-env-vmss` (for example, `webserver-prod-vmss`). This name becomes part of each instance's hostname.
+**Scale set name**: Give it a meaningful name. I typically use a pattern like `appname-env-vmss` (for example, `webserver-prod-vmss`). This name becomes part of each instance's VM name.
 
 **Region**: Select the Azure region closest to your users or other dependent resources. The scale set instances will all be created in this region.
 
@@ -33,11 +33,11 @@ The Basics tab is where you set the foundational parameters.
 - **Uniform**: All instances are identical and managed as a group. This is the traditional mode and works best for stateless, homogeneous workloads.
 - **Flexible**: Instances can have different VM sizes and configurations. This mode gives you more control but is more complex.
 
-For most use cases, Uniform mode is the right choice.
+For a basic set of identical stateless instances, Uniform mode is straightforward. For new production workloads, also evaluate Flexible mode because Microsoft recommends it for new scale set deployments.
 
 **Image**: Select the OS image for your instances. Click "See all images" to browse the marketplace. Common choices include Ubuntu Server 22.04 LTS, Windows Server 2022 Datacenter, or a custom image from your Shared Image Gallery.
 
-**VM size**: Choose the VM size based on your workload requirements. You can change this later, but it requires reimaging all instances. Start with a size like Standard_D2s_v5 (2 vCPUs, 8 GB RAM) for web servers or Standard_D4s_v5 for heavier workloads.
+**VM size**: Choose the VM size based on your workload requirements. You can change this later, but existing instances must be brought up to date with the latest scale set model, and some SKU changes require deallocating the instances first. Start with a size like Standard_D2s_v5 (2 vCPUs, 8 GB RAM) for web servers or Standard_D4s_v5 for heavier workloads.
 
 **Authentication**: For Linux, you can choose SSH public key (recommended) or password. For Windows, provide an admin username and password.
 
@@ -116,7 +116,7 @@ The Management tab has several important settings:
 
 **Boot diagnostics**: Enable this. It helps with troubleshooting boot failures on individual instances.
 
-**OS image upgrade**: If enabled, Azure automatically applies new OS image versions to your instances using the rolling upgrade policy.
+**OS image upgrade**: If enabled, Azure automatically applies new OS image versions to your instances. Image-based automatic OS upgrades are supported for Uniform scale sets; for Flexible scale sets, use the current image and patch-management options instead.
 
 ## Step 7: Health Configuration
 
@@ -165,7 +165,7 @@ Deployment typically takes 3 to 5 minutes for a small scale set. You can watch t
 Once deployed, verify everything is working:
 
 ```bash
-# List scale set instances
+# List scale set instances in Uniform orchestration mode
 
 az vmss list-instances \
   --resource-group myResourceGroup \
@@ -199,7 +199,7 @@ az vmss diagnostics set \
   --settings diagnostics-config.json
 ```
 
-**Update management**: Configure a plan for applying OS patches and application updates. Azure Update Management can handle OS patches, while your CI/CD pipeline should handle application updates.
+**Update management**: Configure a plan for applying OS patches and application updates. Azure Update Manager can handle OS patches, while your CI/CD pipeline should handle application updates.
 
 ## Integrating with Monitoring
 
