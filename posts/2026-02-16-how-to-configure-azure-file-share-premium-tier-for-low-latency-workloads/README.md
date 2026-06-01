@@ -20,10 +20,10 @@ Here is a quick comparison:
 |---------|----------|---------|
 | Backing storage | HDD | SSD |
 | Latency | ~10ms | ~1-2ms |
-| Max IOPS | 20,000 | 100,000 |
-| Max throughput | 300 MiB/s | 10 GiB/s |
+| Max IOPS | 20,000 | 102,400 |
+| Max throughput | Up to storage account limits | 10,340 MiB/s |
 | Billing model | Pay per usage | Pay per provisioned capacity |
-| Protocols | SMB, NFS, REST | SMB, NFS |
+| Protocols | SMB, REST | SMB, NFS |
 | Snapshots | Supported | Supported |
 | Redundancy | LRS, ZRS, GRS, GZRS | LRS, ZRS |
 
@@ -79,23 +79,23 @@ az storage share-rm create \
 
 The IOPS and throughput you get scale with provisioned capacity. Here is how it works:
 
-**Baseline IOPS** = 400 + (1 IOPS per provisioned GiB)
-- 100 GiB share = 500 IOPS baseline
-- 1 TiB (1024 GiB) share = 1,424 IOPS baseline
+**Baseline IOPS** = min(3,000 + 1 IOPS per provisioned GiB, 102,400)
+- 100 GiB share = 3,100 IOPS baseline
+- 1 TiB (1024 GiB) share = 4,024 IOPS baseline
 
-**Burst IOPS** = max(4,000, 3 x baseline)
-- 100 GiB share = 4,000 IOPS burst
-- 1 TiB share = 4,272 IOPS burst
+**Burst IOPS** = min(max(3 x provisioned GiB, 10,000), 102,400)
+- 100 GiB share = 10,000 IOPS burst
+- 1 TiB share = 10,000 IOPS burst
 
-**Throughput** = 60 MiB/s + (0.06 MiB/s per provisioned GiB)
-- 100 GiB share = 66 MiB/s
-- 1 TiB share = 121 MiB/s
+**Throughput** = 100 MiB/s + ceiling(0.04 MiB/s per provisioned GiB) + ceiling(0.06 MiB/s per provisioned GiB)
+- 100 GiB share = 110 MiB/s
+- 1 TiB share = 203 MiB/s
 
 If you need more IOPS or throughput, provision more capacity. Even if you only use 100 GiB of data, provisioning 1 TiB gives you higher performance limits.
 
 ```bash
 # Increase provisioned capacity to get higher IOPS
-# Provisioning 4 TiB gives ~4,500 baseline IOPS and ~300 MiB/s throughput
+# Provisioning 4 TiB gives ~7,100 baseline IOPS and ~510 MiB/s throughput
 az storage share-rm update \
   --resource-group rg-premium-files \
   --storage-account stpremiumfiles2026 \
@@ -183,6 +183,7 @@ STORAGE_KEY=$(az storage account keys list \
   --query "[0].value" -o tsv)
 
 # Create a credentials file (more secure than inline credentials)
+sudo mkdir -p /etc/smbcredentials
 sudo bash -c 'cat > /etc/smbcredentials/stpremiumfiles2026.cred << EOF
 username=stpremiumfiles2026
 password='"$STORAGE_KEY"'
@@ -218,12 +219,12 @@ Set-SmbClientConfiguration -EnableMultichannel $true -Force
 **Enable SMB encryption for security without sacrificing much performance**: Premium shares on SSD handle the encryption overhead well.
 
 ```bash
-# Enable SMB encryption on the share
-az storage share-rm update \
+# Require SMB encryption in transit for the storage account
+az storage account file-service-properties update \
   --resource-group rg-premium-files \
-  --storage-account stpremiumfiles2026 \
-  --name app-data \
-  --enabled-protocols SMB
+  --account-name stpremiumfiles2026 \
+  --require-smb-encryption-in-transit \
+  --smb-eit true
 ```
 
 ## Step 7: Monitor Performance
@@ -260,8 +261,8 @@ Since premium file shares bill on provisioned capacity, not used capacity, optim
 
 1. **Right-sizing**: Start with the minimum capacity that meets your IOPS needs. Scale up if you hit limits.
 2. **Monitoring usage**: If your provisioned capacity is much larger than used capacity just for IOPS, check if standard tier with larger files could work.
-3. **Using snapshots wisely**: Snapshots of premium shares consume provisioned space. Clean up old snapshots regularly.
-4. **Considering reserved capacity**: Azure offers 1-year and 3-year reservations for file storage that can save 20-36%.
+3. **Using snapshots wisely**: In provisioned v1 premium shares, snapshots are billed as used snapshot storage. Clean up old snapshots regularly.
+4. **Considering reserved capacity**: Azure offers 1-year and 3-year reservations for Azure Files capacity that can reduce storage costs.
 
 ## Wrapping Up
 
