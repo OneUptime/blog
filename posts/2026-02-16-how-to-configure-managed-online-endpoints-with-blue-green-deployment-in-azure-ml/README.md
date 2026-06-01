@@ -119,9 +119,8 @@ name: blue
 endpoint_name: fraud-detection-endpoint
 model:
   path: ./model/           # Path to the model files
-  # Or reference a registered model:
-  # name: fraud-detection-model
-  # version: 1
+# Or reference a registered model:
+# model: azureml:fraud-detection-model:1
 code_configuration:
   code: ./src/             # Directory containing score.py
   scoring_script: score.py
@@ -198,9 +197,7 @@ Now deploy the updated model as the green deployment. This could be a retrained 
 $schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
 name: green
 endpoint_name: fraud-detection-endpoint
-model:
-  name: fraud-detection-model
-  version: 2               # New model version
+model: azureml:fraud-detection-model:2  # New model version
 code_configuration:
   code: ./src/
   scoring_script: score.py
@@ -223,7 +220,7 @@ az ml online-deployment create \
 
 ## Step 5: Test Green Before Routing Traffic
 
-Before sending any production traffic to green, test it directly using the deployment-specific header:
+Before sending any production traffic to green, test it directly using the deployment-specific option:
 
 ```bash
 # Test the green deployment directly (bypassing traffic routing)
@@ -273,10 +270,10 @@ az ml online-endpoint update \
     --traffic "blue=90 green=10"
 ```
 
-Monitor the performance of both deployments. Check metrics like latency, error rates, and prediction quality. Azure ML provides built-in monitoring through the endpoint metrics.
+Monitor the performance of both deployments. Check metrics like latency, error rates, and prediction quality. Azure ML provides built-in monitoring through Azure Monitor metrics for online endpoints and deployments. You can also check the endpoint's current traffic configuration:
 
 ```bash
-# Check endpoint metrics
+# Check endpoint traffic configuration and status
 az ml online-endpoint show \
     --name fraud-detection-endpoint \
     --resource-group rg-ml \
@@ -332,7 +329,7 @@ az ml online-endpoint update \
     --traffic "blue=100 green=0"
 ```
 
-This takes effect within seconds because both deployments are already running and warmed up. There is no cold start penalty for the rollback.
+This routes new traffic back to blue without redeploying the model because both deployments are already running and warmed up. There is no cold start penalty from recreating the blue deployment.
 
 ## Automating with Python SDK
 
