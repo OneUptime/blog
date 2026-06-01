@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AKS, Blue-Green Deployment, NGINX Ingress, Kubernetes, Deployment Strategy, Azure, DevOps
 
-Description: How to implement blue-green deployments on AKS using NGINX Ingress Controller annotations for zero-downtime releases with instant rollback.
+Description: How to implement blue-green deployments on AKS using NGINX Ingress Controller annotations for zero-downtime releases with fast rollback.
 
 ---
 
-Rolling updates are the default Kubernetes deployment strategy, but they have a drawback: during the rollout, both old and new versions serve traffic simultaneously. If the new version has a bug, some users experience it while the rollback happens. Blue-green deployments solve this by running both versions side by side but only directing traffic to one at a time. The switch is instant, and rollback is just pointing traffic back to the previous version.
+Rolling updates are the default Kubernetes deployment strategy, but they have a drawback: during the rollout, both old and new versions serve traffic simultaneously. If the new version has a bug, some users experience it while the rollback happens. Blue-green deployments solve this by running both versions side by side but only directing traffic to one at a time. The switch is fast, and rollback is just pointing traffic back to the previous version.
 
 ## How Blue-Green Deployments Work
 
@@ -17,7 +17,7 @@ In a blue-green deployment, you maintain two complete environments:
 - **Blue**: The current production version serving all traffic.
 - **Green**: The new version deployed and verified but not yet receiving traffic.
 
-When you are ready to release, you switch the ingress to point at the green environment. If something goes wrong, you switch back to blue. At no point do users experience a mix of versions.
+When you are ready to release, you switch the ingress to point at the green environment. If something goes wrong, you switch back to blue. Unlike a rolling update, the intended state is one active backend at a time, though in-flight requests and ingress controller propagation can briefly overlap during the switch.
 
 ```mermaid
 graph TD
@@ -265,7 +265,7 @@ The switch is a single update to the production ingress - change the backend ser
 
 ```bash
 # Switch the production ingress to point at the green service
-# This is the actual deployment moment - instant traffic switch
+# This is the actual deployment moment - fast traffic switch
 kubectl patch ingress my-app-production -n default \
   --type='json' \
   -p='[{"op": "replace", "path": "/spec/rules/0/http/paths/0/backend/service/name", "value": "my-app-green"}]'
@@ -306,7 +306,7 @@ The traffic switch happens in seconds as NGINX reloads its configuration.
 
 ## Step 6: Rollback If Needed
 
-If the green environment has issues in production, switch back to blue instantly.
+If the green environment has issues in production, switch back to blue quickly.
 
 ```bash
 # Emergency rollback - point traffic back to blue
@@ -315,7 +315,7 @@ kubectl patch ingress my-app-production -n default \
   -p='[{"op": "replace", "path": "/spec/rules/0/http/paths/0/backend/service/name", "value": "my-app-blue"}]'
 ```
 
-This is the main advantage of blue-green over rolling updates. Rollback is instant - no waiting for pods to restart or scale down.
+This is the main advantage of blue-green over rolling updates. Rollback is fast - no waiting for pods to restart or scale down.
 
 ## Step 7: Canary Testing with NGINX Annotations
 
@@ -386,12 +386,11 @@ annotations:
 
 ## Step 8: Clean Up the Old Environment
 
-After the green deployment is stable (give it at least a few hours or a full traffic cycle), clean up the blue environment.
+After the green deployment is stable (give it at least a few hours or a full traffic cycle), you can clean up the blue environment if your next release process recreates it. If you use the automation script below, keep both color deployments and services available, and scale the inactive deployment down instead of deleting its Service.
 
 ```bash
-# Remove the old blue deployment and service
-kubectl delete deployment my-app-blue
-kubectl delete service my-app-blue
+# Scale down the inactive blue deployment but keep the Service for the next release
+kubectl scale deployment my-app-blue --replicas=0
 
 # The green environment is now "blue" for the next release cycle
 # Optionally rename for clarity
@@ -409,6 +408,7 @@ Here is a script that automates the blue-green deployment process.
 NEW_IMAGE="$1"
 NAMESPACE="default"
 APP_NAME="my-app"
+ACTIVE_REPLICAS=3
 
 # Determine current active color
 CURRENT=$(kubectl get ingress ${APP_NAME}-production -n $NAMESPACE \
@@ -426,6 +426,10 @@ echo "Current: $CURRENT, Deploying to: $NEW_COLOR"
 # Update the inactive deployment with the new image
 kubectl set image deployment/${APP_NAME}-${NEW_COLOR} \
   ${APP_NAME}=${NEW_IMAGE} -n $NAMESPACE
+
+# Scale up the inactive deployment if it was scaled down after the last release
+kubectl scale deployment/${APP_NAME}-${NEW_COLOR} \
+  --replicas=${ACTIVE_REPLICAS} -n $NAMESPACE
 
 # Wait for rollout to complete
 kubectl rollout status deployment/${APP_NAME}-${NEW_COLOR} -n $NAMESPACE --timeout=300s
@@ -455,4 +459,4 @@ echo "Traffic switched to $NEW_COLOR with image $NEW_IMAGE"
 
 ## Summary
 
-Blue-green deployments on AKS with NGINX Ingress give you instant traffic switching and instant rollback. The implementation uses separate Deployments and Services for each color, with the Ingress resource controlling which one receives traffic. Adding canary annotations lets you gradually shift traffic before committing to the full switch. This pattern works well for applications where zero-downtime releases and fast rollback are non-negotiable requirements.
+Blue-green deployments on AKS with NGINX Ingress give you fast traffic switching and fast rollback. The implementation uses separate Deployments and Services for each color, with the Ingress resource controlling which one receives traffic. Adding canary annotations lets you gradually shift traffic before committing to the full switch. This pattern works well for applications where zero-downtime releases and fast rollback are non-negotiable requirements.
