@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Logic Apps, Bicep, Infrastructure as Code, Serverless, Workflow, Automation
 
-Description: Learn how to deploy Azure Logic Apps Standard with embedded workflow definitions using Bicep templates for repeatable, version-controlled automation.
+Description: Learn how to deploy Azure Logic Apps Standard infrastructure with Bicep templates and workflow definitions for repeatable, version-controlled automation.
 
 ---
 
 Azure Logic Apps Standard is a powerful platform for building integration workflows. Unlike the Consumption plan, the Standard tier runs on the Azure App Service platform and supports stateful and stateless workflows in a single logic app resource. This makes it a solid choice for enterprise integration scenarios where you need more control over hosting, networking, and performance.
 
-Deploying Logic Apps Standard through Bicep gives you a repeatable, declarative way to manage these resources alongside your other Azure infrastructure. In this post, we will walk through how to set up a Logic Apps Standard resource with embedded workflow definitions entirely in Bicep.
+Deploying Logic Apps Standard through Bicep gives you a repeatable, declarative way to manage these resources alongside your other Azure infrastructure. In this post, we will walk through how to set up a Logic Apps Standard resource with workflow definitions that can be deployed from source-controlled files.
 
 ## Why Use Bicep for Logic Apps Standard
 
@@ -21,7 +21,7 @@ Logic Apps Standard resources are essentially Azure App Service sites with some 
 - No manual portal clicking to recreate workflows after infrastructure changes
 - Easy integration with CI/CD pipelines
 
-The alternative is deploying the Logic App resource separately and then pushing workflow definitions via the Azure CLI or REST API. That works fine, but having everything in one Bicep template simplifies the pipeline considerably.
+The recommended pattern is deploying the Logic App resource separately from the workflow application files, then pushing those workflow definitions through your CI/CD pipeline. Bicep still keeps the infrastructure repeatable, while zip deployment keeps the workflow files aligned with the Standard Logic Apps project model.
 
 ## Prerequisites
 
@@ -114,7 +114,7 @@ resource logicApp 'Microsoft.Web/sites@2023-01-01' = {
         {
           // Runtime worker configuration
           name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'node'
+          value: 'dotnet'
         }
         {
           // Identifies this as a Logic App
@@ -130,6 +130,11 @@ resource logicApp 'Microsoft.Web/sites@2023-01-01' = {
           name: 'WEBSITE_CONTENTSHARE'
           value: toLower(logicAppName)
         }
+        {
+          // Node.js version used by the Logic Apps Standard runtime on Windows
+          name: 'WEBSITE_NODE_DEFAULT_VERSION'
+          value: '~20'
+        }
       ]
     }
   }
@@ -140,9 +145,9 @@ The `kind` property value of `functionapp,workflowapp` is critical. Without it, 
 
 ## Embedding Workflow Definitions
 
-Here is where things get interesting. Logic Apps Standard stores workflows as JSON files within the app's file system. Each workflow lives in its own directory under the root. You can deploy these definitions using the `Microsoft.Web/sites/extensions` resource type with the `MSDeploy` extension, but a simpler approach is to use the `sourcecontrols` or to include workflows via app settings and deployment scripts.
+Here is where things get interesting. Logic Apps Standard stores workflows as JSON files within the app's file system. Each workflow lives in its own directory under the project root. You can package those files and deploy them through the same zip deployment mechanism used by App Service and Azure Functions.
 
-However, the cleanest Bicep-native approach is using the `config` sub-resource to set workflow-related configuration and then deploying workflow definition files as part of your CI/CD pipeline. Let me show you a practical middle ground - defining the workflow as a Bicep variable and deploying it through a deployment script.
+For a practical middle ground, you can define a small workflow as a Bicep variable, write it into the expected folder structure inside a deployment script, and then deploy the generated zip package. In production, the file-based approach in the next section is usually easier to maintain.
 
 ```bicep
 // Workflow definition as a Bicep variable
@@ -176,6 +181,8 @@ var httpTriggerWorkflow = {
 }
 
 // Deploy the workflow definition using a deployment script
+param deploymentScriptIdentityResourceId string
+
 resource deployWorkflow 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   name: 'deploy-workflow-definitions'
   location: location
@@ -183,28 +190,46 @@ resource deployWorkflow 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
-      // You would reference a user-assigned managed identity here
+      '${deploymentScriptIdentityResourceId}': {}
     }
   }
   properties: {
-    azCliVersion: '2.50.0'
+    azCliVersion: '2.52.0'
     retentionInterval: 'PT1H'
     scriptContent: '''
-      # Upload the workflow definition to the Logic App
-      az rest --method PUT \
-        --url "https://management.azure.com${LOGIC_APP_ID}/hostruntime/admin/vfs/HttpTriggerWorkflow/workflow.json?api-version=2023-01-01" \
-        --body @workflow.json \
-        --headers "Content-Type=application/json"
+      set -e
+
+      mkdir -p HttpTriggerWorkflow
+      printf '%s' "$WORKFLOW_JSON" > HttpTriggerWorkflow/workflow.json
+      printf '%s' '{"version":"2.0","extensionBundle":{"id":"Microsoft.Azure.Functions.ExtensionBundle.Workflows","version":"[1.*, 2.0.0)"}}' > host.json
+      printf '{}' > connections.json
+      zip -r workflow.zip HttpTriggerWorkflow
+      zip workflow.zip host.json connections.json
+
+      az logicapp deployment source config-zip \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$LOGIC_APP_NAME" \
+        --src workflow.zip
     '''
     environmentVariables: [
       {
-        name: 'LOGIC_APP_ID'
-        value: logicApp.id
+        name: 'RESOURCE_GROUP'
+        value: resourceGroup().name
+      }
+      {
+        name: 'LOGIC_APP_NAME'
+        value: logicApp.name
+      }
+      {
+        name: 'WORKFLOW_JSON'
+        value: string(httpTriggerWorkflow)
       }
     ]
   }
 }
 ```
+
+The user-assigned managed identity for the deployment script must have permission to deploy to the Logic App resource.
 
 ## A More Practical Approach - File-Based Deployment
 
@@ -215,7 +240,9 @@ infrastructure/
   main.bicep
   parameters.dev.json
   parameters.prod.json
-workflows/
+logicapp/
+  host.json
+  connections.json
   HttpTriggerWorkflow/
     workflow.json
   OrderProcessing/
@@ -241,8 +268,8 @@ az deployment group create \
   --template-file infrastructure/main.bicep \
   --parameters @infrastructure/parameters.prod.json
 
-# Step 2: Compress workflow definitions into a zip
-cd workflows
+# Step 2: Compress the Logic Apps Standard project into a zip
+cd logicapp
 zip -r ../workflows.zip .
 cd ..
 
@@ -293,6 +320,8 @@ resource logicAppSettings 'Microsoft.Web/sites/config@2023-01-01' = {
     // Standard required settings (same as above, abbreviated)
     AzureWebJobsStorage: '...'
     FUNCTIONS_EXTENSION_VERSION: '~4'
+    FUNCTIONS_WORKER_RUNTIME: 'dotnet'
+    WEBSITE_NODE_DEFAULT_VERSION: '~20'
     // Environment-specific values workflows can reference
     SERVICE_ENDPOINT: serviceEndpoint
     ENVIRONMENT_NAME: environment
