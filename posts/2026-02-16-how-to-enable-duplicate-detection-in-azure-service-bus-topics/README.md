@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Service Bus, Duplicate Detection, Idempotency, Topic, Azure, Messaging, Reliability
 
-Description: Configure and use duplicate detection in Azure Service Bus topics to prevent processing the same message multiple times in distributed systems.
+Description: Configure and use duplicate detection in Azure Service Bus topics to prevent duplicate sends from being stored in distributed systems.
 
 ---
 
-In distributed systems, duplicates are a fact of life. A network timeout during message sending might cause the producer to retry, sending the same message twice. A load balancer failover might replay a batch of messages. A consumer might crash after processing but before acknowledging, leading to redelivery. Azure Service Bus offers built-in duplicate detection at the broker level that catches these duplicates before they reach your consumers.
+In distributed systems, duplicates are a fact of life. A network timeout during message sending might cause the producer to retry, sending the same message twice. A load balancer failover might replay a batch of messages. A consumer might crash after processing but before acknowledging, leading to redelivery, which still requires consumer-side idempotency. Azure Service Bus offers built-in duplicate detection at the broker level that catches duplicate sends before they reach your consumers.
 
 In this post, I will explain how duplicate detection works, how to configure it on topics and queues, and what its limitations are so you can use it effectively.
 
@@ -31,7 +31,7 @@ sequenceDiagram
     Note over Consumer: Consumer never sees the duplicate
 ```
 
-The key mechanism is the `MessageId` property. You must set it to a deterministic value that uniquely identifies the message content. If you leave it empty or use a random GUID each time, duplicate detection will not work because every send looks like a unique message.
+The key mechanism is the `MessageId` property. You must set it to a deterministic value that uniquely identifies the message content. If you leave it unset or use a random GUID each time, duplicate detection will not work because every send looks like a unique message.
 
 ## Enabling Duplicate Detection
 
@@ -195,7 +195,7 @@ public class EventPublisher
 }
 ```
 
-Even if the first send actually succeeded (but the response was lost due to a network issue), the retry will be deduplicated by Service Bus. The consumer sees the message exactly once.
+Even if the first send actually succeeded (but the response was lost due to a network issue), the retry will be deduplicated by Service Bus. The consumer sees one stored copy of that message.
 
 ## Checking Duplicate Detection Configuration
 
@@ -252,11 +252,11 @@ Duplicate detection is not a silver bullet. Here are the important limitations t
 
 First, it only works within the detection window. If you send the same message ID after the window expires, it will be treated as a new message.
 
-Second, it only checks the `MessageId` property. If you change the message body but keep the same ID, the duplicate will still be discarded. If you change the ID but keep the same body, both messages will be delivered.
+Second, it checks the `MessageId` property when partitioning is disabled, which is the default. If partitioning is enabled, uniqueness is based on `MessageId` plus `PartitionKey`. If you change the message body but keep the same ID, the duplicate will still be discarded. If you change the ID but keep the same body, both messages will be delivered.
 
-Third, there is a performance cost. Duplicate detection adds latency to message sends because Service Bus must check the dedup history. For very high-throughput scenarios (millions of messages per second), this overhead can be significant.
+Third, there is a performance cost. Duplicate detection adds latency to message sends because Service Bus must check the dedup history. For high-throughput scenarios, this overhead can be significant, so keep the detection window as small as your retry pattern allows.
 
-Fourth, it does not work with batched sends in all scenarios. When sending a batch of messages, if any message in the batch is a duplicate, just that message is discarded while the rest are accepted.
+Fourth, deduplication and batched sends need extra care when partitioning is enabled. Microsoft recommends avoiding deduplication and batching together with partitioning, and batches should not contain partition-identifying properties in that scenario.
 
 ## Combining with Consumer-Side Idempotency
 
@@ -266,7 +266,8 @@ For maximum reliability, combine broker-level duplicate detection with consumer-
 [Function("ProcessOrderEvent")]
 public async Task ProcessEvent(
     [ServiceBusTrigger("order-events", "processor",
-        Connection = "ServiceBusConnection")]
+        Connection = "ServiceBusConnection",
+        AutoCompleteMessages = false)]
     ServiceBusReceivedMessage message,
     ServiceBusMessageActions messageActions)
 {
