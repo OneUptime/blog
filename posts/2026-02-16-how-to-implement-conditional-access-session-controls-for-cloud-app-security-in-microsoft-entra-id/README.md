@@ -35,7 +35,7 @@ sequenceDiagram
     MDCA->>User: Deliver controlled content
 ```
 
-The user typically does not notice the proxy unless they look at the URL, which shows a `.mcas.ms` domain suffix during the session.
+The user typically does not notice the proxy unless they look at the URL. In browsers other than Microsoft Edge, the URL shows a `.mcas.ms` domain suffix during the session. Microsoft Edge can use in-browser protection instead of redirecting to the reverse proxy.
 
 ## Prerequisites
 
@@ -44,24 +44,24 @@ To use session controls, you need:
 - Microsoft Entra ID P1 or P2 licenses
 - Microsoft Defender for Cloud Apps license (included in Microsoft 365 E5 or as a standalone add-on)
 - The cloud applications you want to control must support SAML 2.0 or OpenID Connect for single sign-on through Entra ID
-- Global Administrator or Security Administrator role
+- Conditional Access Administrator role for the Entra policy and Security Administrator, Cloud App Security Administrator, or Global Administrator permissions for Defender for Cloud Apps
 
 ## Step 1: Enable Conditional Access App Control
 
 First, enable the integration between Conditional Access and Defender for Cloud Apps.
 
-Navigate to the Microsoft Defender portal (security.microsoft.com) > Cloud Apps > Connected apps > Conditional Access App Control apps.
+Navigate to the Microsoft Defender portal (security.microsoft.com) > Settings > Cloud Apps > Connected apps > Conditional Access App Control apps.
 
-For Microsoft 365 applications (Exchange Online, SharePoint, Teams), the integration is automatic. For third-party SAML applications, you need to onboard them.
+Microsoft Entra ID applications, including Microsoft 365 applications and SaaS apps configured for Entra SSO, are automatically onboarded for Conditional Access App Control. Apps that use a non-Microsoft identity provider must be onboarded manually.
 
-### Onboarding a Third-Party Application
+### Onboarding a Non-Microsoft IdP Application
 
-1. Configure the application for SAML SSO in Entra ID (if not already done)
+1. Configure the application for SAML SSO with the non-Microsoft identity provider (if not already done)
 2. Create a Conditional Access policy that routes the app through session control (Step 2)
-3. Sign in to the application while the policy is active - Defender for Cloud Apps will detect and catalog it automatically
+3. In Defender for Cloud Apps, add the app under Conditional Access App Control apps if it is not already listed
 4. In the Defender portal, go to Conditional Access App Control apps and verify the app appears with status "Connected"
 
-For some applications, you may need to add the Defender for Cloud Apps certificate to the SAML configuration. The portal provides step-by-step instructions specific to each application.
+For non-Microsoft IdP applications, you may need to update the SAML single sign-on URL and add the Defender for Cloud Apps SAML certificate to the application configuration. The portal provides step-by-step instructions specific to each application.
 
 ## Step 2: Create a Conditional Access Policy with Session Controls
 
@@ -76,7 +76,7 @@ Configure the policy with these settings:
 - Exclude: Break-glass accounts
 - Cloud apps: Select the specific applications you want to control
 - Conditions > Client apps: Browser (session controls only work with browser sessions)
-- Conditions > Device state: Filter for unmanaged devices (devices not marked as compliant or hybrid Azure AD joined)
+- Conditions > Filter for devices: Include unmanaged devices (devices not marked as compliant or Microsoft Entra hybrid joined)
 
 **Session controls**:
 - Use Conditional Access App Control: Select "Use custom policy"
@@ -111,7 +111,7 @@ $policy = @{
         Devices = @{
             DeviceFilter = @{
                 Mode = "include"
-                Rule = "device.isCompliant -ne True -and device.trustType -ne 'ServerAD'"
+                Rule = 'device.isCompliant -ne "True" -and device.trustType -ne "ServerAD"'
             }
         }
     }
@@ -132,7 +132,7 @@ I recommend starting in report-only mode (`enabledForReportingButNotEnforced`) s
 
 Now create the actual enforcement rules in the Defender portal.
 
-Navigate to Cloud Apps > Policies > Policy management > Create policy > Session policy.
+Navigate to Cloud Apps > Policies > Policy management > Conditional Access tab > Create policy > Session policy.
 
 ### Policy: Block Downloads of Sensitive Files
 
@@ -142,7 +142,7 @@ This policy prevents users on unmanaged devices from downloading files that cont
 2. **Category**: DLP
 3. **Session control type**: Control file download (with inspection)
 4. **Activity source filter**:
-   - Device tag: Does not equal "Compliant" or "Azure AD joined"
+   - Device tag: Does not equal "Intune compliant" or "Microsoft Entra hybrid joined"
 5. **Files matching all of the following**:
    - Content inspection method: Built-in DLP
    - Sensitive information types: Credit Card Number, Social Security Number
@@ -154,10 +154,10 @@ This policy prevents users on unmanaged devices from downloading files that cont
 For visibility without blocking, create a monitoring policy.
 
 1. **Policy name**: "Monitor all downloads to unmanaged devices"
-2. **Session control type**: Monitor only
-3. **Activity source filter**: Device tag does not equal "Compliant"
-4. **Actions**: Log the activity (appears in the activity log for investigation)
-5. **Alerts**: Create an alert with daily summary
+2. **Session control type**: Control file download (with inspection)
+3. **Activity source filter**: Device tag does not equal "Intune compliant"
+4. **Actions**: Audit the activity (appears in the activity log for investigation)
+5. **Alerts**: Create alerts as needed, with a daily alert limit
 
 ### Policy: Protect Against Data Exfiltration with Clipboard Restrictions
 
@@ -176,14 +176,14 @@ Before enabling the Conditional Access policy for all users, test with a pilot g
 1. Add yourself and a few test users to the pilot group
 2. Enable the Conditional Access policy targeting only the pilot group
 3. Sign in to the controlled application from an unmanaged device
-4. Verify the URL shows the `.mcas.ms` suffix, indicating the session is proxied
+4. Verify the URL shows the `.mcas.ms` suffix in browsers other than Microsoft Edge, or the lock icon in Microsoft Edge, indicating the session is protected
 5. Try downloading a file - it should be blocked if it matches your DLP rules
 6. Check the Defender for Cloud Apps activity log to verify events are being captured
 
 ```bash
 # Check activity logs using the Defender for Cloud Apps API
 # This requires an API token from the MDCA portal
-curl -X GET "https://your-tenant.portal.cloudappsecurity.com/api/v1/activities/" \
+curl -XGET "https://<tenant_id>.<tenant_region>.portal.cloudappsecurity.com/api/v1/activities/" \
   -H "Authorization: Token YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"filters":{"policy":{"eq":["your-session-policy-id"]}}}' | python -m json.tool
@@ -197,9 +197,9 @@ Contractors need to view documents in SharePoint but should not be able to downl
 
 Configure the session policy to allow browsing and viewing but block the download action. Users can still read documents in the browser, including Office files through Office Online, but clicking the download button is blocked.
 
-### Scenario 2: Watermark Documents During Proxy Sessions
+### Scenario 2: Protect Documents on Download
 
-When users from unmanaged devices view documents, you can apply a dynamic watermark showing their email address and timestamp. This discourages screenshotting by making every screenshot traceable.
+When users from unmanaged devices download sensitive documents, you can use the Protect action to apply a Microsoft Purview sensitivity label and its encryption or permissions. The original file remains unchanged in the cloud app, while the downloaded copy is protected.
 
 ### Scenario 3: Enforce Step-Up Authentication for Sensitive Actions
 
@@ -213,7 +213,7 @@ Combine session controls with authentication context. When a user tries to perfo
 
 **Slow performance**: The reverse proxy adds latency. For applications where performance is critical, consider applying session controls only to unmanaged devices or high-risk conditions rather than all sessions.
 
-**Users see certificate warnings**: If the application uses certificate pinning, the Defender proxy cannot intercept the traffic. These applications need to be configured with the Defender for Cloud Apps root certificate.
+**Users see certificate warnings**: Verify that the protected application has a complete certificate chain and uses TLS 1.2 or later. Incomplete certificate chains can cause unexpected behavior when the application is monitored with Conditional Access App Control.
 
 ## Monitoring Session Control Effectiveness
 
