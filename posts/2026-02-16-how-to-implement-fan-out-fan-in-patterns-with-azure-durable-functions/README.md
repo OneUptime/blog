@@ -41,7 +41,7 @@ First, create a new Azure Functions project using the isolated worker model (the
 ```bash
 # Create a new Azure Functions project with the isolated worker model
 
-func init FanOutDemo --dotnet-isolated
+func init FanOutDemo --worker-runtime dotnet-isolated
 cd FanOutDemo
 
 # Add the Durable Functions NuGet package
@@ -54,7 +54,9 @@ The orchestrator is the brain of the operation. It defines the workflow logic - 
 
 ```csharp
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.DurableTask;
+using Microsoft.DurableTask.Client;
 using Microsoft.Extensions.Logging;
 
 // The orchestrator function coordinates the entire fan-out/fan-in workflow
@@ -183,7 +185,7 @@ public static async Task<HttpResponseData> StartBatchProcessing(
     logger.LogInformation("Started orchestration with ID {InstanceId}", instanceId);
 
     // Return the management URLs so the caller can check status
-    return await client.CreateCheckStatusResponseAsync(req, instanceId);
+    return client.CreateCheckStatusResponse(req, instanceId);
 }
 ```
 
