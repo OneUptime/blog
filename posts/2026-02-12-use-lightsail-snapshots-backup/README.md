@@ -8,7 +8,7 @@ Description: Protect your Lightsail resources with manual and automatic snapshot
 
 ---
 
-Snapshots are your safety net on Lightsail. They capture the complete state of an instance or database at a point in time, letting you restore or clone your resources whenever you need to. Lightsail offers both automatic daily snapshots and manual snapshots, and both are worth setting up properly.
+Snapshots are your safety net on Lightsail. They capture the complete state of an instance or database at a point in time, letting you restore or clone your resources whenever you need to. Lightsail offers automatic daily snapshots for instances and disks, automatic backups for managed databases, and manual snapshots, and all are worth setting up properly.
 
 ## Types of Snapshots
 
@@ -46,7 +46,7 @@ Snapshots can be taken while the instance is running. The snapshot captures the 
 
 ## Enabling Automatic Snapshots
 
-Automatic snapshots take a daily backup and retain the last 7 snapshots. Older snapshots are deleted automatically.
+For instances and disks, automatic snapshots take a daily backup and retain the last 7 snapshots. Older snapshots are deleted automatically.
 
 ```bash
 # Enable automatic snapshots for an instance
@@ -83,7 +83,7 @@ aws lightsail enable-add-on \
 
 ## Creating Database Snapshots
 
-Lightsail databases get automatic daily snapshots by default, but you should take manual snapshots before major changes.
+Lightsail databases get automatic backups by default, but you should take manual snapshots before major changes.
 
 ```bash
 # Create a manual database snapshot
@@ -99,7 +99,7 @@ aws lightsail get-relational-database-snapshot \
 
 ## Restoring from an Instance Snapshot
 
-Restore by creating a new instance from the snapshot. You can use the same or a different plan size.
+Restore by creating a new instance from the snapshot. You can use the same plan size or a larger one.
 
 ```bash
 # Create a new instance from a snapshot
@@ -148,11 +148,11 @@ aws lightsail create-relational-database-from-snapshot \
 aws lightsail create-relational-database-from-snapshot \
   --relational-database-name my-app-db-restored \
   --source-relational-database-name my-app-db \
-  --restore-time "2026-02-11T14:30:00Z" \
+  --restore-time 1770820200 \
   --availability-zone us-east-1a
 ```
 
-Point-in-time restore is incredibly useful - you can restore your database to any second within the last 7 days.
+Point-in-time restore is incredibly useful - you can restore your database in 5-minute increments within the last 7 days.
 
 ## Copying Snapshots to Another Region
 
@@ -235,7 +235,7 @@ echo "0 4 * * * /home/ubuntu/scripts/backup-lightsail.sh >> /var/log/lightsail-b
 
 Snapshot pricing is based on storage:
 - Instance snapshots: $0.05/GB per month
-- Database snapshots: Included in the database plan (automatic), $0.05/GB for manual
+- Database automatic backups: Included in the database plan; manual database snapshots are $0.05/GB per month
 - Disk snapshots: $0.05/GB per month
 
 A 40GB instance snapshot costs about $2/month. Keeping 30 days of daily snapshots would cost about $60/month. Adjust your retention policy based on your budget and recovery requirements.
@@ -273,7 +273,7 @@ aws lightsail delete-instance-snapshot \
 
 ## Backup Strategy Recommendations
 
-1. **Enable automatic snapshots** on all production instances and databases
+1. **Enable automatic snapshots** on all production instances and disks, and keep automatic database backups enabled
 2. **Take manual snapshots** before any significant change (upgrades, migrations, config changes)
 3. **Copy snapshots to another region** for disaster recovery
 4. **Test restores regularly** - a backup you can't restore isn't a backup
@@ -288,4 +288,4 @@ aws lightsail delete-instance-snapshot \
 4. Static IP not working after restore? Remember to reassign it to the new instance
 5. Application not working after restore? Check that all services are running
 
-Snapshots are your most important safety mechanism on Lightsail. Set up automatic snapshots on day one and never skip manual snapshots before changes. For the complete Lightsail setup, start with our guide on [setting up Lightsail for web applications](https://oneuptime.com/blog/post/2026-02-12-setup-amazon-lightsail-simple-web-applications/view).
+Snapshots are your most important safety mechanism on Lightsail. Set up automatic snapshots for instances and disks on day one, keep database backups enabled, and never skip manual snapshots before changes. For the complete Lightsail setup, start with our guide on [setting up Lightsail for web applications](https://oneuptime.com/blog/post/2026-02-12-setup-amazon-lightsail-simple-web-applications/view).
