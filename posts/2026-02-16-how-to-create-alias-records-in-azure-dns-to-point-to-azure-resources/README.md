@@ -42,6 +42,7 @@ graph TD
 - An Azure DNS zone for your domain
 - One or more Azure resources to point to (Public IP, Traffic Manager, CDN endpoint, or Front Door)
 - Azure CLI installed
+- The `Microsoft.Network` resource provider registered in the subscription that contains the DNS zone, and also in the target resource subscription if they are different subscriptions
 
 ## Step 1: Create an Azure DNS Zone
 
@@ -100,6 +101,8 @@ The `@` symbol represents the zone apex (the bare domain `myapp.com`). The `--ta
 ## Step 3: Create an Alias Record for Traffic Manager
 
 Point your apex domain to a Traffic Manager profile for global load balancing and failover.
+
+For A or AAAA alias records, the Traffic Manager profile must use external endpoints with IPv4 or IPv6 addresses, not FQDN endpoints.
 
 ```bash
 # Get the Traffic Manager profile resource ID
@@ -209,8 +212,8 @@ Here is a comparison to help you decide which to use:
 |---|---|---|
 | Zone apex support | Yes | No |
 | Auto-updates with resource IP | Yes | N/A (points to name) |
-| Supported record types | A, AAAA | CNAME only |
-| Points to | Azure resource ID | Hostname |
+| Supported record types | A, AAAA, CNAME | CNAME only |
+| Points to | Azure resource ID or another record set in the same zone | Hostname |
 | Works with non-Azure targets | No | Yes |
 | Dangling DNS prevention | Yes | No |
 
@@ -247,6 +250,7 @@ Not all Azure resources can be alias record targets. The supported types are:
 - Azure Traffic Manager profile
 - Azure CDN endpoint
 - Azure Front Door endpoint
+- Another DNS record set of the same type in the same Azure DNS zone
 
 Resources like App Services, Storage accounts, and VMs are not directly supported. For App Services, use a CNAME record for subdomains or route through Traffic Manager/Front Door for the apex.
 
@@ -259,4 +263,4 @@ az group delete --name rg-dns-demo --yes --no-wait
 
 ## Wrapping Up
 
-Azure DNS alias records solve two problems elegantly: pointing zone apex domains to Azure resources (which CNAME records cannot do) and keeping DNS records automatically synchronized when Azure resource IPs change. Use them for any Azure resource that has a public IP - Traffic Manager profiles, CDN endpoints, Front Door, and public IPs. They are simple to create, they prevent dangling DNS vulnerabilities, and they save you from the headache of manually updating DNS records when infrastructure changes.
+Azure DNS alias records solve two problems elegantly: pointing zone apex domains to supported Azure resources (which CNAME records cannot do) and keeping DNS records automatically synchronized when target resources change. Use them for supported targets like Traffic Manager profiles, CDN endpoints, Front Door endpoints, public IPs, and same-zone record sets. They are simple to create, they prevent dangling DNS vulnerabilities, and they save you from the headache of manually updating DNS records when infrastructure changes.
