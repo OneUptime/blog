@@ -20,7 +20,7 @@ Azure Health Data Services gives you a fully managed FHIR R4 server. You do not 
 
 - An Azure subscription
 - Azure CLI installed
-- An Azure AD tenant for authentication
+- A Microsoft Entra ID tenant for authentication
 - Basic familiarity with REST APIs and JSON
 
 ## Step 1: Create the Azure Health Data Services Workspace
@@ -51,15 +51,18 @@ Within the workspace, create a FHIR service instance:
 ```bash
 # Create the FHIR service
 FHIR_SERVICE_NAME="fhir-clinical"
+TENANT_ID=$(az account show --query tenantId -o tsv)
 
-az healthcareapis fhir-service create \
+az healthcareapis workspace fhir-service create \
     --name $FHIR_SERVICE_NAME \
     --workspace-name $WORKSPACE_NAME \
     --resource-group $RESOURCE_GROUP \
     --location $LOCATION \
     --kind "fhir-R4" \
-    --authority "https://login.microsoftonline.com/<tenant-id>" \
-    --audience "https://${WORKSPACE_NAME}-${FHIR_SERVICE_NAME}.fhir.azurehealthcareapis.com"
+    --authentication-configuration \
+        authority="https://login.microsoftonline.com/${TENANT_ID}" \
+        audience="https://${WORKSPACE_NAME}-${FHIR_SERVICE_NAME}.fhir.azurehealthcareapis.com" \
+        smart-proxy-enabled=false
 ```
 
 The deployment takes a few minutes. Once complete, your FHIR server is accessible at:
@@ -67,12 +70,12 @@ The deployment takes a few minutes. Once complete, your FHIR server is accessibl
 
 ## Step 3: Configure Authentication
 
-Azure Health Data Services uses Azure AD for authentication. You need to register an application and assign the appropriate FHIR roles.
+Azure Health Data Services uses Microsoft Entra ID for authentication. You need to register an application and assign the appropriate FHIR roles.
 
-### Register an Azure AD Application
+### Register a Microsoft Entra Application
 
 ```bash
-# Register an application in Azure AD for FHIR access
+# Register an application in Microsoft Entra ID for FHIR access
 APP_NAME="fhir-client-app"
 
 # Create the app registration
@@ -87,7 +90,7 @@ CLIENT_SECRET=$(az ad app credential reset \
     --query password -o tsv)
 
 # Create a service principal for the app
-az ad sp create --id $APP_ID
+SP_OBJECT_ID=$(az ad sp create --id $APP_ID --query id -o tsv)
 
 echo "Client ID: $APP_ID"
 echo "Client Secret: $CLIENT_SECRET"
@@ -99,21 +102,22 @@ Azure Health Data Services has built-in roles for FHIR access:
 
 ```bash
 # Get the FHIR service resource ID
-FHIR_ID=$(az healthcareapis fhir-service show \
+FHIR_ID=$(az healthcareapis workspace fhir-service show \
     --name $FHIR_SERVICE_NAME \
     --workspace-name $WORKSPACE_NAME \
     --resource-group $RESOURCE_GROUP \
     --query id -o tsv)
 
 # Assign the FHIR Data Contributor role to the service principal
-# This role allows read and write access to FHIR data
+# This role allows all FHIR data plane operations
 az role assignment create \
     --role "FHIR Data Contributor" \
-    --assignee $APP_ID \
+    --assignee-object-id $SP_OBJECT_ID \
+    --assignee-principal-type ServicePrincipal \
     --scope $FHIR_ID
 
 # For read-only access, use "FHIR Data Reader" instead
-# For admin operations, use "FHIR Data Exporter" or "FHIR Data Importer"
+# For import/export workflows, use "FHIR Data Importer" or "FHIR Data Exporter"
 ```
 
 ## Step 4: Test the FHIR Server
@@ -124,7 +128,6 @@ Now let us verify the FHIR server is working by performing basic operations.
 
 ```bash
 # Get an OAuth2 access token for the FHIR server
-TENANT_ID=$(az account show --query tenantId -o tsv)
 FHIR_URL="https://${WORKSPACE_NAME}-${FHIR_SERVICE_NAME}.fhir.azurehealthcareapis.com"
 
 TOKEN=$(curl -s -X POST \
@@ -288,14 +291,28 @@ If you are building a web application that accesses the FHIR API directly, you n
 
 ```bash
 # Update FHIR service with CORS settings
-az healthcareapis fhir-service update \
+az healthcareapis workspace fhir-service create \
     --name $FHIR_SERVICE_NAME \
     --workspace-name $WORKSPACE_NAME \
     --resource-group $RESOURCE_GROUP \
-    --cors-origins "https://myapp.example.com" \
-    --cors-headers "Authorization,Content-Type,Accept" \
-    --cors-methods "GET,POST,PUT,DELETE" \
-    --cors-max-age 600
+    --location $LOCATION \
+    --kind "fhir-R4" \
+    --authentication-configuration \
+        authority="https://login.microsoftonline.com/${TENANT_ID}" \
+        audience="https://${WORKSPACE_NAME}-${FHIR_SERVICE_NAME}.fhir.azurehealthcareapis.com" \
+        smart-proxy-enabled=false \
+    --cors-configuration \
+        origins="https://myapp.example.com" \
+        headers="Authorization" \
+        headers="Content-Type" \
+        headers="Accept" \
+        methods="GET" \
+        methods="POST" \
+        methods="PUT" \
+        methods="DELETE" \
+        methods="OPTIONS" \
+        max-age=600 \
+        allow-credentials=false
 ```
 
 ## Networking and Security
@@ -303,18 +320,23 @@ az healthcareapis fhir-service update \
 For production deployments, restrict network access to your FHIR server:
 
 ```bash
-# Enable private endpoints for the FHIR service
+# Enable a private endpoint for the workspace
+WORKSPACE_ID=$(az healthcareapis workspace show \
+    --name $WORKSPACE_NAME \
+    --resource-group $RESOURCE_GROUP \
+    --query id -o tsv)
+
 az network private-endpoint create \
     --name pe-fhir \
     --resource-group $RESOURCE_GROUP \
     --vnet-name vnet-health \
     --subnet subnet-private-endpoints \
-    --private-connection-resource-id $FHIR_ID \
-    --group-id fhirservices \
+    --private-connection-resource-id $WORKSPACE_ID \
+    --group-id healthcareworkspace \
     --connection-name fhir-connection
 ```
 
-This ensures that FHIR API traffic stays on your private network and is not exposed to the public internet.
+Private Link is configured at the workspace level and applies to the FHIR services in that workspace. After the private endpoint is approved and DNS is configured, FHIR API traffic can stay on your private network instead of using the public endpoint.
 
 ## Monitoring and Auditing
 
@@ -333,4 +355,4 @@ Audit logs are critical in healthcare. Regulations like HIPAA require that you t
 
 ## Summary
 
-Deploying a FHIR server with Azure Health Data Services gives you a managed, standards-compliant platform for healthcare data exchange. The setup involves creating a workspace, deploying the FHIR service, configuring Azure AD authentication, and assigning appropriate roles. From there, you can create and query FHIR resources through a standard REST API. For production, add private networking, audit logging, and CORS configuration for web clients. The FHIR standard combined with Azure's managed infrastructure lets you focus on building healthcare applications instead of managing database servers and worrying about specification compliance.
+Deploying a FHIR server with Azure Health Data Services gives you a managed, standards-compliant platform for healthcare data exchange. The setup involves creating a workspace, deploying the FHIR service, configuring Microsoft Entra authentication, and assigning appropriate roles. From there, you can create and query FHIR resources through a standard REST API. For production, add private networking, audit logging, and CORS configuration for web clients. The FHIR standard combined with Azure's managed infrastructure lets you focus on building healthcare applications instead of managing database servers and worrying about specification compliance.
