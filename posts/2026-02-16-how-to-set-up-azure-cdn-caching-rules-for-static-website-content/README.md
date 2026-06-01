@@ -10,7 +10,7 @@ Description: Learn how to configure Azure CDN caching rules to optimize delivery
 
 A static website with HTML files, CSS stylesheets, JavaScript bundles, images, and fonts is a perfect candidate for CDN caching. These files change infrequently, and serving them from edge locations close to users dramatically reduces load times. But caching is not a set-it-and-forget-it feature. Cache too aggressively and users see stale content after deployments. Cache too conservatively and you negate the CDN's purpose.
 
-This guide covers how to set up Azure CDN caching rules that balance performance with freshness. We will configure different cache durations for different file types, handle cache-busted assets, and set up purge workflows for deployments.
+This guide covers how to set up Azure CDN caching rules that balance performance with freshness for an existing Azure CDN Standard from Microsoft (classic) endpoint. We will configure different cache durations for different file types, handle cache-busted assets, and set up purge workflows for deployments.
 
 ## Understanding CDN Caching
 
@@ -35,13 +35,13 @@ flowchart TD
 ## Prerequisites
 
 - An Azure subscription
-- An Azure CDN profile and endpoint (Standard Microsoft tier for rules engine support)
+- An existing Azure CDN profile and endpoint (Standard Microsoft tier for rules engine support). New Azure CDN Standard from Microsoft (classic) profile creation is no longer supported; use Azure Front Door Standard or Premium for new deployments.
 - A static website hosted on Azure Blob Storage, App Service, or any HTTP origin
 - Azure CLI installed
 
-## Step 1: Set Up the CDN with Your Static Website Origin
+## Step 1: Set Up Your Static Website Origin
 
-If you already have a CDN endpoint, skip to Step 2.
+If you already have a static website origin, skip to Step 2. Use the origin hostname with your existing CDN endpoint.
 
 ```bash
 # Create a resource group
@@ -69,29 +69,17 @@ ORIGIN_URL=$(az storage account show \
   --name ststaticsite2026 \
   --query "primaryEndpoints.web" --output tsv | sed 's|https://||;s|/$||')
 
-# Create a CDN profile
-az cdn profile create \
-  --resource-group rg-cdn-caching-demo \
-  --name cdn-staticsite \
-  --sku Standard_Microsoft
-
-# Create a CDN endpoint
-az cdn endpoint create \
-  --resource-group rg-cdn-caching-demo \
-  --profile-name cdn-staticsite \
-  --name staticsite-cdn \
-  --origin $ORIGIN_URL \
-  --origin-host-header $ORIGIN_URL \
-  --enable-compression true \
-  --content-types-to-compress "text/html" "text/css" "application/javascript" "application/json" "image/svg+xml" "text/plain"
+echo "Use this origin hostname with your existing CDN endpoint: $ORIGIN_URL"
 ```
 
-## Step 2: Configure Global Caching Behavior
+In the remaining commands, replace `rg-cdn-caching-demo`, `cdn-staticsite`, and `staticsite-cdn` with your existing CDN resource group, profile, and endpoint names.
 
-Set the default caching behavior for the entire endpoint. This acts as the baseline that more specific rules override.
+## Step 2: Configure Query String Caching Behavior
+
+Set the endpoint's query string caching behavior. This controls how the CDN cache key treats query strings.
 
 ```bash
-# Set the global caching behavior to honor origin headers
+# Ignore query strings in the CDN cache key
 az cdn endpoint update \
   --resource-group rg-cdn-caching-demo \
   --profile-name cdn-staticsite \
@@ -102,7 +90,7 @@ az cdn endpoint update \
 The `--query-string-caching-behavior` options are:
 
 - `IgnoreQueryString`: All requests share the same cache regardless of query string. Best for static content.
-- `BypassCaching`: Never cache. Bad for performance.
+- `BypassCaching`: Do not cache requests that include query strings. Bad for performance if query strings are common.
 - `UseQueryString`: Each unique query string gets a separate cache entry. Useful for cache-busting with versioned URLs.
 
 ## Step 3: Create Caching Rules for Different File Types
@@ -127,7 +115,7 @@ az cdn endpoint rule add \
   --match-values "html" "htm" \
   --action-name CacheExpiration \
   --cache-behavior Override \
-  --cache-duration "0.00:05:00"
+  --cache-duration "00:05:00"
 
 # Rule 2: Cache CSS and JS for 365 days (for cache-busted files)
 az cdn endpoint rule add \
@@ -309,7 +297,7 @@ curl -I https://staticsite-cdn.azureedge.net/app.a1b2c3.css
 ## Cleanup
 
 ```bash
-# Delete all resources
+# Delete the demo origin resource group if you created it
 az group delete --name rg-cdn-caching-demo --yes --no-wait
 ```
 
