@@ -29,8 +29,8 @@ flowchart LR
 ```
 
 The difference is measurable. With accelerated networking, you can expect:
-- Latency reduced by up to 50% compared to non-accelerated networking.
-- Throughput increased significantly, closer to the NIC's line rate.
+- Lower latency and reduced jitter compared to non-accelerated networking.
+- Higher packets per second and throughput closer to the VM's network bandwidth limit.
 - CPU utilization for network processing reduced, freeing up cycles for your application.
 
 ## Supported VM Sizes
@@ -44,29 +44,35 @@ Not all VM sizes support accelerated networking. Generally, it is supported on m
 - L-series
 - N-series (GPU VMs)
 
-The B-series (burstable) VMs generally do not support accelerated networking, which is a common gotcha. Check whether your specific size supports it:
+Some burstable B-series sizes do not support accelerated networking, while newer B-series v2 sizes can support it. Check whether your specific size supports it:
 
 ```bash
 # Check if a VM size supports accelerated networking
 
-az vm list-sizes --location eastus \
-  --query "[?name=='Standard_D4s_v5'].{Name:name, AccelNet:acceleratedNetworkingEnabled}" \
+az vm list-skus \
+  --location eastus \
+  --all true \
+  --resource-type virtualMachines \
+  --query "[?name=='Standard_D4s_v5'].{Name:name, AccelNet:capabilities[?name=='AcceleratedNetworkingEnabled'].value | [0]}" \
   --output table
 ```
 
 ## Supported Operating Systems
 
-Accelerated networking requires kernel drivers in the guest OS. Most modern OS images on Azure come with the required drivers pre-installed:
+Accelerated networking requires guest OS support for the SR-IOV device and dynamic binding to the synthetic interface. Many current Azure Marketplace images come with the required drivers pre-installed, including:
 
-- Ubuntu 18.04 LTS and later
-- RHEL 7.4 and later
-- CentOS 7.4 and later
-- Debian 9 and later
-- SUSE Linux Enterprise Server 15 and later
-- Windows Server 2016 and later
-- Windows 10 and later
+- Ubuntu 22.04 LTS and later
+- Azure Linux 3
+- RHEL 9.6 and later
+- AlmaLinux 9.6 and later
+- Rocky Linux 9.6 and later
+- Debian 12 and later
+- SUSE Linux Enterprise Server 15 SP6 and later
+- Oracle Linux UEK R7 and later
+- Windows Server 2016, 2019, and 2022
+- Windows 11
 
-If you are using a custom image, you may need to install the Mellanox drivers manually.
+If you are using a custom image, you may need to install or update the NVIDIA/Mellanox ConnectX or Microsoft Azure Network Adapter (MANA) drivers manually.
 
 ## Enabling Accelerated Networking on a New VM
 
@@ -84,7 +90,7 @@ az vm create \
   --accelerated-networking true
 ```
 
-That is all it takes. Azure provisions the VM with a NIC that has SR-IOV enabled, and the VM's OS picks up the Mellanox virtual function driver during boot.
+That is all it takes. Azure provisions the VM with a NIC that has SR-IOV enabled, and the VM's OS picks up the NVIDIA/Mellanox or MANA virtual function driver during boot.
 
 ## Enabling Accelerated Networking on an Existing VM
 
@@ -137,11 +143,11 @@ This should return `true`.
 **From inside the Linux VM:**
 
 ```bash
-# Check if the Mellanox driver is loaded (indicates SR-IOV is active)
-lspci | grep -i mellanox
+# Check if an accelerated networking PCI device is present
+lspci | grep -Ei 'mellanox|00ba|mana'
 ```
 
-If accelerated networking is working, you will see a Mellanox ConnectX device listed. If there is no output, the SR-IOV virtual function is not attached.
+If accelerated networking is working, you will see a Mellanox ConnectX device or a Microsoft Azure Network Adapter VF listed. If there is no output, the SR-IOV virtual function might not be attached.
 
 You can also check the network interface:
 
@@ -150,7 +156,7 @@ You can also check the network interface:
 ip link show
 ```
 
-You should see two network interfaces: the synthetic interface (eth0) and the Mellanox VF interface. The VF interface handles the actual data path.
+You should see two network interfaces: the synthetic interface (eth0) and the VF interface. Applications should still bind to the synthetic interface, while most traffic flows over the VF data path.
 
 Another check:
 
@@ -159,17 +165,17 @@ Another check:
 ethtool -i eth0
 ```
 
-The driver should show `hv_netvsc` for the synthetic interface, with the Mellanox VF visible as a slave device.
+The driver should show `hv_netvsc` for the synthetic interface, with the VF visible as a paired device.
 
 **From inside a Windows VM:**
 
-Open Device Manager and look for "Mellanox ConnectX" under Network Adapters. If it is there, accelerated networking is active.
+Open Device Manager and look for a Mellanox/NVIDIA ConnectX adapter or Microsoft Azure Network Adapter under Network Adapters. If it is there, accelerated networking is active.
 
 Or use PowerShell:
 
 ```powershell
-# Check for the Mellanox adapter in Windows
-Get-NetAdapter | Where-Object {$_.InterfaceDescription -like "*Mellanox*"}
+# Check for the accelerated networking adapter in Windows
+Get-NetAdapter | Where-Object {$_.InterfaceDescription -like "*Mellanox*" -or $_.InterfaceDescription -like "*Azure Network Adapter*"}
 ```
 
 ## Performance Testing
@@ -202,11 +208,11 @@ sockperf sr --daemonize
 sockperf ping-pong -i 10.0.1.4 -t 30
 ```
 
-You should see round-trip latencies in the range of 50-100 microseconds with accelerated networking, compared to 200-500 microseconds without.
+You should see lower latency and less jitter when accelerated networking is enabled, but the exact numbers depend on VM size, region, traffic path, and workload.
 
 ## Common Issues and Troubleshooting
 
-**Mellanox device not showing up**: Make sure the VM size supports accelerated networking and that the NIC has it enabled. Also verify that the OS image has the required drivers. Older custom images might need a manual driver install.
+**Accelerated networking device not showing up**: Make sure the VM size supports accelerated networking and that the NIC has it enabled. Also verify that the OS image has the required drivers. Older custom images might need a manual driver install.
 
 **Performance not improving**: Check that the VF is actually being used for traffic. On Linux, the `ethtool -S eth0` command shows statistics. Look for traffic on the VF interface.
 
