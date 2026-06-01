@@ -204,7 +204,7 @@ The main template links to the others:
 
 ## Hosting Linked Templates
 
-Linked templates must be accessible via a URL. The common approaches are:
+Linked templates are commonly staged at a URL. If you use Template Specs, you can reference the template spec resource ID instead of hosting the template at a separate URL. The common approaches are:
 
 ### Azure Storage Account with SAS Token
 
@@ -261,7 +261,7 @@ One of the most powerful features of nested deployments is the ability to deploy
 
 ```json
 {
-  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
     "networkResourceGroup": {
