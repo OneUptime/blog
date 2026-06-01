@@ -153,7 +153,7 @@ resource "azurerm_batch_pool" "linux_general" {
 
     # Make resource files available to the start task
     resource_file {
-      http_url  = "https://stbatchdata001.blob.core.windows.net/input/setup-script.sh"
+      http_url  = "https://stbatchdata001.blob.core.windows.net/input/setup-script.sh?<SAS_TOKEN_WITH_READ_PERMISSION>"
       file_path = "setup-script.sh"
     }
   }
@@ -194,8 +194,9 @@ resource "azurerm_batch_pool" "autoscale" {
     # Auto-scale formula
     # This scales based on pending tasks with min/max bounds
     formula = <<-EOT
-      // Get the number of pending tasks (waiting and active)
-      pendingTaskCount = $PendingTasks.GetSample(1);
+      // Get the average pending task count from recent samples
+      samplePercent = $PendingTasks.GetSamplePercent(TimeInterval_Minute * 5);
+      pendingTaskCount = samplePercent < 70 ? max(0, $PendingTasks.GetSample(1)) : avg($PendingTasks.GetSample(TimeInterval_Minute * 5));
 
       // Calculate desired nodes: 1 node per 4 tasks, minimum 1, maximum 20
       desiredNodes = max(1, min(20, pendingTaskCount / 4));
@@ -206,7 +207,7 @@ resource "azurerm_batch_pool" "autoscale" {
       // Use low-priority nodes for additional capacity (50% of dedicated)
       $TargetLowPriorityNodes = desiredNodes / 2;
 
-      // Allow 10 minutes for scaling operations
+      // Wait for running tasks to finish before removing nodes
       $NodeDeallocationOption = taskcompletion;
     EOT
   }
@@ -233,7 +234,7 @@ resource "azurerm_batch_pool" "autoscale" {
 }
 ```
 
-The auto-scale formula language is specific to Azure Batch. Key variables include `$PendingTasks` for work waiting to be scheduled, `$ActiveTasks` for currently running tasks, and `$RunningTasks` for tasks actively executing code. The `$NodeDeallocationOption = taskcompletion` setting ensures that when scaling down, nodes finish their current tasks before being removed.
+The auto-scale formula language is specific to Azure Batch. Key variables include `$PendingTasks` for queued or running tasks, `$ActiveTasks` for tasks that are ready to execute but are not yet running, and `$RunningTasks` for tasks actively executing code. The `$NodeDeallocationOption = taskcompletion` setting ensures that when scaling down, nodes finish their current tasks before being removed.
 
 ## Network Configuration
 
@@ -281,8 +282,9 @@ resource "azurerm_batch_pool" "vnet_pool" {
   network_configuration {
     subnet_id = azurerm_subnet.batch_nodes.id
 
-    # Public IP configuration
-    public_address_provisioning_type = "NoPublicIPAddresses"
+    # Public IP configuration. Use NoPublicIPAddresses only with simplified node
+    # communication and a nodeManagement private endpoint.
+    public_address_provisioning_type = "BatchManaged"
   }
 
   start_task {
