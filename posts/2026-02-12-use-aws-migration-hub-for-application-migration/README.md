@@ -12,6 +12,8 @@ Migrating applications to AWS involves multiple tools, teams, and timelines. Wit
 
 Migration Hub is a single dashboard for tracking migrations across multiple AWS and partner tools. It doesn't perform the migration itself - it aggregates status from the tools that do the actual work and gives you a unified view.
 
+As of November 7, 2025, AWS Migration Hub is no longer open to new customers. Existing customers can still use it, and new migration programs should evaluate AWS Transform for similar capabilities.
+
 ## How Migration Hub Works
 
 Migration Hub sits at the center of your migration workflow. Discovery tools feed it information about your on-premises environment. Migration tools report progress as they move workloads. You get a single dashboard showing everything.
@@ -51,12 +53,18 @@ Before migrating, you need to understand what you have. Migration Hub supports t
 
 ### Agentless Discovery
 
-The Discovery Connector (a VMware appliance) scans your vCenter environment and reports server details without installing anything on the servers.
+The Application Discovery Service Agentless Collector scans supported environments such as VMware vCenter and reports server details without installing anything on the servers. The older Discovery Connector reached end of support on November 17, 2025.
 
 ```bash
-# After setting up the Discovery Connector in vCenter, start collection
+# After setting up the Agentless Collector, check collector status
+aws discovery describe-agents
+```
+
+If you are using a Discovery Agent, you can start collection from the CLI:
+
+```bash
 aws discovery start-data-collection-by-agent-ids \
-    --agent-ids "connector-123"
+    --agent-ids "agent-123"
 
 # Check discovery status
 aws discovery describe-agents
@@ -86,22 +94,18 @@ aws discovery list-configurations \
 Once discovery is complete, group servers into applications. This is critical for tracking migration progress at the application level rather than the server level.
 
 ```bash
-# Create a migration task (application grouping)
-aws mgh notify-application-state \
-    --application-id "app-payment-service" \
-    --status "NOT_STARTED"
+# Create an application group
+aws discovery create-application \
+    --name "payment-service" \
+    --description "Payment service application servers"
 
-# Associate discovered servers with the application
-aws mgh associate-discovered-resource \
-    --progress-update-stream "payment-service-stream" \
-    --migration-task-name "migrate-payment-service" \
-    --discovered-resource '{
-        "ConfigurationId": "d-server-abc123",
-        "Description": "Payment API server"
-    }'
+# Associate discovered servers with the application configuration ID returned above
+aws discovery associate-configuration-items-to-application \
+    --application-configuration-id "d-application-abc123" \
+    --configuration-ids "d-server-abc123" "d-server-def456"
 ```
 
-You can also group applications through the console, which is often easier for initial setup. The console provides a drag-and-drop interface for grouping discovered servers into applications.
+You can also group applications through the console, which is often easier for initial setup. In the console, select servers and choose **Group as application** to create a new application or add servers to an existing one.
 
 ## Creating a Migration Strategy
 
@@ -173,17 +177,35 @@ As migrations execute, update the status in Migration Hub.
 aws mgh create-progress-update-stream \
     --progress-update-stream-name "payment-service-migration"
 
+# Register the migration task before sending updates
+aws mgh import-migration-task \
+    --progress-update-stream "payment-service-migration" \
+    --migration-task-name "migrate-payment-api"
+
+# Optionally map the migration task to a discovered server
+aws mgh associate-discovered-resource \
+    --progress-update-stream "payment-service-migration" \
+    --migration-task-name "migrate-payment-api" \
+    --discovered-resource '{
+        "ConfigurationId": "d-server-abc123",
+        "Description": "Payment API server"
+    }'
+
 # Update migration task status
 aws mgh notify-migration-task-state \
     --progress-update-stream "payment-service-migration" \
     --migration-task-name "migrate-payment-api" \
-    --task '{"Status": "IN_PROGRESS", "StatusDetail": "Replicating server data"}'
+    --task '{"Status": "IN_PROGRESS", "StatusDetail": "Replicating server data", "ProgressPercent": 35}' \
+    --update-date-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --next-update-seconds 3600
 
 # Mark migration complete
 aws mgh notify-migration-task-state \
     --progress-update-stream "payment-service-migration" \
     --migration-task-name "migrate-payment-api" \
-    --task '{"Status": "COMPLETED", "StatusDetail": "Server migrated and validated"}'
+    --task '{"Status": "COMPLETED", "StatusDetail": "Server migrated and validated", "ProgressPercent": 100}' \
+    --update-date-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --next-update-seconds 3600
 ```
 
 When you use Application Migration Service or Database Migration Service, they automatically report progress to Migration Hub. You don't need to update manually.
@@ -262,13 +284,12 @@ The Migration Hub dashboard shows:
 
 ```bash
 # Get overall migration progress
-aws mgh list-migration-tasks \
-    --progress-update-stream "payment-service-migration"
+aws mgh list-migration-tasks
 
-# Get application-level status
+# Get resources associated with a migration task
 aws mgh list-discovered-resources \
     --progress-update-stream "payment-service-migration" \
-    --migration-task-name "migrate-payment-service"
+    --migration-task-name "migrate-payment-api"
 ```
 
 ## Post-Migration Validation
