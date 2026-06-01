@@ -32,7 +32,7 @@ flowchart TD
     H --> I[Marked as compliant]
 ```
 
-One important detail: policies with `DeployIfNotExists` already handle new resources automatically. When a new resource is created that triggers the policy, Azure will deploy the required configuration within about 15 minutes. Remediation tasks are specifically for fixing resources that already existed before the policy was assigned.
+One important detail: policies with `DeployIfNotExists` already handle new or updated resources automatically. When a resource request triggers the policy, Azure evaluates the related resources after the policy definition's configurable `evaluationDelay` value, which defaults to 10 minutes, and then runs the deployment if the resource is still non-compliant. Remediation tasks are specifically for fixing resources that already existed before the policy was assigned.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ To create remediation tasks, you need:
 
 - **Owner** or **Resource Policy Contributor** role on the scope where the policy is assigned
 - A policy assignment that uses `DeployIfNotExists` or `Modify` effect
-- The policy assignment must have a managed identity (created automatically when using these effects)
+- The policy assignment must have a managed identity with the RBAC permissions required by the policy definition
 
 ## Step 1: Verify the Policy Assignment Has a Managed Identity
 
@@ -71,6 +71,8 @@ az policy assignment identity assign \
 
 The `--role` parameter grants the managed identity the permissions it needs to make changes. Use the least-privilege role that the remediation requires. For most `DeployIfNotExists` policies, `Contributor` works, but some only need a specific role like `Monitoring Contributor`.
 
+If you are adding the identity and role assignment yourself, you also need permission to create role assignments, such as **Owner** or **User Access Administrator**, at the identity scope.
+
 ## Step 2: View Non-Compliant Resources
 
 Before creating a remediation task, check how many resources need fixing.
@@ -94,10 +96,10 @@ Here is how to create a remediation task using the CLI.
 az policy remediation create \
   --name "fix-diagnostics-$(date +%Y%m%d)" \
   --policy-assignment "require-diagnostics-settings" \
-  --resource-group "" \
-  --definition-reference-id "" \
   --resource-discovery-mode ReEvaluateCompliance
 ```
+
+If the assignment is for an initiative, include `--definition-reference-id` with the policy definition reference ID for the specific policy inside the initiative.
 
 The `--resource-discovery-mode` flag is important. It has two options:
 
@@ -138,7 +140,7 @@ The output includes a deployment summary showing how many resources were success
 ```bash
 # List all remediation tasks and their statuses
 az policy remediation list \
-  --query '[].{name: name, status: provisioningState, succeeded: deploymentStatus.totalDeployments}' \
+  --query '[].{name: name, status: provisioningState, succeeded: deploymentStatus.successfulDeployments, failed: deploymentStatus.failedDeployments}' \
   --output table
 ```
 
@@ -156,7 +158,7 @@ az policy remediation deployment list \
   --output json
 ```
 
-**Resource locks**: If a resource has a delete or read-only lock, the remediation deployment may fail. You will need to temporarily remove the lock or exclude the resource from remediation.
+**Resource locks**: If a resource has a read-only lock, or if the remediation needs to delete or replace a child resource protected by a delete lock, the remediation deployment may fail. You will need to temporarily remove the lock or exclude the resource from remediation.
 
 **Template errors**: For `DeployIfNotExists` policies, the remediation runs an ARM template. If the template has errors or references parameters that are not available, the deployment will fail. Check the deployment details in the resource group's deployment history.
 
@@ -173,13 +175,13 @@ Create a runbook that runs on a schedule and creates remediation tasks for all n
 $subscriptionId = "YOUR_SUBSCRIPTION_ID"
 Set-AzContext -SubscriptionId $subscriptionId
 
-# Get all policy assignments with DeployIfNotExists or Modify effect
+# Get all policy assignments
 $assignments = Get-AzPolicyAssignment
 
 foreach ($assignment in $assignments) {
-    # Check if there are non-compliant resources
+    # Check if there are non-compliant resources for remediable effects
     $states = Get-AzPolicyState -PolicyAssignmentName $assignment.Name `
-        -Filter "complianceState eq 'NonCompliant'" -Top 1
+        -Filter "complianceState eq 'NonCompliant' and (policyDefinitionAction eq 'deployIfNotExists' or policyDefinitionAction eq 'modify')" -Top 1
 
     if ($states.Count -gt 0) {
         $taskName = "auto-remediate-$($assignment.Name)-$(Get-Date -Format 'yyyyMMdd-HHmm')"
