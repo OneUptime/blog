@@ -8,7 +8,7 @@ Description: Learn how to create, read, update, and delete documents in Azure Co
 
 ---
 
-Azure Cosmos DB is a globally distributed, multi-model database service. If you need low-latency reads and writes across multiple regions, it is hard to beat. The azure-cosmos Python SDK gives you direct access to the SQL (Core) API, which is the most commonly used API for Cosmos DB. In this post, I will cover the full CRUD lifecycle - creating databases, containers, and documents, plus querying, updating, and deleting data.
+Azure Cosmos DB is a globally distributed, multi-model database service. If you need low-latency reads and writes across multiple regions, it is hard to beat. The azure-cosmos Python SDK gives you direct access to the API for NoSQL, formerly known as the SQL (Core) API. In this post, I will cover the full CRUD lifecycle - creating databases, containers, and documents, plus querying, updating, and deleting data.
 
 ## Setting Up
 
@@ -23,7 +23,7 @@ pip install azure-cosmos azure-identity
 You need a Cosmos DB account. Create one using the Azure CLI if you do not have one yet.
 
 ```bash
-# Create a Cosmos DB account with the SQL API
+# Create a Cosmos DB account with the API for NoSQL
 az cosmosdb create \
     --name my-cosmos-account \
     --resource-group my-rg \
@@ -33,7 +33,7 @@ az cosmosdb create \
 
 ## Connecting to Cosmos DB
 
-You can connect using either a connection key or Azure AD authentication. I will show both.
+You can connect using either a connection key or Microsoft Entra ID authentication. I will show both.
 
 ```python
 from azure.cosmos import CosmosClient
@@ -43,14 +43,14 @@ endpoint = "https://my-cosmos-account.documents.azure.com:443/"
 key = "your-primary-key-here"
 client = CosmosClient(endpoint, credential=key)
 
-# Option 2: Using Azure AD (recommended for production)
+# Option 2: Using Microsoft Entra ID (recommended for production)
 from azure.identity import DefaultAzureCredential
 
 credential = DefaultAzureCredential()
 client = CosmosClient(endpoint, credential=credential)
 ```
 
-For Azure AD authentication, you need to assign the "Cosmos DB Built-in Data Contributor" role to your identity. This is a Cosmos DB-specific role, not a regular Azure RBAC role.
+For Microsoft Entra ID authentication, you need to assign the "Cosmos DB Built-in Data Contributor" role to your identity. This is a Cosmos DB-specific role, not a regular Azure RBAC role.
 
 ```bash
 # Assign Cosmos DB data plane role
@@ -67,6 +67,8 @@ az cosmosdb sql role assignment create \
 Cosmos DB organizes data into databases and containers. A container is similar to a table in a relational database. Each container has a partition key, which is critical for performance.
 
 ```python
+from azure.cosmos import PartitionKey
+
 # Create a database (or get existing one)
 database_name = "ecommerce"
 database = client.create_database_if_not_exists(id=database_name)
@@ -76,7 +78,7 @@ print(f"Database '{database_name}' ready")
 container_name = "products"
 container = database.create_container_if_not_exists(
     id=container_name,
-    partition_key={"paths": ["/category"], "kind": "Hash"},
+    partition_key=PartitionKey(path="/category"),
     offer_throughput=400  # 400 RU/s is the minimum
 )
 print(f"Container '{container_name}' ready")
@@ -112,7 +114,7 @@ created_item = container.create_item(body=product)
 print(f"Created product: {created_item['name']} (id: {created_item['id']})")
 ```
 
-You can also insert multiple documents in a loop. For bulk operations, consider using the bulk execution library for better throughput.
+You can also insert multiple documents in a loop. For high-volume writes in Python, parallelize writes carefully and rely on the SDK's retry handling; the Python SDK does not currently implement bulk requests.
 
 ```python
 # Insert multiple products
@@ -171,7 +173,7 @@ parameters = [{"name": "@category", "value": "electronics"}]
 items = container.query_items(
     query=query,
     parameters=parameters,
-    enable_cross_partition_query=False  # Single partition, more efficient
+    partition_key="electronics"  # Single partition, more efficient
 )
 
 for item in items:
@@ -227,8 +229,6 @@ For partial updates, use the patch operation. This is more efficient since you o
 
 ```python
 # Partial update using patch operations
-from azure.cosmos import PartitionKey
-
 operations = [
     {"op": "replace", "path": "/price", "value": 59.99},
     {"op": "set", "path": "/on_sale", "value": True},
@@ -263,7 +263,8 @@ To delete multiple documents based on a query, you need to query first and then 
 query = "SELECT * FROM products p WHERE p.category = @category AND p.in_stock = false"
 items = container.query_items(
     query=query,
-    parameters=[{"name": "@category", "value": "electronics"}]
+    parameters=[{"name": "@category", "value": "electronics"}],
+    partition_key="electronics"
 )
 
 deleted_count = 0
@@ -279,7 +280,8 @@ print(f"Deleted {deleted_count} out-of-stock products")
 Cosmos DB uses ETags for optimistic concurrency control. If two processes try to update the same document, one of them should fail rather than silently overwriting the other's changes.
 
 ```python
-from azure.core.exceptions import HttpResponseError
+from azure.core import MatchConditions
+from azure.cosmos.exceptions import CosmosHttpResponseError
 
 # Read the item and capture its ETag
 item = container.read_item(item="doc-id", partition_key="electronics")
@@ -293,10 +295,11 @@ try:
     container.replace_item(
         item=item["id"],
         body=item,
-        if_match=etag  # Only succeed if ETag matches
+        etag=etag,
+        match_condition=MatchConditions.IfNotModified  # Only succeed if ETag matches
     )
     print("Update successful")
-except HttpResponseError as e:
+except CosmosHttpResponseError as e:
     if e.status_code == 412:  # Precondition failed
         print("Conflict detected - document was modified by another process")
     else:
@@ -311,7 +314,8 @@ Every operation in Cosmos DB costs Request Units (RUs). Keeping an eye on your R
 # The response headers contain RU charge information
 item = container.read_item(item="doc-id", partition_key="electronics")
 # Access RU charge from the response headers
-print(f"This read cost: {container.client_connection.last_response_headers['x-ms-request-charge']} RUs")
+headers = item.get_response_headers()
+print(f"This read cost: {headers['x-ms-request-charge']} RUs")
 ```
 
 ## Best Practices
