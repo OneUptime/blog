@@ -290,27 +290,8 @@ A powerful validation pattern is to run the Bicep template in what-if mode, capt
 # Cross-reference Terraform outputs with known Bicep what-if values
 
 # These expected values come from running:
-# az deployment group what-if --template-file main.bicep --parameters env=prod
+# az deployment group what-if --resource-group rg-webapp-prod --template-file main.bicep --parameters env=prod
 # and extracting the resource properties
-
-locals {
-  # Expected values from Bicep what-if output
-  bicep_expected = {
-    app_service = {
-      https_only     = true
-      min_tls        = "1.2"
-      ftps_state     = "Disabled"
-      always_on      = true
-      http2_enabled  = true
-    }
-    storage = {
-      replication    = "GRS"
-      min_tls        = "TLS1_2"
-      public_access  = false
-      account_tier   = "Standard"
-    }
-  }
-}
 
 run "validate_against_bicep_reference" {
   command = plan
@@ -323,28 +304,28 @@ run "validate_against_bicep_reference" {
 
   # App Service equivalence checks
   assert {
-    condition     = output.app_service_https_only == local.bicep_expected.app_service.https_only
+    condition     = output.app_service_https_only == true
     error_message = "HTTPS setting diverges from Bicep reference"
   }
 
   assert {
-    condition     = output.app_service_min_tls == local.bicep_expected.app_service.min_tls
+    condition     = output.app_service_min_tls == "1.2"
     error_message = "TLS setting diverges from Bicep reference"
   }
 
   # Storage equivalence checks
   assert {
-    condition     = output.storage_replication_type == local.bicep_expected.storage.replication
+    condition     = output.storage_replication_type == "GRS"
     error_message = "Storage replication diverges from Bicep reference"
   }
 
   assert {
-    condition     = output.storage_min_tls == local.bicep_expected.storage.min_tls
+    condition     = output.storage_min_tls == "TLS1_2"
     error_message = "Storage TLS setting diverges from Bicep reference"
   }
 
   assert {
-    condition     = output.storage_public_access == local.bicep_expected.storage.public_access
+    condition     = output.storage_public_access == false
     error_message = "Storage public access setting diverges from Bicep reference"
   }
 }
@@ -393,6 +374,16 @@ on:
     paths:
       - '**.tf'
       - '**.tftest.hcl'
+  push:
+    branches:
+      - main
+    paths:
+      - '**.tf'
+      - '**.tftest.hcl'
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   test:
@@ -424,13 +415,13 @@ jobs:
 
 Here are some guidelines for effective Terraform testing against Bicep baselines:
 
-1. **Use plan-mode tests for most validations.** They are fast and do not require Azure credentials. Save apply-mode tests for critical integration checks.
+1. **Use plan-mode tests for most validations.** They are fast and do not deploy Azure resources, though the AzureRM provider may still need valid provider configuration and credentials unless you use mocks. Save apply-mode tests for critical integration checks.
 
 2. **Document the Bicep reference.** Keep a copy of the Bicep template or its what-if output alongside your tests so reviewers can verify the expected values.
 
 3. **Test security settings explicitly.** Things like TLS versions, public access flags, and HTTPS enforcement are the most important equivalence checks.
 
-4. **Use variables for expected values.** Define the Bicep-expected values in locals or variable files rather than hardcoding them in assertions. This makes updates easier when the Bicep reference changes.
+4. **Use shared fixtures for expected values.** Keep the Bicep-expected values in generated fixtures or variable files rather than scattering them across assertions. This makes updates easier when the Bicep reference changes.
 
 5. **Run integration tests on a schedule.** Azure services evolve, and defaults can change. Running full deployment tests weekly catches drift.
 
