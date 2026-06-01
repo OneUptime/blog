@@ -18,7 +18,7 @@ An EBS-optimized instance has a dedicated network connection between the instanc
 
 - **Consistent I/O performance** - EBS traffic doesn't compete with network traffic
 - **Predictable latency** - Storage operations aren't affected by network congestion
-- **Higher throughput** - Dedicated bandwidth can be substantial (up to 19,000 Mbps on large instances)
+- **Higher throughput** - Dedicated bandwidth can be substantial, reaching tens of thousands of Mbps on large modern instances
 
 ```mermaid
 flowchart LR
@@ -42,10 +42,10 @@ Here's the good news: most modern instance types are EBS-optimized by default wi
 - All Graviton instances
 
 **EBS optimization available but not default (older types):**
-- m4, c4, r4, d2, i3 - You need to explicitly enable it (small hourly charge)
+- c3, m3, r3, i2, and selected c1, m1, and m2 sizes - You need to explicitly enable it (small hourly charge)
 
 **No EBS optimization available:**
-- Very old instance types like t1, m1, m2, c1 - These share bandwidth for everything
+- Very old or unsupported sizes, such as t1.micro, m1.small, m1.medium, m2.xlarge, c1.medium, c3.8xlarge, i2.8xlarge, and r3.8xlarge - These share bandwidth for everything
 
 To check if your instance is EBS-optimized:
 
@@ -67,7 +67,7 @@ For instance types where it's optional:
 # Launch with EBS optimization enabled
 aws ec2 run-instances \
     --image-id ami-0123456789abcdef0 \
-    --instance-type m4.large \
+    --instance-type c3.xlarge \
     --ebs-optimized \
     --key-name my-key
 ```
@@ -88,7 +88,7 @@ aws ec2 modify-instance-attribute \
 aws ec2 start-instances --instance-ids i-0123456789abcdef0
 ```
 
-For modern Nitro instances, you don't need to do anything - it's always on.
+For modern Nitro instances and other instance types that are EBS-optimized by default, you don't need to do anything - it's always on.
 
 ## EBS Bandwidth by Instance Type
 
@@ -118,7 +118,7 @@ EBS performance is determined by the minimum of three factors:
 
 ```mermaid
 flowchart LR
-    VP[Volume Performance<br/>gp3: 16,000 IOPS<br/>1,000 MB/s] --> MIN{Actual Performance<br/>= Minimum of all three}
+    VP[Volume Performance<br/>gp3: up to 80,000 IOPS<br/>2,000 MiB/s] --> MIN{Actual Performance<br/>= Minimum of all three}
     IB[Instance Bandwidth<br/>m5.xlarge: 4,750 Mbps<br/>~593 MB/s] --> MIN
     VS[Volume Configuration<br/>Provisioned IOPS<br/>Provisioned Throughput] --> MIN
 ```
@@ -158,11 +158,11 @@ aws cloudwatch get-metric-statistics \
     --period 300 \
     --statistics Sum
 
-# Check if you're hitting the volume throughput limit
+# Check if you're hitting the volume throughput limit on a Nitro instance
 aws cloudwatch get-metric-statistics \
     --namespace AWS/EBS \
-    --metric-name VolumeThroughputPercentage \
-    --dimensions Name=VolumeId,Value=vol-0123456789abcdef0 \
+    --metric-name VolumeThroughputExceededCheck \
+    --dimensions Name=VolumeId,Value=vol-0123456789abcdef0 Name=InstanceId,Value=i-0123456789abcdef0 \
     --start-time 2026-02-12T00:00:00Z \
     --end-time 2026-02-12T12:00:00Z \
     --period 300 \
@@ -177,14 +177,14 @@ Set up [monitoring with OneUptime](https://oneuptime.com) to get a unified view 
 
 Match your volume type to your workload. See our guide on [choosing between EBS volume types](https://oneuptime.com/blog/post/2026-02-12-choose-between-ebs-volume-types/view) for detailed comparisons. Quick summary:
 
-- **gp3**: Best default. 3,000 baseline IOPS, independently configurable.
+- **gp3**: Best default. 3,000 baseline IOPS, independently configurable up to 80,000 IOPS and 2,000 MiB/s.
 - **io2**: For latency-sensitive workloads needing guaranteed IOPS.
 - **st1**: For sequential read/write (logs, data processing).
 - **sc1**: For infrequent access, lowest cost.
 
 ### Use gp3 Instead of gp2
 
-gp3 decouples IOPS and throughput from volume size. A 100 GB gp3 volume can have 16,000 IOPS and 1,000 MB/s throughput. A 100 GB gp2 volume is limited to 300 IOPS.
+gp3 decouples IOPS and throughput from volume size. A 100 GiB gp3 volume can have 16,000 IOPS and 1,000 MiB/s throughput. A 100 GiB gp2 volume has a 300 IOPS baseline and can burst to 3,000 IOPS while credits are available.
 
 ```bash
 # Migrate a gp2 volume to gp3 online (no downtime)
@@ -213,14 +213,14 @@ echo 'ACTION=="add|change", KERNEL=="nvme*", ATTR{queue/scheduler}="none"' | \
     sudo tee /etc/udev/rules.d/60-scheduler.rules
 ```
 
-### Increase Read-Ahead for Sequential Workloads
+### Increase Read-Ahead for Sequential HDD Workloads
 
 ```bash
 # Check current read-ahead setting (in 512-byte sectors)
 blockdev --getra /dev/nvme0n1
 
-# Increase read-ahead for sequential read workloads
-sudo blockdev --setra 4096 /dev/nvme0n1
+# Increase read-ahead to 1 MiB for st1/sc1 sequential read workloads
+sudo blockdev --setra 2048 /dev/nvme0n1
 ```
 
 ### Stripe Multiple Volumes with RAID 0
@@ -238,7 +238,7 @@ sudo mkdir -p /data
 sudo mount /dev/md0 /data
 ```
 
-RAID 0 multiplies throughput and IOPS across volumes but provides no redundancy. Since EBS volumes are already redundant within their AZ, this is acceptable for most workloads.
+RAID 0 multiplies throughput and IOPS across volumes but provides no redundancy. Since the loss of any one volume means losing the whole array, use it when performance matters more than array-level fault tolerance and make sure you have backups or snapshots.
 
 ## Common Performance Issues
 
