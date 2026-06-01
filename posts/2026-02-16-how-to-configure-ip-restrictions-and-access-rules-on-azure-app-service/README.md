@@ -18,8 +18,10 @@ IP restrictions on Azure App Service act as an allowlist/denylist firewall. They
 
 The default action can be either Allow or Deny:
 
-- If set to **Deny** (the default), unmatched traffic is denied. You then add Allow rules for specific IPs.
+- If set to **Deny**, unmatched traffic is denied. You then add Allow rules for specific IPs.
 - If set to **Allow**, unmatched traffic is allowed. You then add Deny rules for specific IPs.
+
+If the default action is not configured, App Service allows unmatched traffic when there are no access restriction rules and implicitly denies unmatched traffic when one or more rules exist.
 
 Most teams configure it as a default-deny with specific allow rules, which is the more secure approach.
 
@@ -207,7 +209,9 @@ For infrastructure as code, configure IP restrictions in your ARM template:
                     "priority": 100,
                     "name": "Allow All to SCM"
                 }
-            ]
+            ],
+            "scmIpSecurityRestrictionsDefaultAction": "Allow",
+            "scmIpSecurityRestrictionsUseMain": false
         }
     }
 }
