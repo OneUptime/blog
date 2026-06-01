@@ -14,7 +14,7 @@ Azure CLI scripts are a straightforward way to automate this setup. Unlike Terra
 
 ## Understanding the Management Group Hierarchy
 
-Azure management groups form a tree structure above subscriptions. Every Azure Active Directory tenant has a root management group, and you can create up to six levels of depth below it. A typical enterprise hierarchy looks something like this:
+Azure management groups form a tree structure above subscriptions. Every Microsoft Entra tenant has a root management group, and you can create up to six levels of depth below it. A typical enterprise hierarchy looks something like this:
 
 ```mermaid
 graph TD
@@ -39,8 +39,8 @@ Before running these scripts, you need:
 - Azure CLI version 2.40 or later
 - An account with the following roles:
   - Management Group Contributor at the root management group level
-  - Subscription Creator role (or Owner on an enrollment account for EA subscriptions)
-- The `account` CLI extension for subscription management
+  - Azure subscription creator role on the invoice section for MCA subscriptions, or Enterprise Administrator or Owner on an enrollment account for EA subscriptions
+- The `account` and `alias` CLI extensions for subscription alias management
 
 Verify your setup with these commands.
 
@@ -54,6 +54,10 @@ az account show
 
 # List existing management groups to confirm permissions
 az account management-group list --output table
+
+# Install the extensions used for subscription alias creation
+az extension add --name account
+az extension add --name alias
 ```
 
 ## Building the Management Group Hierarchy
@@ -68,7 +72,7 @@ The first script creates the management group hierarchy. It is idempotent, meani
 set -euo pipefail   # Exit on error, unset vars, pipe failures
 
 # Configuration - modify these for your organization
-TENANT_ROOT_GROUP_ID=$(az account management-group list --query "[?displayName=='Tenant Root Group'].id" -o tsv | head -1)
+TENANT_ROOT_GROUP_ID=$(az account show --query tenantId -o tsv)
 ORG_NAME="Contoso"
 
 # Color codes for readable output
@@ -144,10 +148,9 @@ BILLING_SCOPE=""
 
 # Determine the billing scope based on agreement type
 if [ "$AGREEMENT_TYPE" = "EA" ]; then
-    # For Enterprise Agreement - get the enrollment account
-    ENROLLMENT_ACCOUNT=$(az billing enrollment-account list --query "[0].name" -o tsv)
-    BILLING_SCOPE="/providers/Microsoft.Billing/enrollmentAccounts/${ENROLLMENT_ACCOUNT}"
-    echo "Using EA enrollment account: $ENROLLMENT_ACCOUNT"
+    # For Enterprise Agreement - get the enrollment account resource ID
+    BILLING_SCOPE=$(az billing enrollment-account list --query "[0].id" -o tsv)
+    echo "Using EA enrollment account scope: $BILLING_SCOPE"
 elif [ "$AGREEMENT_TYPE" = "MCA" ]; then
     # For Microsoft Customer Agreement - get billing profile and invoice section
     BILLING_ACCOUNT=$(az billing account list --query "[0].name" -o tsv)
@@ -164,7 +167,6 @@ fi
 create_subscription() {
     local sub_name=$1
     local mg_name=$2
-    local sub_offer=${3:-"MS-AZR-0017P"}   # Default EA Dev/Test offer
 
     echo "Creating subscription: $sub_name"
 
@@ -194,7 +196,7 @@ create_subscription() {
     echo "  Moving to management group: $mg_name"
     az account management-group subscription add \
         --name "$mg_name" \
-        --subscription-id "$sub_id" \
+        --subscription "$sub_id" \
         --output none
 
     echo "  Done."
@@ -288,8 +290,8 @@ configure_subscription() {
     az consumption budget create \
         --budget-name "$budget_name" \
         --amount "$monthly_budget" \
-        --category "Cost" \
-        --time-grain "Monthly" \
+        --category "cost" \
+        --time-grain "monthly" \
         --start-date "$(date -u +%Y-%m-01)" \
         --end-date "2027-12-31" \
         --output none 2>/dev/null || echo "    Budget may already exist, skipping."
