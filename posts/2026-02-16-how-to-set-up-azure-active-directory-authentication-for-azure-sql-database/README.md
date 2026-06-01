@@ -24,7 +24,7 @@ Here are the practical advantages over SQL authentication:
 
 **Group-based access.** You can grant database access to Azure AD groups. When someone joins or leaves the group, their access changes automatically.
 
-**Conditional Access.** You can apply Azure AD Conditional Access policies to database connections, controlling access based on device compliance, location, and risk level.
+**Conditional Access.** You can apply Azure AD Conditional Access policies to user database connections, controlling access based on device compliance, location, and risk level.
 
 ## Setting Up the Azure AD Admin
 
@@ -162,6 +162,7 @@ For Python:
 ```python
 from azure.identity import DefaultAzureCredential
 import pyodbc
+import struct
 
 # DefaultAzureCredential automatically uses managed identity in Azure
 credential = DefaultAzureCredential()
@@ -177,7 +178,7 @@ conn_str = (
 
 # Pass the token to the connection
 token_bytes = token.token.encode('utf-16-le')
-token_struct = bytes([len(token_bytes) & 0xFF, (len(token_bytes) >> 8) & 0xFF]) + token_bytes
+token_struct = struct.pack('<I', len(token_bytes)) + token_bytes
 conn = pyodbc.connect(conn_str, attrs_before={1256: token_struct})
 ```
 
@@ -250,7 +251,7 @@ ALTER ROLE db_datareader ADD MEMBER [Data Analysts];
 
 **"AADSTS700016: Application not found"**: This can happen when using service principal authentication with an incorrect application ID. Verify the client ID of your app registration.
 
-**Cannot create Azure AD users**: Only the Azure AD admin can create users from external provider. Make sure you are connected as the designated Azure AD admin.
+**Cannot create Azure AD users**: Only Microsoft Entra identities with sufficient permissions can create users from external provider. The Azure AD admin can create the first users; after that, other Microsoft Entra users need permissions such as `ALTER ANY USER` or membership in `db_owner`.
 
 **MFA prompts for service accounts**: If you are using Azure AD authentication in automated processes, use managed identities or service principals instead of user accounts. User accounts may trigger MFA prompts.
 
