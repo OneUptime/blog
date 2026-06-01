@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Video Indexer, Cognitive Search, AI, Video Analytics, Search, Machine Learning
+Tags: Azure, Video Indexer, Azure AI Search, AI, Video Analytics, Search, Machine Learning
 
-Description: Build an AI-powered video indexing solution using Azure Video Indexer for content extraction and Cognitive Search for searchable video metadata.
+Description: Build an AI-powered video indexing solution using Azure Video Indexer for content extraction and Azure AI Search for searchable video metadata.
 
 ---
 
-Video content is notoriously hard to search. If you have a library of hundreds or thousands of videos - training courses, recorded meetings, webinars, product demos - finding the specific moment where someone mentions a particular topic requires watching through hours of footage. Azure Video Indexer uses AI to automatically extract transcripts, detect speakers, identify topics, recognize faces, read on-screen text (OCR), and detect key scenes. Combined with Azure Cognitive Search, this extracted metadata becomes a searchable index where users can find the exact moment in any video that matches their query.
+Video content is notoriously hard to search. If you have a library of hundreds or thousands of videos - training courses, recorded meetings, webinars, product demos - finding the specific moment where someone mentions a particular topic requires watching through hours of footage. Azure Video Indexer uses AI to automatically extract transcripts, detect speakers, identify topics, detect faces, read on-screen text (OCR), and detect key scenes. Combined with Azure AI Search, this extracted metadata becomes a searchable index where users can find the exact moment in any video that matches their query.
 
 In this guide, I will build a video indexing pipeline that automatically processes uploaded videos, extracts rich metadata, and makes everything searchable.
 
@@ -24,7 +24,7 @@ flowchart TD
     B --> E[Topic Detection]
     B --> F[OCR - On-Screen Text]
     B --> G[Scene Detection]
-    B --> H[Face Recognition]
+    B --> H[Face Detection]
     B --> I[Keyword Extraction]
 
     C --> J[Metadata Store - Cosmos DB]
@@ -35,7 +35,7 @@ flowchart TD
     H --> J
     I --> J
 
-    J --> K[Azure Cognitive Search Index]
+    J --> K[Azure AI Search Index]
     K --> L[Search API]
     L --> M[Search Results with Timestamps]
     M --> N[Video Player - Jump to Timestamp]
@@ -46,36 +46,45 @@ flowchart TD
 Create a Video Indexer account connected to your Azure subscription.
 
 ```bash
-# Create a Media Services account (required for Video Indexer)
+# Create a resource group and storage account for the Video Indexer account
 
-az ams account create \
-  --name vi-media-account \
-  --resource-group rg-video-indexer \
-  --storage-account vistorageacct \
+az group create \
+  --name rg-video-indexer \
   --location eastus
 
-# Create a Video Indexer account via ARM template
-# Video Indexer is managed through the Azure portal or REST API
+az storage account create \
+  --name vistorageacct \
+  --resource-group rg-video-indexer \
+  --location eastus \
+  --sku Standard_LRS
+
+# Create the Azure AI Video Indexer account in the Azure portal
+# or deploy a Microsoft.VideoIndexer/accounts ARM/Bicep template
 ```
 
-You will need the Video Indexer Account ID and an access token, which you can get from the Video Indexer portal or API.
+You will need the Video Indexer Account ID, Azure subscription ID, resource group name, and Video Indexer account resource name. The code below generates a data-plane access token through the Azure Resource Manager API.
 
 ## Uploading and Indexing Videos
 
-Here is the backend code that uploads a video to Video Indexer and monitors the indexing progress.
+Here is the backend code that uploads a video to Video Indexer and retrieves the generated index.
 
 ```javascript
 // src/services/video-indexer.js
 const axios = require('axios');
+const { DefaultAzureCredential } = require('@azure/identity');
 
 const VI_BASE_URL = 'https://api.videoindexer.ai';
 const ACCOUNT_ID = process.env.VIDEO_INDEXER_ACCOUNT_ID;
+const ACCOUNT_NAME = process.env.VIDEO_INDEXER_ACCOUNT_NAME;
+const SUBSCRIPTION_ID = process.env.AZURE_SUBSCRIPTION_ID;
+const RESOURCE_GROUP = process.env.VIDEO_INDEXER_RESOURCE_GROUP;
 const LOCATION = process.env.VIDEO_INDEXER_LOCATION || 'eastus';
 
 class VideoIndexerService {
   constructor() {
     this.accessToken = null;
     this.tokenExpiry = null;
+    this.credential = new DefaultAzureCredential();
   }
 
   // Get an access token for the Video Indexer API
@@ -84,19 +93,24 @@ class VideoIndexerService {
       return this.accessToken;
     }
 
-    const response = await axios.get(
-      `${VI_BASE_URL}/auth/${LOCATION}/Accounts/${ACCOUNT_ID}/AccessToken`,
+    const armToken = await this.credential.getToken('https://management.azure.com/.default');
+    const response = await axios.post(
+      `https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}` +
+        `/resourceGroups/${RESOURCE_GROUP}` +
+        `/providers/Microsoft.VideoIndexer/accounts/${ACCOUNT_NAME}` +
+        `/generateAccessToken?api-version=2024-01-01`,
+      {
+        permissionType: 'Contributor',
+        scope: 'Account'
+      },
       {
         headers: {
-          'Ocp-Apim-Subscription-Key': process.env.VIDEO_INDEXER_KEY
-        },
-        params: {
-          allowEdit: true
+          Authorization: `Bearer ${armToken.token}`
         }
       }
     );
 
-    this.accessToken = response.data;
+    this.accessToken = response.data.accessToken;
     // Token expires in 1 hour, refresh at 50 minutes
     this.tokenExpiry = Date.now() + 50 * 60 * 1000;
     return this.accessToken;
@@ -110,8 +124,10 @@ class VideoIndexerService {
       `${VI_BASE_URL}/${LOCATION}/Accounts/${ACCOUNT_ID}/Videos`,
       null,
       {
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
         params: {
-          accessToken: token,
           name: videoName,
           description: description,
           videoUrl: videoUrl,
@@ -141,8 +157,10 @@ class VideoIndexerService {
     const response = await axios.get(
       `${VI_BASE_URL}/${LOCATION}/Accounts/${ACCOUNT_ID}/Videos/${videoId}/Index`,
       {
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
         params: {
-          accessToken: token,
           language: 'en-US'
         }
       }
@@ -186,7 +204,7 @@ class VideoIndexerService {
       videoId: videoId,
       name: index.name,
       description: index.description,
-      duration: video.insights.duration?.time || '',
+      duration: insights.duration || '',
 
       // Full transcript text for search
       transcriptText: (insights.transcript || [])
@@ -194,34 +212,40 @@ class VideoIndexerService {
         .join(' '),
 
       // Individual transcript segments with timestamps
-      transcriptSegments: (insights.transcript || []).map(t => ({
+      transcriptSegments: JSON.stringify((insights.transcript || []).map(t => ({
         text: t.text,
         startTime: t.instances[0]?.start,
         endTime: t.instances[0]?.end,
         speakerId: t.speakerId
-      })),
+      }))),
+
+      topicNames: (insights.topics || []).map(t => t.name),
+      keywordTexts: (insights.keywords || []).map(k => k.text),
+      speakerNames: [...new Set((insights.transcript || [])
+        .map(t => t.speakerId ? `Speaker ${t.speakerId}` : null)
+        .filter(Boolean))],
 
       // Topics detected in the video
-      topics: (insights.topics || []).map(t => ({
+      topics: JSON.stringify((insights.topics || []).map(t => ({
         name: t.name,
         confidence: t.confidence,
         appearances: t.instances.map(i => ({
           startTime: i.start,
           endTime: i.end
         }))
-      })),
+      }))),
 
       // Keywords extracted
-      keywords: (insights.keywords || []).map(k => ({
+      keywords: JSON.stringify((insights.keywords || []).map(k => ({
         text: k.text,
         confidence: k.confidence,
         appearances: k.instances.map(i => ({
           startTime: i.start,
           endTime: i.end
         }))
-      })),
+      }))),
 
-      // Named entities (people, places, organizations)
+      // Named people detected in the video
       namedEntities: (insights.namedPeople || []).map(p => ({
         name: p.name,
         appearances: p.instances.map(i => ({
@@ -244,7 +268,7 @@ class VideoIndexerService {
       speakers: (insights.speakers || []).map(s => ({
         id: s.id,
         name: s.name,
-        totalSpeakingTime: s.instances
+        totalSpeakingTime: (s.instances || [])
           .reduce((total, i) => total + parseDuration(i.end) - parseDuration(i.start), 0)
       })),
 
@@ -255,7 +279,9 @@ class VideoIndexerService {
           startTime: i.start,
           endTime: i.end
         }))
-      }))
+      })),
+
+      indexedAt: new Date().toISOString()
     };
   }
 }
@@ -274,7 +300,7 @@ module.exports = new VideoIndexerService();
 
 ## Creating the Search Index
 
-Define a Cognitive Search index that stores the extracted video metadata.
+Define an Azure AI Search index that stores the extracted video metadata.
 
 ```javascript
 // scripts/create-video-index.js
@@ -319,7 +345,7 @@ async function createVideoIndex() {
       {
         name: 'videoSuggester',
         searchMode: 'analyzingInfixMatching',
-        sourceFields: ['name', 'topicNames', 'keywordTexts']
+        sourceFields: ['name']
       }
     ]
   };
@@ -337,7 +363,7 @@ Build a search endpoint that returns matching videos with the specific timestamp
 
 ```javascript
 // src/api/video-search.js
-const { SearchClient, AzureKeyCredential } = require('@azure/search-documents');
+const { SearchClient, AzureKeyCredential, odata } = require('@azure/search-documents');
 
 const searchClient = new SearchClient(
   process.env.SEARCH_ENDPOINT,
@@ -351,8 +377,8 @@ async function searchVideos(query, options = {}) {
 
   // Build filter
   const filters = [];
-  if (topic) filters.push(`topicNames/any(t: t eq '${topic}')`);
-  if (speaker) filters.push(`speakerNames/any(s: s eq '${speaker}')`);
+  if (topic) filters.push(odata`topicNames/any(t: t eq ${topic})`);
+  if (speaker) filters.push(odata`speakerNames/any(s: s eq ${speaker})`);
 
   const searchResults = await searchClient.search(query, {
     filter: filters.length > 0 ? filters.join(' and ') : undefined,
@@ -420,4 +446,4 @@ module.exports = { searchVideos };
 
 ## Wrapping Up
 
-The combination of Azure Video Indexer and Cognitive Search turns a video library from a black box into a fully searchable knowledge base. Video Indexer's AI extracts transcripts, topics, keywords, speakers, and on-screen text. Cognitive Search indexes all of this metadata and provides fast, relevant search results. The timestamp-linked results let users jump directly to the exact moment in a video that answers their question. This is invaluable for corporate training libraries, educational platforms, conference recordings, and any scenario where people need to find specific information buried in hours of video content.
+The combination of Azure Video Indexer and Azure AI Search turns a video library from a black box into a fully searchable knowledge base. Video Indexer's AI extracts transcripts, topics, keywords, speakers, and on-screen text. Azure AI Search indexes all of this metadata and provides fast, relevant search results. The timestamp-linked results let users jump directly to the exact moment in a video that answers their question. This is invaluable for corporate training libraries, educational platforms, conference recordings, and any scenario where people need to find specific information buried in hours of video content.
