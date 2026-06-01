@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SNS, FIFO, Messaging, SQS
 
-Description: Learn how to use SNS FIFO topics for strictly ordered, exactly-once message delivery with message groups, deduplication, and SQS FIFO queue subscribers.
+Description: Learn how to use SNS FIFO topics for per-group ordered message delivery with message groups, deduplication, and SQS FIFO queue subscribers.
 
 ---
 
-Standard SNS topics deliver messages with best-effort ordering, meaning messages can arrive out of order. For most use cases that's fine, but sometimes order matters. Payment processing, state machine transitions, audit logs - these all need messages delivered in the exact sequence they were sent. That's where SNS FIFO topics come in.
+Standard SNS topics deliver messages with best-effort ordering, meaning messages can arrive out of order. For most use cases that's fine, but sometimes order matters. Payment processing, state machine transitions, audit logs - these all need related messages delivered in the exact sequence they were sent. That's where SNS FIFO topics come in.
 
 ## How FIFO Topics Differ from Standard
 
-Here's the key difference: FIFO topics guarantee that messages are delivered to subscribers in the exact order they were published, and each message is delivered exactly once.
+Here's the key difference: FIFO topics preserve publish order within each message group when delivering to subscribed SQS queues, and when the subscriber is an SQS FIFO queue, messages are consumed in order and without duplicates as long as the queue and consumer meet the documented delivery conditions.
 
 ```mermaid
 flowchart TD
@@ -31,9 +31,9 @@ flowchart TD
 ```
 
 The tradeoffs:
-- **Throughput**: FIFO topics support 300 messages/second (or 3000 with batching), vs. effectively unlimited for standard topics
-- **Subscribers**: FIFO topics only support SQS FIFO queues as subscribers (no email, Lambda, HTTP, etc.)
-- **Region**: FIFO topics are available in most regions but not all
+- **Throughput**: FIFO topics support 300 messages/second per message group and 3000 messages/second per topic by default, with higher regional quotas available in high-throughput mode
+- **Subscribers**: FIFO topics support SQS queues as subscribers; use SQS FIFO queues when subscribers must preserve ordering and avoid duplicates
+- **Region**: Confirm FIFO topic support and high-throughput quotas in your target AWS Region
 
 ## Creating a FIFO Topic
 
@@ -50,11 +50,11 @@ aws sns create-topic \
   }'
 ```
 
-The `ContentBasedDeduplication` flag uses a SHA-256 hash of the message body as the deduplication ID. If you publish the same message twice within a 5-minute window, the duplicate is automatically dropped.
+The `ContentBasedDeduplication` flag uses a SHA-256 hash of the message body as the deduplication ID. If you publish the same message twice within a 5-minute window, the duplicate is accepted but not delivered.
 
 ## Creating a FIFO SQS Queue Subscriber
 
-FIFO topics can only deliver to FIFO SQS queues. Create the queue and subscribe it.
+FIFO topics can deliver to SQS standard or FIFO queues. Use a FIFO queue when the subscriber needs ordered, duplicate-free consumption.
 
 ```bash
 # Create a FIFO SQS queue
@@ -84,7 +84,8 @@ aws sqs set-queue-attributes \
 aws sns subscribe \
   --topic-arn arn:aws:sns:us-east-1:123456789012:payment-events.fifo \
   --protocol sqs \
-  --notification-endpoint $QUEUE_ARN
+  --notification-endpoint $QUEUE_ARN \
+  --attributes RawMessageDelivery=true
 ```
 
 ## Message Groups - The Key to FIFO Ordering
@@ -142,7 +143,7 @@ There are two ways to handle deduplication:
 
 ### Content-Based Deduplication
 
-When enabled on the topic, SNS generates a deduplication ID from the message content. Identical messages within 5 minutes are automatically dropped.
+When enabled on the topic, SNS generates a deduplication ID from the message content. Identical messages within 5 minutes are accepted but not delivered.
 
 ```python
 # With content-based deduplication enabled on the topic,
@@ -295,13 +296,14 @@ if __name__ == '__main__':
 
 ## Performance Considerations
 
-FIFO topics have a 300 transactions per second limit per topic (3000 with batching). If you need higher throughput:
+FIFO topics support 300 messages per second per message group and 3000 messages per second per topic by default. If you need higher throughput:
 
 - Use many different message group IDs to enable parallel processing
 - Batch publishes into groups of up to 10 messages
-- Consider using standard topics with application-level ordering if 3000 TPS isn't enough
+- Enable high-throughput mode with `FifoThroughputScope=MessageGroup` if your workload can use message-group-level deduplication
+- Consider using standard topics with application-level ordering if FIFO throughput quotas aren't enough
 - Distribute across multiple FIFO topics if your use case allows it
 
-FIFO topics are the right choice when message ordering and exactly-once delivery matter more than raw throughput. Pair them with FIFO SQS queues for reliable, ordered processing.
+FIFO topics are the right choice when message ordering and deduplication matter more than raw throughput. Pair them with FIFO SQS queues for reliable, ordered processing.
 
 For standard topics with higher throughput needs, see [creating an SNS topic](https://oneuptime.com/blog/post/2026-02-12-create-an-sns-topic/view). For the fan-out pattern with standard queues, check [subscribing SQS queues to SNS](https://oneuptime.com/blog/post/2026-02-12-subscribe-an-sqs-queue-to-sns/view).
