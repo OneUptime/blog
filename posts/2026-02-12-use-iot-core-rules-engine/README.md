@@ -14,11 +14,11 @@ The Rules Engine lets you write SQL-like queries against your MQTT messages and 
 
 ## How Rules Work
 
-A rule has three components:
+A rule's routing behavior has three main components:
 
 1. **SQL statement**: Filters and transforms incoming MQTT messages
 2. **Actions**: What to do with messages that match the SQL query
-3. **Error action**: What to do when an action fails
+3. **Error action**: What to do when an action fails (optional, but recommended)
 
 ```mermaid
 graph LR
@@ -59,7 +59,7 @@ Now create the IoT rule.
     "actions": [
         {
             "dynamoDBv2": {
-                "roleArn": "arn:aws:iam::123456789:role/IoTRulesDynamoDBRole",
+                "roleArn": "arn:aws:iam::123456789012:role/IoTRulesDynamoDBRole",
                 "putItem": {
                     "tableName": "SensorReadings"
                 }
@@ -68,7 +68,7 @@ Now create the IoT rule.
     ],
     "errorAction": {
         "cloudwatchLogs": {
-            "roleArn": "arn:aws:iam::123456789:role/IoTRulesCloudWatchRole",
+            "roleArn": "arn:aws:iam::123456789012:role/IoTRulesCloudWatchRole",
             "logGroupName": "/aws/iot/rules/errors"
         }
     },
@@ -91,13 +91,10 @@ IoT Core SQL is surprisingly powerful. It supports filtering, transformation, fu
 ### Basic Filtering
 
 ```sql
--- Only process readings above 30 degrees
 SELECT * FROM 'sensors/+/data' WHERE temperature > 30
 
--- Filter by device attributes
-SELECT * FROM 'sensors/+/data' WHERE device_id LIKE 'warehouse%'
+SELECT * FROM 'sensors/+/data' WHERE startswith(device_id, 'warehouse')
 
--- Multiple conditions
 SELECT * FROM 'sensors/+/data'
 WHERE temperature > 30 AND humidity > 80
 ```
@@ -105,7 +102,6 @@ WHERE temperature > 30 AND humidity > 80
 ### Data Transformation
 
 ```sql
--- Convert Celsius to Fahrenheit and add metadata
 SELECT
     device_id,
     temperature * 9/5 + 32 AS temperature_f,
@@ -121,10 +117,9 @@ FROM 'sensors/+/data'
 The SQL dialect includes many useful functions.
 
 ```sql
--- Use built-in functions for data processing
 SELECT
     device_id,
-    round(temperature, 1) AS temperature,
+    round(temperature) AS temperature,
     abs(altitude) AS altitude,
     lower(status) AS status,
     timestamp() AS event_time,
@@ -140,14 +135,13 @@ FROM 'sensors/+/data'
 If your devices send nested JSON, you can extract and flatten it.
 
 ```sql
--- Device sends: {"readings": {"temp": 22.5, "hum": 45}, "meta": {"battery": 85}}
 SELECT
     readings.temp AS temperature,
     readings.hum AS humidity,
     meta.battery AS battery_level,
     timestamp() AS timestamp
 FROM 'sensors/+/data'
-WHERE readings.temp IS NOT NULL
+WHERE NOT isUndefined(readings.temp) AND NOT isNull(readings.temp)
 ```
 
 ## Common Rule Actions
@@ -162,11 +156,23 @@ Trigger a Lambda function for custom processing.
     "actions": [
         {
             "lambda": {
-                "functionArn": "arn:aws:lambda:us-east-1:123456789:function:ProcessDeviceError"
+                "functionArn": "arn:aws:lambda:us-east-1:123456789012:function:ProcessDeviceError"
             }
         }
     ]
 }
+```
+
+When you create the rule outside the AWS IoT console, grant AWS IoT permission to invoke the function.
+
+```bash
+aws lambda add-permission \
+    --function-name ProcessDeviceError \
+    --principal iot.amazonaws.com \
+    --source-arn arn:aws:iot:us-east-1:123456789012:rule/ProcessDeviceErrorRule \
+    --source-account 123456789012 \
+    --statement-id iot-rule-process-device-error \
+    --action lambda:InvokeFunction
 ```
 
 The Lambda function receives the matched message as its event.
@@ -185,7 +191,7 @@ def lambda_handler(event, context):
 
     # Send alert
     sns.publish(
-        TopicArn='arn:aws:sns:us-east-1:123456789:DeviceAlerts',
+        TopicArn='arn:aws:sns:us-east-1:123456789012:DeviceAlerts',
         Subject=f'Critical Error: {device_id}',
         Message=f'Device {device_id} reported error {error_code}: {message}'
     )
@@ -206,7 +212,7 @@ Archive raw messages to S3 for long-term storage and analytics.
     "actions": [
         {
             "s3": {
-                "roleArn": "arn:aws:iam::123456789:role/IoTRulesS3Role",
+                "roleArn": "arn:aws:iam::123456789012:role/IoTRulesS3Role",
                 "bucketName": "iot-sensor-archive",
                 "key": "${topic()}/${timestamp()}.json",
                 "cannedAcl": "private"
@@ -226,8 +232,8 @@ Send alerts when specific conditions are met.
     "actions": [
         {
             "sns": {
-                "roleArn": "arn:aws:iam::123456789:role/IoTRulesSNSRole",
-                "targetArn": "arn:aws:sns:us-east-1:123456789:TemperatureAlerts",
+                "roleArn": "arn:aws:iam::123456789012:role/IoTRulesSNSRole",
+                "targetArn": "arn:aws:sns:us-east-1:123456789012:TemperatureAlerts",
                 "messageFormat": "JSON"
             }
         }
@@ -245,7 +251,7 @@ Route high-volume data to Kinesis for real-time analytics.
     "actions": [
         {
             "kinesis": {
-                "roleArn": "arn:aws:iam::123456789:role/IoTRulesKinesisRole",
+                "roleArn": "arn:aws:iam::123456789012:role/IoTRulesKinesisRole",
                 "streamName": "sensor-data-stream",
                 "partitionKey": "${device_id}"
             }
@@ -264,7 +270,7 @@ Route messages between topics for fan-out or routing patterns.
     "actions": [
         {
             "republish": {
-                "roleArn": "arn:aws:iam::123456789:role/IoTRulesRepublishRole",
+                "roleArn": "arn:aws:iam::123456789012:role/IoTRulesRepublishRole",
                 "topic": "alerts/high-temperature",
                 "qos": 1
             }
@@ -283,7 +289,7 @@ A single rule can trigger multiple actions. The message is sent to all actions i
     "actions": [
         {
             "dynamoDBv2": {
-                "roleArn": "arn:aws:iam::123456789:role/IoTRulesRole",
+                "roleArn": "arn:aws:iam::123456789012:role/IoTRulesRole",
                 "putItem": {
                     "tableName": "SensorReadings"
                 }
@@ -291,19 +297,19 @@ A single rule can trigger multiple actions. The message is sent to all actions i
         },
         {
             "s3": {
-                "roleArn": "arn:aws:iam::123456789:role/IoTRulesRole",
+                "roleArn": "arn:aws:iam::123456789012:role/IoTRulesRole",
                 "bucketName": "iot-sensor-archive",
                 "key": "${topic()}/${timestamp()}.json"
             }
         },
         {
             "cloudwatchMetric": {
-                "roleArn": "arn:aws:iam::123456789:role/IoTRulesRole",
+                "roleArn": "arn:aws:iam::123456789012:role/IoTRulesRole",
                 "metricNamespace": "IoT/Sensors",
                 "metricName": "Temperature",
                 "metricValue": "${temperature}",
                 "metricUnit": "None",
-                "metricTimestamp": "${timestamp()}"
+                "metricTimestamp": "${timestamp() / 1000}"
             }
         }
     ]
@@ -312,7 +318,7 @@ A single rule can trigger multiple actions. The message is sent to all actions i
 
 ## IAM Roles for Rules
 
-Each rule action needs an IAM role with appropriate permissions. Here's a policy for the DynamoDB action.
+Most rule actions need an IAM role with appropriate permissions. Lambda actions use a resource-based Lambda permission instead. Here's a policy for the DynamoDB action.
 
 ```json
 {
@@ -323,7 +329,7 @@ Each rule action needs an IAM role with appropriate permissions. Here's a policy
             "Action": [
                 "dynamodb:PutItem"
             ],
-            "Resource": "arn:aws:dynamodb:us-east-1:123456789:table/SensorReadings"
+            "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/SensorReadings"
         }
     ]
 }
@@ -348,13 +354,13 @@ The role's trust policy must allow IoT Core to assume it.
 
 ## Error Handling
 
-Always configure an error action. Without it, you'll silently lose data when a rule action fails.
+Always configure an error action. Without it, failed rule actions are discarded after retries and you have to rely on CloudWatch Logs for failure details.
 
 ```json
 {
     "errorAction": {
         "s3": {
-            "roleArn": "arn:aws:iam::123456789:role/IoTRulesRole",
+            "roleArn": "arn:aws:iam::123456789012:role/IoTRulesRole",
             "bucketName": "iot-error-logs",
             "key": "rule-errors/${timestamp()}-${newuuid()}.json"
         }
@@ -364,12 +370,9 @@ Always configure an error action. Without it, you'll silently lose data when a r
 
 ## Testing Rules
 
-Test your SQL queries before deploying them.
+Test your rules by publishing sample MQTT messages before relying on them in production.
 
 ```bash
-# Test a rule SQL query with a sample payload
-aws iot test-invoke-authorizer # for auth testing
-
 # Use the MQTT test client in the console to publish test messages
 # and verify your rules trigger correctly
 ```
