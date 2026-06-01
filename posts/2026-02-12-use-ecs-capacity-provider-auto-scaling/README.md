@@ -14,7 +14,7 @@ Instead of you deciding when to add or remove instances, ECS calculates how much
 
 ## What Are Capacity Providers?
 
-A capacity provider is the link between an ECS cluster and an Auto Scaling Group. It tells ECS "here is a pool of EC2 instances you can use, and here is how to grow or shrink it." You can have multiple capacity providers on a single cluster, mixing different instance types, Spot and On-Demand, or even Fargate.
+A capacity provider is the link between an ECS cluster and an Auto Scaling Group. It tells ECS "here is a pool of EC2 instances you can use, and here is how to grow or shrink it." You can have multiple capacity providers on a single cluster, mixing different instance types, Spot and On-Demand, or even Fargate. A single capacity provider strategy can use Auto Scaling group capacity providers or Fargate capacity providers, but not both.
 
 ```mermaid
 graph TD
@@ -43,7 +43,7 @@ aws ec2 create-launch-template \
     },
     "UserData": "'$(echo '#!/bin/bash
 echo ECS_CLUSTER=my-cluster >> /etc/ecs/ecs.config
-echo ECS_ENABLE_SPOT_INSTANCE_DRAINING=true >> /etc/ecs/ecs.config' | base64)'"
+echo ECS_ENABLE_SPOT_INSTANCE_DRAINING=true >> /etc/ecs/ecs.config' | base64 | tr -d '\n')'"
   }'
 
 # Create the Auto Scaling Group
@@ -62,7 +62,7 @@ aws autoscaling create-auto-scaling-group \
 
 Two important settings:
 
-- **new-instances-protected-from-scale-in** - Prevents the ASG from terminating instances that are running ECS tasks. The capacity provider manages scale-in protection itself.
+- **new-instances-protected-from-scale-in** - Enables instance scale-in protection on new instances. This is required when managed termination protection is enabled so ECS can manage which instances are protected during scale-in.
 - **ECS_ENABLE_SPOT_INSTANCE_DRAINING** - If using Spot Instances, this tells the ECS agent to drain tasks when a Spot interruption is detected.
 
 ## Step 2: Create the Capacity Provider
@@ -87,8 +87,8 @@ aws ecs create-capacity-provider \
 Key parameters:
 
 - **targetCapacity: 80** - ECS tries to keep cluster utilization at 80%. This leaves 20% headroom for new tasks to be placed immediately without waiting for new instances to launch.
-- **minimumScalingStepSize** - Minimum number of instances to add or remove at once.
-- **maximumScalingStepSize** - Maximum instances to add or remove at once.
+- **minimumScalingStepSize** - Minimum number of instances to add during scale-out.
+- **maximumScalingStepSize** - Maximum number of instances to add during scale-out.
 - **instanceWarmupPeriod** - How long to wait after launching an instance before it counts toward capacity calculations.
 - **managedTerminationProtection** - ECS prevents the ASG from terminating instances with running tasks.
 
@@ -119,6 +119,7 @@ aws ecs create-service \
   --service-name web-api \
   --task-definition web-api:5 \
   --desired-count 10 \
+  --placement-strategy type=binpack,field=memory \
   --capacity-provider-strategy '[
     {
       "capacityProvider": "ondemand-provider",
@@ -129,6 +130,8 @@ aws ecs create-service \
 ```
 
 When you set a desired count of 10, ECS calculates the total resources needed, compares with available cluster capacity, and if the ASG needs more instances, it scales up automatically.
+
+Because this capacity provider uses a target capacity below 100%, the service uses a binpack placement strategy so ECS fills existing capacity instead of spreading tasks first.
 
 ## Mixing Spot and On-Demand
 
