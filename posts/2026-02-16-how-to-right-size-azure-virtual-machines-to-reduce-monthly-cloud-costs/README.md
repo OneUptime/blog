@@ -34,10 +34,10 @@ az advisor recommendation list \
   --output table
 ```
 
-Advisor uses these thresholds by default:
+Advisor's current right-sizing recommendations use CPU, memory, and outbound network utilization over the lookback period. For shutdown recommendations, Advisor looks for very low CPU and outbound network usage. Older low-utilization guidance used these default thresholds:
 
-- Average CPU utilization below 5% over 7 days
-- Average network utilization below 7 MB over 7 days
+- CPU utilization of 5% or less
+- Network usage of 7 MB or less for four or more days
 
 These thresholds are conservative. A VM that averages 5% CPU is almost certainly oversized. But you can also catch VMs in the 5-20% range that are good candidates for downsizing.
 
@@ -59,7 +59,7 @@ az monitor metrics list \
 Key metrics to check:
 
 - **CPU**: Look at average AND peak. If peak is under 50%, you can safely downsize.
-- **Memory**: Check the available memory percentage. If you consistently have 60%+ free memory, you have too much RAM.
+- **Memory**: Check available memory, or available memory percentage if you collect that metric. If you consistently have 60%+ free memory, you have too much RAM.
 - **Network**: High network throughput might require a VM size with higher bandwidth limits.
 - **Disk IOPS**: If your VM hits IOPS limits, you might need to consider disk-optimized sizes.
 
@@ -69,10 +69,10 @@ For memory metrics, you need the Azure Monitor agent installed because Azure doe
 # Query memory usage from Log Analytics (requires Azure Monitor agent)
 # This KQL query shows average available memory over 30 days
 Perf
-| where ObjectName == "Memory" and CounterName == "% Used Memory"
+| where ObjectName == "Memory" and CounterName in ("Available MBytes Memory", "Available MBytes")
 | where Computer == "myVM"
 | where TimeGenerated > ago(30d)
-| summarize AvgMemoryUsed = avg(CounterValue), MaxMemoryUsed = max(CounterValue) by bin(TimeGenerated, 1h)
+| summarize AvgAvailableMemoryMB = avg(CounterValue), MinAvailableMemoryMB = min(CounterValue) by bin(TimeGenerated, 1h)
 | order by TimeGenerated desc
 ```
 
@@ -166,12 +166,10 @@ Perf
 Before making changes, calculate how much you will save:
 
 ```bash
-# Get the current price of your VM size
-az vm list-skus \
-  --location eastus \
-  --size Standard_D4s_v5 \
-  --query "[0].costs" \
-  --output json
+# Get the current pay-as-you-go Linux retail price of your VM size
+curl -sG "https://prices.azure.com/api/retail/prices" \
+  --data-urlencode "\$filter=serviceName eq 'Virtual Machines' and armRegionName eq 'eastus' and armSkuName eq 'Standard_D4s_v5' and priceType eq 'Consumption' and contains(productName, 'Windows') eq false and contains(meterName, 'Spot') eq false and contains(meterName, 'Low Priority') eq false" \
+  | jq '.Items[] | {sku: .armSkuName, hourlyPrice: .retailPrice, unit: .unitOfMeasure}'
 
 # Compare pricing between sizes (approximate monthly costs)
 # Standard_D4s_v5 (4 vCPUs, 16 GB): ~$140/month
@@ -187,7 +185,7 @@ To minimize the impact of VM resizes:
 
 1. **Use availability sets or VMSS**: Resize one instance at a time while others handle traffic.
 2. **Schedule during maintenance windows**: Resize during off-peak hours.
-3. **Use Azure Update Management**: Coordinate resizes with other maintenance activities.
+3. **Use Azure Update Manager**: Coordinate resizes with other maintenance activities.
 4. **Automate with runbooks**: Create Azure Automation runbooks that resize VMs during off-peak hours.
 
 ```bash
