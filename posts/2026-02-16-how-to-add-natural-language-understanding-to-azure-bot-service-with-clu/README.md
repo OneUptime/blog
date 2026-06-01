@@ -45,7 +45,7 @@ graph LR
 
 ## Step 1: Create an Azure AI Language Resource
 
-Go to the Azure portal and create a new "Language" resource (under Azure AI services). Choose a pricing tier - the free tier allows 5,000 text records per month, which is plenty for development.
+Go to the Azure portal and create a new "Language" resource (under Azure AI services). Choose a pricing tier - the free tier allows 5,000 prediction calls per month, which is plenty for development.
 
 Note the endpoint URL and key after creation.
 
@@ -64,9 +64,9 @@ Intents represent the different things users want to do. For a support bot, you 
 - **GetProductInfo**: User wants information about a product
 - **CancelOrder**: User wants to cancel an order
 - **Greeting**: User is saying hello
-- **None**: Fallback intent for unrecognized messages
+- **None**: The default fallback intent for unrecognized messages
 
-In Language Studio, add each intent and provide training utterances. Aim for at least 10-15 utterances per intent. Here are examples for `CheckOrderStatus`:
+In Language Studio, add each custom intent and provide training utterances. Aim for at least 10-15 utterances per intent. Here are examples for `CheckOrderStatus`:
 
 - "What is the status of my order?"
 - "Where is my order 12345?"
@@ -83,11 +83,11 @@ In Language Studio, add each intent and provide training utterances. Aim for at 
 
 Entities represent the data values that users mention in their messages. Define the following entities:
 
-- **OrderNumber**: A learned entity that captures order identifiers
-- **ProductName**: A learned entity for product names
+- **OrderNumber**: An entity with a learned component that captures order identifiers
+- **ProductName**: An entity with a learned component for product names
 - **Priority**: A list entity with values like "high," "medium," "low"
 
-For learned entities, label them in your training utterances. In the utterance "Where is my order 12345?", highlight "12345" and tag it as `OrderNumber`. Do this for every utterance that contains an entity value.
+For entities with learned components, label them in your training utterances. In the utterance "Where is my order 12345?", highlight "12345" and tag it as `OrderNumber`. Do this for every utterance that contains an entity value.
 
 For list entities, define the possible values and their synonyms. For example, the Priority entity might have:
 
@@ -99,7 +99,7 @@ For list entities, define the possible values and their synonyms. For example, t
 
 ## Step 5: Train and Evaluate the Model
 
-Click "Train" in Language Studio. Give your training job a name and select the training mode. "Standard" training provides better accuracy than "Advanced" for most scenarios.
+Click "Train" in Language Studio. Give your training job a name and select the training mode. "Standard" training is useful for faster, free iterations in English projects, while "Advanced" training generally provides better model quality and supports multilingual projects.
 
 After training completes, review the evaluation metrics:
 
