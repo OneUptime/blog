@@ -14,7 +14,7 @@ Q uses machine learning to understand your data's semantics and map natural lang
 
 ## Prerequisites
 
-QuickSight Q is available only in Enterprise Edition. You also need at least one SPICE dataset with Q enabled. Q doesn't work with direct query mode.
+QuickSight Q is available only in Enterprise Edition. You also need at least one dataset that can be added to a Q topic. Topics can use SPICE or direct query datasets; for direct query datasets, configure a topic refresh schedule so Q's index stays current.
 
 ## Step 1: Create a Q Topic
 
@@ -48,7 +48,7 @@ aws quicksight create-topic \
             "TypeName": "DATE"
           },
           "TimeGranularity": "DAY",
-          "DefaultAggregation": "COUNT"
+          "Aggregation": "COUNT"
         },
         {
           "ColumnName": "product",
@@ -82,7 +82,7 @@ aws quicksight create-topic \
               "CurrencyCode": "USD"
             }
           },
-          "DefaultAggregation": "SUM"
+          "Aggregation": "SUM"
         },
         {
           "ColumnName": "quantity",
@@ -90,7 +90,7 @@ aws quicksight create-topic \
           "ColumnDescription": "Number of units in the order",
           "ColumnSynonyms": ["units", "count", "volume", "qty"],
           "IsIncludedInTopic": true,
-          "DefaultAggregation": "SUM"
+          "Aggregation": "SUM"
         },
         {
           "ColumnName": "customer_name",
@@ -138,7 +138,7 @@ aws quicksight update-topic \
               "CurrencyCode": "USD"
             }
           },
-          "DefaultAggregation": "SUM",
+          "Aggregation": "SUM",
           "ComparativeOrder": {
             "UseOrdering": "GREATER_IS_BETTER"
           }
@@ -151,7 +151,7 @@ aws quicksight update-topic \
           "SemanticType": {
             "TypeName": "PERCENTAGE"
           },
-          "DefaultAggregation": "AVERAGE",
+          "Aggregation": "AVERAGE",
           "ComparativeOrder": {
             "UseOrdering": "GREATER_IS_BETTER"
           }
@@ -164,7 +164,7 @@ aws quicksight update-topic \
           "CalculatedFieldSynonyms": ["AOV", "average order", "avg order"],
           "Expression": "sum(revenue) / count(order_id)",
           "IsIncludedInTopic": true,
-          "DefaultAggregation": "AVERAGE"
+          "Aggregation": "AVERAGE"
         }
       ],
       "NamedEntities": [
@@ -175,12 +175,17 @@ aws quicksight update-topic \
           "Definition": [
             {
               "FieldName": "product",
-              "PropertyRole": "PRIMARY_KEY"
+              "PropertyName": "Product Name",
+              "PropertyRole": "PRIMARY",
+              "PropertyUsage": "DIMENSION"
             },
             {
               "FieldName": "revenue",
-              "PropertyRole": "MEASURE",
-              "PropertyUsage": "METRIC"
+              "PropertyName": "Revenue",
+              "PropertyUsage": "MEASURE",
+              "Metric": {
+                "Aggregation": "SUM"
+              }
             }
           ]
         }
@@ -222,9 +227,8 @@ Here are examples of questions Q can handle well with proper setup:
 Q access needs to be explicitly granted. Not all QuickSight users automatically get Q.
 
 ```bash
-# Subscribe users to Q
-# Q is part of the QuickSight Q add-on, which is priced separately
-# Enable it for specific users through account settings
+# Give users the required QuickSight role and share the topic or dashboard with them.
+# For embedded apps, registered users also need access to the generated Q search bar URL.
 
 # Check if Q is enabled for your account
 aws quicksight describe-account-settings \
@@ -260,23 +264,31 @@ Embed it in your frontend.
 
 ```javascript
 // Embed the Q search bar in your app
-const embeddingContext = await QuickSightEmbedding.createEmbeddingContext();
+const { createEmbeddingContext } = QuickSightEmbedding;
+const embeddingContext = await createEmbeddingContext();
 
-const qSearchBar = await embeddingContext.embedQSearchBar({
+const frameOptions = {
   url: embedUrl,
   container: '#q-search-container',
   width: '100%',
-  locale: 'en-US'
-});
+  height: '700px'
+};
 
-// Listen for question events
-qSearchBar.on('Q_SEARCH_OPENED', () => {
-  console.log('User opened Q search');
-});
+const contentOptions = {
+  locale: 'en-US',
+  onMessage: async (messageEvent) => {
+    switch (messageEvent.eventName) {
+      case 'Q_SEARCH_OPENED':
+        console.log('User opened Q search');
+        break;
+      case 'Q_SEARCH_CLOSED':
+        console.log('User closed Q search');
+        break;
+    }
+  }
+};
 
-qSearchBar.on('Q_SEARCH_CLOSED', () => {
-  console.log('User closed Q search');
-});
+await embeddingContext.embedQSearchBar(frameOptions, contentOptions);
 ```
 
 ## Tips for Better Q Results
