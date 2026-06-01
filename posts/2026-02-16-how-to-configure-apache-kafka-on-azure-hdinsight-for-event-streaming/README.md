@@ -24,7 +24,8 @@ az hdinsight create \
   --name my-kafka-cluster \
   --resource-group my-resource-group \
   --type Kafka \
-  --component-version Kafka=2.4 \
+  --version 5.1 \
+  --component-version kafka=3.2 \
   --http-user admin \
   --http-password "YourStr0ngP@ssword!" \
   --ssh-user sshuser \
@@ -35,7 +36,7 @@ az hdinsight create \
   --workernode-data-disk-size 1024 \
   --storage-account mystorageaccount \
   --storage-account-key "your-storage-key" \
-  --storage-default-container kafka-data \
+  --storage-container kafka-data \
   --location eastus
 ```
 
@@ -50,8 +51,8 @@ A few important notes on the configuration:
 Unlike some HDInsight cluster types, Kafka brokers expose their internal IP addresses to clients. To connect from applications outside the cluster, you need to either:
 
 1. Deploy your client applications in the same Virtual Network
-2. Set up VPN or ExpressRoute connectivity
-3. Configure Kafka to advertise public IP addresses (not recommended for production)
+2. Set up VNet peering, VPN, or ExpressRoute connectivity
+3. Use Kafka REST Proxy when HTTP access fits your client requirements
 
 For the VNet approach, first create a VNet and then deploy the cluster into it:
 
@@ -69,7 +70,8 @@ az hdinsight create \
   --name my-kafka-cluster \
   --resource-group my-resource-group \
   --type Kafka \
-  --component-version Kafka=2.4 \
+  --version 5.1 \
+  --component-version kafka=3.2 \
   --http-user admin \
   --http-password "YourStr0ngP@ssword!" \
   --ssh-user sshuser \
@@ -79,7 +81,7 @@ az hdinsight create \
   --workernode-data-disk-size 1024 \
   --storage-account mystorageaccount \
   --storage-account-key "your-key" \
-  --storage-default-container kafka-data \
+  --storage-container kafka-data \
   --vnet-name kafka-vnet \
   --subnet default \
   --location eastus
@@ -97,7 +99,7 @@ ssh sshuser@my-kafka-cluster-ssh.azurehdinsight.net
 # This returns the internal FQDN and port for each broker
 curl -u admin:"YourStr0ngP@ssword!" -sS \
   "https://my-kafka-cluster.azurehdinsight.net/api/v1/clusters/my-kafka-cluster/services/KAFKA/components/KAFKA_BROKER" \
-  | python -c "import sys,json; print(','.join([h['Hosts']['host_name']+':9092' for h in json.load(sys.stdin)['host_components']]))"
+  | python3 -c "import sys,json; print(','.join([h['HostRoles']['host_name']+':9092' for h in json.load(sys.stdin)['host_components']]))"
 ```
 
 This gives you a comma-separated list of broker addresses like:
