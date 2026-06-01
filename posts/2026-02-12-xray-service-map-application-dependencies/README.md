@@ -10,7 +10,7 @@ Description: Learn how to use the AWS X-Ray service map to visualize application
 
 Microservices architecture brings a lot of benefits, but it also makes it really hard to answer a simple question: what talks to what? When you have 20, 50, or 100 services, keeping track of dependencies in your head - or in a wiki that's always out of date - doesn't work. You need a live map of your system.
 
-That's exactly what the X-Ray service map provides. It's an automatically generated, real-time visualization of your application's architecture based on actual traffic patterns. No manual diagramming, no stale documentation - just a graph that reflects what's actually happening in production right now.
+That's exactly what the X-Ray service map provides. It's an automatically generated visualization of your application's architecture based on actual traffic patterns in the selected time range. No manual diagramming, no stale documentation - just a graph that reflects what traces show is happening in production.
 
 ## What the Service Map Shows
 
@@ -18,7 +18,7 @@ The service map is a directed graph where:
 
 - **Nodes** represent services, AWS resources, and external dependencies
 - **Edges** represent the connections between them (HTTP calls, SDK calls, etc.)
-- **Node color** indicates health (green for healthy, yellow for warnings, red for errors)
+- **Node color** indicates health (green for successful calls, yellow for 4xx errors, red for 5xx faults, purple for throttling)
 - **Edge statistics** show latency, request rate, and error rate
 
 ```mermaid
@@ -40,14 +40,14 @@ Each node in the real X-Ray service map is clickable. You can drill into any ser
 The service map is populated by X-Ray traces. For it to be useful, you need:
 
 1. X-Ray tracing enabled on your services (see our [X-Ray tracing setup guide](https://oneuptime.com/blog/post/2026-02-12-xray-tracing-application-requests/view))
-2. The X-Ray daemon running alongside your application
+2. A supported trace emitter, such as the X-Ray daemon or an OpenTelemetry collector configured to send traces to X-Ray
 3. Sufficient traffic to generate traces (at least a few requests per minute)
 
 ## Accessing the Service Map
 
 ### Via the Console
 
-Navigate to the X-Ray section in the AWS Console, then click "Service map" in the left nav. The map renders automatically based on the traces collected in the selected time range.
+Navigate to the X-Ray trace map in the CloudWatch console, or open the X-Ray console and click "Service map" in the left nav. The map renders automatically based on the traces collected in the selected time range.
 
 You can adjust the time range in the upper right. Shorter time ranges (last 5 or 15 minutes) show you current state. Longer ranges (last 6 hours or 1 day) show you the overall architecture.
 
@@ -63,12 +63,12 @@ aws xray get-service-graph \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S)
 ```
 
-The response contains a JSON representation of the graph with all the same statistics you see in the console.
+The response contains a JSON representation of the graph, including services, downstream edges, response-time histograms, and summary statistics.
 
-For a more targeted view, get the graph for a specific service:
+For a more targeted view, get the graph for a specific X-Ray group:
 
 ```bash
-# Get the service graph centered on a specific service
+# Get the service graph for a specific group
 aws xray get-service-graph \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
@@ -79,21 +79,21 @@ aws xray get-service-graph \
 
 ### Node Types
 
-The service map uses different shapes and icons for different resource types:
+The service map uses labels and icons for different resource types:
 
-- **Your services** - hexagonal nodes labeled with the segment name you set in your X-Ray instrumentation
+- **Your services** - nodes labeled with the segment name you set in your X-Ray instrumentation
 - **AWS services** - nodes with AWS service icons (DynamoDB, SQS, S3, etc.)
-- **External services** - rectangular nodes for non-AWS HTTP endpoints
+- **External services** - remote nodes for non-AWS HTTP endpoints
 - **Client** - the leftmost node representing incoming requests
 
 ### Health Indicators
 
-Each node shows a ring around it:
+Each node is colored based on the ratio of successful calls to errors and faults:
 
-- **Green ring** - error rate below 1% and latency within expected bounds
-- **Yellow ring** - elevated error rate (1-5%) or increased latency
-- **Red ring** - high error rate (above 5%) or significant latency degradation
-- **Purple ring** - throttling events detected
+- **Green** - successful calls
+- **Yellow** - client errors (400 series errors)
+- **Red** - server faults (500 series errors)
+- **Purple** - throttling errors (429 Too Many Requests)
 
 ### Edge Statistics
 
@@ -176,7 +176,7 @@ If your service map is cluttered because you have many services, use X-Ray group
 # Create a group for production traffic only
 aws xray create-group \
   --group-name "production" \
-  --filter-expression 'annotation.environment = "production"'
+  --filter-expression 'annotation[environment] = "production"'
 
 # Create a group for a specific application
 aws xray create-group \
@@ -249,12 +249,12 @@ for dep in sorted(deps, key=lambda d: d['requests'], reverse=True):
           f"{dep['requests']} requests, {dep['avg_latency_ms']:.0f}ms avg")
 ```
 
-## Service Map with CloudWatch ServiceLens
+## Service Map with CloudWatch
 
-The X-Ray service map is also accessible through [CloudWatch ServiceLens](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-servicelens-application-monitoring/view), which adds CloudWatch metrics and logs to the view. When you access the service map through ServiceLens, clicking a node shows you:
+The X-Ray service map and the CloudWatch ServiceLens map are now combined into the X-Ray trace map in the CloudWatch console. CloudWatch also has an Application Map for Application Signals. When you use these CloudWatch views, clicking a node can show you:
 
-- X-Ray trace data (same as standalone X-Ray)
-- CloudWatch metrics for that service (CPU, memory, etc.)
+- X-Ray trace data
+- CloudWatch metrics for that service, such as request rate, latency, faults, and errors
 - Related CloudWatch Logs
 
 This combined view is more useful for operational work since you get all three observability signals in one place.
