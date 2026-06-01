@@ -17,9 +17,9 @@ NFS support in Azure Files has some specific requirements that differ from SMB. 
 Before you start, understand what NFS Azure File Shares require:
 
 - **Premium file shares only.** NFS is not available on standard (HDD-backed) file shares. You need a FileStorage account with premium performance tier.
-- **No public endpoint access.** NFS shares must be accessed through a private endpoint or a virtual network service endpoint. You cannot mount an NFS share over the public internet.
-- **No encryption in transit.** NFS 4.1 in Azure Files does not support encryption. Security comes from network-level isolation (private endpoints/VNETs) instead of protocol-level encryption.
-- **Linux kernel 4.18 or later.** Older kernels may have issues with NFS 4.1 features.
+- **No unrestricted public internet access.** NFS shares must be accessed from trusted networks, either through a private endpoint or through the storage account public endpoint restricted to a virtual network service endpoint. You cannot mount an NFS share from arbitrary internet clients.
+- **Native NFS mounts are not encrypted in transit.** Azure Files supports encryption in transit for NFS through the AZNFS mount helper, which uses TLS. The native NFS mount commands in this guide use network-level isolation instead of protocol-level encryption.
+- **Linux kernel 5.3 or later for `nconnect`.** Older kernels may still mount NFS 4.1 shares, but the `nconnect` performance option used in this guide requires kernel 5.3+ on older Linux distributions.
 - **Root squash configuration.** You can configure how root access is handled.
 
 ## Step 1: Create a Premium FileStorage Account
@@ -192,7 +192,7 @@ To make the mount survive reboots, add an entry to `/etc/fstab`:
 
 ```bash
 # Add the NFS mount to fstab for persistence across reboots
-echo "mynfsstorageaccount.file.core.windows.net:/mynfsstorageaccount/mynfsshare /mnt/azure/nfsshare nfs vers=4,minorversion=1,sec=sys,nconnect=4 0 0" | sudo tee -a /etc/fstab
+echo "mynfsstorageaccount.file.core.windows.net:/mynfsstorageaccount/mynfsshare /mnt/azure/nfsshare nfs vers=4,minorversion=1,_netdev,nofail,sec=sys,nconnect=4 0 0" | sudo tee -a /etc/fstab
 ```
 
 Test the fstab entry without rebooting:
@@ -213,22 +213,26 @@ mount | grep nfsshare
 The `nconnect` mount option opens multiple TCP connections to the NFS server, significantly improving throughput for parallel I/O workloads:
 
 ```bash
-# Mount with 8 connections for maximum throughput
+# Mount with the recommended number of connections
 sudo mount -t nfs \
   mynfsstorageaccount.file.core.windows.net:/mynfsstorageaccount/mynfsshare \
   /mnt/azure/nfsshare \
-  -o vers=4,minorversion=1,sec=sys,nconnect=8
+  -o vers=4,minorversion=1,sec=sys,nconnect=4
 ```
 
-Higher `nconnect` values help with parallel workloads but provide diminishing returns beyond 8 connections.
+Azure Files recommends `nconnect=4`. Higher values are supported by Linux NFS clients, but Azure Files currently does not see gains beyond four channels and values above four can hurt performance due to TCP saturation.
 
 ### Read-Ahead Tuning
 
 For sequential read workloads, increasing the read-ahead buffer can help:
 
 ```bash
-# Increase read-ahead for the NFS mount (value in KB)
-echo 16384 | sudo tee /sys/class/bdi/0:*/read_ahead_kb
+# Persistently set read-ahead for NFS mounts to 15 MiB
+cat <<'EOF' | sudo tee /etc/udev/rules.d/99-nfs.rules
+SUBSYSTEM=="bdi", ACTION=="add", PROGRAM="/usr/bin/awk -v bdi=$kernel 'BEGIN{ret=1} {if ($4 == bdi) {ret=0}} END{exit ret}' /proc/fs/nfsfs/volumes", ATTR{read_ahead_kb}="15360"
+EOF
+
+sudo udevadm control --reload-rules
 ```
 
 ### Write-Back Caching
@@ -253,8 +257,8 @@ Premium file shares have performance that scales with provisioned size:
 |-----------------|------|------------|
 | 100 GiB | 3,100 | 110 MiB/s |
 | 500 GiB | 3,500 | 150 MiB/s |
-| 1 TiB | 4,000 | 200 MiB/s |
-| 5 TiB | 8,000 | 400 MiB/s |
+| 1 TiB | 4,024 | 203 MiB/s |
+| 5 TiB | 8,120 | 613 MiB/s |
 
 If you need more performance, increase the provisioned size:
 
