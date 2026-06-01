@@ -133,6 +133,7 @@ Here is a workflow that processes IoT sensor readings, validates them, enriches 
             "EnrichData": {
               "Type": "Task",
               "Resource": "arn:aws:lambda:us-east-1:123456789012:function:enrich-with-metadata",
+              "ResultPath": "$.enrichment",
               "Next": "StoreReading"
             },
             "StoreReading": {
@@ -269,9 +270,9 @@ aws events put-targets \
   }]'
 ```
 
-## Triggering from SQS or Kinesis via Lambda
+## Triggering from SQS or Kinesis
 
-For SQS or Kinesis event sources, use a thin Lambda function to start executions:
+For SQS or Kinesis event sources, you can use EventBridge Pipes to connect directly to a Step Functions state machine. If you need custom pre-processing, use a thin Lambda function to start executions:
 
 ```python
 # Lambda function that starts Express Workflow executions for SQS messages
@@ -329,8 +330,8 @@ Since Express Workflows lack built-in execution history, logging is essential:
 Log levels:
 
 - **OFF** - No logging (cheapest but blind)
-- **ERROR** - Only failed executions
-- **FATAL** - Only executions that abort
+- **ERROR** - Error events such as failed, aborted, or timed-out executions and failed tasks
+- **FATAL** - Fatal execution-level events such as aborted, failed, or timed-out executions
 - **ALL** - Everything (most expensive but full visibility)
 
 For production, start with `ERROR` and switch to `ALL` temporarily when debugging.
@@ -339,4 +340,4 @@ For production, start with `ERROR` and switch to `ALL` temporarily when debuggin
 
 Express Workflows are one of those AWS features that can dramatically reduce costs if you are in the right use case. Short-duration, high-volume event processing is their sweet spot. The trade-off is losing exactly-once semantics and built-in execution history, but for most event processing pipelines, those trade-offs are perfectly acceptable.
 
-For longer-running orchestrations, stick with Standard Workflows. For large-scale batch processing, combine Express Workflows with [Distributed Map](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-distributed-map-for-large-scale-processing/view) for the best of both worlds.
+For longer-running orchestrations, stick with Standard Workflows. For large-scale batch processing, use a Standard Workflow with [Distributed Map](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-distributed-map-for-large-scale-processing/view), and choose Express child workflows when the per-item work is short-lived and high-volume.
