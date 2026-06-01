@@ -189,7 +189,7 @@ ssml_say_as = """
 
         <!-- Phone number -->
         For urgent support, call
-        <say-as interpret-as="telephone" format="1">(555) 123-4567</say-as>.
+        <say-as interpret-as="telephone">(555) 123-4567</say-as>.
 
         <break time="300ms"/>
 
@@ -231,18 +231,18 @@ ssml_phonemes = """
         <!-- Use IPA (International Phonetic Alphabet) for precise pronunciation -->
 
         Welcome to
-        <phoneme alphabet="ipa" ph="wan.ap.taim">OneUptime</phoneme>
+        <phoneme alphabet="ipa" ph="ˈwʌn.ʌp.taɪm">OneUptime</phoneme>
         monitoring.
 
         <break time="300ms"/>
 
-        The <phoneme alphabet="ipa" ph="en.dZi.en.eks">Nginx</phoneme>
+        The <phoneme alphabet="ipa" ph="ˈɛn.dʒɪn.ɛks">Nginx</phoneme>
         server is responding normally.
 
         <break time="300ms"/>
 
         <!-- You can also use the Microsoft SAPI alphabet -->
-        Your <phoneme alphabet="x-microsoft-ups" ph="S AX R . V ER">server</phoneme>
+        Your <phoneme alphabet="sapi" ph="s er 1 - v er">server</phoneme>
         is online.
 
     </voice>
@@ -282,9 +282,9 @@ ssml_multi = """
 
     <break time="500ms"/>
 
-    <!-- Serious tone for the alert section -->
+    <!-- Formal tone for the alert section -->
     <voice name="en-US-AriaNeural">
-        <mstts:express-as style="serious">
+        <mstts:express-as style="newscast-formal">
             However, there is one item that requires attention.
             The staging environment database is approaching its storage limit.
             Please review and archive old data before the end of the week.
@@ -338,7 +338,7 @@ ssml = """
        xmlns:mstts="http://www.w3.org/2001/mstts"
        xml:lang="en-US">
     <voice name="en-US-AriaNeural">
-        <mstts:express-as style="serious">
+        <mstts:express-as style="newscast-formal">
             <prosody rate="-5%">
                 Attention. A critical alert has been triggered.
                 <break time="500ms"/>
@@ -361,6 +361,9 @@ For applications that generate speech dynamically, build an SSML template system
 
 ```python
 # ssml_builder.py - Programmatically build SSML documents
+from xml.sax.saxutils import escape, quoteattr
+
+
 class SSMLBuilder:
     """Build SSML documents programmatically for dynamic speech generation."""
 
@@ -371,22 +374,22 @@ class SSMLBuilder:
     def add_voice(self, voice_name: str, text: str, style: str = None,
                   rate: str = "0%", pitch: str = "0%"):
         """Add a voice segment to the SSML document."""
-        voice_content = text
+        voice_content = escape(text)
         if style:
             voice_content = (
-                f'<mstts:express-as style="{style}">'
-                f'<prosody rate="{rate}" pitch="{pitch}">'
-                f'{text}'
+                f'<mstts:express-as style={quoteattr(style)}>'
+                f'<prosody rate={quoteattr(rate)} pitch={quoteattr(pitch)}>'
+                f'{voice_content}'
                 f'</prosody>'
                 f'</mstts:express-as>'
             )
         else:
             voice_content = (
-                f'<prosody rate="{rate}" pitch="{pitch}">'
-                f'{text}'
+                f'<prosody rate={quoteattr(rate)} pitch={quoteattr(pitch)}>'
+                f'{voice_content}'
                 f'</prosody>'
             )
-        self.elements.append(f'<voice name="{voice_name}">{voice_content}</voice>')
+        self.elements.append(f'<voice name={quoteattr(voice_name)}>{voice_content}</voice>')
         return self
 
     def add_break(self, duration_ms: int = 500):
@@ -411,7 +414,7 @@ builder.add_voice("en-US-GuyNeural", "System status report.", style="newscast-fo
 builder.add_break(500)
 builder.add_voice("en-US-JennyNeural", "All 12 monitors are healthy.", style="cheerful")
 builder.add_break(300)
-builder.add_voice("en-US-AriaNeural", "Average response time is 142 milliseconds.", style="serious")
+builder.add_voice("en-US-AriaNeural", "Average response time is 142 milliseconds.", style="newscast-formal")
 
 ssml_output = builder.build()
 print(ssml_output)
