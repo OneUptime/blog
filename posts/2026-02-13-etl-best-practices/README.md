@@ -94,6 +94,8 @@ Catching bad data early prevents it from propagating through your pipeline and c
 Check individual records against expected constraints.
 
 ```python
+import pandas as pd
+
 # Row-level validation checks before loading data
 def validate_orders(df):
     """Validate order data, returning clean and rejected DataFrames."""
@@ -220,14 +222,14 @@ This Python class captures execution metrics and logs them for each pipeline run
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 @dataclass
 class PipelineMetrics:
     """Track key metrics for each pipeline execution."""
     pipeline_name: str
     execution_date: str
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_time: datetime = None
     rows_extracted: int = 0
     rows_transformed: int = 0
@@ -237,7 +239,7 @@ class PipelineMetrics:
     error_message: str = None
 
     def complete(self, status="success"):
-        self.end_time = datetime.utcnow()
+        self.end_time = datetime.now(timezone.utc)
         self.status = status
 
     def duration_seconds(self):
