@@ -35,14 +35,14 @@ graph LR
 
 ## Prerequisites
 
-- An Azure AI Language resource (S tier recommended for custom models)
+- An Azure AI Language resource (S tier recommended for production workloads; F0 can be used to try the service within its limits)
 - An Azure Blob Storage account for storing training documents
 - At minimum 10 labeled documents (50+ recommended for good accuracy)
 - Python 3.9+
 
 ## Step 1: Create the Azure AI Language Resource
 
-If you do not already have one, create an Azure AI Language resource in the Azure portal. Select the "S" pricing tier since custom NER is not available on the free tier.
+If you do not already have one, create an Azure AI Language resource in the Azure portal. Select the "S" pricing tier for production workloads, or "F0" if you only need to try the service within the free tier limits.
 
 ```bash
 # Create the Language resource
@@ -112,59 +112,66 @@ If you have many documents to label, you can prepare the labels as a JSON file a
 import json
 
 # Define the labeled data
-# Each entry has the document text and the entity labels with character offsets
+# Each entry references a document in blob storage and its labels with character offsets
 labeled_data = [
     {
-        "document": "incident-001.txt",
-        "language": "en",
+        "location": "incident-001.txt",
+        "language": "en-us",
+        "dataset": "Train",
         "entities": [
             {
-                "category": "ServiceName",
-                "offset": 18,    # Character position where the entity starts
-                "length": 11,    # Number of characters in the entity
-                "text": "payment API"
-            },
-            {
-                "category": "ErrorCode",
-                "offset": 48,
-                "length": 8,
-                "text": "HTTP 503"
-            },
-            {
-                "category": "ServerName",
-                "offset": 89,
-                "length": 11,
-                "text": "prod-web-01"
-            },
-            {
-                "category": "TimeReference",
-                "offset": 3,
-                "length": 12,
-                "text": "3:45 AM EST"
+                "regionOffset": 0,
+                "regionLength": 143,
+                "labels": [
+                    {
+                        "category": "TimeReference",
+                        "offset": 3,     # Character position where the entity starts
+                        "length": 11     # Number of UTF-16 code units in the entity
+                    },
+                    {
+                        "category": "ServiceName",
+                        "offset": 20,
+                        "length": 11
+                    },
+                    {
+                        "category": "ErrorCode",
+                        "offset": 50,
+                        "length": 8
+                    },
+                    {
+                        "category": "ServerName",
+                        "offset": 91,
+                        "length": 11
+                    }
+                ]
             }
         ]
     },
     {
-        "document": "incident-002.txt",
-        "language": "en",
+        "location": "incident-002.txt",
+        "language": "en-us",
+        "dataset": "Train",
         "entities": [
             {
-                "category": "ServiceName",
-                "offset": 0,
-                "length": 16,
-                "text": "monitoring agent"
-            },
-            {
-                "category": "ServerName",
-                "offset": 45,
-                "length": 14,
-                "text": "db-replica-03"
-            },
-            {
-                "category": "ErrorCode",
-                "offset": 78,
-                "length": 11,
-                "text": "ERR_TIMEOUT"
+                "regionOffset": 0,
+                "regionLength": 56,
+                "labels": [
+                    {
+                        "category": "ServiceName",
+                        "offset": 0,
+                        "length": 16
+                    },
+                    {
+                        "category": "ServerName",
+                        "offset": 26,
+                        "length": 13
+                    },
+                    {
+                        "category": "ErrorCode",
+                        "offset": 45,
+                        "length": 11
+                    }
+                ]
             }
         ]
     }
@@ -172,13 +179,16 @@ labeled_data = [
 
 # Save in the format expected by Language Studio
 output = {
-    "projectFileVersion": "2022-10-01-preview",
+    "projectFileVersion": "2022-05-01",
     "stringIndexType": "Utf16CodeUnit",
     "metadata": {
         "projectKind": "CustomEntityRecognition",
         "projectName": "IncidentNER",
-        "language": "en",
-        "storageInputContainerName": "ner-training-data"
+        "multilingual": false,
+        "description": "Custom NER model for IT incident reports",
+        "language": "en-us",
+        "storageInputContainerName": "ner-training-data",
+        "settings": {}
     },
     "assets": {
         "projectKind": "CustomEntityRecognition",
@@ -202,7 +212,7 @@ print("Labels file generated successfully")
 
 In Language Studio, go to your project and click "Train." Select the training configuration:
 
-- **Training mode**: Standard (uses all labeled data for training)
+- **Model name**: A label for the trained model, such as "v1"
 - **Evaluation**: If you have enough data, split it with an 80/20 train/test ratio
 
 Alternatively, trigger training via the REST API:
@@ -225,7 +235,7 @@ headers = {
 params = {"api-version": "2023-04-01"}
 body = {
     "modelLabel": "v1",
-    "trainingConfigVersion": "2022-05-01",
+    "trainingConfigVersion": "latest",
     "evaluationOptions": {
         "kind": "percentage",
         "trainingSplitPercentage": 80,
@@ -326,20 +336,28 @@ Expected output:
 Extracted entities:
   [TimeReference] 2:30 PM PST
     Confidence: 0.95
+    Offset: 3, Length: 11
   [ServiceName] checkout service
     Confidence: 0.92
+    Offset: 20, Length: 16
   [ErrorCode] ERR_DB_CONN
     Confidence: 0.98
+    Offset: 52, Length: 11
   [ServerName] db-primary-01
     Confidence: 0.96
+    Offset: 100, Length: 13
   [ServiceName] order service
     Confidence: 0.91
+    Offset: 162, Length: 13
   [ServiceName] inventory service
     Confidence: 0.89
+    Offset: 180, Length: 17
   [TimeReference] 3:15 PM PST
     Confidence: 0.94
+    Offset: 244, Length: 11
   [ServerName] db-standby-01
     Confidence: 0.97
+    Offset: 274, Length: 13
 ```
 
 ## Tips for Better Model Performance
