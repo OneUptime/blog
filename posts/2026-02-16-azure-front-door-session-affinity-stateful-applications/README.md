@@ -27,7 +27,7 @@ If any of these describe your situation, session affinity is a practical solutio
 
 ## How Front Door Session Affinity Works
 
-Azure Front Door uses a cookie-based approach. When a user first connects, Front Door routes them to a backend based on its normal routing logic (latency, weight, priority). It then sets a cookie called `AFDID` in the response. On subsequent requests, the browser sends this cookie back, and Front Door uses it to route the request to the same backend.
+Azure Front Door uses a cookie-based approach. When a user first connects, Front Door routes them to a backend based on its normal routing logic (latency, weight, priority). It then sets session affinity cookies called `ASLBSA` and `ASLBSACORS` in the response. On subsequent requests, the browser sends these cookies back, and Front Door uses them to route the request to the same backend.
 
 ```mermaid
 sequenceDiagram
@@ -39,9 +39,9 @@ sequenceDiagram
     User->>FrontDoor: First request (no cookie)
     FrontDoor->>Backend1: Route based on latency/weight
     Backend1-->>FrontDoor: Response
-    FrontDoor-->>User: Response + AFDID cookie
+    FrontDoor-->>User: Response + ASLBSA/ASLBSACORS cookies
 
-    User->>FrontDoor: Second request (with AFDID cookie)
+    User->>FrontDoor: Second request (with session affinity cookies)
     FrontDoor->>Backend1: Route to same backend
     Backend1-->>FrontDoor: Response
     FrontDoor-->>User: Response
@@ -150,7 +150,8 @@ az afd route create \
   --supported-protocols Https Http \
   --patterns-to-match "/*" \
   --forwarding-protocol HttpsOnly \
-  --https-redirect Enabled
+  --https-redirect Enabled \
+  --link-to-default-domain Enabled
 ```
 
 ## Verifying Session Affinity
@@ -158,15 +159,15 @@ az afd route create \
 After the deployment completes, test that session affinity is working by examining the response cookies.
 
 ```bash
-# Make a request and check for the AFDID session affinity cookie
-curl -v https://myapp-endpoint-xxxxx.z01.azurefd.net/ 2>&1 | grep -i "set-cookie"
+# Make a request and check for the session affinity cookies
+curl -v https://myapp-endpoint-xxxxx.z01.azurefd.net/ 2>&1 | grep -Ei "set-cookie: (ASLBSA|ASLBSACORS)"
 ```
 
-You should see a `Set-Cookie` header with the `AFDID` cookie. Send subsequent requests with this cookie and verify they hit the same backend. You can confirm this by having each backend return its hostname in a response header.
+You should see `Set-Cookie` headers with the `ASLBSA` and `ASLBSACORS` cookies. Send subsequent requests with these cookies and verify they hit the same backend. You can confirm this by having each backend return its hostname in a response header.
 
 ## Handling Backend Failures
 
-When a backend that has session affinity becomes unhealthy, Front Door will stop routing traffic to it - even if a user has a sticky cookie pointing to that backend. Front Door re-routes the user to a different healthy backend, and a new AFDID cookie gets set.
+When a backend that has session affinity becomes unhealthy, Front Door will stop routing traffic to it - even if a user has sticky cookies pointing to that backend. Front Door re-routes the user to a different healthy backend, and new session affinity cookies get set.
 
 This is important: session affinity does not override health checks. If a backend goes down, users will get moved. You need to plan for this in your application. Either accept that sessions might be lost when backends fail, or use a shared session store as a fallback.
 
@@ -201,7 +202,8 @@ az afd route create \
   --origin-group og-myapp \
   --supported-protocols Https \
   --patterns-to-match "/app/*" \
-  --forwarding-protocol HttpsOnly
+  --forwarding-protocol HttpsOnly \
+  --link-to-default-domain Enabled
 
 # Route for the stateless API (without session affinity)
 az afd route create \
@@ -212,7 +214,8 @@ az afd route create \
   --origin-group og-api \
   --supported-protocols Https \
   --patterns-to-match "/api/*" \
-  --forwarding-protocol HttpsOnly
+  --forwarding-protocol HttpsOnly \
+  --link-to-default-domain Enabled
 ```
 
 ## Monitoring and Troubleshooting
@@ -228,14 +231,14 @@ az monitor diagnostic-settings create \
   --workspace your-log-analytics-workspace-id
 ```
 
-In the access logs, you can see which origin each request was routed to. Look for patterns where the same client IP consistently hits the same origin - that confirms session affinity is working.
+In the access logs, you can see which backend hostname each request was routed to. Look for patterns where requests carrying the same session affinity cookies consistently hit the same backend hostname - that confirms session affinity is working.
 
 ## Key Considerations
 
-**Cookie lifetime**: The AFDID cookie is a session cookie by default. When the user closes their browser, the cookie is gone and they may be routed to a different backend next time. This is usually fine for web applications but something to be aware of.
+**Cookie lifetime**: The session affinity cookies are session cookies. When the user closes their browser, the cookies are gone and they may be routed to a different backend next time. This is usually fine for web applications but something to be aware of.
 
 **Load imbalance**: Session affinity can lead to uneven traffic distribution. If many users get pinned to one backend, that backend carries a disproportionate load. Monitor your backend metrics and adjust weights if needed.
 
-**CDN caching interaction**: If you have caching enabled on Front Door, cached responses do not go to the backend at all. Session affinity only matters for requests that are actually forwarded to an origin.
+**CDN caching interaction**: If you have caching enabled on Front Door, cached responses do not go to the backend at all. Session affinity only matters for requests that are actually forwarded to an origin. Front Door also does not establish session affinity when the origin sends a cacheable response, because adding per-user cookies to a cacheable response would affect other clients requesting the same resource.
 
 Session affinity on Azure Front Door is a practical solution when you need to support stateful applications at the edge. The cookie-based approach is simple, transparent to your application, and works well with Front Door's health monitoring. Just remember that the long-term goal should always be to move toward stateless architectures where possible.
