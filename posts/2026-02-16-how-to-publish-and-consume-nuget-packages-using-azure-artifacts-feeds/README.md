@@ -152,7 +152,7 @@ steps:
       projects: 'src/MyCompany.Utilities/*.csproj'
       arguments: '--configuration $(buildConfiguration) --no-restore'
 
-  # Run tests if any exist
+  # Run tests from the tests folder. Remove this step if your repository has no test projects.
   - task: DotNetCoreCLI@2
     displayName: 'Test'
     inputs:
@@ -188,7 +188,7 @@ steps:
 
 To use the package in another project, you need to add the Azure Artifacts feed as a NuGet source.
 
-Create a `nuget.config` file in your solution root.
+Create a `nuget.config` file in your solution root. If your feed has nuget.org configured as an upstream source, use the Azure Artifacts feed as the only package source for this solution.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -200,9 +200,6 @@ Create a `nuget.config` file in your solution root.
     <!-- Azure Artifacts feed (internal packages and upstream proxy) -->
     <add key="internal-packages"
          value="https://pkgs.dev.azure.com/yourorg/yourproject/_packaging/internal-packages/nuget/v3/index.json" />
-    <!-- Public NuGet.org as fallback -->
-    <add key="nuget.org"
-         value="https://api.nuget.org/v3/index.json" />
   </packageSources>
 </configuration>
 ```
@@ -248,6 +245,9 @@ Here is how I typically set up GitVersion in a pipeline.
 ```yaml
 # Using GitVersion for semantic versioning
 steps:
+  - checkout: self
+    fetchDepth: 0
+
   - task: gitversion/setup@0
     displayName: 'Install GitVersion'
     inputs:
@@ -300,7 +300,7 @@ Promoted packages (in Prerelease or Release views) are not affected by retention
 
 ## Troubleshooting Common Issues
 
-**401 Unauthorized when restoring packages**: Make sure you have the NuGetAuthenticate task before any restore steps. For local development, run `az artifacts universal login` or use the Azure Artifacts Credential Provider.
+**401 Unauthorized when restoring packages**: Make sure you have the NuGetAuthenticate task before any restore steps. For local development with `dotnet`, install the Azure Artifacts Credential Provider and run `dotnet restore --interactive` the first time you authenticate.
 
 **Package not found after publishing**: Check that you are looking at the correct feed and that the publishing pipeline completed successfully. Also verify that the nuget.config in the consuming project points to the right feed URL.
 
