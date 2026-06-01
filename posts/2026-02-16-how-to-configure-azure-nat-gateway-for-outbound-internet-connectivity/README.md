@@ -10,7 +10,7 @@ Description: Learn how to deploy Azure NAT Gateway to provide reliable and scala
 
 Outbound internet connectivity in Azure can be surprisingly tricky. By default, VMs without a public IP or load balancer get outbound access through Azure's default SNAT (Source Network Address Translation), but this approach has limitations. The default SNAT uses dynamically assigned IPs that can change, provides limited port allocation, and makes it difficult to whitelist your Azure resources on external services.
 
-Azure NAT Gateway solves these problems. It provides a dedicated, static public IP (or set of IPs) for outbound traffic from a subnet. All VMs in the subnet share the NAT Gateway for outbound connections, getting up to 64,000 SNAT ports per public IP with on-demand port allocation. No more SNAT exhaustion, no more unpredictable source IPs.
+Azure NAT Gateway solves these problems. It provides a dedicated, static public IP (or set of IPs) for outbound traffic from a subnet. All VMs in the subnet share the NAT Gateway for outbound connections, getting 64,512 SNAT ports per public IP with on-demand port allocation. This greatly reduces SNAT exhaustion risk and gives you predictable source IPs.
 
 ## Why You Need a NAT Gateway
 
@@ -25,8 +25,8 @@ The third scenario is the problem. The default outbound access provides no guara
 NAT Gateway provides:
 
 - **Static outbound IPs** that you control and can whitelist on external services
-- **Scalable SNAT ports** with up to 64,000 ports per public IP
-- **On-demand port allocation** that eliminates SNAT exhaustion
+- **Scalable SNAT ports** with 64,512 ports per public IP
+- **On-demand port allocation** that reduces SNAT exhaustion risk
 - **No configuration on VMs** needed - just associate with the subnet
 
 ## Architecture
@@ -81,7 +81,7 @@ az network public-ip create \
   --location eastus
 ```
 
-If you need more than 64,000 concurrent outbound connections, you can create additional public IPs or use a public IP prefix.
+If you need more SNAT port inventory than a single public IP provides, you can create additional public IPs or use a public IP prefix.
 
 ```bash
 # Create a public IP prefix for more IPs (optional)
@@ -89,10 +89,11 @@ az network public-ip prefix create \
   --resource-group rg-natgw-demo \
   --name pip-prefix-natgw \
   --length 30 \
+  --sku Standard \
   --location eastus
 ```
 
-A /30 prefix gives you 4 public IPs, which means up to 256,000 concurrent SNAT ports.
+A /30 prefix gives you 4 public IPs, which means up to 258,048 SNAT ports.
 
 ## Step 3: Create the NAT Gateway
 
@@ -158,14 +159,14 @@ The IP returned should match the NAT Gateway's public IP.
 
 NAT Gateway allocates SNAT ports dynamically on demand rather than pre-allocating a fixed number per VM. This is a significant improvement over load balancer SNAT.
 
-With a Standard Load Balancer, SNAT ports are divided equally among backend VMs. If you have 64,000 ports and 64 VMs, each VM gets 1,000 ports. If one VM needs more, it is out of luck.
+With Standard Load Balancer outbound rules, SNAT ports are preallocated per backend VM. If you manually allocate 64,000 ports across 64 VMs, each VM gets 1,000 ports. If one VM needs more, it is out of luck.
 
-With NAT Gateway, ports are pooled. Any VM can use any available port up to the 64,000 per IP maximum. A single VM making thousands of connections will not starve other VMs because the allocation is on-demand.
+With NAT Gateway, ports are pooled. Any VM can use any available port up to the 64,512 per IP maximum. A single VM making thousands of connections will not starve other VMs because the allocation is on-demand.
 
 ```mermaid
 graph TD
     subgraph NAT Gateway Port Pool
-        Pool[64,000 SNAT ports per public IP<br>On-demand allocation]
+        Pool[64,512 SNAT ports per public IP<br>On-demand allocation]
     end
     VM1[VM 1: needs 50,000 ports] --> Pool
     VM2[VM 2: needs 100 ports] --> Pool
@@ -191,14 +192,14 @@ az network nat gateway update \
   --public-ip-addresses pip-natgw pip-natgw-2
 ```
 
-With two public IPs, you get 128,000 total SNAT ports.
+With two public IPs, you get 129,024 total SNAT ports.
 
 ## NAT Gateway vs. Other Outbound Options
 
 | Feature | NAT Gateway | Load Balancer SNAT | Default Outbound |
 |---|---|---|---|
 | Static outbound IP | Yes | Yes | No |
-| SNAT port allocation | On-demand (64K/IP) | Pre-allocated per VM | Limited |
+| SNAT port allocation | On-demand (64,512/IP) | Pre-allocated per VM | Limited |
 | SNAT exhaustion risk | Very low | Moderate | High |
 | Cost | Per hour + data | Included with LB | Free (deprecated) |
 | Configuration | Per subnet | Per LB rule | Automatic |
@@ -215,9 +216,9 @@ With two public IPs, you get 128,000 total SNAT ports.
 
 ## Troubleshooting
 
-**SNAT exhaustion still occurring?** Check if you have exceeded 64,000 ports per IP. Add more public IPs. Also check the idle timeout - connections held open unnecessarily consume ports.
+**SNAT exhaustion still occurring?** Check if you have exceeded 64,512 ports per IP. Add more public IPs. Also check the idle timeout - connections held open unnecessarily consume ports.
 
-**Outbound IP not matching NAT Gateway IP?** If the VM has its own public IP or is behind a load balancer with outbound rules, those take precedence over the NAT Gateway. NAT Gateway is the lowest priority outbound mechanism.
+**Outbound IP not matching NAT Gateway IP?** NAT Gateway takes precedence over VM public IPs and load balancer outbound rules for new connections. Check for user-defined routes that send 0.0.0.0/0 traffic to a virtual appliance or virtual network gateway, because those routes override NAT Gateway for internet-bound traffic. Existing connections created before the NAT Gateway association may also continue on their previous path until they are re-established.
 
 **Traffic not going through NAT Gateway?** Verify the subnet association. Also check if there are UDRs that redirect traffic before it reaches the NAT Gateway.
 
@@ -230,4 +231,4 @@ az group delete --name rg-natgw-demo --yes --no-wait
 
 ## Wrapping Up
 
-Azure NAT Gateway is the recommended way to handle outbound internet connectivity for VMs in Azure. It provides static IPs for whitelisting, on-demand SNAT port allocation that eliminates exhaustion, and requires zero configuration on the VMs themselves. Associate it with a subnet and you are done. For any workload making outbound internet connections, especially those needing predictable source IPs or high connection counts, NAT Gateway should be part of your network design from the start.
+Azure NAT Gateway is the recommended way to handle outbound internet connectivity for VMs in Azure. It provides static IPs for whitelisting, on-demand SNAT port allocation that reduces exhaustion risk, and requires zero configuration on the VMs themselves. Associate it with a subnet and you are done. For any workload making outbound internet connections, especially those needing predictable source IPs or high connection counts, NAT Gateway should be part of your network design from the start.
