@@ -18,14 +18,14 @@ Azure Bastion is picky about its networking. Here are the non-negotiable require
 
 1. The subnet must be named exactly `AzureBastionSubnet`. No other name works.
 2. The subnet must be at least a /26 (64 addresses) for the Basic SKU and at least a /26 for Standard as well, though Microsoft recommends /26 or larger.
-3. The subnet needs a Network Security Group with specific inbound and outbound rules.
+3. If you attach a Network Security Group to the subnet, it must include the required inbound and outbound rules.
 4. Bastion requires a public IP address with the Standard SKU and static allocation.
 
 If any of these are wrong, the deployment will fail with sometimes cryptic error messages. Getting them right in a Bicep template means you never have to debug them again.
 
 ## The Complete Bicep Template
 
-Let us build the full template. It creates the VNet, the Bastion subnet, the required NSG, the public IP, and the Bastion host itself.
+Let us build the full template. It creates the VNet, the Bastion subnet, an NSG with the required rules, the public IP, and the Bastion host itself.
 
 ```bicep
 // Parameters for flexible deployment
@@ -35,6 +35,8 @@ param vnetName string = 'vnet-main'
 param vnetAddressPrefix string = '10.0.0.0/16'
 param bastionSubnetPrefix string = '10.0.255.0/26'   // Using the end of the range for Bastion
 param bastionSku string = 'Standard'   // 'Basic' or 'Standard'
+@secure()
+param adminPassword string
 
 // Tags for resource organization
 var tags = {
@@ -46,10 +48,10 @@ var tags = {
 
 ## Network Security Group for Bastion
 
-The NSG rules for Bastion are well-documented but easy to get wrong. Bastion needs specific inbound rules for HTTPS traffic from the internet and from the GatewayManager service, plus outbound rules for communicating with VMs and Azure services.
+The NSG rules for Bastion are well-documented but easy to get wrong. If you associate an NSG with `AzureBastionSubnet`, Bastion needs specific inbound rules for HTTPS traffic from the internet and from the GatewayManager service, plus outbound rules for communicating with VMs and Azure services.
 
 ```bicep
-// NSG for the AzureBastionSubnet - these rules are required by Azure Bastion
+// NSG for the AzureBastionSubnet - these rules are required when an NSG is associated with Azure Bastion
 resource bastionNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
   name: 'nsg-bastion'
   location: location
@@ -125,7 +127,7 @@ resource bastionNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
           priority: 100
           direction: 'Outbound'
           access: 'Allow'
-          protocol: 'Tcp'
+          protocol: '*'
           sourceAddressPrefix: '*'
           sourcePortRange: '*'
           destinationAddressPrefix: 'VirtualNetwork'
@@ -185,7 +187,7 @@ resource bastionNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
 }
 ```
 
-These NSG rules are not optional. Azure validates them during Bastion deployment, and missing any of them will cause the deployment to fail.
+These NSG rules are not optional when you associate an NSG with `AzureBastionSubnet`. Azure can reject an NSG that is missing required Bastion rules, and missing rules can also block VM connectivity or platform updates.
 
 ## Virtual Network and Bastion Subnet
 
@@ -272,7 +274,7 @@ resource bastionHost 'Microsoft.Network/bastionHosts@2023-09-01' = {
     enableFileCopy: bastionSku == 'Standard'       // File transfer support
     enableIpConnect: bastionSku == 'Standard'      // Connect by IP address
     enableShareableLink: false                      // Shareable links (optional)
-    scaleUnits: bastionSku == 'Standard' ? 2 : 2   // 2 is the minimum
+    scaleUnits: 2                                   // 2 is the minimum
 
     // IP configuration linking to the subnet and public IP
     ipConfigurations: [
@@ -297,7 +299,7 @@ The Standard SKU unlocks several features that the Basic SKU does not support:
 - **Native client support (tunneling)** - Connect using your local SSH or RDP client instead of the browser
 - **File copy** - Transfer files to and from the target VM through the Bastion connection
 - **IP connect** - Connect to a VM by IP address, even if it is in a peered VNet
-- **Scale units** - Control the number of concurrent sessions (each unit supports about 20 concurrent SSH or 40 concurrent RDP sessions)
+- **Scale units** - Control the number of concurrent sessions (each instance supports about 20 concurrent RDP or 40 concurrent SSH sessions)
 
 ## Adding a Test VM
 
@@ -350,7 +352,7 @@ resource testVm 'Microsoft.Compute/virtualMachines@2023-09-01' = {
     osProfile: {
       computerName: 'vm-test'
       adminUsername: 'azureuser'
-      adminPassword: 'P@ssw0rd1234!'   // Use Key Vault in production
+      adminPassword: adminPassword   // Use Key Vault in production
     }
     networkProfile: {
       networkInterfaces: [
@@ -388,7 +390,7 @@ az group create --name rg-bastion-demo --location eastus2
 az deployment group create \
   --resource-group rg-bastion-demo \
   --template-file main.bicep \
-  --parameters bastionHostName='bastion-prod' bastionSku='Standard'
+  --parameters bastionHostName='bastion-prod' bastionSku='Standard' adminPassword='<replace-with-a-strong-password>'
 ```
 
 Bastion deployment takes about 5-10 minutes, which is significantly longer than most Azure resources. This is normal - do not cancel the deployment thinking it is stuck.
