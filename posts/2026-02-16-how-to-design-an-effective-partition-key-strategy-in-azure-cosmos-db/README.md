@@ -68,7 +68,7 @@ Good example: Partitioning by `userId` when your application primarily loads dat
 
 Use a field that naturally identifies the entity and aligns with queries:
 
-```json
+```jsonc
 // E-commerce orders partitioned by customerId
 // Most queries are "show me orders for customer X"
 {
@@ -85,7 +85,7 @@ Use a field that naturally identifies the entity and aligns with queries:
 
 When no single field meets all three criteria, create a synthetic partition key by combining fields:
 
-```json
+```jsonc
 // IoT telemetry data
 // Partitioning by deviceId alone might create hot partitions
 // if some devices send much more data than others
@@ -100,13 +100,13 @@ When no single field meets all three criteria, create a synthetic partition key 
 // Partition key: /partitionKey (combines device and date)
 ```
 
-This gives you both good distribution and alignment with queries that filter by device and date range.
+This gives you both good distribution and alignment with queries that filter by device and a specific date.
 
 ### Pattern 3: Hash-Based Key
 
 For workloads where you need to write data very quickly and query patterns are flexible, use a hash suffix to spread writes:
 
-```json
+```jsonc
 // High-throughput event logging
 // Adding a hash suffix spreads writes across more partitions
 {
@@ -126,7 +126,7 @@ The tradeoff is that reads for a single tenant now require querying up to 10 par
 
 Cosmos DB supports hierarchical partition keys (up to 3 levels), which can solve problems that a single key cannot:
 
-```json
+```jsonc
 // Multi-tenant SaaS application
 // Hierarchical partition key: /tenantId, /userId, /sessionId
 {
@@ -141,7 +141,7 @@ Cosmos DB supports hierarchical partition keys (up to 3 levels), which can solve
 
 ```csharp
 // Create a container with hierarchical partition key
-// This allows efficient queries at any level of the hierarchy
+// This allows efficient queries by prefix levels of the hierarchy
 ContainerProperties properties = new ContainerProperties(
     id: "events",
     partitionKeyPaths: new List<string> { "/tenantId", "/userId", "/sessionId" }
@@ -150,7 +150,7 @@ ContainerProperties properties = new ContainerProperties(
 Container container = await database.CreateContainerAsync(properties, throughput: 10000);
 ```
 
-With hierarchical keys, you can query efficiently at any level:
+With hierarchical keys, you can query efficiently by specifying a prefix of the hierarchy:
 - All data for a tenant (first level)
 - All data for a specific user within a tenant (first + second level)
 - A specific session (all three levels)
@@ -238,7 +238,7 @@ If you realize your partition key was a mistake, you cannot change it in place. 
 
 ```csharp
 // Migrate data from old container to new container with different partition key
-// This example uses the bulk execution library for efficiency
+// This example enables bulk execution support in the .NET SDK for efficiency
 CosmosClient client = new CosmosClient(endpoint, key, new CosmosClientOptions
 {
     AllowBulkExecution = true
