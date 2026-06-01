@@ -8,7 +8,7 @@ Description: Learn how to configure application health probes on Azure VM Scale 
 
 ---
 
-Health probes are how your VM Scale Set knows whether instances are actually working, not just running. An instance can be powered on, fully booted, and passing basic health checks while the application inside is completely broken. Application health probes solve this by checking the application itself - hitting an HTTP endpoint, verifying TCP connectivity, or running a custom health check - and reporting that status back to the scale set.
+Health probes are how your VM Scale Set knows whether instances are actually working, not just running. An instance can be powered on, fully booted, and passing basic health checks while the application inside is completely broken. Application health probes solve this by checking the application itself - hitting an HTTP endpoint, verifying TCP connectivity, or reporting a custom health state - and reporting that status back to the scale set.
 
 Without health probes, you are flying blind. The scale set has no way to detect application failures, cannot perform automatic repairs, and rolling upgrades have no signal to determine if newly updated instances are healthy. In my experience, health probes are the single most important configuration for production scale sets.
 
@@ -18,13 +18,13 @@ Azure VM Scale Sets support two mechanisms for health monitoring:
 
 ### Load Balancer Health Probes
 
-If your scale set uses an Azure Load Balancer or Application Gateway, the load balancer's health probe doubles as the scale set's health signal. When an instance fails the load balancer probe, it is marked as unhealthy in the scale set too.
+If your scale set uses an Azure Load Balancer, the load balancer's health probe can double as the scale set's health signal. When an instance fails the load balancer probe, it is marked as unhealthy in the scale set too.
 
 ### Application Health Extension
 
 The Application Health Extension is an in-guest VM extension that directly monitors your application from within the instance. It periodically sends HTTP, HTTPS, or TCP requests to a local endpoint and reports the result to the Azure platform.
 
-You can use either mechanism, and for maximum reliability, I recommend the Application Health Extension because it works independently of the load balancer and provides health data even for instances not yet added to the load balancer backend pool.
+You can use either mechanism, but only one health monitoring source can be enabled for scale set orchestration features such as instance repairs and automatic OS upgrades. For maximum reliability, I recommend the Application Health Extension because it works independently of the load balancer and provides health data even for instances not yet added to the load balancer backend pool.
 
 ## Setting Up Load Balancer Health Probes
 
@@ -81,8 +81,7 @@ az vmss extension set \
     "port": 8080,
     "requestPath": "/health",
     "intervalInSeconds": 5,
-    "numberOfProbes": 1,
-    "gracePeriod": 600
+    "numberOfProbes": 1
   }'
 ```
 
@@ -101,8 +100,7 @@ az vmss extension set \
     "port": 80,
     "requestPath": "/health",
     "intervalInSeconds": 5,
-    "numberOfProbes": 1,
-    "gracePeriod": 600
+    "numberOfProbes": 1
   }'
 ```
 
@@ -113,7 +111,6 @@ The parameters:
 - **requestPath**: The health check endpoint path (only for HTTP/HTTPS).
 - **intervalInSeconds**: How frequently to probe (minimum 5 seconds).
 - **numberOfProbes**: Number of consecutive failures before marking unhealthy.
-- **gracePeriod**: Time in seconds to wait after instance creation before starting health checks. This gives your application time to start up.
 
 ## Building a Good Health Endpoint
 
@@ -183,19 +180,19 @@ Key principles for health endpoints:
 
 ## Enabling Automatic Instance Repair
 
-Health probes become truly powerful when combined with automatic repair. When an instance is detected as unhealthy, the scale set automatically deletes it and creates a replacement.
+Health probes become truly powerful when combined with automatic repair. When an instance is detected as unhealthy, the scale set automatically applies the configured repair action. With the default Replace action, it deletes the unhealthy instance and creates a replacement.
 
 ```bash
 # Enable automatic repairs with a grace period
 az vmss update \
   --resource-group myResourceGroup \
   --name myScaleSet \
-  --set automaticRepairsPolicy.enabled=true \
-  --set automaticRepairsPolicy.gracePeriod=PT30M \
-  --set automaticRepairsPolicy.repairAction=Replace
+  --enable-automatic-repairs true \
+  --automatic-repairs-grace-period 30 \
+  --automatic-repairs-action Replace
 ```
 
-The **gracePeriod** is crucial. It defines how long after instance creation the health checks start being enforced. Set this to longer than your application's maximum startup time. If your app takes 10 minutes to fully start, set the grace period to 15 or 20 minutes to avoid false positives.
+The **gracePeriod** is crucial. It defines how long repairs are suspended after an instance state change, including instance creation and replacement. Set this to longer than your application's maximum startup time. If your app takes 10 minutes to fully start, set the grace period to 15 or 20 minutes to avoid false positives.
 
 The **repairAction** can be:
 
@@ -221,7 +218,7 @@ Possible health states:
 
 - **Healthy**: The health probe is returning successful responses.
 - **Unhealthy**: The health probe is failing.
-- **Unknown**: Health status has not been determined yet (instance might still be in the grace period).
+- **Unknown**: Health status has not been determined yet.
 
 ## Health Probes with Rolling Upgrades
 
@@ -253,20 +250,20 @@ If updated instances fail health checks, the rolling upgrade pauses. This preven
 
 ## Monitoring Health Probe Results
 
-Track health probe metrics over time to catch trends:
+For Standard Load Balancer probes, track the Health Probe Status metric over time to catch trends:
 
 ```bash
-# Query health state changes from Azure Monitor
+# Query load balancer health probe status from Azure Monitor
 az monitor metrics list \
-  --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Compute/virtualMachineScaleSets/myScaleSet" \
-  --metric "HealthProbeStatus" \
-  --interval PT5M \
+  --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/loadBalancers/myLoadBalancer" \
+  --metric "DipAvailability" \
+  --interval 5m \
   --aggregation Average \
   --start-time 2026-02-16T00:00:00Z \
   --end-time 2026-02-16T23:59:59Z
 ```
 
-Feed these metrics into OneUptime to get alerts when instances become unhealthy and to track the frequency of automatic repairs. A sudden increase in repair events usually indicates a systemic issue like a bad deployment or a dependency outage.
+Feed these metrics into OneUptime to get alerts when load-balanced instances become unhealthy, and track automatic repair events from VM Scale Set activity and instance health data. A sudden increase in repair events usually indicates a systemic issue like a bad deployment or a dependency outage.
 
 ## Wrapping Up
 
