@@ -16,7 +16,7 @@ This post covers how to create and use deployment scripts in Bicep for common po
 
 When you include a deployment script in your Bicep template, Azure creates a temporary container instance, runs your script inside it, and captures the output. The container has the Azure CLI or PowerShell pre-installed, and your script runs with a managed identity that you provide. After the script completes, the container and its storage are cleaned up based on a retention policy you specify.
 
-The key points to understand: deployment scripts run in Azure Container Instances, they need a managed identity for authentication, they can accept inputs via environment variables, and they can return outputs that other Bicep resources can reference.
+The key points to understand: deployment scripts run in Azure Container Instances, they need a managed identity when the script performs Azure-specific actions, they can accept inputs via environment variables, and they can return outputs that other Bicep resources can reference.
 
 ## Basic Deployment Script
 
@@ -89,6 +89,14 @@ resource seedDataScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
         value: adminEmail
       }
       {
+        name: 'RESOURCE_GROUP_NAME'
+        value: resourceGroup().name
+      }
+      {
+        name: 'SUBSCRIPTION_ID'
+        value: subscription().subscriptionId
+      }
+      {
         // Secure environment variable - not logged
         name: 'ADMIN_PASSWORD'
         secureValue: 'InitialP@ssw0rd123!'
@@ -105,7 +113,7 @@ resource seedDataScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
       # Get the SQL server FQDN
       SQL_FQDN=$(az sql server show \
         --name $SQL_SERVER_NAME \
-        --resource-group $AZ_SCRIPTS_RESOURCE_GROUP \
+        --resource-group $RESOURCE_GROUP_NAME \
         --query fullyQualifiedDomainName -o tsv)
 
       echo "SQL Server: $SQL_FQDN"
@@ -113,13 +121,13 @@ resource seedDataScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
       # Create the initial admin user via REST API or SQL
       # This is a simplified example - real implementation would use sqlcmd
       az rest --method post \
-        --url "https://management.azure.com/subscriptions/$AZ_SCRIPTS_SUBSCRIPTION_ID/..." \
+        --url "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/..." \
         --body "{\"email\": \"$ADMIN_EMAIL\"}"
 
       echo "Initial data seed complete"
 
       # Output results that can be used by other Bicep resources
-      echo "{\"seedStatus\": \"complete\", \"adminEmail\": \"$ADMIN_EMAIL\"}" > $AZ_SCRIPTS_OUTPUT_FILE
+      echo "{\"seedStatus\": \"complete\", \"adminEmail\": \"$ADMIN_EMAIL\"}" > $AZ_SCRIPTS_OUTPUT_PATH
     '''
   }
   dependsOn: [
@@ -148,7 +156,7 @@ resource configureServicesScript 'Microsoft.Resources/deploymentScripts@2023-08-
     }
   }
   properties: {
-    azPowerShellVersion: '10.0'
+    azPowerShellVersion: '14.0'
     timeout: 'PT15M'
     retentionInterval: 'PT1H'
     cleanupPreference: 'OnSuccess'
@@ -268,6 +276,8 @@ resource externalScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
 Deployment scripts can depend on other resources, ensuring they run only after required infrastructure is in place.
 
 ```bicep
+param forceUpdateTag string = utcNow()
+
 // Ensure the script runs after all dependent resources are created
 resource postDeployConfig 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   name: 'post-deploy-configuration'
@@ -286,7 +296,7 @@ resource postDeployConfig 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
 
     // Use forceUpdateTag to re-run the script on every deployment
     // Without this, the script only runs when its definition changes
-    forceUpdateTag: utcNow()
+    forceUpdateTag: forceUpdateTag
 
     environmentVariables: [
       {
@@ -315,7 +325,7 @@ resource postDeployConfig 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
         --value "$WEBHOOK_URL"
 
       echo "Post-deployment configuration complete"
-      echo '{"webhookRegistered": true}' > $AZ_SCRIPTS_OUTPUT_FILE
+      echo '{"webhookRegistered": true}' > $AZ_SCRIPTS_OUTPUT_PATH
     '''
   }
   // Explicit dependencies ensure proper ordering
@@ -327,11 +337,11 @@ resource postDeployConfig 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
 }
 ```
 
-The `forceUpdateTag` with `utcNow()` forces the script to re-run on every deployment. Without it, the script only runs when its definition changes. Use this for scripts that need to run every time, like cache invalidation or configuration refresh.
+The `forceUpdateTag` with a parameter that defaults to `utcNow()` forces the script to re-run on every deployment. Without it, the script only runs when its definition changes. Use this for scripts that need to run every time, like cache invalidation or configuration refresh.
 
 ## Error Handling and Debugging
 
-When a deployment script fails, you need to debug it. Setting `cleanupPreference` to `OnExpiration` keeps the container instance around after failure.
+When a deployment script fails, you need to debug it. Setting `cleanupPreference` to `OnSuccess` cleans up after successful runs while keeping resources available until the retention interval after failed runs.
 
 ```bicep
 resource debuggableScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
@@ -362,8 +372,8 @@ resource debuggableScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
       }
 
       log "Starting configuration script"
-      log "Resource Group: $AZ_SCRIPTS_RESOURCE_GROUP"
-      log "Subscription: $AZ_SCRIPTS_SUBSCRIPTION_ID"
+      log "Resource Group: $RESOURCE_GROUP_NAME"
+      log "Subscription: $SUBSCRIPTION_ID"
 
       # Validate prerequisites
       if [ -z "$REQUIRED_PARAM" ]; then
@@ -372,7 +382,7 @@ resource debuggableScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
       fi
 
       # Wrap operations in error handling
-      if ! az storage account show --name "$STORAGE_NAME" --resource-group "$AZ_SCRIPTS_RESOURCE_GROUP" > /dev/null 2>&1; then
+      if ! az storage account show --name "$STORAGE_NAME" --resource-group "$RESOURCE_GROUP_NAME" > /dev/null 2>&1; then
         log "ERROR: Storage account $STORAGE_NAME not found"
         exit 1
       fi
@@ -380,7 +390,7 @@ resource debuggableScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
       log "All validations passed"
       log "Configuration complete"
 
-      echo '{"status": "success"}' > $AZ_SCRIPTS_OUTPUT_FILE
+      echo '{"status": "success"}' > $AZ_SCRIPTS_OUTPUT_PATH
     '''
 
     environmentVariables: [
@@ -391,6 +401,14 @@ resource debuggableScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
       {
         name: 'STORAGE_NAME'
         value: storageAccount.name
+      }
+      {
+        name: 'RESOURCE_GROUP_NAME'
+        value: resourceGroup().name
+      }
+      {
+        name: 'SUBSCRIPTION_ID'
+        value: subscription().subscriptionId
       }
     ]
   }
