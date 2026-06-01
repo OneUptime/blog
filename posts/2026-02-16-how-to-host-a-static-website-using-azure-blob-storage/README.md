@@ -63,7 +63,6 @@ az storage account show \
 
 ```bicep
 // Enable static website hosting via Bicep
-// Note: Static website properties are set on the storage account itself
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: 'mystorageaccount'
   location: 'eastus'
@@ -73,11 +72,20 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   kind: 'StorageV2'
 }
 
-// The $web container is created automatically when static website is enabled
-// Static website must be enabled via a separate REST call or CLI command
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
+  parent: storageAccount
+  name: 'default'
+  properties: {
+    staticWebsite: {
+      enabled: true
+      indexDocument: 'index.html'
+      errorDocument404Path: '404.html'
+    }
+  }
+}
 ```
 
-Note that Bicep does not have native support for the static website property. You typically enable it via Azure CLI or a deployment script.
+The `$web` container is created automatically when static website hosting is enabled.
 
 ## Uploading Your Website Files
 
@@ -275,7 +283,8 @@ az storage blob upload \
 az storage blob upload-batch \
   --account-name mystorageaccount \
   --source ./build/static \
-  --destination '$web/static' \
+  --destination '$web' \
+  --destination-path static \
   --content-cache-control "public, max-age=31536000, immutable" \
   --overwrite
 ```
@@ -287,10 +296,10 @@ HTML files should have short cache times so updates are picked up quickly. Hashe
 There are some things static website hosting on Blob Storage cannot do:
 
 - No server-side rendering or dynamic content
-- No built-in authentication (you would need Azure CDN with Azure AD or a separate auth service)
-- No custom HTTP headers beyond cache-control and content-type
+- No built-in authentication (you would need a separate auth layer or a service such as Azure Static Web Apps)
+- No custom HTTP headers as part of the static website feature, though blob content settings such as cache-control and content-type still apply
 - No URL rewrite rules (unless using Azure CDN)
-- Limited to a single region (the CDN mitigates this)
+- Tied to the storage account endpoint and redundancy configuration; Azure CDN mitigates this with global edge caching
 
 For more advanced scenarios, consider Azure Static Web Apps, which adds API integration, authentication, and staging environments on top of static hosting.
 
