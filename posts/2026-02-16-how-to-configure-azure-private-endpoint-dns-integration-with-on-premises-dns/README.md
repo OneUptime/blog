@@ -16,7 +16,7 @@ This guide covers how to wire up DNS resolution so that both your Azure workload
 
 When you create a private endpoint for, say, a storage account named `mystorageaccount`, Azure creates a network interface with a private IP in your VNet. The storage account's FQDN is `mystorageaccount.blob.core.windows.net`. For the private endpoint to work, DNS queries for that FQDN need to return the private IP (e.g., `10.0.1.5`) instead of the public IP.
 
-Azure handles this with Private DNS Zones. When you create a private endpoint and link it to a private DNS zone like `privatelink.blob.core.windows.net`, Azure automatically creates an A record in that zone pointing to the private IP. The resolution chain works like this:
+Azure handles this with Private DNS Zones. When you create a private endpoint with private DNS zone integration, such as a zone group associated with `privatelink.blob.core.windows.net`, Azure automatically creates an A record in that zone pointing to the private IP. The resolution chain works like this:
 
 ```mermaid
 graph LR
@@ -28,7 +28,7 @@ This works perfectly for VMs inside the VNet that is linked to the private DNS z
 
 ## Solution Architecture
 
-The solution involves setting up DNS forwarding so that on-premises DNS servers forward queries for Azure private link zones to a DNS resolver in Azure, which can then query the Azure Private DNS Zone.
+The solution involves setting up DNS forwarding so that on-premises DNS servers forward queries for Azure service public DNS zones to a DNS resolver in Azure, which can then use the linked Azure Private DNS Zone to resolve the private endpoint record.
 
 ```mermaid
 graph TB
@@ -126,11 +126,13 @@ az network private-dns link vnet create \
   --registration-enabled false
 ```
 
+If the private endpoints were not created with private DNS zone integration, also add the appropriate private DNS zone group to each private endpoint or create the required A records manually.
+
 ## Step 4: Configure On-Premises DNS Conditional Forwarders
 
-This is where you connect the on-premises side to the Azure side. You need to create conditional forwarders on your on-premises DNS servers that forward queries for Azure private link domain zones to the DNS Private Resolver inbound endpoint IP.
+This is where you connect the on-premises side to the Azure side. You need to create conditional forwarders on your on-premises DNS servers that forward queries for the Azure service public DNS zones to the DNS Private Resolver inbound endpoint IP. For example, forward `blob.core.windows.net`, not `privatelink.blob.core.windows.net`.
 
-For **Windows DNS Server**, open DNS Manager and create conditional forwarders for each private link zone:
+For **Windows DNS Server**, open DNS Manager and create conditional forwarders for each public DNS zone forwarder:
 
 ```powershell
 # PowerShell commands to add conditional forwarders on Windows DNS
@@ -138,39 +140,49 @@ For **Windows DNS Server**, open DNS Manager and create conditional forwarders f
 
 # Storage Blob
 Add-DnsServerConditionalForwarderZone `
-  -Name "privatelink.blob.core.windows.net" `
+  -Name "blob.core.windows.net" `
   -MasterServers 10.0.10.4
 
 # Azure SQL Database
 Add-DnsServerConditionalForwarderZone `
-  -Name "privatelink.database.windows.net" `
+  -Name "database.windows.net" `
   -MasterServers 10.0.10.4
 
 # Azure Key Vault
 Add-DnsServerConditionalForwarderZone `
-  -Name "privatelink.vaultcore.azure.net" `
+  -Name "vault.azure.net" `
+  -MasterServers 10.0.10.4
+
+Add-DnsServerConditionalForwarderZone `
+  -Name "vaultcore.azure.net" `
   -MasterServers 10.0.10.4
 ```
 
 For **BIND on Linux**, add the following to your named.conf:
 
 ```text
-// Forward Azure Private Link DNS zones to the Azure DNS Private Resolver
+// Forward Azure service public DNS zones to the Azure DNS Private Resolver
 // The IP 10.0.10.4 is the inbound endpoint of the resolver
 
-zone "privatelink.blob.core.windows.net" {
+zone "blob.core.windows.net" {
     type forward;
     forward only;
     forwarders { 10.0.10.4; };
 };
 
-zone "privatelink.database.windows.net" {
+zone "database.windows.net" {
     type forward;
     forward only;
     forwarders { 10.0.10.4; };
 };
 
-zone "privatelink.vaultcore.azure.net" {
+zone "vault.azure.net" {
+    type forward;
+    forward only;
+    forwarders { 10.0.10.4; };
+};
+
+zone "vaultcore.azure.net" {
     type forward;
     forward only;
     forwarders { 10.0.10.4; };
@@ -204,18 +216,18 @@ nslookup mystorageaccount.blob.core.windows.net
 
 ## Common Private Link DNS Zones
 
-Here is a reference list of the most commonly used private link DNS zones. You need a conditional forwarder for each service type you use with private endpoints:
+Here is a reference list of the most commonly used private link DNS zones and the corresponding public DNS zones to use in conditional forwarders:
 
-| Service | Private DNS Zone |
-|---------|-----------------|
-| Storage Blob | privatelink.blob.core.windows.net |
-| Storage File | privatelink.file.core.windows.net |
-| Azure SQL | privatelink.database.windows.net |
-| Azure Cosmos DB | privatelink.documents.azure.com |
-| Key Vault | privatelink.vaultcore.azure.net |
-| Azure Container Registry | privatelink.azurecr.io |
-| Event Hubs | privatelink.servicebus.windows.net |
-| Azure Monitor | privatelink.monitor.azure.com |
+| Service | Private DNS Zone | Public DNS Zone Forwarder |
+|---------|------------------|---------------------------|
+| Storage Blob | privatelink.blob.core.windows.net | blob.core.windows.net |
+| Storage File | privatelink.file.core.windows.net | file.core.windows.net |
+| Azure SQL | privatelink.database.windows.net | database.windows.net |
+| Azure Cosmos DB for NoSQL | privatelink.documents.azure.com | documents.azure.com |
+| Key Vault | privatelink.vaultcore.azure.net | vault.azure.net, vaultcore.azure.net |
+| Azure Container Registry | privatelink.azurecr.io | azurecr.io |
+| Event Hubs | privatelink.servicebus.windows.net | servicebus.windows.net |
+| Azure Monitor | privatelink.monitor.azure.com and related Azure Monitor private zones | monitor.azure.com and related Azure Monitor public zones |
 
 ## Troubleshooting DNS Resolution
 
@@ -229,4 +241,4 @@ Here is a reference list of the most commonly used private link DNS zones. You n
 
 ## Wrapping Up
 
-Private endpoint DNS integration in hybrid environments requires careful planning of the DNS forwarding chain. The Azure DNS Private Resolver is the cleanest solution because it is managed, highly available, and eliminates the need to maintain custom DNS forwarder VMs. The critical pieces are creating the inbound endpoint, linking private DNS zones to the resolver's VNet, and adding conditional forwarders on your on-premises DNS servers for every private link zone you use. Test resolution from both sides before declaring success, and keep a reference list of all the private link DNS zones your organization uses so you do not miss any when onboarding new services.
+Private endpoint DNS integration in hybrid environments requires careful planning of the DNS forwarding chain. The Azure DNS Private Resolver is the cleanest solution because it is managed, highly available, and eliminates the need to maintain custom DNS forwarder VMs. The critical pieces are creating the inbound endpoint, linking private DNS zones to the resolver's VNet, associating private endpoints with the correct private DNS zones, and adding conditional forwarders on your on-premises DNS servers for every public DNS zone forwarder you use. Test resolution from both sides before declaring success, and keep a reference list of all the private link DNS zones your organization uses so you do not miss any when onboarding new services.
