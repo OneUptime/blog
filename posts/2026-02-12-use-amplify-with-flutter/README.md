@@ -39,8 +39,8 @@ flowchart TD
 
 ## Prerequisites
 
-- Flutter SDK (3.0 or later)
-- Dart (2.17 or later)
+- Flutter SDK (3.35 or later)
+- Dart (3.9 or later)
 - An AWS account
 - Amplify CLI installed (`npm install -g @aws-amplify/cli`)
 - Android Studio or Xcode for running the app
@@ -64,17 +64,19 @@ dependencies:
   flutter:
     sdk: flutter
   # Core Amplify package
-  amplify_flutter: ^2.0.0
+  amplify_flutter: ^2.11.0
   # Authentication plugin
-  amplify_auth_cognito: ^2.0.0
+  amplify_auth_cognito: ^2.11.0
   # API plugin for GraphQL and REST
-  amplify_api: ^2.0.0
+  amplify_api: ^2.11.0
   # Storage plugin for S3
-  amplify_storage_s3: ^2.0.0
+  amplify_storage_s3: ^2.11.0
+  # Platform helpers for file uploads on mobile and desktop
+  aws_common: ^0.7.13
   # Analytics plugin
-  amplify_analytics_pinpoint: ^2.0.0
+  amplify_analytics_pinpoint: ^2.11.0
   # Pre-built Amplify Authenticator UI widget
-  amplify_authenticator: ^2.0.0
+  amplify_authenticator: ^2.5.2
 ```
 
 ```bash
@@ -103,6 +105,13 @@ amplify add auth
 amplify add api
 # ? Select from one of the below mentioned services: GraphQL
 # ? Provide API name: myamplifyapp
+# ? Choose a schema template: Single object with fields (e.g., "Todo" with ID, name, description)
+
+# Add S3 file storage
+amplify add storage
+# ? Please select from one of the below mentioned services: Content (Images, audio, video, etc.)
+# ? Who should have access: Auth users only
+# ? What kind of access do you want for Authenticated users? create/update, read, delete
 
 # Push the backend resources
 amplify push
@@ -298,6 +307,8 @@ Query and mutate data through your AppSync GraphQL API:
 
 ```dart
 // lib/services/api_service.dart
+import 'dart:convert';
+
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_api/amplify_api.dart';
 
@@ -379,24 +390,24 @@ Upload and download files using the Storage plugin:
 import 'dart:io';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_storage_s3/amplify_storage_s3.dart';
+import 'package:aws_common/vm.dart';
 
 class StorageService {
   // Upload a file to S3
   static Future<String?> uploadFile(File file, String key) async {
     try {
       final result = await Amplify.Storage.uploadFile(
-        localFile: AWSFile.fromPath(file.path),
-        key: key,
-        options: const StorageUploadFileOptions(
-          accessLevel: StorageAccessLevel.private,
+        localFile: AWSFilePlatform.fromFile(file),
+        path: StoragePath.fromIdentityId(
+          (identityId) => 'private/$identityId/$key',
         ),
         onProgress: (progress) {
           safePrint('Upload progress: ${progress.fractionCompleted * 100}%');
         },
       ).result;
 
-      safePrint('File uploaded: ${result.uploadedItem.key}');
-      return result.uploadedItem.key;
+      safePrint('File uploaded: ${result.uploadedItem.path}');
+      return result.uploadedItem.path;
     } on StorageException catch (e) {
       safePrint('Upload failed: ${e.message}');
       return null;
@@ -407,9 +418,8 @@ class StorageService {
   static Future<String?> getDownloadUrl(String key) async {
     try {
       final result = await Amplify.Storage.getUrl(
-        key: key,
-        options: const StorageGetUrlOptions(
-          accessLevel: StorageAccessLevel.private,
+        path: StoragePath.fromIdentityId(
+          (identityId) => 'private/$identityId/$key',
         ),
       ).result;
 
@@ -424,9 +434,8 @@ class StorageService {
   static Future<List<StorageItem>> listFiles(String path) async {
     try {
       final result = await Amplify.Storage.list(
-        path: path,
-        options: const StorageListOptions(
-          accessLevel: StorageAccessLevel.private,
+        path: StoragePath.fromIdentityId(
+          (identityId) => 'private/$identityId/$path',
         ),
       ).result;
 
