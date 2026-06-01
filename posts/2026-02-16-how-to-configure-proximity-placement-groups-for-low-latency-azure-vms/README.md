@@ -36,7 +36,7 @@ graph TD
 
 PPGs are designed for specific workload patterns:
 
-**SAP HANA deployments**: SAP workloads are extremely sensitive to latency between the application servers and the database. Microsoft recommends PPGs for all SAP HANA deployments on Azure.
+**SAP HANA deployments**: SAP workloads are extremely sensitive to latency between the application servers and the database. Microsoft recommends PPGs only when zonal deployment alone does not meet the application's latency requirements, or for specific scenarios such as Azure NetApp Files application volume groups for SAP HANA.
 
 **High-Performance Computing (HPC)**: Tightly coupled MPI workloads where nodes communicate frequently need minimal latency. PPGs, often combined with InfiniBand networking, provide the best performance.
 
@@ -48,7 +48,7 @@ PPGs are designed for specific workload patterns:
 
 PPGs come with trade-offs:
 
-- **Reduced availability**: By constraining VMs to a small physical area, you increase the risk that a localized failure affects multiple VMs. PPGs should not be combined with availability zones.
+- **Reduced availability**: By constraining VMs to a small physical area, you increase the risk that a localized failure affects multiple VMs. A single PPG cannot span multiple availability zones, so do not use one when your resiliency design depends on spreading instances across zones.
 - **VM size availability**: Not all VM sizes may be available in the specific datacenter where the PPG is anchored. This can cause allocation failures.
 - **Scaling limitations**: As you add more VMs to a PPG, it becomes harder for Azure to find capacity in the same physical location.
 
@@ -68,7 +68,7 @@ az ppg create \
   --type Standard
 ```
 
-The `--type Standard` is the default and only option currently available. The PPG itself is free - there is no cost for creating or using one.
+The `--type Standard` value is the normal option for colocating resources within a region or availability zone. Azure also exposes an `Ultra` value in the API for future use. The PPG itself is free - there is no cost for creating or using one.
 
 ## Deploying VMs in a PPG
 
@@ -239,7 +239,7 @@ az vm start --resource-group myResourceGroup --name dbServer1
 
 2. **Use a single PPG per workload.** Do not mix unrelated workloads in the same PPG. Each workload should have its own PPG.
 
-3. **Do not combine PPGs with availability zones.** Availability zones are in different datacenters by design. A PPG constrains to a single location, which contradicts the purpose of zones.
+3. **Use PPGs with zones only for same-zone colocation.** If latency is your first priority, Microsoft recommends putting the VMs in a PPG and the whole solution in one availability zone. If resiliency is your first priority, spread instances across multiple zones instead, because a single PPG cannot span zones.
 
 4. **Plan for allocation failures.** Have a fallback strategy. For critical workloads, keep documentation on how to recreate the PPG and redeploy if needed.
 
