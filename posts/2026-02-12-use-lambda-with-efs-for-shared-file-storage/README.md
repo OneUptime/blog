@@ -30,7 +30,7 @@ EFS does not make sense when:
 
 ## Architecture Overview
 
-Lambda accesses EFS through an EFS Access Point within your VPC. Your Lambda function needs to be VPC-connected, and EFS mount targets must exist in the same subnets.
+Lambda accesses EFS through an EFS Access Point within your VPC. Your Lambda function needs to be VPC-connected, and EFS mount targets must exist in each Availability Zone where the function runs, or in subnets in the same Availability Zones that can route NFS traffic.
 
 ```mermaid
 graph TB
@@ -59,22 +59,22 @@ aws efs create-file-system \
   --encrypted \
   --tags Key=Name,Value=lambda-shared-storage
 
-# Note the FileSystemId from the output, e.g., fs-0abc123def456
+# Note the FileSystemId from the output, e.g., fs-0abc123def4567890
 ```
 
-Create mount targets in each subnet where Lambda will run:
+Create mount targets in each Availability Zone where Lambda will run:
 
 ```bash
 # Create mount targets in your private subnets
 aws efs create-mount-target \
-  --file-system-id fs-0abc123def456 \
-  --subnet-id subnet-private-a \
-  --security-groups sg-efs-access
+  --file-system-id fs-0abc123def4567890 \
+  --subnet-id subnet-0abc123def4567890 \
+  --security-groups sg-0abc123def4567890
 
 aws efs create-mount-target \
-  --file-system-id fs-0abc123def456 \
-  --subnet-id subnet-private-b \
-  --security-groups sg-efs-access
+  --file-system-id fs-0abc123def4567890 \
+  --subnet-id subnet-0123456789abcdef0 \
+  --security-groups sg-0abc123def4567890
 ```
 
 ## Step 2: Create an Access Point
@@ -84,14 +84,14 @@ EFS Access Points provide application-specific entry points into the file system
 ```bash
 # Create an access point for the Lambda function
 aws efs create-access-point \
-  --file-system-id fs-0abc123def456 \
+  --file-system-id fs-0abc123def4567890 \
   --posix-user "Uid=1000,Gid=1000" \
   --root-directory "Path=/lambda-data,CreationInfo={OwnerUid=1000,OwnerGid=1000,Permissions=755}"
 ```
 
 The access point:
 - Sets the POSIX user identity Lambda uses when accessing files
-- Creates the root directory automatically if it doesn't exist
+- Creates the root directory automatically on first mount if it doesn't exist and `CreationInfo` is supplied
 - Restricts Lambda to a specific directory within the file system
 
 ## Step 3: Configure Security Groups
@@ -99,29 +99,37 @@ The access point:
 The EFS security group must allow NFS traffic (port 2049) from Lambda:
 
 ```yaml
-# Security group for EFS - allows NFS from Lambda
 EfsSecurityGroup:
   Type: AWS::EC2::SecurityGroup
   Properties:
     GroupDescription: Allow NFS from Lambda
     VpcId: !Ref MyVPC
-    SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: 2049
-        ToPort: 2049
-        SourceSecurityGroupId: !Ref LambdaSecurityGroup
 
-# Lambda security group needs outbound NFS
 LambdaSecurityGroup:
   Type: AWS::EC2::SecurityGroup
   Properties:
     GroupDescription: Lambda function SG
     VpcId: !Ref MyVPC
-    SecurityGroupEgress:
-      - IpProtocol: tcp
-        FromPort: 2049
-        ToPort: 2049
-        DestinationSecurityGroupId: !Ref EfsSecurityGroup
+
+# Security group rule for EFS - allows NFS from Lambda
+EfsIngressFromLambda:
+  Type: AWS::EC2::SecurityGroupIngress
+  Properties:
+    GroupId: !Ref EfsSecurityGroup
+    IpProtocol: tcp
+    FromPort: 2049
+    ToPort: 2049
+    SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+# Lambda security group needs outbound NFS if you restrict egress
+LambdaEgressToEfs:
+  Type: AWS::EC2::SecurityGroupEgress
+  Properties:
+    GroupId: !Ref LambdaSecurityGroup
+    IpProtocol: tcp
+    FromPort: 2049
+    ToPort: 2049
+    DestinationSecurityGroupId: !Ref EfsSecurityGroup
 ```
 
 ## Step 4: Mount EFS to Lambda
@@ -133,16 +141,16 @@ Now configure your Lambda function to mount the EFS access point:
 aws lambda update-function-configuration \
   --function-name my-function \
   --file-system-configs '[{
-    "Arn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0abc123",
+    "Arn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0abc123def4567890",
     "LocalMountPath": "/mnt/data"
   }]' \
-  --vpc-config '{"SubnetIds": ["subnet-private-a", "subnet-private-b"], "SecurityGroupIds": ["sg-lambda"]}'
+  --vpc-config '{"SubnetIds": ["subnet-0abc123def4567890", "subnet-0123456789abcdef0"], "SecurityGroupIds": ["sg-0123456789abcdef0"]}'
 ```
 
 Using CloudFormation:
 
 ```yaml
-# Complete CloudFormation setup for Lambda with EFS
+# Core CloudFormation setup for Lambda with EFS
 Resources:
   SharedFileSystem:
     Type: AWS::EFS::FileSystem
@@ -190,6 +198,10 @@ Resources:
       FunctionName: efs-processor
       Runtime: python3.12
       Handler: index.handler
+      Code:
+        ZipFile: |
+          def handler(event, context):
+              return {"statusCode": 200, "body": "EFS mounted"}
       MemorySize: 512
       Timeout: 60
       Role: !GetAtt LambdaRole.Arn
@@ -280,6 +292,8 @@ Multiple Lambda functions can work on the same files through EFS:
 
 ```python
 # Stage 1: Download and save files to EFS
+import os
+
 def download_handler(event, context):
     import urllib.request
 
@@ -318,8 +332,8 @@ def process_handler(event, context):
 EFS adds network latency compared to local storage. Here's what to keep in mind:
 
 - **First access is slow** - EFS needs to establish the NFS connection. Subsequent reads in the same invocation are faster.
-- **Throughput scales with size** - In bursting mode, throughput depends on how much data is stored. A nearly empty filesystem will be slow.
-- **Use Provisioned Throughput** for consistent performance if your filesystem is small but access is heavy.
+- **Throughput scales with size** - In bursting mode, sustained baseline throughput depends on how much data is stored, though burst credits can provide higher short-term throughput.
+- **Use Elastic or Provisioned Throughput** for consistent performance if your filesystem is small but access is heavy.
 - **Read-heavy workloads** work well. Write-heavy workloads may see higher latency.
 - **Cache locally** - If you read the same file repeatedly, copy it to `/tmp` on first access:
 
@@ -344,7 +358,7 @@ async function getFile(efsPath) {
 
 ## IAM Permissions
 
-Your Lambda execution role needs EFS permissions:
+If your EFS file system has a user-configured file system policy, your Lambda execution role needs EFS client permissions:
 
 ```json
 {
@@ -356,7 +370,7 @@ Your Lambda execution role needs EFS permissions:
         "elasticfilesystem:ClientMount",
         "elasticfilesystem:ClientWrite"
       ],
-      "Resource": "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-0abc123def456"
+      "Resource": "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-0abc123def4567890"
     }
   ]
 }
