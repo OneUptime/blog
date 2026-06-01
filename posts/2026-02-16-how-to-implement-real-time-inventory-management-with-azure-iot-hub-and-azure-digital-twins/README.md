@@ -241,7 +241,7 @@ import azure.functions as func
 import json
 from azure.digitaltwins.core import DigitalTwinsClient
 from azure.identity import DefaultAzureCredential
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Initialize Digital Twins client
 credential = DefaultAzureCredential()
@@ -253,7 +253,7 @@ dt_client = DigitalTwinsClient(
 def main(event: func.EventHubEvent):
     """Process IoT telemetry and update Digital Twins."""
     body = json.loads(event.get_body().decode("utf-8"))
-    device_id = event.iothub_metadata.get("connection-device-id")
+    device_id = event.iothub_metadata.get("iothub-connection-device-id")
     message_type = body.get("messageType")
 
     if message_type == "weightReading":
@@ -294,7 +294,7 @@ def handle_weight_update(device_id: str, data: dict):
             # Update product quantity
             product_patch = [
                 {"op": "replace", "path": "/currentQuantity", "value": estimated_quantity},
-                {"op": "replace", "path": "/lastUpdated", "value": datetime.utcnow().isoformat()}
+                {"op": "replace", "path": "/lastUpdated", "value": datetime.now(timezone.utc).isoformat()}
             ]
             dt_client.update_digital_twin(product["product"]["$dtId"], product_patch)
 
@@ -305,7 +305,6 @@ def handle_weight_update(device_id: str, data: dict):
 def handle_rfid_scan(device_id: str, data: dict):
     """Process RFID tag reads to track item movements."""
     rfid_tags = data.get("tags", [])
-    zone_id = data.get("zoneId")
     scan_type = data.get("scanType")  # "inbound" or "outbound"
 
     for tag in rfid_tags:
@@ -327,7 +326,7 @@ def handle_rfid_scan(device_id: str, data: dict):
 
             patch = [
                 {"op": "replace", "path": "/currentQuantity", "value": new_qty},
-                {"op": "replace", "path": "/lastUpdated", "value": datetime.utcnow().isoformat()}
+                {"op": "replace", "path": "/lastUpdated", "value": datetime.now(timezone.utc).isoformat()}
             ]
             dt_client.update_digital_twin(product["$dtId"], patch)
 
@@ -344,25 +343,25 @@ Use Azure Stream Analytics to detect patterns that need immediate attention, lik
 ```sql
 -- Detect rapid inventory changes that might indicate problems
 SELECT
-    deviceId,
+    IoTHub.ConnectionDeviceId AS deviceId,
     AVG(weight) as avgWeight,
     MIN(weight) as minWeight,
     MAX(weight) as maxWeight,
     MAX(weight) - MIN(weight) as weightVariance
 INTO AlertOutput
 FROM IoTInput TIMESTAMP BY EventEnqueuedUtcTime
-GROUP BY deviceId, TumblingWindow(minute, 5)
+GROUP BY IoTHub.ConnectionDeviceId, TumblingWindow(minute, 5)
 HAVING MAX(weight) - MIN(weight) > 50
 
 -- Detect devices that stopped reporting (possible sensor failure)
 SELECT
-    deviceId,
-    MAX(EventEnqueuedUtcTime) as lastSeen,
-    DATEDIFF(minute, MAX(EventEnqueuedUtcTime), System.Timestamp()) as minutesSinceLastReport
+    IoTHub.ConnectionDeviceId AS deviceId,
+    MAX(IoTHub.EnqueuedTime) as lastSeen,
+    DATEDIFF(minute, MAX(IoTHub.EnqueuedTime), System.Timestamp()) as minutesSinceLastReport
 INTO DeviceHealthOutput
 FROM IoTInput TIMESTAMP BY EventEnqueuedUtcTime
-GROUP BY deviceId, TumblingWindow(minute, 10)
-HAVING DATEDIFF(minute, MAX(EventEnqueuedUtcTime), System.Timestamp()) > 5
+GROUP BY IoTHub.ConnectionDeviceId, TumblingWindow(minute, 10)
+HAVING DATEDIFF(minute, MAX(IoTHub.EnqueuedTime), System.Timestamp()) > 5
 ```
 
 ## Step 5 - Build the Inventory Dashboard
