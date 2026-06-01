@@ -197,9 +197,12 @@ def build_filter(conditions):
 
         # Format the value based on its type
         if value_type == "string":
-            formatted = f"'{value}'"
+            escaped = str(value).replace("'", "''")
+            formatted = f"'{escaped}'"
         elif value_type == "number":
             formatted = str(value)
+        elif value_type == "int64":
+            formatted = f"{value}L"
         elif value_type == "boolean":
             formatted = "true" if value else "false"
         elif value_type == "datetime":
@@ -244,8 +247,10 @@ await foreach (var entity in results)
 }
 
 // Using the TableClient filter builder for type safety
+string partitionKey = "US-West";
+string status = "pending";
 string filter = TableClient.CreateQueryFilter(
-    $"PartitionKey eq {'US-West'} and Status eq {'pending'}"
+    $"PartitionKey eq {partitionKey} and Status eq {status}"
 );
 
 var typeSafeResults = tableClient.QueryAsync<TableEntity>(filter: filter);
@@ -259,7 +264,9 @@ If you call the REST API directly, the filter goes in the `$filter` query parame
 # Query entities with a filter via REST API
 curl -X GET \
   "https://myaccount.table.core.windows.net/Orders()?%24filter=PartitionKey%20eq%20'US-West'%20and%20Amount%20gt%20100" \
-  -H "x-ms-version: 2024-11-04" \
+  -H "x-ms-version: 2026-02-06" \
+  -H "x-ms-date: Mon, 01 Jun 2026 12:00:00 GMT" \
+  -H "Authorization: SharedKeyLite myaccount:<signature>" \
   -H "Accept: application/json;odata=nometadata"
 ```
 
@@ -288,7 +295,7 @@ Always include the PartitionKey in your filter when possible. Without it, Azure 
 
 OData filters in Azure Table Storage do not support `startswith`, `endswith`, `contains`, or any string functions. You cannot do pattern matching or LIKE queries.
 
-There is no `in` operator. To check if a field matches one of several values, you must chain `or` conditions.
+There is no `in` operator. To check if a field matches one of several values, you must chain `or` conditions, keeping within the Table service limit of 15 discrete comparisons in a filter string.
 
 ```python
 # No 'in' operator, so use 'or' chains
@@ -301,12 +308,12 @@ results = table_client.query_entities(
 
 Property names are case-sensitive. If your property is "CustomerName," filtering on "customername" will not match anything.
 
-## Combining Filters with Select and Top
+## Combining Filters with Select and Page Size
 
 For maximum efficiency, combine your filter with the select parameter to return only the properties you need.
 
 ```python
-# Efficient query: filter, select, and limit
+# Efficient query: filter, select, and page size
 results = table_client.query_entities(
     query_filter="PartitionKey eq 'US-West' and Amount gt 100",
     select=["RowKey", "CustomerName", "Amount", "Status"],
