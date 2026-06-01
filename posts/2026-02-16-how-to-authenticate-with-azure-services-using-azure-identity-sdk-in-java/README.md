@@ -21,7 +21,7 @@ Connection strings and API keys are the quick and dirty way to authenticate. The
 - There is no audit trail of who or what used a key
 - Keys do not expire automatically
 
-Azure AD token-based authentication solves all of these issues. Tokens are short-lived, automatically rotated, and tied to a specific identity. You can see exactly which identities accessed which resources in the Azure AD audit logs. Managed identities eliminate secrets entirely because Azure handles the token acquisition behind the scenes.
+Azure AD token-based authentication solves all of these issues. Tokens are short-lived, automatically rotated, and tied to a specific identity. You can review identity sign-ins in Microsoft Entra logs and resource access in service-specific diagnostic logs. Managed identities eliminate secrets entirely because Azure handles the token acquisition behind the scenes.
 
 ## Setting Up the Project
 
@@ -34,21 +34,21 @@ Create a new Maven project and add the azure-identity dependency.
     <dependency>
         <groupId>com.azure</groupId>
         <artifactId>azure-identity</artifactId>
-        <version>1.11.1</version>
+        <version>1.18.3</version>
     </dependency>
 
     <!-- Azure Key Vault to demonstrate authenticated access -->
     <dependency>
         <groupId>com.azure</groupId>
         <artifactId>azure-security-keyvault-secrets</artifactId>
-        <version>4.8.0</version>
+        <version>4.10.6</version>
     </dependency>
 
     <!-- Azure Blob Storage to demonstrate authenticated access -->
     <dependency>
         <groupId>com.azure</groupId>
         <artifactId>azure-storage-blob</artifactId>
-        <version>12.25.0</version>
+        <version>12.33.3</version>
     </dependency>
 </dependencies>
 ```
@@ -72,12 +72,13 @@ graph TD
     A[DefaultAzureCredential] --> B[Environment Variables]
     B -->|Not Set| C[Workload Identity]
     C -->|Not Available| D[Managed Identity]
-    D -->|Not Available| E[Azure CLI]
-    E -->|Not Logged In| F[Azure PowerShell]
-    F -->|Not Logged In| G[Azure Developer CLI]
-    G -->|Not Logged In| H[IntelliJ IDEA]
-    H -->|Not Logged In| I[Visual Studio Code]
-    I -->|Not Logged In| J[Throws CredentialUnavailableException]
+    D -->|Not Available| E[IntelliJ IDEA]
+    E -->|Not Logged In| F[Visual Studio Code]
+    F -->|Not Logged In| G[Azure CLI]
+    G -->|Not Logged In| H[Azure PowerShell]
+    H -->|Not Logged In| I[Azure Developer CLI]
+    I -->|Not Logged In| J[Broker]
+    J -->|Not Available| K[Throws CredentialUnavailableException]
 ```
 
 In production on an Azure VM or App Service with a managed identity enabled, it picks up the managed identity automatically. On your development machine, it uses your Azure CLI login. You do not change any code between environments.
