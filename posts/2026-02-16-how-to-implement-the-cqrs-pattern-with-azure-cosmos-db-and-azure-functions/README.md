@@ -14,7 +14,7 @@ In this post, I will show you how to implement CQRS using Azure Cosmos DB as the
 
 ## Why CQRS on Azure
 
-Most applications have very different read and write patterns. Writes need strong consistency, validation, and business logic. Reads need to be fast, often denormalized, and served from data structures optimized for specific query patterns.
+Most applications have very different read and write patterns. Writes need consistency, validation, and business logic. Reads need to be fast, often denormalized, and served from data structures optimized for specific query patterns.
 
 Azure Cosmos DB is excellent for the write side because it offers single-digit millisecond writes, automatic partitioning, and a change feed that notifies you when data changes. Azure Functions can subscribe to the change feed and project the data into a read-optimized store.
 
@@ -38,7 +38,7 @@ flowchart LR
 
 ## Setting Up the Write Store
 
-The write store in Cosmos DB should be modeled around your domain aggregates. Each document represents a complete aggregate that can be validated and updated atomically.
+The write store in Cosmos DB should be modeled around your domain aggregates. Each document represents a complete aggregate that can be validated and updated atomically within a single logical partition. The following snippets assume your containers use `/partitionKey` as the partition key path and your `CosmosClient` is configured to use `System.Text.Json` with camelCase property names, so the `JsonPropertyName` attributes are honored and the query field names match the stored JSON.
 
 Here is an example for an e-commerce order system:
 
@@ -150,7 +150,7 @@ public async Task<HttpResponseData> AddItem(
 
 ## Change Feed Processor
 
-The change feed is the bridge between the write and read sides. Cosmos DB's change feed captures every modification to documents in order. Azure Functions has a built-in Cosmos DB trigger that subscribes to the change feed:
+The change feed is the bridge between the write and read sides. Cosmos DB's default change feed publishes inserts and updates, with ordering guaranteed within a partition key value but not across partition key values. Azure Functions has a built-in Cosmos DB trigger that subscribes to the change feed:
 
 ```csharp
 // This function runs whenever documents change in the write store
@@ -197,39 +197,43 @@ public async Task ProjectOrders(
         await _readStoreContainer.UpsertItemAsync(
             readModel, new PartitionKey(readModel.CustomerId));
 
-        // Also update the customer's order summary
-        await UpdateCustomerOrderSummary(order);
+        // Also rebuild the customer's order summary from the read models
+        await RebuildCustomerOrderSummary(order.Customer.Id);
     }
 }
 
-// Update a denormalized summary of all orders for a customer
-private async Task UpdateCustomerOrderSummary(OrderAggregate order)
+// Rebuild a denormalized summary of all orders for a customer
+private async Task RebuildCustomerOrderSummary(string customerId)
 {
-    var summaryId = $"summary-{order.Customer.Id}";
+    var query = new QueryDefinition(
+        "SELECT * FROM c WHERE c.partitionKey = @customerId")
+        .WithParameter("@customerId", customerId);
 
-    CustomerOrderSummary summary;
-    try
-    {
-        var response = await _summaryContainer.ReadItemAsync<CustomerOrderSummary>(
-            summaryId, new PartitionKey(order.Customer.Id));
-        summary = response.Resource;
-    }
-    catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-    {
-        summary = new CustomerOrderSummary
+    var orders = new List<OrderReadModel>();
+
+    using var iterator = _readStoreContainer.GetItemQueryIterator<OrderReadModel>(
+        query, requestOptions: new QueryRequestOptions
         {
-            Id = summaryId,
-            CustomerId = order.Customer.Id
-        };
+            PartitionKey = new PartitionKey(customerId)
+        });
+
+    while (iterator.HasMoreResults)
+    {
+        var batch = await iterator.ReadNextAsync();
+        orders.AddRange(batch.Resource);
     }
 
-    // Update summary statistics
-    summary.TotalOrders++;
-    summary.TotalSpent += order.Items.Sum(i => i.Quantity * i.UnitPrice);
-    summary.LastOrderDate = order.CreatedAt;
+    var summary = new CustomerOrderSummary
+    {
+        Id = $"summary-{customerId}",
+        CustomerId = customerId,
+        TotalOrders = orders.Count,
+        TotalSpent = orders.Sum(o => o.TotalAmount),
+        LastOrderDate = orders.Max(o => o.CreatedAt)
+    };
 
     await _summaryContainer.UpsertItemAsync(
-        summary, new PartitionKey(order.Customer.Id));
+        summary, new PartitionKey(customerId));
 }
 ```
 
@@ -269,7 +273,7 @@ public async Task<HttpResponseData> GetOrders(
 {
     // Query the read store - fast because data is already denormalized
     var query = new QueryDefinition(
-        "SELECT * FROM c WHERE c.customerId = @customerId ORDER BY c.createdAt DESC")
+        "SELECT * FROM c WHERE c.partitionKey = @customerId ORDER BY c.createdAt DESC")
         .WithParameter("@customerId", customerId);
 
     var orders = new List<OrderReadModel>();
@@ -339,4 +343,4 @@ Do not use CQRS for simple CRUD applications where a single data model works fin
 
 ## Summary
 
-Implementing CQRS with Azure Cosmos DB and Functions gives you independently scalable read and write paths, data models optimized for their specific purpose, and a clean separation between command processing and query handling. The Cosmos DB change feed is the key enabler, providing a reliable, ordered stream of changes that your projection functions can use to keep the read store in sync. Start with a single projection and add more as your query requirements grow.
+Implementing CQRS with Azure Cosmos DB and Functions gives you independently scalable read and write paths, data models optimized for their specific purpose, and a clean separation between command processing and query handling. The Cosmos DB change feed is the key enabler, providing a reliable stream of changes that your projection functions can use to keep the read store in sync. Start with a single projection and add more as your query requirements grow.
