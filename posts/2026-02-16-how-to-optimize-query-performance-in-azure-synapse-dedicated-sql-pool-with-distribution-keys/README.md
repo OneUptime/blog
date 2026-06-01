@@ -15,21 +15,21 @@ The single most impactful performance decision in Azure Synapse dedicated SQL po
 When you create a table in a dedicated SQL pool, you choose one of three distribution strategies:
 
 - **Hash distribution**: Rows are assigned to distributions based on a hash of a specified column value. All rows with the same hash value end up in the same distribution.
-- **Round-robin distribution**: Rows are distributed evenly across all 60 distributions in a round-robin fashion. No column determines placement.
+- **Round-robin distribution**: Rows are distributed evenly across all 60 distributions without using a distribution column. Rows with the same column values are not guaranteed to be placed together.
 - **Replicate distribution**: The entire table is copied to every compute node.
 
 ```mermaid
 graph TD
     subgraph "Hash Distribution (FactSales on CustomerId)"
-        H1[Distribution 1: CustomerId 1,61,121...]
-        H2[Distribution 2: CustomerId 2,62,122...]
-        H3[Distribution 60: CustomerId 60,120,180...]
+        H1[Distribution 1: CustomerId values hashing here]
+        H2[Distribution 2: CustomerId values hashing here]
+        H3[Distribution 60: CustomerId values hashing here]
     end
 
     subgraph "Round-Robin Distribution"
-        R1[Distribution 1: Row 1, 61, 121...]
-        R2[Distribution 2: Row 2, 62, 122...]
-        R3[Distribution 60: Row 60, 120, 180...]
+        R1[Distribution 1: Mixed rows]
+        R2[Distribution 2: Mixed rows]
+        R3[Distribution 60: Mixed rows]
     end
 
     subgraph "Replicate Distribution"
@@ -59,7 +59,7 @@ GROUP BY c.CustomerName;
 - For a billion-row fact table, this shuffle is extremely expensive.
 
 **Scenario 3: Both tables are round-robin.**
-- The engine must shuffle both tables for the join. This is the worst case.
+- The engine usually needs to reshuffle rows for the join. This is often the worst case.
 
 You can see the impact by looking at the query execution plan:
 
@@ -146,7 +146,7 @@ If your queries frequently filter on a single value of the distribution column (
 
 ### Fact Tables (Large, Many Rows)
 
-Always use HASH distribution on fact tables. Choose the most frequently joined column.
+Use HASH distribution on large fact tables when there is a good distribution column. Choose the most frequently joined column.
 
 ```sql
 -- Example: Fact table distributed on the primary join key
@@ -167,7 +167,7 @@ WITH (
 
 ### Dimension Tables (Small to Medium)
 
-For small dimensions (under a few hundred MB), use REPLICATE. This copies the table to every node, eliminating joins altogether.
+For small dimensions (Microsoft recommends considering tables under 2 GB compressed), use REPLICATE. This copies the table to every compute node, eliminating data movement for joins.
 
 ```sql
 -- Small dimension table - replicate to all nodes
@@ -199,7 +199,7 @@ WITH (
 );
 ```
 
-When both FactSales and DimCustomer are distributed on CustomerId, the join is always local. No data movement.
+When both FactSales and DimCustomer are distributed on CustomerId, the join can be local with no data movement as long as the join uses matching data types and an equals operator.
 
 ### Staging Tables
 
@@ -228,10 +228,10 @@ After loading data, check for distribution skew:
 -- Check row distribution across the 60 distributions
 SELECT
     distribution_id,
-    COUNT(*) AS row_count
-FROM sys.pdw_table_distribution_properties dp
-JOIN sys.tables t ON dp.object_id = t.object_id
-WHERE t.name = 'FactSales'
+    SUM(row_count) AS row_count
+FROM sys.dm_pdw_nodes_db_partition_stats
+WHERE object_id = OBJECT_ID('dbo.FactSales')
+  AND index_id IN (0, 1)
 GROUP BY distribution_id
 ORDER BY row_count DESC;
 
@@ -242,7 +242,7 @@ DBCC PDW_SHOWSPACEUSED('dbo.FactSales');
 If the largest distribution has more than 2x the rows of the smallest, you have a skew problem. Solutions:
 
 1. **Choose a different distribution column**: Pick one with more even distribution.
-2. **Use a composite column**: Create a computed column combining two fields and distribute on that.
+2. **Use multi-column HASH distribution**: If multi-column distribution is enabled, distribute on up to eight columns to improve balance.
 3. **Switch to ROUND_ROBIN**: If no column distributes evenly, round-robin at least avoids skew (though joins will require shuffles).
 
 ## Changing Distribution After Table Creation
