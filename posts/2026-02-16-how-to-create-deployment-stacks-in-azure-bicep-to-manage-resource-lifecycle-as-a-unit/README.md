@@ -191,7 +191,7 @@ Deployment stacks can be created at three scopes:
 
 1. **Resource group scope** - manages resources within a single resource group
 2. **Subscription scope** - can manage resource groups and their contents
-3. **Management group scope** - can manage subscriptions and their resource groups
+3. **Management group scope** - can target subscriptions and resource groups within the management group
 
 For subscription-level stacks:
 
