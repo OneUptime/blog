@@ -10,7 +10,7 @@ Description: Learn how to set up Amazon VPC Lattice to simplify service-to-servi
 
 Connecting services across different VPCs and AWS accounts has traditionally been a pain. You'd set up VPC peering or transit gateways, configure security groups across account boundaries, deploy load balancers, and manage DNS entries. Each new service connection meant repeating this process. VPC Lattice eliminates most of that overhead.
 
-VPC Lattice is an application networking service that handles service-to-service connectivity, traffic management, and access control in a single abstraction. Think of it as a managed service mesh that works at the network layer - you don't need sidecars, proxies, or any changes to your application code.
+VPC Lattice is an application networking service that handles service-to-service connectivity, traffic management, and access control in a single abstraction. Think of it as a managed service mesh built into AWS networking - you don't need sidecars, proxies, or any changes to your application code.
 
 ## Core Concepts
 
@@ -51,13 +51,13 @@ Create a service network:
 
 aws vpc-lattice create-service-network \
   --name "production-services" \
-  --auth-type AWS_IAM \
+  --auth-type NONE \
   --tags Key=Environment,Value=Production
 
 # Note the service network ID and ARN from the output
 ```
 
-Setting `auth-type` to `AWS_IAM` means all service access is controlled through IAM policies. You can also set it to `NONE` for open access, but that's not recommended for production.
+Setting the service network `auth-type` to `NONE` keeps network-level auth open while you apply IAM auth on individual services. You can also set it to `AWS_IAM`, but then you must attach a service network auth policy or requests will be denied before they reach the service-level policy.
 
 ## Associating VPCs
 
@@ -69,13 +69,13 @@ Associate VPCs with the service network:
 # Associate the first VPC
 aws vpc-lattice create-service-network-vpc-association \
   --service-network-identifier sn-0123456789abcdef0 \
-  --vpc-identifier vpc-frontend001 \
+  --vpc-identifier vpc-0123456789abcdef0 \
   --security-group-ids sg-0123456789abcdef0
 
 # Associate a VPC from a different account (requires RAM sharing first)
 aws vpc-lattice create-service-network-vpc-association \
   --service-network-identifier sn-0123456789abcdef0 \
-  --vpc-identifier vpc-backend002 \
+  --vpc-identifier vpc-abcdef0123456789a \
   --security-group-ids sg-abcdef0123456789a
 ```
 
@@ -101,7 +101,7 @@ aws vpc-lattice create-target-group \
   --config '{
     "port": 8080,
     "protocol": "HTTP",
-    "vpcIdentifier": "vpc-backend001",
+    "vpcIdentifier": "vpc-abcdef0123456789a",
     "healthCheck": {
       "enabled": true,
       "protocol": "HTTP",
@@ -128,7 +128,7 @@ Set up the listener with routing rules:
 ```bash
 # Create a listener
 aws vpc-lattice create-listener \
-  --service-identifier svc-order123 \
+  --service-identifier svc-0123456789abcdef0 \
   --name "http-listener" \
   --protocol HTTP \
   --port 80 \
@@ -154,10 +154,10 @@ Associate the service with the service network:
 # Associate service with service network
 aws vpc-lattice create-service-network-service-association \
   --service-network-identifier sn-0123456789abcdef0 \
-  --service-identifier svc-order123
+  --service-identifier svc-0123456789abcdef0
 ```
 
-Once associated, VPC Lattice automatically creates a DNS entry for the service. Clients in associated VPCs can reach the service at `order-service.production-services.vpc-lattice.us-east-1.on.aws`.
+VPC Lattice provides a generated DNS entry for the service. Clients in associated VPCs can reach the service at a generated name such as `order-service-svc-0123456789abcdef0.abcdef7.vpc-lattice-svcs.us-east-1.on.aws`.
 
 ## Setting Up Auth Policies
 
@@ -168,7 +168,7 @@ Define an auth policy for the service:
 ```bash
 # Set an auth policy that allows specific roles to access the service
 aws vpc-lattice put-auth-policy \
-  --resource-identifier svc-order123 \
+  --resource-identifier svc-0123456789abcdef0 \
   --policy '{
     "Version": "2012-10-17",
     "Statement": [
@@ -181,7 +181,7 @@ aws vpc-lattice put-auth-policy \
           ]
         },
         "Action": "vpc-lattice-svcs:Invoke",
-        "Resource": "*",
+        "Resource": "arn:aws:vpc-lattice:us-east-1:123456789012:service/svc-0123456789abcdef0/*",
         "Condition": {
           "StringEquals": {
             "vpc-lattice-svcs:ServiceNetworkArn": "arn:aws:vpc-lattice:us-east-1:123456789012:servicenetwork/sn-0123456789abcdef0"
@@ -192,13 +192,13 @@ aws vpc-lattice put-auth-policy \
   }'
 ```
 
-This policy only allows the `FrontendAppRole` and `MobileBackendRole` to invoke the order service. Any other principal gets a 403.
+Together with the caller's identity-based IAM permissions, this policy only allows the `FrontendAppRole` and `MobileBackendRole` to invoke the order service. Any other principal gets a 403.
 
 ## CloudFormation Template
 
-Here's how to set up the whole thing with CloudFormation.
+Here's how to set up the core service resources with CloudFormation.
 
-Complete CloudFormation template for VPC Lattice:
+CloudFormation template for core VPC Lattice service resources:
 
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
@@ -280,7 +280,7 @@ import requests
 session = boto3.Session()
 credentials = session.get_credentials()
 
-service_url = "https://order-service.production-services.vpc-lattice.us-east-1.on.aws/orders"
+service_url = "http://order-service-svc-0123456789abcdef0.abcdef7.vpc-lattice-svcs.us-east-1.on.aws/orders"
 
 # Prepare the request
 aws_request = AWSRequest(
@@ -308,20 +308,19 @@ VPC Lattice supports weighted target groups, which is great for canary deploymen
 Configure weighted routing for a canary deployment:
 
 ```bash
-# Update the listener to split traffic
-aws vpc-lattice update-rule \
-  --service-identifier svc-order123 \
-  --listener-identifier listener-abc123 \
-  --rule-identifier rule-default \
-  --action '{
+# Update the listener's default action to split traffic
+aws vpc-lattice update-listener \
+  --service-identifier svc-0123456789abcdef0 \
+  --listener-identifier listener-0123456789abcdef0 \
+  --default-action '{
     "forward": {
       "targetGroups": [
         {
-          "targetGroupIdentifier": "tg-stable",
+          "targetGroupIdentifier": "tg-11111111111111111",
           "weight": 90
         },
         {
-          "targetGroupIdentifier": "tg-canary",
+          "targetGroupIdentifier": "tg-22222222222222222",
           "weight": 10
         }
       ]
