@@ -22,12 +22,12 @@ Watermarking takes a complementary approach. Rather than blocking captures outri
 
 Before you start, make sure you have the following in place:
 
-- An Azure Virtual Desktop environment with session hosts running Windows 11 22H2 or later (or Windows Server 2022 with the latest updates)
-- The Windows Desktop client version 1.2.3317 or later (screen capture protection is client-dependent)
+- An Azure Virtual Desktop environment with session hosts running Windows 10 22H2 or later, or Windows 11 22H2 or later. Use Windows 11 22H2 or later if you want to block screen capture on both the client and the session host
+- Windows App or a supported Remote Desktop client. For the Remote Desktop client, use Windows Desktop client version 1.2.1672 or later, or macOS client version 10.7.0 or later
 - Group Policy or Intune access to configure session host policies
-- An Azure AD account with permissions to manage AVD host pools
+- A Microsoft Entra ID account with permissions to manage AVD host pools
 
-One important note: screen capture protection currently works only with the Windows Desktop client and the macOS client. Web browsers and mobile clients do not support it yet. Plan your rollout accordingly if your users connect from different platforms.
+One important note: screen capture protection on session hosts is enforced by Windows App or the Remote Desktop client. Web browser connections are not supported when this setting is enabled. Mobile support requires Windows App with Intune mobile application management (MAM) policies that block screen capture, so plan your rollout carefully if your users connect from different platforms.
 
 ## Enabling Screen Capture Protection
 
@@ -58,7 +58,7 @@ Get-ChildItem "C:\Program Files\Microsoft AVD Group Policy Templates" -Recurse
 
 Open the Group Policy Editor on your session host (or use a domain-level GPO if your session hosts are domain-joined):
 
-1. Navigate to **Computer Configuration > Administrative Templates > Azure Virtual Desktop > Session**
+1. Navigate to **Computer Configuration > Policies > Administrative Templates > Windows Components > Remote Desktop Services > Remote Desktop Session Host > Azure Virtual Desktop**
 2. Find the policy named **Enable screen capture protection**
 3. Set it to **Enabled**
 4. Choose the protection level:
@@ -99,16 +99,16 @@ Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Se
 
 ## Enabling Watermarking
 
-Watermarking overlays semi-transparent text on the session display. By default, it shows the connection ID and a timestamp, but you can configure it to show the user's UPN (email address) or a custom string.
+Watermarking overlays QR codes on the session display. The QR code contains the connection ID by default, or the device ID for supported personal host pool scenarios, which admins can use to trace the session.
 
 ### Step 1: Configure the Watermark Policy
 
 In the same Group Policy path, look for the watermarking settings:
 
-1. Navigate to **Computer Configuration > Administrative Templates > Azure Virtual Desktop > Session**
+1. Navigate to **Computer Configuration > Policies > Administrative Templates > Windows Components > Remote Desktop Services > Remote Desktop Session Host > Azure Virtual Desktop**
 2. Find **Enable watermarking**
 3. Set it to **Enabled**
-4. Configure the watermark content and appearance
+4. Configure the QR code content and appearance
 
 Here is the registry-based approach for automation:
 
@@ -119,47 +119,36 @@ $regPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
 # Enable watermarking
 Set-ItemProperty -Path $regPath -Name "fEnableWatermarking" -Value 1 -Type DWord
 
-# Set watermark content to show user UPN
-# Options: 0 = Connection ID, 1 = User UPN
-Set-ItemProperty -Path $regPath -Name "WatermarkingContent" -Value 1 -Type DWord
+# Set QR code content to connection ID
+# Options: 0 = Connection ID, 1 = Device ID
+Set-ItemProperty -Path $regPath -Name "WatermarkingContent" -Value 0 -Type DWord
 
-# Set watermark opacity (0-100, where 100 is fully opaque)
-# A value around 20-30 is visible but does not obstruct work
-Set-ItemProperty -Path $regPath -Name "WatermarkingOpacity" -Value 25 -Type DWord
+# Set QR code opacity (100-9999, where 100 is most transparent and 9999 is fully opaque)
+Set-ItemProperty -Path $regPath -Name "WatermarkingOpacity" -Value 2000 -Type DWord
 
-# Set watermark text size in points
-Set-ItemProperty -Path $regPath -Name "WatermarkingFontSize" -Value 14 -Type DWord
+# Set grid spacing relative to the QR code bitmap
+Set-ItemProperty -Path $regPath -Name "WatermarkingWidthFactor" -Value 320 -Type DWord
+Set-ItemProperty -Path $regPath -Name "WatermarkingHeightFactor" -Value 180 -Type DWord
 
-# Set the number of watermark QR codes per width
+# Set the QR code bitmap scale factor
 Set-ItemProperty -Path $regPath -Name "WatermarkingQrScale" -Value 4 -Type DWord
 ```
 
 ### Step 2: Customize the Watermark Appearance
 
-The watermark supports QR codes in addition to text. The QR code encodes the same information but makes it machine-readable, which is useful for forensic investigation. You can control the density of QR codes across the screen - more codes mean it is harder to crop them out of a photograph.
+The QR code makes the session identifier machine-readable, which is useful for forensic investigation. You can control the spacing of QR codes across the screen - more codes mean it is harder to crop them out of a photograph.
 
 For a balanced setup that does not annoy users but still provides traceability, I typically configure:
 
-- Opacity at 20-25 percent
-- Font size at 12-14 points
+- Opacity near the default value of 2000, adjusted after testing readability and scan reliability
 - QR code scale at 4 (moderate density)
-- Content set to user UPN
+- Content set to connection ID, unless you have a supported personal host pool scenario where device ID is appropriate
 
 ## Deploying at Scale with Intune
 
-If your session hosts are Azure AD-joined and managed through Intune, you can deploy these settings as a configuration profile instead of relying on domain-based Group Policy.
+If your session hosts are Microsoft Entra joined and managed through Intune, you can deploy these settings as a configuration profile instead of relying on domain-based Group Policy.
 
-Create a custom configuration profile in Intune using OMA-URI settings:
-
-```text
-OMA-URI: ./Device/Vendor/MSFT/Policy/Config/RemoteDesktopServices/EnableScreenCaptureProtection
-Data type: Integer
-Value: 2
-
-OMA-URI: ./Device/Vendor/MSFT/Policy/Config/RemoteDesktopServices/EnableWatermarking
-Data type: Integer
-Value: 1
-```
+Create or edit a configuration profile for Windows 10 and later devices using the Settings catalog profile type. In the settings picker, browse to **Administrative templates > Windows Components > Remote Desktop Services > Remote Desktop Session Host > Azure Virtual Desktop**, then enable **Enable screen capture protection** and **Enable watermarking**. For screen capture protection, set **Screen Capture Protection Options (Device)** according to whether you want to block client capture only or both client and server capture.
 
 This approach scales much better than per-VM Group Policy and ties into your existing Intune compliance workflows.
 
@@ -168,24 +157,30 @@ This approach scales much better than per-VM Group Policy and ties into your exi
 Screen capture protection is not a silver bullet. Here are the key limitations:
 
 - **Phone cameras**: No software protection can prevent someone from photographing their physical screen with a phone camera. Watermarking mitigates this by making it traceable, but it does not prevent it.
-- **Client support**: Only the Windows Desktop client and macOS client support screen capture protection. If users connect via the web client, the protection does not apply.
+- **Client support**: Windows App and supported Remote Desktop clients enforce screen capture protection. If screen capture protection is enabled on the session host, unsupported clients such as the web client are blocked from connecting.
 - **Performance impact**: Watermarking adds a rendering overlay on the session host. In my testing, the performance impact is negligible for typical office workloads but could be noticeable in graphics-intensive scenarios.
 - **Clipboard**: Screen capture protection does not block clipboard operations. If you need to restrict clipboard as well, configure the clipboard redirection policy separately.
 
 ## Monitoring and Compliance
 
-After deployment, you want to confirm that all session hosts have the policies applied and that users are connecting with supported clients. Use Azure Monitor and Log Analytics to track this:
+After deployment, you want to confirm that all session hosts have the policies applied and that users are connecting with supported clients. Use Azure Monitor and Log Analytics to track client types and versions:
 
 ```kusto
-// Query to find sessions where screen capture protection is active
+// Query client types and versions used to connect to Azure Virtual Desktop
 WVDConnections
 | where TimeGenerated > ago(7d)
-| where ScreenCaptureProtected == true
-| summarize ProtectedSessions = count() by UserName, SessionHostName
-| order by ProtectedSessions desc
+| summarize UserCount=dcount(UserName) by ClientType, ClientVersion
+| sort by ClientVersion, ClientType, UserCount desc
 ```
 
-You can also create an Azure Monitor alert that fires when a session connects without screen capture protection, which could indicate a user connecting from an unsupported client.
+For watermarking investigations, scan the QR code and look up the connection ID in Log Analytics:
+
+```kusto
+WVDConnections
+| where CorrelationId contains "<connection ID>"
+```
+
+You can also use this data to identify users connecting with old or unsupported clients before enforcing the policies broadly.
 
 ## Combining Both Features
 
