@@ -30,13 +30,13 @@ The replication is continuous and incremental. After the initial full load, only
 
 Before setting up Zero-ETL, you need:
 
-- An Aurora MySQL-Compatible (version 3.05 or later) or Aurora PostgreSQL-Compatible (version 16.1 or later) cluster
-- An Amazon Redshift Serverless workgroup or a provisioned Redshift cluster
-- Both resources in the same AWS account and Region (cross-account is supported with additional setup)
+- An Aurora MySQL-Compatible cluster on a supported version, such as 3.05.2 or later, or an Aurora PostgreSQL-Compatible cluster on a supported version, such as 16.4 or later
+- An Amazon Redshift Serverless workgroup or a supported provisioned Redshift cluster, such as an RA3 cluster
+- Both resources in the same Region (cross-account is supported with additional setup)
 
 ## Step 1: Configure Aurora for Zero-ETL
 
-Aurora needs enhanced binlog settings enabled for Zero-ETL. Create a custom cluster parameter group.
+Aurora MySQL needs enhanced binlog settings enabled for Zero-ETL. Create a custom cluster parameter group.
 
 For Aurora MySQL:
 
@@ -55,7 +55,8 @@ aws rds modify-db-cluster-parameter-group \
     "ParameterName=aurora_enhanced_binlog,ParameterValue=1,ApplyMethod=pending-reboot" \
     "ParameterName=binlog_backup,ParameterValue=0,ApplyMethod=pending-reboot" \
     "ParameterName=binlog_format,ParameterValue=ROW,ApplyMethod=pending-reboot" \
-    "ParameterName=binlog_row_image,ParameterValue=full,ApplyMethod=pending-reboot"
+    "ParameterName=binlog_row_image,ParameterValue=full,ApplyMethod=pending-reboot" \
+    "ParameterName=binlog_row_metadata,ParameterValue=full,ApplyMethod=pending-reboot"
 ```
 
 Apply the parameter group to your Aurora cluster.
@@ -72,24 +73,61 @@ aws rds reboot-db-instance \
   --db-instance-identifier my-aurora-cluster-instance-1
 ```
 
-## Step 2: Configure Redshift as a Target
-
-Your Redshift cluster or serverless workgroup needs to allow incoming Zero-ETL integrations.
+For Aurora PostgreSQL, use a supported DB cluster parameter group and enable enhanced logical replication instead of MySQL binlog parameters:
 
 ```bash
-# For Redshift Serverless - update the workgroup to allow integrations
+aws rds modify-db-cluster-parameter-group \
+  --db-cluster-parameter-group-name aurora-postgresql-zero-etl-params \
+  --parameters "ParameterName=rds.logical_replication,ParameterValue=1,ApplyMethod=pending-reboot" \
+               "ParameterName=aurora.enhanced_logical_replication,ParameterValue=1,ApplyMethod=pending-reboot" \
+               "ParameterName=aurora.logical_replication_backup,ParameterValue=0,ApplyMethod=pending-reboot" \
+               "ParameterName=aurora.logical_replication_globaldb,ParameterValue=0,ApplyMethod=pending-reboot"
+```
+
+## Step 2: Configure Redshift as a Target
+
+Your Redshift cluster or serverless workgroup must have case-sensitive identifiers enabled before you create the destination database.
+
+```bash
+# For Redshift Serverless
 aws redshift-serverless update-workgroup \
   --workgroup-name my-analytics-workgroup \
   --config-parameters parameterKey=enable_case_sensitive_identifier,parameterValue=true
 ```
 
-For provisioned Redshift clusters, you need to authorize the integration.
+For provisioned Redshift clusters, enable the same parameter in the cluster parameter group. For a cross-account integration, authorize the Aurora source with a Redshift resource policy on the target namespace.
 
 ```bash
-# Create a resource policy on the Redshift cluster to allow Zero-ETL
-aws redshift create-integration-authorization \
-  --cluster-identifier my-redshift-cluster \
-  --authorized-integration-source arn:aws:rds:us-east-1:123456789012:cluster:my-aurora-cluster
+aws redshift put-resource-policy \
+  --resource-arn arn:aws:redshift-serverless:us-east-1:123456789012:namespace/my-namespace-id \
+  --policy '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "redshift.amazonaws.com"
+        },
+        "Action": [
+          "redshift:AuthorizeInboundIntegration"
+        ],
+        "Resource": "arn:aws:redshift-serverless:us-east-1:123456789012:namespace/my-namespace-id",
+        "Condition": {
+          "StringEquals": {
+            "aws:SourceArn": "arn:aws:rds:us-east-1:123456789012:cluster:my-aurora-cluster"
+          }
+        }
+      },
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "AWS": "arn:aws:iam::123456789012:root"
+        },
+        "Action": "redshift:CreateInboundIntegration",
+        "Resource": "arn:aws:redshift-serverless:us-east-1:123456789012:namespace/my-namespace-id"
+      }
+    ]
+  }'
 ```
 
 ## Step 3: Create the Zero-ETL Integration
@@ -143,32 +181,28 @@ The data is queryable using standard Redshift SQL. You can join it with other Re
 # Describe the integration to see its current status
 aws rds describe-integrations \
   --integration-identifier aurora-to-redshift \
-  --query 'Integrations[0].{Name:IntegrationName,Status:Status,Errors:Errors}'
+  --query 'Integrations[0].{Name:IntegrationName,Status:Status,Arn:IntegrationArn}'
 ```
 
 ### Monitor Replication Lag
 
-```bash
-# Check replication lag metrics in CloudWatch
-aws cloudwatch get-metric-statistics \
-  --namespace AWS/RDS \
-  --metric-name ZeroETLIntegrationReplicationLatency \
-  --dimensions Name=DBClusterIdentifier,Value=my-aurora-cluster \
-  --start-time $(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
-  --period 300 \
-  --statistics Average
+```sql
+-- Check lag from Redshift system views
+SELECT integration_id, target_database, current_lag
+FROM svv_integration
+WHERE target_database = 'aurora_data';
 ```
 
 ### Set Up Alerts for Integration Issues
 
 ```bash
-# Alert when replication lag exceeds 5 minutes
+# Alert when replication lag exceeds 5 minutes.
+# Use the Redshift IntegrationLag metric for the integration.
 aws cloudwatch put-metric-alarm \
   --alarm-name zero-etl-lag-high \
-  --namespace AWS/RDS \
-  --metric-name ZeroETLIntegrationReplicationLatency \
-  --dimensions Name=DBClusterIdentifier,Value=my-aurora-cluster \
+  --namespace AWS/Redshift \
+  --metric-name IntegrationLag \
+  --dimensions Name=IntegrationId,Value=my-integration-id \
   --statistic Average \
   --period 300 \
   --threshold 300 \
@@ -190,7 +224,7 @@ Some changes require manual intervention:
 
 ```sql
 -- If a schema change causes an issue, you can resync a specific table
-ALTER DATABASE aurora_data INTEGRATION REFRESH TABLE public.orders;
+ALTER DATABASE aurora_data INTEGRATION REFRESH TABLES public.orders;
 ```
 
 ## Filtering What Gets Replicated
@@ -203,7 +237,7 @@ aws rds create-integration \
   --integration-name selective-replication \
   --source-arn arn:aws:rds:us-east-1:123456789012:cluster:my-aurora-cluster \
   --target-arn arn:aws:redshift-serverless:us-east-1:123456789012:namespace/my-namespace-id \
-  --data-filter "include: mydb.orders, mydb.customers, mydb.products"
+  --data-filter "include: mydb.orders, mydb.customers, mydb.products;"
 ```
 
 ## Cost Considerations
@@ -212,9 +246,9 @@ Zero-ETL integration is free for the replication itself. You pay for:
 
 - Aurora storage of the enhanced binlogs
 - Redshift storage and compute for the replicated data
-- Data transfer if cross-region (not recommended for latency reasons)
+- Data transfer for traffic that crosses Availability Zones
 
-The enhanced binlog setting in Aurora increases storage by roughly 10-20% because Aurora needs to retain more change history. Factor this into your cost calculations.
+The enhanced binlog setting in Aurora can increase storage usage because Aurora needs to retain more change history. Factor this into your cost calculations.
 
 ## When to Use Zero-ETL vs. Traditional ETL
 
@@ -227,7 +261,7 @@ Traditional ETL (Glue, custom pipelines) is better for:
 - Complex data transformations
 - Aggregating data from multiple sources
 - Data quality checks and validation before loading
-- Cross-account or cross-region data movement
+- Cross-region data movement
 
 ## Summary
 
