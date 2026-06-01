@@ -14,17 +14,17 @@ If you are looking for a single change that improves performance, reduces costs,
 
 ## Why Graviton Uses Less Energy
 
-ARM architecture inherently requires fewer transistors to execute instructions compared to x86. This translates directly to lower power consumption. AWS Graviton3 processors specifically deliver:
+AWS Graviton processors are purpose-built Arm-based processors optimized for cloud workloads and energy efficiency. AWS Graviton3 processors specifically deliver:
 
 - Up to 60% less energy for the same performance compared to comparable EC2 instances
 - Up to 40% better price-performance than x86-based instances
 - Up to 25% better raw compute performance than Graviton2
 
-The energy savings are not theoretical. They show up in your AWS Customer Carbon Footprint Tool data when you migrate workloads. For details on tracking your emissions, see our guide on [using the AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/2026-02-12-use-aws-customer-carbon-footprint-tool/view).
+The energy savings are not theoretical. The AWS Customer Carbon Footprint Tool can help you track estimated emissions by service and Region after you migrate workloads, although it does not provide per-instance energy measurements. For details on tracking your emissions, see our guide on [using the AWS Customer Carbon Footprint Tool](https://oneuptime.com/blog/post/2026-02-12-use-aws-customer-carbon-footprint-tool/view).
 
 ## Graviton Instance Families
 
-Graviton instances are available across multiple instance families. The "g" in the instance name indicates Graviton:
+Graviton instances are available across multiple instance families. In these EC2 family names, suffixes such as "g", "gd", and "gn" indicate Graviton-based variants:
 
 | Instance Family | Use Case | x86 Equivalent |
 |----------------|----------|----------------|
@@ -92,8 +92,8 @@ Common libraries that need attention:
 
 - **OpenSSL** - Available on ARM, may need to be recompiled
 - **NumPy/SciPy** - ARM-optimized builds available via conda or pip
-- **TensorFlow** - ARM builds available since 2.4
-- **PyTorch** - ARM support since 1.9
+- **TensorFlow** - Linux AArch64 CPU builds are available through AWS-maintained packages for TensorFlow 2.10 and later
+- **PyTorch** - Linux AArch64 wheels are available for current PyTorch releases
 
 ### Check 3: Container Base Images
 
@@ -194,7 +194,7 @@ aws eks create-nodegroup \
   --cluster-name my-cluster \
   --nodegroup-name graviton-workers \
   --instance-types m7g.xlarge m7g.2xlarge \
-  --ami-type AL2_ARM_64 \
+  --ami-type AL2023_ARM_64_STANDARD \
   --scaling-config minSize=2,maxSize=10,desiredSize=4 \
   --subnets $SUBNET_1 $SUBNET_2 \
   --node-role $NODE_ROLE_ARN
@@ -326,7 +326,7 @@ For comprehensive observability during and after migration, [OneUptime](https://
 Fix: Use `pip install` with `--prefer-binary` flag, or install build tools (`gcc`, `python3-devel`) for compiling from source.
 
 **Issue: Docker image pulls wrong architecture**
-Fix: Always specify `--platform linux/arm64` in your Dockerfile FROM line, or use multi-arch manifests.
+Fix: For single-architecture ARM builds or runs, specify `--platform linux/arm64`; for multi-architecture images, use `$TARGETPLATFORM` in your Dockerfile and publish a multi-arch manifest.
 
 **Issue: Java application slower than expected**
 Fix: Use Amazon Corretto 17+ which includes ARM-specific JIT optimizations. Avoid older JDK versions.
