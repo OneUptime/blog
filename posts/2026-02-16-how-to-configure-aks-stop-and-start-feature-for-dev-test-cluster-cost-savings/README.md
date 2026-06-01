@@ -10,7 +10,7 @@ Description: Learn how to use the AKS stop and start feature to shut down develo
 
 Development and test AKS clusters are some of the biggest sources of wasted Azure spend. Teams spin up clusters for testing, demonstrations, or development, and those clusters run 24/7 even though nobody uses them outside of business hours. A three-node AKS cluster with D4s_v5 VMs costs around $400/month in compute alone. If the team only uses it 8 hours a day on weekdays, that is roughly $280/month wasted on idle compute.
 
-The AKS stop and start feature lets you completely stop a cluster, which deallocates all node VMs and pauses the control plane. When you start it back up, everything comes back - your deployments, services, ConfigMaps, and persistent volumes are all preserved. This guide covers how to use the feature, automate it for scheduled stop/start, and handle the gotchas.
+The AKS stop and start feature lets you completely stop a cluster, which deallocates all node VMs and pauses the control plane. When you start it back up, the cluster state comes back - your deployments, services, ConfigMaps, and persistent volumes are all preserved. Standalone pods that are not managed by a controller are deleted during the stop operation. This guide covers how to use the feature, automate it for scheduled stop/start, and handle the gotchas.
 
 ## What Happens When You Stop a Cluster
 
@@ -18,22 +18,24 @@ When you stop an AKS cluster:
 
 - All node pool VMs are deallocated (you stop paying for compute)
 - The Kubernetes API server is stopped (kubectl will not work)
-- Persistent volumes remain attached but the VMs backing them are stopped
-- All Kubernetes objects (Deployments, Services, ConfigMaps, Secrets) are preserved in etcd
-- Load balancer public IPs may change when the cluster restarts (unless you use static IPs)
-- The cluster still incurs a small management fee but no VM compute costs
+- Persistent volumes remain provisioned
+- Kubernetes objects (Deployments, Services, ConfigMaps, Secrets) are preserved in etcd, except standalone pods that are not managed by a controller
+- The API server IP address may change when the cluster restarts
+- The stopped cluster state is preserved for up to 12 months
+- You may still incur charges for persistent resources such as disks, public IPs, and any paid AKS tier, but not for node VM compute
 
 When you start the cluster back up:
 
-- Node VMs are re-provisioned and rejoin the cluster
+- Node VMs are restored and rejoin the cluster
 - Pods are rescheduled according to their deployment specs
-- Services get new NodePorts (and potentially new LoadBalancer IPs)
+- Services are restored from their saved Kubernetes objects
 - The API server becomes available again
 
 ## Prerequisites
 
-- Azure CLI 2.50 or later
-- An AKS cluster designated for dev/test workloads
+- Azure CLI 2.50 or later for AKS commands, and Azure CLI 2.75 or later for the Azure Automation CLI examples
+- An AKS cluster designated for dev/test workloads that uses Virtual Machine Scale Sets
+- No Node Autoprovisioning (NAP) on the cluster
 - Understanding that this feature stops ALL compute - it is not suitable for production
 
 ## Step 1: Stop an AKS Cluster
@@ -119,9 +121,18 @@ az automation account create \
   --name aks-scheduler \
   --location eastus
 
-# Create a system-assigned managed identity for the automation account
+# Ensure the automation account has a system-assigned managed identity
 # Grant it Contributor access to the AKS cluster
 AKS_ID=$(az aks show -g myDevResourceGroup -n myDevCluster --query id -o tsv)
+AUTOMATION_ID=$(az automation account show \
+  -g myDevResourceGroup \
+  -n aks-scheduler \
+  --query id -o tsv)
+
+az resource update \
+  --ids $AUTOMATION_ID \
+  --set identity.type=SystemAssigned
+
 AUTOMATION_PRINCIPAL=$(az automation account show \
   -g myDevResourceGroup \
   -n aks-scheduler \
@@ -179,28 +190,40 @@ client.managed_clusters.begin_start(RESOURCE_GROUP, CLUSTER_NAME).wait()
 print(f"Cluster {CLUSTER_NAME} started successfully")
 ```
 
-Schedule the runbooks:
+Schedule and link the runbooks. Azure Automation schedules are linked to runbooks separately, so creating a schedule alone is not enough:
 
-```bash
+```powershell
 # Schedule: Stop at 7 PM weekdays
-az automation schedule create \
-  --resource-group myDevResourceGroup \
-  --automation-account-name aks-scheduler \
-  --name "Stop-AKS-Evening" \
-  --frequency Week \
-  --interval 1 \
-  --start-time "2026-02-17T19:00:00-05:00" \
-  --time-zone "Eastern Standard Time"
+New-AzAutomationSchedule `
+  -ResourceGroupName "myDevResourceGroup" `
+  -AutomationAccountName "aks-scheduler" `
+  -Name "Stop-AKS-Evening" `
+  -StartTime "2026-02-17 19:00:00" `
+  -WeekInterval 1 `
+  -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday `
+  -TimeZone "Eastern Standard Time"
+
+Register-AzAutomationScheduledRunbook `
+  -ResourceGroupName "myDevResourceGroup" `
+  -AutomationAccountName "aks-scheduler" `
+  -Name "stop-aks" `
+  -ScheduleName "Stop-AKS-Evening"
 
 # Schedule: Start at 7 AM weekdays
-az automation schedule create \
-  --resource-group myDevResourceGroup \
-  --automation-account-name aks-scheduler \
-  --name "Start-AKS-Morning" \
-  --frequency Week \
-  --interval 1 \
-  --start-time "2026-02-17T07:00:00-05:00" \
-  --time-zone "Eastern Standard Time"
+New-AzAutomationSchedule `
+  -ResourceGroupName "myDevResourceGroup" `
+  -AutomationAccountName "aks-scheduler" `
+  -Name "Start-AKS-Morning" `
+  -StartTime "2026-02-17 07:00:00" `
+  -WeekInterval 1 `
+  -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday `
+  -TimeZone "Eastern Standard Time"
+
+Register-AzAutomationScheduledRunbook `
+  -ResourceGroupName "myDevResourceGroup" `
+  -AutomationAccountName "aks-scheduler" `
+  -Name "start-aks" `
+  -ScheduleName "Start-AKS-Morning"
 ```
 
 ### Using GitHub Actions
@@ -223,7 +246,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Azure Login
-      uses: azure/login@v1
+      uses: azure/login@v3
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -251,7 +274,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Azure Login
-      uses: azure/login@v1
+      uses: azure/login@v3
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -281,15 +304,15 @@ If you have 10 dev/test clusters, that is $2,620/month or over $31,000/year.
 
 ## Step 5: Handle Common Issues
 
-### Load Balancer IP Changes
+### Preserving Load Balancer IPs
 
-When you stop and restart a cluster, the LoadBalancer service IPs may change unless you use static IPs.
+Dynamic LoadBalancer service IPs are only valid for the lifetime of the Kubernetes Service and its Azure load balancer resources. If the Service or load balancer resources are recreated, the IP may change unless you use a static IP.
 
 ```bash
 # Before stopping, note your current LoadBalancer IPs
 kubectl get svc --all-namespaces -o wide | grep LoadBalancer
 
-# To preserve IPs, use static public IP addresses in your service annotations
+# To preserve IPs across service recreation, use static public IP addresses
 ```
 
 ```yaml
@@ -303,7 +326,8 @@ metadata:
     service.beta.kubernetes.io/azure-load-balancer-resource-group: myDevResourceGroup
 spec:
   type: LoadBalancer
-  # Use a pre-created static IP
+  # Use a pre-created static IP. On newer clusters, prefer the
+  # service.beta.kubernetes.io/azure-load-balancer-ipv4 annotation.
   loadBalancerIP: 20.1.2.3
   ports:
   - port: 80
@@ -324,10 +348,11 @@ PVs backed by Azure Disks should reconnect automatically when the cluster starts
 # Check for volume attachment issues
 kubectl describe pod <pod-name> | grep -A5 "Events"
 
-# If volumes are stuck, delete and recreate the PVC (data is preserved on the disk)
-kubectl delete pvc <pvc-name>
-kubectl apply -f <pvc-manifest>
+# Restart the affected pod after the cluster is healthy
+kubectl delete pod <pod-name>
 ```
+
+Do not delete and recreate a PVC as a first response. If its PersistentVolume reclaim policy is `Delete`, deleting the PVC can delete the underlying disk.
 
 ## Manual On-Demand Start for Urgent Needs
 
