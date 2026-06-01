@@ -8,7 +8,7 @@ Description: Learn how to enable and configure Azure Container Registry content 
 
 ---
 
-When you pull a container image from a registry, how do you know it has not been tampered with? Without image signing, you are trusting that the registry contents match what your CI pipeline built. Content trust adds a cryptographic layer of verification - images are signed by the publisher, and consumers can verify those signatures before running the image. Azure Container Registry (ACR) supports Docker Content Trust (DCT) based on The Update Framework (TUF), and in this post, I will show you how to set it up end-to-end.
+When you pull a container image from a registry, how do you know it has not been tampered with? Without image signing, you are trusting that the registry contents match what your CI pipeline built. Content trust adds a cryptographic layer of verification - images are signed by the publisher, and consumers can verify those signatures before running the image. Azure Container Registry (ACR) supports Docker Content Trust (DCT) based on The Update Framework (TUF) for registries that already had it enabled before May 31, 2026. DCT is deprecated and is scheduled for removal from ACR on March 31, 2028, so new deployments should plan a migration to Notary Project and Notation.
 
 ## What Content Trust Gives You
 
@@ -24,18 +24,18 @@ This is particularly important in regulated environments where you need to prove
 
 ACR uses the Notary v1 protocol for content trust. When you push a signed image, the Docker client creates a signature using your private key and uploads it to the registry's trust data. When someone pulls the image with content trust enabled, the client downloads the trust data, verifies the signature, and only pulls the image if the signature is valid.
 
-The signing infrastructure uses two types of keys:
+The signing infrastructure uses several keys. The two keys you manage most directly are:
 
 - **Root key** - The master key that delegates trust. Keep this offline and secure.
 - **Repository signing key** - Delegates trust for a specific repository. This is what you use day-to-day.
 
 ## Prerequisites
 
-You need an ACR instance on the Premium tier (content trust is not available on Basic or Standard), Docker CLI installed, and Azure CLI authenticated with push access to the registry.
+You need an existing ACR instance on the Premium tier that already has content trust enabled or had enabled it before May 31, 2026. Content trust is not available on Basic or Standard, and Microsoft no longer allows DCT to be enabled on new registries or registries that did not previously enable it. You also need Docker CLI installed, Azure CLI authenticated with push access to the registry, and the `AcrImageSigner` role in addition to `AcrPush` for the identity that signs images.
 
 ## Step 1: Enable Content Trust on ACR
 
-Content trust must be enabled at the registry level.
+Content trust must be enabled at the registry level. This only works for registries that enabled DCT before Microsoft's May 31, 2026 cutoff.
 
 ```bash
 # Enable content trust on the ACR instance
@@ -69,6 +69,21 @@ az acr login --name myregistry
 ```
 
 When `DOCKER_CONTENT_TRUST=1` is set, every docker push and docker pull operation will use content trust.
+
+Before pushing signed images, make sure the signing identity has the `AcrImageSigner` role scoped to the registry.
+
+```bash
+# Grant signing permissions
+REGISTRY_ID=$(az acr show --name myregistry --query id --output tsv)
+
+az role assignment create \
+  --scope "$REGISTRY_ID" \
+  --role AcrImageSigner \
+  --assignee user@contoso.com
+
+# Refresh the local token after role changes
+az acr login --name myregistry
+```
 
 ## Step 3: Push a Signed Image
 
@@ -136,37 +151,69 @@ This is the enforcement mechanism. Only signed images can be pulled when content
 
 ## Step 6: Delegate Signing to CI/CD
 
-In a real pipeline, you do not want to enter passphrases interactively. Set up key delegation for automated signing.
+In a real pipeline, you do not want to enter passphrases interactively. Set up a delegation key for automated signing.
 
-First, export the repository signing key.
+First, generate a delegation key on a secure development machine and add it as a signer for the repository.
 
 ```bash
-# Export the repository key
-docker trust key export myregistry.azurecr.io/myapp --output repo-key.pem
+# Generate a delegation key pair
+docker trust key generate ci-signer
+
+# Add the delegation public key as a signer
+docker trust signer add --key ci-signer.pub ci-signer myregistry.azurecr.io/myapp
 ```
 
-Then configure your CI/CD pipeline to use the key. Here is an example for Azure DevOps.
+The private key is imported into your local Docker trust store when it is generated. Upload the private key file from `~/.docker/trust/private/` as an Azure Pipelines secure file, and configure your CI/CD pipeline to use it. Here is an example for Azure DevOps.
 
 ```yaml
 # azure-pipelines.yaml
 # CI/CD pipeline with automated image signing
+variables:
+  containerRegistryServiceConnection: myACRConnection
+  imageRepository: myapp
+  tag: $(Build.BuildId)
+
 steps:
   - task: Docker@2
-    displayName: 'Build and Push'
+    displayName: 'Login'
     inputs:
-      containerRegistry: 'myACRConnection'
-      repository: 'myapp'
-      command: 'buildAndPush'
+      command: 'login'
+      containerRegistry: '$(containerRegistryServiceConnection)'
+
+  - task: DownloadSecureFile@1
+    name: signingKey
+    inputs:
+      secureFile: '<delegation-key-id>.key'
+
+  - script: |
+      mkdir -p "$(DOCKER_CONFIG)/trust/private"
+      cp "$(signingKey.secureFilePath)" "$(DOCKER_CONFIG)/trust/private/"
+    displayName: 'Install signing key'
+
+  - task: Docker@2
+    displayName: 'Build'
+    inputs:
+      containerRegistry: '$(containerRegistryServiceConnection)'
+      repository: '$(imageRepository)'
+      command: 'build'
       Dockerfile: '**/Dockerfile'
-      tags: '$(Build.BuildId)'
+      tags: '$(tag)'
+
+  - task: Docker@2
+    displayName: 'Push signed image'
+    inputs:
+      containerRegistry: '$(containerRegistryServiceConnection)'
+      repository: '$(imageRepository)'
+      command: 'push'
+      tags: '$(tag)'
     env:
       # Enable content trust for the push
       DOCKER_CONTENT_TRUST: 1
-      # Passphrase for the repository signing key
+      # Passphrase for the delegation private key
       DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE: $(signingPassphrase)
 ```
 
-Store the signing key passphrase as a secret variable in your pipeline. The key itself should be loaded from a secure key vault.
+Store the signing key passphrase as a secret variable in your pipeline. The service connection identity also needs the `AcrImageSigner` role in the target registry.
 
 ## Step 7: Key Rotation
 
@@ -187,43 +234,26 @@ Root key rotation is more involved and should be done rarely since it requires r
 
 ## Step 8: Enforce Signed Images in AKS
 
-Having signed images is only half the story. You also need to ensure that AKS only runs signed images. Use Azure Policy or admission controllers to enforce this.
+Having signed images is only half the story. Docker Content Trust is enforced by Docker clients, but AKS does not automatically verify DCT signatures when it pulls images. Use Azure Policy to restrict where images can come from, and use Notation/Ratify if you need Kubernetes admission-time signature verification.
 
-With Azure Policy, apply a built-in policy that requires images from trusted registries.
+With Azure Policy, apply a built-in policy that requires images from trusted registries. This does not verify DCT signatures; it only limits image sources.
 
 ```bash
 # Assign policy to only allow images from your ACR
 az policy assignment create \
-  --name "only-signed-images" \
-  --display-name "Only allow signed container images" \
+  --name "only-acr-images" \
+  --display-name "Only allow images from my ACR" \
   --policy "febd0533-8e55-448f-b837-bd0e06f16469" \
   --scope "/subscriptions/<sub-id>/resourceGroups/myResourceGroup" \
-  --params '{"allowedContainerImagesRegex": {"value": "^myregistry\\.azurecr\\.io/.+$"}}'
+  --params '{"allowedContainerImagesRegex": {"value": "^myregistry\\.azurecr\\.io/.+$"}, "effect": {"value": "Deny"}}'
 ```
 
-For stronger enforcement, use a Gatekeeper policy that checks image signatures using the Ratify project.
+For stronger enforcement, sign images with Notation and use Ratify with Azure Policy or Gatekeeper to check Notary Project signatures. Ratify verifies Notary Project or other supported signature formats; it is not a DCT/Notary v1 verifier. The Gatekeeper policy is installed from the Ratify library after Ratify is configured with a Notation verifier and trust policy.
 
-```yaml
-# ratify-constraint.yaml
-# Gatekeeper constraint that requires image signatures
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: RatifyVerification
-metadata:
-  name: require-signed-images
-spec:
-  match:
-    kinds:
-      - apiGroups: [""]
-        kinds: ["Pod"]
-    namespaces:
-      - default
-      - production
-  parameters:
-    # Require at least one valid signature
-    artifactVerificationPolicies:
-      type: notation
-      trustedIdentities:
-        - "x509.subject: CN=myregistry.azurecr.io"
+```bash
+# Install the Ratify Gatekeeper template and default constraint
+kubectl apply -f https://notaryproject.github.io/ratify/library/default/template.yaml
+kubectl apply -f https://notaryproject.github.io/ratify/library/default/samples/constraint.yaml
 ```
 
 ## The Signing and Verification Flow
@@ -241,10 +271,8 @@ sequenceDiagram
     CI->>CI: Build container image
     CI->>ACR: Push image (signed)
     CI->>Notary: Upload signature
-    AKS->>ACR: Pull image request
-    AKS->>Notary: Fetch trust data
-    AKS->>Policy: Verify signature
-    Policy-->>AKS: Signature valid
+    AKS->>Policy: Admission request
+    Policy-->>AKS: Registry allowed or Notation signature valid
     AKS->>ACR: Pull image layers
 ```
 
@@ -266,4 +294,4 @@ sequenceDiagram
 
 **Audit signing activity.** ACR logs all push and trust operations. Send these to your SIEM to detect unauthorized signing attempts.
 
-Content trust adds a meaningful layer of security to your container supply chain. It is not complicated to set up, and once it is running, it provides continuous assurance that every image in your cluster was built by your pipeline and has not been tampered with.
+Content trust adds a meaningful layer of security to your container supply chain for Docker clients that enforce it. Because ACR DCT is deprecated, use it only for existing DCT workflows and plan to move cluster enforcement to Notary Project, Notation, Ratify, or another supported admission-time verification system.
