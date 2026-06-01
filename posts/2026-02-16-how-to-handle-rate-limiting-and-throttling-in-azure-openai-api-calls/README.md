@@ -16,12 +16,12 @@ In this post, I will cover the rate limiting model in Azure OpenAI, show you how
 
 Azure OpenAI uses two types of rate limits:
 
-- **Tokens Per Minute (TPM)**: The total number of input and output tokens your deployment can process per minute. This is the primary limit.
-- **Requests Per Minute (RPM)**: The total number of API calls per minute, regardless of token count. This is calculated as TPM / 1000 * 6 for most models.
+- **Tokens Per Minute (TPM)**: The estimated maximum number of processed tokens your deployment can handle per minute. Azure calculates this estimate when a request arrives, including the prompt and settings such as `max_tokens`.
+- **Requests Per Minute (RPM)**: The total number of API calls per minute, regardless of token count. The RPM-to-TPM ratio varies by model; older chat models use 6 RPM per 1,000 TPM, but newer model classes can use different ratios.
 
-When you create a deployment in Azure OpenAI Studio, you assign a TPM quota. The default varies by model and region, and you can request increases through the Azure Portal.
+When you create a deployment in Azure AI Foundry, you assign a TPM quota. The default varies by model and region, and you can request increases through the Azure Portal.
 
-When you hit either limit, the API returns a 429 response with a `Retry-After` header indicating how many seconds to wait before trying again.
+When you hit either limit, the API returns a 429 response with a `retry-after-ms` header indicating how many milliseconds to wait before trying again.
 
 ## The 429 Response
 
@@ -29,7 +29,7 @@ Here is what a rate-limited response looks like:
 
 ```text
 HTTP/1.1 429 Too Many Requests
-Retry-After: 10
+retry-after-ms: 10000
 x-ratelimit-remaining-tokens: 0
 x-ratelimit-remaining-requests: 0
 
@@ -41,7 +41,7 @@ x-ratelimit-remaining-requests: 0
 }
 ```
 
-The `Retry-After` header tells you exactly how long to wait. The `x-ratelimit-remaining-tokens` and `x-ratelimit-remaining-requests` headers tell you how much quota you have left before the next reset window.
+The `retry-after-ms` header tells you how long to wait in milliseconds. The `x-ratelimit-remaining-tokens` and `x-ratelimit-remaining-requests` headers tell you how much quota you have left before the next reset window.
 
 ## Implementing Exponential Backoff with Jitter
 
@@ -72,9 +72,12 @@ def call_with_retry(client, messages, model="gpt4-production", max_retries=5):
             if attempt == max_retries - 1:
                 raise  # Give up after max retries
 
-            # Use Retry-After header if available, otherwise use exponential backoff
-            retry_after = getattr(e, 'retry_after', None)
-            if retry_after:
+            # Use retry headers if available, otherwise use exponential backoff
+            retry_after_ms = e.response.headers.get("retry-after-ms")
+            retry_after = e.response.headers.get("retry-after")
+            if retry_after_ms:
+                wait_time = float(retry_after_ms) / 1000
+            elif retry_after:
                 wait_time = float(retry_after)
             else:
                 # Exponential backoff: 1s, 2s, 4s, 8s, 16s
@@ -102,6 +105,8 @@ def call_with_retry(client, messages, model="gpt4-production", max_retries=5):
 ## Using the Tenacity Library
 
 For production code, I recommend using the `tenacity` library instead of writing your own retry loop. It is well tested and handles edge cases.
+
+If you use a custom retry library, configure the Azure OpenAI client with `max_retries=0` so the SDK's built-in retry logic does not also retry each Tenacity attempt.
 
 ```python
 from tenacity import (
@@ -213,6 +218,8 @@ def rate_limited_completion(client, messages, estimated_tokens=1000):
 For high-throughput applications, a single deployment's rate limit may not be enough. You can create multiple deployments of the same model across different regions and load-balance requests across them.
 
 ```python
+import openai
+import time
 import random
 
 class AzureOpenAILoadBalancer:
@@ -268,10 +275,18 @@ class AzureOpenAILoadBalancer:
 
             except openai.RateLimitError as e:
                 # Put this backend in cooldown
-                retry_after = getattr(e, 'retry_after', 10)
-                self.cooldowns[backend["name"]] = time.time() + float(retry_after)
+                retry_after_ms = e.response.headers.get("retry-after-ms")
+                retry_after = e.response.headers.get("retry-after")
+                if retry_after_ms:
+                    cooldown_seconds = float(retry_after_ms) / 1000
+                elif retry_after:
+                    cooldown_seconds = float(retry_after)
+                else:
+                    cooldown_seconds = 10
+
+                self.cooldowns[backend["name"]] = time.time() + cooldown_seconds
                 print(f"Backend {backend['name']} rate limited. "
-                      f"Cooling down for {retry_after}s")
+                      f"Cooling down for {cooldown_seconds}s")
 
         raise Exception("All backends exhausted after retries")
 ```
