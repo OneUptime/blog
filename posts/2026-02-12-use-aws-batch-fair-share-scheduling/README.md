@@ -43,15 +43,15 @@ aws batch create-scheduling-policy \
     "computeReservation": 10,
     "shareDistribution": [
       {
-        "shareIdentifier": "team-ml",
+        "shareIdentifier": "teamml",
         "weightFactor": 0.75
       },
       {
-        "shareIdentifier": "team-analytics",
+        "shareIdentifier": "teamanalytics",
         "weightFactor": 1.0
       },
       {
-        "shareIdentifier": "team-research",
+        "shareIdentifier": "teamresearch",
         "weightFactor": 1.0
       }
     ]
@@ -60,9 +60,9 @@ aws batch create-scheduling-policy \
 
 Let me break down each parameter:
 
-- **shareDecaySeconds: 3600** - The time window over which usage is tracked. After 3600 seconds (1 hour), past usage decays by half. This means the scheduler "forgets" old usage gradually. Set it longer for more stable sharing, shorter for more responsive balancing.
+- **shareDecaySeconds: 3600** - The time window, in seconds, that AWS Batch uses to calculate each share identifier's fair-share percentage. Recent usage counts more than older usage. Set it longer for more stable sharing, shorter for more responsive balancing.
 
-- **computeReservation: 10** - Reserves 10% of compute capacity for share identifiers that have not recently used any resources. This ensures that even if the cluster is fully loaded by one team, a new team can get capacity quickly without waiting for the full decay cycle.
+- **computeReservation: 10** - Reserves some available maximum vCPU for share identifiers that are not already active. The reserved ratio is `(computeReservation / 100) ^ ActiveFairShares`, so `10` reserves 10% with one active share identifier, 1% with two, and 0.1% with three.
 
 - **shareDistribution** - Defines the share identifiers and their weight factors. The weight factor works inversely: a **lower** value gives **more** resources to that share identifier. For example, a weight of 0.125 (1/8) gives eight times the compute resources compared to a weight of 1. The relative share each identifier receives is proportional to 1/weightFactor.
 
@@ -90,7 +90,7 @@ aws batch submit-job \
   --job-name ml-training-001 \
   --job-queue shared-queue \
   --job-definition ml-training-def \
-  --share-identifier team-ml \
+  --share-identifier teamml \
   --scheduling-priority-override 50
 
 # Team Analytics submits a data processing job
@@ -98,7 +98,7 @@ aws batch submit-job \
   --job-name analytics-etl-001 \
   --job-queue shared-queue \
   --job-definition etl-def \
-  --share-identifier team-analytics \
+  --share-identifier teamanalytics \
   --scheduling-priority-override 50
 
 # Team Research submits a simulation job
@@ -106,7 +106,7 @@ aws batch submit-job \
   --job-name research-sim-001 \
   --job-queue shared-queue \
   --job-definition simulation-def \
-  --share-identifier team-research \
+  --share-identifier teamresearch \
   --scheduling-priority-override 50
 ```
 
@@ -117,24 +117,24 @@ The `--scheduling-priority-override` is an additional priority within the same s
 Within each share identifier, you can use the scheduling priority to differentiate between urgent and background jobs.
 
 ```bash
-# High-priority production job for team-analytics
+# High-priority production job for teamanalytics
 aws batch submit-job \
   --job-name prod-report \
   --job-queue shared-queue \
   --job-definition report-def \
-  --share-identifier team-analytics \
+  --share-identifier teamanalytics \
   --scheduling-priority-override 100
 
-# Low-priority experimental job for team-analytics
+# Low-priority experimental job for teamanalytics
 aws batch submit-job \
   --job-name experiment-42 \
   --job-queue shared-queue \
   --job-definition experiment-def \
-  --share-identifier team-analytics \
+  --share-identifier teamanalytics \
   --scheduling-priority-override 10
 ```
 
-The production report runs before the experiment, but both jobs share the same team-analytics allocation.
+The production report runs before the experiment, but both jobs share the same teamanalytics allocation.
 
 ## Real-World Example: ML Platform
 
@@ -184,9 +184,9 @@ batch = boto3.client('batch')
 
 # Map users/teams to share identifiers
 TEAM_MAPPING = {
-    'ml-team': 'team-ml',
-    'analytics': 'team-analytics',
-    'research': 'team-research',
+    'ml-team': 'teamml',
+    'analytics': 'teamanalytics',
+    'research': 'teamresearch',
 }
 
 PRIORITY_MAPPING = {
@@ -241,7 +241,7 @@ Check how resources are being distributed across share identifiers.
 
 ```bash
 # See all jobs in the queue grouped by share identifier
-for sid in team-ml team-analytics team-research; do
+for sid in teamml teamanalytics teamresearch; do
   echo "=== $sid ==="
   running=$(aws batch list-jobs --job-queue shared-queue --job-status RUNNING \
     --query "jobSummaryList[?shareIdentifier=='$sid'] | length(@)" --output text 2>/dev/null || echo "0")
@@ -263,17 +263,17 @@ For broader monitoring, see our guide on [monitoring AWS Batch with CloudWatch](
 
 ### Compute Reservation
 
-- **0%** - No reservation. New share identifiers have to wait for the decay cycle.
+- **0%** - No reservation. New share identifiers have to wait for scheduling capacity to become available through normal fair-share ordering.
 - **10-20%** - Small reservation ensures new or idle teams can start jobs quickly.
 - **30%+** - Large reservation. Use if rapid response for idle teams is critical.
 
 ## Limits and Considerations
 
-- A single scheduling policy can have up to 500 share identifiers
+- A job queue with fair-share scheduling can have up to 500 active share identifiers
 - A job queue can have at most one scheduling policy
 - Fair-share scheduling works across all compute environments in the queue
-- Share identifiers are strings. You can use any naming convention (team names, project IDs, user emails)
-- Jobs without a share identifier use a "default" identifier
+- Share identifiers are strings limited to 255 alphanumeric characters, with an optional trailing asterisk for prefixes in a scheduling policy
+- Jobs submitted to a fair-share queue must include a share identifier
 
 ## Wrapping Up
 
