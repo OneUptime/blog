@@ -69,6 +69,13 @@ const handler = new WebPubSubEventHandler(hubName, {
   path: '/api/pubsub',
 
   // Called when a client is attempting to connect
+  handleConnect: async (req, res) => {
+    const userId = req.context.userId;
+    console.log(`Connect request from ${userId}`);
+    res.success({ userId });
+  },
+
+  // Called after a client is connected
   onConnected: async (req) => {
     const userId = req.context.userId;
     const connectionId = req.context.connectionId;
@@ -149,7 +156,7 @@ app.use(handler.getMiddleware());
 
 // Token endpoint for clients
 app.get('/api/token', async (req, res) => {
-  const token = await serviceClient.getClientAccessUrl({
+  const token = await serviceClient.getClientAccessToken({
     userId: `user-${Date.now()}`,
     roles: ['webpubsub.sendToGroup', 'webpubsub.joinLeaveGroup']
   });
@@ -182,7 +189,7 @@ const handler = new WebPubSubEventHandler(hubName, {
     const isAllowed = await checkUserPermission(userId);
     if (!isAllowed) {
       // Reject the connection with an error message
-      res.fail(403, 'User not permitted to connect');
+      res.fail(401, 'User not permitted to connect');
       return;
     }
 
@@ -223,10 +230,12 @@ az webpubsub hub create \
   --event-handler \
     url-template="https://your-server.com/api/pubsub" \
     user-event-pattern="*" \
-    system-event="connect,connected,disconnected"
+    system-event="connect" \
+    system-event="connected" \
+    system-event="disconnected"
 ```
 
-The `user-event-pattern` field controls which user events get forwarded. The wildcard `*` forwards everything. You can also specify a comma-separated list of event names if you only want certain events.
+The `user-event-pattern` field controls which user events get forwarded. The wildcard `*` forwards everything. You can also specify a particular event name if you only want that event, or add more event handler settings for different event names.
 
 For local development, you can use a tool like ngrok to expose your local server.
 
@@ -243,6 +252,14 @@ Web PubSub sends events using the CloudEvents specification. The Express middlew
 
 ```javascript
 // raw-handler.js - Handling events without the SDK middleware
+app.options('/api/pubsub', (req, res) => {
+  const origin = req.headers['webhook-request-origin'];
+  if (origin) {
+    res.setHeader('WebHook-Allowed-Origin', origin);
+  }
+  return res.status(200).end();
+});
+
 app.post('/api/pubsub', express.json(), (req, res) => {
   // CloudEvents headers contain event metadata
   const eventType = req.headers['ce-type'];
@@ -254,10 +271,7 @@ app.post('/api/pubsub', express.json(), (req, res) => {
   console.log(`Event: ${eventType}, User: ${userId}, Event Name: ${eventName}`);
 
   // Handle validation requests (Web PubSub sends these to verify your endpoint)
-  if (req.method === 'OPTIONS' || req.headers['webhook-request-origin']) {
-    res.setHeader('WebHook-Allowed-Origin', '*');
-    return res.status(200).end();
-  }
+  // The OPTIONS validation request is handled by app.options above.
 
   // Route based on event type
   if (eventType === 'azure.webpubsub.sys.connect') {
@@ -280,7 +294,7 @@ When Web PubSub first sends events to your endpoint, it performs a validation ha
 
 ## Error Handling in Event Handlers
 
-Your event handlers should be resilient. If they throw an error or return a 5xx status, Web PubSub will retry the request. For the `connect` event specifically, if your handler fails to respond within the timeout (default 5 seconds), the client connection is rejected.
+Your event handlers should be resilient. For blocking events, return status codes deliberately: a `2xx` response acknowledges a user event, while a failed `connect` response rejects the client connection. Keep the `connect` handler fast so the connection handshake is not delayed.
 
 ```javascript
 // resilient-handler.js - Event handler with proper error handling
