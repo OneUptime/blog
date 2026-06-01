@@ -16,7 +16,7 @@ When a consumer reads a message from an Azure Queue, that message does not get r
 
 If the consumer finishes and deletes the message, everything works perfectly. If the consumer crashes or fails to delete the message before the timeout expires, the message reappears in the queue for another consumer to pick up. This is how Azure Queue Storage provides at-least-once delivery semantics.
 
-The default visibility timeout is 30 seconds. The maximum you can set is 7 days. The minimum is 0 seconds, which makes the message immediately visible (useful in some specific scenarios).
+The default visibility timeout when receiving messages is 30 seconds. The maximum you can set is 7 days. For receive operations, the minimum is 1 second. For update and enqueue operations, the minimum is 0 seconds, which makes an updated message immediately visible or makes a newly added message visible right away.
 
 ## Setting Visibility Timeout When Receiving Messages
 
@@ -95,7 +95,7 @@ for msg in messages:
 
     # Processing is taking longer than expected, extend the timeout
     # This resets the visibility window to another 120 seconds from now
-    queue_client.update_message(
+    msg = queue_client.update_message(
         msg,
         visibility_timeout=120
     )
@@ -199,7 +199,7 @@ for msg in messages:
 
 One mistake I see frequently is not accounting for clock skew. If your workers run on different machines with slightly different clocks, the actual visibility window might be shorter than you expect. Always add a buffer.
 
-Another common issue is setting the visibility timeout at the queue level and forgetting you can override it per-receive call. The per-receive timeout takes precedence and gives you fine-grained control.
+Another common issue is assuming raw Azure Queue Storage has a queue-level visibility timeout setting. For storage queue receive operations, set the timeout on each receive call. If you are using Azure Functions queue triggers, remember that the `host.json` `visibilityTimeout` setting controls the delay before retrying failed function executions.
 
 Watch out for long-running operations without timeout extensions. If your processing involves multiple steps, consider extending the timeout between steps rather than setting one very long timeout up front. This way, if processing fails after step 3 of 5, the message reappears relatively quickly instead of sitting invisible for the full extended timeout.
 
