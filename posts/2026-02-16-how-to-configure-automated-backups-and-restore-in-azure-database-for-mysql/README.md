@@ -14,23 +14,21 @@ This post covers everything you need to know about automated backups in Azure Da
 
 ## How Automated Backups Work
 
-Azure takes three types of backups automatically:
+Azure takes two types of backups automatically:
 
-- **Full backups**: Taken once a week.
-- **Differential backups**: Taken twice daily.
+- **Snapshot backups**: Taken once a day by default. You can change the backup interval to 12 or 6 hours.
 - **Transaction log backups**: Taken every five minutes.
 
-These backups are stored in Azure Blob Storage and are redundant based on your backup redundancy configuration. You do not need to trigger them manually - they run on a schedule managed by Azure.
+These backups are stored in Azure-managed backup storage and are redundant based on your backup redundancy configuration. You do not need to trigger them manually - they run on a schedule managed by Azure.
 
 ```mermaid
 graph TB
-    A[Full Backup - Weekly] --> D[Point-in-Time Recovery]
-    B[Differential Backup - Twice Daily] --> D
-    C[Transaction Log Backup - Every 5 min] --> D
+    A[Snapshot Backup - Daily by default] --> D[Point-in-Time Recovery]
+    B[Transaction Log Backup - Every 5 min] --> D
     D --> E[Restored Server]
 ```
 
-The combination of these three backup types enables point-in-time restore (PITR). You can restore to any second within your retention period, not just to specific backup points.
+The combination of snapshots and transaction log backups enables point-in-time restore (PITR). You can restore to any point in time within your retention period, not just to specific backup points.
 
 ## Configuring Backup Retention
 
@@ -87,7 +85,7 @@ az mysql flexible-server create \
   --geo-redundant-backup Enabled
 ```
 
-Important: You cannot change the backup redundancy option after server creation. Choose wisely when provisioning.
+Important: You can move from locally redundant backup storage to geo-redundant backup storage after server creation, but you cannot convert zone-redundant backup storage to geo-redundant backup storage through a simple Compute + Storage settings change after provisioning. Choose wisely when provisioning.
 
 For production databases that need regional disaster protection, enable geo-redundant backup. The additional cost is minimal compared to the protection it provides.
 
@@ -128,7 +126,7 @@ Picking the right restore time is crucial. Here are some tips:
 
 - If you know when the data corruption or deletion happened, restore to a point just before that event.
 - If you are not sure, restore to a few different points and compare the data.
-- The earliest available restore point depends on your retention period and when the oldest full backup was taken.
+- The earliest available restore point depends on your retention period and the oldest retained snapshot and transaction log backups.
 
 Check the earliest available restore point:
 
@@ -142,18 +140,18 @@ az mysql flexible-server show \
 
 ## Geo-Restore
 
-If your primary region goes down entirely, geo-restore lets you create a server in the paired region from your geo-redundant backups:
+If your primary region goes down entirely, geo-restore lets you create a server in the geo-paired region, or another supported Azure region where Flexible Server is available, from your geo-redundant backups:
 
 ```bash
-# Geo-restore to the paired region
+# Geo-restore to a supported target region
 az mysql flexible-server geo-restore \
   --resource-group myDRResourceGroup \
   --name my-mysql-geo-restored \
   --source-server my-mysql-server \
-  --location westus2
+  --location westus
 ```
 
-Geo-restore has a recovery point objective (RPO) of up to one hour, meaning you might lose up to one hour of data. The recovery time objective (RTO) depends on the database size but is typically under an hour for most databases.
+Geo-restore uses the most recent backup that has been replicated to the target region. Replication delay can be up to one hour, meaning you might lose up to one hour of data. The recovery time objective (RTO) depends on factors such as database size, transaction log size, network bandwidth, and concurrent restore requests in the target region.
 
 ## Restoring Specific Data
 
@@ -198,25 +196,23 @@ az mysql flexible-server delete \
 
 ## Backup Monitoring
 
-You should monitor your backup status to make sure everything is working:
+You should monitor your backup configuration and available backups to make sure everything is working:
 
 ```bash
-# Check the backup status and configuration
+# Check the backup configuration and earliest restore point
 az mysql flexible-server show \
   --resource-group myResourceGroup \
   --name my-mysql-server \
-  --query "{backupRetention:backup.backupRetentionDays, geoRedundant:backup.geoRedundantBackup, earliestRestore:backup.earliestRestoreDate}"
+  --query "{backupRetention:backup.backupRetentionDays, backupInterval:backup.backupIntervalHours, geoRedundant:backup.geoRedundantBackup, earliestRestore:backup.earliestRestoreDate}"
 ```
 
-Set up Azure Monitor alerts for backup failures:
+List the available full backups:
 
 ```bash
-# Create a diagnostic setting to log backup events
-az monitor diagnostic-settings create \
-  --name mysql-backup-diagnostics \
-  --resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.DBforMySQL/flexibleServers/my-mysql-server" \
-  --workspace "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myWorkspace" \
-  --logs '[{"category": "MySqlAuditLogs", "enabled": true}]'
+# List all available backups for the server
+az mysql flexible-server backup list \
+  --resource-group myResourceGroup \
+  --name my-mysql-server
 ```
 
 ## Testing Your Backups
@@ -258,4 +254,4 @@ To keep costs manageable:
 
 ## Summary
 
-Automated backups in Azure Database for MySQL Flexible Server provide solid protection without manual intervention. Configure your retention period based on compliance and recovery needs, enable geo-redundant backup for critical workloads, and test your restores regularly. When you need to recover, PITR gives you second-level granularity, and geo-restore protects against regional disasters. The key is to set this up right from the start - backup is one of those things where the cost of getting it wrong far exceeds the cost of doing it properly.
+Automated backups in Azure Database for MySQL Flexible Server provide solid protection without manual intervention. Configure your retention period based on compliance and recovery needs, enable geo-redundant backup for critical workloads, and test your restores regularly. When you need to recover, PITR gives you point-in-time recovery, and geo-restore protects against regional disasters. The key is to set this up right from the start - backup is one of those things where the cost of getting it wrong far exceeds the cost of doing it properly.
