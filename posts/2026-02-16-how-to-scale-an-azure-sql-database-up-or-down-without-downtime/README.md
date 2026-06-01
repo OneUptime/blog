@@ -18,7 +18,7 @@ Azure SQL Database scaling involves several dimensions:
 
 **Compute (vCores or DTUs)**: The amount of CPU and memory allocated to your database. Scaling up means more processing power; scaling down means less cost.
 
-**Storage**: The maximum data size for your database. Storage can only be scaled up, not down (for most tiers).
+**Storage**: The maximum data size for your database. The configured maximum data size can be increased or decreased, as long as the target value is valid for the tier and not below the space the database needs. Reclaiming already allocated file space is a separate shrink operation.
 
 **Service tier**: Moving between tiers (e.g., General Purpose to Business Critical, or Standard to Premium) changes both the performance characteristics and the available features.
 
@@ -29,10 +29,10 @@ Azure SQL Database scaling involves several dimensions:
 When you initiate a scaling operation, Azure:
 
 1. Provisions a new compute resource with the target configuration.
-2. Copies the database to the new resource (this happens in the background).
+2. For some combinations of service tier and compute size changes, creates a database replica on the new compute instance and copies data in the background.
 3. At the very end, switches the connection endpoint to the new resource.
 
-The switch takes approximately 10-30 seconds. During this brief period, existing connections are dropped and need to reconnect. Uncommitted transactions are rolled back.
+The switch is generally less than 30 seconds and often only a few seconds. During this brief period, existing connections are dropped and need to reconnect. Uncommitted transactions are rolled back.
 
 ```mermaid
 sequenceDiagram
@@ -41,8 +41,8 @@ sequenceDiagram
     participant New as New Database (Target Tier)
     App->>Old: Active connections
     Note over New: Azure provisions new compute
-    Note over Old,New: Background data sync
-    Note over Old,New: Final switch (~10-30 seconds)
+    Note over Old,New: Background data sync when needed
+    Note over Old,New: Final switch (<30 seconds)
     App--xOld: Connections dropped
     App->>New: Reconnect to new tier
 ```
@@ -89,7 +89,7 @@ az sql db update \
     --service-objective S3
 ```
 
-Common DTU service objectives: B (Basic), S0-S12 (Standard), P1-P15 (Premium).
+Common DTU service objectives: Basic, S0-S12 (Standard), P1-P15 (Premium).
 
 ### Scaling vCore-Based Databases
 
@@ -141,7 +141,7 @@ Set-AzSqlDatabase `
 
 ## Scaling via T-SQL
 
-You can also initiate scaling from within the database:
+You can also initiate scaling with T-SQL, typically from a connection to the `master` database:
 
 ```sql
 -- Scale to a different service objective
@@ -153,14 +153,17 @@ MODIFY (SERVICE_OBJECTIVE = 'S3');
 Check the progress:
 
 ```sql
--- Monitor the scaling operation status
+-- Monitor recent scaling operation status from the master database
 SELECT
-    name,
-    service_objective,
-    edition,
-    state_desc
-FROM sys.databases
-WHERE name = 'mydb';
+    major_resource_id,
+    operation,
+    state_desc,
+    percent_complete,
+    start_time,
+    last_modify_time
+FROM sys.dm_operation_status
+WHERE major_resource_id = 'mydb'
+ORDER BY start_time DESC;
 ```
 
 ## Handling the Connectivity Interruption
@@ -235,12 +238,10 @@ param(
     [string]$DatabaseName = "mydb"
 )
 
-# Authenticate using the Automation Run As account
-$connection = Get-AutomationConnection -Name "AzureRunAsConnection"
-Connect-AzAccount -ServicePrincipal `
-    -Tenant $connection.TenantId `
-    -ApplicationId $connection.ApplicationId `
-    -CertificateThumbprint $connection.CertificateThumbprint
+# Authenticate using the Automation account's managed identity
+Disable-AzContextAutosave -Scope Process
+$AzureContext = (Connect-AzAccount -Identity).Context
+Set-AzContext -SubscriptionName $AzureContext.Subscription -DefaultProfile $AzureContext
 
 # Scale up to 4 vCores for business hours
 Set-AzSqlDatabase `
@@ -268,15 +269,15 @@ This provides reactive scaling based on actual demand.
 
 ## Scaling Considerations
 
-**Scaling up is faster than scaling down.** Moving to a higher tier usually completes within minutes. Moving to a lower tier or changing service tiers can take longer.
+**Scaling latency depends on the source and target tier.** Some changes complete in constant time, while others are proportional to the database space used because data copying is required.
 
-**Storage cannot be scaled down.** Once you increase the max data size, you cannot decrease it without recreating the database. Plan storage increases carefully.
+**Reducing storage max size has limits.** You can decrease the configured max data size only to a value supported by the current tier and not below the database's required space. Shrinking allocated data files to reclaim unused space is a separate operation and should not be treated as routine maintenance.
 
 **In-flight transactions are rolled back.** The connection drop during switchover means any uncommitted transactions at that moment will be rolled back. Use short transactions and retry logic.
 
 **Elastic pool considerations.** If the database is in an elastic pool, you scale the pool rather than individual databases. Moving a database out of a pool to a standalone tier requires its own scaling operation.
 
-**Hyperscale scaling is different.** Hyperscale databases scale compute almost instantly because compute and storage are decoupled. Adding vCores does not require data movement.
+**Hyperscale scaling is different.** Hyperscale databases keep compute and storage decoupled, so compute scaling is independent of data size. Provisioned compute scaling typically completes within a couple of minutes, and serverless compute usually scales faster.
 
 **Cross-tier moves take longer.** Moving between General Purpose and Business Critical involves a full data copy because the storage architecture differs (remote storage vs. local SSD).
 
@@ -294,4 +295,4 @@ Here are practical strategies for using scaling to control costs:
 
 ## Summary
 
-Scaling Azure SQL Database is a low-risk, high-impact operation that lets you match resources to demand. The process involves a brief connectivity interruption of 10-30 seconds, which is easily handled with retry logic in your application. Scale through the Portal for ad hoc changes, use the CLI or PowerShell for scripted operations, and automate scaling with Azure Automation or Functions for predictable patterns. Regular right-sizing based on actual usage is one of the simplest ways to control your Azure SQL costs.
+Scaling Azure SQL Database is a low-risk, high-impact operation that lets you match resources to demand. The process involves a brief connectivity interruption that is generally less than 30 seconds, which is easily handled with retry logic in your application. Scale through the Portal for ad hoc changes, use the CLI or PowerShell for scripted operations, and automate scaling with Azure Automation or Functions for predictable patterns. Regular right-sizing based on actual usage is one of the simplest ways to control your Azure SQL costs.
