@@ -20,9 +20,9 @@ Both store key-value pairs, but they serve different purposes:
 |---|---|---|
 | Cost | Free (standard tier) | $0.40/secret/month |
 | Automatic rotation | No | Yes |
-| Cross-account sharing | Limited | Yes |
-| Max size | 8 KB (standard) / 8 KB (advanced) | 64 KB |
-| Throughput | 40 TPS standard, higher with advanced | 10,000 TPS |
+| Cross-account sharing | Advanced parameters only | Yes |
+| Max size | 4 KB (standard) / 8 KB (advanced) | 64 KB |
+| Throughput | 40 TPS standard, higher with higher throughput enabled | 10,000 TPS |
 | Best for | Config values, feature flags | Passwords, API keys, certificates |
 
 Use Parameter Store for configuration. Use Secrets Manager for actual secrets. For secrets management, see our guide on [using Lambda with Secrets Manager](https://oneuptime.com/blog/post/2026-02-12-use-lambda-with-secrets-manager-for-secure-credentials/view).
@@ -195,9 +195,14 @@ The same AWS Parameters and Secrets Lambda Extension that works with Secrets Man
 
 ```bash
 # Add the extension layer
+EXTENSION_ARN=$(aws ssm get-parameter \
+  --name "/aws/service/aws-parameters-and-secrets-lambda-extension/x86/latest" \
+  --query "Parameter.Value" \
+  --output text)
+
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers "arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:11"
+  --layers "$EXTENSION_ARN"
 ```
 
 ```javascript
@@ -335,7 +340,7 @@ Your Lambda function needs permission to read parameters:
 }
 ```
 
-The KMS permission is only needed if you use SecureString parameters with a custom KMS key.
+The KMS permission is only needed if you use SecureString parameters with a customer managed KMS key.
 
 ## CloudFormation Integration
 
@@ -362,7 +367,7 @@ Resources:
 
 ## Parameter Store Tiers
 
-Standard tier is free and sufficient for most use cases. Advanced tier ($0.05 per parameter per month) offers higher throughput (10,000 TPS), parameter policies (expiration, notification), and larger parameter sizes.
+Standard tier is free and sufficient for most use cases. Advanced tier ($0.05 per parameter per month) offers parameter policies (expiration, notification) and larger parameter sizes. Higher throughput can be enabled separately when you need more than the default 40 TPS.
 
 For Lambda functions with moderate parameter access, the standard tier with caching is more than enough.
 
