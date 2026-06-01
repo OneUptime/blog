@@ -16,7 +16,7 @@ Most teams do not pick their tools in a vacuum. Maybe your organization standard
 
 With the integration in place, you get:
 
-- Automatic state transitions on work items when PRs are merged
+- Automatic state transitions on work items when PRs include supported state keywords and are merged into the default branch
 - Traceability from a user story all the way to the commit that implemented it
 - The ability to mention work items in commit messages and have them show up in Azure Boards
 - A single source of truth for project status without duplicating data
@@ -80,7 +80,7 @@ When Azure Boards processes these commits, it creates a link on the work item th
 
 ## Step 4: Link Work Items in Pull Requests
 
-Pull requests work the same way. Include `AB#` references in the PR title or description, and Azure Boards will pick them up.
+Pull requests work the same way. Include `AB#` references in the PR description, and Azure Boards will pick them up. Azure Boards does not create the formal work item link from an `AB#` reference in a pull request title or comment.
 
 Here is a PR description template that works well with the integration:
 
@@ -100,19 +100,19 @@ AB#1235 - Add input validation for user profile fields
 
 ## Step 5: Configure Automatic State Transitions
 
-This is where the integration really shines. You can configure Azure Boards to automatically move work items through states based on GitHub activity.
+This is where the integration really shines. Azure Boards can automatically move work items through states based on supported keywords in GitHub commit messages and pull request descriptions.
 
-Go to Project Settings, then Boards, then GitHub connections. Select your connection and configure the state mappings:
+Use a state name, state category, or one of the supported fix keywords before the work item reference:
 
-- When a PR is opened that references a work item, move it to "Active" or "In Progress"
-- When a PR is merged, move the work item to "Resolved" or "Done"
-- When a PR is closed without merging, optionally revert the state
+- `Closed AB#1234` transitions the work item to the `Closed` state, if that state exists in your process
+- `Resolved AB#1234` transitions the work item to the first state in the `Resolved` workflow category
+- `Fixes AB#1234` transitions the work item to the first state in the `Resolved` workflow category, or the first state in the `Completed` category if no `Resolved` state exists
 
-These transitions save a surprising amount of time. Developers no longer need to context-switch to Azure Boards just to drag a card across the board.
+These transition rules apply when the pull request is merged into the repository's default branch. They save a surprising amount of time because developers no longer need to context-switch to Azure Boards just to drag a card across the board.
 
 ## Step 6: Use Branch Naming Conventions
 
-Another useful pattern is creating branches directly from work items. While the GitHub integration does not create branches for you automatically, you can establish a convention that makes tracking easier.
+Another useful pattern is creating branches directly from work items. Azure Boards can create a GitHub branch from a work item and link that branch back to the work item, but you can still establish a naming convention that makes tracking easier.
 
 A common pattern is to include the work item ID in the branch name:
 
@@ -122,6 +122,7 @@ git checkout -b feature/AB1234-fix-user-service
 ```
 
 This does not trigger an automatic link (only `AB#` in commit messages and PR descriptions does that), but it makes it easy for developers to find the related work item when they are reviewing code.
+If you create the branch from the work item in Azure Boards instead, Azure Boards creates the branch in the selected GitHub repository and links it to the work item.
 
 ## Troubleshooting Common Issues
 
@@ -132,7 +133,7 @@ If your commits mention `AB#1234` but the link does not show up in Azure Boards,
 1. Make sure the GitHub repository is connected to the correct Azure DevOps project
 2. Verify that the work item ID actually exists in that project
 3. Check that the Azure Boards app still has access to the repository (GitHub org admins can revoke this)
-4. Look at the webhook delivery logs in GitHub under Settings, then Webhooks
+4. Check the GitHub connections page in Azure DevOps for a red-X warning that indicates invalid credentials or lost access
 
 ### Duplicate Connections
 
@@ -143,10 +144,10 @@ If you accidentally create multiple connections between the same GitHub repo and
 The Azure Boards app needs specific permissions on GitHub:
 
 - Read access to code (to process commits)
-- Read access to pull requests
-- Write access to checks (to post status updates)
+- Read access to the repository
+- Read and write access to Checks for pull request insights
 
-If any of these are missing, the integration will silently fail on certain operations.
+If these permissions are missing or revoked, linking and pull request insights can stop working. If you connect with a GitHub PAT instead of the app, make sure the PAT includes the `repo`, `read:user`, `user:email`, and `admin:repo_hook` scopes.
 
 ## Advanced: Using the REST API to Query Linked Items
 
@@ -157,7 +158,7 @@ Here is an example using curl to fetch work item details including external link
 ```bash
 # Query a specific work item with its relations (includes GitHub links)
 curl -u :$AZURE_PAT \
-  "https://dev.azure.com/{org}/{project}/_apis/wit/workitems/1234?\$expand=relations&api-version=7.0"
+  "https://dev.azure.com/{org}/{project}/_apis/wit/workitems/1234?\$expand=relations&api-version=7.1"
 ```
 
 The response will include a `relations` array where GitHub commits and PRs show up with a `url` field pointing to the GitHub resource.
