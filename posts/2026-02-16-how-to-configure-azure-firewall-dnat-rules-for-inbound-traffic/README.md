@@ -21,8 +21,6 @@ For example:
 - Firewall translates destination to `10.0.1.10:3389` (backend VM)
 - Backend VM receives the connection and responds through the firewall
 
-The source IP is preserved by default, so the backend sees the original client IP.
-
 ```mermaid
 sequenceDiagram
     participant Client as Internet Client
@@ -31,7 +29,7 @@ sequenceDiagram
 
     Client->>FW: Connect to 40.85.100.50:3389
     FW->>FW: DNAT: Translate dest to 10.0.1.10:3389
-    FW->>VM: Forward to 10.0.1.10:3389 (src: client IP)
+    FW->>VM: Forward to 10.0.1.10:3389
     VM->>FW: Response
     FW->>Client: Forward response
 ```
@@ -41,7 +39,7 @@ sequenceDiagram
 1. Azure Firewall deployed in a VNet with `AzureFirewallSubnet`
 2. At least one public IP associated with the firewall
 3. Backend VMs or services in the same VNet or a peered VNet
-4. A route table on the backend subnet with a default route pointing to the firewall's private IP (for return traffic)
+4. A route table on the backend subnet with a default route pointing to the firewall's private IP if backend-initiated outbound traffic should egress through Azure Firewall
 
 ## Step 1: Ensure the Firewall Has a Public IP
 
@@ -131,7 +129,7 @@ az network firewall policy rule-collection-group collection add-nat-collection \
   --policy-name myFirewallPolicy \
   --rule-collection-group-name dnatRuleGroup \
   --name inboundNATRules \
-  --priority 100 \
+  --collection-priority 100 \
   --action DNAT \
   --rule-name allowWebServer \
   --source-addresses "*" \
@@ -165,9 +163,9 @@ az network firewall policy rule-collection-group collection rule add \
 
 Now clients connect to `40.85.100.50:8080` and reach the web server running on port 80 internally.
 
-## Step 5: Configure Return Traffic Routing
+## Step 5: Configure Backend Outbound Routing
 
-This is critical. Return traffic from the backend VM must go back through the firewall. Otherwise, the client receives responses from a different IP than it connected to, and the connection fails.
+This is critical for backend outbound traffic. Azure Firewall is stateful and handles return packets for established DNAT sessions automatically, but a default route on the backend subnet is commonly used when you also want outbound traffic from that subnet to go through the firewall.
 
 Create a route table on the backend subnet with a default route through the firewall:
 
@@ -256,35 +254,35 @@ az network firewall nat-rule create \
 
 ## Monitoring DNAT Traffic
 
-Azure Firewall logs DNAT activity to Azure Monitor. Enable diagnostics to track which DNAT rules are being hit:
+Azure Firewall logs DNAT activity to Azure Monitor. Enable resource-specific diagnostics to track which DNAT rules are being hit:
 
 ```bash
 # Enable diagnostic logging for the firewall
 az monitor diagnostic-settings create \
   --resource "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Network/azureFirewalls/myFirewall" \
   --name firewallDiagnostics \
-  --workspace myLogAnalyticsWorkspace \
-  --logs '[{"category":"AzureFirewallNetworkRule","enabled":true},{"category":"AzureFirewallDnsProxy","enabled":true}]'
+  --workspace "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myLogAnalyticsWorkspace" \
+  --export-to-resource-specific true \
+  --logs '[{"category":"AZFWNatRule","enabled":true}]'
 ```
 
 Query the logs in Log Analytics:
 
 ```text
 // KQL query to find DNAT rule hits
-AzureFirewallNetworkRule
-| where Action == "DNAT"
-| project TimeGenerated, SourceIP, DestinationIP, DestinationPort, TranslatedIP, TranslatedPort
+AZFWNatRule
+| project TimeGenerated, SourceIp, DestinationIp, DestinationPort, TranslatedIp, TranslatedPort, RuleCollection, Rule
 | order by TimeGenerated desc
 ```
 
 ## Common Issues
 
-**Connection times out.** Check the route table on the backend subnet. Return traffic must route through the firewall.
+**Connection times out.** Check the DNAT rule, NSG rules on the backend subnet or NIC, and the backend service listener.
 
-**Asymmetric routing.** If the backend VM has a public IP, responses may bypass the firewall. Remove public IPs from backend VMs or add more specific routes.
+**Unexpected outbound path.** If you want backend-initiated outbound traffic to go through Azure Firewall, remove public IPs from backend VMs and use a route table that points the default route to the firewall.
 
 **DNAT rule not matching.** Verify the destination address in the rule matches exactly the firewall's public IP. Check the rule priority - lower numbers are evaluated first.
 
 ## Summary
 
-Azure Firewall DNAT rules provide controlled inbound access to your backend services. Create the rules mapping public IP and port combinations to internal destinations, restrict source addresses for sensitive services, and make sure return traffic routes through the firewall. Combined with Azure Firewall's logging and threat intelligence features, DNAT gives you visibility and control over every inbound connection to your environment.
+Azure Firewall DNAT rules provide controlled inbound access to your backend services. Create the rules mapping public IP and port combinations to internal destinations, restrict source addresses for sensitive services, and configure backend subnet routing for any outbound traffic that should egress through the firewall. Combined with Azure Firewall's logging and threat intelligence features, DNAT gives you visibility and control over every inbound connection to your environment.
