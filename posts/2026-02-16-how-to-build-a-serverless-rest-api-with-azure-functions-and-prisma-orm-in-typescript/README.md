@@ -17,17 +17,17 @@ In this post, we will build a complete serverless REST API using Azure Functions
 ```bash
 # Create a new Azure Functions project with TypeScript
 
-func init prisma-api --typescript
+func init prisma-api --worker-runtime node --language typescript --model V4
 cd prisma-api
 
 # Install Prisma and other dependencies
-npm install @prisma/client
-npm install -D prisma
+npm install @prisma/client@^6
+npm install -D prisma@^6
 ```
 
 ## Step 1: Define the Prisma Schema
 
-Initialize Prisma and define your data model.
+Initialize Prisma and define your data model. This tutorial pins Prisma 6 so the generated client is available from `@prisma/client` in the default Azure Functions TypeScript project structure.
 
 ```bash
 # Initialize Prisma
@@ -39,7 +39,7 @@ npx prisma init --datasource-provider postgresql
 // Database schema for the blog API
 generator client {
   provider = "prisma-client-js"
-  // Bundle for Azure Functions deployment
+  // Bundle for Azure Functions deployment on current Linux plans
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
@@ -114,7 +114,7 @@ In serverless environments, you need to manage the database connection carefully
 // Singleton Prisma client for Azure Functions
 import { PrismaClient } from '@prisma/client';
 
-// Store the client in a global variable so it persists across warm invocations
+// Store the client at module scope so it persists across warm invocations
 let prisma: PrismaClient;
 
 export function getPrismaClient(): PrismaClient {
@@ -132,8 +132,8 @@ export function getPrismaClient(): PrismaClient {
       },
     });
 
-    // Connection pooling is handled by Prisma's connection pool
-    // Default pool size is 5 connections per function instance
+    // Each warm function instance keeps its own Prisma connection pool.
+    // Tune the pool size in DATABASE_URL for your database limits and concurrency.
   }
 
   return prisma;
@@ -307,7 +307,12 @@ app.http('updatePost', {
           title: body.title,
           content: body.content,
           published: body.published,
-          publishedAt: body.published ? new Date() : undefined,
+          publishedAt:
+            body.published === true
+              ? new Date()
+              : body.published === false
+                ? null
+                : undefined,
           // Update tags by disconnecting all and reconnecting
           tags: body.tags
             ? {
@@ -434,6 +439,10 @@ Configure the Azure PostgreSQL database and deploy.
 
 ```bash
 # Create an Azure PostgreSQL Flexible Server
+az group create \
+  --name prisma-rg \
+  --location eastus
+
 az postgres flexible-server create \
   --name prisma-blog-db \
   --resource-group prisma-rg \
@@ -450,8 +459,14 @@ az postgres flexible-server db create \
   --database-name blogdb
 
 # Run Prisma migrations against the production database
-DATABASE_URL="postgresql://adminuser:YourPassword123!@prisma-blog-db.postgres.database.azure.com:5432/blogdb?sslmode=require" \
-  npx prisma migrate deploy
+DATABASE_URL="postgresql://adminuser:YourPassword123!@prisma-blog-db.postgres.database.azure.com:5432/blogdb?sslmode=require"
+npx prisma migrate deploy
+
+# Configure the Function App with the same database connection string
+az functionapp config appsettings set \
+  --name prisma-blog-api \
+  --resource-group prisma-rg \
+  --settings DATABASE_URL="$DATABASE_URL"
 
 # Deploy the function app
 func azure functionapp publish prisma-blog-api
@@ -462,7 +477,7 @@ func azure functionapp publish prisma-blog-api
 Serverless functions have cold starts. The Prisma client adds to this because it needs to establish a database connection on the first invocation. Here are some strategies to minimize the impact:
 
 - Keep the function warm with a timer trigger that pings it every few minutes
-- Use Premium plan or dedicated plan for critical APIs to avoid cold starts entirely
+- Use Premium plan with always-ready instances or a dedicated plan with Always On for critical APIs to reduce cold starts
 - Minimize the Prisma client bundle by only generating the client for the platforms you need
 
 ```typescript
@@ -478,4 +493,4 @@ app.timer('warmup', {
 
 ## Summary
 
-Azure Functions and Prisma ORM make a productive combination for building serverless APIs. Prisma handles the database layer with type-safe queries and schema migrations, while Azure Functions handles the compute with automatic scaling. The main things to watch out for are connection management (use a singleton client), cold starts (consider a warm-up function or Premium plan), and deployment (include the right Prisma binary targets). This stack works particularly well for CRUD-heavy APIs where type safety and developer productivity are priorities.
+Azure Functions and Prisma ORM make a productive combination for building serverless APIs. Prisma handles the database layer with type-safe queries and schema migrations, while Azure Functions handles the compute with automatic scaling. The main things to watch out for are connection management (use a singleton client), cold starts (consider a warm-up function or Premium plan), and deployment (include the right Prisma binary targets for Prisma 6). This stack works particularly well for CRUD-heavy APIs where type safety and developer productivity are priorities.
