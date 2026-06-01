@@ -180,11 +180,11 @@ az dns-resolver vnet-link create \
   --id $VNET2_ID
 ```
 
-After linking, any VM in these VNets that queries a domain matching a forwarding rule will have its query forwarded to the specified DNS servers.
+After linking, any VM in these VNets that uses Azure-provided DNS and queries a domain matching a forwarding rule will have its query forwarded to the specified DNS servers. If the VNet is configured with custom DNS servers, those servers receive the query instead.
 
 ## Step 5: Test the Forwarding Rules
 
-From a VM inside a linked VNet, test DNS resolution for each forwarded domain:
+From a VM inside a linked VNet that uses Azure-provided DNS, test DNS resolution for each forwarded domain:
 
 ```bash
 # Test resolution of the on-premises AD domain
@@ -271,11 +271,11 @@ az network nsg rule create \
 
 While Private Resolver does not expose per-query logs directly, you can monitor it through Azure Monitor metrics:
 
-- **Query count** per outbound endpoint
-- **Response latency** to target DNS servers
-- **Error counts** for failed forwarded queries
+- **Queries per second** for the resolver, which can be aggregated by endpoint ID
+- **Inbound endpoint count**
+- **Outbound endpoint count**
 
-Set up alerts for elevated error rates to catch connectivity issues with target DNS servers early.
+Set up alerts for unusual query volume or endpoint-count changes, and use client-side testing plus target DNS server logs to catch connectivity issues with target DNS servers early.
 
 ## Common Issues
 
