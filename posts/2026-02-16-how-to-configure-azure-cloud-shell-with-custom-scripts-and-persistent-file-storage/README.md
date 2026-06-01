@@ -188,8 +188,8 @@ function Get-ExpensiveResources {
     $resources | Group-Object type | Sort-Object Count -Descending | Format-Table Count, Name
 }
 
-# Set default output format
-$PSDefaultParameterValues['*:Output'] = 'Table'
+# Set default output format for Azure CLI commands
+az config set core.output=table
 
 # Custom prompt
 function prompt {
@@ -206,11 +206,11 @@ Cloud Shell supports file transfers, which is handy for getting scripts and conf
 
 ### Using the Built-in Upload/Download
 
-Click the upload/download icon in the Cloud Shell toolbar. Uploaded files land in your `$HOME` directory. For downloads, use:
+Click the upload/download icon in the Cloud Shell toolbar. Uploaded files land in your `$HOME` directory. For downloads, choose Download and enter the fully qualified file path:
 
 ```bash
-# Download a file through the Cloud Shell browser interface
-download ~/clouddrive/scripts/resource-health.sh
+# File path to enter in the Download dialog
+/home/user/clouddrive/scripts/resource-health.sh
 ```
 
 ### Using Azure Storage Directly
@@ -259,27 +259,25 @@ pip install --user azure-identity azure-mgmt-resource
 
 ## Sharing Scripts Across a Team
 
-If your team uses Cloud Shell, you can share scripts through the same storage account. Create a shared file share and mount it:
+If your team uses Cloud Shell, you can share scripts through the same storage account. Create a shared file share and sync it into each user's Cloud Shell environment:
 
 ```bash
-# Mount an additional file share for team scripts
+# Create a local directory for synced team scripts
 mkdir -p ~/team-scripts
 
-# Create a mount script that runs on each session start
-cat >> ~/.bashrc << 'MOUNT_EOF'
-# Mount team scripts share if not already mounted
-if [ ! -f ~/team-scripts/.mounted ]; then
-    clouddrive mount \
-      --storage-account-name "stcloudshellteam001" \
-      --file-share-name "team-scripts" \
-      --mount-point ~/team-scripts 2>/dev/null
-fi
-MOUNT_EOF
+# Download the current contents of the team file share
+az storage file download-batch \
+  --account-name "stcloudshellteam001" \
+  --source "team-scripts" \
+  --destination ~/team-scripts
+
+# Add synced scripts to PATH
+echo 'export PATH="$HOME/team-scripts:$PATH"' >> ~/.bashrc
 ```
 
 ## Troubleshooting
 
-**Session timeouts.** Cloud Shell sessions time out after 20 minutes of inactivity. There is no way to change this, but you can run `while true; do echo "keepalive"; sleep 300; done &` in the background if you need to keep a session alive during a long-running operation.
+**Session timeouts.** Cloud Shell sessions time out after 20 minutes without interactive activity. There is no way to change this. For long-running non-interactive operations, use a service designed for jobs or automation, such as Azure Automation, Azure Functions, or an Azure DevOps pipeline.
 
 **Storage issues.** If Cloud Shell fails to start, it is usually a storage problem. Check that the storage account and file share still exist and that your account has access. You can reset Cloud Shell storage from the settings gear icon.
 
