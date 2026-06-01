@@ -14,7 +14,7 @@ This guide walks through the practical steps to get your Azure payment processin
 
 ## Understanding the Shared Responsibility Model
 
-Microsoft Azure is PCI DSS Level 1 certified, which is the highest level of certification. This means the underlying infrastructure - physical data centers, hypervisors, network fabric - already meets the standard. But that does not mean your application is compliant by default.
+Microsoft Azure maintains PCI DSS validation under PCI DSS v4.0 at Service Provider Level 1, which is the highest service provider level. This means the underlying infrastructure - physical data centers, hypervisors, network fabric - is assessed against the standard. But that does not mean your application is compliant by default.
 
 You are responsible for everything you deploy on top of Azure: your virtual machines, application code, databases, network configurations, access controls, and monitoring. Think of it this way: Azure gives you compliant building blocks, but you have to assemble them correctly.
 
@@ -62,6 +62,13 @@ az network vnet subnet create \
   --vnet-name pci-vnet \
   --name mgmt-subnet \
   --address-prefix 10.1.2.0/24
+
+# Create a subnet for the application gateway that fronts the CDE
+az network vnet subnet create \
+  --resource-group pci-rg \
+  --vnet-name pci-vnet \
+  --name appgw-subnet \
+  --address-prefix 10.1.3.0/24
 ```
 
 After creating the subnets, apply Network Security Groups (NSGs) that restrict traffic flow. The CDE subnet should only accept traffic on specific ports from known sources.
@@ -106,7 +113,7 @@ az network vnet subnet update \
 
 ## Encrypt Cardholder Data at Rest and in Transit
 
-PCI DSS Requirement 3 mandates encryption of stored cardholder data, and Requirement 4 requires encryption in transit. Azure gives you several tools for both.
+PCI DSS Requirement 3 requires stored account data to be protected, and Requirement 4 requires strong cryptography for cardholder data transmitted over open, public networks. Azure gives you several tools for both.
 
 For data at rest, use Azure Storage Service Encryption (SSE) with customer-managed keys stored in Azure Key Vault. This gives you control over the encryption keys and meets the requirement for key management.
 
@@ -132,9 +139,9 @@ az webapp config set \
 
 PCI DSS Requirements 7 and 8 focus on access control. Only people who need access to cardholder data should have it, and every user must have a unique ID.
 
-Use Azure Active Directory for identity management. Assign roles using the principle of least privilege with Azure RBAC. Create custom roles if the built-in ones are too broad.
+Use Microsoft Entra ID for identity management. Assign roles using the principle of least privilege with Azure RBAC. Create custom roles if the built-in ones are too broad.
 
-Enable multi-factor authentication for all users who access the CDE. Azure AD Conditional Access policies make this straightforward.
+Enable multi-factor authentication for all users who access the CDE. Microsoft Entra Conditional Access policies make this straightforward.
 
 ```bash
 # Create a custom role that only allows reading from the CDE resource group
@@ -157,26 +164,33 @@ PCI DSS Requirement 10 requires that all access to network resources and cardhol
 
 Enable Azure Monitor and configure diagnostic settings on every resource in the CDE. Send all logs to a Log Analytics workspace that has a retention period of at least one year, with at least three months immediately available for analysis.
 
-Enable Microsoft Defender for Cloud and turn on the enhanced security features for your CDE subscriptions. This gives you continuous security assessment and threat detection.
+Enable Microsoft Defender for Cloud and turn on the relevant Defender plans for your CDE subscriptions. This gives you continuous security assessment and threat detection.
 
 Set up Azure Activity Log alerts for critical operations like role assignments, NSG changes, and key vault access.
 
 ```bash
-# Enable diagnostic settings on the SQL server to send logs to Log Analytics
-az monitor diagnostic-settings create \
-  --resource "/subscriptions/<sub-id>/resourceGroups/pci-rg/providers/Microsoft.Sql/servers/pci-sql-server" \
-  --name pci-sql-diagnostics \
-  --workspace "/subscriptions/<sub-id>/resourceGroups/pci-rg/providers/Microsoft.OperationalInsights/workspaces/pci-logs" \
-  --logs '[{"category": "SQLSecurityAuditEvents", "enabled": true, "retentionPolicy": {"enabled": true, "days": 365}}]'
+# Set the workspace retention period
+az monitor log-analytics workspace update \
+  --resource-group pci-rg \
+  --workspace-name pci-logs \
+  --retention-time 365
+
+# Enable server-level SQL auditing and send audit logs to Log Analytics
+az sql server audit-policy update \
+  --resource-group pci-rg \
+  --name pci-sql-server \
+  --state Enabled \
+  --log-analytics-target-state Enabled \
+  --log-analytics-workspace-resource-id "/subscriptions/<sub-id>/resourceGroups/pci-rg/providers/Microsoft.OperationalInsights/workspaces/pci-logs"
 ```
 
 ## Vulnerability Management
 
-PCI DSS Requirements 5 and 6 cover vulnerability management. You need to run antimalware on all systems, keep them patched, and perform regular vulnerability scans.
+PCI DSS Requirements 5 and 6 cover vulnerability management. You need to protect systems commonly affected by malware, keep them patched, and perform regular vulnerability scans.
 
-Use Microsoft Defender for Servers to get endpoint protection and vulnerability assessment on your VMs. Use Azure Update Management to schedule and track OS patches.
+Use Microsoft Defender for Servers to get endpoint protection and vulnerability assessment on your VMs. Use Azure Update Manager to schedule and track OS patches.
 
-For application-level scanning, integrate a web application firewall (WAF) through Azure Application Gateway in front of your payment APIs. Also run regular penetration tests - Azure allows this with prior notification.
+For application-level scanning, integrate a web application firewall (WAF) through Azure Application Gateway in front of your payment APIs. Also run regular penetration tests - Azure allows permitted tests against your own Azure resources without prior Microsoft approval, as long as you follow the Microsoft Cloud Unified Penetration Testing Rules of Engagement.
 
 ## Use Azure Policy for Continuous Compliance
 
@@ -185,11 +199,11 @@ Azure Policy lets you enforce organizational standards and assess compliance at 
 Assign the PCI DSS initiative to your CDE subscription or resource group. This gives you a compliance dashboard that shows where you stand and what needs attention.
 
 ```bash
-# Assign the built-in PCI DSS v3.2.1 policy initiative to the CDE resource group
+# Assign the built-in PCI DSS v4 policy initiative to the CDE resource group
 az policy assignment create \
   --name pci-dss-assignment \
   --display-name "PCI DSS Compliance" \
-  --policy-set-definition "496eeda9-8f2f-4d5e-8dfd-204f0a92ed41" \
+  --policy-set-definition "c676748e-3af9-4e22-bc28-50feed564afb" \
   --scope "/subscriptions/<sub-id>/resourceGroups/pci-rg"
 ```
 
@@ -203,10 +217,10 @@ This approach can dramatically reduce the number of systems in your CDE, because
 
 When your Qualified Security Assessor comes knocking, you need documentation. Maintain a data flow diagram that shows how cardholder data moves through your Azure environment. Keep records of all access control changes, vulnerability scan results, and incident response procedures.
 
-Azure Compliance Manager is useful here. It provides pre-built assessments for PCI DSS and helps you track your evidence collection.
+Microsoft Purview Compliance Manager is useful here. It provides pre-built assessments for PCI DSS and helps you track your evidence collection.
 
 ## Final Thoughts
 
-Achieving PCI DSS compliance in Azure is not a one-time project. It requires ongoing vigilance: regular scans, continuous monitoring, periodic access reviews, and staying current with both Azure changes and PCI DSS updates. The version 4.0 standard introduces new requirements around targeted risk analysis and customized approaches, so make sure your compliance program can adapt over time.
+Achieving PCI DSS compliance in Azure is not a one-time project. It requires ongoing vigilance: regular scans, continuous monitoring, periodic access reviews, and staying current with both Azure changes and PCI DSS updates. PCI DSS v4.0.1 is the current PCI SSC-supported version of the v4 standard, which includes requirements around targeted risk analysis and customized approaches, so make sure your compliance program can adapt over time.
 
 Start with clear scope definition, use Azure's native security tools aggressively, and document everything. That combination will put you in a strong position when audit time comes.
