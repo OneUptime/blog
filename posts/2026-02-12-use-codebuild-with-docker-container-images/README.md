@@ -105,7 +105,7 @@ aws codebuild create-project \
   }' \
   --environment '{
     "type": "LINUX_CONTAINER",
-    "image": "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+    "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
     "computeType": "BUILD_GENERAL1_MEDIUM",
     "privilegedMode": true,
     "environmentVariables": [
@@ -170,15 +170,13 @@ phases:
       - docker push $ECR_REGISTRY/$IMAGE_REPO:$IMAGE_TAG
       - docker push $ECR_REGISTRY/$IMAGE_REPO:latest
 
-      # Write the image URI to a file for downstream stages
+      # Write the image URI to a file for logs or artifact collection if configured
       - echo "$ECR_REGISTRY/$IMAGE_REPO:$IMAGE_TAG" > image_uri.txt
       - echo "Image URI: $(cat image_uri.txt)"
 
 artifacts:
   files:
     - image_uri.txt
-    - appspec.yml
-    - taskdef.json
 ```
 
 ## Step 3: Write an Optimized Dockerfile
@@ -194,7 +192,7 @@ WORKDIR /app
 
 # Copy only package files first for better layer caching
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Stage 2: Build the application
 FROM node:20-alpine AS builder
@@ -251,6 +249,7 @@ phases:
   pre_build:
     commands:
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
 
   build:
     commands:
@@ -286,8 +285,10 @@ phases:
   pre_build:
     commands:
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+      # Install QEMU/binfmt for non-native architecture emulation on standalone Linux builders
+      - docker run --privileged --rm tonistiigi/binfmt --install all
       # Set up Docker Buildx for multi-platform builds
-      - docker buildx create --use --name multiarch
+      - docker buildx create --use --name multiarch || docker buildx use multiarch
       - docker buildx inspect --bootstrap
 
   build:
@@ -329,7 +330,8 @@ post_build:
       SCAN_FINDINGS=$(aws ecr describe-image-scan-findings \
         --repository-name $IMAGE_REPO \
         --image-id imageTag=$IMAGE_TAG \
-        --query 'imageScanFindings.findingSeverityCounts')
+        --query 'imageScanFindings.findingSeverityCounts' \
+        --output json)
 
       echo "Scan findings: $SCAN_FINDINGS"
 
