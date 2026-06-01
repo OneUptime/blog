@@ -48,7 +48,7 @@ Here is a PromQL query that calculates the linear prediction of disk usage 30 da
 # Predict disk usage 30 days out based on the last 14 days of data
 
 predict_linear(
-  node_filesystem_avail_bytes{mountpoint="/data"}[14d],
+  (node_filesystem_size_bytes{mountpoint="/data"} - node_filesystem_avail_bytes{mountpoint="/data"})[14d:1h],
   30 * 24 * 3600
 )
 ```
@@ -86,7 +86,7 @@ Point-in-time performance numbers are misleading. A p99 latency of 450ms means n
 Trending requires storing historical percentile data. If you use Prometheus, recording rules let you downsample high-cardinality data into something queryable over long time ranges:
 
 ```yaml
-# Recording rules that pre-compute weekly latency percentiles for trending
+# Recording rules that pre-compute hourly latency percentiles for trending
 groups:
   - name: latency_trends
     interval: 1h
@@ -154,7 +154,7 @@ mem_price_per_gb_hour = 0.006
 
 for service in services:
     # Average CPU cores used over the month
-    avg_cpu = query_prometheus(f'avg_over_time(container_cpu_usage_cores{{service="{service}"}}[30d])')
+    avg_cpu = query_prometheus(f'avg_over_time(rate(container_cpu_usage_seconds_total{{service="{service}"}}[5m])[30d:5m])')
     # Average memory GB used over the month
     avg_mem = query_prometheus(f'avg_over_time(container_memory_usage_bytes{{service="{service}"}}[30d])') / 1e9
 
