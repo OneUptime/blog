@@ -8,7 +8,7 @@ Description: Save 20-40% on compute costs by switching to AWS Graviton ARM-based
 
 ---
 
-AWS Graviton processors are ARM-based chips designed by Amazon. The pitch is simple: same or better performance at a 20% lower price. Graviton3 (the latest generation) delivers up to 25% better performance than Graviton2, which was already competitive with Intel and AMD offerings.
+AWS Graviton processors are ARM-based chips designed by Amazon. The pitch is simple: same or better performance at a 20% lower price. Graviton3 delivers up to 25% better performance than Graviton2, which was already competitive with Intel and AMD offerings. Newer Graviton4 and Graviton5-based instance families are also available for some workloads.
 
 The savings are real and well-documented. A c6g.xlarge (Graviton2) costs $0.136/hour vs $0.17/hour for a c5.xlarge (Intel) - that's a 20% savings for comparable performance. Graviton3 instances (c7g family) push the price-performance gap even wider.
 
@@ -92,7 +92,7 @@ aws ec2 run-instances \
 # Create an Image Builder recipe for ARM64
 aws imagebuilder create-image-recipe \
   --name "my-app-arm64" \
-  --version "1.0.0" \
+  --semantic-version "1.0.0" \
   --parent-image "arn:aws:imagebuilder:us-east-1:aws:image/amazon-linux-2023-arm64/x.x.x" \
   --components '[
     {
