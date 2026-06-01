@@ -14,7 +14,7 @@ This guide walks through creating and configuring NSG rules to allow specific tr
 
 ## How NSG Rules Work
 
-Every NSG comes with a set of default rules that you cannot delete. These defaults allow all traffic within the VNet, allow outbound internet access, and deny all other inbound traffic from the internet. When you add custom rules, Azure evaluates them by priority number - lower numbers are evaluated first.
+Every NSG comes with a set of default rules that you cannot delete. These defaults allow traffic within the VNet, allow Azure Load Balancer health probes, allow outbound internet access, and deny all other inbound traffic from the internet. When you add custom rules, Azure evaluates them by priority number - lower numbers are evaluated first.
 
 Here is the evaluation flow:
 
@@ -46,7 +46,7 @@ az network nsg create \
   --location eastus
 ```
 
-At this point, the NSG has only the default rules. No custom inbound traffic is allowed.
+At this point, the NSG has only the default rules. No custom inbound internet traffic is allowed.
 
 ## Step 2: Allow HTTP Traffic (Port 80)
 
@@ -114,7 +114,7 @@ Replace `203.0.113.0/24` with your actual office or VPN IP range. This is signif
 
 ## Step 5: Deny All Other Inbound Traffic Explicitly
 
-While the default rules already deny unlisted inbound traffic, adding an explicit deny-all rule at a high priority number makes your intent clear and helps with auditing.
+While the default rules already deny unlisted inbound internet traffic, adding an explicit deny-all rule at a high priority number makes your intent clear and helps with auditing. Remember that this custom rule is evaluated before Azure's default `VirtualNetwork` and `AzureLoadBalancer` inbound rules, so add any required VNet or load balancer allow rules above it.
 
 ```bash
 # Explicitly deny all other inbound traffic
@@ -159,8 +159,8 @@ az network nic update \
 
 One of the most useful features of Azure NSG rules is service tags. Instead of hard-coding IP ranges, you can use logical names that Azure keeps up to date. For example:
 
-- `Internet` - All public IP addresses
-- `VirtualNetwork` - All address spaces in the VNet and peered VNets
+- `Internet` - IP address space outside the virtual network and reachable by the public internet
+- `VirtualNetwork` - Address spaces for the VNet, connected on-premises networks, peered VNets, gateway-connected VNets, host virtual IPs, and address prefixes used on user-defined routes
 - `AzureLoadBalancer` - Azure's infrastructure load balancer
 - `Storage` - Azure Storage service IP ranges
 - `Sql` - Azure SQL Database IP ranges
