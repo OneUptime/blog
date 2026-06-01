@@ -107,11 +107,11 @@ aws ec2 create-fleet \
         "Version": "$Latest"
       },
       "Overrides": [
-        {"InstanceType": "m6i.large", "Priority": 1},
-        {"InstanceType": "m5.large", "Priority": 2},
-        {"InstanceType": "m5a.large", "Priority": 3},
-        {"InstanceType": "m5n.large", "Priority": 4},
-        {"InstanceType": "m6a.large", "Priority": 5}
+        {"InstanceType": "m6i.large", "Priority": 0},
+        {"InstanceType": "m5.large", "Priority": 1},
+        {"InstanceType": "m5a.large", "Priority": 2},
+        {"InstanceType": "m5n.large", "Priority": 3},
+        {"InstanceType": "m6a.large", "Priority": 4}
       ]
     }
   ]' \
@@ -119,7 +119,7 @@ aws ec2 create-fleet \
   --on-demand-options '{"AllocationStrategy": "prioritized"}'
 ```
 
-The Priority field only matters for On-Demand. For Spot, the fleet uses the allocation strategy to choose.
+In this example, the Priority field matters for On-Demand because the On-Demand allocation strategy is `prioritized`. Lower numbers have higher priority. For Spot, the fleet uses `price-capacity-optimized` to choose.
 
 ## Terraform Configuration
 
@@ -172,26 +172,32 @@ resource "aws_ec2_fleet" "app" {
     override {
       instance_type     = "m6i.large"
       availability_zone = "us-east-1a"
+      priority          = 0
     }
     override {
       instance_type     = "m6i.large"
       availability_zone = "us-east-1b"
+      priority          = 1
     }
     override {
       instance_type     = "m5.large"
       availability_zone = "us-east-1a"
+      priority          = 2
     }
     override {
       instance_type     = "m5.large"
       availability_zone = "us-east-1b"
+      priority          = 3
     }
     override {
       instance_type     = "m5a.large"
       availability_zone = "us-east-1a"
+      priority          = 4
     }
     override {
       instance_type     = "m5a.large"
       availability_zone = "us-east-1b"
+      priority          = 5
     }
   }
 
@@ -288,8 +294,7 @@ aws ec2 describe-fleet-instances \
   --query 'ActiveInstances[*].{
     InstanceId: InstanceId,
     Type: InstanceType,
-    Health: InstanceHealth,
-    AZ: AvailabilityZone
+    Health: InstanceHealth
   }' \
   --output table
 ```
