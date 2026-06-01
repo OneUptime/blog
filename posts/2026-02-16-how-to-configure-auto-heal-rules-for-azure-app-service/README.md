@@ -62,23 +62,16 @@ Fires when the process memory exceeds a threshold. This catches memory leaks bef
 
 ## Configuring Auto-Heal via Azure CLI
 
-For programmatic configuration, use the Azure CLI with a JSON configuration:
+For programmatic configuration, Azure CLI can enable Auto-Heal directly:
 
 ```bash
-# Create a JSON file with Auto-Heal rules
-
-# This configuration recycles the process when:
-# - More than 50 requests take longer than 30 seconds in a 2-minute window
-# - More than 100 HTTP 500 errors occur in a 5-minute window
-# - Private memory exceeds 800MB
-
 az webapp config set \
     --resource-group my-resource-group \
     --name my-app-service \
     --auto-heal-enabled true
 ```
 
-For more detailed configuration, you need to use the REST API or ARM templates since the CLI has limited Auto-Heal support.
+For detailed rule configuration, pass the site configuration through `--generic-configurations` or use the REST API or ARM templates since the dedicated CLI options for Auto-Heal are limited.
 
 ## Configuring Auto-Heal with ARM Templates
 
@@ -185,10 +178,12 @@ The DaaS (Diagnostics as a Service) tool collects memory dumps, profiling traces
 
 ## Auto-Heal on Linux App Service
 
-On Linux App Service, Auto-Heal works a bit differently. It is configured through app settings rather than the siteConfig:
+On Linux App Service, Auto-Heal works a bit differently. The custom Auto-Heal experience is configured through Diagnose and Solve Problems, supports request duration, request count, and status code triggers, and currently supports recycling the container as the action.
+
+Proactive Auto-Heal is separate and is enabled by default. You can opt out with an app setting, or set it back to `True` to enable it again:
 
 ```bash
-# Enable Auto-Heal on Linux
+# Enable proactive Auto-Heal on Linux
 az webapp config appsettings set \
     --resource-group my-resource-group \
     --name my-app-service \
@@ -196,7 +191,7 @@ az webapp config appsettings set \
         WEBSITE_PROACTIVE_AUTOHEAL_ENABLED=True
 ```
 
-Linux Auto-Heal monitors for container crashes and automatically restarts the container. The proactive auto-heal feature also monitors memory usage and restarts the container before it runs out of memory.
+Proactive Auto-Heal monitors memory pressure and very slow requests, then restarts the affected process or container when the platform determines that recovery is needed.
 
 ## Monitoring Auto-Heal Events
 
@@ -206,13 +201,13 @@ You should know when Auto-Heal fires. If it is firing frequently, you have an un
 
 Auto-Heal events are logged to the Windows Event Log. You can view them in the Kudu console or through the Diagnose and Solve Problems tool.
 
-### Use Application Insights
+### Use Azure Monitor Logs
 
-If you have Application Insights enabled, Auto-Heal recycles show up as availability events. You can set up alerts for these.
+If you send App Service platform logs to a Log Analytics workspace, Auto-Heal events appear in the `AppServicePlatformLogs` table with operation names such as `AutoHealingRecycle`, `AutoHealingCustomAction`, and `AutoHealingLogEvent`. You can set up Azure Monitor alerts from these logs.
 
-### Activity Log
+### Diagnostic Settings
 
-Auto-Heal actions also appear in the Azure Activity Log for your App Service.
+Enable the `AppServicePlatformLogs` category in Diagnostic settings if you want a central query and alerting path for Auto-Heal actions.
 
 ## Best Practices
 
