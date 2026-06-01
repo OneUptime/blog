@@ -12,7 +12,7 @@ Most messaging patterns are fire-and-forget. A producer sends a message and move
 
 ## How Request-Reply Works
 
-The pattern involves two queues: a request queue and a reply queue. The requester sends a message to the request queue, setting the `ReplyTo` property to indicate where the reply should go and the `MessageId` (or a custom `SessionId`) to correlate the response. The responder picks up the request, processes it, and sends the result to the reply queue with the `CorrelationId` set to match the original request's `MessageId`.
+The pattern involves two queues: a request queue and a reply queue. The requester sends a message to the request queue, setting the `ReplyTo` property to indicate where the reply should go, the `MessageId` to correlate the response, and `ReplyToSessionId` to tell the responder which reply session to use. The responder picks up the request, processes it, and sends the result to the reply queue with the `CorrelationId` set to match the original request's `MessageId`.
 
 ```mermaid
 sequenceDiagram
@@ -21,7 +21,7 @@ sequenceDiagram
     participant Responder
     participant ReplyQueue
 
-    Requester->>RequestQueue: Send request (MessageId=abc, ReplyTo=reply-queue)
+    Requester->>RequestQueue: Send request (MessageId=abc, ReplyTo=reply-queue, ReplyToSessionId=abc)
     Responder->>RequestQueue: Receive request
     Responder->>Responder: Process request
     Responder->>ReplyQueue: Send reply (CorrelationId=abc)
@@ -64,7 +64,7 @@ if (!await adminClient.QueueExistsAsync("price-replies"))
 
 ## The Requester Side
 
-The requester sends a message and then waits for a correlated reply. Using sessions on the reply queue means each requester instance can listen for replies meant specifically for it.
+The requester sends a message and then waits for a correlated reply. Using sessions on the reply queue means each request can listen for the reply meant specifically for it.
 
 ```csharp
 using Azure.Messaging.ServiceBus;
@@ -74,27 +74,25 @@ public class PriceRequester : IAsyncDisposable
 {
     private readonly ServiceBusClient _client;
     private readonly ServiceBusSender _sender;
-    private readonly string _sessionId;
 
     public PriceRequester(string connectionString)
     {
         _client = new ServiceBusClient(connectionString);
         _sender = _client.CreateSender("price-requests");
-        // Each requester instance gets a unique session ID
-        _sessionId = Guid.NewGuid().ToString();
     }
 
     public async Task<PriceResponse> RequestPriceAsync(PriceRequest request, TimeSpan timeout)
     {
         var messageId = Guid.NewGuid().ToString();
+        var replySessionId = messageId;
 
         // Build the request message with reply-to information
         var message = new ServiceBusMessage(JsonSerializer.Serialize(request))
         {
             MessageId = messageId,
             ReplyTo = "price-replies",
-            // Session ID tells the responder which session to reply to
-            ReplyToSessionId = _sessionId,
+            // Session ID tells the responder which reply session to use
+            ReplyToSessionId = replySessionId,
             ContentType = "application/json",
             // Set a TTL so abandoned requests don't pile up
             TimeToLive = timeout
@@ -103,20 +101,19 @@ public class PriceRequester : IAsyncDisposable
         // Send the request
         await _sender.SendMessageAsync(message);
 
-        // Now wait for the reply on our session
-        var receiver = await _client.AcceptSessionAsync(
-            "price-replies",
-            _sessionId,
-            new ServiceBusSessionReceiverOptions
-            {
-                ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete
-            }
-        );
-
         try
         {
+            using var timeoutCts = new CancellationTokenSource(timeout);
+
+            // Now wait for the reply on this request's session
+            await using var receiver = await _client.AcceptSessionAsync(
+                "price-replies",
+                replySessionId,
+                cancellationToken: timeoutCts.Token
+            );
+
             // Wait for a reply with the matching correlation ID
-            var reply = await receiver.ReceiveMessageAsync(timeout);
+            var reply = await receiver.ReceiveMessageAsync(timeout, timeoutCts.Token);
 
             if (reply == null)
                 throw new TimeoutException($"No reply received within {timeout}");
@@ -124,11 +121,17 @@ public class PriceRequester : IAsyncDisposable
             if (reply.CorrelationId != messageId)
                 throw new InvalidOperationException("Received reply for wrong request");
 
-            return JsonSerializer.Deserialize<PriceResponse>(reply.Body.ToString());
+            var response = JsonSerializer.Deserialize<PriceResponse>(reply.Body.ToString());
+            if (response == null)
+                throw new InvalidOperationException("Received an empty price response");
+
+            await receiver.CompleteMessageAsync(reply, timeoutCts.Token);
+
+            return response;
         }
-        finally
+        catch (OperationCanceledException ex)
         {
-            await receiver.DisposeAsync();
+            throw new TimeoutException($"No reply received within {timeout}", ex);
         }
     }
 
@@ -182,7 +185,8 @@ public class PriceResponder : IAsyncDisposable
             CorrelationId = args.Message.MessageId,
             // Set the session ID so it reaches the right requester
             SessionId = args.Message.ReplyToSessionId,
-            ContentType = "application/json"
+            ContentType = "application/json",
+            TimeToLive = TimeSpan.FromMinutes(10)
         };
 
         // Send the reply to the queue specified in ReplyTo
