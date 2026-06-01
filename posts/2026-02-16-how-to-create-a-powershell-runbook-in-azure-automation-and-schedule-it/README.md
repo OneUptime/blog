@@ -30,12 +30,17 @@ If you do not already have an Automation account, create one:
 az group create --name rg-automation --location eastus
 
 # Create an Azure Automation account
-# The --assign-identity flag creates a system-assigned managed identity
 az automation account create \
   --resource-group rg-automation \
   --name aa-operations \
-  --location eastus \
-  --assign-identity
+  --location eastus
+
+# Enable a system-assigned managed identity for the Automation account
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+az rest --method patch \
+  --uri "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/rg-automation/providers/Microsoft.Automation/automationAccounts/aa-operations?api-version=2020-01-13-preview" \
+  --body '{"identity":{"type":"SystemAssigned"}}'
 ```
 
 The system-assigned managed identity is important - it is how your runbook authenticates to Azure without storing credentials. More on that in a moment.
@@ -63,7 +68,7 @@ In production, follow the principle of least privilege. If your runbook only nee
 
 ## Step 3: Write Your PowerShell Runbook
 
-Let me walk through a practical example: a runbook that generates a report of all unused disks (unattached managed disks) in your subscription and sends the report via email.
+Let me walk through a practical example: a runbook that generates a report of all unused disks (unattached managed disks) in your subscription and writes the report to the output stream.
 
 Here is the PowerShell script:
 
@@ -126,7 +131,7 @@ You can create the runbook through the portal or CLI.
 3. Click "+ Create a runbook"
 4. Enter a name (e.g., "Get-UnusedDisks")
 5. Select "PowerShell" as the runbook type
-6. Select "7.2" as the runtime version (or 5.1 if you need older module compatibility)
+6. Select "7.4" as the runtime version (or 5.1 if you need older module compatibility)
 7. Click Create
 8. The editor opens - paste your script
 9. Click Save
@@ -167,7 +172,7 @@ Common issues during testing:
 
 - **Authentication failures**: Make sure the managed identity has the right role assignments
 - **Module not found**: Check that the required Az modules are imported into the Automation account (see the Modules section under Shared Resources)
-- **Timeout**: The default timeout is 3 hours. If your script takes longer, you need to optimize it or increase the timeout in the runbook settings
+- **Timeout**: Azure sandbox jobs have a 3-hour fair share limit. If your script takes longer, optimize it, split the work into child runbooks, or run it on a Hybrid Runbook Worker
 
 ## Step 6: Publish the Runbook
 
@@ -188,16 +193,17 @@ Or in the portal, simply click the "Publish" button in the runbook editor.
 Now for the part that makes this truly automated. Create a schedule that triggers the runbook at whatever interval you need.
 
 ```bash
-# Create a weekly schedule that runs every Monday at 8:00 AM UTC
+# Create a weekly schedule that runs every Monday at 8:00 AM UTC.
+# The start time must be in the future when you create the schedule.
 # The --frequency and --interval control how often it recurs
 az automation schedule create \
   --resource-group rg-automation \
   --automation-account-name aa-operations \
-  --name "Weekly-Monday-8AM" \
+  --name "WeeklyMonday8AM" \
   --description "Runs every Monday at 8 AM UTC" \
   --frequency Week \
   --interval 1 \
-  --start-time "2026-02-16T08:00:00Z" \
+  --start-time "2026-06-08T08:00:00Z" \
   --time-zone "UTC"
 ```
 
@@ -208,20 +214,20 @@ You can also create daily, hourly, or monthly schedules:
 az automation schedule create \
   --resource-group rg-automation \
   --automation-account-name aa-operations \
-  --name "Daily-Midnight" \
+  --name "DailyMidnight" \
   --frequency Day \
   --interval 1 \
-  --start-time "2026-02-17T00:00:00Z" \
+  --start-time "2026-06-02T00:00:00Z" \
   --time-zone "UTC"
 
 # Every 4 hours
 az automation schedule create \
   --resource-group rg-automation \
   --automation-account-name aa-operations \
-  --name "Every-4-Hours" \
+  --name "Every4Hours" \
   --frequency Hour \
   --interval 4 \
-  --start-time "2026-02-16T00:00:00Z" \
+  --start-time "2026-06-02T00:00:00Z" \
   --time-zone "UTC"
 ```
 
@@ -229,14 +235,14 @@ az automation schedule create \
 
 Creating a schedule and creating a runbook are separate operations. You need to link them together:
 
-```bash
+```powershell
 # Link the schedule to the runbook
-# This tells Azure Automation to run Get-UnusedDisks on the Weekly-Monday-8AM schedule
-az automation runbook start \
-  --resource-group rg-automation \
-  --automation-account-name aa-operations \
-  --name Get-UnusedDisks \
-  --schedule-name "Weekly-Monday-8AM"
+# This tells Azure Automation to run Get-UnusedDisks on the WeeklyMonday8AM schedule
+Register-AzAutomationScheduledRunbook `
+  -ResourceGroupName "rg-automation" `
+  -AutomationAccountName "aa-operations" `
+  -Name "Get-UnusedDisks" `
+  -ScheduleName "WeeklyMonday8AM"
 ```
 
 In the portal, go to the runbook, click "Schedules" under Resources, then click "Add a schedule" and select the schedule you created.
@@ -270,7 +276,7 @@ param(
 Connect-AzAccount -Identity
 
 # Find VMs with the specified tag
-$vms = Get-AzVM -Status | Where-Object { $_.Tags[$TagName] -eq $TagValue }
+$vms = Get-AzVM -Status | Where-Object { $_.Tags -and $_.Tags[$TagName] -eq $TagValue }
 
 Write-Output "Found $($vms.Count) VMs with tag $TagName=$TagValue"
 
