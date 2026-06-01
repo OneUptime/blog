@@ -58,11 +58,11 @@ az network bastion create \
   --vnet-name vnet-main \
   --public-ip-address pip-bastion \
   --sku Standard \
-  --enable-shareable-link true \
+  --shareable-link true \
   --location eastus
 ```
 
-The `--enable-shareable-link true` flag is what makes this possible. Without it, you cannot create shareable links even on the Standard SKU.
+The `--shareable-link true` flag is what makes this possible. Without it, you cannot create shareable links even on the Standard SKU.
 
 ## Step 2: Enable Shareable Links on an Existing Bastion
 
@@ -73,7 +73,7 @@ If you already have a Standard SKU Bastion deployed, you can enable shareable li
 az network bastion update \
   --resource-group rg-bastion \
   --name bastion-main \
-  --enable-shareable-link true
+  --shareable-link true
 ```
 
 ## Step 3: Create a Shareable Link for a VM
@@ -98,8 +98,8 @@ VM_ID=$(az vm show \
   --output tsv)
 
 # Create a shareable link using the REST API
-az rest --method PUT \
-  --url "${BASTION_ID}/createShareableLinks?api-version=2023-04-01" \
+az rest --method POST \
+  --url "${BASTION_ID}/createShareableLinks?api-version=2025-05-01" \
   --body "{
     \"vms\": [
       {
@@ -121,13 +121,21 @@ This URL can be shared with anyone who needs access to the VM.
 
 ## Step 4: List and Manage Shareable Links
 
-You can list all active shareable links for your Bastion instance.
+You can retrieve the active shareable link for a VM.
 
 ```bash
-# List all shareable links
+# Get the shareable link for a specific VM
 az rest --method POST \
-  --url "${BASTION_ID}/getShareableLinks?api-version=2023-04-01" \
-  --body "{}"
+  --url "${BASTION_ID}/getShareableLinks?api-version=2025-05-01" \
+  --body "{
+    \"vms\": [
+      {
+        \"vm\": {
+          \"id\": \"${VM_ID}\"
+        }
+      }
+    ]
+  }"
 ```
 
 To delete a shareable link when access should be revoked:
@@ -135,7 +143,7 @@ To delete a shareable link when access should be revoked:
 ```bash
 # Delete a shareable link for a specific VM
 az rest --method POST \
-  --url "${BASTION_ID}/deleteShareableLinks?api-version=2023-04-01" \
+  --url "${BASTION_ID}/deleteShareableLinks?api-version=2025-05-01" \
   --body "{
     \"vms\": [
       {
@@ -203,8 +211,8 @@ done
 VM_JSON="${VM_JSON}]"
 
 # Create shareable links for all VMs
-az rest --method PUT \
-  --url "${BASTION_ID}/createShareableLinks?api-version=2023-04-01" \
+az rest --method POST \
+  --url "${BASTION_ID}/createShareableLinks?api-version=2025-05-01" \
   --body "{\"vms\": ${VM_JSON}}"
 ```
 
@@ -232,11 +240,11 @@ az vm update \
   --set osProfile.linuxConfiguration.disablePasswordAuthentication=true
 ```
 
-For Windows VMs, enforce strong passwords and consider using Azure AD authentication.
+For Windows VMs, enforce strong passwords and consider using Microsoft Entra ID authentication.
 
 ### Network Security
 
-Bastion connections are always encrypted end-to-end with TLS. The shareable link URL uses HTTPS. Traffic between Bastion and the target VM uses RDP (3389) or SSH (22) over the private network.
+Bastion client connections use TLS over HTTPS on port 443. The shareable link URL uses HTTPS. Traffic between Bastion and the target VM uses RDP (3389) or SSH (22) over the private network.
 
 ### Auditing
 
@@ -275,13 +283,13 @@ MicrosoftAzureBastionAuditLogs
 
 When someone leaves the project or no longer needs access, revoke their link immediately. Unlike credentials that might expire, shareable links remain active until explicitly deleted.
 
-Build a process for regular link review. A simple script that lists all active links and their creation dates can help:
+Build a process for regular link review. A simple script that lists the links for known VMs and their creation dates can help:
 
 ```bash
-# List all active shareable links with details
+# List active shareable links with details for known VMs
 az rest --method POST \
-  --url "${BASTION_ID}/getShareableLinks?api-version=2023-04-01" \
-  --body "{}" \
+  --url "${BASTION_ID}/getShareableLinks?api-version=2025-05-01" \
+  --body "{\"vms\": ${VM_JSON}}" \
   --query "value[].{vm:vm.id, link:bsl, createdAt:createdAt}" \
   --output table
 ```
@@ -296,7 +304,7 @@ However, Bastion also charges for outbound data transfer. Browser-based RDP sess
 
 If shareable links do not fit your scenario, consider these alternatives:
 
-- **Azure AD authentication with Bastion**: Users authenticate with their Azure AD credentials instead of local VM credentials. Requires Azure AD integration on the VM.
+- **Microsoft Entra ID authentication with Bastion**: Users authenticate with their Microsoft Entra ID credentials instead of local VM credentials. Requires Microsoft Entra ID integration on the VM.
 - **Native client support**: Bastion Standard supports native RDP and SSH clients (not just browser-based). Users connect using their local terminal or RDP client through a Bastion tunnel.
 - **Just-in-time VM access**: Microsoft Defender for Cloud can lock down VM access and open it temporarily when requested.
 
