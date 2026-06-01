@@ -88,6 +88,8 @@ Create a configuration file with your Entra ID settings.
 
 ```javascript
 // auth-config.js - Configuration for Microsoft Entra ID OIDC
+const msal = require('@azure/msal-node');
+
 const authConfig = {
   auth: {
     clientId: process.env.ENTRA_CLIENT_ID,       // Application (client) ID
@@ -96,7 +98,7 @@ const authConfig = {
   },
   system: {
     loggerOptions: {
-      logLevel: 3, // Info level logging for debugging
+      logLevel: msal.LogLevel.Info, // Info level logging for debugging
     }
   }
 };
@@ -127,7 +129,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: true, httpOnly: true, maxAge: 3600000 }
+  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 3600000 }
 }));
 
 // Create the MSAL confidential client application
@@ -169,6 +171,7 @@ app.get('/auth/callback', async (req, res) => {
       username: response.account.username,
       tenantId: response.account.tenantId
     };
+    req.session.homeAccountId = response.account.homeAccountId;
     req.session.isAuthenticated = true;
 
     res.redirect('/');
@@ -201,7 +204,7 @@ app.listen(3000, () => console.log('Server running on port 3000'));
 
 ## Step 6: Validate the ID Token
 
-The MSAL library handles token validation automatically when you call `acquireTokenByCode`. It verifies the token signature against Entra ID's public keys, checks the issuer and audience claims, and confirms the token has not expired.
+The MSAL library handles the token response validation required for the authorization code exchange when you call `acquireTokenByCode`, including checking the ID token claims returned by Entra ID.
 
 If you are implementing OIDC without a library (which I do not recommend, but sometimes you have to), you need to validate these claims manually:
 
@@ -246,7 +249,7 @@ async function refreshTokenIfNeeded(req, res, next) {
 
 **Wrong authority URL**: For single-tenant apps, use `https://login.microsoftonline.com/{tenant-id}`. For multi-tenant apps, use `https://login.microsoftonline.com/common`. Using the wrong one will reject users from valid tenants or allow users from tenants you did not intend.
 
-**Not handling the state parameter**: OIDC uses a `state` parameter to prevent CSRF attacks. MSAL handles this automatically, but if you are rolling your own implementation, you must generate a random state value, store it in the session before redirecting, and verify it matches when the callback arrives.
+**Not handling the state parameter**: OIDC uses a `state` parameter to prevent CSRF attacks. If you are rolling your own implementation or adding your own application state to an MSAL flow, generate a random state value, store it in the session before redirecting, and verify it matches when the callback arrives.
 
 **Forgetting to handle errors from Entra ID**: The callback URL can receive error responses if the user denies consent or if something goes wrong. Always check for `error` and `error_description` query parameters in addition to the `code` parameter.
 
