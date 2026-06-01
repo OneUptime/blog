@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Azure Files, Large File Share, Storage Account, Scalability, File Storage
 
-Description: Learn how to enable large file share support in Azure Storage accounts to scale file shares up to 100 TiB with higher IOPS and throughput.
+Description: Learn how to enable large file share support in legacy Azure Storage accounts to scale file shares up to 100 TiB with higher IOPS and throughput.
 
 ---
 
-By default, Azure standard file shares support a maximum size of 5 TiB per share. For many workloads - media storage, large dataset processing, backup repositories - this limit is too restrictive. Enabling large file share support on your storage account lifts this limit to 100 TiB per share and significantly increases IOPS and throughput capabilities.
+Current Azure pay-as-you-go file shares can grow up to 100 TiB per share, but older storage accounts that predate the large file share feature might still be limited to 5 TiB. For many workloads - media storage, large dataset processing, backup repositories - this limit is too restrictive. Enabling large file share support on those legacy storage accounts lifts this limit to 100 TiB per share and significantly increases IOPS and throughput capabilities.
 
 This guide explains what large file shares change, how to enable the feature, and what limitations to be aware of.
 
@@ -20,13 +20,12 @@ When you enable large file share support, the limits change as follows:
 |--------|-------------------|------------------------|
 | Max share size | 5 TiB | 100 TiB |
 | Max IOPS per share | 1,000 | 20,000 |
-| Max throughput (ingress) | 60 MiB/s | 300 MiB/s |
-| Max throughput (egress) | 60 MiB/s | 300 MiB/s |
-| Supported redundancy | LRS, ZRS, GRS, GZRS | LRS, ZRS only |
+| Max throughput | 60 MiB/s | Up to the storage account limits |
+| Supported redundancy when using `--enable-large-file-share` | LRS, ZRS, GRS, GZRS | LRS, ZRS only |
 
-That last row is the critical trade-off. Enabling large file shares restricts your storage account to locally redundant (LRS) or zone-redundant (ZRS) replication. You cannot use geo-redundant storage (GRS or GZRS) with large file shares. This means no automatic replication to a secondary region.
+That last row is the critical trade-off for accounts that still require the legacy `largeFileSharesState` setting. The Azure CLI option restricts your storage account to locally redundant (LRS) or zone-redundant (ZRS) replication. You cannot use that legacy setting with geo-redundant storage (GRS or GZRS). This means no automatic replication to a secondary region for those accounts.
 
-If you need both large file shares and geo-redundancy, you will need to implement your own cross-region replication using Azure File Sync or AzCopy.
+If your account requires the legacy large file share setting and you also need geo-redundancy, you will need to implement your own cross-region replication using Azure File Sync or AzCopy.
 
 ## Step 1: Check Your Current Storage Account Configuration
 
@@ -58,7 +57,7 @@ az storage account update \
 
 This operation is non-disruptive - existing file shares continue to work without interruption. However, this change is irreversible. Once enabled, you cannot disable large file share support.
 
-If your account currently uses GRS or GZRS, you must first change the replication to LRS or ZRS:
+If your legacy account currently uses GRS or GZRS and the Azure CLI requires the legacy large file share setting, you must first change the replication to LRS or ZRS:
 
 ```bash
 # First, change from GRS to LRS
@@ -78,7 +77,7 @@ Downgrading from GRS to LRS means you lose geo-redundancy. Make sure this is acc
 
 ## Step 3: Create a New Account with Large File Shares
 
-If you are starting fresh, enable large file shares at creation time:
+If you are starting fresh, current pay-as-you-go file shares can grow to 100 TiB. If you still need to explicitly set the legacy large file share property at creation time, use LRS:
 
 ```bash
 # Create a new storage account with large file shares enabled
@@ -92,7 +91,7 @@ az storage account create \
   --min-tls-version TLS1_2
 ```
 
-For zone redundancy:
+For zone redundancy, use ZRS:
 
 ```bash
 # Create with ZRS for availability across zones
@@ -196,10 +195,11 @@ az storage share-rm show \
   --resource-group rg-files \
   --storage-account stlargefiles2026 \
   --name media-archive \
+  --expand stats \
   --query "{name:name, quotaGiB:shareQuota, usedGiB:shareUsageBytes}" \
   --output json
 
-# List all shares with their usage
+# List all shares with their quotas
 az storage share-rm list \
   --resource-group rg-files \
   --storage-account stlargefiles2026 \
@@ -214,7 +214,7 @@ az monitor metrics alert create \
   --resource-group rg-files \
   --name alert-share-capacity \
   --scopes "/subscriptions/<sub-id>/resourceGroups/rg-files/providers/Microsoft.Storage/storageAccounts/stlargefiles2026/fileServices/default" \
-  --condition "avg FileShareCapacityQuotaUtilization > 80" \
+  --condition "avg PercentFileShareUtilization > 80" \
   --window-size 1h \
   --evaluation-frequency 1h \
   --action "/subscriptions/<sub-id>/resourceGroups/rg-files/providers/microsoft.insights/actionGroups/ag-ops" \
@@ -223,7 +223,7 @@ az monitor metrics alert create \
 
 ## Handling the Geo-Redundancy Limitation
 
-The biggest limitation of large file shares is the loss of geo-redundancy. Here are strategies to mitigate this:
+The biggest limitation of accounts that still require the legacy large file share setting is the loss of geo-redundancy. Here are strategies to mitigate this:
 
 **Option 1: Azure File Sync for cross-region replication**
 
@@ -293,4 +293,4 @@ After verifying all data has been copied, update your mount points and decommiss
 
 ## Wrapping Up
 
-Enabling large file share support in Azure Storage accounts is a straightforward process that unlocks 100 TiB shares with significantly higher IOPS and throughput. The main consideration is the loss of geo-redundancy - you are limited to LRS or ZRS. For workloads where data durability across regions is critical, plan a cross-region replication strategy using Azure File Sync, AzCopy, or Azure Backup before enabling the feature. Once enabled, the change is permanent, so make sure it is the right move for your workload before flipping the switch.
+Enabling large file share support in legacy Azure Storage accounts is a straightforward process that unlocks 100 TiB shares with significantly higher IOPS and throughput. The main consideration for accounts that still require this legacy setting is the loss of geo-redundancy - you are limited to LRS or ZRS. For workloads where data durability across regions is critical, plan a cross-region replication strategy using Azure File Sync, AzCopy, or Azure Backup before enabling the feature. Once enabled, the change is permanent, so make sure it is the right move for your workload before flipping the switch.
