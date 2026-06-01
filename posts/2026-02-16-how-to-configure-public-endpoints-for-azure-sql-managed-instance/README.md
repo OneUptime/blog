@@ -69,17 +69,20 @@ Note two important things:
 1. The word "public" is inserted into the hostname between the instance name and the DNS zone
 2. The port is 3342, not the standard 1433
 
-You can find the exact address in the Azure Portal under the Managed Instance overview page, or query it programmatically:
+You can find the exact address in the Azure Portal on the Connection strings tab, or derive it from the VNet-local endpoint programmatically:
 
 ```bash
-# Get the public endpoint FQDN
-az sql mi show \
+# Get the VNet-local endpoint FQDN, then insert ".public." after the instance name
+fqdn=$(az sql mi show \
     --resource-group myResourceGroup \
     --name myManagedInstance \
-    --query "fullyQualifiedDomainName" -o tsv
+    --query "fullyQualifiedDomainName" -o tsv)
+
+public_fqdn="${fqdn/./.public.}"
+echo "${public_fqdn},3342"
 
 # The public endpoint will be:
-# myManagedInstance.public.<dnszone>.database.windows.net
+# myManagedInstance.public.<dnszone>.database.windows.net,3342
 ```
 
 ## Step 3: Configure Network Security Group Rules
@@ -164,17 +167,18 @@ conn = pyodbc.connect(
 
 Opening a public endpoint introduces risk, so you need to layer on security controls.
 
-### Use Azure AD Authentication
+### Use Microsoft Entra Authentication
 
-Whenever possible, use Azure Active Directory authentication instead of SQL authentication for public endpoint connections:
+Whenever possible, use Microsoft Entra authentication instead of SQL authentication for public endpoint connections:
 
 ```sql
--- Create an Azure AD login on the Managed Instance
+-- Create a Microsoft Entra login on the Managed Instance
+USE master;
 CREATE LOGIN [user@mydomain.com] FROM EXTERNAL PROVIDER;
 
 -- Grant access to a specific database
 USE MyDatabase;
-CREATE USER [user@mydomain.com] FROM EXTERNAL PROVIDER;
+CREATE USER [user@mydomain.com] FROM LOGIN [user@mydomain.com];
 ALTER ROLE db_datareader ADD MEMBER [user@mydomain.com];
 ```
 
@@ -215,8 +219,12 @@ Turn on SQL auditing to log all connections through the public endpoint:
 ```sql
 -- Enable auditing to a storage account
 -- This logs all connections and queries
+CREATE CREDENTIAL [https://myauditstore.blob.core.windows.net/sqlaudits]
+WITH IDENTITY = 'SHARED ACCESS SIGNATURE',
+SECRET = '<SAS token without the leading ?>';
+
 CREATE SERVER AUDIT PublicEndpointAudit
-TO URL (PATH = 'https://myauditstore.blob.core.windows.net/sqlaudits');
+TO URL (PATH = 'https://myauditstore.blob.core.windows.net/sqlaudits', RETENTION_DAYS = 90);
 
 ALTER SERVER AUDIT PublicEndpointAudit WITH (STATE = ON);
 
@@ -285,15 +293,15 @@ az sql mi update \
     --public-data-endpoint-enabled false
 ```
 
-This is immediate and all existing connections on port 3342 will be dropped.
+Existing public endpoint connections on port 3342 will no longer be able to reconnect after the network configuration update applies.
 
 ## Things to Keep in Mind
 
 A few practical notes from experience:
 
 - The public endpoint adds a small amount of latency compared to the private endpoint because traffic routes through the Azure load balancer
-- Failover groups work with public endpoints, but you need to update connection strings to point to the new primary after failover
+- Failover groups work for managed instances, but their read-write and read-only listener endpoints are not reachable through the public endpoint
 - Some compliance frameworks (PCI-DSS, HIPAA) may have requirements around public database endpoints, so check with your compliance team
-- Rate limiting is not built in - if you are worried about brute force attacks, consider putting Azure Application Gateway or a reverse proxy in front
+- Rate limiting is not built in - if you are worried about brute force attacks, keep source IP ranges tight and enable Microsoft Defender for SQL threat detection
 
 The public endpoint for SQL Managed Instance is a practical feature that solves real connectivity problems. Just treat it with the respect any public-facing database endpoint deserves - lock it down with NSG rules, use strong authentication, audit everything, and disable it when you no longer need it.
