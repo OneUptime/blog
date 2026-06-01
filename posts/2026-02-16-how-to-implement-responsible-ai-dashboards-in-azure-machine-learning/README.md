@@ -24,14 +24,14 @@ The RAI dashboard integrates several analysis components:
 
 You need:
 - An Azure ML workspace
-- A trained scikit-learn, LightGBM, or XGBoost model
+- A trained model registered in Azure ML as an MLflow model with a scikit-learn flavor
 - Training and test datasets
 - The RAI SDK components
 
 ```bash
 # Install the required packages
 
-pip install azure-ai-ml azure-identity raiwidgets responsibleai
+pip install azure-ai-ml azure-identity raiwidgets responsibleai mlflow mltable azureml-dataprep[pandas]
 ```
 
 ## Step 1: Prepare Your Model and Data
@@ -40,9 +40,15 @@ For the RAI dashboard to work, you need a trained model and the dataset it was t
 
 ```python
 import pandas as pd
+import mlflow.sklearn
+import mltable
+from mltable import MLTableFileEncoding, MLTableHeaders
+from pathlib import Path
+from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
-import joblib
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
 # Load and prepare data
 df = pd.read_csv("data/customer_churn.csv")
@@ -58,18 +64,48 @@ X = df.drop(target_column, axis=1)
 y = df[target_column]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Train a model
-model = GradientBoostingClassifier(n_estimators=200, random_state=42)
+# Train a model. The preprocessing pipeline handles categorical columns before fitting.
+numeric_features = [column for column in X.columns if column not in categorical_features]
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("categorical", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical_features),
+        ("numeric", "passthrough", numeric_features)
+    ]
+)
+
+model = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        ("classifier", GradientBoostingClassifier(n_estimators=200, random_state=42))
+    ]
+)
 model.fit(X_train, y_train)
 
-# Save the model
-joblib.dump(model, "model/churn_model.pkl")
+# Save the model in MLflow format with the sklearn flavor
+mlflow.sklearn.save_model(model, "model")
 
 # Keep the test data for the dashboard
 test_data = X_test.copy()
 test_data[target_column] = y_test.values
 train_data = X_train.copy()
 train_data[target_column] = y_train.values
+
+# Save train and test data as MLTable folders for Azure ML RAI components
+Path("data/train").mkdir(parents=True, exist_ok=True)
+Path("data/test").mkdir(parents=True, exist_ok=True)
+train_data.to_csv("data/train/train.csv", index=False)
+test_data.to_csv("data/test/test.csv", index=False)
+
+for folder, file_name in [("data/train", "train.csv"), ("data/test", "test.csv")]:
+    table = mltable.from_delimited_files(
+        paths=[{"file": file_name}],
+        delimiter=",",
+        header=MLTableHeaders.all_files_same_headers,
+        infer_column_types=True,
+        include_path_column=False,
+        encoding=MLTableFileEncoding.utf8,
+    )
+    table.save(folder)
 ```
 
 ## Step 2: Create the RAI Dashboard Locally (Preview)
@@ -103,7 +139,7 @@ rai_insights.causal.add(
 # Compute all analyses (this may take a few minutes)
 rai_insights.compute()
 
-# Save the results for uploading to Azure ML
+# Save the results for local inspection
 rai_insights.save("rai_output/")
 ```
 
@@ -124,6 +160,7 @@ ml_client = MLClient(
     resource_group_name="ml-project-rg",
     workspace_name="ml-workspace-production"
 )
+ml_client_registry = MLClient(credential=credential, registry_name="azureml")
 
 # First, register the model
 from azure.ai.ml.entities import Model
@@ -132,7 +169,7 @@ registered_model = ml_client.models.create_or_update(
     Model(
         path="model/",
         name="churn-model-for-rai",
-        type=AssetTypes.CUSTOM_MODEL
+        type=AssetTypes.MLFLOW_MODEL
     )
 )
 
@@ -142,16 +179,16 @@ from azure.ai.ml.entities import Data
 train_dataset = ml_client.data.create_or_update(
     Data(
         name="churn-train-data",
-        path="data/train.csv",
-        type=AssetTypes.URI_FILE
+        path="data/train",
+        type=AssetTypes.MLTABLE
     )
 )
 
 test_dataset = ml_client.data.create_or_update(
     Data(
         name="churn-test-data",
-        path="data/test.csv",
-        type=AssetTypes.URI_FILE
+        path="data/test",
+        type=AssetTypes.MLTABLE
     )
 )
 ```
@@ -162,22 +199,22 @@ Azure ML provides built-in pipeline components for generating RAI dashboards.
 
 ```python
 # Get the RAI built-in components
-rai_constructor = ml_client.components.get(
+rai_constructor = ml_client_registry.components.get(
     name="microsoft_azureml_rai_tabular_insight_constructor", label="latest"
 )
-rai_erroranalysis = ml_client.components.get(
+rai_erroranalysis = ml_client_registry.components.get(
     name="microsoft_azureml_rai_tabular_erroranalysis", label="latest"
 )
-rai_explanation = ml_client.components.get(
+rai_explanation = ml_client_registry.components.get(
     name="microsoft_azureml_rai_tabular_explanation", label="latest"
 )
-rai_counterfactual = ml_client.components.get(
+rai_counterfactual = ml_client_registry.components.get(
     name="microsoft_azureml_rai_tabular_counterfactual", label="latest"
 )
-rai_causal = ml_client.components.get(
+rai_causal = ml_client_registry.components.get(
     name="microsoft_azureml_rai_tabular_causal", label="latest"
 )
-rai_gather = ml_client.components.get(
+rai_gather = ml_client_registry.components.get(
     name="microsoft_azureml_rai_tabular_insight_gather", label="latest"
 )
 
@@ -242,8 +279,8 @@ def rai_pipeline(target_column, train_data, test_data):
 # Submit the pipeline
 pipeline_job = rai_pipeline(
     target_column="churn",
-    train_data=Input(type=AssetTypes.URI_FILE, path=f"azureml:{train_dataset.name}:{train_dataset.version}"),
-    test_data=Input(type=AssetTypes.URI_FILE, path=f"azureml:{test_dataset.name}:{test_dataset.version}")
+    train_data=Input(type=AssetTypes.MLTABLE, path=f"azureml:{train_dataset.name}:{train_dataset.version}"),
+    test_data=Input(type=AssetTypes.MLTABLE, path=f"azureml:{test_dataset.name}:{test_dataset.version}")
 )
 
 submitted = ml_client.jobs.create_or_update(pipeline_job)
@@ -274,7 +311,7 @@ Counterfactuals answer "what would need to change?" For a customer predicted to 
 
 ### Causal Analysis
 
-Causal analysis goes beyond correlation to estimate the actual causal effect of changing a feature. For example, it might estimate that switching a customer to a two-year contract causally reduces their churn probability by 15 percentage points, accounting for confounding variables.
+Causal analysis goes beyond correlation to estimate the causal effect of changing a feature under the assumptions of the causal model. For example, it might estimate that switching a customer to a two-year contract reduces their churn probability by 15 percentage points after accounting for modeled confounding variables.
 
 ## Integrating RAI into Your MLOps Workflow
 
