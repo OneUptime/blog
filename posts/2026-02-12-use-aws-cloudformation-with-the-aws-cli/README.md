@@ -56,11 +56,13 @@ aws cloudformation create-stack \
 
 # Wait for the stack creation to complete
 aws cloudformation wait stack-create-complete \
-  --stack-name my-storage-stack
+  --stack-name my-storage-stack \
+  --region us-east-1
 
 # Check the stack status
 aws cloudformation describe-stacks \
   --stack-name my-storage-stack \
+  --region us-east-1 \
   --query 'Stacks[0].StackStatus' \
   --output text
 ```
@@ -89,17 +91,6 @@ Parameters:
     Default: 10.0.0.0/16
     Description: CIDR block for the VPC
 
-  EnableNatGateway:
-    Type: String
-    Default: 'false'
-    AllowedValues:
-      - 'true'
-      - 'false'
-    Description: Whether to create a NAT Gateway
-
-Conditions:
-  CreateNatGateway: !Equals [!Ref EnableNatGateway, 'true']
-
 Resources:
   VPC:
     Type: AWS::EC2::VPC
@@ -113,6 +104,35 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-igw'
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-public-routes'
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
   PublicSubnet:
     Type: AWS::EC2::Subnet
     Properties:
@@ -123,6 +143,12 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${Environment}-public-subnet-1'
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
 
   PrivateSubnet:
     Type: AWS::EC2::Subnet
@@ -154,8 +180,7 @@ aws cloudformation create-stack \
   --template-body file://vpc-template.yml \
   --parameters \
     ParameterKey=Environment,ParameterValue=production \
-    ParameterKey=VpcCidr,ParameterValue=10.0.0.0/16 \
-    ParameterKey=EnableNatGateway,ParameterValue=true
+    ParameterKey=VpcCidr,ParameterValue=10.0.0.0/16
 
 # Or use a parameters file for cleaner commands
 aws cloudformation create-stack \
@@ -175,10 +200,6 @@ The parameters file format:
   {
     "ParameterKey": "VpcCidr",
     "ParameterValue": "10.0.0.0/16"
-  },
-  {
-    "ParameterKey": "EnableNatGateway",
-    "ParameterValue": "true"
   }
 ]
 ```
