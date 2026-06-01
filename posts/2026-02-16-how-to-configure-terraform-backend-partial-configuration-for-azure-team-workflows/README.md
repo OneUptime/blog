@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Azure, Backend Configuration, State Management, Team Workflows, Infrastructure as Code, DevOps
 
-Description: Learn how to use Terraform partial backend configuration to manage Azure state storage across environments and teams without hardcoding sensitive details.
+Description: Learn how to use Terraform partial backend configuration to manage Azure state storage across environments and teams without hardcoding environment-specific details.
 
 ---
 
@@ -71,6 +71,8 @@ storage_account_name = "sttfstatedev001"
 container_name       = "tfstate"
 key                  = "networking/terraform.tfstate"
 use_oidc             = true
+use_azuread_auth     = true
+client_id            = "dddddddd-dddd-dddd-dddd-dddddddddddd"
 subscription_id      = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 tenant_id            = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 ```
@@ -82,6 +84,8 @@ storage_account_name = "sttfstateprod001"
 container_name       = "tfstate"
 key                  = "networking/terraform.tfstate"
 use_oidc             = true
+use_azuread_auth     = true
+client_id            = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
 subscription_id      = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 tenant_id            = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 ```
@@ -110,7 +114,9 @@ terraform init \
   -backend-config="storage_account_name=sttfstateprod001" \
   -backend-config="container_name=tfstate" \
   -backend-config="key=networking/terraform.tfstate" \
-  -backend-config="use_oidc=true"
+  -backend-config="use_oidc=true" \
+  -backend-config="use_azuread_auth=true" \
+  -backend-config="client_id=${ARM_CLIENT_ID}"
 ```
 
 ## Method 3: Environment Variables
@@ -255,6 +261,8 @@ jobs:
             -backend-config="container_name=tfstate" \
             -backend-config="key=${{ matrix.environment }}/terraform.tfstate" \
             -backend-config="use_oidc=true" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="client_id=${{ secrets.AZURE_CLIENT_ID }}" \
             -backend-config="subscription_id=${{ secrets.TF_STATE_SUBSCRIPTION_ID }}" \
             -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}"
 
@@ -287,7 +295,7 @@ State files:
 
 **Pattern 2: Workspace-Based**
 
-Use Terraform workspaces with the same configuration directory. The workspace name is embedded in the state path.
+Use Terraform workspaces with the same configuration directory. The default workspace uses the configured `key`; non-default workspaces are stored as separate blobs by appending `env:<workspace>` to that key.
 
 ```hcl
 # backend.hcl for workspace-based approach
@@ -295,7 +303,7 @@ resource_group_name  = "rg-terraform-state"
 storage_account_name = "sttfstate001"
 container_name       = "tfstate"
 key                  = "networking/terraform.tfstate"
-# Terraform automatically adds the workspace name to the key path
+# Non-default workspaces use blobs like networking/terraform.tfstateenv:prod
 ```
 
 ```bash
@@ -331,4 +339,4 @@ terraform force-unlock <LOCK_ID>
 
 ## Wrapping Up
 
-Partial backend configuration is essential for any team using Terraform with Azure. It keeps sensitive storage details out of your code, supports multiple environments from the same codebase, and integrates cleanly with CI/CD pipelines. The backend config file approach works best for most teams because the files are simple to manage and easy to version control (minus any secrets). Combined with a clear project structure and a helper script, it makes switching between environments straightforward and reduces the risk of accidentally modifying the wrong environment's state.
+Partial backend configuration is essential for any team using Terraform with Azure. It keeps environment-specific backend details out of your shared Terraform code, supports multiple environments from the same codebase, and integrates cleanly with CI/CD pipelines. The backend config file approach works best for most teams because the files are simple to manage and easy to version control (minus any secrets). Combined with a clear project structure and a helper script, it makes switching between environments straightforward and reduces the risk of accidentally modifying the wrong environment's state.
