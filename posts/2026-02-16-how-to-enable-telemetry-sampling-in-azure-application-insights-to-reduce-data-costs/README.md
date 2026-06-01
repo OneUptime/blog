@@ -16,48 +16,50 @@ This post explains the different sampling types available in Application Insight
 
 Sampling means only sending a percentage of your telemetry to Application Insights. Instead of recording every single request and dependency call, you record a representative subset. The key insight is that for high-volume applications, you do not need every data point to understand your system's behavior - statistical sampling gives you the same trends, percentiles, and patterns at a fraction of the cost.
 
-Application Insights preserves related telemetry together. If a request is sampled in, all of its associated dependencies, traces, and exceptions are also kept. If a request is sampled out, all of its related telemetry is also dropped. This means you always see complete transactions, never partial ones.
+Application-level sampling preserves related telemetry together. If a request is sampled in, its associated dependencies, traces, and exceptions are also kept. If a request is sampled out, its related telemetry is also dropped. This means source-level sampling keeps complete transactions instead of partial ones.
 
 ## Three Types of Sampling
 
 Application Insights supports three types of sampling, and understanding the differences is important because they work at different stages of the telemetry pipeline.
 
-### 1. Adaptive Sampling (Server-Side)
+### 1. Adaptive Sampling (Application-Side)
 
-This is the default for ASP.NET and ASP.NET Core applications. It automatically adjusts the sampling rate to keep telemetry volume within a target range. When traffic is low, it sends everything. When traffic spikes, it increases the sampling rate (reduces the percentage sent).
+This is the default for ASP.NET and ASP.NET Core applications using the classic Application Insights SDK. It automatically adjusts the sampling rate to keep telemetry volume within a target range. When traffic is low, it sends everything. When traffic spikes, it increases the sampling rate (reduces the percentage sent).
 
-### 2. Fixed-Rate Sampling (Server-Side)
+### 2. Fixed-Rate Sampling (Application-Side)
 
 You set a fixed percentage, and that percentage of telemetry is sent. Period. There is no automatic adjustment. This is useful when you want predictable data volumes and predictable costs.
 
 ### 3. Ingestion Sampling (Server-Side After Collection)
 
-This happens at the Application Insights service endpoint, after the data leaves your application but before it is stored. It is a safety net - if your application sends too much data, you can configure ingestion sampling to drop a percentage before it counts toward your billing.
+This happens at the Application Insights service endpoint, after the data leaves your application but before it is stored. It is a safety net - if your application sends too much data, you can configure ingestion sampling to drop a percentage at ingestion time.
 
 The recommended approach is to use adaptive or fixed-rate sampling at the application level. Ingestion sampling should be a last resort because you still pay for the network bandwidth to send the data, even though it gets dropped before storage.
 
 ## Configuring Adaptive Sampling in .NET
 
-For ASP.NET Core applications, adaptive sampling is enabled by default when you add Application Insights. You can customize its behavior in `Program.cs`.
+For ASP.NET Core applications using the classic Application Insights SDK, adaptive sampling is enabled by default when you add Application Insights. To customize its behavior in `Program.cs`, disable the default adaptive sampler and add your own sampling processor.
 
 ```csharp
 // Configure adaptive sampling with custom limits
 // This sets the max telemetry items per second to 5,
 // which the algorithm uses to decide the sampling rate
-builder.Services.AddApplicationInsightsTelemetry();
+var aiOptions = new Microsoft.ApplicationInsights.AspNetCore.Extensions.ApplicationInsightsServiceOptions
+{
+    EnableAdaptiveSampling = false
+};
+
+builder.Services.AddApplicationInsightsTelemetry(aiOptions);
 builder.Services.Configure<TelemetryConfiguration>(config =>
 {
-    var builder = config.DefaultTelemetrySink.TelemetryProcessorChainBuilder;
+    var processorChainBuilder = config.DefaultTelemetrySink.TelemetryProcessorChainBuilder;
 
-    // Configure adaptive sampling
-    builder.UseAdaptiveSampling(maxTelemetryItemsPerSecond: 5);
-
-    // Exclude certain telemetry types from sampling
-    builder.UseAdaptiveSampling(
+    // Configure adaptive sampling and exclude certain telemetry types
+    processorChainBuilder.UseAdaptiveSampling(
         maxTelemetryItemsPerSecond: 5,
         excludedTypes: "Event;Exception");
 
-    builder.Build();
+    processorChainBuilder.Build();
 });
 ```
 
@@ -70,14 +72,19 @@ If you prefer predictable sampling rates, use fixed-rate sampling instead.
 ```csharp
 // Configure fixed-rate sampling at 25%
 // This means roughly 1 in 4 telemetry items will be sent
-builder.Services.AddApplicationInsightsTelemetry();
+var aiOptions = new Microsoft.ApplicationInsights.AspNetCore.Extensions.ApplicationInsightsServiceOptions
+{
+    EnableAdaptiveSampling = false
+};
+
+builder.Services.AddApplicationInsightsTelemetry(aiOptions);
 builder.Services.Configure<TelemetryConfiguration>(config =>
 {
-    var builder = config.DefaultTelemetrySink.TelemetryProcessorChainBuilder;
+    var processorChainBuilder = config.DefaultTelemetrySink.TelemetryProcessorChainBuilder;
 
-    builder.UseSampling(25); // 25% sampling rate
+    processorChainBuilder.UseSampling(25); // 25% sampling rate
 
-    builder.Build();
+    processorChainBuilder.Build();
 });
 ```
 
@@ -92,11 +99,11 @@ For Node.js applications using the Application Insights SDK.
 // Setting percentage to 33 means roughly 1 in 3 items are sent
 const appInsights = require("applicationinsights");
 appInsights.setup("<connection-string>")
-    .setSendLiveMetrics(true)
-    .start();
+    .setSendLiveMetrics(true);
 
 // Set the sampling percentage (33% means send 1 in 3)
 appInsights.defaultClient.config.samplingPercentage = 33;
+appInsights.start();
 ```
 
 ## Configuring Sampling for the Java Agent
@@ -116,9 +123,9 @@ For Java applications using the Application Insights Java agent, configure sampl
         "telemetryType": "request",
         "attributes": [
           {
-            "key": "http.url",
+            "key": "url.path",
             "value": "/health",
-            "matchType": "contains"
+            "matchType": "strict"
           }
         ],
         "percentage": 0
@@ -180,11 +187,12 @@ Before configuring sampling, estimate how much data you are currently ingesting 
 // Check current daily ingestion volume per telemetry type
 union requests, dependencies, traces, exceptions, customEvents, pageViews
 | where timestamp > ago(1d)
-| summarize RecordCount = count(), EstimatedGB = sum(itemCount) * 0.0005 / 1024 by itemType
+| where _IsBillable == true
+| summarize RecordCount = count(), EstimatedGB = sum(_BilledSize) / 1024 / 1024 / 1024 by itemType
 | order by EstimatedGB desc
 ```
 
-The `0.0005` is a rough estimate of the average record size in MB. Your actual sizes will vary.
+The `_BilledSize` field is the ingested record size in bytes. Your actual savings will depend on the telemetry types you sample and their record sizes.
 
 If dependencies account for 80% of your data volume and you apply 25% sampling to them, you cut your total ingestion by roughly 60%. That is a significant cost reduction.
 
