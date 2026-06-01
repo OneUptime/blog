@@ -14,14 +14,16 @@ By default, Azure Storage accounts accept connections from any network. That is 
 
 The storage firewall operates at the network layer. When you enable it, you switch the default action from "Allow" to "Deny." Then you explicitly whitelist the networks and IPs that should have access.
 
-Any request from a non-whitelisted source gets a 403 Forbidden response. This applies to all storage services - Blob, File, Queue, Table, and Data Lake.
+Any request from a non-whitelisted source through the public endpoint gets a 403 Forbidden response. This applies to all storage services - Blob, File, Queue, Table, and Data Lake.
 
-The firewall evaluates rules in this order:
+The firewall allows traffic when the request matches any of these configured sources or exceptions:
 
 1. Virtual network rules (service endpoints)
 2. IP network rules
-3. Resource instance rules (trusted Azure services)
-4. The default action (allow or deny)
+3. Resource instance rules
+4. Trusted Azure service exceptions
+
+If none of those apply, the default action determines whether the request is allowed or denied.
 
 ## Enabling the Storage Firewall
 
@@ -160,6 +162,10 @@ Update-AzStorageAccountNetworkRuleSet `
     "apiVersion": "2023-01-01",
     "name": "mystorageaccount",
     "location": "eastus",
+    "sku": {
+        "name": "Standard_LRS"
+    },
+    "kind": "StorageV2",
     "properties": {
         "networkAcls": {
             "defaultAction": "Deny",
@@ -196,6 +202,7 @@ resource "azurerm_storage_account" "main" {
   account_replication_type = "LRS"
 
   # Enable the firewall with default deny
+  # Make sure azurerm_subnet.main has service_endpoints = ["Microsoft.Storage"]
   network_rules {
     default_action             = "Deny"
     bypass                     = ["AzureServices", "Logging", "Metrics"]
