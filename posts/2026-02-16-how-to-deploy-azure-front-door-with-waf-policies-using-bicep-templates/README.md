@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Bicep, Front Door, WAF, Infrastructure as Code, Security, DevOps
 
-Description: Step-by-step guide to deploying Azure Front Door Standard or Premium with Web Application Firewall policies using Bicep templates.
+Description: Step-by-step guide to deploying Azure Front Door Premium with Web Application Firewall policies using Bicep templates.
 
 ---
 
-Azure Front Door is Microsoft's global load balancer and CDN that sits at the edge of their network. When you pair it with Web Application Firewall (WAF) policies, you get DDoS protection, bot mitigation, and custom rule enforcement before traffic ever reaches your backend. Doing this through the Azure portal works for a quick proof of concept, but for anything production-grade, you want it codified in Bicep templates.
+Azure Front Door is Microsoft's global load balancer and CDN that sits at the edge of their network. When you pair it with Web Application Firewall (WAF) policies, Azure Front Door provides platform-level DDoS protection while WAF adds bot mitigation and custom rule enforcement before traffic ever reaches your backend. Doing this through the Azure portal works for a quick proof of concept, but for anything production-grade, you want it codified in Bicep templates.
 
 This post walks through deploying Azure Front Door Premium with a WAF policy using Bicep. We will cover the Front Door profile, endpoints, origin groups, origins, routes, and the WAF policy with both managed and custom rules.
 
@@ -47,9 +47,8 @@ param environmentName string = 'prod'
 @description('Azure region for the resource group resources')
 param location string = resourceGroup().location
 
-@description('The SKU for Front Door - Premium required for WAF')
+@description('The SKU for Front Door - Premium required for the managed WAF rule sets used below')
 @allowed([
-  'Standard_AzureFrontDoor'
   'Premium_AzureFrontDoor'
 ])
 param frontDoorSku string = 'Premium_AzureFrontDoor'
@@ -171,7 +170,7 @@ resource webOrigin 'Microsoft.Cdn/profiles/originGroups/origins@2024-02-01' = {
 
 ## Building the WAF Policy
 
-Now for the WAF policy. We will include the OWASP managed rule set and a custom rate-limiting rule.
+Now for the WAF policy. We will include the Azure-managed Default Rule Set and a custom rate-limiting rule.
 
 ```bicep
 // WAF policy with managed rules and a custom rate limit rule
@@ -306,6 +305,7 @@ resource apiRoute 'Microsoft.Cdn/profiles/afdEndpoints/routes@2024-02-01' = {
       '/api/*'
     ]
     supportedProtocols: [
+      'Http'
       'Https'
     ]
     httpsRedirect: 'Enabled'
