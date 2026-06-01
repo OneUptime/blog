@@ -18,7 +18,7 @@ Before diving into queries, it helps to understand the fundamental differences b
 
 **Parquet** is a columnar binary format. Data is organized by columns rather than rows, compressed, and includes embedded schema metadata (column names and types). When you query three columns out of fifty, the engine reads only those three columns from disk. This makes Parquet dramatically more efficient for analytical queries.
 
-**CSV** is a row-based text format. Every query reads every column because columns are not stored separately. There is no schema metadata, so you must tell the engine about column names and types. CSV files are larger (no built-in compression) and slower to query.
+**CSV** is a row-based text format. Every query reads every column because columns are not stored separately. There is no embedded schema metadata, so you should provide column names and types for reliable results. CSV files are larger (no built-in compression) and slower to query.
 
 For data lakes, Parquet is the preferred format. Use CSV when you receive data from external systems that only export CSV, and consider converting to Parquet for repeated querying.
 
@@ -56,16 +56,16 @@ FROM OPENROWSET(
     FORMAT = 'PARQUET'
 ) AS sales;
 
--- Query files recursively across subdirectories
+-- Query all Parquet files recursively across subdirectories
 SELECT *
 FROM OPENROWSET(
-    BULK 'https://mydatalake.dfs.core.windows.net/analytics/sales/**/*.parquet',
+    BULK 'https://mydatalake.dfs.core.windows.net/analytics/sales/**',
     FORMAT = 'PARQUET'
 ) AS sales
 WHERE OrderDate >= '2025-06-01';
 ```
 
-The `*` wildcard matches files in a single directory. The `**` wildcard matches files recursively through all subdirectories.
+The `*` wildcard matches part of a path segment. The `/**` form at the end of a path matches files recursively through all subdirectories.
 
 ### Selecting Specific Columns
 
@@ -79,7 +79,7 @@ SELECT
     SUM(TotalAmount) AS Revenue,
     COUNT(*) AS OrderCount
 FROM OPENROWSET(
-    BULK 'https://mydatalake.dfs.core.windows.net/analytics/sales/**/*.parquet',
+    BULK 'https://mydatalake.dfs.core.windows.net/analytics/sales/**',
     FORMAT = 'PARQUET'
 ) AS sales
 GROUP BY ProductCategory
@@ -152,7 +152,7 @@ FROM OPENROWSET(
 ) AS customers;
 ```
 
-The `PARSER_VERSION = '2.0'` is important - it supports more CSV edge cases and is generally faster than version 1.0.
+The `PARSER_VERSION = '2.0'` is important for common CSV workloads because it is generally faster than version 1.0. Parser version 1.0 still supports some options that version 2.0 does not, such as gzip compression.
 
 ### Handling CSV Without Headers
 
@@ -216,8 +216,9 @@ SELECT *
 FROM OPENROWSET(
     BULK 'https://mydatalake.dfs.core.windows.net/raw/events/*.csv.gz',
     FORMAT = 'CSV',
-    PARSER_VERSION = '2.0',
-    HEADER_ROW = TRUE
+    PARSER_VERSION = '1.0',
+    FIRSTROW = 2,
+    DATA_COMPRESSION = 'GZIP'
 ) WITH (
     EventId BIGINT,
     EventType VARCHAR(50),
@@ -227,7 +228,7 @@ FROM OPENROWSET(
 ) AS events;
 ```
 
-The engine automatically detects gzip compression from the `.gz` extension.
+Gzip-compressed delimited files require `DATA_COMPRESSION = 'GZIP'`, which is supported with parser version 1.0.
 
 ### Handling Quoted Fields and Special Characters
 
@@ -241,7 +242,7 @@ FROM OPENROWSET(
     HEADER_ROW = TRUE,
     FIELDTERMINATOR = ',',
     FIELDQUOTE = '"',                   -- Double-quote as field enclosure
-    ESCAPECHAR = '\\'                   -- Backslash as escape character
+    ESCAPECHAR = '\'                    -- Backslash as escape character
 ) WITH (
     ProductId INT,
     ProductName VARCHAR(200),
@@ -285,7 +286,7 @@ SELECT
     TotalAmount,
     ProductCategory
 FROM OPENROWSET(
-    BULK 'sales/**/*.parquet',
+    BULK 'sales/**',
     DATA_SOURCE = 'MyDataLake',
     FORMAT = 'PARQUET'
 ) AS raw_sales;
@@ -330,11 +331,15 @@ If you receive CSV data from external systems, convert it to Parquet:
 
 ```sql
 -- Convert CSV to Parquet using CETAS (Create External Table As Select)
+CREATE EXTERNAL FILE FORMAT ParquetFormat
+WITH (FORMAT_TYPE = PARQUET);
+GO
+
 CREATE EXTERNAL TABLE dbo.CustomersParquet
 WITH (
     LOCATION = 'dimensions/customers_parquet/',
     DATA_SOURCE = MyDataLake,
-    FILE_FORMAT = ParquetFormat         -- Need to create this format first
+    FILE_FORMAT = ParquetFormat
 )
 AS
 SELECT * FROM dbo.Customers;            -- Reads CSV, writes Parquet
@@ -351,7 +356,7 @@ SELECT * FROM dbo.Sales WHERE OrderDate >= '2025-01-01';
 -- This reads only year=2025 folder files (cheap)
 SELECT *
 FROM OPENROWSET(
-    BULK 'sales/year=2025/**/*.parquet',
+    BULK 'sales/year=2025/**',
     DATA_SOURCE = 'MyDataLake',
     FORMAT = 'PARQUET'
 ) AS sales;
@@ -371,17 +376,17 @@ GROUP BY ProductCategory;
 
 ### 4. Optimize File Sizes
 
-Files between 100 MB and 1 GB perform best. Too many small files (under 10 MB each) create file-listing overhead. Too few huge files limit parallelism.
+Files between 100 MB and 10 GB perform best. Too many small files (under 10 MB each) create file-listing overhead. Too few huge files limit parallelism.
 
 ### 5. Use Statistics for Better Query Plans
 
 ```sql
--- Create statistics on frequently filtered columns
-CREATE STATISTICS stat_OrderDate ON dbo.Sales (OrderDate);
-CREATE STATISTICS stat_ProductCategory ON dbo.Sales (ProductCategory);
+-- Create statistics on frequently filtered columns in an external table
+CREATE STATISTICS stat_CustomerId ON dbo.CustomersParquet (CustomerId);
+CREATE STATISTICS stat_Country ON dbo.CustomersParquet (Country);
 ```
 
-Statistics help the serverless SQL pool generate better query plans, especially for joins and complex predicates.
+Statistics help the serverless SQL pool generate better query plans, especially for joins and complex predicates. Serverless SQL pool can automatically create statistics for `OPENROWSET` queries, and you can create statistics manually on external tables.
 
 ## Wrapping Up
 
