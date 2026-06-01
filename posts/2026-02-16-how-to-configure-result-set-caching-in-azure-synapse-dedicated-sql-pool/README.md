@@ -12,10 +12,10 @@ When the same query runs over and over against data that has not changed, there 
 
 ## How Result Set Caching Works
 
-When result set caching is enabled and a query executes, the engine stores the result set in the control node's storage. When an identical query arrives later, the engine checks:
+When result set caching is enabled and a query executes, the engine stores the result set in a persisted cache in the user database. The control node handles creating the cache entry and retrieving results from the cache. When an identical query arrives later, the engine checks:
 
 1. Is the query text exactly the same? (Whitespace and capitalization differences matter)
-2. Is the result set still in the cache? (Cache entries expire after 48 hours or when underlying data changes)
+2. Is the result set still in the cache? (Cached results are invalidated when underlying data changes and evicted automatically when the cache approaches its maximum size or during scheduled cleanup)
 3. Does the user have permission to see the cached result?
 
 If all conditions are met, the result is served directly from the cache without involving any compute nodes.
@@ -44,7 +44,7 @@ It is less effective for:
 
 - **Ad-hoc queries**: Every query is unique, so nothing gets cached.
 - **Frequently changing data**: If the underlying tables are updated constantly, cache entries are invalidated quickly.
-- **Queries returning large result sets**: The cache has a 10 GB total capacity. Large results consume this quickly.
+- **Queries returning large result sets**: Queries that return more than 10 GB are not cached, and result sets larger than about 1 GB can put extra pressure on the control node while the cache is created or read.
 
 ## Step 1: Enable Result Set Caching
 
@@ -101,6 +101,8 @@ ORDER BY start_time DESC;
 The `result_cache_hit` column tells you:
 - **1**: The result was served from cache (cache hit)
 - **0**: The query was executed on compute nodes (cache miss)
+- **NULL**: The request was not a `SELECT` query
+- **Negative values**: Result set caching was not used; the value indicates the reason, such as database-level caching being off, session-level caching being off, use of temp tables or external tables, nondeterministic functions, or a result set that is too large.
 
 ## Step 3: Control Caching at the Session Level
 
@@ -136,7 +138,7 @@ WHERE start_time > DATEADD(hour, -24, GETDATE())
 GROUP BY result_cache_hit;
 ```
 
-This shows how many queries hit the cache versus how many were executed. A healthy dashboard workload should see 50%+ cache hits.
+This shows how many queries hit the cache, missed the cache, or were not eligible for caching. A dashboard workload with repeated queries should show meaningful cache hits after the cache warms up.
 
 ### Check Cache Size and Entries
 
@@ -146,12 +148,12 @@ DBCC SHOWRESULTCACHESPACEUSED;
 ```
 
 This returns:
-- **reserved_space**: Total space reserved for result set cache
+- **reserved_space**: Total cache space used by the database, in KB
 - **data_space**: Space currently used by cached results
 - **index_space**: Space used by the cache index
-- **unused_space**: Available cache space
+- **unused_space**: Space that is part of the reserved space but not currently used
 
-The total cache size is 10 GB per database. Once the cache is full, the oldest entries are evicted to make room for new ones.
+The maximum result set cache size is 1 TB per database. Once the cache approaches the maximum size, dedicated SQL pool automatically evicts cached results.
 
 ### Identify Top Cached Queries
 
@@ -180,7 +182,7 @@ The cache is automatically invalidated when:
 
 - **Data changes**: Any INSERT, UPDATE, DELETE, TRUNCATE, or COPY INTO on a table referenced by a cached query invalidates all cache entries that reference that table.
 - **Schema changes**: ALTER TABLE or DROP TABLE invalidates related cache entries.
-- **Time expiration**: Cache entries expire after 48 hours, even if the data has not changed.
+- **Scheduled eviction**: Dedicated SQL pool evicts unused or invalidated cached results every 48 hours.
 - **Manual clear**: You can manually clear the cache.
 
 ### Manually Clear the Cache
