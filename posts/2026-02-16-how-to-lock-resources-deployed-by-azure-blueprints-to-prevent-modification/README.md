@@ -8,21 +8,21 @@ Description: Learn how to lock resources deployed by Azure Blueprints to prevent
 
 ---
 
-When you deploy resources through Azure Blueprints, you get a powerful governance tool that can standardize environment configurations across subscriptions. But deploying resources is only half the battle. If anyone with the right RBAC role can walk in and change those resources after deployment, your carefully designed blueprint becomes meaningless. That is where blueprint resource locks come in.
+When you deploy resources through Azure Blueprints, you get a powerful governance tool that can standardize environment configurations across subscriptions. Azure Blueprints is a preview service and Microsoft has announced that it will be deprecated on July 11, 2026, so new governance designs should evaluate Template Specs and Deployment Stacks as migration targets. But if you already use Blueprints, deploying resources is only half the battle. If anyone with the right RBAC role can walk in and change those resources after deployment, your carefully designed blueprint becomes meaningless. That is where blueprint resource locks come in.
 
 In this guide, I will walk you through how Azure Blueprint resource locks work, how they differ from standard Azure resource locks, and how to configure them to keep your deployed resources safe from unauthorized changes.
 
 ## Understanding Azure Blueprint Resource Locks
 
-Azure Blueprints has its own locking mechanism that is separate from the standard Azure resource locks you might already be familiar with. Standard Azure locks (CanNotDelete and ReadOnly) can be removed by anyone with the Microsoft.Authorization/locks/delete permission. Blueprint locks are different because they are managed by the blueprint assignment itself, and only the system can remove them.
+Azure Blueprints has its own locking mechanism that is separate from the standard Azure resource locks you might already be familiar with. Standard Azure locks (CanNotDelete and ReadOnly) can be removed by anyone with the Microsoft.Authorization/locks/delete permission. Blueprint locks are different because they are managed by the blueprint assignment itself, and only Azure Blueprints can remove the generated deny assignment. These locks apply to non-extension resources deployed by the blueprint assignment; existing resources in an already-existing resource group do not automatically get blueprint locks.
 
-This distinction matters a lot. With standard locks, a subscription owner can simply remove the lock and make changes. With blueprint locks, even subscription owners cannot remove them without first modifying or deleting the blueprint assignment. This provides a much stronger guarantee that your deployed resources stay in the intended configuration.
+This distinction matters a lot. With standard locks, a subscription owner can simply remove the lock and make changes. With blueprint locks, even subscription owners cannot remove the generated deny assignment directly; they have to modify or delete the blueprint assignment. If you need to prevent subscription owners from deleting the assignment itself, assign the blueprint at management group scope. This provides a much stronger guarantee that your deployed resources stay in the intended configuration.
 
 There are three locking modes available for blueprint assignments:
 
 1. **Don't Lock** - No locks are applied. Resources can be modified or deleted freely.
 2. **Do Not Delete** - Resources cannot be deleted, but they can be modified.
-3. **Read Only** - Resources cannot be deleted or modified in any way.
+3. **Read Only** - Resources cannot be deleted or modified through most Azure Resource Manager operations, with documented exceptions such as tags.
 
 ## Setting Up Blueprint Resource Locks in the Azure Portal
 
@@ -30,7 +30,7 @@ Let me walk through the process of applying locks during a blueprint assignment.
 
 Navigate to the Azure Portal and go to the Blueprints service. Select your blueprint definition and click "Assign blueprint." In the assignment form, scroll down to the "Lock Assignment" section.
 
-Here you will see the three options I mentioned above. For most production governance scenarios, I recommend starting with "Do Not Delete" rather than jumping straight to "Read Only." The reason is that Read Only locks can interfere with normal operations in ways you might not expect. For example, a Read Only lock on a storage account will prevent any data from being written to it, which defeats the purpose of having a storage account in the first place.
+Here you will see the three options I mentioned above. For most production governance scenarios, I recommend starting with "Do Not Delete" rather than jumping straight to "Read Only." The reason is that Read Only locks can interfere with normal operations in ways you might not expect. For example, a Read Only lock on a storage account blocks control-plane write operations such as listing account keys and creating blob containers through Azure Resource Manager. It does not protect blobs, queues, tables, or files from data-plane writes or deletes, so you still need service-specific data protection controls.
 
 ## Configuring Locks Using ARM Templates
 
@@ -40,18 +40,15 @@ Here is an ARM template snippet that creates a blueprint assignment with resourc
 
 ```json
 {
-  // Blueprint assignment resource definition
   "type": "Microsoft.Blueprint/blueprintAssignments",
   "apiVersion": "2018-11-01-preview",
   "name": "my-locked-assignment",
   "location": "eastus",
   "identity": {
-    // Managed identity used by the blueprint to deploy resources
     "type": "SystemAssigned"
   },
   "properties": {
     "blueprintId": "/providers/Microsoft.Management/managementGroups/myMG/providers/Microsoft.Blueprint/blueprints/myBlueprint/versions/1.0",
-    // Lock settings - "AllResourcesDoNotDelete" prevents deletion
     "locks": {
       "mode": "AllResourcesDoNotDelete",
       "excludedPrincipals": [],
@@ -84,7 +81,7 @@ New-AzBlueprintAssignment `
   -Blueprint $blueprint `
   -SubscriptionId "00000000-0000-0000-0000-000000000000" `
   -Location "eastus" `
-  -LockMode "AllResourcesDoNotDelete" `
+  -Lock "AllResourcesDoNotDelete" `
   -SystemAssignedIdentity
 ```
 
@@ -92,38 +89,52 @@ New-AzBlueprintAssignment `
 
 Sometimes you need certain service principals or automation accounts to modify blueprint-locked resources. For example, your CI/CD pipeline might need to deploy application code to an App Service that is locked by a blueprint.
 
-You can exclude specific principals and actions from blueprint locks. This is done through the excludedPrincipals and excludedActions properties.
+You can exclude specific principals and actions from blueprint locks. This is done through the excludedPrincipals and excludedActions properties. Azure PowerShell does not have separate parameters for these exclusions, so create the assignment with a JSON assignment file or use the REST API.
+
+```json
+{
+  "identity": {
+    "type": "SystemAssigned"
+  },
+  "location": "eastus",
+  "properties": {
+    "blueprintId": "/providers/Microsoft.Management/managementGroups/myMG/providers/Microsoft.Blueprint/blueprints/myBlueprint/versions/1.0",
+    "locks": {
+      "mode": "AllResourcesReadOnly",
+      "excludedPrincipals": [
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+      ],
+      "excludedActions": [
+        "Microsoft.Web/sites/config/write",
+        "Microsoft.Web/sites/extensions/write"
+      ]
+    },
+    "parameters": {},
+    "resourceGroups": {}
+  }
+}
+```
 
 ```powershell
-# Create assignment with exclusions for your CI/CD service principal
+# Create assignment from assignment.json with exclusions for your CI/CD service principal
 New-AzBlueprintAssignment `
   -Name "locked-with-exclusions" `
-  -Blueprint $blueprint `
   -SubscriptionId "00000000-0000-0000-0000-000000000000" `
-  -Location "eastus" `
-  -LockMode "AllResourcesReadOnly" `
-  -LockExcludePrincipal @(
-    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"  # CI/CD service principal
-  ) `
-  -LockExcludeAction @(
-    "Microsoft.Web/sites/config/write",      # Allow app config changes
-    "Microsoft.Web/sites/extensions/write"    # Allow deployment extensions
-  ) `
-  -SystemAssignedIdentity
+  -AssignmentFile ".\assignment.json"
 ```
 
 Be careful with exclusions. Every exclusion you add is a potential hole in your governance posture. Keep exclusions to the minimum necessary and document why each one exists.
 
 ## How Blueprint Locks Interact with RBAC
 
-One thing that trips people up is how blueprint locks interact with Azure RBAC. Even if a user has Owner or Contributor role on a subscription, they cannot bypass blueprint locks. The locks are enforced at the Azure Resource Manager level, and the only way to remove them is to change the blueprint assignment.
+One thing that trips people up is how blueprint locks interact with Azure RBAC. Even if a user has Owner or Contributor role on a subscription, they cannot bypass the deny assignment that implements blueprint locks. The locks are enforced at the Azure Resource Manager level, and the only way to remove them is to change the blueprint assignment.
 
 This means you need to be thoughtful about who has permission to modify or delete blueprint assignments. The key permissions to watch are:
 
 - Microsoft.Blueprint/blueprintAssignments/write
 - Microsoft.Blueprint/blueprintAssignments/delete
 
-Anyone with these permissions can change the lock settings by modifying the assignment or remove the locks entirely by deleting the assignment. I recommend restricting these permissions to a small group of platform team members.
+Anyone with these permissions can change the lock settings by modifying the assignment or remove the locks entirely by deleting the assignment. The Owner role includes these permissions at subscription scope, so use a management group assignment when subscription owners should not be able to remove the assignment and associated locks. I recommend restricting these permissions to a small group of platform team members.
 
 ## Handling Lock-Related Errors
 
@@ -161,6 +172,6 @@ You can also use the blueprint assignment update flow to temporarily relax locks
 
 ## Wrapping Up
 
-Azure Blueprint resource locks are one of the strongest governance tools available in Azure. Unlike standard resource locks, they cannot be bypassed by subscription owners, making them ideal for enforcing organizational standards across multiple subscriptions. By combining appropriate lock modes with targeted exclusions and monitoring, you can maintain tight control over your deployed infrastructure while still allowing the operational flexibility your teams need.
+Azure Blueprint resource locks are a strong governance tool for existing Azure Blueprints environments, though Blueprints itself is scheduled for deprecation on July 11, 2026. Unlike standard resource locks, blueprint-created deny assignments cannot be removed directly by subscription owners. By combining appropriate lock modes with targeted exclusions, management group assignments where needed, and monitoring, you can maintain tight control over your deployed infrastructure while still allowing the operational flexibility your teams need.
 
 The key takeaway is this: deploying resources through blueprints gives you consistency, but locking those resources gives you durability. Both are essential for mature cloud governance.
