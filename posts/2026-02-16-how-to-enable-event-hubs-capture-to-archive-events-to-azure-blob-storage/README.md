@@ -76,7 +76,7 @@ Let us break down the key parameters:
 
 ### Using ADLS Gen2 Instead of Blob Storage
 
-For workloads where you plan to query the archived data with Spark or Synapse, ADLS Gen2 is a better choice because it supports hierarchical namespaces for better performance:
+For workloads where you plan to query the archived data with Spark or Synapse, ADLS Gen2 is a better choice because it supports hierarchical namespaces for better performance. In the Azure CLI, an ADLS Gen2 account is still configured with the storage account resource ID and container/file system:
 
 ```bash
 # Enable Capture to ADLS Gen2
@@ -87,11 +87,9 @@ az eventhubs eventhub update \
   --enable-capture true \
   --capture-interval 300 \
   --capture-size-limit 314572800 \
-  --destination-name "EventHubArchive.AzureDataLake" \
+  --destination-name "EventHubArchive.AzureBlockBlob" \
   --storage-account "/subscriptions/{sub-id}/resourceGroups/my-resource-group/providers/Microsoft.Storage/storageAccounts/mydatalakeaccount" \
-  --data-lake-subscription-id "{sub-id}" \
-  --data-lake-account-name "mydatalakeaccount" \
-  --data-lake-folder-path "event-archive" \
+  --blob-container "event-archive" \
   --archive-name-format "{Namespace}/{EventHub}/{PartitionId}/{Year}/{Month}/{Day}/{Hour}/{Minute}/{Second}"
 ```
 
@@ -104,7 +102,7 @@ The default naming format includes all time components down to the second. You c
 --archive-name-format "{Namespace}/{EventHub}/year={Year}/month={Month}/day={Day}/{PartitionId}/{Hour}{Minute}{Second}"
 
 # Simpler hourly partitioning
---archive-name-format "events/{EventHub}/{Year}-{Month}-{Day}/{Hour}/{PartitionId}"
+--archive-name-format "events/{Namespace}/{EventHub}/{Year}-{Month}-{Day}/{Hour}/{Minute}/{Second}/{PartitionId}"
 ```
 
 Choosing a Hive-compatible partition format (`year=2026/month=02/day=16`) makes the data easy to query with Spark, Synapse, or other tools that support partition discovery.
@@ -212,20 +210,20 @@ parsed_events = captured_events \
 parsed_events.show(10)
 ```
 
-### With Azure Synapse Serverless SQL
+### With Azure Synapse
 
-You can query captured Avro files directly with Synapse serverless SQL:
+Synapse serverless SQL cannot read Avro files directly. If you need to query the captured data from serverless SQL, convert the Avro files to Parquet first, or capture data to Parquet with a Stream Analytics no-code job:
 
 ```sql
--- Query captured Event Hubs data using Synapse serverless SQL
--- The OPENROWSET function reads Avro files directly from storage
+-- Query converted Event Hubs data using Synapse serverless SQL
+-- The OPENROWSET function can read Parquet files directly from storage
 SELECT
     SequenceNumber,
     EnqueuedTimeUtc,
     CAST(Body AS VARCHAR(MAX)) AS EventBody
 FROM OPENROWSET(
-    BULK 'https://mydatalakeaccount.dfs.core.windows.net/event-archive/my-namespace/user-events/*/2026/02/16/**',
-    FORMAT = 'AVRO'
+    BULK 'https://mydatalakeaccount.dfs.core.windows.net/event-archive/converted/user-events/*/2026/02/16/**',
+    FORMAT = 'PARQUET'
 ) AS events
 WHERE EnqueuedTimeUtc > '2026-02-16T14:00:00Z'
 ORDER BY SequenceNumber;
@@ -254,9 +252,9 @@ az eventhubs eventhub update \
 
 ## Cost Considerations
 
-Capture incurs costs in two areas:
+Capture costs come from the Capture feature itself and from storage:
 
-1. **Event Hubs egress**: Captured data counts against your throughput unit egress capacity. Each consumer group (including Capture) consumes egress bandwidth.
+1. **Event Hubs Capture billing**: In the Standard tier, Capture is billed separately based on the number of throughput units for the namespace. In Premium, Capture is included. Capture does not consume throughput unit or processing unit egress quota.
 
 2. **Storage costs**: The archived Avro files consume storage. Avro is reasonably compact, but at high event volumes, storage costs add up. Set up lifecycle management policies to move old archives to cool or archive storage tiers:
 
