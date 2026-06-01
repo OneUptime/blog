@@ -34,7 +34,7 @@ graph LR
 # Create a Cosmos DB account with Gremlin (Graph) API
 
 az cosmosdb create \
-    --name myGraphAccount \
+    --name mygraphaccount \
     --resource-group myResourceGroup \
     --capabilities EnableGremlin \
     --locations regionName=eastus failoverPriority=0 \
@@ -42,14 +42,14 @@ az cosmosdb create \
 
 # Create a graph database
 az cosmosdb gremlin database create \
-    --account-name myGraphAccount \
+    --account-name mygraphaccount \
     --name socialdb \
     --resource-group myResourceGroup
 
 # Create a graph (container) with a partition key
 # The partition key is critical for performance
 az cosmosdb gremlin graph create \
-    --account-name myGraphAccount \
+    --account-name mygraphaccount \
     --database-name socialdb \
     --name socialgraph \
     --partition-key-path "/partitionKey" \
@@ -67,7 +67,7 @@ using Gremlin.Net.Driver;
 using Gremlin.Net.Structure.IO.GraphSON;
 
 // Connection settings from Azure Portal
-string hostname = "myGraphAccount.gremlin.cosmos.azure.com";
+string hostname = "mygraphaccount.gremlin.cosmos.azure.com";
 int port = 443;
 string authKey = "YOUR_PRIMARY_KEY";
 string database = "socialdb";
@@ -103,7 +103,7 @@ from gremlin_python.driver import client, serializer
 import os
 
 # Connection details from Azure Portal
-endpoint = "wss://myGraphAccount.gremlin.cosmos.azure.com:443/"
+endpoint = "wss://mygraphaccount.gremlin.cosmos.azure.com:443/"
 username = "/dbs/socialdb/colls/socialgraph"
 password = os.environ["COSMOS_KEY"]
 
@@ -132,7 +132,7 @@ const authenticator = new gremlin.driver.auth.PlainTextSaslAuthenticator(
 
 // Create the client connection
 const client = new gremlin.driver.Client(
-    'wss://myGraphAccount.gremlin.cosmos.azure.com:443/',
+    'wss://mygraphaccount.gremlin.cosmos.azure.com:443/',
     {
         authenticator,
         traversalsource: 'g',
@@ -181,7 +181,14 @@ queries = [
     ".property('id', 'seattle')"
     ".property('partitionKey', 'city')"
     ".property('name', 'Seattle')"
-    ".property('state', 'WA')"
+    ".property('state', 'WA')",
+
+    # Add another city vertex
+    "g.addV('city')"
+    ".property('id', 'portland')"
+    ".property('partitionKey', 'city')"
+    ".property('name', 'Portland')"
+    ".property('state', 'OR')"
 ]
 
 for query in queries:
@@ -249,12 +256,12 @@ print(f"Products bought by Alice's friends: {result}")
 # Find people who live in the same city as Alice
 query = ("g.V('alice').out('lives_in')"
          ".in('lives_in')"
-         ".has('id', neq('alice'))"
+         ".hasId(neq('alice'))"
          ".values('name')")
 result = gremlin_client.submit(query).all().result()
 print(f"People in Alice's city: {result}")
 
-# Find the shortest path between Alice and a product
+# Find one simple path between Alice and a product
 query = ("g.V('alice')"
          ".repeat(out().simplePath())"
          ".until(hasId('laptop-1'))"
@@ -279,7 +286,7 @@ The partition key in a graph database affects how vertices and edges are distrib
 
 Strategies:
 
-1. **Label-based partitioning**: Use the vertex label as the partition key. All persons in one partition, all products in another. Good when queries usually start from a specific entity type.
+1. **Entity-type partitioning**: Store the entity type in a separate partition key property. This is simple for small graphs, but large or busy entity types can create hot or oversized logical partitions.
 
 2. **Entity-based partitioning**: Use a business key like tenantId. All data for a tenant stays in one partition. Good for multi-tenant applications.
 
@@ -289,7 +296,8 @@ Strategies:
 # Example: Using a synthetic partition key
 # Combines the entity type with a hash suffix for distribution
 def get_partition_key(entity_type, entity_id):
-    bucket = hash(entity_id) % 10
+    import hashlib
+    bucket = int(hashlib.sha256(entity_id.encode("utf-8")).hexdigest(), 16) % 10
     return f"{entity_type}_{bucket}"
 
 # Vertex with synthetic partition key
@@ -308,27 +316,17 @@ Here is a practical example - a simple product recommendation engine:
 ```python
 # Recommend products to Alice based on what similar users purchased
 # "Users who bought what you bought also bought..."
-query = (
-    "g.V('alice')"                          # Start with Alice
-    ".out('purchased')"                      # Products Alice bought
+full_query = (
+    "g.V('alice').out('purchased').store('already_purchased')."
+    "V('alice').out('purchased')"            # Products Alice bought
     ".in('purchased')"                       # Other users who bought those products
-    ".where(neq('alice'))"                   # Exclude Alice herself
+    ".hasId(neq('alice'))"                   # Exclude Alice herself
     ".out('purchased')"                      # What those users also bought
     ".where(without('already_purchased'))"   # Exclude what Alice already has
     ".groupCount()"                          # Count occurrences
     ".by('name')"                            # Group by product name
     ".order(local)"                          # Sort by count
     ".by(values, desc)"                      # Highest count first
-)
-
-# First, store Alice's purchases for the filter
-full_query = (
-    "g.V('alice').out('purchased').store('already_purchased')."
-    "V('alice').out('purchased').in('purchased')"
-    ".where(neq('alice'))"
-    ".out('purchased')"
-    ".where(without('already_purchased'))"
-    ".groupCount().by('name')"
 )
 
 recommendations = gremlin_client.submit(full_query).all().result()
