@@ -12,7 +12,7 @@ Not every business process can be fully automated. Purchase orders above a certa
 
 ## How Approval Actions Work
 
-Logic Apps approval actions send a notification to an approver (via email, Teams, or a custom channel), then pause the workflow until the approver responds. The response - Approve or Reject - determines how the workflow continues. Under the hood, the workflow run is suspended and resumed when the callback is received.
+Logic Apps approval actions send a notification to an approver (via email, Teams, or a custom webhook), then pause the workflow until the approver responds. The response - Approve or Reject - determines how the workflow continues. Under the hood, webhook-based actions register a callback URL and resume when the callback is received.
 
 ## Email-Based Approval with Office 365
 
@@ -21,6 +21,9 @@ The Office 365 Outlook connector includes a built-in "Send approval email" actio
 ```json
 {
   "definition": {
+    "parameters": {
+      "PurchaseApiUrl": { "type": "String" }
+    },
     "actions": {
       "Parse_Request": {
         "type": "ParseJson",
@@ -33,7 +36,9 @@ The Office 365 Outlook connector includes a built-in "Send approval email" actio
               "requestorEmail": { "type": "string" },
               "description": { "type": "string" },
               "amount": { "type": "number" },
-              "category": { "type": "string" }
+              "category": { "type": "string" },
+              "managerEmail": { "type": "string" },
+              "vpEmail": { "type": "string" }
             }
           }
         },
@@ -73,7 +78,7 @@ The Office 365 Outlook connector includes a built-in "Send approval email" actio
             "type": "Http",
             "inputs": {
               "method": "POST",
-              "uri": "@appsetting('PurchaseApiUrl')/approve",
+              "uri": "@{parameters('PurchaseApiUrl')}/approve",
               "body": {
                 "requestId": "@body('Parse_Request')?['requestId']",
                 "approvedBy": "@body('Send_Approval_Email')?['UserEmailAddress']",
@@ -109,7 +114,7 @@ The Office 365 Outlook connector includes a built-in "Send approval email" actio
               "type": "Http",
               "inputs": {
                 "method": "POST",
-                "uri": "@appsetting('PurchaseApiUrl')/reject",
+                "uri": "@{parameters('PurchaseApiUrl')}/reject",
                 "body": {
                   "requestId": "@body('Parse_Request')?['requestId']",
                   "rejectedBy": "@body('Send_Approval_Email')?['UserEmailAddress']",
@@ -171,68 +176,30 @@ graph TD
 
 ## Microsoft Teams Approval
 
-For organizations using Teams, you can post an adaptive card with approval buttons directly in a Teams channel or chat.
+For organizations using Teams, use the Microsoft Teams connector's "Post adaptive card and wait for a response" action to post an adaptive card with approval buttons directly in a Teams channel or chat.
 
 ```json
 {
   "Post_Approval_Card_to_Teams": {
-    "type": "ApiConnection",
+    "type": "ApiConnectionWebhook",
     "inputs": {
       "host": {
         "connection": {
           "name": "@parameters('$connections')['teams']['connectionId']"
         }
       },
-      "method": "post",
-      "path": "/v1.0/teams/@{parameters('teamId')}/channels/@{parameters('channelId')}/messages",
       "body": {
+        "notificationUrl": "@listCallbackUrl()",
         "body": {
-          "contentType": "html",
-          "content": "<attachment id=\"approval-card\"></attachment>"
-        },
-        "attachments": [
-          {
-            "id": "approval-card",
-            "contentType": "application/vnd.microsoft.card.adaptive",
-            "content": {
-              "type": "AdaptiveCard",
-              "version": "1.4",
-              "body": [
-                {
-                  "type": "TextBlock",
-                  "text": "Purchase Request Approval",
-                  "weight": "bolder",
-                  "size": "large"
-                },
-                {
-                  "type": "FactSet",
-                  "facts": [
-                    { "title": "Requestor", "value": "@{body('Parse_Request')?['requestorEmail']}" },
-                    { "title": "Amount", "value": "$@{body('Parse_Request')?['amount']}" },
-                    { "title": "Category", "value": "@{body('Parse_Request')?['category']}" }
-                  ]
-                }
-              ],
-              "actions": [
-                {
-                  "type": "Action.Http",
-                  "title": "Approve",
-                  "method": "POST",
-                  "url": "@{listCallbackUrl()}",
-                  "body": "{ \"decision\": \"approve\" }"
-                },
-                {
-                  "type": "Action.Http",
-                  "title": "Reject",
-                  "method": "POST",
-                  "url": "@{listCallbackUrl()}",
-                  "body": "{ \"decision\": \"reject\" }"
-                }
-              ]
-            }
+          "messageBody": "{\n  \"type\": \"AdaptiveCard\",\n  \"version\": \"1.4\",\n  \"body\": [\n    {\n      \"type\": \"TextBlock\",\n      \"text\": \"Purchase Request Approval\",\n      \"weight\": \"Bolder\",\n      \"size\": \"Large\"\n    },\n    {\n      \"type\": \"FactSet\",\n      \"facts\": [\n        { \"title\": \"Requestor\", \"value\": \"@{body('Parse_Request')?['requestorEmail']}\" },\n        { \"title\": \"Amount\", \"value\": \"$@{body('Parse_Request')?['amount']}\" },\n        { \"title\": \"Category\", \"value\": \"@{body('Parse_Request')?['category']}\" }\n      ]\n    }\n  ],\n  \"actions\": [\n    { \"type\": \"Action.Submit\", \"title\": \"Approve\", \"data\": { \"decision\": \"Approve\" } },\n    { \"type\": \"Action.Submit\", \"title\": \"Reject\", \"data\": { \"decision\": \"Reject\" } }\n  ]\n}",
+          "updateMessage": "Response received.",
+          "recipient": {
+            "groupId": "@parameters('teamId')",
+            "channelId": "@parameters('channelId')"
           }
-        ]
-      }
+        }
+      },
+      "path": "/v1.0/teams/conversation/gatherinput/poster/Flow bot/location/@{encodeURIComponent('Channel')}/$subscriptions"
     }
   }
 }
@@ -254,13 +221,20 @@ Some processes need multiple levels of approval. For example, purchases over $5,
         "Manager_Approval": {
           "type": "ApiConnectionWebhook",
           "inputs": {
+            "host": {
+              "connection": {
+                "name": "@parameters('$connections')['office365']['connectionId']"
+              }
+            },
             "body": {
+              "NotificationUrl": "@{listCallbackUrl()}",
               "Message": {
                 "To": "@body('Parse_Request')?['managerEmail']",
                 "Subject": "Approval Needed (Level 1): $@{body('Parse_Request')?['amount']}",
                 "Options": "Approve, Reject"
               }
-            }
+            },
+            "path": "/approvalmail/$subscriptions"
           },
           "runAfter": {}
         },
@@ -273,13 +247,20 @@ Some processes need multiple levels of approval. For example, purchases over $5,
             "VP_Approval": {
               "type": "ApiConnectionWebhook",
               "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['office365']['connectionId']"
+                  }
+                },
                 "body": {
+                  "NotificationUrl": "@{listCallbackUrl()}",
                   "Message": {
                     "To": "@body('Parse_Request')?['vpEmail']",
                     "Subject": "Approval Needed (Level 2): $@{body('Parse_Request')?['amount']} - Manager Approved",
                     "Options": "Approve, Reject"
                   }
-                }
+                },
+                "path": "/approvalmail/$subscriptions"
               },
               "runAfter": {}
             }
@@ -294,13 +275,20 @@ Some processes need multiple levels of approval. For example, purchases over $5,
           "Single_Level_Approval": {
             "type": "ApiConnectionWebhook",
             "inputs": {
+              "host": {
+                "connection": {
+                  "name": "@parameters('$connections')['office365']['connectionId']"
+                }
+              },
               "body": {
+                "NotificationUrl": "@{listCallbackUrl()}",
                 "Message": {
                   "To": "@body('Parse_Request')?['managerEmail']",
                   "Subject": "Approval Needed: $@{body('Parse_Request')?['amount']}",
                   "Options": "Approve, Reject"
                 }
-              }
+              },
+              "path": "/approvalmail/$subscriptions"
             },
             "runAfter": {}
           }
@@ -325,7 +313,7 @@ If you do not use Office 365 or Teams, you can build a custom approval mechanism
     "inputs": {
       "subscribe": {
         "method": "POST",
-        "uri": "@appsetting('ApprovalServiceUrl')/pending",
+        "uri": "@{parameters('ApprovalServiceUrl')}/pending",
         "body": {
           "callbackUrl": "@{listCallbackUrl()}",
           "requestId": "@body('Parse_Request')?['requestId']",
@@ -336,7 +324,7 @@ If you do not use Office 365 or Teams, you can build a custom approval mechanism
       },
       "unsubscribe": {
         "method": "DELETE",
-        "uri": "@appsetting('ApprovalServiceUrl')/pending/@{body('Parse_Request')?['requestId']}"
+        "uri": "@{parameters('ApprovalServiceUrl')}/pending/@{body('Parse_Request')?['requestId']}"
       }
     },
     "runAfter": {
@@ -356,7 +344,22 @@ Approval workflows should not wait forever. Set a timeout so that unanswered app
 {
   "Send_Approval_Email": {
     "type": "ApiConnectionWebhook",
-    "inputs": { ... },
+    "inputs": {
+      "host": {
+        "connection": {
+          "name": "@parameters('$connections')['office365']['connectionId']"
+        }
+      },
+      "body": {
+        "NotificationUrl": "@{listCallbackUrl()}",
+        "Message": {
+          "To": "manager@mycompany.com",
+          "Subject": "Approval Required",
+          "Options": "Approve, Reject"
+        }
+      },
+      "path": "/approvalmail/$subscriptions"
+    },
     "limit": {
       "timeout": "P3D"
     }
@@ -364,7 +367,7 @@ Approval workflows should not wait forever. Set a timeout so that unanswered app
 }
 ```
 
-This sets a 3-day timeout (P3D in ISO 8601 duration format). After 3 days without a response, the action times out. Use a run-after condition to handle the timeout.
+This sets a 3-day timeout (P3D in ISO 8601 duration format). After 3 days without a response, the action is marked as timed out. Use a run-after condition to handle the timeout.
 
 ```json
 {
@@ -372,7 +375,7 @@ This sets a 3-day timeout (P3D in ISO 8601 duration format). After 3 days withou
     "type": "Http",
     "inputs": {
       "method": "POST",
-      "uri": "@appsetting('NotificationApiUrl')/send",
+      "uri": "@{parameters('NotificationApiUrl')}/send",
       "body": {
         "to": "@body('Parse_Request')?['requestorEmail']",
         "message": "Your approval request has expired without a response."
