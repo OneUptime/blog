@@ -144,7 +144,7 @@ aws sts get-session-token \
 
 This returns temporary credentials that have `aws:MultiFactorAuthPresent` set to true. The user then uses those temporary credentials for subsequent CLI commands.
 
-To make this smoother, you can create a helper script:
+To make this smoother, you can create a helper script and source it into your current shell:
 
 ```bash
 #!/bin/bash
@@ -170,6 +170,8 @@ export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
 echo "MFA session active for 12 hours"
 ```
 
+Run it with `source mfa-login.sh` so the exported environment variables stay available to your subsequent CLI commands.
+
 ## Time-Based MFA Requirements
 
 For extra-sensitive operations, you might want to require that MFA was used recently, not just at some point during the session:
@@ -179,7 +181,22 @@ For extra-sensitive operations, you might want to require that MFA was used rece
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "DenyDeleteWithoutRecentMFA",
+            "Sid": "DenyDeleteWithoutMFA",
+            "Effect": "Deny",
+            "Action": [
+                "s3:DeleteBucket",
+                "rds:DeleteDBInstance",
+                "ec2:TerminateInstances"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "BoolIfExists": {
+                    "aws:MultiFactorAuthPresent": "false"
+                }
+            }
+        },
+        {
+            "Sid": "DenyDeleteWithStaleMFA",
             "Effect": "Deny",
             "Action": [
                 "s3:DeleteBucket",
@@ -197,7 +214,7 @@ For extra-sensitive operations, you might want to require that MFA was used rece
 }
 ```
 
-This denies destructive actions if MFA was used more than 300 seconds (5 minutes) ago. The user needs to re-authenticate with MFA to perform these actions, even within an active session.
+This denies destructive actions if MFA was not used, or if it was used more than 300 seconds (5 minutes) ago. The user needs to re-authenticate with MFA to perform these actions, even within an active session.
 
 ## MFA for Assuming Roles
 
