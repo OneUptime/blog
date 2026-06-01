@@ -24,13 +24,16 @@ The DTDL model is the core. It uses a well-defined JSON-LD schema that IoT Centr
 
 ## Step 1: Define the DTDL Model
 
-Start by writing the DTDL model for our environmental sensor. This model defines four telemetry channels, two writable properties for configuration, and one command.
+Start by writing the DTDL model for our environmental sensor. This model defines five telemetry channels, two writable properties for configuration, and two commands.
 
 ```json
 {
   "@id": "dtmi:myorg:EnvironmentalSensor;1",
   "@type": "Interface",
-  "@context": "dtmi:dtdl:context;2",
+  "@context": [
+    "dtmi:iotcentral:context;2",
+    "dtmi:dtdl:context;2"
+  ],
   "displayName": "Environmental Sensor",
   "description": "Multi-sensor device for environmental monitoring",
   "contents": [
@@ -53,7 +56,7 @@ Start by writing the DTDL model for our environmental sensor. This model defines
       "name": "pressure",
       "displayName": "Barometric Pressure",
       "schema": "double",
-      "unit": "hectopascal"
+      "unit": "millibar"
     },
     {
       "@type": "Telemetry",
@@ -93,17 +96,10 @@ Start by writing the DTDL model for our environmental sensor. This model defines
       "writable": false
     },
     {
-      "@type": "Property",
+      "@type": ["Property", "Location"],
       "name": "location",
       "displayName": "Device Location",
-      "schema": {
-        "@type": "Object",
-        "fields": [
-          { "name": "lat", "schema": "double" },
-          { "name": "lon", "schema": "double" },
-          { "name": "alt", "schema": "double" }
-        ]
-      },
+      "schema": "geopoint",
       "writable": false
     },
     {
@@ -200,10 +196,12 @@ const { SymmetricKeySecurityClient } = require('azure-iot-security-symmetric-key
 const scopeId = 'your-scope-id';
 const deviceId = 'env-sensor-001';
 const symmetricKey = 'your-device-key';
+const modelId = 'dtmi:myorg:EnvironmentalSensor;1';
 
 // Configuration defaults
 let reportingInterval = 60;
 let temperatureOffset = 0;
+let telemetryTimer;
 
 async function provisionDevice() {
   // Provision through DPS to get the IoT Hub assignment
@@ -214,6 +212,7 @@ async function provisionDevice() {
     new ProvMqtt(),
     securityClient
   );
+  provClient.setProvisioningPayload({ modelId });
 
   const result = await provClient.register();
   console.log(`Provisioned to hub: ${result.assignedHub}`);
@@ -240,54 +239,64 @@ async function main() {
 
   // Report read-only properties
   const twin = await client.getTwin();
-  twin.properties.reported.update({
+  await updateReportedProperties(twin, {
     firmwareVersion: '1.2.0',
     location: { lat: 47.6062, lon: -122.3321, alt: 56.0 }
   });
+
+  function updateReportedProperties(twin, patch) {
+    return new Promise((resolve, reject) => {
+      twin.properties.reported.update(patch, (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  function acknowledgeWritableProperty(name, value, version) {
+    return updateReportedProperties(twin, {
+      [name]: {
+        value,
+        ac: 200,
+        ad: 'completed',
+        av: version
+      }
+    });
+  }
 
   // Handle writable property updates from IoT Central
   twin.on('properties.desired', (delta) => {
     if (delta.reportingInterval !== undefined) {
       reportingInterval = delta.reportingInterval;
       console.log(`Reporting interval changed to ${reportingInterval}s`);
+      scheduleTelemetry();
 
       // Acknowledge the property update with status
-      twin.properties.reported.update({
-        reportingInterval: {
-          value: reportingInterval,
-          status: 'completed',
-          desiredVersion: delta.$version
-        }
-      });
+      acknowledgeWritableProperty('reportingInterval', reportingInterval, delta.$version).catch(console.error);
     }
 
     if (delta.temperatureOffset !== undefined) {
       temperatureOffset = delta.temperatureOffset;
       console.log(`Temperature offset changed to ${temperatureOffset}`);
 
-      twin.properties.reported.update({
-        temperatureOffset: {
-          value: temperatureOffset,
-          status: 'completed',
-          desiredVersion: delta.$version
-        }
-      });
+      acknowledgeWritableProperty('temperatureOffset', temperatureOffset, delta.$version).catch(console.error);
     }
   });
 
   // Register command handlers
   client.onDeviceMethod('reboot', (req, res) => {
-    const delay = req.payload?.delay || 5;
-    res.send(200, { status: `Rebooting in ${delay} seconds` });
+    const delay = Number.isInteger(req.payload) ? req.payload : 5;
+    res.send(200, `Rebooting in ${delay} seconds`);
   });
 
   client.onDeviceMethod('runDiagnostics', (req, res) => {
     res.send(200, {
-      diagnosticReport: {
-        memoryFree: 45000,
-        uptime: Math.floor(process.uptime()),
-        sensorStatus: 'all sensors operational'
-      }
+      memoryFree: 45000,
+      uptime: Math.floor(process.uptime()),
+      sensorStatus: 'all sensors operational'
     });
   });
 
@@ -301,9 +310,19 @@ async function main() {
     console.log(`Sent telemetry: temp=${data.temperature.toFixed(1)}, humidity=${data.humidity.toFixed(1)}`);
   };
 
+  function scheduleTelemetry() {
+    if (telemetryTimer) {
+      clearInterval(telemetryTimer);
+    }
+
+    telemetryTimer = setInterval(() => {
+      sendTelemetry().catch(console.error);
+    }, reportingInterval * 1000);
+  }
+
   // Initial send and then on interval
   await sendTelemetry();
-  setInterval(sendTelemetry, reportingInterval * 1000);
+  scheduleTelemetry();
 }
 
 main().catch(console.error);
@@ -311,7 +330,7 @@ main().catch(console.error);
 
 ## Step 6: Publish the Template
 
-Once you have defined the model, views, and customizations, click Publish in the template editor. Published templates are immutable - you cannot change the model after publishing. If you need to modify it later, you will need to create a new version of the template.
+Once you have defined the model, views, and customizations, click Publish in the template editor. You can continue to modify and save a device template after publishing, but you must publish again before operators see the updated template. For breaking changes to the device model, create a new version of the template.
 
 Before publishing, double-check:
 
