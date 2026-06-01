@@ -256,6 +256,18 @@ resource "azurerm_virtual_network_peering" "dev_to_hub" {
 For organizations with many subscriptions, create a module that handles the bidirectional peering:
 
 ```hcl
+# modules/vnet-peering/providers.tf
+terraform {
+  required_providers {
+    azurerm = {
+      source                = "hashicorp/azurerm"
+      configuration_aliases = [azurerm.hub, azurerm.spoke]
+    }
+  }
+}
+```
+
+```hcl
 # modules/vnet-peering/main.tf - Reusable cross-subscription peering module
 
 variable "hub_vnet_name" {
@@ -292,8 +304,9 @@ variable "use_remote_gateways" {
   default = false
 }
 
-# Hub-side peering (uses the default provider)
+# Hub-side peering
 resource "azurerm_virtual_network_peering" "hub_to_spoke" {
+  provider                  = azurerm.hub
   name                      = "peer-hub-to-${var.spoke_vnet_name}"
   resource_group_name       = var.hub_resource_group_name
   virtual_network_name      = var.hub_vnet_name
@@ -302,8 +315,9 @@ resource "azurerm_virtual_network_peering" "hub_to_spoke" {
   allow_gateway_transit     = var.allow_gateway_transit
 }
 
-# Spoke-side peering (uses the spoke provider passed via the providers meta-argument)
+# Spoke-side peering
 resource "azurerm_virtual_network_peering" "spoke_to_hub" {
+  provider                  = azurerm.spoke
   name                      = "peer-${var.spoke_vnet_name}-to-hub"
   resource_group_name       = var.spoke_resource_group_name
   virtual_network_name      = var.spoke_vnet_name
@@ -322,45 +336,35 @@ module "peering_prod" {
   source = "./modules/vnet-peering"
 
   providers = {
-    azurerm = azurerm.production  # Spoke-side provider
+    azurerm.hub   = azurerm
+    azurerm.spoke = azurerm.production
   }
 
-  hub_vnet_name           = azurerm_virtual_network.hub.name
-  hub_vnet_id             = azurerm_virtual_network.hub.id
-  hub_resource_group_name = azurerm_resource_group.hub.name
-  spoke_vnet_name         = azurerm_virtual_network.prod.name
-  spoke_vnet_id           = azurerm_virtual_network.prod.id
+  hub_vnet_name             = azurerm_virtual_network.hub.name
+  hub_vnet_id               = azurerm_virtual_network.hub.id
+  hub_resource_group_name   = azurerm_resource_group.hub.name
+  spoke_vnet_name           = azurerm_virtual_network.prod.name
+  spoke_vnet_id             = azurerm_virtual_network.prod.id
   spoke_resource_group_name = azurerm_resource_group.prod.name
-  allow_gateway_transit   = true
+  allow_gateway_transit     = true
 }
 ```
-
-Wait - there is a catch. The module above uses a single provider, but the hub-side peering needs the default provider and the spoke-side needs the spoke provider. You need to configure the module with multiple provider aliases. This requires using the `configuration_aliases` feature:
-
-```hcl
-# modules/vnet-peering/providers.tf
-terraform {
-  required_providers {
-    azurerm = {
-      source                = "hashicorp/azurerm"
-      configuration_aliases = [azurerm.hub, azurerm.spoke]
-    }
-  }
-}
-```
-
-Then update the resources to use the correct provider aliases and pass them in from the calling module.
 
 ## Permission Requirements
 
-The service principal creating the peering needs the `Network Contributor` role (or specifically `Microsoft.Network/virtualNetworks/virtualNetworkPeerings/write`) on both virtual networks. This is the most common point of failure - the principal has access to its own subscription but not the remote VNet.
+The service principal creating the peering needs the `Network Contributor` role (or specifically `Microsoft.Network/virtualNetworks/virtualNetworkPeerings/write`) on the local virtual network where it creates the peering, and read access to the remote virtual network. This is the most common point of failure - the principal has access to its own subscription but not the remote VNet.
 
 ```hcl
 # Grant the production SP permission to read the hub VNet for peering
+variable "production_service_principal_object_id" {
+  description = "Object ID of the production service principal"
+  type        = string
+}
+
 resource "azurerm_role_assignment" "prod_sp_on_hub_vnet" {
   scope                = azurerm_virtual_network.hub.id
   role_definition_name = "Network Contributor"
-  principal_id         = data.azuread_service_principal.production.object_id
+  principal_id         = var.production_service_principal_object_id
 }
 ```
 
@@ -370,7 +374,7 @@ resource "azurerm_role_assignment" "prod_sp_on_hub_vnet" {
 
 **Peering state stuck at "Initiated".** This means only one side of the peering exists. Both sides must be created for the peering to become "Connected."
 
-**Gateway transit conflicts.** Only one peering per VNet can use `use_remote_gateways = true` for a given gateway. If multiple spokes try to use the same gateway, ensure the hub has `allow_gateway_transit = true`.
+**Gateway transit conflicts.** A VNet can use either its own gateway or one remote gateway. Set `use_remote_gateways = true` on only one peering for a spoke VNet, and ensure the matching hub-side peering has `allow_gateway_transit = true`.
 
 ## Wrapping Up
 
