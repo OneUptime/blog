@@ -14,13 +14,13 @@ Instead of ETL-ing data into S3, you write a query that joins an S3 table with a
 
 ## How Federated Queries Work
 
-Athena uses Lambda-based connectors to talk to external data sources. When your query references a federated table, Athena invokes the appropriate Lambda function to fetch the data, then processes it alongside your S3 data.
+Athena uses data source connectors to talk to external data sources. Many connectors that you deploy yourself run as Lambda functions; newer AWS Glue Data Catalog federated connectors use AWS Glue connections, and some newly created connectors no longer require a Lambda function in your account. When your query references a federated table, Athena invokes the appropriate connector to fetch the data, then processes it alongside your S3 data.
 
 ```mermaid
 graph TD
     A[SQL Query] --> B[Amazon Athena]
     B --> C[S3 Data - Direct]
-    B --> D[Lambda Connector]
+    B --> D[Data Source Connector]
     D --> E[DynamoDB]
     D --> F[RDS/Aurora]
     D --> G[Redshift]
@@ -35,7 +35,7 @@ AWS provides pre-built connectors for many data sources. You can also build cust
 AWS maintains connectors for:
 
 - Amazon DynamoDB
-- Amazon RDS (MySQL, PostgreSQL)
+- MySQL and PostgreSQL databases, including Amazon RDS and Aurora
 - Amazon Redshift
 - Amazon CloudWatch Logs
 - Amazon CloudWatch Metrics
@@ -43,9 +43,9 @@ AWS maintains connectors for:
 - Amazon Neptune
 - Apache HBase
 - Redis
-- JDBC sources (generic)
+- Other JDBC databases through database-specific connectors such as Oracle and SQL Server
 
-Each connector is deployed as a Lambda function in your account.
+Connectors that you deploy from the Serverless Application Repository or build with the Athena Query Federation SDK run as Lambda functions in your account.
 
 ## Setting Up a DynamoDB Connector
 
@@ -53,20 +53,28 @@ Let's set up the most common federated query scenario - querying DynamoDB from A
 
 ### Deploy the Connector
 
-The easiest way is through the AWS Serverless Application Repository:
+One CLI-based way to deploy the Lambda connector is through the AWS Serverless Application Repository:
 
 ```bash
-# Deploy the DynamoDB connector from the Serverless Application Repository
+# Create and execute a CloudFormation change set for the DynamoDB connector
 
-aws serverlessrepo create-cloud-formation-change-set \
+CHANGE_SET_ID=$(aws serverlessrepo create-cloud-formation-change-set \
   --application-id arn:aws:serverlessrepo:us-east-1:292517598671:applications/AthenaDynamoDBConnector \
   --stack-name athena-dynamodb-connector \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides '[
-    {"name": "AthenaCatalogName", "value": "dynamodb_catalog"},
-    {"name": "SpillBucket", "value": "my-athena-spill-bucket"},
-    {"name": "DisableSpillEncryption", "value": "false"}
-  ]'
+    {"Name": "AthenaCatalogName", "Value": "dynamodb_catalog"},
+    {"Name": "SpillBucket", "Value": "my-athena-spill-bucket"},
+    {"Name": "DisableSpillEncryption", "Value": "false"}
+  ]' \
+  --query ChangeSetId \
+  --output text)
+
+aws cloudformation execute-change-set \
+  --change-set-name "$CHANGE_SET_ID"
+
+aws cloudformation wait stack-create-complete \
+  --stack-name athena-dynamodb-connector
 ```
 
 The spill bucket is where the connector writes data that's too large to return in a single Lambda response.
@@ -98,7 +106,7 @@ FROM dynamodb_catalog.default.users
 WHERE subscription_tier = 'premium';
 ```
 
-The three-part naming is `catalog.schema.table`. For DynamoDB, the schema is always `default` and the table name matches your DynamoDB table name.
+The three-part naming is `catalog.schema.table`. For a simple DynamoDB connector setup, the schema is `default` and the table name matches your DynamoDB table name. If you configure supplemental metadata in AWS Glue, you can also use the relevant Glue database as the schema.
 
 ## Joining S3 Data with DynamoDB
 
@@ -124,20 +132,30 @@ This query reads events from Parquet files in S3 and user profiles from DynamoDB
 
 ## Setting Up an RDS Connector
 
-For relational databases, use the JDBC connector:
+For relational databases, use the database-specific connector. For PostgreSQL on RDS or Aurora PostgreSQL, use the PostgreSQL connector:
 
 ```bash
-# Deploy the JDBC connector for RDS
-aws serverlessrepo create-cloud-formation-change-set \
-  --application-id arn:aws:serverlessrepo:us-east-1:292517598671:applications/AthenaJdbcConnector \
+# Create and execute a CloudFormation change set for the PostgreSQL connector
+CHANGE_SET_ID=$(aws serverlessrepo create-cloud-formation-change-set \
+  --application-id arn:aws:serverlessrepo:us-east-1:292517598671:applications/AthenaPostgreSQLConnector \
   --stack-name athena-rds-connector \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides '[
-    {"name": "AthenaCatalogName", "value": "rds_catalog"},
-    {"name": "DefaultConnectionString", "value": "postgres://jdbc:postgresql://mydb.cluster-abc123.us-east-1.rds.amazonaws.com:5432/mydb?user=${rds_user}&password=${rds_password}"},
-    {"name": "SpillBucket", "value": "my-athena-spill-bucket"},
-    {"name": "SecretNamePrefix", "value": "athena-rds-"}
-  ]'
+    {"Name": "LambdaFunctionName", "Value": "rds_catalog"},
+    {"Name": "DefaultConnectionString", "Value": "postgres://jdbc:postgresql://mydb.cluster-abc123.us-east-1.rds.amazonaws.com:5432/mydb?${athena-rds-mydb}"},
+    {"Name": "SpillBucket", "Value": "my-athena-spill-bucket"},
+    {"Name": "SecretNamePrefix", "Value": "athena-rds-"},
+    {"Name": "SecurityGroupIds", "Value": "sg-0123456789abcdef0"},
+    {"Name": "SubnetIds", "Value": "subnet-0123456789abcdef0,subnet-abcdef0123456789"}
+  ]' \
+  --query ChangeSetId \
+  --output text)
+
+aws cloudformation execute-change-set \
+  --change-set-name "$CHANGE_SET_ID"
+
+aws cloudformation wait stack-create-complete \
+  --stack-name athena-rds-connector
 ```
 
 Store credentials in AWS Secrets Manager:
@@ -149,10 +167,20 @@ aws secretsmanager create-secret \
   --secret-string '{"username":"analyst","password":"secure-password-here"}'
 ```
 
-Register and query:
+Register the catalog:
+
+```bash
+# Register the PostgreSQL connector as an Athena data catalog
+aws athena create-data-catalog \
+  --name rds_catalog \
+  --type LAMBDA \
+  --parameters "function=arn:aws:lambda:us-east-1:YOUR_ACCOUNT:function:rds_catalog"
+```
+
+Then query:
 
 ```sql
--- Query an RDS PostgreSQL table through the JDBC connector
+-- Query an RDS PostgreSQL table through the PostgreSQL connector
 SELECT
     order_id,
     customer_id,
@@ -242,7 +270,7 @@ Federated queries have different performance characteristics than pure S3 querie
 
 **Network throughput** matters. Data from external sources travels through Lambda, which has bandwidth limits. For large result sets, consider materializing the data to S3 first.
 
-**Predicate pushdown** varies by connector. The DynamoDB connector can push down key conditions, and the JDBC connector pushes down WHERE clauses. But complex expressions might not push down, causing more data to be fetched than necessary.
+**Predicate pushdown** varies by connector. The DynamoDB connector can push down simple predicates and key conditions, and relational database connectors can push down supported filters. But complex expressions might not push down, causing more data to be fetched than necessary.
 
 **Best practices for federated performance:**
 
