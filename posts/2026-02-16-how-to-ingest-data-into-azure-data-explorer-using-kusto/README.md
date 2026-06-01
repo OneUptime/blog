@@ -45,16 +45,16 @@ Before ingesting data, create the destination table. Connect to your ADX cluster
 // Create an ingestion mapping for JSON data
 // This tells ADX how to map JSON fields to table columns
 .create table AppLogs ingestion json mapping 'AppLogsJsonMapping'
-'['
-'  {"column": "Timestamp", "path": "$.timestamp", "datatype": "datetime"},'
-'  {"column": "Level", "path": "$.level", "datatype": "string"},'
-'  {"column": "Service", "path": "$.service", "datatype": "string"},'
-'  {"column": "Message", "path": "$.message", "datatype": "string"},'
-'  {"column": "TraceId", "path": "$.traceId", "datatype": "string"},'
-'  {"column": "UserId", "path": "$.userId", "datatype": "string"},'
-'  {"column": "DurationMs", "path": "$.durationMs", "datatype": "real"},'
-'  {"column": "Properties", "path": "$.properties", "datatype": "dynamic"}'
-']'
+@'[
+  {"column": "Timestamp", "path": "$.timestamp", "datatype": "datetime"},
+  {"column": "Level", "path": "$.level", "datatype": "string"},
+  {"column": "Service", "path": "$.service", "datatype": "string"},
+  {"column": "Message", "path": "$.message", "datatype": "string"},
+  {"column": "TraceId", "path": "$.traceId", "datatype": "string"},
+  {"column": "UserId", "path": "$.userId", "datatype": "string"},
+  {"column": "DurationMs", "path": "$.durationMs", "datatype": "real"},
+  {"column": "Properties", "path": "$.properties", "datatype": "dynamic"}
+]'
 ```
 
 ## Inline Ingestion with .ingest inline
@@ -185,7 +185,7 @@ var kcsb = new KustoConnectionStringBuilder(ingestUri)
 using var ingestClient = KustoIngestFactory.CreateQueuedIngestClient(kcsb);
 
 // Define ingestion properties
-var ingestionProps = new KustoIngestionProperties("mydb", "AppLogs")
+var ingestionProps = new KustoQueuedIngestionProperties("mydb", "AppLogs")
 {
     Format = DataSourceFormat.multijson,
     IngestionMapping = new IngestionMapping
@@ -219,7 +219,7 @@ For continuous ingestion of files landing in blob storage, set up Event Grid not
 ```kql
 // Create a continuous ingestion pipeline from blob storage
 // New files landing in the container are automatically ingested
-.create table AppLogs ingestion batching policy @'{"MaximumBatchingTimeSpan": "00:00:30"}'
+.alter-merge table AppLogs policy ingestionbatching @'{"MaximumBatchingTimeSpan": "00:00:30"}'
 
 // Create an Event Grid data connection (done through Azure portal or CLI)
 // This watches a storage container for new blobs and ingests them automatically
@@ -278,7 +278,7 @@ Track ingestion status and troubleshoot failures:
 | order by FailedOn desc
 | take 20
 
-// Check successful ingestions
+// Check recent direct ingestion commands
 .show commands
 | where CommandType == "DataIngestPull"
 | where StartedOn > ago(1h)
