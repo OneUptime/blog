@@ -17,35 +17,38 @@ This guide covers setting up Alembic, writing migrations, and running them again
 - Python 3.11 or later
 - An Azure SQL Database
 - Azure CLI installed
+- Microsoft ODBC Driver 18 for SQL Server installed
 - Basic SQLAlchemy knowledge
 
 ## Setting Up Azure SQL Database
 
 ```bash
 # Create resources
+SERVER_NAME=alembic-sql-server-$RANDOM
+MY_IP=$(curl -s https://api.ipify.org)
 
 az group create --name alembic-demo-rg --location eastus
 
 az sql server create \
-  --name alembic-sql-server \
+  --name $SERVER_NAME \
   --resource-group alembic-demo-rg \
   --location eastus \
   --admin-user sqladmin \
-  --admin-password SecureP@ss123!
+  --admin-password 'SecureP@ss123!'
 
 az sql db create \
   --name AlembicDemo \
   --resource-group alembic-demo-rg \
-  --server alembic-sql-server \
+  --server $SERVER_NAME \
   --edition Basic
 
 # Allow your IP
 az sql server firewall-rule create \
   --resource-group alembic-demo-rg \
-  --server alembic-sql-server \
+  --server $SERVER_NAME \
   --name dev-access \
-  --start-ip-address 0.0.0.0 \
-  --end-ip-address 255.255.255.255
+  --start-ip-address $MY_IP \
+  --end-ip-address $MY_IP
 ```
 
 ## Project Setup
@@ -53,6 +56,8 @@ az sql server firewall-rule create \
 ```bash
 # Create the project
 mkdir alembic-azure-demo && cd alembic-azure-demo
+mkdir app
+touch app/__init__.py
 python -m venv venv
 source venv/bin/activate
 
@@ -64,7 +69,7 @@ Create a `.env` file with the connection string:
 
 ```env
 # Azure SQL connection string for SQLAlchemy
-DATABASE_URL=mssql+pyodbc://sqladmin:SecureP%40ss123!@alembic-sql-server.database.windows.net:1433/AlembicDemo?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no
+DATABASE_URL=mssql+pyodbc://sqladmin:SecureP%40ss123%21@<your-server-name>.database.windows.net:1433/AlembicDemo?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no
 ```
 
 ## Defining the SQLAlchemy Models
@@ -289,14 +294,35 @@ def upgrade() -> None:
         sa.UniqueConstraint('sku'),
     )
 
-    # Create indexes for frequently queried columns
-    op.create_index('ix_products_category', 'products', ['category'])
-    op.create_index('ix_products_sku', 'products', ['sku'])
+    # Create orders table
+    op.create_table(
+        'orders',
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column('customer_id', sa.Integer(), nullable=False),
+        sa.Column('total_amount', sa.Float(), nullable=True),
+        sa.Column('status', sa.String(length=50), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(['customer_id'], ['customers.id']),
+        sa.PrimaryKeyConstraint('id'),
+    )
+
+    # Create order_items table
+    op.create_table(
+        'order_items',
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column('order_id', sa.Integer(), nullable=False),
+        sa.Column('product_id', sa.Integer(), nullable=False),
+        sa.Column('quantity', sa.Integer(), nullable=False),
+        sa.Column('unit_price', sa.Float(), nullable=False),
+        sa.ForeignKeyConstraint(['order_id'], ['orders.id']),
+        sa.ForeignKeyConstraint(['product_id'], ['products.id']),
+        sa.PrimaryKeyConstraint('id'),
+    )
 
 
 def downgrade() -> None:
-    op.drop_index('ix_products_sku', table_name='products')
-    op.drop_index('ix_products_category', table_name='products')
+    op.drop_table('order_items')
+    op.drop_table('orders')
     op.drop_table('products')
     op.drop_table('customers')
 ```
@@ -351,7 +377,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index('ix_customers_tier', table_name='customers')
-    op.drop_column('customers', 'tier')
+    op.drop_column('customers', 'tier', mssql_drop_default=True)
 ```
 
 ## CI/CD Integration
@@ -379,8 +405,12 @@ jobs:
 
       - name: Install ODBC Driver
         run: |
+          curl -sSL -O https://packages.microsoft.com/config/ubuntu/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)/packages-microsoft-prod.deb
+          sudo dpkg -i packages-microsoft-prod.deb
+          rm packages-microsoft-prod.deb
           sudo apt-get update
           sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+          sudo apt-get install -y unixodbc-dev
 
       - name: Install dependencies
         run: |
