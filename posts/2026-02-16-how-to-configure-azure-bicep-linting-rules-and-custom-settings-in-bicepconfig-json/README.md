@@ -81,7 +81,16 @@ Here is a comprehensive `bicepconfig.json` that I use on production projects:
         "max-variables": {
           "level": "error"
         },
+        "nested-deployment-template-scoping": {
+          "level": "error"
+        },
+        "no-conflicting-metadata": {
+          "level": "warning"
+        },
         "no-deployments-resources": {
+          "level": "warning"
+        },
+        "no-explicit-any": {
           "level": "warning"
         },
         "no-hardcoded-env-urls": {
@@ -97,6 +106,9 @@ Here is a comprehensive `bicepconfig.json` that I use on production projects:
           "level": "warning"
         },
         "no-unused-existing-resources": {
+          "level": "warning"
+        },
+        "no-unused-imports": {
           "level": "warning"
         },
         "no-unused-params": {
@@ -139,6 +151,9 @@ Here is a comprehensive `bicepconfig.json` that I use on production projects:
           "level": "warning",
           "maxAllowedAgeInDays": 730
         },
+        "use-recent-az-powershell-version": {
+          "level": "warning"
+        },
         "use-recent-module-versions": {
           "level": "warning"
         },
@@ -150,6 +165,9 @@ Here is a comprehensive `bicepconfig.json` that I use on production projects:
         },
         "use-safe-access": {
           "level": "warning"
+        },
+        "use-secure-value-for-secure-inputs": {
+          "level": "error"
         },
         "use-stable-resource-identifiers": {
           "level": "warning"
@@ -205,7 +223,7 @@ output connectionString string = storageAccount.listKeys().keys[0].value
 output storageAccountId string = storageAccount.id
 ```
 
-**secure-parameter-default**: Catches secure parameters with default values. A `@secure()` parameter with a default defeats the purpose of the decorator.
+**secure-parameter-default**: Catches secure parameters with hardcoded default values. A `@secure()` parameter with a hardcoded default defeats the purpose of the decorator. Empty strings and expressions that call `newGuid()` are allowed.
 
 **no-hardcoded-env-urls**: Prevents hardcoding Azure environment-specific URLs like `management.azure.com`. Use the `environment()` function instead for portability across Azure clouds (public, government, China).
 
@@ -279,10 +297,14 @@ With aliases configured, module references become clean:
 
 ```bicep
 // Without alias - long and error-prone
-module vnet 'br:mycompanyacr.azurecr.io/bicep/modules/virtual-network:v1.0.0' = {}
+module vnetFullPath 'br:mycompanyacr.azurecr.io/bicep/modules/virtual-network:v1.0.0' = {
+  name: 'vnetDeploy'
+}
 
 // With alias - clean and consistent
-module vnet 'br/CompanyModules:virtual-network:v1.0.0' = {}
+module vnetWithAlias 'br/CompanyModules:virtual-network:v1.0.0' = {
+  name: 'vnetDeploy'
+}
 ```
 
 ## Experimental Features
@@ -292,10 +314,8 @@ Enable experimental Bicep features through the configuration:
 ```json
 {
   "experimentalFeaturesEnabled": {
-    "extensibility": false,
-    "resourceTypedParamsAndOutputs": true,
-    "sourceMapping": true,
-    "userDefinedFunctions": true
+    "assertions": true,
+    "testFramework": true
   }
 }
 ```
@@ -353,8 +373,9 @@ For organizations with multiple Bicep projects, publish a standard `bicepconfig.
 
 Create different configurations for different project types:
 
+bicepconfig.strict.json - For production infrastructure:
+
 ```json
-// bicepconfig.strict.json - For production infrastructure
 {
   "analyzers": {
     "core": {
@@ -367,8 +388,9 @@ Create different configurations for different project types:
 }
 ```
 
+bicepconfig.relaxed.json - For prototyping and POCs:
+
 ```json
-// bicepconfig.relaxed.json - For prototyping and POCs
 {
   "analyzers": {
     "core": {
