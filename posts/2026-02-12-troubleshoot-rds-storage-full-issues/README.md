@@ -43,12 +43,12 @@ SELECT pg_size_pretty(pg_database_size(current_database())) AS database_size;
 
 -- Find the largest tables
 SELECT schemaname, tablename,
-  pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) AS total_size,
-  pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) AS table_size,
-  pg_size_pretty(pg_indexes_size(schemaname || '.' || tablename)) AS index_size
+  pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS total_size,
+  pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS table_size,
+  pg_size_pretty(pg_indexes_size(format('%I.%I', schemaname, tablename)::regclass)) AS index_size
 FROM pg_tables
 WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
+ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC
 LIMIT 20;
 
 -- Check for bloated tables (dead rows taking up space)
@@ -63,8 +63,8 @@ WHERE n_dead_tup > 10000
 ORDER BY n_dead_tup DESC
 LIMIT 20;
 
--- Check WAL (Write-Ahead Log) space usage
-SELECT pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')) AS wal_size;
+-- For RDS PostgreSQL WAL disk usage, check the TransactionLogsDiskUsage
+-- CloudWatch metric. The query below shows WAL retained by replication slots.
 
 -- Check for replication slots that might be holding WAL
 SELECT slot_name, active,
@@ -125,7 +125,7 @@ SHOW autovacuum_vacuum_scale_factor;
 If autovacuum isn't keeping up, tune it:
 
 ```bash
-# Make autovacuum more aggressive for specific tables
+# Make autovacuum more aggressive for this parameter group
 aws rds modify-db-parameter-group \
   --db-parameter-group-name my-param-group \
   --parameters \
@@ -175,7 +175,7 @@ SELECT schemaname, tablename, indexname,
 FROM pg_stat_user_indexes
 WHERE idx_scan = 0
   AND indexrelid NOT IN (
-    SELECT indexrelid FROM pg_constraint WHERE contype IN ('p', 'u')
+    SELECT conindid FROM pg_constraint WHERE contype IN ('p', 'u')
   )
 ORDER BY pg_relation_size(indexrelid) DESC
 LIMIT 20;
@@ -190,15 +190,15 @@ Applications often write to audit, event, or log tables that grow without bound.
 
 ```sql
 -- Find tables that look like logs or audit trails
-SELECT tablename,
-  pg_size_pretty(pg_total_relation_size(tablename::regclass)) AS size,
+SELECT schemaname, relname AS tablename,
+  pg_size_pretty(pg_total_relation_size(relid)) AS size,
   n_live_tup AS row_count
 FROM pg_stat_user_tables
-WHERE tablename LIKE '%log%'
-   OR tablename LIKE '%audit%'
-   OR tablename LIKE '%event%'
-   OR tablename LIKE '%history%'
-ORDER BY pg_total_relation_size(tablename::regclass) DESC;
+WHERE relname LIKE '%log%'
+   OR relname LIKE '%audit%'
+   OR relname LIKE '%event%'
+   OR relname LIKE '%history%'
+ORDER BY pg_total_relation_size(relid) DESC;
 
 -- Delete old log entries (adjust the date and table name)
 DELETE FROM application_logs WHERE created_at < NOW() - INTERVAL '90 days';
