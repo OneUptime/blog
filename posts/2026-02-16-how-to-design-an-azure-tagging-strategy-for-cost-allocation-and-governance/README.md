@@ -79,11 +79,9 @@ resource "azurerm_app_service" "main" {
   })
 }
 
-resource "azurerm_sql_database" "main" {
-  name                = "sqldb-orders-${var.environment}"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  server_name         = azurerm_sql_server.main.name
+resource "azurerm_mssql_database" "main" {
+  name      = "sqldb-orders-${var.environment}"
+  server_id = azurerm_mssql_server.main.id
 
   tags = merge(local.common_tags, {
     Component          = "database"
@@ -110,6 +108,11 @@ param applicationName string
 @description('Owning team')
 param owner string
 
+@description('Globally unique storage account name. Use 3-24 lowercase letters and numbers.')
+@minLength(3)
+@maxLength(24)
+param storageAccountName string
+
 // Combine common tags
 var commonTags = {
   CostCenter: costCenter
@@ -121,7 +124,7 @@ var commonTags = {
 
 // Apply to resources
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
-  name: 'st${applicationName}${toLower(environment)}'
+  name: storageAccountName
   location: resourceGroup().location
   sku: {
     name: 'Standard_ZRS'
@@ -140,11 +143,11 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 Azure Policy ensures that resources without the required tags cannot be created:
 
 ```bash
-# Require CostCenter tag on all resource groups
+# Require CostCenter tag on all resources
 az policy assignment create \
   --name "require-costcenter-tag" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025" \
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b590-94f262ecfa99" \
   --params '{"tagName": {"value": "CostCenter"}}' \
   --enforcement-mode Default
 
@@ -152,7 +155,7 @@ az policy assignment create \
 az policy assignment create \
   --name "require-environment-tag" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025" \
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b590-94f262ecfa99" \
   --params '{"tagName": {"value": "Environment"}}' \
   --enforcement-mode Default
 
@@ -160,7 +163,7 @@ az policy assignment create \
 az policy assignment create \
   --name "require-owner-tag" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025" \
+  --policy "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b590-94f262ecfa99" \
   --params '{"tagName": {"value": "Owner"}}' \
   --enforcement-mode Default
 ```
@@ -185,7 +188,7 @@ az policy assignment create \
 Once tags are in place, use Azure Cost Management to analyze spending by tag:
 
 ```bash
-# Export cost data grouped by CostCenter tag
+# Export cost data for later analysis by tags such as CostCenter
 az costmanagement export create \
   --name "monthly-cost-by-costcenter" \
   --scope "/subscriptions/{subscription-id}" \
@@ -194,7 +197,7 @@ az costmanagement export create \
   --storage-account-id "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Storage/storageAccounts/{sa}" \
   --storage-container "cost-exports" \
   --schedule-status Active \
-  --schedule-recurrence Monthly
+  --recurrence Monthly
 ```
 
 In the Azure portal, navigate to Cost Management and create views filtered by tags:
@@ -214,6 +217,7 @@ Tags enable powerful automation scenarios:
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
 
+subscription_id = "00000000-0000-0000-0000-000000000000"
 credential = DefaultAzureCredential()
 compute_client = ComputeManagementClient(credential, subscription_id)
 
@@ -235,6 +239,13 @@ for vm in compute_client.virtual_machines.list_all():
 ```python
 # Script to find and flag resources past their expiration date
 from datetime import datetime
+from azure.identity import DefaultAzureCredential
+from azure.mgmt.resource import ResourceManagementClient
+from azure.mgmt.resource.resources.models import Tags, TagsPatchResource
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+credential = DefaultAzureCredential()
+resource_client = ResourceManagementClient(credential, subscription_id)
 
 for resource in resource_client.resources.list():
     tags = resource.tags or {}
@@ -245,11 +256,12 @@ for resource in resource_client.resources.list():
         if exp_date < datetime.now():
             print(f"EXPIRED: {resource.name} (expired {expiration})")
             # Tag it for review
-            tags["Status"] = "Expired-PendingDeletion"
-            resource_client.resources.begin_update_by_id(
+            resource_client.tags.begin_update_at_scope(
                 resource.id,
-                api_version="2021-04-01",
-                parameters={"tags": tags}
+                TagsPatchResource(
+                    operation="Merge",
+                    properties=Tags(tags={"Status": "Expired-PendingDeletion"})
+                )
             )
 ```
 
@@ -264,7 +276,7 @@ az group list --query "[?tags.CostCenter==null].{name:name, location:location}" 
 # Bulk tag resources using Azure Resource Graph
 az graph query -q "
   Resources
-  | where tags !has 'CostCenter'
+  | where isnull(tags['CostCenter'])
   | project name, type, resourceGroup, subscriptionId
   | take 100
 "
