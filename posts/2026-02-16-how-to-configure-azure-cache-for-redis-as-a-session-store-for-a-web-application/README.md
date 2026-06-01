@@ -20,7 +20,7 @@ You might wonder why Redis instead of a database or a file system. There are a f
 
 **Built-in expiration**: Redis TTL (time-to-live) handles session expiry automatically. You do not need a background job to clean up stale sessions.
 
-**Atomic operations**: Redis commands are atomic, which eliminates race conditions when multiple requests hit the same session simultaneously.
+**Atomic operations**: Individual Redis commands are atomic, which helps keep single cache operations consistent. You still need to design carefully around concurrent read-modify-write session updates.
 
 **Scalability**: Redis handles thousands of concurrent connections without breaking a sweat. Your session store will not become a bottleneck before your application servers do.
 
@@ -35,7 +35,7 @@ You might wonder why Redis instead of a database or a file system. There are a f
 
 ## Step 1: Create an Azure Cache for Redis Instance
 
-If you do not already have one, create a Redis cache. For session storage, the Standard C1 tier is usually sufficient for small to medium applications.
+If you do not already have one, create a Redis cache. For session storage, the Standard C1 tier is usually sufficient for small to medium applications. Azure Cache for Redis is on a retirement path, so use Azure Managed Redis for new deployments where available; the Azure Cache for Redis command below is mainly for existing customers and subscriptions where new cache creation is still allowed.
 
 ```bash
 # Create a resource group
@@ -49,8 +49,7 @@ az redis create \
   --resource-group rg-session-store \
   --location eastus \
   --sku Standard \
-  --vm-size C1 \
-  --enable-non-ssl-port false
+  --vm-size c1
 ```
 
 Wait for the cache to be provisioned (usually 15-20 minutes), then grab the connection information:
@@ -88,6 +87,8 @@ In your `Program.cs` (or `Startup.cs` if using the older pattern), add the Redis
 // Program.cs - Configure Redis as the distributed cache backend for sessions
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddControllers();
+
 // Add Redis distributed cache
 builder.Services.AddStackExchangeRedisCache(options =>
 {
@@ -115,6 +116,8 @@ builder.Services.AddSession(options =>
 
 var app = builder.Build();
 
+app.UseRouting();
+
 // Enable session middleware - must be before MapControllers/UseEndpoints
 app.UseSession();
 
@@ -134,7 +137,7 @@ In your `appsettings.json`:
 }
 ```
 
-The `abortConnect=False` parameter is important. It tells the client to silently retry connections rather than throwing an exception if Redis is momentarily unavailable.
+The `abortConnect=False` parameter is important. It lets the StackExchange.Redis connection multiplexer keep retrying instead of failing the initial connection permanently if Redis is momentarily unavailable.
 
 ### Use Sessions in Your Controllers
 
@@ -192,10 +195,13 @@ npm install express-session connect-redis redis
 // app.js - Configure Redis session store for Express
 const express = require('express');
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
+const { RedisStore } = require('connect-redis');
 const { createClient } = require('redis');
 
 const app = express();
+
+// Required when secure cookies are set behind a TLS-terminating proxy
+app.set('trust proxy', 1);
 
 // Create and connect the Redis client
 const redisClient = createClient({
@@ -215,11 +221,6 @@ const redisClient = createClient({
 // Handle Redis connection errors gracefully
 redisClient.on('error', (err) => {
     console.error('Redis session store error:', err.message);
-});
-
-// Connect to Redis before starting the server
-redisClient.connect().then(() => {
-    console.log('Connected to Redis session store');
 });
 
 // Initialize the Redis session store
@@ -273,8 +274,19 @@ app.post('/api/logout', (req, res) => {
     });
 });
 
-app.listen(3000, () => {
-    console.log('Server running on port 3000');
+async function start() {
+    // Connect to Redis before starting the server
+    await redisClient.connect();
+    console.log('Connected to Redis session store');
+
+    app.listen(3000, () => {
+        console.log('Server running on port 3000');
+    });
+}
+
+start().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
 });
 ```
 
@@ -282,7 +294,7 @@ app.listen(3000, () => {
 
 When using Redis for session storage, pay attention to these security aspects:
 
-**Always use TLS**: Azure Cache for Redis supports TLS on port 6380. Never use the non-SSL port (6379) for session data. The `--enable-non-ssl-port false` flag in our setup ensures this.
+**Always use TLS**: Azure Cache for Redis supports TLS on port 6380. Never use the non-SSL port (6379) for session data. New Basic, Standard, and Premium caches disable non-TLS access by default; only use `--enable-non-ssl-port` if you explicitly need to enable port 6379.
 
 **Rotate access keys periodically**: Azure provides two access keys so you can rotate one while the other is still in use. Build this into your operations workflow.
 
@@ -296,14 +308,14 @@ When using Redis for session storage, pay attention to these security aspects:
 
 Redis is reliable, but networks are not. Your application should handle Redis outages without crashing.
 
-For ASP.NET Core, the StackExchange.Redis client handles retries internally. The `abortConnect=False` setting ensures the application does not crash if Redis is temporarily unavailable.
+For ASP.NET Core, the StackExchange.Redis client handles reconnect attempts internally. The `abortConnect=False` setting helps the application keep retrying if Redis is temporarily unavailable, but session operations can still fail while the cache is unreachable.
 
 For Node.js, add a fallback mechanism:
 
 ```javascript
 // Middleware to handle Redis unavailability gracefully
 app.use((req, res, next) => {
-    if (!redisClient.isOpen) {
+    if (!redisClient.isReady) {
         // Redis is down - you can either:
         // 1. Continue without session (degraded mode)
         console.warn('Redis unavailable, session data may be missing');
