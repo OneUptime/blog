@@ -14,13 +14,14 @@ Azure Repos supports PR templates through a simple markdown file in your reposit
 
 ## How PR Templates Work in Azure Repos
 
-When you create a pull request in Azure Repos, the description field is initially blank. But if your repository contains a specially named markdown file, Azure Repos will automatically populate the description with the content of that file. The PR author then fills in the sections before submitting.
+When you create a pull request in Azure Repos, the description field normally starts with the standard generated description, such as commit messages. But if your repository contains a specially named markdown file, Azure Repos will automatically populate the description with the content of that file instead. The PR author then fills in the sections before submitting.
 
-The template file must be named and located in one of these locations (in order of priority):
+The template file must be named `pull_request_template.md` or `pull_request_template.txt`, stored in the default branch of the repository, and located in one of these locations (in order of priority):
 
-1. `pull_request_template.md` in the repository root
-2. `.azuredevops/pull_request_template.md`
+1. `.azuredevops/pull_request_template.md`
+2. `.vsts/pull_request_template.md`
 3. `docs/pull_request_template.md`
+4. `pull_request_template.md` in the repository root
 
 I recommend `.azuredevops/pull_request_template.md` because it keeps the repository root clean and makes it clear this is an Azure DevOps-specific configuration.
 
@@ -78,6 +79,7 @@ Save this as `.azuredevops/pull_request_template.md` in your repository:
 # Create the template directory and file
 
 mkdir -p .azuredevops
+touch .azuredevops/pull_request_template.md
 ```
 
 Then commit the file to your main branch.
@@ -210,7 +212,7 @@ AB#
 
 ## Using Multiple Templates
 
-Azure Repos supports only one default template per repository. If you need different templates for different types of changes, there are a few workarounds.
+Azure Repos supports one default template per repository, branch-specific templates for PRs that target specific branches, and additional templates that PR authors can append from the "Add a template" dropdown. If you need different templates for different types of changes, there are a few options.
 
 ### Approach 1: Include All Sections with Instructions to Delete
 
@@ -248,17 +250,17 @@ Put all the sections in one template with instructions at the top:
 
 ### Approach 2: Additional Templates in a Directory
 
-While Azure Repos only auto-populates from one template, you can store additional templates in the repository and link to them from the default template:
+While Azure Repos auto-populates the description from one default or branch-specific template, you can store additional templates in one of the supported template directories and let authors append them from the "Add a template" dropdown:
 
 ```markdown
 ## Summary
 
 
 ## Template
-<!-- Choose the appropriate template and copy its content below:
-  - [API Change Template](.azuredevops/templates/api-change.md)
-  - [UI Change Template](.azuredevops/templates/ui-change.md)
-  - [Infra Change Template](.azuredevops/templates/infra-change.md)
+<!-- Use Add a template to append one of these, if applicable:
+  - .azuredevops/pull_request_template/api-change.md
+  - .azuredevops/pull_request_template/ui-change.md
+  - .azuredevops/pull_request_template/infra-change.md
 -->
 
 ## Related Work Items
@@ -276,11 +278,53 @@ Configure a build validation policy that checks whether the PR description follo
 ```python
 # validate_pr_description.py
 # Run this in a pipeline build validation policy
+import json
 import os
+import re
 import sys
+import urllib.parse
+import urllib.request
 
-# Get the PR description from the pipeline environment
-pr_description = os.environ.get('SYSTEM_PULLREQUEST_DESCRIPTION', '')
+collection_uri = os.environ.get('SYSTEM_COLLECTIONURI')
+project = os.environ.get('SYSTEM_TEAMPROJECT')
+repository_id = os.environ.get('BUILD_REPOSITORY_ID')
+pull_request_id = os.environ.get('SYSTEM_PULLREQUEST_PULLREQUESTID')
+access_token = os.environ.get('SYSTEM_ACCESSTOKEN')
+
+missing_env = [
+    name for name, value in {
+        'SYSTEM_COLLECTIONURI': collection_uri,
+        'SYSTEM_TEAMPROJECT': project,
+        'BUILD_REPOSITORY_ID': repository_id,
+        'SYSTEM_PULLREQUEST_PULLREQUESTID': pull_request_id,
+        'SYSTEM_ACCESSTOKEN': access_token,
+    }.items()
+    if not value
+]
+
+if missing_env:
+    print(f"Missing required pipeline variables: {', '.join(missing_env)}")
+    print("Run this from an Azure Repos build validation policy and allow scripts to access the OAuth token.")
+    sys.exit(1)
+
+project_path = urllib.parse.quote(project, safe='')
+url = (
+    f"{collection_uri}{project_path}/_apis/git/repositories/"
+    f"{repository_id}/pullRequests/{pull_request_id}?api-version=7.1"
+)
+
+request = urllib.request.Request(
+    url,
+    headers={
+        'Authorization': f'Bearer {access_token}',
+        'Accept': 'application/json',
+    },
+)
+
+with urllib.request.urlopen(request) as response:
+    pull_request = json.load(response)
+
+pr_description = pull_request.get('description', '')
 
 required_sections = [
     '## Summary',
@@ -300,10 +344,13 @@ if missing_sections:
 
 # Check that Summary section is not empty
 summary_start = pr_description.find('## Summary')
-next_section = pr_description.find('##', summary_start + 1)
-summary_content = pr_description[summary_start:next_section].strip()
+next_section = pr_description.find('##', summary_start + len('## Summary'))
+if next_section == -1:
+    next_section = len(pr_description)
+summary_content = pr_description[summary_start + len('## Summary'):next_section].strip()
+summary_content = re.sub(r'<!--.*?-->', '', summary_content, flags=re.DOTALL).strip()
 
-if len(summary_content.split('\n')) < 2 or len(summary_content) < 30:
+if len(summary_content) < 20:
     print("The Summary section appears to be empty. Please describe your changes.")
     sys.exit(1)
 
@@ -316,11 +363,6 @@ print("PR description validation passed.")
 # pr-validation.yml - validates PR descriptions
 trigger: none
 
-pr:
-  branches:
-    include:
-      - main
-
 pool:
   vmImage: 'ubuntu-latest'
 
@@ -332,8 +374,10 @@ steps:
   - script: python scripts/validate_pr_description.py
     displayName: 'Validate PR description'
     env:
-      SYSTEM_PULLREQUEST_DESCRIPTION: $(System.PullRequest.Description)
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 ```
+
+For Azure Repos, configure this pipeline as a build validation branch policy on the target branch, such as `main`. Azure Repos Git does not use YAML `pr:` triggers; the branch policy is what queues the validation build.
 
 ## Team Adoption Tips
 
