@@ -22,7 +22,7 @@ Azure Functions v4 for Node.js uses a new programming model that is cleaner and 
 npm install -g azure-functions-core-tools@4
 
 # Create a new Functions project
-func init blob-functions --javascript --model V4
+func init blob-functions --worker-runtime node --language javascript --model V4
 cd blob-functions
 
 # Install dependencies
@@ -49,13 +49,12 @@ Update `local.settings.json` with your Azure Storage connection.
     "IsEncrypted": false,
     "Values": {
         "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;AccountName=mystore;AccountKey=your-key;EndpointSuffix=core.windows.net",
-        "FUNCTIONS_WORKER_RUNTIME": "node",
-        "AzureWebJobsFeatureFlags": "EnableWorkerIndexing"
+        "FUNCTIONS_WORKER_RUNTIME": "node"
     }
 }
 ```
 
-For local development, you can use the Azure Storage Emulator or Azurite.
+For local development, you can use Azurite.
 
 ```bash
 # Install and start Azurite for local storage emulation
@@ -379,7 +378,7 @@ app.storageBlob("robustProcessor", {
             context.error(`Stack trace: ${error.stack}`);
 
             // Throw the error to trigger a retry
-            // Azure Functions automatically retries blob triggers up to 5 times
+            // Azure Functions tries blob triggers a total of 5 times by default
             throw error;
         }
     }
@@ -433,7 +432,7 @@ az functionapp create \
   --storage-account functionsdemostore \
   --consumption-plan-location eastus \
   --runtime node \
-  --runtime-version 20 \
+  --runtime-version 22 \
   --functions-version 4
 
 # Deploy the functions
