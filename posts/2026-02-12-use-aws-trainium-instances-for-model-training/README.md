@@ -8,9 +8,9 @@ Description: Learn how to use AWS Trainium-powered EC2 Trn1 instances for cost-e
 
 ---
 
-AWS Trainium is a custom ML chip designed by Amazon specifically for training deep learning models. EC2 Trn1 instances powered by Trainium deliver up to 50% cost savings compared to GPU instances for training, while maintaining competitive performance. If your training workloads are eating through your GPU budget, Trainium is worth a serious look.
+AWS Trainium is a custom ML chip designed by Amazon specifically for training deep learning models. EC2 Trn1 instances powered by Trainium deliver up to 50% cost-to-train savings compared to comparable GPU instances, while maintaining competitive performance. If your training workloads are eating through your GPU budget, Trainium is worth a serious look.
 
-The Trainium ecosystem has matured significantly, with support for PyTorch, JAX, and most popular model architectures. This guide walks you through setting up Trn1 instances and running your first training job.
+The Trainium ecosystem has matured significantly, with support for PyTorch, JAX, and many popular model architectures. The PyTorch examples below target the torch-neuronx/PyTorch XLA stack used by Neuron 2.29 and PyTorch 2.9. Starting with Neuron 2.30, AWS no longer supports PyTorch/XLA for Trainium training, so check the latest Neuron training path before choosing versions for a new project.
 
 ## Trn1 Instance Specifications
 
@@ -25,27 +25,37 @@ The trn1n.32xlarge variant doubles the network bandwidth, which is critical for 
 ## Step 1: Launch a Trn1 Instance
 
 ```bash
-# Launch a Trn1 instance with the Neuron Deep Learning AMI
+# Find the latest Neuron PyTorch 2.9 DLAMI for Ubuntu 24.04 in your Region
+AMI_ID=$(aws ec2 describe-images \
+  --owners amazon \
+  --filters "Name=name,Values=Deep Learning AMI Neuron PyTorch 2.9 (Ubuntu 24.04)*" \
+  --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' \
+  --output text)
+ROOT_DEVICE_NAME=$(aws ec2 describe-images \
+  --image-ids "$AMI_ID" \
+  --query 'Images[0].RootDeviceName' \
+  --output text)
 
+# Launch a Trn1 instance with the Neuron Deep Learning AMI
 aws ec2 run-instances \
-  --image-id ami-0abc123-neuron-dlami \
+  --image-id "$AMI_ID" \
   --instance-type trn1.32xlarge \
   --count 1 \
   --key-name my-training-key \
   --subnet-id subnet-0abc123 \
   --security-group-ids sg-0abc123 \
   --iam-instance-profile Name=TrainingInstanceRole \
-  --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":500,"VolumeType":"gp3","Iops":10000,"Throughput":500}}]' \
+  --block-device-mappings "DeviceName=${ROOT_DEVICE_NAME},Ebs={VolumeSize=512,VolumeType=gp3,Iops=10000,Throughput=500}" \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=trn1-training}]'
 ```
 
-The large root volume and high IOPS are important for storing training data and checkpoints locally.
+AWS recommends at least a 512 GB primary EBS volume for Trn1, Trn2, and Trn3 instances. Confirm the root device name for your selected AMI before changing the block device mapping.
 
 ## Step 2: Set Up the Environment
 
 ```bash
 # SSH into the instance
-ssh -i my-training-key.pem ec2-user@<instance-ip>
+ssh -i my-training-key.pem ubuntu@<instance-ip>
 
 # Verify Trainium devices
 neuron-ls
@@ -55,17 +65,19 @@ neuron-ls
 neuron-top
 
 # Activate the pre-configured Neuron environment
-source /opt/aws_neuron_venv_pytorch/bin/activate
+source /opt/aws_neuronx_venv_pytorch_2_9/bin/activate
 
 # Verify PyTorch Neuron installation
 python3 -c "
 import torch
+import torch_neuronx
 import torch_xla
 import torch_xla.core.xla_model as xm
 
 device = xm.xla_device()
 print(f'XLA device: {device}')
 print(f'Device type: {device.type}')
+print(f'torch-neuronx: {torch_neuronx.__version__}')
 "
 ```
 
@@ -81,8 +93,38 @@ import torch_xla
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.parallel_loader as pl
 import torch_xla.distributed.xla_multiprocessing as xmp
+import torch_xla.runtime as xr
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+num_epochs = int(os.environ.get('NUM_EPOCHS', '1'))
+
+class TinyTextDataset(Dataset):
+    def __init__(self, tokenizer):
+        texts = [
+            "Trainium accelerates model training.",
+            "Neuron compiles PyTorch graphs for AWS accelerators.",
+        ] * 512
+        encodings = tokenizer(
+            texts,
+            padding="max_length",
+            truncation=True,
+            max_length=64,
+            return_tensors="pt",
+        )
+        self.input_ids = encodings["input_ids"]
+        self.attention_mask = encodings["attention_mask"]
+
+    def __len__(self):
+        return self.input_ids.size(0)
+
+    def __getitem__(self, idx):
+        input_ids = self.input_ids[idx]
+        return {
+            "input_ids": input_ids,
+            "attention_mask": self.attention_mask[idx],
+            "labels": input_ids.clone(),
+        }
 
 def train_fn(index):
     """Training function that runs on each NeuronCore"""
@@ -91,6 +133,9 @@ def train_fn(index):
 
     # Load model
     model_name = os.environ.get('MODEL_NAME', 'gpt2')
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(model_name)
     model = model.to(device)
 
@@ -98,11 +143,11 @@ def train_fn(index):
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
 
     # Create data loader
-    train_dataset = load_training_data()
+    train_dataset = TinyTextDataset(tokenizer)
     train_sampler = torch.utils.data.distributed.DistributedSampler(
         train_dataset,
-        num_replicas=xm.xrt_world_size(),
-        rank=xm.get_ordinal(),
+        num_replicas=xr.world_size(),
+        rank=xr.global_ordinal(),
         shuffle=True
     )
     train_loader = DataLoader(
@@ -132,7 +177,7 @@ def train_fn(index):
 
             loss.backward()
 
-            # XLA requires explicit mark_step() to execute the computation graph
+            # xm.optimizer_step() applies gradients across workers and marks the XLA step.
             xm.optimizer_step(optimizer)
             optimizer.zero_grad()
 
@@ -149,9 +194,13 @@ def train_fn(index):
 
 
 if __name__ == '__main__':
-    # Launch training across all NeuronCores
-    # For trn1.32xlarge with 16 chips x 2 cores = 32 workers
-    xmp.spawn(train_fn, nprocs=32)
+    # Launch training across all NeuronCores.
+    # With torchrun, one process is already started per worker.
+    if "LOCAL_RANK" in os.environ:
+        train_fn(int(os.environ["LOCAL_RANK"]))
+    else:
+        # For trn1.32xlarge with 16 chips x 2 cores = 32 workers
+        xmp.spawn(train_fn, nprocs=32)
 ```
 
 ## Step 4: Run Training
@@ -163,8 +212,8 @@ export NEURON_CC_FLAGS="--auto-cast=all --auto-cast-type=bf16 --model-type=trans
 # For single-instance training across all 32 NeuronCores
 python3 train_trainium.py
 
-# Or use torchrun for compatibility
-XLA_USE_BF16=1 torchrun --nproc_per_node=32 train_trainium.py
+# Or use torchrun for compatibility with Neuron's distributed examples
+XLA_DOWNCAST_BF16=1 torchrun --nproc_per_node=32 train_trainium.py
 ```
 
 ## Step 5: Multi-Node Distributed Training
@@ -173,7 +222,7 @@ For training across multiple Trn1 instances, use the EFA networking.
 
 ```bash
 # On the master node (node 0)
-XLA_USE_BF16=1 torchrun \
+XLA_DOWNCAST_BF16=1 torchrun \
   --nproc_per_node=32 \
   --nnodes=4 \
   --node_rank=0 \
@@ -182,7 +231,7 @@ XLA_USE_BF16=1 torchrun \
   train_trainium.py
 
 # On worker nodes (1, 2, 3) - change node_rank accordingly
-XLA_USE_BF16=1 torchrun \
+XLA_DOWNCAST_BF16=1 torchrun \
   --nproc_per_node=32 \
   --nnodes=4 \
   --node_rank=1 \
@@ -243,13 +292,14 @@ trainer.save_model("./final_model")
 ```
 
 ```bash
-# Run with Neuron distributed launcher
-neuron_parallel_compile python3 train_hf.py
+# Precompile graphs, then run the same command normally
+NEURON_CC_FLAGS="--model-type=transformer" neuron_parallel_compile torchrun --nproc_per_node=32 train_hf.py
+NEURON_CC_FLAGS="--model-type=transformer" torchrun --nproc_per_node=32 train_hf.py
 ```
 
 ## Cost Comparison
 
-| Instance | Hourly Cost | Training Throughput | Cost to Train (relative) |
+| Instance | Example Hourly Cost | Training Throughput | Cost to Train (relative) |
 |---|---|---|---|
 | p4d.24xlarge (8x A100) | $32.77 | Baseline | $1.00 |
 | trn1.32xlarge (16 Trainium) | $21.50 | ~Similar | $0.66 |
@@ -274,8 +324,8 @@ Models with highly custom operators or unusual architectures may need workaround
 # Monitor NeuronCore utilization
 neuron-top
 
-# Check memory usage across all devices
-neuron-monitor | grep -E "mem_used|utilization"
+# Check memory usage and utilization across all devices
+neuron-monitor | grep -E "memory_used|neuroncore_utilization"
 
 # View compiler logs for optimization insights
 ls /tmp/neuron_compile_cache/
@@ -283,4 +333,4 @@ ls /tmp/neuron_compile_cache/
 
 ## Wrapping Up
 
-AWS Trainium offers a compelling alternative to GPUs for deep learning training. The 30-50% cost savings are real, and the software ecosystem (PyTorch XLA, Hugging Face optimum-neuron) has matured to the point where porting most training scripts is straightforward. The main investment is adapting your code to use PyTorch XLA patterns, which is a one-time effort. For organizations running significant training workloads, the cost savings add up fast. Start with a well-supported model architecture, benchmark against your current GPU setup, and scale from there.
+AWS Trainium offers a compelling alternative to GPUs for deep learning training. The 30-50% cost savings are real, and the software ecosystem has matured to the point where porting most training scripts is straightforward when you choose a supported Neuron framework version. For Neuron 2.29 and PyTorch 2.9, the main investment is adapting your code to use PyTorch XLA patterns, which is a one-time effort. For organizations running significant training workloads, the cost savings add up fast. Start with a well-supported model architecture, benchmark against your current GPU setup, and scale from there.
