@@ -10,6 +10,8 @@ Description: Learn how to assign Azure Blueprints to multiple subscriptions, upd
 
 Creating an Azure Blueprint definition is only half the story. The real work is assigning it consistently across your subscriptions and keeping those assignments updated as your governance requirements evolve. When you have dozens or hundreds of subscriptions, manually assigning and updating Blueprints through the portal is not viable. You need automation.
 
+Important: Azure Blueprints is still in preview, and Microsoft has announced that Blueprints will be deprecated on July 11, 2026. For new governance implementations, plan around Template Specs and Deployment Stacks. The examples in this post are for maintaining existing Blueprint assignments before that deprecation date.
+
 In this post, I will cover how to assign Blueprints to subscriptions, how to update assignments when new versions are published, how to handle assignment failures, and how to automate the entire lifecycle at scale.
 
 ## Blueprint Assignment Basics
@@ -202,11 +204,15 @@ az rest --method get \
 ```
 
 Possible provisioning states:
-- **Creating** - the assignment is being processed
-- **Succeeded** - all artifacts were deployed successfully
-- **Failed** - one or more artifacts failed to deploy
-- **Updating** - the assignment is being updated to a new version
-- **Deleting** - the assignment is being removed
+- **creating** - the assignment resource has been created and processing is starting
+- **validating** - the assignment is being validated
+- **waiting** - the assignment is waiting for the next deployment step
+- **deploying** - artifacts are being deployed
+- **locking** - Blueprint locks are being applied
+- **succeeded** - all artifacts were deployed successfully
+- **failed** - one or more artifacts failed to deploy
+- **cancelling** or **canceled** - the assignment operation is being canceled or was canceled
+- **deleting** - the assignment is being removed
 
 ### List All Assignments for a Subscription
 
@@ -302,18 +308,18 @@ This phased approach catches issues before they affect production.
 
 ### Diagnosing Failures
 
-When an assignment fails, check the assignment status for error details:
+When an assignment fails, check the assignment operations for deployment error details:
 
 ```bash
-# Get detailed assignment status including errors
+# Get detailed assignment operation results including deployment errors
 az rest --method get \
-  --url "https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Blueprint/blueprintAssignments/baseline-v1?api-version=2018-11-01-preview" \
-  --query "properties.status"
+  --url "https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Blueprint/blueprintAssignments/baseline-v1/assignmentOperations?api-version=2018-11-01-preview" \
+  --query "value[].properties.deployments[].{jobId:jobId, state:jobState, error:result.error}"
 ```
 
 Common failure reasons:
 
-**Permission errors**: The managed identity created by the assignment does not have sufficient permissions. The identity needs Owner role on the subscription to deploy all artifact types (policies, RBAC, resource groups, and ARM templates).
+**Permission errors**: The managed identity created by the assignment does not have sufficient permissions. For system-assigned assignments created through the REST API, the Azure Blueprints service principal needs the Owner role on the assigned subscription to deploy all artifact types (policies, RBAC, resource groups, and ARM templates). In the portal, Azure grants and revokes that role automatically for the deployment.
 
 **Template deployment failures**: An ARM template artifact fails because of resource naming conflicts, quota limits, or unsupported features in the target region.
 
@@ -362,7 +368,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v1
+      - uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -390,7 +396,7 @@ jobs:
               --query "properties.provisioningState" -o tsv)
 
             echo "Subscription $SUB_ID: $STATUS"
-            if [ "$STATUS" != "Succeeded" ]; then
+            if [ "$STATUS" != "succeeded" ]; then
               ALL_SUCCEEDED=false
             fi
           done
@@ -406,7 +412,7 @@ jobs:
 After assignments are in place, monitor ongoing compliance:
 
 ```bash
-# Check all blueprint assignments across a management group
+# Check all blueprint assignments across subscriptions visible to the current account
 # This helps identify assignments that have drifted or failed
 for SUB_ID in $(az account list --query "[].id" -o tsv); do
     ASSIGNMENTS=$(az rest --method get \
