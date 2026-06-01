@@ -14,7 +14,7 @@ This guide covers the full setup of cross-tenant B2B collaboration, from basic g
 
 ## How B2B Collaboration Works
 
-When you invite a guest user, they do not create a new account in your tenant. Instead, they authenticate with their home organization and receive a token that your tenant recognizes:
+When you invite a guest user, they do not create a password or credentials in your tenant. A guest user object is created in your directory, and the user authenticates with their home organization to receive a token that your tenant recognizes:
 
 ```mermaid
 sequenceDiagram
@@ -26,7 +26,7 @@ sequenceDiagram
     YourTenant->>HomeIdP: Redirects for authentication
     Guest->>HomeIdP: Authenticates with home credentials + MFA
     HomeIdP->>YourTenant: Returns authentication token
-    YourTenant->>YourTenant: Creates guest user object (first time)
+    YourTenant->>YourTenant: Finds or creates guest user object
     YourTenant->>YourTenant: Evaluates Conditional Access policies
     YourTenant->>App: Issues access token for the application
     App->>Guest: Grants access based on assigned permissions
@@ -68,23 +68,15 @@ Control who can send invitations:
 You can allowlist or blocklist specific domains:
 
 ```powershell
-# Configure collaboration restrictions to only allow specific partner domains
-
-Connect-MgGraph -Scopes "Policy.ReadWrite.Authorization"
-
-$params = @{
-    AllowedTargetTenants = @(
-        "partner1.com",
-        "partner2.com",
-        "consultant-firm.com"
-    )
-    IsAllowedList = $true  # true = allowlist, false = blocklist
-}
-
-# Note: This is configured through the external collaboration settings
-# Using the Graph API or the portal
-Write-Host "Configure allowed domains in the External collaboration settings portal page."
-Write-Host "Or use the Cross-tenant access settings for more granular control."
+# Configure collaboration restrictions in the External collaboration settings portal page.
+# Under Collaboration restrictions, select "Allow invitations only to the specified domains"
+# and enter one domain per line:
+#
+# partner1.com
+# partner2.com
+# consultant-firm.com
+#
+# Use Cross-tenant access settings for tenant-level inbound and outbound controls.
 ```
 
 ## Step 2: Configure Cross-Tenant Access Settings
@@ -145,7 +137,7 @@ For trusted partners, you can configure more permissive settings like trusting t
 3. On the Trust settings tab, configure:
    - **Trust multi-factor authentication from the partner tenant**: If enabled, guests from this partner do not need to re-register MFA in your tenant
    - **Trust compliant devices**: Accept device compliance claims from the partner
-   - **Trust hybrid joined devices**: Accept hybrid Azure AD join claims
+   - **Trust hybrid Microsoft Entra joined devices**: Accept hybrid Microsoft Entra join claims
 
 Trusting MFA from a partner is a significant improvement to the user experience. Without it, guest users must register MFA separately in your tenant, which is confusing and creates friction.
 
@@ -191,6 +183,8 @@ For automated onboarding workflows:
 
 ```powershell
 # Invite a guest and immediately assign them to a group and application
+Connect-MgGraph -Scopes "User.Invite.All", "GroupMember.ReadWrite.All"
+
 $invitation = New-MgInvitation `
     -InvitedUserDisplayName "Jane Smith" `
     -InvitedUserEmailAddress "jane@partner.com" `
@@ -213,7 +207,7 @@ Guest users should be subject to appropriate security controls. Create Condition
 
 ```powershell
 # Create a Conditional Access policy for guest users
-# Requires MFA for all guest sign-ins from untrusted locations
+# Requires MFA for all guest sign-ins
 Connect-MgGraph -Scopes "Policy.ReadWrite.ConditionalAccess"
 
 $params = @{
@@ -267,20 +261,32 @@ This is useful for partner portals, community applications, or any scenario wher
 Guest users should not exist indefinitely without review. Set up access reviews:
 
 ```powershell
-# Create an access review for guest users
+# Create an access review for guest users with direct assignment to Microsoft 365 groups
 Connect-MgGraph -Scopes "AccessReview.ReadWrite.All"
 
 $params = @{
     DisplayName = "Quarterly Guest User Review"
-    DescriptionForAdmins = "Review all guest users and remove those who no longer need access."
+    DescriptionForAdmins = "Review guest users assigned to Microsoft 365 groups and remove those who no longer need access."
+    InstanceEnumerationScope = @{
+        "@odata.type" = "#microsoft.graph.accessReviewQueryScope"
+        Query = "/groups?`$filter=(groupTypes/any(c:c eq 'Unified'))"
+        QueryType = "MicrosoftGraph"
+    }
     Scope = @{
-        Query = "./members/microsoft.graph.user/?`$count=true&`$filter=(userType eq 'Guest')"
+        "@odata.type" = "#microsoft.graph.accessReviewQueryScope"
+        Query = "./members/microsoft.graph.user/?`$filter=(userType eq 'Guest')"
         QueryType = "MicrosoftGraph"
     }
     # Group owners review the guests in their groups
     Reviewers = @(
         @{
-            Query = "./manager"
+            Query = "./owners"
+            QueryType = "MicrosoftGraph"
+        }
+    )
+    FallbackReviewers = @(
+        @{
+            Query = "/users/SECURITY_ADMIN_USER_ID"
             QueryType = "MicrosoftGraph"
         }
     )
@@ -304,7 +310,8 @@ $params = @{
     }
 }
 
-Write-Host "Configure access reviews through the Entra admin center or Identity Governance."
+New-MgIdentityGovernanceAccessReviewDefinition -BodyParameter $params
+Write-Host "Guest user access review created."
 ```
 
 ## Step 7: Monitor Guest Activity
@@ -341,7 +348,7 @@ let activeGuests = SigninLogs
 
 When implementing B2B collaboration, follow these practices:
 
-First, always trust MFA from known partner tenants rather than requiring guests to register MFA again in your tenant. This improves the experience without reducing security, as long as you trust the partner's MFA implementation.
+First, consider trusting MFA from known partner tenants with validated MFA controls rather than requiring guests to register MFA again in your tenant. This improves the experience without reducing security, as long as you trust the partner's MFA implementation.
 
 Second, use Conditional Access to enforce security requirements for guest access. Do not assume that guests from partner organizations have the same security posture as your internal users.
 
