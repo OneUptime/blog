@@ -4,27 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Notification Hub, Terraform, Push Notification, Infrastructure as Code, Mobile, Cloud
 
-Description: Deploy Azure Notification Hub namespaces with Apple, Google, and Windows platform notification settings fully configured using Terraform.
+Description: Deploy Azure Notification Hub namespaces with Apple platform notification settings, authorization rules, Key Vault storage, and monitoring using Terraform.
 
 ---
 
 Push notifications are a core feature of mobile applications, and Azure Notification Hubs provides a scalable way to send them across platforms. The service abstracts away the differences between Apple Push Notification Service (APNs), Firebase Cloud Messaging (FCM), and Windows Notification Service (WNS), giving you a single API to reach devices on all platforms.
 
-Setting up Notification Hubs involves creating a namespace, one or more hubs within it, and configuring the platform-specific credentials for each push notification service. Managing this through Terraform means you can replicate the setup across environments and keep the platform credentials in sync with your infrastructure code.
+Setting up Notification Hubs involves creating a namespace, one or more hubs within it, and configuring the platform-specific credentials for each push notification service. Managing this through Terraform means you can replicate the setup across environments and keep the platform credentials in sync with your infrastructure code. The current AzureRM Terraform resource supports APNs credentials directly; FCM v1 and WNS credentials need to be configured outside this `azurerm_notification_hub` resource, such as through the Azure portal, REST API, ARM/Bicep, or AzAPI.
 
 ## Architecture Overview
 
-A Notification Hub namespace is a container that holds one or more notification hubs. Each hub can have platform notification settings for APNs (iOS), FCM (Android), and WNS (Windows). You typically create one hub per application or per environment.
+A Notification Hub namespace is a container that holds one or more notification hubs. Each hub can have platform notification settings for APNs (iOS), FCM v1 (Android), and WNS (Windows). This Terraform example configures APNs directly with the AzureRM provider. You typically create one hub per application or per environment.
 
 ```mermaid
 graph TD
     A[Notification Hub Namespace] --> B[Hub: MyApp-Prod]
     A --> C[Hub: MyApp-Dev]
     B --> D[APNs - iOS]
-    B --> E[FCM - Android]
+    B --> E[FCM v1 - Android]
     B --> F[WNS - Windows]
     C --> G[APNs Sandbox - iOS]
-    C --> H[FCM - Android]
+    C --> H[FCM v1 - Android]
 ```
 
 ## Provider and Variables
@@ -82,28 +82,8 @@ variable "apns_team_id" {
 
 variable "apns_token" {
   type        = string
-  description = "Apple Push Notification authentication token (p8 key content)"
+  description = "Apple Push Notification authentication token (p8 key content without the BEGIN/END PRIVATE KEY lines)"
   sensitive   = true
-}
-
-variable "fcm_server_key" {
-  type        = string
-  description = "Firebase Cloud Messaging server key"
-  sensitive   = true
-}
-
-variable "wns_package_sid" {
-  type        = string
-  description = "Windows Notification Service package SID"
-  sensitive   = true
-  default     = ""
-}
-
-variable "wns_secret_key" {
-  type        = string
-  description = "Windows Notification Service secret key"
-  sensitive   = true
-  default     = ""
 }
 
 locals {
@@ -152,10 +132,10 @@ The Standard tier is worth the cost for production because it includes telemetry
 
 ## Notification Hub with Platform Settings
 
-Create the notification hub within the namespace and configure the platform notification credentials.
+Create the notification hub within the namespace and configure the APNs platform notification credentials.
 
 ```hcl
-# Notification Hub with platform notification settings
+# Notification Hub with APNs platform notification settings
 resource "azurerm_notification_hub" "main" {
   name                = "nh-${local.name_prefix}"
   namespace_name      = azurerm_notification_hub_namespace.main.name
@@ -170,12 +150,6 @@ resource "azurerm_notification_hub" "main" {
     key_id           = var.apns_key_id
     team_id          = var.apns_team_id
     token            = var.apns_token
-  }
-
-  # Firebase Cloud Messaging (FCM) configuration
-  # This uses the legacy server key; FCM v1 requires different setup
-  gcm_credential {
-    api_key = var.fcm_server_key
   }
 
   tags = local.tags
@@ -195,10 +169,6 @@ resource "azurerm_notification_hub" "dev" {
     key_id           = var.apns_key_id
     team_id          = var.apns_team_id
     token            = var.apns_token
-  }
-
-  gcm_credential {
-    api_key = var.fcm_server_key
   }
 
   tags = local.tags
@@ -274,7 +244,7 @@ data "azurerm_client_config" "current" {}
 # Store the backend connection string
 resource "azurerm_key_vault_secret" "nh_backend_connection" {
   name         = "nh-backend-connection-string"
-  value        = azurerm_notification_hub_authorization_rule.backend.primary_access_key
+  value        = azurerm_notification_hub_authorization_rule.backend.primary_connection_string
   key_vault_id = azurerm_key_vault.nh.id
 
   depends_on = [
@@ -285,7 +255,7 @@ resource "azurerm_key_vault_secret" "nh_backend_connection" {
 # Store the send-only connection string
 resource "azurerm_key_vault_secret" "nh_send_connection" {
   name         = "nh-send-connection-string"
-  value        = azurerm_notification_hub_authorization_rule.send_only.primary_access_key
+  value        = azurerm_notification_hub_authorization_rule.send_only.primary_connection_string
   key_vault_id = azurerm_key_vault.nh.id
 
   depends_on = [
@@ -352,7 +322,7 @@ output "namespace_name" {
 }
 
 output "listen_connection_string" {
-  value       = azurerm_notification_hub_authorization_rule.listen_only.primary_access_key
+  value       = azurerm_notification_hub_authorization_rule.listen_only.primary_connection_string
   sensitive   = true
   description = "Connection string for mobile app device registration"
 }
@@ -366,8 +336,7 @@ cat > notifications.tfvars << 'EOF'
 apns_bundle_id = "com.yourcompany.yourapp"
 apns_key_id    = "ABC123DEF4"
 apns_team_id   = "TEAM123456"
-apns_token     = "-----BEGIN PRIVATE KEY-----\nMIGT...your-key...ABC=\n-----END PRIVATE KEY-----"
-fcm_server_key = "AAAAxyz123:APA91b...your-fcm-key..."
+apns_token     = "MIGT...your-key...ABC="
 EOF
 
 # Deploy with the credentials
@@ -386,14 +355,6 @@ az notification-hub test-send \
   --notification-hub-name nh-myapp-prod \
   --notification-format apple \
   --payload '{"aps":{"alert":"Test from Terraform deployment","sound":"default"}}'
-
-# Send a test notification to Android devices
-az notification-hub test-send \
-  --resource-group rg-myapp-prod-notifications \
-  --namespace-name nhns-myapp-prod \
-  --notification-hub-name nh-myapp-prod \
-  --notification-format gcm \
-  --payload '{"notification":{"title":"Test","body":"From Terraform deployment"}}'
 ```
 
 ## Wrapping Up
