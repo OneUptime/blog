@@ -262,8 +262,8 @@ $directConnectSettings = @{
             AccessType = "allowed"
             Targets = @(
                 @{
-                    # Office 365 app ID for Teams
-                    Target = "00000003-0000-0ff1-ce00-000000000000"
+                    # Office 365 application suite, which includes Teams
+                    Target = "Office365"
                     TargetType = "application"
                 }
             )
@@ -283,7 +283,7 @@ $directConnectSettings = @{
             AccessType = "allowed"
             Targets = @(
                 @{
-                    Target = "00000003-0000-0ff1-ce00-000000000000"
+                    Target = "Office365"
                     TargetType = "application"
                 }
             )
