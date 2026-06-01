@@ -54,24 +54,27 @@ The caveat: if your VMs use custom DNS servers instead of Azure DNS, those queri
 
 ## Step 1: Enable Defender for DNS
 
-Defender for DNS is enabled at the subscription level as part of Microsoft Defender for Cloud.
+Defender for DNS is part of Microsoft Defender for Cloud. For new subscriptions, suspicious DNS activity alerts are included with Defender for Servers Plan 2. Existing subscriptions that already had the standalone Defender for DNS plan before August 1, 2023 can continue to use the standalone plan.
 
-This enables the Defender for DNS plan on your subscription:
+For new subscriptions, enable Defender for Servers Plan 2 on your subscription:
 
 ```bash
-# Enable Microsoft Defender for DNS
+# Enable Microsoft Defender for Servers Plan 2, which includes DNS alerts for new subscriptions
 
 az security pricing create \
-  --name Dns \
-  --tier Standard
+  --name VirtualMachines \
+  --tier Standard \
+  --subplan P2
 
 # Verify it is enabled
 az security pricing show \
-  --name Dns \
+  --name VirtualMachines \
   --query "{name:name, tier:pricingTier}" -o json
 ```
 
-That is literally all it takes to enable it. No agents to deploy, no network changes, no DNS server reconfiguration. Once enabled, Defender for DNS starts analyzing all DNS queries from your Azure resources in that subscription.
+If you are managing an older subscription that already uses the standalone Defender for DNS plan, you can verify that plan with `az security pricing show --name Dns`; the `Dns` pricing resource is now marked as deprecated and replaced by `VirtualMachines`.
+
+That is literally all it takes to enable DNS alert coverage for new subscriptions. No agents to deploy, no network changes, no DNS server reconfiguration. Once enabled, Defender for DNS starts analyzing DNS queries from Azure resources that use Azure-provided DNS.
 
 ## Step 2: Configure Security Contact Notifications
 
@@ -83,9 +86,9 @@ This configures email notifications for DNS security alerts:
 # Set up the security contact for alert notifications
 az security contact create \
   --name "default" \
-  --email "soc-team@yourcompany.com" \
-  --alert-notifications on \
-  --alerts-to-admins on
+  --emails "soc-team@yourcompany.com" \
+  --alert-notifications '{"state":"On","minimalSeverity":"Low"}' \
+  --notifications-by-role '{"state":"On","roles":["Owner"]}'
 ```
 
 For more advanced notification routing, consider integrating with Microsoft Sentinel and using automation rules to route alerts to different teams based on severity and alert type.
@@ -105,7 +108,7 @@ You can query alerts programmatically:
 ```bash
 # List recent DNS-related security alerts
 az security alert list \
-  --query "[?contains(alertType,'DNS')].{name:alertDisplayName, severity:severity, status:status, time:properties.timeGeneratedUtc, resource:properties.compromisedEntity}" \
+  --query "[?contains(properties.alertType,'AzureDNS') || contains(properties.alertDisplayName,'DNS')].{name:properties.alertDisplayName, severity:properties.severity, status:properties.status, time:properties.timeGeneratedUtc, resource:properties.compromisedEntity}" \
   -o table
 ```
 
@@ -121,13 +124,13 @@ az security alert show \
   --name "<alert-id>" \
   --location "centralus" \
   --query "{
-    alertName: alertDisplayName,
-    severity: severity,
-    description: description,
+    alertName: properties.alertDisplayName,
+    severity: properties.severity,
+    description: properties.description,
     compromisedResource: properties.compromisedEntity,
-    maliciousDomain: properties.domainName,
+    alertType: properties.alertType,
     queryTime: properties.timeGeneratedUtc,
-    remediationSteps: remediationSteps
+    remediationSteps: properties.remediationSteps
   }" -o json
 ```
 
@@ -181,13 +184,13 @@ You can set this up in Defender for Cloud using workflow automation:
 
 ```bash
 # Create a workflow automation rule for DNS alerts
-az security automation create \
+az security automation create_or_update \
   --name "auto-respond-dns-alerts" \
   --resource-group rg-security \
   --location eastus \
   --scopes "[{\"description\":\"Subscription scope\",\"scopePath\":\"/subscriptions/<sub-id>\"}]" \
-  --sources "[{\"eventSource\":\"Alerts\",\"ruleSets\":[{\"rules\":[{\"propertyJPath\":\"AlertType\",\"propertyType\":\"String\",\"expectedValue\":\"DNS\",\"operator\":\"Contains\"}]}]}]" \
-  --actions "[{\"actionType\":\"LogicApp\",\"logicAppResourceId\":\"/subscriptions/<sub-id>/resourceGroups/rg-security/providers/Microsoft.Logic/workflows/respond-dns-alert\"}]"
+  --sources "[{\"eventSource\":\"Alerts\",\"ruleSets\":[{\"rules\":[{\"propertyJPath\":\"properties.alertType\",\"propertyType\":\"String\",\"expectedValue\":\"AzureDNS\",\"operator\":\"Contains\"}]}]}]" \
+  --actions "[{\"actionType\":\"LogicApp\",\"logicAppResourceId\":\"/subscriptions/<sub-id>/resourceGroups/rg-security/providers/Microsoft.Logic/workflows/respond-dns-alert\",\"uri\":\"<logic-app-trigger-url>\"}]"
 ```
 
 ## Step 6: Block Malicious Domains Proactively
@@ -204,7 +207,7 @@ az network firewall update \
   --threat-intel-mode Deny
 ```
 
-**Azure DNS Private Resolver with DNS security policy** - You can create DNS forwarding rules that redirect queries for known bad domains to a sinkhole.
+**Azure DNS security policy** - You can apply DNS traffic rules to virtual networks to allow, alert on, or block queries for domains in configured domain lists or Microsoft's managed threat intelligence feed.
 
 **Third-party DNS security** - If you use a third-party DNS security service (like Cisco Umbrella or Zscaler), ensure it covers your Azure workloads too.
 
@@ -236,9 +239,9 @@ This query surfaces newly seen domains with high query volumes, which could indi
 
 ## Cost Considerations
 
-Defender for DNS is priced per subscription per month (not per VM or per query). The cost is relatively modest compared to other Defender plans. There is also a 30-day free trial when you first enable it.
+For new subscriptions, suspicious DNS activity alerts are included with Defender for Servers Plan 2 pricing. Existing subscriptions that still use the standalone Defender for DNS plan are billed as shown on the Microsoft Defender for Cloud pricing page.
 
-Since it operates at the platform level with no agents, there is no additional compute cost. The only ongoing cost is the subscription fee for the Defender plan.
+Since it operates at the platform level with no agents, there is no additional compute cost for agents on the protected resources. The ongoing cost depends on the Defender plan that provides the DNS alert coverage in your subscription.
 
 ## Limitations to Be Aware Of
 
