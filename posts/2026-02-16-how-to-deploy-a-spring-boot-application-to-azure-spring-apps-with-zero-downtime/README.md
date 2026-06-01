@@ -8,7 +8,7 @@ Description: Step-by-step guide to deploying Spring Boot applications to Azure S
 
 ---
 
-Deploying application updates without downtime is a basic expectation in production environments. Users should not see errors or experience interruptions because you pushed a new version. Azure Spring Apps provides built-in support for zero-downtime deployments through its staging deployment feature. In this guide, I will walk through the entire process - from creating the Spring Apps instance to performing a seamless traffic cutover.
+Deploying application updates without downtime is a basic expectation in production environments. Users should not see errors or experience interruptions because you pushed a new version. Azure Spring Apps provides built-in support for zero-downtime deployments through its staging deployment feature. Azure Spring Apps entered retirement on March 17, 2025, and is scheduled to retire on March 31, 2028, so this guide is for existing Azure Spring Apps customers who are still operating workloads during the retirement period. In this guide, I will walk through the entire process - from creating the Spring Apps instance to performing a seamless traffic cutover.
 
 ## Why Zero Downtime Matters
 
@@ -20,6 +20,7 @@ Before starting, you need:
 
 - An Azure subscription with the Spring Apps resource provider registered
 - Azure CLI installed with the spring extension
+- An existing Azure Spring Apps customer/tenant, because Azure Spring Apps no longer accepts new Basic, Standard, or Enterprise customers after March 17, 2025
 - A Spring Boot application packaged as a JAR file
 - Java 17 or later (Azure Spring Apps supports Java 8, 11, 17, and 21)
 
@@ -27,6 +28,8 @@ Install the Azure Spring Apps extension if you have not already:
 
 ```bash
 # Install the spring extension for Azure CLI
+# The az spring command group is deprecated during Azure Spring Apps retirement,
+# but remains the Azure CLI surface for existing Azure Spring Apps workloads.
 
 az extension add --name spring --upgrade
 ```
@@ -93,7 +96,7 @@ az spring app show \
 
 ## Step 3: Create a Staging Deployment
 
-When you have a new version ready, deploy it to a staging slot instead of directly to production. This is the key to zero-downtime deployments:
+When you have a new version ready, deploy it to the deployment that is not currently receiving production traffic instead of directly to production. In the first cycle, that deployment is commonly named `staging`. This is the key to zero-downtime deployments:
 
 ```bash
 # Create a staging deployment with the new version
@@ -109,11 +112,11 @@ az spring app deployment create \
     --instance-count 2
 ```
 
-The staging deployment starts up and gets its own endpoint for testing. It does not receive any production traffic yet.
+The staging deployment starts up and can be tested through the Azure Spring Apps test endpoint. It does not receive any production traffic yet.
 
 ## Step 4: Validate the Staging Deployment
 
-Before switching traffic, verify that the staging deployment is healthy. Azure Spring Apps gives the staging deployment its own test endpoint:
+Before switching traffic, verify that the staging deployment is healthy. Azure Spring Apps exposes a private test endpoint for app deployments, and basic authentication is enabled on that endpoint by default:
 
 ```bash
 # Get the staging deployment test endpoint
@@ -127,8 +130,10 @@ az spring app deployment show \
 # Run your smoke tests against the staging endpoint
 # The test endpoint URL follows this pattern:
 STAGING_URL=$(az spring test-endpoint list \
-    --service $SPRING_APPS_NAME \
+    --name $SPRING_APPS_NAME \
     --resource-group $RESOURCE_GROUP \
+    --app $APP_NAME \
+    --deployment staging \
     --query "primaryTestEndpoint" -o tsv)
 
 # Hit the health endpoint to verify
@@ -143,7 +148,7 @@ Once you are confident the staging deployment is working correctly, swap the dep
 
 ```bash
 # Set the staging deployment as the production deployment
-# This swaps traffic instantly without dropping connections
+# This switches the active production deployment without taking the app offline
 az spring app set-deployment \
     --name $APP_NAME \
     --service $SPRING_APPS_NAME \
@@ -151,7 +156,7 @@ az spring app set-deployment \
     --deployment staging
 ```
 
-The traffic switch is nearly instantaneous. Azure Spring Apps updates the routing rules so that all incoming requests go to the staging deployment (which is now the production deployment). The old production deployment becomes the new staging slot, which you can use for the next deployment cycle or as a quick rollback target.
+The traffic switch is nearly instantaneous. Azure Spring Apps updates the routing rules so that incoming requests go to the staging deployment (which is now the production deployment). The old production deployment becomes the new staging deployment, which you can use for the next deployment cycle or as a quick rollback target. For the next cycle, deploy to whichever deployment is currently staging; after this first swap, that would be `default`, not `staging`.
 
 ## Step 6: Rollback If Needed
 
@@ -167,7 +172,7 @@ az spring app set-deployment \
     --deployment default
 ```
 
-This is one of the biggest advantages of this approach. Your previous version is still running and warm, so the rollback is instant. No waiting for a build, no downloading artifacts, no cold start.
+This is one of the biggest advantages of this approach. Your previous version is still running and warm, so the rollback is fast. No waiting for a build, no downloading artifacts, no cold start.
 
 ## Automating with a CI/CD Pipeline
 
@@ -215,13 +220,23 @@ stages:
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                # Deploy to the staging slot
-                az spring app deployment create \
-                  --name staging \
-                  --app $(APP_NAME) \
+                # Deploy to the inactive deployment. After the first swap, update
+                # this deployment name to the current non-production deployment.
+                az spring app deploy \
+                  --deployment staging \
+                  --name $(APP_NAME) \
                   --service $(SPRING_APPS_NAME) \
                   --resource-group $(RESOURCE_GROUP) \
                   --artifact-path $(Pipeline.Workspace)/app-jar/order-service.jar
+
+                STAGING_URL=$(az spring test-endpoint list \
+                  --name $(SPRING_APPS_NAME) \
+                  --resource-group $(RESOURCE_GROUP) \
+                  --app $(APP_NAME) \
+                  --deployment staging \
+                  --query "primaryTestEndpoint" -o tsv)
+
+                curl --fail --silent "${STAGING_URL}/$(APP_NAME)/staging/actuator/health"
 
   - stage: SwapToProduction
     dependsOn: DeployStaging
