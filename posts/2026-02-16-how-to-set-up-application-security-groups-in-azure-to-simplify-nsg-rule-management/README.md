@@ -86,7 +86,7 @@ az network nic ip-config update \
   --application-security-groups DatabaseServers
 ```
 
-One NIC can belong to multiple ASGs, which is useful when a VM serves more than one role. However, all ASGs associated with a single NIC must be in the same virtual network.
+One NIC can belong to multiple ASGs, which is useful when a VM serves more than one role. However, you can add NICs only to ASGs in the same virtual network and location as the NIC.
 
 ## Step 3: Create NSG Rules Using ASGs
 
@@ -207,10 +207,10 @@ This evaluation happens at wire speed inside the Azure networking stack, so ther
 
 ASGs are powerful, but they have a few constraints you should know about:
 
-- All VMs in an ASG must be in the same virtual network. You cannot span ASGs across VNets.
+- All NICs in an ASG must be in the same virtual network. You cannot span ASGs across VNets.
 - You cannot mix ASGs and IP addresses in the same source or destination field of a single rule. You need separate rules for that.
-- There is a limit of around 3,000 ASGs per subscription, which is generous but worth noting for very large environments.
-- ASGs only work with NICs that have a single IP configuration or where all IP configurations are in the same ASG set.
+- There is a limit of 3,000 ASGs per region per subscription, which is generous but worth noting for very large environments.
+- ASG membership is configured on a NIC IP configuration, and each IP configuration can be associated with up to 20 ASGs.
 
 ## Managing ASGs with Terraform
 
