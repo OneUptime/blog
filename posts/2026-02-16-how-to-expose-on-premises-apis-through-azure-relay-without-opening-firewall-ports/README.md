@@ -77,7 +77,7 @@ Here is the proxy implementation.
 
 ```javascript
 // relay-proxy.js - Proxy that forwards relay requests to an internal API
-const { RelayedServer } = require('hyco-https');
+const relayHttps = require('hyco-https');
 const axios = require('axios');
 
 // Configuration
@@ -92,18 +92,22 @@ const internalApiBase = process.env.INTERNAL_API_URL || 'http://localhost:8080';
 // Allowed paths - restrict which internal endpoints can be accessed
 const allowedPaths = ['/api/v1/', '/api/v2/', '/health'];
 
-function isPathAllowed(path) {
-  return allowedPaths.some(allowed => path.startsWith(allowed));
+function isPathAllowed(requestUrl) {
+  const pathname = new URL(requestUrl, 'http://relay.local').pathname;
+  return allowedPaths.some(allowed =>
+    allowed.endsWith('/') ? pathname.startsWith(allowed) : pathname === allowed
+  );
 }
 
+const listenUri = relayHttps.createRelayListenUri(relayNamespace, hybridConnectionName);
+
 // Create the relayed HTTP server
-const server = RelayedServer.createRelayedServer(
+const server = relayHttps.createRelayedServer(
   {
-    server: relayNamespace,
-    path: hybridConnectionName,
+    server: listenUri,
     token: () => {
-      return RelayedServer.createRelayToken(
-        `https://${relayNamespace}/${hybridConnectionName}`,
+      return relayHttps.createRelayToken(
+        listenUri,
         listenerKeyName,
         listenerKey
       );
@@ -204,8 +208,7 @@ From the cloud application's perspective, the internal API is now accessible thr
 
 ```javascript
 // cloud-client.js - Call the on-premises API through the relay
-const https = require('https');
-const crypto = require('crypto');
+const https = require('hyco-https');
 
 class RelayClient {
   constructor(namespace, hybridConnection, keyName, key) {
@@ -217,14 +220,8 @@ class RelayClient {
 
   // Generate a SAS token for authentication
   createToken(expirySeconds = 3600) {
-    const uri = encodeURIComponent(`https://${this.namespace}/${this.hybridConnection}`);
-    const expiry = Math.round(Date.now() / 1000) + expirySeconds;
-    const signature = crypto
-      .createHmac('sha256', this.key)
-      .update(`${uri}\n${expiry}`)
-      .digest('base64');
-
-    return `SharedAccessSignature sr=${uri}&sig=${encodeURIComponent(signature)}&se=${expiry}&skn=${this.keyName}`;
+    const uri = https.createRelayHttpsUri(this.namespace, this.hybridConnection);
+    return https.createRelayToken(uri, this.keyName, this.key, expirySeconds);
   }
 
   // Make a request through the relay
