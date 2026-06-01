@@ -17,11 +17,11 @@ Azure Backup provides flexible retention policies, but configuring them correctl
 Azure Backup organizes retention into four tiers:
 
 - **Daily retention** - keeps daily backup points for a specified number of days
-- **Weekly retention** - keeps a weekly backup point (typically from the first backup of the week)
-- **Monthly retention** - keeps a monthly backup point (typically from the first backup of the month)
-- **Yearly retention** - keeps a yearly backup point (from a specific week and day you define)
+- **Weekly retention** - keeps backup points from the day of the week you define
+- **Monthly retention** - keeps backup points from a specific day or week of the month
+- **Yearly retention** - keeps backup points from a specific month, week, and day you define
 
-These tiers work together. A single backup point can count toward multiple tiers. For example, the backup taken on January 1st could be the daily point, the weekly point, the monthly point, and the yearly point all at once.
+These tiers work together. A single backup point can count toward multiple tiers. For example, a backup taken on the configured yearly retention day could also satisfy the daily, weekly, and monthly retention rules.
 
 ## Creating a Compliance-Focused Backup Policy
 
@@ -145,11 +145,11 @@ az sql db ltr-policy set \
 
 ### Azure Files Backup
 
-Azure Files backup supports daily and yearly retention. Weekly and monthly retention are available but with some limitations on the maximum retention period.
+Azure Files backup supports daily, weekly, monthly, and yearly retention. The maximum retention periods depend on whether you use the snapshot tier or Vault-standard tier.
 
 ### Azure Blob Storage
 
-Blob storage uses operational and vaulted backup. Operational backup supports 1-360 days of retention. For longer retention, use vaulted backup which supports the full retention tier structure.
+Blob storage uses operational and vaulted backup. Operational backup supports up to 360 days of retention. For longer retention, use vaulted backup, which supports daily, weekly, monthly, and yearly retention rules up to 10 years.
 
 ## Immutable Backup Vaults
 
@@ -174,13 +174,13 @@ az backup vault update \
 Immutable vaults prevent:
 - Deletion of backup data before the retention period expires
 - Reduction of retention periods
-- Disabling of soft-delete
+- Replacing a backup policy with another policy that has lower retention
 
 This is critical for meeting compliance requirements that mandate tamper-proof backups. Auditors want to know that backup data cannot be destroyed, even by a malicious insider with admin access.
 
 ## Multi-User Authorization
 
-For additional protection, enable multi-user authorization (MUA) on the vault. This requires a second authorized user to approve critical operations like disabling soft-delete, reducing retention, or stopping backup with delete data.
+For additional protection, enable multi-user authorization (MUA) on the vault. This requires separate authorization through Resource Guard for critical operations like disabling soft-delete, reducing retention, or stopping backup with delete data.
 
 ```bash
 # Create a Resource Guard in a separate subscription managed by security team
@@ -190,7 +190,7 @@ az dataprotection resource-guard create \
   --location eastus2
 
 # Associate the Resource Guard with the backup vault
-# Now critical operations require approval from the Resource Guard owner
+# Now critical operations require authorization through Resource Guard
 ```
 
 ## Documenting Retention for Auditors
@@ -220,7 +220,7 @@ az backup job list \
 
 ## Cost Implications of Long Retention
 
-Long retention periods directly impact cost. Azure Backup charges for storage consumed by backup data. A 7-year yearly retention policy for a 1 TB database means you are storing at least 7 copies (potentially more with incremental changes).
+Long retention periods directly impact cost. Azure Backup charges for storage consumed by backup data. A 7-year yearly retention policy for a 1 TB workload means you are storing long-lived recovery points for seven years, although the physical storage consumed depends on the workload type, backup tier, and data change rate.
 
 To manage costs while meeting compliance:
 
