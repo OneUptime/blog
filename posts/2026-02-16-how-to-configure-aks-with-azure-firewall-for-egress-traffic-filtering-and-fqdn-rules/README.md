@@ -165,6 +165,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --policy-name aks-firewall-policy \
   --rule-collection-group-name AKSRules \
   --name AKSRequired \
+  --rule-name aks-required \
   --collection-priority 200 \
   --action Allow \
   --rule-type ApplicationRule \
@@ -173,7 +174,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --fqdn-tags AzureKubernetesService
 ```
 
-The `AzureKubernetesService` FQDN tag includes all required Microsoft endpoints. If you need more granular control, specify individual FQDNs instead.
+The `AzureKubernetesService` FQDN tag includes the required AKS FQDN endpoints that can be handled by application rules. You still need separate network rules for the non-HTTP/S dependencies. If you need more granular control, specify individual FQDNs instead.
 
 ```bash
 # Add specific FQDN rules for container registries
@@ -182,6 +183,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --policy-name aks-firewall-policy \
   --rule-collection-group-name AKSRules \
   --name ContainerRegistries \
+  --rule-name container-registries \
   --collection-priority 300 \
   --action Allow \
   --rule-type ApplicationRule \
@@ -203,6 +205,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --policy-name aks-firewall-policy \
   --rule-collection-group-name AKSRules \
   --name DockerHub \
+  --rule-name docker-hub \
   --collection-priority 400 \
   --action Allow \
   --rule-type ApplicationRule \
@@ -214,15 +217,16 @@ az network firewall policy rule-collection-group collection add-filter-collectio
     "registry-1.docker.io"
 ```
 
-You also need network rules for NTP and DNS.
+You also need network rules for the AKS tunnel ports and, for some node images, NTP.
 
 ```bash
-# Network rules for UDP traffic (NTP and DNS)
+# Network rules for UDP traffic (NTP and AKS tunnel)
 az network firewall policy rule-collection-group collection add-filter-collection \
   --resource-group aks-firewall-rg \
   --policy-name aks-firewall-policy \
   --rule-collection-group-name AKSRules \
-  --name NetworkRules \
+  --name AKSNetworkUdp \
+  --rule-name aks-network-udp \
   --collection-priority 500 \
   --action Allow \
   --rule-type NetworkRule \
@@ -230,9 +234,24 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --source-addresses "10.1.0.0/24" \
   --destination-addresses "*" \
   --destination-ports 123 1194
+
+# Network rule for TCP AKS tunnel traffic
+az network firewall policy rule-collection-group collection add-filter-collection \
+  --resource-group aks-firewall-rg \
+  --policy-name aks-firewall-policy \
+  --rule-collection-group-name AKSRules \
+  --name AKSNetworkTcp \
+  --rule-name aks-network-tcp \
+  --collection-priority 550 \
+  --action Allow \
+  --rule-type NetworkRule \
+  --ip-protocols TCP \
+  --source-addresses "10.1.0.0/24" \
+  --destination-addresses "*" \
+  --destination-ports 9000
 ```
 
-Port 123 is NTP (time sync), and port 1194 is used for the AKS tunnel communication between nodes and the API server.
+Port 123 is NTP (time sync), and ports 1194/UDP and 9000/TCP are used for tunneled AKS communication between nodes and the API server.
 
 ## Step 5: Create the AKS Cluster
 
@@ -291,7 +310,8 @@ az monitor diagnostic-settings create \
 Query the logs to find denied connections - these tell you what additional rules you might need.
 
 ```text
-AzureFirewallApplicationRule
+AzureDiagnostics
+| where Category == "AzureFirewallApplicationRule"
 | where msg_s contains "Deny"
 | project TimeGenerated, msg_s
 | order by TimeGenerated desc
@@ -308,6 +328,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --policy-name aks-firewall-policy \
   --rule-collection-group-name AKSRules \
   --name ApplicationEgress \
+  --rule-name application-egress \
   --collection-priority 600 \
   --action Allow \
   --rule-type ApplicationRule \
