@@ -27,8 +27,8 @@ graph LR
 You set a minimum and maximum NCU range. Neptune automatically scales within that range based on:
 - CPU utilization
 - Memory utilization
-- Number of concurrent connections
-- Query complexity
+- Network utilization
+- Overall query workload
 
 ## Creating a Neptune Serverless Cluster
 
@@ -70,7 +70,6 @@ aws neptune create-db-cluster \
   --vpc-security-group-ids sg-0abc123 \
   --db-subnet-group-name neptune-serverless-subnets \
   --storage-encrypted \
-  --iam-database-authentication-enabled \
   --backup-retention-period 7
 ```
 
@@ -157,13 +156,13 @@ def run_cypher(query, parameters=None):
     """Execute an openCypher query against Neptune."""
     payload = {"query": query}
     if parameters:
-        payload["parameters"] = parameters
+        payload["parameters"] = json.dumps(parameters)
 
     response = requests.post(
         f"{NEPTUNE_ENDPOINT}/openCypher",
-        json=payload,
-        headers={"Content-Type": "application/json"}
+        data=payload
     )
+    response.raise_for_status()
     return response.json()
 
 # Create nodes and relationships
@@ -175,13 +174,13 @@ run_cypher("""
     CREATE (bob)-[:KNOWS {since: 2021}]->(charlie)
 """)
 
-# Find shortest path between two people
+# Find the shortest matching path between two people
 result = run_cypher("""
-    MATCH path = shortestPath(
-        (a:Person {name: $start})-[:KNOWS*]-(b:Person {name: $end})
-    )
+    MATCH path = (a:Person {name: $start})-[:KNOWS*1..5]-(b:Person {name: $end})
     RETURN [n IN nodes(path) | n.name] AS people,
            length(path) AS distance
+    ORDER BY distance
+    LIMIT 1
 """, parameters={"start": "Alice", "end": "Charlie"})
 
 print(json.dumps(result, indent=2))
@@ -248,6 +247,11 @@ aws cloudwatch put-metric-alarm \
 For initial data loads, use the Neptune bulk loader.
 
 ```bash
+# Attach the S3 access role to the cluster before running the loader
+aws neptune add-role-to-db-cluster \
+  --db-cluster-identifier my-neptune-serverless \
+  --role-arn arn:aws:iam::123456789012:role/NeptuneLoadRole
+
 # Start a bulk load from S3
 curl -X POST \
   "https://my-neptune-serverless.cluster-xxxxx.us-east-1.neptune.amazonaws.com:8182/loader" \
@@ -288,17 +292,19 @@ def get_recommendations(user_id, limit=10):
     Find product recommendations based on what similar users purchased.
     Uses collaborative filtering via graph traversal.
     """
-    result = run_cypher("""
+    limit = max(1, int(limit))
+
+    result = run_cypher(f"""
         // Find products purchased by users who bought the same things
-        MATCH (user:User {id: $userId})-[:PURCHASED]->(product:Product)
+        MATCH (user:User {{id: $userId}})-[:PURCHASED]->(product:Product)
               <-[:PURCHASED]-(similar:User)-[:PURCHASED]->(rec:Product)
         WHERE NOT (user)-[:PURCHASED]->(rec)
           AND user <> similar
         WITH rec, count(DISTINCT similar) AS score
         ORDER BY score DESC
-        LIMIT $limit
+        LIMIT {limit}
         RETURN rec.id AS productId, rec.name AS productName, score
-    """, parameters={"userId": user_id, "limit": limit})
+    """, parameters={"userId": user_id})
 
     return result['results']
 ```
