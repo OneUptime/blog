@@ -85,7 +85,7 @@ const serviceClient = new WebPubSubServiceClient(connectionString, hubName);
 
 async function main() {
   // Generate a client access URL with a specific user ID
-  const token = await serviceClient.getClientAccessUrl({
+  const token = await serviceClient.getClientAccessToken({
     userId: 'user-123',
     roles: ['webpubsub.joinLeaveGroup', 'webpubsub.sendToGroup']
   });
@@ -103,17 +103,17 @@ async function main() {
 main().catch(console.error);
 ```
 
-The `getClientAccessUrl` method generates a URL that includes an access token. Clients use this URL to establish a WebSocket connection directly to the Azure Web PubSub service. The roles parameter controls what the client is allowed to do once connected.
+The `getClientAccessToken` method returns a response that includes a client access URL with an access token. Clients use this URL to establish a WebSocket connection directly to the Azure Web PubSub service. The roles parameter controls what the client is allowed to do once connected.
 
 ## Step 3: Connect a Client via WebSocket
 
 On the client side, you just need a standard WebSocket connection. The URL you got from the server already contains the authentication token.
 
 ```javascript
-// client.js - Browser or Node.js WebSocket client
+// client.js - Node.js WebSocket client
 const WebSocket = require('ws');
 
-// This URL comes from the server's getClientAccessUrl call
+// This URL comes from the server's getClientAccessToken call
 const url = process.argv[2];
 
 if (!url) {
@@ -142,7 +142,7 @@ ws.on('error', (err) => {
 });
 ```
 
-Run the server first to get the client access URL, then pass it to the client script. You should see the client connect and receive any messages sent from the server.
+Run the server first to get the client access URL, then pass it to the client script. Once the client is connected, messages sent from the server are delivered to the client.
 
 ## Step 4: Configure Hub Settings
 
@@ -184,9 +184,9 @@ async function groupOperations() {
     contentType: 'text/plain'
   });
 
-  // Check if a user is in a group
-  const exists = await serviceClient.group('room-1').hasUser('user-123');
-  console.log('User in group:', exists);
+  // Check if the group has active connections
+  const exists = await serviceClient.groupExists('room-1');
+  console.log('Group has active connections:', exists);
 
   // Remove a user from a group
   await serviceClient.group('room-1').removeUser('user-123');
@@ -210,7 +210,7 @@ az monitor diagnostic-settings create \
 
 ## Scaling Considerations
 
-The Free tier supports up to 20 concurrent connections, which is fine for development. For production, you will want to use the Standard tier, which supports up to 100,000 concurrent connections per unit. You can scale up to 100 units per resource, giving you up to 10 million concurrent connections.
+The Free tier supports up to 20 concurrent connections, which is fine for development. For production, you will want to use the Standard tier, which supports up to 1,000 concurrent connections per unit. You can scale up to 100 units per resource, giving you up to 100,000 concurrent connections.
 
 Key things to keep in mind when scaling:
 
@@ -222,7 +222,7 @@ Key things to keep in mind when scaling:
 
 One thing that catches people off guard is the difference between the `connect` and `connected` events. The `connect` event fires before the connection is established, giving your server a chance to reject or modify the connection. The `connected` event fires after the connection is fully established. If you are doing authentication or authorization checks, handle them in the `connect` event handler.
 
-Another common issue is forgetting to configure CORS. If your client is a browser application, make sure your event handler endpoint accepts requests from the Web PubSub service's origin.
+Another common issue is forgetting the event handler abuse-protection handshake. When Azure Web PubSub validates your event handler endpoint, the request includes a `WebHook-Request-Origin` header, and your endpoint should return `WebHook-Allowed-Origin` with the allowed service origin.
 
 ## Wrapping Up
 
