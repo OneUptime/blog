@@ -27,9 +27,9 @@ graph TD
 
 Before starting, ensure you have:
 
-- An AKS cluster running Kubernetes 1.24 or later
+- An AKS cluster running Kubernetes 1.22 or later
 - An Azure Key Vault with at least one secret stored
-- Azure CLI 2.40+ installed
+- Azure CLI 2.47+ installed
 - kubectl configured for your cluster
 - The AKS cluster must have the Secrets Store CSI Driver add-on enabled
 
@@ -146,11 +146,9 @@ metadata:
   annotations:
     # This annotation links the service account to the managed identity
     azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
-  labels:
-    azure.workload.identity/use: "true"
 ```
 
-Replace `<IDENTITY_CLIENT_ID>` with the actual client ID value. Apply it with `kubectl apply -f service-account.yaml`.
+Replace `<IDENTITY_CLIENT_ID>` with the actual client ID value. Apply it with `kubectl apply -f service-account.yaml`. The workload pod also needs the `azure.workload.identity/use: "true"` label, which is added in the deployment manifest below.
 
 ## Step 6: Create the SecretProviderClass
 
@@ -216,6 +214,7 @@ spec:
     metadata:
       labels:
         app: my-app
+        azure.workload.identity/use: "true"
     spec:
       serviceAccountName: workload-sa
       containers:
