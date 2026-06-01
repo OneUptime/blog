@@ -33,18 +33,16 @@ graph TD
     F --> F1[SageMaker compatible models]
 ```
 
-You can search and filter the catalog from the CLI:
+You can search and filter Marketplace listings from the CLI:
 
 ```bash
 # Search for products in the Marketplace
-
-aws marketplace-catalog list-entities \
-  --catalog "AWSMarketplace" \
-  --entity-type "AmiProduct" \
-  --filter-list '[
+aws marketplace-discovery search-listings \
+  --search-text "security monitoring" \
+  --filters '[
     {
-      "Name": "Visibility",
-      "ValueList": ["Public"]
+      "filterType": "FULFILLMENT_OPTION_TYPE",
+      "filterValues": ["AMAZON_MACHINE_IMAGE"]
     }
   ]'
 ```
@@ -58,7 +56,7 @@ Different product types have different subscription flows.
 ```bash
 # After subscribing in the Marketplace console, launch the AMI
 aws ec2 run-instances \
-  --image-id "ami-marketplace-product-id" \
+  --image-id "ami-0123456789abcdef0" \
   --instance-type "m5.xlarge" \
   --key-name "my-key" \
   --security-group-ids "sg-abc123" \
@@ -66,21 +64,30 @@ aws ec2 run-instances \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=marketplace-product}]'
 ```
 
-**SaaS products** redirect you to the seller's website for account setup, then bill through AWS:
+**SaaS products** redirect you to the seller's website for account setup, then bill through AWS. Buyers can review subscriptions and agreements in the AWS Marketplace console or through the AWS Marketplace Agreement API:
 
 ```bash
-# Check your current Marketplace subscriptions
-aws license-manager list-received-licenses
-
-# List your active entitlements
-aws marketplace-entitlement get-entitlements \
-  --product-code "product-code-here"
+# List agreements where your account is the buyer
+aws marketplace-agreement search-agreements \
+  --filters '[
+    {
+      "name": "PartyType",
+      "values": ["Acceptor"]
+    },
+    {
+      "name": "AgreementType",
+      "values": ["PurchaseAgreement"]
+    }
+  ]'
 ```
 
 **Container products** can be deployed to ECS or EKS:
 
 ```bash
-# Pull a container product image (after subscribing)
+# Authenticate to ECR and pull a container product image (after subscribing)
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
+
 docker pull 123456789012.dkr.ecr.us-east-1.amazonaws.com/marketplace-product:latest
 
 # Deploy to ECS
@@ -110,15 +117,15 @@ aws marketplace-catalog start-change-set \
   ]'
 ```
 
-Private Marketplace is enforced at the AWS Organizations level. Users in your organization can only subscribe to products that your IT team has approved.
+Private Marketplace can be associated with your AWS organization, organizational units, or individual accounts. Users in the associated accounts can procure only the products that your IT team has approved.
 
 ### Procurement Integration
 
 One of the biggest benefits of Marketplace for enterprise buyers is procurement simplification. All Marketplace charges appear on your AWS bill, which means:
 
-- No separate POs or invoices for each software vendor
-- Marketplace spend counts toward your Enterprise Discount Program (EDP) commitment
-- You can use AWS credits for Marketplace purchases
+- Fewer separate vendor invoices to manage
+- Some Marketplace purchases can count toward an Enterprise Discount Program (EDP) or private pricing commitment, depending on your agreement
+- Promotional AWS credits generally do not apply to AWS Marketplace charges, except where the specific credit terms allow it
 - Finance gets a single consolidated view of all software spend
 
 ## Marketplace as a Seller
@@ -131,19 +138,20 @@ First, register your AWS account as a Marketplace seller:
 
 ```bash
 # The registration process is primarily done through the AWS Marketplace
-# Management Portal (AMMP), but you can check your seller status via CLI
+# Management Portal (AMMP). After registration, you can list your draft products via CLI.
 aws marketplace-catalog list-entities \
   --catalog "AWSMarketplace" \
   --entity-type "AmiProduct" \
-  --filter-list '[
-    {
-      "Name": "Visibility",
-      "ValueList": ["Draft"]
+  --entity-type-filters '{
+    "AmiProductFilters": {
+      "Visibility": {
+        "ValueList": ["Draft"]
+      }
     }
-  ]'
+  }'
 ```
 
-You will need to provide business details, banking information for payouts, and tax documentation. AWS takes a percentage of each sale (typically 3-20% depending on product type and volume).
+You will need to provide business details, banking information for payouts, and tax documentation. AWS takes a listing fee from paid sales; standard fees vary by offer type and deployment method, such as 3% for SaaS public offers and 20% for server public offers.
 
 ### Listing an AMI Product
 
@@ -156,14 +164,9 @@ aws ec2 create-image \
   --name "MyProduct-v1.0.0" \
   --description "My awesome product ready for Marketplace" \
   --no-reboot
-
-# Share the AMI with the Marketplace account for scanning
-aws ec2 modify-image-attribute \
-  --image-id "ami-abc123" \
-  --launch-permission '{"Add": [{"UserId": "679593333241"}]}'
 ```
 
-AWS scans the AMI for security vulnerabilities and compliance with Marketplace policies before approving it.
+Use the AWS Marketplace Management Portal to run Test 'Add Version' for AMI scanning, then submit the version for review. AWS scans the AMI for security vulnerabilities and compliance with Marketplace policies before approving it.
 
 ### Listing a SaaS Product
 
@@ -172,9 +175,9 @@ SaaS products are more involved. You need to integrate with the Marketplace Mete
 ```python
 # saas_integration.py - Marketplace SaaS integration endpoints
 import boto3
-import json
+from datetime import datetime, timezone
 
-metering = boto3.client('marketplace-metering')
+metering = boto3.client('meteringmarketplace')
 entitlement = boto3.client('marketplace-entitlement')
 
 def resolve_customer(registration_token):
@@ -185,26 +188,31 @@ def resolve_customer(registration_token):
     return {
         'customer_id': response['CustomerIdentifier'],
         'product_code': response['ProductCode'],
-        'customer_account_id': response['CustomerAWSAccountId']
+        'customer_account_id': response['CustomerAWSAccountId'],
+        'license_arn': response.get('LicenseArn')
     }
 
-def report_usage(customer_id, product_code, dimension, quantity):
+def report_usage(customer_account_id, product_code, dimension, quantity):
     """Report metered usage for a customer."""
-    response = metering.meter_usage(
+    response = metering.batch_meter_usage(
         ProductCode=product_code,
-        Timestamp=datetime.utcnow(),
-        UsageDimension=dimension,
-        UsageQuantity=quantity,
-        DryRun=False
+        UsageRecords=[
+            {
+                'Timestamp': datetime.now(timezone.utc),
+                'CustomerAWSAccountId': customer_account_id,
+                'Dimension': dimension,
+                'Quantity': quantity
+            }
+        ]
     )
     return response
 
-def check_entitlement(product_code, customer_id):
+def check_entitlement(product_code, customer_account_id):
     """Check if a customer has an active entitlement."""
     response = entitlement.get_entitlements(
         ProductCode=product_code,
         Filter={
-            'CUSTOMER_IDENTIFIER': [customer_id]
+            'CUSTOMER_AWS_ACCOUNT_ID': [customer_account_id]
         }
     )
     return len(response['Entitlements']) > 0
@@ -225,7 +233,6 @@ Marketplace supports several pricing models:
 **Contract** - customers commit to a fixed term with upfront or scheduled payments.
 
 ```json
-// Example pricing configuration for a SaaS product
 {
   "PricingModel": "Usage",
   "UsageDimensions": [
@@ -275,8 +282,8 @@ aws ce get-cost-and-usage \
   --metrics '["UnblendedCost"]' \
   --filter '{
     "Dimensions": {
-      "Key": "RECORD_TYPE",
-      "Values": ["Marketplace"]
+      "Key": "BILLING_ENTITY",
+      "Values": ["AWS Marketplace"]
     }
   }'
 ```
@@ -292,9 +299,13 @@ aws budgets create-budget \
     "BudgetLimit": {"Amount": "5000", "Unit": "USD"},
     "BudgetType": "COST",
     "TimeUnit": "MONTHLY",
-    "CostFilters": {
-      "RecordType": ["Marketplace"]
-    }
+    "FilterExpression": {
+      "Dimensions": {
+        "Key": "BILLING_ENTITY",
+        "Values": ["AWS Marketplace"]
+      }
+    },
+    "Metrics": ["UnblendedCost"]
   }' \
   --notifications-with-subscribers '[
     {
@@ -316,4 +327,4 @@ aws budgets create-budget \
 
 ## Wrapping Up
 
-AWS Marketplace streamlines software procurement for buyers and provides distribution infrastructure for sellers. As a buyer, the key benefits are consolidated billing, procurement simplification, and the ability to apply AWS credits and EDP commitments. As a seller, you get access to a massive customer base with built-in billing and fulfillment. Whether you are buying or selling, Marketplace reduces the friction in getting software into production on AWS.
+AWS Marketplace streamlines software procurement for buyers and provides distribution infrastructure for sellers. As a buyer, the key benefits are consolidated billing, procurement simplification, and the ability to track Marketplace purchases alongside AWS spend. As a seller, you get access to a massive customer base with built-in billing and fulfillment. Whether you are buying or selling, Marketplace reduces the friction in getting software into production on AWS.
