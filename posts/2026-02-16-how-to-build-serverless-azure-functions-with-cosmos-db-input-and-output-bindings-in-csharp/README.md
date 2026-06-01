@@ -44,26 +44,22 @@ Let us start with the simplest use case - writing a document to Cosmos DB when a
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using System.Net;
+using System.Text.Json;
 
 namespace CosmosBindingsDemo;
 
 public class CreateOrder
 {
-    // The output binding is declared as an attribute on a property
-    // The function returns the document, and the runtime writes it to Cosmos DB
+    // The response object contains both the HTTP response and the Cosmos DB output
     [Function("CreateOrder")]
-    [CosmosDBOutput(
-        databaseName: "OrdersDB",
-        containerName: "Orders",
-        Connection = "CosmosDBConnection")]  // References a connection string in settings
-    public object Run(
+    public CreateOrderResponse Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "orders")] HttpRequestData req)
     {
         // Read the request body
         var order = req.ReadFromJsonAsync<OrderInput>().Result;
 
-        // Return the document - the output binding writes it to Cosmos DB
-        return new
+        // Create the document - the output binding writes it to Cosmos DB
+        var document = new
         {
             id = Guid.NewGuid().ToString(),
             customerId = order.CustomerId,
@@ -72,7 +68,28 @@ public class CreateOrder
             status = "pending",
             createdAt = DateTime.UtcNow
         };
+
+        var response = req.CreateResponse(HttpStatusCode.Created);
+        response.Headers.Add("Content-Type", "application/json");
+        response.WriteString(JsonSerializer.Serialize(document));
+
+        return new CreateOrderResponse
+        {
+            Order = document,
+            HttpResponse = response
+        };
     }
+}
+
+public class CreateOrderResponse
+{
+    [CosmosDBOutput(
+        databaseName: "OrdersDB",
+        containerName: "Orders",
+        Connection = "CosmosDBConnection")]  // References a connection string in settings
+    public object Order { get; set; }
+
+    public HttpResponseData HttpResponse { get; set; }
 }
 
 // Input model for the HTTP request
@@ -167,7 +184,7 @@ public class ListOrders
 }
 ```
 
-The `{customerId}` in the SQL query gets replaced with the route parameter value. This is a parameterized query, so it is safe from injection attacks.
+The `{customerId}` in the SQL query is a binding expression that gets resolved from the route parameter at invocation time. It is not the same as an SDK `QueryDefinition` parameter, so keep route values constrained and use the Cosmos DB SDK directly when you need full query parameterization.
 
 ## Combined Input and Output Bindings
 
@@ -187,11 +204,7 @@ namespace CosmosBindingsDemo;
 public class UpdateOrderStatus
 {
     [Function("UpdateOrderStatus")]
-    [CosmosDBOutput(
-        databaseName: "OrdersDB",
-        containerName: "Orders",
-        Connection = "CosmosDBConnection")]
-    public object? Run(
+    public UpdateOrderStatusResponse Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "orders/{id}/status")]
         HttpRequestData req,
         [CosmosDBInput(
@@ -204,7 +217,9 @@ public class UpdateOrderStatus
     {
         if (order == null)
         {
-            return null;  // Nothing to write if order not found
+            var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+            notFound.WriteString("Order not found");
+            return new UpdateOrderStatusResponse { Order = null, HttpResponse = notFound };
         }
 
         // Read the new status from the request body
@@ -215,8 +230,28 @@ public class UpdateOrderStatus
         order["updatedAt"] = DateTime.UtcNow.ToString("o");
 
         // Return the modified document - the output binding writes it back
-        return JsonSerializer.Deserialize<object>(order.ToJsonString());
+        var updatedOrder = JsonSerializer.Deserialize<object>(order.ToJsonString());
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "application/json");
+        response.WriteString(order.ToJsonString());
+
+        return new UpdateOrderStatusResponse
+        {
+            Order = updatedOrder,
+            HttpResponse = response
+        };
     }
+}
+
+public class UpdateOrderStatusResponse
+{
+    [CosmosDBOutput(
+        databaseName: "OrdersDB",
+        containerName: "Orders",
+        Connection = "CosmosDBConnection")]
+    public object? Order { get; set; }
+
+    public HttpResponseData HttpResponse { get; set; }
 }
 
 public record StatusUpdate(string Status);
@@ -250,7 +285,8 @@ public class OrderChangeProcessor
         databaseName: "OrdersDB",
         containerName: "Notifications",
         Connection = "CosmosDBConnection",
-        CreateIfNotExists = true)]
+        CreateIfNotExists = true,
+        PartitionKey = "/customerId")]
     public object? Run(
         // Trigger that fires on changes to the Orders container
         [CosmosDBTrigger(
@@ -291,7 +327,7 @@ public class OrderChangeProcessor
         }
 
         // Return notifications to be written by the output binding
-        return notifications.Count > 0 ? notifications : null;
+        return notifications.Count > 0 ? notifications.ToArray() : null;
     }
 }
 ```
@@ -344,6 +380,10 @@ Bindings are great for straightforward CRUD operations and simple queries. But t
 - Queries in input bindings do not support continuation tokens for pagination
 
 When you need these features, use the Cosmos DB SDK directly alongside bindings. You can inject `CosmosClient` into your functions using dependency injection.
+
+```bash
+dotnet add package Microsoft.Azure.Cosmos
+```
 
 ```csharp
 // Program.cs
