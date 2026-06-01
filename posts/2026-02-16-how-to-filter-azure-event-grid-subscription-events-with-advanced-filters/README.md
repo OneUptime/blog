@@ -8,7 +8,7 @@ Description: Master Azure Event Grid advanced filtering to route only the events
 
 ---
 
-Event Grid subscriptions can filter events before delivering them. Basic filtering on event type is useful, but advanced filters let you filter on any field in the event - including your custom data properties. This is how you build precise event routing without writing filter logic in your event handlers.
+Event Grid subscriptions can filter events before delivering them. Basic filtering on event type is useful, but advanced filters let you filter on supported event fields - including your custom data properties. This is how you build precise event routing without writing filter logic in your event handlers.
 
 ## Why Filter at the Subscription Level?
 
@@ -44,12 +44,12 @@ az eventgrid event-subscription create \
 
 ## Advanced Filters
 
-Advanced filters let you filter on any property in the event, including nested fields inside the `data` payload. This is where things get powerful.
+Advanced filters let you filter on supported top-level event fields and nested fields inside the `data` payload. This is where things get powerful.
 
 Event Grid supports these filter operators:
 
 - **NumberGreaterThan, NumberLessThan, NumberIn, NumberNotIn** - for numeric comparisons
-- **StringContains, StringBeginsWith, StringEndsWith, StringIn, StringNotIn** - for string matching
+- **StringContains, StringNotContains, StringBeginsWith, StringNotBeginsWith, StringEndsWith, StringNotEndsWith, StringIn, StringNotIn** - for string matching
 - **BoolEquals** - for boolean fields
 - **IsNullOrUndefined, IsNotNull** - for existence checks
 - **NumberGreaterThanOrEquals, NumberLessThanOrEquals, NumberInRange, NumberNotInRange** - for range checks
@@ -185,7 +185,7 @@ az eventgrid event-subscription create \
   --advanced-filter data.customer.tier StringIn "premium" "enterprise"
 ```
 
-Note that filtering on array elements is limited. You cannot filter on `data.items[0].category`. If you need array filtering, restructure your event to put filterable fields at the top level.
+Note that filtering on array elements is limited. Event Grid supports arrays of primitive values when `enableAdvancedFilteringOnArrays` is enabled, but it does not support filtering on arrays of objects, so you cannot filter on `data.items[0].category`. If you need that kind of array filtering, restructure your event to put filterable fields at the top level.
 
 ## Filter Architecture Pattern
 
@@ -197,7 +197,7 @@ graph TD
     B -->|eventType=OrderPlaced AND data.totalAmount>1000| C[VIP Processing]
     B -->|eventType=OrderPlaced AND data.region=EU| D[EU Compliance Check]
     B -->|eventType=OrderCancelled| E[Refund Service]
-    B -->|eventType=Order* AND data.customer.tier=enterprise| F[Enterprise SLA Monitor]
+    B -->|eventType in OrderPlaced/OrderUpdated AND data.customer.tier=enterprise| F[Enterprise SLA Monitor]
     B -->|No filter - all events| G[Analytics Data Lake]
 ```
 
@@ -209,18 +209,17 @@ When events are not reaching your subscriber, the filter is usually the culprit.
 
 **Create an unfiltered subscription.** Temporarily create a subscription with no filters pointing to a storage queue or event hub. This captures all events so you can inspect their structure and see what fields are available.
 
-**Verify field names.** Filters are case-sensitive. `data.TotalAmount` is not the same as `data.totalAmount`. Make sure your event payload matches your filter exactly.
+**Verify field names.** Filter keys must match your event payload. `data.TotalAmount` is not the same field path as `data.totalAmount`, although string value comparisons in advanced filters are case-insensitive.
 
 **Check for null values.** If a field is sometimes missing from your events, the filter will not match. Use `IsNotNull` checks or ensure your publishers always include required fields.
 
 ## Performance and Limits
 
-Advanced filtering happens at the Event Grid service level before delivery. There is no extra cost for filtering - you only pay for matched events that get delivered. Some limits to keep in mind:
+Advanced filtering happens at the Event Grid service level before delivery. Filtering can reduce downstream processing and delivery attempts, but Event Grid billing can still include published events, advanced filtering, and delivery attempts. Some limits to keep in mind:
 
 - Maximum 25 advanced filters per subscription
 - String values in filters are limited to 512 characters
-- StringIn and StringNotIn support up to 25 values
-- NumberIn and NumberNotIn support up to 25 values
+- Maximum 25 filter values across all advanced filters on a subscription
 
 If you need more complex filtering logic (like OR conditions across different fields), create multiple subscriptions pointing to the same endpoint. Each subscription evaluates independently, giving you OR behavior between them.
 
