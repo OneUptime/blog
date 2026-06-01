@@ -10,7 +10,7 @@ Description: Learn how to integrate Azure Key Vault with Spring Boot using the K
 
 Hard-coding secrets in configuration files is a recipe for trouble. Database passwords, API keys, and connection strings have a way of ending up in source control, shared across Slack channels, or sitting in plaintext on developer machines. Azure Key Vault provides a centralized, secure store for secrets, and the Spring Boot starter for Key Vault makes it possible to inject secrets directly into your application configuration as if they were normal properties.
 
-In this post, we will integrate Azure Key Vault with a Spring Boot application using the `azure-spring-boot-starter-keyvault-secrets` library. Your application will read secrets from Key Vault at startup and use them as regular Spring configuration properties.
+In this post, we will integrate Azure Key Vault with a Spring Boot application using the `spring-cloud-azure-starter-keyvault-secrets` library. Your application will read secrets from Key Vault and use them as regular Spring configuration properties.
 
 ## Why Key Vault?
 
@@ -18,7 +18,7 @@ Key Vault solves several problems at once:
 
 - Secrets are stored encrypted at rest, not in plaintext files
 - Access is controlled through Azure RBAC and access policies
-- Every secret access is logged for auditing
+- Secret access can be logged for auditing by enabling Key Vault diagnostic settings
 - Secret rotation can be automated
 - Developers do not need to know production secrets - they use their own Key Vault for development
 
@@ -37,7 +37,8 @@ az group create --name keyvault-demo-rg --location eastus
 az keyvault create \
   --name my-app-keyvault \
   --resource-group keyvault-demo-rg \
-  --location eastus
+  --location eastus \
+  --enable-rbac-authorization false
 
 # Add secrets to the vault
 az keyvault secret set --vault-name my-app-keyvault --name "database-url" \
@@ -74,7 +75,7 @@ Add the Key Vault secrets starter to your Spring Boot project.
     <dependency>
         <groupId>com.azure.spring</groupId>
         <artifactId>spring-cloud-azure-starter-keyvault-secrets</artifactId>
-        <version>5.8.0</version>
+        <version>7.3.0</version>
     </dependency>
 
     <!-- Spring Data JPA for database access (to demonstrate using secrets) -->
@@ -88,6 +89,12 @@ Add the Key Vault secrets starter to your Spring Boot project.
         <artifactId>mysql-connector-j</artifactId>
         <scope>runtime</scope>
     </dependency>
+
+    <!-- Spring Boot Actuator for the health indicator example -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
 </dependencies>
 
 <dependencyManagement>
@@ -95,7 +102,7 @@ Add the Key Vault secrets starter to your Spring Boot project.
         <dependency>
             <groupId>com.azure.spring</groupId>
             <artifactId>spring-cloud-azure-dependencies</artifactId>
-            <version>5.8.0</version>
+            <version>7.3.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -130,7 +137,7 @@ spring:
       ddl-auto: update
 ```
 
-That is it. When the application starts, the starter loads all secrets from Key Vault and makes them available as Spring properties. Your datasource configuration references `${database-url}`, which resolves to the value of the `database-url` secret in Key Vault.
+That is it. The starter loads secrets from Key Vault and makes them available as Spring properties. Your datasource configuration references `${database-url}`, which resolves to the value of the `database-url` secret in Key Vault.
 
 ## How the Property Resolution Works
 
@@ -224,14 +231,14 @@ spring:
               # Shared secrets like API keys
             - endpoint: https://team-keyvault.vault.azure.net
               # Team-specific secrets
-              # Secrets from this vault take precedence
+              # Secrets from the first vault take precedence on name conflicts
 ```
 
-Secrets from later property sources override those from earlier ones if there are naming conflicts.
+Secrets from earlier property sources take precedence over later ones if there are naming conflicts.
 
 ## Secret Rotation Without Restarts
 
-By default, secrets are loaded at startup. If a secret changes in Key Vault, your application does not pick up the change until it restarts. You can enable periodic refresh.
+By default, Key Vault property sources refresh every 30 minutes. You can change the refresh interval for a property source.
 
 ```yaml
 spring:
@@ -239,10 +246,11 @@ spring:
     azure:
       keyvault:
         secret:
-          endpoint: https://my-app-keyvault.vault.azure.net
           property-source-enabled: true
-          # Refresh secrets every 5 minutes
-          refresh-interval: 5m
+          property-sources:
+            - endpoint: https://my-app-keyvault.vault.azure.net
+              # Refresh secrets every 5 minutes
+              refresh-interval: 5m
 ```
 
 With refresh enabled, the starter periodically checks Key Vault for updated secrets and updates the Spring Environment. Be aware that some beans (like datasource connections) might not pick up the new values without a reconnect.
@@ -345,7 +353,7 @@ Third, enable soft delete and purge protection on your Key Vault. This prevents 
 
 Fourth, use separate Key Vaults for different environments. Do not share a Key Vault between development and production.
 
-Fifth, audit secret access. Key Vault logs every operation to Azure Monitor. Set up alerts for unexpected access patterns.
+Fifth, audit secret access. Enable Key Vault diagnostic settings to send audit logs to Azure Monitor, and set up alerts for unexpected access patterns.
 
 ## Wrapping Up
 
