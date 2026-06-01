@@ -46,7 +46,7 @@ az grafana create \
   --name hybrid-monitoring \
   --resource-group rg-monitoring \
   --location eastus \
-  --sku Standard
+  --sku-tier Standard
 
 # Get the Grafana endpoint URL
 az grafana show \
@@ -55,7 +55,7 @@ az grafana show \
   --query "properties.endpoint" -o tsv
 ```
 
-The Standard SKU supports custom plugins, which you will need for the Power BI integration. The Grafana instance is automatically integrated with Azure AD for authentication.
+The Standard SKU supports optional plugins through Azure Managed Grafana plugin management, which you may need for the Power BI integration. The Grafana instance is automatically integrated with Azure AD for authentication.
 
 ## Configuring Azure Monitor Data Source
 
@@ -87,7 +87,7 @@ To query Power BI datasets from Grafana, you need a bridge that exposes Power BI
 
 ### Approach 1: Azure Functions API Bridge
 
-Create an Azure Function that queries Power BI datasets and returns data in a format Grafana's JSON API plugin understands.
+Create an Azure Function that queries Power BI datasets and returns data in a format a Grafana JSON data source plugin can consume. Because this example uses a service principal, enable the Power BI tenant setting that allows service principals to use Power BI APIs, grant the app `Dataset.Read.All` or `Dataset.ReadWrite.All`, and make sure it has read and build permissions on the dataset.
 
 ```javascript
 // src/functions/powerbi-bridge.js
@@ -105,7 +105,7 @@ const msalConfig = {
 
 const cca = new msal.ConfidentialClientApplication(msalConfig);
 
-// Grafana JSON API compatible endpoint - /search
+// Simple JSON compatible endpoint - /search
 app.http('pbi-search', {
   methods: ['POST'],
   route: 'grafana/search',
@@ -126,7 +126,7 @@ app.http('pbi-search', {
   }
 });
 
-// Grafana JSON API compatible endpoint - /query
+// Simple JSON compatible endpoint - /query
 app.http('pbi-query', {
   methods: ['POST'],
   route: 'grafana/query',
@@ -239,15 +239,9 @@ async function executeDaxQuery(accessToken, datasetId, daxQuery) {
 
 ### Approach 2: Direct Power BI Plugin
 
-Azure Managed Grafana Standard tier supports installing community plugins. If a Power BI Grafana plugin is available, install it directly.
+Azure Managed Grafana Standard tier supports installing optional plugins from the Azure portal. If a Power BI Grafana plugin is available in your workspace's Plugin management page, install it there. Installing or removing plugins for Azure Managed Grafana isn't done with the Azure CLI.
 
-```bash
-# Install a Grafana plugin
-az grafana update \
-  --name hybrid-monitoring \
-  --resource-group rg-monitoring \
-  --grafana-plugins "grafana-powerbi-datasource"
-```
+If no Power BI-specific plugin is available, use the Azure Functions bridge with a JSON-capable data source plugin such as JSON API, JSON, or Infinity.
 
 ## Building the Hybrid Dashboard
 
@@ -348,9 +342,9 @@ Create a Grafana dashboard that combines operational and business metrics.
 
 Configure Grafana alerts that combine operational and business signals. For example, alert when both error rates spike AND revenue drops - indicating a customer-impacting incident.
 
-In the Grafana UI, create an alert rule.
+In the Grafana UI, create an alert rule. Grafana stores alert rules as queries and expressions, so the logic should look like this rather than a standalone YAML file:
 
-```yaml
+```text
 # Alert: Revenue drop correlated with errors
 name: Revenue Impact Incident
 condition: |
@@ -372,25 +366,22 @@ Configure role-based access so different teams see relevant dashboards.
 
 ```bash
 # Grant the engineering team Grafana Editor role
-az grafana user assign \
-  --name hybrid-monitoring \
-  --resource-group rg-monitoring \
-  --user "engineering-team@contoso.com" \
-  --role Editor
+az role assignment create \
+  --assignee "engineering-team@contoso.com" \
+  --role "Grafana Editor" \
+  --scope "/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/rg-monitoring/providers/Microsoft.Dashboard/grafana/hybrid-monitoring"
 
 # Grant the business team Grafana Viewer role
-az grafana user assign \
-  --name hybrid-monitoring \
-  --resource-group rg-monitoring \
-  --user "business-analytics@contoso.com" \
-  --role Viewer
+az role assignment create \
+  --assignee "business-analytics@contoso.com" \
+  --role "Grafana Viewer" \
+  --scope "/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/rg-monitoring/providers/Microsoft.Dashboard/grafana/hybrid-monitoring"
 
 # Grant the SRE team Grafana Admin role
-az grafana user assign \
-  --name hybrid-monitoring \
-  --resource-group rg-monitoring \
-  --user "sre-team@contoso.com" \
-  --role Admin
+az role assignment create \
+  --assignee "sre-team@contoso.com" \
+  --role "Grafana Admin" \
+  --scope "/subscriptions/YOUR_SUBSCRIPTION_ID/resourceGroups/rg-monitoring/providers/Microsoft.Dashboard/grafana/hybrid-monitoring"
 ```
 
 ## Creating Annotations for Incident Correlation
@@ -412,7 +403,7 @@ async function addDeploymentAnnotation(version, environment) {
     },
     {
       headers: {
-        Authorization: `Bearer ${process.env.GRAFANA_API_KEY}`,
+        Authorization: `Bearer ${process.env.GRAFANA_SERVICE_ACCOUNT_TOKEN}`,
         'Content-Type': 'application/json'
       }
     }
