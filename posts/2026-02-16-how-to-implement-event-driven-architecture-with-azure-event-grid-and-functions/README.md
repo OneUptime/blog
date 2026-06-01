@@ -77,8 +77,9 @@ I recommend using the CloudEvents v1.0 schema instead of the default Event Grid 
 Here is how to publish events from a .NET application:
 
 ```csharp
-using Azure.Messaging.EventGrid;
 using Azure;
+using Azure.Messaging;
+using Azure.Messaging.EventGrid;
 
 // Create the Event Grid publisher client
 // The endpoint and key come from the topic you created
@@ -124,7 +125,7 @@ var events = orders.Select(order => new CloudEvent(
     jsonSerializableData: order
 )).ToList();
 
-// Send up to 1 MB or 5000 events per batch
+// Keep the total publish request body under the Event Grid limit of 1 MB
 await client.SendEventsAsync(events);
 ```
 
@@ -134,7 +135,7 @@ Now let us create Functions that subscribe to these events:
 
 ```csharp
 // Function that processes order placed events
-// The EventGridTrigger binding handles the subscription automatically
+// Create an Event Grid subscription that points to this function
 [Function("ProcessOrder")]
 public async Task ProcessOrder(
     [EventGridTrigger] CloudEvent cloudEvent,
@@ -239,15 +240,17 @@ public async Task ProcessDeadLetters(
     {
         var blobClient = container.GetBlobClient(blob.Name);
         var content = await blobClient.DownloadContentAsync();
-        var deadLetter = content.Value.Content.ToObjectFromJson<DeadLetterEvent>();
+        var deadLetter = CloudEvent.Parse(content.Value.Content);
+        deadLetter.ExtensionAttributes.TryGetValue(
+            "deadletterreason", out var deadLetterReason);
 
         logger.LogWarning(
             "Dead letter event: type={Type}, subject={Subject}, error={Error}",
-            deadLetter.EventType, deadLetter.Subject, deadLetter.DeadLetterReason);
+            deadLetter.Type, deadLetter.Subject, deadLetterReason);
 
         // Alert the team about persistent failures
         await _alertService.SendAsync(
-            $"Dead letter event detected: {deadLetter.EventType}");
+            $"Dead letter event detected: {deadLetter.Type}");
     }
 }
 ```
@@ -265,13 +268,17 @@ public async Task ProcessOrder(
 {
     // Check if this event was already processed
     // Using Cosmos DB to track processed event IDs
-    var processed = await _cosmosContainer.ReadItemAsync<ProcessedEvent>(
-        cloudEvent.Id, new PartitionKey(cloudEvent.Id));
-
-    if (processed.Resource != null)
+    try
     {
+        await _cosmosContainer.ReadItemAsync<ProcessedEvent>(
+            cloudEvent.Id, new PartitionKey(cloudEvent.Id));
+
         // Already processed, skip
         return;
+    }
+    catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+    {
+        // Not processed yet, continue
     }
 
     // Process the event
