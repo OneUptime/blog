@@ -34,18 +34,23 @@ graph TD
 
 az group create --name rg-workflows --location eastus
 
+# Save the workflow definition as approval-workflow-definition.json
+cat > approval-workflow-definition.json <<'JSON'
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "triggers": {},
+  "actions": {},
+  "outputs": {}
+}
+JSON
+
 # Create a consumption-tier Logic App
 az logic workflow create \
   --resource-group rg-workflows \
   --name la-approval-workflow \
   --location eastus \
-  --definition '{
-    "definition": {
-      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
-      "triggers": {},
-      "actions": {}
-    }
-  }'
+  --definition approval-workflow-definition.json
 ```
 
 For the rest of the configuration, we will use the portal designer since it provides visual building and the approval connector setup requires OAuth authentication.
@@ -116,6 +121,7 @@ Please review and approve or reject this request.
 
 - **Item link**: Optionally link to your internal system where the request lives
 - **Item link description**: "View request details"
+- **Enable notifications**: Yes
 
 The "Start and wait for an approval" action does exactly what it says - it sends an actionable email to the approver and then pauses the workflow until the approver responds. The email includes Approve and Reject buttons directly in the email body.
 
@@ -177,7 +183,7 @@ A simpler approach is to use the built-in timeout on the approval action:
 3. Under "Timeout", set it to `PT72H` (72 hours in ISO 8601 duration format)
 4. Enable "Run After" on a subsequent action to handle the timeout case
 
-When the approval times out, the action status is "TimedOut." You can add a parallel branch that runs when the approval action times out:
+When the approval times out, Logic Apps records the asynchronous operation as canceled with an `ActionTimedOut` code, and the designer lets you configure a timeout-specific run-after path:
 
 Add a new action after the approval, click "Configure run after," and select only "Has timed out." This action runs only when the approval was not responded to in time:
 
@@ -232,33 +238,21 @@ This creates a sequential approval chain where each level must approve before th
 
 Sometimes you need multiple people to approve simultaneously (for example, both the finance team and the legal team must approve):
 
-Use the "Start and wait for an approval" action with the type set to "Approve/Reject - Everyone must approve" and list multiple email addresses in the "Assigned to" field.
+Use the "Start and wait for an approval" action with the type set to "Approve/Reject - Everyone must approve" and list multiple email addresses in the "Assigned to" field separated by semicolons.
 
 The action will not complete until every listed approver has responded, and the overall outcome is "Approve" only if all approvers approved.
 
 ## Tracking Approval Status
 
-For audit and tracking purposes, add a step at the beginning and end of the workflow that logs to a data store. Azure Table Storage is a cheap and simple option:
+For audit and tracking purposes, add a step at the beginning and end of the workflow that logs to a data store. Azure Table Storage is a cheap and simple option. Add the Azure Table Storage connector's "Insert Entity (V2)" action and map the entity fields like this:
 
 ```json
 {
-  "type": "ApiConnection",
-  "inputs": {
-    "host": {
-      "connection": {
-        "name": "@parameters('$connections')['azuretables']['connectionId']"
-      }
-    },
-    "method": "post",
-    "path": "/v2/storageAccounts/{storageAccountName}/tables/ApprovalLog/entities",
-    "body": {
-      "PartitionKey": "@{triggerBody()?['requestType']}",
-      "RowKey": "@{triggerBody()?['requestId']}",
-      "RequestedBy": "@{triggerBody()?['requestedBy']}",
-      "Status": "Pending",
-      "SubmittedAt": "@{utcNow()}"
-    }
-  }
+  "PartitionKey": "@{triggerBody()?['requestType']}",
+  "RowKey": "@{triggerBody()?['requestId']}",
+  "RequestedBy": "@{triggerBody()?['requestedBy']}",
+  "Status": "Pending",
+  "SubmittedAt": "@{utcNow()}"
 }
 ```
 
