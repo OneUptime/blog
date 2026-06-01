@@ -50,7 +50,7 @@ aws datazone create-domain \
 # Example: dzd-abc123def456
 ```
 
-You need an execution role for DataZone to manage resources on your behalf.
+You can let DataZone create the default execution role, or create one yourself if you need to manage it explicitly.
 
 ```bash
 # Create the DataZone domain execution role
@@ -62,10 +62,18 @@ cat > datazone-trust.json << 'EOF'
     "Principal": {
       "Service": "datazone.amazonaws.com"
     },
-    "Action": "sts:AssumeRole",
+    "Action": [
+      "sts:AssumeRole",
+      "sts:TagSession"
+    ],
     "Condition": {
       "StringEquals": {
         "aws:SourceAccount": "123456789012"
+      },
+      "ForAllValues:StringLike": {
+        "aws:TagKeys": [
+          "datazone*"
+        ]
       }
     }
   }]
@@ -144,15 +152,15 @@ aws datazone create-project-membership \
 
 ## Step 4: Create Environments
 
-Environments connect DataZone to actual AWS analytics services. They define where data consumers will access the data.
+Environments connect DataZone to actual AWS analytics services. They define where project members publish or access data.
 
 ```bash
-# Create an Athena environment for the analytics project
+# Create an Athena environment for the data engineering project
 aws datazone create-environment \
   --domain-identifier dzd-abc123def456 \
-  --project-identifier prj-analytics456 \
-  --name "Analytics Athena Environment" \
-  --environment-profile-identifier "DefaultDataLake" \
+  --project-identifier prj-eng123 \
+  --name "Data Lake Athena Environment" \
+  --environment-profile-identifier "env-prof-datalake123" \
   --description "Athena-based environment for querying the data lake"
 ```
 
@@ -218,9 +226,10 @@ aws datazone create-data-source \
   --schedule '{
     "schedule": "cron(0 6 * * ? *)",
     "timezone": "UTC"
-  }'
+  }' \
+  --publish-on-import
 
-# Run the data source to discover assets
+# Run the data source to discover and publish assets
 aws datazone start-data-source-run \
   --domain-identifier dzd-abc123def456 \
   --data-source-identifier ds-glue123
@@ -295,6 +304,6 @@ aws datazone list-subscription-requests \
   --status PENDING
 ```
 
-DataZone integrates with CloudTrail for audit logging, so every data access request, approval, and subscription is tracked. For alerting on governance events, set up [CloudWatch monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to notify you when subscription requests pile up or data source runs fail.
+DataZone integrates with CloudTrail for audit logging, so DataZone API calls such as access requests, approvals, and subscription changes are tracked. For alerting on governance events, set up [CloudWatch monitoring](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to notify you when subscription requests pile up or data source runs fail.
 
 DataZone won't solve all your governance problems overnight, but it gives you the framework to manage data access at scale. Start with a single domain, get one team publishing and subscribing successfully, then expand from there.
