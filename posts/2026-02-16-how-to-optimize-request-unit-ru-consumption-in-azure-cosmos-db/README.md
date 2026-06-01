@@ -71,7 +71,7 @@ Console.WriteLine($"All fields: {result1.RequestCharge} RUs");
 
 var result2 = await container.GetItemQueryIterator<dynamic>(projectedQuery).ReadNextAsync();
 Console.WriteLine($"Projected: {result2.RequestCharge} RUs");
-// Projected queries typically cost 30-50% less
+// Projected queries can cost less; measure your workload to confirm the savings
 ```
 
 ## Technique 3: Optimize Indexing Policy
@@ -128,7 +128,7 @@ Console.WriteLine($"Single-partition: {spResult.RequestCharge} RUs");
 
 Smaller documents cost less for every operation. Consider these strategies:
 
-```json
+```jsonc
 // BEFORE: Verbose property names and unnecessary data
 {
     "id": "order-123",
@@ -171,11 +171,11 @@ The trade-off is readability. Use this technique for high-volume containers wher
 
 ## Technique 6: Use Lower Consistency Levels
 
-Strong and Bounded Staleness reads cost 2x the RUs of Session, Consistent Prefix, or Eventual. If your read does not require the strongest consistency, override it per request:
+Strong and Bounded Staleness reads cost approximately 2x the RUs of Session, Consistent Prefix, or Eventual. If your account uses Strong or Bounded Staleness by default and a read does not require that stronger consistency, override it per request:
 
 ```csharp
 // Override to Eventual consistency for non-critical reads
-// This halves the read RU cost compared to Strong
+// This can halve the read RU cost compared to Strong or Bounded Staleness
 ItemRequestOptions options = new ItemRequestOptions
 {
     ConsistencyLevel = ConsistencyLevel.Eventual
@@ -183,7 +183,7 @@ ItemRequestOptions options = new ItemRequestOptions
 
 var response = await container.ReadItemAsync<MyDoc>(
     "doc-123", new PartitionKey("pk-1"), options);
-// Costs ~0.5 RU instead of ~1 RU for a 1 KB document
+// Costs ~1 RU instead of ~2 RUs for a 1 KB point read when the account default is Strong or Bounded Staleness
 ```
 
 ## Technique 7: Optimize Query Patterns
@@ -191,9 +191,9 @@ var response = await container.ReadItemAsync<MyDoc>(
 Certain query patterns are more expensive than others:
 
 ```sql
--- EXPENSIVE: ORDER BY without a composite index
--- Forces a sort in memory, high RU cost
-SELECT * FROM c WHERE c.status = 'active' ORDER BY c.createdAt DESC
+-- EXPENSIVE: ORDER BY on multiple properties without a composite index
+-- Azure Cosmos DB requires a matching composite index for multi-property ORDER BY queries
+SELECT * FROM c WHERE c.category = 'electronics' ORDER BY c.status ASC, c.createdAt DESC
 
 -- CHEAPER: Add a composite index, then the same query is much cheaper
 -- See indexing policy documentation for composite index setup
@@ -247,7 +247,7 @@ Fetch only what you need. Do not read 1000 documents when your UI shows 20:
 
 ```csharp
 // Use MaxItemCount to limit the page size
-// Smaller pages = lower RU cost per request
+// Smaller pages = lower RU cost per request, but not necessarily lower total RU if you read every page
 var queryOptions = new QueryRequestOptions
 {
     MaxItemCount = 20, // Only fetch 20 items per page
@@ -273,20 +273,23 @@ Track RU costs before and after each optimization:
 
 ```csharp
 // RU tracking wrapper for measuring optimization impact
-async Task<(T Result, double RUCost)> TrackRUs<T>(Func<Task<T>> operation, string label)
+async Task<(T Result, double RUCost)> TrackItemRUs<T>(Func<Task<ItemResponse<T>>> operation, string label)
 {
-    T result = await operation();
+    ItemResponse<T> response = await operation();
 
-    double rus = result switch
-    {
-        ItemResponse<dynamic> r => r.RequestCharge,
-        FeedResponse<dynamic> r => r.RequestCharge,
-        _ => 0
-    };
+    Console.WriteLine($"[{label}] Cost: {response.RequestCharge} RUs");
+    return (response.Resource, response.RequestCharge);
+}
 
-    Console.WriteLine($"[{label}] Cost: {rus} RUs");
-    return (result, rus);
+async Task<(IReadOnlyList<T> Results, double RUCost)> TrackQueryRUs<T>(
+    Func<Task<FeedResponse<T>>> operation,
+    string label)
+{
+    FeedResponse<T> response = await operation();
+
+    Console.WriteLine($"[{label}] Cost: {response.RequestCharge} RUs");
+    return (response.ToList(), response.RequestCharge);
 }
 ```
 
-The path to RU optimization is iterative. Start by measuring your current costs, identify the most expensive operations, apply the relevant techniques, and measure again. Even small per-operation savings compound into significant cost reductions at scale. A 1 RU savings on an operation that runs 10 million times per month saves you $2.50/month - and most optimizations save much more than 1 RU per operation.
+The path to RU optimization is iterative. Start by measuring your current costs, identify the most expensive operations, apply the relevant techniques, and measure again. Even small per-operation savings compound at scale. In serverless accounts, saving 1 RU on an operation that runs 10 million times per month means 10 million fewer billable RUs; in provisioned throughput accounts, the same reduction may let you lower the RU/s you provision.
