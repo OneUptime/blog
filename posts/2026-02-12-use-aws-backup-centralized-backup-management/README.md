@@ -26,8 +26,8 @@ AWS Backup works with:
 - Amazon DocumentDB
 - Amazon Neptune
 - Amazon Redshift
-- VMware on AWS
-- Amazon Timestream
+- VMware Cloud on AWS virtual machines
+- Amazon Timestream for LiveAnalytics
 - Amazon CloudFormation stacks
 
 That covers the vast majority of stateful AWS resources you'd want to protect.
@@ -58,7 +58,7 @@ aws backup create-backup-vault \
   }'
 ```
 
-You can create multiple vaults for different environments or compliance requirements. Each vault has its own encryption key and access policies.
+You can create multiple vaults for different environments or compliance requirements. Each vault can use its own encryption key and access policies.
 
 ## Step 2: Set Up IAM for AWS Backup
 
@@ -105,7 +105,8 @@ aws backup create-backup-plan \
         "CompletionWindowMinutes": 180,
         "Lifecycle": {
           "MoveToColdStorageAfterDays": 30,
-          "DeleteAfterDays": 365
+          "DeleteAfterDays": 365,
+          "OptInToArchiveForSupportedResources": true
         },
         "EnableContinuousBackup": false
       },
@@ -117,7 +118,8 @@ aws backup create-backup-plan \
         "CompletionWindowMinutes": 360,
         "Lifecycle": {
           "MoveToColdStorageAfterDays": 90,
-          "DeleteAfterDays": 2555
+          "DeleteAfterDays": 2555,
+          "OptInToArchiveForSupportedResources": true
         }
       }
     ],
@@ -133,8 +135,8 @@ aws backup create-backup-plan \
 ```
 
 This plan creates:
-- **Daily backups** at 3 AM UTC, kept for 1 year (moved to cold storage after 30 days)
-- **Weekly backups** on Sundays at 5 AM UTC, kept for 7 years (moved to cold storage after 90 days)
+- **Daily backups** at 3 AM UTC, kept for 1 year (moved to cold storage after 30 days for supported resource types)
+- **Weekly backups** on Sundays at 5 AM UTC, kept for 7 years (moved to cold storage after 90 days for supported resource types)
 - **Windows VSS** enabled for consistent EC2 snapshots of Windows instances
 
 The start window gives AWS Backup a time range to initiate the backup (useful when backing up many resources). The completion window is the maximum time a backup can take before it's marked as failed.
@@ -173,7 +175,7 @@ aws backup create-backup-selection \
   }'
 ```
 
-The tag-based approach is the most scalable. Just tag any new resource with `Backup=true` and it automatically gets included in the backup plan. No need to update the plan every time you deploy a new database.
+The tag-based approach is the most scalable. Just tag any supported, opted-in resource with `Backup=true` and it automatically gets included in the backup plan. No need to update the plan every time you deploy a new database.
 
 ## Step 5: Enable Continuous Backup for Point-in-Time Recovery
 
@@ -198,7 +200,7 @@ aws backup create-backup-plan \
   }'
 ```
 
-Continuous backup lets you restore to any point within the retention period - not just the scheduled backup times. It's supported for RDS, Aurora, DynamoDB, S3, and SAP HANA.
+Continuous backup lets you restore to any point within the retention period, up to AWS Backup's 35-day maximum for continuous backups - not just the scheduled backup times. It's supported for RDS, Aurora, DynamoDB, S3, and SAP HANA.
 
 ## Step 6: Monitor Backup Jobs
 
@@ -244,14 +246,16 @@ aws events put-targets \
   }]'
 ```
 
+If you're adding the SNS target with the CLI, make sure the SNS topic policy allows EventBridge (`events.amazonaws.com`) to publish to the topic.
+
 ## Step 7: Set Up Backup Reporting
 
-AWS Backup can generate compliance reports:
+AWS Backup can generate audit reports:
 
 ```bash
-# Create a backup report plan
+# Create a backup job report plan
 aws backup create-report-plan \
-  --report-plan-name "DailyComplianceReport" \
+  --report-plan-name "DailyBackupJobReport" \
   --report-delivery-channel '{
     "S3BucketName": "backup-reports-bucket",
     "S3KeyPrefix": "compliance-reports",
@@ -263,7 +267,7 @@ aws backup create-report-plan \
   }'
 ```
 
-This generates daily reports showing backup job success/failure rates, which is invaluable for compliance audits.
+This generates daily backup job reports showing backup job success/failure rates, which is invaluable for compliance audits.
 
 ## Organization-Wide Backup Policies
 
