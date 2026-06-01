@@ -165,7 +165,9 @@ spec:
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         ports:
-        - containerPort: 80
+        - name: http
+          containerPort: 80
+          protocol: TCP
         # Readiness probe - pod must pass this to receive traffic
         readinessProbe:
           httpGet:
@@ -217,7 +219,8 @@ helm upgrade my-app ./my-app \
   --values values-production.yaml \
   --set image.tag="1.3.0" \
   --atomic \
-  --timeout 5m
+  --timeout 5m \
+  --install
 ```
 
 The `--atomic` flag is the key to automated rollbacks. Here is what happens:
@@ -339,7 +342,7 @@ If the migration Job fails, Helm aborts the upgrade before any pods are replaced
 - Set realistic timeouts. If your pods take 3 minutes to start, a 5-minute timeout is too tight when deploying multiple replicas.
 - Keep the release history manageable. Set `--history-max 10` to prevent accumulating hundreds of old revisions.
 - Use separate values files per environment rather than relying on `--set` flags. Values files are version-controlled and reviewable.
-- Pin chart dependencies to specific versions in `Chart.lock` to ensure reproducible deployments.
+- Pin chart dependencies to specific versions in `Chart.yaml` and commit `Chart.lock` to ensure reproducible deployments.
 
 ## Summary
 
