@@ -29,7 +29,7 @@ Configuration variables are the dimensions of your testing matrix. Common variab
 
 ## Creating Configuration Variables
 
-Navigate to your Azure DevOps project, go to Test Plans, then click the settings gear icon. Under "Test configurations," click "Configuration variables."
+Navigate to your Azure DevOps project, go to Test Plans, then select Configurations from the left navigation area.
 
 Create the variables your team needs.
 
@@ -55,16 +55,19 @@ PAT="your-pat"
 
 # Create the Browser configuration variable
 curl -X POST \
-  "https://dev.azure.com/${ORG}/${PROJECT}/_apis/testplan/configurations?api-version=7.1" \
+  "https://dev.azure.com/${ORG}/${PROJECT}/_apis/testplan/variables?api-version=7.1" \
   -H "Authorization: Basic $(echo -n ":${PAT}" | base64)" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Chrome on Windows 11",
-    "description": "Desktop Chrome browser on Windows 11",
-    "isDefault": true,
+    "name": "Browser",
+    "description": "Browsers supported by the application",
     "values": [
-      { "name": "Browser", "value": "Chrome" },
-      { "name": "Operating System", "value": "Windows 11" }
+      "Chrome",
+      "Firefox",
+      "Safari",
+      "Edge",
+      "Chrome Mobile",
+      "Safari Mobile"
     ]
   }'
 ```
@@ -73,7 +76,7 @@ curl -X POST \
 
 With the variables defined, create configurations that combine them into meaningful test environments.
 
-Go to Test Plans, then click the settings gear, then "Test configurations," and click "New configuration."
+Go to Test Plans, select Configurations, select the plus icon, and choose "New test configuration."
 
 Here is a practical set of configurations for a web application:
 
@@ -108,9 +111,9 @@ Configuration 6: Safari - iOS
 
 ## Assigning Configurations to Test Suites
 
-Configurations are assigned at the test suite level. Each suite can have one or more configurations, and every test case in the suite gets a test point for each assigned configuration.
+Configurations are assigned at the test suite level or to individual test cases. Each suite can have one or more configurations, and every test case in the suite gets a test point for each assigned configuration unless an individual test case overrides it.
 
-Navigate to your test plan, select a test suite, and click "Configurations" in the toolbar. Check the configurations that apply to this suite.
+Navigate to your test plan, select a test suite, open the context menu, and choose "Assign configuration." Check the configurations that apply to this suite.
 
 ```mermaid
 graph TD
@@ -165,7 +168,7 @@ import json, sys
 data = json.load(sys.stdin)
 for point in data.get('value', []):
     config = point.get('configuration', {}).get('name', 'Unknown')
-    test = point.get('testCase', {}).get('name', 'Unknown')
+    test = point.get('testCaseReference', {}).get('name', 'Unknown')
     outcome = point.get('results', {}).get('outcome', 'Not Run')
     print(f'{config:30s} | {test:40s} | {outcome}')
 "
@@ -183,45 +186,51 @@ trigger:
     include:
       - main
 
-pool:
-  vmImage: 'ubuntu-latest'
-
 strategy:
   matrix:
-    Chrome_Windows:
-      browserName: 'chrome'
-      osName: 'Windows 11'
-      configId: '1'
-    Firefox_Windows:
-      browserName: 'firefox'
-      osName: 'Windows 11'
-      configId: '2'
-    Edge_Windows:
-      browserName: 'MicrosoftEdge'
-      osName: 'Windows 11'
-      configId: '3'
+    Chromium_Ubuntu:
+      vmImage: 'ubuntu-latest'
+      playwrightProject: 'chromium'
+      browserLabel: 'Chromium'
+      osName: 'Ubuntu'
+    Firefox_Ubuntu:
+      vmImage: 'ubuntu-latest'
+      playwrightProject: 'firefox'
+      browserLabel: 'Firefox'
+      osName: 'Ubuntu'
+    WebKit_macOS:
+      vmImage: 'macOS-latest'
+      playwrightProject: 'webkit'
+      browserLabel: 'WebKit'
+      osName: 'macOS'
+
+pool:
+  vmImage: '$(vmImage)'
 
 steps:
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '22.x'
 
   - script: |
       npm ci
-      # Run Playwright tests with the specified browser
-      npx playwright test --project=$(browserName)
-    displayName: 'Run tests on $(browserName)'
+      npx playwright install $(playwrightProject)
+      mkdir -p test-results
+      # Run Playwright tests with the specified project
+      npx playwright test --project=$(playwrightProject) --reporter=junit
+    displayName: 'Run tests on $(browserLabel)'
     env:
-      BROWSER: $(browserName)
+      BROWSER: $(browserLabel)
+      PLAYWRIGHT_JUNIT_OUTPUT_FILE: 'test-results/junit-$(playwrightProject).xml'
 
-  # Publish test results and associate with the configuration
+  # Publish test results with a configuration label for pipeline reporting
   - task: PublishTestResults@2
     displayName: 'Publish test results'
     inputs:
       testResultsFormat: 'JUnit'
       testResultsFiles: '**/test-results/*.xml'
-      testRunTitle: 'Automated Tests - $(browserName) on $(osName)'
-      configuration: '$(configId)'
+      testRunTitle: 'Automated Tests - $(browserLabel) on $(osName)'
+      buildConfiguration: '$(browserLabel)-$(osName)'
     condition: always()
 ```
 
@@ -235,7 +244,7 @@ Create configuration tiers. Tier 1 configurations run on every build (Chrome, Sa
 
 Use the default configuration wisely. Set your most common user environment as the default. When testers run a quick sanity check, they automatically test the most important configuration.
 
-Archive configurations that are no longer relevant. When you drop support for Internet Explorer or an old OS version, archive the configuration rather than deleting it (so historical results are preserved).
+Retire configurations that are no longer relevant by marking them inactive. When you drop support for Internet Explorer or an old OS version, make the configuration inactive rather than deleting it (so historical results are preserved).
 
 ## Connecting Test Configurations to Requirements
 
