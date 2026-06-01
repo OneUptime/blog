@@ -48,7 +48,8 @@ az keyvault create \
 az keyvault set-policy \
   --name my-cert-vault \
   --upn your@email.com \
-  --certificate-permissions get list create delete update import backup restore recover purge
+  --certificate-permissions get list create delete update import backup restore recover purge \
+  --secret-permissions get
 ```
 
 ## Initialize the Client
@@ -97,6 +98,7 @@ async function createSelfSignedCert(name, subject, validityMonths = 12) {
     // Key properties
     keyType: 'RSA',
     keySize: 2048,
+    exportable: true,  // Required if you later need to retrieve the private key
     reuseKey: false,  // Generate a new key on renewal
 
     // Usage
@@ -146,6 +148,7 @@ async function createCACert(name, subject, issuerName) {
     validityInMonths: 12,
     keyType: 'RSA',
     keySize: 2048,
+    exportable: true,
     contentType: 'application/x-pkcs12',
 
     lifetimeActions: [
@@ -183,7 +186,7 @@ async function importPemCertificate(name, certPath, keyPath) {
   const certPem = fs.readFileSync(certPath, 'utf8');
   const keyPem = fs.readFileSync(keyPath, 'utf8');
 
-  // Combine cert and key into a single PEM
+  // Combine cert and key into a single PEM. Key Vault requires an unencrypted PKCS#8 private key.
   const combined = certPem + '\n' + keyPem;
 
   const certificate = await certClient.importCertificate(name, Buffer.from(combined), {
@@ -257,6 +260,10 @@ async function getCertificateWithPrivateKey(name) {
   // Get the private key from the secrets store
   const secret = await secretClient.getSecret(name);
 
+  if (!secret.value) {
+    throw new Error(`Certificate secret ${name} has no value`);
+  }
+
   if (cert.policy && cert.policy.contentType === 'application/x-pem-file') {
     // PEM format - the secret value is the PEM-encoded cert + key
     return {
@@ -282,10 +289,16 @@ async function useCertForHttps(name) {
   const certData = await getCertificateWithPrivateKey(name);
 
   if (certData.contentType === 'pem') {
-    // Split PEM into cert and key
-    const parts = certData.certificate.split('-----BEGIN RSA PRIVATE KEY-----');
-    const cert = parts[0];
-    const key = '-----BEGIN RSA PRIVATE KEY-----' + parts[1];
+    // Split PEM into certificate chain and private key
+    const certMatches = certData.certificate.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g);
+    const keyMatch = certData.certificate.match(/-----BEGIN (?:RSA |EC )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA |EC )?PRIVATE KEY-----/);
+
+    if (!certMatches || !keyMatch) {
+      throw new Error(`Certificate ${name} secret does not contain both certificate and private key PEM blocks`);
+    }
+
+    const cert = certMatches.join('\n');
+    const key = keyMatch[0];
 
     const server = https.createServer({ cert, key }, (req, res) => {
       res.writeHead(200);
@@ -463,6 +476,9 @@ If you use self-signed certificates or certificates from an integrated CA, Key V
 
 ```javascript
 // Scheduled rotation check - run this as a cron job or Azure Function timer
+const { certClient } = require('./cert-client');
+const { checkExpiringCertificates } = require('./operations/monitor');
+
 async function rotateExpiringCerts() {
   const results = await checkExpiringCertificates(60, 14);
 
@@ -470,9 +486,8 @@ async function rotateExpiringCerts() {
     console.log(`Initiating renewal for ${cert.name}`);
     // If using an integrated CA, this triggers a renewal request
     // If self-signed, this creates a new version
-    const poller = await certClient.beginCreateCertificate(cert.name, {
-      // The existing policy is reused
-    });
+    const policy = await certClient.getCertificatePolicy(cert.name);
+    const poller = await certClient.beginCreateCertificate(cert.name, policy);
     await poller.pollUntilDone();
     console.log(`Renewed certificate: ${cert.name}`);
   }
