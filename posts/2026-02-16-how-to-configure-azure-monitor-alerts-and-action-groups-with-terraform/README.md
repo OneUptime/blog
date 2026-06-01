@@ -67,7 +67,7 @@ resource "azurerm_monitor_action_group" "warning" {
   }
 }
 
-# Action group for informational alerts - just logs to a webhook
+# Action group for informational alerts - just posts to an internal webhook
 resource "azurerm_monitor_action_group" "info" {
   name                = "ag-info-alerts"
   resource_group_name = azurerm_resource_group.monitoring.name
@@ -75,8 +75,8 @@ resource "azurerm_monitor_action_group" "info" {
   enabled             = true
 
   webhook_receiver {
-    name                    = "slack-webhook"
-    service_uri             = var.slack_webhook_url
+    name                    = "info-webhook"
+    service_uri             = var.info_webhook_url
     use_common_alert_schema = true
   }
 }
