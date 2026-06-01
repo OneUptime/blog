@@ -22,9 +22,9 @@ Next Hop is a diagnostic tool that evaluates the effective routes for a virtual 
 - Service endpoint routes
 
 The output tells you three things:
-1. The next hop type (VirtualNetwork, Internet, VirtualAppliance, etc.)
+1. The next hop type (VnetLocal, Internet, VirtualAppliance, etc.)
 2. The next hop IP address (if applicable)
-3. The route table that contains the winning route
+3. The route table that contains the winning route, or "System Route" for routes that do not come from a user-defined route table
 
 ```mermaid
 flowchart TD
@@ -40,7 +40,7 @@ flowchart TD
 
 ## Running a Next Hop Query
 
-The simplest way to use Next Hop is through the Azure CLI. You need the source VM's resource ID, the source NIC's ID, the source IP, and the destination IP.
+The simplest way to use Next Hop is through the Azure CLI. You need the source VM name or resource ID, the source IP, and the destination IP. If the VM has multiple NICs, pass the NIC name or ID with `--nic`. You also need Network Watcher enabled in the VM's region.
 
 ```bash
 # Run a Next Hop diagnostic to find where traffic from VM-A to 10.2.0.5 goes
@@ -70,13 +70,13 @@ Here are the next hop types you will see and what they mean:
 
 **VirtualNetworkGateway** - Traffic is sent to a VPN Gateway or ExpressRoute Gateway. This is normal for traffic destined for on-premises networks.
 
-**VirtualNetwork** - Traffic stays within the virtual network. Azure handles routing directly between subnets in the same VNet.
+**VnetLocal** - Traffic stays within the virtual network. Azure handles routing directly between subnets in the same VNet.
 
 **Internet** - Traffic is routed to the internet. If you see this for traffic that should stay internal, you have a routing problem.
 
 **VirtualAppliance** - Traffic is sent to a network virtual appliance (NVA) like a firewall. The next hop IP shows which appliance.
 
-**None** - The traffic will be dropped. This means no matching route exists, or the matching route has a next hop of "None" (a blackhole route). This is often the culprit when connectivity fails.
+**None** - The traffic will be dropped. This means the matching route has a next hop of "None," such as Azure's default routes for private address ranges that are not part of the VNet, or an explicit blackhole route. This is often the culprit when connectivity fails.
 
 ## Diagnosing Common Routing Problems
 
@@ -93,7 +93,7 @@ az network watcher show-next-hop \
   --dest-ip 10.0.2.10
 ```
 
-If the next hop type is "VirtualNetwork," routing is correct and the problem is likely an NSG blocking traffic. If the next hop type is "VirtualAppliance" or "None," a user-defined route is overriding the default system route.
+If the next hop type is "VnetLocal," routing is correct and the problem is likely an NSG blocking traffic. If the next hop type is "VirtualAppliance" or "None," a user-defined route or another more specific route is overriding the default VNet route.
 
 ### Problem 2: Traffic Not Reaching the Firewall
 
@@ -144,7 +144,7 @@ The output might look like this:
 ```text
 Source    State    Address Prefix    Next Hop Type       Next Hop IP
 ------    -----    ---------------   ----------------    -----------
-Default   Active   10.0.0.0/16       VirtualNetwork
+Default   Active   10.0.0.0/16       VnetLocal
 Default   Active   0.0.0.0/0         Internet
 User      Active   0.0.0.0/0         VirtualAppliance    10.0.2.4
 User      Active   10.2.0.0/16       VirtualAppliance    10.0.2.4
@@ -166,7 +166,7 @@ RESOURCE_GROUP="rg-production"
 for vm_name in $(az vm list -g $RESOURCE_GROUP --query "[].name" -o tsv); do
   # Get the VM's primary private IP
   source_ip=$(az vm show -g $RESOURCE_GROUP -n $vm_name \
-    --query "networkProfile.networkInterfaces[0]" -o tsv | \
+    --query "networkProfile.networkInterfaces[0].id" -o tsv | \
     xargs -I{} az network nic show --ids {} \
     --query "ipConfigurations[0].privateIPAddress" -o tsv)
 
@@ -195,7 +195,7 @@ ACTUAL_NEXT_HOP=$(az network watcher show-next-hop \
   --resource-group rg-production \
   --vm vm-web-01 \
   --source-ip 10.0.1.4 \
-  --dest-ip 0.0.0.0 \
+  --dest-ip 8.8.8.8 \
   --query "nextHopType" \
   --output tsv)
 
@@ -207,7 +207,7 @@ fi
 
 ## Troubleshooting Tips
 
-**Next Hop shows "None"**: This usually means there is an explicit route with a next hop type of "None," which drops traffic. Check your route tables for blackhole routes. These are sometimes added intentionally to prevent traffic from reaching certain destinations, but they can also be mistakes.
+**Next Hop shows "None"**: This means the matching route has a next hop type of "None," which drops traffic. Check whether Azure is matching one of its default private-address routes or whether your route tables contain an explicit blackhole route. These are sometimes added intentionally to prevent traffic from reaching certain destinations, but they can also be mistakes.
 
 **Asymmetric routing**: Next Hop only shows the forward path. If the forward path goes through a firewall but the return path does not, you will get connection failures even though Next Hop shows the correct route. Check the routing from both sides.
 
