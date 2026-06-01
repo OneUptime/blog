@@ -10,6 +10,8 @@ Description: Build and manage targeted email campaigns with Amazon Pinpoint, inc
 
 Amazon Pinpoint builds on top of SES to give you a proper email campaign platform. While SES handles the raw sending, Pinpoint adds the marketing layer - templates, segmentation, scheduling, A/B testing, and analytics. If you've outgrown manually sending emails through SES and need to run real campaigns, Pinpoint is the next step.
 
+One important caveat: AWS no longer accepts new Amazon Pinpoint customers as of May 20, 2025, and support for Amazon Pinpoint engagement features ends on October 30, 2026. This guide assumes you already have access to an existing Pinpoint account and need to manage campaigns before migrating.
+
 ## Prerequisites
 
 Before you dive in, make sure you have:
@@ -92,10 +94,10 @@ Effective campaigns depend on good segmentation. Here's how to create different 
 ```python
 def create_attribute_segment(app_id, name, attribute_filters):
     """Create a segment based on user attributes."""
-    dimensions = {'Attributes': {}}
+    dimensions = {'UserAttributes': {}}
 
     for attr_name, values in attribute_filters.items():
-        dimensions['Attributes'][attr_name] = {
+        dimensions['UserAttributes'][attr_name] = {
             'AttributeType': 'INCLUSIVE',
             'Values': values
         }
@@ -133,7 +135,7 @@ free_users = create_attribute_segment(
 
 ### Activity-Based Segments
 
-You can also segment based on email engagement - people who opened recent emails, people who haven't engaged in a while, etc.
+You can also segment based on activity recency - people who have used your app recently, people who haven't engaged in a while, etc.
 
 ```python
 def create_inactive_segment(app_id, name, days_inactive=30):
@@ -201,10 +203,10 @@ def create_email_campaign(app_id, name, segment_id, template_name,
             'TemplateConfiguration': template_config,
             'Schedule': schedule,
             'Limits': {
-                'Daily': 0,           # 0 means unlimited
+                'Daily': 1,           # max messages per endpoint per 24 hours
                 'MaximumDuration': 60, # seconds the campaign can run
                 'MessagesPerSecond': 50,
-                'Total': 0            # 0 means unlimited
+                'Total': 1            # max messages per endpoint for this campaign
             }
         }
     )
@@ -329,9 +331,9 @@ def get_email_kpis(app_id):
     """Get email-specific KPIs for the application."""
     metrics_to_check = [
         'email-open-rate',
-        'email-click-rate',
-        'email-bounce-rate',
-        'email-complaint-rate'
+        'successful-delivery-rate',
+        'unique-deliveries',
+        'email-open-rate-grouped-by-campaign'
     ]
 
     for metric in metrics_to_check:
@@ -355,6 +357,8 @@ def get_email_kpis(app_id):
 For recurring email sequences (onboarding, drip campaigns), use Pinpoint Journeys instead of one-off campaigns. Journeys let you build multi-step, condition-based flows.
 
 ```python
+from datetime import datetime, timezone
+
 def create_simple_journey(app_id, name, segment_id):
     """Create a basic welcome email journey."""
     response = pinpoint.create_journey(
@@ -370,17 +374,17 @@ def create_simple_journey(app_id, name, segment_id):
                 'welcome-email': {
                     'EMAIL': {
                         'TemplateName': 'welcome-email',
-                        'TemplateVersion': '1'
-                    },
-                    'NextActivity': 'wait-3-days'
+                        'TemplateVersion': '1',
+                        'NextActivity': 'wait-3-days'
+                    }
                 },
                 'wait-3-days': {
                     'Wait': {
                         'WaitTime': {
                             'WaitFor': 'P3D'  # ISO 8601 duration: 3 days
-                        }
-                    },
-                    'NextActivity': 'followup-email'
+                        },
+                        'NextActivity': 'followup-email'
+                    }
                 },
                 'followup-email': {
                     'EMAIL': {
@@ -392,7 +396,7 @@ def create_simple_journey(app_id, name, segment_id):
             'StartActivity': 'welcome-email',
             'State': 'ACTIVE',
             'Schedule': {
-                'StartTime': '2026-02-13T00:00:00+00:00'
+                'StartTime': datetime(2026, 2, 13, 0, 0, tzinfo=timezone.utc)
             }
         }
     )
