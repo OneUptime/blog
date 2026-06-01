@@ -39,7 +39,7 @@ The `BytesScannedCutoffPerQuery` setting (10 GB in this example) prevents runawa
 
 ## Granting QuickSight Access to Athena
 
-QuickSight needs IAM permissions to use Athena and access the underlying S3 data. Attach these permissions to QuickSight's service role.
+QuickSight needs IAM permissions to use Athena and access the underlying S3 data. Attach these permissions to QuickSight's service role. For Athena and S3, the default role is usually `aws-quicksight-s3-consumers-role-v0`; older accounts might use `aws-quicksight-service-role-v0` instead.
 
 ```bash
 # Create the QuickSight-Athena policy
@@ -51,6 +51,7 @@ cat > quicksight-athena-policy.json << 'EOF'
       "Effect": "Allow",
       "Action": [
         "athena:BatchGetQueryExecution",
+        "athena:GetQueryResultsStream",
         "athena:GetQueryExecution",
         "athena:GetQueryResults",
         "athena:GetWorkGroup",
@@ -61,6 +62,20 @@ cat > quicksight-athena-policy.json << 'EOF'
       "Resource": [
         "arn:aws:athena:us-east-1:123456789012:workgroup/quicksight-workgroup"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "athena:GetDataCatalog",
+        "athena:GetDatabase",
+        "athena:GetTableMetadata",
+        "athena:ListDataCatalogs",
+        "athena:ListDatabases",
+        "athena:ListTableMetadata",
+        "athena:ListWorkGroups",
+        "athena:ListEngineVersions"
+      ],
+      "Resource": "*"
     },
     {
       "Effect": "Allow",
@@ -101,7 +116,7 @@ cat > quicksight-athena-policy.json << 'EOF'
 EOF
 
 aws iam put-role-policy \
-  --role-name aws-quicksight-service-role-v0 \
+  --role-name aws-quicksight-s3-consumers-role-v0 \
   --policy-name AthenaAccess \
   --policy-document file://quicksight-athena-policy.json
 ```
@@ -152,7 +167,7 @@ aws quicksight create-data-set \
       "CustomSql": {
         "DataSourceArn": "arn:aws:quicksight:us-east-1:123456789012:datasource/athena-datalake",
         "Name": "DailyMetrics",
-        "SqlQuery": "SELECT DATE(event_timestamp) as event_date, channel, device_type, country, COUNT(DISTINCT session_id) as sessions, COUNT(DISTINCT user_id) as unique_users, COUNT(CASE WHEN event_type = '\''purchase'\'' THEN 1 END) as purchases, SUM(CASE WHEN event_type = '\''purchase'\'' THEN revenue ELSE 0 END) as total_revenue, SUM(CASE WHEN event_type = '\''purchase'\'' THEN items_count ELSE 0 END) as items_sold FROM analytics_db.clickstream WHERE year >= '\''2025'\'' AND month >= '\''01'\'' GROUP BY DATE(event_timestamp), channel, device_type, country",
+        "SqlQuery": "WITH daily_metrics AS (SELECT DATE(event_timestamp) as event_date, channel, device_type, country, COUNT(DISTINCT session_id) as sessions, COUNT(DISTINCT user_id) as unique_users, COUNT(CASE WHEN event_type = '\''purchase'\'' THEN 1 END) as purchases, SUM(CASE WHEN event_type = '\''purchase'\'' THEN revenue ELSE 0 END) as total_revenue, SUM(CASE WHEN event_type = '\''purchase'\'' THEN items_count ELSE 0 END) as items_sold FROM analytics_db.clickstream WHERE year >= '\''2025'\'' AND month >= '\''01'\'' GROUP BY DATE(event_timestamp), channel, device_type, country) SELECT event_date, channel, device_type, country, sessions, unique_users, purchases, total_revenue, items_sold, CASE WHEN sessions > 0 THEN CAST(purchases AS DOUBLE) / sessions * 100 ELSE 0 END as conversion_rate, CASE WHEN purchases > 0 THEN total_revenue / purchases ELSE 0 END as avg_order_value, CASE WHEN sessions > 0 THEN total_revenue / sessions ELSE 0 END as revenue_per_session FROM daily_metrics",
         "Columns": [
           {"Name": "event_date", "Type": "DATETIME"},
           {"Name": "channel", "Type": "STRING"},
@@ -162,44 +177,12 @@ aws quicksight create-data-set \
           {"Name": "unique_users", "Type": "INTEGER"},
           {"Name": "purchases", "Type": "INTEGER"},
           {"Name": "total_revenue", "Type": "DECIMAL"},
-          {"Name": "items_sold", "Type": "INTEGER"}
+          {"Name": "items_sold", "Type": "INTEGER"},
+          {"Name": "conversion_rate", "Type": "DECIMAL"},
+          {"Name": "avg_order_value", "Type": "DECIMAL"},
+          {"Name": "revenue_per_session", "Type": "DECIMAL"}
         ]
       }
-    }
-  }' \
-  --logical-table-map '{
-    "metrics-logical": {
-      "Alias": "Daily Metrics",
-      "Source": {"PhysicalTableId": "athena-ecommerce"},
-      "DataTransforms": [
-        {
-          "CreateColumnsOperation": {
-            "Columns": [
-              {
-                "ColumnName": "conversion_rate",
-                "ColumnId": "conversion_rate",
-                "Expression": "ifelse(sessions > 0, (purchases / sessions) * 100, 0)"
-              },
-              {
-                "ColumnName": "avg_order_value",
-                "ColumnId": "avg_order_value",
-                "Expression": "ifelse(purchases > 0, total_revenue / purchases, 0)"
-              },
-              {
-                "ColumnName": "revenue_per_session",
-                "ColumnId": "revenue_per_session",
-                "Expression": "ifelse(sessions > 0, total_revenue / sessions, 0)"
-              }
-            ]
-          }
-        },
-        {
-          "TagColumnOperation": {
-            "ColumnName": "country",
-            "Tags": [{"ColumnGeographicRole": "COUNTRY"}]
-          }
-        }
-      ]
     }
   }' \
   --permissions '[{
@@ -250,8 +233,7 @@ aws athena start-query-execution \
     WITH (
       format = 'PARQUET',
       parquet_compression = 'SNAPPY',
-      partitioned_by = ARRAY['year', 'month'],
-      external_location = 's3://my-data-lake-bucket/optimized/clickstream/'
+      partitioned_by = ARRAY['year', 'month']
     ) AS
     SELECT event_timestamp, session_id, user_id, event_type,
            channel, device_type, country, revenue, items_count,
@@ -309,6 +291,6 @@ aws athena get-query-execution \
   --query 'QueryExecution.Statistics.DataScannedInBytes'
 ```
 
-For ongoing cost monitoring, set up a [CloudWatch alarm](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) on the `DataScannedInBytes` metric for your Athena workgroup. This catches unexpected cost spikes from poorly written queries or data growth.
+For ongoing cost monitoring, set up a [CloudWatch alarm](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) on the `ProcessedBytes` metric for your Athena workgroup. This catches unexpected cost spikes from poorly written queries or data growth.
 
 The Athena-QuickSight combination gives you a serverless analytics stack that scales from gigabytes to petabytes. The key is designing your queries carefully, using partitions and columnar formats, and letting SPICE handle the caching so you're not scanning the same data over and over.
