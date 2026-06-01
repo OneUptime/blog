@@ -1,25 +1,25 @@
-# How to Configure Azure Key Vault Managed HSM for FIPS 140-2 Level 3 Compliance
+# How to Configure Azure Key Vault Managed HSM for FIPS 140-3 Level 3 Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Key Vault, Managed HSM, FIPS 140-2, Compliance, Cryptography, Key Management, Security
+Tags: Azure Key Vault, Managed HSM, FIPS 140-3, Compliance, Cryptography, Key Management, Security
 
-Description: A complete guide to setting up Azure Key Vault Managed HSM for organizations that require FIPS 140-2 Level 3 validated hardware security modules.
+Description: A complete guide to setting up Azure Key Vault Managed HSM for organizations that require FIPS 140-3 Level 3 validated hardware security modules.
 
 ---
 
-Standard Azure Key Vault uses software-protected keys or keys backed by FIPS 140-2 Level 2 validated HSMs. For many organizations, that is sufficient. But if you work in financial services, government, healthcare, or any industry with strict cryptographic requirements, you may need FIPS 140-2 Level 3 validation. That is where Azure Key Vault Managed HSM comes in.
+Standard Azure Key Vault uses software-protected keys or HSM-protected keys in the Premium tier. New HSM-protected keys in Azure Key Vault Premium and all Managed HSM keys use FIPS 140-3 Level 3 validated HSMs, while older Key Vault HSM key versions may still be on the earlier FIPS 140-2 Level 2 platform. For many organizations, a standard vault is sufficient. But if you work in financial services, government, healthcare, or any industry with strict cryptographic requirements, you may need single-tenant FIPS 140-3 Level 3 validated HSM protection. That is where Azure Key Vault Managed HSM comes in.
 
-Managed HSM gives you a dedicated, single-tenant HSM pool that meets FIPS 140-2 Level 3 standards. You get full administrative control over the cryptographic keys, and the HSMs are managed by Azure infrastructure so you do not have to deal with hardware maintenance. This guide covers the full setup process, from provisioning to key operations.
+Managed HSM gives you a dedicated, single-tenant HSM pool that uses FIPS 140-3 Level 3 validated modules. You get administrative control over your cryptographic keys through Managed HSM local RBAC, and the HSMs are managed by Azure infrastructure so you do not have to deal with hardware maintenance. This guide covers the full setup process, from provisioning to key operations.
 
-## What Makes FIPS 140-2 Level 3 Different
+## What Makes FIPS 140-3 Level 3 Different
 
-FIPS 140-2 is a US government standard for cryptographic modules. Level 3 adds physical tamper-resistance and tamper-evidence requirements on top of the Level 2 baseline. Specifically:
+FIPS 140-3 is the current US government standard for cryptographic modules. Level 3 adds stronger physical security and identity-based authentication requirements on top of the lower-level baselines. Specifically:
 
 - **Level 2**: Requires role-based authentication and physical tamper-evidence (like seals or coatings)
-- **Level 3**: Adds tamper-resistance mechanisms that actively destroy keys if physical tampering is detected, plus identity-based authentication
+- **Level 3**: Adds stronger tamper-resistance and tamper-response requirements, plus identity-based authentication
 
-For practical purposes, Level 3 means the HSM hardware will zeroize (permanently erase) its keys if someone tries to physically access the internal components. This matters when your compliance framework requires it, and several do - PCI DSS, FedRAMP High, and various banking regulations.
+For practical purposes, Level 3 means the HSM hardware is designed to detect and respond to attempts to physically access internal components, including by protecting or zeroizing sensitive security parameters. This matters when your compliance framework requires it, and several do - PCI DSS, FedRAMP High, and various banking regulations.
 
 ## Prerequisites
 
@@ -93,21 +93,21 @@ This step activates the HSM pool. After this completes, your Managed HSM is full
 
 ## Step 3: Configure Role-Based Access Control
 
-Managed HSM uses its own local RBAC system, separate from Azure RBAC. The built-in roles are:
+Managed HSM uses its own local RBAC system for data plane operations, separate from Azure RBAC control plane permissions. The built-in roles are:
 
-- **Managed HSM Administrator** - full control over the HSM, including role assignments
-- **Managed HSM Crypto Officer** - can manage keys (create, delete, rotate) but not role assignments
-- **Managed HSM Crypto User** - can use keys for cryptographic operations but not manage them
+- **Managed HSM Administrator** - can manage the security domain, full backup and restore, and role assignments, but not key management operations
+- **Managed HSM Crypto Officer** - can manage role assignments and perform privileged deleted-key, backup, restore, release, and export actions
+- **Managed HSM Crypto User** - can create, read, update, rotate, delete, import, and use keys, but cannot purge or recover deleted keys or export keys
 - **Managed HSM Crypto Service Encryption User** - can wrap and unwrap keys, designed for service-level encryption
-- **Managed HSM Policy** - can manage role assignments
+- **Managed HSM Policy Administrator** - can create and delete role assignments
 
 Assign roles based on the principle of least privilege.
 
 ```bash
-# Assign the Crypto Officer role to a user for key management
+# Assign the Crypto User role to a user for key management
 az keyvault role assignment create \
   --hsm-name contoso-managed-hsm \
-  --role "Managed HSM Crypto Officer" \
+  --role "Managed HSM Crypto User" \
   --assignee "user@contoso.com" \
   --scope "/"
 
@@ -155,7 +155,7 @@ az keyvault key encrypt \
   --hsm-name contoso-managed-hsm \
   --name encryption-key \
   --algorithm RSA-OAEP-256 \
-  --value "SGVsbG8gV29ybGQ=" \
+  --value "Hello World" \
   --data-type plaintext
 
 # Sign data with the EC key
@@ -163,7 +163,7 @@ az keyvault key sign \
   --hsm-name contoso-managed-hsm \
   --name signing-key \
   --algorithm ES256 \
-  --digest "dGVzdCBkaWdlc3Q="
+  --digest "kW8AJ6V1B0znKjMXd8NHjWUT94alkb2JLaGld78jNfk="
 ```
 
 In real applications, you would use the Azure SDK rather than the CLI for key operations. Here is a Python example.
@@ -212,7 +212,8 @@ AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.KEYVAULT"
 | where Resource == "CONTOSO-MANAGED-HSM"
 | where TimeGenerated > ago(24h)
-| project TimeGenerated, OperationName, CallerIPAddress, Identity = identity_claim_upn_s, ResultType
+| extend Identity = tostring(parse_json(identity_s)["claim"]["http_schemas_xmlsoap_org_ws_2005_05_identity"]["claims"]["upn"])
+| project TimeGenerated, OperationName, CallerIPAddress, Identity, ResultType
 | order by TimeGenerated desc
 ```
 
@@ -225,7 +226,7 @@ Managed HSM supports full backup and restore, which is critical for business con
 az keyvault backup start \
   --hsm-name contoso-managed-hsm \
   --storage-container-SAS-token "YOUR_SAS_TOKEN" \
-  --blob-container-url "https://backupstorage.blob.core.windows.net/hsm-backups"
+  --storage-resource-uri "https://backupstorage.blob.core.windows.net/hsm-backups"
 ```
 
 To restore from a backup, you need the security domain keys (from Step 2) and a new Managed HSM pool in the target region. This is why protecting those security domain keys is so critical.
@@ -252,4 +253,4 @@ You can also use Azure Private Link to access Managed HSM entirely through priva
 
 ## Wrapping Up
 
-Azure Key Vault Managed HSM fills an important gap for organizations that need FIPS 140-2 Level 3 validated key management in the cloud. The setup process involves more steps than standard Key Vault, particularly around the security domain ceremony, but the result is a fully managed HSM that gives you cryptographic sovereignty without the burden of managing physical hardware. Take the security domain protection seriously, implement proper RBAC, enable audit logging from day one, and you will have a solid foundation for compliance-grade key management.
+Azure Key Vault Managed HSM fills an important gap for organizations that need FIPS 140-3 Level 3 validated key management in the cloud. The setup process involves more steps than standard Key Vault, particularly around the security domain ceremony, but the result is a fully managed HSM that gives you cryptographic sovereignty without the burden of managing physical hardware. Take the security domain protection seriously, implement proper RBAC, enable audit logging from day one, and you will have a solid foundation for compliance-grade key management.
