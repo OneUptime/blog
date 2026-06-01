@@ -35,18 +35,17 @@ Not every table in Log Analytics supports data export. Most built-in tables from
 - Heartbeat
 - Perf
 - ContainerLog
-- AzureDiagnostics
 - AzureMetrics
 - AppRequests, AppDependencies, AppExceptions, AppTraces
 - Most Microsoft Sentinel tables
 
-Custom log tables (tables ending in `_CL`) are also supported. Check the Azure documentation for the full list, as it is updated regularly.
+Custom log tables (tables ending in `_CL`) are supported when they were created with a data collection rule (DCR). Custom logs created with the legacy HTTP Data Collector API are not supported. Check the Azure documentation for the full list, as it is updated regularly.
 
 ## Prerequisites
 
-- A Log Analytics workspace on the pay-as-you-go or commitment tier. Data export is not available on the free tier.
+- A Log Analytics workspace with tables on the Analytics or Basic table plan. Auxiliary plan tables are not supported.
 - An Azure Storage account or Event Hubs namespace in the same region as the workspace.
-- Contributor access on both the workspace and the destination resource.
+- Contributor access on the workspace and destination resource. For Event Hubs, you also need the Azure Event Hubs Data Owner role on the namespace.
 
 ## Step 1: Create the Destination
 
@@ -129,8 +128,7 @@ For infrastructure-as-code deployments:
       "SecurityEvent",
       "Syslog",
       "Heartbeat",
-      "Perf",
-      "AzureDiagnostics"
+      "Perf"
     ],
     "enable": true
   }
@@ -145,7 +143,7 @@ When data is exported to a storage account, it is organized in a container-per-t
 
 ```text
 stlogarchive/
-  am-securityevent/
+  am-SecurityEvent/
     WorkspaceResourceId=/subscriptions/.../
       y=2026/
         m=02/
@@ -153,7 +151,7 @@ stlogarchive/
             h=14/
               m=30/
                 PT05M.json
-  am-syslog/
+  am-Syslog/
     WorkspaceResourceId=/subscriptions/.../
       y=2026/
         m=02/
@@ -164,7 +162,7 @@ Each file is a JSON blob containing the exported records in a newline-delimited 
 
 ### Event Hubs
 
-When data is exported to Event Hubs, each table gets its own event hub within the namespace. The event hub is named after the table (in lowercase). Each event contains one or more records in JSON format.
+When data is exported to Event Hubs, each table gets its own event hub within the namespace. The event hub is named after the table with an `am-` prefix, such as `am-SecurityEvent`. Each event contains one or more records in JSON format.
 
 The data arrives in near real-time, typically within a few minutes of ingestion into Log Analytics.
 
@@ -183,20 +181,20 @@ Here is how to query exported data from Azure Data Explorer:
     Account: string,
     Activity: string
 )
-kind=blob
+kind=storage
 dataformat=multijson
 (
-    h@'https://stlogarchive.blob.core.windows.net/am-securityevent;managed_identity=system'
+    h@'https://stlogarchive.blob.core.windows.net/am-SecurityEvent;managed_identity=system'
 )
 ```
 
 ## Managing Export Costs
 
-Data export itself is free - you do not pay for the export operation. However, you do pay for:
+Data export has its own export charge per GB exported. You also pay for:
 
 - **Storage costs**: The data stored in your storage account. Use Standard_LRS for the lowest cost. Configure lifecycle management policies to automatically move data to cool or archive tiers.
 - **Event Hubs costs**: Throughput units and ingress charges for data flowing into Event Hubs.
-- **Data volume**: The exported data is a copy, so your storage costs are proportional to your Log Analytics ingestion volume for the exported tables.
+- **Data export volume**: The exported data is a copy, so your export and storage costs are proportional to your Log Analytics ingestion volume for the exported tables.
 
 To manage costs, be selective about which tables you export. There is no point in archiving performance counters if you only need them for the last 30 days. Export the tables that have compliance or long-term analysis requirements.
 
@@ -259,7 +257,7 @@ If a table shows no recent records, the export might be failing or the source da
 ## Limitations
 
 - **Table support**: Not all tables support data export. Check the documentation for your specific tables.
-- **No filtering**: You cannot filter the exported data - everything in the selected tables gets exported. If you need filtered exports, consider using Logic Apps or Azure Functions with the query API instead.
+- **No filtering in the export rule**: You cannot filter the exported data in the export rule - everything in the selected tables gets exported. If you need filtered exports, consider using workspace transformations, Logic Apps, or Azure Functions with the query API instead.
 - **Same region**: The destination storage account or Event Hub namespace must be in the same region as the workspace.
 - **Export latency**: Data typically arrives at the destination within 5 to 20 minutes of ingestion. This is not suitable for real-time streaming with sub-second latency requirements.
 - **Maximum rules**: You can create up to 10 data export rules per workspace.
