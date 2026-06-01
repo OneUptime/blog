@@ -1,16 +1,16 @@
-# How to Build a Dynamics 365 Customer Service Bot with Azure Bot Framework
+# How to Build a Dynamics 365 Customer Service Bot with Azure Bot Framework and Azure AI Language
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Dynamics 365, Azure Bot Framework, QnA Maker, Customer Service, Chatbot, AI, Omnichannel
+Tags: Dynamics 365, Azure Bot Framework, Azure AI Language, Customer Service, Chatbot, AI, Omnichannel
 
-Description: Build a customer service chatbot that integrates with Dynamics 365 Customer Service using Azure Bot Framework and QnA Maker for automated case resolution.
+Description: Build a customer service chatbot that integrates with Dynamics 365 Customer Service using Azure Bot Framework and Azure AI Language custom question answering for automated case resolution.
 
 ---
 
 Customer service teams deal with the same questions over and over. Password resets, order status checks, return policies, product FAQs - these are all questions that a bot can handle instantly, freeing up human agents for complex issues. When you connect that bot to Dynamics 365 Customer Service, you get the best of both worlds: automated responses for common questions and seamless handoff to a human agent when the bot cannot help.
 
-In this guide, I will build a customer service bot using Azure Bot Framework and QnA Maker that integrates with Dynamics 365 Customer Service through the Omnichannel for Customer Service module.
+In this guide, I will build a customer service bot using Azure Bot Framework and Azure AI Language custom question answering that integrates with Dynamics 365 Customer Service through the Omnichannel for Customer Service module.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ graph TD
     B --> C[Azure Bot Service]
     C --> D[Bot Framework SDK]
     D --> E{Intent Recognition}
-    E -->|FAQ| F[QnA Maker]
+    E -->|FAQ| F[Azure AI Language custom question answering]
     E -->|Case Status| G[Dynamics 365 API]
     E -->|Complex Issue| H[Handoff to Agent]
     F --> D
@@ -29,81 +29,80 @@ graph TD
     I --> J[Human Agent]
 ```
 
-The bot receives customer messages through various channels, determines the intent, and either answers from the QnA knowledge base, queries Dynamics 365 for case-specific information, or escalates to a human agent.
+The bot receives customer messages through various channels, determines the intent, and either answers from the question answering project, queries Dynamics 365 for case-specific information, or escalates to a human agent.
 
-## Setting Up QnA Maker
+## Setting Up Custom Question Answering
 
-Create a QnA Maker knowledge base with your most common customer service questions:
+Create an Azure AI Language resource with custom question answering enabled. Custom question answering uses Azure AI Search for its indexed project content, so pass the Azure AI Search endpoint and key when you create the Language resource:
 
 ```bash
-# Create the QnA Maker resource
+# Create an Azure AI Language resource for custom question answering
 
 az cognitiveservices account create \
-  --name qna-customer-service \
+  --name language-customer-service \
   --resource-group rg-d365-bot \
-  --kind QnAMaker \
+  --kind TextAnalytics \
   --sku S0 \
   --location westus \
+  --custom-domain language-customer-service \
+  --api-properties \
+      qnaAzureSearchEndpointId="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/rg-d365-bot/providers/Microsoft.Search/searchServices/$SEARCH_SERVICE_NAME" \
+      qnaAzureSearchEndpointKey="$SEARCH_ADMIN_KEY" \
   --yes
-
-# Create the App Service for QnA Maker runtime
-az webapp create \
-  --name qna-runtime-d365 \
-  --resource-group rg-d365-bot \
-  --plan plan-qna-runtime \
-  --runtime "DOTNET|6.0"
 ```
 
-Populate the knowledge base with your FAQ data. You can import from URLs, documents, or define Q&A pairs manually:
+Create and deploy a custom question answering project in Azure AI Foundry, then populate it with your FAQ data. You can import from URLs, documents, or define Q&A pairs manually:
 
 ```json
 {
-    "qnaList": [
-        {
-            "id": 1,
-            "answer": "You can reset your password by visiting our account portal at https://account.yourcompany.com/reset. Click 'Forgot Password' and follow the instructions sent to your email.",
-            "source": "customer-faq",
-            "questions": [
-                "How do I reset my password?",
-                "I forgot my password",
-                "Can't log in to my account",
-                "Password reset"
-            ],
-            "metadata": [
-                { "name": "category", "value": "account" }
-            ]
-        },
-        {
-            "id": 2,
-            "answer": "Our return policy allows returns within 30 days of purchase. Items must be in original condition with all packaging. To start a return, log in to your account and go to Order History, then click 'Return Item' next to the order.",
-            "source": "customer-faq",
-            "questions": [
-                "What is your return policy?",
-                "How do I return an item?",
-                "Can I return a product?",
-                "Return window",
-                "How long do I have to return something?"
-            ],
-            "metadata": [
-                { "name": "category", "value": "returns" }
-            ]
-        },
-        {
-            "id": 3,
-            "answer": "Standard shipping takes 5-7 business days. Express shipping takes 2-3 business days. Overnight shipping is available for orders placed before 2 PM EST. You can check your order status anytime by asking me 'What is my order status?' and providing your order number.",
-            "source": "customer-faq",
-            "questions": [
-                "How long does shipping take?",
-                "When will my order arrive?",
-                "Shipping times",
-                "Express shipping options",
-                "How fast is delivery?"
-            ],
-            "metadata": [
-                { "name": "category", "value": "shipping" }
-            ]
-        }
-    ]
+    "assets": {
+        "qnas": [
+            {
+                "id": 1,
+                "answer": "You can reset your password by visiting our account portal at https://account.yourcompany.com/reset. Click 'Forgot Password' and follow the instructions sent to your email.",
+                "source": "customer-faq",
+                "questions": [
+                    "How do I reset my password?",
+                    "I forgot my password",
+                    "Can't log in to my account",
+                    "Password reset"
+                ],
+                "metadata": {
+                    "category": "account"
+                }
+            },
+            {
+                "id": 2,
+                "answer": "Our return policy allows returns within 30 days of purchase. Items must be in original condition with all packaging. To start a return, log in to your account and go to Order History, then click 'Return Item' next to the order.",
+                "source": "customer-faq",
+                "questions": [
+                    "What is your return policy?",
+                    "How do I return an item?",
+                    "Can I return a product?",
+                    "Return window",
+                    "How long do I have to return something?"
+                ],
+                "metadata": {
+                    "category": "returns"
+                }
+            },
+            {
+                "id": 3,
+                "answer": "Standard shipping takes 5-7 business days. Express shipping takes 2-3 business days. Overnight shipping is available for orders placed before 2 PM EST. You can check your order status anytime by asking me 'What is my order status?' and providing your order number.",
+                "source": "customer-faq",
+                "questions": [
+                    "How long does shipping take?",
+                    "When will my order arrive?",
+                    "Shipping times",
+                    "Express shipping options",
+                    "How fast is delivery?"
+                ],
+                "metadata": {
+                    "category": "shipping"
+                }
+            }
+        ]
+    }
 }
 ```
 
@@ -115,18 +114,21 @@ Here is the bot built with the Bot Framework SDK in C#:
 // Main bot class that handles customer service interactions
 public class CustomerServiceBot : ActivityHandler
 {
-    private readonly QnAMakerClient _qnaMaker;
+    private readonly QuestionAnsweringClient _questionAnsweringClient;
+    private readonly QuestionAnsweringProject _questionAnsweringProject;
     private readonly IDynamics365Client _d365Client;
     private readonly ConversationState _conversationState;
     private readonly ILogger<CustomerServiceBot> _logger;
 
     public CustomerServiceBot(
-        QnAMakerClient qnaMaker,
+        QuestionAnsweringClient questionAnsweringClient,
+        QuestionAnsweringProject questionAnsweringProject,
         IDynamics365Client d365Client,
         ConversationState conversationState,
         ILogger<CustomerServiceBot> logger)
     {
-        _qnaMaker = qnaMaker;
+        _questionAnsweringClient = questionAnsweringClient;
+        _questionAnsweringProject = questionAnsweringProject;
         _d365Client = d365Client;
         _conversationState = conversationState;
         _logger = logger;
@@ -161,7 +163,7 @@ public class CustomerServiceBot : ActivityHandler
             conversationData.CurrentFlow = "case-status";
             await turnContext.SendActivityAsync(
                 "I can help you check your case status. Please provide your " +
-                "case number (it starts with CAS-).",
+                "case number.",
                 cancellationToken: cancellationToken);
             await _conversationState.SaveChangesAsync(turnContext, false, cancellationToken);
             return;
@@ -175,14 +177,18 @@ public class CustomerServiceBot : ActivityHandler
             return;
         }
 
-        // Try QnA Maker for FAQ-type questions
-        var qnaResult = await _qnaMaker.GetAnswersAsync(turnContext);
+        // Try custom question answering for FAQ-type questions
+        var answerResponse = await _questionAnsweringClient.GetAnswersAsync(
+            text,
+            _questionAnsweringProject,
+            cancellationToken: cancellationToken);
+        var answers = answerResponse.Value.Answers;
 
-        if (qnaResult != null && qnaResult.Length > 0 && qnaResult[0].Score > 0.7)
+        if (answers.Count > 0 && answers[0].Confidence > 0.7)
         {
-            // High confidence answer from QnA Maker
+            // High confidence answer from custom question answering
             await turnContext.SendActivityAsync(
-                qnaResult[0].Answer,
+                answers[0].Answer,
                 cancellationToken: cancellationToken);
 
             // Ask if the answer was helpful
@@ -191,11 +197,11 @@ public class CustomerServiceBot : ActivityHandler
                 "you with a support agent.",
                 cancellationToken: cancellationToken);
         }
-        else if (qnaResult != null && qnaResult.Length > 0 && qnaResult[0].Score > 0.4)
+        else if (answers.Count > 0 && answers[0].Confidence > 0.4)
         {
             // Medium confidence - provide the answer but offer alternatives
             await turnContext.SendActivityAsync(
-                $"I think this might help:\n\n{qnaResult[0].Answer}\n\n" +
+                $"I think this might help:\n\n{answers[0].Answer}\n\n" +
                 "If this doesn't answer your question, I can connect you " +
                 "with a support agent. Just say 'talk to agent'.",
                 cancellationToken: cancellationToken);
@@ -224,11 +230,11 @@ public class CustomerServiceBot : ActivityHandler
         // Clean up the case number input
         caseNumber = caseNumber.Trim().ToUpper();
 
-        if (!caseNumber.StartsWith("CAS-"))
+        if (caseNumber.Length < 3)
         {
             await turnContext.SendActivityAsync(
-                "That doesn't look like a valid case number. Case numbers " +
-                "start with CAS- followed by numbers. Please try again.",
+                "That doesn't look like a valid case number. Please " +
+                "double-check the number and try again.",
                 cancellationToken: cancellationToken);
             return;
         }
@@ -244,8 +250,12 @@ public class CustomerServiceBot : ActivityHandler
                 {
                     1 => "In Progress",
                     2 => "On Hold",
-                    3 => "Waiting for Customer",
-                    5 => "Resolved",
+                    3 => "Waiting for Details",
+                    4 => "Researching",
+                    5 => "Problem Solved",
+                    6 => "Cancelled",
+                    1000 => "Information Provided",
+                    2000 => "Merged",
                     _ => "Open"
                 };
 
@@ -343,9 +353,11 @@ public class Dynamics365Client : IDynamics365Client
 
     public async Task<CaseInfo> GetCaseByNumberAsync(string caseNumber)
     {
+        var escapedCaseNumber = EscapeODataString(caseNumber);
+
         // Query the incident (case) table by case number
         var query = $"incidents?" +
-                    $"$filter=ticketnumber eq '{caseNumber}'&" +
+                    $"$filter=ticketnumber eq '{escapedCaseNumber}'&" +
                     $"$select=ticketnumber,title,statuscode,prioritycode,createdon&" +
                     $"$expand=ownerid($select=fullname)";
 
@@ -374,33 +386,36 @@ public class Dynamics365Client : IDynamics365Client
     public async Task<string> CreateCaseAsync(
         string title, string description, string customerEmail)
     {
+        var escapedCustomerEmail = EscapeODataString(customerEmail);
+
         // Look up the contact by email
         var contactResponse = await _httpClient.GetAsync(
-            $"api/data/v9.2/contacts?$filter=emailaddress1 eq '{customerEmail}'&$select=contactid");
+            $"api/data/v9.2/contacts?$filter=emailaddress1 eq '{escapedCustomerEmail}'&$select=contactid");
+        contactResponse.EnsureSuccessStatusCode();
         var contactData = await contactResponse.Content.ReadFromJsonAsync<DataverseResponse>();
+
+        if (contactData.Value == null || contactData.Value.Count == 0)
+            throw new InvalidOperationException(
+                $"No Dynamics 365 contact was found for {customerEmail}.");
 
         var newCase = new Dictionary<string, object>
         {
             ["title"] = title,
             ["description"] = description,
-            ["caseorigincode"] = 3, // Chat origin
+            ["caseorigincode"] = 3, // Web origin; use a custom option for chat if configured
             ["prioritycode"] = 2    // Normal priority
         };
 
-        // Link to the contact if found
-        if (contactData.Value?.Count > 0)
-        {
-            var contactId = contactData.Value[0]["contactid"].ToString();
-            newCase["customerid_contact@odata.bind"] = $"/contacts({contactId})";
-        }
+        var contactId = contactData.Value[0]["contactid"].ToString();
+        newCase["customerid_contact@odata.bind"] = $"/contacts({contactId})";
 
         var response = await _httpClient.PostAsJsonAsync(
             "api/data/v9.2/incidents", newCase);
         response.EnsureSuccessStatusCode();
 
         // Get the case number from the response
-        var location = response.Headers.Location.ToString();
-        var caseId = location.Split('(')[1].TrimEnd(')');
+        var entityId = response.Headers.GetValues("OData-EntityId").Single();
+        var caseId = entityId.Split('(')[1].TrimEnd(')');
 
         var caseResponse = await _httpClient.GetAsync(
             $"api/data/v9.2/incidents({caseId})?$select=ticketnumber");
@@ -419,40 +434,45 @@ public class Dynamics365Client : IDynamics365Client
             _ => "Normal"
         };
     }
+
+    private static string EscapeODataString(string value)
+    {
+        return value.Replace("'", "''");
+    }
 }
 ```
 
 ## Configuring Omnichannel Integration
 
-To use the bot with Dynamics 365 Omnichannel for Customer Service, register it as a bot user:
+To use the bot with Dynamics 365 Omnichannel for Customer Service, register it as an Azure agent and bot application user:
 
-1. In the Dynamics 365 Admin Center, navigate to Omnichannel Administration
-2. Go to Bots and create a new bot user
-3. Provide the bot's Azure AD application ID
-4. Configure routing rules to direct conversations to the bot first
+1. In the Azure portal, open the bot resource, go to Channels, add the Omnichannel channel, and apply the configuration
+2. In the Power Platform admin center, create a new application user for the bot's Microsoft Entra application and assign the Omnichannel agent role
+3. In Copilot Service admin center, open the application user, set User type to Bot application user, and provide the Bot Application ID
+4. Add the bot user to the relevant workstream and configure routing rules to direct conversations to the bot first
 
 The handoff from bot to human agent is handled through the Omnichannel context variables that the bot sets during the conversation.
 
 ## Deploying the Bot
 
-Deploy the bot to Azure App Service:
+After deploying the bot app to Azure App Service, register the Azure Bot resource with the App Service messaging endpoint:
 
 ```bash
-# Create the Bot Service
+# Create the Azure Bot resource
 az bot create \
   --resource-group rg-d365-bot \
   --name bot-customer-service \
-  --kind webapp \
+  --app-type UserAssignedMSI \
   --sku S1 \
-  --appid $APP_ID \
-  --password $APP_PASSWORD \
+  --appid $MANAGED_IDENTITY_CLIENT_ID \
+  --msi-resource-id $USER_ASSIGNED_MSI_RESOURCE_ID \
+  --tenant-id $TENANT_ID \
   --endpoint "https://bot-customer-service.azurewebsites.net/api/messages"
 
-# Enable web chat and Teams channels
-az bot webchat create --resource-group rg-d365-bot --name bot-customer-service
+# Enable the Teams channel
 az bot msteams create --resource-group rg-d365-bot --name bot-customer-service
 ```
 
 ## Wrapping Up
 
-A customer service bot that integrates with Dynamics 365 and QnA Maker handles the routine questions automatically while providing seamless escalation to human agents for complex issues. QnA Maker gives the bot a broad knowledge base without writing code for every answer. The Dynamics 365 integration lets the bot look up real case data and create new cases. And the Omnichannel handoff ensures that when the bot reaches its limits, the customer gets a smooth transition to a human agent who has the full conversation context. Start with your top 50 most common questions in QnA Maker, deploy the bot to one channel, measure the deflection rate, and expand from there.
+A customer service bot that integrates with Dynamics 365 and Azure AI Language custom question answering handles the routine questions automatically while providing seamless escalation to human agents for complex issues. Custom question answering gives the bot a broad knowledge base without writing code for every answer. The Dynamics 365 integration lets the bot look up real case data and create new cases. And the Omnichannel handoff ensures that when the bot reaches its limits, the customer gets a smooth transition to a human agent who has the full conversation context. Start with your top 50 most common questions in your question answering project, deploy the bot to one channel, measure the deflection rate, and expand from there.
