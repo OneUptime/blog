@@ -24,7 +24,7 @@ graph LR
     C -->|Hosted on| D
 ```
 
-The React app makes gRPC-Web calls to Envoy. Envoy translates those into native gRPC calls and forwards them to the backend service. Both Envoy and the backend run as separate containers in Azure Container Apps.
+The React app makes gRPC-Web calls to Envoy. Envoy translates those into native gRPC calls and forwards them to the backend service. Envoy and the backend run as separate Container Apps in the same Azure Container Apps environment.
 
 ## Step 1: Define the Protobuf Schema
 
@@ -183,7 +183,7 @@ static_resources:
                         allow_origin_string_match:
                           - prefix: "*"
                         allow_methods: GET, PUT, DELETE, POST, OPTIONS
-                        allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout
+                        allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout,authorization
                         max_age: "1728000"
                         expose_headers: grpc-status,grpc-message
                 http_filters:
@@ -214,9 +214,9 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      # This points to the backend container
-                      address: localhost
-                      port_value: 50051
+                      # This uses Container Apps service discovery for the backend app
+                      address: notes-backend
+                      port_value: 80
 ```
 
 ## Step 4: Generate the gRPC-Web Client Code
@@ -224,9 +224,11 @@ static_resources:
 Install the protoc compiler and the gRPC-Web plugin, then generate the client code for React.
 
 ```bash
-# Install protoc-gen-grpc-web plugin
+# Install protoc and the JavaScript and gRPC-Web plugins
 # On macOS:
+brew install protobuf
 brew install protoc-gen-grpc-web
+npm install -g protoc-gen-js
 
 # Generate JavaScript client code from the proto file
 protoc -I=./proto notes.proto \
@@ -357,6 +359,7 @@ az containerapp create \
   --target-port 50051 \
   --transport http2 \
   --ingress internal \
+  --allow-insecure true \
   --min-replicas 1
 
 # Deploy the Envoy proxy
@@ -399,7 +402,7 @@ Make sure your Envoy configuration allows the `authorization` header through COR
 
 ## Production Considerations
 
-Running gRPC-Web in production involves a few extra considerations. First, you should enable TLS on the Envoy proxy. Azure Container Apps provides automatic TLS termination on the ingress, which simplifies this. Second, think about error handling. gRPC status codes map differently than HTTP status codes, so your React app should translate them into user-friendly messages.
+Running gRPC-Web in production involves a few extra considerations. First, use the HTTPS endpoint for the Envoy Container App. Azure Container Apps provides automatic TLS termination on the ingress, which simplifies this. Second, think about error handling. gRPC status codes map differently than HTTP status codes, so your React app should translate them into user-friendly messages.
 
 Third, consider using server-side streaming if your use case requires real-time updates. gRPC-Web supports server-side streaming (but not client-side or bidirectional streaming), which makes it suitable for scenarios like live feeds or notifications.
 
