@@ -79,8 +79,7 @@ az acr task create \
   --registry myregistry \
   --name build-my-app \
   --image my-app:{{.Run.ID}} \
-  --context https://github.com/my-org/my-app.git \
-  --branch main \
+  --context https://github.com/my-org/my-app.git#main \
   --file Dockerfile \
   --git-access-token "$GITHUB_PAT"
 ```
@@ -112,8 +111,7 @@ az acr task create \
   --registry myregistry \
   --name build-production \
   --image my-app:{{.Run.ID}} \
-  --context https://github.com/my-org/my-app.git \
-  --branch main \
+  --context https://github.com/my-org/my-app.git#main \
   --file Dockerfile \
   --git-access-token "$GITHUB_PAT"
 
@@ -122,8 +120,7 @@ az acr task create \
   --registry myregistry \
   --name build-development \
   --image my-app-dev:{{.Run.ID}} \
-  --context https://github.com/my-org/my-app.git \
-  --branch develop \
+  --context https://github.com/my-org/my-app.git#develop \
   --file Dockerfile \
   --git-access-token "$GITHUB_PAT"
 ```
@@ -136,8 +133,7 @@ az acr task create \
   --registry myregistry \
   --name validate-pr \
   --image my-app-pr:{{.Run.ID}} \
-  --context https://github.com/my-org/my-app.git \
-  --branch main \
+  --context https://github.com/my-org/my-app.git#main \
   --file Dockerfile \
   --git-access-token "$GITHUB_PAT" \
   --pull-request-trigger-enabled true \
@@ -153,12 +149,10 @@ Use the Git commit SHA as the image tag for traceability.
 az acr task create \
   --registry myregistry \
   --name build-my-app \
-  --image "my-app:{{.Run.ID}}" \
-  --context https://github.com/my-org/my-app.git \
-  --branch main \
+  --image "my-app:{{.Run.Commit}}" \
+  --context https://github.com/my-org/my-app.git#main \
   --file Dockerfile \
-  --git-access-token "$GITHUB_PAT" \
-  --arg "BUILD_ID={{.Run.ID}}"
+  --git-access-token "$GITHUB_PAT"
 ```
 
 ## Step 5: Multi-Step Tasks
@@ -173,7 +167,7 @@ Create a `acr-task.yaml` in your repository.
 version: v1.1.0
 steps:
   # Step 1: Build the application image
-  - build: -t {{.Run.Registry}}/my-app:{{.Run.ID}} -f Dockerfile .
+  - build: -t {{.Run.Registry}}/my-app:{{.Run.ID}} -t {{.Run.Registry}}/my-app:latest -f Dockerfile .
     id: build-app
 
   # Step 2: Run unit tests inside the built image
@@ -196,8 +190,7 @@ Create the task referencing the YAML file.
 az acr task create \
   --registry myregistry \
   --name build-test-push \
-  --context https://github.com/my-org/my-app.git \
-  --branch main \
+  --context https://github.com/my-org/my-app.git#main \
   --file acr-task.yaml \
   --git-access-token "$GITHUB_PAT"
 ```
@@ -213,8 +206,7 @@ az acr task create \
   --registry myregistry \
   --name auto-rebuild-on-base \
   --image my-app:{{.Run.ID}} \
-  --context https://github.com/my-org/my-app.git \
-  --branch main \
+  --context https://github.com/my-org/my-app.git#main \
   --file Dockerfile \
   --git-access-token "$GITHUB_PAT" \
   --base-image-trigger-enabled true \
@@ -250,8 +242,7 @@ az acr task create \
   --registry myregistry \
   --name nightly-build \
   --image my-app:nightly-{{.Run.ID}} \
-  --context https://github.com/my-org/my-app.git \
-  --branch main \
+  --context https://github.com/my-org/my-app.git#main \
   --file Dockerfile \
   --git-access-token "$GITHUB_PAT" \
   --schedule "0 2 * * *" \
@@ -295,11 +286,10 @@ az acr task create \
   --registry myregistry \
   --name build-with-args \
   --image my-app:{{.Run.ID}} \
-  --context https://github.com/my-org/my-app.git \
-  --branch main \
+  --context https://github.com/my-org/my-app.git#main \
   --file Dockerfile \
   --git-access-token "$GITHUB_PAT" \
-  --arg "NPM_TOKEN=\$NPM_TOKEN" \
+  --arg "BUILD_VERSION={{.Run.ID}}" \
   --secret-arg "NPM_TOKEN=$NPM_TOKEN"
 ```
 
@@ -337,11 +327,10 @@ az acr task create \
   --registry myregistry \
   --name build-with-identity \
   --image my-app:{{.Run.ID}} \
-  --context https://github.com/my-org/my-app.git \
-  --branch main \
+  --context https://github.com/my-org/my-app.git#main \
   --file Dockerfile \
   --git-access-token "$GITHUB_PAT" \
-  --assign-identity
+  --assign-identity '[system]'
 ```
 
 ## Troubleshooting
@@ -354,7 +343,7 @@ az acr task create \
 
 **Authentication errors pulling base images**: If your base image is in a private registry, configure credentials or use a managed identity with AcrPull access.
 
-**Build cache not working**: ACR Tasks do not cache layers between runs by default. Use `--cache-from` to specify cache sources, or use multi-stage builds to minimize rebuild time.
+**Build cache not working**: ACR Tasks uses the Docker build cache unless you set `--no-cache true`, but cache availability can vary between task runs. Optimize your Dockerfile layer order and use multi-stage builds to minimize rebuild time.
 
 ## Summary
 
