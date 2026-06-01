@@ -93,8 +93,9 @@ Here is how to enable server-level auditing to a storage account:
 
 az sql server audit-policy update \
     --resource-group myResourceGroup \
-    --server myserver \
+    --name myserver \
     --state Enabled \
+    --blob-storage-target-state Enabled \
     --storage-account mystorageaccount \
     --retention-days 90
 ```
@@ -105,7 +106,7 @@ To enable auditing to Log Analytics:
 # Enable server-level auditing to Log Analytics
 az sql server audit-policy update \
     --resource-group myResourceGroup \
-    --server myserver \
+    --name myserver \
     --state Enabled \
     --log-analytics-target-state Enabled \
     --log-analytics-workspace-resource-id "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{workspace-name}"
@@ -120,6 +121,7 @@ The PowerShell approach provides the same functionality:
 Set-AzSqlServerAudit `
     -ResourceGroupName "myResourceGroup" `
     -ServerName "myserver" `
+    -BlobStorageTargetState Enabled `
     -StorageAccountResourceId "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.Storage/storageAccounts/{account}" `
     -LogAnalyticsTargetState Enabled `
     -WorkspaceResourceId "/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{workspace}" `
@@ -140,18 +142,14 @@ The most commonly used action groups include:
 - **DATABASE_PRINCIPAL_CHANGE_GROUP**: Tracks user and role changes
 - **SCHEMA_OBJECT_ACCESS_GROUP**: Tracks data access (SELECT, INSERT, UPDATE, DELETE)
 
-To configure specific action groups via T-SQL:
+To configure specific action groups via Azure CLI:
 
-```sql
--- Create a database-level audit specification
--- First, create the server audit (if using database-level auditing)
-CREATE DATABASE AUDIT SPECIFICATION [AuditDataAccess]
-FOR SERVER AUDIT [ServerAuditName]
-ADD (SELECT ON SCHEMA::[dbo] BY [public]),
-ADD (INSERT ON SCHEMA::[dbo] BY [public]),
-ADD (UPDATE ON SCHEMA::[dbo] BY [public]),
-ADD (DELETE ON SCHEMA::[dbo] BY [public])
-WITH (STATE = ON);
+```bash
+az sql server audit-policy update \
+    --resource-group myResourceGroup \
+    --name myserver \
+    --state Enabled \
+    --actions BATCH_COMPLETED_GROUP SUCCESSFUL_DATABASE_AUTHENTICATION_GROUP FAILED_DATABASE_AUTHENTICATION_GROUP
 ```
 
 ## Querying Audit Logs in Log Analytics
@@ -205,20 +203,20 @@ In the Azure Portal, navigate to your database, click "Auditing" in the left men
 Retention settings differ by destination:
 
 - **Storage**: You configure retention in days. Logs older than the retention period are automatically deleted. Set to 0 for unlimited retention.
-- **Log Analytics**: Retention is configured at the workspace level. Default is 30 days, configurable up to 730 days. For longer retention, export logs to Storage.
+- **Log Analytics**: Analytics retention is configured at the workspace or table level. The default is 30 days for most tables, configurable up to 730 days. For longer retention, use Log Analytics long-term retention or export logs to Storage.
 - **Event Hubs**: Retention depends on your Event Hub configuration.
 
 For compliance purposes, I recommend storing audit logs for at least 1 year. Many regulations require longer periods (e.g., PCI DSS requires 1 year, SOX requires 7 years).
 
 ## Performance Impact
 
-Auditing has a small performance overhead, typically less than 5%. The impact depends on the volume of events being audited and the destination:
+Auditing is designed to minimize impact on the database being audited, but there is no fixed overhead percentage. The impact depends on the volume of events being audited, the action groups selected, and the destination:
 
 - Storage has minimal latency impact since writes are asynchronous
 - Log Analytics adds slightly more overhead due to the ingestion pipeline
 - Event Hubs is designed for high throughput and adds minimal latency
 
-For most production workloads, the performance impact is negligible and well worth the security benefits.
+For most production workloads, the performance impact is small and well worth the security benefits. During periods of very high activity or high network load, Azure SQL auditing is optimized to let transactions continue, which means some events marked for auditing might not be recorded.
 
 ## Best Practices
 
