@@ -8,7 +8,7 @@ Description: Learn how to configure Amazon Pinpoint to send push notifications t
 
 ---
 
-Push notifications are one of the most effective ways to re-engage mobile users. Amazon Pinpoint handles the complexity of talking to Apple's APNs and Google's FCM, giving you a single API for both platforms. Plus, you get the same segmentation and campaign features that Pinpoint offers for email and SMS.
+Push notifications are one of the most effective ways to re-engage mobile users. For existing Amazon Pinpoint customers, Pinpoint handles the complexity of talking to Apple's APNs and Google's FCM, giving you a single API for both platforms. Plus, you get the same segmentation and campaign features that Pinpoint offers for email and SMS. AWS stopped accepting new Amazon Pinpoint customers on May 20, 2025, and Pinpoint engagement features end support on October 30, 2026; the mobile push APIs continue under AWS End User Messaging.
 
 Let's set up push notifications from scratch.
 
@@ -54,30 +54,33 @@ aws pinpoint update-apns-channel \
     "TeamId": "YOUR_TEAM_ID",
     "TokenKey": "-----BEGIN PRIVATE KEY-----\nYOUR_KEY_CONTENT\n-----END PRIVATE KEY-----",
     "TokenKeyId": "YOUR_KEY_ID",
+    "DefaultAuthenticationMethod": "TOKEN",
     "Enabled": true
   }'
 ```
 
 ### Using a Certificate
 
-If you prefer certificates (they expire yearly), export a `.p12` file from Keychain Access.
+If you prefer certificates (they expire yearly), export the APNs certificate and private key in PEM format.
 
 ```python
 import boto3
-import base64
 
 pinpoint = boto3.client('pinpoint', region_name='us-east-1')
 
-# Read the certificate file
-with open('push-cert.p12', 'rb') as f:
-    cert_data = base64.b64encode(f.read()).decode('utf-8')
+with open('push-cert.pem') as f:
+    cert_data = f.read()
+
+with open('push-key.pem') as f:
+    private_key = f.read()
 
 pinpoint.update_apns_channel(
     ApplicationId='YOUR_APP_ID',
     APNSChannelRequest={
         'Certificate': cert_data,
-        'PrivateKey': 'YOUR_PRIVATE_KEY',
+        'PrivateKey': private_key,
         'BundleId': 'com.yourcompany.yourapp',
+        'DefaultAuthenticationMethod': 'CERTIFICATE',
         'Enabled': True
     }
 )
@@ -85,30 +88,44 @@ pinpoint.update_apns_channel(
 
 ## Setting Up the FCM Channel (Android)
 
-For Android, you need a Firebase Cloud Messaging server key.
+For Android, use Firebase Cloud Messaging HTTP v1 credentials from a Firebase service account.
 
 1. Go to the Firebase Console
 2. Select your project
-3. Navigate to Project Settings, then Cloud Messaging
-4. Copy the Server Key (or create a new one)
+3. Navigate to Project Settings, then Service accounts
+4. Generate and download a private key JSON file
 
 ```bash
-# Enable FCM channel
+# Enable FCM channel with FCM HTTP v1 credentials
+python3 - <<'PY' > gcm-channel-request.json
+import json
+
+with open('firebase-service-account.json') as f:
+    service_json = f.read()
+
+print(json.dumps({
+    'ServiceJson': service_json,
+    'DefaultAuthenticationMethod': 'TOKEN',
+    'Enabled': True
+}))
+PY
+
 aws pinpoint update-gcm-channel \
   --application-id YOUR_APP_ID \
-  --gcm-channel-request '{
-    "ApiKey": "YOUR_FCM_SERVER_KEY",
-    "Enabled": true
-  }'
+  --gcm-channel-request file://gcm-channel-request.json
 ```
 
-With newer Firebase projects, you'll want to use a service account JSON instead.
+The older FCM server-key method used `ApiKey`, but Firebase Cloud Messaging legacy APIs were shut down. Use `ServiceJson` for current projects.
 
 ```python
+with open('firebase-service-account.json') as f:
+    service_json = f.read()
+
 pinpoint.update_gcm_channel(
     ApplicationId='YOUR_APP_ID',
     GCMChannelRequest={
-        'ApiKey': 'YOUR_FCM_SERVER_KEY',
+        'ServiceJson': service_json,
+        'DefaultAuthenticationMethod': 'TOKEN',
         'Enabled': True
     }
 )
@@ -152,7 +169,7 @@ register_device('user-456', 'device-token-def', 'android')
 
 ## Sending a Direct Push Notification
 
-To send a notification to a specific user immediately, use the `send_messages` API.
+To send a notification to a specific user immediately, use the `send_users_messages` API.
 
 ```python
 def send_push_notification(user_id, title, body, data=None):
@@ -165,29 +182,31 @@ def send_push_notification(user_id, title, body, data=None):
         'SilentPush': False
     }
 
-    # Add custom data payload
+    request = {
+        'Users': {
+            user_id: {}
+        },
+        'MessageConfiguration': {
+            'APNSMessage': {
+                **message,
+                'Sound': 'default',
+                'Badge': 1
+            },
+            'GCMMessage': {
+                **message,
+                'Sound': 'default',
+                'Priority': 'high'
+            }
+        }
+    }
+
+    # Add custom payload attributes to data.pinpoint
     if data:
-        message['Data'] = data
+        request['Context'] = data
 
     response = pinpoint.send_users_messages(
         ApplicationId=APP_ID,
-        SendUsersMessageRequest={
-            'Users': {
-                user_id: {}
-            },
-            'MessageConfiguration': {
-                'APNSMessage': {
-                    **message,
-                    'Sound': 'default',
-                    'Badge': 1
-                },
-                'GCMMessage': {
-                    **message,
-                    'Sound': 'default',
-                    'Priority': 'high'
-                }
-            }
-        }
+        SendUsersMessageRequest=request
     )
 
     # Check results
@@ -248,7 +267,7 @@ def create_push_campaign(app_id, name, segment_id, title, body):
 
 ## Handling Rich Push Notifications
 
-Rich notifications can include images, buttons, and custom layouts. Here's how to configure them for both platforms.
+Rich notifications can include images. Buttons and custom layouts also require app-side notification category or action handling. Here's how to configure an image and action context for both platforms.
 
 ```python
 def send_rich_push(user_id, title, body, image_url, actions):
@@ -258,30 +277,26 @@ def send_rich_push(user_id, title, body, image_url, actions):
         ApplicationId=APP_ID,
         SendUsersMessageRequest={
             'Users': {user_id: {}},
+            'Context': {
+                'url': actions.get('url', ''),
+                'action_type': actions.get('type', 'open_app')
+            },
             'MessageConfiguration': {
                 'APNSMessage': {
-                    'Action': 'URL',
+                    'Action': 'OPEN_APP',
                     'Title': title,
                     'Body': body,
                     'MediaUrl': image_url,
                     'Sound': 'default',
-                    'Category': 'ACTIONABLE',  # Matches your UNNotificationCategory
-                    'Data': {
-                        'url': actions.get('url', ''),
-                        'action_type': actions.get('type', 'open_app')
-                    }
+                    'Category': 'ACTIONABLE'  # Matches your UNNotificationCategory
                 },
                 'GCMMessage': {
-                    'Action': 'URL',
+                    'Action': 'OPEN_APP',
                     'Title': title,
                     'Body': body,
                     'ImageUrl': image_url,
                     'Sound': 'default',
-                    'Priority': 'high',
-                    'Data': {
-                        'url': actions.get('url', ''),
-                        'action_type': actions.get('type', 'open_app')
-                    }
+                    'Priority': 'high'
                 }
             }
         }
@@ -358,4 +373,4 @@ For email campaigns alongside push notifications, see our guide on [using Pinpoi
 
 ## Summary
 
-Amazon Pinpoint provides a unified platform for push notifications across iOS and Android. Once you've configured your APNs and FCM channels, sending notifications is just API calls. The real power comes from combining push with Pinpoint's segmentation and campaign features - targeting the right users with the right message at the right time. Start simple, measure engagement, and iterate.
+For existing customers, Amazon Pinpoint provides a unified platform for push notifications across iOS and Android. Once you've configured your APNs and FCM channels, sending notifications is just API calls. The real power comes from combining push with Pinpoint's segmentation and campaign features - targeting the right users with the right message at the right time. Start simple, measure engagement, and iterate.
