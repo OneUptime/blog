@@ -142,7 +142,10 @@ spec:
               app: cart-service
         - namespaceSelector:
             matchLabels:
-              name: ingress
+              kubernetes.io/metadata.name: ingress
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
       ports:
         - protocol: TCP
           port: 8080
@@ -182,9 +185,6 @@ kind: Service
 metadata:
   name: catalog-service
   namespace: ecommerce
-  annotations:
-    # Enable HTTP/2 for gRPC
-    service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: "TCP"
 spec:
   selector:
     app: catalog-service
@@ -241,12 +241,17 @@ For larger deployments, a service mesh adds observability, traffic management, a
 
 ```bash
 # Enable Istio service mesh addon on AKS
+az aks mesh get-revisions --location eastus -o table
+
+REVISION=asm-1-29
+
 az aks mesh enable \
   --resource-group myResourceGroup \
-  --name myAKSCluster
+  --name myAKSCluster \
+  --revision $REVISION
 
 # Enable sidecar injection for the ecommerce namespace
-kubectl label namespace ecommerce istio.io/rev=asm-1-17
+kubectl label namespace ecommerce istio.io/rev=$REVISION --overwrite
 ```
 
 With Istio enabled, you get automatic mTLS between services, request-level metrics, distributed tracing, and powerful traffic management rules like canary deployments and traffic splitting.
@@ -273,6 +278,9 @@ metadata:
 spec:
   provider: azure
   parameters:
+    usePodIdentity: "false"
+    useVMManagedIdentity: "true"
+    userAssignedIdentityID: "your-managed-identity-client-id"
     keyvaultName: "myKeyVault"
     objects: |
       array:
@@ -293,7 +301,7 @@ spec:
 Configure autoscaling for each service based on its specific metrics:
 
 ```yaml
-# HPA that scales based on CPU and custom metrics
+# HPA that scales based on CPU and memory resource metrics
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -350,7 +358,7 @@ metadata:
   namespace: ecommerce
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
 spec:
   ingressClassName: nginx
   tls:
