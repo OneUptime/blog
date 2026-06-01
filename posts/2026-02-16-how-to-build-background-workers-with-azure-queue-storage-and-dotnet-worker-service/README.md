@@ -96,7 +96,7 @@ builder.Services.AddSingleton(sp =>
         "order-processing",
         new QueueClientOptions
         {
-            // Messages are base64 encoded by default for compatibility
+            // Encode messages as Base64 for compatibility
             MessageEncoding = QueueMessageEncoding.Base64
         });
 
@@ -164,12 +164,63 @@ cd OrderWorker
 dotnet add package Azure.Storage.Queues
 ```
 
-The worker service template creates a `Worker` class that inherits from `BackgroundService`. This runs as a long-lived process.
+Add the same message contract to the worker project. In a real application, you would usually put this in a shared class library used by both the API and the worker.
+
+```csharp
+// Models/OrderMessage.cs
+namespace OrderWorker.Models;
+
+public class OrderMessage
+{
+    public string OrderId { get; set; } = string.Empty;
+    public string CustomerId { get; set; } = string.Empty;
+    public string ProductName { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public decimal TotalAmount { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+```
+
+Register the queue client and hosted service in the worker's DI container.
+
+```csharp
+// Program.cs
+using Azure.Storage.Queues;
+using OrderWorker;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddSingleton(sp =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var connectionString = configuration.GetConnectionString("AzureStorage")
+        ?? throw new InvalidOperationException("AzureStorage connection string is missing.");
+
+    var client = new QueueClient(
+        connectionString,
+        "order-processing",
+        new QueueClientOptions
+        {
+            MessageEncoding = QueueMessageEncoding.Base64
+        });
+
+    client.CreateIfNotExists();
+    return client;
+});
+
+builder.Services.AddHostedService<OrderProcessingWorker>();
+
+var host = builder.Build();
+host.Run();
+```
+
+The worker service template creates a `Worker` class that inherits from `BackgroundService`. Replace it with this worker implementation.
 
 ```csharp
 // Worker.cs
 using Azure.Storage.Queues;
 using Azure.Storage.Queues.Models;
+using OrderWorker.Models;
 using System.Text.Json;
 
 namespace OrderWorker;
@@ -177,11 +228,17 @@ namespace OrderWorker;
 public class OrderProcessingWorker : BackgroundService
 {
     private readonly QueueClient _queueClient;
+    private readonly string _connectionString;
     private readonly ILogger<OrderProcessingWorker> _logger;
 
-    public OrderProcessingWorker(QueueClient queueClient, ILogger<OrderProcessingWorker> logger)
+    public OrderProcessingWorker(
+        QueueClient queueClient,
+        IConfiguration configuration,
+        ILogger<OrderProcessingWorker> logger)
     {
         _queueClient = queueClient;
+        _connectionString = configuration.GetConnectionString("AzureStorage")
+            ?? throw new InvalidOperationException("AzureStorage connection string is missing.");
         _logger = logger;
     }
 
@@ -273,8 +330,12 @@ public class OrderProcessingWorker : BackgroundService
     {
         // Create a poison queue for messages that repeatedly fail
         var poisonClient = new QueueClient(
-            _queueClient.AccountName,  // reuse account
-            "order-processing-poison");
+            _connectionString,
+            "order-processing-poison",
+            new QueueClientOptions
+            {
+                MessageEncoding = QueueMessageEncoding.Base64
+            });
         await poisonClient.CreateIfNotExistsAsync(cancellationToken: ct);
         await poisonClient.SendMessageAsync(message.Body.ToString(), ct);
         await _queueClient.DeleteMessageAsync(message.MessageId, message.PopReceipt, ct);
@@ -336,19 +397,21 @@ The worker service can be deployed anywhere that supports .NET: Azure App Servic
 docker build -t order-worker .
 
 # Push to Azure Container Registry
-az acr build --registry myRegistry --image order-worker:v1 .
+az acr build --registry myregistry --image order-worker:v1 .
 
 # Deploy to Container Apps with queue-based scaling
 az containerapp create \
   --name order-worker \
   --resource-group worker-demo-rg \
-  --image myRegistry.azurecr.io/order-worker:v1 \
+  --environment worker-demo-env \
+  --image myregistry.azurecr.io/order-worker:v1 \
   --min-replicas 1 \
   --max-replicas 10 \
+  --secrets "storage-connection=<AZURE_STORAGE_CONNECTION_STRING>" \
   --scale-rule-name queue-rule \
   --scale-rule-type azure-queue \
-  --scale-rule-metadata queueName=order-processing \
-  --scale-rule-auth connection=storage-connection
+  --scale-rule-metadata "queueName=order-processing" "queueLength=5" \
+  --scale-rule-auth "connection=storage-connection"
 ```
 
 ## Wrapping Up
