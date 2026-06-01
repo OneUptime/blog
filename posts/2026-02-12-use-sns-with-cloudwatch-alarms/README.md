@@ -8,7 +8,7 @@ Description: Learn how to connect CloudWatch alarms to SNS topics for automated 
 
 ---
 
-CloudWatch alarms and SNS are the bread and butter of AWS alerting. An alarm watches a metric, and when it breaches a threshold, it triggers an action - usually publishing to an SNS topic. From there, the notification fans out to whatever endpoints you've subscribed: email, SMS, Lambda, Slack webhooks, PagerDuty, or your on-call system.
+CloudWatch alarms and SNS are the bread and butter of AWS alerting. An alarm watches a metric, and when it breaches a threshold, it triggers an action - usually publishing to an SNS topic. From there, the notification fans out to whatever endpoints you've subscribed: email, SMS, Lambda functions that call Slack webhooks, PagerDuty, or your on-call system.
 
 Let's build a complete alerting pipeline from scratch.
 
@@ -64,7 +64,7 @@ Here are common alarm configurations for different AWS services.
 ### EC2 Instance CPU Alarm
 
 ```bash
-# Alarm when CPU exceeds 90% for 5 minutes
+# Alarm when CPU exceeds 90% for two 5-minute evaluation periods
 aws cloudwatch put-metric-alarm \
   --alarm-name "EC2-HighCPU-i-1234567890abcdef0" \
   --alarm-description "CPU utilization above 90% on production web server" \
@@ -89,7 +89,7 @@ Notice the three action types:
 ### RDS Database Connections Alarm
 
 ```bash
-# Alarm when database connections exceed 80% of max
+# Alarm when database connections exceed 80 connections
 aws cloudwatch put-metric-alarm \
   --alarm-name "RDS-HighConnections-mydb" \
   --alarm-description "Database connections approaching limit" \
@@ -222,6 +222,7 @@ A common pattern is to subscribe a Lambda function that formats the CloudWatch a
 import json
 import os
 import urllib.request
+from datetime import datetime
 
 # Set the Slack webhook URL as an environment variable
 SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
@@ -233,6 +234,15 @@ COLORS = {
     'INSUFFICIENT_DATA': '#FFFF00',  # Yellow
 }
 
+def parse_slack_timestamp(value):
+    """Convert CloudWatch's ISO timestamp to the Unix timestamp Slack expects."""
+    if not value:
+        return None
+    try:
+        return str(int(datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp()))
+    except ValueError:
+        return None
+
 def handler(event, context):
     """Forward CloudWatch alarm notifications to Slack."""
     for record in event['Records']:
@@ -242,7 +252,7 @@ def handler(event, context):
         new_state = message.get('NewStateValue', 'Unknown')
         reason = message.get('NewStateReason', '')
         description = message.get('AlarmDescription', '')
-        timestamp = message.get('StateChangeTime', '')
+        timestamp = parse_slack_timestamp(message.get('StateChangeTime', ''))
         region = message.get('Region', '')
 
         # Build the Slack message
@@ -268,9 +278,11 @@ def handler(event, context):
                         'short': False,
                     },
                 ],
-                'ts': timestamp,
             }]
         }
+
+        if timestamp:
+            slack_message['attachments'][0]['ts'] = timestamp
 
         # Send to Slack
         req = urllib.request.Request(
