@@ -35,7 +35,7 @@ graph TD
 
 ## Prerequisites
 
-- An Azure AI Search resource (Basic tier or above for vector search)
+- An Azure AI Search resource (any tier; some services created before January 2019 cannot create vector indexes)
 - An Azure OpenAI resource with a text embedding model deployed (text-embedding-ada-002 or text-embedding-3-small)
 - Python 3.9+
 - Documents to index
@@ -61,6 +61,7 @@ from azure.search.documents.indexes.models import (
     SearchableField,
     VectorSearch,
     HnswAlgorithmConfiguration,
+    HnswParameters,
     VectorSearchProfile,
     SemanticConfiguration,
     SemanticSearch,
@@ -129,12 +130,12 @@ vector_search = VectorSearch(
     algorithms=[
         HnswAlgorithmConfiguration(
             name="hnsw-config",
-            parameters={
-                "m": 4,          # Number of bidirectional links per node
-                "efConstruction": 400,  # Size of candidate list during indexing
-                "efSearch": 500,        # Size of candidate list during search
-                "metric": "cosine"      # Similarity metric
-            }
+            parameters=HnswParameters(
+                m=4,                  # Number of bidirectional links per node
+                ef_construction=400,  # Size of candidate list during indexing
+                ef_search=500,        # Size of candidate list during search
+                metric="cosine"       # Similarity metric
+            )
         )
     ],
     profiles=[
@@ -187,13 +188,13 @@ search_client = SearchClient(
 openai_client = AzureOpenAI(
     azure_endpoint="https://your-openai.openai.azure.com/",
     api_key="your-openai-key",
-    api_version="2024-06-01"
+    api_version="2024-10-21"
 )
 
 def get_embedding(text: str) -> list:
     """Generate an embedding vector for the given text."""
     response = openai_client.embeddings.create(
-        model="text-embedding-ada-002",
+        model="text-embedding-ada-002",  # Use your embedding deployment name
         input=text
     )
     return response.data[0].embedding
@@ -244,12 +245,27 @@ Now run hybrid queries that combine keyword and vector search:
 from azure.search.documents import SearchClient
 from azure.search.documents.models import VectorizedQuery
 from azure.core.credentials import AzureKeyCredential
+from openai import AzureOpenAI
 
 search_client = SearchClient(
     endpoint="https://your-search.search.windows.net",
     index_name="hybrid-knowledge-base",
     credential=AzureKeyCredential("your-search-key")
 )
+
+openai_client = AzureOpenAI(
+    azure_endpoint="https://your-openai.openai.azure.com/",
+    api_key="your-openai-key",
+    api_version="2024-10-21"
+)
+
+def get_embedding(text: str) -> list:
+    """Generate an embedding vector for the given text."""
+    response = openai_client.embeddings.create(
+        model="text-embedding-ada-002",  # Use your embedding deployment name
+        input=text
+    )
+    return response.data[0].embedding
 
 def hybrid_search(query: str, top_k: int = 5, category_filter: str = None):
     """
@@ -261,7 +277,7 @@ def hybrid_search(query: str, top_k: int = 5, category_filter: str = None):
     # Build the vector query
     vector_query = VectorizedQuery(
         vector=query_embedding,
-        k_nearest_neighbors=top_k,
+        k_nearest_neighbors=50,  # Semantic ranker uses up to 50 merged matches as input
         fields="content_vector,title_vector"  # Search against both vector fields
     )
 
@@ -290,7 +306,7 @@ def hybrid_search(query: str, top_k: int = 5, category_filter: str = None):
     print("-" * 60)
     for result in results:
         print(f"Score: {result['@search.score']:.4f}")
-        if hasattr(result, '@search.reranker_score'):
+        if "@search.reranker_score" in result:
             print(f"Semantic Score: {result['@search.reranker_score']:.4f}")
         print(f"Title: {result['title']}")
         print(f"Category: {result['category']}")
@@ -311,6 +327,31 @@ Hybrid search is often used as the retrieval component in a RAG pattern. Here is
 
 ```python
 # rag_search.py - RAG pipeline using hybrid search and Azure OpenAI
+from azure.search.documents import SearchClient
+from azure.search.documents.models import VectorizedQuery
+from azure.core.credentials import AzureKeyCredential
+from openai import AzureOpenAI
+
+search_client = SearchClient(
+    endpoint="https://your-search.search.windows.net",
+    index_name="hybrid-knowledge-base",
+    credential=AzureKeyCredential("your-search-key")
+)
+
+openai_client = AzureOpenAI(
+    azure_endpoint="https://your-openai.openai.azure.com/",
+    api_key="your-openai-key",
+    api_version="2024-10-21"
+)
+
+def get_embedding(text: str) -> list:
+    """Generate an embedding vector for the given text."""
+    response = openai_client.embeddings.create(
+        model="text-embedding-ada-002",  # Use your embedding deployment name
+        input=text
+    )
+    return response.data[0].embedding
+
 def answer_question(question: str) -> str:
     """
     Answer a question using hybrid search retrieval + Azure OpenAI generation.
@@ -338,7 +379,7 @@ def answer_question(question: str) -> str:
 
     # Step 3: Generate an answer using Azure OpenAI
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o",  # Use your chat model deployment name
         messages=[
             {
                 "role": "system",
@@ -367,13 +408,13 @@ The relative weight of keyword vs. vector results can be adjusted. By default, R
 # Weighted hybrid search - give more weight to vector results
 from azure.search.documents.models import VectorizedQuery
 
-# You can control the weight by adjusting the k parameter
-# A larger k for vector means more vector candidates enter the RRF merge
+# Use weight to adjust the vector query's influence in RRF.
+# Use k_nearest_neighbors to control how many vector candidates enter the merge.
 vector_query = VectorizedQuery(
     vector=query_embedding,
-    k_nearest_neighbors=50,  # More vector candidates = more vector influence
+    k_nearest_neighbors=50,
     fields="content_vector",
-    weight=0.7  # Explicit weight for vector results (if supported)
+    weight=2.0  # Values above 1.0 increase the vector query's influence
 )
 ```
 
