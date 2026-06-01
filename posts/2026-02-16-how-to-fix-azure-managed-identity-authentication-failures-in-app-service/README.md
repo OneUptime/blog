@@ -48,7 +48,7 @@ After enabling the identity, restart the App Service. The identity endpoint envi
 If you have both a system-assigned identity and one or more user-assigned identities on the same App Service, your code might be using the wrong one. Azure SDKs default to the system-assigned identity, but if you want to use a user-assigned identity, you need to specify it explicitly.
 
 ```python
-# Python example: Using DefaultAzureCredential with a specific user-assigned identity
+# Python example: Using ManagedIdentityCredential with a specific user-assigned identity
 # You must provide the client_id of the user-assigned managed identity
 from azure.identity import ManagedIdentityCredential
 
@@ -112,11 +112,11 @@ Here is a quick reference for common data-plane roles:
 
 ## Problem: RBAC Propagation Delay
 
-After creating a role assignment, it can take up to 10 minutes (sometimes longer) for the assignment to propagate through Azure's authorization system. If you just created the role assignment and are immediately testing, you might hit failures that resolve themselves after a few minutes.
+After creating a role assignment, it can take several minutes for the assignment to propagate through Azure's authorization system. Azure Resource Manager caches some authorization data, and managed identity back-end services also cache tokens per resource URI, so changes to a managed identity's group or role membership can take up to around 24 hours to take effect. If you just created the role assignment and are immediately testing, you might hit failures that resolve themselves after a few minutes.
 
 This catches people constantly during deployments. Your infrastructure-as-code creates the role assignment and then immediately deploys the application, which starts making calls right away. The application fails because the role assignment has not propagated yet.
 
-The fix is to add a delay in your deployment pipeline between role assignment creation and application startup. A 5-minute wait is usually sufficient but not always.
+The fix is to add retry logic or a delay in your deployment pipeline between role assignment creation and application startup. A 5-minute wait is often sufficient for simple role assignments but not always.
 
 ## Problem: Token Audience Mismatch
 
@@ -195,7 +195,7 @@ az role assignment create \
 
 When you are stuck, enable detailed logging in your application. The Azure SDK libraries support logging that shows token acquisition details.
 
-For .NET applications, set the `AZURE_SDK_LOGGING` environment variable to `true`. For Python, configure the logging module to show DEBUG level messages from the `azure.identity` logger.
+For .NET applications, use `AzureEventSourceListener` or ASP.NET Core logging configuration to enable Azure SDK logs. For Python, configure the logging module to show DEBUG level messages from the `azure.identity` logger.
 
 You can also test managed identity token acquisition directly from the App Service using Kudu (Advanced Tools). Open the Kudu console and make a curl request to the identity endpoint.
 
