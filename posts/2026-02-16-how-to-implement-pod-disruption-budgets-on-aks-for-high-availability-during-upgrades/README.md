@@ -8,7 +8,7 @@ Description: Learn how to configure Pod Disruption Budgets on AKS to maintain se
 
 ---
 
-Node upgrades, cluster scaling, and maintenance operations all involve draining nodes, which means evicting pods. Without Pod Disruption Budgets (PDBs), Kubernetes will happily evict every pod in your deployment at the same time if multiple nodes are drained simultaneously. Your users get an outage, your uptime SLA takes a hit, and someone gets paged. PDBs prevent this by telling Kubernetes how many pods can be unavailable at any given time during voluntary disruptions. In this post, I will show you how to set up PDBs on AKS to keep your services running smoothly through every kind of cluster operation.
+Node upgrades, cluster scaling, and maintenance operations all involve draining nodes, which means evicting pods. Without Pod Disruption Budgets (PDBs), Kubernetes will happily evict every pod in your deployment at the same time if multiple nodes are drained simultaneously. Your users get an outage, your uptime SLA takes a hit, and someone gets paged. PDBs prevent this by telling Kubernetes how many pods can be unavailable at any given time during voluntary disruptions. In this post, I will show you how to set up PDBs on AKS to keep your services running smoothly through planned cluster operations.
 
 ## Voluntary vs Involuntary Disruptions
 
@@ -18,7 +18,6 @@ PDBs only protect against voluntary disruptions - things that are initiated by a
 - Node pool scaling down
 - Cluster autoscaler removing underutilized nodes
 - Manual kubectl drain commands
-- Spot instance evictions (these are treated as voluntary)
 
 PDBs do not protect against involuntary disruptions like:
 
@@ -26,8 +25,9 @@ PDBs do not protect against involuntary disruptions like:
 - Kernel panic
 - VM crashes
 - OOM kills within the pod
+- Azure Spot capacity evictions
 
-For involuntary disruptions, you need replicas spread across multiple nodes and failure domains. PDBs handle the controlled disruptions.
+For involuntary disruptions, you need replicas spread across multiple nodes and failure domains. PDBs handle the controlled disruptions. For Spot node pools, PDBs can help only with controlled operations that use Kubernetes eviction; they cannot prevent Azure Spot capacity evictions.
 
 ## Step 1: Create a Basic PDB
 
@@ -220,11 +220,11 @@ For a 3-node database cluster that requires quorum (2 out of 3 nodes), `maxUnava
 
 ## Step 5: PDBs for System Components
 
-Do not forget about cluster-critical workloads. CoreDNS, ingress controllers, and monitoring systems should all have PDBs.
+Do not forget about cluster-critical workloads. CoreDNS, ingress controllers, and monitoring systems should all have PDBs. In AKS, first verify whether a system component already has an AKS-managed PDB before creating your own, because a pod matched by more than one PDB can block eviction during upgrades.
 
 ```yaml
 # system-pdbs.yaml
-# PDB for CoreDNS
+# PDB for CoreDNS, only if your cluster does not already have one
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -291,14 +291,14 @@ az aks nodepool upgrade \
   --resource-group myResourceGroup \
   --cluster-name myCluster \
   --name nodepool1 \
-  --kubernetes-version 1.28.0
+  --kubernetes-version <supported-version>
 ```
 
-During the upgrade, AKS creates surge nodes first, then drains old nodes one at a time. PDBs control how many pods can be evicted simultaneously during this process.
+During the upgrade, AKS creates surge nodes first, then cordons and drains existing nodes according to the node pool upgrade settings. PDBs control how many matching pods can be voluntarily evicted during this process.
 
 ## Common Mistakes
 
-**PDB that blocks all evictions.** Setting `maxUnavailable: 0` or `minAvailable` equal to the number of replicas means no pods can ever be voluntarily evicted. Node drains will hang forever.
+**PDB that blocks all evictions.** Setting `maxUnavailable: 0` or `minAvailable` equal to the number of replicas means no pods can ever be voluntarily evicted. Node drains will hang or fail until the PDB allows disruption.
 
 ```yaml
 # DO NOT DO THIS - blocks all voluntary disruptions
@@ -326,4 +326,4 @@ kubectl get pods -l app=web-app
 | Worker queue | 5+ | maxUnavailable: 50% |
 | Singleton | 1 | No PDB (cannot maintain availability) |
 
-PDBs are a small amount of YAML that provide a significant availability improvement. Every multi-replica workload on AKS should have a PDB, especially in clusters where node upgrades, autoscaling, and spot instances are part of the normal operational flow.
+PDBs are a small amount of YAML that provide a significant availability improvement. Every multi-replica workload on AKS should have a PDB, especially in clusters where node upgrades, autoscaling, and planned maintenance are part of the normal operational flow.
