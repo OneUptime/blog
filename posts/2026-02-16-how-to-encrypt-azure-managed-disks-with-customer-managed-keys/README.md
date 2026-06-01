@@ -16,11 +16,11 @@ Azure Managed Disks support two types of server-side encryption.
 
 **Platform-managed keys (PMK)**: The default. Azure manages the encryption keys. You get encryption at rest with zero configuration.
 
-**Customer-managed keys (CMK)**: You create and manage the encryption key in Azure Key Vault. Azure uses your key to encrypt and decrypt the disk data. You can rotate, disable, or revoke the key at any time.
+**Customer-managed keys (CMK)**: You create and manage the encryption key in Azure Key Vault. Azure uses your key to protect the data encryption key (DEK) that encrypts and decrypts the disk data. You can rotate, disable, or revoke the key at any time, though disabling or revoking it makes disks that depend on it unavailable.
 
 There is also a third option: **double encryption**, which applies both platform-managed and customer-managed encryption. This provides two layers of encryption for maximum protection.
 
-The encryption happens transparently at the storage layer. The VM sees an unencrypted disk - all encryption and decryption is handled by the storage infrastructure using your key.
+The encryption happens transparently at the storage layer. The VM sees an unencrypted disk - all encryption and decryption is handled by the storage infrastructure using envelope encryption with your key in Key Vault.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ To set up CMK encryption, you need:
 1. An Azure Key Vault (or Key Vault Managed HSM)
 2. An encryption key in the vault
 3. A disk encryption set that links the key to your disks
-4. Proper access policies configured
+4. Proper Key Vault permissions configured
 
 ## Step 1: Create a Key Vault
 
@@ -63,7 +63,7 @@ az keyvault key create \
 az keyvault key show \
   --vault-name my-disk-encryption-kv \
   --name disk-encryption-key \
-  --query "{name:key.kid, keyType:key.kty, keySize:key.n}" \
+  --query "{keyId:key.kid, keyType:key.kty}" \
   --output table
 ```
 
@@ -254,9 +254,33 @@ flowchart LR
 
 ## Double Encryption
 
-For maximum security, you can enable double encryption, which applies both a platform-managed key and your customer-managed key.
+For maximum security, you can enable double encryption, which applies both a platform-managed key and your customer-managed key. The encryption type is fixed on the disk encryption set, so create a separate disk encryption set for double-encrypted disks.
 
 ```bash
+# Create a disk encryption set that supports double encryption
+az disk-encryption-set create \
+  --name my-double-encryption-set \
+  --resource-group my-resource-group \
+  --location eastus \
+  --key-url "$KEY_URL" \
+  --source-vault my-disk-encryption-kv \
+  --encryption-type EncryptionAtRestWithPlatformAndCustomerKeys
+
+DOUBLE_DES_IDENTITY=$(az disk-encryption-set show \
+  --name my-double-encryption-set \
+  --resource-group my-resource-group \
+  --query "identity.principalId" -o tsv)
+
+az keyvault set-policy \
+  --name my-disk-encryption-kv \
+  --object-id "$DOUBLE_DES_IDENTITY" \
+  --key-permissions get wrapKey unwrapKey
+
+DOUBLE_DES_ID=$(az disk-encryption-set show \
+  --name my-double-encryption-set \
+  --resource-group my-resource-group \
+  --query "id" -o tsv)
+
 # Create a disk with double encryption
 az disk create \
   --name double-encrypted-disk \
@@ -265,7 +289,7 @@ az disk create \
   --sku Premium_LRS \
   --size-gb 128 \
   --encryption-type EncryptionAtRestWithPlatformAndCustomerKeys \
-  --disk-encryption-set "$DES_ID"
+  --disk-encryption-set "$DOUBLE_DES_ID"
 ```
 
 ## Best Practices
@@ -280,4 +304,4 @@ Use separate Key Vaults for different environments (production, staging, develop
 
 Test your disaster recovery process. Make sure you can restore from backups if the key becomes unavailable.
 
-Customer-managed keys give you full control over your disk encryption, which is essential for organizations with strict security and compliance requirements. The setup is more involved than using platform-managed keys, but the process is straightforward once you understand the relationships between Key Vault, disk encryption sets, and managed disks.
+Customer-managed keys give you control over the keys that protect your disk encryption keys, which is essential for organizations with strict security and compliance requirements. The setup is more involved than using platform-managed keys, but the process is straightforward once you understand the relationships between Key Vault, disk encryption sets, and managed disks.
