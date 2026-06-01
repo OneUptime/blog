@@ -35,7 +35,7 @@ For example:
 
 - `vm-orderapi-prod-eastus-001` - a production VM for the order API in East US
 - `sql-inventory-dev-westeu-001` - a development SQL server for inventory in West Europe
-- `st-blobstoreprod-eastus-001` - a production storage account in East US
+- `stblobstoreprodeastus001` - a production storage account in East US
 
 Let me break down each component.
 
@@ -51,9 +51,9 @@ Every resource starts with a short prefix that identifies its type. Microsoft ma
 | Subnet | snet | snet-web-prod-eastus |
 | Network Security Group | nsg | nsg-web-prod-eastus |
 | Public IP Address | pip | pip-gateway-prod-eastus |
-| Load Balancer | lb | lb-orderapi-prod-eastus |
+| External Load Balancer | lbe | lbe-orderapi-prod-eastus |
 | App Service | app | app-orderapi-prod-eastus |
-| App Service Plan | plan | plan-orderapi-prod-eastus |
+| App Service Plan | asp | asp-orderapi-prod-eastus |
 | Azure SQL Server | sql | sql-orderapi-prod-eastus |
 | Azure SQL Database | sqldb | sqldb-orders-prod-eastus |
 | Cosmos DB Account | cosmos | cosmos-orderapi-prod-eastus |
@@ -61,8 +61,8 @@ Every resource starts with a short prefix that identifies its type. Microsoft ma
 | Key Vault | kv | kv-orderapi-prod-eastus |
 | Azure Kubernetes Service | aks | aks-platform-prod-eastus |
 | Container Registry | cr | crcontosoprodeastus |
-| Redis Cache | redis | redis-orderapi-prod-eastus |
-| Service Bus Namespace | sb | sb-messaging-prod-eastus |
+| Azure Managed Redis | amr | amr-orderapi-prod-eastus |
+| Service Bus Namespace | sbns | sbns-messaging-prod-eastus |
 | Function App | func | func-orderprocessor-prod-eastus |
 | Log Analytics Workspace | log | log-platform-prod-eastus |
 | Application Insights | appi | appi-orderapi-prod-eastus |
@@ -83,18 +83,23 @@ Key Vaults:
   - 3-24 characters
   - alphanumeric and hyphens
   - must start with a letter
+  - must end with a letter or number
+  - cannot contain consecutive hyphens
   - must be globally unique
   Example: kv-orderapi-prod-eus
 
 Virtual Machines:
   - Windows: max 15 characters
   - Linux: max 64 characters
-  - alphanumeric, hyphens, underscores
+  - cannot use spaces, control characters, underscores, or other special characters
+  - Windows names cannot include periods or end with hyphens
+  - Linux names cannot end with periods or hyphens
   Example: vm-ordapi-p-eu-01
 
 Resource Groups:
   - 1-90 characters
   - alphanumeric, hyphens, underscores, periods, parentheses
+  - cannot end with a period
   Example: rg-orderapi-prod-eastus
 ```
 
@@ -188,13 +193,13 @@ locals {
     subnet               = "snet-${local.base_name}"
     nsg                  = "nsg-${local.base_name}"
     app_service          = "app-${local.base_name}"
-    app_service_plan     = "plan-${local.base_name}"
+    app_service_plan     = "asp-${local.base_name}"
     sql_server           = "sql-${local.base_name}"
     cosmos_db            = "cosmos-${local.base_name}"
     key_vault            = "kv-${local.base_name}"
-    redis_cache          = "redis-${local.base_name}"
+    azure_managed_redis  = "amr-${local.base_name}"
     function_app         = "func-${local.base_name}"
-    service_bus          = "sb-${local.base_name}"
+    service_bus          = "sbns-${local.base_name}"
     log_analytics        = "log-${local.base_name}"
     application_insights = "appi-${local.base_name}"
     # Storage accounts - no hyphens, lowercase only
@@ -254,7 +259,7 @@ Use Azure Policy to enforce naming conventions at deployment time:
         {
           "not": {
             "field": "name",
-            "match": "vm-??????-?-###"
+            "match": "vm-......-?-###"
           }
         }
       ]
@@ -267,7 +272,7 @@ Use Azure Policy to enforce naming conventions at deployment time:
 }
 ```
 
-This policy denies VM creation if the name does not match the pattern `vm-{6 chars}-{1 char}-{3 digits}`.
+This policy denies VM creation if the name does not match the pattern `vm-{6 characters}-{1 letter}-{3 digits}`.
 
 ## Common Mistakes to Avoid
 
