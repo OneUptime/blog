@@ -29,9 +29,9 @@ In the APIM context, "server" is the APIM gateway, and "client" is the API consu
 
 First, you need to enable client certificate negotiation on your APIM instance. By default, APIM does not request client certificates during the TLS handshake.
 
-Go to your APIM instance in the Azure Portal, click "Custom domains" or "Protocols + ciphers" (depending on your portal version), and enable "Negotiate client certificate." You might also need to configure this on individual custom domains.
+Go to your APIM instance in the Azure Portal, click "Custom domains" and enable "Negotiate client certificate" on the gateway hostname. In the Consumption tier and the v2 tiers, enable "Request client certificate" under the client certificates settings instead.
 
-For the Developer and Standard tiers, this is a simple toggle. For the Consumption tier, client certificate negotiation is enabled by default.
+For the Developer, Basic, Standard, and Premium classic tiers, this is a toggle on the gateway hostname.
 
 After enabling this, APIM will ask clients for a certificate during the TLS handshake. Clients that do not present one will still connect (the certificate is optional at the TLS level), but you enforce the requirement in your policies.
 
@@ -51,7 +51,8 @@ Once certificate negotiation is enabled, use the `validate-client-certificate` p
                 <set-body>Client certificate is required</set-body>
             </return-response>
         </when>
-        <when condition="@(context.Request.Certificate.Thumbprint != "A1B2C3D4E5F6..." )">
+        <when condition='@(context.Request.Certificate == null || !context.Request.Certificate.Verify() ||
+            context.Request.Certificate.Thumbprint != "A1B2C3D4E5F6...")'>
             <return-response>
                 <set-status code="403" reason="Forbidden" />
                 <set-body>Invalid client certificate</set-body>
@@ -76,8 +77,8 @@ You have several ways to validate the client certificate. Here are the most comm
 <inbound>
     <base />
     <choose>
-        <when condition="@(context.Request.Certificate == null ||
-            !context.Request.Certificate.Issuer.Contains("CN=My Trusted CA"))">
+        <when condition='@(context.Request.Certificate == null || !context.Request.Certificate.Verify() ||
+            !context.Request.Certificate.Issuer.Contains("CN=My Trusted CA"))'>
             <return-response>
                 <set-status code="403" reason="Forbidden" />
                 <set-body>Certificate must be issued by the trusted CA</set-body>
@@ -94,8 +95,8 @@ You have several ways to validate the client certificate. Here are the most comm
 <inbound>
     <base />
     <choose>
-        <when condition="@(context.Request.Certificate == null ||
-            !context.Request.Certificate.Subject.Contains("CN=partner-company.com"))">
+        <when condition='@(context.Request.Certificate == null || !context.Request.Certificate.Verify() ||
+            !context.Request.Certificate.Subject.Contains("CN=partner-company.com"))'>
             <return-response>
                 <set-status code="403" reason="Forbidden" />
                 <set-body>Invalid certificate subject</set-body>
@@ -126,23 +127,22 @@ For a cleaner approach, APIM provides the `validate-client-certificate` policy t
 
 ```xml
 <!-- Comprehensive client certificate validation -->
-<!-- Checks thumbprint, issuer, subject, and expiration in one policy -->
+<!-- Checks thumbprint, issuer, and expiration in one policy -->
 <inbound>
     <base />
     <validate-client-certificate
-        failed-validation-httpcode="403"
-        failed-validation-error-message="Client certificate validation failed"
         validate-revocation="true"
         validate-trust="true"
         validate-not-before="true"
-        validate-not-after="true">
+        validate-not-after="true"
+        ignore-error="false">
         <identities>
             <identity
                 thumbprint="A1B2C3D4E5F6..."
-                issuer="CN=My Trusted CA" />
+                issuer-subject="CN=My Trusted CA" />
             <identity
                 thumbprint="G7H8I9J0K1L2..."
-                issuer="CN=My Trusted CA" />
+                issuer-subject="CN=My Trusted CA" />
         </identities>
     </validate-client-certificate>
 </inbound>
@@ -225,7 +225,7 @@ Alternatively, configure it on the Backend entity so it applies automatically:
         "url": "https://secure-backend.company.com",
         "protocol": "http",
         "credentials": {
-            "certificate": [
+            "certificateIds": [
                 "my-backend-cert-id"
             ]
         }
@@ -242,10 +242,12 @@ Certificates expire, and you need a plan for rotation. Here are some approaches:
 ```xml
 <!-- Allow both old and new certificates during rotation period -->
 <choose>
-    <when condition="@{
-        var thumbprint = context.Request.Certificate?.Thumbprint ?? "";
-        return thumbprint == "OLD_THUMBPRINT" || thumbprint == "NEW_THUMBPRINT";
-    }">
+    <when condition='@{
+        var certificate = context.Request.Certificate;
+        var thumbprint = certificate?.Thumbprint ?? "";
+        return certificate != null && certificate.Verify() &&
+            (thumbprint == "OLD_THUMBPRINT" || thumbprint == "NEW_THUMBPRINT");
+    }'>
         <!-- Certificate is valid, proceed -->
     </when>
     <otherwise>
@@ -262,13 +264,19 @@ Certificates expire, and you need a plan for rotation. Here are some approaches:
 <!-- Use Named Values for certificate thumbprints -->
 <!-- Update the Named Value when rotating certificates - no policy change needed -->
 <choose>
-    <when condition="@{
-        var thumbprint = context.Request.Certificate?.Thumbprint ?? "";
+    <when condition='@{
+        var certificate = context.Request.Certificate;
+        var thumbprint = certificate?.Thumbprint ?? "";
         var allowed = "{{allowed-thumbprints}}".Split(',');
-        return allowed.Contains(thumbprint);
-    }">
+        return certificate != null && certificate.Verify() && allowed.Contains(thumbprint);
+    }'>
         <!-- Valid -->
     </when>
+    <otherwise>
+        <return-response>
+            <set-status code="403" reason="Forbidden" />
+        </return-response>
+    </otherwise>
 </choose>
 ```
 
