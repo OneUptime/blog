@@ -8,9 +8,9 @@ Description: Step-by-step guide to migrating Azure VMs from unmanaged disks (VHD
 
 ---
 
-If you have Azure VMs that were created a few years ago, there is a good chance they are running on unmanaged disks. Unmanaged disks store VHD files in Azure Storage accounts that you manage yourself. Managed disks, on the other hand, abstract away the storage account entirely - Azure handles the storage, replication, and availability for you.
+If you have Azure VMs that were created a few years ago, there is a chance they are still configured to use unmanaged disks. Unmanaged disks store VHD files in Azure Storage accounts that you manage yourself. Managed disks, on the other hand, abstract away the storage account entirely - Azure handles the storage, replication, and availability for you.
 
-Microsoft has been encouraging migration to managed disks for a while now, and for good reason. Managed disks are simpler to manage, have better availability guarantees, and support features like Azure Disk Encryption, disk snapshots, and RBAC-based access control that unmanaged disks do not support well. In this guide, I will walk through the conversion process.
+Microsoft has been encouraging migration to managed disks for a while now, and for good reason. Unmanaged disks were fully retired on March 31, 2026, and VMs that still use unmanaged disks cannot be started until they are migrated. Managed disks are simpler to manage, have better availability guarantees, and support features like Azure Disk Encryption, disk snapshots, and RBAC-based access control that unmanaged disks do not support well. In this guide, I will walk through the conversion process.
 
 ## Why Migrate to Managed Disks?
 
@@ -39,6 +39,8 @@ Before starting the conversion:
 3. **Plan for downtime.** The conversion requires deallocating the VM. Plan a maintenance window.
 
 4. **Check your subscription quotas.** The conversion creates new managed disk resources. Make sure your subscription has enough disk quota.
+
+5. **Check VM health and extensions.** The VM should be healthy, and all VM extensions should be in the `Provisioning succeeded` state before conversion.
 
 ## Checking Current Disk Type
 
@@ -97,11 +99,20 @@ That is it. The `az vm convert` command handles the conversion of both the OS di
 If your VMs are in an availability set, you need to convert all VMs in the set at once. Azure cannot have a mix of managed and unmanaged disks within the same availability set.
 
 ```bash
-# Step 1: Deallocate ALL VMs in the availability set
-az vm deallocate --ids $(az vm list \
+# Get only the VMs that belong to this availability set
+AVSET_ID=$(az vm availability-set show \
   --resource-group myResourceGroup \
-  --query "[].id" \
+  --name myAvailabilitySet \
+  --query id \
   --output tsv)
+
+VM_IDS=$(az vm list \
+  --resource-group myResourceGroup \
+  --query "[?availabilitySet.id=='$AVSET_ID'].id" \
+  --output tsv)
+
+# Step 1: Deallocate ALL VMs in the availability set
+az vm deallocate --ids $VM_IDS
 
 # Step 2: Convert the availability set to support managed disks
 az vm availability-set convert \
@@ -109,19 +120,13 @@ az vm availability-set convert \
   --name myAvailabilitySet
 
 # Step 3: Convert each VM
-for VM_ID in $(az vm list \
-  --resource-group myResourceGroup \
-  --query "[].id" \
-  --output tsv); do
-  az vm convert --ids $VM_ID
+for VM_ID in $VM_IDS; do
+  az vm convert --ids "$VM_ID"
 done
 
 # Step 4: Start all VMs
-for VM_ID in $(az vm list \
-  --resource-group myResourceGroup \
-  --query "[].id" \
-  --output tsv); do
-  az vm start --ids $VM_ID
+for VM_ID in $VM_IDS; do
+  az vm start --ids "$VM_ID"
 done
 ```
 
@@ -168,7 +173,7 @@ az storage account delete \
 
 ## Post-Conversion: Changing Disk Type
 
-One of the immediate benefits of managed disks is the ability to change the disk type. If your VM was running on Standard HDD blobs, you can upgrade to Premium SSD:
+One of the immediate benefits of managed disks is the ability to change the disk type. If your VM was running on Standard HDD blobs, you can upgrade to Premium SSD, as long as the VM size supports Premium storage:
 
 ```bash
 # Deallocate the VM first (required for disk type change)
@@ -182,6 +187,12 @@ DISK_NAME=$(az vm show \
   --name myVM \
   --query storageProfile.osDisk.name \
   --output tsv)
+
+# Required only if the current VM size does not support Premium storage
+az vm resize \
+  --resource-group myResourceGroup \
+  --name myVM \
+  --size Standard_DS2_v2
 
 # Change the disk type to Premium SSD
 az disk update \
@@ -244,4 +255,4 @@ az disk show \
 
 ## Wrapping Up
 
-Converting from unmanaged to managed disks is a one-time migration that pays dividends in simplified management and better feature support. The conversion itself is quick and the Azure CLI makes it a single command per VM. Plan for the downtime, take backups before starting, and clean up the old VHD blobs once you have confirmed everything is working. If you still have VMs on unmanaged disks, now is the time to make the switch.
+Converting from unmanaged to managed disks is a one-time migration that pays dividends in simplified management and better feature support. The conversion itself is quick and the Azure CLI makes it a single command per VM. Plan for the downtime, take backups before starting, and clean up the old VHD blobs once you have confirmed everything is working. If you still have VMs on unmanaged disks, treat the conversion as a required remediation before starting them again.
