@@ -104,7 +104,8 @@ aws appconfig create-hosted-configuration-version \
     --application-id $APP_ID \
     --configuration-profile-id $PROFILE_ID \
     --content-type "application/json" \
-    --content file://app-config.json
+    --content fileb://app-config.json \
+    configuration-version-output.json
 ```
 
 ## Adding Validators
@@ -115,7 +116,7 @@ Validators are essential for dynamic configuration. Without them, a typo in a JS
 
 ```json
 {
-    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$schema": "http://json-schema.org/draft-04/schema#",
     "type": "object",
     "required": ["database", "cache", "rate_limiting", "logging"],
     "properties": {
@@ -168,10 +169,11 @@ Validators are essential for dynamic configuration. Without them, a typo in a JS
 ```python
 # config_validator.py - Validate configuration against business rules
 import json
+import base64
 
 def handler(event, context):
     """Validate configuration changes against business rules."""
-    config = json.loads(event['content'])
+    config = json.loads(base64.b64decode(event['content']).decode('utf-8'))
 
     errors = []
 
@@ -250,7 +252,8 @@ aws appconfig create-hosted-configuration-version \
     --application-id $APP_ID \
     --configuration-profile-id $PROFILE_ID \
     --content-type "application/json" \
-    --content file://updated-config.json
+    --content fileb://updated-config.json \
+    updated-configuration-version-output.json
 
 # Deploy to staging first
 aws appconfig start-deployment \
@@ -414,6 +417,7 @@ aws appconfig create-configuration-profile \
     --application-id $APP_ID \
     --name "ssm-config" \
     --location-uri "ssm-parameter:///myapp/config" \
+    --retrieval-role-arn "arn:aws:iam::123456789:role/AppConfigSSMRole" \
     --type "AWS.Freeform"
 ```
 
@@ -442,13 +446,14 @@ Set up CloudWatch alarms that automatically roll back bad deployments.
 # Create a CloudWatch alarm for error rate
 aws cloudwatch put-metric-alarm \
     --alarm-name "ConfigDeploymentErrorRate" \
-    --metric-name "5XXError" \
+    --metric-name "HTTPCode_Target_5XX_Count" \
     --namespace "AWS/ApplicationELB" \
-    --statistic Average \
+    --statistic Sum \
     --period 60 \
     --threshold 5 \
     --comparison-operator GreaterThanThreshold \
     --evaluation-periods 2 \
+    --dimensions Name=LoadBalancer,Value=app/payment-service/1234567890abcdef Name=TargetGroup,Value=targetgroup/payment-service/abcdef1234567890 \
     --alarm-actions "arn:aws:sns:us-east-1:123456789:ops-alerts"
 ```
 
