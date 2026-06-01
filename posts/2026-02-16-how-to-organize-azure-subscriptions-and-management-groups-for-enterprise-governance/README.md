@@ -134,24 +134,43 @@ Manual subscription creation does not scale. Automate it with a subscription ven
 module "new_subscription" {
   source = "Azure/lz-vending/azurerm"
 
+  # Default location for resources created by the module
+  location = var.primary_location
+
   # Subscription details
   subscription_alias_enabled = true
+  subscription_alias_name    = "${var.team_name}-${var.application_name}-${var.environment}"
   subscription_billing_scope = var.billing_scope
   subscription_display_name  = "${var.team_name}-${var.application_name}-${var.environment}"
   subscription_workload      = "Production"
+  subscription_tags = {
+    CostCenter  = var.cost_center
+    Owner       = var.team_name
+    Environment = var.environment
+    Application = var.application_name
+  }
 
   # Place in the correct management group
   subscription_management_group_association_enabled = true
   subscription_management_group_id = var.needs_corporate_network ? "contoso-lz-corp" : "contoso-lz-online"
 
+  # Resource groups
+  resource_group_creation_enabled = true
+  resource_groups = {
+    network = {
+      name     = "rg-network-${var.environment}"
+      location = var.primary_location
+    }
+  }
+
   # Network configuration
   virtual_network_enabled = true
   virtual_networks = {
     primary = {
-      name                = "vnet-${var.application_name}-${var.environment}"
-      address_space       = [var.address_space]
-      location            = var.primary_location
-      resource_group_name = "rg-network-${var.environment}"
+      name               = "vnet-${var.application_name}-${var.environment}"
+      address_space      = [var.address_space]
+      location           = var.primary_location
+      resource_group_key = "network"
 
       # Peer to hub network
       hub_peering_enabled = true
@@ -160,6 +179,7 @@ module "new_subscription" {
   }
 
   # RBAC - give the team contributor access
+  role_assignment_enabled = true
   role_assignments = {
     team_contributor = {
       principal_id   = var.team_ad_group_id
@@ -172,14 +192,6 @@ module "new_subscription" {
       definition     = "Security Reader"
       relative_scope = ""
     }
-  }
-
-  # Tags
-  tags = {
-    CostCenter  = var.cost_center
-    Owner       = var.team_name
-    Environment = var.environment
-    Application = var.application_name
   }
 }
 ```
@@ -212,12 +224,13 @@ az policy assignment create \
   --policy "deny-public-paas-endpoints"
 
 # Sandbox level - relaxed but bounded
-# Set spending limit
+# Create a monthly cost budget
 az consumption budget create \
-  --subscription-id $SANDBOX_SUB \
+  --subscription $SANDBOX_SUB \
   --budget-name "sandbox-limit" \
+  --category cost \
   --amount 500 \
-  --time-grain Monthly \
+  --time-grain monthly \
   --start-date "2026-02-01" \
   --end-date "2027-01-31"
 ```
@@ -269,7 +282,7 @@ az account management-group subscription add \
 az policy assignment create \
   --name "deny-all-resources" \
   --scope "/providers/Microsoft.Management/managementGroups/contoso-decom" \
-  --policy "/providers/Microsoft.Authorization/policyDefinitions/deny-all-custom"
+  --policy "/providers/Microsoft.Management/managementGroups/contoso/providers/Microsoft.Authorization/policyDefinitions/deny-all-custom"
 ```
 
 ## Monitoring and Reporting
