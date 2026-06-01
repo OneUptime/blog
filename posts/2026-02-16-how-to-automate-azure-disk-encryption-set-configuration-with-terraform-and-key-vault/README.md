@@ -167,7 +167,7 @@ resource "azurerm_key_vault_key" "disk_encryption" {
 }
 ```
 
-The rotation policy is important for compliance. It tells Key Vault to automatically generate a new version of the key before the current one expires. Disk Encryption Sets automatically pick up the new key version, so there is no manual rotation process.
+The rotation policy is important for compliance. It tells Key Vault to automatically generate a new version of the key before the current one expires. With DES auto key rotation enabled below, Disk Encryption Sets automatically pick up the new key version, so there is no manual rotation process.
 
 ## The Disk Encryption Set
 
@@ -179,7 +179,7 @@ resource "azurerm_disk_encryption_set" "main" {
   name                = "des-${local.name_prefix}"
   resource_group_name = azurerm_resource_group.encryption.name
   location            = azurerm_resource_group.encryption.location
-  key_vault_key_id    = azurerm_key_vault_key.disk_encryption.id
+  key_vault_key_id    = azurerm_key_vault_key.disk_encryption.versionless_id
 
   # Auto-rotate to the latest key version
   auto_key_rotation_enabled = true
