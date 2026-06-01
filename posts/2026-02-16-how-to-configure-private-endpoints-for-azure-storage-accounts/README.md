@@ -12,7 +12,7 @@ Private endpoints bring Azure Storage into your virtual network. Instead of traf
 
 ## How Private Endpoints Work
 
-When you create a private endpoint for a storage account, Azure provisions a network interface with a private IP address from your subnet. This IP address maps to a specific storage service (Blob, File, Queue, Table, or DFS/Data Lake). Traffic from your VNet to the storage account is routed through this private IP over the Azure backbone network.
+When you create a private endpoint for a storage account, Azure provisions a network interface with a private IP address from your subnet. This IP address maps to a specific storage service (Blob, File, Queue, Table, DFS/Data Lake, or Web/Static Website). Traffic from your VNet to the storage account is routed through this private IP over the Azure backbone network.
 
 The key benefits are:
 
@@ -23,7 +23,7 @@ The key benefits are:
 
 ## Creating a Private Endpoint with Azure CLI
 
-Each storage service (blob, file, queue, table, dfs) needs its own private endpoint. Most commonly, you will create one for blob storage.
+Each storage service (blob, file, queue, table, dfs, web) needs its own private endpoint. Most commonly, you will create one for blob storage.
 
 ```bash
 # Create a private endpoint for blob storage
@@ -84,6 +84,8 @@ az network private-endpoint create \
   --connection-name dfs-connection
 ```
 
+If you create a private endpoint for Data Lake Storage Gen2, also create one for Blob storage. Some Data Lake Storage operations can be redirected to the Blob endpoint, and some Blob-only configurations will fail for Data Lake Storage APIs without a DFS private endpoint.
+
 ## Configuring Private DNS
 
 For private endpoints to work correctly, DNS resolution must return the private IP address instead of the public IP. Azure Private DNS Zones handle this.
@@ -118,6 +120,7 @@ The DNS zone names follow a pattern for each storage service:
 - Queue: `privatelink.queue.core.windows.net`
 - Table: `privatelink.table.core.windows.net`
 - DFS: `privatelink.dfs.core.windows.net`
+- Web: `privatelink.web.core.windows.net`
 
 ## Creating Private Endpoints with PowerShell
 
@@ -143,7 +146,7 @@ $pe = New-AzPrivateEndpoint `
   -Subnet $subnet `
   -PrivateLinkServiceConnection $plsConnection
 
-# Create DNS zone and registration
+# Create DNS zone
 $dnsZone = New-AzPrivateDnsZone -Name "privatelink.blob.core.windows.net" -ResourceGroupName "my-resource-group"
 
 # Link DNS zone to VNet
@@ -153,6 +156,17 @@ New-AzPrivateDnsVirtualNetworkLink `
   -ResourceGroupName "my-resource-group" `
   -ZoneName "privatelink.blob.core.windows.net" `
   -VirtualNetworkId $vnet.Id
+
+# Create a DNS zone group to auto-register the private endpoint's IP
+$dnsConfig = New-AzPrivateDnsZoneConfig `
+  -Name "blob" `
+  -PrivateDnsZoneId $dnsZone.ResourceId
+
+New-AzPrivateDnsZoneGroup `
+  -Name "blob-dns-group" `
+  -ResourceGroupName "my-resource-group" `
+  -PrivateEndpointName "pe-storage-blob" `
+  -PrivateDnsZoneConfig $dnsConfig
 
 Write-Output "Private endpoint configured for blob storage"
 ```
@@ -247,10 +261,10 @@ flowchart TD
 
 ## Subnet Requirements
 
-The subnet used for private endpoints should have network policies disabled (this is done automatically by Azure for most configurations). The subnet does not need a service endpoint - private endpoints and service endpoints are different mechanisms.
+Private endpoint network policies are disabled by default on a subnet. If they are enabled and you do not need NSG or user-defined route support for private endpoints, you can disable them. The subnet does not need a service endpoint - private endpoints and service endpoints are different mechanisms.
 
 ```bash
-# Ensure the subnet allows private endpoint network policies
+# Disable private endpoint network policies
 az network vnet subnet update \
   --name pe-subnet \
   --vnet-name my-vnet \
