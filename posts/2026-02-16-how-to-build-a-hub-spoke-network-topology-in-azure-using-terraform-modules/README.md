@@ -8,7 +8,7 @@ Description: A practical guide to building a hub-spoke network topology in Azure
 
 ---
 
-The hub-spoke topology is the most common network architecture pattern in Azure. Microsoft recommends it, Azure landing zone guidance builds on it, and most enterprises end up adopting it sooner or later. The idea is simple - centralize shared services like firewalls, VPN gateways, and DNS in a hub virtual network, then connect workload-specific spoke networks through peering. All traffic between spokes and to the internet flows through the hub, giving you a single chokepoint for security and routing.
+The hub-spoke topology is the most common network architecture pattern in Azure. Microsoft recommends it, Azure landing zone guidance builds on it, and most enterprises end up adopting it sooner or later. The idea is simple - centralize shared services like firewalls, VPN gateways, and DNS in a hub virtual network, then connect workload-specific spoke networks through peering. With the right route tables and firewall rules, traffic between spokes and to the internet flows through the hub, giving you a single chokepoint for security and routing.
 
 Building this by hand in the portal gets tedious fast, especially when you need to manage dozens of spokes across multiple environments. Terraform modules make this repeatable and consistent.
 
@@ -21,9 +21,8 @@ graph TB
     Internet[Internet] --> FW[Azure Firewall]
     subgraph Hub["Hub VNet (10.0.0.0/16)"]
         FW
-        GW[VPN Gateway]
-        Bastion[Azure Bastion]
-        DNS[Private DNS]
+        GW[GatewaySubnet for VPN Gateway]
+        Bastion[AzureBastionSubnet for Bastion]
     end
     subgraph Spoke1["Spoke 1 - Production (10.1.0.0/16)"]
         App1[App Subnet]
@@ -35,10 +34,10 @@ graph TB
     end
     Hub --- Spoke1
     Hub --- Spoke2
-    GW --> OnPrem[On-Premises]
+    GW -. optional .-> OnPrem[On-Premises]
 ```
 
-The hub contains Azure Firewall for traffic inspection, a VPN Gateway for on-premises connectivity, and Azure Bastion for secure VM access. Each spoke is peered to the hub and uses route tables to send traffic through the firewall.
+The hub contains Azure Firewall for traffic inspection and reserved subnets for a VPN Gateway and Azure Bastion if you add those resources. Each spoke is peered to the hub and uses route tables to send traffic through the firewall.
 
 ## Project Structure
 
@@ -347,7 +346,7 @@ module "spoke_data_platform" {
 
 By default, spoke virtual networks cannot communicate directly with each other because peering is not transitive. Traffic between spokes must go through the hub firewall, which is actually a good thing from a security perspective - you get full visibility and control over east-west traffic.
 
-For this to work, you need firewall rules that allow traffic between spoke address ranges. You also need the route tables we set up earlier, which force all traffic through the firewall.
+For this to work, you need firewall rules that allow traffic between spoke address ranges and any outbound internet access you want to permit. You also need the route tables we set up earlier, which force all traffic through the firewall.
 
 If you need direct spoke-to-spoke connectivity without going through the firewall, you can add peering between spokes, but I generally advise against it because you lose the security benefits.
 
