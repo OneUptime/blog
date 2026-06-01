@@ -20,17 +20,16 @@ The pricing is dynamic. The current spot price for a given VM size in a given re
 
 ## Checking Spot Prices
 
-Before deploying, check the current and historical spot prices:
+Before deploying, check the current spot price:
 
 ```bash
 # Check the current spot price for a specific VM size and region
-
-az rest --method post \
-  --uri "https://management.azure.com/subscriptions/{sub-id}/providers/Microsoft.Compute/locations/eastus/spotPriceHistory?api-version=2024-07-01" \
-  --body '{"vmSizes": ["Standard_D4s_v5"]}'
+curl -G "https://prices.azure.com/api/retail/prices" \
+  --data-urlencode "api-version=2023-01-01-preview" \
+  --data-urlencode '$filter=armRegionName eq '"'"'eastus'"'"' and armSkuName eq '"'"'Standard_D4s_v5'"'"' and serviceName eq '"'"'Virtual Machines'"'"' and priceType eq '"'"'Consumption'"'"' and contains(meterName, '"'"'Spot'"'"')'
 ```
 
-You can also check pricing in the Azure portal under "Pricing" when creating a VM and selecting the Spot option. The portal shows the current spot price, the pay-as-you-go price, and the savings percentage.
+You can also check pricing in the Azure portal under "Pricing" when creating a VM and selecting the Spot option. The portal shows the current spot price, the pay-as-you-go price, the savings percentage, and historical pricing.
 
 ## Creating a Spot VM
 
@@ -60,7 +59,7 @@ Let me explain the Spot-specific parameters:
 
 **Deallocate**: The VM is stopped and deallocated. The disks, NICs, and public IPs are preserved. You can restart the VM later when capacity becomes available. You still pay for disk storage while deallocated but not for compute. This is the right choice when you want to preserve state and restart later.
 
-**Delete**: The VM and all its resources are deleted. This is cleaner for ephemeral workloads where the VM is completely disposable. Pair this with automation that recreates VMs as needed.
+**Delete**: The VM and its underlying disks are deleted. This is cleaner for ephemeral workloads where the VM is completely disposable. Pair this with automation that recreates VMs as needed.
 
 For most scenarios, I recommend `Deallocate` because it gives you the option to manually restart the VM or have automation do it.
 
@@ -139,17 +138,20 @@ az vmss create \
   --resource-group myResourceGroup \
   --name mySpotScaleSet \
   --image Ubuntu2204 \
+  --orchestration-mode Flexible \
   --vm-sku Standard_D4s_v5 \
   --instance-count 5 \
   --priority Spot \
   --max-price -1 \
   --eviction-policy Delete \
+  --enable-spot-restore True \
+  --spot-restore-timeout PT1H \
   --single-placement-group false \
   --admin-username azureuser \
   --generate-ssh-keys
 ```
 
-With the `Delete` eviction policy, evicted instances are removed from the scale set. The scale set then tries to create new instances to maintain the desired count. If capacity is available, replacements spin up automatically.
+With the `Delete` eviction policy, evicted instances are removed from the scale set. The Spot restore settings let the scale set try to restore evicted Spot instances and maintain the target count. If capacity is available, replacements spin up automatically.
 
 You can also mix Spot and regular VMs in the same scale set:
 
@@ -159,6 +161,7 @@ az vmss create \
   --resource-group myResourceGroup \
   --name myMixedScaleSet \
   --image Ubuntu2204 \
+  --orchestration-mode Flexible \
   --vm-sku Standard_D4s_v5 \
   --instance-count 10 \
   --regular-priority-count 2 \
@@ -199,21 +202,15 @@ Here is a rough comparison for Standard_D4s_v5 in East US:
 | Pricing Model | Hourly Rate | Monthly Estimate (730 hrs) | Savings |
 |---------------|-------------|---------------------------|---------|
 | Pay-as-you-go | ~$0.192 | ~$140 | Baseline |
-| 1-year Reserved | ~$0.121 | ~$88 | ~37% |
-| 3-year Reserved | ~$0.077 | ~$56 | ~60% |
-| Spot (typical) | ~$0.020-0.040 | ~$15-29 | ~80-90% |
+| 1-year Reserved | ~$0.113-0.119 | ~$83-86 | ~38-41% |
+| 3-year Reserved | ~$0.071-0.076 | ~$52-55 | ~60-63% |
+| Spot (example) | ~$0.038-0.041 | ~$28-30 | ~79-80% |
 
-The actual Spot price varies by region, time of day, and overall Azure demand. But even in the worst case, Spot VMs are significantly cheaper than pay-as-you-go.
+The actual Spot price varies by region, time of day, and overall Azure demand. In practice, Spot VMs are often significantly cheaper than pay-as-you-go.
 
 ## Monitoring Eviction Rates
 
-Azure publishes eviction rate data by VM size and region. You can use this data to choose sizes and regions with lower eviction rates:
-
-```bash
-# Get the eviction rate profile for a region
-az rest --method get \
-  --uri "https://management.azure.com/subscriptions/{sub-id}/providers/Microsoft.Compute/locations/eastus/spotEvictionRates?api-version=2024-07-01"
-```
+Azure publishes eviction rate data by VM size and region in the Azure portal. When creating a Spot VM or Spot scale set, select **View pricing history** to compare pricing and eviction rates for different sizes and nearby regions.
 
 Choose VM sizes that have lower eviction rates if your workload is sensitive to interruptions. Newer VM sizes and less popular regions tend to have more available capacity.
 
