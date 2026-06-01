@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure SQL, Failover Groups, High Availability, Disaster Recovery, Azure, Database, Replication
 
-Description: Learn how to configure failover groups in Azure SQL Database to achieve automatic failover and seamless high availability across Azure regions.
+Description: Learn how to configure failover groups in Azure SQL Database to support disaster recovery and stable listener endpoints across Azure regions.
 
 ---
 
-If you need your Azure SQL Database to survive a regional outage without manual intervention, failover groups are the way to go. They build on top of geo-replication but add automatic failover, listener endpoints that redirect traffic seamlessly, and the ability to group multiple databases together under a single failover policy.
+If you need your Azure SQL Database to survive a regional outage with minimal connection string changes, failover groups are the way to go. They build on top of geo-replication but add listener endpoints that redirect traffic seamlessly, a group-level failover policy, and the ability to group multiple databases together under that policy.
 
 In this post, I will walk through how failover groups work, how to set them up, and how to test them so you know they will work when you actually need them.
 
@@ -20,11 +20,11 @@ A failover group is a named group of databases on a primary SQL server that can 
 - Read-write: `<failover-group-name>.database.windows.net`
 - Read-only: `<failover-group-name>.secondary.database.windows.net`
 
-These endpoints automatically point to whichever server is currently primary. When a failover happens, the DNS entries update, and your application reconnects without changing connection strings.
+The read-write endpoint points to the current primary, and the read-only endpoint points to the current secondary. When a failover happens, the DNS entries update, and your application reconnects without changing connection strings.
 
-**Automatic failover**: You can configure a grace period. If the primary is unreachable for longer than this period, Azure automatically promotes the secondary. No human intervention required.
+**Failover policy**: You can use a customer-managed failover policy and trigger failover yourself, or configure a Microsoft-managed policy with a grace period. Microsoft-managed failover is only intended for widespread outages where Microsoft decides to initiate failover after the grace period expires.
 
-**Group failover**: All databases in the group fail over together. This is critical for applications that depend on multiple databases being consistent with each other.
+**Group failover**: All databases in the group fail over together. This is critical for applications that depend on multiple databases moving roles as a unit.
 
 ```mermaid
 graph TB
@@ -54,9 +54,9 @@ graph TB
 Before setting up a failover group, you need:
 
 - A primary SQL server with one or more databases
-- A secondary SQL server in a different Azure region (it must be empty - the databases will be created automatically by the failover group)
-- Both servers must have the same admin login credentials
-- Databases must be at Standard S3 tier or above, or General Purpose tier or above
+- A secondary SQL server in a different Azure region (it must not already contain databases with the same names, because the failover group creates the secondary databases)
+- If the secondary server already exists, its login and firewall settings should match the primary server
+- Secondary databases in the failover group should use the same service tier, compute tier, compute size, IP firewall rules, and backup storage redundancy as the primary databases
 
 ## Creating a Failover Group via Azure Portal
 
@@ -78,12 +78,12 @@ In the left menu, under "Data management", click "Failover groups". Click "+ Add
 - The admin login and password must match the primary server
 
 **Read/Write failover policy**: Choose between:
-- **Automatic**: Azure will trigger failover if the primary is unreachable for the grace period
-- **Manual**: You must trigger failover yourself
+- **Automatic**: Microsoft-managed failover, where Azure SQL can trigger failover after the grace period during a widespread outage
+- **Manual**: Customer-managed failover, where you trigger failover yourself
 
-I recommend Automatic for production workloads.
+Microsoft recommends customer-managed failover for production disaster recovery plans so you stay in control of when failover happens.
 
-**Grace period (minutes)**: When set to automatic, this is how long Azure waits before triggering failover. The minimum is 1 hour. This prevents unnecessary failovers during brief transient issues.
+**Grace period (hours)**: When set to automatic, this is how long Azure waits before Microsoft-managed failover can be triggered. The minimum is 1 hour. This prevents unnecessary failovers during brief transient issues.
 
 **Databases within the group**: Select which databases to include in the failover group. All selected databases will be replicated to the secondary server.
 
@@ -119,7 +119,7 @@ az sql server create \
 Create the failover group:
 
 ```bash
-# Create a failover group with automatic failover
+# Create a failover group with Microsoft-managed failover
 az sql failover-group create \
     --resource-group myResourceGroup \
     --server myserver-primary \
@@ -159,7 +159,7 @@ For read-only workloads:
 Server=myapp-fg.secondary.database.windows.net;Database=mydb;...
 ```
 
-When a failover happens, the DNS entries automatically update. Your application reconnects to the new primary without any code changes. There will be a brief interruption while the DNS propagates and the application reconnects, but no manual steps are needed.
+When a failover happens, the DNS entries automatically update. Your application reconnects to the new primary without any code changes. There will be a brief interruption while the DNS propagates and the application reconnects, but no connection string changes are needed.
 
 ## Testing Failover
 
@@ -219,17 +219,16 @@ Set up alerts for:
 - Failover events (both automatic and manual)
 - Database health state changes
 
-You can also query the replication status using T-SQL from the primary:
+You can also query the replication status using T-SQL from each primary database:
 
 ```sql
--- Check replication status for all databases in the failover group
+-- Check replication status for the current database
 SELECT
-    d.name AS database_name,
+    DB_NAME() AS database_name,
     rs.replication_state_desc,
     rs.last_replication,
     rs.replication_lag_sec
-FROM sys.dm_geo_replication_link_status rs
-JOIN sys.databases d ON rs.resource_id = d.resource_id;
+FROM sys.dm_geo_replication_link_status AS rs;
 ```
 
 ## Failover Group Best Practices
@@ -242,7 +241,7 @@ JOIN sys.databases d ON rs.resource_id = d.resource_id;
 
 **Use the listener endpoint everywhere.** Never hardcode a specific server name in your application. Always use the failover group listener so failover is transparent.
 
-**Mind the grace period.** The minimum 1-hour grace period means Azure waits at least an hour before triggering automatic failover. For shorter recovery time objectives, you may need to implement application-level health checks and trigger manual failover sooner.
+**Mind the grace period.** The minimum 1-hour grace period means Azure waits at least an hour before Microsoft-managed failover can be triggered, and the actual failover timing can vary. For shorter recovery time objectives, you may need to implement application-level health checks and trigger customer-managed failover sooner.
 
 **Plan for failback.** After a failover, you might want to fail back to the original region once it recovers. This is simply another planned failover. Test this as part of your DR drills.
 
@@ -250,10 +249,10 @@ JOIN sys.databases d ON rs.resource_id = d.resource_id;
 
 - A failover group can contain databases from only one server.
 - Both servers must be in different regions.
-- The secondary server must be empty before creating the failover group (existing databases will conflict).
+- The secondary server must not already contain databases with the same names as the databases you add to the failover group.
 - The maximum number of databases per failover group varies but can support hundreds of databases.
 - Databases added to the group after creation will take time to seed.
 
 ## Summary
 
-Failover groups provide the most robust high availability option for Azure SQL Database. They combine geo-replication with automatic failover and DNS-based listener endpoints to create a solution that requires minimal application changes. Set up is straightforward through the Portal or CLI, and regular testing ensures you are prepared for actual outages. Update your connection strings to use the failover group listener, monitor replication health, and test failover at least quarterly.
+Failover groups provide a robust disaster recovery option for Azure SQL Database. They combine geo-replication with DNS-based listener endpoints and group-level failover policies to create a solution that requires minimal application changes. Set up is straightforward through the Portal or CLI, and regular testing ensures you are prepared for actual outages. Update your connection strings to use the failover group listener, monitor replication health, and test failover at least quarterly.
