@@ -175,7 +175,7 @@ app.http("joinGroup", {
 
         context.extraOutputs.set(signalROutput, [{
             // The 'add' action adds a user to a group
-            actionName: "add",
+            action: "add",
             userId: body.userId,
             groupName: body.groupName
         }]);
@@ -193,7 +193,7 @@ app.http("leaveGroup", {
 
         context.extraOutputs.set(signalROutput, [{
             // The 'remove' action removes a user from a group
-            actionName: "remove",
+            action: "remove",
             userId: body.userId,
             groupName: body.groupName
         }]);
@@ -307,7 +307,7 @@ public async Task JoinGroup(string groupName)
     }
 
     // Check if the group has a member limit
-    var memberCount = await _groupService.GetMemberCount(groupName);
+    var memberCount = _groupService.GetMemberCount(groupName);
     if (memberCount >= MAX_GROUP_MEMBERS)
     {
         await Clients.Caller.SendAsync("error", new
@@ -319,7 +319,7 @@ public async Task JoinGroup(string groupName)
     }
 
     await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
-    await _groupService.TrackMembership(userId, groupName);
+    _groupService.AddToGroup(groupName, userId);
     await Clients.Caller.SendAsync("joinedGroup", groupName);
 }
 ```
@@ -469,7 +469,7 @@ connection.on("groupMessage", (data) => {
 });
 
 // Rejoin all groups after reconnection
-// This is critical because group membership is lost on disconnect
+// This is critical when reconnecting creates a new connection ID
 connection.onreconnected(async () => {
     console.log("Reconnected. Rejoining groups...");
     for (const group of joinedGroups) {
@@ -483,7 +483,7 @@ connection.onreconnected(async () => {
 });
 ```
 
-The reconnection handler is critical. When a connection drops and reconnects, all group memberships are lost because the connection ID changes. The client must rejoin all its groups.
+The reconnection handler is critical. If a reconnect creates a new connection ID, the client is treated as a new connection and must rejoin its groups. Azure SignalR Service can preserve state during supported stateful reconnect scenarios, but your application should still plan for new-connection reconnects.
 
 ## Performance Considerations for Large Groups
 
