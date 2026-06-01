@@ -8,9 +8,9 @@ Description: A practical comparison of Azure Managed Disk types to help you pick
 
 ---
 
-Azure offers four managed disk types, each targeting different workload profiles. Picking the wrong one means either overpaying for performance you do not need or struggling with I/O bottlenecks that hurt your application. In this guide, I will break down each disk type, compare their performance characteristics, and help you match the right disk to your workload.
+Azure offers five managed disk types, each targeting different workload profiles. Picking the wrong one means either overpaying for performance you do not need or struggling with I/O bottlenecks that hurt your application. In this guide, I will break down the main disk types, compare their performance characteristics, and help you match the right disk to your workload.
 
-## The Four Disk Types at a Glance
+## The Main Disk Types at a Glance
 
 **Standard HDD** is the cheapest option, built on traditional spinning hard drives. It provides the lowest performance but is fine for workloads that are not latency-sensitive.
 
@@ -26,10 +26,10 @@ Here are the key performance metrics for each tier at a 512 GiB disk size.
 
 | Metric | Standard HDD | Standard SSD | Premium SSD | Ultra Disk |
 |--------|-------------|-------------|-------------|------------|
-| Max IOPS | 500 | 500 | 2,300 | 160,000 |
-| Max Throughput | 60 MB/s | 60 MB/s | 150 MB/s | 4,000 MB/s |
-| Latency | ~10ms | ~5ms | ~2ms | <1ms |
-| SLA | No single-disk SLA | 99.5% | 99.9% | 99.9% |
+| Max IOPS | 500 | 500 | 2,300 | 400,000 |
+| Max Throughput | 60 MB/s | 100 MB/s | 150 MB/s | 10,000 MB/s |
+| Latency | Write <10ms, read <20ms | Single-digit ms | Single-digit ms | <1ms |
+| Single-VM SLA | 95% | 99.5% | 99.9% | 99.9% |
 | Cost (512 GiB/month) | ~$22 | ~$38 | ~$73 | ~$130+ |
 
 Note that these numbers vary by disk size. Larger disks generally get better IOPS and throughput within each tier.
@@ -133,7 +133,7 @@ Good fit for:
 Not a good fit for:
 - OS disks (Ultra Disks can only be used as data disks)
 - Workloads that do not need high I/O performance (too expensive)
-- Disk snapshots (not supported for Ultra Disks)
+- Full disk snapshots (Ultra Disks support incremental snapshots only, with extra restrictions)
 
 ```bash
 # Create an Ultra Disk with custom IOPS and throughput
@@ -149,7 +149,7 @@ az disk create \
   --disk-mbps-read-write 1000
 ```
 
-Ultra Disks have some restrictions. They are only available in certain regions and availability zones, they require specific VM series (like Es_v3, Ds_v3, M series), and they do not support disk snapshots or imaging.
+Ultra Disks have some restrictions. They are only available in certain regions and availability zones, they require specific VM series (like Es_v3, Ds_v3, M series), and they do not support full disk snapshots or imaging.
 
 ## Premium SSD v2: The Middle Ground
 
@@ -203,9 +203,10 @@ Not all VM sizes support all disk types. Premium SSDs require Premium-storage-ca
 
 ```bash
 # Check which VM sizes support Premium storage in your region
-az vm list-sizes \
+az vm list-skus \
   --location eastus \
-  --query "[?contains(name, 'Standard_D')].{Name:name, MaxDataDisks:maxDataDiskCount}" \
+  --resource-type virtualMachines \
+  --query "[?capabilities[?name=='PremiumIO' && value=='True']].{Name:name, MaxDataDisks:capabilities[?name=='MaxDataDiskCount'].value|[0]}" \
   --output table
 
 # Check Ultra Disk availability in a region
