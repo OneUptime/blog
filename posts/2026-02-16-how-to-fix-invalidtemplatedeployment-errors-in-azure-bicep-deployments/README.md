@@ -52,7 +52,7 @@ az deployment group validate \
   --parameters @params.json
 ```
 
-This is faster than a full deployment and gives you the same validation errors. Always validate before deploying.
+This is faster than a full deployment and catches many of the same preflight validation errors. Always validate before deploying.
 
 ### Common Validation Issues
 
@@ -144,7 +144,7 @@ Solutions:
 
 ## Cause 4: Naming Violations
 
-Azure resource names have specific rules. Storage accounts must be 3-24 characters, lowercase letters and numbers only. Key vault names must be 3-24 characters, start with a letter. Many resources require globally unique names.
+Azure resource names have specific rules. Storage accounts must be 3-24 characters, lowercase letters and numbers only. Key vault names must be 3-24 characters, start with a letter, end with a letter or digit, contain only alphanumerics and hyphens, and not contain consecutive hyphens. Many resources require globally unique names.
 
 ```bicep
 // This will fail - storage account names cannot have hyphens
@@ -171,7 +171,7 @@ The `uniqueString()` function in Bicep generates a deterministic 13-character ha
 Bicep usually handles dependencies automatically based on resource references. But sometimes implicit dependencies are not detected, and you need to be explicit.
 
 ```bicep
-// This might fail because the subnet reference does not create an implicit dependency
+// This creates an implicit dependency because subnet.id references the subnet resource
 resource nic 'Microsoft.Network/networkInterfaces@2023-05-01' = {
   name: nicName
   location: location
@@ -189,16 +189,23 @@ resource nic 'Microsoft.Network/networkInterfaces@2023-05-01' = {
   }
 }
 
-// When implicit dependencies are not enough, use dependsOn
+// When Bicep cannot infer the dependency from a symbolic reference, use dependsOn
 resource appService 'Microsoft.Web/sites@2023-01-01' = {
   name: appName
   location: location
   properties: {
     serverFarmId: appServicePlan.id
   }
+}
+
+resource appSettings 'Microsoft.Web/sites/config@2023-01-01' = {
+  name: '${appName}/appsettings'
+  properties: {
+    WEBSITE_RUN_FROM_PACKAGE: packageUrl
+  }
   // Explicit dependency when Bicep cannot detect it automatically
   dependsOn: [
-    diagnosticSettings  // Make sure diagnostic settings are ready first
+    appService  // Make sure the web app exists first
   ]
 }
 ```
@@ -233,7 +240,7 @@ resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 ```
 
-Setting `principalType: 'ServicePrincipal'` helps Azure skip the graph lookup that often causes timing issues. Always include this property when assigning roles to managed identities.
+Setting `principalType: 'ServicePrincipal'` helps Azure avoid intermittent principal resolution errors that often cause timing issues. Always include this property when assigning roles to managed identities.
 
 ## Cause 7: Linked Template and Module Failures
 
