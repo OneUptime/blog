@@ -38,16 +38,10 @@ There are two ways to fix this.
 
 **Option 2: Pre-authorize in project settings.** Navigate to Project Settings > Service Connections, select the connection, click Security, and add the pipeline or "All pipelines" to the authorized list.
 
-For YAML pipelines, you can also authorize at the resource level in your pipeline definition.
+For YAML pipelines, reference the service connection name in the task input. The first run will prompt for authorization if the pipeline has not already been granted access.
 
 ```yaml
-# Pipeline YAML with explicit resource authorization
-
-resources:
-  pipelines: []
-
-# In the deployment job, reference the service connection
-# The first run will prompt for authorization
+# Pipeline YAML referencing an Azure Resource Manager service connection
 stages:
   - stage: Deploy
     jobs:
@@ -70,7 +64,7 @@ stages:
 
 ## Expired Service Principal Credentials
 
-Azure DevOps service connections of type "Azure Resource Manager" use a service principal in Azure AD. That service principal has a client secret (or certificate) with an expiration date. When the secret expires, every pipeline using that connection fails.
+Azure DevOps service connections of type "Azure Resource Manager" can use a service principal in Azure AD. If the connection uses a client secret or certificate, that credential has an expiration date. When the secret expires, every pipeline using that connection fails.
 
 The error typically looks like:
 
@@ -84,12 +78,14 @@ To fix this, you need to create a new secret for the service principal and updat
 ```bash
 # Find the service principal's application ID from the error message
 # Then create a new client secret
-az ad app credential reset \
+az ad sp credential reset \
   --id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
-  --years 2
+  --years 2 \
+  --query password \
+  --output tsv
 
-# The output contains the new client secret
-# Copy this value - you will need it for the service connection
+# The output is the new client secret
+# Store it securely - you will need it for the service connection
 ```
 
 Then update the service connection in Azure DevOps:
@@ -119,12 +115,13 @@ Check the service principal's role assignments.
 SP_ID=$(az ad sp show --id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" --query id -o tsv)
 
 # List all role assignments for the service principal
-az role assignment list --assignee "$SP_ID" -o table
+az role assignment list --assignee-object-id "$SP_ID" --all -o table
 
 # Add a role assignment if needed
 # Contributor is commonly needed for deployment pipelines
 az role assignment create \
-  --assignee "$SP_ID" \
+  --assignee-object-id "$SP_ID" \
+  --assignee-principal-type ServicePrincipal \
   --role "Contributor" \
   --scope "/subscriptions/{sub-id}/resourceGroups/myResourceGroup"
 ```
@@ -171,7 +168,7 @@ If `az login` fails with an "AADSTS" error code, the issue is with the credentia
 
 ## Multi-Stage Pipeline Authorization
 
-In multi-stage YAML pipelines with environments, each environment can have its own approval and check gates. If a service connection is used in a stage that targets a specific environment, you need to authorize the connection for that environment.
+In multi-stage YAML pipelines with environments, each environment can have its own approval and check gates. Service connections and environments are separate protected resources: authorize the pipeline to use each service connection, and configure environment permissions or checks separately.
 
 ```yaml
 # Multi-stage pipeline with environment-specific service connections
@@ -179,7 +176,7 @@ stages:
   - stage: DeployStaging
     jobs:
       - deployment: Deploy
-        environment: 'staging'  # Needs separate authorization
+        environment: 'staging'  # Environment checks can run before this stage
         strategy:
           runOnce:
             deploy:
@@ -193,7 +190,7 @@ stages:
     dependsOn: DeployStaging
     jobs:
       - deployment: Deploy
-        environment: 'production'  # Also needs separate authorization
+        environment: 'production'  # Production can have its own approvals and checks
         strategy:
           runOnce:
             deploy:
