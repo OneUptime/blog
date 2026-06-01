@@ -12,6 +12,8 @@ Configuration drift is one of those problems that quietly erodes your infrastruc
 
 In this post, I will walk through how DSC works in Azure Automation, how to write configurations, compile them, assign them to nodes, and monitor compliance.
 
+Microsoft has announced that Azure Automation State Configuration will retire on September 30, 2027. For new long-term investments, plan a transition to Azure Machine Configuration.
+
 ## How DSC Works
 
 The concept is straightforward:
@@ -63,8 +65,8 @@ Configuration WebServerConfig {
             DependsOn = "[WindowsFeature]IIS"
         }
 
-        # Ensure ASP.NET 4.8 is installed
-        WindowsFeature ASPNet48 {
+        # Ensure ASP.NET 4.x is installed
+        WindowsFeature ASPNet4x {
             Ensure    = "Present"
             Name      = "Web-Asp-Net45"
             DependsOn = "[WindowsFeature]IIS"
@@ -79,9 +81,9 @@ Configuration WebServerConfig {
 
         # Ensure the Windows Firewall service is running
         Service FirewallService {
-            Name      = "MpsSvc"
-            State     = "Running"
-            StartType = "Automatic"
+            Name        = "MpsSvc"
+            State       = "Running"
+            StartupType = "Automatic"
         }
 
         # Ensure Telnet Client is NOT installed (security hardening)
@@ -108,12 +110,7 @@ Upload the configuration to Azure Automation and compile it:
 
 ### Through the Portal
 
-1. Go to your Automation account
-2. Click "State configuration (DSC)" under Configuration Management
-3. Click the "Configurations" tab
-4. Click "+ Add" and upload your .ps1 configuration file
-5. Click on the uploaded configuration
-6. Click "Compile" and wait for it to complete
+Microsoft removed the Add, Compose configuration, and Gallery navigation links from the Azure portal on March 31, 2025. If the configuration has already been imported, you can still open it from the "Configurations" tab and click "Compile," but new configuration uploads should be done with PowerShell.
 
 ### Through PowerShell
 
@@ -177,7 +174,7 @@ The key parameters here are:
 
 ### Onboarding On-Premises Servers
 
-For on-premises servers, generate a registration key and URL, then install the DSC extension manually:
+For on-premises servers, generate a registration key and URL, then configure the LCM manually:
 
 ```powershell
 # Get the DSC registration info for your Automation account
@@ -209,7 +206,7 @@ Configuration LCMConfig {
         ConfigurationRepositoryWeb AzureAutomation {
             ServerURL          = "https://eus2-agentservice-prod-1.azure-automation.net/accounts/<account-id>"
             RegistrationKey    = "<your-registration-key>"
-            ConfigurationNames = @("WebServerConfig")
+            ConfigurationNames = @("WebServerConfig.localhost")
         }
 
         ReportServerWeb AzureAutomation {
