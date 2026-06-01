@@ -10,6 +10,8 @@ Description: Learn how to configure AWS X-Ray sampling rules to control which re
 
 Tracing every single request in a production application sounds great in theory. In practice, it would generate massive amounts of data, increase latency from the tracing overhead, and cost a fortune. That's why X-Ray uses sampling - it traces a representative subset of requests instead of all of them.
 
+Note: as of February 25, 2026, AWS X-Ray SDKs and the X-Ray daemon are in maintenance mode. AWS recommends OpenTelemetry-based instrumentation for new work, but X-Ray sampling rules still apply to services and SDKs that use the X-Ray sampling APIs.
+
 The default sampling rule traces 1 request per second plus 5% of additional requests. For many applications, this is fine. But when you need more detail on specific endpoints, want to reduce costs on high-traffic paths, or need to ensure certain request types are always traced, you'll need custom sampling rules.
 
 ## How X-Ray Sampling Works
@@ -31,7 +33,7 @@ flowchart TD
 
 Each sampling rule has two components:
 
-- **Reservoir** - a fixed number of requests per second guaranteed to be traced
+- **Reservoir** - a fixed target number of matching requests per second to trace before applying the rate
 - **Rate** - a percentage of additional requests beyond the reservoir to trace
 
 ## The Default Sampling Rule
@@ -48,7 +50,7 @@ This means for a service handling 1000 requests per second, X-Ray traces approxi
 
 ### Via the Console
 
-Go to X-Ray > Sampling > Create sampling rule. Fill in the rule properties and matching criteria.
+In the CloudWatch console, go to Settings > Sampling rules under X-Ray traces, then choose Create sampling rule. Fill in the rule properties and matching criteria.
 
 ### Via the CLI
 
@@ -62,7 +64,6 @@ Here's how to create sampling rules for common scenarios:
 aws xray create-sampling-rule \
   --sampling-rule '{
     "RuleName": "HighSample-PaymentEndpoint",
-    "RuleARN": "*",
     "ResourceARN": "*",
     "Priority": 100,
     "FixedRate": 1.0,
@@ -83,7 +84,6 @@ aws xray create-sampling-rule \
 aws xray create-sampling-rule \
   --sampling-rule '{
     "RuleName": "LowSample-HealthChecks",
-    "RuleARN": "*",
     "ResourceARN": "*",
     "Priority": 50,
     "FixedRate": 0.01,
@@ -104,7 +104,6 @@ aws xray create-sampling-rule \
 aws xray create-sampling-rule \
   --sampling-rule '{
     "RuleName": "MediumSample-OrderService",
-    "RuleARN": "*",
     "ResourceARN": "*",
     "Priority": 200,
     "FixedRate": 0.25,
@@ -125,7 +124,6 @@ aws xray create-sampling-rule \
 aws xray create-sampling-rule \
   --sampling-rule '{
     "RuleName": "FullSample-Writes",
-    "RuleARN": "*",
     "ResourceARN": "*",
     "Priority": 150,
     "FixedRate": 1.0,
@@ -142,7 +140,6 @@ aws xray create-sampling-rule \
 aws xray create-sampling-rule \
   --sampling-rule '{
     "RuleName": "LowSample-Reads",
-    "RuleARN": "*",
     "ResourceARN": "*",
     "Priority": 300,
     "FixedRate": 0.05,
@@ -176,17 +173,17 @@ Priority 10000: Default rule -> 5% sampling
 
 ## Understanding Reservoir vs. Rate
 
-The reservoir guarantees a minimum number of traces per second, even at low traffic. The rate applies to requests that don't get a reservoir slot.
+The reservoir sets a target number of traces per second before the fixed rate is applied. In centrally managed sampling, that reservoir applies across all services using the rule collectively, and services receive quota from X-Ray after reporting sampling statistics. The rate applies to requests that don't get a reservoir slot.
 
 **Example: ReservoirSize=5, FixedRate=0.10**
 
-- First 5 requests each second are always traced (reservoir)
+- Up to 5 requests each second are traced from the reservoir
 - Of the remaining requests, 10% are traced (rate)
 - At 100 RPS: 5 + (95 * 0.10) = ~14.5 traces per second
 - At 10 RPS: 5 + (5 * 0.10) = ~5.5 traces per second
 - At 2 RPS: 2 traces per second (both hit the reservoir)
 
-The reservoir is especially useful for low-traffic endpoints where percentage-based sampling might not capture any traces.
+The reservoir is especially useful for low-traffic endpoints where percentage-based sampling might not capture many traces.
 
 ## Matching Criteria
 
@@ -345,16 +342,16 @@ increase_sampling('MediumSample-OrderService', 1.0, duration_minutes=30)
 
 ## Cost Impact of Sampling
 
-X-Ray pricing is based on traces recorded and retrieved:
+X-Ray pricing is based on traces recorded and traces retrieved or scanned:
 
 - Recording: $5.00 per million traces
-- Retrieval: $0.50 per million traces retrieved
+- Retrieval and scanning: $0.50 per million traces retrieved or scanned
 
-At 100 RPS with 5% sampling:
+At 100 RPS with 5% sampling, before any free tier:
 - 5 traces/second * 86,400 seconds/day * 30 days = ~12.96 million traces/month
 - Cost: ~$64.80/month
 
-At 100 RPS with 100% sampling:
+At 100 RPS with 100% sampling, before any free tier:
 - 100 traces/second * 86,400 * 30 = ~259.2 million traces/month
 - Cost: ~$1,296/month
 
@@ -366,7 +363,7 @@ That's a 20x difference. Smart sampling rules let you get the traces you need wi
 
 **Trace critical paths at higher rates.** Payment processing, user authentication, and other critical flows deserve more visibility.
 
-**Use reservoirs for low-traffic endpoints.** A percentage-based rate might not capture any traces for endpoints that get a few requests per hour. Set a reservoir of 1-5 to guarantee some traces.
+**Use reservoirs for low-traffic endpoints.** A percentage-based rate might not capture many traces for endpoints that get a few requests per hour. Set a reservoir of 1-5 to target a minimum number of traces.
 
 **Review sampling rules quarterly.** As your application evolves, your sampling needs change. New services, deprecated endpoints, and changed traffic patterns all affect what you should be tracing.
 
