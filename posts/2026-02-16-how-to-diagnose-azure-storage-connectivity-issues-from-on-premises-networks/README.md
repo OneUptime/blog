@@ -61,7 +61,7 @@ Once DNS is resolving correctly, test whether you can actually reach the storage
 Test-NetConnection -ComputerName mystorageaccount.blob.core.windows.net -Port 443
 
 # On Linux/Mac, use netcat or telnet
-nc -zv mystorageaccount.blob.core.windows.net 443 -w 5
+nc -zv -w 5 mystorageaccount.blob.core.windows.net 443
 ```
 
 If TCP connection fails, the issue is a network-level block. Common causes include:
@@ -77,14 +77,21 @@ If TCP connection fails, the issue is a network-level block. Common causes inclu
 Azure Storage requires TLS 1.2 as the minimum version. Older clients or systems running outdated TLS libraries will fail to connect.
 
 ```powershell
-# Check the TLS version used in a connection attempt
-# This PowerShell snippet tests TLS connectivity
+# Test whether TLS 1.2 can be negotiated
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$hostName = "mystorageaccount.blob.core.windows.net"
+$tcpClient = $null
+$sslStream = $null
 try {
-    $response = Invoke-WebRequest -Uri "https://mystorageaccount.blob.core.windows.net/?comp=list" -Method Head
-    Write-Output "Connection successful. Status: $($response.StatusCode)"
+    $tcpClient = [Net.Sockets.TcpClient]::new($hostName, 443)
+    $sslStream = [Net.Security.SslStream]::new($tcpClient.GetStream(), $false)
+    $sslStream.AuthenticateAsClient($hostName, $null, [Security.Authentication.SslProtocols]::Tls12, $true)
+    Write-Output "TLS connection successful. Protocol: $($sslStream.SslProtocol)"
 } catch {
     Write-Output "Connection failed: $($_.Exception.Message)"
+} finally {
+    if ($sslStream) { $sslStream.Dispose() }
+    if ($tcpClient) { $tcpClient.Dispose() }
 }
 ```
 
@@ -140,7 +147,7 @@ echo $HTTP_PROXY
 echo $HTTPS_PROXY
 
 # Try connecting directly, bypassing the proxy
-curl -v --noproxy '*' https://mystorageaccount.blob.core.windows.net/?restype=account&comp=properties
+curl -v --noproxy '*' "https://mystorageaccount.blob.core.windows.net/?restype=account&comp=properties"
 ```
 
 If bypassing the proxy fixes the issue, you need to work with your network team to either whitelist Azure Storage endpoints in the proxy or exempt them from SSL inspection.
