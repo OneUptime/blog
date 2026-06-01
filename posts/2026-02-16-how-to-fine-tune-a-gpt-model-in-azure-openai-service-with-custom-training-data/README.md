@@ -27,7 +27,7 @@ Fine-tuning is usually not the right choice when:
 
 ## Step 1: Prepare Your Training Data
 
-Azure OpenAI fine-tuning uses a JSONL (JSON Lines) format where each line is a training example. For chat models, each example is a conversation with system, user, and assistant messages.
+Azure OpenAI fine-tuning uses a JSONL (JSON Lines) format where each line is a training example. For chat models, each example is a conversation with system, user, and assistant messages. The training and validation files must be UTF-8 encoded with a byte-order mark (BOM), and each file must be less than 512 MB.
 
 ```jsonl
 {"messages": [{"role": "system", "content": "You are a customer support agent for Acme Cloud. Always be concise and reference specific product features."}, {"role": "user", "content": "How do I increase my storage limit?"}, {"role": "assistant", "content": "Navigate to Settings > Storage in your Acme Cloud dashboard. Click 'Upgrade Plan' to select a tier with more storage. Your current usage is shown at the top of the page."}]}
@@ -104,12 +104,12 @@ Upload your training file through either the Azure OpenAI Studio or the API.
 ### Using the API
 
 ```python
-import openai
+import os
+from openai import OpenAI
 
-client = openai.AzureOpenAI(
-    api_key="your-api-key",
-    api_version="2024-02-01",
-    azure_endpoint="https://your-resource.openai.azure.com/"
+client = OpenAI(
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    base_url="https://your-resource.openai.azure.com/openai/v1/"
 )
 
 # Upload the training file
@@ -143,13 +143,20 @@ Once your file is uploaded and processed, create the fine-tuning job.
 # Create the fine-tuning job
 job = client.fine_tuning.jobs.create(
     training_file=training_file.id,
-    validation_file=validation_file.id,  # Optional but recommended
-    model="gpt-35-turbo-0613",           # Base model to fine-tune
-    hyperparameters={
-        "n_epochs": 3,                   # Number of training passes
-        "batch_size": 4,                 # Examples processed together
-        "learning_rate_multiplier": 1.0  # Scale for the learning rate
-    }
+    validation_file=validation_file.id,  # Include this only if you uploaded a validation file
+    model="gpt-4.1-2025-04-14",          # Base model to fine-tune
+    suffix="acme-support",
+    method={
+        "type": "supervised",
+        "supervised": {
+            "hyperparameters": {
+                "n_epochs": 3,                   # Number of training passes
+                "batch_size": 4,                 # Examples processed together
+                "learning_rate_multiplier": 0.1  # Scale for the learning rate
+            }
+        }
+    },
+    extra_body={"trainingType": "GlobalStandard"}
 )
 
 print(f"Fine-tuning job created. ID: {job.id}")
@@ -160,7 +167,7 @@ print(f"Status: {job.status}")
 
 - **n_epochs**: How many times the model sees each training example. Start with 3. More epochs can improve quality but risk overfitting.
 - **batch_size**: Number of examples in each training batch. Larger batches are more stable but use more memory.
-- **learning_rate_multiplier**: Scales the default learning rate. Lower values (0.5) make training more conservative. Higher values (2.0) make it more aggressive.
+- **learning_rate_multiplier**: Scales the default learning rate. Lower values make training more conservative. Azure documentation recommends experimenting with values in the range of `0.02` to `0.2`.
 
 ## Step 4: Monitor Training Progress
 
@@ -201,16 +208,16 @@ You can also check the training events for more detailed progress:
 
 ```python
 # List events for the fine-tuning job
-events = client.fine_tuning.jobs.list_events(job.id)
+events = client.fine_tuning.jobs.list_events(fine_tuning_job_id=job.id, limit=10)
 for event in events.data:
     print(f"{event.created_at}: {event.message}")
 ```
 
 ## Step 5: Deploy the Fine-Tuned Model
 
-Once training succeeds, you need to deploy the fine-tuned model before you can use it. In Azure OpenAI Studio, go to Deployments and create a new deployment using your fine-tuned model.
+Once training succeeds, you need to deploy the fine-tuned model before you can use it. In the Foundry portal, go to Deployments and create a new deployment using your fine-tuned model.
 
-The model name will look something like `gpt-35-turbo-0613.ft-abc123def456`. Select this as the model and give the deployment a name.
+The model name will look something like `gpt-4.1-2025-04-14.ft-abc123def456`. Select this as the model and give the deployment a name.
 
 ## Step 6: Test Your Fine-Tuned Model
 
@@ -248,11 +255,11 @@ If the fine-tuned model underperforms, consider adding more training examples, c
 
 Fine-tuning has three cost components:
 
-1. **Training cost**: Billed per 1K tokens in your training data, multiplied by the number of epochs. For GPT-3.5-Turbo, training costs approximately $0.008 per 1K tokens.
-2. **Hosting cost**: The fine-tuned model deployment has an hourly hosting fee, even when not processing requests.
-3. **Inference cost**: Per-token inference costs are higher than the base model. Fine-tuned GPT-3.5-Turbo inference costs roughly 2x the base model rate.
+1. **Training cost**: For supervised fine-tuning, billed from the number of tokens in your training file, multiplied by the number of epochs and the model's training price. Always check the Azure OpenAI pricing page for the current model-specific rate.
+2. **Hosting cost**: Standard and Global Standard fine-tuned model deployments have an hourly hosting fee, even when not processing requests. Developer tier deployments do not have an hourly hosting fee, but they are intended for evaluation rather than production.
+3. **Inference cost**: Standard and Global Standard fine-tuned deployments are billed per token at the same token rate as the corresponding base model deployment type. Provisioned Throughput deployments use PTU-hour billing instead.
 
-Despite the higher per-token inference cost, fine-tuned models often reduce overall costs because they need shorter prompts to produce the same quality output.
+Despite the added training and hosting costs, fine-tuned models can reduce overall costs when they need shorter prompts to produce the same quality output.
 
 ## Wrapping Up
 
