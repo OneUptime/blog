@@ -84,7 +84,7 @@ public class CosmosDbConfig
             // Session consistency is the default, but set it explicitly for clarity
             ConsistencyLevel = ConsistencyLevel.Session,
 
-            // Enable content response on write to get the session token
+            // Keep the response resource available after writes
             EnableContentResponseOnWrite = true,
         };
 
@@ -117,16 +117,26 @@ The session token is the key to session consistency in a multi-region setup. Aft
 // SessionTokenManager.cs
 // Manages session tokens for consistent reads across regions
 using Microsoft.Azure.Cosmos;
+using System.Collections.Concurrent;
 
 public class SessionTokenManager
 {
     // Store session tokens per user. In production, use a distributed cache.
-    private readonly Dictionary<string, string> _sessionTokens = new();
+    private readonly ConcurrentDictionary<string, string> _sessionTokens = new();
 
     // Save the session token after a write operation
-    public void SaveToken(string userId, ItemResponse<dynamic> response)
+    public void SaveToken<T>(string userId, ItemResponse<T> response)
     {
-        var sessionToken = response.Headers.Session;
+        SaveTokenDirect(userId, response.Headers.Session);
+    }
+
+    public void SaveToken<T>(string userId, FeedResponse<T> response)
+    {
+        SaveTokenDirect(userId, response.Headers.Session);
+    }
+
+    public void SaveTokenDirect(string userId, string? sessionToken)
+    {
         if (!string.IsNullOrEmpty(sessionToken))
         {
             _sessionTokens[userId] = sessionToken;
@@ -172,17 +182,34 @@ The repository uses session tokens to ensure consistent reads after writes.
 // UserProfileRepository.cs
 // Repository that handles multi-region CRUD with session consistency
 using Microsoft.Azure.Cosmos;
+using Newtonsoft.Json;
 using System.Net;
 
 public class UserProfile
 {
+    [JsonProperty(PropertyName = "id")]
     public string Id { get; set; } = string.Empty;
+
+    [JsonProperty(PropertyName = "userId")]
     public string UserId { get; set; } = string.Empty;
+
+    [JsonProperty(PropertyName = "region")]
     public string Region { get; set; } = string.Empty;
+
+    [JsonProperty(PropertyName = "displayName")]
     public string DisplayName { get; set; } = string.Empty;
+
+    [JsonProperty(PropertyName = "email")]
     public string Email { get; set; } = string.Empty;
+
+    [JsonProperty(PropertyName = "bio")]
     public string Bio { get; set; } = string.Empty;
+
+    [JsonProperty(PropertyName = "updatedAt")]
     public DateTime UpdatedAt { get; set; }
+
+    [JsonProperty(PropertyName = "updatedAtEpoch")]
+    public long UpdatedAtEpoch { get; set; }
 }
 
 public class UserProfileRepository
@@ -199,7 +226,9 @@ public class UserProfileRepository
     // Create or update a user profile
     public async Task<UserProfile> UpsertProfile(UserProfile profile)
     {
+        profile.Id = profile.UserId;
         profile.UpdatedAt = DateTime.UtcNow;
+        profile.UpdatedAtEpoch = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         var response = await _container.UpsertItemAsync(
             profile,
@@ -260,6 +289,7 @@ public class UserProfileRepository
         while (query.HasMoreResults)
         {
             var response = await query.ReadNextAsync();
+            _sessionManager.SaveToken(userId, response);
             profiles.AddRange(response.Resource);
         }
 
@@ -292,6 +322,7 @@ builder.Services.AddScoped<UserProfileRepository>();
 builder.Services.AddControllers();
 
 var app = builder.Build();
+app.UseMiddleware<SessionTokenMiddleware>();
 app.MapControllers();
 app.Run();
 ```
@@ -343,7 +374,7 @@ public class ProfileController : ControllerBase
 With multi-region writes, conflicts can occur when the same document is updated in two regions simultaneously. Cosmos DB uses Last Writer Wins (LWW) by default, based on the `_ts` timestamp. You can also implement custom conflict resolution.
 
 ```csharp
-// Custom conflict resolution using a stored procedure
+// Last Writer Wins conflict resolution using a custom numeric path
 // Configure this when creating the container
 var containerProperties = new ContainerProperties("UserProfiles", "/region")
 {
@@ -351,7 +382,7 @@ var containerProperties = new ContainerProperties("UserProfiles", "/region")
     {
         Mode = ConflictResolutionMode.LastWriterWins,
         // Use a custom path for conflict resolution instead of _ts
-        ResolutionPath = "/updatedAt",
+        ResolutionPath = "/updatedAtEpoch",
     }
 };
 ```
@@ -369,16 +400,16 @@ az containerapp create \
   --resource-group global-rg \
   --environment env-eastus \
   --image myregistry.azurecr.io/profile-api:v1 \
-  --env-vars AZURE_REGION=East_US \
-    CosmosDB__ConnectionString=secretref:cosmos-connection
+  --env-vars "AZURE_REGION=East US" \
+    "CosmosDB__ConnectionString=secretref:cosmos-connection"
 
 az containerapp create \
   --name profile-api-westeurope \
   --resource-group global-rg \
   --environment env-westeurope \
   --image myregistry.azurecr.io/profile-api:v1 \
-  --env-vars AZURE_REGION=West_Europe \
-    CosmosDB__ConnectionString=secretref:cosmos-connection
+  --env-vars "AZURE_REGION=West Europe" \
+    "CosmosDB__ConnectionString=secretref:cosmos-connection"
 ```
 
 ## Session Tokens in Web Applications
@@ -410,7 +441,8 @@ public class SessionTokenMiddleware
         await _next(context);
 
         // After the request, save any updated session token to a cookie
-        var responseToken = context.Items["cosmos-session-token"] as string;
+        var userId = context.Request.Headers["X-User-Id"].FirstOrDefault();
+        var responseToken = userId != null ? sessionManager.GetToken(userId) : null;
         if (responseToken != null)
         {
             context.Response.Cookies.Append("cosmos-session", responseToken, new CookieOptions
