@@ -22,7 +22,7 @@ For the Standard tier, each unit supports approximately:
 
 The Free tier gives you 20 concurrent connections and is meant for development only.
 
-You can add up to 100 units per service instance, which gives you roughly 100,000 concurrent connections per instance. For more than that, you deploy multiple instances.
+You can add up to 100 units per Standard_S1 or Premium_P1 service instance, which gives you roughly 100,000 concurrent connections per instance. For more than that, you can use the Premium_P2 SKU, which supports up to 1,000 units and roughly 1,000,000 concurrent connections per instance, or deploy multiple instances.
 
 ## Choosing Between Service Modes
 
@@ -74,8 +74,8 @@ builder.Services.AddSignalR()
         options.ConnectionString = builder.Configuration["Azure:SignalR:ConnectionString"];
         // Number of connections between this server and SignalR Service
         // Increase for higher throughput
-        options.ConnectionCount = 5;
-        // Server-side timeout: how long to wait before considering a connection dead
+        options.InitialHubServerConnectionCount = 5;
+        // Route a client back to the same app server that handled negotiation
         options.ServerStickyMode = ServerStickyMode.Required;
     });
 
@@ -84,7 +84,7 @@ app.MapHub<NotificationHub>("/hub/notifications");
 app.Run();
 ```
 
-The `ConnectionCount` setting controls how many connections exist between your app server and SignalR Service. The default is 5, but for high-throughput scenarios, increase it. Each connection can multiplex many client messages.
+The `InitialHubServerConnectionCount` setting controls the initial number of connections per hub between your app server and SignalR Service. The default is 5, but for high-throughput scenarios, increase it. Each connection can multiplex many client messages.
 
 ## Scaling in Serverless Mode
 
@@ -104,16 +104,16 @@ Message throughput depends on several factors:
 - **Message pattern**: Broadcasting to all clients is more expensive than sending to a single user.
 - **Hub method complexity**: In Default mode, complex hub methods reduce throughput.
 
-Here are the approximate throughput numbers per unit (these vary based on message size and pattern):
+Here are approximate benchmark numbers for Unit 1 using WebSocket transport, Default mode, 2KB messages, and one message per second per sending client. These vary based on message size and pattern:
 
-| Scenario | ~Messages/sec per unit |
+| Scenario | ~Messages/sec for Unit 1 |
 |---|---|
-| Broadcast, 1KB messages | ~500 |
-| Send to user, 1KB messages | ~1,000 |
-| Send to group (50 members), 1KB messages | ~2,000 |
-| Echo (client sends, server echoes), 1KB | ~1,000 |
+| Broadcast | ~2 inbound broadcasts/sec and ~2,000 outbound message deliveries/sec |
+| Send to small group (10 members) | ~200 inbound messages/sec and ~2,000 outbound message deliveries/sec |
+| Send to connection | ~1,000 inbound/outbound messages/sec |
+| Echo | ~1,000 inbound/outbound messages/sec |
 
-If you need higher throughput, increase the unit count. Throughput scales roughly linearly with units.
+If you need higher throughput, increase the unit count. Throughput often increases with units, but routing-heavy patterns such as sending to many small groups or individual connections can hit routing limits before they scale linearly.
 
 ## Multi-Region Deployment
 
@@ -134,7 +134,7 @@ builder.Services.AddSignalR()
     });
 ```
 
-With multiple endpoints, your app server connects to all of them. Messages sent by the app server are delivered through the endpoint that the target client is connected to. Azure Front Door or Traffic Manager can route clients to the nearest negotiate endpoint.
+With multiple endpoints, your app server connects to all of them. During negotiation, the SDK chooses an available primary endpoint by default, then falls back to secondary endpoints when needed. For cross-region deployments, run app servers in each region and configure the local SignalR Service endpoint as primary for that region. Azure Front Door or Traffic Manager can route clients to the nearest negotiate endpoint.
 
 ## Connection Lifecycle Management
 
@@ -142,7 +142,7 @@ At scale, connection management becomes important. Thousands of connections conn
 
 ```csharp
 // Hub with connection lifecycle handling
-// Tracks active connections for monitoring
+// Tracks active connections on this app server for monitoring
 public class NotificationHub : Hub
 {
     private readonly ILogger<NotificationHub> _logger;
@@ -168,7 +168,7 @@ public class NotificationHub : Hub
         await base.OnConnectedAsync();
     }
 
-    public override async Task OnDisconnectedAsync(Exception exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var count = Interlocked.Decrement(ref _connectionCount);
         _logger.LogInformation("Client disconnected. Total: {Count}", count);
@@ -184,7 +184,7 @@ When running thousands of connections, monitoring is essential. Azure SignalR Se
 - **Connection count**: Current number of active connections
 - **Message count**: Total messages sent and received
 - **Inbound/outbound traffic**: Bandwidth usage
-- **Connection errors**: Failed connection attempts
+- **Connection close/open counts and error metrics**: Connection churn and system or user error rates
 
 Set up alerts on these metrics:
 
@@ -199,12 +199,12 @@ az monitor metrics alert create \
     --condition "avg ConnectionCount > 800" \
     --window-size 5m \
     --evaluation-frequency 1m \
-    --action-group my-ops-team
+    --action "/subscriptions/.../resourceGroups/my-rg/providers/Microsoft.Insights/actionGroups/my-ops-team"
 ```
 
 ## Auto-Scaling SignalR Service Units
 
-SignalR Service does not auto-scale units automatically. You need to implement auto-scaling yourself, either manually or through automation:
+Azure SignalR Service Premium tier supports Azure Monitor autoscale. For Standard tier, or when you want custom scaling logic, you need to scale manually or through automation:
 
 ```bash
 # Scale up SignalR Service to 5 units
