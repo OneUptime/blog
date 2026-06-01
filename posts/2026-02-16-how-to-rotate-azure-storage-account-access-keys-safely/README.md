@@ -8,7 +8,7 @@ Description: A practical guide to rotating Azure Storage account access keys wit
 
 ---
 
-Every Azure Storage account comes with two access keys. These keys grant full control over the storage account - anyone who has a key can read, write, and delete any data. Rotating these keys regularly is a fundamental security practice, but doing it wrong can take down your application. In this post, I will walk through a safe key rotation strategy that avoids downtime and explain how to automate the process.
+Every Azure Storage account comes with two access keys. These keys grant full access to the storage account data and can be used to generate SAS tokens - anyone who has a key can read, write, and delete data. Rotating these keys regularly is a fundamental security practice, but doing it wrong can take down your application. In this post, I will walk through a safe key rotation strategy that avoids downtime and explain how to automate the process.
 
 ## Why Two Keys Exist
 
@@ -36,7 +36,8 @@ Before rotating anything, find out which key your applications are using. Check 
 ```bash
 # Check which key is being used by looking at connection strings
 # in your app configuration, Key Vault, etc.
-# The key value in the connection string tells you which one is active
+# Compare the AccountKey value in the connection string with the
+# values returned by az storage account keys list to see which key is active
 
 # If using Azure Key Vault, check the secret value
 az keyvault secret show \
@@ -126,19 +127,19 @@ sequenceDiagram
 
 ## Automating Key Rotation with Azure Key Vault
 
-Azure Key Vault can automate the rotation process using an event-driven approach.
+Azure Key Vault can help automate the rotation process using an event-driven approach with Event Grid and an Azure Function.
 
 ```bash
-# Create a Key Vault rotation policy for the storage key
-# This triggers an Azure Function when the key is near expiration
+# Store the storage key in Key Vault with an expiration date.
+# A SecretNearExpiry Event Grid subscription can trigger an Azure Function
+# when the secret is near expiration.
 
-# Step 1: Store the storage key in Key Vault
 az keyvault secret set \
   --vault-name my-keyvault \
   --name storage-key \
   --value "$(az storage account keys list --account-name mystorageaccount --resource-group my-resource-group --query '[0].value' -o tsv)" \
-  --expires "2026-05-16T00:00:00Z" \
-  --tags "managed-by=rotation-policy"
+  --expires "2026-08-30T00:00:00Z" \
+  --tags "managed-by=rotation-function"
 ```
 
 ## Rotation Script for Automation
@@ -184,16 +185,18 @@ def rotate_storage_key():
         print("Currently using key1. Regenerating key2...")
         key_to_regen = "key2"
         new_key_index = 1
-    else:
+    elif current_key == key2_value:
         # Currently using key2, regenerate key1 first
         print("Currently using key2. Regenerating key1...")
         key_to_regen = "key1"
         new_key_index = 0
+    else:
+        raise ValueError("The Key Vault secret does not contain key1 or key2 for this storage account.")
 
     # Step 3: Regenerate the unused key
     storage_client.storage_accounts.regenerate_key(
         resource_group, account_name,
-        {"key_name": key_to_regen}
+        {"keyName": key_to_regen}
     )
     print(f"{key_to_regen} regenerated")
 
@@ -219,7 +222,7 @@ def rotate_storage_key():
     old_key_name = "key1" if key_to_regen == "key2" else "key2"
     storage_client.storage_accounts.regenerate_key(
         resource_group, account_name,
-        {"key_name": old_key_name}
+        {"keyName": old_key_name}
     )
     print(f"{old_key_name} regenerated. Rotation complete.")
 
@@ -260,7 +263,7 @@ Write-Output "Key rotated and Key Vault updated"
 
 ## Moving to Managed Identity (The Better Solution)
 
-The best way to handle key rotation is to stop using keys altogether. Azure AD authentication with managed identities eliminates the need for keys in most scenarios.
+The best way to handle key rotation is to stop using keys altogether. Microsoft Entra ID authentication with managed identities eliminates the need for keys in most scenarios.
 
 ```python
 from azure.identity import DefaultAzureCredential
@@ -308,7 +311,7 @@ az storage account show \
 
 Store keys in Azure Key Vault, never in application code or config files.
 
-Use managed identities instead of keys wherever possible. Azure AD authentication is more secure and eliminates the rotation problem entirely.
+Use managed identities instead of keys wherever possible. Microsoft Entra ID authentication is more secure and eliminates the rotation problem entirely.
 
 Test the rotation process in a non-production environment first. A botched rotation in production causes an outage.
 
