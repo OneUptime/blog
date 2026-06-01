@@ -8,7 +8,7 @@ Description: How to enable and consume the Azure Blob Storage change feed to tra
 
 ---
 
-When you need a reliable, ordered record of every change that happens to blobs in your storage account, the blob change feed is the right tool. Unlike Event Grid notifications (which are best-effort and can be missed), the change feed provides a guaranteed, ordered, read-only log of all blob changes. It is stored as blobs in a special container within your storage account, making it easy to process with standard tools. This guide covers how to enable it, read the data, and build useful workflows on top of it.
+When you need a reliable, ordered record of changes that happen to blobs in your storage account, the blob change feed is the right tool. Unlike Event Grid notifications, which are delivered at least once but can be dropped after retry limits or if dead-lettering is not configured, the change feed provides a guaranteed, ordered, read-only log of blob changes. It is stored as blobs in a special container within your storage account, making it easy to process with standard tools. This guide covers how to enable it, read the data, and build useful workflows on top of it.
 
 ## What the Change Feed Captures
 
@@ -19,9 +19,9 @@ The change feed records events for the following operations on blobs:
 - **BlobPropertiesUpdated**: Blob metadata or properties changed
 - **BlobSnapshotCreated**: A snapshot was taken
 - **BlobTierChanged**: The blob's access tier was changed
-- **BlobVersionCreated**: A new version was created (when blob versioning is enabled)
+- **BlobAsyncOperationInitiated**: An asynchronous blob operation, such as archive rehydration or copy, was started
 
-Each event record includes the blob name, container, event type, timestamp, content type, content length, and the API operation that triggered the change.
+Each event record includes fields such as the blob path, event type, timestamp, and the API operation that triggered the change. Depending on the event and schema version, it can also include content type, content length, blob version, blob tier, and other event-specific properties.
 
 ## How It Differs from Event Grid
 
@@ -29,13 +29,13 @@ Both the change feed and Azure Event Grid can notify you about blob changes, but
 
 | Feature | Change Feed | Event Grid |
 |---------|------------|------------|
-| Delivery guarantee | All events captured | Best-effort (can miss events under load) |
+| Delivery guarantee | Change events captured in a durable log | At-least-once delivery with retries; events can be dropped after retry limits if dead-lettering is not configured |
 | Ordering | Guaranteed per-blob ordering | No ordering guarantee |
 | Retention | Configurable, stored in your account | Events expire if not consumed |
 | Latency | Minutes (batch processing) | Seconds (near real-time) |
 | Use case | Audit, compliance, batch sync | Real-time triggers, event-driven apps |
 
-Use Event Grid when you need real-time reactions. Use the change feed when you need a complete, reliable record of everything that happened.
+Use Event Grid when you need real-time reactions. Use the change feed when you need a complete, reliable record of blob changes for the supported Blob service operations.
 
 ## Enabling the Change Feed
 
@@ -88,6 +88,13 @@ After enabling, the change feed data appears in a special container called `$blo
 
 ```text
 $blobchangefeed/
+  idx/
+    segments/
+      2026/
+        02/
+          16/
+            0000/
+              meta.json
   log/
     00/
       2026/
@@ -97,10 +104,11 @@ $blobchangefeed/
               - segment files (Avro format)
             0100/
               - segment files
-            ...
+    01/
+      ...
 ```
 
-The directory structure follows the pattern `log/00/YYYY/MM/DD/HHmm/`. Each segment is stored in Apache Avro format, which is a compact binary format with a schema embedded in each file.
+Segment manifests are stored under `idx/segments/YYYY/MM/DD/HHmm/meta.json`, and the manifest points to one or more log shard paths such as `log/00/YYYY/MM/DD/HHmm/` or `log/01/YYYY/MM/DD/HHmm/`. Each log file is stored in Apache Avro format, which is a compact binary format with a schema embedded in each file.
 
 ## Reading the Change Feed with Python
 
@@ -244,6 +252,7 @@ from azure.identity import DefaultAzureCredential
 import avro.datafile
 import avro.io
 import io
+import json
 
 credential = DefaultAzureCredential()
 blob_service = BlobServiceClient(
@@ -254,25 +263,36 @@ blob_service = BlobServiceClient(
 # Access the change feed container
 container = blob_service.get_container_client("$blobchangefeed")
 
-# List available segments for a specific date
-blobs = container.list_blobs(
-    name_starts_with="log/00/2026/02/16/"
+# Read segment manifests for a specific date. Each manifest lists one or more
+# chunkFilePaths under the log/ directory.
+segment_manifests = container.list_blobs(
+    name_starts_with="idx/segments/2026/02/16/"
 )
 
-for blob in blobs:
-    if blob.name.endswith(".avro"):
-        # Download and parse the Avro file
-        blob_client = container.get_blob_client(blob.name)
-        data = blob_client.download_blob().readall()
+for manifest_blob in segment_manifests:
+    if not manifest_blob.name.endswith("meta.json"):
+        continue
 
-        reader = avro.datafile.DataFileReader(
-            io.BytesIO(data),
-            avro.io.DatumReader()
-        )
+    manifest_client = container.get_blob_client(manifest_blob.name)
+    manifest = json.loads(manifest_client.download_blob().readall())
 
-        for record in reader:
-            print(record)
-        reader.close()
+    for chunk_path in manifest["chunkFilePaths"]:
+        log_prefix = chunk_path.replace("$blobchangefeed/", "", 1)
+
+        for blob in container.list_blobs(name_starts_with=log_prefix):
+            if blob.name.endswith(".avro"):
+                # Download and parse the Avro file
+                blob_client = container.get_blob_client(blob.name)
+                data = blob_client.download_blob().readall()
+
+                reader = avro.datafile.DataFileReader(
+                    io.BytesIO(data),
+                    avro.io.DatumReader()
+                )
+
+                for record in reader:
+                    print(record)
+                reader.close()
 ```
 
 ## Cost and Performance Considerations
