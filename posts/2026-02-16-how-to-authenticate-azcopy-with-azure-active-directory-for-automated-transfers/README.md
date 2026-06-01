@@ -8,7 +8,7 @@ Description: Learn how to authenticate AzCopy with Azure Active Directory using 
 
 ---
 
-Using SAS tokens for AzCopy authentication works fine for one-off transfers, but it falls apart for automated scenarios. SAS tokens expire, they are hard to rotate, and if leaked, they grant direct access to your storage account. Azure Active Directory (Azure AD) authentication solves these problems by letting you use service principals or managed identities with AzCopy, enabling secure automated transfers that integrate with your existing identity governance.
+Using SAS tokens for AzCopy authentication works fine for one-off transfers, but it falls apart for automated scenarios. SAS tokens expire, they are hard to rotate, and if leaked, they grant direct access to the storage resources covered by the token. Microsoft Entra ID (formerly Azure Active Directory/Azure AD) authentication solves these problems by letting you use service principals or managed identities with AzCopy, enabling secure automated transfers that integrate with your existing identity governance.
 
 This guide covers three authentication methods: interactive login, service principal with client secret, and managed identity. We will focus on the automated methods since those are what you need for CI/CD pipelines, scheduled jobs, and production workloads.
 
@@ -21,9 +21,9 @@ Here is the comparison:
 | Expiration management | Manual rotation | Automatic token refresh |
 | Granularity | Storage account/container level | RBAC at any scope |
 | Audit trail | Limited | Full Azure AD sign-in logs |
-| Revocation | Rotate storage key to revoke all | Disable single service principal |
+| Revocation | Revoke the stored access policy or rotate the signing key | Disable a single service principal or remove its role assignment |
 | Secret management | Token stored in configs/scripts | Managed identity = no secrets |
-| Conditional access | None | Supported |
+| Conditional access | None | Supported for users and eligible workload identities |
 
 For any automated or production use, Azure AD is the better choice.
 
@@ -86,21 +86,14 @@ The `Storage Blob Data Contributor` role grants read, write, and delete access t
 
 ### Step 2b: Authenticate AzCopy with the Service Principal
 
-Set the credentials as environment variables and use `azcopy login` with the service principal flag:
+Set the credentials as environment variables so AzCopy can authenticate automatically when the transfer command runs:
 
 ```bash
-# Set the client secret as an environment variable
-# AzCopy reads this automatically during login
+# Set service principal credentials for AzCopy auto-login
+export AZCOPY_AUTO_LOGIN_TYPE=SPN
+export AZCOPY_SPA_APPLICATION_ID="$APP_ID"
 export AZCOPY_SPA_CLIENT_SECRET="$CLIENT_SECRET"
-
-# Log in with the service principal
-azcopy login \
-  --service-principal \
-  --application-id "$APP_ID" \
-  --tenant-id "$TENANT_ID"
-
-# Verify authentication
-azcopy login status
+export AZCOPY_TENANT_ID="$TENANT_ID"
 ```
 
 Now you can run AzCopy commands without SAS tokens:
@@ -147,19 +140,13 @@ jobs:
           tar -xzf azcopy.tar.gz
           sudo mv azcopy_linux_amd64_*/azcopy /usr/local/bin/
 
-      - name: Authenticate AzCopy
+      - name: Sync data
         env:
           # Store these as GitHub Actions secrets
+          AZCOPY_AUTO_LOGIN_TYPE: SPN
           AZCOPY_SPA_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_APP_ID: ${{ secrets.AZURE_APP_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        run: |
-          azcopy login \
-            --service-principal \
-            --application-id "$AZURE_APP_ID" \
-            --tenant-id "$AZURE_TENANT_ID"
-
-      - name: Sync data
+          AZCOPY_SPA_APPLICATION_ID: ${{ secrets.AZURE_APP_ID }}
+          AZCOPY_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           azcopy sync \
             "./data/" \
@@ -228,7 +215,7 @@ Create a cron job on the VM for automated daily transfers:
 
 ```bash
 # Create a script for the automated transfer
-# This script logs in with managed identity and syncs data
+# This script uses managed identity auto-login and syncs data
 ```
 
 The transfer script:
@@ -242,8 +229,8 @@ LOG_FILE="/var/log/azcopy-sync-$(date +%Y%m%d).log"
 
 echo "Starting sync at $(date)" >> "$LOG_FILE"
 
-# Login with managed identity (refreshes token)
-azcopy login --identity >> "$LOG_FILE" 2>&1
+# Use managed identity auto-login for this AzCopy command
+export AZCOPY_AUTO_LOGIN_TYPE=MSI
 
 # Sync data to Azure
 azcopy sync \
@@ -300,14 +287,14 @@ az role assignment create \
 
 ## Troubleshooting Authentication Issues
 
-**Error: "AuthorizationPermissionMismatch"**: The service principal or managed identity does not have the right RBAC role. Verify the role assignment and ensure it is at the correct scope. Role assignments can take up to 5 minutes to propagate.
+**Error: "AuthorizationPermissionMismatch"**: The service principal or managed identity does not have the right RBAC role. Verify the role assignment and ensure it is at the correct scope. Role assignments can take several minutes to propagate, and in some cases up to 30 minutes.
 
 **Error: "AuthenticationFailed"**: The client secret may be expired or incorrect. Check the service principal in Azure AD and regenerate the secret if needed.
 
 **Error: "No managed identity endpoint found"**: AzCopy is not running on an Azure resource with managed identity enabled, or the metadata service is not accessible. Verify with `curl -H "Metadata:true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://storage.azure.com/"`.
 
-**Token refresh issues**: AzCopy caches tokens and refreshes them automatically. If you encounter stale token issues, clear the AzCopy login cache with `azcopy login --clear` and re-authenticate.
+**Token refresh issues**: AzCopy caches tokens and refreshes them automatically. If you encounter stale token issues, clear the AzCopy login cache with `azcopy logout` and re-authenticate.
 
 ## Wrapping Up
 
-Azure AD authentication with AzCopy eliminates the hassle of managing SAS tokens for automated transfers. For CI/CD pipelines, use a service principal with client secret stored in your pipeline's secret manager. For Azure VMs and services, managed identity is the cleanest solution since it requires no secrets at all. Whichever method you choose, always follow the principle of least privilege when assigning RBAC roles, and monitor your Azure AD sign-in logs to detect any unusual access patterns.
+Microsoft Entra ID authentication with AzCopy eliminates the hassle of managing SAS tokens for automated transfers. For CI/CD pipelines, use a service principal with client secret stored in your pipeline's secret manager. For Azure VMs and services, managed identity is the cleanest solution since it requires no secrets at all. Whichever method you choose, always follow the principle of least privilege when assigning RBAC roles, and monitor your Microsoft Entra sign-in logs to detect any unusual access patterns.
