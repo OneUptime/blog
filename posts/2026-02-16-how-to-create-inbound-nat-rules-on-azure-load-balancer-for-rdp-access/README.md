@@ -24,7 +24,7 @@ graph LR
     LB -->|NAT to VM3:3389| VM3[VM 3<br>10.0.0.6]
 ```
 
-The key difference from load balancing rules is that NAT rules target a specific backend VM rather than distributing across the pool. Load balancing rules are one-to-many; NAT rules are one-to-one.
+The key difference from load balancing rules is that single-VM NAT rules target a specific backend VM rather than distributing across the pool. Load balancing rules are one-to-many; single-VM NAT rules are one-to-one.
 
 ## Prerequisites
 
@@ -171,7 +171,7 @@ az network nic ip-config inbound-nat-rule add \
 
 ## Step 5: Configure NSG Rules
 
-The VMs' NSG needs to allow RDP traffic from the load balancer.
+The VMs' NSG needs to allow RDP traffic from your admin source IP range to the backend RDP port.
 
 ```bash
 # Get the NSG name (auto-created with VMs)
@@ -212,24 +212,25 @@ Now open your RDP client:
 
 Each port takes you to a specific VM.
 
-## Using Inbound NAT Pools (For Scale Sets)
+## Using Inbound NAT Rule V2 (For Scale Sets)
 
-If you are using VM Scale Sets (VMSS), individual NAT rules do not scale. Instead, use inbound NAT pools that automatically assign frontend ports to new instances.
+If you are using VM Scale Sets (VMSS), individual single-VM NAT rules do not scale. Instead, use an inbound NAT rule V2 with a backend pool and a frontend port range. This automatically assigns frontend ports to new instances.
 
 ```bash
-# Create an inbound NAT pool for a VMSS
-az network lb inbound-nat-pool create \
+# Create an inbound NAT rule V2 for a VMSS backend pool
+az network lb inbound-nat-rule create \
   --resource-group rg-nat-rules-demo \
   --lb-name lb-demo \
-  --name nat-pool-rdp \
+  --name nat-rdp-vmss \
   --frontend-ip-name fe-default \
+  --backend-pool-name bp-vms \
   --protocol Tcp \
   --frontend-port-range-start 50000 \
   --frontend-port-range-end 50100 \
   --backend-port 3389
 ```
 
-This maps frontend ports 50000-50100 to port 3389 on VMSS instances. The first instance gets 50000, the second gets 50001, and so on.
+This maps frontend ports 50000-50100 to port 3389 on instances in the backend pool. The first instance gets 50000, the second gets 50001, and so on.
 
 ## SSH NAT Rules for Linux VMs
 
@@ -283,7 +284,7 @@ Inbound NAT rules expose management ports through the load balancer's public IP.
 
 ## Troubleshooting
 
-**Cannot connect via RDP.** Check the NSG rules allow traffic on port 3389 from the load balancer. Verify the NAT rule is associated with the correct NIC. Make sure the VM's Windows Firewall allows RDP.
+**Cannot connect via RDP.** Check the NSG rules allow traffic from your source IP range to backend port 3389. Verify the NAT rule is associated with the correct NIC. Make sure the VM's Windows Firewall allows RDP.
 
 **Connection timeout.** The load balancer might be sending traffic to the wrong NIC. Verify the NIC association in the NAT rule.
 
@@ -298,4 +299,4 @@ az group delete --name rg-nat-rules-demo --yes --no-wait
 
 ## Wrapping Up
 
-Inbound NAT rules on Azure Load Balancer provide a straightforward way to reach individual backend VMs when they do not have public IPs. Map unique frontend ports to management ports on each VM, lock down access with NSG rules, and you have targeted access to each machine in your backend pool. For scale sets, use NAT pools that auto-assign ports. And for production environments, seriously consider Azure Bastion as a more secure alternative to exposing management ports through NAT rules.
+Inbound NAT rules on Azure Load Balancer provide a straightforward way to reach individual backend VMs when they do not have public IPs. Map unique frontend ports to management ports on each VM, lock down access with NSG rules, and you have targeted access to each machine in your backend pool. For scale sets, use inbound NAT rule V2 to auto-assign ports. And for production environments, seriously consider Azure Bastion as a more secure alternative to exposing management ports through NAT rules.
