@@ -43,7 +43,7 @@ data "azurerm_subscription" "current" {}
 resource "azurerm_role_assignment" "readers" {
   scope                = data.azurerm_subscription.current.id
   role_definition_name = "Reader"
-  principal_id         = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"  # Azure AD group object ID
+  principal_id         = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"  # Microsoft Entra group object ID
   description          = "Read access for the monitoring team"
 }
 
@@ -64,7 +64,7 @@ resource "azurerm_role_assignment" "keyvault_reader" {
 }
 ```
 
-A few important details. The `principal_id` must be the **object ID** of the security principal, not the application ID or display name. For Azure AD groups, get the object ID with `az ad group show --group "Group Name" --query id`.
+A few important details. The `principal_id` must be the **object ID** of the security principal, not the application ID or display name. For Microsoft Entra groups, get the object ID with `az ad group show --group "Group Name" --query id`.
 
 ## Data-Driven Role Assignments
 
@@ -226,11 +226,8 @@ resource "azurerm_role_definition" "vm_operator" {
       "Microsoft.Resources/subscriptions/resourceGroups/read",
     ]
 
-    not_actions = [
-      # Explicitly deny deletion and creation
-      "Microsoft.Compute/virtualMachines/delete",
-      "Microsoft.Compute/virtualMachines/write",
-    ]
+    # NotActions are not deny rules; creation and deletion are omitted from Actions above.
+    not_actions = []
   }
 
   assignable_scopes = [
@@ -254,12 +251,10 @@ resource "azurerm_role_definition" "keyvault_metadata_reader" {
 
     data_actions = [
       # Can list secrets but not get their values
-      "Microsoft.KeyVault/vaults/secrets/getmetadata/action",
-    ]
-
-    not_data_actions = [
       "Microsoft.KeyVault/vaults/secrets/readMetadata/action",
     ]
+
+    not_data_actions = []
   }
 
   assignable_scopes = [
@@ -324,7 +319,7 @@ locals {
 
 ## Handling Common RBAC Issues
 
-**Assignment already exists.** If you try to create a role assignment that already exists (same principal, role, and scope), Terraform will fail. Use `import` to bring existing assignments under management, or use the `azurerm_role_assignment` data source to check first.
+**Assignment already exists.** If you try to create a role assignment that already exists (same principal, role, and scope), Terraform will fail. Use `import` to bring existing assignments under management, or use the `azurerm_role_assignments` data source to check first.
 
 **Propagation delay.** Role assignments can take up to 10 minutes to propagate. If a resource depends on a role assignment (e.g., an app that needs Key Vault access), add a time delay:
 
