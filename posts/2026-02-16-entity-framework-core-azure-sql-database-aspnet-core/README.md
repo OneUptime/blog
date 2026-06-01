@@ -8,7 +8,7 @@ Description: Build an ASP.NET Core application using Entity Framework Core with 
 
 ---
 
-Entity Framework Core is the standard ORM for .NET applications. It maps your C# classes to database tables and translates LINQ queries into SQL. Paired with Azure SQL Database, you get a managed SQL Server instance that handles backups, patching, and scaling. In this post, I will walk through setting up EF Core with Azure SQL Database in an ASP.NET Core application, including model design, migrations, and common patterns.
+Entity Framework Core is the standard ORM for .NET applications. It maps your C# classes to database tables and translates LINQ queries into SQL. Paired with Azure SQL Database, you get a managed relational database service that handles backups, patching, and scaling. In this post, I will walk through setting up EF Core with Azure SQL Database in an ASP.NET Core application, including model design, migrations, and common patterns.
 
 ## Setting Up the Project
 
@@ -23,8 +23,9 @@ cd BookstoreApi
 # Add EF Core packages
 dotnet add package Microsoft.EntityFrameworkCore.SqlServer
 dotnet add package Microsoft.EntityFrameworkCore.Design
-dotnet add package Microsoft.EntityFrameworkCore.Tools
-dotnet add package Azure.Identity
+
+# Install the EF Core CLI tool if you do not already have it
+dotnet tool install --global dotnet-ef
 ```
 
 ## Creating the Azure SQL Database
@@ -220,6 +221,9 @@ builder.Services.AddDbContext<BookstoreDbContext>(options =>
 );
 
 var app = builder.Build();
+
+app.MapBookEndpoints();
+
 app.Run();
 ```
 
@@ -228,7 +232,7 @@ The connection string goes in appsettings.json.
 ```json
 {
     "ConnectionStrings": {
-        "BookstoreDb": "Server=my-sql-server.database.windows.net;Database=bookstore;User Id=sqladmin;Password=YourStr0ngP@ss!;Encrypt=True;TrustServerCertificate=False;"
+        "BookstoreDb": "Server=tcp:my-sql-server.database.windows.net,1433;Database=bookstore;User Id=sqladmin;Password=YourStr0ngP@ss!;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
     }
 }
 ```
@@ -244,10 +248,10 @@ dotnet ef migrations add InitialCreate
 # Apply the migration to the database
 dotnet ef database update
 
-# Or apply at startup (useful for CI/CD)
+# Or apply at startup for development and test environments
 ```
 
-For automated migration on startup, add this to Program.cs.
+For automated migration on startup, add this to Program.cs before `app.Run()`.
 
 ```csharp
 // Apply pending migrations on startup
@@ -279,11 +283,7 @@ public static class BookEndpoints
             int pageSize = 10,
             string? search = null) =>
         {
-            var query = db.Books
-                .Include(b => b.Author)
-                .Include(b => b.BookCategories)
-                    .ThenInclude(bc => bc.Category)
-                .AsQueryable();
+            var query = db.Books.AsQueryable();
 
             // Apply search filter
             if (!string.IsNullOrEmpty(search))
@@ -317,10 +317,20 @@ public static class BookEndpoints
         group.MapGet("/{id}", async (int id, BookstoreDbContext db) =>
         {
             var book = await db.Books
-                .Include(b => b.Author)
-                .Include(b => b.BookCategories)
-                    .ThenInclude(bc => bc.Category)
-                .FirstOrDefaultAsync(b => b.Id == id);
+                .Where(b => b.Id == id)
+                .Select(b => new
+                {
+                    b.Id,
+                    b.Title,
+                    b.Isbn,
+                    b.Price,
+                    b.PageCount,
+                    b.PublishedDate,
+                    b.IsAvailable,
+                    Author = b.Author.Name,
+                    Categories = b.BookCategories.Select(bc => bc.Category.Name)
+                })
+                .FirstOrDefaultAsync();
 
             return book is null ? Results.NotFound() : Results.Ok(book);
         });
@@ -394,7 +404,7 @@ public record UpdateBookRequest(
 );
 ```
 
-Register the endpoints in Program.cs.
+Register the endpoints in Program.cs before `app.Run()`.
 
 ```csharp
 app.MapBookEndpoints();
@@ -427,7 +437,7 @@ if (author is not null)
 
 ## Connection Resilience
 
-Azure SQL can have transient failures. The retry logic in the SQL Server provider handles this automatically, but you should also configure connection pool settings.
+Azure SQL can have transient failures. The retry logic in the SQL Server provider handles this automatically when you enable it.
 
 ```csharp
 builder.Services.AddDbContext<BookstoreDbContext>(options =>
@@ -447,7 +457,7 @@ builder.Services.AddDbContext<BookstoreDbContext>(options =>
 1. **Enable retry on failure.** Transient errors happen with cloud databases.
 2. **Use AsNoTracking for reads.** It reduces memory usage and improves query performance.
 3. **Project to DTOs.** Do not return full entities with navigation properties from your API.
-4. **Use migrations in CI/CD.** Run `dotnet ef database update` as part of your deployment pipeline.
+4. **Use migrations in CI/CD.** Generate migration scripts or migration bundles as part of your deployment pipeline.
 5. **Monitor generated SQL.** Enable logging to see what queries EF Core generates and optimize slow ones.
 6. **Keep your DbContext scoped.** In ASP.NET Core, the default DI scope is per-request, which is correct for EF Core.
 
