@@ -70,6 +70,14 @@ const serviceClient = new WebPubSubServiceClient(connectionString, hubName);
 const messageHistory = new Map();  // room -> messages[]
 const activeUsers = new Map();     // connectionId -> { userId, room }
 
+function sendText(payload, options = {}) {
+  return [JSON.stringify(payload), { contentType: 'text/plain', ...options }];
+}
+
+function escapeODataString(value) {
+  return String(value).replace(/'/g, "''");
+}
+
 // Event handler that processes WebSocket events from Azure Web PubSub
 const handler = new WebPubSubEventHandler(hubName, {
   path: '/eventhandler',
@@ -92,19 +100,25 @@ const handler = new WebPubSubEventHandler(hubName, {
       switch (event.type) {
         case 'join_room': {
           const { room } = event;
+          const currentUserInfo = activeUsers.get(connectionId);
+
+          if (currentUserInfo?.room && currentUserInfo.room !== room) {
+            await serviceClient.group(currentUserInfo.room).removeConnection(connectionId);
+          }
+
           // Add user to the room group
           await serviceClient.group(room).addConnection(connectionId);
           activeUsers.set(connectionId, { userId, room });
 
           // Send message history to the joining user
           const history = messageHistory.get(room) || [];
-          await serviceClient.sendToConnection(connectionId, JSON.stringify({
+          await serviceClient.sendToConnection(connectionId, ...sendText({
             type: 'history',
             messages: history.slice(-50), // Last 50 messages
           }));
 
           // Notify the room about the new user
-          await serviceClient.group(room).sendToAll(JSON.stringify({
+          await serviceClient.group(room).sendToAll(...sendText({
             type: 'user_joined',
             userId,
             timestamp: new Date().toISOString(),
@@ -129,7 +143,7 @@ const handler = new WebPubSubEventHandler(hubName, {
           messageHistory.get(room).push(message);
 
           // Broadcast to the room
-          await serviceClient.group(room).sendToAll(JSON.stringify({
+          await serviceClient.group(room).sendToAll(...sendText({
             type: 'new_message',
             message,
           }));
@@ -139,10 +153,10 @@ const handler = new WebPubSubEventHandler(hubName, {
         case 'typing': {
           const { room } = event;
           // Broadcast typing indicator to others in the room
-          await serviceClient.group(room).sendToAll(JSON.stringify({
+          await serviceClient.group(room).sendToAll(...sendText({
             type: 'typing',
             userId,
-          }), { filter: `userId ne '${userId}'` });
+          }, { filter: `userId ne '${escapeODataString(userId)}'` }));
           break;
         }
       }
@@ -161,7 +175,7 @@ const handler = new WebPubSubEventHandler(hubName, {
 
     if (userInfo) {
       // Notify the room that the user left
-      await serviceClient.group(userInfo.room).sendToAll(JSON.stringify({
+      await serviceClient.group(userInfo.room).sendToAll(...sendText({
         type: 'user_left',
         userId: userInfo.userId,
         timestamp: new Date().toISOString(),
@@ -184,7 +198,6 @@ app.get('/api/negotiate', async (req, res) => {
   // Generate a token that allows the client to connect and send messages
   const token = await serviceClient.getClientAccessToken({
     userId,
-    roles: ['webpubsub.sendToServerEvent', 'webpubsub.joinLeaveGroup'],
   });
 
   res.json({ url: token.url });
@@ -220,32 +233,39 @@ export function useWebPubSub(userId) {
   // Connect to Azure Web PubSub
   const connect = useCallback(async () => {
     // Get the access token from our backend
-    const response = await fetch(`/api/negotiate?userId=${userId}`);
+    const response = await fetch(`/api/negotiate?userId=${encodeURIComponent(userId)}`);
     const { url } = await response.json();
 
-    // Open the WebSocket connection
-    const ws = new WebSocket(url, 'json.webpubsub.azure.v1');
-    wsRef.current = ws;
+    return new Promise((resolve, reject) => {
+      // Open the WebSocket connection
+      const ws = new WebSocket(url, 'json.webpubsub.azure.v1');
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      setConnected(true);
-      console.log('Connected to Web PubSub');
-    };
+      ws.onopen = () => {
+        setConnected(true);
+        console.log('Connected to Web PubSub');
+        resolve();
+      };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
 
-      // Handle different message types from the server
-      if (data.type === 'message' && data.data) {
-        const payload = JSON.parse(data.data);
-        handleServerMessage(payload);
-      }
-    };
+        // Handle different message types from the server
+        if (data.type === 'message' && data.data) {
+          const payload = JSON.parse(data.data);
+          handleServerMessage(payload);
+        }
+      };
 
-    ws.onclose = () => {
-      setConnected(false);
-      console.log('Disconnected from Web PubSub');
-    };
+      ws.onerror = () => {
+        reject(new Error('WebSocket connection failed'));
+      };
+
+      ws.onclose = () => {
+        setConnected(false);
+        console.log('Disconnected from Web PubSub');
+      };
+    });
   }, [userId]);
 
   function handleServerMessage(payload) {
@@ -454,17 +474,19 @@ az webpubsub hub create \
   --hub-name chat \
   --event-handler url-template="https://your-server.azurewebsites.net/eventhandler" \
     user-event-pattern="*" \
-    system-event="connect,connected,disconnected"
+    system-event="connect" \
+    system-event="connected" \
+    system-event="disconnected"
 ```
 
 ## Security Considerations
 
-In production, always validate the incoming webhook requests from Azure Web PubSub. The `@azure/web-pubsub-express` middleware handles signature validation automatically when you provide the connection string. You should also add authentication to the `/api/negotiate` endpoint so that only authenticated users can get WebSocket access tokens.
+In production, always validate that incoming webhook requests are from your Azure Web PubSub service. The `@azure/web-pubsub-express` middleware supports CloudEvents webhook validation, and you should restrict accepted service endpoints with `allowedEndpoints`. You should also add authentication to the `/api/negotiate` endpoint so that only authenticated users can get WebSocket access tokens.
 
 ## Scaling
 
-Azure Web PubSub Standard tier supports up to 100,000 concurrent connections per unit. You can add units for more capacity. Since your backend server does not hold WebSocket connections, it remains stateless and can scale horizontally with standard load balancing. The message history storage should be moved to a database like Cosmos DB or Redis for persistence across server restarts.
+Azure Web PubSub units support up to 1,000 concurrent connections per unit. You can add units for more capacity, up to the limits of your selected tier and region. Since your backend server does not hold WebSocket connections, it remains stateless and can scale horizontally with standard load balancing. The message history storage should be moved to a database like Cosmos DB or Redis for persistence across server restarts.
 
 ## Summary
 
-Azure Web PubSub takes the hard parts of WebSocket management off your plate. Your server does not manage connections, does not worry about sticky sessions, and does not need to scale with the number of connected clients. The service handles all of that. Your backend just processes events and publishes messages through the REST API. Combined with React on the frontend, you get a responsive chat experience that can scale to hundreds of thousands of concurrent users without changing your server architecture.
+Azure Web PubSub takes the hard parts of WebSocket management off your plate. Your server does not manage connections, does not worry about sticky sessions, and does not need to scale with the number of connected clients. The service handles all of that. Your backend just processes events and publishes messages through the REST API. Combined with React on the frontend, you get a responsive chat experience that can scale to large numbers of concurrent users without changing your server architecture.
