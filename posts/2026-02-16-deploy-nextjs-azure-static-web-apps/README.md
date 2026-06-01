@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Next.js, Azure, Static Web Apps, Deployment, React, CI/CD, GitHub Action
 
-Description: Deploy a Next.js application to Azure Static Web Apps with automatic CI/CD through GitHub Actions and API routes support.
+Description: Deploy a Next.js application to Azure Static Web Apps with automatic CI/CD through GitHub Actions and an integrated API backend.
 
 ---
 
-Azure Static Web Apps is a hosting service built for modern web frameworks. It gives you global CDN distribution, free SSL certificates, automatic CI/CD from GitHub, and a built-in API backend powered by Azure Functions. Next.js works well on this platform, especially for static and hybrid rendering scenarios where some pages are pre-rendered at build time and others are generated on demand.
+Azure Static Web Apps is a hosting service built for modern web frameworks. It gives you global CDN distribution, free SSL certificates, automatic CI/CD from GitHub, and a built-in API backend powered by Azure Functions. Next.js works well on this platform, especially for static export scenarios where pages are pre-rendered at build time and deployed as HTML, CSS, and JavaScript assets.
 
 This guide covers deploying a Next.js application from scratch, including configuring the build, setting up routes, adding an API, and handling environment variables.
 
@@ -18,6 +18,7 @@ This guide covers deploying a Next.js application from scratch, including config
 - A GitHub account
 - An Azure account
 - Azure CLI installed
+- GitHub CLI installed
 - Basic familiarity with Next.js
 
 ## Creating the Next.js Application
@@ -48,7 +49,7 @@ export default function Home() {
 }
 ```
 
-Add a dynamic page that demonstrates server-side rendering:
+Add a dynamic page that demonstrates static generation for known route parameters:
 
 ```typescript
 // src/app/posts/[id]/page.tsx - Dynamic post page
@@ -65,19 +66,17 @@ export async function generateStaticParams() {
 
 // Fetch post data at build time
 async function getPost(id: string): Promise<Post> {
-  const res = await fetch(
-    `https://jsonplaceholder.typicode.com/posts/${id}`,
-    { next: { revalidate: 3600 } } // Cache for 1 hour
-  );
+  const res = await fetch(`https://jsonplaceholder.typicode.com/posts/${id}`);
   return res.json();
 }
 
 export default async function PostPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const post = await getPost(params.id);
+  const { id } = await params;
+  const post = await getPost(id);
 
   return (
     <article className="max-w-2xl mx-auto p-8">
@@ -108,7 +107,7 @@ const nextConfig = {
 module.exports = nextConfig;
 ```
 
-The `output: 'export'` setting tells Next.js to generate a fully static site. All pages are rendered at build time and output as HTML files.
+The `output: 'export'` setting tells Next.js to generate a fully static site. Pages that are compatible with static export are rendered at build time and output as HTML files.
 
 ## Pushing to GitHub
 
@@ -128,14 +127,14 @@ You can create the Static Web App through the Azure CLI, linking it directly to 
 
 ```bash
 # Create a resource group
-az group create --name nextjs-swa-rg --location eastus
+az group create --name nextjs-swa-rg --location eastus2
 
 # Create the Static Web App linked to your GitHub repo
 az staticwebapp create \
   --name my-nextjs-swa \
   --resource-group nextjs-swa-rg \
   --source https://github.com/YOUR_USERNAME/my-nextjs-swa \
-  --location eastus \
+  --location eastus2 \
   --branch main \
   --app-location "/" \
   --output-location "out" \
@@ -190,6 +189,8 @@ jobs:
           # Build output directory
           output_location: "out"
         env:
+          # Required when deploying a statically exported Next.js app
+          IS_STATIC_EXPORT: true
           # Pass environment variables needed at build time
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
 
@@ -214,12 +215,28 @@ Azure Static Web Apps can host Azure Functions as an integrated API. Create an A
 
 ```bash
 # Create the API directory and initialize
-mkdir api && cd api
+mkdir -p api/src/functions && cd api
 npm init -y
-npm install
+npm install @azure/functions
 ```
 
-Add a simple API function:
+For the Azure Functions v4 programming model, add a `main` entry to `api/package.json` so the runtime can find your functions:
+
+```json
+{
+  "main": "src/functions/*.js"
+}
+```
+
+Add a minimal `api/host.json` file:
+
+```json
+{
+  "version": "2.0"
+}
+```
+
+Then add a simple API function:
 
 ```javascript
 // api/src/functions/hello.js - Simple API endpoint
@@ -267,13 +284,12 @@ Azure Static Web Apps supports a configuration file for custom routing rules:
   },
   "globalHeaders": {
     "X-Frame-Options": "DENY",
-    "X-Content-Type-Options": "nosniff",
-    "Content-Security-Policy": "default-src 'self'"
+    "X-Content-Type-Options": "nosniff"
   }
 }
 ```
 
-Save this as `staticwebapp.config.json` in the root of your project.
+Save this as `public/staticwebapp.config.json` so the Next.js static export copies it to the root of the `out` directory.
 
 ## Environment Variables
 
@@ -305,7 +321,7 @@ You will need to add a CNAME record pointing your domain to the Azure Static Web
 
 ## Monitoring and Analytics
 
-Azure Static Web Apps integrates with Application Insights for monitoring:
+Azure Static Web Apps integrates with Application Insights for monitoring. The portal can enable Application Insights and create the associated application setting for you, or you can configure the setting yourself:
 
 ```bash
 # Link Application Insights
@@ -328,8 +344,6 @@ const nextConfig = {
   trailingSlash: true,
   // Generate source maps only in development
   productionBrowserSourceMaps: false,
-  // Minimize bundle size
-  swcMinify: true,
 };
 ```
 
