@@ -17,10 +17,10 @@ This guide walks through creating applications in AppRegistry, associating resou
 AppRegistry is a feature within AWS Service Catalog that lets you:
 
 - Define logical applications
-- Associate CloudFormation stacks and resources with those applications
+- Associate CloudFormation stacks and tagged resources with those applications
 - Add metadata (attributes) to applications
-- Group related applications together
-- Generate cost reports and compliance views per application
+- Share applications with other AWS accounts
+- View application cost, security, and operations data in supported AWS services
 
 Think of it as a registry that maps the business concept of "an application" to the underlying AWS infrastructure that powers it. Instead of tracking resources by account, region, or tag (which are all imperfect), you define applications explicitly and associate their components.
 
@@ -39,7 +39,7 @@ Tags help, but tags are inconsistent, easy to forget, and hard to enforce retroa
 
 - AWS account with Service Catalog access
 - CloudFormation stacks for your applications (recommended but not required)
-- IAM permissions for `servicecatalog:*` and `cloudformation:*`
+- IAM permissions for AppRegistry actions such as `servicecatalog:*`, CloudFormation actions such as `cloudformation:*`, and tagging permissions when you apply the `awsApplication` tag
 
 ## Step 1: Create an Application
 
@@ -74,13 +74,15 @@ The primary way to link resources to an application is through CloudFormation st
 aws servicecatalog-appregistry associate-resource \
   --application "payment-processing" \
   --resource-type CFN_STACK \
-  --resource "arn:aws:cloudformation:us-east-1:123456789012:stack/payment-api/abc123"
+  --resource "arn:aws:cloudformation:us-east-1:123456789012:stack/payment-api/abc123" \
+  --options APPLY_APPLICATION_TAG
 
 # Associate another stack
 aws servicecatalog-appregistry associate-resource \
   --application "payment-processing" \
   --resource-type CFN_STACK \
-  --resource "arn:aws:cloudformation:us-east-1:123456789012:stack/payment-database/def456"
+  --resource "arn:aws:cloudformation:us-east-1:123456789012:stack/payment-database/def456" \
+  --options APPLY_APPLICATION_TAG
 ```
 
 ## Step 3: Add Attribute Groups
@@ -165,7 +167,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: payment-api
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: index.handler
       Code:
         ZipFile: |
@@ -225,19 +227,20 @@ aws servicecatalog-appregistry list-applications
 
 ## Step 6: Enable AWS Cost Explorer Integration
 
-One of the most valuable features of AppRegistry is application-level cost tracking. When you associate resources with applications, AWS can generate cost reports per application.
+One of the most valuable features of AppRegistry is application-level cost tracking. When resources have the AppRegistry `awsApplication` tag, AWS Cost Explorer and related cost management services can report costs per application.
 
-Enable this in the Service Catalog settings:
+Apply the application tag when you associate resources through the CLI:
 
 ```bash
-# Enable application tag propagation
-# This propagates the awsApplication tag to all associated resources
-aws servicecatalog-appregistry sync-resource \
+# Apply the awsApplication tag while associating a stack
+aws servicecatalog-appregistry associate-resource \
+  --application "payment-processing" \
   --resource-type CFN_STACK \
-  --resource "arn:aws:cloudformation:us-east-1:123456789012:stack/payment-api/abc123"
+  --resource "arn:aws:cloudformation:us-east-1:123456789012:stack/payment-api/abc123" \
+  --options APPLY_APPLICATION_TAG
 ```
 
-AppRegistry automatically applies an `awsApplication` tag to associated resources. You can then use this tag in Cost Explorer to filter costs by application.
+AppRegistry vends an `awsApplication` tag for each application. For applications created after November 8, 2023, AWS creates the tag when you create the application. For CLI associations, use the `APPLY_APPLICATION_TAG` option so the associated resource gets the tag. This tag is automatically activated as a cost allocation tag, and you can use it in Cost Explorer to filter costs by application.
 
 ## Architecture Overview
 
@@ -266,11 +269,11 @@ For applications that span multiple accounts, you can share AppRegistry applicat
 # Share an application with another account
 aws ram create-resource-share \
   --name "payment-app-share" \
-  --resource-arns "arn:aws:servicecatalog:us-east-1:123456789012:application/abc123" \
+  --resource-arns "arn:aws:servicecatalog:us-east-1:123456789012:/applications/abc123" \
   --principals "222222222222"
 ```
 
-The target account can then associate its own stacks with the shared application, giving you a unified view across accounts.
+The target account can then associate its own stacks with the shared application if the share grants association permissions, giving you a unified view across accounts.
 
 ## Best Practices
 
