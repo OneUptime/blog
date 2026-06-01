@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS, DMS, Migration, Database
 
-Description: Complete guide to using AWS Database Migration Service to migrate databases to RDS with continuous replication, schema conversion, and minimal downtime.
+Description: Complete guide to using AWS Database Migration Service to migrate databases to RDS with continuous replication, data validation, and minimal downtime.
 
 ---
 
 AWS Database Migration Service (DMS) is a managed service that handles the heavy lifting of database migrations. Instead of dealing with native replication protocols, dump files, and manual synchronization, DMS gives you a unified migration framework that works across database engines.
 
-DMS is particularly useful when you're migrating between different database engines (Oracle to PostgreSQL, SQL Server to MySQL), but it works just as well for same-engine migrations. It handles the initial data load, ongoing change replication, and provides monitoring throughout the process.
+DMS is particularly useful when you're migrating between different database engines (Oracle to PostgreSQL, SQL Server to MySQL), but it works just as well for same-engine migrations. For heterogeneous migrations, convert or pre-create the target schema before running the migration task. DMS handles the initial data load, ongoing change replication, and provides monitoring throughout the process.
 
 ## How DMS Works
 
@@ -42,9 +42,9 @@ aws dms create-replication-instance \
   --replication-instance-class dms.r6i.large \
   --allocated-storage 100 \
   --vpc-security-group-ids sg-0123456789abcdef0 \
-  --replication-subnet-group-id my-dms-subnet-group \
+  --replication-subnet-group-identifier my-dms-subnet-group \
   --multi-az \
-  --publicly-accessible false
+  --no-publicly-accessible
 ```
 
 Size the replication instance based on your needs:
@@ -115,7 +115,7 @@ Check the results:
 ```bash
 # Verify connection test results
 aws dms describe-connections \
-  --filter "Name=endpoint-arn,Values=arn:aws:dms:us-east-1:123456789012:endpoint:source-mysql"
+  --filters "Name=endpoint-arn,Values=arn:aws:dms:us-east-1:123456789012:endpoint:source-mysql"
 ```
 
 ## Preparing the Source Database
@@ -136,7 +136,7 @@ GRANT SELECT, REPLICATION CLIENT, REPLICATION SLAVE ON *.* TO 'dms_user'@'%';
 FLUSH PRIVILEGES;
 ```
 
-For PostgreSQL sources:
+For self-managed PostgreSQL sources:
 
 ```sql
 -- Set wal_level to logical (requires restart)
@@ -146,9 +146,15 @@ ALTER SYSTEM SET max_wal_senders = 5;
 
 -- Create a DMS user
 CREATE USER dms_user WITH PASSWORD 'strong_password';
-GRANT rds_replication TO dms_user;  -- For RDS sources
--- OR for self-managed:
 ALTER USER dms_user WITH REPLICATION;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO dms_user;
+```
+
+For RDS PostgreSQL sources, enable logical replication by setting `rds.logical_replication` to `1` in the DB parameter group and rebooting the instance. The DMS endpoint user needs the `rds_superuser` and `rds_replication` roles:
+
+```sql
+CREATE USER dms_user WITH PASSWORD 'strong_password';
+GRANT rds_superuser, rds_replication TO dms_user;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO dms_user;
 ```
 
