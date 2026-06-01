@@ -8,13 +8,13 @@ Description: Learn how to integrate CDK Nag into your AWS CDK projects to automa
 
 ---
 
-Deploying infrastructure that works is one thing. Deploying infrastructure that's secure and follows best practices is another. CDK Nag is a tool that checks your CDK code against a set of rules - similar to a linter, but for cloud security. It catches issues like unencrypted S3 buckets, overly permissive IAM policies, and public databases before they ever reach production.
+Deploying infrastructure that works is one thing. Deploying infrastructure that's secure and follows best practices is another. CDK Nag is a tool that checks your CDK code against a set of rules - similar to a linter, but for cloud security. It catches issues like S3 buckets without access logging, overly permissive IAM policies, and public databases before they ever reach production.
 
 Think of it as a code review that never gets tired and never misses a security checklist item.
 
 ## What is CDK Nag?
 
-CDK Nag is an open-source library that runs "aspects" against your CDK constructs. An aspect is basically a visitor that walks through your CloudFormation template and checks each resource against a rule pack. If a resource violates a rule, CDK Nag can either warn you or throw an error that blocks deployment.
+CDK Nag is an open-source library that runs "aspects" against your CDK constructs. An aspect is basically a visitor that walks through your construct tree and checks the generated CloudFormation resources against a rule pack. If a resource violates a rule, CDK Nag can either warn you or throw an error that blocks deployment.
 
 The library comes with several rule packs:
 
@@ -47,7 +47,7 @@ import { AwsSolutionsChecks } from 'cdk-nag';
 import { MyStack } from '../lib/my-stack';
 
 const app = new App();
-const stack = new MyStack(app, 'MyStack');
+new MyStack(app, 'MyStack');
 
 // Add AWS Solutions checks to the entire app
 Aspects.of(app).add(new AwsSolutionsChecks({
@@ -66,7 +66,6 @@ Let's look at some common issues CDK Nag flags. Here's a stack that looks innoce
 ```typescript
 import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as rds from 'aws-cdk-lib/aws-rds';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { Construct } from 'constructs';
 
@@ -74,12 +73,12 @@ export class InsecureStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Problem 1: S3 bucket without encryption or logging
-    const bucket = new s3.Bucket(this, 'DataBucket', {
+    // Problem 1: S3 bucket without access logging or SSL enforcement
+    new s3.Bucket(this, 'DataBucket', {
       bucketName: 'my-data-bucket',
     });
 
-    // Problem 2: RDS without encryption, in a public subnet
+    // Problem 2: VPC without flow logs
     const vpc = new ec2.Vpc(this, 'Vpc');
 
     // Problem 3: Security group with wide-open ingress
@@ -96,6 +95,7 @@ CDK Nag would flag this stack with findings like:
 
 - **AwsSolutions-S1**: The S3 Bucket does not have server access logging enabled
 - **AwsSolutions-S10**: The S3 Bucket does not require requests to use SSL
+- **AwsSolutions-VPC7**: The VPC does not have an associated Flow Log
 - **AwsSolutions-EC23**: The Security Group allows unrestricted inbound traffic
 - **AwsSolutions-RDS2**: The RDS instance does not have storage encryption enabled (if we added one)
 
@@ -118,7 +118,7 @@ export class SecureStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    const bucket = new s3.Bucket(this, 'DataBucket', {
+    new s3.Bucket(this, 'DataBucket', {
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -128,6 +128,7 @@ export class SecureStack extends cdk.Stack {
     });
 
     const vpc = new ec2.Vpc(this, 'Vpc');
+    vpc.addFlowLog('FlowLog');
 
     // Fixed: Security group with specific port and CIDR
     const sg = new ec2.SecurityGroup(this, 'WebSg', {
@@ -253,20 +254,44 @@ If the built-in packs don't cover your organization's specific requirements, you
 
 ```typescript
 import { CfnResource } from 'aws-cdk-lib';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { IConstruct } from 'constructs';
-import { NagRuleCompliance, NagRules } from 'cdk-nag';
+import {
+  NagMessageLevel,
+  NagPack,
+  NagPackProps,
+  NagRuleCompliance,
+  NagRuleResult,
+} from 'cdk-nag';
 
 // Custom rule: Ensure all S3 buckets have a specific tag
-export class S3BucketTagRule {
-  static check(node: IConstruct): NagRuleCompliance {
-    if (node instanceof CfnResource && node.cfnResourceType === 'AWS::S3::Bucket') {
-      const tags = node.tags?.renderTags();
-      const hasTeamTag = tags?.some((tag: any) => tag.key === 'Team');
-      return hasTeamTag
-        ? NagRuleCompliance.COMPLIANT
-        : NagRuleCompliance.NON_COMPLIANT;
+export class CustomChecks extends NagPack {
+  constructor(props?: NagPackProps) {
+    super(props);
+    this.packName = 'Custom';
+  }
+
+  public visit(node: IConstruct): void {
+    if (node instanceof CfnResource) {
+      this.applyRule({
+        ruleSuffixOverride: 'S3BucketTeamTag',
+        info: 'S3 buckets should have a Team tag.',
+        explanation: 'A Team tag makes ownership clear for operations and cost allocation.',
+        level: NagMessageLevel.ERROR,
+        rule: function (resource: CfnResource): NagRuleResult {
+          if (!s3.CfnBucket.isCfnBucket(resource)) {
+            return NagRuleCompliance.NOT_APPLICABLE;
+          }
+
+          const tags = resource.stack.resolve(resource.tags.renderTags());
+          const hasTeamTag = Array.isArray(tags) && tags.some((tag) => tag.Key === 'Team');
+          return hasTeamTag
+            ? NagRuleCompliance.COMPLIANT
+            : NagRuleCompliance.NON_COMPLIANT;
+        },
+        node,
+      });
     }
-    return NagRuleCompliance.NOT_APPLICABLE;
   }
 }
 ```
