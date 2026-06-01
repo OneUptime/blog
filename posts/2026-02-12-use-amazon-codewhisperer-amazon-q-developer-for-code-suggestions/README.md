@@ -18,9 +18,9 @@ Amazon Q Developer is available as an extension for several IDEs:
 
 - VS Code
 - JetBrains IDEs (IntelliJ, PyCharm, WebStorm, etc.)
+- Eclipse
 - Visual Studio
 - AWS Cloud9 (built-in)
-- Neovim
 
 ### VS Code Installation
 
@@ -127,7 +127,7 @@ Resources:
 # Write a Lambda function that processes SQS messages and writes to DynamoDB
 import json
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('ProcessedMessages')
@@ -150,7 +150,7 @@ def lambda_handler(event, context):
             table.put_item(
                 Item={
                     'message_id': message_id,
-                    'processed_at': datetime.utcnow().isoformat(),
+                    'processed_at': datetime.now(timezone.utc).isoformat(),
                     'status': 'success',
                     'result': result
                 }
@@ -276,9 +276,8 @@ For professional tier users, you can customize Q with your organization's code:
 # This teaches Q your internal APIs, coding patterns, and conventions
 
 # Supported sources:
-# - CodeCommit repositories
-# - S3 buckets with code
-# - GitHub Enterprise (via CodeStar connections)
+# - Connected code repositories through the Amazon Q Developer console
+# - Uploaded code in S3 buckets
 ```
 
 After customization, Q's suggestions align more closely with your organization's coding style, internal APIs, and patterns.
