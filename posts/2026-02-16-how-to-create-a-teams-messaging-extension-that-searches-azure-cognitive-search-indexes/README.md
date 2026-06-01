@@ -52,6 +52,12 @@ ADMIN_KEY=$(az search admin-key show \
   --service-name search-products \
   --resource-group rg-teams-extension \
   --query primaryKey -o tsv)
+
+# Get a read-only query key for the bot
+QUERY_KEY=$(az search query-key list \
+  --service-name search-products \
+  --resource-group rg-teams-extension \
+  --query "[0].key" -o tsv)
 ```
 
 Create the search index with a schema that matches your product data:
@@ -275,7 +281,7 @@ The app manifest tells Teams about your messaging extension. The `composeExtensi
     "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
     "manifestVersion": "1.16",
     "version": "1.0.0",
-    "id": "your-app-guid-here",
+    "id": "11111111-1111-1111-1111-111111111111",
     "name": {
         "short": "Product Search",
         "full": "Product Catalog Search Extension"
@@ -284,6 +290,11 @@ The app manifest tells Teams about your messaging extension. The `composeExtensi
         "short": "Search products from Teams",
         "full": "Search the product catalog and share product details directly in Teams conversations."
     },
+    "icons": {
+        "outline": "outline.png",
+        "color": "color.png"
+    },
+    "accentColor": "#2564CF",
     "developer": {
         "name": "Your Company",
         "websiteUrl": "https://yourcompany.com",
@@ -292,14 +303,14 @@ The app manifest tells Teams about your messaging extension. The `composeExtensi
     },
     "bots": [
         {
-            "botId": "your-bot-app-id",
+            "botId": "22222222-2222-2222-2222-222222222222",
             "scopes": ["personal", "team", "groupChat"],
             "supportsFiles": false
         }
     ],
     "composeExtensions": [
         {
-            "botId": "your-bot-app-id",
+            "botId": "22222222-2222-2222-2222-222222222222",
             "commands": [
                 {
                     "id": "searchProducts",
@@ -336,11 +347,11 @@ The app manifest tells Teams about your messaging extension. The `composeExtensi
 
 ## Adding Autocomplete with Suggestions
 
-Make the search experience faster by implementing type-ahead suggestions using the Azure Cognitive Search suggester:
+Make the search experience faster by using the Azure Cognitive Search suggester for lightweight suggested results. Handle these through the normal messaging extension query handler, or route by `commandId` if your extension has multiple commands:
 
 ```typescript
-// Handle type-ahead suggestions for the messaging extension
-async handleTeamsMessagingExtensionQuerySettingUrl(
+// Handle suggester-backed results for the messaging extension
+async handleTeamsMessagingExtensionQuery(
     context: TurnContext,
     query: MessagingExtensionQuery
 ): Promise<MessagingExtensionResponse> {
