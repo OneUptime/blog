@@ -138,16 +138,16 @@ gcloud compute routes create route-c-to-a-via-router \
   --priority=800
 ```
 
-Wait - this does not actually work. Custom routes with a next-hop in a peered network are not followed when the next-hop IP belongs to a different network. You would need the router VM to have network interfaces in all three networks.
+Wait - this does not actually work. For an instance next hop specified by IP address, Google Cloud only programs the route when the next-hop IP is assigned to a VM interface in the same VPC network as the route, not in a peered VPC network. You would need the router VM to have network interfaces in the VPC networks that need to use it as a next hop.
 
 ## Solution 2b: Multi-NIC Router VM
 
-Create a VM with network interfaces in multiple VPCs:
+Create a VM with network interfaces in multiple VPCs. In a standalone project, each interface must use a subnet in the same project as the VM; for cross-project networks, use a supported Shared VPC design and make sure the route's next-hop VM has a NIC in that route's VPC network. The commands below assume the router VM can attach to all three subnets:
 
 ```bash
 # Create a multi-NIC VM that bridges Network A, B, and C
 gcloud compute instances create multi-nic-router \
-  --project=project-b \
+  --project=network-host-project \
   --zone=us-central1-a \
   --machine-type=e2-standard-4 \
   --network-interface=network=network-a,subnet=subnet-a \
@@ -163,7 +163,7 @@ Then add routes in each network pointing to the router's interface in that netwo
 ```bash
 # In Network A: route to Network C via the router's NIC in Network A
 gcloud compute routes create a-to-c-via-router \
-  --project=project-a \
+  --project=network-host-project \
   --network=network-a \
   --destination-range=10.30.0.0/20 \
   --next-hop-instance=multi-nic-router \
@@ -172,7 +172,7 @@ gcloud compute routes create a-to-c-via-router \
 
 # In Network C: route to Network A via the router's NIC in Network C
 gcloud compute routes create c-to-a-via-router \
-  --project=project-c \
+  --project=network-host-project \
   --network=network-c \
   --destination-range=10.10.0.0/20 \
   --next-hop-instance=multi-nic-router \
@@ -195,12 +195,12 @@ gcloud network-connectivity hubs create transit-hub \
 gcloud network-connectivity spokes linked-vpc-network create spoke-a \
   --hub=transit-hub \
   --vpc-network=projects/project-a/global/networks/network-a \
-  --location=global
+  --global
 
 gcloud network-connectivity spokes linked-vpc-network create spoke-c \
   --hub=transit-hub \
   --vpc-network=projects/project-c/global/networks/network-c \
-  --location=global
+  --global
 ```
 
 NCC handles the route exchange between spoke networks, providing transitive connectivity without manual routing.
