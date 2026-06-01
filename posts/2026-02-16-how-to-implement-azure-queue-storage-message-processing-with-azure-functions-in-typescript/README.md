@@ -18,7 +18,7 @@ Queue Storage is a good fit when you need:
 - Simple FIFO-ish queuing (not guaranteed strict FIFO)
 - Low cost (pennies per million messages)
 - Messages up to 64KB
-- Up to 500 messages dequeued per batch
+- Azure Functions queue trigger batch processing with a maximum batch size of 32 messages per function app instance
 
 Service Bus is better when you need:
 - Topics and subscriptions (publish-subscribe)
@@ -36,7 +36,7 @@ func init queue-processor --typescript
 cd queue-processor
 
 # Install dependencies
-npm install @azure/storage-queue uuid
+npm install @azure/storage-queue
 ```
 
 ## Function 1: Queue-Triggered Image Processor
@@ -133,7 +133,7 @@ app.storageQueue('processImage', {
 
 ## Function 2: Email Queue Processor
 
-Process email sending requests from a queue with retry logic and rate limiting.
+Process email sending requests from a queue with retry logic.
 
 ```typescript
 // src/functions/sendEmail.ts
@@ -146,15 +146,14 @@ interface EmailJob {
   templateId: string;
   templateData: Record<string, string>;
   priority: 'high' | 'normal' | 'low';
-  retryCount?: number;
 }
 
 async function sendEmail(
   message: EmailJob,
   context: InvocationContext
 ): Promise<void> {
-  const retryCount = message.retryCount || 0;
-  context.log(`Sending email to ${message.to} (attempt ${retryCount + 1})`);
+  const dequeueCount = Number(context.triggerMetadata.dequeueCount ?? 1);
+  context.log(`Sending email to ${message.to} (attempt ${dequeueCount})`);
 
   try {
     // Build the email from the template
@@ -174,11 +173,10 @@ async function sendEmail(
   } catch (error) {
     context.error(`Email send failed: ${error}`);
 
-    // If we have not exceeded max retries, re-enqueue with a delay
-    if (retryCount < 3) {
-      context.log(`Re-queuing for retry (attempt ${retryCount + 1} of 3)`);
-      // The message will be retried by the Azure Functions runtime
-      // because we threw an error
+    // Azure Functions retries failed queue messages based on maxDequeueCount
+    // and then moves them to the <queue-name>-poison queue.
+    if (dequeueCount < 5) {
+      context.log(`Message will be retried by the Azure Functions runtime`);
     }
 
     throw error;
@@ -227,7 +225,7 @@ import { app, InvocationContext, output } from '@azure/functions';
 interface ExportJob {
   exportId: string;
   userId: string;
-  format: 'csv' | 'json' | 'xlsx';
+  format: 'csv' | 'json';
   filters: {
     startDate: string;
     endDate: string;
@@ -336,7 +334,7 @@ export async function enqueue(
 ): Promise<string> {
   const client = await getQueueClient(queueName);
 
-  // Queue Storage requires base64-encoded message content
+  // Azure Functions queue triggers expect base64-encoded messages by default
   const encoded = Buffer.from(JSON.stringify(message)).toString('base64');
 
   const result = await client.sendMessage(encoded, {
@@ -347,8 +345,8 @@ export async function enqueue(
 }
 
 // Usage examples:
-// await enqueue('image-processing', { imageId: '123', blobUrl: '...', operations: ['resize'] });
-// await enqueue('email-queue', { to: 'user@example.com', subject: 'Welcome', templateId: 'welcome' });
+// await enqueue('image-processing', { imageId: '123', blobUrl: '...', operations: ['resize'], requestedAt: new Date().toISOString() });
+// await enqueue('email-queue', { to: 'user@example.com', subject: 'Welcome', templateId: 'welcome', templateData: { name: 'Ada' }, priority: 'normal' });
 // await enqueue('export-requests', { exportId: 'exp-1', userId: 'user-1', format: 'csv', filters: {...} });
 ```
 
