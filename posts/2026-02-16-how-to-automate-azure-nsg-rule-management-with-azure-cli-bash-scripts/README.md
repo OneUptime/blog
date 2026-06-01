@@ -112,7 +112,7 @@ while IFS=$'\t' read -r nsg_name rg_name; do
     -o json)
 
   # Check for rules that allow any source
-  OPEN_RULES=$(echo "$RULES" | jq -r '.[] | select(.sourceAddressPrefix == "*" or .sourceAddressPrefix == "Internet" or .sourceAddressPrefix == "0.0.0.0/0") | select(.direction == "Inbound") | "\(.name) (priority: \(.priority), port: \(.destPort), protocol: \(.protocol))"')
+  OPEN_RULES=$(echo "$RULES" | jq -r '.[] | select(.direction == "Inbound") | ([.sourceAddressPrefixes[]?, .sourceAddressPrefix?] | map(select(. != null))) as $sources | select(any($sources[]; . == "*" or . == "Internet" or . == "0.0.0.0/0" or . == "::/0")) | ([.destPorts[]?, .destPort?] | map(select(. != null)) | join(",")) as $ports | "\(.name) (priority: \(.priority), port: \($ports), protocol: \(.protocol))"')
 
   if [ -n "$OPEN_RULES" ]; then
     echo "  WARNING - Inbound rules allowing traffic from any source:"
@@ -174,29 +174,56 @@ echo "$RULES" | jq -c '.[]' | while read -r rule; do
   direction=$(echo "$rule" | jq -r '.direction')
   access=$(echo "$rule" | jq -r '.access')
   protocol=$(echo "$rule" | jq -r '.protocol')
-  source_prefix=$(echo "$rule" | jq -r '.sourceAddressPrefix // empty')
-  source_prefixes=$(echo "$rule" | jq -r '.sourceAddressPrefixes | join(" ") // empty')
-  dest_port=$(echo "$rule" | jq -r '.destinationPortRange // empty')
-  dest_ports=$(echo "$rule" | jq -r '.destinationPortRanges | join(" ") // empty')
+  mapfile -t source_prefixes < <(echo "$rule" | jq -r '[.sourceAddressPrefixes[]?, .sourceAddressPrefix?] | map(select(. != null and . != "")) | .[]')
+  mapfile -t source_ports < <(echo "$rule" | jq -r '[.sourcePortRanges[]?, .sourcePortRange?] | map(select(. != null and . != "")) | .[]')
+  mapfile -t dest_prefixes < <(echo "$rule" | jq -r '[.destinationAddressPrefixes[]?, .destinationAddressPrefix?] | map(select(. != null and . != "")) | .[]')
+  mapfile -t dest_ports < <(echo "$rule" | jq -r '[.destinationPortRanges[]?, .destinationPortRange?] | map(select(. != null and . != "")) | .[]')
+  mapfile -t source_asgs < <(echo "$rule" | jq -r '[.sourceApplicationSecurityGroups[]? | (.id // .name // empty)] | map(select(. != null and . != "")) | .[]')
+  mapfile -t dest_asgs < <(echo "$rule" | jq -r '[.destinationApplicationSecurityGroups[]? | (.id // .name // empty)] | map(select(. != null and . != "")) | .[]')
+  description=$(echo "$rule" | jq -r '.description // empty')
 
   echo "  Copying: $name (priority $priority)"
 
   # Build the command with conditional parameters
-  CMD="az network nsg rule create --resource-group $TARGET_RG --nsg-name $TARGET_NSG --name $name --priority $priority --direction $direction --access $access --protocol $protocol --output none"
+  CMD=(az network nsg rule create
+    --resource-group "$TARGET_RG"
+    --nsg-name "$TARGET_NSG"
+    --name "$name"
+    --priority "$priority"
+    --direction "$direction"
+    --access "$access"
+    --protocol "$protocol"
+    --output none)
 
-  if [ -n "$source_prefix" ]; then
-    CMD="$CMD --source-address-prefixes $source_prefix"
-  elif [ -n "$source_prefixes" ]; then
-    CMD="$CMD --source-address-prefixes $source_prefixes"
+  if [ "${#source_prefixes[@]}" -gt 0 ]; then
+    CMD+=(--source-address-prefixes "${source_prefixes[@]}")
   fi
 
-  if [ -n "$dest_port" ]; then
-    CMD="$CMD --destination-port-ranges $dest_port"
-  elif [ -n "$dest_ports" ]; then
-    CMD="$CMD --destination-port-ranges $dest_ports"
+  if [ "${#source_asgs[@]}" -gt 0 ]; then
+    CMD+=(--source-asgs "${source_asgs[@]}")
   fi
 
-  eval "$CMD"
+  if [ "${#source_ports[@]}" -gt 0 ]; then
+    CMD+=(--source-port-ranges "${source_ports[@]}")
+  fi
+
+  if [ "${#dest_prefixes[@]}" -gt 0 ]; then
+    CMD+=(--destination-address-prefixes "${dest_prefixes[@]}")
+  fi
+
+  if [ "${#dest_asgs[@]}" -gt 0 ]; then
+    CMD+=(--destination-asgs "${dest_asgs[@]}")
+  fi
+
+  if [ "${#dest_ports[@]}" -gt 0 ]; then
+    CMD+=(--destination-port-ranges "${dest_ports[@]}")
+  fi
+
+  if [ -n "$description" ]; then
+    CMD+=(--description "$description")
+  fi
+
+  "${CMD[@]}"
 done
 
 echo "All rules copied successfully"
@@ -220,7 +247,7 @@ SOURCE_IP="${4:?}"
 DURATION_HOURS="${5:-1}"
 
 TIMESTAMP=$(date -u '+%Y%m%d-%H%M')
-EXPIRY=$(date -u -d "+${DURATION_HOURS} hours" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || date -u -v+${DURATION_HOURS}H '+%Y-%m-%d %H:%M UTC')
+EXPIRY=$(date -u -d "+${DURATION_HOURS} hours" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v+${DURATION_HOURS}H '+%Y-%m-%dT%H:%M:%SZ')
 RULE_NAME="temp-${PORT}-${TIMESTAMP}"
 
 echo "Creating temporary rule: $RULE_NAME"
@@ -260,6 +287,12 @@ echo "Scanning for expired temporary NSG rules..."
 
 NSGS=$(az network nsg list --query "[].{name:name, rg:resourceGroup}" -o tsv)
 CLEANED=0
+NOW_EPOCH=$(date -u '+%s')
+
+expiry_to_epoch() {
+  local expiry="$1"
+  date -u -d "$expiry" '+%s' 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$expiry" '+%s' 2>/dev/null
+}
 
 while IFS=$'\t' read -r nsg_name rg_name; do
   # Find rules that start with "temp-"
@@ -269,25 +302,35 @@ while IFS=$'\t' read -r nsg_name rg_name; do
     --query "[?starts_with(name, 'temp-')].{name:name, description:description}" \
     -o json)
 
-  echo "$TEMP_RULES" | jq -c '.[]' | while read -r rule; do
+  while read -r rule; do
     rule_name=$(echo "$rule" | jq -r '.name')
     description=$(echo "$rule" | jq -r '.description // ""')
+    expiry=$(echo "$description" | sed -n 's/.*expires \([-0-9T:Z]*\).*/\1/p')
 
-    # Extract expiry date from description if present
-    if echo "$description" | grep -q "expires"; then
-      echo "  Found temporary rule: $rule_name in $nsg_name"
+    # Extract expiry date from description and delete only expired rules
+    if [ -n "$expiry" ]; then
+      expiry_epoch=$(expiry_to_epoch "$expiry" || true)
+
+      if [ -n "$expiry_epoch" ] && [ "$expiry_epoch" -le "$NOW_EPOCH" ]; then
+        echo "  Found expired temporary rule: $rule_name in $nsg_name"
+        echo "    Description: $description"
+        echo "    Deleting..."
+
+        az network nsg rule delete \
+          --resource-group "$rg_name" \
+          --nsg-name "$nsg_name" \
+          --name "$rule_name" \
+          --output none
+
+        CLEANED=$((CLEANED + 1))
+      else
+        echo "  Skipping temporary rule that has not expired: $rule_name in $nsg_name"
+      fi
+    else
+      echo "  Skipping temporary rule with no parseable expiry: $rule_name in $nsg_name"
       echo "    Description: $description"
-      echo "    Deleting..."
-
-      az network nsg rule delete \
-        --resource-group "$rg_name" \
-        --nsg-name "$nsg_name" \
-        --name "$rule_name" \
-        --output none
-
-      CLEANED=$((CLEANED + 1))
     fi
-  done
+  done < <(echo "$TEMP_RULES" | jq -c '.[]')
 done <<< "$NSGS"
 
 echo "Cleaned up $CLEANED temporary rules"
@@ -326,7 +369,7 @@ REPORT_FILE="nsg-report-$(date -u '+%Y%m%d').md"
       --resource-group "$rg_name" \
       --nsg-name "$nsg_name" \
       --query "sort_by([?priority < \`65000\`], &priority)" \
-      -o json | jq -r '.[] | "| \(.priority) | \(.name) | \(.direction) | \(.access) | \(.protocol) | \(.sourceAddressPrefix // (.sourceAddressPrefixes | join(","))) | \(.destinationPortRange // (.destinationPortRanges | join(","))) |"'
+      -o json | jq -r '.[] | ([.sourceAddressPrefixes[]?, .sourceAddressPrefix?] | map(select(. != null)) | join(",")) as $source | ([.destinationPortRanges[]?, .destinationPortRange?] | map(select(. != null)) | join(",")) as $ports | "| \(.priority) | \(.name) | \(.direction) | \(.access) | \(.protocol) | \($source) | \($ports) |"'
 
     echo ""
   done <<< "$NSGS"
