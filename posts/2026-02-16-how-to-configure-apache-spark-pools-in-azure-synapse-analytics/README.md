@@ -8,7 +8,7 @@ Description: Learn how to create, configure, and optimize Apache Spark pools in 
 
 ---
 
-Azure Synapse Analytics includes Apache Spark as a first-class compute engine alongside SQL pools. Spark pools let you run PySpark, Scala, and .NET Spark jobs for data engineering, machine learning, and large-scale data transformation directly within your Synapse workspace. This guide covers how to set up and configure Spark pools for production use.
+Azure Synapse Analytics includes Apache Spark as a first-class compute engine alongside SQL pools. Spark pools let you run PySpark, Scala, and Spark SQL jobs for data engineering, machine learning, and large-scale data transformation directly within your Synapse workspace. This guide covers how to set up and configure Spark pools for production use.
 
 ## What Are Spark Pools in Synapse?
 
@@ -18,7 +18,7 @@ Key characteristics:
 - **Serverless provisioning**: Clusters spin up when needed and shut down when idle.
 - **Auto-scale**: The cluster can grow and shrink based on workload demand.
 - **Integrated with Synapse**: Direct access to data lake storage, dedicated SQL pools, and other Synapse resources.
-- **Multi-language**: Supports PySpark, Scala, SparkSQL, and .NET for Apache Spark.
+- **Multi-language**: Supports PySpark, Scala, and Spark SQL. Older Synapse Spark runtimes also supported .NET for Apache Spark, but .NET support was removed from Spark 3.3 and later runtimes.
 
 ## Prerequisites
 
@@ -35,8 +35,9 @@ az synapse spark pool create \
   --name sparkpool01 \
   --workspace-name my-synapse-workspace \
   --resource-group rg-synapse \
-  --spark-version 3.4 \
+  --spark-version 3.5 \
   --node-size Medium \
+  --node-count 3 \
   --min-node-count 3 \
   --max-node-count 10 \
   --enable-auto-scale true \
@@ -46,8 +47,9 @@ az synapse spark pool create \
 
 Let me break down each parameter:
 
-- **spark-version 3.4**: The Apache Spark version. Use the latest supported version for best performance and features.
-- **node-size Medium**: The VM size for each node. Options range from Small (4 vCores, 32 GB) to XXXLarge (80 vCores, 504 GB).
+- **spark-version 3.5**: The Apache Spark version. Use the latest supported GA runtime for best performance, features, and security updates.
+- **node-size Medium**: The VM size for each node. Standard options range from Small (4 vCores, 32 GB) to XXLarge (64 vCores, 432 GB). XXXLarge (80 vCores, 504 GB) is available for Isolated Compute in supported regions.
+- **node-count 3**: Initial cluster size. When auto-scale is enabled, this should align with the minimum node count.
 - **min-node-count 3**: Minimum cluster size. Three is the smallest valid Spark cluster (1 driver + 2 executors).
 - **max-node-count 10**: Maximum nodes when auto-scaling is enabled.
 - **enable-auto-scale true**: Allows the cluster to add or remove nodes based on workload.
@@ -65,6 +67,7 @@ Node size determines the CPU and memory available to each Spark executor. Choose
 | Large | 16 | 128 GB | Memory-intensive operations, ML training |
 | XLarge | 32 | 256 GB | Very large datasets, complex joins |
 | XXLarge | 64 | 432 GB | Extreme workloads |
+| XXXLarge (Isolated Compute) | 80 | 504 GB | Isolated compute workloads in supported regions |
 
 For most data engineering workloads, Medium nodes with auto-scaling from 3 to 10 nodes provides a good balance of cost and performance. Start here and adjust based on actual job metrics.
 
@@ -76,12 +79,12 @@ Fine-tune Spark behavior by setting configuration properties on the pool.
 
 1. Navigate to Manage > Apache Spark pools.
 2. Click on your pool.
-3. Under "Apache Spark configuration", you can upload a configuration file or add properties.
+3. Under "Apache Spark configuration", select a published Apache Spark configuration. If you need a new one, create it under Manage > Apache Spark configurations.
 
 **Create a configuration file:**
 
 ```bash
-# Create a spark-config.txt file with key=value pairs
+# Create a spark-config.txt file with space-separated key/value pairs
 # Each line sets a Spark configuration property
 ```
 
@@ -111,7 +114,7 @@ Your Spark jobs likely need Python packages or Java/Scala libraries beyond what 
 
 ### Workspace-Level Packages
 
-Install packages that should be available to all Spark pools in the workspace.
+Upload custom packages to the workspace so they can be assigned to Spark pools.
 
 ```bash
 # Upload a requirements.txt to install Python packages
@@ -124,7 +127,8 @@ Install packages that should be available to all Spark pools in the workspace.
 
 In Synapse Studio:
 1. Go to Manage > Workspace packages.
-2. Upload `.whl` files for Python packages or `.jar` files for Java/Scala libraries.
+2. Upload `.whl` files for Python packages, `.jar` files for Java/Scala libraries, or `.tar.gz` files for R packages.
+3. Add the uploaded workspace packages to the Spark pool that needs them.
 
 ### Pool-Level Packages
 
@@ -152,12 +156,7 @@ For one-off package needs, install them in a notebook cell:
 ```python
 # Install a package for this session only
 # This does not persist across sessions
-%%configure -f
-{
-    "conf": {
-        "spark.jars.packages": "io.delta:delta-spark_2.12:3.0.0"
-    }
-}
+%pip install requests==2.31.0
 ```
 
 ## Step 5: Run a Spark Notebook
