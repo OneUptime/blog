@@ -17,17 +17,17 @@ This guide walks through the entire process from creating the disk in Azure to h
 Before creating a disk, decide on three things:
 
 **Disk type**: This determines performance and cost.
-- Standard HDD (Standard_LRS): Cheapest, for backups and infrequent access. Up to 500 IOPS.
+- Standard HDD (Standard_LRS): Cheapest, for backups and infrequent access. Up to 2,000 base IOPS, or up to 3,000 IOPS with performance plus enabled.
 - Standard SSD (StandardSSD_LRS): Good middle ground. Up to 6,000 IOPS.
 - Premium SSD (Premium_LRS): Production workloads. Up to 20,000 IOPS depending on size.
-- Ultra Disk (UltraSSD_LRS): Maximum performance. Configurable IOPS up to 160,000.
+- Ultra Disk (UltraSSD_LRS): Maximum performance. Configurable IOPS up to 400,000.
 
 **Disk size**: Larger disks have higher IOPS and throughput limits. For Premium SSD:
-- 64 GB (P6): 240 IOPS, 50 MB/s
-- 128 GB (P10): 500 IOPS, 100 MB/s
-- 256 GB (P15): 1,100 IOPS, 125 MB/s
-- 512 GB (P20): 2,300 IOPS, 150 MB/s
-- 1 TB (P30): 5,000 IOPS, 200 MB/s
+- 64 GiB (P6): 240 IOPS, 50 MB/s
+- 128 GiB (P10): 500 IOPS, 100 MB/s
+- 256 GiB (P15): 1,100 IOPS, 125 MB/s
+- 512 GiB (P20): 2,300 IOPS, 150 MB/s
+- 1 TiB (P30): 5,000 IOPS, 200 MB/s
 
 **Filesystem**: ext4 is the default choice for most Linux workloads. Use XFS for very large files or high-throughput scenarios.
 
@@ -96,6 +96,8 @@ In this output:
 
 The device name (`sdc`, `sdd`, etc.) depends on how many disks are already attached. Always verify by checking the size.
 
+On newer Azure VM sizes that use NVMe, the disk may appear as a device such as `/dev/nvme0n2` or `/dev/nvme1n1` instead of `/dev/sdc`. The remaining commands use `/dev/sdc` as the SCSI example; replace it with the device name you identified.
+
 You can also use `dmesg` to see the new disk:
 
 ```bash
@@ -114,6 +116,8 @@ Create a GPT partition table and a single partition:
 sudo parted /dev/sdc --script \
   mklabel gpt \
   mkpart primary ext4 0% 100%
+
+sudo partprobe /dev/sdc
 ```
 
 Verify the partition was created:
@@ -237,7 +241,7 @@ az vm disk attach \
 Caching recommendations:
 - **None**: Best for write-heavy workloads (databases with their own caching, log files).
 - **ReadOnly**: Best for read-heavy workloads (application data, static files).
-- **ReadWrite**: Only use for the OS disk. Risky for data disks because cached writes can be lost.
+- **ReadWrite**: Use for data disks only if your application properly handles flushing cached data to persistent storage when needed.
 
 ## Using LVM for Flexible Storage
 
