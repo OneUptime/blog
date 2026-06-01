@@ -21,7 +21,7 @@ There are several ways to get data from on-premises file servers to Azure Files:
 Deploy Azure File Sync on your existing file servers. Data syncs to Azure Files in the background while users continue working normally. Once sync is complete, you redirect users to the Azure File Share and decommission the on-premises server.
 
 **Pros:** Zero downtime, preserves NTFS permissions, cloud tiering keeps frequently accessed data local during transition.
-**Cons:** Requires installing an agent on the file server, only works on Windows Server 2016+.
+**Cons:** Requires installing an agent on the file server, only works on supported Windows Server versions (Windows Server 2016 and later).
 
 ### Approach 2: Robocopy
 
@@ -32,17 +32,17 @@ Use Robocopy to copy data directly to a mounted Azure File Share. This is the tr
 
 ### Approach 3: AzCopy
 
-Upload data using AzCopy. Fast for bulk transfers but does not preserve NTFS permissions.
+Upload data using AzCopy. Fast for bulk transfers; for Azure Files SMB transfers, use `--preserve-permissions=true` and `--preserve-info=true` when you need to preserve ACLs and file metadata.
 
 **Pros:** Very fast, handles large data volumes well.
-**Cons:** Does not preserve NTFS ACLs, requires post-migration permission setup.
+**Cons:** Requires the right preserve flags and a supported source/target combination for ACL preservation; otherwise, you need post-migration permission setup.
 
 ### Approach 4: Azure Data Box
 
 For massive data volumes (tens of terabytes or more) where network transfer would take too long, use Azure Data Box to physically ship your data to Azure.
 
 **Pros:** Fast for huge data sets, no network bandwidth impact.
-**Cons:** Physical shipping adds days to the timeline, does not preserve NTFS ACLs.
+**Cons:** Physical shipping adds days to the timeline; ACL preservation requires copying to Data Box over SMB with a tool such as Robocopy and targeting Azure Files, not Blob Storage or NFS.
 
 ## Phase 1: Assessment
 
@@ -126,6 +126,8 @@ az storage share-rm create \
 
 If your users currently authenticate with AD, configure AD authentication on the Azure File Share before migration. See the AD authentication guide for details.
 
+Before users can authenticate, also assign share-level Azure RBAC permissions such as Storage File Data SMB Share Contributor or Storage File Data SMB Share Elevated Contributor.
+
 ```bash
 # Enable AD DS authentication
 az storage account update \
@@ -149,7 +151,8 @@ This is the recommended approach for most migrations.
 On your on-premises file server:
 
 ```powershell
-# Download and install the Azure File Sync agent
+# Download and install the Azure File Sync agent.
+# Choose the MSI that matches your Windows Server version; this example is for Windows Server 2022.
 $agentUrl = "https://aka.ms/afs/agent/Server2022"
 Invoke-WebRequest -Uri $agentUrl -OutFile "$env:TEMP\StorageSyncAgent.msi"
 Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\StorageSyncAgent.msi`" /quiet" -Wait
@@ -159,18 +162,20 @@ Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\StorageSyncAgent.msi`" /
 
 ```powershell
 # Import the module and register the server
-Import-Module "C:\Program Files\Azure\StorageSyncAgent\StorageSync.Management.PowerShell.Cmdlets.dll"
-Login-AzStorageSync -SubscriptionId "your-sub-id" -TenantId "your-tenant-id"
-Register-AzStorageSyncServer -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "mySyncService"
+Import-Module Az.StorageSync
+Connect-AzAccount -Tenant "your-tenant-id"
+Set-AzContext -SubscriptionId "your-sub-id"
+$registeredServer = Register-AzStorageSyncServer -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "mySyncService"
+$storageAccount = Get-AzStorageAccount -ResourceGroupName "myresourcegroup" -Name "mymigratedfiles"
 
 # Create sync group and endpoints
-New-AzStorageSyncGroup -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "mySyncService" -SyncGroupName "migration-group"
+New-AzStorageSyncGroup -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "mySyncService" -Name "migration-group"
 
 # Add cloud endpoint
-New-AzStorageSyncCloudEndpoint -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "mySyncService" -SyncGroupName "migration-group" -StorageAccountResourceId $storageId -AzureFileShareName "companyshare"
+New-AzStorageSyncCloudEndpoint -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "mySyncService" -SyncGroupName "migration-group" -Name "companyshare-cloud" -StorageAccountResourceId $storageAccount.Id -AzureFileShareName "companyshare"
 
 # Add server endpoint (this starts the initial sync)
-New-AzStorageSyncServerEndpoint -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "mySyncService" -SyncGroupName "migration-group" -ServerResourceId $serverId -ServerLocalPath "D:\FileShare"
+New-AzStorageSyncServerEndpoint -ResourceGroupName "myresourcegroup" -StorageSyncServiceName "mySyncService" -SyncGroupName "migration-group" -Name "fileserver-endpoint" -ServerResourceId $registeredServer.ResourceId -ServerLocalPath "D:\FileShare"
 ```
 
 The initial sync uploads all data to Azure Files. This can take hours to days depending on data volume and network speed.
@@ -186,18 +191,21 @@ net use Z: \\mymigratedfiles.file.core.windows.net\companyshare /user:AZURE\mymi
 # Run the initial Robocopy with full permission copy
 # /MIR = mirror mode (copy everything, delete from dest what is not in source)
 # /COPY:DATSOU = copy Data, Attributes, Timestamps, Security, Owner, aUditing
+# /DCOPY:DAT = copy directory Data, Attributes, and Timestamps
+# /B = copy files in backup mode
+# /IT = include tweaked files
 # /MT:16 = use 16 threads for performance
 # /R:3 = retry 3 times on failure
 # /W:5 = wait 5 seconds between retries
 # /LOG = write a log file
-robocopy "D:\FileShare" "Z:\" /MIR /COPY:DATSOU /MT:16 /R:3 /W:5 /LOG:C:\migration-log.txt /TEE
+robocopy "D:\FileShare" "Z:\" /MIR /COPY:DATSOU /DCOPY:DAT /B /IT /MT:16 /R:3 /W:5 /LOG:C:\migration-log.txt /TEE
 ```
 
 Run the initial copy well before the cutover. Then, during the cutover window, run Robocopy again to catch any changes:
 
 ```powershell
 # Final sync during cutover window (much faster since most data is already copied)
-robocopy "D:\FileShare" "Z:\" /MIR /COPY:DATSOU /MT:16 /R:3 /W:5 /LOG:C:\migration-final.txt /TEE
+robocopy "D:\FileShare" "Z:\" /MIR /COPY:DATSOU /DCOPY:DAT /B /IT /MT:16 /R:3 /W:5 /LOG:C:\migration-final.txt /TEE
 ```
 
 ## Phase 4: Cutover
@@ -214,13 +222,15 @@ The cutover is when you switch users from the on-premises server to Azure Files.
 
 ### DNS-Based Cutover
 
-The smoothest cutover uses DNS. If your file server is accessed by FQDN (like `\\fileserver.contoso.com\share`), update DNS to point to the Azure File Share:
+DNS-based cutover works when the Azure Files custom name uses the storage account name as the host prefix. Azure Files does not support an arbitrary legacy server name as a CNAME target for SMB access. If you need to keep an old path such as `\\fileserver.contoso.com\share`, use DFS Namespaces or update clients with GPO or scripts.
 
 ```powershell
-# Create a CNAME record pointing the old server name to Azure Files
-# This is done in your DNS server
+# Register the custom SMB SPN, then create a CNAME record.
+# The alias host name must match the storage account name.
+setspn -s cifs/mymigratedfiles.contoso.com mymigratedfiles
+
 Add-DnsServerResourceRecordCName `
-  -Name "fileserver" `
+  -Name "mymigratedfiles" `
   -HostNameAlias "mymigratedfiles.file.core.windows.net" `
   -ZoneName "contoso.com"
 ```
