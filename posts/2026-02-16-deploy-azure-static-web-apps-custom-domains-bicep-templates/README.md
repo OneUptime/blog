@@ -65,8 +65,6 @@ resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
       apiLocation: 'api'
       // Output folder from the build step
       outputLocation: 'dist'
-      // Skip the API build if you do not have one
-      skipApiDetection: false
     }
 
     // Staging environment configuration
@@ -86,11 +84,11 @@ output defaultHostname string = staticWebApp.properties.defaultHostname
 output staticWebAppName string = staticWebApp.name
 ```
 
-The `Standard` SKU is needed for custom domains with SSL, the managed Functions API, and additional features like custom authentication providers. The `Free` tier works for personal projects but has limitations.
+The `Free` tier supports custom domains, managed SSL certificates, and a managed Functions API, but it has lower limits. Use the `Standard` SKU for production features such as more custom domains and staging environments, bring-your-own Functions backends, private endpoints, an SLA, and custom authentication provider registrations.
 
 ## Adding Custom Domains
 
-Custom domains in Static Web Apps require DNS validation. There are two approaches: CNAME validation for subdomains and TXT validation for apex (root) domains.
+Custom domains in Static Web Apps require DNS validation. There are two approaches: CNAME validation for regular subdomains and TXT validation for apex (root) domains. If you use Enterprise Grade Edge, new custom domains require TXT token validation.
 
 ```bicep
 // custom-domains.bicep
@@ -135,7 +133,7 @@ output apexDomainStatus string = apexDomainResource.properties.status
 output validationToken string = apexDomainResource.properties.validationToken
 ```
 
-Before deploying the custom domain resources, you need to configure the DNS records at your registrar or DNS provider.
+Before deploying a CNAME-validated subdomain, configure the CNAME record at your registrar or DNS provider.
 
 For the www subdomain, create a CNAME record.
 
@@ -143,7 +141,7 @@ For the www subdomain, create a CNAME record.
 www.example.com  CNAME  <default-hostname>.azurestaticapps.net
 ```
 
-For the apex domain, create a TXT record for validation, then an ALIAS or A record pointing to the Static Web App.
+For the apex domain, deploy the custom domain resource with `dns-txt-token` validation first so Azure returns the validation token. Then create the TXT record for validation, and route traffic with an ALIAS, ANAME, or CNAME-flattening record pointing to the Static Web App default hostname. You can use an A record only if your DNS provider does not support those record types, but Azure does not recommend that approach because it routes to a single regional host.
 
 ```text
 # Validation TXT record
@@ -222,6 +220,8 @@ resource linkedBackend 'Microsoft.Web/staticSites/linkedBackends@2022-09-01' = {
   }
 }
 ```
+
+Bring-your-own Functions backends require the Standard SKU.
 
 ## Configuration File
 
@@ -340,6 +340,16 @@ Add diagnostic settings to track traffic and errors.
 
 ```bicep
 // diagnostics.bicep
+@description('Static Web App name')
+param staticWebAppName string
+
+@description('Resource ID of the Log Analytics workspace')
+param logAnalyticsWorkspaceId string
+
+resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' existing = {
+  name: staticWebAppName
+}
+
 resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'swa-diagnostics'
   scope: staticWebApp
@@ -347,7 +357,11 @@ resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' 
     workspaceId: logAnalyticsWorkspaceId
     logs: [
       {
-        category: 'StaticSiteErrors'
+        category: 'StaticSiteDiagnosticLogs'
+        enabled: true
+      }
+      {
+        category: 'StaticSiteHttpLogs'
         enabled: true
       }
     ]
