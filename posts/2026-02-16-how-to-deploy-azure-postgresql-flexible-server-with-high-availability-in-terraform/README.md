@@ -49,20 +49,26 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.74"
     }
     random = {
       source  = "hashicorp/random"
-      version = "~> 3.5"
+      version = "~> 3.7"
     }
   }
 }
 
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
 }
 
 # Variables
+variable "subscription_id" {
+  type        = string
+  description = "The Azure subscription ID to deploy into."
+}
+
 variable "location" {
   type    = string
   default = "eastus2"
@@ -76,7 +82,7 @@ variable "environment" {
 variable "postgresql_version" {
   type    = string
   default = "16"
-  description = "PostgreSQL major version (13, 14, 15, or 16)"
+  description = "PostgreSQL major version (13, 14, 15, 16, 17, or 18)"
 }
 
 variable "sku_name" {
@@ -120,6 +126,13 @@ resource "random_password" "pg_admin" {
   min_upper        = 4
   min_numeric      = 4
   min_special      = 2
+}
+
+# Generate a stable random suffix for the globally unique server name
+resource "random_string" "pg_suffix" {
+  length  = 8
+  upper   = false
+  special = false
 }
 ```
 
@@ -189,7 +202,7 @@ Now for the main resource. This configuration enables zone-redundant high availa
 ```hcl
 # PostgreSQL Flexible Server with high availability
 resource "azurerm_postgresql_flexible_server" "main" {
-  name                = "psql-${local.name_prefix}-${random_password.pg_admin.id}"
+  name                = "psql-${local.name_prefix}-${random_string.pg_suffix.result}"
   resource_group_name = azurerm_resource_group.pg.name
   location            = azurerm_resource_group.pg.location
 
@@ -204,8 +217,9 @@ resource "azurerm_postgresql_flexible_server" "main" {
   storage_tier         = "P30"   # Premium SSD tier for better IOPS
 
   # Networking - private access only
-  delegated_subnet_id = azurerm_subnet.pg.id
-  private_dns_zone_id = azurerm_private_dns_zone.pg.id
+  delegated_subnet_id           = azurerm_subnet.pg.id
+  private_dns_zone_id           = azurerm_private_dns_zone.pg.id
+  public_network_access_enabled = false
 
   # High availability configuration
   high_availability {
@@ -248,13 +262,13 @@ PostgreSQL has hundreds of configuration parameters. Flexible Server lets you se
 resource "azurerm_postgresql_flexible_server_configuration" "max_connections" {
   name      = "max_connections"
   server_id = azurerm_postgresql_flexible_server.main.id
-  value     = "500"   # Default is typically around 100
+  value     = "500"   # Tune based on workload; Azure's default depends on the selected SKU
 }
 
 resource "azurerm_postgresql_flexible_server_configuration" "shared_buffers" {
   name      = "shared_buffers"
   server_id = azurerm_postgresql_flexible_server.main.id
-  value     = "1048576"   # 1 GB in 8KB pages (adjust based on RAM)
+  value     = "524288"   # 4 GB in 8KB pages for a 16 GiB D4ds_v5 server
 }
 
 resource "azurerm_postgresql_flexible_server_configuration" "work_mem" {
@@ -267,7 +281,7 @@ resource "azurerm_postgresql_flexible_server_configuration" "work_mem" {
 resource "azurerm_postgresql_flexible_server_configuration" "effective_cache_size" {
   name      = "effective_cache_size"
   server_id = azurerm_postgresql_flexible_server.main.id
-  value     = "3145728"   # 3 GB in 8KB pages
+  value     = "1572864"   # 12 GB in 8KB pages for a 16 GiB D4ds_v5 server
 }
 
 # Logging settings for debugging
@@ -277,11 +291,11 @@ resource "azurerm_postgresql_flexible_server_configuration" "log_min_duration" {
   value     = "1000"   # Log queries taking more than 1 second
 }
 
-# Enable pg_stat_statements for query performance analysis
-resource "azurerm_postgresql_flexible_server_configuration" "pg_stat_statements" {
-  name      = "shared_preload_libraries"
+# Allow pg_stat_statements for query performance analysis, then run CREATE EXTENSION in each database
+resource "azurerm_postgresql_flexible_server_configuration" "allowed_extensions" {
+  name      = "azure.extensions"
   server_id = azurerm_postgresql_flexible_server.main.id
-  value     = "pg_stat_statements"
+  value     = "PG_STAT_STATEMENTS"
 }
 ```
 
@@ -298,7 +312,7 @@ resource "azurerm_postgresql_flexible_server_database" "app" {
   collation = "en_US.utf8"
 }
 
-# Analytics database with a different collation
+# Analytics database
 resource "azurerm_postgresql_flexible_server_database" "analytics" {
   name      = "analytics_production"
   server_id = azurerm_postgresql_flexible_server.main.id
@@ -309,7 +323,7 @@ resource "azurerm_postgresql_flexible_server_database" "analytics" {
 
 ## Firewall Rules (for Public Access Scenarios)
 
-If you are using public access instead of VNet integration (for example, in a development environment), you need firewall rules.
+If you are using public access instead of VNet integration (for example, in a development environment), you need firewall rules. Use this only with a public-access server configuration, not with the private-access server shown above.
 
 ```hcl
 # Only create firewall rules when not using VNet integration
@@ -351,9 +365,8 @@ resource "azurerm_monitor_diagnostic_setting" "pg" {
     category = "PostgreSQLFlexSessions"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 ```
@@ -408,6 +421,7 @@ terraform init
 
 # Plan with production settings
 terraform plan \
+  -var="subscription_id=00000000-0000-0000-0000-000000000000" \
   -var="environment=prod" \
   -var="sku_name=GP_Standard_D4ds_v5" \
   -var="storage_mb=262144"
