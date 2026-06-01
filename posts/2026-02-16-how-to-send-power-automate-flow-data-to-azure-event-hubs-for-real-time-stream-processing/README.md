@@ -31,7 +31,7 @@ This pattern is useful when:
 3. Enter a namespace name (globally unique).
 4. Select the pricing tier:
    - Basic: 1 consumer group, 100 brokered connections
-   - Standard: 20 consumer groups, 1000 brokered connections, capture support
+   - Standard: 20 consumer groups, 5000 brokered connections, capture support
    - Premium: For mission-critical workloads
 5. Set throughput units to 1 (can auto-inflate later).
 6. Click Create.
@@ -120,28 +120,24 @@ If your Power Automate flow triggers frequently, you might want to batch events 
 
 1. Create a scheduled flow that runs every minute.
 2. Query Dataverse for all records modified in the last minute.
-3. Build an array of events.
-4. Send the batch to Event Hubs using the "Send events" (plural) action.
+3. Build an array of event payloads with a Select action.
+4. Send the batch to Event Hubs using the "Send one or more events to the Event Hub partition" action.
 
-The batch action sends multiple events in a single call, which is more efficient and reduces the number of flow actions.
+The batch action is currently a preview connector operation. It sends one or more events in a single call to a partition, which is more efficient and reduces the number of flow actions.
 
 ```text
-// Build an array of events from the query results
-// Each item becomes a separate event in the Event Hub
-@{json(concat('[',
-    join(
-        body('List_changed_records')?['value'],
-        ','
-    ),
-']'))}
+// In a Select action, map each Dataverse row to the event JSON shape.
+// Use the Select output as the Content value for the batch send action.
+@{body('Select_event_payloads')}
 ```
 
 ### Throttling Considerations
 
 Power Automate has action execution limits:
 
-- Per flow: 100,000 actions per day (Performance plan) or less.
-- Per connector: Varies by connector.
+- Power Platform request limits depend on the flow owner's license and performance profile.
+- The Event Hubs connector has its own throttling limit: 6000 API calls per connection per 60 seconds.
+- Other connector limits vary by connector.
 
 If you are hitting limits, consider sending events from an Azure Function instead. Power Automate triggers the function, and the function handles the Event Hubs communication at higher throughput.
 
@@ -163,7 +159,7 @@ Azure Stream Analytics can process Event Hubs data in real time and output to va
 -- Count events by type in 5-minute tumbling windows
 -- This feeds a real-time dashboard in Power BI
 SELECT
-    EventType,
+    eventType,
     COUNT(*) AS EventCount,
     System.Timestamp AS WindowEnd
 INTO
@@ -171,7 +167,7 @@ INTO
 FROM
     [eventhub-input]
 GROUP BY
-    EventType,
+    eventType,
     TumblingWindow(minute, 5)
 ```
 
@@ -207,7 +203,7 @@ Enable Capture to automatically archive all events to Azure Blob Storage or Data
 2. Enable Capture.
 3. Select the destination:
    - Azure Blob Storage: Select a storage account and container.
-   - Azure Data Lake Storage: Select a Data Lake store.
+   - Azure Data Lake Storage Gen2: Select a storage account and filesystem.
 4. Set the capture window:
    - Time window: 5 minutes (captures every 5 minutes)
    - Size window: 300 MB (captures when data reaches this size)
@@ -215,7 +211,7 @@ Enable Capture to automatically archive all events to Azure Blob Storage or Data
 Captured data is stored in Avro format, organized by date and time:
 
 ```text
-{StorageAccount}/{Container}/{Namespace}/{EventHub}/{PartitionId}/{Year}/{Month}/{Day}/{Hour}/{Minute}/{Second}
+{Namespace}/{EventHub}/{PartitionId}/{Year}/{Month}/{Day}/{Hour}/{Minute}/{Second}
 ```
 
 This gives you a complete historical record of all events for compliance, replay, or batch analytics.
@@ -229,8 +225,10 @@ For custom processing, create an Event Hubs-triggered Azure Function:
 // Processes each event and writes results to Cosmos DB
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
-using System.Text;
+using Azure.Messaging.EventHubs;
+using System;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 public static class EventProcessor
 {
@@ -239,15 +237,17 @@ public static class EventProcessor
         [EventHubTrigger("business-events",
             Connection = "EventHubConnection",
             ConsumerGroup = "function-consumer")] EventData[] events,
-        [CosmosDB("analytics", "processedEvents",
+        [CosmosDB(databaseName: "analytics", containerName: "processedEvents",
             Connection = "CosmosConnection")] IAsyncCollector<dynamic> cosmosOutput,
         ILogger log)
     {
         // Process events in batch for efficiency
         foreach (var eventData in events)
         {
-            string body = Encoding.UTF8.GetString(eventData.Body.ToArray());
-            var businessEvent = JsonSerializer.Deserialize<BusinessEvent>(body);
+            string body = eventData.EventBody.ToString();
+            var businessEvent = JsonSerializer.Deserialize<BusinessEvent>(
+                body,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
             log.LogInformation($"Processing {businessEvent.EventType} " +
                              $"for entity {businessEvent.Data.ContactId}");
@@ -269,6 +269,17 @@ public static class EventProcessor
             await cosmosOutput.AddAsync(processed);
         }
     }
+}
+
+public class BusinessEvent
+{
+    public string EventType { get; set; }
+    public BusinessEventData Data { get; set; }
+}
+
+public class BusinessEventData
+{
+    public string ContactId { get; set; }
 }
 ```
 
