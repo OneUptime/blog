@@ -45,14 +45,15 @@ graph TD
     A[DefaultAzureCredential] --> B[Environment Variables]
     B -->|Not Set| C[Workload Identity]
     C -->|Not Available| D[Managed Identity]
-    D -->|Not Available| E[Azure CLI]
-    E -->|Not Logged In| F[Azure PowerShell]
-    F -->|Not Logged In| G[Azure Developer CLI]
-    G -->|Not Logged In| H[Visual Studio Code]
-    H -->|Not Logged In| I[CredentialUnavailableError]
+    D -->|Not Available| E[Visual Studio Code]
+    E -->|Not Logged In| F[Azure CLI]
+    F -->|Not Logged In| G[Azure PowerShell]
+    G -->|Not Logged In| H[Azure Developer CLI]
+    H -->|Not Logged In| I[Broker Credential]
+    I -->|Not Available| J[AggregateAuthenticationError]
 ```
 
-On your development machine, it picks up your Azure CLI login. In production on Azure App Service or Container Apps with managed identity enabled, it uses the managed identity. No code changes needed.
+On your development machine, it can pick up a configured Visual Studio Code, Azure CLI, Azure PowerShell, or Azure Developer CLI login. In production on Azure App Service or Container Apps with managed identity enabled, it uses the managed identity. No code changes needed.
 
 ## Using the Credential with Azure Key Vault
 
@@ -141,7 +142,7 @@ az webapp identity assign --name my-node-app --resource-group my-rg
 az containerapp identity assign --name my-container-app \
   --resource-group my-rg --system-assigned
 
-# Grant access to Key Vault
+# Grant access to Key Vault when the vault uses the access policy permission model
 az keyvault set-policy --name my-keyvault \
   --object-id <principal-id> \
   --secret-permissions get list
@@ -298,7 +299,8 @@ jobs:
 Handle authentication errors gracefully so your application provides useful error messages.
 
 ```javascript
-const { DefaultAzureCredential, CredentialUnavailableError } = require("@azure/identity");
+const { DefaultAzureCredential } = require("@azure/identity");
+const { SecretClient } = require("@azure/keyvault-secrets");
 
 async function authenticateAndAccess() {
     try {
@@ -308,13 +310,17 @@ async function authenticateAndAccess() {
         const secret = await client.getSecret("my-secret");
         console.log("Secret retrieved successfully");
     } catch (error) {
-        if (error.name === "CredentialUnavailableError") {
+        if (
+            error.name === "CredentialUnavailableError" ||
+            error.name === "AggregateAuthenticationError" ||
+            error.name === "AuthenticationError"
+        ) {
             console.error("No credential available. Make sure you are:");
             console.error("  - Logged in via 'az login' for local development");
             console.error("  - Running on Azure with managed identity enabled");
             console.error("  - Have AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET set");
         } else if (error.code === "Forbidden") {
-            console.error("Access denied. Check your RBAC role assignments.");
+            console.error("Access denied. Check your RBAC role assignments or Key Vault access policy.");
         } else {
             console.error("Unexpected error:", error.message);
         }
