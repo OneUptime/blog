@@ -10,7 +10,7 @@ Description: Learn how to adopt Azure Verified Modules for Terraform to standard
 
 Every organization that uses Terraform at scale eventually faces the same problem: module sprawl. Different teams write their own modules for common resources like virtual networks, storage accounts, and AKS clusters. The implementations diverge over time, security configurations drift, and you end up with fifteen different ways to create a Key Vault across the company.
 
-Azure Verified Modules (AVM) addresses this by providing a library of Terraform modules that Microsoft develops, maintains, and tests. These modules follow consistent patterns, implement security best practices by default, and cover the most common Azure resources. For enterprises looking to standardize their infrastructure code, AVM offers a solid foundation.
+Azure Verified Modules (AVM) addresses this by providing a library of Terraform modules that Microsoft develops, maintains, and tests. These modules follow consistent patterns, align with AVM specifications, expose security and governance controls, and cover many common Azure resources. For enterprises looking to standardize their infrastructure code, AVM offers a solid foundation.
 
 ## What Are Azure Verified Modules
 
@@ -20,7 +20,7 @@ Azure Verified Modules is an initiative by Microsoft to provide official, high-q
 - Follows a consistent interface pattern across all modules
 - Includes comprehensive documentation and examples
 - Has automated tests that run against real Azure resources
-- Implements Azure security best practices as defaults
+- Exposes common Azure security and governance controls
 - Supports the most common deployment scenarios without customization
 
 The modules are open source and available on GitHub. You can use them as-is, fork them, or use them as reference implementations for your own modules.
@@ -67,14 +67,14 @@ module "vnet" {
 
 ## The AVM Interface Pattern
 
-All AVM modules follow a consistent interface that makes them predictable to use. Understanding this pattern is key to adopting them effectively.
+AVM modules follow a consistent interface where the target resource supports the capability, which makes them predictable to use. Understanding this pattern is key to adopting them effectively.
 
-Every AVM resource module accepts these common parameters:
+Many AVM resource modules accept common parameters like these:
 
 ```hcl
 # Common AVM interface parameters
 module "example_resource" {
-  source  = "Azure/avm-res-<type>/azurerm"
+  source  = "Azure/avm-res-<provider>-<resource>/azurerm"
   version = "~> x.x"
 
   # Required: Resource name
@@ -125,7 +125,7 @@ module "example_resource" {
 }
 ```
 
-This consistency means that once you learn how to configure diagnostic settings, locks, or private endpoints for one AVM module, you know how to do it for all of them.
+This consistency means that once you learn how to configure diagnostic settings, locks, or private endpoints for one AVM module, the same pattern usually applies to other modules that support those features.
 
 ## Setting Up an Enterprise Module Registry
 
@@ -178,6 +178,11 @@ variable "subnets" {
 
 variable "environment" {
   type = string
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
 }
 
 # Use the AVM module with organization defaults
@@ -269,12 +274,12 @@ module "acr" {
   sku = "Premium"
 
   # Enable geo-replication for the registry
-  georeplications = {
-    westus2 = {
+  georeplications = [
+    {
       location                = "westus2"
       zone_redundancy_enabled = true
     }
-  }
+  ]
 
   # Private endpoint for secure access
   private_endpoints = {
@@ -296,7 +301,7 @@ module "aks" {
   location            = "eastus2"
 
   # Network configuration
-  kubernetes_version = "1.28"
+  kubernetes_version = "1.35"
   sku_tier           = "Standard"   # Uptime SLA
 
   default_node_pool = {
@@ -334,7 +339,8 @@ Use HashiCorp Sentinel or Open Policy Agent (OPA) to enforce that teams use AVM 
 # sentinel/require-avm-modules.sentinel
 # Enforce that all Azure resource modules come from the AVM registry
 
-import "tfplan/v2" as tfplan
+import "tfconfig/v2" as tfconfig
+import "strings"
 
 # List of approved AVM module prefixes
 approved_sources = [
@@ -342,18 +348,10 @@ approved_sources = [
     "Azure/avm-ptn-",
 ]
 
-# Check all module calls
-module_calls = filter tfplan.module_calls as _, calls {
-    # Find modules that provision Azure resources
-    any calls as call {
-        call.source matches "(.*)azurerm(.*)"
-    }
-}
-
-# Verify each module comes from an approved AVM source
-violations = filter module_calls as address, calls {
+# Verify each Terraform module source comes from an approved AVM source
+violations = filter tfconfig.module_calls as _, module_call {
     not any approved_sources as prefix {
-        calls[0].source starts_with prefix
+        strings.has_prefix(module_call.source, prefix)
     }
 }
 
@@ -371,12 +369,8 @@ Before using an AVM module in production, test it in an isolated environment.
 git clone https://github.com/Azure/terraform-azurerm-avm-res-network-virtualnetwork.git
 cd terraform-azurerm-avm-res-network-virtualnetwork
 
-# Run the module's built-in tests
-cd tests
-go test -v -timeout 60m
-
-# Or deploy an example manually
-cd ../examples/basic
+# Deploy an example manually
+cd examples/default
 terraform init
 terraform plan
 terraform apply
@@ -389,25 +383,30 @@ If you have existing Terraform code and want to migrate to AVM modules, follow t
 1. **Inventory** - List all the Azure resources your Terraform code manages
 2. **Map to AVM** - Check which resources have AVM module equivalents
 3. **Start with new projects** - Use AVM modules for all new infrastructure
-4. **Migrate incrementally** - Replace existing resource blocks with AVM modules one at a time using `terraform state mv` to avoid recreation
+4. **Migrate incrementally** - Replace existing resource blocks with AVM modules one at a time. Use `terraform state mv` only when the source and destination resource types match; otherwise, remove the old state binding and import the existing Azure resource into the AVM module's resource address.
 5. **Add wrappers** - Create organization wrapper modules around AVM for consistent defaults
 
 ```bash
-# Example: Migrate an existing VNet to an AVM module
-# Step 1: Import the existing resource into the AVM module state path
-terraform state mv \
-  azurerm_virtual_network.main \
-  module.vnet.azurerm_virtual_network.this
+# Example: Migrate an existing VNet to the AVM VNet module
+# Step 1: Remove the old resource binding from state without deleting Azure resources
+terraform state rm azurerm_virtual_network.main
 
-# Step 2: Import subnets
-terraform state mv \
-  azurerm_subnet.web \
-  'module.vnet.azurerm_subnet.this["web"]'
+# Step 2: Import the existing VNet into the AVM module state path
+terraform import \
+  module.vnet.azapi_resource.vnet \
+  /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Network/virtualNetworks/<vnet-name>
 
-# Step 3: Plan to verify no changes
+# Step 3: Import subnets into the AVM subnet submodule state path
+terraform state rm azurerm_subnet.web
+
+terraform import \
+  'module.vnet.module.subnet["web"].azapi_resource.subnet' \
+  /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Network/virtualNetworks/<vnet-name>/subnets/snet-web
+
+# Step 4: Plan to verify no changes
 terraform plan
 ```
 
 ## Wrapping Up
 
-Azure Verified Modules provide enterprise-ready, Microsoft-maintained Terraform modules that enforce security best practices and consistent interfaces. Adopting them reduces module sprawl, improves security posture, and lets your platform team focus on higher-level concerns instead of maintaining basic resource modules. Start by using AVM for new projects, create organization wrappers with your defaults, and migrate existing code incrementally. The consistent interface across all AVM modules means the investment in learning one module pays off across the entire catalog.
+Azure Verified Modules provide enterprise-ready, Microsoft-maintained Terraform modules that expose security controls and consistent interface patterns. Adopting them reduces module sprawl, improves security posture, and lets your platform team focus on higher-level concerns instead of maintaining basic resource modules. Start by using AVM for new projects, create organization wrappers with your defaults, and migrate existing code incrementally. The consistent patterns across AVM modules mean the investment in learning one module pays off across the catalog.
