@@ -10,25 +10,26 @@ Description: Step-by-step guide to creating AKS node pools with FIPS 140-2 enabl
 
 If you work in government, healthcare, finance, or any industry with strict cryptographic requirements, you have probably encountered FIPS 140-2. The Federal Information Processing Standard 140-2 specifies requirements for cryptographic modules used by government agencies and regulated industries. When your compliance team says "we need FIPS," it means all cryptographic operations on your infrastructure must use FIPS-validated modules.
 
-AKS supports creating node pools with FIPS-enabled operating systems out of the box. The FIPS-enabled nodes use a Linux kernel with FIPS-validated cryptographic modules, which means all kernel-level crypto (TLS, disk encryption, random number generation) complies with FIPS 140-2. This guide covers how to set it up, what it actually changes, and the practical implications for your workloads.
+AKS supports creating node pools with FIPS-enabled operating systems out of the box. Deployments running on FIPS-enabled nodes can use the cryptographic modules provided by that OS image to help meet FIPS 140-2 controls. This guide covers how to set it up, what it actually changes, and the practical implications for your workloads.
 
 ## What FIPS-Enabled Means in AKS
 
 When you enable FIPS on an AKS node pool, Azure provisions the nodes with a FIPS-enabled OS image. Specifically:
 
 - The Linux kernel is compiled with the FIPS 140-2 validated cryptographic module
-- OpenSSL is configured to run in FIPS mode
-- Non-FIPS-compliant ciphers are disabled at the OS level
-- The kernel self-tests its crypto module at boot and refuses to start if the test fails
-- Node-level disk encryption uses FIPS-compliant algorithms
+- OS-provided cryptographic libraries are configured for the FIPS-enabled image
+- The Linux node exposes FIPS mode through `/proc/sys/crypto/fips_enabled`
+- Weak, non-FIPS algorithms can be blocked by the FIPS-enabled kernel
+- The FIPS-enabled Linux image is a different node image from the default Linux image and is updated through AKS node image upgrades
 
 This applies to the node OS only. Your application containers need their own FIPS compliance if they perform cryptographic operations. The node-level FIPS mode ensures that the infrastructure layer meets the standard.
 
 ## Prerequisites
 
-- Azure CLI 2.50 or later
+- Azure CLI 2.32.0 or later for creating FIPS-enabled node pools
 - An existing AKS cluster (or you can create one with a FIPS node pool from the start)
-- Understanding of which VM SKUs support FIPS in your region
+- Kubernetes 1.19 or later
+- Understanding of which OS SKUs and VM architectures support FIPS in your region
 
 ## Step 1: Create an AKS Cluster with a FIPS-Enabled Node Pool
 
@@ -74,27 +75,19 @@ az aks nodepool show \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
   --name fipspool \
-  --query enableFIPS -o tsv
+  --query enableFips -o tsv
 # Expected output: true
 
 # Verify FIPS on a running node by checking the kernel
-kubectl debug node/<fips-node-name> -it --image=busybox
+kubectl debug node/<fips-node-name> -it --image=mcr.microsoft.com/dotnet/runtime-deps:8.0
 ```
 
 Inside the debug container:
 
 ```bash
 # Check if FIPS mode is enabled in the kernel
-chroot /host
-cat /proc/sys/crypto/fips_enabled
+cat /host/proc/sys/crypto/fips_enabled
 # Expected output: 1
-
-# Check OpenSSL FIPS mode
-openssl version
-# Should show "fips" or FIPS indicator in the version string
-
-# List available ciphers (should only show FIPS-approved ones)
-openssl ciphers -v | head -20
 ```
 
 ## Step 4: Schedule Workloads on FIPS Nodes
@@ -187,11 +180,11 @@ Node-level FIPS covers the infrastructure, but your application containers also 
 
 ### .NET Applications
 
-.NET has built-in FIPS support. Set the environment variable in your Dockerfile or pod spec:
+.NET uses the cryptographic libraries provided by the operating system. On a FIPS-configured OS image, .NET applications can use FIPS-validated OS algorithms, but .NET does not enforce FIPS-approved algorithms or key sizes for your application code. Avoid non-FIPS algorithms in your code and use an image whose OS crypto libraries are validated for your compliance target.
 
 ```yaml
 # dotnet-fips-pod.yaml
-# .NET application configured for FIPS-compliant crypto
+# .NET application scheduled on FIPS-enabled nodes
 apiVersion: v1
 kind: Pod
 metadata:
@@ -202,29 +195,23 @@ spec:
   containers:
   - name: app
     image: myregistry.azurecr.io/dotnet-app:v1
-    env:
-    # Enable FIPS mode in .NET runtime
-    - name: DOTNET_SYSTEM_SECURITY_CRYPTOGRAPHY_USELEGACYPROVIDER
-      value: "false"
-    - name: COMPlus_EnableFIPS
-      value: "1"
 ```
 
 ### Go Applications
 
-Go applications need to be compiled with the `GOEXPERIMENT=boringcrypto` build tag to use BoringSSL's FIPS-validated module:
+Starting with Go 1.24, Go includes native FIPS 140-3 support through the `GOFIPS140` build setting. Build against a validated FIPS module snapshot instead of using the older `GOEXPERIMENT=boringcrypto` path:
 
 ```dockerfile
 # Dockerfile for FIPS-compliant Go application
-FROM golang:1.22 AS builder
+FROM golang:1.24 AS builder
 
-# Build with BoringCrypto for FIPS compliance
-ENV GOEXPERIMENT=boringcrypto
+# Build with the Go FIPS 140-3 module snapshot
+ENV GOFIPS140=v1.0.0
 WORKDIR /app
 COPY . .
 RUN go build -o /server ./cmd/server
 
-FROM mcr.microsoft.com/cbl-mariner/distroless/base:2.0
+FROM mcr.microsoft.com/azurelinux/distroless/base:3.0
 COPY --from=builder /server /server
 ENTRYPOINT ["/server"]
 ```
@@ -319,7 +306,7 @@ spec:
 
 ## Limitations and Considerations
 
-**Cannot convert existing nodes**: You cannot enable FIPS on an existing node pool. You need to create a new FIPS-enabled node pool and migrate workloads to it.
+**Updating existing pools reimages nodes**: You can enable or disable FIPS on an existing Linux node pool with `az aks nodepool update --enable-fips-image` or `--disable-fips-image` when using Azure CLI 2.64.0 or later. The update changes the node image and triggers a reimage, so validate workloads in a test environment before changing a production pool.
 
 **Performance impact**: FIPS-validated crypto modules may be slightly slower than non-FIPS alternatives because they use specific, validated implementations. For most workloads, the difference is negligible.
 
@@ -327,6 +314,6 @@ spec:
 
 **Some software breaks**: Applications that depend on non-FIPS ciphers (like certain older TLS configurations or custom crypto) may fail on FIPS nodes. Test your applications thoroughly before migrating.
 
-**Windows node pools**: FIPS is also supported on Windows node pools in AKS, though the implementation uses Windows' built-in FIPS mode rather than Linux kernel modules.
+**Windows node pools**: FIPS is also supported on Windows Server 2022 and Windows Server 2025 node pools in AKS, though the implementation uses Windows' built-in FIPS mode rather than Linux kernel modules. Windows Server 2022 and later node pools enable FIPS by default, and Windows Server 2025 and later node pools do not support disabling it.
 
 FIPS compliance in AKS is straightforward to enable at the node level. The real work is ensuring your entire stack - from node OS to container runtime to application code - uses FIPS-validated cryptographic modules. Start with the node pool configuration, verify it is working, then work your way up the stack to your application code.
