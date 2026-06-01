@@ -10,36 +10,39 @@ Description: Learn how to use AWS Trusted Advisor cost optimization checks to fi
 
 AWS Trusted Advisor is like having a consultant that continuously reviews your account and flags waste, security risks, and performance issues. The cost optimization checks are particularly valuable - they identify specific resources that are costing you money without providing value.
 
-The catch is that the free tier of Trusted Advisor only includes a limited set of checks. You need a Business or Enterprise support plan ($100+/month) to access all cost optimization checks. But even the free checks are worth using, and if you're spending enough on AWS to justify a support plan, the savings Trusted Advisor finds usually pay for the plan many times over.
+The catch is that Basic Support only includes a limited set of core checks, and those core checks don't include the cost optimization category. You need AWS Business Support+, AWS Enterprise Support, or AWS Unified Operations to access the full Trusted Advisor check set. Business Support+ starts at $29/month per account, and if you're spending enough on AWS to justify a support plan, the savings Trusted Advisor finds can pay for the plan many times over.
 
 ## What Cost Optimization Checks Are Available
 
 Trusted Advisor's cost optimization category covers these areas:
 
-**Free tier (all accounts):**
-- Amazon EC2 Reserved Instance Lease Expiration
-- S3 Bucket Permissions (indirectly affects cost through security)
+**Basic Support (core checks only):**
+- All checks in the Service Quotas category
+- Selected checks in the Security and Fault tolerance categories
 
-**Business/Enterprise support plans (full set):**
+**Business Support+, Enterprise Support, and Unified Operations (full set):**
 - Low Utilization Amazon EC2 Instances
 - Idle Load Balancers
 - Underutilized Amazon EBS Volumes
 - Unassociated Elastic IP Addresses
 - Amazon RDS Idle DB Instances
-- Amazon Redshift Cluster Configuration
+- Underutilized Amazon Redshift Clusters
 - Amazon EC2 Reserved Instance Optimization
-- Lambda Functions with High Error Rates
-- Lambda Functions with Excessive Timeouts
-- Amazon S3 Incomplete Multipart Uploads
+- AWS Lambda functions with high error rates
+- AWS Lambda functions with excessive timeouts
+- Amazon S3 Incomplete Multipart Upload Abort Configuration
 
 ## Accessing Trusted Advisor Checks via CLI
 
 You can retrieve Trusted Advisor recommendations programmatically:
 
+The AWS Support API requires a Business Support+, Enterprise Support, or Unified Operations plan and must be called in `us-east-1`.
+
 ```bash
 # List all available Trusted Advisor checks
 
 aws support describe-trusted-advisor-checks \
+  --region us-east-1 \
   --language en \
   --query "checks[?category=='cost_optimizing'].{Id: id, Name: name}" \
   --output table
@@ -51,12 +54,14 @@ To get results for a specific check:
 # Get results for the Low Utilization EC2 Instances check
 # First, find the check ID
 CHECK_ID=$(aws support describe-trusted-advisor-checks \
+  --region us-east-1 \
   --language en \
   --query "checks[?name=='Low Utilization Amazon EC2 Instances'].id" \
   --output text)
 
 # Get the check results
 aws support describe-trusted-advisor-check-result \
+  --region us-east-1 \
   --check-id $CHECK_ID \
   --language en
 ```
@@ -137,6 +142,7 @@ Trusted Advisor results aren't real-time - they're updated periodically. You can
 
 ```python
 import boto3
+from botocore.exceptions import ClientError
 import time
 
 def refresh_cost_checks():
@@ -150,9 +156,12 @@ def refresh_cost_checks():
         try:
             support.refresh_trusted_advisor_check(checkId=check['id'])
             print(f"Refreshed: {check['name']}")
-        except support.exceptions.InvalidParameterValueException:
-            # Some checks can't be refreshed manually
-            print(f"Cannot refresh: {check['name']}")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'InvalidParameterValue':
+                # Some checks can't be refreshed manually
+                print(f"Cannot refresh: {check['name']}")
+            else:
+                raise
         time.sleep(1)  # Avoid rate limiting
 
     print("\nChecks refreshed. Results will be available in a few minutes.")
@@ -162,7 +171,7 @@ refresh_cost_checks()
 
 ## Setting Up Automated Alerts
 
-Use CloudWatch Events to get notified when Trusted Advisor flags new issues:
+Use EventBridge to get notified when Trusted Advisor flags new issues:
 
 ```bash
 # Create an EventBridge rule for Trusted Advisor check status changes
@@ -172,9 +181,7 @@ aws events put-rule \
     "source": ["aws.trustedadvisor"],
     "detail-type": ["Trusted Advisor Check Item Refresh Notification"],
     "detail": {
-      "check-item-detail": {
-        "status": ["warning", "error"]
-      }
+      "status": ["WARN", "ERROR"]
     }
   }' \
   --description "Alert when Trusted Advisor finds cost optimization issues"
@@ -189,7 +196,7 @@ aws events put-targets \
 
 Let's walk through how to act on the most impactful Trusted Advisor findings:
 
-**Low Utilization EC2 Instances** - Instances with CPU utilization below 10% for the past 14 days. Options:
+**Low Utilization EC2 Instances** - Instances with daily average CPU utilization of 10% or less and network I/O of 5 MB or less on at least 4 of the previous 14 days. Options:
 1. Right-size to a smaller instance type
 2. Stop the instance if it's not needed
 3. Move to a spot or Graviton instance
@@ -199,25 +206,27 @@ Let's walk through how to act on the most impactful Trusted Advisor findings:
 aws ec2 stop-instances --instance-ids i-0a1b2c3d4e5f67890
 aws ec2 modify-instance-attribute \
   --instance-id i-0a1b2c3d4e5f67890 \
-  --instance-type t3.small
+  --instance-type '{"Value": "t3.small"}'
 aws ec2 start-instances --instance-ids i-0a1b2c3d4e5f67890
 ```
 
-**Idle Load Balancers** - ALBs with no active connections for 7+ days:
+**Idle Load Balancers** - Classic Load Balancers with no active or healthy backend instances, or with fewer than 100 requests per day for the last 7 days:
 
 ```bash
-# Delete an idle load balancer
-aws elbv2 delete-load-balancer \
-  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/idle-lb/abc123
+# Delete an idle Classic Load Balancer
+aws elb delete-load-balancer \
+  --load-balancer-name idle-lb
 ```
 
-**Underutilized EBS Volumes** - Volumes with low IOPS usage. Consider switching to a cheaper volume type:
+**Underutilized EBS Volumes** - Volumes that are unattached or had less than 1 IOPS per day for the past 7 days. Consider snapshotting and deleting them:
 
 ```bash
-# Switch from io1 to gp3 for a volume that doesn't need provisioned IOPS
-aws ec2 modify-volume \
+# Snapshot and delete an underutilized volume
+aws ec2 create-snapshot \
   --volume-id vol-0a1b2c3d4e5f67890 \
-  --volume-type gp3
+  --description "Snapshot before deleting underutilized volume"
+aws ec2 delete-volume \
+  --volume-id vol-0a1b2c3d4e5f67890
 ```
 
 **Unassociated Elastic IPs:**
