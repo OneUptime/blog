@@ -30,10 +30,10 @@ The trade-off is that correlation becomes harder. Cross-workspace queries bridge
 
 ## Basic Cross-Workspace Query Syntax
 
-The `workspace()` function lets you reference a table in another workspace from within your query. There are three ways to reference a workspace:
+The `workspace()` function lets you reference a table in another workspace from within your query. The most reliable ways to reference a workspace are by workspace ID or full Azure resource ID:
 
 ```text
-// By workspace name (simplest, but only works within the same subscription)
+// By workspace name or resource name (allowed, but not recommended because it can be ambiguous and less efficient)
 workspace("law-production").SecurityEvent
 | where TimeGenerated > ago(1h)
 | take 10
@@ -43,7 +43,7 @@ workspace("12345678-abcd-1234-abcd-123456789012").SecurityEvent
 | where TimeGenerated > ago(1h)
 | take 10
 
-// By full resource ID (most explicit, required in some contexts)
+// By full resource ID (explicit and efficient)
 workspace("/subscriptions/<sub-id>/resourcegroups/rg-monitoring/providers/microsoft.operationalinsights/workspaces/law-production").SecurityEvent
 | where TimeGenerated > ago(1h)
 | take 10
@@ -114,13 +114,13 @@ You can also query across Application Insights resources using the `app()` funct
 // Correlate server-side errors with client-side page views
 let serverErrors = workspace("law-backend").AppExceptions
 | where TimeGenerated > ago(1h)
-| summarize ServerErrors = count() by bin(TimeGenerated, 5m), operation_Name;
+| summarize ServerErrors = count() by TimeBucket = bin(TimeGenerated, 5m), OperationName;
 let clientMetrics = app("ai-frontend").pageViews
 | where timestamp > ago(1h)
-| summarize PageViews = count(), AvgDuration = avg(duration) by bin(timestamp, 5m), operation_Name;
+| summarize PageViews = count(), AvgDuration = avg(duration) by TimeBucket = bin(timestamp, 5m), OperationName = operation_Name;
 serverErrors
-| join kind=leftouter clientMetrics on operation_Name, $left.TimeGenerated == $right.timestamp
-| project TimeGenerated, operation_Name, ServerErrors, PageViews, AvgDuration
+| join kind=leftouter clientMetrics on OperationName, TimeBucket
+| project TimeBucket, OperationName, ServerErrors, PageViews, AvgDuration
 ```
 
 ## Performance Considerations
@@ -129,7 +129,7 @@ Cross-workspace queries are powerful, but they are not free. Here are some thing
 
 **Query latency**: Cross-workspace queries are slower than single-workspace queries because the query engine needs to fan out to multiple clusters, execute the query in parallel, and merge the results. For two workspaces in the same region, the overhead is usually small (a few hundred milliseconds). For workspaces in different regions, latency is higher due to network round trips.
 
-**Data volume**: The amount of data scanned across workspaces counts toward your query limits. Log Analytics has a limit on the amount of data a single query can process (about 500 GB scanned, though this varies). If you are querying large tables across many workspaces, you may hit this limit.
+**Data volume**: The amount of data returned and the time range queried across workspaces count toward Azure Monitor query limits. For example, Azure Monitor service limits include data returned per workspace and query-hour limits, and the Logs Query API has default and maximum timeouts. If you are querying large tables across many workspaces, you may hit these limits.
 
 **Filter early**: Always push `where` clauses as close to the data source as possible. Instead of pulling all data from remote workspaces and then filtering, filter within the `workspace()` reference.
 
@@ -174,7 +174,7 @@ For service accounts or automation, you can use a service principal with Reader 
 
 **No cross-tenant by default**: Querying workspaces in different Azure AD tenants requires Azure Lighthouse or cross-tenant access configuration.
 
-**Alert rule limitations**: Log search alert rules support cross-workspace queries, but there are some caveats. The alert rule must be created in the same region as the primary workspace. Evaluation may be slower due to the cross-workspace fan-out.
+**Alert rule limitations**: Log search alert rules support cross-workspace queries, but there are some caveats. Cross-resource queries in log search alerts require the current `scheduledQueryRules` API rather than the legacy Log Analytics Alerts API. Evaluation may be slower due to the cross-workspace fan-out.
 
 **Workbook queries**: Azure Workbooks fully support cross-workspace queries. You can build dashboards that aggregate data from all your workspaces.
 
