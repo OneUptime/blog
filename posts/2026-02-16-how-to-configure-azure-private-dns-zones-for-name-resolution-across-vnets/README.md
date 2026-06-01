@@ -14,13 +14,13 @@ I have helped multiple organizations set up Private DNS Zones as part of their h
 
 ## How Azure DNS Resolution Works
 
-Every Azure virtual network has a built-in DNS resolver at the virtual IP address 168.63.129.16. When a VM in a VNet makes a DNS query, here is what happens:
+Every Azure virtual network can use Azure-provided DNS through the virtual IP address 168.63.129.16. When a VM in a VNet uses the default Azure DNS settings and makes a DNS query, here is what happens:
 
 1. The query goes to the Azure DNS resolver (168.63.129.16)
 2. If the VNet has a linked Private DNS Zone that matches the query, Azure resolves it from the private zone
-3. If not, Azure forwards the query to the public Azure DNS service (or to a custom DNS server if configured)
+3. If not, Azure-provided DNS resolves the query through its normal public DNS resolution path
 
-This built-in resolver is what makes Private DNS Zones work without any software to install or manage. But it only resolves queries for zones that are linked to the VNet where the query originates. This is the key point that trips people up.
+This built-in resolver is what makes Private DNS Zones work without any software to install or manage. But it only resolves queries for zones that are linked to the VNet where the query originates. If the VNet or NIC is configured with custom DNS servers, those custom servers must forward the relevant private zone queries to Azure DNS or to Azure DNS Private Resolver. This is the key point that trips people up.
 
 ## Creating a Private DNS Zone
 
@@ -131,7 +131,7 @@ Here are the Private DNS Zone names for the most commonly used Azure services. Y
 | Key Vault | privatelink.vaultcore.azure.net |
 | Event Hub | privatelink.servicebus.windows.net |
 | App Service | privatelink.azurewebsites.net |
-| Azure Monitor | privatelink.monitor.azure.com |
+| Azure Monitor | privatelink.monitor.azure.com, privatelink.oms.opinsights.azure.com, privatelink.ods.opinsights.azure.com, privatelink.agentsvc.azure-automation.net, privatelink.blob.core.windows.net |
 
 ## Verifying DNS Resolution
 
@@ -139,7 +139,8 @@ After setting everything up, verify that DNS resolution returns the private IP.
 
 ```bash
 # From a VM inside one of the linked VNets
-# Should return a private IP address (10.x.x.x or 172.x.x.x)
+# Should return a private IP address from your VNet address space
+# such as 10.x.x.x, 172.16.x.x-172.31.x.x, or 192.168.x.x
 nslookup mystorageaccount.blob.core.windows.net
 
 # Expected output:
